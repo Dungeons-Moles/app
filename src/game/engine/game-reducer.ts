@@ -29,6 +29,13 @@ import {
   advanceTimePhase,
   shouldTriggerBoss,
 } from '../time/progression';
+import {
+  createPOIInteraction,
+  applyPOIOption,
+  markPOIVisited,
+  markPOIDiscovered,
+  findPOIAtPosition,
+} from '../entities/pois';
 
 // ============================================================================
 // Game Actions
@@ -269,6 +276,26 @@ function handleMove(state: GameState, direction: Direction): GameState {
     };
   }
 
+  // Check for POI at target position (T099)
+  const poiAtTarget = findPOIAtPosition(newState.map, targetPos);
+  if (poiAtTarget && !poiAtTarget.visited) {
+    // Create POI interaction if valid
+    const interaction = createPOIInteraction(poiAtTarget, newState);
+    if (interaction) {
+      // Mark Rail Waypoints as discovered
+      let updatedMap = newState.map;
+      if (poiAtTarget.definitionId === 'L8' && !poiAtTarget.discovered) {
+        updatedMap = markPOIDiscovered(newState.map, poiAtTarget.id);
+      }
+      return {
+        ...newState,
+        phase: GamePhase.POIInteraction,
+        map: updatedMap,
+        activePOI: interaction,
+      };
+    }
+  }
+
   return newState;
 }
 
@@ -476,34 +503,102 @@ function findEnemyAtPlayerPosition(state: GameState): MapEnemy | undefined {
 }
 
 /**
- * Handles INTERACT_POI action.
+ * T099: Handles INTERACT_POI action.
  * Transitions to POIInteraction phase with specified POI.
+ * Creates POI interaction state with generated options.
  */
-function handleInteractPOI(state: GameState, _poiId: string): GameState {
+function handleInteractPOI(state: GameState, poiId: string): GameState {
   if (!isValidTransition(state.phase, GamePhase.POIInteraction)) {
     throw new Error(
       `Invalid transition: cannot interact with POI from ${state.phase}`
     );
   }
 
-  // TODO: Set up POI interaction state
+  // Find the POI on the map
+  const poi = state.map.pois.find((p) => p.id === poiId);
+  if (!poi) {
+    throw new Error(`POI not found: ${poiId}`);
+  }
+
+  // Create the POI interaction state
+  const interaction = createPOIInteraction(poi, state);
+  if (!interaction) {
+    // POI cannot be interacted with (e.g., night-only during day)
+    return state;
+  }
+
+  // Mark POI as discovered (for Rail Waypoints)
+  let updatedMap = state.map;
+  if (poi.definitionId === 'L8' && !poi.discovered) {
+    updatedMap = markPOIDiscovered(state.map, poiId);
+  }
+
   return {
     ...state,
     phase: GamePhase.POIInteraction,
+    map: updatedMap,
+    activePOI: interaction,
   };
 }
 
 /**
- * Handles SELECT_POI_OPTION action.
+ * T099: Handles SELECT_POI_OPTION action.
  * Applies selected option effect within POI interaction.
  */
-function handleSelectPOIOption(state: GameState, _optionIndex: number): GameState {
+function handleSelectPOIOption(state: GameState, optionIndex: number): GameState {
   if (state.phase !== GamePhase.POIInteraction) {
     return state;
   }
 
-  // TODO: Apply option effect (grant item, heal, etc.)
-  return state;
+  if (!state.activePOI) {
+    return state;
+  }
+
+  const options = state.activePOI.options;
+  if (!options || optionIndex < 0 || optionIndex >= options.length) {
+    return state;
+  }
+
+  const option = options[optionIndex];
+
+  // Check if it's the "Leave" option
+  if (option.label === 'Leave') {
+    return handleClosePOI(state);
+  }
+
+  // Check if option is disabled
+  if (option.disabled) {
+    return state;
+  }
+
+  // Apply the POI option effects
+  let newState = applyPOIOption(state, optionIndex);
+
+  // Update the selected option
+  newState = {
+    ...newState,
+    activePOI: newState.activePOI
+      ? { ...newState.activePOI, selectedOption: optionIndex }
+      : null,
+  };
+
+  // Mark POI as visited (except for shops that can be reused)
+  const poiId = state.activePOI.poi.id;
+  const poiDefId = state.activePOI.poi.definitionId;
+  const isReusablePOI = ['L8', 'L9', 'L10', 'L11'].includes(poiDefId);
+
+  if (!isReusablePOI && !option.label.includes('Reroll')) {
+    newState = {
+      ...newState,
+      map: markPOIVisited(newState.map, poiId),
+    };
+    // Close POI after using it (for non-reusable POIs)
+    return handleClosePOI(newState);
+  }
+
+  // For reusable POIs, stay in interaction mode (shops, waypoints, etc.)
+  // unless they explicitly chose Leave
+  return newState;
 }
 
 /**
