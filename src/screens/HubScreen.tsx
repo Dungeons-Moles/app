@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useWallet } from '../contexts/WalletContext';
 import { useProfile } from '../contexts/ProfileContext';
+import { useGame } from '../contexts/GameContext';
 import { shortenAddress } from '../utils/storage';
 import { RootStackParamList } from '../navigation';
 
@@ -21,6 +22,7 @@ type HubScreenProps = {
 export function HubScreen({ navigation }: HubScreenProps) {
   const { wallet, disconnect } = useWallet();
   const { profile, clearProfile } = useProfile();
+  const { dispatch } = useGame();
   const [showSettings, setShowSettings] = useState(false);
 
   const handleDisconnect = async () => {
@@ -32,9 +34,16 @@ export function HubScreen({ navigation }: HubScreenProps) {
     });
   };
 
-  const handlePlayPvE = () => {
-    Alert.alert('Coming Soon', 'PvE Campaign is under development!');
-  };
+  const handlePlayPvE = useCallback(() => {
+    // Generate a random seed for the game
+    const seed = Math.floor(Math.random() * 2147483647);
+
+    // Start the game with the seed
+    dispatch({ type: 'START_GAME', seed });
+
+    // Navigate to the game screen
+    navigation.navigate('Game');
+  }, [dispatch, navigation]);
 
   const handlePlayPvP = () => {
     Alert.alert('Coming Soon', 'PvP Gauntlet is under development!');

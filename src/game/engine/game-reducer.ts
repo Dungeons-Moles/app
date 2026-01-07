@@ -5,10 +5,14 @@
  * @see specs/001-pve-dungeon-crawler/research.md R3
  */
 
-import type { GameState, CombatResult } from './types';
-import { GamePhase } from './types';
-import { Direction } from '../input/types';
+import type { GameState, CombatResult, Position } from './types';
+import { GamePhase, TimePhase } from './types';
+import { Direction, DIRECTION_DELTA } from '../input/types';
 import { isValidTransition } from './state-machine';
+import { initializeGame, consumeMoves } from './state-factory';
+import { TileType, TILE_MOVE_COST } from '../map/types';
+import { updateFogOfWar } from '../map/fog-of-war';
+import { movePlayer } from '../entities/player';
 
 // ============================================================================
 // Game Actions
@@ -114,33 +118,87 @@ function handleStartGame(state: GameState, seed: number): GameState {
     );
   }
 
-  // TODO: Initialize game with seed (map generation, player setup, etc.)
-  // For now, just transition phase and set seed
-  return {
-    ...state,
-    phase: GamePhase.Exploration,
-    seed,
-    rngState: seed,
-  };
+  // Initialize game with seed (map generation, player setup, etc.)
+  return initializeGame(state, seed);
 }
 
 /**
  * Handles MOVE action.
  * Moves player in direction if valid, consumes time.
  */
-function handleMove(state: GameState, _direction: Direction): GameState {
+function handleMove(state: GameState, direction: Direction): GameState {
   if (state.phase !== GamePhase.Exploration) {
     return state; // Ignore move if not exploring
   }
 
-  // TODO: Implement movement logic
-  // - Check canMoveTo
-  // - Update player position
-  // - Update fog of war
-  // - Consume time (getMoveCost)
-  // - Check for enemy encounters
-  // - Check for time phase transitions
-  return state;
+  // Calculate target position
+  const delta = DIRECTION_DELTA[direction];
+  const targetPos: Position = {
+    x: state.player.position.x + delta.x,
+    y: state.player.position.y + delta.y,
+  };
+
+  // Check bounds
+  if (
+    targetPos.x < 0 ||
+    targetPos.x >= state.map.width ||
+    targetPos.y < 0 ||
+    targetPos.y >= state.map.height
+  ) {
+    return state; // Can't move out of bounds
+  }
+
+  // Check if tile is walkable
+  const targetTile = state.map.tiles[targetPos.y][targetPos.x];
+  if (targetTile === TileType.Wall) {
+    return state; // Can't move into wall
+  }
+
+  // Get move cost
+  const moveCost = TILE_MOVE_COST[targetTile];
+
+  // Check for enemy at target position
+  const enemyAtTarget = state.map.enemies.find(
+    e => e.position.x === targetPos.x && e.position.y === targetPos.y
+  );
+
+  // Move player
+  let newState = {
+    ...state,
+    player: movePlayer(state.player, targetPos),
+  };
+
+  // Update fog of war
+  const isDay = newState.time.phase === TimePhase.Day;
+  newState = {
+    ...newState,
+    map: updateFogOfWar(newState.map, targetPos, isDay),
+  };
+
+  // Consume time
+  newState = consumeMoves(newState, moveCost);
+
+  // Check for enemy encounter
+  if (enemyAtTarget) {
+    return {
+      ...newState,
+      phase: GamePhase.Combat,
+      // Combat state would be initialized here in full implementation
+    };
+  }
+
+  // Check if boss should trigger (Night 3 complete)
+  if (
+    newState.time.phase === TimePhase.Boss &&
+    state.time.phase === TimePhase.Night
+  ) {
+    return {
+      ...newState,
+      phase: GamePhase.BossFight,
+    };
+  }
+
+  return newState;
 }
 
 /**

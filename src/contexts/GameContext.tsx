@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useReducer, ReactNode, Dispatch } from 'react';
+import React, { createContext, useContext, useReducer, ReactNode, Dispatch, useCallback } from 'react';
 import {
   GamePhase,
   type GameState,
@@ -8,6 +8,7 @@ import {
   GameAction as CoreGameAction,
   gameReducer as coreGameReducer,
 } from '../game/engine/game-reducer';
+import { createInitialGameState } from '../game/engine/state-factory';
 
 // ============================================================================
 // Context-specific Actions (debug/escape hatches)
@@ -25,7 +26,13 @@ export type GameAction = CoreGameAction | ContextAction;
 // Initial State
 // ============================================================================
 
+// Start with null, game state is created when START_GAME action is dispatched
 const initialGameState: GameState | null = null;
+
+// Pre-create initial state for reuse
+function getInitialState(): GameState {
+  return createInitialGameState();
+}
 
 // ============================================================================
 // Game Reducer (wrapper around canonical reducer)
@@ -39,8 +46,13 @@ export function gameReducer(
   state: GameState | null,
   action: GameAction
 ): GameState | null {
-  // Handle null state
+  // Handle null state - only START_GAME can initialize
   if (!state) {
+    if (action.type === 'START_GAME') {
+      // Create initial state and then apply START_GAME action
+      const initialState = getInitialState();
+      return coreGameReducer(initialState, action);
+    }
     return state;
   }
 
