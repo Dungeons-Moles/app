@@ -1,7 +1,7 @@
 /**
- * T047-T051, T110: Combat resolver for PvE Dungeon Crawler
+ * T047-T051, T110, T118: Combat resolver for PvE Dungeon Crawler
  * Pure function resolver for deterministic auto-combat
- * Integrates boss traits (T102-T109)
+ * Integrates boss traits (T102-T109) and status effects (T114-T118)
  * @see specs/001-pve-dungeon-crawler/research.md R2
  * @see specs/001-pve-dungeon-crawler/spec.md FR-010 to FR-017
  */
@@ -29,6 +29,8 @@ import {
   resetStatusReflectionFlag,
   isBoss,
 } from '../entities/bosses';
+import { processStatusEffectsTurnEnd } from './status-effects';
+import { executeTraitEffects, type EnemyId } from './traits';
 
 /**
  * Input for creating combat state
@@ -39,6 +41,10 @@ export interface CombatResolverInput {
   seed: number;
   /** Optional boss ID if fighting a boss (enables boss traits) */
   bossId?: BossId;
+  /** Optional enemy ID for trait execution (regular enemies) */
+  enemyId?: EnemyId;
+  /** True if player has Shrapnel Harness itemset */
+  hasShrapnelHarness?: boolean;
 }
 
 /**
@@ -57,11 +63,11 @@ export function createCombatState(input: CombatResolverInput): CombatState {
 }
 
 /**
- * T048-T051, T110: Resolve combat to completion
+ * T048-T051, T110, T118: Resolve combat to completion
  * Pure function that runs combat from start to finish
  *
  * Combat flow per research.md R2:
- * 1. Battle Start - execute Battle Start effects (including boss traits)
+ * 1. Battle Start - execute Battle Start effects (boss traits, enemy traits)
  * 2. Turn Start - execute Turn Start effects (boss traits like Obsidian Golem, Drill Sergeant)
  * 3. Determine Order - higher SPEED attacks first
  * 4. Execute Attacks - calculate damage, apply, check death, check boss phases
@@ -72,7 +78,7 @@ export function createCombatState(input: CombatResolverInput): CombatState {
 export function resolveCombat(input: CombatResolverInput): CombatState {
   let state = createCombatState(input);
   const rng = new SeededRNG(input.seed);
-  const bossId = input.bossId;
+  const { bossId, enemyId, hasShrapnelHarness = false } = input;
 
   // Reset boss phase state for new combat
   if (bossId) {
@@ -80,7 +86,7 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
   }
 
   // Phase 1: Battle Start
-  state = executeBattleStart(state, rng, bossId);
+  state = executeBattleStart(state, rng, bossId, enemyId);
 
   // Check for immediate death (from Battle Start effects)
   if (checkCombatEnd(state)) {
@@ -91,7 +97,7 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
   const MAX_TURNS = 100; // Safety limit
   while (state.turn < MAX_TURNS && !state.result) {
     // Phase 2: Turn Start
-    state = executeTurnStart(state, rng, bossId);
+    state = executeTurnStart(state, rng, bossId, enemyId);
 
     // Check for death from Turn Start effects
     if (checkCombatEnd(state)) {
@@ -99,7 +105,7 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
     }
 
     // Phase 3-4: Execute attacks in SPEED order
-    state = executeAttackPhase(state, rng, bossId);
+    state = executeAttackPhase(state, rng, bossId, enemyId);
 
     // Check for death
     if (checkCombatEnd(state)) {
@@ -107,7 +113,7 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
     }
 
     // Phase 5: Turn End
-    state = executeTurnEnd(state, rng, bossId);
+    state = executeTurnEnd(state, rng, hasShrapnelHarness);
 
     // Check for death from Turn End effects
     if (checkCombatEnd(state)) {
@@ -120,14 +126,15 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
 }
 
 /**
- * T049, T110: Execute Battle Start phase
+ * T049, T110, T118: Execute Battle Start phase
  * Effects that trigger at BATTLE_START timing
- * Executes boss traits like Broodmother (3 strikes) and Mad Miner (mirror item)
+ * Executes boss traits and enemy traits (Spore Slime, Shard Beetle, etc.)
  */
 function executeBattleStart(
   state: CombatState,
   rng: SeededRNG,
-  bossId?: BossId
+  bossId?: BossId,
+  enemyId?: EnemyId
 ): CombatState {
   state = { ...state, phase: CombatPhase.BattleStart };
 
@@ -161,20 +168,26 @@ function executeBattleStart(
     }
   }
 
-  // TODO: Execute Battle Start effects from items/itemsets
+  // T118: Execute enemy BATTLE_START traits (e.g., Spore Slime, Shard Beetle)
+  if (enemyId) {
+    state = executeTraitEffects(state, 'BATTLE_START', enemyId, 'enemy');
+  }
+
+  // TODO: Execute Battle Start effects from player items/itemsets
 
   return state;
 }
 
 /**
- * T110: Execute Turn Start phase
+ * T110, T118: Execute Turn Start phase
  * Executes boss traits like Obsidian Golem (+3 Armor), Gas Anomaly (2 damage),
  * Drill Sergeant (+2 ATK), and resets Crystal Mimic reflection flag
  */
 function executeTurnStart(
   state: CombatState,
   rng: SeededRNG,
-  bossId?: BossId
+  bossId?: BossId,
+  enemyId?: EnemyId
 ): CombatState {
   state = {
     ...state,
@@ -211,6 +224,13 @@ function executeTurnStart(
     }
   }
 
+  // T118: Execute enemy TURN_START traits
+  if (enemyId) {
+    state = executeTraitEffects(state, 'TURN_START', enemyId, 'enemy');
+  }
+
+  // TODO: Execute Turn Start effects from player items/itemsets
+
   return state;
 }
 
@@ -221,7 +241,8 @@ function executeTurnStart(
 function executeAttackPhase(
   state: CombatState,
   rng: SeededRNG,
-  bossId?: BossId
+  bossId?: BossId,
+  enemyId?: EnemyId
 ): CombatState {
   // Determine attack order by SPEED
   const playerSpeed = state.player.spd + state.player.bonusSpd;
@@ -234,7 +255,7 @@ function executeAttackPhase(
   if (playerGoesFirst) {
     // Player attacks
     state = { ...state, phase: CombatPhase.PlayerAttack };
-    state = executeAttacks(state, 'player', rng, bossId);
+    state = executeAttacks(state, 'player', rng, bossId, enemyId);
 
     // Check if enemy died
     if (isDefeated(state.enemy)) {
@@ -243,11 +264,11 @@ function executeAttackPhase(
 
     // Enemy counter-attacks
     state = { ...state, phase: CombatPhase.EnemyAttack };
-    state = executeAttacks(state, 'enemy', rng, bossId);
+    state = executeAttacks(state, 'enemy', rng, bossId, enemyId);
   } else {
     // Enemy attacks first
     state = { ...state, phase: CombatPhase.EnemyAttack };
-    state = executeAttacks(state, 'enemy', rng, bossId);
+    state = executeAttacks(state, 'enemy', rng, bossId, enemyId);
 
     // Check if player died
     if (isDefeated(state.player)) {
@@ -256,21 +277,23 @@ function executeAttackPhase(
 
     // Player counter-attacks
     state = { ...state, phase: CombatPhase.PlayerAttack };
-    state = executeAttacks(state, 'player', rng, bossId);
+    state = executeAttacks(state, 'player', rng, bossId, enemyId);
   }
 
   return state;
 }
 
 /**
- * T110: Execute all attacks for a combatant (handles multi-strike)
+ * T110, T118: Execute all attacks for a combatant (handles multi-strike)
  * Checks Eldritch Mole phase transitions after player damages enemy
+ * Includes ON_HIT traits like Rust Mite Swarm
  */
 function executeAttacks(
   state: CombatState,
   attacker: 'player' | 'enemy',
   rng: SeededRNG,
-  bossId?: BossId
+  bossId?: BossId,
+  enemyId?: EnemyId
 ): CombatState {
   const attackerState = attacker === 'player' ? state.player : state.enemy;
   const defenderKey = attacker === 'player' ? 'enemy' : 'player';
@@ -333,6 +356,11 @@ function executeAttacks(
       rngValues: [rngValue],
     });
 
+    // T118: Execute ON_HIT traits (e.g., Rust Mite Swarm applies Rust)
+    if (attacker === 'enemy' && enemyId) {
+      state = executeTraitEffects(state, 'ON_HIT', enemyId, 'enemy');
+    }
+
     // Apply Shrapnel reflect damage to attacker
     if (damageResult.shrapnelReflect > 0) {
       const newAttacker = applyDamage(state[attacker], damageResult.shrapnelReflect);
@@ -366,29 +394,23 @@ function executeAttacks(
 }
 
 /**
- * Execute Turn End phase
- * Handles status effect decay
+ * T118: Execute Turn End phase
+ * Handles status effect decay using processStatusEffectsTurnEnd
  */
 function executeTurnEnd(
   state: CombatState,
   rng: SeededRNG,
-  bossId?: BossId
+  hasShrapnelHarness: boolean = false
 ): CombatState {
   state = { ...state, phase: CombatPhase.TurnEnd };
 
-  // Decay Chill (remove 1 stack from each combatant)
-  if (state.player.statusEffects.chill > 0) {
-    state = {
-      ...state,
-      player: {
-        ...state.player,
-        statusEffects: {
-          ...state.player.statusEffects,
-          chill: state.player.statusEffects.chill - 1,
-        },
-      },
-    };
+  // Process player status effects
+  const playerChillBefore = state.player.statusEffects.chill;
+  const playerShrapnelBefore = state.player.statusEffects.shrapnel;
+  const updatedPlayer = processStatusEffectsTurnEnd(state.player, hasShrapnelHarness);
 
+  // Log Chill decay for player
+  if (playerChillBefore > 0) {
     state = addLogEntry(state, {
       turn: state.turn,
       timing: 'TURN_END',
@@ -402,18 +424,35 @@ function executeTurnEnd(
     });
   }
 
-  if (state.enemy.statusEffects.chill > 0) {
-    state = {
-      ...state,
-      enemy: {
-        ...state.enemy,
-        statusEffects: {
-          ...state.enemy.statusEffects,
-          chill: state.enemy.statusEffects.chill - 1,
+  // Log Shrapnel clear for player
+  if (playerShrapnelBefore > 0) {
+    const shrapnelCleared = hasShrapnelHarness
+      ? Math.max(0, playerShrapnelBefore - 3)
+      : playerShrapnelBefore;
+    if (shrapnelCleared > 0) {
+      state = addLogEntry(state, {
+        turn: state.turn,
+        timing: 'TURN_END',
+        actor: 'system',
+        action: 'REMOVE_STATUS',
+        target: 'player',
+        result: {
+          statusRemoved: { type: 'shrapnel', stacks: shrapnelCleared },
         },
-      },
-    };
+        rngValues: [],
+      });
+    }
+  }
 
+  state = { ...state, player: updatedPlayer };
+
+  // Process enemy status effects (enemy never has Shrapnel Harness)
+  const enemyChillBefore = state.enemy.statusEffects.chill;
+  const enemyShrapnelBefore = state.enemy.statusEffects.shrapnel;
+  const updatedEnemy = processStatusEffectsTurnEnd(state.enemy, false);
+
+  // Log Chill decay for enemy
+  if (enemyChillBefore > 0) {
     state = addLogEntry(state, {
       turn: state.turn,
       timing: 'TURN_END',
@@ -427,46 +466,8 @@ function executeTurnEnd(
     });
   }
 
-  // Clear Shrapnel at end of turn (unless Shrapnel Harness itemset is active)
-  if (state.player.statusEffects.shrapnel > 0) {
-    const shrapnelToClear = state.player.statusEffects.shrapnel;
-    state = {
-      ...state,
-      player: {
-        ...state.player,
-        statusEffects: {
-          ...state.player.statusEffects,
-          shrapnel: 0,
-        },
-      },
-    };
-
-    state = addLogEntry(state, {
-      turn: state.turn,
-      timing: 'TURN_END',
-      actor: 'system',
-      action: 'REMOVE_STATUS',
-      target: 'player',
-      result: {
-        statusRemoved: { type: 'shrapnel', stacks: shrapnelToClear },
-      },
-      rngValues: [],
-    });
-  }
-
-  if (state.enemy.statusEffects.shrapnel > 0) {
-    const shrapnelToClear = state.enemy.statusEffects.shrapnel;
-    state = {
-      ...state,
-      enemy: {
-        ...state.enemy,
-        statusEffects: {
-          ...state.enemy.statusEffects,
-          shrapnel: 0,
-        },
-      },
-    };
-
+  // Log Shrapnel clear for enemy
+  if (enemyShrapnelBefore > 0) {
     state = addLogEntry(state, {
       turn: state.turn,
       timing: 'TURN_END',
@@ -474,14 +475,15 @@ function executeTurnEnd(
       action: 'REMOVE_STATUS',
       target: 'enemy',
       result: {
-        statusRemoved: { type: 'shrapnel', stacks: shrapnelToClear },
+        statusRemoved: { type: 'shrapnel', stacks: enemyShrapnelBefore },
       },
       rngValues: [],
     });
   }
 
-  // Apply Rust to ARM (reduce ARM by Rust stacks)
-  // Note: Rust reduces effective ARM during damage calc, it's already handled there
+  state = { ...state, enemy: updatedEnemy };
+
+  // Note: Rust persists - it's handled during damage calculation
 
   return state;
 }
