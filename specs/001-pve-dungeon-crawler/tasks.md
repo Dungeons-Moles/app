@@ -138,22 +138,22 @@
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T060 [P] [US3] Write time progression tests in __tests__/unit/time/progression.test.ts
-- [ ] T061 [P] [US3] Write week boss selection tests in __tests__/unit/time/progression.test.ts
+- [x] T060 [P] [US3] Write time progression tests in __tests__/unit/time/progression.test.ts
+- [x] T061 [P] [US3] Write week boss selection tests in __tests__/unit/time/progression.test.ts
 
 ### Implementation for User Story 3
 
-- [ ] T062 [US3] Implement time progression logic in src/game/time/progression.ts
-- [ ] T063 [US3] Implement Day/Night transition with move tracking
-- [ ] T064 [US3] Implement boss selection per week pool in src/game/time/week.ts
-- [ ] T065 [US3] Implement auto-boss trigger after Night 3
-- [ ] T066 [US3] Add time consumption to MOVE action in game reducer
-- [ ] T067 [US3] Add TRIGGER_BOSS action to game reducer
-- [ ] T068 [US3] Implement TopBar component in src/components/game/TopBar.tsx
-- [ ] T069 [US3] Implement week progress timeline display in TopBar
-- [ ] T070 [US3] Implement boss preview (emoji + name) in TopBar
-- [ ] T071 [US3] Implement inventory slot growth on Day transition (+2 slots)
-- [ ] T072 [US3] Wire up TopBar to GameScreen
+- [x] T062 [US3] Implement time progression logic in src/game/time/progression.ts
+- [x] T063 [US3] Implement Day/Night transition with move tracking
+- [x] T064 [US3] Implement boss selection per week pool in src/game/time/week.ts
+- [x] T065 [US3] Implement auto-boss trigger after Night 3
+- [x] T066 [US3] Add time consumption to MOVE action in game reducer
+- [x] T067 [US3] Add TRIGGER_BOSS action to game reducer
+- [x] T068 [US3] Implement TopBar component in src/components/game/TopBar.tsx
+- [x] T069 [US3] Implement week progress timeline display in TopBar
+- [x] T070 [US3] Implement boss preview (emoji + name) in TopBar
+- [x] T071 [US3] Implement inventory slot growth on Day transition (+2 slots)
+- [x] T072 [US3] Wire up TopBar to GameScreen
 
 **Checkpoint**: User Story 3 complete - time progresses, Day/Night cycles work, boss triggers at week end
 
