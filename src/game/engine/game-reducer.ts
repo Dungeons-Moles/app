@@ -5,15 +5,21 @@
  * @see specs/001-pve-dungeon-crawler/research.md R3
  */
 
-import type { GameState, CombatResult, CombatantState, CombatState, Position } from './types';
+import type { GameState, CombatResult, CombatantState, TimeState, Position } from './types';
 import { GamePhase, CombatPhase, DEFAULT_STATUS_EFFECTS, TimePhase } from './types';
 import { Direction, DIRECTION_DELTA } from '../input/types';
 import { isValidTransition } from './state-machine';
 import { initializeGame, consumeMoves } from './state-factory';
+import { GAME_CONSTANTS } from './constants';
 import { TileType, TILE_MOVE_COST, type MapEnemy } from '../map/types';
 import { updateFogOfWar } from '../map/fog-of-war';
 import { movePlayer } from '../entities/player';
-import { createCombatState, resolveCombat } from '../combat/resolver';
+import { createCombatState } from '../combat/resolver';
+import {
+  consumeMove,
+  advanceTimePhase,
+  shouldTriggerBoss,
+} from '../time/progression';
 
 // ============================================================================
 // Game Actions
@@ -126,6 +132,7 @@ function handleStartGame(state: GameState, seed: number): GameState {
 /**
  * Handles MOVE action.
  * Moves player in direction if valid, consumes time.
+ * @see T066: Add time consumption to MOVE action
  */
 function handleMove(state: GameState, direction: Direction): GameState {
   if (state.phase !== GamePhase.Exploration) {
@@ -176,25 +183,49 @@ function handleMove(state: GameState, direction: Direction): GameState {
     map: updateFogOfWar(newState.map, targetPos, isDay),
   };
 
-  // Consume time
-  newState = consumeMoves(newState, moveCost);
+  // Consume time using time progression system (T066)
+  const newTime = consumeMove(newState.time, moveCost);
+  const advancedTime = advanceTimePhase(newTime);
+
+  // Check for Day transition -> inventory slot growth (T071)
+  let newInventoryCapacity = newState.player.inventoryCapacity;
+  if (
+    newState.time.phase === TimePhase.Night &&
+    advancedTime.phase === TimePhase.Day &&
+    advancedTime.cycle > newState.time.cycle
+  ) {
+    // Transitioning from Night to new Day - add inventory slots
+    newInventoryCapacity = Math.min(
+      newState.player.inventoryCapacity + GAME_CONSTANTS.INVENTORY_SLOTS_PER_DAY,
+      GAME_CONSTANTS.MAX_INVENTORY_SLOTS
+    );
+  }
+
+  newState = {
+    ...newState,
+    time: advancedTime,
+    player: {
+      ...newState.player,
+      inventoryCapacity: newInventoryCapacity,
+    },
+  };
 
   // Check for enemy encounter
   if (enemyAtTarget) {
     return {
       ...newState,
       phase: GamePhase.Combat,
-      // Combat state would be initialized here in full implementation
     };
   }
 
-  // Check if boss should trigger (Night 3 complete)
-  if (
-    newState.time.phase === TimePhase.Boss &&
-    state.time.phase === TimePhase.Night
-  ) {
+  // Check if boss should trigger (Night 3 complete) (T065)
+  if (shouldTriggerBoss(newTime)) {
     return {
       ...newState,
+      time: {
+        ...advancedTime,
+        phase: TimePhase.Boss,
+      },
       phase: GamePhase.BossFight,
     };
   }
@@ -455,6 +486,7 @@ function handleClosePOI(state: GameState): GameState {
 /**
  * Handles TRIGGER_BOSS action.
  * Transitions to BossFight phase at end of week.
+ * @see T067: Add TRIGGER_BOSS action to game reducer
  */
 function handleTriggerBoss(state: GameState): GameState {
   if (!isValidTransition(state.phase, GamePhase.BossFight)) {
@@ -463,10 +495,18 @@ function handleTriggerBoss(state: GameState): GameState {
     );
   }
 
-  // TODO: Create combat state with week boss
+  // Update time to Boss phase
+  const bossTime: TimeState = {
+    ...state.time,
+    phase: TimePhase.Boss,
+    movesRemaining: 0,
+  };
+
+  // TODO: Create combat state with week boss using BOSSES[state.time.weekBoss]
   return {
     ...state,
     phase: GamePhase.BossFight,
+    time: bossTime,
   };
 }
 

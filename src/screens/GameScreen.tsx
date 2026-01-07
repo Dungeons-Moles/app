@@ -3,7 +3,7 @@
  * @see specs/001-pve-dungeon-crawler/spec.md User Story 1
  */
 
-import React, { useCallback, useMemo, useEffect } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -11,8 +11,9 @@ import { RootStackParamList } from '../navigation';
 import { useGame, GamePhase } from '../contexts/GameContext';
 import { MapRenderer } from '../components/game/MapRenderer';
 import { DPadControls } from '../components/game/DPadControls';
+import { TopBar } from '../components/game';
 import { useDirectionInput } from '../hooks/useInput';
-import { Direction, DIRECTION_DELTA } from '../game/input/types';
+import { Direction } from '../game/input/types';
 import { TileType } from '../game/map/types';
 import { TimePhase } from '../game/engine/types';
 
@@ -25,6 +26,7 @@ const SAFE_AREA_EDGES = ['left', 'right'] as const;
 /**
  * GameScreen - Container for exploration gameplay
  * Displays the dungeon map and D-pad controls in landscape orientation
+ * @see T072: Wire up TopBar to GameScreen
  */
 export function GameScreen({ navigation }: GameScreenProps) {
   const { state, dispatch } = useGame();
@@ -40,7 +42,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
   );
 
   // Set up keyboard input
-  const { emitDirection } = useDirectionInput(handleDirection, {
+  useDirectionInput(handleDirection, {
     enabled: state?.phase === GamePhase.Exploration,
   });
 
@@ -96,6 +98,9 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
   return (
     <SafeAreaView style={styles.container} edges={SAFE_AREA_EDGES}>
+      {/* Top Bar with week progress and boss preview (T072) */}
+      {state?.time && <TopBar time={state.time} />}
+
       <View style={styles.content}>
         {/* Map Area */}
         <View style={styles.mapArea}>
