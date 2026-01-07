@@ -103,26 +103,26 @@
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T043 [P] [US2] Write damage calculation tests in __tests__/unit/combat/damage.test.ts
-- [ ] T044 [P] [US2] Write combat resolver determinism tests in __tests__/unit/combat/resolver.test.ts
-- [ ] T045 [P] [US2] Write combat flow integration test in __tests__/integration/combat-flow.test.ts
+- [x] T043 [P] [US2] Write damage calculation tests in __tests__/unit/combat/damage.test.ts
+- [x] T044 [P] [US2] Write combat resolver determinism tests in __tests__/unit/combat/resolver.test.ts
+- [x] T045 [P] [US2] Write combat flow integration test in __tests__/integration/combat-flow.test.ts
 
 ### Implementation for User Story 2
 
-- [ ] T046 [US2] Implement damage calculation in src/game/combat/damage.ts
-- [ ] T047 [US2] Implement combat state creation in src/game/combat/types.ts
-- [ ] T048 [US2] Implement combat resolver (pure function) in src/game/combat/resolver.ts
-- [ ] T049 [US2] Implement Battle Start phase effects in resolver
-- [ ] T050 [US2] Implement turn resolution with SPEED ordering in resolver
-- [ ] T051 [US2] Implement structured combat log with capped entries in resolver
-- [ ] T052 [US2] Add ENTER_COMBAT action to game reducer
-- [ ] T053 [US2] Add RESOLVE_COMBAT action to game reducer
-- [ ] T054 [US2] Create CombatContext provider in src/contexts/CombatContext.tsx
-- [ ] T055 [US2] Implement useCombat hook in src/hooks/useCombat.ts
-- [ ] T056 [US2] Implement CombatArena with Skia in src/components/combat/CombatArena.tsx
-- [ ] T057 [US2] Implement DamageNumbers floating animation in src/components/combat/DamageNumbers.tsx
-- [ ] T058 [US2] Wire up CombatScreen with combat resolution and navigation back to GameScreen
-- [ ] T059 [US2] Implement Victory/Defeat display with 3-second timer
+- [x] T046 [US2] Implement damage calculation in src/game/combat/damage.ts
+- [x] T047 [US2] Implement combat state creation in src/game/combat/types.ts
+- [x] T048 [US2] Implement combat resolver (pure function) in src/game/combat/resolver.ts
+- [x] T049 [US2] Implement Battle Start phase effects in resolver
+- [x] T050 [US2] Implement turn resolution with SPEED ordering in resolver
+- [x] T051 [US2] Implement structured combat log with capped entries in resolver
+- [x] T052 [US2] Add ENTER_COMBAT action to game reducer
+- [x] T053 [US2] Add RESOLVE_COMBAT action to game reducer
+- [x] T054 [US2] Create CombatContext provider in src/contexts/CombatContext.tsx
+- [x] T055 [US2] Implement useCombat hook in src/hooks/useCombat.ts
+- [x] T056 [US2] Implement CombatArena with Skia in src/components/combat/CombatArena.tsx
+- [x] T057 [US2] Implement DamageNumbers floating animation in src/components/combat/DamageNumbers.tsx
+- [x] T058 [US2] Wire up CombatScreen with combat resolution and navigation back to GameScreen
+- [x] T059 [US2] Implement Victory/Defeat display with 3-second timer
 
 **Checkpoint**: User Story 2 complete - combat triggers on enemy tile, resolves automatically, deterministic
 
