@@ -198,22 +198,22 @@
 
 ### Implementation for User Story 5
 
-- [ ] T086 [US5] Implement POI interaction system in src/game/entities/pois.ts
-- [ ] T087 [US5] Implement Supply Cache interaction (pick 1 of 3 Common items)
-- [ ] T088 [US5] Implement Tool Crate interaction (pick 1 of 3 Tools)
-- [ ] T089 [US5] Implement Mole Den interaction (Night: skip to Day, restore HP)
-- [ ] T090 [US5] Implement Rest Alcove interaction (Night: skip to Day, restore 10 HP)
-- [ ] T091 [US5] Implement Survey Beacon interaction (reveal radius 13)
-- [ ] T092 [US5] Implement Seismic Scanner interaction (choose POI type to reveal)
-- [ ] T093 [US5] Implement Rail Waypoint fast travel system
-- [ ] T094 [US5] Implement Smuggler Hatch shop interaction
-- [ ] T095 [US5] Implement Tool Oil Rack interaction (+1 ATK/ARM/DIG)
-- [ ] T096 [US5] Implement Rusty Anvil forge mod system
-- [ ] T097 [US5] Implement Crusher Golem fusion (Common->Gilded->Diamond)
-- [ ] T098 [US5] Implement Geode Vault interaction (pick 1 of 3 Heroic items)
-- [ ] T099 [US5] Add INTERACT_POI, SELECT_POI_OPTION, CLOSE_POI actions to reducer
-- [ ] T100 [US5] Implement POI interaction modal/overlay UI component
-- [ ] T101 [US5] Wire up POI interactions to GameScreen
+- [x] T086 [US5] Implement POI interaction system in src/game/entities/pois.ts
+- [x] T087 [US5] Implement Supply Cache interaction (pick 1 of 3 Common items)
+- [x] T088 [US5] Implement Tool Crate interaction (pick 1 of 3 Tools)
+- [x] T089 [US5] Implement Mole Den interaction (Night: skip to Day, restore HP)
+- [x] T090 [US5] Implement Rest Alcove interaction (Night: skip to Day, restore 10 HP)
+- [x] T091 [US5] Implement Survey Beacon interaction (reveal radius 13)
+- [x] T092 [US5] Implement Seismic Scanner interaction (choose POI type to reveal)
+- [x] T093 [US5] Implement Rail Waypoint fast travel system
+- [x] T094 [US5] Implement Smuggler Hatch shop interaction
+- [x] T095 [US5] Implement Tool Oil Rack interaction (+1 ATK/ARM/DIG)
+- [x] T096 [US5] Implement Rusty Anvil forge mod system
+- [x] T097 [US5] Implement Crusher Golem fusion (Common->Gilded->Diamond)
+- [x] T098 [US5] Implement Geode Vault interaction (pick 1 of 3 Heroic items)
+- [x] T099 [US5] Add INTERACT_POI, SELECT_POI_OPTION, CLOSE_POI actions to reducer
+- [x] T100 [US5] Implement POI interaction modal/overlay UI component
+- [x] T101 [US5] Wire up POI interactions to GameScreen
 
 **Checkpoint**: User Story 5 complete - all 12 POI types functional
 
