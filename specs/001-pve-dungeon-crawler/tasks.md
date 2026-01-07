@@ -45,10 +45,10 @@
 - [x] T015 Implement SeededRNG class in src/game/engine/rng.ts
 - [x] T016 Implement GamePhase state machine in src/game/engine/state-machine.ts
 - [x] T017 Implement game reducer skeleton in src/game/engine/game-reducer.ts
-- [ ] T018 Create GameContext provider in src/contexts/GameContext.tsx
-- [ ] T019 Add Game and Combat screens to navigation in src/navigation/index.tsx
-- [ ] T020 [P] Create GameScreen container in src/screens/GameScreen.tsx
-- [ ] T021 [P] Create CombatScreen container in src/screens/CombatScreen.tsx
+- [x] T018 Create GameContext provider in src/contexts/GameContext.tsx
+- [x] T019 Add Game and Combat screens to navigation in src/navigation/index.tsx
+- [x] T020 [P] Create GameScreen container in src/screens/GameScreen.tsx
+- [x] T021 [P] Create CombatScreen container in src/screens/CombatScreen.tsx
 - [x] T022 Create game engine exports in src/game/engine/index.ts
 - [ ] T023 [P] Write RNG determinism tests in __tests__/unit/rng/determinism.test.ts
 
