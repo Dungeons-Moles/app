@@ -23,16 +23,16 @@
 - [x] T002 [P] Create core game types in src/game/engine/types.ts
 - [x] T003 [P] Create game constants in src/game/engine/constants.ts
 - [x] T004 [P] Create map types in src/game/map/types.ts
-- [ ] T005 [P] Create combat types in src/game/combat/types.ts
-- [ ] T006 [P] Create time types in src/game/time/types.ts
-- [ ] T007 [P] Create input types in src/game/input/types.ts
+- [x] T005 [P] Create combat types in src/game/combat/types.ts
+- [x] T006 [P] Create time types in src/game/time/types.ts
+- [x] T007 [P] Create input types in src/game/input/types.ts
 - [x] T008 [P] Create enemy data definitions in src/data/enemies.ts
 - [x] T009 [P] Create boss data definitions in src/data/bosses.ts
 - [x] T010 [P] Create tool item definitions in src/data/tools.ts
 - [x] T011 [P] Create gear item definitions in src/data/gear.ts
 - [x] T012 [P] Create itemset definitions in src/data/itemsets.ts
 - [x] T013 [P] Create POI definitions in src/data/pois.ts
-- [ ] T014 Extend shared types in src/types/index.ts with game exports
+- [x] T014 Extend shared types in src/types/index.ts with game exports
 
 ---
 
