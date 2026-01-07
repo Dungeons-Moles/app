@@ -4,7 +4,7 @@
  * @see specs/001-pve-dungeon-crawler/spec.md - User Story 3, FR-046
  */
 
-import React, { useState } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable, Modal } from 'react-native';
 import type { TimeState } from '../../game/engine/types';
 import { TimePhase } from '../../game/engine/types';
@@ -32,6 +32,9 @@ export function TopBar({ time }: TopBarProps) {
   const boss = getBoss(time.weekBoss);
   const progress = getWeekProgress(time);
 
+  const handleBossPress = useCallback(() => setShowBossTooltip(true), []);
+  const handleTooltipClose = useCallback(() => setShowBossTooltip(false), []);
+
   return (
     <View style={styles.container}>
       {/* Week Progress Timeline (T069) */}
@@ -40,14 +43,14 @@ export function TopBar({ time }: TopBarProps) {
       {/* Boss Preview (T070) */}
       <BossPreview
         boss={boss}
-        onPress={() => setShowBossTooltip(true)}
+        onPress={handleBossPress}
       />
 
       {/* Boss Tooltip Modal */}
       <BossTooltipModal
         visible={showBossTooltip}
         boss={boss}
-        onClose={() => setShowBossTooltip(false)}
+        onClose={handleTooltipClose}
       />
     </View>
   );
@@ -140,27 +143,27 @@ function PhaseIndicator({
   isDay,
   isBoss = false,
 }: PhaseIndicatorProps) {
-  const getBackgroundColor = () => {
+  const backgroundColor = useMemo(() => {
     if (isActive) return isBoss ? '#dc2626' : isDay ? '#f59e0b' : '#3b82f6';
     if (isCompleted) return '#374151';
     return '#1f2937';
-  };
+  }, [isActive, isCompleted, isBoss, isDay]);
 
-  const getTextColor = () => {
+  const textColor = useMemo(() => {
     if (isActive) return '#ffffff';
     if (isCompleted) return '#6b7280';
     return '#9ca3af';
-  };
+  }, [isActive, isCompleted]);
 
   return (
     <View
       style={[
         styles.phaseIndicator,
-        { backgroundColor: getBackgroundColor() },
+        { backgroundColor },
         isActive && styles.phaseIndicatorActive,
       ]}
     >
-      <Text style={[styles.phaseLabel, { color: getTextColor() }]}>
+      <Text style={[styles.phaseLabel, { color: textColor }]}>
         {label}
       </Text>
     </View>

@@ -4,7 +4,7 @@
  * @see specs/001-pve-dungeon-crawler/spec.md FR-018, FR-019, FR-020, FR-021
  */
 
-import React from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import type { Tool, Gear, InventorySlot, ItemsetId } from '../../game/engine/types';
 import { getItemsetDefinition } from '../../game/entities/itemsets';
@@ -22,10 +22,17 @@ interface ItemSlotProps {
   item: Tool | Gear | null;
   isEmpty?: boolean;
   isLocked?: boolean;
-  onPress?: () => void;
+  slotIndex?: number;
+  onPress?: (item: Tool | Gear, index: number) => void;
 }
 
-function ItemSlot({ item, isEmpty = false, isLocked = false, onPress }: ItemSlotProps) {
+function ItemSlot({ item, isEmpty = false, isLocked = false, slotIndex, onPress }: ItemSlotProps) {
+  const handlePress = useCallback(() => {
+    if (item && slotIndex !== undefined && onPress) {
+      onPress(item, slotIndex);
+    }
+  }, [item, slotIndex, onPress]);
+
   if (isLocked) {
     return (
       <View style={[styles.itemSlot, styles.lockedSlot]}>
@@ -43,15 +50,23 @@ function ItemSlot({ item, isEmpty = false, isLocked = false, onPress }: ItemSlot
   }
 
   const rarityColor = getRarityColor(item);
+  const slotStyle = useMemo(
+    () => [styles.itemSlot, { borderColor: rarityColor }],
+    [rarityColor]
+  );
+  const indicatorStyle = useMemo(
+    () => [styles.rarityIndicator, { backgroundColor: rarityColor }],
+    [rarityColor]
+  );
 
   return (
     <TouchableOpacity
-      style={[styles.itemSlot, { borderColor: rarityColor }]}
-      onPress={onPress}
+      style={slotStyle}
+      onPress={handlePress}
       activeOpacity={0.7}
     >
       <Text style={styles.itemEmoji}>{item.emoji}</Text>
-      <View style={[styles.rarityIndicator, { backgroundColor: rarityColor }]} />
+      <View style={indicatorStyle} />
     </TouchableOpacity>
   );
 }
@@ -123,6 +138,15 @@ export function InventoryPanel({
     rows.push(slots.slice(i, i + 2));
   }
 
+  const handleToolPress = useCallback(
+    (tool: Tool | Gear) => {
+      if (tool && 'damage' in tool) {
+        onToolPress?.(tool as Tool);
+      }
+    },
+    [onToolPress]
+  );
+
   return (
     <View style={styles.container}>
       {/* Tool Section */}
@@ -131,7 +155,8 @@ export function InventoryPanel({
         <ItemSlot
           item={equippedTool}
           isEmpty={!equippedTool}
-          onPress={() => equippedTool && onToolPress?.(equippedTool)}
+          slotIndex={-1}
+          onPress={handleToolPress}
         />
       </View>
 
@@ -152,7 +177,8 @@ export function InventoryPanel({
                     item={slot?.item ?? null}
                     isEmpty={!slot && !isLocked}
                     isLocked={isLocked}
-                    onPress={() => slot && onItemPress?.(slot.item, slot.index)}
+                    slotIndex={slot?.index}
+                    onPress={onItemPress}
                   />
                 );
               })}
