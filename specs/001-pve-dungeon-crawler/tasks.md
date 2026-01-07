@@ -26,9 +26,9 @@
 - [ ] T005 [P] Create combat types in src/game/combat/types.ts
 - [ ] T006 [P] Create time types in src/game/time/types.ts
 - [ ] T007 [P] Create input types in src/game/input/types.ts
-- [ ] T008 [P] Create enemy data definitions in src/data/enemies.ts
-- [ ] T009 [P] Create boss data definitions in src/data/bosses.ts
-- [ ] T010 [P] Create tool item definitions in src/data/tools.ts
+- [x] T008 [P] Create enemy data definitions in src/data/enemies.ts
+- [x] T009 [P] Create boss data definitions in src/data/bosses.ts
+- [x] T010 [P] Create tool item definitions in src/data/tools.ts
 - [x] T011 [P] Create gear item definitions in src/data/gear.ts
 - [x] T012 [P] Create itemset definitions in src/data/itemsets.ts
 - [x] T013 [P] Create POI definitions in src/data/pois.ts
