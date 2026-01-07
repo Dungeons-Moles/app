@@ -267,6 +267,7 @@ describe('Exploration Integration', () => {
 
       // Exhaust all day moves
       while (state.time.movesRemaining > 0 && state.time.phase === TimePhase.Day) {
+        const prevMoves = state.time.movesRemaining;
         const directions = [Direction.Up, Direction.Down, Direction.Left, Direction.Right];
         for (const dir of directions) {
           const testState = gameReducer(state, { type: 'MOVE', direction: dir });
@@ -279,8 +280,8 @@ describe('Exploration Integration', () => {
           }
         }
 
-        // Safety: prevent infinite loop
-        if (state.time.movesRemaining === GAME_CONSTANTS.DAY_MOVES) {
+        // Safety: prevent infinite loop if player is stuck
+        if (state.time.movesRemaining === prevMoves) {
           // No valid move found, skip test
           return;
         }
