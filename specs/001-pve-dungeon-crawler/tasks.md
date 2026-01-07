@@ -19,19 +19,19 @@
 
 **Purpose**: Project initialization, type definitions, and data files
 
-- [ ] T001 Create game engine directory structure per plan in src/game/
-- [ ] T002 [P] Create core game types in src/game/engine/types.ts
-- [ ] T003 [P] Create game constants in src/game/engine/constants.ts
-- [ ] T004 [P] Create map types in src/game/map/types.ts
+- [x] T001 Create game engine directory structure per plan in src/game/
+- [x] T002 [P] Create core game types in src/game/engine/types.ts
+- [x] T003 [P] Create game constants in src/game/engine/constants.ts
+- [x] T004 [P] Create map types in src/game/map/types.ts
 - [ ] T005 [P] Create combat types in src/game/combat/types.ts
 - [ ] T006 [P] Create time types in src/game/time/types.ts
 - [ ] T007 [P] Create input types in src/game/input/types.ts
 - [ ] T008 [P] Create enemy data definitions in src/data/enemies.ts
 - [ ] T009 [P] Create boss data definitions in src/data/bosses.ts
 - [ ] T010 [P] Create tool item definitions in src/data/tools.ts
-- [ ] T011 [P] Create gear item definitions in src/data/gear.ts
-- [ ] T012 [P] Create itemset definitions in src/data/itemsets.ts
-- [ ] T013 [P] Create POI definitions in src/data/pois.ts
+- [x] T011 [P] Create gear item definitions in src/data/gear.ts
+- [x] T012 [P] Create itemset definitions in src/data/itemsets.ts
+- [x] T013 [P] Create POI definitions in src/data/pois.ts
 - [ ] T014 Extend shared types in src/types/index.ts with game exports
 
 ---
