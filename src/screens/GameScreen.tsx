@@ -11,7 +11,7 @@ import { RootStackParamList } from '../navigation';
 import { useGame, GamePhase } from '../contexts/GameContext';
 import { MapRenderer } from '../components/game/MapRenderer';
 import { DPadControls } from '../components/game/DPadControls';
-import { TopBar, StatsPanel, InventoryPanel } from '../components/game';
+import { TopBar, StatsPanel, InventoryPanel, DebugOverlay } from '../components/game';
 import { useDirectionInput } from '../hooks/useInput';
 import { useLandscapeLock } from '../hooks/useOrientationLock';
 import { Direction } from '../game/input/types';
@@ -110,6 +110,14 @@ export function GameScreen({ navigation }: GameScreenProps) {
           <MapRenderer
             map={state.map}
             playerPosition={state.player.position}
+          />
+
+          {/* Debug Overlay (top-left) - P15: Debug Tooling Isolation */}
+          <DebugOverlay
+            debug={state.debug}
+            seed={state.seed}
+            phase={state.phase}
+            time={state.time}
           />
 
           {/* D-Pad Controls (bottom-left overlay per FR-002) */}

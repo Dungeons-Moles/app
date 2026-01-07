@@ -20,6 +20,7 @@ import {
   PlayerPanel,
   CombatLog,
 } from '../components/combat';
+import { DebugOverlay } from '../components/game';
 
 type CombatScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Combat'>;
@@ -151,6 +152,16 @@ function CombatScreenContent({ navigation }: CombatScreenProps) {
             damageNumbers={combatState.damageNumbers}
             isAnimating={combatState.isAnimating}
           />
+
+          {/* Debug Overlay - P15: Debug Tooling Isolation */}
+          {gameState && (
+            <DebugOverlay
+              debug={gameState.debug}
+              seed={gameState.seed}
+              phase={gameState.phase}
+              time={gameState.time}
+            />
+          )}
 
           {/* Combat Log */}
           <View style={styles.logContainer}>

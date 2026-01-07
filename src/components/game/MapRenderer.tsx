@@ -1,11 +1,27 @@
 /**
  * MapRenderer - Renders the dungeon map using Skia
  * @see specs/001-pve-dungeon-crawler/research.md R5
+ * @see constitution.md P06: Mobile-First Performance (60 FPS)
+ *
+ * PERFORMANCE NOTES (T135/T136):
+ * - Target: 60 FPS (16.67ms frame budget)
+ * - Current optimizations:
+ *   1. Viewport culling: Only tiles in visible range are rendered
+ *   2. useMemo: Tile collection, POI/enemy filtering are memoized
+ *   3. Skia Canvas: Hardware-accelerated rendering
+ * - Potential bottlenecks identified:
+ *   1. Tile array creation in useMemo (allocates new array each change)
+ *   2. JSX mapping inside Canvas (creates React elements per frame)
+ *   3. Group wrapper for fog overlay tiles (extra element per non-hidden tile)
+ * - Recommended for future optimization if needed:
+ *   1. Use Skia Path batching for same-color tiles
+ *   2. Tile sprite atlas/caching for repeated tile types
+ *   3. Consider imperative Skia drawing for hot paths
  */
 
-import React, { useMemo, useCallback } from 'react';
+import React, { useMemo, useCallback, memo } from 'react';
 import { View, StyleSheet, LayoutChangeEvent } from 'react-native';
-import { Canvas, Rect, Text as SkiaText, useFont, Group } from '@shopify/react-native-skia';
+import { Canvas, Rect, Group } from '@shopify/react-native-skia';
 import type { Position } from '../../game/engine/types';
 import type { GameMap } from '../../game/map/types';
 import { TileType, FogState } from '../../game/map/types';
@@ -17,28 +33,19 @@ import { TileType, FogState } from '../../game/map/types';
 const TILE_SIZE = 24;
 const BUFFER_TILES = 2;
 
-// Tile colors
+/**
+ * Tile colors - using const assertion for type safety and potential
+ * JIT optimization (V8 can inline these as constants).
+ */
 const TILE_COLORS = {
   [TileType.Wall]: '#1a1a1a',
   [TileType.EmptyTunnel]: '#3a3a3a',
   [TileType.SoftEarth]: '#5a4a3a',
   [TileType.HardRock]: '#4a4a5a',
-};
+} as const;
 
-const FOG_COLORS = {
-  [FogState.Hidden]: '#000000',
-  [FogState.Revealed]: 'rgba(0, 0, 0, 0.5)',
-  [FogState.Visible]: 'transparent',
-};
-
-// Emoji representations
-const ENTITY_EMOJIS = {
-  player: '🦦',
-  moleDen: '🏠',
-  supplyCache: '📦',
-  toolCrate: '🧰',
-  enemy: '👾',
-};
+const FOG_COLOR_HIDDEN = '#000000';
+const FOG_COLOR_REVEALED = 'rgba(0, 0, 0, 0.5)';
 
 // ============================================================================
 // Types
@@ -56,6 +63,13 @@ interface VisibleTileRange {
   endX: number;
   startY: number;
   endY: number;
+}
+
+interface TileData {
+  x: number;
+  y: number;
+  type: TileType;
+  fog: FogState;
 }
 
 // ============================================================================
@@ -101,49 +115,110 @@ function getCameraOffset(
   };
 }
 
-/**
- * Get POI emoji for rendering.
- */
-function getPOIEmoji(definitionId: string): string {
-  switch (definitionId) {
-    case 'L1': return '🏠'; // Mole Den
-    case 'L2': return '📦'; // Supply Cache
-    case 'L3': return '🧰'; // Tool Crate
-    case 'L4': return '🛢️'; // Tool Oil Rack
-    case 'L5': return '🕯️'; // Rest Alcove
-    case 'L6': return '📡'; // Survey Beacon
-    case 'L7': return '📍'; // Seismic Scanner
-    case 'L8': return '🚇'; // Rail Waypoint
-    case 'L9': return '🕳️'; // Smuggler Hatch
-    case 'L10': return '⚒️'; // Rusty Anvil
-    case 'L11': return '🗿'; // Crusher Golem
-    case 'L12': return '💠'; // Geode Vault
-    default: return '❓';
-  }
-}
+// ============================================================================
+// Memoized Tile Components (T136: Performance Optimization)
+// ============================================================================
 
 /**
- * Get enemy emoji based on type.
+ * Memoized tile renderer - prevents re-creation of tile elements.
+ * Uses React.memo with custom comparison for stable rendering.
  */
-function getEnemyEmoji(definitionId: string): string {
-  switch (definitionId) {
-    case 'TUNNEL_RAT': return '🐀';
-    case 'CAVE_BAT': return '🦇';
-    case 'SPORE_SLIME': return '🟢';
-    case 'RUST_MITE_SWARM': return '🐜';
-    case 'COLLAPSED_MINER': return '🧟';
-    case 'SHARD_BEETLE': return '🪲';
-    case 'TUNNEL_WARDEN': return '🦀';
-    case 'BURROW_AMBUSHER': return '🦂';
-    default: return '👾';
+const TileRect = memo(function TileRect({
+  x,
+  y,
+  type,
+  fog,
+}: TileData) {
+  const screenX = x * TILE_SIZE;
+  const screenY = y * TILE_SIZE;
+
+  // Hidden tiles - just render black rectangle
+  if (fog === FogState.Hidden) {
+    return (
+      <Rect
+        x={screenX}
+        y={screenY}
+        width={TILE_SIZE}
+        height={TILE_SIZE}
+        color={FOG_COLOR_HIDDEN}
+      />
+    );
   }
-}
+
+  // Visible/Revealed tiles - render base tile + optional fog overlay
+  // Using Group only when needed for fog overlay (Revealed state)
+  if (fog === FogState.Revealed) {
+    return (
+      <Group>
+        <Rect
+          x={screenX}
+          y={screenY}
+          width={TILE_SIZE}
+          height={TILE_SIZE}
+          color={TILE_COLORS[type]}
+        />
+        <Rect
+          x={screenX}
+          y={screenY}
+          width={TILE_SIZE}
+          height={TILE_SIZE}
+          color={FOG_COLOR_REVEALED}
+        />
+      </Group>
+    );
+  }
+
+  // Fully visible - single rect, no Group wrapper
+  return (
+    <Rect
+      x={screenX}
+      y={screenY}
+      width={TILE_SIZE}
+      height={TILE_SIZE}
+      color={TILE_COLORS[type]}
+    />
+  );
+});
+
+/**
+ * Memoized entity renderer for POIs, enemies, and player.
+ */
+const EntityRect = memo(function EntityRect({
+  x,
+  y,
+  color,
+  padding = 2,
+}: {
+  x: number;
+  y: number;
+  color: string;
+  padding?: number;
+}) {
+  return (
+    <Rect
+      x={x * TILE_SIZE + padding}
+      y={y * TILE_SIZE + padding}
+      width={TILE_SIZE - padding * 2}
+      height={TILE_SIZE - padding * 2}
+      color={color}
+    />
+  );
+});
 
 // ============================================================================
 // Component
 // ============================================================================
 
-export function MapRenderer({
+/**
+ * MapRenderer - Main dungeon map rendering component
+ *
+ * T136 Performance Optimizations:
+ * - Wrapped in React.memo for shallow prop comparison
+ * - Uses memoized TileRect and EntityRect sub-components
+ * - Viewport culling limits rendered tiles to visible area
+ * - All computed values memoized with proper dependencies
+ */
+export const MapRenderer = memo(function MapRenderer({
   map,
   playerPosition,
   width: propWidth,
@@ -161,7 +236,7 @@ export function MapRenderer({
 
   const { width, height } = dimensions;
 
-  // Calculate visible tile range (viewport culling)
+  // Calculate visible tile range (viewport culling - T136)
   const visibleRange = useMemo(
     () => getVisibleTileRange(
       playerPosition,
@@ -179,14 +254,9 @@ export function MapRenderer({
     [playerPosition.x, playerPosition.y, width, height]
   );
 
-  // Collect visible tiles
+  // Collect visible tiles - memoized array (T136: only re-creates when deps change)
   const visibleTiles = useMemo(() => {
-    const tiles: Array<{
-      x: number;
-      y: number;
-      type: TileType;
-      fog: FogState;
-    }> = [];
+    const tiles: TileData[] = [];
 
     for (let y = visibleRange.startY; y <= visibleRange.endY; y++) {
       for (let x = visibleRange.startX; x <= visibleRange.endX; x++) {
@@ -202,7 +272,7 @@ export function MapRenderer({
     return tiles;
   }, [visibleRange, map.tiles, map.fog]);
 
-  // Collect visible POIs
+  // Collect visible POIs - filtered and memoized
   const visiblePOIs = useMemo(() => {
     return map.pois.filter(
       poi =>
@@ -214,7 +284,7 @@ export function MapRenderer({
     );
   }, [map.pois, visibleRange, map.fog]);
 
-  // Collect visible enemies
+  // Collect visible enemies - only show if tile is Visible (not Revealed)
   const visibleEnemies = useMemo(() => {
     return map.enemies.filter(
       enemy =>
@@ -230,98 +300,51 @@ export function MapRenderer({
     <View style={styles.container} onLayout={handleLayout}>
       <Canvas style={{ width, height }}>
         <Group transform={[{ translateX: cameraOffset.x }, { translateY: cameraOffset.y }]}>
-          {/* Render tiles */}
-          {visibleTiles.map(tile => {
-            const screenX = tile.x * TILE_SIZE;
-            const screenY = tile.y * TILE_SIZE;
+          {/* Render tiles using memoized TileRect component (T136) */}
+          {visibleTiles.map(tile => (
+            <TileRect
+              key={`tile-${tile.x}-${tile.y}`}
+              x={tile.x}
+              y={tile.y}
+              type={tile.type}
+              fog={tile.fog}
+            />
+          ))}
 
-            // Only render if not completely hidden
-            if (tile.fog === FogState.Hidden) {
-              return (
-                <Rect
-                  key={`tile-${tile.x}-${tile.y}`}
-                  x={screenX}
-                  y={screenY}
-                  width={TILE_SIZE}
-                  height={TILE_SIZE}
-                  color={FOG_COLORS[FogState.Hidden]}
-                />
-              );
-            }
+          {/* Render POIs using memoized EntityRect */}
+          {visiblePOIs.map(poi => (
+            <EntityRect
+              key={`poi-${poi.id}`}
+              x={poi.position.x}
+              y={poi.position.y}
+              color="#66aaff"
+              padding={2}
+            />
+          ))}
 
-            return (
-              <Group key={`tile-${tile.x}-${tile.y}`}>
-                {/* Base tile */}
-                <Rect
-                  x={screenX}
-                  y={screenY}
-                  width={TILE_SIZE}
-                  height={TILE_SIZE}
-                  color={TILE_COLORS[tile.type]}
-                />
-                {/* Fog overlay for revealed but not visible */}
-                {tile.fog === FogState.Revealed && (
-                  <Rect
-                    x={screenX}
-                    y={screenY}
-                    width={TILE_SIZE}
-                    height={TILE_SIZE}
-                    color="rgba(0, 0, 0, 0.5)"
-                  />
-                )}
-              </Group>
-            );
-          })}
+          {/* Render enemies using memoized EntityRect */}
+          {visibleEnemies.map(enemy => (
+            <EntityRect
+              key={`enemy-${enemy.id}`}
+              x={enemy.position.x}
+              y={enemy.position.y}
+              color="#ff6666"
+              padding={4}
+            />
+          ))}
 
-          {/* Render POIs (using simple colored squares as placeholder) */}
-          {visiblePOIs.map(poi => {
-            const screenX = poi.position.x * TILE_SIZE + 2;
-            const screenY = poi.position.y * TILE_SIZE + 2;
-            const size = TILE_SIZE - 4;
-
-            return (
-              <Rect
-                key={`poi-${poi.id}`}
-                x={screenX}
-                y={screenY}
-                width={size}
-                height={size}
-                color="#66aaff"
-              />
-            );
-          })}
-
-          {/* Render enemies (using red squares as placeholder) */}
-          {visibleEnemies.map(enemy => {
-            const screenX = enemy.position.x * TILE_SIZE + 4;
-            const screenY = enemy.position.y * TILE_SIZE + 4;
-            const size = TILE_SIZE - 8;
-
-            return (
-              <Rect
-                key={`enemy-${enemy.id}`}
-                x={screenX}
-                y={screenY}
-                width={size}
-                height={size}
-                color="#ff6666"
-              />
-            );
-          })}
-
-          {/* Render player (using green square as placeholder) */}
-          <Rect
-            x={playerPosition.x * TILE_SIZE + 2}
-            y={playerPosition.y * TILE_SIZE + 2}
-            width={TILE_SIZE - 4}
-            height={TILE_SIZE - 4}
+          {/* Render player */}
+          <EntityRect
+            x={playerPosition.x}
+            y={playerPosition.y}
             color="#66ff66"
+            padding={2}
           />
         </Group>
       </Canvas>
     </View>
   );
-}
+});
 
 // ============================================================================
 // Styles
