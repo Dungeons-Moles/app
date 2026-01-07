@@ -302,8 +302,8 @@
 - [x] T134 [P] Add debug overlay toggles (FPS, seed, state) per Constitution P15
 - [x] T135 [P] Performance profiling on target device (Solana Seeker)
 - [x] T136 Optimize MapRenderer for 60 FPS (sprite caching, batching)
-- [ ] T137 [P] Verify all combat determinism tests pass with fixed seeds
-- [ ] T138 [P] Run full integration test suite
+- [x] T137 [P] Verify all combat determinism tests pass with fixed seeds
+- [x] T138 [P] Run full integration test suite
 - [ ] T139 Update quickstart.md with final testing instructions
 - [ ] T140 Final code review for Constitution compliance
 
