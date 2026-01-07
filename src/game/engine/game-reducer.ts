@@ -5,10 +5,19 @@
  * @see specs/001-pve-dungeon-crawler/research.md R3
  */
 
-import type { GameState, CombatResult } from './types';
+import type { GameState, CombatResult, Tool, Gear, ToolId, GearId } from './types';
 import { GamePhase } from './types';
 import { Direction } from '../input/types';
 import { isValidTransition } from './state-machine';
+import {
+  equipTool,
+  addGearToInventory,
+  removeGearFromInventory,
+  removeGearById,
+  increaseInventoryCapacity,
+  addGold,
+  removeGold,
+} from '../entities/player';
 
 // ============================================================================
 // Game Actions
@@ -28,7 +37,15 @@ export type GameAction =
   | { type: 'CLOSE_POI' }
   | { type: 'TRIGGER_BOSS' }
   | { type: 'END_GAME'; result: 'VICTORY' | 'DEFEAT' }
-  | { type: 'RETURN_TO_MENU' };
+  | { type: 'RETURN_TO_MENU' }
+  // Item collection actions (T081)
+  | { type: 'EQUIP_TOOL'; tool: Tool }
+  | { type: 'COLLECT_GEAR'; gear: Gear }
+  | { type: 'DISCARD_GEAR'; slotIndex: number }
+  | { type: 'DISCARD_GEAR_BY_ID'; gearId: GearId }
+  | { type: 'INCREASE_INVENTORY' }
+  | { type: 'ADD_GOLD'; amount: number }
+  | { type: 'SPEND_GOLD'; amount: number };
 
 // ============================================================================
 // Action Type Guards
@@ -90,6 +107,28 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
 
     case 'RETURN_TO_MENU':
       return handleReturnToMenu(state);
+
+    // Item collection actions (T081)
+    case 'EQUIP_TOOL':
+      return handleEquipTool(state, action.tool);
+
+    case 'COLLECT_GEAR':
+      return handleCollectGear(state, action.gear);
+
+    case 'DISCARD_GEAR':
+      return handleDiscardGear(state, action.slotIndex);
+
+    case 'DISCARD_GEAR_BY_ID':
+      return handleDiscardGearById(state, action.gearId);
+
+    case 'INCREASE_INVENTORY':
+      return handleIncreaseInventory(state);
+
+    case 'ADD_GOLD':
+      return handleAddGold(state, action.amount);
+
+    case 'SPEND_GOLD':
+      return handleSpendGold(state, action.amount);
 
     default: {
       // Exhaustive check - TypeScript will error if we miss a case
@@ -303,5 +342,101 @@ function handleReturnToMenu(state: GameState): GameState {
     phase: GamePhase.MainMenu,
     combat: null,
     activePOI: null,
+  };
+}
+
+// ============================================================================
+// Item Collection Action Handlers (T081)
+// ============================================================================
+
+/**
+ * Handles EQUIP_TOOL action.
+ * Equips a tool to the player's weapon slot.
+ */
+function handleEquipTool(state: GameState, tool: Tool): GameState {
+  const updatedPlayer = equipTool(state.player, tool);
+  return {
+    ...state,
+    player: updatedPlayer,
+  };
+}
+
+/**
+ * Handles COLLECT_GEAR action.
+ * Adds gear to player inventory if space available.
+ */
+function handleCollectGear(state: GameState, gear: Gear): GameState {
+  const updatedPlayer = addGearToInventory(state.player, gear);
+  if (!updatedPlayer) {
+    // Inventory full - return unchanged state
+    return state;
+  }
+  return {
+    ...state,
+    player: updatedPlayer,
+  };
+}
+
+/**
+ * Handles DISCARD_GEAR action.
+ * Removes gear from inventory by slot index.
+ */
+function handleDiscardGear(state: GameState, slotIndex: number): GameState {
+  const { player } = removeGearFromInventory(state.player, slotIndex);
+  return {
+    ...state,
+    player,
+  };
+}
+
+/**
+ * Handles DISCARD_GEAR_BY_ID action.
+ * Removes gear from inventory by gear ID.
+ */
+function handleDiscardGearById(state: GameState, gearId: GearId): GameState {
+  const { player } = removeGearById(state.player, gearId);
+  return {
+    ...state,
+    player,
+  };
+}
+
+/**
+ * Handles INCREASE_INVENTORY action.
+ * Increases inventory capacity (called at start of Day).
+ */
+function handleIncreaseInventory(state: GameState): GameState {
+  const updatedPlayer = increaseInventoryCapacity(state.player);
+  return {
+    ...state,
+    player: updatedPlayer,
+  };
+}
+
+/**
+ * Handles ADD_GOLD action.
+ * Adds gold to the player.
+ */
+function handleAddGold(state: GameState, amount: number): GameState {
+  const updatedPlayer = addGold(state.player, amount);
+  return {
+    ...state,
+    player: updatedPlayer,
+  };
+}
+
+/**
+ * Handles SPEND_GOLD action.
+ * Removes gold from player if they can afford it.
+ */
+function handleSpendGold(state: GameState, amount: number): GameState {
+  const { player, success } = removeGold(state.player, amount);
+  if (!success) {
+    // Insufficient gold - return unchanged state
+    return state;
+  }
+  return {
+    ...state,
+    player,
   };
 }
