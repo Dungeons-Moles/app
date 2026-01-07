@@ -5,10 +5,30 @@
  * @see specs/001-pve-dungeon-crawler/research.md R3
  */
 
-import type { GameState, CombatResult } from './types';
-import { GamePhase } from './types';
-import { Direction } from '../input/types';
+import type { GameState, CombatResult, CombatantState, TimeState, Position, Tool, Gear, GearId } from './types';
+import { GamePhase, CombatPhase, DEFAULT_STATUS_EFFECTS, TimePhase } from './types';
+import { Direction, DIRECTION_DELTA } from '../input/types';
 import { isValidTransition } from './state-machine';
+import { initializeGame, consumeMoves } from './state-factory';
+import { GAME_CONSTANTS } from './constants';
+import { TileType, TILE_MOVE_COST, type MapEnemy } from '../map/types';
+import { updateFogOfWar } from '../map/fog-of-war';
+import {
+  movePlayer,
+  equipTool,
+  addGearToInventory,
+  removeGearFromInventory,
+  removeGearById,
+  increaseInventoryCapacity,
+  addGold,
+  removeGold,
+} from '../entities/player';
+import { createCombatState } from '../combat/resolver';
+import {
+  consumeMove,
+  advanceTimePhase,
+  shouldTriggerBoss,
+} from '../time/progression';
 
 // ============================================================================
 // Game Actions
@@ -28,7 +48,15 @@ export type GameAction =
   | { type: 'CLOSE_POI' }
   | { type: 'TRIGGER_BOSS' }
   | { type: 'END_GAME'; result: 'VICTORY' | 'DEFEAT' }
-  | { type: 'RETURN_TO_MENU' };
+  | { type: 'RETURN_TO_MENU' }
+  // Item collection actions (T081)
+  | { type: 'EQUIP_TOOL'; tool: Tool }
+  | { type: 'COLLECT_GEAR'; gear: Gear }
+  | { type: 'DISCARD_GEAR'; slotIndex: number }
+  | { type: 'DISCARD_GEAR_BY_ID'; gearId: GearId }
+  | { type: 'INCREASE_INVENTORY' }
+  | { type: 'ADD_GOLD'; amount: number }
+  | { type: 'SPEND_GOLD'; amount: number };
 
 // ============================================================================
 // Action Type Guards
@@ -91,6 +119,28 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     case 'RETURN_TO_MENU':
       return handleReturnToMenu(state);
 
+    // Item collection actions (T081)
+    case 'EQUIP_TOOL':
+      return handleEquipTool(state, action.tool);
+
+    case 'COLLECT_GEAR':
+      return handleCollectGear(state, action.gear);
+
+    case 'DISCARD_GEAR':
+      return handleDiscardGear(state, action.slotIndex);
+
+    case 'DISCARD_GEAR_BY_ID':
+      return handleDiscardGearById(state, action.gearId);
+
+    case 'INCREASE_INVENTORY':
+      return handleIncreaseInventory(state);
+
+    case 'ADD_GOLD':
+      return handleAddGold(state, action.amount);
+
+    case 'SPEND_GOLD':
+      return handleSpendGold(state, action.amount);
+
     default: {
       // Exhaustive check - TypeScript will error if we miss a case
       const _exhaustive: never = action;
@@ -114,69 +164,273 @@ function handleStartGame(state: GameState, seed: number): GameState {
     );
   }
 
-  // TODO: Initialize game with seed (map generation, player setup, etc.)
-  // For now, just transition phase and set seed
-  return {
-    ...state,
-    phase: GamePhase.Exploration,
-    seed,
-    rngState: seed,
-  };
+  // Initialize game with seed (map generation, player setup, etc.)
+  return initializeGame(state, seed);
 }
 
 /**
  * Handles MOVE action.
  * Moves player in direction if valid, consumes time.
+ * @see T066: Add time consumption to MOVE action
  */
-function handleMove(state: GameState, _direction: Direction): GameState {
+function handleMove(state: GameState, direction: Direction): GameState {
   if (state.phase !== GamePhase.Exploration) {
     return state; // Ignore move if not exploring
   }
 
-  // TODO: Implement movement logic
-  // - Check canMoveTo
-  // - Update player position
-  // - Update fog of war
-  // - Consume time (getMoveCost)
-  // - Check for enemy encounters
-  // - Check for time phase transitions
-  return state;
+  // Calculate target position
+  const delta = DIRECTION_DELTA[direction];
+  const targetPos: Position = {
+    x: state.player.position.x + delta.x,
+    y: state.player.position.y + delta.y,
+  };
+
+  // Check bounds
+  if (
+    targetPos.x < 0 ||
+    targetPos.x >= state.map.width ||
+    targetPos.y < 0 ||
+    targetPos.y >= state.map.height
+  ) {
+    return state; // Can't move out of bounds
+  }
+
+  // Check if tile is walkable
+  const targetTile = state.map.tiles[targetPos.y][targetPos.x];
+  if (targetTile === TileType.Wall) {
+    return state; // Can't move into wall
+  }
+
+  // Get move cost
+  const moveCost = TILE_MOVE_COST[targetTile];
+
+  // Check for enemy at target position
+  const enemyAtTarget = state.map.enemies.find(
+    e => e.position.x === targetPos.x && e.position.y === targetPos.y
+  );
+
+  // Move player
+  let newState = {
+    ...state,
+    player: movePlayer(state.player, targetPos),
+  };
+
+  // Update fog of war
+  const isDay = newState.time.phase === TimePhase.Day;
+  newState = {
+    ...newState,
+    map: updateFogOfWar(newState.map, targetPos, isDay),
+  };
+
+  // Consume time using time progression system (T066)
+  const newTime = consumeMove(newState.time, moveCost);
+  const advancedTime = advanceTimePhase(newTime);
+
+  // Check for Day transition -> inventory slot growth (T071)
+  let newInventoryCapacity = newState.player.inventoryCapacity;
+  if (
+    newState.time.phase === TimePhase.Night &&
+    advancedTime.phase === TimePhase.Day &&
+    advancedTime.cycle > newState.time.cycle
+  ) {
+    // Transitioning from Night to new Day - add inventory slots
+    newInventoryCapacity = Math.min(
+      newState.player.inventoryCapacity + GAME_CONSTANTS.INVENTORY_SLOTS_PER_DAY,
+      GAME_CONSTANTS.MAX_INVENTORY_SLOTS
+    );
+  }
+
+  newState = {
+    ...newState,
+    time: advancedTime,
+    player: {
+      ...newState.player,
+      inventoryCapacity: newInventoryCapacity,
+    },
+  };
+
+  // Check for enemy encounter
+  if (enemyAtTarget) {
+    return {
+      ...newState,
+      phase: GamePhase.Combat,
+    };
+  }
+
+  // Check if boss should trigger (Night 3 complete) (T065)
+  if (shouldTriggerBoss(newTime)) {
+    return {
+      ...newState,
+      time: {
+        ...advancedTime,
+        phase: TimePhase.Boss,
+      },
+      phase: GamePhase.BossFight,
+    };
+  }
+
+  return newState;
 }
 
 /**
- * Handles ENTER_COMBAT action.
+ * T052: Handles ENTER_COMBAT action.
  * Transitions to Combat phase with specified enemy.
+ * Creates combat state from player and enemy.
  */
-function handleEnterCombat(state: GameState, _enemyId: string): GameState {
+function handleEnterCombat(state: GameState, enemyId: string): GameState {
   if (!isValidTransition(state.phase, GamePhase.Combat)) {
     throw new Error(
       `Invalid transition: cannot enter combat from ${state.phase}`
     );
   }
 
-  // TODO: Create combat state with enemy
+  // Find enemy on map
+  const enemy = state.map.enemies.find((e) => e.id === enemyId);
+  if (!enemy) {
+    throw new Error(`Enemy not found: ${enemyId}`);
+  }
+
+  // Create player combatant state from current player
+  const playerCombatant: CombatantState = {
+    name: 'Player',
+    emoji: '🦦',
+    isPlayer: true,
+    maxHp: state.player.stats.maxHp,
+    hp: state.player.stats.hp,
+    atk: state.player.stats.atk,
+    arm: state.player.stats.arm,
+    spd: state.player.stats.spd,
+    dig: state.player.stats.dig,
+    bonusAtk: 0,
+    bonusArm: 0,
+    bonusSpd: 0,
+    statusEffects: { ...state.player.statusEffects },
+    strikesPerTurn: getPlayerStrikesPerTurn(state),
+    ignoresArmor: hasArmorIgnore(state),
+  };
+
+  // Create enemy combatant state
+  const enemyCombatant: CombatantState = createEnemyCombatant(enemy);
+
+  // Create initial combat state
+  const combatState = createCombatState({
+    player: playerCombatant,
+    enemy: enemyCombatant,
+    seed: state.rngState,
+  });
+
   return {
     ...state,
     phase: GamePhase.Combat,
+    combat: combatState,
   };
 }
 
 /**
- * Handles RESOLVE_COMBAT action.
+ * Create enemy combatant state from map enemy
+ */
+function createEnemyCombatant(enemy: MapEnemy): CombatantState {
+  const enemyEmojis: Record<string, string> = {
+    TUNNEL_RAT: '🐀',
+    CAVE_BAT: '🦇',
+    SPORE_SLIME: '🟢',
+    RUST_MITE_SWARM: '🐜',
+    COLLAPSED_MINER: '🧟',
+    SHARD_BEETLE: '🪲',
+    TUNNEL_WARDEN: '🦀',
+    BURROW_AMBUSHER: '🦂',
+  };
+
+  const enemyNames: Record<string, string> = {
+    TUNNEL_RAT: 'Tunnel Rat',
+    CAVE_BAT: 'Cave Bat',
+    SPORE_SLIME: 'Spore Slime',
+    RUST_MITE_SWARM: 'Rust Mite Swarm',
+    COLLAPSED_MINER: 'Collapsed Miner',
+    SHARD_BEETLE: 'Shard Beetle',
+    TUNNEL_WARDEN: 'Tunnel Warden',
+    BURROW_AMBUSHER: 'Burrow Ambusher',
+  };
+
+  return {
+    name: enemyNames[enemy.definitionId] || enemy.definitionId,
+    emoji: enemyEmojis[enemy.definitionId] || '👾',
+    isPlayer: false,
+    maxHp: enemy.stats.hp,
+    hp: enemy.stats.hp,
+    atk: enemy.stats.atk,
+    arm: enemy.stats.arm,
+    spd: enemy.stats.spd,
+    dig: 0,
+    bonusAtk: 0,
+    bonusArm: 0,
+    bonusSpd: 0,
+    statusEffects: { ...DEFAULT_STATUS_EFFECTS },
+    strikesPerTurn: 1, // Most enemies strike once, traits may modify
+    ignoresArmor: false,
+  };
+}
+
+/**
+ * Calculate player strikes per turn based on equipped tool
+ */
+function getPlayerStrikesPerTurn(state: GameState): number {
+  const tool = state.player.equippedTool;
+  if (!tool) return 1;
+
+  // T3: Twin Picks - strike twice
+  if (tool.id === 'T3') return 2;
+  // T5: Pneumatic Drill - strike 3 times
+  if (tool.id === 'T5') return 3;
+
+  return 1;
+}
+
+/**
+ * Check if player has armor ignore (Shadow Burrowblade T6)
+ */
+function hasArmorIgnore(state: GameState): boolean {
+  const tool = state.player.equippedTool;
+  if (!tool) return false;
+
+  // T6: Shadow Burrowblade - strikes ignore armor
+  return tool.id === 'T6';
+}
+
+/**
+ * T053: Handles RESOLVE_COMBAT action.
  * Applies combat result and transitions appropriately.
+ * Updates player HP and removes defeated enemy from map.
  */
 function handleResolveCombat(state: GameState, result: CombatResult): GameState {
   if (state.phase !== GamePhase.Combat && state.phase !== GamePhase.BossFight) {
     return state;
   }
 
+  if (!state.combat) {
+    return state;
+  }
+
+  // Update player HP from combat result
+  const updatedPlayer = {
+    ...state.player,
+    stats: {
+      ...state.player.stats,
+      hp: Math.max(0, state.combat.player.hp),
+    },
+    statusEffects: { ...state.combat.player.statusEffects },
+  };
+
+  // Update RNG state from combat
+  const updatedRngState = state.combat.rngState;
+
   if (result === 'DEFEAT') {
     return {
       ...state,
       phase: GamePhase.Defeat,
-      combat: state.combat
-        ? { ...state.combat, result: 'DEFEAT' }
-        : null,
+      player: updatedPlayer,
+      rngState: updatedRngState,
+      combat: { ...state.combat, result: 'DEFEAT' },
     };
   }
 
@@ -185,18 +439,40 @@ function handleResolveCombat(state: GameState, result: CombatResult): GameState 
     return {
       ...state,
       phase: GamePhase.Victory,
-      combat: state.combat
-        ? { ...state.combat, result: 'VICTORY' }
-        : null,
+      player: updatedPlayer,
+      rngState: updatedRngState,
+      combat: { ...state.combat, result: 'VICTORY' },
     };
   }
 
-  // TODO: Apply rewards, remove defeated enemy from map
+  // Remove defeated enemy from map
+  const enemyToRemove = findEnemyAtPlayerPosition(state);
+  const updatedEnemies = enemyToRemove
+    ? state.map.enemies.filter((e) => e.id !== enemyToRemove.id)
+    : state.map.enemies;
+
   return {
     ...state,
     phase: GamePhase.Exploration,
+    player: updatedPlayer,
+    rngState: updatedRngState,
+    map: {
+      ...state.map,
+      enemies: updatedEnemies,
+    },
     combat: null,
   };
+}
+
+/**
+ * Find enemy at player's current position
+ */
+function findEnemyAtPlayerPosition(state: GameState): MapEnemy | undefined {
+  return state.map.enemies.find(
+    (e) =>
+      e.position.x === state.player.position.x &&
+      e.position.y === state.player.position.y
+  );
 }
 
 /**
@@ -249,6 +525,7 @@ function handleClosePOI(state: GameState): GameState {
 /**
  * Handles TRIGGER_BOSS action.
  * Transitions to BossFight phase at end of week.
+ * @see T067: Add TRIGGER_BOSS action to game reducer
  */
 function handleTriggerBoss(state: GameState): GameState {
   if (!isValidTransition(state.phase, GamePhase.BossFight)) {
@@ -257,10 +534,18 @@ function handleTriggerBoss(state: GameState): GameState {
     );
   }
 
-  // TODO: Create combat state with week boss
+  // Update time to Boss phase
+  const bossTime: TimeState = {
+    ...state.time,
+    phase: TimePhase.Boss,
+    movesRemaining: 0,
+  };
+
+  // TODO: Create combat state with week boss using BOSSES[state.time.weekBoss]
   return {
     ...state,
     phase: GamePhase.BossFight,
+    time: bossTime,
   };
 }
 
@@ -303,5 +588,101 @@ function handleReturnToMenu(state: GameState): GameState {
     phase: GamePhase.MainMenu,
     combat: null,
     activePOI: null,
+  };
+}
+
+// ============================================================================
+// Item Collection Action Handlers (T081)
+// ============================================================================
+
+/**
+ * Handles EQUIP_TOOL action.
+ * Equips a tool to the player's weapon slot.
+ */
+function handleEquipTool(state: GameState, tool: Tool): GameState {
+  const updatedPlayer = equipTool(state.player, tool);
+  return {
+    ...state,
+    player: updatedPlayer,
+  };
+}
+
+/**
+ * Handles COLLECT_GEAR action.
+ * Adds gear to player inventory if space available.
+ */
+function handleCollectGear(state: GameState, gear: Gear): GameState {
+  const updatedPlayer = addGearToInventory(state.player, gear);
+  if (!updatedPlayer) {
+    // Inventory full - return unchanged state
+    return state;
+  }
+  return {
+    ...state,
+    player: updatedPlayer,
+  };
+}
+
+/**
+ * Handles DISCARD_GEAR action.
+ * Removes gear from inventory by slot index.
+ */
+function handleDiscardGear(state: GameState, slotIndex: number): GameState {
+  const { player } = removeGearFromInventory(state.player, slotIndex);
+  return {
+    ...state,
+    player,
+  };
+}
+
+/**
+ * Handles DISCARD_GEAR_BY_ID action.
+ * Removes gear from inventory by gear ID.
+ */
+function handleDiscardGearById(state: GameState, gearId: GearId): GameState {
+  const { player } = removeGearById(state.player, gearId);
+  return {
+    ...state,
+    player,
+  };
+}
+
+/**
+ * Handles INCREASE_INVENTORY action.
+ * Increases inventory capacity (called at start of Day).
+ */
+function handleIncreaseInventory(state: GameState): GameState {
+  const updatedPlayer = increaseInventoryCapacity(state.player);
+  return {
+    ...state,
+    player: updatedPlayer,
+  };
+}
+
+/**
+ * Handles ADD_GOLD action.
+ * Adds gold to the player.
+ */
+function handleAddGold(state: GameState, amount: number): GameState {
+  const updatedPlayer = addGold(state.player, amount);
+  return {
+    ...state,
+    player: updatedPlayer,
+  };
+}
+
+/**
+ * Handles SPEND_GOLD action.
+ * Removes gold from player if they can afford it.
+ */
+function handleSpendGold(state: GameState, amount: number): GameState {
+  const { player, success } = removeGold(state.player, amount);
+  if (!success) {
+    // Insufficient gold - return unchanged state
+    return state;
+  }
+  return {
+    ...state,
+    player,
   };
 }

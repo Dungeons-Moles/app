@@ -66,28 +66,28 @@
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T024 [P] [US1] Write map generation determinism test in __tests__/unit/map/generator.test.ts
-- [ ] T025 [P] [US1] Write fog of war visibility test in __tests__/unit/map/fog-of-war.test.ts
-- [ ] T026 [P] [US1] Write exploration integration test in __tests__/integration/exploration.test.ts
+- [x] T024 [P] [US1] Write map generation determinism test in __tests__/unit/map/generator.test.ts
+- [x] T025 [P] [US1] Write fog of war visibility test in __tests__/unit/map/fog-of-war.test.ts
+- [x] T026 [P] [US1] Write exploration integration test in __tests__/integration/exploration.test.ts
 
 ### Implementation for User Story 1
 
-- [ ] T027 [US1] Implement recursive backtracker maze generator in src/game/map/generator.ts
-- [ ] T028 [US1] Implement tile type assignment (Empty/Soft/Hard) in src/game/map/generator.ts
-- [ ] T029 [US1] Implement POI placement logic in src/game/map/generator.ts
-- [ ] T030 [US1] Implement enemy spawn placement in src/game/map/generator.ts
-- [ ] T031 [US1] Implement fog of war visibility calculations in src/game/map/fog-of-war.ts
-- [ ] T032 [US1] Implement player entity logic in src/game/entities/player.ts
-- [ ] T033 [US1] Implement centralized input handler in src/game/input/handler.ts
-- [ ] T034 [US1] Implement keyboard bindings for web dev in src/game/input/keyboard.ts
-- [ ] T035 [US1] Implement useInput hook in src/hooks/useInput.ts
-- [ ] T036 [US1] Add MOVE action handling to game reducer in src/game/engine/game-reducer.ts
-- [ ] T037 [US1] Implement MapRenderer with Skia in src/components/game/MapRenderer.tsx
-- [ ] T038 [US1] Implement viewport culling in MapRenderer for performance
-- [ ] T039 [US1] Implement DPadControls component in src/components/game/DPadControls.tsx
-- [ ] T040 [US1] Implement camera centering on player in MapRenderer
-- [ ] T041 [US1] Wire up GameScreen with MapRenderer, DPadControls, and GameContext
-- [ ] T042 [US1] Connect Hub Campaign button to GameScreen navigation
+- [x] T027 [US1] Implement recursive backtracker maze generator in src/game/map/generator.ts
+- [x] T028 [US1] Implement tile type assignment (Empty/Soft/Hard) in src/game/map/generator.ts
+- [x] T029 [US1] Implement POI placement logic in src/game/map/generator.ts
+- [x] T030 [US1] Implement enemy spawn placement in src/game/map/generator.ts
+- [x] T031 [US1] Implement fog of war visibility calculations in src/game/map/fog-of-war.ts
+- [x] T032 [US1] Implement player entity logic in src/game/entities/player.ts
+- [x] T033 [US1] Implement centralized input handler in src/game/input/handler.ts
+- [x] T034 [US1] Implement keyboard bindings for web dev in src/game/input/keyboard.ts
+- [x] T035 [US1] Implement useInput hook in src/hooks/useInput.ts
+- [x] T036 [US1] Add MOVE action handling to game reducer in src/game/engine/game-reducer.ts
+- [x] T037 [US1] Implement MapRenderer with Skia in src/components/game/MapRenderer.tsx
+- [x] T038 [US1] Implement viewport culling in MapRenderer for performance
+- [x] T039 [US1] Implement DPadControls component in src/components/game/DPadControls.tsx
+- [x] T040 [US1] Implement camera centering on player in MapRenderer
+- [x] T041 [US1] Wire up GameScreen with MapRenderer, DPadControls, and GameContext
+- [x] T042 [US1] Connect Hub Campaign button to GameScreen navigation
 
 **Checkpoint**: User Story 1 complete - player can explore map with D-pad, fog reveals, time consumed
 
@@ -103,26 +103,26 @@
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T043 [P] [US2] Write damage calculation tests in __tests__/unit/combat/damage.test.ts
-- [ ] T044 [P] [US2] Write combat resolver determinism tests in __tests__/unit/combat/resolver.test.ts
-- [ ] T045 [P] [US2] Write combat flow integration test in __tests__/integration/combat-flow.test.ts
+- [x] T043 [P] [US2] Write damage calculation tests in __tests__/unit/combat/damage.test.ts
+- [x] T044 [P] [US2] Write combat resolver determinism tests in __tests__/unit/combat/resolver.test.ts
+- [x] T045 [P] [US2] Write combat flow integration test in __tests__/integration/combat-flow.test.ts
 
 ### Implementation for User Story 2
 
-- [ ] T046 [US2] Implement damage calculation in src/game/combat/damage.ts
-- [ ] T047 [US2] Implement combat state creation in src/game/combat/types.ts
-- [ ] T048 [US2] Implement combat resolver (pure function) in src/game/combat/resolver.ts
-- [ ] T049 [US2] Implement Battle Start phase effects in resolver
-- [ ] T050 [US2] Implement turn resolution with SPEED ordering in resolver
-- [ ] T051 [US2] Implement structured combat log with capped entries in resolver
-- [ ] T052 [US2] Add ENTER_COMBAT action to game reducer
-- [ ] T053 [US2] Add RESOLVE_COMBAT action to game reducer
-- [ ] T054 [US2] Create CombatContext provider in src/contexts/CombatContext.tsx
-- [ ] T055 [US2] Implement useCombat hook in src/hooks/useCombat.ts
-- [ ] T056 [US2] Implement CombatArena with Skia in src/components/combat/CombatArena.tsx
-- [ ] T057 [US2] Implement DamageNumbers floating animation in src/components/combat/DamageNumbers.tsx
-- [ ] T058 [US2] Wire up CombatScreen with combat resolution and navigation back to GameScreen
-- [ ] T059 [US2] Implement Victory/Defeat display with 3-second timer
+- [x] T046 [US2] Implement damage calculation in src/game/combat/damage.ts
+- [x] T047 [US2] Implement combat state creation in src/game/combat/types.ts
+- [x] T048 [US2] Implement combat resolver (pure function) in src/game/combat/resolver.ts
+- [x] T049 [US2] Implement Battle Start phase effects in resolver
+- [x] T050 [US2] Implement turn resolution with SPEED ordering in resolver
+- [x] T051 [US2] Implement structured combat log with capped entries in resolver
+- [x] T052 [US2] Add ENTER_COMBAT action to game reducer
+- [x] T053 [US2] Add RESOLVE_COMBAT action to game reducer
+- [x] T054 [US2] Create CombatContext provider in src/contexts/CombatContext.tsx
+- [x] T055 [US2] Implement useCombat hook in src/hooks/useCombat.ts
+- [x] T056 [US2] Implement CombatArena with Skia in src/components/combat/CombatArena.tsx
+- [x] T057 [US2] Implement DamageNumbers floating animation in src/components/combat/DamageNumbers.tsx
+- [x] T058 [US2] Wire up CombatScreen with combat resolution and navigation back to GameScreen
+- [x] T059 [US2] Implement Victory/Defeat display with 3-second timer
 
 **Checkpoint**: User Story 2 complete - combat triggers on enemy tile, resolves automatically, deterministic
 
@@ -138,22 +138,22 @@
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T060 [P] [US3] Write time progression tests in __tests__/unit/time/progression.test.ts
-- [ ] T061 [P] [US3] Write week boss selection tests in __tests__/unit/time/progression.test.ts
+- [x] T060 [P] [US3] Write time progression tests in __tests__/unit/time/progression.test.ts
+- [x] T061 [P] [US3] Write week boss selection tests in __tests__/unit/time/progression.test.ts
 
 ### Implementation for User Story 3
 
-- [ ] T062 [US3] Implement time progression logic in src/game/time/progression.ts
-- [ ] T063 [US3] Implement Day/Night transition with move tracking
-- [ ] T064 [US3] Implement boss selection per week pool in src/game/time/week.ts
-- [ ] T065 [US3] Implement auto-boss trigger after Night 3
-- [ ] T066 [US3] Add time consumption to MOVE action in game reducer
-- [ ] T067 [US3] Add TRIGGER_BOSS action to game reducer
-- [ ] T068 [US3] Implement TopBar component in src/components/game/TopBar.tsx
-- [ ] T069 [US3] Implement week progress timeline display in TopBar
-- [ ] T070 [US3] Implement boss preview (emoji + name) in TopBar
-- [ ] T071 [US3] Implement inventory slot growth on Day transition (+2 slots)
-- [ ] T072 [US3] Wire up TopBar to GameScreen
+- [x] T062 [US3] Implement time progression logic in src/game/time/progression.ts
+- [x] T063 [US3] Implement Day/Night transition with move tracking
+- [x] T064 [US3] Implement boss selection per week pool in src/game/time/week.ts
+- [x] T065 [US3] Implement auto-boss trigger after Night 3
+- [x] T066 [US3] Add time consumption to MOVE action in game reducer
+- [x] T067 [US3] Add TRIGGER_BOSS action to game reducer
+- [x] T068 [US3] Implement TopBar component in src/components/game/TopBar.tsx
+- [x] T069 [US3] Implement week progress timeline display in TopBar
+- [x] T070 [US3] Implement boss preview (emoji + name) in TopBar
+- [x] T071 [US3] Implement inventory slot growth on Day transition (+2 slots)
+- [x] T072 [US3] Wire up TopBar to GameScreen
 
 **Checkpoint**: User Story 3 complete - time progresses, Day/Night cycles work, boss triggers at week end
 
@@ -169,22 +169,22 @@
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T073 [P] [US4] Write item stat calculation tests in __tests__/unit/entities/items.test.ts
-- [ ] T074 [P] [US4] Write itemset activation tests in __tests__/unit/entities/itemsets.test.ts
+- [x] T073 [P] [US4] Write item stat calculation tests in __tests__/unit/entities/items.test.ts
+- [x] T074 [P] [US4] Write itemset activation tests in __tests__/unit/entities/itemsets.test.ts
 
 ### Implementation for User Story 4
 
-- [ ] T075 [US4] Implement item entity logic in src/game/entities/items.ts
-- [ ] T076 [US4] Implement itemset detection and activation in src/game/entities/itemsets.ts
-- [ ] T077 [US4] Implement inventory state management in player entity
-- [ ] T078 [US4] Implement stat calculation with equipped items in player entity
-- [ ] T079 [US4] Implement Tool equipping (single weapon slot)
-- [ ] T080 [US4] Implement Gear collection to inventory grid
-- [ ] T081 [US4] Add item collection actions to game reducer
-- [ ] T082 [US4] Implement StatsPanel component in src/components/game/StatsPanel.tsx
-- [ ] T083 [US4] Implement InventoryPanel component in src/components/game/InventoryPanel.tsx
-- [ ] T084 [US4] Implement ItemTooltip overlay in src/components/game/ItemTooltip.tsx
-- [ ] T085 [US4] Wire up StatsPanel and InventoryPanel to GameScreen
+- [x] T075 [US4] Implement item entity logic in src/game/entities/items.ts
+- [x] T076 [US4] Implement itemset detection and activation in src/game/entities/itemsets.ts
+- [x] T077 [US4] Implement inventory state management in player entity
+- [x] T078 [US4] Implement stat calculation with equipped items in player entity
+- [x] T079 [US4] Implement Tool equipping (single weapon slot)
+- [x] T080 [US4] Implement Gear collection to inventory grid
+- [x] T081 [US4] Add item collection actions to game reducer
+- [x] T082 [US4] Implement StatsPanel component in src/components/game/StatsPanel.tsx
+- [x] T083 [US4] Implement InventoryPanel component in src/components/game/InventoryPanel.tsx
+- [x] T084 [US4] Implement ItemTooltip overlay in src/components/game/ItemTooltip.tsx
+- [x] T085 [US4] Wire up StatsPanel and InventoryPanel to GameScreen
 
 **Checkpoint**: User Story 4 complete - items collect, equip, stats update, tooltips work
 
