@@ -11,11 +11,12 @@ import { RootStackParamList } from '../navigation';
 import { useGame, GamePhase } from '../contexts/GameContext';
 import { MapRenderer } from '../components/game/MapRenderer';
 import { DPadControls } from '../components/game/DPadControls';
-import { TopBar } from '../components/game';
+import { TopBar, POIModal } from '../components/game';
 import { useDirectionInput } from '../hooks/useInput';
 import { Direction } from '../game/input/types';
 import { TileType } from '../game/map/types';
 import { TimePhase } from '../game/engine/types';
+import { getPOIDefinition } from '../data/pois';
 
 type GameScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Game'>;
@@ -84,6 +85,22 @@ export function GameScreen({ navigation }: GameScreenProps) {
     dispatch({ type: 'RESET_GAME' });
     navigation.goBack();
   }, [dispatch, navigation]);
+
+  // T101: Handle POI option selection
+  const handlePOIOption = useCallback(
+    (optionIndex: number) => {
+      dispatch({ type: 'SELECT_POI_OPTION', optionIndex });
+    },
+    [dispatch]
+  );
+
+  // T101: Handle POI modal close
+  const handleClosePOI = useCallback(() => {
+    dispatch({ type: 'CLOSE_POI' });
+  }, [dispatch]);
+
+  // Check if POI interaction is active
+  const isPOIActive = state?.phase === GamePhase.POIInteraction && state?.activePOI !== null;
 
   // If no game state, show loading
   if (!state) {
@@ -161,6 +178,14 @@ export function GameScreen({ navigation }: GameScreenProps) {
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* T101: POI Interaction Modal */}
+      <POIModal
+        interaction={state.activePOI}
+        visible={isPOIActive}
+        onSelectOption={handlePOIOption}
+        onClose={handleClosePOI}
+      />
     </SafeAreaView>
   );
 }
