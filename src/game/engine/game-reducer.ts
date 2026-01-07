@@ -5,14 +5,15 @@
  * @see specs/001-pve-dungeon-crawler/research.md R3
  */
 
-import type { GameState, CombatResult, Position } from './types';
-import { GamePhase, TimePhase } from './types';
+import type { GameState, CombatResult, CombatantState, CombatState, Position } from './types';
+import { GamePhase, CombatPhase, DEFAULT_STATUS_EFFECTS, TimePhase } from './types';
 import { Direction, DIRECTION_DELTA } from '../input/types';
 import { isValidTransition } from './state-machine';
 import { initializeGame, consumeMoves } from './state-factory';
-import { TileType, TILE_MOVE_COST } from '../map/types';
+import { TileType, TILE_MOVE_COST, type MapEnemy } from '../map/types';
 import { updateFogOfWar } from '../map/fog-of-war';
 import { movePlayer } from '../entities/player';
+import { createCombatState, resolveCombat } from '../combat/resolver';
 
 // ============================================================================
 // Game Actions
@@ -202,39 +203,164 @@ function handleMove(state: GameState, direction: Direction): GameState {
 }
 
 /**
- * Handles ENTER_COMBAT action.
+ * T052: Handles ENTER_COMBAT action.
  * Transitions to Combat phase with specified enemy.
+ * Creates combat state from player and enemy.
  */
-function handleEnterCombat(state: GameState, _enemyId: string): GameState {
+function handleEnterCombat(state: GameState, enemyId: string): GameState {
   if (!isValidTransition(state.phase, GamePhase.Combat)) {
     throw new Error(
       `Invalid transition: cannot enter combat from ${state.phase}`
     );
   }
 
-  // TODO: Create combat state with enemy
+  // Find enemy on map
+  const enemy = state.map.enemies.find((e) => e.id === enemyId);
+  if (!enemy) {
+    throw new Error(`Enemy not found: ${enemyId}`);
+  }
+
+  // Create player combatant state from current player
+  const playerCombatant: CombatantState = {
+    name: 'Player',
+    emoji: '🦦',
+    isPlayer: true,
+    maxHp: state.player.stats.maxHp,
+    hp: state.player.stats.hp,
+    atk: state.player.stats.atk,
+    arm: state.player.stats.arm,
+    spd: state.player.stats.spd,
+    dig: state.player.stats.dig,
+    bonusAtk: 0,
+    bonusArm: 0,
+    bonusSpd: 0,
+    statusEffects: { ...state.player.statusEffects },
+    strikesPerTurn: getPlayerStrikesPerTurn(state),
+    ignoresArmor: hasArmorIgnore(state),
+  };
+
+  // Create enemy combatant state
+  const enemyCombatant: CombatantState = createEnemyCombatant(enemy);
+
+  // Create initial combat state
+  const combatState = createCombatState({
+    player: playerCombatant,
+    enemy: enemyCombatant,
+    seed: state.rngState,
+  });
+
   return {
     ...state,
     phase: GamePhase.Combat,
+    combat: combatState,
   };
 }
 
 /**
- * Handles RESOLVE_COMBAT action.
+ * Create enemy combatant state from map enemy
+ */
+function createEnemyCombatant(enemy: MapEnemy): CombatantState {
+  const enemyEmojis: Record<string, string> = {
+    TUNNEL_RAT: '🐀',
+    CAVE_BAT: '🦇',
+    SPORE_SLIME: '🟢',
+    RUST_MITE_SWARM: '🐜',
+    COLLAPSED_MINER: '🧟',
+    SHARD_BEETLE: '🪲',
+    TUNNEL_WARDEN: '🦀',
+    BURROW_AMBUSHER: '🦂',
+  };
+
+  const enemyNames: Record<string, string> = {
+    TUNNEL_RAT: 'Tunnel Rat',
+    CAVE_BAT: 'Cave Bat',
+    SPORE_SLIME: 'Spore Slime',
+    RUST_MITE_SWARM: 'Rust Mite Swarm',
+    COLLAPSED_MINER: 'Collapsed Miner',
+    SHARD_BEETLE: 'Shard Beetle',
+    TUNNEL_WARDEN: 'Tunnel Warden',
+    BURROW_AMBUSHER: 'Burrow Ambusher',
+  };
+
+  return {
+    name: enemyNames[enemy.definitionId] || enemy.definitionId,
+    emoji: enemyEmojis[enemy.definitionId] || '👾',
+    isPlayer: false,
+    maxHp: enemy.stats.hp,
+    hp: enemy.stats.hp,
+    atk: enemy.stats.atk,
+    arm: enemy.stats.arm,
+    spd: enemy.stats.spd,
+    dig: 0,
+    bonusAtk: 0,
+    bonusArm: 0,
+    bonusSpd: 0,
+    statusEffects: { ...DEFAULT_STATUS_EFFECTS },
+    strikesPerTurn: 1, // Most enemies strike once, traits may modify
+    ignoresArmor: false,
+  };
+}
+
+/**
+ * Calculate player strikes per turn based on equipped tool
+ */
+function getPlayerStrikesPerTurn(state: GameState): number {
+  const tool = state.player.equippedTool;
+  if (!tool) return 1;
+
+  // T3: Twin Picks - strike twice
+  if (tool.id === 'T3') return 2;
+  // T5: Pneumatic Drill - strike 3 times
+  if (tool.id === 'T5') return 3;
+
+  return 1;
+}
+
+/**
+ * Check if player has armor ignore (Shadow Burrowblade T6)
+ */
+function hasArmorIgnore(state: GameState): boolean {
+  const tool = state.player.equippedTool;
+  if (!tool) return false;
+
+  // T6: Shadow Burrowblade - strikes ignore armor
+  return tool.id === 'T6';
+}
+
+/**
+ * T053: Handles RESOLVE_COMBAT action.
  * Applies combat result and transitions appropriately.
+ * Updates player HP and removes defeated enemy from map.
  */
 function handleResolveCombat(state: GameState, result: CombatResult): GameState {
   if (state.phase !== GamePhase.Combat && state.phase !== GamePhase.BossFight) {
     return state;
   }
 
+  if (!state.combat) {
+    return state;
+  }
+
+  // Update player HP from combat result
+  const updatedPlayer = {
+    ...state.player,
+    stats: {
+      ...state.player.stats,
+      hp: Math.max(0, state.combat.player.hp),
+    },
+    statusEffects: { ...state.combat.player.statusEffects },
+  };
+
+  // Update RNG state from combat
+  const updatedRngState = state.combat.rngState;
+
   if (result === 'DEFEAT') {
     return {
       ...state,
       phase: GamePhase.Defeat,
-      combat: state.combat
-        ? { ...state.combat, result: 'DEFEAT' }
-        : null,
+      player: updatedPlayer,
+      rngState: updatedRngState,
+      combat: { ...state.combat, result: 'DEFEAT' },
     };
   }
 
@@ -243,18 +369,40 @@ function handleResolveCombat(state: GameState, result: CombatResult): GameState 
     return {
       ...state,
       phase: GamePhase.Victory,
-      combat: state.combat
-        ? { ...state.combat, result: 'VICTORY' }
-        : null,
+      player: updatedPlayer,
+      rngState: updatedRngState,
+      combat: { ...state.combat, result: 'VICTORY' },
     };
   }
 
-  // TODO: Apply rewards, remove defeated enemy from map
+  // Remove defeated enemy from map
+  const enemyToRemove = findEnemyAtPlayerPosition(state);
+  const updatedEnemies = enemyToRemove
+    ? state.map.enemies.filter((e) => e.id !== enemyToRemove.id)
+    : state.map.enemies;
+
   return {
     ...state,
     phase: GamePhase.Exploration,
+    player: updatedPlayer,
+    rngState: updatedRngState,
+    map: {
+      ...state.map,
+      enemies: updatedEnemies,
+    },
     combat: null,
   };
+}
+
+/**
+ * Find enemy at player's current position
+ */
+function findEnemyAtPlayerPosition(state: GameState): MapEnemy | undefined {
+  return state.map.enemies.find(
+    (e) =>
+      e.position.x === state.player.position.x &&
+      e.position.y === state.player.position.y
+  );
 }
 
 /**
