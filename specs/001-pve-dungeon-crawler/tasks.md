@@ -227,17 +227,17 @@
 
 ### Implementation for User Story 6
 
-- [ ] T102 [US6] Implement boss entity logic in src/game/entities/bosses.ts
-- [ ] T103 [US6] Implement Broodmother trait (strikes 3 times per turn)
-- [ ] T104 [US6] Implement Obsidian Golem trait (Turn Start +3 Armor)
-- [ ] T105 [US6] Implement Gas Anomaly trait (Turn Start 2 damage ignoring Armor)
-- [ ] T106 [US6] Implement Mad Miner trait (Battle Start mirror Common item)
-- [ ] T107 [US6] Implement Drill Sergeant trait (Turn Start +2 ATK)
-- [ ] T108 [US6] Implement Crystal Mimic trait (first status reflects to player)
-- [ ] T109 [US6] Implement Eldritch Mole phase system (75%/50%/25% thresholds)
-- [ ] T110 [US6] Integrate boss traits into combat resolver
-- [ ] T111 [US6] Implement BossTooltip component in src/components/game/BossTooltip.tsx
-- [ ] T112 [US6] Wire boss preview tap to show BossTooltip
+- [x] T102 [US6] Implement boss entity logic in src/game/entities/bosses.ts
+- [x] T103 [US6] Implement Broodmother trait (strikes 3 times per turn)
+- [x] T104 [US6] Implement Obsidian Golem trait (Turn Start +3 Armor)
+- [x] T105 [US6] Implement Gas Anomaly trait (Turn Start 2 damage ignoring Armor)
+- [x] T106 [US6] Implement Mad Miner trait (Battle Start mirror Common item)
+- [x] T107 [US6] Implement Drill Sergeant trait (Turn Start +2 ATK)
+- [x] T108 [US6] Implement Crystal Mimic trait (first status reflects to player)
+- [x] T109 [US6] Implement Eldritch Mole phase system (75%/50%/25% thresholds)
+- [x] T110 [US6] Integrate boss traits into combat resolver
+- [x] T111 [US6] Implement BossTooltip component in src/components/game/BossTooltip.tsx
+- [x] T112 [US6] Wire boss preview tap to show BossTooltip
 
 **Checkpoint**: User Story 6 complete - all 7 bosses functional with correct traits
 
