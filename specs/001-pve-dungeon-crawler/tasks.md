@@ -169,22 +169,22 @@
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T073 [P] [US4] Write item stat calculation tests in __tests__/unit/entities/items.test.ts
-- [ ] T074 [P] [US4] Write itemset activation tests in __tests__/unit/entities/itemsets.test.ts
+- [x] T073 [P] [US4] Write item stat calculation tests in __tests__/unit/entities/items.test.ts
+- [x] T074 [P] [US4] Write itemset activation tests in __tests__/unit/entities/itemsets.test.ts
 
 ### Implementation for User Story 4
 
-- [ ] T075 [US4] Implement item entity logic in src/game/entities/items.ts
-- [ ] T076 [US4] Implement itemset detection and activation in src/game/entities/itemsets.ts
-- [ ] T077 [US4] Implement inventory state management in player entity
-- [ ] T078 [US4] Implement stat calculation with equipped items in player entity
-- [ ] T079 [US4] Implement Tool equipping (single weapon slot)
-- [ ] T080 [US4] Implement Gear collection to inventory grid
-- [ ] T081 [US4] Add item collection actions to game reducer
-- [ ] T082 [US4] Implement StatsPanel component in src/components/game/StatsPanel.tsx
-- [ ] T083 [US4] Implement InventoryPanel component in src/components/game/InventoryPanel.tsx
-- [ ] T084 [US4] Implement ItemTooltip overlay in src/components/game/ItemTooltip.tsx
-- [ ] T085 [US4] Wire up StatsPanel and InventoryPanel to GameScreen
+- [x] T075 [US4] Implement item entity logic in src/game/entities/items.ts
+- [x] T076 [US4] Implement itemset detection and activation in src/game/entities/itemsets.ts
+- [x] T077 [US4] Implement inventory state management in player entity
+- [x] T078 [US4] Implement stat calculation with equipped items in player entity
+- [x] T079 [US4] Implement Tool equipping (single weapon slot)
+- [x] T080 [US4] Implement Gear collection to inventory grid
+- [x] T081 [US4] Add item collection actions to game reducer
+- [x] T082 [US4] Implement StatsPanel component in src/components/game/StatsPanel.tsx
+- [x] T083 [US4] Implement InventoryPanel component in src/components/game/InventoryPanel.tsx
+- [x] T084 [US4] Implement ItemTooltip overlay in src/components/game/ItemTooltip.tsx
+- [x] T085 [US4] Wire up StatsPanel and InventoryPanel to GameScreen
 
 **Checkpoint**: User Story 4 complete - items collect, equip, stats update, tooltips work
 

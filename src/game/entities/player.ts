@@ -1,11 +1,23 @@
 /**
- * Player entity logic for PvE Dungeon Crawler
+ * Player Entity Logic - T077, T078, T079, T080
+ * Player state management, inventory, stats calculation
  * @see specs/001-pve-dungeon-crawler/data-model.md
  */
 
-import type { Position, Player, PlayerStats } from '../engine/types';
+import type {
+  Player,
+  PlayerStats,
+  Tool,
+  Gear,
+  InventorySlot,
+  Position,
+  GearId,
+  StatusEffects,
+} from '../engine/types';
 import { DEFAULT_STATUS_EFFECTS } from '../engine/types';
 import { GAME_CONSTANTS } from '../engine/constants';
+import { calculateItemStats } from './items';
+import { getActiveItemsets } from './itemsets';
 
 // ============================================================================
 // Player Creation
@@ -28,13 +40,20 @@ export function createPlayer(spawnPosition: Position): Player {
   return {
     position: spawnPosition,
     baseStats,
-    stats: { ...baseStats }, // Computed stats (will be updated with items)
+    stats: { ...baseStats },
     equippedTool: null,
     inventory: [],
     inventoryCapacity: GAME_CONSTANTS.INITIAL_INVENTORY_SLOTS,
     statusEffects: { ...DEFAULT_STATUS_EFFECTS },
     activeItemsets: [],
   };
+}
+
+/**
+ * Alias for createPlayer (for compatibility)
+ */
+export function createInitialPlayer(startPosition: Position): Player {
+  return createPlayer(startPosition);
 }
 
 // ============================================================================
@@ -63,68 +82,206 @@ export function isInBounds(pos: Position, width: number, height: number): boolea
 }
 
 // ============================================================================
-// Stats Calculation
+// Stat Calculation - T078
 // ============================================================================
 
 /**
- * Recalculate player stats based on equipped items.
+ * Calculate computed stats from base stats + equipped items
  */
-export function recalculateStats(player: Player): Player {
-  // Start with base stats
-  const stats: PlayerStats = { ...player.baseStats };
+export function calculatePlayerStats(player: Player): PlayerStats {
+  const { baseStats, equippedTool, inventory } = player;
+  const gearItems = inventory.map((slot) => slot.item);
 
-  // Add tool stats
-  if (player.equippedTool) {
-    const toolStats = player.equippedTool.stats;
-    if (toolStats.atk) stats.atk += toolStats.atk;
-    if (toolStats.arm) stats.arm += toolStats.arm;
-    if (toolStats.spd) stats.spd += toolStats.spd;
-    if (toolStats.dig) stats.dig += toolStats.dig;
-    if (toolStats.hp) {
-      stats.maxHp += toolStats.hp;
-      stats.hp = Math.min(stats.hp, stats.maxHp);
-    }
-  }
-
-  // Add gear stats
-  for (const slot of player.inventory) {
-    const gearStats = slot.item.stats;
-    if (gearStats.atk) stats.atk += gearStats.atk;
-    if (gearStats.arm) stats.arm += gearStats.arm;
-    if (gearStats.spd) stats.spd += gearStats.spd;
-    if (gearStats.dig) stats.dig += gearStats.dig;
-    if (gearStats.hp) {
-      stats.maxHp += gearStats.hp;
-      stats.hp = Math.min(stats.hp, stats.maxHp);
-    }
-  }
+  // Get stat bonuses from equipment
+  const itemStats = calculateItemStats(equippedTool, gearItems);
 
   return {
-    ...player,
-    stats,
+    hp: baseStats.hp + (itemStats.hp ?? 0),
+    maxHp: baseStats.maxHp + (itemStats.hp ?? 0),
+    atk: baseStats.atk + (itemStats.atk ?? 0),
+    arm: baseStats.arm + (itemStats.arm ?? 0),
+    spd: baseStats.spd + (itemStats.spd ?? 0),
+    dig: baseStats.dig + (itemStats.dig ?? 0),
+    gold: baseStats.gold, // Gold is not affected by items
   };
 }
 
+/**
+ * Update player with recalculated stats and active itemsets
+ */
+export function refreshPlayerStats(player: Player): Player {
+  const gearIds = player.inventory.map((slot) => slot.item.id);
+  const toolId = player.equippedTool?.id ?? null;
+
+  return {
+    ...player,
+    stats: calculatePlayerStats(player),
+    activeItemsets: getActiveItemsets(toolId, gearIds),
+  };
+}
+
+/**
+ * Recalculate player stats based on equipped items.
+ * Alias for refreshPlayerStats.
+ */
+export function recalculateStats(player: Player): Player {
+  return refreshPlayerStats(player);
+}
+
 // ============================================================================
-// Inventory Management
+// Tool Equipping - T079
 // ============================================================================
 
 /**
- * Check if player has room in inventory.
+ * Equip a tool to the weapon slot
+ * Replaces any existing tool (old tool is lost)
+ */
+export function equipTool(player: Player, tool: Tool): Player {
+  const updatedPlayer: Player = {
+    ...player,
+    equippedTool: tool,
+  };
+
+  return refreshPlayerStats(updatedPlayer);
+}
+
+/**
+ * Unequip current tool (returns null if no tool equipped)
+ */
+export function unequipTool(player: Player): { player: Player; tool: Tool | null } {
+  const tool = player.equippedTool;
+  const updatedPlayer: Player = {
+    ...player,
+    equippedTool: null,
+  };
+
+  return {
+    player: refreshPlayerStats(updatedPlayer),
+    tool,
+  };
+}
+
+/**
+ * Check if player has a tool equipped
+ */
+export function hasToolEquipped(player: Player): boolean {
+  return player.equippedTool !== null;
+}
+
+// ============================================================================
+// Inventory Management - T080
+// ============================================================================
+
+/**
+ * Check if inventory has available space
  */
 export function hasInventorySpace(player: Player): boolean {
   return player.inventory.length < player.inventoryCapacity;
 }
 
 /**
- * Get number of available inventory slots.
+ * Get number of free inventory slots
  */
-export function getAvailableSlots(player: Player): number {
+export function getFreeSlots(player: Player): number {
   return player.inventoryCapacity - player.inventory.length;
 }
 
 /**
- * Increase inventory capacity (at start of day).
+ * Get number of available inventory slots.
+ * Alias for getFreeSlots.
+ */
+export function getAvailableSlots(player: Player): number {
+  return getFreeSlots(player);
+}
+
+/**
+ * Add gear to inventory (returns null if inventory full)
+ */
+export function addGearToInventory(
+  player: Player,
+  gear: Gear
+): Player | null {
+  if (!hasInventorySpace(player)) {
+    return null;
+  }
+
+  // Find next available slot index
+  const usedIndices = new Set(player.inventory.map((slot) => slot.index));
+  let nextIndex = 0;
+  while (usedIndices.has(nextIndex)) {
+    nextIndex++;
+  }
+
+  const newSlot: InventorySlot = {
+    item: gear,
+    index: nextIndex,
+  };
+
+  const updatedPlayer: Player = {
+    ...player,
+    inventory: [...player.inventory, newSlot],
+  };
+
+  return refreshPlayerStats(updatedPlayer);
+}
+
+/**
+ * Remove gear from inventory by slot index
+ */
+export function removeGearFromInventory(
+  player: Player,
+  slotIndex: number
+): { player: Player; gear: Gear | null } {
+  const slotToRemove = player.inventory.find((slot) => slot.index === slotIndex);
+
+  if (!slotToRemove) {
+    return { player, gear: null };
+  }
+
+  const updatedPlayer: Player = {
+    ...player,
+    inventory: player.inventory.filter((slot) => slot.index !== slotIndex),
+  };
+
+  return {
+    player: refreshPlayerStats(updatedPlayer),
+    gear: slotToRemove.item,
+  };
+}
+
+/**
+ * Remove gear from inventory by gear ID
+ */
+export function removeGearById(
+  player: Player,
+  gearId: GearId
+): { player: Player; gear: Gear | null } {
+  const slotToRemove = player.inventory.find((slot) => slot.item.id === gearId);
+
+  if (!slotToRemove) {
+    return { player, gear: null };
+  }
+
+  return removeGearFromInventory(player, slotToRemove.index);
+}
+
+/**
+ * Get gear from inventory by slot index
+ */
+export function getGearAtSlot(player: Player, slotIndex: number): Gear | null {
+  const slot = player.inventory.find((s) => s.index === slotIndex);
+  return slot?.item ?? null;
+}
+
+/**
+ * Check if player has a specific gear item
+ */
+export function hasGear(player: Player, gearId: GearId): boolean {
+  return player.inventory.some((slot) => slot.item.id === gearId);
+}
+
+/**
+ * Increase inventory capacity (called at start of each Day)
  */
 export function increaseInventoryCapacity(player: Player): Player {
   const newCapacity = Math.min(
@@ -139,76 +296,15 @@ export function increaseInventoryCapacity(player: Player): Player {
 }
 
 // ============================================================================
-// Health Management
-// ============================================================================
-
-/**
- * Apply damage to player.
- */
-export function applyDamage(player: Player, amount: number): Player {
-  const newHp = Math.max(0, player.stats.hp - amount);
-
-  return {
-    ...player,
-    stats: {
-      ...player.stats,
-      hp: newHp,
-    },
-  };
-}
-
-/**
- * Heal player.
- */
-export function healPlayer(player: Player, amount: number): Player {
-  const newHp = Math.min(player.stats.maxHp, player.stats.hp + amount);
-
-  return {
-    ...player,
-    stats: {
-      ...player.stats,
-      hp: newHp,
-    },
-  };
-}
-
-/**
- * Fully restore player HP.
- */
-export function fullHeal(player: Player): Player {
-  return {
-    ...player,
-    stats: {
-      ...player.stats,
-      hp: player.stats.maxHp,
-    },
-  };
-}
-
-/**
- * Check if player is alive.
- */
-export function isAlive(player: Player): boolean {
-  return player.stats.hp > 0;
-}
-
-/**
- * Check if player is wounded (below 50% HP).
- */
-export function isWounded(player: Player): boolean {
-  return player.stats.hp < player.stats.maxHp * 0.5;
-}
-
-// ============================================================================
 // Status Effects
 // ============================================================================
 
 /**
- * Apply status effect stacks to player.
+ * Apply status effect to player
  */
 export function applyStatusEffect(
   player: Player,
-  effect: 'chill' | 'shrapnel' | 'rust',
+  effect: keyof StatusEffects,
   stacks: number
 ): Player {
   return {
@@ -221,11 +317,11 @@ export function applyStatusEffect(
 }
 
 /**
- * Remove status effect stacks from player.
+ * Remove status effect stacks from player
  */
 export function removeStatusEffect(
   player: Player,
-  effect: 'chill' | 'shrapnel' | 'rust',
+  effect: keyof StatusEffects,
   stacks: number
 ): Player {
   return {
@@ -238,7 +334,7 @@ export function removeStatusEffect(
 }
 
 /**
- * Clear all status effects.
+ * Clear all status effects
  */
 export function clearStatusEffects(player: Player): Player {
   return {
@@ -248,15 +344,188 @@ export function clearStatusEffects(player: Player): Player {
 }
 
 // ============================================================================
-// Movement
+// Gold Management
 // ============================================================================
 
 /**
- * Move player to new position.
+ * Add gold to player
+ */
+export function addGold(player: Player, amount: number): Player {
+  return {
+    ...player,
+    baseStats: {
+      ...player.baseStats,
+      gold: player.baseStats.gold + amount,
+    },
+    stats: {
+      ...player.stats,
+      gold: player.stats.gold + amount,
+    },
+  };
+}
+
+/**
+ * Remove gold from player (returns false if insufficient)
+ */
+export function removeGold(
+  player: Player,
+  amount: number
+): { player: Player; success: boolean } {
+  if (player.stats.gold < amount) {
+    return { player, success: false };
+  }
+
+  return {
+    player: {
+      ...player,
+      baseStats: {
+        ...player.baseStats,
+        gold: player.baseStats.gold - amount,
+      },
+      stats: {
+        ...player.stats,
+        gold: player.stats.gold - amount,
+      },
+    },
+    success: true,
+  };
+}
+
+/**
+ * Check if player can afford an amount
+ */
+export function canAfford(player: Player, amount: number): boolean {
+  return player.stats.gold >= amount;
+}
+
+// ============================================================================
+// HP Management
+// ============================================================================
+
+/**
+ * Deal damage to player
+ */
+export function damagePlayer(player: Player, damage: number): Player {
+  const newHp = Math.max(0, player.stats.hp - damage);
+
+  return {
+    ...player,
+    baseStats: {
+      ...player.baseStats,
+      hp: newHp,
+    },
+    stats: {
+      ...player.stats,
+      hp: newHp,
+    },
+  };
+}
+
+/**
+ * Apply damage to player.
+ * Alias for damagePlayer.
+ */
+export function applyDamage(player: Player, amount: number): Player {
+  return damagePlayer(player, amount);
+}
+
+/**
+ * Heal player
+ */
+export function healPlayer(player: Player, amount: number): Player {
+  const newHp = Math.min(player.stats.maxHp, player.stats.hp + amount);
+
+  return {
+    ...player,
+    baseStats: {
+      ...player.baseStats,
+      hp: newHp,
+    },
+    stats: {
+      ...player.stats,
+      hp: newHp,
+    },
+  };
+}
+
+/**
+ * Fully restore player HP
+ */
+export function restoreFullHp(player: Player): Player {
+  return healPlayer(player, player.stats.maxHp);
+}
+
+/**
+ * Fully restore player HP.
+ * Alias for restoreFullHp.
+ */
+export function fullHeal(player: Player): Player {
+  return restoreFullHp(player);
+}
+
+/**
+ * Check if player is alive
+ */
+export function isPlayerAlive(player: Player): boolean {
+  return player.stats.hp > 0;
+}
+
+/**
+ * Check if player is alive.
+ * Alias for isPlayerAlive.
+ */
+export function isAlive(player: Player): boolean {
+  return isPlayerAlive(player);
+}
+
+/**
+ * Check if player is wounded (HP below 50%)
+ */
+export function isPlayerWounded(player: Player): boolean {
+  return player.stats.hp < player.stats.maxHp * 0.5;
+}
+
+/**
+ * Check if player is wounded.
+ * Alias for isPlayerWounded.
+ */
+export function isWounded(player: Player): boolean {
+  return isPlayerWounded(player);
+}
+
+// ============================================================================
+// Position Management
+// ============================================================================
+
+/**
+ * Update player position
  */
 export function movePlayer(player: Player, newPosition: Position): Player {
   return {
     ...player,
-    position: newPosition,
+    position: { ...newPosition },
   };
+}
+
+// ============================================================================
+// Utility Functions
+// ============================================================================
+
+/**
+ * Get all equipped gear IDs
+ */
+export function getEquippedGearIds(player: Player): GearId[] {
+  return player.inventory.map((slot) => slot.item.id);
+}
+
+/**
+ * Get all equipped items (tool + gear) for display
+ */
+export function getAllEquippedItems(player: Player): (Tool | Gear)[] {
+  const items: (Tool | Gear)[] = [];
+  if (player.equippedTool) {
+    items.push(player.equippedTool);
+  }
+  items.push(...player.inventory.map((slot) => slot.item));
+  return items;
 }
