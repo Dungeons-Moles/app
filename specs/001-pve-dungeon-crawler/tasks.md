@@ -278,16 +278,16 @@
 
 ### Implementation for User Story 8
 
-- [ ] T122 [US8] Finalize StatsPanel layout (HP/ATK/ARM/SPD/GOLD with emojis)
-- [ ] T123 [US8] Finalize TopBar layout (week progress + boss preview)
-- [ ] T124 [US8] Finalize DPadControls layout (bottom-left positioning)
-- [ ] T125 [US8] Implement EnemyPanel component in src/components/combat/EnemyPanel.tsx
-- [ ] T126 [US8] Implement PlayerPanel component in src/components/combat/PlayerPanel.tsx
-- [ ] T127 [US8] Implement CombatLog display in src/components/combat/CombatLog.tsx
-- [ ] T128 [US8] Finalize CombatScreen layout (enemy left, player right, arena center)
-- [ ] T129 [US8] Add keyboard input support (arrows/WASD) for web development
-- [ ] T130 [US8] Implement responsive landscape-only orientation lock
-- [ ] T131 [US8] Polish all tooltip styling for consistency
+- [x] T122 [US8] Finalize StatsPanel layout (HP/ATK/ARM/SPD/GOLD with emojis)
+- [x] T123 [US8] Finalize TopBar layout (week progress + boss preview)
+- [x] T124 [US8] Finalize DPadControls layout (bottom-left positioning)
+- [x] T125 [US8] Implement EnemyPanel component in src/components/combat/EnemyPanel.tsx
+- [x] T126 [US8] Implement PlayerPanel component in src/components/combat/PlayerPanel.tsx
+- [x] T127 [US8] Implement CombatLog display in src/components/combat/CombatLog.tsx
+- [x] T128 [US8] Finalize CombatScreen layout (enemy left, player right, arena center)
+- [x] T129 [US8] Add keyboard input support (arrows/WASD) for web development
+- [x] T130 [US8] Implement responsive landscape-only orientation lock
+- [x] T131 [US8] Polish all tooltip styling for consistency
 
 **Checkpoint**: User Story 8 complete - full UI layout matching spec
 

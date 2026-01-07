@@ -1,45 +1,93 @@
 /**
- * T121: Enemy Panel for Combat UI
- * Displays enemy information including name, trait, and status effects
+ * EnemyPanel Component - T125
+ * Displays enemy info in combat: name, emoji, HP bar, stats, trait, status effects
  * @see specs/001-pve-dungeon-crawler/spec.md FR-048
  */
 
-import React, { useMemo, useCallback } from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import type { CombatantState } from '../../game/engine/types';
-import { StatusEffectIcons } from './StatusEffectIcons';
-import { ENEMY_TRAITS, type EnemyId } from '../../game/combat/traits';
+import type { StatusEffects } from '../../game/engine/types';
 
-interface EnemyPanelProps {
-  enemy: CombatantState;
-  enemyId?: EnemyId;
+export interface EnemyPanelProps {
+  name: string;
+  emoji: string;
+  hp: number;
+  maxHp: number;
+  atk: number;
+  arm: number;
+  spd: number;
+  statusEffects: StatusEffects;
+  trait?: {
+    name: string;
+    description: string;
+  };
 }
 
-/**
- * Enemy panel (left sidebar) showing name, trait, and active effects
- */
-export const EnemyPanel = React.memo(function EnemyPanel({ enemy, enemyId }: EnemyPanelProps) {
-  const trait = useMemo(() => {
-    if (!enemyId) return null;
-    return ENEMY_TRAITS[enemyId];
-  }, [enemyId]);
+interface StatRowProps {
+  label: string;
+  value: number;
+  icon: string;
+}
 
-  const hpPercentage = useMemo(() => {
-    return Math.max(0, Math.min(100, (enemy.hp / enemy.maxHp) * 100));
-  }, [enemy.hp, enemy.maxHp]);
+function StatRow({ label, value, icon }: StatRowProps) {
+  return (
+    <View style={styles.statRow}>
+      <Text style={styles.statIcon}>{icon}</Text>
+      <Text style={styles.statLabel}>{label}</Text>
+      <Text style={styles.statValue}>{value}</Text>
+    </View>
+  );
+}
 
-  const hpColor = useCallback((percentage: number) => {
-    if (percentage > 50) return '#22c55e';
-    if (percentage > 25) return '#eab308';
+interface StatusBadgeProps {
+  type: 'chill' | 'shrapnel' | 'rust';
+  stacks: number;
+}
+
+function StatusBadge({ type, stacks }: StatusBadgeProps) {
+  const config = {
+    chill: { emoji: '❄️', color: '#60a5fa', name: 'Chill' },
+    shrapnel: { emoji: '💥', color: '#f97316', name: 'Shrapnel' },
+    rust: { emoji: '🦠', color: '#a16207', name: 'Rust' },
+  };
+
+  const { emoji, color } = config[type];
+
+  return (
+    <View style={[styles.statusBadge, { borderColor: color }]}>
+      <Text style={styles.statusEmoji}>{emoji}</Text>
+      <Text style={[styles.statusStacks, { color }]}>{stacks}</Text>
+    </View>
+  );
+}
+
+export function EnemyPanel({
+  name,
+  emoji,
+  hp,
+  maxHp,
+  atk,
+  arm,
+  spd,
+  statusEffects,
+  trait,
+}: EnemyPanelProps) {
+  const hpPercent = useMemo(() => Math.max(0, (hp / maxHp) * 100), [hp, maxHp]);
+
+  const hpBarColor = useMemo(() => {
+    if (hpPercent > 50) return '#22c55e';
+    if (hpPercent > 25) return '#eab308';
     return '#dc2626';
-  }, []);
+  }, [hpPercent]);
+
+  const hasStatusEffects = statusEffects.chill > 0 || statusEffects.shrapnel > 0 || statusEffects.rust > 0;
 
   return (
     <View style={styles.container}>
-      {/* Enemy Header */}
+      {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.emoji}>{enemy.emoji}</Text>
-        <Text style={styles.name} numberOfLines={1}>{enemy.name}</Text>
+        <Text style={styles.emoji}>{emoji}</Text>
+        <Text style={styles.name} numberOfLines={2}>{name}</Text>
       </View>
 
       {/* HP Bar */}
@@ -48,140 +96,168 @@ export const EnemyPanel = React.memo(function EnemyPanel({ enemy, enemyId }: Ene
           <View
             style={[
               styles.hpBarFill,
-              { width: `${hpPercentage}%`, backgroundColor: hpColor(hpPercentage) },
+              { width: `${hpPercent}%`, backgroundColor: hpBarColor },
             ]}
           />
         </View>
         <Text style={styles.hpText}>
-          {enemy.hp}/{enemy.maxHp} HP
+          {hp}/{maxHp}
         </Text>
       </View>
 
       {/* Stats */}
       <View style={styles.statsSection}>
-        <View style={styles.statRow}>
-          <Text style={styles.statLabel}>ATK</Text>
-          <Text style={styles.statValue}>{enemy.atk + enemy.bonusAtk}</Text>
-        </View>
-        <View style={styles.statRow}>
-          <Text style={styles.statLabel}>ARM</Text>
-          <Text style={styles.statValue}>{enemy.arm + enemy.bonusArm}</Text>
-        </View>
-        <View style={styles.statRow}>
-          <Text style={styles.statLabel}>SPD</Text>
-          <Text style={styles.statValue}>{enemy.spd + enemy.bonusSpd}</Text>
-        </View>
+        <StatRow label="ATK" value={atk} icon="⚔️" />
+        <StatRow label="ARM" value={arm} icon="🛡️" />
+        <StatRow label="SPD" value={spd} icon="⚡" />
       </View>
 
       {/* Trait */}
       {trait && (
         <View style={styles.traitSection}>
-          <Text style={styles.traitLabel}>Trait</Text>
           <Text style={styles.traitName}>{trait.name}</Text>
-          <Text style={styles.traitDescription} numberOfLines={2}>
+          <Text style={styles.traitDescription} numberOfLines={3}>
             {trait.description}
           </Text>
         </View>
       )}
 
       {/* Status Effects */}
-      <View style={styles.statusSection}>
-        <Text style={styles.sectionLabel}>Status Effects</Text>
-        <StatusEffectIcons combatant={enemy} size="small" direction="row" />
-      </View>
+      {hasStatusEffects && (
+        <View style={styles.statusSection}>
+          <Text style={styles.statusTitle}>Effects</Text>
+          <View style={styles.statusRow}>
+            {statusEffects.chill > 0 && (
+              <StatusBadge type="chill" stacks={statusEffects.chill} />
+            )}
+            {statusEffects.shrapnel > 0 && (
+              <StatusBadge type="shrapnel" stacks={statusEffects.shrapnel} />
+            )}
+            {statusEffects.rust > 0 && (
+              <StatusBadge type="rust" stacks={statusEffects.rust} />
+            )}
+          </View>
+        </View>
+      )}
     </View>
   );
-});
+}
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#1a1a2e',
-    borderRadius: 12,
-    padding: 12,
-    minWidth: 140,
-    maxWidth: 180,
-    borderWidth: 2,
-    borderColor: '#dc2626',
+    flex: 1,
+    padding: 8,
   },
   header: {
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 12,
   },
   emoji: {
-    fontSize: 32,
+    fontSize: 36,
     marginBottom: 4,
   },
   name: {
-    color: '#ffffff',
     fontSize: 14,
     fontWeight: 'bold',
+    color: '#ffffff',
     textAlign: 'center',
   },
   hpSection: {
-    marginBottom: 8,
+    marginBottom: 12,
   },
   hpBarBackground: {
-    height: 8,
+    height: 14,
     backgroundColor: '#2a2a3a',
-    borderRadius: 4,
+    borderRadius: 7,
     overflow: 'hidden',
   },
   hpBarFill: {
     height: '100%',
-    borderRadius: 4,
+    borderRadius: 7,
   },
   hpText: {
+    fontSize: 11,
     color: '#888888',
-    fontSize: 10,
     textAlign: 'center',
-    marginTop: 2,
+    marginTop: 4,
   },
   statsSection: {
-    marginBottom: 8,
-    gap: 4,
+    marginBottom: 12,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#2a2a35',
   },
   statRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: 4,
+    alignItems: 'center',
+    marginVertical: 2,
+  },
+  statIcon: {
+    fontSize: 12,
+    marginRight: 6,
+    width: 18,
   },
   statLabel: {
-    color: '#888888',
     fontSize: 10,
+    color: '#888888',
+    flex: 1,
   },
   statValue: {
+    fontSize: 12,
     color: '#ffffff',
-    fontSize: 10,
     fontWeight: 'bold',
   },
   traitSection: {
-    backgroundColor: '#2a2a3a',
-    borderRadius: 8,
+    backgroundColor: '#1a1a25',
+    borderRadius: 6,
     padding: 8,
-    marginBottom: 8,
-  },
-  traitLabel: {
-    color: '#888888',
-    fontSize: 8,
-    marginBottom: 2,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#2a2a35',
   },
   traitName: {
-    color: '#ef4444',
     fontSize: 11,
-    fontWeight: 'bold',
-    marginBottom: 2,
-  },
-  traitDescription: {
-    color: '#aaaaaa',
-    fontSize: 9,
-    lineHeight: 12,
-  },
-  statusSection: {
-    marginTop: 4,
-  },
-  sectionLabel: {
-    color: '#888888',
-    fontSize: 8,
+    fontWeight: '600',
+    color: '#f59e0b',
     marginBottom: 4,
   },
+  traitDescription: {
+    fontSize: 10,
+    color: '#9ca3af',
+    lineHeight: 14,
+  },
+  statusSection: {
+    marginTop: 'auto',
+  },
+  statusTitle: {
+    fontSize: 10,
+    color: '#6b7280',
+    marginBottom: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  statusRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+  },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 4,
+    borderWidth: 1,
+    backgroundColor: '#1a1a2e',
+  },
+  statusEmoji: {
+    fontSize: 11,
+    marginRight: 3,
+  },
+  statusStacks: {
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
 });
+
+export default EnemyPanel;

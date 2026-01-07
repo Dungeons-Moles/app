@@ -62,11 +62,11 @@ function getTagColor(tag: ItemTag): string {
 function StatDisplay({ stats }: { stats: ItemStats }) {
   const statEntries: { label: string; emoji: string; value: number }[] = [];
 
+  if (stats.hp) statEntries.push({ label: 'HP', emoji: '❤️', value: stats.hp });
   if (stats.atk) statEntries.push({ label: 'ATK', emoji: '⚔️', value: stats.atk });
   if (stats.arm) statEntries.push({ label: 'ARM', emoji: '🛡️', value: stats.arm });
-  if (stats.spd) statEntries.push({ label: 'SPD', emoji: '💨', value: stats.spd });
+  if (stats.spd) statEntries.push({ label: 'SPD', emoji: '⚡', value: stats.spd });
   if (stats.dig) statEntries.push({ label: 'DIG', emoji: '⛏️', value: stats.dig });
-  if (stats.hp) statEntries.push({ label: 'HP', emoji: '❤️', value: stats.hp });
 
   if (statEntries.length === 0) {
     return null;
@@ -206,13 +206,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   tooltipContainer: {
-    backgroundColor: '#1A1A1A',
+    backgroundColor: '#1a1a22',
     borderRadius: 12,
     padding: 16,
     minWidth: 250,
     maxWidth: 300,
     borderWidth: 1,
-    borderColor: '#3A3A3A',
+    borderColor: '#3a3a45',
   },
   header: {
     flexDirection: 'row',
@@ -264,16 +264,15 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   effectSection: {
-    backgroundColor: 'rgba(100, 100, 100, 0.2)',
+    backgroundColor: '#0f0f14',
     borderRadius: 6,
     padding: 10,
     marginBottom: 12,
   },
   effectText: {
-    color: '#E0E0E0',
-    fontSize: 13,
-    lineHeight: 18,
-    fontStyle: 'italic',
+    color: '#d1d5db',
+    fontSize: 12,
+    lineHeight: 16,
   },
   tagsSection: {
     flexDirection: 'row',
@@ -319,13 +318,13 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 8,
     right: 8,
-    backgroundColor: 'rgba(100, 100, 100, 0.3)',
+    backgroundColor: '#0f0f14',
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
   },
   typeText: {
-    color: '#808080',
+    color: '#6b7280',
     fontSize: 10,
     textTransform: 'uppercase',
   },
