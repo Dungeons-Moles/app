@@ -50,7 +50,7 @@
 - [x] T020 [P] Create GameScreen container in src/screens/GameScreen.tsx
 - [x] T021 [P] Create CombatScreen container in src/screens/CombatScreen.tsx
 - [x] T022 Create game engine exports in src/game/engine/index.ts
-- [ ] T023 [P] Write RNG determinism tests in __tests__/unit/rng/determinism.test.ts
+- [x] T023 [P] Write RNG determinism tests in __tests__/unit/rng/determinism.test.ts
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
