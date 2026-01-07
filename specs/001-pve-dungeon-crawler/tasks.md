@@ -66,28 +66,28 @@
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T024 [P] [US1] Write map generation determinism test in __tests__/unit/map/generator.test.ts
-- [ ] T025 [P] [US1] Write fog of war visibility test in __tests__/unit/map/fog-of-war.test.ts
-- [ ] T026 [P] [US1] Write exploration integration test in __tests__/integration/exploration.test.ts
+- [x] T024 [P] [US1] Write map generation determinism test in __tests__/unit/map/generator.test.ts
+- [x] T025 [P] [US1] Write fog of war visibility test in __tests__/unit/map/fog-of-war.test.ts
+- [x] T026 [P] [US1] Write exploration integration test in __tests__/integration/exploration.test.ts
 
 ### Implementation for User Story 1
 
-- [ ] T027 [US1] Implement recursive backtracker maze generator in src/game/map/generator.ts
-- [ ] T028 [US1] Implement tile type assignment (Empty/Soft/Hard) in src/game/map/generator.ts
-- [ ] T029 [US1] Implement POI placement logic in src/game/map/generator.ts
-- [ ] T030 [US1] Implement enemy spawn placement in src/game/map/generator.ts
-- [ ] T031 [US1] Implement fog of war visibility calculations in src/game/map/fog-of-war.ts
-- [ ] T032 [US1] Implement player entity logic in src/game/entities/player.ts
-- [ ] T033 [US1] Implement centralized input handler in src/game/input/handler.ts
-- [ ] T034 [US1] Implement keyboard bindings for web dev in src/game/input/keyboard.ts
-- [ ] T035 [US1] Implement useInput hook in src/hooks/useInput.ts
-- [ ] T036 [US1] Add MOVE action handling to game reducer in src/game/engine/game-reducer.ts
-- [ ] T037 [US1] Implement MapRenderer with Skia in src/components/game/MapRenderer.tsx
-- [ ] T038 [US1] Implement viewport culling in MapRenderer for performance
-- [ ] T039 [US1] Implement DPadControls component in src/components/game/DPadControls.tsx
-- [ ] T040 [US1] Implement camera centering on player in MapRenderer
-- [ ] T041 [US1] Wire up GameScreen with MapRenderer, DPadControls, and GameContext
-- [ ] T042 [US1] Connect Hub Campaign button to GameScreen navigation
+- [x] T027 [US1] Implement recursive backtracker maze generator in src/game/map/generator.ts
+- [x] T028 [US1] Implement tile type assignment (Empty/Soft/Hard) in src/game/map/generator.ts
+- [x] T029 [US1] Implement POI placement logic in src/game/map/generator.ts
+- [x] T030 [US1] Implement enemy spawn placement in src/game/map/generator.ts
+- [x] T031 [US1] Implement fog of war visibility calculations in src/game/map/fog-of-war.ts
+- [x] T032 [US1] Implement player entity logic in src/game/entities/player.ts
+- [x] T033 [US1] Implement centralized input handler in src/game/input/handler.ts
+- [x] T034 [US1] Implement keyboard bindings for web dev in src/game/input/keyboard.ts
+- [x] T035 [US1] Implement useInput hook in src/hooks/useInput.ts
+- [x] T036 [US1] Add MOVE action handling to game reducer in src/game/engine/game-reducer.ts
+- [x] T037 [US1] Implement MapRenderer with Skia in src/components/game/MapRenderer.tsx
+- [x] T038 [US1] Implement viewport culling in MapRenderer for performance
+- [x] T039 [US1] Implement DPadControls component in src/components/game/DPadControls.tsx
+- [x] T040 [US1] Implement camera centering on player in MapRenderer
+- [x] T041 [US1] Wire up GameScreen with MapRenderer, DPadControls, and GameContext
+- [x] T042 [US1] Connect Hub Campaign button to GameScreen navigation
 
 **Checkpoint**: User Story 1 complete - player can explore map with D-pad, fog reveals, time consumed
 
