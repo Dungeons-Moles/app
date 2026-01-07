@@ -1,6 +1,7 @@
 /**
- * T047-T051: Combat resolver for PvE Dungeon Crawler
+ * T047-T051, T110: Combat resolver for PvE Dungeon Crawler
  * Pure function resolver for deterministic auto-combat
+ * Integrates boss traits (T102-T109)
  * @see specs/001-pve-dungeon-crawler/research.md R2
  * @see specs/001-pve-dungeon-crawler/spec.md FR-010 to FR-017
  */
@@ -12,6 +13,7 @@ import type {
   CombatAction,
   CombatActionResult,
   StatusEffects,
+  BossId,
 } from '../engine/types';
 import {
   CombatPhase,
@@ -20,6 +22,13 @@ import {
 import { GAME_CONSTANTS } from '../engine/constants';
 import { SeededRNG } from '../engine/rng';
 import { calculateDamage, applyDamage, isDefeated } from './damage';
+import {
+  executeBossTrait,
+  checkEldritchMolePhases,
+  resetBossPhaseState,
+  resetStatusReflectionFlag,
+  isBoss,
+} from '../entities/bosses';
 
 /**
  * Input for creating combat state
@@ -28,6 +37,8 @@ export interface CombatResolverInput {
   player: CombatantState;
   enemy: CombatantState;
   seed: number;
+  /** Optional boss ID if fighting a boss (enables boss traits) */
+  bossId?: BossId;
 }
 
 /**
@@ -46,14 +57,14 @@ export function createCombatState(input: CombatResolverInput): CombatState {
 }
 
 /**
- * T048-T051: Resolve combat to completion
+ * T048-T051, T110: Resolve combat to completion
  * Pure function that runs combat from start to finish
  *
  * Combat flow per research.md R2:
- * 1. Battle Start - execute Battle Start effects
- * 2. Turn Start - execute Turn Start effects, increment turn counter
+ * 1. Battle Start - execute Battle Start effects (including boss traits)
+ * 2. Turn Start - execute Turn Start effects (boss traits like Obsidian Golem, Drill Sergeant)
  * 3. Determine Order - higher SPEED attacks first
- * 4. Execute Attacks - calculate damage, apply, check death
+ * 4. Execute Attacks - calculate damage, apply, check death, check boss phases
  * 5. Turn End - apply end-of-turn effects (status decay)
  * 6. Loop until one combatant dies
  * 7. Battle End - set result
@@ -61,9 +72,15 @@ export function createCombatState(input: CombatResolverInput): CombatState {
 export function resolveCombat(input: CombatResolverInput): CombatState {
   let state = createCombatState(input);
   const rng = new SeededRNG(input.seed);
+  const bossId = input.bossId;
+
+  // Reset boss phase state for new combat
+  if (bossId) {
+    resetBossPhaseState();
+  }
 
   // Phase 1: Battle Start
-  state = executeBattleStart(state, rng);
+  state = executeBattleStart(state, rng, bossId);
 
   // Check for immediate death (from Battle Start effects)
   if (checkCombatEnd(state)) {
@@ -74,7 +91,7 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
   const MAX_TURNS = 100; // Safety limit
   while (state.turn < MAX_TURNS && !state.result) {
     // Phase 2: Turn Start
-    state = executeTurnStart(state, rng);
+    state = executeTurnStart(state, rng, bossId);
 
     // Check for death from Turn Start effects
     if (checkCombatEnd(state)) {
@@ -82,7 +99,7 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
     }
 
     // Phase 3-4: Execute attacks in SPEED order
-    state = executeAttackPhase(state, rng);
+    state = executeAttackPhase(state, rng, bossId);
 
     // Check for death
     if (checkCombatEnd(state)) {
@@ -90,7 +107,7 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
     }
 
     // Phase 5: Turn End
-    state = executeTurnEnd(state, rng);
+    state = executeTurnEnd(state, rng, bossId);
 
     // Check for death from Turn End effects
     if (checkCombatEnd(state)) {
@@ -103,10 +120,15 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
 }
 
 /**
- * T049: Execute Battle Start phase
+ * T049, T110: Execute Battle Start phase
  * Effects that trigger at BATTLE_START timing
+ * Executes boss traits like Broodmother (3 strikes) and Mad Miner (mirror item)
  */
-function executeBattleStart(state: CombatState, rng: SeededRNG): CombatState {
+function executeBattleStart(
+  state: CombatState,
+  rng: SeededRNG,
+  bossId?: BossId
+): CombatState {
   state = { ...state, phase: CombatPhase.BattleStart };
 
   // Log Battle Start phase
@@ -120,31 +142,87 @@ function executeBattleStart(state: CombatState, rng: SeededRNG): CombatState {
     rngValues: [],
   });
 
-  // TODO: Execute Battle Start effects from items/traits/itemsets
-  // For now, basic implementation without special effects
+  // T110: Execute boss BATTLE_START traits
+  if (bossId) {
+    const traitResult = executeBossTrait(state, bossId, 'BATTLE_START');
+    if (traitResult.triggered) {
+      state = traitResult.state;
+
+      // Log boss trait activation
+      state = addLogEntry(state, {
+        turn: 0,
+        timing: 'BATTLE_START',
+        actor: 'enemy',
+        action: 'TRIGGER_TRAIT',
+        target: 'none',
+        result: { effectName: traitResult.effectName },
+        rngValues: [],
+      });
+    }
+  }
+
+  // TODO: Execute Battle Start effects from items/itemsets
 
   return state;
 }
 
 /**
- * Execute Turn Start phase
+ * T110: Execute Turn Start phase
+ * Executes boss traits like Obsidian Golem (+3 Armor), Gas Anomaly (2 damage),
+ * Drill Sergeant (+2 ATK), and resets Crystal Mimic reflection flag
  */
-function executeTurnStart(state: CombatState, rng: SeededRNG): CombatState {
+function executeTurnStart(
+  state: CombatState,
+  rng: SeededRNG,
+  bossId?: BossId
+): CombatState {
   state = {
     ...state,
     turn: state.turn + 1,
     phase: CombatPhase.TurnStart,
   };
 
-  // TODO: Execute Turn Start effects (e.g., Obsidian Golem regen, Drill Sergeant ATK gain)
+  // T110: Execute boss TURN_START traits
+  if (bossId) {
+    // Reset Crystal Mimic reflection flag each turn
+    if (bossId === 'CRYSTAL_MIMIC') {
+      resetStatusReflectionFlag();
+    }
+
+    const traitResult = executeBossTrait(state, bossId, 'TURN_START');
+    if (traitResult.triggered) {
+      state = traitResult.state;
+
+      // Log boss trait activation
+      state = addLogEntry(state, {
+        turn: state.turn,
+        timing: 'TURN_START',
+        actor: 'enemy',
+        action: 'TRIGGER_TRAIT',
+        target: bossId === 'GAS_ANOMALY' ? 'player' : 'enemy',
+        result: {
+          effectName: traitResult.effectName,
+          // Log specific effects
+          ...(bossId === 'OBSIDIAN_GOLEM' && { armorGained: 3 }),
+          ...(bossId === 'GAS_ANOMALY' && { damage: 2 }),
+        },
+        rngValues: [],
+      });
+    }
+  }
 
   return state;
 }
 
 /**
- * T050: Execute attack phase with SPEED ordering
+ * T050, T110: Execute attack phase with SPEED ordering
+ * Checks Eldritch Mole phase transitions after damage
  */
-function executeAttackPhase(state: CombatState, rng: SeededRNG): CombatState {
+function executeAttackPhase(
+  state: CombatState,
+  rng: SeededRNG,
+  bossId?: BossId
+): CombatState {
   // Determine attack order by SPEED
   const playerSpeed = state.player.spd + state.player.bonusSpd;
   const enemySpeed = state.enemy.spd + state.enemy.bonusSpd;
@@ -156,7 +234,7 @@ function executeAttackPhase(state: CombatState, rng: SeededRNG): CombatState {
   if (playerGoesFirst) {
     // Player attacks
     state = { ...state, phase: CombatPhase.PlayerAttack };
-    state = executeAttacks(state, 'player', rng);
+    state = executeAttacks(state, 'player', rng, bossId);
 
     // Check if enemy died
     if (isDefeated(state.enemy)) {
@@ -165,11 +243,11 @@ function executeAttackPhase(state: CombatState, rng: SeededRNG): CombatState {
 
     // Enemy counter-attacks
     state = { ...state, phase: CombatPhase.EnemyAttack };
-    state = executeAttacks(state, 'enemy', rng);
+    state = executeAttacks(state, 'enemy', rng, bossId);
   } else {
     // Enemy attacks first
     state = { ...state, phase: CombatPhase.EnemyAttack };
-    state = executeAttacks(state, 'enemy', rng);
+    state = executeAttacks(state, 'enemy', rng, bossId);
 
     // Check if player died
     if (isDefeated(state.player)) {
@@ -178,23 +256,24 @@ function executeAttackPhase(state: CombatState, rng: SeededRNG): CombatState {
 
     // Player counter-attacks
     state = { ...state, phase: CombatPhase.PlayerAttack };
-    state = executeAttacks(state, 'player', rng);
+    state = executeAttacks(state, 'player', rng, bossId);
   }
 
   return state;
 }
 
 /**
- * Execute all attacks for a combatant (handles multi-strike)
+ * T110: Execute all attacks for a combatant (handles multi-strike)
+ * Checks Eldritch Mole phase transitions after player damages enemy
  */
 function executeAttacks(
   state: CombatState,
   attacker: 'player' | 'enemy',
-  rng: SeededRNG
+  rng: SeededRNG,
+  bossId?: BossId
 ): CombatState {
   const attackerState = attacker === 'player' ? state.player : state.enemy;
   const defenderKey = attacker === 'player' ? 'enemy' : 'player';
-  const defender = state[defenderKey];
 
   const strikes = attackerState.strikesPerTurn;
 
@@ -217,6 +296,25 @@ function executeAttacks(
       ...state,
       [defenderKey]: newDefender,
     };
+
+    // T109: Check Eldritch Mole phases after player damages boss
+    if (bossId === 'ELDRITCH_MOLE' && attacker === 'player' && damageResult.finalDamage > 0) {
+      const phaseResult = checkEldritchMolePhases(state, bossId);
+      if (phaseResult.phaseTriggered) {
+        state = phaseResult.state;
+
+        // Log phase transition
+        state = addLogEntry(state, {
+          turn: state.turn,
+          timing: state.phase,
+          actor: 'enemy',
+          action: 'PHASE_TRIGGER',
+          target: 'enemy',
+          result: { effectName: phaseResult.phaseTriggered },
+          rngValues: [],
+        });
+      }
+    }
 
     // Advance RNG for this attack (for potential future random effects)
     const rngValue = rng.next();
@@ -271,7 +369,11 @@ function executeAttacks(
  * Execute Turn End phase
  * Handles status effect decay
  */
-function executeTurnEnd(state: CombatState, rng: SeededRNG): CombatState {
+function executeTurnEnd(
+  state: CombatState,
+  rng: SeededRNG,
+  bossId?: BossId
+): CombatState {
   state = { ...state, phase: CombatPhase.TurnEnd };
 
   // Decay Chill (remove 1 stack from each combatant)
