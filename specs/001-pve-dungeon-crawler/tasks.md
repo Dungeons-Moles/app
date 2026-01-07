@@ -304,8 +304,8 @@
 - [x] T136 Optimize MapRenderer for 60 FPS (sprite caching, batching)
 - [x] T137 [P] Verify all combat determinism tests pass with fixed seeds
 - [x] T138 [P] Run full integration test suite
-- [ ] T139 Update quickstart.md with final testing instructions
-- [ ] T140 Final code review for Constitution compliance
+- [x] T139 Update quickstart.md with final testing instructions
+- [x] T140 Final code review for Constitution compliance
 
 ---
 
