@@ -1,20 +1,27 @@
+// Polyfills must be imported first
+import './src/polyfills';
+
+import React, { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import * as ScreenOrientation from 'expo-screen-orientation';
+import { WalletProvider } from './src/contexts/WalletContext';
+import { ProfileProvider } from './src/contexts/ProfileContext';
+import { AppNavigator } from './src/navigation';
 
 export default function App() {
+  useEffect(() => {
+    ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
+  }, []);
+
   return (
-    <View style={styles.container}>
-      <Text>Open up App.tsx to start working on your app!</Text>
-      <StatusBar style="auto" />
-    </View>
+    <SafeAreaProvider>
+      <WalletProvider>
+        <ProfileProvider>
+          <StatusBar style="light" hidden />
+          <AppNavigator />
+        </ProfileProvider>
+      </WalletProvider>
+    </SafeAreaProvider>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
