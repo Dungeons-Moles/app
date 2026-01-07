@@ -36,6 +36,9 @@ import {
   markPOIDiscovered,
   findPOIAtPosition,
 } from '../entities/pois';
+import { moveEnemiesNight, isWithinSightRange } from '../map/pathfinding';
+import { SeededRNG } from './rng';
+import { SIGHT_RADIUS } from './constants';
 
 // ============================================================================
 // Game Actions
@@ -294,6 +297,11 @@ function handleMove(state: GameState, direction: Direction): GameState {
         activePOI: interaction,
       };
     }
+  }
+
+  // T133: Move enemies during Night phase
+  if (newState.time.phase === TimePhase.Night) {
+    newState = handleNightEnemyMovement(newState);
   }
 
   return newState;
@@ -684,6 +692,105 @@ function handleReturnToMenu(state: GameState): GameState {
     combat: null,
     activePOI: null,
   };
+}
+
+// ============================================================================
+// Night Enemy Movement (T133)
+// ============================================================================
+
+/**
+ * Handle enemy movement during Night phase.
+ * Enemies within sight range move toward the player.
+ * If an enemy reaches the player tile, combat triggers.
+ */
+function handleNightEnemyMovement(state: GameState): GameState {
+  const playerPos = state.player.position;
+  const rng = new SeededRNG(state.rngState);
+
+  // Filter enemies within Night sight range
+  const enemiesInRange = state.map.enemies.filter(enemy =>
+    isWithinSightRange(enemy.position, playerPos, SIGHT_RADIUS.night)
+  );
+
+  // If no enemies in range, no movement needed
+  if (enemiesInRange.length === 0) {
+    return state;
+  }
+
+  // Create a map with only enemies in range for movement
+  const mapForPathfinding = {
+    ...state.map,
+    enemies: enemiesInRange,
+  };
+
+  // Move enemies toward player
+  const { updatedEnemies, combatTriggered } = moveEnemiesNight(
+    mapForPathfinding,
+    playerPos,
+    rng
+  );
+
+  // Merge updated enemy positions back into full enemy list
+  const updatedEnemyMap = new Map(updatedEnemies.map(e => [e.id, e]));
+  const finalEnemies = state.map.enemies.map(enemy =>
+    updatedEnemyMap.get(enemy.id) || enemy
+  );
+
+  // Update RNG state
+  const newRngState = rng.getState();
+
+  // Create new state with updated enemies
+  let newState: GameState = {
+    ...state,
+    map: {
+      ...state.map,
+      enemies: finalEnemies,
+    },
+    rngState: newRngState,
+  };
+
+  // If an enemy reached the player, trigger combat
+  if (combatTriggered) {
+    const attackingEnemy = finalEnemies.find(e => e.id === combatTriggered);
+    if (attackingEnemy) {
+      // Create player combatant state from current player
+      const playerCombatant: CombatantState = {
+        name: 'Player',
+        emoji: '🦦',
+        isPlayer: true,
+        maxHp: newState.player.stats.maxHp,
+        hp: newState.player.stats.hp,
+        atk: newState.player.stats.atk,
+        arm: newState.player.stats.arm,
+        spd: newState.player.stats.spd,
+        dig: newState.player.stats.dig,
+        bonusAtk: 0,
+        bonusArm: 0,
+        bonusSpd: 0,
+        statusEffects: { ...newState.player.statusEffects },
+        strikesPerTurn: getPlayerStrikesPerTurn(newState),
+        ignoresArmor: hasArmorIgnore(newState),
+      };
+
+      // Create enemy combatant state
+      const enemyCombatant: CombatantState = createEnemyCombatant(attackingEnemy);
+
+      // Create initial combat state
+      const combatState = createCombatState({
+        player: playerCombatant,
+        enemy: enemyCombatant,
+        seed: newState.rngState,
+      });
+
+      return {
+        ...newState,
+        phase: GamePhase.Combat,
+        combat: combatState,
+      };
+    }
+  }
+
+  return newState;
 }
 
 // ============================================================================
