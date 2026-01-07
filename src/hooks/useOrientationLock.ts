@@ -47,7 +47,7 @@ export function useOrientationLock(orientation: OrientationLockType = 'landscape
         }
       } catch (error) {
         // Silently fail - orientation lock is a nice-to-have
-        console.warn('Failed to lock orientation:', error);
+        // Silently fail - orientation lock is a nice-to-have
       }
     }
 
