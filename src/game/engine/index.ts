@@ -6,8 +6,8 @@
  * - Types: All game state types and interfaces
  * - Constants: Game configuration values
  * - RNG: Seeded random number generator
- * - State Machine: (future) Game phase transitions
- * - Game Reducer: (future) State mutation logic
+ * - State Machine: Game phase transitions
+ * - Game Reducer: State mutation logic
  */
 
 // Types
@@ -67,8 +67,19 @@ export {
 // RNG
 export { SeededRNG } from './rng';
 
-// State Machine (to be implemented)
-// export { ... } from './state-machine';
+// State Machine
+export {
+  isValidTransition,
+  canEnterCombat,
+  canInteractWithPOI,
+  canTriggerBoss,
+  canReturnFromCombat,
+  canReturnFromBossFight,
+  canAchieveVictory,
+  canSufferDefeat,
+  canReturnToMenu,
+  canTransition,
+} from './state-machine';
 
-// Game Reducer (to be implemented)
-// export { ... } from './game-reducer';
+// Game Reducer
+export { gameReducer, type GameAction } from './game-reducer';

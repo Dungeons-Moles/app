@@ -8,13 +8,15 @@ type GameScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Game'>;
 };
 
+const SAFE_AREA_EDGES = ['left', 'right'] as const;
+
 /**
  * GameScreen - Container for exploration gameplay
  * Displays the dungeon map and D-pad controls in landscape orientation
  */
 export function GameScreen({ navigation }: GameScreenProps) {
   return (
-    <SafeAreaView style={styles.container} edges={['left', 'right']}>
+    <SafeAreaView style={styles.container} edges={SAFE_AREA_EDGES}>
       <View style={styles.content}>
         {/* Map Placeholder */}
         <View style={styles.mapArea}>

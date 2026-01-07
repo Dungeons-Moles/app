@@ -8,13 +8,15 @@ type CombatScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Combat'>;
 };
 
+const SAFE_AREA_EDGES = ['left', 'right'] as const;
+
 /**
  * CombatScreen - Container for combat gameplay
  * Displays the combat arena, player/enemy panels, and combat log in landscape orientation
  */
 export function CombatScreen({ navigation }: CombatScreenProps) {
   return (
-    <SafeAreaView style={styles.container} edges={['left', 'right']}>
+    <SafeAreaView style={styles.container} edges={SAFE_AREA_EDGES}>
       <View style={styles.content}>
         {/* Player Panel Placeholder */}
         <View style={styles.sidePanel}>
