@@ -57,7 +57,7 @@ export function StatsPanel({ stats }: StatsPanelProps) {
           color="#87CEEB"
         />
         <StatRow
-          emoji="💨"
+          emoji="⚡"
           label="SPD"
           value={stats.spd}
           color="#98FB98"

@@ -198,22 +198,22 @@
 
 ### Implementation for User Story 5
 
-- [ ] T086 [US5] Implement POI interaction system in src/game/entities/pois.ts
-- [ ] T087 [US5] Implement Supply Cache interaction (pick 1 of 3 Common items)
-- [ ] T088 [US5] Implement Tool Crate interaction (pick 1 of 3 Tools)
-- [ ] T089 [US5] Implement Mole Den interaction (Night: skip to Day, restore HP)
-- [ ] T090 [US5] Implement Rest Alcove interaction (Night: skip to Day, restore 10 HP)
-- [ ] T091 [US5] Implement Survey Beacon interaction (reveal radius 13)
-- [ ] T092 [US5] Implement Seismic Scanner interaction (choose POI type to reveal)
-- [ ] T093 [US5] Implement Rail Waypoint fast travel system
-- [ ] T094 [US5] Implement Smuggler Hatch shop interaction
-- [ ] T095 [US5] Implement Tool Oil Rack interaction (+1 ATK/ARM/DIG)
-- [ ] T096 [US5] Implement Rusty Anvil forge mod system
-- [ ] T097 [US5] Implement Crusher Golem fusion (Common->Gilded->Diamond)
-- [ ] T098 [US5] Implement Geode Vault interaction (pick 1 of 3 Heroic items)
-- [ ] T099 [US5] Add INTERACT_POI, SELECT_POI_OPTION, CLOSE_POI actions to reducer
-- [ ] T100 [US5] Implement POI interaction modal/overlay UI component
-- [ ] T101 [US5] Wire up POI interactions to GameScreen
+- [x] T086 [US5] Implement POI interaction system in src/game/entities/pois.ts
+- [x] T087 [US5] Implement Supply Cache interaction (pick 1 of 3 Common items)
+- [x] T088 [US5] Implement Tool Crate interaction (pick 1 of 3 Tools)
+- [x] T089 [US5] Implement Mole Den interaction (Night: skip to Day, restore HP)
+- [x] T090 [US5] Implement Rest Alcove interaction (Night: skip to Day, restore 10 HP)
+- [x] T091 [US5] Implement Survey Beacon interaction (reveal radius 13)
+- [x] T092 [US5] Implement Seismic Scanner interaction (choose POI type to reveal)
+- [x] T093 [US5] Implement Rail Waypoint fast travel system
+- [x] T094 [US5] Implement Smuggler Hatch shop interaction
+- [x] T095 [US5] Implement Tool Oil Rack interaction (+1 ATK/ARM/DIG)
+- [x] T096 [US5] Implement Rusty Anvil forge mod system
+- [x] T097 [US5] Implement Crusher Golem fusion (Common->Gilded->Diamond)
+- [x] T098 [US5] Implement Geode Vault interaction (pick 1 of 3 Heroic items)
+- [x] T099 [US5] Add INTERACT_POI, SELECT_POI_OPTION, CLOSE_POI actions to reducer
+- [x] T100 [US5] Implement POI interaction modal/overlay UI component
+- [x] T101 [US5] Wire up POI interactions to GameScreen
 
 **Checkpoint**: User Story 5 complete - all 12 POI types functional
 
@@ -227,17 +227,17 @@
 
 ### Implementation for User Story 6
 
-- [ ] T102 [US6] Implement boss entity logic in src/game/entities/bosses.ts
-- [ ] T103 [US6] Implement Broodmother trait (strikes 3 times per turn)
-- [ ] T104 [US6] Implement Obsidian Golem trait (Turn Start +3 Armor)
-- [ ] T105 [US6] Implement Gas Anomaly trait (Turn Start 2 damage ignoring Armor)
-- [ ] T106 [US6] Implement Mad Miner trait (Battle Start mirror Common item)
-- [ ] T107 [US6] Implement Drill Sergeant trait (Turn Start +2 ATK)
-- [ ] T108 [US6] Implement Crystal Mimic trait (first status reflects to player)
-- [ ] T109 [US6] Implement Eldritch Mole phase system (75%/50%/25% thresholds)
-- [ ] T110 [US6] Integrate boss traits into combat resolver
-- [ ] T111 [US6] Implement BossTooltip component in src/components/game/BossTooltip.tsx
-- [ ] T112 [US6] Wire boss preview tap to show BossTooltip
+- [x] T102 [US6] Implement boss entity logic in src/game/entities/bosses.ts
+- [x] T103 [US6] Implement Broodmother trait (strikes 3 times per turn)
+- [x] T104 [US6] Implement Obsidian Golem trait (Turn Start +3 Armor)
+- [x] T105 [US6] Implement Gas Anomaly trait (Turn Start 2 damage ignoring Armor)
+- [x] T106 [US6] Implement Mad Miner trait (Battle Start mirror Common item)
+- [x] T107 [US6] Implement Drill Sergeant trait (Turn Start +2 ATK)
+- [x] T108 [US6] Implement Crystal Mimic trait (first status reflects to player)
+- [x] T109 [US6] Implement Eldritch Mole phase system (75%/50%/25% thresholds)
+- [x] T110 [US6] Integrate boss traits into combat resolver
+- [x] T111 [US6] Implement BossTooltip component in src/components/game/BossTooltip.tsx
+- [x] T112 [US6] Wire boss preview tap to show BossTooltip
 
 **Checkpoint**: User Story 6 complete - all 7 bosses functional with correct traits
 
@@ -253,18 +253,18 @@
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T113 [P] [US7] Write status effects tests in __tests__/unit/combat/status-effects.test.ts
+- [x] T113 [P] [US7] Write status effects tests in __tests__/unit/combat/status-effects.test.ts
 
 ### Implementation for User Story 7
 
-- [ ] T114 [US7] Implement Chill effect (halve ATK, -1 stack at turn end) in src/game/combat/status-effects.ts
-- [ ] T115 [US7] Implement Shrapnel effect (reflect damage when struck, clear at turn end)
-- [ ] T116 [US7] Implement Rust effect (reduce ARM by stacks)
-- [ ] T117 [US7] Implement status effect stacking logic
-- [ ] T118 [US7] Integrate status effects into combat resolver
-- [ ] T119 [US7] Implement enemy traits that apply statuses in src/game/combat/traits.ts
-- [ ] T120 [US7] Implement status effect icons display in combat UI
-- [ ] T121 [US7] Add status icons to EnemyPanel and PlayerPanel
+- [x] T114 [US7] Implement Chill effect (halve ATK, -1 stack at turn end) in src/game/combat/status-effects.ts
+- [x] T115 [US7] Implement Shrapnel effect (reflect damage when struck, clear at turn end)
+- [x] T116 [US7] Implement Rust effect (reduce ARM by stacks)
+- [x] T117 [US7] Implement status effect stacking logic
+- [x] T118 [US7] Integrate status effects into combat resolver
+- [x] T119 [US7] Implement enemy traits that apply statuses in src/game/combat/traits.ts
+- [x] T120 [US7] Implement status effect icons display in combat UI
+- [x] T121 [US7] Add status icons to EnemyPanel and PlayerPanel
 
 **Checkpoint**: User Story 7 complete - all status effects functional
 
@@ -278,16 +278,16 @@
 
 ### Implementation for User Story 8
 
-- [ ] T122 [US8] Finalize StatsPanel layout (HP/ATK/ARM/SPD/GOLD with emojis)
-- [ ] T123 [US8] Finalize TopBar layout (week progress + boss preview)
-- [ ] T124 [US8] Finalize DPadControls layout (bottom-left positioning)
-- [ ] T125 [US8] Implement EnemyPanel component in src/components/combat/EnemyPanel.tsx
-- [ ] T126 [US8] Implement PlayerPanel component in src/components/combat/PlayerPanel.tsx
-- [ ] T127 [US8] Implement CombatLog display in src/components/combat/CombatLog.tsx
-- [ ] T128 [US8] Finalize CombatScreen layout (enemy left, player right, arena center)
-- [ ] T129 [US8] Add keyboard input support (arrows/WASD) for web development
-- [ ] T130 [US8] Implement responsive landscape-only orientation lock
-- [ ] T131 [US8] Polish all tooltip styling for consistency
+- [x] T122 [US8] Finalize StatsPanel layout (HP/ATK/ARM/SPD/GOLD with emojis)
+- [x] T123 [US8] Finalize TopBar layout (week progress + boss preview)
+- [x] T124 [US8] Finalize DPadControls layout (bottom-left positioning)
+- [x] T125 [US8] Implement EnemyPanel component in src/components/combat/EnemyPanel.tsx
+- [x] T126 [US8] Implement PlayerPanel component in src/components/combat/PlayerPanel.tsx
+- [x] T127 [US8] Implement CombatLog display in src/components/combat/CombatLog.tsx
+- [x] T128 [US8] Finalize CombatScreen layout (enemy left, player right, arena center)
+- [x] T129 [US8] Add keyboard input support (arrows/WASD) for web development
+- [x] T130 [US8] Implement responsive landscape-only orientation lock
+- [x] T131 [US8] Polish all tooltip styling for consistency
 
 **Checkpoint**: User Story 8 complete - full UI layout matching spec
 

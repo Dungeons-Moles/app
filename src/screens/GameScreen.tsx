@@ -11,11 +11,11 @@ import { RootStackParamList } from '../navigation';
 import { useGame, GamePhase } from '../contexts/GameContext';
 import { MapRenderer } from '../components/game/MapRenderer';
 import { DPadControls } from '../components/game/DPadControls';
-import { TopBar } from '../components/game';
+import { TopBar, StatsPanel, InventoryPanel } from '../components/game';
 import { useDirectionInput } from '../hooks/useInput';
+import { useLandscapeLock } from '../hooks/useOrientationLock';
 import { Direction } from '../game/input/types';
 import { TileType } from '../game/map/types';
-import { TimePhase } from '../game/engine/types';
 
 type GameScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Game'>;
@@ -30,6 +30,9 @@ const SAFE_AREA_EDGES = ['left', 'right'] as const;
  */
 export function GameScreen({ navigation }: GameScreenProps) {
   const { state, dispatch } = useGame();
+
+  // Lock to landscape orientation (FR-044)
+  useLandscapeLock();
 
   // Handle direction input
   const handleDirection = useCallback(
@@ -98,60 +101,43 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
   return (
     <SafeAreaView style={styles.container} edges={SAFE_AREA_EDGES}>
-      {/* Top Bar with week progress and boss preview (T072) */}
+      {/* Top Bar with week progress and boss preview */}
       {state?.time && <TopBar time={state.time} />}
 
       <View style={styles.content}>
-        {/* Map Area */}
+        {/* Map Area (center) */}
         <View style={styles.mapArea}>
           <MapRenderer
             map={state.map}
             playerPosition={state.player.position}
           />
-        </View>
 
-        {/* Side Panel - Controls and Stats */}
-        <View style={styles.sidePanel}>
-          {/* Stats Panel */}
-          <View style={styles.statsPanel}>
-            <Text style={styles.statsTitle}>Stats</Text>
-            <Text style={styles.statRow}>
-              <Text style={styles.statEmoji}>❤️</Text> {state.player.stats.hp}/{state.player.stats.maxHp}
-            </Text>
-            <Text style={styles.statRow}>
-              <Text style={styles.statEmoji}>⚔️</Text> {state.player.stats.atk}
-            </Text>
-            <Text style={styles.statRow}>
-              <Text style={styles.statEmoji}>🛡️</Text> {state.player.stats.arm}
-            </Text>
-            <Text style={styles.statRow}>
-              <Text style={styles.statEmoji}>⚡</Text> {state.player.stats.spd}
-            </Text>
-            <Text style={styles.statRow}>
-              <Text style={styles.statEmoji}>💰</Text> {state.player.stats.gold}
-            </Text>
-          </View>
-
-          {/* Time Display */}
-          <View style={styles.timePanel}>
-            <Text style={styles.timePhase}>
-              {state.time.phase === TimePhase.Day ? '☀️ Day' : '🌙 Night'} {state.time.cycle}
-            </Text>
-            <Text style={styles.timeMoves}>
-              Moves: {state.time.movesRemaining}
-            </Text>
-          </View>
-
-          {/* D-Pad Controls */}
-          <View style={styles.controlsArea}>
+          {/* D-Pad Controls (bottom-left overlay per FR-002) */}
+          <View style={styles.dpadOverlay}>
             <DPadControls
               onDirection={handleDirection}
               disabledDirections={disabledDirections}
               size={120}
             />
           </View>
+        </View>
 
-          {/* Back Button */}
+        {/* Side Panel (right) - Stats and Inventory */}
+        <View style={styles.sidePanel}>
+          {/* Stats Panel (top-right per FR-045) */}
+          <StatsPanel stats={state.player.stats} />
+
+          {/* Inventory Panel */}
+          <View style={styles.inventoryContainer}>
+            <InventoryPanel
+              inventory={state.player.inventory}
+              equippedTool={state.player.equippedTool}
+              inventoryCapacity={state.player.inventoryCapacity}
+              activeItemsets={state.player.activeItemsets}
+            />
+          </View>
+
+          {/* Exit Button */}
           <TouchableOpacity
             style={styles.backButton}
             onPress={handleBack}
@@ -186,62 +172,32 @@ const styles = StyleSheet.create({
   mapArea: {
     flex: 3,
     backgroundColor: '#000000',
+    position: 'relative',
+  },
+  dpadOverlay: {
+    position: 'absolute',
+    bottom: 16,
+    left: 16,
   },
   sidePanel: {
     flex: 1,
     backgroundColor: '#151518',
     borderLeftWidth: 1,
     borderLeftColor: '#2a2a30',
-    paddingVertical: 12,
+    paddingVertical: 8,
     paddingHorizontal: 8,
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
+    gap: 8,
   },
-  statsPanel: {
-    backgroundColor: '#0a0a0f',
-    borderWidth: 1,
-    borderColor: '#2a2a30',
-    padding: 8,
-  },
-  statsTitle: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#888888',
-    marginBottom: 6,
-    textAlign: 'center',
-  },
-  statRow: {
-    fontSize: 12,
-    color: '#cccccc',
-    marginVertical: 2,
-  },
-  statEmoji: {
-    fontSize: 12,
-  },
-  timePanel: {
-    backgroundColor: '#0a0a0f',
-    borderWidth: 1,
-    borderColor: '#2a2a30',
-    padding: 8,
-    alignItems: 'center',
-  },
-  timePhase: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#cccccc',
-  },
-  timeMoves: {
-    fontSize: 11,
-    color: '#888888',
-    marginTop: 2,
-  },
-  controlsArea: {
-    alignItems: 'center',
-    justifyContent: 'center',
+  inventoryContainer: {
+    flex: 1,
+    minHeight: 100,
   },
   backButton: {
     backgroundColor: '#1a1215',
     borderWidth: 1,
     borderColor: '#3a2020',
+    borderRadius: 6,
     paddingVertical: 8,
     paddingHorizontal: 12,
     alignItems: 'center',
