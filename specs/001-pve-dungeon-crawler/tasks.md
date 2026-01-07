@@ -253,18 +253,18 @@
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T113 [P] [US7] Write status effects tests in __tests__/unit/combat/status-effects.test.ts
+- [x] T113 [P] [US7] Write status effects tests in __tests__/unit/combat/status-effects.test.ts
 
 ### Implementation for User Story 7
 
-- [ ] T114 [US7] Implement Chill effect (halve ATK, -1 stack at turn end) in src/game/combat/status-effects.ts
-- [ ] T115 [US7] Implement Shrapnel effect (reflect damage when struck, clear at turn end)
-- [ ] T116 [US7] Implement Rust effect (reduce ARM by stacks)
-- [ ] T117 [US7] Implement status effect stacking logic
-- [ ] T118 [US7] Integrate status effects into combat resolver
-- [ ] T119 [US7] Implement enemy traits that apply statuses in src/game/combat/traits.ts
-- [ ] T120 [US7] Implement status effect icons display in combat UI
-- [ ] T121 [US7] Add status icons to EnemyPanel and PlayerPanel
+- [x] T114 [US7] Implement Chill effect (halve ATK, -1 stack at turn end) in src/game/combat/status-effects.ts
+- [x] T115 [US7] Implement Shrapnel effect (reflect damage when struck, clear at turn end)
+- [x] T116 [US7] Implement Rust effect (reduce ARM by stacks)
+- [x] T117 [US7] Implement status effect stacking logic
+- [x] T118 [US7] Integrate status effects into combat resolver
+- [x] T119 [US7] Implement enemy traits that apply statuses in src/game/combat/traits.ts
+- [x] T120 [US7] Implement status effect icons display in combat UI
+- [x] T121 [US7] Add status icons to EnemyPanel and PlayerPanel
 
 **Checkpoint**: User Story 7 complete - all status effects functional
 
