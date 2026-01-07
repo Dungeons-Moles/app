@@ -3,25 +3,28 @@ import { View, Text, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation';
-import { useGame } from '../contexts/GameContext';
 
 type GameScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Game'>;
 };
 
+/**
+ * GameScreen - Container for exploration gameplay
+ * Displays the dungeon map and D-pad controls in landscape orientation
+ */
 export function GameScreen({ navigation }: GameScreenProps) {
-  const { state } = useGame();
-
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['left', 'right']}>
       <View style={styles.content}>
-        <Text style={styles.title}>Dungeon Crawler</Text>
-        <Text style={styles.phase}>
-          Phase: {state?.phase ?? 'Not Started'}
-        </Text>
-        <Text style={styles.placeholder}>
-          Map and controls will render here
-        </Text>
+        {/* Map Placeholder */}
+        <View style={styles.mapArea}>
+          <Text style={styles.placeholderText}>Map Renderer</Text>
+        </View>
+
+        {/* Controls Placeholder */}
+        <View style={styles.controlsArea}>
+          <Text style={styles.placeholderText}>D-Pad Controls</Text>
+        </View>
       </View>
     </SafeAreaView>
   );
@@ -30,28 +33,27 @@ export function GameScreen({ navigation }: GameScreenProps) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0f0f1a',
+    backgroundColor: '#0a0a0f',
   },
   content: {
     flex: 1,
+    flexDirection: 'row',
+  },
+  mapArea: {
+    flex: 3,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
+    borderRightWidth: 1,
+    borderRightColor: '#2a2a30',
   },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#e0e0e0',
-    marginBottom: 16,
+  controlsArea: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#151518',
   },
-  phase: {
-    fontSize: 16,
-    color: '#a0a0a0',
-    marginBottom: 8,
-  },
-  placeholder: {
+  placeholderText: {
     fontSize: 14,
-    color: '#666',
-    fontStyle: 'italic',
+    color: '#555555',
   },
 });

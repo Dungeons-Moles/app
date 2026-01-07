@@ -3,28 +3,33 @@ import { View, Text, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation';
-import { useGame } from '../contexts/GameContext';
 
 type CombatScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Combat'>;
 };
 
+/**
+ * CombatScreen - Container for combat gameplay
+ * Displays the combat arena, player/enemy panels, and combat log in landscape orientation
+ */
 export function CombatScreen({ navigation }: CombatScreenProps) {
-  const { state } = useGame();
-
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['left', 'right']}>
       <View style={styles.content}>
-        <Text style={styles.title}>Combat</Text>
-        <Text style={styles.phase}>
-          Phase: {state?.combat?.phase ?? 'No Combat'}
-        </Text>
-        <Text style={styles.turn}>
-          Turn: {state?.combat?.turn ?? 0}
-        </Text>
-        <Text style={styles.placeholder}>
-          Combat arena will render here
-        </Text>
+        {/* Player Panel Placeholder */}
+        <View style={styles.sidePanel}>
+          <Text style={styles.placeholderText}>Player Panel</Text>
+        </View>
+
+        {/* Combat Arena Placeholder */}
+        <View style={styles.arenaArea}>
+          <Text style={styles.placeholderText}>Combat Arena</Text>
+        </View>
+
+        {/* Enemy Panel Placeholder */}
+        <View style={styles.sidePanel}>
+          <Text style={styles.placeholderText}>Enemy Panel</Text>
+        </View>
       </View>
     </SafeAreaView>
   );
@@ -33,33 +38,27 @@ export function CombatScreen({ navigation }: CombatScreenProps) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#1a0f0f',
+    backgroundColor: '#0a0a0f',
   },
   content: {
     flex: 1,
+    flexDirection: 'row',
+  },
+  sidePanel: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
+    backgroundColor: '#151518',
+    borderColor: '#2a2a30',
+    borderWidth: 1,
   },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#e0e0e0',
-    marginBottom: 16,
+  arenaArea: {
+    flex: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  phase: {
-    fontSize: 16,
-    color: '#a0a0a0',
-    marginBottom: 8,
-  },
-  turn: {
+  placeholderText: {
     fontSize: 14,
-    color: '#808080',
-    marginBottom: 8,
-  },
-  placeholder: {
-    fontSize: 14,
-    color: '#666',
-    fontStyle: 'italic',
+    color: '#555555',
   },
 });
