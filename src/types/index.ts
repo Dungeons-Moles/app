@@ -2,6 +2,20 @@
  * Core types for Dungeons & Moles
  */
 
+// Re-export game types for convenient access
+// Core engine and map types (primary definitions)
+export * from '../game/engine/types';
+export * from '../game/map/types';
+
+// Combat-specific additions (EffectContext, Effect)
+export { EffectContext, Effect } from '../game/combat/types';
+
+// Time-specific constants (PHASE_MOVES, WEEK_PHASES, SIGHT_RADIUS)
+export { PHASE_MOVES, WEEK_PHASES, SIGHT_RADIUS } from '../game/time/types';
+
+// Input types (Direction, InputEvent, DIRECTION_DELTA)
+export * from '../game/input/types';
+
 export interface PlayerProfile {
   id: string;
   walletAddress: string;
