@@ -5,10 +5,17 @@
  * @see specs/001-pve-dungeon-crawler/research.md R3
  */
 
-import type { GameState, CombatResult } from './types';
-import { GamePhase } from './types';
-import { Direction } from '../input/types';
+import type { GameState, CombatResult, TimeState } from './types';
+import { GamePhase, TimePhase } from './types';
+import { Direction, DIRECTION_DELTA } from '../input/types';
 import { isValidTransition } from './state-machine';
+import { GAME_CONSTANTS } from './constants';
+import { TileType, TILE_MOVE_COST } from '../map/types';
+import {
+  consumeMove,
+  advanceTimePhase,
+  shouldTriggerBoss,
+} from '../time/progression';
 
 // ============================================================================
 // Game Actions
@@ -127,20 +134,86 @@ function handleStartGame(state: GameState, seed: number): GameState {
 /**
  * Handles MOVE action.
  * Moves player in direction if valid, consumes time.
+ * @see T066: Add time consumption to MOVE action
  */
-function handleMove(state: GameState, _direction: Direction): GameState {
+function handleMove(state: GameState, direction: Direction): GameState {
   if (state.phase !== GamePhase.Exploration) {
     return state; // Ignore move if not exploring
   }
 
-  // TODO: Implement movement logic
-  // - Check canMoveTo
-  // - Update player position
-  // - Update fog of war
-  // - Consume time (getMoveCost)
-  // - Check for enemy encounters
-  // - Check for time phase transitions
-  return state;
+  // Get target position
+  const delta = DIRECTION_DELTA[direction];
+  const targetX = state.player.position.x + delta.x;
+  const targetY = state.player.position.y + delta.y;
+
+  // Bounds check
+  if (
+    targetX < 0 ||
+    targetX >= state.map.width ||
+    targetY < 0 ||
+    targetY >= state.map.height
+  ) {
+    return state; // Out of bounds
+  }
+
+  // Get tile at target position
+  const targetTile = state.map.tiles[targetY][targetX];
+  const moveCost = TILE_MOVE_COST[targetTile];
+
+  // Cannot move to walls
+  if (moveCost === Infinity) {
+    return state;
+  }
+
+  // Move the player
+  const newPosition = { x: targetX, y: targetY };
+
+  // Consume time for the move
+  const newTime = consumeMove(state.time, moveCost);
+
+  // Check if phase should advance (moves depleted)
+  const advancedTime = advanceTimePhase(newTime);
+
+  // Check if boss should trigger after Night 3
+  if (shouldTriggerBoss(newTime)) {
+    // Boss triggers automatically - transition to boss fight
+    return {
+      ...state,
+      player: { ...state.player, position: newPosition },
+      time: {
+        ...advancedTime,
+        phase: TimePhase.Boss,
+      },
+      phase: GamePhase.BossFight,
+    };
+  }
+
+  // Check for Day transition -> inventory slot growth
+  let newInventoryCapacity = state.player.inventoryCapacity;
+  if (
+    state.time.phase === TimePhase.Night &&
+    advancedTime.phase === TimePhase.Day &&
+    advancedTime.cycle > state.time.cycle
+  ) {
+    // Transitioning from Night to new Day - add inventory slots (T071)
+    newInventoryCapacity = Math.min(
+      state.player.inventoryCapacity + GAME_CONSTANTS.INVENTORY_SLOTS_PER_DAY,
+      GAME_CONSTANTS.MAX_INVENTORY_SLOTS
+    );
+  }
+
+  // TODO: Check for enemy encounters
+  // TODO: Update fog of war
+
+  return {
+    ...state,
+    player: {
+      ...state.player,
+      position: newPosition,
+      inventoryCapacity: newInventoryCapacity,
+    },
+    time: advancedTime,
+  };
 }
 
 /**
@@ -249,6 +322,7 @@ function handleClosePOI(state: GameState): GameState {
 /**
  * Handles TRIGGER_BOSS action.
  * Transitions to BossFight phase at end of week.
+ * @see T067: Add TRIGGER_BOSS action to game reducer
  */
 function handleTriggerBoss(state: GameState): GameState {
   if (!isValidTransition(state.phase, GamePhase.BossFight)) {
@@ -257,10 +331,18 @@ function handleTriggerBoss(state: GameState): GameState {
     );
   }
 
-  // TODO: Create combat state with week boss
+  // Update time to Boss phase
+  const bossTime: TimeState = {
+    ...state.time,
+    phase: TimePhase.Boss,
+    movesRemaining: 0,
+  };
+
+  // TODO: Create combat state with week boss using BOSSES[state.time.weekBoss]
   return {
     ...state,
     phase: GamePhase.BossFight,
+    time: bossTime,
   };
 }
 
