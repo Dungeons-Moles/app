@@ -339,7 +339,7 @@ describe('Itemsets Entity', () => {
     });
 
     it('itemset required items reference valid tool/gear IDs', () => {
-      const validToolIds: ToolId[] = ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8'];
+      const validToolIds: ToolId[] = ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9'];
       const validGearIds: GearId[] = [
         'I1', 'I2', 'I3', 'I4', 'I5', 'I6', 'I7', 'I8', 'I9', 'I10',
         'I11', 'I12', 'I13', 'I14', 'I15', 'I16', 'I17', 'I18', 'I19', 'I20',

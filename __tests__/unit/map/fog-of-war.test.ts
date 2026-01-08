@@ -26,11 +26,11 @@ function createTestMap(
   const fog: FogState[][] = [];
 
   if (!customTiles) {
-    // Default: all empty tunnels
+    // Default: all floor tiles
     for (let y = 0; y < height; y++) {
       tiles[y] = [];
       for (let x = 0; x < width; x++) {
-        tiles[y][x] = TileType.EmptyTunnel;
+        tiles[y][x] = TileType.Floor;
       }
     }
   }
@@ -62,10 +62,15 @@ describe('Fog of War', () => {
 
       const tiles = getTilesInRadius(center, radius);
 
-      // Check that tiles are within Manhattan distance of radius
+      const effectiveRadius = radius + 0.5;
+      const maxDistance = effectiveRadius * effectiveRadius;
+
+      // Check that tiles are within circular radius
       for (const tile of tiles) {
-        const distance = Math.abs(tile.x - center.x) + Math.abs(tile.y - center.y);
-        expect(distance).toBeLessThanOrEqual(radius);
+        const dx = tile.x - center.x;
+        const dy = tile.y - center.y;
+        const distance = dx * dx + dy * dy;
+        expect(distance).toBeLessThanOrEqual(maxDistance);
       }
 
       // Should include center tile
@@ -78,17 +83,22 @@ describe('Fog of War', () => {
       expect(tiles.some((t) => t.x === center.x + radius && t.y === center.y)).toBe(true);
     });
 
-    it('should return tiles in a diamond pattern for radius 2', () => {
+    it('should return tiles in a circle-like pattern for radius 2', () => {
       const center: Position = { x: 5, y: 5 };
       const radius = 2;
 
       const tiles = getTilesInRadius(center, radius);
 
-      // Expected tiles for radius 2 (Manhattan distance):
-      // (5,3), (4,4), (5,4), (6,4), (3,5), (4,5), (5,5), (6,5), (7,5),
-      // (4,6), (5,6), (6,6), (5,7)
-      // Total: 13 tiles
-      expect(tiles.length).toBe(13);
+      // Radius 2 with circular fill (inclusive with rounding)
+      expect(tiles.length).toBe(21);
+      expect(tiles).toEqual(expect.arrayContaining([
+        { x: 5, y: 3 },
+        { x: 7, y: 5 },
+        { x: 6, y: 6 },
+        { x: 4, y: 7 },
+      ]));
+      expect(tiles).not.toContainEqual({ x: 3, y: 3 });
+      expect(tiles).not.toContainEqual({ x: 7, y: 7 });
     });
   });
 
@@ -178,8 +188,11 @@ describe('Fog of War', () => {
 
       // Tiles outside night radius but within day radius should not be visible
       // (unless they were previously revealed)
+      const nightVisibleSet = new Set(
+        getTilesInRadius(playerPos, SIGHT_RADIUS.night).map((t) => `${t.x},${t.y}`)
+      );
       const dayOnlyTiles = getTilesInRadius(playerPos, SIGHT_RADIUS.day).filter(
-        (t) => Math.abs(t.x - playerPos.x) + Math.abs(t.y - playerPos.y) > SIGHT_RADIUS.night
+        (t) => !nightVisibleSet.has(`${t.x},${t.y}`)
       );
 
       for (const tile of dayOnlyTiles) {
@@ -220,7 +233,7 @@ describe('Fog of War', () => {
       }
     });
 
-    it('should not reveal tiles blocked by walls', () => {
+    it('should reveal tiles even when walls are in the way', () => {
       // Create map with a wall barrier
       const map = createTestMap(15, 15);
       // Create vertical wall at x=5
@@ -231,16 +244,15 @@ describe('Fog of War', () => {
       const playerPos: Position = { x: 3, y: 7 };
       const updatedMap = updateFogOfWar(map, playerPos, true);
 
-      // Tiles beyond the wall should remain Hidden
-      // (x > 5 should be blocked)
-      expect(updatedMap.fog[7][6]).toBe(FogState.Hidden);
-      expect(updatedMap.fog[7][7]).toBe(FogState.Hidden);
+      // Tiles beyond the wall should still be Visible
+      expect(updatedMap.fog[7][6]).toBe(FogState.Visible);
+      expect(updatedMap.fog[7][7]).toBe(FogState.Visible);
     });
 
-    it('should reveal initial radius of 7 at game start', () => {
+    it('should reveal initial radius of 6 at game start', () => {
       const map = createTestMap(20, 20);
       const spawnPos: Position = { x: 10, y: 10 };
-      const initialRadius = 7;
+      const initialRadius = 6;
 
       // First visibility update with initial radius
       const tilesInRadius = getTilesInRadius(spawnPos, initialRadius);
@@ -267,34 +279,8 @@ describe('Fog of War', () => {
   });
 
   describe('Visibility with different tile types', () => {
-    it('should see through EmptyTunnel tiles', () => {
+    it('should see through Floor tiles', () => {
       const map = createTestMap(10, 10);
-      const from: Position = { x: 2, y: 5 };
-      const to: Position = { x: 7, y: 5 };
-
-      const result = isLineOfSightClear(map, from, to);
-
-      expect(result).toBe(true);
-    });
-
-    it('should see through SoftEarth tiles', () => {
-      const map = createTestMap(10, 10);
-      map.tiles[5][4] = TileType.SoftEarth;
-      map.tiles[5][5] = TileType.SoftEarth;
-
-      const from: Position = { x: 2, y: 5 };
-      const to: Position = { x: 7, y: 5 };
-
-      const result = isLineOfSightClear(map, from, to);
-
-      expect(result).toBe(true);
-    });
-
-    it('should see through HardRock tiles', () => {
-      const map = createTestMap(10, 10);
-      map.tiles[5][4] = TileType.HardRock;
-      map.tiles[5][5] = TileType.HardRock;
-
       const from: Position = { x: 2, y: 5 };
       const to: Position = { x: 7, y: 5 };
 

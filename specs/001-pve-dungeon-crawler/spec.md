@@ -351,7 +351,7 @@ As a player, I want a clear landscape UI with D-pad controls, stats display, inv
 
 | ID | Name | Emoji | Rarity | Stats | Tags | Effect |
 |----|------|-------|--------|-------|------|--------|
-| T1 | Rusty Pickaxe | ⛏️ | Common | +3 ATK | STONE | - |
+| T1 | Polished Pickaxe | ⛏️ | Common | +3 ATK | STONE | - |
 | T2 | Reinforced Shovel | 🛠️ | Common | +1 ATK, +6 ARM | STONE | - |
 | T3 | Twin Picks | ⛏️⛏️ (stacked) | Common | +1 ATK | SCOUT | Strike twice each turn |
 | T4 | Prospector's Pike | 🗡️ | Common | +2 ATK, +2 DIG | SCOUT | - |
@@ -359,6 +359,9 @@ As a player, I want a clear landscape UI with D-pad controls, stats display, inv
 | T6 | Shadow Burrowblade | 🗡️ | Rare | +2 ATK | SCOUT | On Hit: strikes ignore Armor |
 | T7 | Gemfinder Staff | 🔮 | Heroic | +1 ATK, +1 ARM, +1 DIG | GREED | Gains On-Hit effects from Shards |
 | T8 | Tempest Drill | 🌪️ | Mythic | +0 | SCOUT | Attack equals your DIG |
+| T9 | Rusty Pickaxe | ⛏️ | Common | +1 ATK | STONE | - |
+
+Starter note: Each run begins with the Rusty Pickaxe (T9) equipped.
 
 ### Appendix D: Gear Data Reference
 

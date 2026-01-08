@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -8,7 +8,6 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useWallet } from '../contexts/WalletContext';
 import { useProfile } from '../contexts/ProfileContext';
 import { shortenAddress } from '../utils/storage';
 import { RootStackParamList } from '../navigation';
@@ -18,29 +17,32 @@ type AccountScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Account'>;
 };
 
+// Wallet login disabled: create a local guest profile on startup.
+const GUEST_WALLET_ADDRESS = 'GUEST0000';
+
 export function AccountScreen({ navigation }: AccountScreenProps) {
-  const { wallet, connect, isConnecting, error } = useWallet();
   const { profile, isLoading: isProfileLoading, createProfile } = useProfile();
   const [isCreatingProfile, setIsCreatingProfile] = useState(false);
 
-  const handleConnect = async () => {
-    const result = await connect();
-    if (result && !profile) {
-      setIsCreatingProfile(true);
-      try {
-        await createProfile(result.address);
-      } finally {
-        setIsCreatingProfile(false);
-      }
+  useEffect(() => {
+    if (isProfileLoading || profile || isCreatingProfile) {
+      return;
     }
-  };
+
+    setIsCreatingProfile(true);
+    createProfile(GUEST_WALLET_ADDRESS)
+      .catch((error) => {
+        console.error('Failed to create guest profile:', error);
+      })
+      .finally(() => setIsCreatingProfile(false));
+  }, [createProfile, isCreatingProfile, isProfileLoading, profile]);
 
   const handleContinue = () => {
     navigation.navigate('Hub');
   };
 
-  const isLoading = isConnecting || isProfileLoading || isCreatingProfile;
-  const canContinue = wallet.isConnected && profile;
+  const isLoading = isProfileLoading || isCreatingProfile;
+  const canContinue = Boolean(profile);
 
   return (
     <SafeAreaView style={styles.container} edges={['left', 'right']}>
@@ -59,11 +61,7 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color="#888888" />
               <Text style={styles.loadingText}>
-                {isConnecting
-                  ? 'Connecting wallet...'
-                  : isCreatingProfile
-                  ? 'Creating profile...'
-                  : 'Loading...'}
+                {isCreatingProfile ? 'Creating profile...' : 'Loading...'}
               </Text>
             </View>
           ) : canContinue ? (
@@ -74,7 +72,7 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
                 <View style={styles.walletRow}>
                   <View style={styles.walletDot} />
                   <Text style={styles.walletAddress}>
-                    {shortenAddress(wallet.address || '')}
+                    {shortenAddress(profile?.walletAddress || '')}
                   </Text>
                 </View>
               </View>
@@ -89,21 +87,26 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
             </View>
           ) : (
             <View style={styles.connectContainer}>
-              <Text style={styles.connectTitle}>Begin Your Adventure</Text>
+              <Text style={styles.connectTitle}>Profile unavailable</Text>
               <Text style={styles.connectPrompt}>
-                Connect your Solana wallet to start
+                Create a local profile to continue
               </Text>
 
               <TouchableOpacity
                 style={styles.connectButton}
-                onPress={handleConnect}
+                onPress={() => {
+                  setIsCreatingProfile(true);
+                  createProfile(GUEST_WALLET_ADDRESS)
+                    .catch((error) => {
+                      console.error('Failed to create guest profile:', error);
+                    })
+                    .finally(() => setIsCreatingProfile(false));
+                }}
                 disabled={isLoading}
                 activeOpacity={0.7}
               >
-                <Text style={styles.connectButtonText}>Connect Wallet</Text>
+                <Text style={styles.connectButtonText}>Create Profile</Text>
               </TouchableOpacity>
-
-              {error && <Text style={styles.errorText}>{error}</Text>}
             </View>
           )}
         </View>

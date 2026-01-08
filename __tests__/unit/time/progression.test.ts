@@ -211,12 +211,12 @@ describe('Time Progression (T060)', () => {
   });
 
   describe('getCurrentSightRadius', () => {
-    it('returns 5 during Day', () => {
-      expect(getCurrentSightRadius(TimePhase.Day)).toBe(5);
+    it('returns 4 during Day', () => {
+      expect(getCurrentSightRadius(TimePhase.Day)).toBe(4);
     });
 
-    it('returns 3 during Night', () => {
-      expect(getCurrentSightRadius(TimePhase.Night)).toBe(3);
+    it('returns 2 during Night', () => {
+      expect(getCurrentSightRadius(TimePhase.Night)).toBe(2);
     });
 
     it('returns 0 during Boss phase', () => {

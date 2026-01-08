@@ -20,7 +20,7 @@ import type { Position } from '../../../src/game/engine/types';
 
 /**
  * Create a simple test map from string representation
- * '#' = Wall, '.' = Empty Tunnel, 'P' = Player position marker
+ * '#' = Wall, '.' = Floor, 'P' = Player position marker
  */
 function createTestMap(grid: string[]): GameMap {
   const height = grid.length;
@@ -34,7 +34,7 @@ function createTestMap(grid: string[]): GameMap {
     fog[y] = [];
     for (let x = 0; x < width; x++) {
       const char = grid[y][x];
-      tiles[y][x] = char === '#' ? TileType.Wall : TileType.EmptyTunnel;
+      tiles[y][x] = char === '#' ? TileType.Wall : TileType.Floor;
       fog[y][x] = FogState.Revealed;
     }
   }

@@ -18,13 +18,24 @@ import type { ItemStats, ItemRarity, ToolId, GearId } from '../../../src/game/en
 describe('Items Entity', () => {
   describe('createToolInstance', () => {
     it('creates a tool instance with correct base stats', () => {
-      const tool = createToolInstance('T1'); // Rusty Pickaxe: +3 ATK
+      const tool = createToolInstance('T1'); // Polished Pickaxe: +3 ATK
 
       expect(tool.id).toBe('T1');
-      expect(tool.name).toBe("Rusty Pickaxe");
+      expect(tool.name).toBe('Polished Pickaxe');
       expect(tool.emoji).toBe('⛏️');
       expect(tool.rarity).toBe('COMMON');
       expect(tool.stats.atk).toBe(3);
+      expect(tool.tags).toContain('STONE');
+    });
+
+    it('creates Rusty Pickaxe with starter stats', () => {
+      const tool = createToolInstance('T9'); // Rusty Pickaxe: +1 ATK
+
+      expect(tool.id).toBe('T9');
+      expect(tool.name).toBe('Rusty Pickaxe');
+      expect(tool.emoji).toBe('⛏️');
+      expect(tool.rarity).toBe('COMMON');
+      expect(tool.stats.atk).toBe(1);
       expect(tool.tags).toContain('STONE');
     });
 
@@ -37,8 +48,8 @@ describe('Items Entity', () => {
       expect(tool.tags).toContain('SCOUT');
     });
 
-    it('creates all 8 tools with valid definitions', () => {
-      const toolIds: ToolId[] = ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8'];
+    it('creates all 9 tools with valid definitions', () => {
+      const toolIds: ToolId[] = ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9'];
 
       for (const id of toolIds) {
         const tool = createToolInstance(id);
@@ -220,11 +231,11 @@ describe('Items Entity', () => {
   });
 
   describe('getToolDefinition', () => {
-    it('returns correct definition for T1 Rusty Pickaxe', () => {
+    it('returns correct definition for T1 Polished Pickaxe', () => {
       const def = getToolDefinition('T1');
 
       expect(def.id).toBe('T1');
-      expect(def.name).toBe('Rusty Pickaxe');
+      expect(def.name).toBe('Polished Pickaxe');
       expect(def.emoji).toBe('⛏️');
       expect(def.rarity).toBe('COMMON');
       expect(def.stats.atk).toBe(3);
@@ -274,9 +285,9 @@ describe('Items Entity', () => {
   });
 
   describe('TOOL_DEFINITIONS data integrity', () => {
-    it('contains exactly 8 tools', () => {
+    it('contains exactly 9 tools', () => {
       const toolCount = Object.keys(TOOL_DEFINITIONS).length;
-      expect(toolCount).toBe(8);
+      expect(toolCount).toBe(9);
     });
 
     it('all tools have required fields', () => {

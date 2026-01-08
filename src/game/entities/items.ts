@@ -40,7 +40,7 @@ export interface ToolDefinition {
 export const TOOL_DEFINITIONS: Record<ToolId, ToolDefinition> = {
   T1: {
     id: 'T1',
-    name: 'Rusty Pickaxe',
+    name: 'Polished Pickaxe',
     emoji: '⛏️',
     rarity: 'COMMON',
     stats: { atk: 3 },
@@ -121,6 +121,14 @@ export const TOOL_DEFINITIONS: Record<ToolId, ToolDefinition> = {
       timing: 'BEFORE_ATTACK',
       description: 'Attack equals your DIG',
     },
+  },
+  T9: {
+    id: 'T9',
+    name: 'Rusty Pickaxe',
+    emoji: '⛏️',
+    rarity: 'COMMON',
+    stats: { atk: 1 },
+    tags: ['STONE'],
   },
 };
 

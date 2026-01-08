@@ -35,6 +35,7 @@ import {
   markPOIVisited,
   markPOIDiscovered,
   findPOIAtPosition,
+  activateSurveyBeacon,
 } from '../entities/pois';
 import { moveEnemiesNight, isWithinSightRange } from '../map/pathfinding';
 import { SeededRNG } from './rng';
@@ -259,11 +260,41 @@ function handleMove(state: GameState, direction: Direction): GameState {
     },
   };
 
-  // Check for enemy encounter
+  // Check for enemy encounter - initialize combat properly
   if (enemyAtTarget) {
+    // Create player combatant state
+    const playerCombatant: CombatantState = {
+      name: 'Player',
+      emoji: '🦦',
+      isPlayer: true,
+      maxHp: newState.player.stats.maxHp,
+      hp: newState.player.stats.hp,
+      atk: newState.player.stats.atk,
+      arm: newState.player.stats.arm,
+      spd: newState.player.stats.spd,
+      dig: newState.player.stats.dig,
+      bonusAtk: 0,
+      bonusArm: 0,
+      bonusSpd: 0,
+      statusEffects: { ...newState.player.statusEffects },
+      strikesPerTurn: getPlayerStrikesPerTurn(newState),
+      ignoresArmor: hasArmorIgnore(newState),
+    };
+
+    // Create enemy combatant state
+    const enemyCombatant: CombatantState = createEnemyCombatant(enemyAtTarget);
+
+    // Create initial combat state
+    const combatState = createCombatState({
+      player: playerCombatant,
+      enemy: enemyCombatant,
+      seed: newState.rngState,
+    });
+
     return {
       ...newState,
       phase: GamePhase.Combat,
+      combat: combatState,
     };
   }
 
@@ -282,20 +313,29 @@ function handleMove(state: GameState, direction: Direction): GameState {
   // Check for POI at target position (T099)
   const poiAtTarget = findPOIAtPosition(newState.map, targetPos);
   if (poiAtTarget && !poiAtTarget.visited) {
-    // Create POI interaction if valid
-    const interaction = createPOIInteraction(poiAtTarget, newState);
-    if (interaction) {
-      // Mark Rail Waypoints as discovered
-      let updatedMap = newState.map;
-      if (poiAtTarget.definitionId === 'L8' && !poiAtTarget.discovered) {
-        updatedMap = markPOIDiscovered(newState.map, poiAtTarget.id);
-      }
-      return {
+    // Special case: Survey Beacon (L6) auto-activates on step
+    if (poiAtTarget.definitionId === 'L6') {
+      newState = activateSurveyBeacon(newState);
+      newState = {
         ...newState,
-        phase: GamePhase.POIInteraction,
-        map: updatedMap,
-        activePOI: interaction,
+        map: markPOIVisited(newState.map, poiAtTarget.id),
       };
+    } else {
+      // Create POI interaction if valid
+      const interaction = createPOIInteraction(poiAtTarget, newState);
+      if (interaction) {
+        // Mark Rail Waypoints as discovered
+        let updatedMap = newState.map;
+        if (poiAtTarget.definitionId === 'L8' && !poiAtTarget.discovered) {
+          updatedMap = markPOIDiscovered(newState.map, poiAtTarget.id);
+        }
+        return {
+          ...newState,
+          phase: GamePhase.POIInteraction,
+          map: updatedMap,
+          activePOI: interaction,
+        };
+      }
     }
   }
 

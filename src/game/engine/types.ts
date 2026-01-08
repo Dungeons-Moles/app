@@ -76,7 +76,7 @@ export interface ItemStats {
   hp?: number;
 }
 
-export type ToolId = 'T1' | 'T2' | 'T3' | 'T4' | 'T5' | 'T6' | 'T7' | 'T8';
+export type ToolId = 'T1' | 'T2' | 'T3' | 'T4' | 'T5' | 'T6' | 'T7' | 'T8' | 'T9';
 
 export type GearId =
   | 'I1' | 'I2' | 'I3' | 'I4' | 'I5' | 'I6' | 'I7' | 'I8' | 'I9' | 'I10'
@@ -254,6 +254,7 @@ export interface POIInteraction {
 
 export interface POIOption {
   label: string;
+  description?: string;
   item?: Gear | Tool;
   cost?: number;
   disabled?: boolean;

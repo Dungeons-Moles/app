@@ -26,19 +26,24 @@ describe('Exploration Integration', () => {
       expect(state.seed).toBe(TEST_SEED);
     });
 
-    it('should spawn player with initial radius 7 revealed', () => {
+    it('should spawn player with initial radius 6 revealed', () => {
       const initialState = createInitialGameState();
       const action: GameAction = { type: 'START_GAME', seed: TEST_SEED };
 
       const state = gameReducer(initialState, action);
 
-      // Count visible tiles within radius 7
+      const effectiveRadius = GAME_CONSTANTS.INITIAL_SIGHT_RADIUS + 0.5;
+      const maxDistance = effectiveRadius * effectiveRadius;
+
+      // Count visible tiles within radius 6 (circular)
       let visibleCount = 0;
       const { x: px, y: py } = state.player.position;
       for (let y = 0; y < state.map.height; y++) {
         for (let x = 0; x < state.map.width; x++) {
-          const distance = Math.abs(x - px) + Math.abs(y - py);
-          if (distance <= GAME_CONSTANTS.INITIAL_SIGHT_RADIUS) {
+          const dx = x - px;
+          const dy = y - py;
+          const distance = dx * dx + dy * dy;
+          if (distance <= maxDistance) {
             if (state.map.fog[y][x] === FogState.Visible) {
               visibleCount++;
             }
@@ -50,17 +55,16 @@ describe('Exploration Integration', () => {
       expect(visibleCount).toBeGreaterThan(0);
     });
 
-    it('should place Mole Den adjacent to player spawn', () => {
+    it('should place Mole Den above player spawn', () => {
       const initialState = createInitialGameState();
       const action: GameAction = { type: 'START_GAME', seed: TEST_SEED };
 
       const state = gameReducer(initialState, action);
 
-      const { x: px, y: py } = state.player.position;
-      const { x: mx, y: my } = state.map.moleDenPosition;
-      const distance = Math.abs(px - mx) + Math.abs(py - my);
-
-      expect(distance).toBe(1);
+      expect(state.map.moleDenPosition).toEqual({
+        x: state.player.position.x,
+        y: state.player.position.y - 1,
+      });
     });
   });
 
@@ -127,13 +131,13 @@ describe('Exploration Integration', () => {
       }
     });
 
-    it('should consume 1 time unit for EmptyTunnel/SoftEarth movement', () => {
+    it('should consume 1 time unit for Floor movement', () => {
       const initialState = createInitialGameState();
       let state = gameReducer(initialState, { type: 'START_GAME', seed: TEST_SEED });
 
       const initialMoves = state.time.movesRemaining;
 
-      // Find a valid move to EmptyTunnel or SoftEarth
+      // Find a valid move to Floor
       const directions = [Direction.Up, Direction.Down, Direction.Left, Direction.Right];
       for (const dir of directions) {
         const delta = {
@@ -153,7 +157,7 @@ describe('Exploration Integration', () => {
           targetY < state.map.height
         ) {
           const tile = state.map.tiles[targetY][targetX];
-          if (tile === TileType.EmptyTunnel || tile === TileType.SoftEarth) {
+          if (tile === TileType.Floor) {
             const afterMove = gameReducer(state, { type: 'MOVE', direction: dir });
             if (afterMove.player.position.x !== state.player.position.x ||
                 afterMove.player.position.y !== state.player.position.y) {
@@ -163,43 +167,6 @@ describe('Exploration Integration', () => {
           }
         }
       }
-    });
-
-    it('should consume 2 time units for HardRock movement', () => {
-      const initialState = createInitialGameState();
-      let state = gameReducer(initialState, { type: 'START_GAME', seed: TEST_SEED });
-
-      // Find a HardRock tile adjacent to current position and move there
-      const directions = [Direction.Up, Direction.Down, Direction.Left, Direction.Right];
-      for (const dir of directions) {
-        const delta = {
-          [Direction.Up]: { x: 0, y: -1 },
-          [Direction.Down]: { x: 0, y: 1 },
-          [Direction.Left]: { x: -1, y: 0 },
-          [Direction.Right]: { x: 1, y: 0 },
-        }[dir];
-
-        const targetX = state.player.position.x + delta.x;
-        const targetY = state.player.position.y + delta.y;
-
-        if (
-          targetX >= 0 &&
-          targetX < state.map.width &&
-          targetY >= 0 &&
-          targetY < state.map.height &&
-          state.map.tiles[targetY][targetX] === TileType.HardRock
-        ) {
-          const initialMoves = state.time.movesRemaining;
-          const afterMove = gameReducer(state, { type: 'MOVE', direction: dir });
-          if (afterMove.player.position.x !== state.player.position.x ||
-              afterMove.player.position.y !== state.player.position.y) {
-            expect(afterMove.time.movesRemaining).toBe(initialMoves - 2);
-            return;
-          }
-        }
-      }
-
-      // If no HardRock adjacent, test is skipped (map dependent)
     });
   });
 

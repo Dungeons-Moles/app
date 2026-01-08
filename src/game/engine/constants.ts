@@ -14,14 +14,14 @@ export const GAME_CONSTANTS = {
   // Map
   MAP_WIDTH: 50,
   MAP_HEIGHT: 50,
-  INITIAL_SIGHT_RADIUS: 7,
+  INITIAL_SIGHT_RADIUS: 6,
 
   // Player
-  INITIAL_HP: 20,
-  INITIAL_ATK: 1,
+  INITIAL_HP: 10,
+  INITIAL_ATK: 0,
   INITIAL_ARM: 0,
-  INITIAL_SPD: 1,
-  INITIAL_DIG: 1,
+  INITIAL_SPD: 0,
+  INITIAL_DIG: 0,
   INITIAL_GOLD: 0,
 
   // Inventory
@@ -73,8 +73,8 @@ export const WEEK_PHASES: TimePhase[] = [
 // ============================================================================
 
 export const SIGHT_RADIUS = {
-  day: 5,
-  night: 3,
+  day: 4,
+  night: 2,
 } as const;
 
 // ============================================================================

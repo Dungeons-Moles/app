@@ -26,12 +26,27 @@ interface ItemSlotProps {
   onPress?: (item: Tool | Gear, index: number) => void;
 }
 
+const DEFAULT_RARITY_COLOR = '#4A4A4A';
+
 function ItemSlot({ item, isEmpty = false, isLocked = false, slotIndex, onPress }: ItemSlotProps) {
   const handlePress = useCallback(() => {
     if (item && slotIndex !== undefined && onPress) {
       onPress(item, slotIndex);
     }
   }, [item, slotIndex, onPress]);
+
+  const rarityColor = useMemo(
+    () => (item ? getRarityColor(item) : DEFAULT_RARITY_COLOR),
+    [item]
+  );
+  const slotStyle = useMemo(
+    () => [styles.itemSlot, { borderColor: rarityColor }],
+    [rarityColor]
+  );
+  const indicatorStyle = useMemo(
+    () => [styles.rarityIndicator, { backgroundColor: rarityColor }],
+    [rarityColor]
+  );
 
   if (isLocked) {
     return (
@@ -48,16 +63,6 @@ function ItemSlot({ item, isEmpty = false, isLocked = false, slotIndex, onPress 
       </View>
     );
   }
-
-  const rarityColor = getRarityColor(item);
-  const slotStyle = useMemo(
-    () => [styles.itemSlot, { borderColor: rarityColor }],
-    [rarityColor]
-  );
-  const indicatorStyle = useMemo(
-    () => [styles.rarityIndicator, { backgroundColor: rarityColor }],
-    [rarityColor]
-  );
 
   return (
     <TouchableOpacity
@@ -118,11 +123,11 @@ export function InventoryPanel({
   onItemPress,
   onToolPress,
 }: InventoryPanelProps) {
-  // Create inventory grid with 2 items per row
-  const maxSlots = 12; // Maximum possible inventory slots
+  // Create inventory grid with 4 items per row (4 starting + 6 unlocked = 10 slots)
+  const maxSlots = 10; // 4 unlocked from start + 2 per week × 3 weeks
   const slots: (InventorySlot | null)[] = [];
 
-  // Fill slots up to capacity
+  // Fill slots up to capacity - items unlock left-to-right
   for (let i = 0; i < maxSlots; i++) {
     const slot = inventory.find((s) => s.index === i);
     if (i < inventoryCapacity) {
@@ -132,10 +137,10 @@ export function InventoryPanel({
     }
   }
 
-  // Create rows of 2 items each
+  // Create rows of 4 items each (4 columns x 3 rows)
   const rows: (InventorySlot | null)[][] = [];
-  for (let i = 0; i < slots.length; i += 2) {
-    rows.push(slots.slice(i, i + 2));
+  for (let i = 0; i < slots.length; i += 4) {
+    rows.push(slots.slice(i, i + 4));
   }
 
   const handleToolPress = useCallback(
@@ -149,18 +154,7 @@ export function InventoryPanel({
 
   return (
     <View style={styles.container}>
-      {/* Tool Section */}
-      <View style={styles.toolSection}>
-        <Text style={styles.sectionTitle}>Weapon</Text>
-        <ItemSlot
-          item={equippedTool}
-          isEmpty={!equippedTool}
-          slotIndex={-1}
-          onPress={handleToolPress}
-        />
-      </View>
-
-      {/* Gear Section */}
+      {/* Gear Section - Top */}
       <View style={styles.gearSection}>
         <Text style={styles.sectionTitle}>
           Gear ({inventory.length}/{inventoryCapacity})
@@ -169,7 +163,7 @@ export function InventoryPanel({
           {rows.map((row, rowIndex) => (
             <View key={rowIndex} style={styles.gearRow}>
               {row.map((slot, colIndex) => {
-                const slotIndex = rowIndex * 2 + colIndex;
+                const slotIndex = rowIndex * 4 + colIndex;
                 const isLocked = slotIndex >= inventoryCapacity;
                 return (
                   <ItemSlot
@@ -187,7 +181,18 @@ export function InventoryPanel({
         </View>
       </View>
 
-      {/* Active Itemsets */}
+      {/* Tool Section - Center */}
+      <View style={styles.toolSection}>
+        <Text style={styles.sectionTitle}>Weapon</Text>
+        <ItemSlot
+          item={equippedTool}
+          isEmpty={!equippedTool}
+          slotIndex={-1}
+          onPress={handleToolPress}
+        />
+      </View>
+
+      {/* Active Itemsets - Bottom */}
       <ActiveItemsets itemsets={activeItemsets} />
     </View>
   );
@@ -195,37 +200,42 @@ export function InventoryPanel({
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    borderRadius: 8,
-    padding: 8,
-    minWidth: 120,
-  },
-  toolSection: {
-    marginBottom: 8,
+    borderRadius: 6,
+    padding: 6,
+    gap: 8,
   },
   gearSection: {
-    flex: 1,
+    // Top section - compact
+  },
+  toolSection: {
+    alignItems: 'center',
+    paddingVertical: 6,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.1)',
   },
   sectionTitle: {
     color: '#FFFFFF',
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: 'bold',
     marginBottom: 4,
     textTransform: 'uppercase',
-    letterSpacing: 1,
+    letterSpacing: 0.5,
   },
   gearGrid: {
-    gap: 4,
+    gap: 3,
   },
   gearRow: {
     flexDirection: 'row',
-    gap: 4,
+    justifyContent: 'center',
+    gap: 3,
   },
   itemSlot: {
-    width: 40,
-    height: 40,
-    borderRadius: 6,
-    borderWidth: 2,
+    width: 28,
+    height: 28,
+    borderRadius: 4,
+    borderWidth: 1.5,
     borderColor: '#4A4A4A',
     backgroundColor: 'rgba(50, 50, 50, 0.8)',
     justifyContent: 'center',
@@ -242,37 +252,37 @@ const styles = StyleSheet.create({
     borderColor: '#2A2A2A',
   },
   itemEmoji: {
-    fontSize: 20,
+    fontSize: 14,
   },
   emptyText: {
     color: '#4A4A4A',
-    fontSize: 16,
+    fontSize: 12,
   },
   lockedIcon: {
-    fontSize: 14,
+    fontSize: 10,
     opacity: 0.3,
   },
   rarityIndicator: {
     position: 'absolute',
-    bottom: 2,
-    left: 2,
-    right: 2,
-    height: 3,
-    borderRadius: 2,
+    bottom: 1,
+    left: 1,
+    right: 1,
+    height: 2,
+    borderRadius: 1,
   },
   itemsetsContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    justifyContent: 'center',
     gap: 4,
-    marginTop: 8,
-    paddingTop: 8,
+    paddingTop: 6,
     borderTopWidth: 1,
     borderTopColor: 'rgba(255, 255, 255, 0.1)',
   },
   itemsetBadge: {
-    width: 24,
-    height: 24,
-    borderRadius: 4,
+    width: 22,
+    height: 22,
+    borderRadius: 3,
     backgroundColor: 'rgba(100, 100, 100, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
@@ -280,7 +290,7 @@ const styles = StyleSheet.create({
     borderColor: '#FFD700',
   },
   itemsetEmoji: {
-    fontSize: 12,
+    fontSize: 11,
   },
 });
 

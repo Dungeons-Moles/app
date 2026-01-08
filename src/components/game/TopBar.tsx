@@ -37,10 +37,10 @@ export function TopBar({ time }: TopBarProps) {
 
   return (
     <View style={styles.container}>
-      {/* Week Progress Timeline (T069) */}
+      {/* Week Progress Timeline (T069) - Left side */}
       <WeekProgressTimeline time={time} progress={progress} />
 
-      {/* Boss Preview (T070) */}
+      {/* Boss Preview (T070) - Right side */}
       <BossPreview
         boss={boss}
         onPress={handleBossPress}
@@ -238,21 +238,6 @@ function BossTooltipModal({ visible, boss, onClose }: BossTooltipModalProps) {
             <Text style={styles.traitDescription}>{boss.trait.description}</Text>
           </View>
 
-          {/* Test Info */}
-          <View style={styles.testInfoSection}>
-            <Text style={styles.testInfoLabel}>What it tests:</Text>
-            <Text style={styles.testInfoText}>{boss.testInfo.whatItTests}</Text>
-
-            <Text style={styles.testInfoLabel}>Intended counters:</Text>
-            <View style={styles.countersList}>
-              {boss.testInfo.intendedCounters.map((counter, idx) => (
-                <Text key={idx} style={styles.counterItem}>
-                  • {counter}
-                </Text>
-              ))}
-            </View>
-          </View>
-
           {/* Close hint */}
           <Text style={styles.closeHint}>Tap anywhere to close</Text>
         </View>
@@ -443,30 +428,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#d1d5db',
     lineHeight: 16,
-  },
-
-  // Test info section
-  testInfoSection: {
-    marginBottom: 8,
-  },
-  testInfoLabel: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: '#6b7280',
-    marginTop: 8,
-    marginBottom: 2,
-  },
-  testInfoText: {
-    fontSize: 11,
-    color: '#9ca3af',
-  },
-  countersList: {
-    marginTop: 4,
-  },
-  counterItem: {
-    fontSize: 10,
-    color: '#10b981',
-    marginLeft: 4,
   },
 
   // Close hint

@@ -1,12 +1,9 @@
 /**
- * MapRenderer - Renders the dungeon map using Skia
- * @see specs/001-pve-dungeon-crawler/research.md R5
- * @see constitution.md P06: Mobile-First Performance (60 FPS)
+ * MapRenderer - Web fallback without Skia.
  */
 
 import React, { useMemo, useCallback, memo } from 'react';
 import { View, StyleSheet, LayoutChangeEvent, Text } from 'react-native';
-import { Canvas, Rect, Group } from '@shopify/react-native-skia';
 import type { Position } from '../../game/engine/types';
 import type { GameMap } from '../../game/map/types';
 import { TileType, FogState } from '../../game/map/types';
@@ -136,55 +133,58 @@ function getCameraOffset(
 // Memoized Render Components
 // ============================================================================
 
-const TileRect = memo(function TileRect({
+const TileView = memo(function TileView({
   x,
   y,
   type,
   fog,
-}: TileData) {
-  const screenX = x * TILE_SIZE;
-  const screenY = y * TILE_SIZE;
+  cameraOffset,
+}: TileData & { cameraOffset: { x: number; y: number } }) {
+  const screenX = x * TILE_SIZE + cameraOffset.x;
+  const screenY = y * TILE_SIZE + cameraOffset.y;
 
   if (fog === FogState.Hidden) {
     return (
-      <Rect
-        x={screenX}
-        y={screenY}
-        width={TILE_SIZE}
-        height={TILE_SIZE}
-        color={FOG_COLOR_HIDDEN}
+      <View
+        style={[
+          styles.tile,
+          {
+            left: screenX,
+            top: screenY,
+            backgroundColor: FOG_COLOR_HIDDEN,
+          },
+        ]}
       />
     );
   }
 
   if (fog === FogState.Revealed) {
     return (
-      <Group>
-        <Rect
-          x={screenX}
-          y={screenY}
-          width={TILE_SIZE}
-          height={TILE_SIZE}
-          color={TILE_COLORS[type]}
-        />
-        <Rect
-          x={screenX}
-          y={screenY}
-          width={TILE_SIZE}
-          height={TILE_SIZE}
-          color={FOG_COLOR_REVEALED}
-        />
-      </Group>
+      <View
+        style={[
+          styles.tile,
+          {
+            left: screenX,
+            top: screenY,
+            backgroundColor: TILE_COLORS[type],
+          },
+        ]}
+      >
+        <View style={styles.tileFog} />
+      </View>
     );
   }
 
   return (
-    <Rect
-      x={screenX}
-      y={screenY}
-      width={TILE_SIZE}
-      height={TILE_SIZE}
-      color={TILE_COLORS[type]}
+    <View
+      style={[
+        styles.tile,
+        {
+          left: screenX,
+          top: screenY,
+          backgroundColor: TILE_COLORS[type],
+        },
+      ]}
     />
   );
 });
@@ -333,19 +333,18 @@ export const MapRenderer = memo(function MapRenderer({
 
   return (
     <View style={styles.container} onLayout={handleLayout}>
-      <Canvas style={{ width, height }}>
-        <Group transform={[{ translateX: cameraOffset.x }, { translateY: cameraOffset.y }]}>
-          {visibleTiles.map(tile => (
-            <TileRect
-              key={`tile-${tile.x}-${tile.y}`}
-              x={tile.x}
-              y={tile.y}
-              type={tile.type}
-              fog={tile.fog}
-            />
-          ))}
-        </Group>
-      </Canvas>
+      <View style={styles.tileLayer}>
+        {visibleTiles.map(tile => (
+          <TileView
+            key={`tile-${tile.x}-${tile.y}`}
+            x={tile.x}
+            y={tile.y}
+            type={tile.type}
+            fog={tile.fog}
+            cameraOffset={cameraOffset}
+          />
+        ))}
+      </View>
 
       {/* Layered View for Wall Emoji and Entities */}
       <View style={styles.entityOverlay} pointerEvents="none">
@@ -409,6 +408,20 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#000000', // Pure black background
+    position: 'relative',
+  },
+  tileLayer: {
+    ...StyleSheet.absoluteFillObject,
+    overflow: 'hidden',
+  },
+  tile: {
+    position: 'absolute',
+    width: TILE_SIZE,
+    height: TILE_SIZE,
+  },
+  tileFog: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: FOG_COLOR_REVEALED,
   },
   entityOverlay: {
     ...StyleSheet.absoluteFillObject,
