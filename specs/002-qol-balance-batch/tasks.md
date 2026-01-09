@@ -44,12 +44,12 @@
 
 - [x] T008 Add wall break actions (HIGHLIGHT_WALL, BREAK_WALL, CANCEL_WALL_HIGHLIGHT) to GameAction union in src/game/engine/game-reducer.ts
 - [x] T009 Add fast travel actions (ACTIVATE_FAST_TRAVEL, CYCLE_FAST_TRAVEL, CONFIRM_FAST_TRAVEL, CANCEL_FAST_TRAVEL) to GameAction union in src/game/engine/game-reducer.ts
-- [ ] T010 [P] Create calculateWallBreakCost function in src/game/map/wall-break.ts
-- [ ] T011 [P] Create getSpawnZone and selectTierForZone functions in src/game/map/spawn-zones.ts
-- [ ] T012 [P] Create calculateGoldReward function and enemy category constants in src/game/entities/enemies.ts
-- [ ] T013 [P] Create formatStatBonuses utility in src/utils/stat-display.ts
-- [ ] T014 [P] Create RARITY_COLORS and RARITY_BG_COLORS constants in src/utils/rarity-colors.ts
-- [ ] T015 Add getDiscoveredWaypoints helper to src/game/entities/pois.ts
+- [x] T010 [P] Create calculateWallBreakCost function in src/game/map/wall-break.ts
+- [x] T011 [P] Create getSpawnZone and selectTierForZone functions in src/game/map/spawn-zones.ts
+- [x] T012 [P] Create calculateGoldReward function and enemy category constants in src/game/entities/enemies.ts
+- [x] T013 [P] Create formatStatBonuses utility in src/utils/stat-display.ts
+- [x] T014 [P] Create RARITY_COLORS and RARITY_BG_COLORS constants in src/utils/rarity-colors.ts
+- [x] T015 Add getDiscoveredWaypoints helper to src/game/entities/pois.ts
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
