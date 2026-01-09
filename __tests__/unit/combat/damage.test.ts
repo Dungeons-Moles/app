@@ -5,7 +5,12 @@
  * @see specs/001-pve-dungeon-crawler/data-model.md CombatState
  */
 
-import { calculateDamage, createDamageResult, type DamageResult } from '../../../src/game/combat/damage';
+import {
+  applyDamage,
+  calculateDamage,
+  createDamageResult,
+  type DamageResult,
+} from '../../../src/game/combat/damage';
 import type { CombatantState } from '../../../src/game/engine/types';
 import { DEFAULT_STATUS_EFFECTS } from '../../../src/game/engine/types';
 
@@ -273,6 +278,28 @@ describe('Damage Calculation', () => {
         expect(result.hpDamage).toBe(4);
         expect(result.shrapnelReflect).toBe(3);
       });
+    });
+  });
+
+  describe('applyDamage', () => {
+    it('depletes armor based on rust-adjusted armor damage', () => {
+      const attacker = createTestCombatant({ atk: 6 });
+      const defender = createTestCombatant({
+        arm: 10,
+        statusEffects: { ...DEFAULT_STATUS_EFFECTS, rust: 8 },
+      });
+
+      const result = calculateDamage(attacker, defender);
+      const applied = applyDamage(defender, {
+        armor: result.armorDamage,
+        hp: result.hpDamage,
+      });
+
+      expect(result.armorDamage).toBe(2);
+      expect(result.hpDamage).toBe(4);
+      expect(applied.armorLost).toBe(2);
+      expect(applied.combatant.arm).toBe(8);
+      expect(applied.combatant.hp).toBe(16);
     });
   });
 

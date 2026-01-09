@@ -6,7 +6,6 @@
  */
 
 import type { Position } from '../engine/types';
-import type { SeededRNG } from '../engine/rng';
 import { TileType, type GameMap, type MapEnemy } from './types';
 
 // ============================================================================
@@ -28,13 +27,12 @@ interface PathNode {
 /**
  * Find the shortest path from start to goal using A* algorithm.
  * Returns array of positions from start to goal (excluding start), or empty if no path.
- * Uses seeded RNG for deterministic tie-breaking when multiple nodes have equal f-cost.
+ * Uses deterministic tie-breaking when multiple nodes have equal f-cost.
  *
  * @param map - The game map with tiles
  * @param start - Starting position
  * @param goal - Target position
  * @param enemies - Current enemies on map (to avoid occupied tiles)
- * @param rng - Seeded RNG for deterministic tie-breaking
  * @param maxSteps - Maximum number of search iterations (prevents infinite loops)
  */
 export function findPath(
@@ -42,7 +40,6 @@ export function findPath(
   start: Position,
   goal: Position,
   enemies: MapEnemy[],
-  rng: SeededRNG,
   maxSteps: number = 1000
 ): Position[] {
   // Quick check: if start equals goal, return empty path
@@ -85,7 +82,7 @@ export function findPath(
     steps++;
 
     // Find node with lowest f-cost
-    // Use RNG for tie-breaking to ensure determinism
+    // Use deterministic tie-breaking when costs are equal
     openSet.sort((a, b) => {
       if (a.f !== b.f) return a.f - b.f;
       // Tie-break by h (prefer closer to goal)
@@ -182,16 +179,14 @@ export function findPath(
  * @param enemy - The enemy to move
  * @param playerPosition - The player's current position
  * @param enemies - All enemies on the map
- * @param rng - Seeded RNG for deterministic behavior
  */
 export function getNextEnemyMove(
   map: GameMap,
   enemy: MapEnemy,
   playerPosition: Position,
-  enemies: MapEnemy[],
-  rng: SeededRNG
+  enemies: MapEnemy[]
 ): Position | null {
-  const path = findPath(map, enemy.position, playerPosition, enemies, rng);
+  const path = findPath(map, enemy.position, playerPosition, enemies);
 
   if (path.length === 0) {
     // No path to player, stay in place or return null
@@ -208,12 +203,10 @@ export function getNextEnemyMove(
  *
  * @param map - The game map
  * @param playerPosition - The player's current position
- * @param rng - Seeded RNG for deterministic behavior
  */
 export function moveEnemiesNight(
   map: GameMap,
-  playerPosition: Position,
-  rng: SeededRNG
+  playerPosition: Position
 ): { updatedEnemies: MapEnemy[]; combatTriggered: string | null } {
   const updatedEnemies: MapEnemy[] = [];
   let combatTriggered: string | null = null;
@@ -227,8 +220,7 @@ export function moveEnemiesNight(
       map,
       enemy,
       playerPosition,
-      updatedEnemies, // Use updated positions for collision detection
-      rng
+      updatedEnemies // Use updated positions for collision detection
     );
 
     if (nextMove) {

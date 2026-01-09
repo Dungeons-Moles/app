@@ -3,7 +3,6 @@
  * @see T132, T133
  */
 
-import { SeededRNG } from '../../../src/game/engine/rng';
 import { TileType, FogState, type GameMap, type MapEnemy } from '../../../src/game/map/types';
 import {
   findPath,
@@ -72,9 +71,8 @@ describe('findPath', () => {
       '#...#',
       '#####',
     ]);
-    const rng = new SeededRNG(12345);
 
-    const path = findPath(map, { x: 1, y: 1 }, { x: 3, y: 1 }, [], rng);
+    const path = findPath(map, { x: 1, y: 1 }, { x: 3, y: 1 }, []);
 
     expect(path).toHaveLength(2);
     expect(path[0]).toEqual({ x: 2, y: 1 });
@@ -87,9 +85,8 @@ describe('findPath', () => {
       '#...#',
       '#####',
     ]);
-    const rng = new SeededRNG(12345);
 
-    const path = findPath(map, { x: 1, y: 1 }, { x: 1, y: 1 }, [], rng);
+    const path = findPath(map, { x: 1, y: 1 }, { x: 1, y: 1 }, []);
 
     expect(path).toHaveLength(0);
   });
@@ -101,9 +98,8 @@ describe('findPath', () => {
       '#...#',
       '#####',
     ]);
-    const rng = new SeededRNG(12345);
 
-    const path = findPath(map, { x: 1, y: 1 }, { x: 3, y: 1 }, [], rng);
+    const path = findPath(map, { x: 1, y: 1 }, { x: 3, y: 1 }, []);
 
     // Should go down, right, right, up
     expect(path.length).toBeGreaterThan(0);
@@ -116,9 +112,8 @@ describe('findPath', () => {
       '#.#.#',
       '#####',
     ]);
-    const rng = new SeededRNG(12345);
 
-    const path = findPath(map, { x: 1, y: 1 }, { x: 3, y: 1 }, [], rng);
+    const path = findPath(map, { x: 1, y: 1 }, { x: 3, y: 1 }, []);
 
     expect(path).toHaveLength(0);
   });
@@ -132,9 +127,8 @@ describe('findPath', () => {
     const enemies = [
       createEnemy('enemy1', { x: 2, y: 1 }),
     ];
-    const rng = new SeededRNG(12345);
 
-    const path = findPath(map, { x: 1, y: 1 }, { x: 3, y: 1 }, enemies, rng);
+    const path = findPath(map, { x: 1, y: 1 }, { x: 3, y: 1 }, enemies);
 
     // Should not be able to pass through occupied tile
     // In a single-row corridor, no path exists
@@ -149,16 +143,15 @@ describe('findPath', () => {
     ]);
     // Enemy at middle position
     const enemies = [createEnemy('enemy1', { x: 1, y: 1 })];
-    const rng = new SeededRNG(12345);
 
     // Path from enemy position to player (at goal)
-    const path = findPath(map, { x: 1, y: 1 }, { x: 3, y: 1 }, enemies, rng);
+    const path = findPath(map, { x: 1, y: 1 }, { x: 3, y: 1 }, enemies);
 
     expect(path).toHaveLength(2);
     expect(path[path.length - 1]).toEqual({ x: 3, y: 1 });
   });
 
-  it('is deterministic with same seed', () => {
+  it('is deterministic across runs', () => {
     const map = createTestMap([
       '#######',
       '#.....#',
@@ -167,11 +160,8 @@ describe('findPath', () => {
       '#######',
     ]);
 
-    const rng1 = new SeededRNG(12345);
-    const rng2 = new SeededRNG(12345);
-
-    const path1 = findPath(map, { x: 1, y: 1 }, { x: 5, y: 3 }, [], rng1);
-    const path2 = findPath(map, { x: 1, y: 1 }, { x: 5, y: 3 }, [], rng2);
+    const path1 = findPath(map, { x: 1, y: 1 }, { x: 5, y: 3 }, []);
+    const path2 = findPath(map, { x: 1, y: 1 }, { x: 5, y: 3 }, []);
 
     expect(path1).toEqual(path2);
   });
@@ -190,9 +180,8 @@ describe('getNextEnemyMove', () => {
     ]);
     const enemy = createEnemy('enemy1', { x: 1, y: 1 });
     const playerPosition = { x: 3, y: 1 };
-    const rng = new SeededRNG(12345);
 
-    const nextMove = getNextEnemyMove(map, enemy, playerPosition, [], rng);
+    const nextMove = getNextEnemyMove(map, enemy, playerPosition, []);
 
     expect(nextMove).toEqual({ x: 2, y: 1 });
   });
@@ -205,9 +194,8 @@ describe('getNextEnemyMove', () => {
     ]);
     const enemy = createEnemy('enemy1', { x: 1, y: 1 });
     const playerPosition = { x: 3, y: 1 };
-    const rng = new SeededRNG(12345);
 
-    const nextMove = getNextEnemyMove(map, enemy, playerPosition, [], rng);
+    const nextMove = getNextEnemyMove(map, enemy, playerPosition, []);
 
     expect(nextMove).toBeNull();
   });
@@ -220,9 +208,8 @@ describe('getNextEnemyMove', () => {
     ]);
     const enemy = createEnemy('enemy1', { x: 2, y: 1 });
     const playerPosition = { x: 3, y: 1 };
-    const rng = new SeededRNG(12345);
 
-    const nextMove = getNextEnemyMove(map, enemy, playerPosition, [], rng);
+    const nextMove = getNextEnemyMove(map, enemy, playerPosition, []);
 
     expect(nextMove).toEqual({ x: 3, y: 1 });
   });
@@ -241,9 +228,8 @@ describe('moveEnemiesNight', () => {
     ]);
     map.enemies = [createEnemy('enemy1', { x: 1, y: 1 })];
     const playerPosition = { x: 3, y: 1 };
-    const rng = new SeededRNG(12345);
 
-    const result = moveEnemiesNight(map, playerPosition, rng);
+    const result = moveEnemiesNight(map, playerPosition);
 
     expect(result.updatedEnemies).toHaveLength(1);
     expect(result.updatedEnemies[0].position).toEqual({ x: 2, y: 1 });
@@ -258,9 +244,8 @@ describe('moveEnemiesNight', () => {
     ]);
     map.enemies = [createEnemy('enemy1', { x: 2, y: 1 })];
     const playerPosition = { x: 3, y: 1 };
-    const rng = new SeededRNG(12345);
 
-    const result = moveEnemiesNight(map, playerPosition, rng);
+    const result = moveEnemiesNight(map, playerPosition);
 
     expect(result.combatTriggered).toBe('enemy1');
     expect(result.updatedEnemies[0].position).toEqual({ x: 3, y: 1 });
@@ -278,8 +263,6 @@ describe('moveEnemiesNight', () => {
       createEnemy('enemy1', { x: 1, y: 2 }),
     ];
     const playerPosition = { x: 5, y: 1 };
-    const rng1 = new SeededRNG(12345);
-    const rng2 = new SeededRNG(12345);
 
     // Reset enemies for second run
     const map2 = { ...map, enemies: [
@@ -287,8 +270,8 @@ describe('moveEnemiesNight', () => {
       createEnemy('enemy1', { x: 1, y: 2 }),
     ]};
 
-    const result1 = moveEnemiesNight(map, playerPosition, rng1);
-    const result2 = moveEnemiesNight(map2, playerPosition, rng2);
+    const result1 = moveEnemiesNight(map, playerPosition);
+    const result2 = moveEnemiesNight(map2, playerPosition);
 
     // Results should be identical
     expect(result1.updatedEnemies.map(e => ({ id: e.id, pos: e.position })))
@@ -303,9 +286,8 @@ describe('moveEnemiesNight', () => {
     ]);
     map.enemies = [createEnemy('enemy1', { x: 1, y: 1 })];
     const playerPosition = { x: 3, y: 1 };
-    const rng = new SeededRNG(12345);
 
-    const result = moveEnemiesNight(map, playerPosition, rng);
+    const result = moveEnemiesNight(map, playerPosition);
 
     expect(result.updatedEnemies[0].position).toEqual({ x: 1, y: 1 });
     expect(result.combatTriggered).toBeNull();
@@ -322,9 +304,8 @@ describe('moveEnemiesNight', () => {
       createEnemy('enemy2', { x: 2, y: 1 }),
     ];
     const playerPosition = { x: 5, y: 1 };
-    const rng = new SeededRNG(12345);
 
-    const result = moveEnemiesNight(map, playerPosition, rng);
+    const result = moveEnemiesNight(map, playerPosition);
 
     // Both enemies should move toward player
     const positions = result.updatedEnemies.map(e => e.position);

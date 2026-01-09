@@ -48,7 +48,6 @@ import {
   activateSurveyBeacon,
 } from '../entities/pois';
 import { moveEnemiesNight, isWithinSightRange } from '../map/pathfinding';
-import { SeededRNG } from './rng';
 import { SIGHT_RADIUS } from './constants';
 import { RARITY_MULTIPLIER } from '../../data/gear';
 
@@ -778,7 +777,6 @@ function handleReturnToMenu(state: GameState): GameState {
  */
 function handleNightEnemyMovement(state: GameState): GameState {
   const playerPos = state.player.position;
-  const rng = new SeededRNG(state.rngState);
 
   // Filter enemies within Night sight range
   const enemiesInRange = state.map.enemies.filter(enemy =>
@@ -799,8 +797,7 @@ function handleNightEnemyMovement(state: GameState): GameState {
   // Move enemies toward player
   const { updatedEnemies, combatTriggered } = moveEnemiesNight(
     mapForPathfinding,
-    playerPos,
-    rng
+    playerPos
   );
 
   // Merge updated enemy positions back into full enemy list
@@ -809,9 +806,6 @@ function handleNightEnemyMovement(state: GameState): GameState {
     updatedEnemyMap.get(enemy.id) || enemy
   );
 
-  // Update RNG state
-  const newRngState = rng.getState();
-
   // Create new state with updated enemies
   let newState: GameState = {
     ...state,
@@ -819,7 +813,6 @@ function handleNightEnemyMovement(state: GameState): GameState {
       ...state.map,
       enemies: finalEnemies,
     },
-    rngState: newRngState,
   };
 
   // If an enemy reached the player, trigger combat
