@@ -37,7 +37,7 @@ const SAFE_AREA_EDGES = ['left', 'right'] as const;
  * @see T072: Wire up TopBar to GameScreen
  */
 export function GameScreen({ navigation }: GameScreenProps) {
-  const { state, dispatch } = useGame();
+  const { state, dispatch, overviewMode, toggleOverviewMode, panOverview } = useGame();
 
   // Lock to landscape orientation (FR-044)
   useLandscapeLock();
@@ -45,21 +45,25 @@ export function GameScreen({ navigation }: GameScreenProps) {
   // Handle direction input
   const handleDirection = useCallback(
     (direction: Direction) => {
-      if (state?.phase === GamePhase.Exploration) {
+      if (state?.phase === GamePhase.Exploration && !overviewMode.active) {
         dispatch({ type: 'MOVE', direction });
       }
     },
-    [state?.phase, dispatch]
+    [state?.phase, overviewMode.active, dispatch]
   );
 
   // Set up keyboard input
   useDirectionInput(handleDirection, {
     enabled: state?.phase === GamePhase.Exploration,
+    blocked: overviewMode.active,
   });
 
   // Calculate disabled directions (tiles player can't move to)
   const disabledDirections = useMemo(() => {
     if (!state) return [];
+    if (overviewMode.active) {
+      return [Direction.Up, Direction.Down, Direction.Left, Direction.Right];
+    }
 
     const disabled: Direction[] = [];
     const { x, y } = state.player.position;
@@ -88,7 +92,13 @@ export function GameScreen({ navigation }: GameScreenProps) {
     }
 
     return disabled;
-  }, [state?.player.position, state?.map.tiles, state?.map.width, state?.map.height]);
+  }, [
+    state?.player.position,
+    state?.map.tiles,
+    state?.map.width,
+    state?.map.height,
+    overviewMode.active,
+  ]);
 
   // Navigate to Combat screen when entering combat
   useEffect(() => {
@@ -234,38 +244,49 @@ export function GameScreen({ navigation }: GameScreenProps) {
         {/* Left column: TopBar + Map */}
         <View style={styles.leftColumn}>
           {/* Top Bar with week progress and boss preview */}
-          {state?.time && <TopBar time={state.time} />}
+          {state?.time && (
+            <TopBar
+              time={state.time}
+              overviewActive={overviewMode.active}
+              onToggleOverview={toggleOverviewMode}
+            />
+          )}
 
           {/* Map Area */}
           <View style={styles.mapArea}>
-          <MapRenderer
-            map={state.map}
-            playerPosition={state.player.position}
-            timePhase={state.time.phase}
-          />
-
-          {/* Debug Overlay (top-left) - P15: Debug Tooling Isolation */}
-          <DebugOverlay
-            debug={state.debug}
-            seed={state.seed}
-            phase={state.phase}
-            time={state.time}
-          />
-
-          {/* D-Pad Controls (bottom-left overlay per FR-002) */}
-          <View style={styles.dpadOverlay}>
-            <DPadControls
-              onDirection={handleDirection}
-              disabledDirections={disabledDirections}
-              size={120}
+            <MapRenderer
+              map={state.map}
+              playerPosition={state.player.position}
+              timePhase={state.time.phase}
+              overviewMode={overviewMode}
+              onPanOverview={panOverview}
             />
-          </View>
 
-          {/* Gold Display (top-right of map) */}
-          <View style={styles.goldOverlay}>
-            <Text style={styles.goldEmoji}>🪙</Text>
-            <Text style={styles.goldValue}>{state.player.stats.gold}</Text>
-          </View>
+            {/* Debug Overlay (top-left) - P15: Debug Tooling Isolation */}
+            <DebugOverlay
+              debug={state.debug}
+              seed={state.seed}
+              phase={state.phase}
+              time={state.time}
+            />
+
+            {/* D-Pad Controls (bottom-left overlay per FR-002) */}
+            <View
+              style={styles.dpadOverlay}
+              pointerEvents={overviewMode.active ? 'none' : 'auto'}
+            >
+              <DPadControls
+                onDirection={handleDirection}
+                disabledDirections={disabledDirections}
+                size={120}
+              />
+            </View>
+
+            {/* Gold Display (top-right of map) */}
+            <View style={styles.goldOverlay}>
+              <Text style={styles.goldEmoji}>🪙</Text>
+              <Text style={styles.goldValue}>{state.player.stats.gold}</Text>
+            </View>
           </View>
         </View>
 

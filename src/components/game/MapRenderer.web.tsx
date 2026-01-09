@@ -2,13 +2,15 @@
  * MapRenderer - Web fallback without Skia.
  */
 
-import React, { useMemo, useCallback, memo } from 'react';
-import { View, StyleSheet, LayoutChangeEvent, Text } from 'react-native';
+import React, { useMemo, useCallback, useRef, memo } from 'react';
+import { View, StyleSheet, LayoutChangeEvent, Text, PanResponder } from 'react-native';
 import type { Position } from '../../game/engine/types';
 import { TimePhase } from '../../game/engine/types';
 import type { GameMap, MapEnemy } from '../../game/map/types';
 import { TileType, FogState } from '../../game/map/types';
 import { getPOIDefinition } from '../../data/pois';
+import type { OverviewModeState } from '../../contexts/GameContext';
+import { DEFAULT_OVERVIEW_STATE } from '../../contexts/GameContext';
 
 // ============================================================================
 // Constants
@@ -85,6 +87,8 @@ export interface MapRendererProps {
   timePhase: TimePhase;
   width?: number;
   height?: number;
+  overviewMode?: OverviewModeState;
+  onPanOverview?: (delta: Position) => void;
 }
 
 interface VisibleTileRange {
@@ -106,7 +110,7 @@ interface TileData {
 // ============================================================================
 
 function getVisibleTileRange(
-  playerPos: Position,
+  centerPos: Position,
   viewportWidth: number,
   viewportHeight: number,
   mapWidth: number,
@@ -118,21 +122,25 @@ function getVisibleTileRange(
   const halfTilesY = Math.floor(tilesY / 2);
 
   return {
-    startX: Math.max(0, playerPos.x - halfTilesX),
-    endX: Math.min(mapWidth - 1, playerPos.x + halfTilesX),
-    startY: Math.max(0, playerPos.y - halfTilesY),
-    endY: Math.min(mapHeight - 1, playerPos.y + halfTilesY),
+    startX: Math.max(0, Math.floor(centerPos.x - halfTilesX)),
+    endX: Math.min(mapWidth - 1, Math.ceil(centerPos.x + halfTilesX)),
+    startY: Math.max(0, Math.floor(centerPos.y - halfTilesY)),
+    endY: Math.min(mapHeight - 1, Math.ceil(centerPos.y + halfTilesY)),
   };
 }
 
 function getCameraOffset(
-  playerPos: Position,
+  centerPos: Position,
   viewportWidth: number,
-  viewportHeight: number
+  viewportHeight: number,
+  zoom: number
 ): { x: number; y: number } {
+  const centerWorldX = centerPos.x * TILE_SIZE + TILE_SIZE / 2;
+  const centerWorldY = centerPos.y * TILE_SIZE + TILE_SIZE / 2;
+
   return {
-    x: viewportWidth / 2 - playerPos.x * TILE_SIZE - TILE_SIZE / 2,
-    y: viewportHeight / 2 - playerPos.y * TILE_SIZE - TILE_SIZE / 2,
+    x: viewportWidth / 2 - centerWorldX * zoom,
+    y: viewportHeight / 2 - centerWorldY * zoom,
   };
 }
 
@@ -145,11 +153,10 @@ const TileView = memo(function TileView({
   y,
   type,
   fog,
-  cameraOffset,
   showRevealOverlay,
-}: TileData & { cameraOffset: { x: number; y: number }; showRevealOverlay: boolean }) {
-  const screenX = x * TILE_SIZE + cameraOffset.x;
-  const screenY = y * TILE_SIZE + cameraOffset.y;
+}: TileData & { showRevealOverlay: boolean }) {
+  const screenX = x * TILE_SIZE;
+  const screenY = y * TILE_SIZE;
 
   if (fog === FogState.Hidden) {
     return (
@@ -203,16 +210,14 @@ const TileView = memo(function TileView({
 const WallEmojiView = memo(function WallEmojiView({
   x,
   y,
-  cameraOffset,
   dimmed,
 }: {
   x: number;
   y: number;
-  cameraOffset: { x: number; y: number };
   dimmed: boolean;
 }) {
-  const screenX = x * TILE_SIZE + cameraOffset.x;
-  const screenY = y * TILE_SIZE + cameraOffset.y;
+  const screenX = x * TILE_SIZE;
+  const screenY = y * TILE_SIZE;
 
   return (
     <View
@@ -242,7 +247,6 @@ const EntityView = memo(function EntityView({
   colors,
   textColor,
   opacity,
-  cameraOffset,
 }: {
   x: number;
   y: number;
@@ -250,10 +254,9 @@ const EntityView = memo(function EntityView({
   colors: { fill: string; stroke: string };
   textColor?: string;
   opacity?: number;
-  cameraOffset: { x: number; y: number };
 }) {
-  const screenX = x * TILE_SIZE + cameraOffset.x - ENTITY_OFFSET;
-  const screenY = y * TILE_SIZE + cameraOffset.y - ENTITY_OFFSET;
+  const screenX = x * TILE_SIZE - ENTITY_OFFSET;
+  const screenY = y * TILE_SIZE - ENTITY_OFFSET;
 
   return (
     <View
@@ -299,14 +302,31 @@ export const MapRenderer = memo(function MapRenderer({
 
   const { width, height } = dimensions;
 
+  const overview = overviewMode ?? DEFAULT_OVERVIEW_STATE;
+  const zoom = overview.active ? overview.zoom : 1;
+  const cameraCenter = useMemo(
+    () => ({
+      x: playerPosition.x + (overview.active ? overview.offset.x : 0),
+      y: playerPosition.y + (overview.active ? overview.offset.y : 0),
+    }),
+    [playerPosition.x, playerPosition.y, overview.active, overview.offset.x, overview.offset.y]
+  );
+
+  const scaledWidth = width / zoom;
+  const scaledHeight = height / zoom;
+
   const visibleRange = useMemo(
-    () => getVisibleTileRange(playerPosition, width, height, map.width, map.height),
-    [playerPosition.x, playerPosition.y, width, height, map.width, map.height]
+    () => getVisibleTileRange(cameraCenter, scaledWidth, scaledHeight, map.width, map.height),
+    [cameraCenter, scaledWidth, scaledHeight, map.width, map.height]
   );
 
   const cameraOffset = useMemo(
-    () => getCameraOffset(playerPosition, width, height),
-    [playerPosition.x, playerPosition.y, width, height]
+    () => getCameraOffset(cameraCenter, width, height, zoom),
+    [cameraCenter, width, height, zoom]
+  );
+  const cameraTransform = useMemo(
+    () => [{ scale: zoom }, { translateX: cameraOffset.x }, { translateY: cameraOffset.y }],
+    [zoom, cameraOffset.x, cameraOffset.y]
   );
 
   const isNight = timePhase === TimePhase.Night;
@@ -368,9 +388,42 @@ export const MapRenderer = memo(function MapRenderer({
       .filter((entry): entry is { enemy: MapEnemy; variant: 'known' | 'unknown' } => entry !== null);
   }, [map.enemies, map.fog, visibleRange, isNight]);
 
+  const panOffsetRef = useRef({ x: 0, y: 0 });
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => overview.active,
+        onMoveShouldSetPanResponder: (_event, gestureState) =>
+          overview.active &&
+          (Math.abs(gestureState.dx) > 2 || Math.abs(gestureState.dy) > 2),
+        onPanResponderGrant: () => {
+          panOffsetRef.current = { x: 0, y: 0 };
+        },
+        onPanResponderMove: (_event, gestureState) => {
+          if (!overview.active || !onPanOverview) {
+            return;
+          }
+          const deltaX = (gestureState.dx - panOffsetRef.current.x) / (TILE_SIZE * zoom);
+          const deltaY = (gestureState.dy - panOffsetRef.current.y) / (TILE_SIZE * zoom);
+          panOffsetRef.current = { x: gestureState.dx, y: gestureState.dy };
+          if (deltaX === 0 && deltaY === 0) {
+            return;
+          }
+          onPanOverview({ x: -deltaX, y: -deltaY });
+        },
+        onPanResponderRelease: () => {
+          panOffsetRef.current = { x: 0, y: 0 };
+        },
+        onPanResponderTerminate: () => {
+          panOffsetRef.current = { x: 0, y: 0 };
+        },
+      }),
+    [overview.active, onPanOverview, zoom]
+  );
+
   return (
-    <View style={styles.container} onLayout={handleLayout}>
-      <View style={styles.tileLayer}>
+    <View style={styles.container} onLayout={handleLayout} {...panResponder.panHandlers}>
+      <View style={[styles.tileLayer, { transform: cameraTransform }]}>
         {visibleTiles.map(tile => (
           <TileView
             key={`tile-${tile.x}-${tile.y}`}
@@ -378,7 +431,6 @@ export const MapRenderer = memo(function MapRenderer({
             y={tile.y}
             type={tile.type}
             fog={tile.fog}
-            cameraOffset={cameraOffset}
             showRevealOverlay={showRevealOverlay}
           />
         ))}
@@ -386,62 +438,60 @@ export const MapRenderer = memo(function MapRenderer({
 
       {/* Layered View for Wall Emoji and Entities */}
       <View style={styles.entityOverlay} pointerEvents="none">
-        {/* 0. Wall emoji (below entities) */}
-        {visibleWallTiles.map(tile => (
-          <WallEmojiView
-            key={`wall-${tile.x}-${tile.y}`}
-            x={tile.x}
-            y={tile.y}
-            cameraOffset={cameraOffset}
-            dimmed={isNight && tile.fog === FogState.Revealed}
+        <View style={[styles.entityLayer, { transform: cameraTransform }]}>
+          {/* 0. Wall emoji (below entities) */}
+          {visibleWallTiles.map(tile => (
+            <WallEmojiView
+              key={`wall-${tile.x}-${tile.y}`}
+              x={tile.x}
+              y={tile.y}
+              dimmed={isNight && tile.fog === FogState.Revealed}
+            />
+          ))}
+
+          {/* 1. POIs */}
+          {visiblePOIs.map(poi => {
+            const def = getPOIDefinition(poi.definitionId);
+            const isUsed = poi.visited && SINGLE_USE_POIS.includes(poi.definitionId);
+            const colors = isUsed ? POI_COLORS_VISITED : POI_COLORS_ACTIVE;
+            const fog = map.fog[poi.position.y][poi.position.x];
+            const dimmed = isNight && fog === FogState.Revealed;
+            return (
+              <EntityView
+                key={`poi-${poi.id}`}
+                x={poi.position.x}
+                y={poi.position.y}
+                emoji={def.emoji}
+                colors={colors}
+                opacity={dimmed ? 0.6 : 1}
+              />
+            );
+          })}
+
+          {/* 2. Enemies */}
+          {visibleEnemies.map((entry) => {
+            const { enemy, variant } = entry;
+            const isUnknown = variant === 'unknown';
+            return (
+              <EntityView
+                key={`enemy-${enemy.id}`}
+                x={enemy.position.x}
+                y={enemy.position.y}
+                emoji={isUnknown ? '?' : (ENEMY_EMOJIS[enemy.definitionId] || '👾')}
+                colors={isUnknown ? ENEMY_UNKNOWN_COLORS : ENEMY_COLORS}
+                textColor={isUnknown ? '#ffffff' : undefined}
+              />
+            );
+          })}
+
+          {/* 3. Player (Topmost) */}
+          <EntityView
+            x={playerPosition.x}
+            y={playerPosition.y}
+            emoji={PLAYER_EMOJI}
+            colors={PLAYER_COLORS}
           />
-        ))}
-
-        {/* 1. POIs */}
-        {visiblePOIs.map(poi => {
-          const def = getPOIDefinition(poi.definitionId);
-          const isUsed = poi.visited && SINGLE_USE_POIS.includes(poi.definitionId);
-          const colors = isUsed ? POI_COLORS_VISITED : POI_COLORS_ACTIVE;
-          const fog = map.fog[poi.position.y][poi.position.x];
-          const dimmed = isNight && fog === FogState.Revealed;
-          return (
-            <EntityView
-              key={`poi-${poi.id}`}
-              x={poi.position.x}
-              y={poi.position.y}
-              emoji={def.emoji}
-              colors={colors}
-              opacity={dimmed ? 0.6 : 1}
-              cameraOffset={cameraOffset}
-            />
-          );
-        })}
-
-        {/* 2. Enemies */}
-        {visibleEnemies.map((entry) => {
-          const { enemy, variant } = entry;
-          const isUnknown = variant === 'unknown';
-          return (
-            <EntityView
-              key={`enemy-${enemy.id}`}
-              x={enemy.position.x}
-              y={enemy.position.y}
-              emoji={isUnknown ? '?' : (ENEMY_EMOJIS[enemy.definitionId] || '👾')}
-              colors={isUnknown ? ENEMY_UNKNOWN_COLORS : ENEMY_COLORS}
-              textColor={isUnknown ? '#ffffff' : undefined}
-              cameraOffset={cameraOffset}
-            />
-          );
-        })}
-
-        {/* 3. Player (Topmost) */}
-        <EntityView
-          x={playerPosition.x}
-          y={playerPosition.y}
-          emoji={PLAYER_EMOJI}
-          colors={PLAYER_COLORS}
-          cameraOffset={cameraOffset}
-        />
+        </View>
       </View>
     </View>
   );
@@ -473,6 +523,9 @@ const styles = StyleSheet.create({
   entityOverlay: {
     ...StyleSheet.absoluteFillObject,
     overflow: 'hidden',
+  },
+  entityLayer: {
+    ...StyleSheet.absoluteFillObject,
   },
   wallEmojiContainer: {
     position: 'absolute',

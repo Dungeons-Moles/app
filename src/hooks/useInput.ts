@@ -25,6 +25,11 @@ export interface UseInputOptions {
   enabled?: boolean;
 
   /**
+   * Whether input should be blocked regardless of enable state.
+   */
+  blocked?: boolean;
+
+  /**
    * Debounce delay in milliseconds.
    */
   debounceMs?: number;
@@ -78,15 +83,18 @@ export function useInput(
     enabled = true,
     debounceMs,
     customHandler,
+    blocked = false,
   } = options;
 
   // Use ref to maintain stable handler reference
   const handlerRef = useRef<InputHandler>(customHandler ?? getInputHandler());
 
+  const inputEnabled = resolveInputEnabled(enabled, blocked);
+
   // Update handler settings
   useEffect(() => {
-    handlerRef.current.setEnabled(enabled);
-  }, [enabled]);
+    handlerRef.current.setEnabled(inputEnabled);
+  }, [inputEnabled]);
 
   useEffect(() => {
     if (debounceMs !== undefined) {
@@ -133,6 +141,14 @@ export function useInput(
     emitCancel,
     handler: handlerRef.current,
   };
+}
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+export function resolveInputEnabled(enabled: boolean, blocked: boolean): boolean {
+  return enabled && !blocked;
 }
 
 // ============================================================================
