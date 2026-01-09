@@ -40,7 +40,8 @@ describe('Damage Calculation', () => {
 
         const result = calculateDamage(attacker, defender);
 
-        expect(result.finalDamage).toBe(7); // 10 ATK - 3 ARM = 7 damage
+        expect(result.armorDamage).toBe(3);
+        expect(result.hpDamage).toBe(7); // 10 ATK - 3 ARM = 7 damage
       });
 
       it('should not deal negative damage (minimum 0)', () => {
@@ -49,7 +50,8 @@ describe('Damage Calculation', () => {
 
         const result = calculateDamage(attacker, defender);
 
-        expect(result.finalDamage).toBe(0);
+        expect(result.armorDamage).toBe(2);
+        expect(result.hpDamage).toBe(0);
       });
 
       it('should include bonus ATK in calculation', () => {
@@ -59,7 +61,8 @@ describe('Damage Calculation', () => {
         const result = calculateDamage(attacker, defender);
 
         expect(result.baseAtk).toBe(8); // 5 + 3
-        expect(result.finalDamage).toBe(6); // 8 - 2 = 6
+        expect(result.armorDamage).toBe(2);
+        expect(result.hpDamage).toBe(6); // 8 - 2 = 6
       });
 
       it('should include bonus ARM in calculation', () => {
@@ -68,8 +71,8 @@ describe('Damage Calculation', () => {
 
         const result = calculateDamage(attacker, defender);
 
-        expect(result.armorReduction).toBe(5); // 2 + 3
-        expect(result.finalDamage).toBe(5); // 10 - 5 = 5
+        expect(result.armorDamage).toBe(5); // 2 + 3
+        expect(result.hpDamage).toBe(5); // 10 - 5 = 5
       });
 
       it('should handle zero ATK', () => {
@@ -78,7 +81,8 @@ describe('Damage Calculation', () => {
 
         const result = calculateDamage(attacker, defender);
 
-        expect(result.finalDamage).toBe(0);
+        expect(result.armorDamage).toBe(0);
+        expect(result.hpDamage).toBe(0);
       });
 
       it('should handle zero ARM', () => {
@@ -87,8 +91,8 @@ describe('Damage Calculation', () => {
 
         const result = calculateDamage(attacker, defender);
 
-        expect(result.finalDamage).toBe(7);
-        expect(result.armorReduction).toBe(0);
+        expect(result.hpDamage).toBe(7);
+        expect(result.armorDamage).toBe(0);
       });
     });
 
@@ -103,7 +107,7 @@ describe('Damage Calculation', () => {
         const result = calculateDamage(attacker, defender);
 
         expect(result.atkAfterChill).toBe(5); // 10 / 2 = 5
-        expect(result.finalDamage).toBe(5);
+        expect(result.hpDamage).toBe(5);
       });
 
       it('should round down when halving odd ATK with Chill', () => {
@@ -116,7 +120,7 @@ describe('Damage Calculation', () => {
         const result = calculateDamage(attacker, defender);
 
         expect(result.atkAfterChill).toBe(3); // floor(7 / 2) = 3
-        expect(result.finalDamage).toBe(3);
+        expect(result.hpDamage).toBe(3);
       });
 
       it('should not apply Chill penalty when chill stacks are 0', () => {
@@ -129,7 +133,7 @@ describe('Damage Calculation', () => {
         const result = calculateDamage(attacker, defender);
 
         expect(result.atkAfterChill).toBe(10);
-        expect(result.finalDamage).toBe(10);
+        expect(result.hpDamage).toBe(10);
       });
 
       it('should apply Chill before ARM reduction', () => {
@@ -143,8 +147,8 @@ describe('Damage Calculation', () => {
 
         // ATK 10 -> halved to 5 -> minus ARM 3 -> 2 damage
         expect(result.atkAfterChill).toBe(5);
-        expect(result.armorReduction).toBe(3);
-        expect(result.finalDamage).toBe(2);
+        expect(result.armorDamage).toBe(3);
+        expect(result.hpDamage).toBe(2);
       });
     });
 
@@ -182,7 +186,7 @@ describe('Damage Calculation', () => {
 
         const result = calculateDamage(attacker, defender);
 
-        expect(result.finalDamage).toBe(0);
+        expect(result.hpDamage).toBe(0);
         expect(result.shrapnelReflect).toBe(5);
       });
     });
@@ -194,8 +198,8 @@ describe('Damage Calculation', () => {
 
         const result = calculateDamage(attacker, defender);
 
-        expect(result.armorReduction).toBe(0);
-        expect(result.finalDamage).toBe(10);
+        expect(result.armorDamage).toBe(0);
+        expect(result.hpDamage).toBe(10);
       });
 
       it('should still apply Chill even when ignoring armor', () => {
@@ -209,8 +213,8 @@ describe('Damage Calculation', () => {
         const result = calculateDamage(attacker, defender);
 
         expect(result.atkAfterChill).toBe(5);
-        expect(result.armorReduction).toBe(0);
-        expect(result.finalDamage).toBe(5);
+        expect(result.armorDamage).toBe(0);
+        expect(result.hpDamage).toBe(5);
       });
     });
 
@@ -225,8 +229,8 @@ describe('Damage Calculation', () => {
         const result = calculateDamage(attacker, defender);
 
         // ARM 5 - Rust 3 = effective ARM 2
-        expect(result.armorReduction).toBe(2);
-        expect(result.finalDamage).toBe(8);
+        expect(result.armorDamage).toBe(2);
+        expect(result.hpDamage).toBe(8);
       });
 
       it('should not reduce ARM below 0 with Rust', () => {
@@ -238,8 +242,8 @@ describe('Damage Calculation', () => {
 
         const result = calculateDamage(attacker, defender);
 
-        expect(result.armorReduction).toBe(0); // max(0, 2 - 5) = 0
-        expect(result.finalDamage).toBe(10);
+        expect(result.armorDamage).toBe(0); // max(0, 2 - 5) = 0
+        expect(result.hpDamage).toBe(10);
       });
     });
 
@@ -265,8 +269,8 @@ describe('Damage Calculation', () => {
         // Shrapnel reflect: 3
         expect(result.baseAtk).toBe(14);
         expect(result.atkAfterChill).toBe(7);
-        expect(result.armorReduction).toBe(3);
-        expect(result.finalDamage).toBe(4);
+        expect(result.armorDamage).toBe(3);
+        expect(result.hpDamage).toBe(4);
         expect(result.shrapnelReflect).toBe(3);
       });
     });
@@ -277,16 +281,16 @@ describe('Damage Calculation', () => {
       const result = createDamageResult({
         baseAtk: 10,
         atkAfterChill: 10,
-        armorReduction: 3,
-        finalDamage: 7,
+        armorDamage: 3,
+        hpDamage: 7,
         shrapnelReflect: 0,
       });
 
       expect(result).toEqual({
         baseAtk: 10,
         atkAfterChill: 10,
-        armorReduction: 3,
-        finalDamage: 7,
+        armorDamage: 3,
+        hpDamage: 7,
         shrapnelReflect: 0,
       });
     });

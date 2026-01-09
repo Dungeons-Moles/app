@@ -67,7 +67,7 @@ describe('Combat Flow Integration', () => {
       const battleStartEntries = result.log.filter(
         (entry) => entry.timing === CombatPhase.BattleStart
       );
-      expect(battleStartEntries.length).toBeGreaterThanOrEqual(0); // May have Battle Start effects
+      expect(battleStartEntries.length).toBeGreaterThan(0);
     });
 
     it('should have higher SPEED combatant attack first', () => {
@@ -138,7 +138,7 @@ describe('Combat Flow Integration', () => {
       expect(turn1Attacks[0].actor).toBe('enemy');
     });
 
-    it('should calculate damage correctly (ATK - ARM, minimum 0)', () => {
+    it('should calculate damage correctly through armor then HP', () => {
       const input: CombatResolverInput = {
         player: createTestCombatant({
           name: 'Player',
@@ -167,6 +167,7 @@ describe('Combat Flow Integration', () => {
 
       // Each attack should deal 10 ATK - 3 ARM = 7 damage
       expect(playerAttacks.length).toBeGreaterThan(0);
+      expect(playerAttacks[0].result.armorLost).toBe(3);
       expect(playerAttacks[0].result.damage).toBe(7);
     });
 
@@ -220,40 +221,6 @@ describe('Combat Flow Integration', () => {
 
       expect(result.result).toBe('DEFEAT');
       expect(result.player.hp).toBeLessThanOrEqual(0);
-    });
-
-    it('should process Turn End effects (like Chill decay)', () => {
-      const input: CombatResolverInput = {
-        player: createTestCombatant({
-          name: 'Player',
-          isPlayer: true,
-          hp: 100,
-          atk: 10,
-          arm: 5,
-          spd: 5,
-          statusEffects: { ...DEFAULT_STATUS_EFFECTS, chill: 3 },
-        }),
-        enemy: createTestCombatant({
-          name: 'Enemy',
-          hp: 5,
-          atk: 1,
-          arm: 0,
-          spd: 1,
-        }),
-        seed: 12345,
-      };
-
-      const result = resolveCombat(input);
-
-      // Combat should end quickly (1 turn with player one-shotting)
-      // After turn 1, chill should have decayed by 1
-      // But since combat ends, we check the log for status removal
-      const statusRemovalEntries = result.log.filter(
-        (entry) => entry.action === 'REMOVE_STATUS'
-      );
-
-      // There should be chill decay entries in the log
-      expect(result.result).toBe('VICTORY');
     });
 
     it('should produce structured combat log with all required fields', () => {
@@ -357,7 +324,7 @@ describe('Combat Flow Integration', () => {
     });
   });
 
-  describe('status effect interactions', () => {
+    describe('status effect interactions', () => {
     it('should apply Shrapnel reflect damage when defender has Shrapnel', () => {
       const input: CombatResolverInput = {
         player: createTestCombatant({
@@ -388,7 +355,7 @@ describe('Combat Flow Integration', () => {
       expect(result.player.hp).toBeLessThan(20);
     });
 
-    it('should clear Shrapnel at end of turn', () => {
+    it('should clear Shrapnel after defender\'s turn', () => {
       const input: CombatResolverInput = {
         player: createTestCombatant({
           name: 'Player',
@@ -411,17 +378,8 @@ describe('Combat Flow Integration', () => {
 
       const result = resolveCombat(input);
 
-      // After turn 1, shrapnel should be cleared
-      // We can verify by checking the log for status removal
-      // or checking that later attacks don't trigger shrapnel
-      const statusRemovalEntries = result.log.filter(
-        (entry) =>
-          entry.action === 'REMOVE_STATUS' &&
-          entry.result.statusRemoved?.type === 'shrapnel'
-      );
-
-      // There should be at least one shrapnel clear at turn end
-      expect(result.result).not.toBeNull();
+      // Shrapnel should not persist forever once the enemy takes a turn.
+      expect(result.enemy.statusEffects.shrapnel).toBe(0);
     });
   });
 

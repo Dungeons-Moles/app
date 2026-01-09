@@ -83,8 +83,8 @@ export const SIGHT_RADIUS = {
 
 export const RARITY_MULTIPLIER: Record<ItemRarity, number> = {
   COMMON: 1.0,
-  GILDED: 1.5,
-  DIAMOND: 2.0,
+  GILDED: 2.0,
+  DIAMOND: 4.0,
   RARE: 1.0,
   HEROIC: 1.0,
   MYTHIC: 1.0,

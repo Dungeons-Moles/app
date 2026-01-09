@@ -73,6 +73,8 @@ function createTestCombatState(
     phase: CombatPhase.BattleStart,
     log: [],
     rngState: 12345,
+    playerGold: 0,
+    consumedGearIds: [],
     result: null,
   };
 }

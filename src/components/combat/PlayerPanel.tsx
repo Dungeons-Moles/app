@@ -15,6 +15,7 @@ export interface PlayerPanelProps {
   maxHp: number;
   atk: number;
   arm: number;
+  maxArm: number;
   spd: number;
   statusEffects: StatusEffects;
   equippedTool?: Tool | null;
@@ -79,12 +80,17 @@ export function PlayerPanel({
   maxHp,
   atk,
   arm,
+  maxArm,
   spd,
   statusEffects,
   equippedTool,
   equippedGear = [],
 }: PlayerPanelProps) {
   const hpPercent = useMemo(() => Math.max(0, (hp / maxHp) * 100), [hp, maxHp]);
+  const armorPercent = useMemo(
+    () => (maxArm > 0 ? Math.max(0, (arm / maxArm) * 100) : 0),
+    [arm, maxArm]
+  );
 
   const hpBarColor = useMemo(() => {
     if (hpPercent > 50) return '#22c55e';
@@ -115,6 +121,21 @@ export function PlayerPanel({
         </View>
         <Text style={styles.hpText}>
           {hp}/{maxHp}
+        </Text>
+      </View>
+
+      {/* Armor Bar */}
+      <View style={styles.armorSection}>
+        <View style={styles.armorBarBackground}>
+          <View
+            style={[
+              styles.armorBarFill,
+              { width: `${armorPercent}%` },
+            ]}
+          />
+        </View>
+        <Text style={styles.armorText}>
+          {arm}/{maxArm}
         </Text>
       </View>
 
@@ -187,7 +208,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   hpSection: {
-    marginBottom: 12,
+    marginBottom: 6,
   },
   hpBarBackground: {
     height: 14,
@@ -204,6 +225,26 @@ const styles = StyleSheet.create({
     color: '#888888',
     textAlign: 'center',
     marginTop: 4,
+  },
+  armorSection: {
+    marginBottom: 12,
+  },
+  armorBarBackground: {
+    height: 10,
+    backgroundColor: '#2a2a3a',
+    borderRadius: 5,
+    overflow: 'hidden',
+  },
+  armorBarFill: {
+    height: '100%',
+    borderRadius: 5,
+    backgroundColor: '#a855f7',
+  },
+  armorText: {
+    fontSize: 10,
+    color: '#a855f7',
+    textAlign: 'center',
+    marginTop: 3,
   },
   statsSection: {
     marginBottom: 12,

@@ -5,7 +5,17 @@
  * @see specs/001-pve-dungeon-crawler/research.md R3
  */
 
-import type { GameState, CombatResult, CombatantState, TimeState, Position, Tool, Gear, GearId } from './types';
+import type {
+  GameState,
+  CombatResult,
+  CombatantState,
+  TimeState,
+  Position,
+  Tool,
+  Gear,
+  GearId,
+  CombatState,
+} from './types';
 import { GamePhase, CombatPhase, DEFAULT_STATUS_EFFECTS, TimePhase } from './types';
 import { Direction, DIRECTION_DELTA } from '../input/types';
 import { isValidTransition } from './state-machine';
@@ -40,6 +50,7 @@ import {
 import { moveEnemiesNight, isWithinSightRange } from '../map/pathfinding';
 import { SeededRNG } from './rng';
 import { SIGHT_RADIUS } from './constants';
+import { RARITY_MULTIPLIER } from '../../data/gear';
 
 // ============================================================================
 // Game Actions
@@ -53,7 +64,7 @@ export type GameAction =
   | { type: 'START_GAME'; seed: number }
   | { type: 'MOVE'; direction: Direction }
   | { type: 'ENTER_COMBAT'; enemyId: string }
-  | { type: 'RESOLVE_COMBAT'; result: CombatResult }
+  | { type: 'RESOLVE_COMBAT'; result: CombatResult; combat?: CombatState }
   | { type: 'INTERACT_POI'; poiId: string }
   | { type: 'SELECT_POI_OPTION'; optionIndex: number }
   | { type: 'CLOSE_POI' }
@@ -110,7 +121,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       return handleEnterCombat(state, action.enemyId);
 
     case 'RESOLVE_COMBAT':
-      return handleResolveCombat(state, action.result);
+      return handleResolveCombat(state, action.result, action.combat);
 
     case 'INTERACT_POI':
       return handleInteractPOI(state, action.poiId);
@@ -237,8 +248,22 @@ function handleMove(state: GameState, direction: Direction): GameState {
   const newTime = consumeMove(newState.time, moveCost);
   const advancedTime = advanceTimePhase(newTime);
 
+  let updatedPlayer = newState.player;
+  const isDayStart = newState.time.phase === TimePhase.Night && advancedTime.phase === TimePhase.Day;
+  if (isDayStart) {
+    const nuggetSlots = updatedPlayer.inventory.filter((slot) => slot.item.id === 'I8');
+    const goldGain = nuggetSlots.reduce(
+      (sum, slot) => sum + Math.floor(3 * RARITY_MULTIPLIER[slot.item.currentRarity]),
+      0
+    );
+    if (goldGain > 0) {
+      updatedPlayer = addGold(updatedPlayer, goldGain);
+    }
+  }
+
   newState = {
     ...newState,
+    player: updatedPlayer,
     time: advancedTime,
   };
 
@@ -271,6 +296,7 @@ function handleMove(state: GameState, direction: Direction): GameState {
       player: playerCombatant,
       enemy: enemyCombatant,
       seed: newState.rngState,
+      playerGold: newState.player.stats.gold,
     });
 
     return {
@@ -374,6 +400,7 @@ function handleEnterCombat(state: GameState, enemyId: string): GameState {
     player: playerCombatant,
     enemy: enemyCombatant,
     seed: state.rngState,
+    playerGold: state.player.stats.gold,
   });
 
   return {
@@ -459,27 +486,40 @@ function hasArmorIgnore(state: GameState): boolean {
  * Applies combat result and transitions appropriately.
  * Updates player HP and removes defeated enemy from map.
  */
-function handleResolveCombat(state: GameState, result: CombatResult): GameState {
+function handleResolveCombat(
+  state: GameState,
+  result: CombatResult,
+  combatOverride?: CombatState
+): GameState {
   if (state.phase !== GamePhase.Combat && state.phase !== GamePhase.BossFight) {
     return state;
   }
 
-  if (!state.combat) {
+  const combatState = combatOverride ?? state.combat;
+  if (!combatState) {
     return state;
   }
 
   // Update player HP from combat result
-  const updatedPlayer = {
+  let updatedPlayer = {
     ...state.player,
     stats: {
       ...state.player.stats,
-      hp: Math.max(0, state.combat.player.hp),
+      hp: Math.max(0, combatState.player.hp),
+      gold: combatState.playerGold,
     },
-    statusEffects: { ...state.combat.player.statusEffects },
+    statusEffects: { ...combatState.player.statusEffects },
   };
 
+  if (combatState.consumedGearIds.length > 0) {
+    for (const gearId of combatState.consumedGearIds) {
+      const removal = removeGearById(updatedPlayer, gearId);
+      updatedPlayer = removal.player;
+    }
+  }
+
   // Update RNG state from combat
-  const updatedRngState = state.combat.rngState;
+  const updatedRngState = combatState.rngState;
 
   if (result === 'DEFEAT') {
     return {
@@ -487,7 +527,7 @@ function handleResolveCombat(state: GameState, result: CombatResult): GameState 
       phase: GamePhase.Defeat,
       player: updatedPlayer,
       rngState: updatedRngState,
-      combat: { ...state.combat, result: 'DEFEAT' },
+      combat: { ...combatState, result: 'DEFEAT' },
     };
   }
 
@@ -498,7 +538,7 @@ function handleResolveCombat(state: GameState, result: CombatResult): GameState 
       phase: GamePhase.Victory,
       player: updatedPlayer,
       rngState: updatedRngState,
-      combat: { ...state.combat, result: 'VICTORY' },
+      combat: { ...combatState, result: 'VICTORY' },
     };
   }
 
@@ -813,6 +853,7 @@ function handleNightEnemyMovement(state: GameState): GameState {
         player: playerCombatant,
         enemy: enemyCombatant,
         seed: newState.rngState,
+        playerGold: newState.player.stats.gold,
       });
 
       return {

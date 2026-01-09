@@ -77,47 +77,44 @@ describe('Items Entity', () => {
 
   describe('createGearInstance', () => {
     it('creates a gear instance with base rarity stats', () => {
-      const gear = createGearInstance('I1'); // Miner's Helmet: +2 ARM, +1 DIG
+      const gear = createGearInstance('I1'); // Miner's Boots: +2 DIG
 
       expect(gear.id).toBe('I1');
-      expect(gear.name).toBe("Miner's Helmet");
-      expect(gear.emoji).toBe('⛑️');
+      expect(gear.name).toBe("Miner's Boots");
+      expect(gear.emoji).toBe('🥾');
       expect(gear.baseRarity).toBe('COMMON');
       expect(gear.currentRarity).toBe('COMMON');
-      expect(gear.stats.arm).toBe(2);
-      expect(gear.stats.dig).toBe(1);
-      expect(gear.tags).toContain('STONE');
+      expect(gear.stats.dig).toBe(2);
+      expect(gear.tags).toContain('SCOUT');
     });
 
-    it('creates gear with Gilded rarity applying 1.5x multiplier', () => {
-      const gear = createGearInstance('I1', 'GILDED'); // ARM: 2*1.5=3, DIG: 1*1.5=1
+    it('creates gear with Gilded rarity applying 2x multiplier', () => {
+      const gear = createGearInstance('I1', 'GILDED'); // DIG: 2*2=4
 
       expect(gear.currentRarity).toBe('GILDED');
-      expect(gear.stats.arm).toBe(3); // Math.floor(2 * 1.5)
-      expect(gear.stats.dig).toBe(1); // Math.floor(1 * 1.5)
+      expect(gear.stats.dig).toBe(4);
     });
 
-    it('creates gear with Diamond rarity applying 2x multiplier', () => {
-      const gear = createGearInstance('I1', 'DIAMOND'); // ARM: 2*2=4, DIG: 1*2=2
+    it('creates gear with Diamond rarity applying 4x multiplier', () => {
+      const gear = createGearInstance('I1', 'DIAMOND'); // DIG: 2*4=8
 
       expect(gear.currentRarity).toBe('DIAMOND');
-      expect(gear.stats.arm).toBe(4); // Math.floor(2 * 2)
-      expect(gear.stats.dig).toBe(2); // Math.floor(1 * 2)
+      expect(gear.stats.dig).toBe(8);
     });
 
     it('does not apply multiplier to Rare rarity items', () => {
-      const gear = createGearInstance('I15'); // Canary Charm: RARE, +5 HP
+      const gear = createGearInstance('I15'); // Frostguard Buckler: RARE, +8 ARM
 
       expect(gear.baseRarity).toBe('RARE');
       expect(gear.currentRarity).toBe('RARE');
-      expect(gear.stats.hp).toBe(5); // No multiplier for RARE
+      expect(gear.stats.arm).toBe(8); // No multiplier for RARE
     });
 
-    it('creates all 27 gear items with valid definitions', () => {
+    it('creates all 29 gear items with valid definitions', () => {
       const gearIds: GearId[] = [
         'I1', 'I2', 'I3', 'I4', 'I5', 'I6', 'I7', 'I8', 'I9', 'I10',
         'I11', 'I12', 'I13', 'I14', 'I15', 'I16', 'I17', 'I18', 'I19', 'I20',
-        'I21', 'I22', 'I23', 'I24', 'I25', 'I26', 'I27',
+        'I21', 'I22', 'I23', 'I24', 'I25', 'I26', 'I27', 'I28', 'I29',
       ];
 
       for (const id of gearIds) {
@@ -135,12 +132,12 @@ describe('Items Entity', () => {
       expect(applyRarityMultiplier('COMMON')).toBe(1.0);
     });
 
-    it('returns 1.5 multiplier for GILDED rarity', () => {
-      expect(applyRarityMultiplier('GILDED')).toBe(1.5);
+    it('returns 2.0 multiplier for GILDED rarity', () => {
+      expect(applyRarityMultiplier('GILDED')).toBe(2.0);
     });
 
-    it('returns 2.0 multiplier for DIAMOND rarity', () => {
-      expect(applyRarityMultiplier('DIAMOND')).toBe(2.0);
+    it('returns 4.0 multiplier for DIAMOND rarity', () => {
+      expect(applyRarityMultiplier('DIAMOND')).toBe(4.0);
     });
 
     it('returns 1.0 multiplier for RARE/HEROIC/MYTHIC (fixed rarities)', () => {
@@ -164,34 +161,36 @@ describe('Items Entity', () => {
     });
 
     it('calculates combined stats from single gear item', () => {
-      const gear = createGearInstance('I7'); // Lucky Charm: +3 HP
+      const gear = createGearInstance('I3'); // Work Vest: +4 HP, +1 ARM
 
       const stats = calculateItemStats(null, [gear]);
 
-      expect(stats.hp).toBe(3);
+      expect(stats.hp).toBe(4);
+      expect(stats.arm).toBe(1);
       expect(stats.atk).toBe(0);
     });
 
     it('calculates combined stats from tool + multiple gear', () => {
       const tool = createToolInstance('T2'); // +1 ATK, +6 ARM
-      const gear1 = createGearInstance('I1'); // +2 ARM, +1 DIG
-      const gear2 = createGearInstance('I7'); // +3 HP
+      const gear1 = createGearInstance('I2'); // +2 ARM
+      const gear2 = createGearInstance('I3'); // +4 HP, +1 ARM
+      const gear3 = createGearInstance('I4'); // +2 ATK, +1 DIG
 
-      const stats = calculateItemStats(tool, [gear1, gear2]);
+      const stats = calculateItemStats(tool, [gear1, gear2, gear3]);
 
-      expect(stats.atk).toBe(1); // T2
-      expect(stats.arm).toBe(8); // T2(6) + I1(2)
-      expect(stats.dig).toBe(1); // I1
-      expect(stats.hp).toBe(3); // I7
+      expect(stats.atk).toBe(3); // T2(1) + I4(2)
+      expect(stats.arm).toBe(9); // T2(6) + I2(2) + I3(1)
+      expect(stats.dig).toBe(1); // I4
+      expect(stats.hp).toBe(4); // I3
     });
 
     it('handles null tool correctly', () => {
-      const gear = createGearInstance('I2'); // +1 ATK, +1 ARM
+      const gear = createGearInstance('I4'); // +2 ATK, +1 DIG
 
       const stats = calculateItemStats(null, [gear]);
 
-      expect(stats.atk).toBe(1);
-      expect(stats.arm).toBe(1);
+      expect(stats.atk).toBe(2);
+      expect(stats.dig).toBe(1);
     });
 
     it('handles empty gear array correctly', () => {
@@ -215,18 +214,18 @@ describe('Items Entity', () => {
     });
 
     it('correctly sums all stat types from multiple gear', () => {
-      const gear1 = createGearInstance('I2'); // +1 ATK, +1 ARM
-      const gear2 = createGearInstance('I3'); // +2 ARM, +1 SPD
-      const gear3 = createGearInstance('I4'); // +2 DIG
-      const gear4 = createGearInstance('I7'); // +3 HP
+      const gear1 = createGearInstance('I1'); // +2 DIG
+      const gear2 = createGearInstance('I2'); // +2 ARM
+      const gear3 = createGearInstance('I3'); // +4 HP, +1 ARM
+      const gear4 = createGearInstance('I4'); // +2 ATK, +1 DIG
 
       const stats = calculateItemStats(null, [gear1, gear2, gear3, gear4]);
 
-      expect(stats.atk).toBe(1);
-      expect(stats.arm).toBe(3); // I2(1) + I3(2)
-      expect(stats.spd).toBe(1);
-      expect(stats.dig).toBe(2);
-      expect(stats.hp).toBe(3);
+      expect(stats.atk).toBe(2);
+      expect(stats.arm).toBe(3); // I2(2) + I3(1)
+      expect(stats.spd).toBe(0);
+      expect(stats.dig).toBe(3); // I1(2) + I4(1)
+      expect(stats.hp).toBe(4); // I3
     });
   });
 
@@ -259,27 +258,27 @@ describe('Items Entity', () => {
   });
 
   describe('getGearDefinition', () => {
-    it('returns correct definition for I1 Miners Helmet', () => {
+    it('returns correct definition for I1 Miners Boots', () => {
       const def = getGearDefinition('I1');
 
       expect(def.id).toBe('I1');
-      expect(def.name).toBe("Miner's Helmet");
+      expect(def.name).toBe("Miner's Boots");
       expect(def.baseRarity).toBe('COMMON');
     });
 
-    it('returns correct definition for I15 Canary Charm (Rare)', () => {
+    it('returns correct definition for I15 Frostguard Buckler (Rare)', () => {
       const def = getGearDefinition('I15');
 
       expect(def.id).toBe('I15');
-      expect(def.name).toBe('Canary Charm');
+      expect(def.name).toBe('Frostguard Buckler');
       expect(def.baseRarity).toBe('RARE');
     });
 
-    it('returns correct definition for I26 Adrenaline Shot (Heroic)', () => {
+    it('returns correct definition for I26 Time Charge (Heroic)', () => {
       const def = getGearDefinition('I26');
 
       expect(def.id).toBe('I26');
-      expect(def.name).toBe('Adrenaline Shot');
+      expect(def.name).toBe('Time Charge');
       expect(def.baseRarity).toBe('HEROIC');
     });
   });

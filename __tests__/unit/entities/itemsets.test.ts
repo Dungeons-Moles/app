@@ -217,7 +217,7 @@ describe('Itemsets Entity', () => {
   });
 
   describe('getItemsetsForItem', () => {
-    it('returns itemsets that I1 Miners Helmet contributes to', () => {
+    it('returns itemsets that I1 Miners Boots contributes to', () => {
       const itemsets = getItemsetsForItem('I1');
 
       expect(itemsets.map(is => is.id)).toContain('UNION_STANDARD');
@@ -237,7 +237,7 @@ describe('Itemsets Entity', () => {
     });
 
     it('returns empty array for item not in any set', () => {
-      // I7 Lucky Charm is not in any itemset
+      // I7 Frost Lantern is not in any itemset
       const itemsets = getItemsetsForItem('I7');
 
       expect(itemsets).toHaveLength(0);

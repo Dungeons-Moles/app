@@ -54,6 +54,10 @@ function getTagColor(tag: ItemTag): string {
       return '#CD5C5C';
     case 'SHARD':
       return '#9370DB';
+    case 'BLAST':
+      return '#f97316';
+    case 'RUST':
+      return '#a16207';
     default:
       return '#808080';
   }
@@ -145,6 +149,8 @@ export function ItemTooltip({ item, visible, onClose }: ItemTooltipProps) {
     }
   }
 
+  const effectText = effectDescription ?? 'No effect.';
+
   return (
     <Modal
       visible={visible}
@@ -175,11 +181,9 @@ export function ItemTooltip({ item, visible, onClose }: ItemTooltipProps) {
             <StatDisplay stats={item.stats} />
 
             {/* Effect */}
-            {effectDescription && (
-              <View style={styles.effectSection}>
-                <Text style={styles.effectText}>{effectDescription}</Text>
-              </View>
-            )}
+            <View style={styles.effectSection}>
+              <Text style={styles.effectText}>{effectText}</Text>
+            </View>
 
             {/* Tags */}
             <TagsDisplay tags={item.tags} />

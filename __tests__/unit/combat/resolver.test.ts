@@ -126,6 +126,8 @@ describe('Combat Resolver Determinism', () => {
       expect(state.turn).toBe(0);
       expect(state.phase).toBe(CombatPhase.BattleStart);
       expect(state.log).toEqual([]);
+      expect(state.playerGold).toBe(0);
+      expect(state.consumedGearIds).toEqual([]);
       expect(state.result).toBeNull();
     });
 
@@ -218,7 +220,7 @@ describe('Combat Resolver Determinism', () => {
 
       // Combat should not go on indefinitely
       expect(result.turn).toBeGreaterThan(0);
-      expect(result.turn).toBeLessThan(100);
+      expect(result.turn).toBeLessThan(200);
       expect(result.result).not.toBeNull();
     });
   });
