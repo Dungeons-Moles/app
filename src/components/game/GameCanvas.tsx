@@ -1,5 +1,6 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import type { OverviewModeState } from '../../contexts/GameContext';
 import type { Position, WallHighlightState } from '../../game/engine/types';
 import { TimePhase } from '../../game/engine/types';
 import type { GameMap } from '../../game/map/types';
@@ -10,6 +11,8 @@ interface GameCanvasProps {
   playerPosition: Position;
   timePhase: TimePhase;
   wallHighlight?: WallHighlightState;
+  overviewMode?: OverviewModeState;
+  onPanOverview?: (delta: Position) => void;
   feedbackMessage?: string | null;
   width?: number;
   height?: number;
@@ -20,6 +23,8 @@ export function GameCanvas({
   playerPosition,
   timePhase,
   wallHighlight,
+  overviewMode,
+  onPanOverview,
   feedbackMessage,
   width,
   height,
@@ -31,6 +36,8 @@ export function GameCanvas({
         playerPosition={playerPosition}
         timePhase={timePhase}
         wallHighlight={wallHighlight}
+        overviewMode={overviewMode}
+        onPanOverview={onPanOverview}
         width={width}
         height={height}
       />

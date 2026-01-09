@@ -4,7 +4,7 @@
  */
 
 import { SeededRNG } from '../engine/rng';
-import { SPAWN_ZONES, ZONE_TIER_WEIGHTS } from '../engine/constants';
+import { MID_ZONE_RADIUS, SPAWN_PROTECTION_RADIUS, ZONE_TIER_WEIGHTS } from '../engine/constants';
 import type { Position } from '../engine/types';
 
 function manhattanDistance(a: Position, b: Position): number {
@@ -14,11 +14,11 @@ function manhattanDistance(a: Position, b: Position): number {
 export function getSpawnZone(position: Position, spawnPosition: Position): 0 | 1 | 2 {
   const distance = manhattanDistance(position, spawnPosition);
 
-  if (distance <= SPAWN_ZONES.PROTECTION_RADIUS) {
+  if (distance <= SPAWN_PROTECTION_RADIUS) {
     return 0;
   }
 
-  if (distance <= SPAWN_ZONES.MID_ZONE_RADIUS) {
+  if (distance <= MID_ZONE_RADIUS) {
     return 1;
   }
 
