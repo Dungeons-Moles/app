@@ -115,3 +115,10 @@ Product specifications live in `specs/001-pve-dungeon-crawler/`:
 - `tasks.md`: Task tracking (update when completing tasks)
 - `research.md`: Technical decisions
 - `quickstart.md`: Development guide
+
+## Active Technologies
+- TypeScript 5.x (strict mode) + React Native, Expo, @shopify/react-native-skia (canvas rendering) (002-qol-balance-batch)
+- In-memory game state (no persistence for this feature set) (002-qol-balance-batch)
+
+## Recent Changes
+- 002-qol-balance-batch: Added TypeScript 5.x (strict mode) + React Native, Expo, @shopify/react-native-skia (canvas rendering)
