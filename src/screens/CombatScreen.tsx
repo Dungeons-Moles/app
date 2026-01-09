@@ -10,7 +10,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation';
-import { useGame, GamePhase } from '../contexts/GameContext';
+import { useGame } from '../contexts/GameContext';
 import { CombatProvider, useCombat } from '../contexts/CombatContext';
 import { useLandscapeLock } from '../hooks/useOrientationLock';
 import {
@@ -18,6 +18,7 @@ import {
   VictoryDefeatDisplay,
   EnemyPanel,
   PlayerPanel,
+  SpeedControls,
 } from '../components/combat';
 import { DebugOverlay } from '../components/game';
 
@@ -43,7 +44,8 @@ function CombatScreenContent({ navigation }: CombatScreenProps) {
   const { state: gameState, dispatch: gameDispatch } = useGame();
   const {
     state: combatState,
-    dispatch: combatDispatch,
+    speed,
+    setSpeed,
     startCombat,
     getDisplayStates,
     getResult,
@@ -67,23 +69,6 @@ function CombatScreenContent({ navigation }: CombatScreenProps) {
     }
   }, [gameState?.combat, combatState.combat, startCombat, gameState?.rngState]);
 
-  // Auto-advance through combat log for animation
-  useEffect(() => {
-    if (!combatState.resolvedCombat || combatState.isComplete) return;
-
-    const logLength = combatState.resolvedCombat.log.length;
-    if (combatState.currentLogIndex >= logLength - 1) {
-      combatDispatch({ type: 'COMPLETE_ANIMATION' });
-      return;
-    }
-
-    const timer = setTimeout(() => {
-      combatDispatch({ type: 'ADVANCE_LOG', index: combatState.currentLogIndex + 1 });
-    }, 450);
-
-    return () => clearTimeout(timer);
-  }, [combatState.currentLogIndex, combatState.resolvedCombat, combatState.isComplete, combatDispatch]);
-
   // Handle combat completion
   const handleCombatComplete = useCallback(() => {
     const result = getResult();
@@ -100,6 +85,7 @@ function CombatScreenContent({ navigation }: CombatScreenProps) {
 
   const { player, enemy } = getDisplayStates();
   const result = getResult();
+  const speedControlsDisabled = !combatState.resolvedCombat || combatState.isComplete;
   const basePlayerArm = combatState.combat
     ? combatState.combat.player.arm + combatState.combat.player.bonusArm
     : player?.arm ?? 0;
@@ -160,6 +146,14 @@ function CombatScreenContent({ navigation }: CombatScreenProps) {
             damageNumbers={combatState.damageNumbers}
             isAnimating={combatState.isAnimating}
           />
+
+          <View style={styles.controlsArea}>
+            <SpeedControls
+              currentSpeed={speed}
+              onSpeedChange={setSpeed}
+              disabled={speedControlsDisabled}
+            />
+          </View>
 
           {/* Debug Overlay - P15: Debug Tooling Isolation */}
           {gameState && (
@@ -231,5 +225,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 16,
+  },
+  controlsArea: {
+    marginTop: 12,
   },
 });
