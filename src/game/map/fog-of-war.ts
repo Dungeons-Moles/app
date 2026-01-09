@@ -118,6 +118,10 @@ export function updateFogOfWar(
 
   // Get all tiles within radius
   const tilesInRadius = getTilesInRadius(playerPos, radius);
+  const visibleKeys = new Set<string>();
+  for (const tile of tilesInRadius) {
+    visibleKeys.add(`${tile.x},${tile.y}`);
+  }
 
   // Mark visible tiles (no line of sight blocking)
   for (const tile of tilesInRadius) {
@@ -129,9 +133,18 @@ export function updateFogOfWar(
     }
   }
 
+  const updatedEnemies = map.enemies.map((enemy) => {
+    const key = `${enemy.position.x},${enemy.position.y}`;
+    if (visibleKeys.has(key)) {
+      return { ...enemy, discovered: true };
+    }
+    return enemy;
+  });
+
   return {
     ...map,
     fog: newFog,
+    enemies: updatedEnemies,
   };
 }
 

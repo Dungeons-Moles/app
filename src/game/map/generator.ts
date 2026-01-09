@@ -561,6 +561,7 @@ function placeEnemies(
       tier,
       position: pos,
       stats,
+      discovered: false,
     });
 
     usedPositions.add(key);

@@ -8,7 +8,8 @@ import React, { useMemo, useCallback, memo } from 'react';
 import { View, StyleSheet, LayoutChangeEvent, Text } from 'react-native';
 import { Canvas, Rect, Group } from '@shopify/react-native-skia';
 import type { Position } from '../../game/engine/types';
-import type { GameMap } from '../../game/map/types';
+import { TimePhase } from '../../game/engine/types';
+import type { GameMap, MapEnemy } from '../../game/map/types';
 import { TileType, FogState } from '../../game/map/types';
 import { getPOIDefinition } from '../../data/pois';
 
@@ -29,7 +30,7 @@ const TILE_COLORS = {
 } as const;
 
 const FOG_COLOR_HIDDEN = '#000000';
-const FOG_COLOR_REVEALED = 'rgba(0, 0, 0, 0.25)';
+const FOG_COLOR_REVEALED = 'rgba(0, 0, 0, 0.35)';
 
 // Rock emoji for wall tiles
 const WALL_EMOJI = '🪨';
@@ -60,6 +61,11 @@ const ENEMY_COLORS = {
   stroke: '#fca5a5',
 };
 
+const ENEMY_UNKNOWN_COLORS = {
+  fill: '#000000',
+  stroke: '#ffffff',
+};
+
 const POI_COLORS_ACTIVE = {
   fill: '#854d0e',
   stroke: '#fde047',
@@ -70,7 +76,7 @@ const POI_COLORS_VISITED = {
   stroke: '#9ca3af',
 };
 
-const SINGLE_USE_POIS = ['L2', 'L3', 'L6', 'L7'];
+const SINGLE_USE_POIS = ['L2', 'L3', 'L6', 'L7', 'L12'];
 
 // ============================================================================
 // Types
@@ -79,6 +85,7 @@ const SINGLE_USE_POIS = ['L2', 'L3', 'L6', 'L7'];
 export interface MapRendererProps {
   map: GameMap;
   playerPosition: Position;
+  timePhase: TimePhase;
   width?: number;
   height?: number;
 }
@@ -141,7 +148,8 @@ const TileRect = memo(function TileRect({
   y,
   type,
   fog,
-}: TileData) {
+  showRevealOverlay,
+}: TileData & { showRevealOverlay: boolean }) {
   const screenX = x * TILE_SIZE;
   const screenY = y * TILE_SIZE;
 
@@ -157,7 +165,7 @@ const TileRect = memo(function TileRect({
     );
   }
 
-  if (fog === FogState.Revealed) {
+  if (fog === FogState.Revealed && showRevealOverlay) {
     return (
       <Group>
         <Rect
@@ -196,10 +204,12 @@ const WallEmojiView = memo(function WallEmojiView({
   x,
   y,
   cameraOffset,
+  dimmed,
 }: {
   x: number;
   y: number;
   cameraOffset: { x: number; y: number };
+  dimmed: boolean;
 }) {
   const screenX = x * TILE_SIZE + cameraOffset.x;
   const screenY = y * TILE_SIZE + cameraOffset.y;
@@ -214,6 +224,7 @@ const WallEmojiView = memo(function WallEmojiView({
           width: TILE_SIZE,
           height: TILE_SIZE,
         },
+        dimmed && styles.dimmedOverlay,
       ]}
     >
       <Text style={styles.wallEmoji}>{WALL_EMOJI}</Text>
@@ -229,12 +240,16 @@ const EntityView = memo(function EntityView({
   y,
   emoji,
   colors,
+  textColor,
+  opacity,
   cameraOffset,
 }: {
   x: number;
   y: number;
   emoji: string;
   colors: { fill: string; stroke: string };
+  textColor?: string;
+  opacity?: number;
   cameraOffset: { x: number; y: number };
 }) {
   const screenX = x * TILE_SIZE + cameraOffset.x - ENTITY_OFFSET;
@@ -252,10 +267,11 @@ const EntityView = memo(function EntityView({
           backgroundColor: colors.fill,
           borderColor: colors.stroke,
           borderWidth: STROKE_WIDTH,
+          opacity,
         },
       ]}
     >
-      <Text style={styles.entityEmoji}>{emoji}</Text>
+      <Text style={[styles.entityEmoji, textColor && { color: textColor }]}>{emoji}</Text>
     </View>
   );
 });
@@ -267,6 +283,7 @@ const EntityView = memo(function EntityView({
 export const MapRenderer = memo(function MapRenderer({
   map,
   playerPosition,
+  timePhase,
   width: propWidth,
   height: propHeight,
 }: MapRendererProps) {
@@ -291,6 +308,9 @@ export const MapRenderer = memo(function MapRenderer({
     () => getCameraOffset(playerPosition, width, height),
     [playerPosition.x, playerPosition.y, width, height]
   );
+
+  const isNight = timePhase === TimePhase.Night;
+  const showRevealOverlay = isNight;
 
   const visibleTiles = useMemo(() => {
     const tiles: TileData[] = [];
@@ -321,15 +341,32 @@ export const MapRenderer = memo(function MapRenderer({
   }, [map.pois, visibleRange, map.fog]);
 
   const visibleEnemies = useMemo(() => {
-    return map.enemies.filter(
-      enemy =>
-        enemy.position.x >= visibleRange.startX &&
-        enemy.position.x <= visibleRange.endX &&
-        enemy.position.y >= visibleRange.startY &&
-        enemy.position.y <= visibleRange.endY &&
-        map.fog[enemy.position.y][enemy.position.x] === FogState.Visible
-    );
-  }, [map.enemies, visibleRange, map.fog]);
+    return map.enemies
+      .map((enemy) => {
+        if (
+          enemy.position.x < visibleRange.startX ||
+          enemy.position.x > visibleRange.endX ||
+          enemy.position.y < visibleRange.startY ||
+          enemy.position.y > visibleRange.endY
+        ) {
+          return null;
+        }
+
+        const fog = map.fog[enemy.position.y][enemy.position.x];
+        const isVisible = fog === FogState.Visible;
+        const isKnown = enemy.discovered || isVisible;
+        if (!isKnown) {
+          return null;
+        }
+
+        if (isNight && !isVisible) {
+          return { enemy, variant: 'unknown' as const };
+        }
+
+        return { enemy, variant: 'known' as const };
+      })
+      .filter((entry): entry is { enemy: MapEnemy; variant: 'known' | 'unknown' } => entry !== null);
+  }, [map.enemies, map.fog, visibleRange, isNight]);
 
   return (
     <View style={styles.container} onLayout={handleLayout}>
@@ -342,6 +379,7 @@ export const MapRenderer = memo(function MapRenderer({
               y={tile.y}
               type={tile.type}
               fog={tile.fog}
+              showRevealOverlay={showRevealOverlay}
             />
           ))}
         </Group>
@@ -356,6 +394,7 @@ export const MapRenderer = memo(function MapRenderer({
             x={tile.x}
             y={tile.y}
             cameraOffset={cameraOffset}
+            dimmed={isNight && tile.fog === FogState.Revealed}
           />
         ))}
 
@@ -364,6 +403,8 @@ export const MapRenderer = memo(function MapRenderer({
           const def = getPOIDefinition(poi.definitionId);
           const isUsed = poi.visited && SINGLE_USE_POIS.includes(poi.definitionId);
           const colors = isUsed ? POI_COLORS_VISITED : POI_COLORS_ACTIVE;
+          const fog = map.fog[poi.position.y][poi.position.x];
+          const dimmed = isNight && fog === FogState.Revealed;
           return (
             <EntityView
               key={`poi-${poi.id}`}
@@ -371,22 +412,31 @@ export const MapRenderer = memo(function MapRenderer({
               y={poi.position.y}
               emoji={def.emoji}
               colors={colors}
+              opacity={dimmed ? 0.6 : 1}
               cameraOffset={cameraOffset}
             />
           );
         })}
 
         {/* 2. Enemies */}
-        {visibleEnemies.map(enemy => (
-          <EntityView
-            key={`enemy-${enemy.id}`}
-            x={enemy.position.x}
-            y={enemy.position.y}
-            emoji={ENEMY_EMOJIS[enemy.definitionId] || '👾'}
-            colors={ENEMY_COLORS}
-            cameraOffset={cameraOffset}
-          />
-        ))}
+        {visibleEnemies.map((entry) => {
+          if (!entry) {
+            return null;
+          }
+          const { enemy, variant } = entry;
+          const isUnknown = variant === 'unknown';
+          return (
+            <EntityView
+              key={`enemy-${enemy.id}`}
+              x={enemy.position.x}
+              y={enemy.position.y}
+              emoji={isUnknown ? '?' : (ENEMY_EMOJIS[enemy.definitionId] || '👾')}
+              colors={isUnknown ? ENEMY_UNKNOWN_COLORS : ENEMY_COLORS}
+              textColor={isUnknown ? '#ffffff' : undefined}
+              cameraOffset={cameraOffset}
+            />
+          );
+        })}
 
         {/* 3. Player (Topmost) */}
         <EntityView
@@ -422,6 +472,9 @@ const styles = StyleSheet.create({
   wallEmoji: {
     fontSize: 14,
     textAlign: 'center',
+  },
+  dimmedOverlay: {
+    opacity: 0.6,
   },
   entityContainer: {
     position: 'absolute',

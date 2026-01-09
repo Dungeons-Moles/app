@@ -60,6 +60,7 @@ export interface MapEnemy {
   tier: 1 | 2 | 3;
   position: Position;
   stats: EnemyStats;
+  discovered: boolean;
 }
 
 // ============================================================================

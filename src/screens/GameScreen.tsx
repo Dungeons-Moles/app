@@ -3,7 +3,7 @@
  * @see specs/001-pve-dungeon-crawler/spec.md User Story 1
  */
 
-import React, { useCallback, useMemo, useEffect } from 'react';
+import React, { useCallback, useMemo, useEffect, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -16,6 +16,7 @@ import { useDirectionInput } from '../hooks/useInput';
 import { useLandscapeLock } from '../hooks/useOrientationLock';
 import { Direction } from '../game/input/types';
 import { TileType } from '../game/map/types';
+import type { GearId, Tool, Gear } from '../game/engine/types';
 
 type GameScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Game'>;
@@ -89,18 +90,109 @@ export function GameScreen({ navigation }: GameScreenProps) {
     }
   }, [state?.phase, navigation]);
 
-  // Handle POI option selection
-  const handlePOIOption = useCallback(
-    (optionIndex: number) => {
-      dispatch({ type: 'SELECT_POI_OPTION', optionIndex });
-    },
-    [dispatch]
-  );
-
   // Handle POI modal close
   const handlePOIClose = useCallback(() => {
     dispatch({ type: 'CLOSE_POI' });
   }, [dispatch]);
+
+  const [golemSelection, setGolemSelection] = useState<{
+    gearId: GearId | null;
+    emoji: string;
+    count: number;
+  }>({ gearId: null, emoji: '', count: 0 });
+
+  useEffect(() => {
+    if (state?.activePOI?.poi.definitionId !== 'L11') {
+      setGolemSelection({ gearId: null, emoji: '', count: 0 });
+    }
+  }, [state?.activePOI?.poi.definitionId]);
+
+  const handleInventoryItemPress = useCallback(
+    (item: Tool | Gear, _slotIndex: number) => {
+      if (state?.phase !== GamePhase.POIInteraction) {
+        return;
+      }
+      if (state.activePOI?.poi.definitionId !== 'L11') {
+        return;
+      }
+      if (!('currentRarity' in item)) {
+        return;
+      }
+      if (item.currentRarity !== 'COMMON' && item.currentRarity !== 'GILDED') {
+        return;
+      }
+
+      const availableCount = state.player.inventory.filter(
+        slot => slot.item.id === item.id
+      ).length;
+
+      if (availableCount === 0) {
+        return;
+      }
+
+      setGolemSelection((prev) => {
+        if (!prev.gearId || prev.gearId !== item.id) {
+          return { gearId: item.id, emoji: item.emoji, count: 1 };
+        }
+        const maxCount = Math.min(2, availableCount);
+        if (prev.count < maxCount) {
+          return { gearId: prev.gearId, emoji: prev.emoji, count: prev.count + 1 };
+        }
+        return prev;
+      });
+    },
+    [state?.phase, state?.activePOI, state?.player.inventory]
+  );
+
+  const golemFuseOptionIndex = useMemo(() => {
+    if (state?.activePOI?.poi.definitionId !== 'L11') {
+      return null;
+    }
+    if (!golemSelection.gearId || golemSelection.count < 2) {
+      return null;
+    }
+
+    const options = state.activePOI.options ?? [];
+    const optionIndex = options.findIndex(
+      option =>
+        option.item &&
+        'currentRarity' in option.item &&
+        option.item.id === golemSelection.gearId
+    );
+
+    return optionIndex >= 0 ? optionIndex : null;
+  }, [state?.activePOI, golemSelection]);
+
+  const handleGolemSlotPress = useCallback((_slotIndex: number) => {
+    setGolemSelection((prev) => {
+      if (!prev.gearId || prev.count === 0) {
+        return prev;
+      }
+      const nextCount = prev.count - 1;
+      if (nextCount <= 0) {
+        return { gearId: null, emoji: '', count: 0 };
+      }
+      return { ...prev, count: nextCount };
+    });
+  }, []);
+
+  // Handle POI option selection
+  const handlePOIOption = useCallback(
+    (optionIndex: number) => {
+      if (
+        state?.activePOI?.poi.definitionId === 'L11' &&
+        golemFuseOptionIndex !== null &&
+        optionIndex === golemFuseOptionIndex
+      ) {
+        setGolemSelection({ gearId: null, emoji: '', count: 0 });
+      }
+      dispatch({ type: 'SELECT_POI_OPTION', optionIndex });
+    },
+    [dispatch, state?.activePOI?.poi.definitionId, golemFuseOptionIndex]
+  );
+
+  const isCrusherGolemActive =
+    state?.phase === GamePhase.POIInteraction && state.activePOI?.poi.definitionId === 'L11';
 
   // If no game state, show loading
   if (!state) {
@@ -126,6 +218,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
           <MapRenderer
             map={state.map}
             playerPosition={state.player.position}
+            timePhase={state.time.phase}
           />
 
           {/* Debug Overlay (top-left) - P15: Debug Tooling Isolation */}
@@ -164,6 +257,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
             equippedTool={state.player.equippedTool}
             inventoryCapacity={state.player.inventoryCapacity}
             activeItemsets={state.player.activeItemsets}
+            onItemPress={isCrusherGolemActive ? handleInventoryItemPress : undefined}
           />
         </View>
       </View>
@@ -174,6 +268,9 @@ export function GameScreen({ navigation }: GameScreenProps) {
         interaction={state.activePOI}
         onSelectOption={handlePOIOption}
         onClose={handlePOIClose}
+        golemSelection={golemSelection}
+        golemFuseOptionIndex={golemFuseOptionIndex}
+        onGolemSlotPress={handleGolemSlotPress}
       />
     </SafeAreaView>
   );

@@ -237,27 +237,9 @@ function handleMove(state: GameState, direction: Direction): GameState {
   const newTime = consumeMove(newState.time, moveCost);
   const advancedTime = advanceTimePhase(newTime);
 
-  // Check for Day transition -> inventory slot growth (T071)
-  let newInventoryCapacity = newState.player.inventoryCapacity;
-  if (
-    newState.time.phase === TimePhase.Night &&
-    advancedTime.phase === TimePhase.Day &&
-    advancedTime.cycle > newState.time.cycle
-  ) {
-    // Transitioning from Night to new Day - add inventory slots
-    newInventoryCapacity = Math.min(
-      newState.player.inventoryCapacity + GAME_CONSTANTS.INVENTORY_SLOTS_PER_DAY,
-      GAME_CONSTANTS.MAX_INVENTORY_SLOTS
-    );
-  }
-
   newState = {
     ...newState,
     time: advancedTime,
-    player: {
-      ...newState.player,
-      inventoryCapacity: newInventoryCapacity,
-    },
   };
 
   // Check for enemy encounter - initialize combat properly
@@ -520,6 +502,14 @@ function handleResolveCombat(state: GameState, result: CombatResult): GameState 
     };
   }
 
+  const bossSlotBonus =
+    state.phase === GamePhase.BossFight
+      ? Math.min(
+        updatedPlayer.inventoryCapacity + GAME_CONSTANTS.INVENTORY_SLOTS_PER_WEEK,
+        GAME_CONSTANTS.MAX_INVENTORY_SLOTS
+      )
+      : updatedPlayer.inventoryCapacity;
+
   // Remove defeated enemy from map
   const enemyToRemove = findEnemyAtPlayerPosition(state);
   const updatedEnemies = enemyToRemove
@@ -529,7 +519,10 @@ function handleResolveCombat(state: GameState, result: CombatResult): GameState 
   return {
     ...state,
     phase: GamePhase.Exploration,
-    player: updatedPlayer,
+    player: {
+      ...updatedPlayer,
+      inventoryCapacity: bossSlotBonus,
+    },
     rngState: updatedRngState,
     map: {
       ...state.map,

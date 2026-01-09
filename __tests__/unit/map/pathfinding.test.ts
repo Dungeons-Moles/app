@@ -57,6 +57,7 @@ function createEnemy(id: string, position: Position): MapEnemy {
     tier: 1,
     position,
     stats: { hp: 3, atk: 1, arm: 0, spd: 2 },
+    discovered: false,
   };
 }
 

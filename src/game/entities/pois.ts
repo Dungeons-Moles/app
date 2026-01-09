@@ -287,7 +287,7 @@ function generateSurveyBeaconOptions(): POIOption[] {
 
 // ============================================================================
 // T092: Seismic Scanner (L7)
-// Choose POI type to reveal nearest instance
+// Choose POI type to reveal a random instance
 // ============================================================================
 
 function generateSeismicScannerOptions(state: GameState): POIOption[] {
@@ -326,9 +326,11 @@ function generateSeismicScannerOptions(state: GameState): POIOption[] {
 // ============================================================================
 
 function generateRailWaypointOptions(state: GameState): POIOption[] {
-  // Find all discovered/visited Rail Waypoints
+  // Find all discovered/visible Rail Waypoints
   const waypoints = state.map.pois.filter(
-    (poi) => poi.definitionId === 'L8' && poi.discovered
+    (poi) =>
+      poi.definitionId === 'L8' &&
+      (poi.discovered || state.map.fog[poi.position.y][poi.position.x] !== FogState.Hidden)
   );
 
   const currentPos = state.player.position;
@@ -566,8 +568,10 @@ function generateCrusherGolemOptions(state: GameState): POIOption[] {
     if (info.count >= 2) {
       const def = GEAR_DEFINITIONS[gearId];
       const nextRarity = info.rarity === 'COMMON' ? 'GILDED' : 'DIAMOND';
+      const previewGear = createGearInstance(gearId, info.rarity);
       options.push({
         label: `${def.emoji} Fuse 2x ${def.name} -> ${nextRarity}`,
+        item: previewGear,
       });
     }
   }
@@ -829,6 +833,7 @@ export function activateSurveyBeacon(state: GameState): GameState {
   const playerPos = state.player.position;
   const radius = 13;
   const newFog = state.map.fog.map((row) => [...row]);
+  const visibleKeys = new Set<string>();
 
   // Reveal all tiles within radius
   for (let dy = -radius; dy <= radius; dy++) {
@@ -841,22 +846,32 @@ export function activateSurveyBeacon(state: GameState): GameState {
           if (newFog[y][x] === FogState.Hidden) {
             newFog[y][x] = FogState.Revealed;
           }
+          visibleKeys.add(`${x},${y}`);
         }
       }
     }
   }
+
+  const updatedEnemies = state.map.enemies.map((enemy) => {
+    const key = `${enemy.position.x},${enemy.position.y}`;
+    if (visibleKeys.has(key)) {
+      return { ...enemy, discovered: true };
+    }
+    return enemy;
+  });
 
   return {
     ...state,
     map: {
       ...state.map,
       fog: newFog,
+      enemies: updatedEnemies,
     },
   };
 }
 
 /**
- * Seismic Scanner: Reveal nearest instance of selected POI type
+ * Seismic Scanner: Reveal a random instance of selected POI type
  */
 function applySeismicScannerEffect(
   state: GameState,
@@ -888,35 +903,28 @@ function applySeismicScannerEffect(
     return state;
   }
 
-  // Find nearest unvisited POI of that type
-  const playerPos = state.player.position;
-  let nearestPOI: MapPOI | null = null;
-  let nearestDist = Infinity;
-
-  for (const poi of state.map.pois) {
-    if (poi.definitionId === selectedPOI.id && !poi.visited) {
-      const dist =
-        Math.abs(poi.position.x - playerPos.x) +
-        Math.abs(poi.position.y - playerPos.y);
-      if (dist < nearestDist) {
-        nearestDist = dist;
-        nearestPOI = poi;
-      }
+  const candidates = state.map.pois.filter((poi) => {
+    if (poi.definitionId !== selectedPOI.id || poi.visited) {
+      return false;
     }
-  }
+    return state.map.fog[poi.position.y][poi.position.x] === FogState.Hidden;
+  });
 
-  if (!nearestPOI) {
+  if (candidates.length === 0) {
     return state;
   }
 
+  const rng = new SeededRNG(state.rngState + 1);
+  const selected = rng.pick(candidates);
+
   // Reveal the POI and surrounding tiles
   const newFog = state.map.fog.map((row) => [...row]);
-  const revealRadius = 2;
+  const revealRadius = 1;
 
   for (let dy = -revealRadius; dy <= revealRadius; dy++) {
     for (let dx = -revealRadius; dx <= revealRadius; dx++) {
-      const x = nearestPOI.position.x + dx;
-      const y = nearestPOI.position.y + dy;
+      const x = selected.position.x + dx;
+      const y = selected.position.y + dy;
       if (x >= 0 && x < state.map.width && y >= 0 && y < state.map.height) {
         if (newFog[y][x] === FogState.Hidden) {
           newFog[y][x] = FogState.Revealed;
@@ -927,6 +935,7 @@ function applySeismicScannerEffect(
 
   return {
     ...state,
+    rngState: state.rngState + 1,
     map: {
       ...state.map,
       fog: newFog,
@@ -1106,14 +1115,11 @@ function applyCrusherGolemEffect(
     return state;
   }
 
-  // Parse the gear name from "Fuse 2x GearName -> RARITY"
-  const match = option.label.match(/Fuse 2x (.+) ->/);
-  if (!match) {
-    return state;
-  }
-
-  const gearName = match[1];
-  const gearDef = Object.values(GEAR_DEFINITIONS).find((g) => g.name === gearName);
+  const optionGear =
+    option.item && 'currentRarity' in option.item ? option.item : null;
+  const gearDef = optionGear
+    ? GEAR_DEFINITIONS[optionGear.id]
+    : Object.values(GEAR_DEFINITIONS).find((g) => option.label.includes(g.name));
   if (!gearDef) {
     return state;
   }

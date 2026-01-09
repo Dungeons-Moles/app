@@ -287,7 +287,7 @@ export function hasGear(player: Player, gearId: GearId): boolean {
  */
 export function increaseInventoryCapacity(player: Player): Player {
   const newCapacity = Math.min(
-    player.inventoryCapacity + GAME_CONSTANTS.INVENTORY_SLOTS_PER_DAY,
+    player.inventoryCapacity + GAME_CONSTANTS.INVENTORY_SLOTS_PER_WEEK,
     GAME_CONSTANTS.MAX_INVENTORY_SLOTS
   );
 
