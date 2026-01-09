@@ -99,3 +99,35 @@ export const BOSS_POOLS: Record<1 | 2 | 3, BossId[]> = {
   2: ['DRILL_SERGEANT', 'CRYSTAL_MIMIC'],
   3: ['ELDRITCH_MOLE'],
 };
+
+// ============================================================================
+// Wall Break
+// ============================================================================
+
+/**
+ * Wall break cost calculation constants.
+ * Formula: max(WALL_BREAK_MIN_COST, WALL_BREAK_BASE_COST - dig)
+ */
+export const WALL_BREAK_BASE_COST = 4;
+export const WALL_BREAK_MIN_COST = 1;
+export const WALL_BREAK_MIN_DIG = 1;
+
+// ============================================================================
+// Spawn Zones
+// ============================================================================
+
+/**
+ * Spawn placement zone radiuses (Manhattan distance from spawn).
+ */
+export const SPAWN_PROTECTION_RADIUS = 5;
+export const MID_ZONE_RADIUS = 10;
+
+/**
+ * Enemy tier weights by zone.
+ * Index 0 = T1 weight, Index 1 = T2 weight, Index 2 = T3 weight
+ */
+export const ZONE_TIER_WEIGHTS: Record<number, [number, number, number]> = {
+  0: [1.0, 0.0, 0.0],
+  1: [0.6, 0.4, 0.0],
+  2: [0.3, 0.4, 0.3],
+};
