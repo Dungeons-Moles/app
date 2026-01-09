@@ -9,6 +9,8 @@ import React, {
   useContext,
   useReducer,
   useCallback,
+  useEffect,
+  useState,
   ReactNode,
   Dispatch,
 } from 'react';
@@ -18,7 +20,28 @@ import type {
 } from '../game/engine/types';
 import { CombatPhase } from '../game/engine/types';
 import { resolveCombat, createCombatState, type CombatResolverInput } from '../game/combat/resolver';
-import { GAME_CONSTANTS } from '../game/engine/constants';
+
+// ============================================================================
+// Combat Speed
+// ============================================================================
+
+export const COMBAT_ANIMATION_BASE_MS = 500;
+
+export const COMBAT_SPEED_MULTIPLIER = {
+  paused: 0,
+  normal: 1,
+  fast: 2,
+} as const;
+
+export type CombatSpeed = keyof typeof COMBAT_SPEED_MULTIPLIER;
+
+export function getCombatAnimationIntervalMs(speed: CombatSpeed): number | null {
+  if (speed === 'paused') {
+    return null;
+  }
+
+  return COMBAT_ANIMATION_BASE_MS / COMBAT_SPEED_MULTIPLIER[speed];
+}
 
 // ============================================================================
 // Combat Actions
@@ -179,6 +202,10 @@ function combatReducer(state: CombatUIState, action: CombatAction): CombatUIStat
 interface CombatContextType {
   state: CombatUIState;
   dispatch: Dispatch<CombatAction>;
+  /** Current combat animation speed */
+  speed: CombatSpeed;
+  /** Update combat animation speed */
+  setSpeed: (speed: CombatSpeed) => void;
   /** Start a new combat */
   startCombat: (input: CombatResolverInput) => void;
   /** Get current combatant states for display */
@@ -195,6 +222,7 @@ const CombatContext = createContext<CombatContextType | undefined>(undefined);
 
 export function CombatProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(combatReducer, initialState);
+  const [speed, setSpeed] = useState<CombatSpeed>('normal');
 
   const startCombat = useCallback((input: CombatResolverInput) => {
     dispatch({ type: 'START_COMBAT', input });
@@ -270,11 +298,32 @@ export function CombatProvider({ children }: { children: ReactNode }) {
     return state.resolvedCombat?.result ?? null;
   }, [state.resolvedCombat]);
 
+  useEffect(() => {
+    if (!state.resolvedCombat || state.isComplete) return;
+
+    const logLength = state.resolvedCombat.log.length;
+    if (state.currentLogIndex >= logLength - 1) {
+      dispatch({ type: 'COMPLETE_ANIMATION' });
+      return;
+    }
+
+    const intervalMs = getCombatAnimationIntervalMs(speed);
+    if (intervalMs === null) return;
+
+    const timer = setTimeout(() => {
+      dispatch({ type: 'ADVANCE_LOG', index: state.currentLogIndex + 1 });
+    }, intervalMs);
+
+    return () => clearTimeout(timer);
+  }, [state.currentLogIndex, state.resolvedCombat, state.isComplete, speed, dispatch]);
+
   return (
     <CombatContext.Provider
       value={{
         state,
         dispatch,
+        speed,
+        setSpeed,
         startCombat,
         getDisplayStates,
         getResult,
