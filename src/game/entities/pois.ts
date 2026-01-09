@@ -1234,6 +1234,20 @@ export function markPOIDiscovered(map: GameMap, poiId: string): GameMap {
 }
 
 /**
+ * Get all discovered Rail Waypoints from the map.
+ */
+export function getDiscoveredWaypoints(map: GameMap): MapPOI[] {
+  return map.pois.filter((poi) => poi.definitionId === 'L8' && poi.discovered);
+}
+
+/**
+ * Check if fast travel is available.
+ */
+export function canFastTravel(map: GameMap): boolean {
+  return getDiscoveredWaypoints(map).length >= 2;
+}
+
+/**
  * Find POI at a given position
  */
 export function findPOIAtPosition(map: GameMap, position: Position): MapPOI | null {

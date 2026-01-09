@@ -80,6 +80,8 @@ export type ItemsetId =
   | 'SWIFT_DIGGER_KIT'
   | 'ROYAL_EXTRACTION';
 
+export type Rarity = 'COMMON' | 'UNCOMMON' | 'RARE' | 'EPIC';
+
 export type ItemRarity = 'COMMON' | 'GILDED' | 'DIAMOND' | 'RARE' | 'HEROIC' | 'MYTHIC';
 
 export type ItemTag =
