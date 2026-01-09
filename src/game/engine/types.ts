@@ -3,7 +3,8 @@
  * @see specs/001-pve-dungeon-crawler/data-model.md
  */
 
-import type { GameMap } from '../map/types';
+import type { GameMap, EnemyId } from '../map/types';
+import type { Direction } from '../input/types';
 
 // ============================================================================
 // Game Phase State Machine
@@ -27,6 +28,21 @@ export interface Position {
   x: number;
   y: number;
 }
+
+// ============================================================================
+// Interaction State Types
+// ============================================================================
+
+export type WallHighlightState = {
+  targetPosition: Position;
+  direction: Direction;
+  cost: number;
+} | null;
+
+export type FastTravelState = {
+  active: boolean;
+  selectedIndex: number;
+} | null;
 
 // ============================================================================
 // Player Types
@@ -168,6 +184,9 @@ export interface CombatState {
   log: CombatLogEntry[];
   rngState: number;
   playerGold: number;
+  goldReward: number;
+  enemyDefinitionId: EnemyId;
+  enemyTier: 1 | 2 | 3;
   consumedGearIds: GearId[];
   result: CombatResult | null;
 }
@@ -310,5 +329,7 @@ export interface GameState {
   time: TimeState;
   combat: CombatState | null;
   activePOI: POIInteraction | null;
+  wallHighlight: WallHighlightState;
+  fastTravel: FastTravelState;
   debug: DebugState;
 }

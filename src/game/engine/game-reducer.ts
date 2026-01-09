@@ -295,6 +295,8 @@ function handleMove(state: GameState, direction: Direction): GameState {
       player: playerCombatant,
       enemy: enemyCombatant,
       seed: newState.rngState,
+      enemyDefinitionId: enemyAtTarget.definitionId,
+      enemyTier: enemyAtTarget.tier,
       playerGold: newState.player.stats.gold,
     });
 
@@ -399,6 +401,8 @@ function handleEnterCombat(state: GameState, enemyId: string): GameState {
     player: playerCombatant,
     enemy: enemyCombatant,
     seed: state.rngState,
+    enemyDefinitionId: enemy.definitionId,
+    enemyTier: enemy.tier,
     playerGold: state.player.stats.gold,
   });
 
@@ -846,6 +850,8 @@ function handleNightEnemyMovement(state: GameState): GameState {
         player: playerCombatant,
         enemy: enemyCombatant,
         seed: newState.rngState,
+        enemyDefinitionId: attackingEnemy.definitionId,
+        enemyTier: attackingEnemy.tier,
         playerGold: newState.player.stats.gold,
       });
 

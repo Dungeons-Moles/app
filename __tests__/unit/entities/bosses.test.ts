@@ -74,6 +74,9 @@ function createTestCombatState(
     log: [],
     rngState: 12345,
     playerGold: 0,
+    goldReward: 0,
+    enemyDefinitionId: 'TUNNEL_RAT',
+    enemyTier: 1,
     consumedGearIds: [],
     result: null,
   };

@@ -13,6 +13,7 @@ import type {
   GearId,
 } from '../engine/types';
 import { CombatPhase } from '../engine/types';
+import type { EnemyId as MapEnemyId } from '../map/types';
 import { GAME_CONSTANTS } from '../engine/constants';
 import { SeededRNG } from '../engine/rng';
 import { calculateDamage, applyDamage, isDefeated, isWounded, isExposed } from './damage';
@@ -37,6 +38,12 @@ export interface CombatResolverInput {
   bossId?: BossId;
   /** Optional enemy ID for trait execution (regular enemies) */
   enemyId?: EnemyId;
+  /** Optional enemy definition ID for rewards */
+  enemyDefinitionId?: MapEnemyId;
+  /** Optional enemy tier for rewards */
+  enemyTier?: 1 | 2 | 3;
+  /** Optional gold reward for combat victory */
+  goldReward?: number;
   /** True if player has Shrapnel Harness itemset */
   hasShrapnelHarness?: boolean;
   /** Player gear for combat effects */
@@ -63,6 +70,9 @@ export function createCombatState(input: CombatResolverInput): CombatState {
     log: [],
     rngState: input.seed,
     playerGold: input.playerGold ?? 0,
+    goldReward: input.goldReward ?? 0,
+    enemyDefinitionId: input.enemyDefinitionId ?? input.enemyId ?? 'TUNNEL_RAT',
+    enemyTier: input.enemyTier ?? 1,
     consumedGearIds: [],
     result: null,
   };
