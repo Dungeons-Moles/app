@@ -9,9 +9,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useWallet } from '../contexts/WalletContext';
 import { useProfile } from '../contexts/ProfileContext';
-import { useGame } from '../contexts/GameContext';
+import { useGame, GamePhase } from '../contexts/GameContext';
 import { shortenAddress } from '../utils/storage';
 import { RootStackParamList } from '../navigation';
 
@@ -20,14 +19,12 @@ type HubScreenProps = {
 };
 
 export function HubScreen({ navigation }: HubScreenProps) {
-  const { wallet, disconnect } = useWallet();
   const { profile, clearProfile } = useProfile();
-  const { dispatch } = useGame();
+  const { state: gameState, dispatch } = useGame();
   const [showSettings, setShowSettings] = useState(false);
 
-  const handleDisconnect = async () => {
+  const handleResetProfile = async () => {
     await clearProfile();
-    disconnect();
     navigation.reset({
       index: 0,
       routes: [{ name: 'Account' }],
@@ -38,12 +35,19 @@ export function HubScreen({ navigation }: HubScreenProps) {
     // Generate a random seed for the game
     const seed = Math.floor(Math.random() * 2147483647);
 
+    if (
+      gameState?.phase === GamePhase.Defeat ||
+      gameState?.phase === GamePhase.Victory
+    ) {
+      dispatch({ type: 'RETURN_TO_MENU' });
+    }
+
     // Start the game with the seed
     dispatch({ type: 'START_GAME', seed });
 
     // Navigate to the game screen
     navigation.navigate('Game');
-  }, [dispatch, navigation]);
+  }, [dispatch, navigation, gameState?.phase]);
 
   const handlePlayPvP = () => {
     Alert.alert('Coming Soon', 'PvP Gauntlet is under development!');
@@ -68,12 +72,14 @@ export function HubScreen({ navigation }: HubScreenProps) {
         <View style={styles.topLeft}>
           <View style={styles.playerPanel}>
             <Text style={styles.playerName}>{profile?.displayName}</Text>
-            <View style={styles.walletRow}>
-              <View style={styles.walletDot} />
-              <Text style={styles.walletAddress}>
-                {shortenAddress(wallet.address || '')}
-              </Text>
-            </View>
+            {profile?.walletAddress ? (
+              <View style={styles.walletRow}>
+                <View style={styles.walletDot} />
+                <Text style={styles.walletAddress}>
+                  {shortenAddress(profile.walletAddress)}
+                </Text>
+              </View>
+            ) : null}
           </View>
         </View>
 
@@ -167,10 +173,10 @@ export function HubScreen({ navigation }: HubScreenProps) {
 
             <TouchableOpacity
               style={styles.modalButton}
-              onPress={handleDisconnect}
+              onPress={handleResetProfile}
               activeOpacity={0.7}
             >
-              <Text style={styles.disconnectText}>Disconnect Wallet</Text>
+              <Text style={styles.disconnectText}>Reset Profile</Text>
             </TouchableOpacity>
 
             <TouchableOpacity

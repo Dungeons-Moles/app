@@ -3,19 +3,27 @@
  * @see specs/001-pve-dungeon-crawler/spec.md User Story 1
  */
 
-import React, { useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useCallback, useMemo, useEffect, useState } from 'react';
+import { View, Text, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation';
 import { useGame, GamePhase } from '../contexts/GameContext';
 import { MapRenderer } from '../components/game/MapRenderer';
 import { DPadControls } from '../components/game/DPadControls';
-import { TopBar, StatsPanel, InventoryPanel } from '../components/game';
+import {
+  TopBar,
+  StatsPanel,
+  InventoryPanel,
+  ItemTooltip,
+  DebugOverlay,
+  POIModal,
+} from '../components/game';
 import { useDirectionInput } from '../hooks/useInput';
 import { useLandscapeLock } from '../hooks/useOrientationLock';
 import { Direction } from '../game/input/types';
 import { TileType } from '../game/map/types';
+import type { GearId, Tool, Gear } from '../game/engine/types';
 
 type GameScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Game'>;
@@ -82,11 +90,132 @@ export function GameScreen({ navigation }: GameScreenProps) {
     return disabled;
   }, [state?.player.position, state?.map.tiles, state?.map.width, state?.map.height]);
 
-  // Handle back navigation
-  const handleBack = useCallback(() => {
-    dispatch({ type: 'RESET_GAME' });
-    navigation.goBack();
-  }, [dispatch, navigation]);
+  // Navigate to Combat screen when entering combat
+  useEffect(() => {
+    if (state?.phase === GamePhase.Combat) {
+      navigation.navigate('Combat');
+    }
+  }, [state?.phase, navigation]);
+
+  // Handle POI modal close
+  const handlePOIClose = useCallback(() => {
+    dispatch({ type: 'CLOSE_POI' });
+  }, [dispatch]);
+
+  const [golemSelection, setGolemSelection] = useState<{
+    gearId: GearId | null;
+    emoji: string;
+    count: number;
+  }>({ gearId: null, emoji: '', count: 0 });
+  const [inspectedItem, setInspectedItem] = useState<Tool | Gear | null>(null);
+  const [isTooltipVisible, setTooltipVisible] = useState(false);
+
+  useEffect(() => {
+    if (state?.activePOI?.poi.definitionId !== 'L11') {
+      setGolemSelection({ gearId: null, emoji: '', count: 0 });
+    }
+  }, [state?.activePOI?.poi.definitionId]);
+
+  const handleInventoryItemPress = useCallback(
+    (item: Tool | Gear, _slotIndex: number) => {
+      if (state?.phase !== GamePhase.POIInteraction) {
+        return;
+      }
+      if (state.activePOI?.poi.definitionId !== 'L11') {
+        return;
+      }
+      if (!('currentRarity' in item)) {
+        return;
+      }
+      if (item.currentRarity !== 'COMMON' && item.currentRarity !== 'GILDED') {
+        return;
+      }
+
+      const availableCount = state.player.inventory.filter(
+        slot => slot.item.id === item.id
+      ).length;
+
+      if (availableCount === 0) {
+        return;
+      }
+
+      setGolemSelection((prev) => {
+        if (!prev.gearId || prev.gearId !== item.id) {
+          return { gearId: item.id, emoji: item.emoji, count: 1 };
+        }
+        const maxCount = Math.min(2, availableCount);
+        if (prev.count < maxCount) {
+          return { gearId: prev.gearId, emoji: prev.emoji, count: prev.count + 1 };
+        }
+        return prev;
+      });
+    },
+    [state?.phase, state?.activePOI, state?.player.inventory]
+  );
+
+  const golemFuseOptionIndex = useMemo(() => {
+    if (state?.activePOI?.poi.definitionId !== 'L11') {
+      return null;
+    }
+    if (!golemSelection.gearId || golemSelection.count < 2) {
+      return null;
+    }
+
+    const options = state.activePOI.options ?? [];
+    const optionIndex = options.findIndex(
+      option =>
+        option.item &&
+        'currentRarity' in option.item &&
+        option.item.id === golemSelection.gearId
+    );
+
+    return optionIndex >= 0 ? optionIndex : null;
+  }, [state?.activePOI, golemSelection]);
+
+  const handleGolemSlotPress = useCallback((_slotIndex: number) => {
+    setGolemSelection((prev) => {
+      if (!prev.gearId || prev.count === 0) {
+        return prev;
+      }
+      const nextCount = prev.count - 1;
+      if (nextCount <= 0) {
+        return { gearId: null, emoji: '', count: 0 };
+      }
+      return { ...prev, count: nextCount };
+    });
+  }, []);
+
+  // Handle POI option selection
+  const handlePOIOption = useCallback(
+    (optionIndex: number) => {
+      if (
+        state?.activePOI?.poi.definitionId === 'L11' &&
+        golemFuseOptionIndex !== null &&
+        optionIndex === golemFuseOptionIndex
+      ) {
+        setGolemSelection({ gearId: null, emoji: '', count: 0 });
+      }
+      dispatch({ type: 'SELECT_POI_OPTION', optionIndex });
+    },
+    [dispatch, state?.activePOI?.poi.definitionId, golemFuseOptionIndex]
+  );
+
+  const isCrusherGolemActive =
+    state?.phase === GamePhase.POIInteraction && state.activePOI?.poi.definitionId === 'L11';
+
+  const handleInspectItem = useCallback((item: Tool | Gear, _slotIndex: number) => {
+    setInspectedItem(item);
+    setTooltipVisible(true);
+  }, []);
+
+  const handleInspectTool = useCallback((tool: Tool) => {
+    setInspectedItem(tool);
+    setTooltipVisible(true);
+  }, []);
+
+  const handleCloseTooltip = useCallback(() => {
+    setTooltipVisible(false);
+  }, []);
 
   // If no game state, show loading
   if (!state) {
@@ -101,15 +230,26 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
   return (
     <SafeAreaView style={styles.container} edges={SAFE_AREA_EDGES}>
-      {/* Top Bar with week progress and boss preview */}
-      {state?.time && <TopBar time={state.time} />}
-
       <View style={styles.content}>
-        {/* Map Area (center) */}
-        <View style={styles.mapArea}>
+        {/* Left column: TopBar + Map */}
+        <View style={styles.leftColumn}>
+          {/* Top Bar with week progress and boss preview */}
+          {state?.time && <TopBar time={state.time} />}
+
+          {/* Map Area */}
+          <View style={styles.mapArea}>
           <MapRenderer
             map={state.map}
             playerPosition={state.player.position}
+            timePhase={state.time.phase}
+          />
+
+          {/* Debug Overlay (top-left) - P15: Debug Tooling Isolation */}
+          <DebugOverlay
+            debug={state.debug}
+            seed={state.seed}
+            phase={state.phase}
+            time={state.time}
           />
 
           {/* D-Pad Controls (bottom-left overlay per FR-002) */}
@@ -120,33 +260,49 @@ export function GameScreen({ navigation }: GameScreenProps) {
               size={120}
             />
           </View>
+
+          {/* Gold Display (top-right of map) */}
+          <View style={styles.goldOverlay}>
+            <Text style={styles.goldEmoji}>🪙</Text>
+            <Text style={styles.goldValue}>{state.player.stats.gold}</Text>
+          </View>
+          </View>
         </View>
 
-        {/* Side Panel (right) - Stats and Inventory */}
+        {/* Side Panel (right) - Stats and Inventory - Full height */}
         <View style={styles.sidePanel}>
           {/* Stats Panel (top-right per FR-045) */}
           <StatsPanel stats={state.player.stats} />
 
           {/* Inventory Panel */}
-          <View style={styles.inventoryContainer}>
-            <InventoryPanel
-              inventory={state.player.inventory}
-              equippedTool={state.player.equippedTool}
-              inventoryCapacity={state.player.inventoryCapacity}
-              activeItemsets={state.player.activeItemsets}
-            />
-          </View>
-
-          {/* Exit Button */}
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={handleBack}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.backButtonText}>Exit</Text>
-          </TouchableOpacity>
+          <InventoryPanel
+            inventory={state.player.inventory}
+            equippedTool={state.player.equippedTool}
+            inventoryCapacity={state.player.inventoryCapacity}
+            activeItemsets={state.player.activeItemsets}
+            onItemPress={isCrusherGolemActive ? handleInventoryItemPress : undefined}
+            onItemInspect={handleInspectItem}
+            onToolInspect={handleInspectTool}
+          />
         </View>
       </View>
+
+      {/* POI Interaction Modal */}
+      <POIModal
+        visible={state.phase === GamePhase.POIInteraction}
+        interaction={state.activePOI}
+        onSelectOption={handlePOIOption}
+        onClose={handlePOIClose}
+        golemSelection={golemSelection}
+        golemFuseOptionIndex={golemFuseOptionIndex}
+        onGolemSlotPress={handleGolemSlotPress}
+      />
+
+      <ItemTooltip
+        item={inspectedItem}
+        visible={isTooltipVisible}
+        onClose={handleCloseTooltip}
+      />
     </SafeAreaView>
   );
 }
@@ -160,6 +316,10 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
   },
+  leftColumn: {
+    flex: 1,
+    flexDirection: 'column',
+  },
   loading: {
     flex: 1,
     justifyContent: 'center',
@@ -170,7 +330,7 @@ const styles = StyleSheet.create({
     color: '#666666',
   },
   mapArea: {
-    flex: 3,
+    flex: 1,
     backgroundColor: '#000000',
     position: 'relative',
   },
@@ -180,31 +340,33 @@ const styles = StyleSheet.create({
     left: 16,
   },
   sidePanel: {
-    flex: 1,
+    width: 160,
     backgroundColor: '#151518',
     borderLeftWidth: 1,
     borderLeftColor: '#2a2a30',
     paddingVertical: 8,
-    paddingHorizontal: 8,
+    paddingHorizontal: 6,
     justifyContent: 'flex-start',
-    gap: 8,
+    gap: 6,
   },
-  inventoryContainer: {
-    flex: 1,
-    minHeight: 100,
-  },
-  backButton: {
-    backgroundColor: '#1a1215',
-    borderWidth: 1,
-    borderColor: '#3a2020',
-    borderRadius: 6,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
+  goldOverlay: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 4,
   },
-  backButtonText: {
-    fontSize: 12,
-    color: '#a33a3a',
-    fontWeight: '500',
+  goldEmoji: {
+    fontSize: 14,
+  },
+  goldValue: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#FFD700',
   },
 });

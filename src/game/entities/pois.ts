@@ -14,6 +14,7 @@ import type {
   Position,
   GearId,
   ItemRarity,
+  ToolOil,
   Player,
   TimeState,
 } from '../engine/types';
@@ -22,9 +23,46 @@ import type { POIId as DataPOIId, POIDefinition } from '../../data/pois';
 import { POI_DEFINITIONS, getPOIDefinition, canInteractWithPOI } from '../../data/pois';
 import type { MapPOI, POIId, GameMap } from '../map/types';
 import { FogState } from '../map/types';
-import { createToolInstance, getAllToolDefinitions, getToolsByRarity } from './items';
-import { createGearInstance, getGearByRarity, getAllGearDefinitions, GEAR_DEFINITIONS } from '../../data/gear';
+import { createToolInstance, getToolsByRarity } from './items';
+import { addGearToInventory, equipTool, refreshPlayerStats } from './player';
+import { createGearInstance, getGearByRarity, GEAR_DEFINITIONS } from '../../data/gear';
 import { SeededRNG } from '../engine/rng';
+
+// ============================================================================
+// Item Description Helpers
+// ============================================================================
+
+/**
+ * Generates a description string from item stats
+ */
+function formatItemStats(stats: { atk?: number; arm?: number; spd?: number; dig?: number; hp?: number }): string {
+  const parts: string[] = [];
+  if (stats.atk) parts.push(`+${stats.atk} ATK`);
+  if (stats.arm) parts.push(`+${stats.arm} ARM`);
+  if (stats.spd) parts.push(`+${stats.spd} SPD`);
+  if (stats.dig) parts.push(`+${stats.dig} DIG`);
+  if (stats.hp) parts.push(`+${stats.hp} HP`);
+  return parts.join(', ') || 'No stats';
+}
+
+/**
+ * Generates a description for a gear item including stats and effects
+ */
+function getGearDescription(gear: Gear): string {
+  const gearDef = GEAR_DEFINITIONS[gear.id];
+  const statsDesc = formatItemStats(gear.stats);
+  if (gearDef.effect) {
+    return `${statsDesc}\n${gearDef.effect.description}`;
+  }
+  return statsDesc;
+}
+
+/**
+ * Generates a description for a tool item including stats
+ */
+function getToolDescription(tool: Tool): string {
+  return formatItemStats(tool.stats);
+}
 
 // ============================================================================
 // POI Interaction Creation
@@ -134,7 +172,8 @@ function generateSupplyCacheOptions(
     }
     const gear = createGearInstance(gearDef.id, rarity);
     options.push({
-      label: `${gear.emoji} ${gear.name}`,
+      label: gear.name,
+      description: getGearDescription(gear),
       item: gear,
     });
   }
@@ -166,7 +205,8 @@ function generateToolCrateOptions(
     }
     const tool = createToolInstance(toolDef.id);
     options.push({
-      label: `${tool.emoji} ${tool.name}`,
+      label: tool.name,
+      description: getToolDescription(tool),
       item: tool,
     });
   }
@@ -248,7 +288,7 @@ function generateSurveyBeaconOptions(): POIOption[] {
 
 // ============================================================================
 // T092: Seismic Scanner (L7)
-// Choose POI type to reveal nearest instance
+// Choose from up to 3 random POI types to reveal a random instance
 // ============================================================================
 
 function generateSeismicScannerOptions(state: GameState): POIOption[] {
@@ -262,7 +302,16 @@ function generateSeismicScannerOptions(state: GameState): POIOption[] {
   }
 
   const options: POIOption[] = [];
-  for (const poiId of poiTypes) {
+  const poiTypeList = Array.from(poiTypes);
+  const rng = new SeededRNG(state.rngState);
+
+  for (let i = poiTypeList.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(rng.next() * (i + 1));
+    [poiTypeList[i], poiTypeList[j]] = [poiTypeList[j], poiTypeList[i]];
+  }
+
+  const selections = poiTypeList.slice(0, 3);
+  for (const poiId of selections) {
     const def = getPOIDefinition(poiId);
     options.push({
       label: `${def.emoji} Find ${def.name}`,
@@ -287,9 +336,11 @@ function generateSeismicScannerOptions(state: GameState): POIOption[] {
 // ============================================================================
 
 function generateRailWaypointOptions(state: GameState): POIOption[] {
-  // Find all discovered/visited Rail Waypoints
+  // Find all discovered/visible Rail Waypoints
   const waypoints = state.map.pois.filter(
-    (poi) => poi.definitionId === 'L8' && poi.discovered
+    (poi) =>
+      poi.definitionId === 'L8' &&
+      (poi.discovered || state.map.fog[poi.position.y][poi.position.x] !== FogState.Hidden)
   );
 
   const currentPos = state.player.position;
@@ -412,21 +463,22 @@ function generateToolOilRackOptions(state: GameState): POIOption[] {
         disabled: true,
         disabledReason: 'Equip a tool first',
       },
-      { label: 'Leave' },
     ];
   }
 
   return [
     {
       label: '+1 ATK',
+      description: 'Increase attack power.\nDeal more damage in combat.',
     },
     {
       label: '+1 ARM',
+      description: 'Increase armor.\nReduce damage taken in combat.',
     },
     {
       label: '+1 DIG',
+      description: 'Increase dig speed.\nBreak walls faster.',
     },
-    { label: 'Leave' },
   ];
 }
 
@@ -526,8 +578,10 @@ function generateCrusherGolemOptions(state: GameState): POIOption[] {
     if (info.count >= 2) {
       const def = GEAR_DEFINITIONS[gearId];
       const nextRarity = info.rarity === 'COMMON' ? 'GILDED' : 'DIAMOND';
+      const previewGear = createGearInstance(gearId, info.rarity);
       options.push({
         label: `${def.emoji} Fuse 2x ${def.name} -> ${nextRarity}`,
+        item: previewGear,
       });
     }
   }
@@ -557,7 +611,7 @@ function generateGeodeVaultOptions(
   const options: POIOption[] = [];
 
   if (heroicGear.length === 0) {
-    return [{ label: 'Leave' }];
+    return [];
   }
 
   // Generate 3 heroic items
@@ -570,7 +624,8 @@ function generateGeodeVaultOptions(
     selectedIds.add(gearDef.id);
     const gear = createGearInstance(gearDef.id);
     options.push({
-      label: `${gear.emoji} ${gear.name}`,
+      label: gear.name,
+      description: getGearDescription(gear),
       item: gear,
     });
   }
@@ -712,35 +767,20 @@ function applyItemSelectionEffect(
     // It's a tool
     return {
       ...state,
-      player: {
-        ...state.player,
-        equippedTool: option.item as Tool,
-      },
+      player: equipTool(state.player, option.item as Tool),
     };
   }
 
   // It's gear - add to inventory
   const gear = option.item as Gear;
-  if (state.player.inventory.length >= state.player.inventoryCapacity) {
+  const updatedPlayer = addGearToInventory(state.player, gear);
+  if (!updatedPlayer) {
     return state; // Inventory full
-  }
-
-  // Find next available slot index
-  const usedIndices = new Set(state.player.inventory.map((s) => s.index));
-  let nextIndex = 0;
-  while (usedIndices.has(nextIndex)) {
-    nextIndex++;
   }
 
   return {
     ...state,
-    player: {
-      ...state.player,
-      inventory: [
-        ...state.player.inventory,
-        { item: gear, index: nextIndex },
-      ],
-    },
+    player: updatedPlayer,
   };
 }
 
@@ -752,33 +792,38 @@ function applyToolOilRackEffect(
   optionIndex: number
 ): GameState {
   const tool = state.player.equippedTool;
-  if (!tool || optionIndex === 3) {
-    // Leave or no tool
+  if (!tool || optionIndex > 2) {
+    // Invalid option or no tool
     return state;
   }
 
   const newStats = { ...tool.stats };
+  let oil: ToolOil | null = null;
   switch (optionIndex) {
     case 0:
       newStats.atk = (newStats.atk ?? 0) + 1;
+      oil = 'ATK';
       break;
     case 1:
       newStats.arm = (newStats.arm ?? 0) + 1;
+      oil = 'ARM';
       break;
     case 2:
       newStats.dig = (newStats.dig ?? 0) + 1;
+      oil = 'DIG';
       break;
   }
 
   return {
     ...state,
-    player: {
+    player: refreshPlayerStats({
       ...state.player,
       equippedTool: {
         ...tool,
         stats: newStats,
+        oil,
       },
-    },
+    }),
   };
 }
 
@@ -793,9 +838,17 @@ function applySurveyBeaconEffect(
     return state;
   }
 
+  return activateSurveyBeacon(state);
+}
+
+/**
+ * Activates the Survey Beacon effect directly (Reveal tiles in radius 13)
+ */
+export function activateSurveyBeacon(state: GameState): GameState {
   const playerPos = state.player.position;
   const radius = 13;
   const newFog = state.map.fog.map((row) => [...row]);
+  const visibleKeys = new Set<string>();
 
   // Reveal all tiles within radius
   for (let dy = -radius; dy <= radius; dy++) {
@@ -808,22 +861,32 @@ function applySurveyBeaconEffect(
           if (newFog[y][x] === FogState.Hidden) {
             newFog[y][x] = FogState.Revealed;
           }
+          visibleKeys.add(`${x},${y}`);
         }
       }
     }
   }
+
+  const updatedEnemies = state.map.enemies.map((enemy) => {
+    const key = `${enemy.position.x},${enemy.position.y}`;
+    if (visibleKeys.has(key)) {
+      return { ...enemy, discovered: true };
+    }
+    return enemy;
+  });
 
   return {
     ...state,
     map: {
       ...state.map,
       fog: newFog,
+      enemies: updatedEnemies,
     },
   };
 }
 
 /**
- * Seismic Scanner: Reveal nearest instance of selected POI type
+ * Seismic Scanner: Reveal a random instance of selected POI type
  */
 function applySeismicScannerEffect(
   state: GameState,
@@ -855,35 +918,28 @@ function applySeismicScannerEffect(
     return state;
   }
 
-  // Find nearest unvisited POI of that type
-  const playerPos = state.player.position;
-  let nearestPOI: MapPOI | null = null;
-  let nearestDist = Infinity;
-
-  for (const poi of state.map.pois) {
-    if (poi.definitionId === selectedPOI.id && !poi.visited) {
-      const dist =
-        Math.abs(poi.position.x - playerPos.x) +
-        Math.abs(poi.position.y - playerPos.y);
-      if (dist < nearestDist) {
-        nearestDist = dist;
-        nearestPOI = poi;
-      }
+  const candidates = state.map.pois.filter((poi) => {
+    if (poi.definitionId !== selectedPOI.id || poi.visited) {
+      return false;
     }
-  }
+    return state.map.fog[poi.position.y][poi.position.x] === FogState.Hidden;
+  });
 
-  if (!nearestPOI) {
+  if (candidates.length === 0) {
     return state;
   }
 
+  const rng = new SeededRNG(state.rngState + 1);
+  const selected = rng.pick(candidates);
+
   // Reveal the POI and surrounding tiles
   const newFog = state.map.fog.map((row) => [...row]);
-  const revealRadius = 2;
+  const revealRadius = 1;
 
   for (let dy = -revealRadius; dy <= revealRadius; dy++) {
     for (let dx = -revealRadius; dx <= revealRadius; dx++) {
-      const x = nearestPOI.position.x + dx;
-      const y = nearestPOI.position.y + dy;
+      const x = selected.position.x + dx;
+      const y = selected.position.y + dy;
       if (x >= 0 && x < state.map.width && y >= 0 && y < state.map.height) {
         if (newFog[y][x] === FogState.Hidden) {
           newFog[y][x] = FogState.Revealed;
@@ -894,6 +950,7 @@ function applySeismicScannerEffect(
 
   return {
     ...state,
+    rngState: state.rngState + 1,
     map: {
       ...state.map,
       fog: newFog,
@@ -1042,21 +1099,17 @@ function applyRustyAnvilEffect(
 
   return {
     ...state,
-    player: {
+    player: refreshPlayerStats({
       ...state.player,
       baseStats: {
         ...state.player.baseStats,
         gold: state.player.baseStats.gold - cost,
       },
-      stats: {
-        ...state.player.stats,
-        gold: state.player.stats.gold - cost,
-      },
       equippedTool: {
         ...tool,
         stats: newStats,
       },
-    },
+    }),
   };
 }
 
@@ -1077,14 +1130,11 @@ function applyCrusherGolemEffect(
     return state;
   }
 
-  // Parse the gear name from "Fuse 2x GearName -> RARITY"
-  const match = option.label.match(/Fuse 2x (.+) ->/);
-  if (!match) {
-    return state;
-  }
-
-  const gearName = match[1];
-  const gearDef = Object.values(GEAR_DEFINITIONS).find((g) => g.name === gearName);
+  const optionGear =
+    option.item && 'currentRarity' in option.item ? option.item : null;
+  const gearDef = optionGear
+    ? GEAR_DEFINITIONS[optionGear.id]
+    : Object.values(GEAR_DEFINITIONS).find((g) => option.label.includes(g.name));
   if (!gearDef) {
     return state;
   }
@@ -1122,10 +1172,10 @@ function applyCrusherGolemEffect(
 
   return {
     ...state,
-    player: {
+    player: refreshPlayerStats({
       ...state.player,
       inventory: [...newInventory, { item: upgradedGear, index: nextIndex }],
-    },
+    }),
   };
 }
 

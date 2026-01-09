@@ -40,7 +40,7 @@ export interface ToolDefinition {
 export const TOOL_DEFINITIONS: Record<ToolId, ToolDefinition> = {
   T1: {
     id: 'T1',
-    name: 'Rusty Pickaxe',
+    name: 'Polished Pickaxe',
     emoji: '⛏️',
     rarity: 'COMMON',
     stats: { atk: 3 },
@@ -122,6 +122,14 @@ export const TOOL_DEFINITIONS: Record<ToolId, ToolDefinition> = {
       description: 'Attack equals your DIG',
     },
   },
+  T9: {
+    id: 'T9',
+    name: 'Rusty Pickaxe',
+    emoji: '⛏️',
+    rarity: 'COMMON',
+    stats: { atk: 1 },
+    tags: ['STONE'],
+  },
 };
 
 // ============================================================================
@@ -130,7 +138,7 @@ export const TOOL_DEFINITIONS: Record<ToolId, ToolDefinition> = {
 
 /**
  * Get the stat multiplier for a given rarity
- * Only COMMON can be upgraded to GILDED (1.5x) or DIAMOND (2.0x)
+ * Only COMMON can be upgraded to GILDED (2.0x) or DIAMOND (4.0x)
  * RARE, HEROIC, MYTHIC are fixed rarities with no multiplier
  */
 export function applyRarityMultiplier(rarity: ItemRarity): number {
@@ -167,6 +175,7 @@ export function createToolInstance(id: ToolId): Tool {
     rarity: def.rarity,
     stats: { ...def.stats },
     tags: [...def.tags],
+    oil: null,
   };
 }
 

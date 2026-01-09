@@ -16,9 +16,9 @@ export interface DamageResult {
   /** ATK after Chill reduction (halved if chill > 0) */
   atkAfterChill: number;
   /** Amount of damage absorbed by armor */
-  armorReduction: number;
+  armorDamage: number;
   /** Final HP damage dealt */
-  finalDamage: number;
+  hpDamage: number;
   /** Shrapnel reflect damage back to attacker */
   shrapnelReflect: number;
 }
@@ -29,10 +29,11 @@ export interface DamageResult {
  * Damage formula per spec FR-014:
  * 1. Calculate base ATK (atk + bonusAtk)
  * 2. Apply Chill: if chill > 0, halve ATK (floor)
- * 3. Calculate effective ARM (arm + bonusArm - rust, minimum 0)
- * 4. If ignoresArmor, skip ARM reduction
- * 5. Final damage = atkAfterChill - effectiveARM (minimum 0)
- * 6. Shrapnel reflect = defender's shrapnel stacks
+ * 3. Calculate effective ARM pool (arm + bonusArm - rust, minimum 0)
+ * 4. If ignoresArmor, skip ARM absorption
+ * 5. Armor damage = min(effectiveArm, atkAfterChill)
+ * 6. HP damage = atkAfterChill - armorDamage (minimum 0)
+ * 7. Shrapnel reflect = defender's shrapnel stacks
  *
  * @param attacker - The attacking combatant
  * @param defender - The defending combatant
@@ -51,18 +52,18 @@ export function calculateDamage(
     atkAfterChill = Math.floor(baseAtk / 2);
   }
 
-  // Step 3: Calculate effective ARM (reduced by Rust)
-  const baseArm = defender.arm + defender.bonusArm;
-  const effectiveArm = Math.max(0, baseArm - defender.statusEffects.rust);
+  // Step 3: Calculate effective ARM pool (reduced by Rust)
+  const totalArm = defender.arm + defender.bonusArm;
+  const effectiveArm = Math.max(0, totalArm - defender.statusEffects.rust);
 
-  // Step 4: Calculate armor reduction (0 if ignoresArmor)
-  let armorReduction = 0;
+  // Step 4: Calculate armor damage (0 if ignoresArmor)
+  let armorDamage = 0;
   if (!attacker.ignoresArmor) {
-    armorReduction = Math.min(effectiveArm, atkAfterChill);
+    armorDamage = Math.min(effectiveArm, atkAfterChill);
   }
 
-  // Step 5: Calculate final damage (minimum 0)
-  const finalDamage = Math.max(0, atkAfterChill - armorReduction);
+  // Step 5: Calculate HP damage (minimum 0)
+  const hpDamage = Math.max(0, atkAfterChill - armorDamage);
 
   // Step 6: Calculate Shrapnel reflect
   const shrapnelReflect = defender.statusEffects.shrapnel;
@@ -70,8 +71,8 @@ export function calculateDamage(
   return {
     baseAtk,
     atkAfterChill,
-    armorReduction,
-    finalDamage,
+    armorDamage,
+    hpDamage,
     shrapnelReflect,
   };
 }
@@ -83,19 +84,46 @@ export function createDamageResult(params: DamageResult): DamageResult {
   return { ...params };
 }
 
+export interface AppliedDamage {
+  combatant: CombatantState;
+  armorLost: number;
+  hpLost: number;
+}
+
 /**
- * Apply damage to a combatant, returning new state
- * @param combatant - The combatant to damage
- * @param damage - Amount of HP damage to deal
- * @returns New combatant state with reduced HP
+ * Apply armor and HP damage to a combatant, returning new state
  */
 export function applyDamage(
   combatant: CombatantState,
-  damage: number
-): CombatantState {
+  damage: { armor: number; hp: number }
+): AppliedDamage {
+  let remainingArmorDamage = Math.max(0, damage.armor);
+  let bonusArm = combatant.bonusArm;
+  let baseArm = combatant.arm;
+
+  if (remainingArmorDamage > 0 && bonusArm > 0) {
+    const fromBonus = Math.min(bonusArm, remainingArmorDamage);
+    bonusArm -= fromBonus;
+    remainingArmorDamage -= fromBonus;
+  }
+
+  if (remainingArmorDamage > 0 && baseArm > 0) {
+    const fromBase = Math.min(baseArm, remainingArmorDamage);
+    baseArm -= fromBase;
+    remainingArmorDamage -= fromBase;
+  }
+
+  const hpLost = Math.max(0, damage.hp);
+
   return {
-    ...combatant,
-    hp: Math.max(0, combatant.hp - damage),
+    combatant: {
+      ...combatant,
+      arm: baseArm,
+      bonusArm,
+      hp: Math.max(0, combatant.hp - hpLost),
+    },
+    armorLost: Math.max(0, damage.armor) - remainingArmorDamage,
+    hpLost,
   };
 }
 

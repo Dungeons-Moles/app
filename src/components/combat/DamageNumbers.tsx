@@ -19,7 +19,7 @@ interface DamageNumbersProps {
  * Per spec FR-015:
  * - Red for damage
  * - Green for healing
- * - Gray/blue for armor loss
+ * - Purple for armor loss
  */
 export function DamageNumbers({
   damageNumbers,
@@ -81,7 +81,7 @@ function FloatingNumber({ number, position }: FloatingNumberProps) {
       case 'heal':
         return '#22c55e'; // Green
       case 'armor':
-        return '#6b7280'; // Gray
+        return '#a855f7'; // Purple
       default:
         return '#ffffff';
     }

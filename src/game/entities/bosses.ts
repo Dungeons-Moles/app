@@ -182,7 +182,9 @@ function getRandomCommonItemEffect(
     return null;
   }
 
-  // Pick a random one (using simple random for now - will be seeded in resolver)
+  // TODO: P03 VIOLATION - Math.random() breaks determinism.
+  // This should accept a SeededRNG parameter and use rng.nextInt() instead.
+  // Per constitution P03: All game logic MUST be deterministic.
   const randomIndex = Math.floor(Math.random() * commonWithEffects.length);
   return commonWithEffects[randomIndex];
 }

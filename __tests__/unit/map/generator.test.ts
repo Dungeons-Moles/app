@@ -145,7 +145,7 @@ describe('Map Generator', () => {
   });
 
   describe('Tile Types', () => {
-    it('should assign tile types with correct distribution', () => {
+    it('should generate both floor and wall tiles', () => {
       const params: MapGenerationParams = {
         width: 50,
         height: 50,
@@ -154,53 +154,31 @@ describe('Map Generator', () => {
 
       const map = generateMap(params);
 
-      // Count tile types
-      let emptyCount = 0;
-      let softCount = 0;
-      let hardCount = 0;
+      let floorCount = 0;
       let wallCount = 0;
 
       for (let y = 0; y < map.height; y++) {
         for (let x = 0; x < map.width; x++) {
-          switch (map.tiles[y][x]) {
-            case TileType.EmptyTunnel:
-              emptyCount++;
-              break;
-            case TileType.SoftEarth:
-              softCount++;
-              break;
-            case TileType.HardRock:
-              hardCount++;
-              break;
-            case TileType.Wall:
-              wallCount++;
-              break;
+          if (map.tiles[y][x] === TileType.Floor) {
+            floorCount++;
+          } else if (map.tiles[y][x] === TileType.Wall) {
+            wallCount++;
           }
         }
       }
 
-      const walkableTotal = emptyCount + softCount + hardCount;
+      const total = floorCount + wallCount;
+      const floorRatio = total > 0 ? floorCount / total : 0;
 
-      // Check rough distribution (with some tolerance for small maps)
-      // Expected: 50% Empty, 35% Soft, 15% Hard
-      if (walkableTotal > 100) {
-        const emptyRatio = emptyCount / walkableTotal;
-        const softRatio = softCount / walkableTotal;
-        const hardRatio = hardCount / walkableTotal;
-
-        // Allow 15% deviation from expected ratios
-        expect(emptyRatio).toBeGreaterThan(0.35);
-        expect(emptyRatio).toBeLessThan(0.65);
-        expect(softRatio).toBeGreaterThan(0.20);
-        expect(softRatio).toBeLessThan(0.50);
-        expect(hardRatio).toBeGreaterThan(0.05);
-        expect(hardRatio).toBeLessThan(0.30);
-      }
+      expect(floorCount).toBeGreaterThan(0);
+      expect(wallCount).toBeGreaterThan(0);
+      expect(floorRatio).toBeGreaterThan(0.1);
+      expect(floorRatio).toBeLessThan(0.5);
     });
   });
 
   describe('Spawn and Mole Den', () => {
-    it('should place Mole Den adjacent to spawn position', () => {
+    it('should place Mole Den above the spawn position', () => {
       const params: MapGenerationParams = {
         width: 25,
         height: 25,
@@ -209,13 +187,10 @@ describe('Map Generator', () => {
 
       const map = generateMap(params);
 
-      // Calculate Manhattan distance between spawn and Mole Den
-      const distance =
-        Math.abs(map.spawn.x - map.moleDenPosition.x) +
-        Math.abs(map.spawn.y - map.moleDenPosition.y);
-
-      // Mole Den should be adjacent (distance = 1)
-      expect(distance).toBe(1);
+      expect(map.moleDenPosition).toEqual({
+        x: map.spawn.x,
+        y: map.spawn.y - 1,
+      });
     });
 
     it('should place spawn on a walkable tile', () => {

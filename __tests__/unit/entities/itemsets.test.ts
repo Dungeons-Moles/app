@@ -217,7 +217,7 @@ describe('Itemsets Entity', () => {
   });
 
   describe('getItemsetsForItem', () => {
-    it('returns itemsets that I1 Miners Helmet contributes to', () => {
+    it('returns itemsets that I1 Miners Boots contributes to', () => {
       const itemsets = getItemsetsForItem('I1');
 
       expect(itemsets.map(is => is.id)).toContain('UNION_STANDARD');
@@ -237,7 +237,7 @@ describe('Itemsets Entity', () => {
     });
 
     it('returns empty array for item not in any set', () => {
-      // I7 Lucky Charm is not in any itemset
+      // I7 Frost Lantern is not in any itemset
       const itemsets = getItemsetsForItem('I7');
 
       expect(itemsets).toHaveLength(0);
@@ -339,7 +339,7 @@ describe('Itemsets Entity', () => {
     });
 
     it('itemset required items reference valid tool/gear IDs', () => {
-      const validToolIds: ToolId[] = ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8'];
+      const validToolIds: ToolId[] = ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9'];
       const validGearIds: GearId[] = [
         'I1', 'I2', 'I3', 'I4', 'I5', 'I6', 'I7', 'I8', 'I9', 'I10',
         'I11', 'I12', 'I13', 'I14', 'I15', 'I16', 'I17', 'I18', 'I19', 'I20',

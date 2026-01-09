@@ -66,7 +66,15 @@ export type ItemsetId =
 
 export type ItemRarity = 'COMMON' | 'GILDED' | 'DIAMOND' | 'RARE' | 'HEROIC' | 'MYTHIC';
 
-export type ItemTag = 'STONE' | 'SCOUT' | 'GREED' | 'FROST' | 'SHRAPNEL' | 'SHARD';
+export type ItemTag =
+  | 'STONE'
+  | 'SCOUT'
+  | 'GREED'
+  | 'FROST'
+  | 'SHRAPNEL'
+  | 'SHARD'
+  | 'BLAST'
+  | 'RUST';
 
 export interface ItemStats {
   atk?: number;
@@ -76,12 +84,14 @@ export interface ItemStats {
   hp?: number;
 }
 
-export type ToolId = 'T1' | 'T2' | 'T3' | 'T4' | 'T5' | 'T6' | 'T7' | 'T8';
+export type ToolId = 'T1' | 'T2' | 'T3' | 'T4' | 'T5' | 'T6' | 'T7' | 'T8' | 'T9';
+
+export type ToolOil = 'ATK' | 'ARM' | 'DIG';
 
 export type GearId =
   | 'I1' | 'I2' | 'I3' | 'I4' | 'I5' | 'I6' | 'I7' | 'I8' | 'I9' | 'I10'
   | 'I11' | 'I12' | 'I13' | 'I14' | 'I15' | 'I16' | 'I17' | 'I18' | 'I19' | 'I20'
-  | 'I21' | 'I22' | 'I23' | 'I24' | 'I25' | 'I26' | 'I27';
+  | 'I21' | 'I22' | 'I23' | 'I24' | 'I25' | 'I26' | 'I27' | 'I28' | 'I29';
 
 export interface Tool {
   id: ToolId;
@@ -90,6 +100,7 @@ export interface Tool {
   rarity: ItemRarity;
   stats: ItemStats;
   tags: ItemTag[];
+  oil?: ToolOil | null;
 }
 
 export interface Gear {
@@ -156,6 +167,8 @@ export interface CombatState {
   phase: CombatPhase;
   log: CombatLogEntry[];
   rngState: number;
+  playerGold: number;
+  consumedGearIds: GearId[];
   result: CombatResult | null;
 }
 
@@ -197,7 +210,10 @@ export type EffectTiming =
   | 'ON_WOUNDED'
   | 'ON_EXPOSED'
   | 'TURN_END'
-  | 'BATTLE_END';
+  | 'BATTLE_END'
+  | 'DAY_START'
+  | 'ON_DEATH'
+  | 'PASSIVE';
 
 export type CombatAction =
   | 'ATTACK'
@@ -254,6 +270,7 @@ export interface POIInteraction {
 
 export interface POIOption {
   label: string;
+  description?: string;
   item?: Gear | Tool;
   cost?: number;
   disabled?: boolean;

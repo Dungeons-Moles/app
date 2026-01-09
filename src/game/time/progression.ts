@@ -167,7 +167,7 @@ export function shouldTriggerBoss(time: TimeState): boolean {
 
 /**
  * Gets the current sight radius based on time phase.
- * Day: 5 tiles, Night: 3 tiles, Boss: 0 (not applicable)
+ * Day: 4 tiles, Night: 2 tiles, Boss: 0 (not applicable)
  *
  * @param phase - Current time phase
  * @returns Sight radius in tiles

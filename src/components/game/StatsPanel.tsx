@@ -68,12 +68,6 @@ export function StatsPanel({ stats }: StatsPanelProps) {
           value={stats.dig}
           color="#DEB887"
         />
-        <StatRow
-          emoji="🪙"
-          label="GOLD"
-          value={stats.gold}
-          color="#FFD700"
-        />
       </View>
     </View>
   );
@@ -82,39 +76,38 @@ export function StatsPanel({ stats }: StatsPanelProps) {
 const styles = StyleSheet.create({
   container: {
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    borderRadius: 8,
-    padding: 8,
-    minWidth: 100,
+    borderRadius: 6,
+    padding: 6,
   },
   title: {
     color: '#FFFFFF',
-    fontSize: 12,
+    fontSize: 9,
     fontWeight: 'bold',
     textAlign: 'center',
-    marginBottom: 4,
+    marginBottom: 3,
     textTransform: 'uppercase',
-    letterSpacing: 1,
+    letterSpacing: 0.5,
   },
   statsContainer: {
-    gap: 2,
+    gap: 1,
   },
   statRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 3,
   },
   emoji: {
-    fontSize: 12,
-    width: 18,
+    fontSize: 10,
+    width: 14,
     textAlign: 'center',
   },
   label: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '600',
-    width: 32,
+    width: 30,
   },
   value: {
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: 'bold',
     flex: 1,
     textAlign: 'right',

@@ -36,20 +36,107 @@ npx expo start --android
 
 Or press `a` after starting the Expo dev server.
 
-### 3. Run Tests
+---
+
+## Playing the Game
+
+### Starting a Run
+
+1. Navigate to Hub screen (main menu)
+2. Press "Campaign" button to start a new run
+3. Game screen loads with a procedurally generated map
+
+### Controls
+
+| Platform | Movement |
+|----------|----------|
+| Mobile   | On-screen D-pad (bottom-left) |
+| Web      | Arrow keys or WASD |
+
+### Gameplay Loop
+
+1. **Exploration** - Move through the dungeon, revealing fog of war
+2. **Combat** - Automatically triggered when stepping on an enemy tile
+3. **POI Interaction** - Step on landmarks (🏕️ 🛒 💀) to interact
+4. **Day/Night Cycle** - 3 cycles of Day (50 moves) + Night (25 moves) per week
+5. **Boss Fight** - Triggered at end of Night 3 each week
+
+---
+
+## Running Tests
+
+### All Tests
 
 ```bash
-# All tests
 npm test
+```
 
-# Watch mode
+### Watch Mode (development)
+
+```bash
 npm test -- --watch
+```
 
-# Specific test file
-npm test -- __tests__/unit/combat/resolver.test.ts
+### Specific Test Categories
 
-# With coverage
+```bash
+# Combat resolution tests
+npm test -- __tests__/unit/combat/
+
+# Status effects (Chill, Shrapnel, Rust)
+npm test -- __tests__/unit/combat/status-effects.test.ts
+
+# Time progression (Day/Night cycles)
+npm test -- __tests__/unit/time/progression.test.ts
+
+# RNG determinism verification
+npm test -- __tests__/unit/rng/determinism.test.ts
+
+# Map generation
+npm test -- __tests__/unit/map/
+
+# Boss traits
+npm test -- __tests__/unit/entities/bosses.test.ts
+
+# Integration tests (full game flows)
+npm test -- __tests__/integration/
+```
+
+### With Coverage Report
+
+```bash
 npm test -- --coverage
+```
+
+### CI Mode (used in pipelines)
+
+```bash
+npm run test:ci
+```
+
+### Test File Structure
+
+```
+__tests__/
+├── unit/
+│   ├── combat/
+│   │   ├── damage.test.ts       # Damage calculation
+│   │   ├── resolver.test.ts     # Combat determinism
+│   │   └── status-effects.test.ts # Chill/Shrapnel/Rust
+│   ├── entities/
+│   │   ├── bosses.test.ts       # Boss traits
+│   │   ├── items.test.ts        # Item effects
+│   │   └── itemsets.test.ts     # Set bonuses
+│   ├── map/
+│   │   ├── generator.test.ts    # Map generation
+│   │   └── fog-of-war.test.ts   # Vision system
+│   ├── rng/
+│   │   └── determinism.test.ts  # Seed reproducibility
+│   └── time/
+│       └── progression.test.ts  # Day/Night/Boss cycles
+└── integration/
+    ├── combat-flow.test.ts      # Full combat scenarios
+    └── exploration.test.ts      # Movement and encounters
 ```
 
 ---
@@ -138,42 +225,49 @@ test('map generation is deterministic', () => {
 
 ## Debug Features
 
-Debug overlays are available in development builds only (`__DEV__ === true`).
+Debug overlays are available in development builds. They are controlled via the `GameState.debug` object.
 
-### Enabling Debug Mode
-
-Add to your local environment or use in-app toggle:
+### Debug State Structure
 
 ```typescript
-// In GameScreen.tsx or via dev menu
-const [debugState, setDebugState] = useState({
-  showFPS: true,
-  showSeed: true,
-  showStateInspector: false,
-  showCombatLog: true,
-  showHitboxes: false,
-});
+interface DebugState {
+  showFPS: boolean;       // Frame rate counter
+  showSeed: boolean;      // Current RNG seed display
+  showStateInspector: boolean; // Full state JSON viewer
+  showCombatLog: boolean; // Combat log entries
+  showHitboxes: boolean;  // Tile boundaries
+}
+```
+
+### Toggling Debug Overlays
+
+Debug flags can be toggled via the TOGGLE_DEBUG action:
+
+```typescript
+dispatch({ type: 'TOGGLE_DEBUG', key: 'showSeed' });
+dispatch({ type: 'TOGGLE_DEBUG', key: 'showCombatLog' });
 ```
 
 ### Debug Overlays
 
-| Overlay | Description |
-|---------|-------------|
-| FPS Counter | Shows current frame rate |
-| Seed Display | Shows current RNG seed for reproduction |
-| State Inspector | Shows full game state JSON |
-| Combat Log | Shows last N combat log entries |
-| Hitboxes | Shows tile boundaries and entity positions |
+| Overlay | Key | Description |
+|---------|-----|-------------|
+| FPS Counter | `showFPS` | Shows current frame rate |
+| Seed Display | `showSeed` | Shows current RNG seed for reproduction |
+| State Inspector | `showStateInspector` | Shows full game state JSON |
+| Combat Log | `showCombatLog` | Shows last 100 combat log entries |
+| Hitboxes | `showHitboxes` | Shows tile boundaries and entity positions |
 
-### Reproducing a Bug
+### Reproducing a Bug with Seeds
 
 1. Note the seed value from the debug overlay
-2. Create a test with that seed:
+2. Create a deterministic test with that seed:
 
 ```typescript
 test('reproduce bug #123', () => {
   const seed = 987654; // From bug report
-  const state = initializeGame(seed);
+  let state = createInitialGameState();
+  state = initializeGame(state, seed);
 
   // Replay actions that caused the bug
   state = gameReducer(state, { type: 'MOVE', direction: 'UP' });
@@ -181,7 +275,27 @@ test('reproduce bug #123', () => {
   // ...
 
   // Assert expected behavior
-  expect(state.player.hp).toBeGreaterThan(0);
+  expect(state.player.stats.hp).toBeGreaterThan(0);
+});
+```
+
+### Testing Combat with Seeds
+
+```typescript
+test('combat is deterministic with seed', () => {
+  const input: CombatResolverInput = {
+    player: createPlayerCombatant(),
+    enemy: createEnemyCombatant('TUNNEL_RAT'),
+    seed: 12345,
+  };
+
+  const result1 = resolveCombat(input);
+  const result2 = resolveCombat(input);
+
+  // Same seed = same outcome
+  expect(result1.result).toBe(result2.result);
+  expect(result1.player.hp).toBe(result2.player.hp);
+  expect(result1.log).toEqual(result2.log);
 });
 ```
 
@@ -297,6 +411,14 @@ rm -rf node_modules
 npm install
 ```
 
+### "Preset ts-jest not found" when running tests
+
+Install dependencies first:
+```bash
+npm install
+npm test
+```
+
 ### Skia rendering issues
 
 Ensure `@shopify/react-native-skia` version matches project:
@@ -311,6 +433,32 @@ Check that:
 2. No `Date.now()` in game logic (use passed-in timestamps)
 3. No object key iteration (use arrays or `Object.keys().sort()`)
 
+To find violations:
+```bash
+# Search for Math.random usage
+grep -r "Math.random" src/game/
+
+# Search for Date.now usage
+grep -r "Date.now" src/game/
+```
+
+### Combat tests failing
+
+Verify determinism with the same seed:
+```typescript
+const result1 = resolveCombat({ ...input, seed: 12345 });
+const result2 = resolveCombat({ ...input, seed: 12345 });
+expect(result1).toEqual(result2);
+```
+
+### State machine transition errors
+
+Check valid transitions in `src/game/engine/state-machine.ts`:
+- MainMenu → Exploration
+- Exploration → Combat, POIInteraction, BossFight
+- Combat → Exploration, Defeat
+- BossFight → Exploration, Victory, Defeat
+
 ### Android build fails
 
 ```bash
@@ -319,6 +467,19 @@ cd android
 cd ..
 npx expo start --android
 ```
+
+### TypeScript errors
+
+Run type check:
+```bash
+npm run typecheck
+```
+
+### Combat log unbounded growth
+
+Combat log is capped at 100 entries. If you see memory issues:
+1. Check `MAX_COMBAT_LOG_ENTRIES` in `src/game/engine/constants.ts`
+2. Verify `addLogEntry` slices the log correctly
 
 ---
 

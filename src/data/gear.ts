@@ -1,5 +1,5 @@
 /**
- * Gear item definitions (I1-I27)
+ * Gear item definitions (I1-I29)
  * @see specs/001-pve-dungeon-crawler/spec.md
  * @see specs/001-pve-dungeon-crawler/data-model.md
  */
@@ -24,390 +24,345 @@ export interface GearDefinition {
  * Items are grouped by their itemset associations and themes
  */
 export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
-  // ============================================================================
-  // Union Standard Set Items (I1, I2, I3) - Mining/Stone themed
-  // Set Bonus: Battle Start: +4 Armor, +1 DIG
-  // ============================================================================
-
+  // Common Gear
   I1: {
     id: 'I1',
-    name: 'Miner\'s Helmet',
-    emoji: '⛑️',
-    baseRarity: 'COMMON',
-    stats: { arm: 2, dig: 1 },
-    tags: ['STONE'],
-    effect: {
-      timing: 'BATTLE_START',
-      description: 'Gain +1 Armor',
-    },
-  },
-
-  I2: {
-    id: 'I2',
-    name: 'Reinforced Gloves',
-    emoji: '🧤',
-    baseRarity: 'COMMON',
-    stats: { atk: 1, arm: 1 },
-    tags: ['STONE'],
-    effect: {
-      timing: 'BATTLE_START',
-      description: 'Gain +1 Armor',
-    },
-  },
-
-  I3: {
-    id: 'I3',
-    name: 'Steel-Toed Boots',
+    name: 'Miner\'s Boots',
     emoji: '🥾',
     baseRarity: 'COMMON',
-    stats: { arm: 2, spd: 1 },
-    tags: ['STONE'],
-    effect: {
-      timing: 'BATTLE_START',
-      description: 'Gain +2 Armor',
-    },
+    stats: { dig: 2 },
+    tags: ['SCOUT'],
   },
-
-  // ============================================================================
-  // Utility Items (I4, I7, I9, I15, I24, I26)
-  // ============================================================================
-
+  I2: {
+    id: 'I2',
+    name: 'Miner\'s Helmet',
+    emoji: '🪖',
+    baseRarity: 'COMMON',
+    stats: { arm: 2 },
+    tags: ['STONE'],
+  },
+  I3: {
+    id: 'I3',
+    name: 'Work Vest',
+    emoji: '🦺',
+    baseRarity: 'COMMON',
+    stats: { hp: 4, arm: 1 },
+    tags: ['STONE'],
+  },
   I4: {
     id: 'I4',
-    name: 'Lantern',
-    emoji: '🏮',
+    name: 'Leather Gloves',
+    emoji: '🧤',
     baseRarity: 'COMMON',
-    stats: { dig: 2 },
-    tags: ['SCOUT'],
-    effect: {
-      timing: 'BATTLE_START',
-      description: 'Reveal enemy stats',
-    },
-  },
-
-  I7: {
-    id: 'I7',
-    name: 'Lucky Charm',
-    emoji: '🍀',
-    baseRarity: 'COMMON',
-    stats: { hp: 3 },
-    tags: ['GREED'],
-  },
-
-  I9: {
-    id: 'I9',
-    name: 'Climbing Picks',
-    emoji: '🪝',
-    baseRarity: 'COMMON',
-    stats: { atk: 1, dig: 1 },
+    stats: { atk: 2, dig: 1 },
     tags: ['SCOUT'],
   },
-
-  I15: {
-    id: 'I15',
-    name: 'Canary Charm',
-    emoji: '🐤',
-    baseRarity: 'RARE',
-    stats: { hp: 5 },
-    tags: ['SCOUT'],
-    effect: {
-      timing: 'ON_WOUNDED',
-      description: 'Once per run: Prevent death, revive at 1 HP (item breaks)',
-    },
-  },
-
-  I24: {
-    id: 'I24',
-    name: 'Pocket Watch',
-    emoji: '⏱️',
-    baseRarity: 'RARE',
-    stats: { spd: 2 },
-    tags: ['SCOUT'],
-    effect: {
-      timing: 'BATTLE_START',
-      description: 'Gain +1 Speed',
-    },
-  },
-
-  I26: {
-    id: 'I26',
-    name: 'Adrenaline Shot',
-    emoji: '💉',
-    baseRarity: 'HEROIC',
-    stats: { atk: 3, spd: 2 },
-    tags: ['SCOUT'],
-    effect: {
-      timing: 'ON_WOUNDED',
-      description: 'When wounded: Gain +3 ATK for remainder of combat',
-    },
-  },
-
-  // ============================================================================
-  // Rust Ritual Set Items (I5, I22, I23) - Rust/Corrosion themed
-  // Set Bonus: On Hit: apply +1 additional Rust
-  // ============================================================================
-
   I5: {
     id: 'I5',
-    name: 'Corroded Bracers',
-    emoji: '🦾',
+    name: 'Cracked Whetstone',
+    emoji: '🪨',
     baseRarity: 'COMMON',
-    stats: { arm: 1 },
+    stats: {},
     tags: ['STONE'],
     effect: {
-      timing: 'ON_HIT',
-      description: 'Apply 1 Rust to enemy',
+      timing: 'TURN_START',
+      description: 'First Turn: gain +2 / +4 / +8 ATK (temporary).',
     },
   },
-
-  I22: {
-    id: 'I22',
-    name: 'Rust Spreader',
-    emoji: '🧫',
-    baseRarity: 'RARE',
-    stats: { atk: 2 },
-    tags: ['STONE'],
-    effect: {
-      timing: 'ON_HIT',
-      description: 'Apply 1 Rust to enemy',
-    },
-  },
-
-  I23: {
-    id: 'I23',
-    name: 'Oxidation Flask',
-    emoji: '🧪',
-    baseRarity: 'RARE',
-    stats: { dig: 1 },
-    tags: ['STONE'],
-    effect: {
-      timing: 'BATTLE_START',
-      description: 'Apply 2 Rust to enemy',
-    },
-  },
-
-  // ============================================================================
-  // Shrapnel Harness Set Items (I6, I21) - Shrapnel themed
-  // Set Bonus: Keep up to 3 Shrapnel at end of turn
-  // ============================================================================
-
   I6: {
     id: 'I6',
-    name: 'Spiked Vest',
-    emoji: '🦔',
+    name: 'Spiked Bracers',
+    emoji: '🧱',
     baseRarity: 'COMMON',
-    stats: { arm: 2 },
-    tags: ['SHRAPNEL'],
-    effect: {
-      timing: 'ON_STRUCK',
-      description: 'Gain 2 Shrapnel',
-    },
-  },
-
-  I21: {
-    id: 'I21',
-    name: 'Shrapnel Cache',
-    emoji: '💥',
-    baseRarity: 'RARE',
-    stats: { arm: 1 },
-    tags: ['SHRAPNEL'],
+    stats: {},
+    tags: ['STONE'],
     effect: {
       timing: 'BATTLE_START',
-      description: 'Gain 5 Shrapnel',
+      description: 'Battle Start: gain 1 / 2 / 4 Shrapnel.',
     },
   },
-
-  // ============================================================================
-  // Royal Extraction Set Items (I8, I25) - Gold/Greed themed
-  // Set Bonus: Gold to Armor conversion becomes 1:4
-  // ============================================================================
-
+  I7: {
+    id: 'I7',
+    name: 'Frost Lantern',
+    emoji: '🏮',
+    baseRarity: 'COMMON',
+    stats: {},
+    tags: ['FROST'],
+    effect: {
+      timing: 'BATTLE_START',
+      description: 'Battle Start: give enemy 1 / 2 / 4 Chill.',
+    },
+  },
   I8: {
     id: 'I8',
-    name: 'Gold Tooth',
-    emoji: '🦷',
+    name: 'Loose Nuggets',
+    emoji: '🪙',
     baseRarity: 'COMMON',
-    stats: { atk: 1 },
+    stats: {},
     tags: ['GREED'],
     effect: {
-      timing: 'ON_HIT',
-      description: 'Steal 1 Gold from enemy',
+      timing: 'DAY_START',
+      description: 'Start of each Day: gain 3 / 6 / 12 Gold.',
     },
   },
-
-  I25: {
-    id: 'I25',
-    name: 'Golden Aegis',
-    emoji: '🛡️',
-    baseRarity: 'HEROIC',
-    stats: { arm: 3 },
-    tags: ['GREED'],
-    effect: {
-      timing: 'BATTLE_START',
-      description: 'Convert 2 Gold to 4 Armor',
-    },
-  },
-
-  // ============================================================================
-  // Demolition Permit Set Items (I10, I16, I18) - Bomb/Countdown themed
-  // Set Bonus: Countdown items trigger 1 turn sooner
-  // ============================================================================
-
-  I10: {
-    id: 'I10',
-    name: 'Dynamite Bundle',
-    emoji: '🧨',
+  I9: {
+    id: 'I9',
+    name: 'Canary Charm',
+    emoji: '🐦',
     baseRarity: 'COMMON',
-    stats: { atk: 2 },
-    tags: ['STONE'],
-    effect: {
-      timing: 'TURN_START',
-      description: 'After 3 turns: Deal 8 damage (ignores armor)',
-    },
-  },
-
-  I16: {
-    id: 'I16',
-    name: 'Blasting Caps',
-    emoji: '💣',
-    baseRarity: 'RARE',
-    stats: { atk: 1 },
-    tags: ['STONE'],
-    effect: {
-      timing: 'TURN_START',
-      description: 'After 2 turns: Deal 5 damage (ignores armor)',
-    },
-  },
-
-  I18: {
-    id: 'I18',
-    name: 'Time Bomb',
-    emoji: '⏰',
-    baseRarity: 'RARE',
-    stats: { dig: 2 },
-    tags: ['STONE'],
-    effect: {
-      timing: 'TURN_START',
-      description: 'After 4 turns: Deal 15 damage (ignores armor)',
-    },
-  },
-
-  // ============================================================================
-  // Shard Circuit Set Items (I11, I12, I13, I14) - Shard themed
-  // Set Bonus: Shards trigger every turn
-  // ============================================================================
-
-  I11: {
-    id: 'I11',
-    name: 'Ruby Shard',
-    emoji: '🔴',
-    baseRarity: 'COMMON',
-    stats: { atk: 2 },
-    tags: ['SHARD'],
-    effect: {
-      timing: 'BATTLE_START',
-      description: 'Deal 3 damage (ignores armor)',
-    },
-  },
-
-  I12: {
-    id: 'I12',
-    name: 'Sapphire Shard',
-    emoji: '🔵',
-    baseRarity: 'COMMON',
-    stats: { arm: 2 },
-    tags: ['SHARD', 'FROST'],
-    effect: {
-      timing: 'BATTLE_START',
-      description: 'Apply 2 Chill to enemy',
-    },
-  },
-
-  I13: {
-    id: 'I13',
-    name: 'Emerald Shard',
-    emoji: '🟢',
-    baseRarity: 'COMMON',
-    stats: { hp: 3 },
-    tags: ['SHARD'],
-    effect: {
-      timing: 'BATTLE_START',
-      description: 'Heal 3 HP',
-    },
-  },
-
-  I14: {
-    id: 'I14',
-    name: 'Topaz Shard',
-    emoji: '🟡',
-    baseRarity: 'COMMON',
-    stats: { spd: 1, dig: 1 },
-    tags: ['SHARD'],
-    effect: {
-      timing: 'BATTLE_START',
-      description: 'Gain +2 Speed this combat',
-    },
-  },
-
-  // ============================================================================
-  // Fuse Network Set Items (I17, I19, I20) - Non-weapon damage themed
-  // Set Bonus: First non-weapon damage per turn deals +2
-  // ============================================================================
-
-  I17: {
-    id: 'I17',
-    name: 'Spark Coil',
-    emoji: '⚡',
-    baseRarity: 'RARE',
-    stats: { atk: 1, spd: 1 },
-    tags: ['SHARD'],
-    effect: {
-      timing: 'ON_HIT',
-      description: 'Deal 2 bonus damage (ignores armor)',
-    },
-  },
-
-  I19: {
-    id: 'I19',
-    name: 'Fire Trap',
-    emoji: '🔥',
-    baseRarity: 'RARE',
-    stats: { atk: 2 },
-    tags: ['SHARD'],
-    effect: {
-      timing: 'ON_STRUCK',
-      description: 'Deal 3 damage to attacker (ignores armor)',
-    },
-  },
-
-  I20: {
-    id: 'I20',
-    name: 'Shock Conduit',
-    emoji: '🌩️',
-    baseRarity: 'RARE',
-    stats: { spd: 2 },
-    tags: ['SHARD'],
-    effect: {
-      timing: 'TURN_END',
-      description: 'Deal 2 damage to enemy (ignores armor)',
-    },
-  },
-
-  // ============================================================================
-  // Swift Digger Kit Item (I27) - DIG themed
-  // Set Bonus: Battle Start: If DIG > enemy DIG, +2 strikes
-  // ============================================================================
-
-  I27: {
-    id: 'I27',
-    name: 'Tunnel Vision Goggles',
-    emoji: '🥽',
-    baseRarity: 'HEROIC',
-    stats: { dig: 3, spd: 1 },
+    stats: {},
     tags: ['SCOUT'],
     effect: {
+      timing: 'ON_DEATH',
+      description: 'One Use: first time you would die, revive at 1 HP, then break.',
+    },
+  },
+  I10: {
+    id: 'I10',
+    name: 'Small Charge',
+    emoji: '🧨',
+    baseRarity: 'COMMON',
+    stats: {},
+    tags: ['BLAST'],
+    effect: {
+      timing: 'TURN_END',
+      description: 'Countdown (2): deal 10 damage to enemy and you (non-weapon).',
+    },
+  },
+
+  // Shards (Common)
+  I11: {
+    id: 'I11',
+    name: 'Emerald Shard',
+    emoji: '💎',
+    baseRarity: 'COMMON',
+    stats: {},
+    tags: ['SHARD'],
+    effect: {
+      timing: 'TURN_START',
+      description: 'Every other turn: restore 1 HP.',
+    },
+  },
+  I12: {
+    id: 'I12',
+    name: 'Ruby Shard',
+    emoji: '💎',
+    baseRarity: 'COMMON',
+    stats: {},
+    tags: ['SHARD'],
+    effect: {
+      timing: 'TURN_START',
+      description: 'Every other turn: deal 1 non-weapon damage.',
+    },
+  },
+  I13: {
+    id: 'I13',
+    name: 'Sapphire Shard',
+    emoji: '💎',
+    baseRarity: 'COMMON',
+    stats: {},
+    tags: ['SHARD'],
+    effect: {
+      timing: 'TURN_START',
+      description: 'Every other turn: gain 1 Armor.',
+    },
+  },
+  I14: {
+    id: 'I14',
+    name: 'Citrine Shard',
+    emoji: '💎',
+    baseRarity: 'COMMON',
+    stats: {},
+    tags: ['SHARD'],
+    effect: {
+      timing: 'TURN_START',
+      description: 'Every other turn: gain 1 DIG.',
+    },
+  },
+
+  // Rare Gear
+  I15: {
+    id: 'I15',
+    name: 'Frostguard Buckler',
+    emoji: '🛡️',
+    baseRarity: 'RARE',
+    stats: { arm: 8 },
+    tags: ['FROST'],
+    effect: {
       timing: 'BATTLE_START',
-      description: 'If your DIG > enemy DIG, gain +1 ATK',
+      description: 'Battle Start: gain 2 Chill (on you).',
+    },
+  },
+  I16: {
+    id: 'I16',
+    name: 'Blast Suit',
+    emoji: '🦾',
+    baseRarity: 'RARE',
+    stats: { arm: 10 },
+    tags: ['BLAST'],
+    effect: {
+      timing: 'PASSIVE',
+      description: 'Ignore damage from your own BLAST items.',
+    },
+  },
+  I17: {
+    id: 'I17',
+    name: 'Bomb Satchel',
+    emoji: '🎒',
+    baseRarity: 'RARE',
+    stats: {},
+    tags: ['BLAST'],
+    effect: {
+      timing: 'PASSIVE',
+      description: 'Battle Start / Exposed / Wounded: spend 3 DIG to retrigger a random bomb.',
+    },
+  },
+  I18: {
+    id: 'I18',
+    name: 'Explosive Powder',
+    emoji: '💥',
+    baseRarity: 'RARE',
+    stats: {},
+    tags: ['BLAST'],
+    effect: {
+      timing: 'PASSIVE',
+      description: 'All bomb damage is increased by +1.',
+    },
+  },
+  I19: {
+    id: 'I19',
+    name: 'Kindling Charge',
+    emoji: '🔥',
+    baseRarity: 'RARE',
+    stats: {},
+    tags: ['BLAST'],
+    effect: {
+      timing: 'BATTLE_START',
+      description: 'Battle Start: deal 1 damage. Next bomb deals +3 damage.',
+    },
+  },
+  I20: {
+    id: 'I20',
+    name: 'Double Detonation',
+    emoji: '💣',
+    baseRarity: 'RARE',
+    stats: {},
+    tags: ['BLAST'],
+    effect: {
+      timing: 'PASSIVE',
+      description: 'Second non-weapon damage each turn deals +3.',
+    },
+  },
+  I21: {
+    id: 'I21',
+    name: 'Shrapnel Talisman',
+    emoji: '📿',
+    baseRarity: 'RARE',
+    stats: {},
+    tags: ['STONE'],
+    effect: {
+      timing: 'PASSIVE',
+      description: 'Whenever you gain Shrapnel, also gain +1 Armor.',
+    },
+  },
+  I22: {
+    id: 'I22',
+    name: 'Rust Spike',
+    emoji: '🪛',
+    baseRarity: 'RARE',
+    stats: {},
+    tags: ['RUST'],
+    effect: {
+      timing: 'ON_HIT',
+      description: 'On Hit: apply 1 Rust.',
+    },
+  },
+  I23: {
+    id: 'I23',
+    name: 'Corroded Greaves',
+    emoji: '🥾',
+    baseRarity: 'RARE',
+    stats: { dig: -1 },
+    tags: ['RUST'],
+    effect: {
+      timing: 'ON_WOUNDED',
+      description: 'Wounded: apply 3 Rust to enemy.',
+    },
+  },
+
+  // Heroic Gear
+  I24: {
+    id: 'I24',
+    name: 'Crystal Crown',
+    emoji: '👑',
+    baseRarity: 'HEROIC',
+    stats: {},
+    tags: ['STONE'],
+    effect: {
+      timing: 'BATTLE_START',
+      description: 'Battle Start: gain Max HP equal to Base Armor.',
+    },
+  },
+  I25: {
+    id: 'I25',
+    name: 'Royal Bracer',
+    emoji: '💍',
+    baseRarity: 'HEROIC',
+    stats: {},
+    tags: ['GREED'],
+    effect: {
+      timing: 'TURN_START',
+      description: 'Turn Start: convert 1 Gold → 3 Armor.',
+    },
+  },
+  I26: {
+    id: 'I26',
+    name: 'Time Charge',
+    emoji: '⏳',
+    baseRarity: 'HEROIC',
+    stats: {},
+    tags: ['BLAST'],
+    effect: {
+      timing: 'TURN_START',
+      description: 'Exposed: deal 1 damage. Turn Start: gain +2 damage (this battle).',
+    },
+  },
+  I27: {
+    id: 'I27',
+    name: 'Drill Servo',
+    emoji: '⚙️',
+    baseRarity: 'HEROIC',
+    stats: {},
+    tags: ['SCOUT'],
+    effect: {
+      timing: 'ON_WOUNDED',
+      description: 'Wounded: gain +2 additional strikes this battle.',
+    },
+  },
+
+  // Mythic Gear
+  I28: {
+    id: 'I28',
+    name: 'Gear-Link Medallion',
+    emoji: '🔗',
+    baseRarity: 'MYTHIC',
+    stats: {},
+    tags: ['SCOUT'],
+    effect: {
+      timing: 'ON_HIT',
+      description: 'Your On-Hit effects trigger twice.',
+    },
+  },
+  I29: {
+    id: 'I29',
+    name: 'Twin-Fuse Knot',
+    emoji: '🧬',
+    baseRarity: 'MYTHIC',
+    stats: {},
+    tags: ['BLAST'],
+    effect: {
+      timing: 'PASSIVE',
+      description: 'Your bomb items trigger twice.',
     },
   },
 };
@@ -445,8 +400,8 @@ export function getGearByRarity(rarity: ItemRarity): GearDefinition[] {
  */
 export const RARITY_MULTIPLIER: Record<ItemRarity, number> = {
   COMMON: 1.0,
-  GILDED: 1.5,
-  DIAMOND: 2.0,
+  GILDED: 2.0,
+  DIAMOND: 4.0,
   RARE: 1.0,
   HEROIC: 1.0,
   MYTHIC: 1.0,

@@ -52,6 +52,8 @@ export const CANCEL_KEYS = ['Escape', 'q', 'Q'];
  */
 export function setupKeyboardInput(handler?: InputHandler): () => void {
   const inputHandler = handler ?? getInputHandler();
+  const canUseWindowEvents =
+    typeof window !== 'undefined' && typeof window.addEventListener === 'function';
 
   const onKeyDown = (e: KeyboardEvent) => {
     // Check for direction keys
@@ -78,13 +80,13 @@ export function setupKeyboardInput(handler?: InputHandler): () => void {
   };
 
   // Add event listener
-  if (typeof window !== 'undefined') {
+  if (canUseWindowEvents) {
     window.addEventListener('keydown', onKeyDown);
   }
 
   // Return cleanup function
   return () => {
-    if (typeof window !== 'undefined') {
+    if (canUseWindowEvents) {
       window.removeEventListener('keydown', onKeyDown);
     }
   };

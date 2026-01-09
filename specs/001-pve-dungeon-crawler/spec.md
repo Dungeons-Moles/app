@@ -79,7 +79,7 @@ As a player, I want to collect, equip, and view items so that I can build synerg
 
 1. **Given** the player has no Tool equipped, **When** collecting a Tool from a Tool Crate, **Then** the Tool is equipped to the weapon slot
 2. **Given** the inventory has available slots, **When** collecting a Gear item, **Then** the item is added to the inventory grid (2 items per row)
-3. **Given** the inventory starts with 4 slots, **When** a new Day begins, **Then** inventory capacity increases by 2 (max 12 by end of week)
+3. **Given** the inventory starts with 4 slots, **When** a boss is defeated, **Then** inventory capacity increases by 2 (max 12 by end of week)
 4. **Given** an item is in inventory, **When** the player taps/clicks it, **Then** a tooltip displays: name, emoji, rarity, stats, effect text, and tags
 5. **Given** items with stat bonuses are equipped, **When** viewing player stats, **Then** HP/ATK/ARM/SPD/GOLD reflect all equipped item bonuses
 6. **Given** an itemset's required items are all equipped, **When** the itemset is checked, **Then** the set bonus becomes active and the itemset icon displays near inventory
@@ -204,10 +204,10 @@ As a player, I want a clear landscape UI with D-pad controls, stats display, inv
 
 - **FR-018**: System MUST support exactly 1 equipped Tool (weapon slot) at a time
 - **FR-019**: System MUST support multiple equipped Gear items in a grid (2 per row)
-- **FR-020**: System MUST start with 4 inventory slots and add 2 slots at the start of each Day
+- **FR-020**: System MUST start with 4 inventory slots and add 2 slots after each boss defeat
 - **FR-021**: System MUST display item tooltips on tap/click showing: name, emoji, rarity, stats, effect text, tags
 - **FR-022**: System MUST track item rarity tiers: Common, Gilded, Diamond, Rare, Heroic, Mythic
-- **FR-023**: System MUST implement all 8 Tools with their specified stats and effects
+- **FR-023**: System MUST implement all 9 Tools with their specified stats and effects
 - **FR-024**: System MUST implement all 29 Gear items with their specified stats and effects
 - **FR-025**: System MUST implement all 8 Itemsets that activate when all required items are equipped
 
@@ -351,7 +351,7 @@ As a player, I want a clear landscape UI with D-pad controls, stats display, inv
 
 | ID | Name | Emoji | Rarity | Stats | Tags | Effect |
 |----|------|-------|--------|-------|------|--------|
-| T1 | Rusty Pickaxe | ⛏️ | Common | +3 ATK | STONE | - |
+| T1 | Polished Pickaxe | ⛏️ | Common | +3 ATK | STONE | - |
 | T2 | Reinforced Shovel | 🛠️ | Common | +1 ATK, +6 ARM | STONE | - |
 | T3 | Twin Picks | ⛏️⛏️ (stacked) | Common | +1 ATK | SCOUT | Strike twice each turn |
 | T4 | Prospector's Pike | 🗡️ | Common | +2 ATK, +2 DIG | SCOUT | - |
@@ -359,6 +359,9 @@ As a player, I want a clear landscape UI with D-pad controls, stats display, inv
 | T6 | Shadow Burrowblade | 🗡️ | Rare | +2 ATK | SCOUT | On Hit: strikes ignore Armor |
 | T7 | Gemfinder Staff | 🔮 | Heroic | +1 ATK, +1 ARM, +1 DIG | GREED | Gains On-Hit effects from Shards |
 | T8 | Tempest Drill | 🌪️ | Mythic | +0 | SCOUT | Attack equals your DIG |
+| T9 | Rusty Pickaxe | ⛏️ | Common | +1 ATK | STONE | - |
+
+Starter note: Each run begins with the Rusty Pickaxe (T9) equipped.
 
 ### Appendix D: Gear Data Reference
 

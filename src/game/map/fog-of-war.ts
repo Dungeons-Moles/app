@@ -13,15 +13,17 @@ import { TileType, FogState, GameMap } from './types';
 // ============================================================================
 
 /**
- * Get all tiles within a given Manhattan distance radius from center.
+ * Get all tiles within a given circular radius from center.
  */
 export function getTilesInRadius(center: Position, radius: number): Position[] {
   const tiles: Position[] = [];
+  const effectiveRadius = radius + 0.5;
+  const maxDistance = effectiveRadius * effectiveRadius;
 
   for (let dy = -radius; dy <= radius; dy++) {
     for (let dx = -radius; dx <= radius; dx++) {
-      const distance = Math.abs(dx) + Math.abs(dy);
-      if (distance <= radius) {
+      const distance = dx * dx + dy * dy;
+      if (distance <= maxDistance) {
         tiles.push({ x: center.x + dx, y: center.y + dy });
       }
     }
@@ -116,23 +118,33 @@ export function updateFogOfWar(
 
   // Get all tiles within radius
   const tilesInRadius = getTilesInRadius(playerPos, radius);
+  const visibleKeys = new Set<string>();
+  for (const tile of tilesInRadius) {
+    visibleKeys.add(`${tile.x},${tile.y}`);
+  }
 
-  // Mark visible tiles (with line of sight check)
+  // Mark visible tiles (no line of sight blocking)
   for (const tile of tilesInRadius) {
     if (
       tile.x >= 0 && tile.x < map.width &&
       tile.y >= 0 && tile.y < map.height
     ) {
-      // Check line of sight
-      if (isLineOfSightClear(map, playerPos, tile)) {
-        newFog[tile.y][tile.x] = FogState.Visible;
-      }
+      newFog[tile.y][tile.x] = FogState.Visible;
     }
   }
+
+  const updatedEnemies = map.enemies.map((enemy) => {
+    const key = `${enemy.position.x},${enemy.position.y}`;
+    if (visibleKeys.has(key)) {
+      return { ...enemy, discovered: true };
+    }
+    return enemy;
+  });
 
   return {
     ...map,
     fog: newFog,
+    enemies: updatedEnemies,
   };
 }
 

@@ -10,10 +10,8 @@ import type { Position } from '../engine/types';
 // ============================================================================
 
 export enum TileType {
-  Wall = 'WALL',
-  EmptyTunnel = 'EMPTY_TUNNEL',
-  SoftEarth = 'SOFT_EARTH',
-  HardRock = 'HARD_ROCK',
+  Floor = 'FLOOR',  // Walkable corridor
+  Wall = 'WALL',    // Impassable environment (black + rock emoji)
 }
 
 // ============================================================================
@@ -31,10 +29,8 @@ export enum FogState {
 // ============================================================================
 
 export const TILE_MOVE_COST: Record<TileType, number> = {
+  [TileType.Floor]: 1,
   [TileType.Wall]: Infinity,
-  [TileType.EmptyTunnel]: 1,
-  [TileType.SoftEarth]: 1,
-  [TileType.HardRock]: 2,
 };
 
 // ============================================================================
@@ -64,6 +60,7 @@ export interface MapEnemy {
   tier: 1 | 2 | 3;
   position: Position;
   stats: EnemyStats;
+  discovered: boolean;
 }
 
 // ============================================================================

@@ -25,6 +25,7 @@ export {
   type ItemTag,
   type ItemStats,
   type ToolId,
+  type ToolOil,
   type GearId,
   type Tool,
   type Gear,

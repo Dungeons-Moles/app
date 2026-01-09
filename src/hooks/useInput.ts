@@ -71,8 +71,10 @@ export function useInput(
   onInput: (event: InputEvent) => void,
   options: UseInputOptions = {}
 ): UseInputResult {
+  const canUseKeyboard =
+    typeof window !== 'undefined' && typeof window.addEventListener === 'function';
   const {
-    enableKeyboard = typeof window !== 'undefined',
+    enableKeyboard = canUseKeyboard,
     enabled = true,
     debounceMs,
     customHandler,

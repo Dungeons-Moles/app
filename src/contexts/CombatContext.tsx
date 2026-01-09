@@ -9,17 +9,15 @@ import React, {
   useContext,
   useReducer,
   useCallback,
-  useEffect,
   ReactNode,
   Dispatch,
 } from 'react';
 import type {
   CombatState,
   CombatantState,
-  CombatLogEntry,
 } from '../game/engine/types';
 import { CombatPhase } from '../game/engine/types';
-import { resolveCombat, type CombatResolverInput } from '../game/combat/resolver';
+import { resolveCombat, createCombatState, type CombatResolverInput } from '../game/combat/resolver';
 import { GAME_CONSTANTS } from '../game/engine/constants';
 
 // ============================================================================
@@ -38,7 +36,7 @@ export type CombatAction =
 // ============================================================================
 
 export interface CombatUIState {
-  /** The underlying combat state */
+  /** Base combat state before playback */
   combat: CombatState | null;
   /** The resolved combat state (for playback) */
   resolvedCombat: CombatState | null;
@@ -81,11 +79,12 @@ function combatReducer(state: CombatUIState, action: CombatAction): CombatUIStat
   switch (action.type) {
     case 'START_COMBAT': {
       // Resolve combat immediately (it's deterministic)
+      const baseCombat = createCombatState(action.input);
       const resolvedCombat = resolveCombat(action.input);
 
       return {
         ...state,
-        combat: resolvedCombat,
+        combat: baseCombat,
         resolvedCombat,
         currentLogIndex: 0,
         isAnimating: true,
@@ -121,6 +120,16 @@ function combatReducer(state: CombatUIState, action: CombatAction): CombatUIStat
           id: `dmg-${newIndex}-${Date.now()}`,
           value: entry.result.damage,
           type: 'damage',
+          target: entry.target,
+          timestamp: Date.now(),
+        });
+      }
+
+      if (entry?.result.armorLost && entry.target !== 'none') {
+        newDamageNumbers.push({
+          id: `arm-${newIndex}-${Date.now()}`,
+          value: entry.result.armorLost,
+          type: 'armor',
           target: entry.target,
           timestamp: Date.now(),
         });
@@ -176,8 +185,6 @@ interface CombatContextType {
   getDisplayStates: () => { player: CombatantState | null; enemy: CombatantState | null };
   /** Get combat result */
   getResult: () => 'VICTORY' | 'DEFEAT' | null;
-  /** Get current log entries up to current playback point */
-  getCurrentLog: () => CombatLogEntry[];
 }
 
 const CombatContext = createContext<CombatContextType | undefined>(undefined);
@@ -194,23 +201,74 @@ export function CombatProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const getDisplayStates = useCallback(() => {
-    if (!state.resolvedCombat) {
+    if (!state.resolvedCombat || !state.combat) {
       return { player: null, enemy: null };
     }
-    return {
-      player: state.resolvedCombat.player,
-      enemy: state.resolvedCombat.enemy,
-    };
-  }, [state.resolvedCombat]);
+
+    const normalizeCombatant = (combatant: CombatantState): CombatantState => ({
+      ...combatant,
+      arm: combatant.arm + combatant.bonusArm,
+      bonusArm: 0,
+      statusEffects: { ...combatant.statusEffects },
+    });
+
+    let player = normalizeCombatant(state.combat.player);
+    let enemy = normalizeCombatant(state.combat.enemy);
+
+    const log = state.resolvedCombat.log;
+    const maxIndex = Math.min(state.currentLogIndex, log.length - 1);
+
+    for (let index = 0; index <= maxIndex; index += 1) {
+      const entry = log[index];
+      if (!entry || entry.target === 'none') continue;
+
+      const target = entry.target === 'player' ? player : enemy;
+      const { result } = entry;
+
+      if (result.armorLost && result.armorLost > 0) {
+        target.arm = Math.max(0, target.arm - result.armorLost);
+      }
+
+      if (result.damage && result.damage > 0) {
+        target.hp = Math.max(0, target.hp - result.damage);
+      }
+
+      if (result.armorGained && result.armorGained > 0) {
+        target.arm += result.armorGained;
+      }
+
+      if (result.healing && result.healing > 0) {
+        if (result.effectName === 'Crystal Crown') {
+          target.maxHp += result.healing;
+          target.hp += result.healing;
+        } else {
+          target.hp = Math.min(target.maxHp, target.hp + result.healing);
+        }
+      }
+
+      if (result.statusApplied) {
+        const { type, stacks } = result.statusApplied;
+        target.statusEffects = {
+          ...target.statusEffects,
+          [type]: Math.max(0, target.statusEffects[type] + stacks),
+        };
+      }
+
+      if (result.statusRemoved) {
+        const { type, stacks } = result.statusRemoved;
+        target.statusEffects = {
+          ...target.statusEffects,
+          [type]: Math.max(0, target.statusEffects[type] - stacks),
+        };
+      }
+    }
+
+    return { player, enemy };
+  }, [state.resolvedCombat, state.combat, state.currentLogIndex]);
 
   const getResult = useCallback(() => {
     return state.resolvedCombat?.result ?? null;
   }, [state.resolvedCombat]);
-
-  const getCurrentLog = useCallback(() => {
-    if (!state.resolvedCombat) return [];
-    return state.resolvedCombat.log.slice(0, state.currentLogIndex + 1);
-  }, [state.resolvedCombat, state.currentLogIndex]);
 
   return (
     <CombatContext.Provider
@@ -220,7 +278,6 @@ export function CombatProvider({ children }: { children: ReactNode }) {
         startCombat,
         getDisplayStates,
         getResult,
-        getCurrentLog,
       }}
     >
       {children}

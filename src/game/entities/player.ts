@@ -16,7 +16,7 @@ import type {
 } from '../engine/types';
 import { DEFAULT_STATUS_EFFECTS } from '../engine/types';
 import { GAME_CONSTANTS } from '../engine/constants';
-import { calculateItemStats } from './items';
+import { calculateItemStats, createToolInstance } from './items';
 import { getActiveItemsets } from './itemsets';
 
 // ============================================================================
@@ -37,16 +37,18 @@ export function createPlayer(spawnPosition: Position): Player {
     gold: GAME_CONSTANTS.INITIAL_GOLD,
   };
 
-  return {
+  const player: Player = {
     position: spawnPosition,
     baseStats,
     stats: { ...baseStats },
-    equippedTool: null,
+    equippedTool: createToolInstance('T9'),
     inventory: [],
     inventoryCapacity: GAME_CONSTANTS.INITIAL_INVENTORY_SLOTS,
     statusEffects: { ...DEFAULT_STATUS_EFFECTS },
     activeItemsets: [],
   };
+
+  return refreshPlayerStats(player);
 }
 
 /**
@@ -285,7 +287,7 @@ export function hasGear(player: Player, gearId: GearId): boolean {
  */
 export function increaseInventoryCapacity(player: Player): Player {
   const newCapacity = Math.min(
-    player.inventoryCapacity + GAME_CONSTANTS.INVENTORY_SLOTS_PER_DAY,
+    player.inventoryCapacity + GAME_CONSTANTS.INVENTORY_SLOTS_PER_WEEK,
     GAME_CONSTANTS.MAX_INVENTORY_SLOTS
   );
 

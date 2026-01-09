@@ -297,15 +297,15 @@
 
 **Purpose**: Final integration, performance optimization, and test coverage
 
-- [ ] T132 Implement enemy pathfinding for Night movement in src/game/map/pathfinding.ts
-- [ ] T133 Integrate Night enemy movement into game loop
-- [ ] T134 [P] Add debug overlay toggles (FPS, seed, state) per Constitution P15
-- [ ] T135 [P] Performance profiling on target device (Solana Seeker)
-- [ ] T136 Optimize MapRenderer for 60 FPS (sprite caching, batching)
-- [ ] T137 [P] Verify all combat determinism tests pass with fixed seeds
-- [ ] T138 [P] Run full integration test suite
-- [ ] T139 Update quickstart.md with final testing instructions
-- [ ] T140 Final code review for Constitution compliance
+- [x] T132 Implement enemy pathfinding for Night movement in src/game/map/pathfinding.ts
+- [x] T133 Integrate Night enemy movement into game loop
+- [x] T134 [P] Add debug overlay toggles (FPS, seed, state) per Constitution P15
+- [x] T135 [P] Performance profiling on target device (Solana Seeker)
+- [x] T136 Optimize MapRenderer for 60 FPS (sprite caching, batching)
+- [x] T137 [P] Verify all combat determinism tests pass with fixed seeds
+- [x] T138 [P] Run full integration test suite
+- [x] T139 Update quickstart.md with final testing instructions
+- [x] T140 Final code review for Constitution compliance
 
 ---
 

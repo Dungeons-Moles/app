@@ -5,7 +5,17 @@
  * @see specs/001-pve-dungeon-crawler/research.md R3
  */
 
-import type { GameState, CombatResult, CombatantState, TimeState, Position, Tool, Gear, GearId } from './types';
+import type {
+  GameState,
+  CombatResult,
+  CombatantState,
+  TimeState,
+  Position,
+  Tool,
+  Gear,
+  GearId,
+  CombatState,
+} from './types';
 import { GamePhase, CombatPhase, DEFAULT_STATUS_EFFECTS, TimePhase } from './types';
 import { Direction, DIRECTION_DELTA } from '../input/types';
 import { isValidTransition } from './state-machine';
@@ -35,7 +45,11 @@ import {
   markPOIVisited,
   markPOIDiscovered,
   findPOIAtPosition,
+  activateSurveyBeacon,
 } from '../entities/pois';
+import { moveEnemiesNight, isWithinSightRange } from '../map/pathfinding';
+import { SIGHT_RADIUS } from './constants';
+import { RARITY_MULTIPLIER } from '../../data/gear';
 
 // ============================================================================
 // Game Actions
@@ -49,7 +63,7 @@ export type GameAction =
   | { type: 'START_GAME'; seed: number }
   | { type: 'MOVE'; direction: Direction }
   | { type: 'ENTER_COMBAT'; enemyId: string }
-  | { type: 'RESOLVE_COMBAT'; result: CombatResult }
+  | { type: 'RESOLVE_COMBAT'; result: CombatResult; combat?: CombatState }
   | { type: 'INTERACT_POI'; poiId: string }
   | { type: 'SELECT_POI_OPTION'; optionIndex: number }
   | { type: 'CLOSE_POI' }
@@ -106,7 +120,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       return handleEnterCombat(state, action.enemyId);
 
     case 'RESOLVE_COMBAT':
-      return handleResolveCombat(state, action.result);
+      return handleResolveCombat(state, action.result, action.combat);
 
     case 'INTERACT_POI':
       return handleInteractPOI(state, action.poiId);
@@ -233,34 +247,61 @@ function handleMove(state: GameState, direction: Direction): GameState {
   const newTime = consumeMove(newState.time, moveCost);
   const advancedTime = advanceTimePhase(newTime);
 
-  // Check for Day transition -> inventory slot growth (T071)
-  let newInventoryCapacity = newState.player.inventoryCapacity;
-  if (
-    newState.time.phase === TimePhase.Night &&
-    advancedTime.phase === TimePhase.Day &&
-    advancedTime.cycle > newState.time.cycle
-  ) {
-    // Transitioning from Night to new Day - add inventory slots
-    newInventoryCapacity = Math.min(
-      newState.player.inventoryCapacity + GAME_CONSTANTS.INVENTORY_SLOTS_PER_DAY,
-      GAME_CONSTANTS.MAX_INVENTORY_SLOTS
+  let updatedPlayer = newState.player;
+  const isDayStart = newState.time.phase === TimePhase.Night && advancedTime.phase === TimePhase.Day;
+  if (isDayStart) {
+    const nuggetSlots = updatedPlayer.inventory.filter((slot) => slot.item.id === 'I8');
+    const goldGain = nuggetSlots.reduce(
+      (sum, slot) => sum + Math.floor(3 * RARITY_MULTIPLIER[slot.item.currentRarity]),
+      0
     );
+    if (goldGain > 0) {
+      updatedPlayer = addGold(updatedPlayer, goldGain);
+    }
   }
 
   newState = {
     ...newState,
+    player: updatedPlayer,
     time: advancedTime,
-    player: {
-      ...newState.player,
-      inventoryCapacity: newInventoryCapacity,
-    },
   };
 
-  // Check for enemy encounter
+  // Check for enemy encounter - initialize combat properly
   if (enemyAtTarget) {
+    // Create player combatant state
+    const playerCombatant: CombatantState = {
+      name: 'Player',
+      emoji: '🦦',
+      isPlayer: true,
+      maxHp: newState.player.stats.maxHp,
+      hp: newState.player.stats.hp,
+      atk: newState.player.stats.atk,
+      arm: newState.player.stats.arm,
+      spd: newState.player.stats.spd,
+      dig: newState.player.stats.dig,
+      bonusAtk: 0,
+      bonusArm: 0,
+      bonusSpd: 0,
+      statusEffects: { ...newState.player.statusEffects },
+      strikesPerTurn: getPlayerStrikesPerTurn(newState),
+      ignoresArmor: hasArmorIgnore(newState),
+    };
+
+    // Create enemy combatant state
+    const enemyCombatant: CombatantState = createEnemyCombatant(enemyAtTarget);
+
+    // Create initial combat state
+    const combatState = createCombatState({
+      player: playerCombatant,
+      enemy: enemyCombatant,
+      seed: newState.rngState,
+      playerGold: newState.player.stats.gold,
+    });
+
     return {
       ...newState,
       phase: GamePhase.Combat,
+      combat: combatState,
     };
   }
 
@@ -279,21 +320,35 @@ function handleMove(state: GameState, direction: Direction): GameState {
   // Check for POI at target position (T099)
   const poiAtTarget = findPOIAtPosition(newState.map, targetPos);
   if (poiAtTarget && !poiAtTarget.visited) {
-    // Create POI interaction if valid
-    const interaction = createPOIInteraction(poiAtTarget, newState);
-    if (interaction) {
-      // Mark Rail Waypoints as discovered
-      let updatedMap = newState.map;
-      if (poiAtTarget.definitionId === 'L8' && !poiAtTarget.discovered) {
-        updatedMap = markPOIDiscovered(newState.map, poiAtTarget.id);
-      }
-      return {
+    // Special case: Survey Beacon (L6) auto-activates on step
+    if (poiAtTarget.definitionId === 'L6') {
+      newState = activateSurveyBeacon(newState);
+      newState = {
         ...newState,
-        phase: GamePhase.POIInteraction,
-        map: updatedMap,
-        activePOI: interaction,
+        map: markPOIVisited(newState.map, poiAtTarget.id),
       };
+    } else {
+      // Create POI interaction if valid
+      const interaction = createPOIInteraction(poiAtTarget, newState);
+      if (interaction) {
+        // Mark Rail Waypoints as discovered
+        let updatedMap = newState.map;
+        if (poiAtTarget.definitionId === 'L8' && !poiAtTarget.discovered) {
+          updatedMap = markPOIDiscovered(newState.map, poiAtTarget.id);
+        }
+        return {
+          ...newState,
+          phase: GamePhase.POIInteraction,
+          map: updatedMap,
+          activePOI: interaction,
+        };
+      }
     }
+  }
+
+  // T133: Move enemies during Night phase
+  if (newState.time.phase === TimePhase.Night) {
+    newState = handleNightEnemyMovement(newState);
   }
 
   return newState;
@@ -344,6 +399,7 @@ function handleEnterCombat(state: GameState, enemyId: string): GameState {
     player: playerCombatant,
     enemy: enemyCombatant,
     seed: state.rngState,
+    playerGold: state.player.stats.gold,
   });
 
   return {
@@ -429,27 +485,40 @@ function hasArmorIgnore(state: GameState): boolean {
  * Applies combat result and transitions appropriately.
  * Updates player HP and removes defeated enemy from map.
  */
-function handleResolveCombat(state: GameState, result: CombatResult): GameState {
+function handleResolveCombat(
+  state: GameState,
+  result: CombatResult,
+  combatOverride?: CombatState
+): GameState {
   if (state.phase !== GamePhase.Combat && state.phase !== GamePhase.BossFight) {
     return state;
   }
 
-  if (!state.combat) {
+  const combatState = combatOverride ?? state.combat;
+  if (!combatState) {
     return state;
   }
 
   // Update player HP from combat result
-  const updatedPlayer = {
+  let updatedPlayer = {
     ...state.player,
     stats: {
       ...state.player.stats,
-      hp: Math.max(0, state.combat.player.hp),
+      hp: Math.max(0, combatState.player.hp),
+      gold: combatState.playerGold,
     },
-    statusEffects: { ...state.combat.player.statusEffects },
+    statusEffects: { ...combatState.player.statusEffects },
   };
 
+  if (combatState.consumedGearIds.length > 0) {
+    for (const gearId of combatState.consumedGearIds) {
+      const removal = removeGearById(updatedPlayer, gearId);
+      updatedPlayer = removal.player;
+    }
+  }
+
   // Update RNG state from combat
-  const updatedRngState = state.combat.rngState;
+  const updatedRngState = combatState.rngState;
 
   if (result === 'DEFEAT') {
     return {
@@ -457,7 +526,7 @@ function handleResolveCombat(state: GameState, result: CombatResult): GameState 
       phase: GamePhase.Defeat,
       player: updatedPlayer,
       rngState: updatedRngState,
-      combat: { ...state.combat, result: 'DEFEAT' },
+      combat: { ...combatState, result: 'DEFEAT' },
     };
   }
 
@@ -468,9 +537,17 @@ function handleResolveCombat(state: GameState, result: CombatResult): GameState 
       phase: GamePhase.Victory,
       player: updatedPlayer,
       rngState: updatedRngState,
-      combat: { ...state.combat, result: 'VICTORY' },
+      combat: { ...combatState, result: 'VICTORY' },
     };
   }
+
+  const bossSlotBonus =
+    state.phase === GamePhase.BossFight
+      ? Math.min(
+        updatedPlayer.inventoryCapacity + GAME_CONSTANTS.INVENTORY_SLOTS_PER_WEEK,
+        GAME_CONSTANTS.MAX_INVENTORY_SLOTS
+      )
+      : updatedPlayer.inventoryCapacity;
 
   // Remove defeated enemy from map
   const enemyToRemove = findEnemyAtPlayerPosition(state);
@@ -481,7 +558,10 @@ function handleResolveCombat(state: GameState, result: CombatResult): GameState 
   return {
     ...state,
     phase: GamePhase.Exploration,
-    player: updatedPlayer,
+    player: {
+      ...updatedPlayer,
+      inventoryCapacity: bossSlotBonus,
+    },
     rngState: updatedRngState,
     map: {
       ...state.map,
@@ -684,6 +764,100 @@ function handleReturnToMenu(state: GameState): GameState {
     combat: null,
     activePOI: null,
   };
+}
+
+// ============================================================================
+// Night Enemy Movement (T133)
+// ============================================================================
+
+/**
+ * Handle enemy movement during Night phase.
+ * Enemies within sight range move toward the player.
+ * If an enemy reaches the player tile, combat triggers.
+ */
+function handleNightEnemyMovement(state: GameState): GameState {
+  const playerPos = state.player.position;
+
+  // Filter enemies within Night sight range
+  const enemiesInRange = state.map.enemies.filter(enemy =>
+    isWithinSightRange(enemy.position, playerPos, SIGHT_RADIUS.night)
+  );
+
+  // If no enemies in range, no movement needed
+  if (enemiesInRange.length === 0) {
+    return state;
+  }
+
+  // Create a map with only enemies in range for movement
+  const mapForPathfinding = {
+    ...state.map,
+    enemies: enemiesInRange,
+  };
+
+  // Move enemies toward player
+  const { updatedEnemies, combatTriggered } = moveEnemiesNight(
+    mapForPathfinding,
+    playerPos
+  );
+
+  // Merge updated enemy positions back into full enemy list
+  const updatedEnemyMap = new Map(updatedEnemies.map(e => [e.id, e]));
+  const finalEnemies = state.map.enemies.map(enemy =>
+    updatedEnemyMap.get(enemy.id) || enemy
+  );
+
+  // Create new state with updated enemies
+  let newState: GameState = {
+    ...state,
+    map: {
+      ...state.map,
+      enemies: finalEnemies,
+    },
+  };
+
+  // If an enemy reached the player, trigger combat
+  if (combatTriggered) {
+    const attackingEnemy = finalEnemies.find(e => e.id === combatTriggered);
+    if (attackingEnemy) {
+      // Create player combatant state from current player
+      const playerCombatant: CombatantState = {
+        name: 'Player',
+        emoji: '🦦',
+        isPlayer: true,
+        maxHp: newState.player.stats.maxHp,
+        hp: newState.player.stats.hp,
+        atk: newState.player.stats.atk,
+        arm: newState.player.stats.arm,
+        spd: newState.player.stats.spd,
+        dig: newState.player.stats.dig,
+        bonusAtk: 0,
+        bonusArm: 0,
+        bonusSpd: 0,
+        statusEffects: { ...newState.player.statusEffects },
+        strikesPerTurn: getPlayerStrikesPerTurn(newState),
+        ignoresArmor: hasArmorIgnore(newState),
+      };
+
+      // Create enemy combatant state
+      const enemyCombatant: CombatantState = createEnemyCombatant(attackingEnemy);
+
+      // Create initial combat state
+      const combatState = createCombatState({
+        player: playerCombatant,
+        enemy: enemyCombatant,
+        seed: newState.rngState,
+        playerGold: newState.player.stats.gold,
+      });
+
+      return {
+        ...newState,
+        phase: GamePhase.Combat,
+        combat: combatState,
+      };
+    }
+  }
+
+  return newState;
 }
 
 // ============================================================================

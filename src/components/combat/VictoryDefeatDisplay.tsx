@@ -4,7 +4,7 @@
  * @see specs/001-pve-dungeon-crawler/spec.md FR-005, FR-006
  */
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Animated } from 'react-native';
 import { GAME_CONSTANTS } from '../../game/engine/constants';
 
@@ -24,6 +24,8 @@ export function VictoryDefeatDisplay({
   const [countdown, setCountdown] = useState(3);
   const scaleAnim = React.useRef(new Animated.Value(0)).current;
   const opacityAnim = React.useRef(new Animated.Value(0)).current;
+  const timerRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  const didCompleteRef = React.useRef(false);
 
   // Animate in on mount
   useEffect(() => {
@@ -44,19 +46,28 @@ export function VictoryDefeatDisplay({
 
   // Countdown timer
   useEffect(() => {
-    const timer = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          onComplete();
-          return 0;
-        }
-        return prev - 1;
-      });
+    timerRef.current = setInterval(() => {
+      setCountdown((prev) => Math.max(0, prev - 1));
     }, 1000);
 
-    return () => clearInterval(timer);
-  }, [onComplete]);
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (countdown > 0) return;
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    if (didCompleteRef.current) return;
+    didCompleteRef.current = true;
+    onComplete();
+  }, [countdown, onComplete]);
 
   const isVictory = result === 'VICTORY';
 

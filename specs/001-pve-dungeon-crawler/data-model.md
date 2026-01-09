@@ -254,7 +254,7 @@ interface Tool {
   forgeMod?: ForgeMod; // Applied at Rusty Anvil
 }
 
-type ToolId = 'T1' | 'T2' | 'T3' | 'T4' | 'T5' | 'T6' | 'T7' | 'T8';
+type ToolId = 'T1' | 'T2' | 'T3' | 'T4' | 'T5' | 'T6' | 'T7' | 'T8' | 'T9';
 
 interface ItemStats {
   atk?: number;
@@ -669,19 +669,19 @@ const GAME_CONSTANTS = {
   // Map
   MAP_WIDTH: 50,
   MAP_HEIGHT: 50,
-  INITIAL_SIGHT_RADIUS: 7,
+  INITIAL_SIGHT_RADIUS: 6,
 
   // Player
-  INITIAL_HP: 20,
-  INITIAL_ATK: 1,
+  INITIAL_HP: 10,
+  INITIAL_ATK: 0,
   INITIAL_ARM: 0,
-  INITIAL_SPD: 1,
-  INITIAL_DIG: 1,
+  INITIAL_SPD: 0,
+  INITIAL_DIG: 0,
   INITIAL_GOLD: 0,
 
   // Inventory
   INITIAL_INVENTORY_SLOTS: 4,
-  INVENTORY_SLOTS_PER_DAY: 2,
+  INVENTORY_SLOTS_PER_WEEK: 2,
   MAX_INVENTORY_SLOTS: 12,
 
   // Time

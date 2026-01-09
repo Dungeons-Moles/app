@@ -18,8 +18,8 @@ import {
   VictoryDefeatDisplay,
   EnemyPanel,
   PlayerPanel,
-  CombatLog,
 } from '../components/combat';
+import { DebugOverlay } from '../components/game';
 
 type CombatScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Combat'>;
@@ -47,7 +47,6 @@ function CombatScreenContent({ navigation }: CombatScreenProps) {
     startCombat,
     getDisplayStates,
     getResult,
-    getCurrentLog,
   } = useCombat();
 
   // Lock to landscape orientation (FR-044)
@@ -56,10 +55,14 @@ function CombatScreenContent({ navigation }: CombatScreenProps) {
   // Start combat when screen loads
   useEffect(() => {
     if (gameState?.combat && !combatState.combat) {
+      const playerGear = gameState.player.inventory.map((slot) => slot.item);
       startCombat({
         player: gameState.combat.player,
         enemy: gameState.combat.enemy,
         seed: gameState.rngState,
+        playerGear,
+        playerTool: gameState.player.equippedTool,
+        playerGold: gameState.player.stats.gold,
       });
     }
   }, [gameState?.combat, combatState.combat, startCombat, gameState?.rngState]);
@@ -76,7 +79,7 @@ function CombatScreenContent({ navigation }: CombatScreenProps) {
 
     const timer = setTimeout(() => {
       combatDispatch({ type: 'ADVANCE_LOG', index: combatState.currentLogIndex + 1 });
-    }, 300);
+    }, 450);
 
     return () => clearTimeout(timer);
   }, [combatState.currentLogIndex, combatState.resolvedCombat, combatState.isComplete, combatDispatch]);
@@ -86,7 +89,7 @@ function CombatScreenContent({ navigation }: CombatScreenProps) {
     const result = getResult();
     if (!result) return;
 
-    gameDispatch({ type: 'RESOLVE_COMBAT', result });
+    gameDispatch({ type: 'RESOLVE_COMBAT', result, combat: combatState.resolvedCombat ?? undefined });
 
     if (result === 'DEFEAT') {
       navigation.replace('Hub');
@@ -96,8 +99,15 @@ function CombatScreenContent({ navigation }: CombatScreenProps) {
   }, [getResult, gameDispatch, navigation]);
 
   const { player, enemy } = getDisplayStates();
-  const currentLog = getCurrentLog();
   const result = getResult();
+  const basePlayerArm = combatState.combat
+    ? combatState.combat.player.arm + combatState.combat.player.bonusArm
+    : player?.arm ?? 0;
+  const baseEnemyArm = combatState.combat
+    ? combatState.combat.enemy.arm + combatState.combat.enemy.bonusArm
+    : enemy?.arm ?? 0;
+  const playerMaxArm = player ? Math.max(basePlayerArm, player.arm) : 0;
+  const enemyMaxArm = enemy ? Math.max(baseEnemyArm, enemy.arm) : 0;
 
   // Note: Enemy traits are currently not available in CombatantState
   // This would need to be looked up from enemy definitions if needed
@@ -108,9 +118,7 @@ function CombatScreenContent({ navigation }: CombatScreenProps) {
     if (!gameState?.player) return { tool: null, gear: [] };
     return {
       tool: gameState.player.equippedTool,
-      gear: gameState.player.inventory
-        .filter((slot) => slot.item && 'effectId' in slot.item)
-        .map((slot) => slot.item) as any[],
+      gear: gameState.player.inventory.map((slot) => slot.item),
     };
   }, [gameState?.player]);
 
@@ -137,6 +145,7 @@ function CombatScreenContent({ navigation }: CombatScreenProps) {
             maxHp={enemy.maxHp}
             atk={enemy.atk}
             arm={enemy.arm}
+            maxArm={enemyMaxArm}
             spd={enemy.spd}
             statusEffects={enemy.statusEffects}
             trait={enemyTrait}
@@ -152,10 +161,16 @@ function CombatScreenContent({ navigation }: CombatScreenProps) {
             isAnimating={combatState.isAnimating}
           />
 
-          {/* Combat Log */}
-          <View style={styles.logContainer}>
-            <CombatLog entries={currentLog} maxVisible={5} />
-          </View>
+          {/* Debug Overlay - P15: Debug Tooling Isolation */}
+          {gameState && (
+            <DebugOverlay
+              debug={gameState.debug}
+              seed={gameState.seed}
+              phase={gameState.phase}
+              time={gameState.time}
+            />
+          )}
+
         </View>
 
         {/* Player Panel (RIGHT) - FR-049 */}
@@ -167,6 +182,7 @@ function CombatScreenContent({ navigation }: CombatScreenProps) {
             maxHp={player.maxHp}
             atk={player.atk}
             arm={player.arm}
+            maxArm={playerMaxArm}
             spd={player.spd}
             statusEffects={player.statusEffects}
             equippedTool={playerEquipment.tool}
@@ -215,9 +231,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 16,
-  },
-  logContainer: {
-    width: '100%',
-    marginTop: 12,
   },
 });

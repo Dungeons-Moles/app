@@ -5,8 +5,8 @@ import React, { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as ScreenOrientation from 'expo-screen-orientation';
-import { WalletProvider } from './src/contexts/WalletContext';
 import { ProfileProvider } from './src/contexts/ProfileContext';
+import { GameProvider } from './src/contexts/GameContext';
 import { AppNavigator } from './src/navigation';
 
 export default function App() {
@@ -16,12 +16,12 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <WalletProvider>
-        <ProfileProvider>
+      <ProfileProvider>
+        <GameProvider>
           <StatusBar style="light" hidden />
           <AppNavigator />
-        </ProfileProvider>
-      </WalletProvider>
+        </GameProvider>
+      </ProfileProvider>
     </SafeAreaProvider>
   );
 }
