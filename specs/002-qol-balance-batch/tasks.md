@@ -27,12 +27,12 @@
 **Purpose**: Project initialization and type definitions shared across all user stories
 
 - [ ] T001 Create feature branch `002-qol-balance-batch` from main
-- [ ] T002 [P] Add WallHighlightState type to src/game/engine/types.ts
-- [ ] T003 [P] Add FastTravelState type to src/game/engine/types.ts
-- [ ] T004 [P] Add CombatState extensions (goldReward, enemyDefinitionId, enemyTier) to src/game/engine/types.ts
-- [ ] T005 [P] Add wall break constants (WALL_BREAK_BASE_COST, WALL_BREAK_MIN_COST, WALL_BREAK_MIN_DIG) to src/game/engine/constants.ts
-- [ ] T006 [P] Add spawn zone constants (SPAWN_PROTECTION_RADIUS, MID_ZONE_RADIUS, ZONE_TIER_WEIGHTS) to src/game/engine/constants.ts
-- [ ] T007 Initialize wallHighlight and fastTravel to null in initial GameState in src/game/engine/state-factory.ts
+- [x] T002 [P] Add WallHighlightState type to src/game/engine/types.ts
+- [x] T003 [P] Add FastTravelState type to src/game/engine/types.ts
+- [x] T004 [P] Add CombatState extensions (goldReward, enemyDefinitionId, enemyTier) to src/game/engine/types.ts
+- [x] T005 [P] Add wall break constants (WALL_BREAK_BASE_COST, WALL_BREAK_MIN_COST, WALL_BREAK_MIN_DIG) to src/game/engine/constants.ts
+- [x] T006 [P] Add spawn zone constants (SPAWN_PROTECTION_RADIUS, MID_ZONE_RADIUS, ZONE_TIER_WEIGHTS) to src/game/engine/constants.ts
+- [x] T007 Initialize wallHighlight and fastTravel to null in initial GameState in src/game/engine/state-factory.ts
 
 ---
 
