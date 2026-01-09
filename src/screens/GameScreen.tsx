@@ -3,16 +3,16 @@
  * @see specs/001-pve-dungeon-crawler/spec.md User Story 1
  */
 
-import React, { useCallback, useMemo, useEffect, useState } from 'react';
+import React, { useCallback, useMemo, useEffect, useState, useRef } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation';
 import { useGame, GamePhase } from '../contexts/GameContext';
-import { MapRenderer } from '../components/game/MapRenderer';
 import { DPadControls } from '../components/game/DPadControls';
 import {
   TopBar,
+  GameCanvas,
   StatsPanel,
   InventoryPanel,
   ItemTooltip,
@@ -21,7 +21,7 @@ import {
 } from '../components/game';
 import { useDirectionInput } from '../hooks/useInput';
 import { useLandscapeLock } from '../hooks/useOrientationLock';
-import { Direction } from '../game/input/types';
+import { Direction, DIRECTION_DELTA } from '../game/input/types';
 import { TileType } from '../game/map/types';
 import type { GearId, Tool, Gear } from '../game/engine/types';
 
@@ -38,6 +38,19 @@ const SAFE_AREA_EDGES = ['left', 'right'] as const;
  */
 export function GameScreen({ navigation }: GameScreenProps) {
   const { state, dispatch, overviewMode, toggleOverviewMode, panOverview } = useGame();
+  const feedbackTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [wallBreakFeedback, setWallBreakFeedback] = useState<string | null>(null);
+
+  const showWallBreakFeedback = useCallback((message: string) => {
+    if (feedbackTimeout.current) {
+      clearTimeout(feedbackTimeout.current);
+    }
+    setWallBreakFeedback(message);
+    feedbackTimeout.current = setTimeout(() => {
+      setWallBreakFeedback(null);
+      feedbackTimeout.current = null;
+    }, 2000);
+  }, []);
 
   // Lock to landscape orientation (FR-044)
   useLandscapeLock();
@@ -45,11 +58,41 @@ export function GameScreen({ navigation }: GameScreenProps) {
   // Handle direction input
   const handleDirection = useCallback(
     (direction: Direction) => {
-      if (state?.phase === GamePhase.Exploration && !overviewMode.active) {
-        dispatch({ type: 'MOVE', direction });
+      if (!state || state.phase !== GamePhase.Exploration || overviewMode.active) {
+        return;
       }
+
+      const delta = DIRECTION_DELTA[direction];
+      const targetPos = {
+        x: state.player.position.x + delta.x,
+        y: state.player.position.y + delta.y,
+      };
+
+      if (
+        targetPos.x >= 0 &&
+        targetPos.x < state.map.width &&
+        targetPos.y >= 0 &&
+        targetPos.y < state.map.height
+      ) {
+        const targetTile = state.map.tiles[targetPos.y][targetPos.x];
+        if (targetTile === TileType.Wall) {
+          if (state.player.stats.dig < 1) {
+            showWallBreakFeedback('Requires DIG to break walls');
+          } else if (
+            state.wallHighlight &&
+            state.wallHighlight.direction === direction &&
+            state.wallHighlight.targetPosition.x === targetPos.x &&
+            state.wallHighlight.targetPosition.y === targetPos.y &&
+            state.time.movesRemaining < state.wallHighlight.cost
+          ) {
+            showWallBreakFeedback(`Not enough moves (need ${state.wallHighlight.cost})`);
+          }
+        }
+      }
+
+      dispatch({ type: 'MOVE', direction });
     },
-    [state?.phase, overviewMode.active, dispatch]
+    [dispatch, overviewMode.active, showWallBreakFeedback, state]
   );
 
   // Set up keyboard input
@@ -84,11 +127,6 @@ export function GameScreen({ navigation }: GameScreenProps) {
         disabled.push(dir);
         continue;
       }
-
-      // Check if wall
-      if (state.map.tiles[ny][nx] === TileType.Wall) {
-        disabled.push(dir);
-      }
     }
 
     return disabled;
@@ -99,6 +137,14 @@ export function GameScreen({ navigation }: GameScreenProps) {
     state?.map.height,
     overviewMode.active,
   ]);
+
+  useEffect(() => {
+    return () => {
+      if (feedbackTimeout.current) {
+        clearTimeout(feedbackTimeout.current);
+      }
+    };
+  }, []);
 
   // Navigate to Combat screen when entering combat
   useEffect(() => {
@@ -254,12 +300,14 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
           {/* Map Area */}
           <View style={styles.mapArea}>
-            <MapRenderer
+            <GameCanvas
               map={state.map}
               playerPosition={state.player.position}
               timePhase={state.time.phase}
+              wallHighlight={state.wallHighlight}
               overviewMode={overviewMode}
               onPanOverview={panOverview}
+              feedbackMessage={wallBreakFeedback}
             />
 
             {/* Debug Overlay (top-left) - P15: Debug Tooling Isolation */}

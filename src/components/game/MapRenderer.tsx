@@ -7,13 +7,14 @@
 import React, { useMemo, useCallback, useRef, memo } from 'react';
 import { View, StyleSheet, LayoutChangeEvent, Text, PanResponder } from 'react-native';
 import { Canvas, Rect, Group } from '@shopify/react-native-skia';
-import type { Position } from '../../game/engine/types';
+import type { Position, WallHighlightState } from '../../game/engine/types';
 import { TimePhase } from '../../game/engine/types';
 import type { GameMap, MapEnemy } from '../../game/map/types';
 import { TileType, FogState } from '../../game/map/types';
 import { getPOIDefinition } from '../../data/pois';
 import type { OverviewModeState } from '../../contexts/GameContext';
 import { DEFAULT_OVERVIEW_STATE } from '../../contexts/GameContext';
+import { WallHighlight } from './WallHighlight';
 
 // ============================================================================
 // Constants
@@ -88,6 +89,7 @@ export interface MapRendererProps {
   map: GameMap;
   playerPosition: Position;
   timePhase: TimePhase;
+  wallHighlight?: WallHighlightState;
   width?: number;
   height?: number;
   overviewMode?: OverviewModeState;
@@ -288,6 +290,7 @@ export const MapRenderer = memo(function MapRenderer({
   map,
   playerPosition,
   timePhase,
+  wallHighlight,
   width: propWidth,
   height: propHeight,
   overviewMode,
@@ -391,6 +394,24 @@ export const MapRenderer = memo(function MapRenderer({
       .filter((entry): entry is { enemy: MapEnemy; variant: 'known' | 'unknown' } => entry !== null);
   }, [map.enemies, map.fog, visibleRange, isNight]);
 
+  const highlightVisible = useMemo(() => {
+    if (!wallHighlight) {
+      return false;
+    }
+
+    const { x, y } = wallHighlight.targetPosition;
+    if (
+      x < visibleRange.startX ||
+      x > visibleRange.endX ||
+      y < visibleRange.startY ||
+      y > visibleRange.endY
+    ) {
+      return false;
+    }
+
+    return map.fog[y][x] !== FogState.Hidden;
+  }, [wallHighlight, visibleRange, map.fog]);
+
   const panOffsetRef = useRef({ x: 0, y: 0 });
   const panResponder = useMemo(
     () =>
@@ -453,6 +474,15 @@ export const MapRenderer = memo(function MapRenderer({
               dimmed={isNight && tile.fog === FogState.Revealed}
             />
           ))}
+
+          {wallHighlight && highlightVisible && (
+            <WallHighlight
+              position={wallHighlight.targetPosition}
+              cost={wallHighlight.cost}
+              tileSize={TILE_SIZE}
+              cameraOffset={{ x: 0, y: 0 }}
+            />
+          )}
 
           {/* 1. POIs */}
           {visiblePOIs.map(poi => {

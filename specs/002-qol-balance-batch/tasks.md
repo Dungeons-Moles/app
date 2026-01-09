@@ -42,8 +42,8 @@
 
 **CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T008 Add wall break actions (HIGHLIGHT_WALL, BREAK_WALL, CANCEL_WALL_HIGHLIGHT) to GameAction union in src/game/engine/game-reducer.ts
-- [ ] T009 Add fast travel actions (ACTIVATE_FAST_TRAVEL, CYCLE_FAST_TRAVEL, CONFIRM_FAST_TRAVEL, CANCEL_FAST_TRAVEL) to GameAction union in src/game/engine/game-reducer.ts
+- [x] T008 Add wall break actions (HIGHLIGHT_WALL, BREAK_WALL, CANCEL_WALL_HIGHLIGHT) to GameAction union in src/game/engine/game-reducer.ts
+- [x] T009 Add fast travel actions (ACTIVATE_FAST_TRAVEL, CYCLE_FAST_TRAVEL, CONFIRM_FAST_TRAVEL, CANCEL_FAST_TRAVEL) to GameAction union in src/game/engine/game-reducer.ts
 - [ ] T010 [P] Create calculateWallBreakCost function in src/game/map/wall-break.ts
 - [ ] T011 [P] Create getSpawnZone and selectTierForZone functions in src/game/map/spawn-zones.ts
 - [ ] T012 [P] Create calculateGoldReward function and enemy category constants in src/game/entities/enemies.ts
@@ -112,22 +112,22 @@
 
 ### Tests for User Story 3
 
-- [ ] T033 [P] [US3] Unit test for wall break cost calculation (DIG 0-4+) in __tests__/unit/wall-break.test.ts
-- [ ] T034 [P] [US3] Unit test for wall break state machine transitions in __tests__/unit/wall-break.test.ts
-- [ ] T035 [P] [US3] Integration test for double-tap wall break flow in __tests__/integration/wall-break.test.ts
+- [x] T033 [P] [US3] Unit test for wall break cost calculation (DIG 0-4+) in __tests__/unit/wall-break.test.ts
+- [x] T034 [P] [US3] Unit test for wall break state machine transitions in __tests__/unit/wall-break.test.ts
+- [x] T035 [P] [US3] Integration test for double-tap wall break flow in __tests__/integration/wall-break.test.ts
 
 ### Implementation for User Story 3
 
-- [ ] T036 [P] [US3] Create canBreakWall function (checks perimeter, valid wall) in src/game/map/wall-break.ts
-- [ ] T037 [P] [US3] Create breakWall function (converts wall to floor) in src/game/map/wall-break.ts
-- [ ] T038 [US3] Implement handleHighlightWall reducer handler in src/game/engine/game-reducer.ts
-- [ ] T039 [US3] Implement handleBreakWall reducer handler in src/game/engine/game-reducer.ts
-- [ ] T040 [US3] Implement handleCancelWallHighlight reducer handler in src/game/engine/game-reducer.ts
-- [ ] T041 [US3] Modify handleMove to detect wall tap and dispatch highlight/break actions in src/game/engine/game-reducer.ts
-- [ ] T042 [US3] Create WallHighlight overlay component in src/components/game/WallHighlight.tsx
-- [ ] T043 [US3] Integrate WallHighlight into GameCanvas in src/components/game/GameCanvas.tsx
-- [ ] T044 [US3] Add "Requires DIG" feedback when DIG=0 taps wall in src/components/game/GameCanvas.tsx
-- [ ] T045 [US3] Add "Not enough moves" feedback when insufficient moves in src/components/game/GameCanvas.tsx
+- [x] T036 [P] [US3] Create canBreakWall function (checks perimeter, valid wall) in src/game/map/wall-break.ts
+- [x] T037 [P] [US3] Create breakWall function (converts wall to floor) in src/game/map/wall-break.ts
+- [x] T038 [US3] Implement handleHighlightWall reducer handler in src/game/engine/game-reducer.ts
+- [x] T039 [US3] Implement handleBreakWall reducer handler in src/game/engine/game-reducer.ts
+- [x] T040 [US3] Implement handleCancelWallHighlight reducer handler in src/game/engine/game-reducer.ts
+- [x] T041 [US3] Modify handleMove to detect wall tap and dispatch highlight/break actions in src/game/engine/game-reducer.ts
+- [x] T042 [US3] Create WallHighlight overlay component in src/components/game/WallHighlight.tsx
+- [x] T043 [US3] Integrate WallHighlight into GameCanvas in src/components/game/GameCanvas.tsx
+- [x] T044 [US3] Add "Requires DIG" feedback when DIG=0 taps wall in src/components/game/GameCanvas.tsx
+- [x] T045 [US3] Add "Not enough moves" feedback when insufficient moves in src/components/game/GameCanvas.tsx
 
 **Checkpoint**: Wall break mechanic is fully functional and testable independently
 
