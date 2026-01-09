@@ -141,15 +141,15 @@
 
 ### Tests for User Story 4
 
-- [ ] T046 [P] [US4] Unit test for spawn zone classification in __tests__/unit/spawn-balance.test.ts
-- [ ] T047 [P] [US4] Unit test for tier selection by zone in __tests__/unit/spawn-balance.test.ts
-- [ ] T048 [P] [US4] Statistical test for spawn constraints across 100 seeds in __tests__/unit/spawn-balance.test.ts
+- [x] T046 [P] [US4] Unit test for spawn zone classification in __tests__/unit/spawn-balance.test.ts
+- [x] T047 [P] [US4] Unit test for tier selection by zone in __tests__/unit/spawn-balance.test.ts
+- [x] T048 [P] [US4] Statistical test for spawn constraints across 100 seeds in __tests__/unit/spawn-balance.test.ts
 
 ### Implementation for User Story 4
 
-- [ ] T049 [US4] Modify placeEnemies to calculate spawn zones in src/game/map/generator.ts
-- [ ] T050 [US4] Modify placeEnemies to filter tier by zone weights in src/game/map/generator.ts
-- [ ] T051 [US4] Ensure deterministic tier selection using seeded RNG in src/game/map/generator.ts
+- [x] T049 [US4] Modify placeEnemies to calculate spawn zones in src/game/map/generator.ts
+- [x] T050 [US4] Modify placeEnemies to filter tier by zone weights in src/game/map/generator.ts
+- [x] T051 [US4] Ensure deterministic tier selection using seeded RNG in src/game/map/generator.ts
 
 **Checkpoint**: Spawn balance is fully functional and testable independently
 
