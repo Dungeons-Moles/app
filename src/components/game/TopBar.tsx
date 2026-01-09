@@ -9,7 +9,7 @@ import { View, Text, StyleSheet, Pressable, Modal } from 'react-native';
 import type { TimeState } from '../../game/engine/types';
 import { TimePhase } from '../../game/engine/types';
 import { getBoss, type BossDefinition } from '../../data/bosses';
-import { getWeekProgress, getTimeDescription } from '../../game/time/progression';
+import { getWeekProgress } from '../../game/time/progression';
 
 // ============================================================================
 // Component Props
@@ -60,115 +60,153 @@ export function TopBar({ time }: TopBarProps) {
 // Week Progress Timeline (T069)
 // ============================================================================
 
+// Constants for tick calculation
+const DAY_TICKS = 10;   // 50 moves / 5 moves per tick
+const NIGHT_TICKS = 6;  // 30 moves / 5 moves per tick
+const TOTAL_TICKS = 3 * (DAY_TICKS + NIGHT_TICKS); // 48 ticks total
+const MOVES_PER_TICK = 5;
+
 interface WeekProgressTimelineProps {
   time: TimeState;
   progress: number;
 }
 
-function WeekProgressTimeline({ time, progress }: WeekProgressTimelineProps) {
+function WeekProgressTimeline({ time }: WeekProgressTimelineProps) {
+  // Calculate which tick we're on (0-indexed position across all ticks)
+  const currentTickPosition = useMemo(() => {
+    const ticksPerCycle = DAY_TICKS + NIGHT_TICKS; // 16 ticks per cycle
+
+    if (time.phase === TimePhase.Boss) {
+      // At the boss (end of timeline)
+      return TOTAL_TICKS;
+    }
+
+    // Completed cycles before current one
+    const completedCycles = time.cycle - 1;
+    let position = completedCycles * ticksPerCycle;
+
+    if (time.phase === TimePhase.Day) {
+      // In day phase: calculate how many day ticks we've consumed
+      const movesUsed = 50 - time.movesRemaining;
+      const ticksUsed = Math.floor(movesUsed / MOVES_PER_TICK);
+      position += ticksUsed;
+    } else if (time.phase === TimePhase.Night) {
+      // In night phase: all day ticks + night ticks consumed
+      position += DAY_TICKS;
+      const movesUsed = 30 - time.movesRemaining;
+      const ticksUsed = Math.floor(movesUsed / MOVES_PER_TICK);
+      position += ticksUsed;
+    }
+
+    return position;
+  }, [time]);
+
+  // Build the timeline structure (without boss)
+  const timelineSegments = useMemo(() => {
+    const segments: Array<{
+      type: 'day' | 'night';
+      cycle: number;
+      ticks: number;
+      startTick: number;
+    }> = [];
+
+    let tickIndex = 0;
+    for (let cycle = 1; cycle <= 3; cycle++) {
+      segments.push({ type: 'day', cycle, ticks: DAY_TICKS, startTick: tickIndex });
+      tickIndex += DAY_TICKS;
+      segments.push({ type: 'night', cycle, ticks: NIGHT_TICKS, startTick: tickIndex });
+      tickIndex += NIGHT_TICKS;
+    }
+
+    return segments;
+  }, []);
+
   return (
     <View style={styles.timelineContainer}>
       {/* Week indicator */}
       <Text style={styles.weekText}>Week {time.week}</Text>
 
-      {/* Phase indicators */}
-      <View style={styles.phasesRow}>
-        {[1, 2, 3].map(cycle => (
-          <React.Fragment key={cycle}>
-            {/* Day indicator */}
-            <PhaseIndicator
-              label={`D${cycle}`}
-              isActive={time.phase === TimePhase.Day && time.cycle === cycle}
-              isCompleted={
-                time.cycle > cycle ||
-                (time.cycle === cycle && time.phase !== TimePhase.Day) ||
+      {/* Tick marks progress bar with icons above each segment */}
+      <View style={styles.tickBarContainer}>
+        {/* Icons row - each icon centered above its segment */}
+        <View style={styles.iconsRow}>
+          {timelineSegments.map((segment, index) => {
+            const isActive = segment.type === 'day'
+              ? time.phase === TimePhase.Day && time.cycle === segment.cycle
+              : time.phase === TimePhase.Night && time.cycle === segment.cycle;
+
+            const isCompleted = segment.type === 'day'
+              ? time.cycle > segment.cycle ||
+                (time.cycle === segment.cycle && time.phase !== TimePhase.Day) ||
                 time.phase === TimePhase.Boss
-              }
-              isDay={true}
-            />
-            {/* Night indicator */}
-            <PhaseIndicator
-              label={`N${cycle}`}
-              isActive={time.phase === TimePhase.Night && time.cycle === cycle}
-              isCompleted={
-                time.cycle > cycle ||
-                (time.cycle === cycle && time.phase === TimePhase.Boss) ||
-                (time.phase === TimePhase.Boss)
-              }
-              isDay={false}
-            />
-          </React.Fragment>
-        ))}
-        {/* Boss indicator */}
-        <PhaseIndicator
-          label="BOSS"
-          isActive={time.phase === TimePhase.Boss}
-          isCompleted={false}
-          isDay={true}
-          isBoss={true}
-        />
-      </View>
+              : time.cycle > segment.cycle || time.phase === TimePhase.Boss;
 
-      {/* Move counter */}
-      {time.phase !== TimePhase.Boss && (
-        <Text style={styles.movesText}>
-          {time.movesRemaining} moves left
-        </Text>
-      )}
+            const icon = segment.type === 'day' ? '☀️' : '🌙';
 
-      {/* Progress bar */}
-      <View style={styles.progressBarBackground}>
-        <View style={[styles.progressBarFill, { width: `${progress * 100}%` }]} />
+            const iconStyle = isActive
+              ? styles.iconActive
+              : isCompleted
+                ? styles.iconCompleted
+                : styles.iconPending;
+
+            // Each icon container is sized proportionally to its tick count
+            return (
+              <View
+                key={index}
+                style={[styles.iconContainer, { flex: segment.ticks }]}
+              >
+                <Text style={[styles.phaseIcon, iconStyle]}>
+                  {icon}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
+
+        {/* Tick marks bar with marker below */}
+        <View style={styles.tickBarWrapper}>
+          <View style={styles.tickBarBackground}>
+            {/* Render all ticks with equal spacing */}
+            {timelineSegments.map((segment) => (
+              Array.from({ length: segment.ticks }).map((_, tickIdx) => {
+                const globalTick = segment.startTick + tickIdx;
+                const isConsumed = globalTick < currentTickPosition;
+
+                return (
+                  <View
+                    key={globalTick}
+                    style={[
+                      styles.tick,
+                      segment.type === 'day' ? styles.tickDay : styles.tickNight,
+                      isConsumed && styles.tickConsumed,
+                    ]}
+                  />
+                );
+              })
+            )).flat()}
+          </View>
+
+          {/* Marker row - same padding as tick bar for alignment */}
+          <View style={styles.markerRow}>
+            <View
+              style={[
+                styles.positionMarker,
+                {
+                  // With space-between: first tick at 0%, last at 100%
+                  // Tick n is at n/(TOTAL_TICKS-1) * 100%
+                  left: `${(currentTickPosition / (TOTAL_TICKS - 1)) * 100}%`,
+                }
+              ]}
+            >
+              <Text style={styles.markerTriangle}>▲</Text>
+            </View>
+          </View>
+        </View>
       </View>
     </View>
   );
 }
 
-// ============================================================================
-// Phase Indicator
-// ============================================================================
-
-interface PhaseIndicatorProps {
-  label: string;
-  isActive: boolean;
-  isCompleted: boolean;
-  isDay: boolean;
-  isBoss?: boolean;
-}
-
-function PhaseIndicator({
-  label,
-  isActive,
-  isCompleted,
-  isDay,
-  isBoss = false,
-}: PhaseIndicatorProps) {
-  const backgroundColor = useMemo(() => {
-    if (isActive) return isBoss ? '#dc2626' : isDay ? '#f59e0b' : '#3b82f6';
-    if (isCompleted) return '#374151';
-    return '#1f2937';
-  }, [isActive, isCompleted, isBoss, isDay]);
-
-  const textColor = useMemo(() => {
-    if (isActive) return '#ffffff';
-    if (isCompleted) return '#6b7280';
-    return '#9ca3af';
-  }, [isActive, isCompleted]);
-
-  return (
-    <View
-      style={[
-        styles.phaseIndicator,
-        { backgroundColor },
-        isActive && styles.phaseIndicatorActive,
-      ]}
-    >
-      <Text style={[styles.phaseLabel, { color: textColor }]}>
-        {label}
-      </Text>
-    </View>
-  );
-}
 
 // ============================================================================
 // Boss Preview (T070)
@@ -290,41 +328,70 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '600',
     color: '#9ca3af',
-    marginBottom: 4,
-  },
-  phasesRow: {
-    flexDirection: 'row',
-    gap: 2,
-    marginBottom: 4,
-  },
-  phaseIndicator: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  phaseIndicatorActive: {
-    borderWidth: 1,
-    borderColor: '#ffffff40',
-  },
-  phaseLabel: {
-    fontSize: 9,
-    fontWeight: '600',
-  },
-  movesText: {
-    fontSize: 10,
-    color: '#6b7280',
     marginBottom: 2,
   },
-  progressBarBackground: {
-    height: 3,
-    backgroundColor: '#1f2937',
-    borderRadius: 2,
-    overflow: 'hidden',
+  tickBarContainer: {
+    marginTop: 2,
   },
-  progressBarFill: {
-    height: '100%',
-    backgroundColor: '#10b981',
+  iconsRow: {
+    flexDirection: 'row',
+    marginBottom: 2,
+  },
+  iconContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  phaseIcon: {
+    fontSize: 12,
+  },
+  iconActive: {
+    opacity: 1,
+  },
+  iconCompleted: {
+    opacity: 0.4,
+  },
+  iconPending: {
+    opacity: 0.6,
+  },
+  tickBarWrapper: {
+    // Wrapper to contain tick bar and marker row
+  },
+  tickBarBackground: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    height: 8,
+    backgroundColor: '#1a1a22',
     borderRadius: 2,
+    paddingHorizontal: 4,
+  },
+  tick: {
+    width: 2,
+    height: 6,
+    borderRadius: 1,
+  },
+  tickDay: {
+    backgroundColor: '#f59e0b',
+  },
+  tickNight: {
+    backgroundColor: '#6366f1',
+  },
+  tickConsumed: {
+    backgroundColor: '#4b5563',
+  },
+  markerRow: {
+    position: 'relative',
+    height: 12,
+    marginHorizontal: 4, // Match tick bar padding
+  },
+  positionMarker: {
+    position: 'absolute',
+    top: 0,
+    marginLeft: -6, // Center the triangle on the tick
+  },
+  markerTriangle: {
+    fontSize: 10,
+    color: '#e5e5e5',
   },
 
   // Boss preview styles
