@@ -63,18 +63,18 @@
 
 ### Tests for User Story 1
 
-- [ ] T016 [P] [US1] Unit test for overview mode state isolation in __tests__/unit/map-overview.test.ts
-- [ ] T017 [P] [US1] Integration test for overview mode input blocking in __tests__/integration/map-overview.test.ts
+- [x] T016 [P] [US1] Unit test for overview mode state isolation in __tests__/unit/map-overview.test.ts
+- [x] T017 [P] [US1] Integration test for overview mode input blocking in __tests__/integration/map-overview.test.ts
 
 ### Implementation for User Story 1
 
-- [ ] T018 [P] [US1] Add OverviewModeState type and state to GameContext in src/contexts/GameContext.tsx
-- [ ] T019 [P] [US1] Add toggleOverviewMode and panOverview methods to GameContext in src/contexts/GameContext.tsx
-- [ ] T020 [US1] Add map icon toggle button (left of day/night bar) in src/components/game/TopBar.tsx
-- [ ] T021 [US1] Implement zoom transform (0.5x scale) when overviewMode.active in src/components/game/GameCanvas.tsx
-- [ ] T022 [US1] Implement pan gesture handling for camera offset in src/components/game/GameCanvas.tsx
-- [ ] T023 [US1] Block all game inputs when overviewMode.active in src/hooks/useInput.ts
-- [ ] T024 [US1] Reset camera offset to player center when exiting overview mode in src/contexts/GameContext.tsx
+- [x] T018 [P] [US1] Add OverviewModeState type and state to GameContext in src/contexts/GameContext.tsx
+- [x] T019 [P] [US1] Add toggleOverviewMode and panOverview methods to GameContext in src/contexts/GameContext.tsx
+- [x] T020 [US1] Add map icon toggle button (left of day/night bar) in src/components/game/TopBar.tsx
+- [x] T021 [US1] Implement zoom transform (0.5x scale) when overviewMode.active in src/components/game/GameCanvas.tsx
+- [x] T022 [US1] Implement pan gesture handling for camera offset in src/components/game/GameCanvas.tsx
+- [x] T023 [US1] Block all game inputs when overviewMode.active in src/hooks/useInput.ts
+- [x] T024 [US1] Reset camera offset to player center when exiting overview mode in src/contexts/GameContext.tsx
 
 **Checkpoint**: Map overview mode is fully functional and testable independently
 
@@ -88,17 +88,17 @@
 
 ### Tests for User Story 2
 
-- [ ] T025 [P] [US2] Unit test for combat animation timing at different speeds in __tests__/unit/combat-speed.test.ts
-- [ ] T026 [P] [US2] Unit test for combat determinism across speed settings in __tests__/unit/combat-determinism.test.ts
+- [x] T025 [P] [US2] Unit test for combat animation timing at different speeds in __tests__/unit/combat-speed.test.ts
+- [x] T026 [P] [US2] Unit test for combat determinism across speed settings in __tests__/unit/combat-determinism.test.ts
 
 ### Implementation for User Story 2
 
-- [ ] T027 [P] [US2] Add CombatSpeed type and speed state to CombatContext in src/contexts/CombatContext.tsx
-- [ ] T028 [P] [US2] Add COMBAT_SPEED_MULTIPLIER constant to src/contexts/CombatContext.tsx
-- [ ] T029 [US2] Create SpeedControls component (pause/play/fast buttons) in src/components/combat/SpeedControls.tsx
-- [ ] T030 [US2] Integrate SpeedControls into CombatScreen in src/components/combat/CombatScreen.tsx
-- [ ] T031 [US2] Modify animation interval to use speed multiplier in src/contexts/CombatContext.tsx
-- [ ] T032 [US2] Pause animation advancement when speed is 'paused' in src/contexts/CombatContext.tsx
+- [x] T027 [P] [US2] Add CombatSpeed type and speed state to CombatContext in src/contexts/CombatContext.tsx
+- [x] T028 [P] [US2] Add COMBAT_SPEED_MULTIPLIER constant to src/contexts/CombatContext.tsx
+- [x] T029 [US2] Create SpeedControls component (pause/play/fast buttons) in src/components/combat/SpeedControls.tsx
+- [x] T030 [US2] Integrate SpeedControls into CombatScreen in src/components/combat/CombatScreen.tsx
+- [x] T031 [US2] Modify animation interval to use speed multiplier in src/contexts/CombatContext.tsx
+- [x] T032 [US2] Pause animation advancement when speed is 'paused' in src/contexts/CombatContext.tsx
 
 **Checkpoint**: Combat speed controls are fully functional and testable independently
 
