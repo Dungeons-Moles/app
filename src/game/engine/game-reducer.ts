@@ -23,6 +23,7 @@ import { initializeGame, consumeMoves } from './state-factory';
 import { GAME_CONSTANTS } from './constants';
 import { TileType, TILE_MOVE_COST, type MapEnemy } from '../map/types';
 import { updateFogOfWar } from '../map/fog-of-war';
+import { calculateWallBreakCost, canBreakWall, breakWall } from '../map/wall-break';
 import {
   movePlayer,
   equipTool,
@@ -62,6 +63,13 @@ import { RARITY_MULTIPLIER } from '../../data/gear';
 export type GameAction =
   | { type: 'START_GAME'; seed: number }
   | { type: 'MOVE'; direction: Direction }
+  | { type: 'HIGHLIGHT_WALL'; direction: Direction; targetPosition: Position; cost: number }
+  | { type: 'BREAK_WALL' }
+  | { type: 'CANCEL_WALL_HIGHLIGHT' }
+  | { type: 'ACTIVATE_FAST_TRAVEL' }
+  | { type: 'CYCLE_FAST_TRAVEL' }
+  | { type: 'CONFIRM_FAST_TRAVEL' }
+  | { type: 'CANCEL_FAST_TRAVEL' }
   | { type: 'ENTER_COMBAT'; enemyId: string }
   | { type: 'RESOLVE_COMBAT'; result: CombatResult; combat?: CombatState }
   | { type: 'INTERACT_POI'; poiId: string }
@@ -115,6 +123,21 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
 
     case 'MOVE':
       return handleMove(state, action.direction);
+
+    case 'HIGHLIGHT_WALL':
+      return handleHighlightWall(state, action.direction, action.targetPosition, action.cost);
+
+    case 'BREAK_WALL':
+      return handleBreakWall(state);
+
+    case 'CANCEL_WALL_HIGHLIGHT':
+      return handleCancelWallHighlight(state);
+
+    case 'ACTIVATE_FAST_TRAVEL':
+    case 'CYCLE_FAST_TRAVEL':
+    case 'CONFIRM_FAST_TRAVEL':
+    case 'CANCEL_FAST_TRAVEL':
+      return state;
 
     case 'ENTER_COMBAT':
       return handleEnterCombat(state, action.enemyId);
@@ -216,24 +239,50 @@ function handleMove(state: GameState, direction: Direction): GameState {
     return state; // Can't move out of bounds
   }
 
-  // Check if tile is walkable
   const targetTile = state.map.tiles[targetPos.y][targetPos.x];
-  if (targetTile === TileType.Wall) {
-    return state; // Can't move into wall
+  const hasHighlight = state.wallHighlight !== null;
+  const isSameHighlight =
+    hasHighlight &&
+    state.wallHighlight?.direction === direction &&
+    state.wallHighlight?.targetPosition.x === targetPos.x &&
+    state.wallHighlight?.targetPosition.y === targetPos.y;
+
+  if (hasHighlight && !isSameHighlight) {
+    const canceledState = handleCancelWallHighlight(state);
+    return handleMove(canceledState, direction);
   }
+
+  if (targetTile === TileType.Wall) {
+    if (isSameHighlight) {
+      return handleBreakWall(state);
+    }
+
+    const cost = calculateWallBreakCost(state.player.stats.dig);
+    if (cost === null) {
+      return state;
+    }
+
+    if (!canBreakWall(state.map, targetPos)) {
+      return state;
+    }
+
+    return handleHighlightWall(state, direction, targetPos, cost);
+  }
+
+  const clearedState = hasHighlight ? handleCancelWallHighlight(state) : state;
 
   // Get move cost
   const moveCost = TILE_MOVE_COST[targetTile];
 
   // Check for enemy at target position
-  const enemyAtTarget = state.map.enemies.find(
+  const enemyAtTarget = clearedState.map.enemies.find(
     e => e.position.x === targetPos.x && e.position.y === targetPos.y
   );
 
   // Move player
   let newState = {
-    ...state,
-    player: movePlayer(state.player, targetPos),
+    ...clearedState,
+    player: movePlayer(clearedState.player, targetPos),
   };
 
   // Update fog of war
@@ -354,6 +403,116 @@ function handleMove(state: GameState, direction: Direction): GameState {
   }
 
   return newState;
+}
+
+/**
+ * Handles HIGHLIGHT_WALL action.
+ */
+function handleHighlightWall(
+  state: GameState,
+  direction: Direction,
+  targetPosition: Position,
+  cost: number
+): GameState {
+  if (state.phase !== GamePhase.Exploration) {
+    return state;
+  }
+
+  if (state.wallHighlight) {
+    return state;
+  }
+
+  return {
+    ...state,
+    wallHighlight: {
+      targetPosition,
+      direction,
+      cost,
+    },
+  };
+}
+
+/**
+ * Handles BREAK_WALL action.
+ */
+function handleBreakWall(state: GameState): GameState {
+  if (state.phase !== GamePhase.Exploration) {
+    return state;
+  }
+
+  if (!state.wallHighlight) {
+    return state;
+  }
+
+  const { targetPosition, cost } = state.wallHighlight;
+
+  if (!canBreakWall(state.map, targetPosition)) {
+    return handleCancelWallHighlight(state);
+  }
+
+  if (state.time.movesRemaining < cost) {
+    return state;
+  }
+
+  let newMap = breakWall(state.map, targetPosition);
+
+  const isDay = state.time.phase === TimePhase.Day;
+  newMap = updateFogOfWar(newMap, state.player.position, isDay);
+
+  const newTime = consumeMove(state.time, cost);
+  const advancedTime = advanceTimePhase(newTime);
+
+  let updatedPlayer = state.player;
+  const isDayStart = state.time.phase === TimePhase.Night && advancedTime.phase === TimePhase.Day;
+  if (isDayStart) {
+    const nuggetSlots = updatedPlayer.inventory.filter((slot) => slot.item.id === 'I8');
+    const goldGain = nuggetSlots.reduce(
+      (sum, slot) => sum + Math.floor(3 * RARITY_MULTIPLIER[slot.item.currentRarity]),
+      0
+    );
+    if (goldGain > 0) {
+      updatedPlayer = addGold(updatedPlayer, goldGain);
+    }
+  }
+
+  let newState: GameState = {
+    ...state,
+    map: newMap,
+    time: advancedTime,
+    player: updatedPlayer,
+    wallHighlight: null,
+  };
+
+  if (shouldTriggerBoss(newTime)) {
+    return {
+      ...newState,
+      time: {
+        ...advancedTime,
+        phase: TimePhase.Boss,
+      },
+      phase: GamePhase.BossFight,
+    };
+  }
+
+  if (newState.time.phase === TimePhase.Night) {
+    newState = handleNightEnemyMovement(newState);
+  }
+
+  return newState;
+}
+
+/**
+ * Handles CANCEL_WALL_HIGHLIGHT action.
+ */
+function handleCancelWallHighlight(state: GameState): GameState {
+  if (!state.wallHighlight) {
+    return state;
+  }
+
+  return {
+    ...state,
+    wallHighlight: null,
+  };
 }
 
 /**
@@ -859,6 +1018,7 @@ function handleNightEnemyMovement(state: GameState): GameState {
         ...newState,
         phase: GamePhase.Combat,
         combat: combatState,
+        wallHighlight: null,
       };
     }
   }

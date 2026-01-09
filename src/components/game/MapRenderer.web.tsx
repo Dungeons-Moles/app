@@ -4,11 +4,12 @@
 
 import React, { useMemo, useCallback, memo } from 'react';
 import { View, StyleSheet, LayoutChangeEvent, Text } from 'react-native';
-import type { Position } from '../../game/engine/types';
+import type { Position, WallHighlightState } from '../../game/engine/types';
 import { TimePhase } from '../../game/engine/types';
 import type { GameMap, MapEnemy } from '../../game/map/types';
 import { TileType, FogState } from '../../game/map/types';
 import { getPOIDefinition } from '../../data/pois';
+import { WallHighlight } from './WallHighlight';
 
 // ============================================================================
 // Constants
@@ -83,6 +84,7 @@ export interface MapRendererProps {
   map: GameMap;
   playerPosition: Position;
   timePhase: TimePhase;
+  wallHighlight?: WallHighlightState;
   width?: number;
   height?: number;
 }
@@ -284,6 +286,7 @@ export const MapRenderer = memo(function MapRenderer({
   map,
   playerPosition,
   timePhase,
+  wallHighlight,
   width: propWidth,
   height: propHeight,
 }: MapRendererProps) {
@@ -368,6 +371,24 @@ export const MapRenderer = memo(function MapRenderer({
       .filter((entry): entry is { enemy: MapEnemy; variant: 'known' | 'unknown' } => entry !== null);
   }, [map.enemies, map.fog, visibleRange, isNight]);
 
+  const highlightVisible = useMemo(() => {
+    if (!wallHighlight) {
+      return false;
+    }
+
+    const { x, y } = wallHighlight.targetPosition;
+    if (
+      x < visibleRange.startX ||
+      x > visibleRange.endX ||
+      y < visibleRange.startY ||
+      y > visibleRange.endY
+    ) {
+      return false;
+    }
+
+    return map.fog[y][x] !== FogState.Hidden;
+  }, [wallHighlight, visibleRange, map.fog]);
+
   return (
     <View style={styles.container} onLayout={handleLayout}>
       <View style={styles.tileLayer}>
@@ -396,6 +417,16 @@ export const MapRenderer = memo(function MapRenderer({
             dimmed={isNight && tile.fog === FogState.Revealed}
           />
         ))}
+
+        {/* Wall highlight */}
+        {wallHighlight && highlightVisible && (
+          <WallHighlight
+            position={wallHighlight.targetPosition}
+            cost={wallHighlight.cost}
+            tileSize={TILE_SIZE}
+            cameraOffset={cameraOffset}
+          />
+        )}
 
         {/* 1. POIs */}
         {visiblePOIs.map(poi => {
