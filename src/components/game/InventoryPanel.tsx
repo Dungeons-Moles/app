@@ -4,9 +4,9 @@
  * @see specs/001-pve-dungeon-crawler/spec.md FR-018, FR-019, FR-020, FR-021
  */
 
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useRef } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import type { Tool, Gear, InventorySlot, ItemsetId } from '../../game/engine/types';
+import type { Tool, Gear, InventorySlot, ItemsetId, ToolOil } from '../../game/engine/types';
 import { getItemsetDefinition } from '../../game/entities/itemsets';
 
 interface InventoryPanelProps {
@@ -16,6 +16,8 @@ interface InventoryPanelProps {
   activeItemsets: ItemsetId[];
   onItemPress?: (item: Tool | Gear, slotIndex: number) => void;
   onToolPress?: (tool: Tool) => void;
+  onItemInspect?: (item: Tool | Gear, slotIndex: number) => void;
+  onToolInspect?: (tool: Tool) => void;
 }
 
 interface ItemSlotProps {
@@ -24,16 +26,36 @@ interface ItemSlotProps {
   isLocked?: boolean;
   slotIndex?: number;
   onPress?: (item: Tool | Gear, index: number) => void;
+  onLongPress?: (item: Tool | Gear, index: number) => void;
 }
 
 const DEFAULT_RARITY_COLOR = '#4A4A4A';
 
-function ItemSlot({ item, isEmpty = false, isLocked = false, slotIndex, onPress }: ItemSlotProps) {
+function ItemSlot({
+  item,
+  isEmpty = false,
+  isLocked = false,
+  slotIndex,
+  onPress,
+  onLongPress,
+}: ItemSlotProps) {
+  const didLongPressRef = useRef(false);
   const handlePress = useCallback(() => {
+    if (didLongPressRef.current) {
+      didLongPressRef.current = false;
+      return;
+    }
     if (item && slotIndex !== undefined && onPress) {
       onPress(item, slotIndex);
     }
   }, [item, slotIndex, onPress]);
+
+  const handleLongPress = useCallback(() => {
+    if (item && slotIndex !== undefined && onLongPress) {
+      didLongPressRef.current = true;
+      onLongPress(item, slotIndex);
+    }
+  }, [item, slotIndex, onLongPress]);
 
   const rarityColor = useMemo(
     () => (item ? getRarityColor(item) : DEFAULT_RARITY_COLOR),
@@ -68,6 +90,8 @@ function ItemSlot({ item, isEmpty = false, isLocked = false, slotIndex, onPress 
     <TouchableOpacity
       style={slotStyle}
       onPress={handlePress}
+      onLongPress={handleLongPress}
+      delayLongPress={350}
       activeOpacity={0.7}
     >
       <Text style={styles.itemEmoji}>{item.emoji}</Text>
@@ -96,6 +120,24 @@ function getRarityColor(item: Tool | Gear): string {
   }
 }
 
+const OIL_ICONS: Record<ToolOil, string> = {
+  ATK: '⚔️',
+  ARM: '🛡️',
+  DIG: '⛏️',
+};
+
+function OilSlot({ oil }: { oil?: ToolOil | null }) {
+  if (!oil) {
+    return <View style={[styles.itemSlot, styles.oilSlotEmpty]} />;
+  }
+
+  return (
+    <View style={[styles.itemSlot, styles.oilSlot]}>
+      <Text style={styles.itemEmoji}>{OIL_ICONS[oil]}</Text>
+    </View>
+  );
+}
+
 function ActiveItemsets({ itemsets }: { itemsets: ItemsetId[] }) {
   if (itemsets.length === 0) {
     return null;
@@ -122,6 +164,8 @@ export function InventoryPanel({
   activeItemsets,
   onItemPress,
   onToolPress,
+  onItemInspect,
+  onToolInspect,
 }: InventoryPanelProps) {
   // Create inventory grid with 4 items per row (4 starting + 6 unlocked = 10 slots)
   const maxSlots = 10; // 4 unlocked from start + 2 per week × 3 weeks
@@ -144,12 +188,21 @@ export function InventoryPanel({
   }
 
   const handleToolPress = useCallback(
-    (tool: Tool | Gear) => {
-      if (tool && 'damage' in tool) {
-        onToolPress?.(tool as Tool);
+    (tool: Tool | Gear, _slotIndex: number) => {
+      if (tool && 'rarity' in tool) {
+        onToolPress?.(tool);
       }
     },
     [onToolPress]
+  );
+
+  const handleToolInspect = useCallback(
+    (tool: Tool | Gear, _slotIndex: number) => {
+      if (tool && 'rarity' in tool) {
+        onToolInspect?.(tool);
+      }
+    },
+    [onToolInspect]
   );
 
   return (
@@ -173,6 +226,7 @@ export function InventoryPanel({
                     isLocked={isLocked}
                     slotIndex={slot?.index}
                     onPress={onItemPress}
+                    onLongPress={onItemInspect}
                   />
                 );
               })}
@@ -183,13 +237,24 @@ export function InventoryPanel({
 
       {/* Tool Section - Center */}
       <View style={styles.toolSection}>
-        <Text style={styles.sectionTitle}>Weapon</Text>
-        <ItemSlot
-          item={equippedTool}
-          isEmpty={!equippedTool}
-          slotIndex={-1}
-          onPress={handleToolPress}
-        />
+        <View style={styles.toolHeaderRow}>
+          <View style={styles.toolHeaderSlot}>
+            <Text style={[styles.sectionTitle, styles.toolHeaderText]}>Weapon</Text>
+          </View>
+          <View style={styles.toolHeaderSlot}>
+            <Text style={[styles.sectionTitle, styles.toolHeaderText]}>Oil</Text>
+          </View>
+        </View>
+        <View style={styles.toolRow}>
+          <ItemSlot
+            item={equippedTool}
+            isEmpty={!equippedTool}
+            slotIndex={-1}
+            onPress={handleToolPress}
+            onLongPress={handleToolInspect}
+          />
+          <OilSlot oil={equippedTool?.oil ?? null} />
+        </View>
       </View>
 
       {/* Active Itemsets - Bottom */}
@@ -210,10 +275,30 @@ const styles = StyleSheet.create({
     // Top section - compact
   },
   toolSection: {
-    alignItems: 'center',
+    alignItems: 'stretch',
     paddingVertical: 6,
     borderTopWidth: 1,
     borderTopColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  toolHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    width: '100%',
+    paddingHorizontal: 10,
+    marginBottom: 4,
+  },
+  toolHeaderText: {
+    marginBottom: 0,
+  },
+  toolHeaderSlot: {
+    width: 28,
+    alignItems: 'flex-start',
+  },
+  toolRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    width: '100%',
+    paddingHorizontal: 10,
   },
   sectionTitle: {
     color: '#FFFFFF',
@@ -241,6 +326,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
+  },
+  oilSlot: {
+    borderColor: '#d4a4ff',
+    backgroundColor: 'rgba(40, 30, 50, 0.8)',
+  },
+  oilSlotEmpty: {
+    borderStyle: 'solid',
+    backgroundColor: 'rgba(30, 30, 30, 0.5)',
   },
   emptySlot: {
     borderStyle: 'dashed',

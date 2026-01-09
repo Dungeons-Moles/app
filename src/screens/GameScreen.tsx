@@ -11,7 +11,14 @@ import { RootStackParamList } from '../navigation';
 import { useGame, GamePhase } from '../contexts/GameContext';
 import { MapRenderer } from '../components/game/MapRenderer';
 import { DPadControls } from '../components/game/DPadControls';
-import { TopBar, StatsPanel, InventoryPanel, DebugOverlay, POIModal } from '../components/game';
+import {
+  TopBar,
+  StatsPanel,
+  InventoryPanel,
+  ItemTooltip,
+  DebugOverlay,
+  POIModal,
+} from '../components/game';
 import { useDirectionInput } from '../hooks/useInput';
 import { useLandscapeLock } from '../hooks/useOrientationLock';
 import { Direction } from '../game/input/types';
@@ -100,6 +107,8 @@ export function GameScreen({ navigation }: GameScreenProps) {
     emoji: string;
     count: number;
   }>({ gearId: null, emoji: '', count: 0 });
+  const [inspectedItem, setInspectedItem] = useState<Tool | Gear | null>(null);
+  const [isTooltipVisible, setTooltipVisible] = useState(false);
 
   useEffect(() => {
     if (state?.activePOI?.poi.definitionId !== 'L11') {
@@ -194,6 +203,20 @@ export function GameScreen({ navigation }: GameScreenProps) {
   const isCrusherGolemActive =
     state?.phase === GamePhase.POIInteraction && state.activePOI?.poi.definitionId === 'L11';
 
+  const handleInspectItem = useCallback((item: Tool | Gear, _slotIndex: number) => {
+    setInspectedItem(item);
+    setTooltipVisible(true);
+  }, []);
+
+  const handleInspectTool = useCallback((tool: Tool) => {
+    setInspectedItem(tool);
+    setTooltipVisible(true);
+  }, []);
+
+  const handleCloseTooltip = useCallback(() => {
+    setTooltipVisible(false);
+  }, []);
+
   // If no game state, show loading
   if (!state) {
     return (
@@ -258,6 +281,8 @@ export function GameScreen({ navigation }: GameScreenProps) {
             inventoryCapacity={state.player.inventoryCapacity}
             activeItemsets={state.player.activeItemsets}
             onItemPress={isCrusherGolemActive ? handleInventoryItemPress : undefined}
+            onItemInspect={handleInspectItem}
+            onToolInspect={handleInspectTool}
           />
         </View>
       </View>
@@ -271,6 +296,12 @@ export function GameScreen({ navigation }: GameScreenProps) {
         golemSelection={golemSelection}
         golemFuseOptionIndex={golemFuseOptionIndex}
         onGolemSlotPress={handleGolemSlotPress}
+      />
+
+      <ItemTooltip
+        item={inspectedItem}
+        visible={isTooltipVisible}
+        onClose={handleCloseTooltip}
       />
     </SafeAreaView>
   );

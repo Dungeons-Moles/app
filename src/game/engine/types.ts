@@ -86,6 +86,8 @@ export interface ItemStats {
 
 export type ToolId = 'T1' | 'T2' | 'T3' | 'T4' | 'T5' | 'T6' | 'T7' | 'T8' | 'T9';
 
+export type ToolOil = 'ATK' | 'ARM' | 'DIG';
+
 export type GearId =
   | 'I1' | 'I2' | 'I3' | 'I4' | 'I5' | 'I6' | 'I7' | 'I8' | 'I9' | 'I10'
   | 'I11' | 'I12' | 'I13' | 'I14' | 'I15' | 'I16' | 'I17' | 'I18' | 'I19' | 'I20'
@@ -98,6 +100,7 @@ export interface Tool {
   rarity: ItemRarity;
   stats: ItemStats;
   tags: ItemTag[];
+  oil?: ToolOil | null;
 }
 
 export interface Gear {

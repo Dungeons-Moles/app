@@ -175,6 +175,7 @@ export function createToolInstance(id: ToolId): Tool {
     rarity: def.rarity,
     stats: { ...def.stats },
     tags: [...def.tags],
+    oil: null,
   };
 }
 

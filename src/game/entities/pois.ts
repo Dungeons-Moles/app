@@ -14,6 +14,7 @@ import type {
   Position,
   GearId,
   ItemRarity,
+  ToolOil,
   Player,
   TimeState,
 } from '../engine/types';
@@ -287,7 +288,7 @@ function generateSurveyBeaconOptions(): POIOption[] {
 
 // ============================================================================
 // T092: Seismic Scanner (L7)
-// Choose POI type to reveal a random instance
+// Choose from up to 3 random POI types to reveal a random instance
 // ============================================================================
 
 function generateSeismicScannerOptions(state: GameState): POIOption[] {
@@ -301,7 +302,16 @@ function generateSeismicScannerOptions(state: GameState): POIOption[] {
   }
 
   const options: POIOption[] = [];
-  for (const poiId of poiTypes) {
+  const poiTypeList = Array.from(poiTypes);
+  const rng = new SeededRNG(state.rngState);
+
+  for (let i = poiTypeList.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(rng.next() * (i + 1));
+    [poiTypeList[i], poiTypeList[j]] = [poiTypeList[j], poiTypeList[i]];
+  }
+
+  const selections = poiTypeList.slice(0, 3);
+  for (const poiId of selections) {
     const def = getPOIDefinition(poiId);
     options.push({
       label: `${def.emoji} Find ${def.name}`,
@@ -788,15 +798,19 @@ function applyToolOilRackEffect(
   }
 
   const newStats = { ...tool.stats };
+  let oil: ToolOil | null = null;
   switch (optionIndex) {
     case 0:
       newStats.atk = (newStats.atk ?? 0) + 1;
+      oil = 'ATK';
       break;
     case 1:
       newStats.arm = (newStats.arm ?? 0) + 1;
+      oil = 'ARM';
       break;
     case 2:
       newStats.dig = (newStats.dig ?? 0) + 1;
+      oil = 'DIG';
       break;
   }
 
@@ -807,6 +821,7 @@ function applyToolOilRackEffect(
       equippedTool: {
         ...tool,
         stats: newStats,
+        oil,
       },
     }),
   };
