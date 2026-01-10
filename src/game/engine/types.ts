@@ -243,6 +243,7 @@ export type CombatAction =
   | 'HEAL'
   | 'GAIN_ARMOR'
   | 'LOSE_ARMOR'
+  | 'GOLD_REWARD'
   | 'TRIGGER_TRAIT'
   | 'TRIGGER_ITEM'
   | 'TRIGGER_ITEMSET'
@@ -255,6 +256,8 @@ export interface CombatActionResult {
   armorLost?: number;
   statusApplied?: { type: keyof StatusEffects; stacks: number };
   statusRemoved?: { type: keyof StatusEffects; stacks: number };
+  amount?: number;
+  totalGold?: number;
   effectName?: string;
 }
 

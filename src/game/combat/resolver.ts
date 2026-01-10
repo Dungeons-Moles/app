@@ -23,6 +23,7 @@ import {
   resetBossPhaseState,
   resetStatusReflectionFlag,
 } from '../entities/bosses';
+import { calculateGoldReward } from '../entities/enemies';
 import { processStatusEffectsTurnEnd, applyStatus } from './status-effects';
 import { executeTraitEffects, type EnemyId } from './traits';
 import { RARITY_MULTIPLIER } from '../../data/gear';
@@ -62,6 +63,11 @@ interface CountdownItem {
  * Create initial combat state from input
  */
 export function createCombatState(input: CombatResolverInput): CombatState {
+  const enemyDefinitionId =
+    input.enemyDefinitionId ?? (input.enemyId as MapEnemyId | undefined) ?? 'TUNNEL_RAT';
+  const enemyTier = input.enemyTier ?? 1;
+  const goldReward = input.goldReward ?? calculateGoldReward(enemyDefinitionId, enemyTier);
+
   return {
     player: { ...input.player },
     enemy: { ...input.enemy },
@@ -70,9 +76,9 @@ export function createCombatState(input: CombatResolverInput): CombatState {
     log: [],
     rngState: input.seed,
     playerGold: input.playerGold ?? 0,
-    goldReward: input.goldReward ?? 0,
-    enemyDefinitionId: input.enemyDefinitionId ?? input.enemyId ?? 'TUNNEL_RAT',
-    enemyTier: input.enemyTier ?? 1,
+    goldReward,
+    enemyDefinitionId,
+    enemyTier,
     consumedGearIds: [],
     result: null,
   };
@@ -827,11 +833,28 @@ function finalizeCombat(state: CombatState, rng: SeededRNG): CombatState {
 
   const finalRngState = rng.getState();
 
-  return {
+  let finalState: CombatState = {
     ...state,
     result,
     rngState: finalRngState,
   };
+
+  if (result === 'VICTORY' && state.goldReward > 0) {
+    finalState = addLogEntry(finalState, {
+      turn: state.turn,
+      timing: CombatPhase.BattleEnd,
+      actor: 'system',
+      action: 'GOLD_REWARD',
+      target: 'none',
+      result: {
+        amount: state.goldReward,
+        totalGold: state.playerGold + state.goldReward,
+      },
+      rngValues: [],
+    });
+  }
+
+  return finalState;
 }
 
 /**

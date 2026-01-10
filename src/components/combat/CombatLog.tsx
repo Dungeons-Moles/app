@@ -79,6 +79,14 @@ function formatEntry(entry: CombatLogEntry, index: number): FormattedEntry {
       icon = '🛡️';
       break;
 
+    case 'GOLD_REWARD':
+      const amount = entry.result.amount ?? 0;
+      const totalGold = entry.result.totalGold ?? amount;
+      text = `Gold reward +${amount} (Total ${totalGold})`;
+      color = '#facc15';
+      icon = '💰';
+      break;
+
     case 'TRIGGER_ITEM':
       text = `${entry.result.effectName ?? 'Item effect'} triggered`;
       color = '#f59e0b';

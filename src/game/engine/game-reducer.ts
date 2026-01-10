@@ -773,13 +773,20 @@ function handleResolveCombat(
     return state;
   }
 
+  const goldReward = result === 'VICTORY' ? combatState.goldReward : 0;
+  const totalGold = combatState.playerGold + goldReward;
+
   // Update player HP from combat result
   let updatedPlayer = {
     ...state.player,
+    baseStats: {
+      ...state.player.baseStats,
+      gold: totalGold,
+    },
     stats: {
       ...state.player.stats,
       hp: Math.max(0, combatState.player.hp),
-      gold: combatState.playerGold,
+      gold: totalGold,
     },
     statusEffects: { ...combatState.player.statusEffects },
   };
