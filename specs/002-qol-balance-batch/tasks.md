@@ -209,17 +209,17 @@
 
 ### Tests for User Story 7
 
-- [ ] T069 [P] [US7] Unit test for gold reward calculation (all enemy/tier combinations) in __tests__/unit/gold-rewards.test.ts
-- [ ] T070 [P] [US7] Unit test for gold reward determinism in __tests__/unit/gold-rewards.test.ts
+- [x] T069 [P] [US7] Unit test for gold reward calculation (all enemy/tier combinations) in __tests__/unit/gold-rewards.test.ts
+- [x] T070 [P] [US7] Unit test for gold reward determinism in __tests__/unit/gold-rewards.test.ts
 
 ### Implementation for User Story 7
 
-- [ ] T071 [US7] Add goldReward calculation to createCombatState in src/game/combat/resolver.ts
-- [ ] T072 [US7] Pass enemyDefinitionId and enemyTier to createCombatState in src/game/engine/game-reducer.ts
-- [ ] T073 [US7] Apply goldReward to player on VICTORY in handleResolveCombat in src/game/engine/game-reducer.ts
-- [ ] T074 [US7] Add GOLD_REWARD log entry type to combat log in src/game/combat/resolver.ts
-- [ ] T075 [US7] Display gold reward in CombatResult component in src/components/combat/CombatResult.tsx
-- [ ] T076 [US7] Add gold reward animation to CombatResult in src/components/combat/CombatResult.tsx
+- [x] T071 [US7] Add goldReward calculation to createCombatState in src/game/combat/resolver.ts
+- [x] T072 [US7] Pass enemyDefinitionId and enemyTier to createCombatState in src/game/engine/game-reducer.ts
+- [x] T073 [US7] Apply goldReward to player on VICTORY in handleResolveCombat in src/game/engine/game-reducer.ts
+- [x] T074 [US7] Add GOLD_REWARD log entry type to combat log in src/game/combat/resolver.ts
+- [x] T075 [US7] Display gold reward in CombatResult component in src/components/combat/CombatResult.tsx
+- [x] T076 [US7] Add gold reward animation to CombatResult in src/components/combat/CombatResult.tsx
 
 **Checkpoint**: Gold rewards are fully functional and testable independently
 
