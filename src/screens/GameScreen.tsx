@@ -18,12 +18,15 @@ import {
   ItemTooltip,
   DebugOverlay,
   POIModal,
+  FastTravelButton,
+  FastTravelOverlay,
 } from '../components/game';
 import { useDirectionInput } from '../hooks/useInput';
 import { useLandscapeLock } from '../hooks/useOrientationLock';
 import { Direction, DIRECTION_DELTA } from '../game/input/types';
 import { TileType } from '../game/map/types';
 import type { GearId, Tool, Gear } from '../game/engine/types';
+import { canFastTravel, getDiscoveredWaypoints } from '../game/entities/pois';
 
 type GameScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Game'>;
@@ -52,13 +55,44 @@ export function GameScreen({ navigation }: GameScreenProps) {
     }, 2000);
   }, []);
 
+  const discoveredWaypoints = useMemo(
+    () => (state ? getDiscoveredWaypoints(state.map) : []),
+    [state?.map]
+  );
+
+  const fastTravelAvailable = useMemo(() => {
+    if (!state) {
+      return false;
+    }
+    return state.phase === GamePhase.Exploration && canFastTravel(state.map);
+  }, [state?.map, state?.phase]);
+
+  const handleFastTravelPress = useCallback(() => {
+    if (!state) {
+      return;
+    }
+    if (state.fastTravel?.active) {
+      dispatch({ type: 'CYCLE_FAST_TRAVEL' });
+      return;
+    }
+    if (!fastTravelAvailable || overviewMode.active) {
+      return;
+    }
+    dispatch({ type: 'ACTIVATE_FAST_TRAVEL' });
+  }, [dispatch, fastTravelAvailable, overviewMode.active, state]);
+
   // Lock to landscape orientation (FR-044)
   useLandscapeLock();
 
   // Handle direction input
   const handleDirection = useCallback(
     (direction: Direction) => {
-      if (!state || state.phase !== GamePhase.Exploration || overviewMode.active) {
+      if (
+        !state ||
+        state.phase !== GamePhase.Exploration ||
+        overviewMode.active ||
+        state.fastTravel?.active
+      ) {
         return;
       }
 
@@ -97,14 +131,14 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
   // Set up keyboard input
   useDirectionInput(handleDirection, {
-    enabled: state?.phase === GamePhase.Exploration,
-    blocked: overviewMode.active,
+    enabled: state?.phase === GamePhase.Exploration && !state.fastTravel?.active,
+    blocked: overviewMode.active || Boolean(state?.fastTravel?.active),
   });
 
   // Calculate disabled directions (tiles player can't move to)
   const disabledDirections = useMemo(() => {
     if (!state) return [];
-    if (overviewMode.active) {
+    if (overviewMode.active || state.fastTravel?.active) {
       return [Direction.Up, Direction.Down, Direction.Left, Direction.Right];
     }
 
@@ -136,6 +170,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
     state?.map.width,
     state?.map.height,
     overviewMode.active,
+    state?.fastTravel?.active,
   ]);
 
   useEffect(() => {
@@ -321,7 +356,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
             {/* D-Pad Controls (bottom-left overlay per FR-002) */}
             <View
               style={styles.dpadOverlay}
-              pointerEvents={overviewMode.active ? 'none' : 'auto'}
+              pointerEvents={overviewMode.active || state.fastTravel?.active ? 'none' : 'auto'}
             >
               <DPadControls
                 onDirection={handleDirection}
@@ -330,11 +365,32 @@ export function GameScreen({ navigation }: GameScreenProps) {
               />
             </View>
 
+            {/* Fast Travel Button (bottom-right) */}
+            <View style={styles.fastTravelButton}>
+              <FastTravelButton
+                available={fastTravelAvailable}
+                waypointCount={discoveredWaypoints.length}
+                onPress={handleFastTravelPress}
+              />
+            </View>
+
             {/* Gold Display (top-right of map) */}
             <View style={styles.goldOverlay}>
               <Text style={styles.goldEmoji}>🪙</Text>
               <Text style={styles.goldValue}>{state.player.stats.gold}</Text>
             </View>
+
+            {state.fastTravel?.active && (
+              <FastTravelOverlay
+                waypoints={discoveredWaypoints}
+                selectedIndex={state.fastTravel.selectedIndex}
+                currentPosition={state.player.position}
+                overviewMode={overviewMode}
+                onCycle={() => dispatch({ type: 'CYCLE_FAST_TRAVEL' })}
+                onConfirm={() => dispatch({ type: 'CONFIRM_FAST_TRAVEL' })}
+                onCancel={() => dispatch({ type: 'CANCEL_FAST_TRAVEL' })}
+              />
+            )}
           </View>
         </View>
 
@@ -407,6 +463,11 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 16,
     left: 16,
+  },
+  fastTravelButton: {
+    position: 'absolute',
+    bottom: 16,
+    right: 16,
   },
   sidePanel: {
     width: 160,

@@ -9,3 +9,5 @@ export { InventoryPanel } from './InventoryPanel';
 export { ItemTooltip } from './ItemTooltip';
 export { POIModal } from './POIModal';
 export { DebugOverlay } from './DebugOverlay';
+export { FastTravelButton } from './FastTravelButton';
+export { FastTravelOverlay } from './FastTravelOverlay';

@@ -47,6 +47,8 @@ import {
   markPOIDiscovered,
   findPOIAtPosition,
   activateSurveyBeacon,
+  getDiscoveredWaypoints,
+  canFastTravel,
 } from '../entities/pois';
 import { moveEnemiesNight, isWithinSightRange } from '../map/pathfinding';
 import { SIGHT_RADIUS } from './constants';
@@ -134,10 +136,16 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       return handleCancelWallHighlight(state);
 
     case 'ACTIVATE_FAST_TRAVEL':
+      return handleActivateFastTravel(state);
+
     case 'CYCLE_FAST_TRAVEL':
+      return handleCycleFastTravel(state);
+
     case 'CONFIRM_FAST_TRAVEL':
+      return handleConfirmFastTravel(state);
+
     case 'CANCEL_FAST_TRAVEL':
-      return state;
+      return handleCancelFastTravel(state);
 
     case 'ENTER_COMBAT':
       return handleEnterCombat(state, action.enemyId);
@@ -512,6 +520,109 @@ function handleCancelWallHighlight(state: GameState): GameState {
   return {
     ...state,
     wallHighlight: null,
+  };
+}
+
+// ============================================================================
+// Fast Travel Handlers (US5)
+// ============================================================================
+
+function getFastTravelWaypoints(state: GameState) {
+  const { x, y } = state.player.position;
+  return getDiscoveredWaypoints(state.map).filter(
+    (poi) => poi.position.x !== x || poi.position.y !== y
+  );
+}
+
+function handleActivateFastTravel(state: GameState): GameState {
+  if (state.phase !== GamePhase.Exploration) {
+    return state;
+  }
+
+  if (state.fastTravel?.active) {
+    return state;
+  }
+
+  if (!canFastTravel(state.map)) {
+    return state;
+  }
+
+  const availableWaypoints = getFastTravelWaypoints(state);
+  if (availableWaypoints.length === 0) {
+    return state;
+  }
+
+  return {
+    ...state,
+    fastTravel: {
+      active: true,
+      selectedIndex: 0,
+    },
+  };
+}
+
+function handleCycleFastTravel(state: GameState): GameState {
+  if (state.phase !== GamePhase.Exploration) {
+    return state;
+  }
+
+  if (!state.fastTravel?.active) {
+    return state;
+  }
+
+  const availableWaypoints = getFastTravelWaypoints(state);
+  if (availableWaypoints.length === 0) {
+    return {
+      ...state,
+      fastTravel: null,
+    };
+  }
+
+  const nextIndex = (state.fastTravel.selectedIndex + 1) % availableWaypoints.length;
+
+  return {
+    ...state,
+    fastTravel: {
+      active: true,
+      selectedIndex: nextIndex,
+    },
+  };
+}
+
+function handleConfirmFastTravel(state: GameState): GameState {
+  if (state.phase !== GamePhase.Exploration) {
+    return state;
+  }
+
+  if (!state.fastTravel?.active) {
+    return state;
+  }
+
+  const availableWaypoints = getFastTravelWaypoints(state);
+  const selectedWaypoint =
+    availableWaypoints[state.fastTravel.selectedIndex] ?? availableWaypoints[0];
+  if (!selectedWaypoint) {
+    return {
+      ...state,
+      fastTravel: null,
+    };
+  }
+
+  return {
+    ...state,
+    player: movePlayer(state.player, selectedWaypoint.position),
+    fastTravel: null,
+  };
+}
+
+function handleCancelFastTravel(state: GameState): GameState {
+  if (!state.fastTravel) {
+    return state;
+  }
+
+  return {
+    ...state,
+    fastTravel: null,
   };
 }
 
