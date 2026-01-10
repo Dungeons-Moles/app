@@ -1,4 +1,4 @@
-import type { Rarity } from '@/game/engine/types';
+import type { ItemRarity, Rarity } from '@/game/engine/types';
 
 export const RARITY_COLORS: Record<Rarity, string> = {
   COMMON: '#9ca3af',
@@ -12,4 +12,22 @@ export const RARITY_BG_COLORS: Record<Rarity, string> = {
   UNCOMMON: '#dcfce7',
   RARE: '#dbeafe',
   EPIC: '#f3e8ff',
+};
+
+export const ITEM_RARITY_COLORS: Record<ItemRarity, string> = {
+  COMMON: '#A0A0A0',
+  GILDED: '#FFD700',
+  DIAMOND: '#00FFFF',
+  RARE: '#4169E1',
+  HEROIC: '#9932CC',
+  MYTHIC: '#FF4500',
+};
+
+export const ITEM_RARITY_BG_COLORS: Record<ItemRarity, string> = {
+  COMMON: '#f3f4f6',
+  GILDED: '#fef3c7',
+  DIAMOND: '#cffafe',
+  RARE: '#dbeafe',
+  HEROIC: '#ede9fe',
+  MYTHIC: '#ffedd5',
 };

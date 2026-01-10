@@ -4,17 +4,28 @@
  * @see specs/001-pve-dungeon-crawler/spec.md User Story 5
  */
 
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
   Modal,
+  type GestureResponderEvent,
 } from 'react-native';
-import type { POIInteraction, POIOption, Tool, Gear, GearId } from '../../game/engine/types';
-import { POI_DEFINITIONS } from '../../data/pois';
-import type { POIId } from '../../game/map/types';
+import type {
+  POIInteraction,
+  POIOption,
+  Tool,
+  Gear,
+  GearId,
+  ItemRarity,
+} from '@/game/engine/types';
+import { POI_DEFINITIONS } from '@/data/pois';
+import type { POIId } from '@/game/map/types';
+import { extractStatBonuses, formatStatBonuses } from '@/utils/stat-display';
+import { SimplifiedItemOption } from '@/components/poi/SimplifiedItemOption';
+import { ItemTooltip as PoiItemTooltip } from '@/components/poi/ItemTooltip';
 
 interface POIModalProps {
   interaction: POIInteraction | null;
@@ -29,8 +40,19 @@ interface POIModalProps {
 // POI types that use the 3-choice card layout
 const THREE_CHOICE_POIS: POIId[] = ['L2', 'L3', 'L4', 'L12'];
 
+type TooltipState = {
+  name: string;
+  description?: string;
+  rarity: ItemRarity;
+  position: { x: number; y: number };
+};
+
+function getItemRarity(item: Tool | Gear): ItemRarity {
+  return 'rarity' in item ? item.rarity : item.currentRarity;
+}
+
 function getRarityColor(item: Tool | Gear): string {
-  const rarity = 'rarity' in item ? item.rarity : item.currentRarity;
+  const rarity = getItemRarity(item);
   switch (rarity) {
     case 'COMMON':
       return '#A0A0A0';
@@ -47,102 +69,6 @@ function getRarityColor(item: Tool | Gear): string {
     default:
       return '#A0A0A0';
   }
-}
-
-function getRarityBorderColor(item: Tool | Gear): string {
-  const rarity = 'rarity' in item ? item.rarity : item.currentRarity;
-  switch (rarity) {
-    case 'COMMON':
-      return '#666666';
-    case 'GILDED':
-      return '#B8860B';
-    case 'DIAMOND':
-      return '#008B8B';
-    case 'RARE':
-      return '#27408B';
-    case 'HEROIC':
-      return '#6B238E';
-    case 'MYTHIC':
-      return '#CC3700';
-    default:
-      return '#666666';
-  }
-}
-
-interface ItemCardProps {
-  option: POIOption;
-  index: number;
-  onPress: (index: number) => void;
-}
-
-// Get emoji for Tool Oil Rack stat options
-function getStatEmoji(label: string): string {
-  if (label.includes('ATK')) return '🗡️';
-  if (label.includes('ARM')) return '🛡️';
-  if (label.includes('DIG')) return '⛏️';
-  return '✨';
-}
-
-function ItemCard({ option, index, onPress }: ItemCardProps) {
-  const handlePress = useCallback(() => {
-    if (!option.disabled) {
-      onPress(index);
-    }
-  }, [option.disabled, index, onPress]);
-
-  const item = option.item;
-  // Use item emoji if available, otherwise derive from label (for Tool Oil Rack)
-  const emoji = item?.emoji ?? getStatEmoji(option.label);
-  const rarityColor = item ? getRarityColor(item) : '#888888';
-  const borderColor = item ? getRarityBorderColor(item) : '#444444';
-
-  const cardStyle = useMemo(
-    () => [
-      styles.itemCard,
-      { borderColor },
-      option.disabled && styles.itemCardDisabled,
-    ],
-    [borderColor, option.disabled]
-  );
-
-  return (
-    <TouchableOpacity
-      style={cardStyle}
-      onPress={handlePress}
-      disabled={option.disabled}
-      activeOpacity={0.7}
-    >
-      {/* Rarity indicator bar at top */}
-      <View style={[styles.rarityBar, { backgroundColor: rarityColor }]} />
-
-      {/* Emoji icon */}
-      <View style={styles.iconContainer}>
-        <Text style={styles.itemEmoji}>{emoji}</Text>
-      </View>
-
-      {/* Item name */}
-      <Text style={[styles.itemName, option.disabled && styles.itemNameDisabled]} numberOfLines={2}>
-        {option.label}
-      </Text>
-
-      {/* Description/Stats */}
-      {option.description && (
-        <Text style={styles.itemDescription} numberOfLines={3}>
-          {option.description}
-        </Text>
-      )}
-
-      {/* Cost if applicable */}
-      {option.cost !== undefined && (
-        <Text style={styles.itemCost}>{option.cost}g</Text>
-      )}
-
-      {/* Disabled reason */}
-      {option.disabledReason && (
-        <Text style={styles.disabledReason}>{option.disabledReason}</Text>
-      )}
-    </TouchableOpacity>
-  );
 }
 
 interface ListOptionButtonProps {
@@ -216,6 +142,7 @@ export function POIModal({
   }
 
   const poiId = interaction.poi.definitionId as POIId;
+  const [tooltip, setTooltip] = useState<TooltipState | null>(null);
   const options = interaction.options ?? [];
   const indexedOptions = useMemo(
     () => options.map((option, index) => ({ option, index })),
@@ -234,6 +161,80 @@ export function POIModal({
   const isRustyAnvil = poiId === 'L10';
   const isRestAlcove = poiId === 'L5';
   const isSeismicScanner = poiId === 'L7';
+
+  useEffect(() => {
+    if (!visible) {
+      setTooltip(null);
+    }
+  }, [visible]);
+
+  useEffect(() => {
+    setTooltip(null);
+  }, [poiId]);
+
+  const getOptionRarity = useCallback((option: POIOption): ItemRarity => {
+    if (option.item) {
+      return getItemRarity(option.item);
+    }
+    return 'COMMON';
+  }, []);
+
+  const getOptionDisplay = useCallback((option: POIOption): string => {
+    if (option.item) {
+      const statDisplay = formatStatBonuses(extractStatBonuses(option.item));
+      if (statDisplay) {
+        return statDisplay;
+      }
+    }
+
+    if (!option.item && option.label) {
+      return option.label;
+    }
+
+    if (option.description) {
+      const descriptionParts = option.description
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean);
+      if (descriptionParts.length > 1 && descriptionParts[0] === 'No stats') {
+        return descriptionParts.slice(1).join(' ');
+      }
+      return descriptionParts.join(' ');
+    }
+
+    return option.label;
+  }, []);
+
+  const handleOptionSelect = useCallback(
+    (optionIndex: number) => {
+      setTooltip(null);
+      onSelectOption(optionIndex);
+    },
+    [onSelectOption]
+  );
+
+  const handleTooltipDismiss = useCallback(() => {
+    setTooltip(null);
+  }, []);
+
+  const handleOptionLongPress = useCallback(
+    (option: POIOption, event: GestureResponderEvent) => {
+      if (option.disabled) {
+        return;
+      }
+
+      const position = { x: event.nativeEvent.pageX, y: event.nativeEvent.pageY };
+      const itemName = option.item?.name ?? option.label;
+      const rarity = getOptionRarity(option);
+      setTooltip({
+        name: itemName,
+        description: option.description,
+        rarity,
+        position,
+      });
+    },
+    [getOptionRarity]
+  );
 
   const handleGolemFuse = useCallback(() => {
     if (golemFuseOptionIndex === null || golemFuseOptionIndex === undefined) {
@@ -320,15 +321,31 @@ export function POIModal({
             <Text style={styles.threeChoiceTitle}>{poiDef.name}</Text>
 
             <View style={styles.cardsContainer}>
-              {options.slice(0, 3).map((option, index) => (
-                <ItemCard
-                  key={index}
-                  option={option}
-                  index={index}
-                  onPress={onSelectOption}
-                />
-              ))}
+              {options.slice(0, 3).map((option, index) => {
+                const statDisplay = getOptionDisplay(option);
+                const rarity = getOptionRarity(option);
+                return (
+                  <SimplifiedItemOption
+                    key={index}
+                    statDisplay={statDisplay}
+                    rarity={rarity}
+                    itemName={option.item?.name ?? option.label}
+                    disabled={option.disabled}
+                    onSelect={() => handleOptionSelect(index)}
+                    onLongPress={(event) => handleOptionLongPress(option, event)}
+                  />
+                );
+              })}
             </View>
+            {tooltip ? (
+              <PoiItemTooltip
+                name={tooltip.name}
+                description={tooltip.description}
+                rarity={tooltip.rarity}
+                anchorPosition={tooltip.position}
+                onDismiss={handleTooltipDismiss}
+              />
+            ) : null}
           </View>
         </View>
       </Modal>
@@ -696,79 +713,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     gap: 10,
-  },
-
-  // ============================================================================
-  // Item Card
-  // ============================================================================
-  itemCard: {
-    flex: 1,
-    backgroundColor: '#252530',
-    borderRadius: 4,
-    borderWidth: 2,
-    padding: 10,
-    alignItems: 'center',
-    position: 'relative',
-    overflow: 'hidden',
-    minHeight: 140,
-  },
-  itemCardDisabled: {
-    opacity: 0.5,
-    backgroundColor: '#1a1a20',
-  },
-  rarityBar: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 3,
-  },
-  iconContainer: {
-    width: 48,
-    height: 48,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#1a1a1f',
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: '#3a3a45',
-    marginTop: 4,
-    marginBottom: 8,
-  },
-  itemEmoji: {
-    fontSize: 24,
-  },
-  itemName: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: '#ffffff',
-    textAlign: 'center',
-    marginBottom: 6,
-    fontFamily: 'monospace',
-  },
-  itemNameDisabled: {
-    color: '#666666',
-  },
-  itemDescription: {
-    fontSize: 10,
-    color: '#aaaaaa',
-    textAlign: 'center',
-    lineHeight: 14,
-    fontFamily: 'monospace',
-  },
-  itemCost: {
-    fontSize: 11,
-    color: '#FFD700',
-    fontWeight: 'bold',
-    marginTop: 4,
-    fontFamily: 'monospace',
-  },
-  disabledReason: {
-    fontSize: 9,
-    color: '#aa4444',
-    textAlign: 'center',
-    marginTop: 4,
-    fontFamily: 'monospace',
   },
 
   // ============================================================================

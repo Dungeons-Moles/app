@@ -1,3 +1,5 @@
+import type { Gear, Tool } from '@/game/engine/types';
+
 export const STAT_ABBREV = {
   hp: 'HP',
   maxHp: 'HP',
@@ -23,4 +25,18 @@ export function formatStatBonuses(stats: Partial<Record<StatKey, number>>): stri
     })
     .filter((part): part is string => part !== null)
     .join(' ');
+}
+
+export function extractStatBonuses(item: Gear | Tool): Partial<Record<StatKey, number>> {
+  const bonuses: Partial<Record<StatKey, number>> = {};
+  const stats = item.stats as Partial<Record<StatKey, number>>;
+
+  STAT_ORDER.forEach((key) => {
+    const value = stats[key];
+    if (value) {
+      bonuses[key] = value;
+    }
+  });
+
+  return bonuses;
 }
