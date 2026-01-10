@@ -15,7 +15,7 @@ export function formatStatBonuses(stats: Partial<Record<StatKey, number>>): stri
   return STAT_ORDER
     .map((key) => {
       const value = stats[key];
-      if (!value) {
+      if (value === undefined || value === null) {
         return null;
       }
       const sign = value > 0 ? '+' : '';
