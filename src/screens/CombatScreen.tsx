@@ -185,10 +185,15 @@ function CombatScreenContent({ navigation }: CombatScreenProps) {
         </View>
       </View>
 
-      {/* Victory/Defeat Overlay */}
+      {/* Victory/Defeat Overlay - T075: Pass goldReward for display */}
       {combatState.isComplete && result && (
         <VictoryDefeatDisplay
           result={result}
+          goldReward={
+            result === 'VICTORY'
+              ? combatState.resolvedCombat?.goldReward
+              : undefined
+          }
           onComplete={handleCombatComplete}
         />
       )}
