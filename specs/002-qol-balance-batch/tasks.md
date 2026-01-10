@@ -163,19 +163,19 @@
 
 ### Tests for User Story 5
 
-- [ ] T052 [P] [US5] Unit test for waypoint discovery filtering in __tests__/unit/fast-travel.test.ts
-- [ ] T053 [P] [US5] Integration test for fast travel teleportation in __tests__/integration/fast-travel.test.ts
+- [x] T052 [P] [US5] Unit test for waypoint discovery filtering in __tests__/unit/fast-travel.test.ts
+- [x] T053 [P] [US5] Integration test for fast travel teleportation in __tests__/integration/fast-travel.test.ts
 
 ### Implementation for User Story 5
 
-- [ ] T054 [P] [US5] Add canFastTravel helper (requires 2+ discovered) to src/game/entities/pois.ts
-- [ ] T055 [US5] Implement handleActivateFastTravel reducer handler in src/game/engine/game-reducer.ts
-- [ ] T056 [US5] Implement handleCycleFastTravel reducer handler in src/game/engine/game-reducer.ts
-- [ ] T057 [US5] Implement handleConfirmFastTravel reducer handler in src/game/engine/game-reducer.ts
-- [ ] T058 [US5] Implement handleCancelFastTravel reducer handler in src/game/engine/game-reducer.ts
-- [ ] T059 [US5] Create FastTravelButton component in src/components/game/FastTravelButton.tsx
-- [ ] T060 [US5] Create FastTravelOverlay component (waypoint highlighting) in src/components/game/FastTravelOverlay.tsx
-- [ ] T061 [US5] Integrate FastTravelButton and FastTravelOverlay into game screen in src/screens/GameScreen.tsx
+- [x] T054 [P] [US5] Add canFastTravel helper (requires 2+ discovered) to src/game/entities/pois.ts
+- [x] T055 [US5] Implement handleActivateFastTravel reducer handler in src/game/engine/game-reducer.ts
+- [x] T056 [US5] Implement handleCycleFastTravel reducer handler in src/game/engine/game-reducer.ts
+- [x] T057 [US5] Implement handleConfirmFastTravel reducer handler in src/game/engine/game-reducer.ts
+- [x] T058 [US5] Implement handleCancelFastTravel reducer handler in src/game/engine/game-reducer.ts
+- [x] T059 [US5] Create FastTravelButton component in src/components/game/FastTravelButton.tsx
+- [x] T060 [US5] Create FastTravelOverlay component (waypoint highlighting) in src/components/game/FastTravelOverlay.tsx
+- [x] T061 [US5] Integrate FastTravelButton and FastTravelOverlay into game screen in src/screens/GameScreen.tsx
 
 **Checkpoint**: Fast travel is fully functional and testable independently
 
@@ -189,13 +189,13 @@
 
 ### Implementation for User Story 6
 
-- [ ] T062 [P] [US6] Create SimplifiedItemOption component in src/components/poi/SimplifiedItemOption.tsx
-- [ ] T063 [P] [US6] Create ItemTooltip component for long-press details in src/components/poi/ItemTooltip.tsx
-- [ ] T064 [US6] Update Supply Cache (L2) option rendering in src/screens/POIInteractionScreen.tsx
-- [ ] T065 [US6] Update Tool Crate (L3) option rendering in src/screens/POIInteractionScreen.tsx
-- [ ] T066 [US6] Update Tool Oil Rack (L4) option rendering in src/screens/POIInteractionScreen.tsx
-- [ ] T067 [US6] Update Geode Vault (L12) option rendering in src/screens/POIInteractionScreen.tsx
-- [ ] T068 [US6] Add long-press handler for tooltip display in src/screens/POIInteractionScreen.tsx
+- [x] T062 [P] [US6] Create SimplifiedItemOption component in src/components/poi/SimplifiedItemOption.tsx
+- [x] T063 [P] [US6] Create ItemTooltip component for long-press details in src/components/poi/ItemTooltip.tsx
+- [x] T064 [US6] Update Supply Cache (L2) option rendering in src/screens/POIInteractionScreen.tsx
+- [x] T065 [US6] Update Tool Crate (L3) option rendering in src/screens/POIInteractionScreen.tsx
+- [x] T066 [US6] Update Tool Oil Rack (L4) option rendering in src/screens/POIInteractionScreen.tsx
+- [x] T067 [US6] Update Geode Vault (L12) option rendering in src/screens/POIInteractionScreen.tsx
+- [x] T068 [US6] Add long-press handler for tooltip display in src/screens/POIInteractionScreen.tsx
 
 **Checkpoint**: POI UI simplification is fully functional and testable independently
 
