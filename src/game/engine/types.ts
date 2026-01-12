@@ -3,7 +3,8 @@
  * @see specs/001-pve-dungeon-crawler/data-model.md
  */
 
-import type { GameMap } from '../map/types';
+import type { GameMap, EnemyId } from '../map/types';
+import type { Direction } from '../input/types';
 
 // ============================================================================
 // Game Phase State Machine
@@ -27,6 +28,21 @@ export interface Position {
   x: number;
   y: number;
 }
+
+// ============================================================================
+// Interaction State Types
+// ============================================================================
+
+export type WallHighlightState = {
+  targetPosition: Position;
+  direction: Direction;
+  cost: number;
+} | null;
+
+export type FastTravelState = {
+  active: boolean;
+  selectedIndex: number;
+} | null;
 
 // ============================================================================
 // Player Types
@@ -63,6 +79,8 @@ export type ItemsetId =
   | 'RUST_RITUAL'
   | 'SWIFT_DIGGER_KIT'
   | 'ROYAL_EXTRACTION';
+
+export type Rarity = 'COMMON' | 'UNCOMMON' | 'RARE' | 'EPIC';
 
 export type ItemRarity = 'COMMON' | 'GILDED' | 'DIAMOND' | 'RARE' | 'HEROIC' | 'MYTHIC';
 
@@ -168,6 +186,9 @@ export interface CombatState {
   log: CombatLogEntry[];
   rngState: number;
   playerGold: number;
+  goldReward: number;
+  enemyDefinitionId: EnemyId;
+  enemyTier: 1 | 2 | 3;
   consumedGearIds: GearId[];
   result: CombatResult | null;
 }
@@ -222,6 +243,7 @@ export type CombatAction =
   | 'HEAL'
   | 'GAIN_ARMOR'
   | 'LOSE_ARMOR'
+  | 'GOLD_REWARD'
   | 'TRIGGER_TRAIT'
   | 'TRIGGER_ITEM'
   | 'TRIGGER_ITEMSET'
@@ -234,6 +256,8 @@ export interface CombatActionResult {
   armorLost?: number;
   statusApplied?: { type: keyof StatusEffects; stacks: number };
   statusRemoved?: { type: keyof StatusEffects; stacks: number };
+  amount?: number;
+  totalGold?: number;
   effectName?: string;
 }
 
@@ -310,5 +334,7 @@ export interface GameState {
   time: TimeState;
   combat: CombatState | null;
   activePOI: POIInteraction | null;
+  wallHighlight: WallHighlightState;
+  fastTravel: FastTravelState;
   debug: DebugState;
 }

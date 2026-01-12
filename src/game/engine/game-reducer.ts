@@ -15,6 +15,7 @@ import type {
   Gear,
   GearId,
   CombatState,
+  Player,
 } from './types';
 import { GamePhase, CombatPhase, DEFAULT_STATUS_EFFECTS, TimePhase } from './types';
 import { Direction, DIRECTION_DELTA } from '../input/types';
@@ -23,6 +24,7 @@ import { initializeGame, consumeMoves } from './state-factory';
 import { GAME_CONSTANTS } from './constants';
 import { TileType, TILE_MOVE_COST, type MapEnemy } from '../map/types';
 import { updateFogOfWar } from '../map/fog-of-war';
+import { calculateWallBreakCost, canBreakWall, breakWall } from '../map/wall-break';
 import {
   movePlayer,
   equipTool,
@@ -38,7 +40,9 @@ import {
   consumeMove,
   advanceTimePhase,
   shouldTriggerBoss,
+  advanceToNextWeek,
 } from '../time/progression';
+import { SeededRNG } from './rng';
 import {
   createPOIInteraction,
   applyPOIOption,
@@ -46,10 +50,13 @@ import {
   markPOIDiscovered,
   findPOIAtPosition,
   activateSurveyBeacon,
+  getDiscoveredWaypoints,
+  canFastTravel,
 } from '../entities/pois';
 import { moveEnemiesNight, isWithinSightRange } from '../map/pathfinding';
 import { SIGHT_RADIUS } from './constants';
 import { RARITY_MULTIPLIER } from '../../data/gear';
+import { BOSSES } from '../../data/bosses';
 
 // ============================================================================
 // Game Actions
@@ -62,6 +69,13 @@ import { RARITY_MULTIPLIER } from '../../data/gear';
 export type GameAction =
   | { type: 'START_GAME'; seed: number }
   | { type: 'MOVE'; direction: Direction }
+  | { type: 'HIGHLIGHT_WALL'; direction: Direction; targetPosition: Position; cost: number }
+  | { type: 'BREAK_WALL' }
+  | { type: 'CANCEL_WALL_HIGHLIGHT' }
+  | { type: 'ACTIVATE_FAST_TRAVEL' }
+  | { type: 'CYCLE_FAST_TRAVEL' }
+  | { type: 'CONFIRM_FAST_TRAVEL' }
+  | { type: 'CANCEL_FAST_TRAVEL' }
   | { type: 'ENTER_COMBAT'; enemyId: string }
   | { type: 'RESOLVE_COMBAT'; result: CombatResult; combat?: CombatState }
   | { type: 'INTERACT_POI'; poiId: string }
@@ -115,6 +129,27 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
 
     case 'MOVE':
       return handleMove(state, action.direction);
+
+    case 'HIGHLIGHT_WALL':
+      return handleHighlightWall(state, action.direction, action.targetPosition, action.cost);
+
+    case 'BREAK_WALL':
+      return handleBreakWall(state);
+
+    case 'CANCEL_WALL_HIGHLIGHT':
+      return handleCancelWallHighlight(state);
+
+    case 'ACTIVATE_FAST_TRAVEL':
+      return handleActivateFastTravel(state);
+
+    case 'CYCLE_FAST_TRAVEL':
+      return handleCycleFastTravel(state);
+
+    case 'CONFIRM_FAST_TRAVEL':
+      return handleConfirmFastTravel(state);
+
+    case 'CANCEL_FAST_TRAVEL':
+      return handleCancelFastTravel(state);
 
     case 'ENTER_COMBAT':
       return handleEnterCombat(state, action.enemyId);
@@ -216,24 +251,50 @@ function handleMove(state: GameState, direction: Direction): GameState {
     return state; // Can't move out of bounds
   }
 
-  // Check if tile is walkable
   const targetTile = state.map.tiles[targetPos.y][targetPos.x];
-  if (targetTile === TileType.Wall) {
-    return state; // Can't move into wall
+  const hasHighlight = state.wallHighlight !== null;
+  const isSameHighlight =
+    hasHighlight &&
+    state.wallHighlight?.direction === direction &&
+    state.wallHighlight?.targetPosition.x === targetPos.x &&
+    state.wallHighlight?.targetPosition.y === targetPos.y;
+
+  if (hasHighlight && !isSameHighlight) {
+    const canceledState = handleCancelWallHighlight(state);
+    return handleMove(canceledState, direction);
   }
+
+  if (targetTile === TileType.Wall) {
+    if (isSameHighlight) {
+      return handleBreakWall(state);
+    }
+
+    const cost = calculateWallBreakCost(state.player.stats.dig);
+    if (cost === null) {
+      return state;
+    }
+
+    if (!canBreakWall(state.map, targetPos)) {
+      return state;
+    }
+
+    return handleHighlightWall(state, direction, targetPos, cost);
+  }
+
+  const clearedState = hasHighlight ? handleCancelWallHighlight(state) : state;
 
   // Get move cost
   const moveCost = TILE_MOVE_COST[targetTile];
 
   // Check for enemy at target position
-  const enemyAtTarget = state.map.enemies.find(
+  const enemyAtTarget = clearedState.map.enemies.find(
     e => e.position.x === targetPos.x && e.position.y === targetPos.y
   );
 
   // Move player
   let newState = {
-    ...state,
-    player: movePlayer(state.player, targetPos),
+    ...clearedState,
+    player: movePlayer(clearedState.player, targetPos),
   };
 
   // Update fog of war
@@ -295,6 +356,8 @@ function handleMove(state: GameState, direction: Direction): GameState {
       player: playerCombatant,
       enemy: enemyCombatant,
       seed: newState.rngState,
+      enemyDefinitionId: enemyAtTarget.definitionId,
+      enemyTier: enemyAtTarget.tier,
       playerGold: newState.player.stats.gold,
     });
 
@@ -307,6 +370,37 @@ function handleMove(state: GameState, direction: Direction): GameState {
 
   // Check if boss should trigger (Night 3 complete) (T065)
   if (shouldTriggerBoss(newTime)) {
+    // Create player combatant for boss fight
+    const playerCombatant: CombatantState = {
+      name: 'Player',
+      emoji: '🦦',
+      isPlayer: true,
+      maxHp: newState.player.stats.maxHp,
+      hp: newState.player.stats.hp,
+      atk: newState.player.stats.atk,
+      arm: newState.player.stats.arm,
+      spd: newState.player.stats.spd,
+      dig: newState.player.stats.dig,
+      bonusAtk: 0,
+      bonusArm: 0,
+      bonusSpd: 0,
+      statusEffects: { ...newState.player.statusEffects },
+      strikesPerTurn: getPlayerStrikesPerTurn(newState),
+      ignoresArmor: hasArmorIgnore(newState),
+    };
+
+    // Create boss combatant
+    const bossCombatant = createBossCombatant(newState.time.weekBoss);
+
+    // Create combat state for boss fight
+    const combatState = createCombatState({
+      player: playerCombatant,
+      enemy: bossCombatant,
+      seed: newState.rngState,
+      bossId: newState.time.weekBoss,
+      playerGold: newState.player.stats.gold,
+    });
+
     return {
       ...newState,
       time: {
@@ -314,6 +408,7 @@ function handleMove(state: GameState, direction: Direction): GameState {
         phase: TimePhase.Boss,
       },
       phase: GamePhase.BossFight,
+      combat: combatState,
     };
   }
 
@@ -352,6 +447,255 @@ function handleMove(state: GameState, direction: Direction): GameState {
   }
 
   return newState;
+}
+
+/**
+ * Handles HIGHLIGHT_WALL action.
+ */
+function handleHighlightWall(
+  state: GameState,
+  direction: Direction,
+  targetPosition: Position,
+  cost: number
+): GameState {
+  if (state.phase !== GamePhase.Exploration) {
+    return state;
+  }
+
+  if (state.wallHighlight) {
+    return state;
+  }
+
+  return {
+    ...state,
+    wallHighlight: {
+      targetPosition,
+      direction,
+      cost,
+    },
+  };
+}
+
+/**
+ * Handles BREAK_WALL action.
+ */
+function handleBreakWall(state: GameState): GameState {
+  if (state.phase !== GamePhase.Exploration) {
+    return state;
+  }
+
+  if (!state.wallHighlight) {
+    return state;
+  }
+
+  const { targetPosition, cost } = state.wallHighlight;
+
+  if (!canBreakWall(state.map, targetPosition)) {
+    return handleCancelWallHighlight(state);
+  }
+
+  if (state.time.movesRemaining < cost) {
+    return state;
+  }
+
+  let newMap = breakWall(state.map, targetPosition);
+
+  // Auto-move player to the broken wall tile
+  const isDay = state.time.phase === TimePhase.Day;
+  newMap = updateFogOfWar(newMap, targetPosition, isDay);
+
+  const newTime = consumeMove(state.time, cost);
+  const advancedTime = advanceTimePhase(newTime);
+
+  let updatedPlayer: Player = {
+    ...state.player,
+    position: targetPosition,
+  };
+  const isDayStart = state.time.phase === TimePhase.Night && advancedTime.phase === TimePhase.Day;
+  if (isDayStart) {
+    const nuggetSlots = updatedPlayer.inventory.filter((slot) => slot.item.id === 'I8');
+    const goldGain = nuggetSlots.reduce(
+      (sum, slot) => sum + Math.floor(3 * RARITY_MULTIPLIER[slot.item.currentRarity]),
+      0
+    );
+    if (goldGain > 0) {
+      updatedPlayer = addGold(updatedPlayer, goldGain);
+    }
+  }
+
+  let newState: GameState = {
+    ...state,
+    map: newMap,
+    time: advancedTime,
+    player: updatedPlayer,
+    wallHighlight: null,
+  };
+
+  if (shouldTriggerBoss(newTime)) {
+    // Create player combatant for boss fight
+    const playerCombatant: CombatantState = {
+      name: 'Player',
+      emoji: '🦦',
+      isPlayer: true,
+      maxHp: newState.player.stats.maxHp,
+      hp: newState.player.stats.hp,
+      atk: newState.player.stats.atk,
+      arm: newState.player.stats.arm,
+      spd: newState.player.stats.spd,
+      dig: newState.player.stats.dig,
+      bonusAtk: 0,
+      bonusArm: 0,
+      bonusSpd: 0,
+      statusEffects: { ...newState.player.statusEffects },
+      strikesPerTurn: getPlayerStrikesPerTurn(newState),
+      ignoresArmor: hasArmorIgnore(newState),
+    };
+
+    // Create boss combatant
+    const bossCombatant = createBossCombatant(newState.time.weekBoss);
+
+    // Create combat state for boss fight
+    const combatState = createCombatState({
+      player: playerCombatant,
+      enemy: bossCombatant,
+      seed: newState.rngState,
+      bossId: newState.time.weekBoss,
+      playerGold: newState.player.stats.gold,
+    });
+
+    return {
+      ...newState,
+      time: {
+        ...advancedTime,
+        phase: TimePhase.Boss,
+      },
+      phase: GamePhase.BossFight,
+      combat: combatState,
+    };
+  }
+
+  if (newState.time.phase === TimePhase.Night) {
+    newState = handleNightEnemyMovement(newState);
+  }
+
+  return newState;
+}
+
+/**
+ * Handles CANCEL_WALL_HIGHLIGHT action.
+ */
+function handleCancelWallHighlight(state: GameState): GameState {
+  if (!state.wallHighlight) {
+    return state;
+  }
+
+  return {
+    ...state,
+    wallHighlight: null,
+  };
+}
+
+// ============================================================================
+// Fast Travel Handlers (US5)
+// ============================================================================
+
+function getFastTravelWaypoints(state: GameState) {
+  const { x, y } = state.player.position;
+  return getDiscoveredWaypoints(state.map).filter(
+    (poi) => poi.position.x !== x || poi.position.y !== y
+  );
+}
+
+function handleActivateFastTravel(state: GameState): GameState {
+  if (state.phase !== GamePhase.Exploration) {
+    return state;
+  }
+
+  if (state.fastTravel?.active) {
+    return state;
+  }
+
+  if (!canFastTravel(state.map)) {
+    return state;
+  }
+
+  const availableWaypoints = getFastTravelWaypoints(state);
+  if (availableWaypoints.length === 0) {
+    return state;
+  }
+
+  return {
+    ...state,
+    fastTravel: {
+      active: true,
+      selectedIndex: 0,
+    },
+  };
+}
+
+function handleCycleFastTravel(state: GameState): GameState {
+  if (state.phase !== GamePhase.Exploration) {
+    return state;
+  }
+
+  if (!state.fastTravel?.active) {
+    return state;
+  }
+
+  const availableWaypoints = getFastTravelWaypoints(state);
+  if (availableWaypoints.length === 0) {
+    return {
+      ...state,
+      fastTravel: null,
+    };
+  }
+
+  const nextIndex = (state.fastTravel.selectedIndex + 1) % availableWaypoints.length;
+
+  return {
+    ...state,
+    fastTravel: {
+      active: true,
+      selectedIndex: nextIndex,
+    },
+  };
+}
+
+function handleConfirmFastTravel(state: GameState): GameState {
+  if (state.phase !== GamePhase.Exploration) {
+    return state;
+  }
+
+  if (!state.fastTravel?.active) {
+    return state;
+  }
+
+  const availableWaypoints = getFastTravelWaypoints(state);
+  const selectedWaypoint =
+    availableWaypoints[state.fastTravel.selectedIndex] ?? availableWaypoints[0];
+  if (!selectedWaypoint) {
+    return {
+      ...state,
+      fastTravel: null,
+    };
+  }
+
+  return {
+    ...state,
+    player: movePlayer(state.player, selectedWaypoint.position),
+    fastTravel: null,
+  };
+}
+
+function handleCancelFastTravel(state: GameState): GameState {
+  if (!state.fastTravel) {
+    return state;
+  }
+
+  return {
+    ...state,
+    fastTravel: null,
+  };
 }
 
 /**
@@ -399,6 +743,8 @@ function handleEnterCombat(state: GameState, enemyId: string): GameState {
     player: playerCombatant,
     enemy: enemyCombatant,
     seed: state.rngState,
+    enemyDefinitionId: enemy.definitionId,
+    enemyTier: enemy.tier,
     playerGold: state.player.stats.gold,
   });
 
@@ -455,6 +801,34 @@ function createEnemyCombatant(enemy: MapEnemy): CombatantState {
 }
 
 /**
+ * Create a boss combatant from a BossId
+ */
+function createBossCombatant(bossId: string): CombatantState {
+  const boss = BOSSES[bossId as keyof typeof BOSSES];
+  if (!boss) {
+    throw new Error(`Unknown boss: ${bossId}`);
+  }
+
+  return {
+    name: boss.name,
+    emoji: boss.emoji,
+    isPlayer: false,
+    maxHp: boss.stats.hp,
+    hp: boss.stats.hp,
+    atk: boss.stats.atk,
+    arm: boss.stats.arm,
+    spd: boss.stats.spd,
+    dig: boss.stats.dig ?? 0,
+    bonusAtk: 0,
+    bonusArm: 0,
+    bonusSpd: 0,
+    statusEffects: { ...DEFAULT_STATUS_EFFECTS },
+    strikesPerTurn: 1, // Boss traits may modify this
+    ignoresArmor: false,
+  };
+}
+
+/**
  * Calculate player strikes per turn based on equipped tool
  */
 function getPlayerStrikesPerTurn(state: GameState): number {
@@ -499,13 +873,30 @@ function handleResolveCombat(
     return state;
   }
 
-  // Update player HP from combat result
+  const goldReward = result === 'VICTORY' ? combatState.goldReward : 0;
+  const totalGold = combatState.playerGold + goldReward;
+
+  const preCombatMaxHp = state.combat?.player.maxHp ?? state.player.stats.maxHp;
+  const temporaryMaxHpBonus = Math.max(0, combatState.player.maxHp - preCombatMaxHp);
+
+  // Update player HP from combat result, removing any temporary HP granted by combat-only effects.
+  // Example: Crystal Crown temporarily increases maxHp and hp at battle start; that bonus should not persist.
+  const postCombatHp = Math.min(
+    preCombatMaxHp,
+    Math.max(0, combatState.player.hp - temporaryMaxHpBonus)
+  );
+
   let updatedPlayer = {
     ...state.player,
+    baseStats: {
+      ...state.player.baseStats,
+      hp: postCombatHp,
+      gold: totalGold,
+    },
     stats: {
       ...state.player.stats,
-      hp: Math.max(0, combatState.player.hp),
-      gold: combatState.playerGold,
+      hp: postCombatHp,
+      gold: totalGold,
     },
     statusEffects: { ...combatState.player.statusEffects },
   };
@@ -515,6 +906,21 @@ function handleResolveCombat(
       const removal = removeGearById(updatedPlayer, gearId);
       updatedPlayer = removal.player;
     }
+  }
+
+  if (updatedPlayer.stats.hp > updatedPlayer.stats.maxHp) {
+    const clampedHp = updatedPlayer.stats.maxHp;
+    updatedPlayer = {
+      ...updatedPlayer,
+      baseStats: {
+        ...updatedPlayer.baseStats,
+        hp: clampedHp,
+      },
+      stats: {
+        ...updatedPlayer.stats,
+        hp: clampedHp,
+      },
+    };
   }
 
   // Update RNG state from combat
@@ -555,6 +961,18 @@ function handleResolveCombat(
     ? state.map.enemies.filter((e) => e.id !== enemyToRemove.id)
     : state.map.enemies;
 
+  // Advance to next week after boss victory (weeks 1-2)
+  let newTime = state.time;
+  let finalRngState = updatedRngState;
+  if (state.phase === GamePhase.BossFight && state.time.week < 3) {
+    const rng = new SeededRNG(updatedRngState);
+    const nextWeekTime = advanceToNextWeek(state.time, rng);
+    if (nextWeekTime) {
+      newTime = nextWeekTime;
+      finalRngState = rng.getState();
+    }
+  }
+
   return {
     ...state,
     phase: GamePhase.Exploration,
@@ -562,7 +980,8 @@ function handleResolveCombat(
       ...updatedPlayer,
       inventoryCapacity: bossSlotBonus,
     },
-    rngState: updatedRngState,
+    time: newTime,
+    rngState: finalRngState,
     map: {
       ...state.map,
       enemies: updatedEnemies,
@@ -716,11 +1135,42 @@ function handleTriggerBoss(state: GameState): GameState {
     movesRemaining: 0,
   };
 
-  // TODO: Create combat state with week boss using BOSSES[state.time.weekBoss]
+  // Create player combatant for boss fight
+  const playerCombatant: CombatantState = {
+    name: 'Player',
+    emoji: '🦦',
+    isPlayer: true,
+    maxHp: state.player.stats.maxHp,
+    hp: state.player.stats.hp,
+    atk: state.player.stats.atk,
+    arm: state.player.stats.arm,
+    spd: state.player.stats.spd,
+    dig: state.player.stats.dig,
+    bonusAtk: 0,
+    bonusArm: 0,
+    bonusSpd: 0,
+    statusEffects: { ...state.player.statusEffects },
+    strikesPerTurn: getPlayerStrikesPerTurn(state),
+    ignoresArmor: hasArmorIgnore(state),
+  };
+
+  // Create boss combatant
+  const bossCombatant = createBossCombatant(state.time.weekBoss);
+
+  // Create combat state for boss fight
+  const combatState = createCombatState({
+    player: playerCombatant,
+    enemy: bossCombatant,
+    seed: state.rngState,
+    bossId: state.time.weekBoss,
+    playerGold: state.player.stats.gold,
+  });
+
   return {
     ...state,
     phase: GamePhase.BossFight,
     time: bossTime,
+    combat: combatState,
   };
 }
 
@@ -846,6 +1296,8 @@ function handleNightEnemyMovement(state: GameState): GameState {
         player: playerCombatant,
         enemy: enemyCombatant,
         seed: newState.rngState,
+        enemyDefinitionId: attackingEnemy.definitionId,
+        enemyTier: attackingEnemy.tier,
         playerGold: newState.player.stats.gold,
       });
 
@@ -853,6 +1305,7 @@ function handleNightEnemyMovement(state: GameState): GameState {
         ...newState,
         phase: GamePhase.Combat,
         combat: combatState,
+        wallHighlight: null,
       };
     }
   }

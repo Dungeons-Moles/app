@@ -1,14 +1,123 @@
-import React, { createContext, useContext, useReducer, ReactNode, Dispatch, useCallback } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useReducer,
+  ReactNode,
+  Dispatch,
+  useCallback,
+  useEffect,
+} from 'react';
 import {
   GamePhase,
   type GameState,
   type CombatState,
+  type Position,
 } from '../game/engine/types';
 import {
   GameAction as CoreGameAction,
   gameReducer as coreGameReducer,
 } from '../game/engine/game-reducer';
 import { createInitialGameState } from '../game/engine/state-factory';
+import type { GameMap } from '../game/map/types';
+
+// ============================================================================
+// Overview Mode Types
+// ============================================================================
+
+export interface OverviewModeState {
+  active: boolean;
+  offset: Position;
+  zoom: number;
+}
+
+export const DEFAULT_OVERVIEW_STATE: OverviewModeState = {
+  active: false,
+  offset: { x: 0, y: 0 },
+  zoom: 1,
+};
+
+export const OVERVIEW_CONFIG = {
+  activeZoom: 0.5,
+  maxPanDistance: 50,
+} as const;
+
+type OverviewAction =
+  | { type: 'TOGGLE'; canActivate: boolean }
+  | { type: 'PAN'; delta: Position; map: GameMap; playerPosition: Position }
+  | { type: 'RESET_CAMERA' }
+  | { type: 'RESET' };
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function clampOverviewOffset(
+  offset: Position,
+  map: GameMap,
+  playerPosition: Position
+): Position {
+  const limitedX = clamp(
+    offset.x,
+    -OVERVIEW_CONFIG.maxPanDistance,
+    OVERVIEW_CONFIG.maxPanDistance
+  );
+  const limitedY = clamp(
+    offset.y,
+    -OVERVIEW_CONFIG.maxPanDistance,
+    OVERVIEW_CONFIG.maxPanDistance
+  );
+
+  const minX = -playerPosition.x;
+  const maxX = map.width - 1 - playerPosition.x;
+  const minY = -playerPosition.y;
+  const maxY = map.height - 1 - playerPosition.y;
+
+  return {
+    x: clamp(limitedX, minX, maxX),
+    y: clamp(limitedY, minY, maxY),
+  };
+}
+
+export function applyOverviewAction(
+  state: OverviewModeState,
+  action: OverviewAction
+): OverviewModeState {
+  switch (action.type) {
+    case 'TOGGLE': {
+      if (!action.canActivate && !state.active) {
+        return state;
+      }
+      if (state.active) {
+        return DEFAULT_OVERVIEW_STATE;
+      }
+      return {
+        ...state,
+        active: true,
+        offset: { x: 0, y: 0 },
+        zoom: OVERVIEW_CONFIG.activeZoom,
+      };
+    }
+    case 'PAN': {
+      if (!state.active) {
+        return state;
+      }
+      const nextOffset = {
+        x: state.offset.x + action.delta.x,
+        y: state.offset.y + action.delta.y,
+      };
+      return {
+        ...state,
+        offset: clampOverviewOffset(nextOffset, action.map, action.playerPosition),
+      };
+    }
+    case 'RESET_CAMERA':
+      return { ...state, offset: { x: 0, y: 0 } };
+    case 'RESET':
+      return DEFAULT_OVERVIEW_STATE;
+    default:
+      return state;
+  }
+}
 
 // ============================================================================
 // Context-specific Actions (debug/escape hatches)
@@ -84,6 +193,10 @@ export function gameReducer(
 interface GameContextType {
   state: GameState | null;
   dispatch: Dispatch<GameAction>;
+  overviewMode: OverviewModeState;
+  toggleOverviewMode: () => void;
+  panOverview: (delta: Position) => void;
+  resetOverviewCamera: () => void;
 }
 
 // ============================================================================
@@ -98,9 +211,52 @@ const GameContext = createContext<GameContextType | undefined>(undefined);
 
 export function GameProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(gameReducer, initialGameState);
+  const [overviewMode, updateOverviewMode] = useReducer(
+    applyOverviewAction,
+    DEFAULT_OVERVIEW_STATE
+  );
+
+  useEffect(() => {
+    if (!state || state.phase !== GamePhase.Exploration) {
+      updateOverviewMode({ type: 'RESET' });
+    }
+  }, [state]);
+
+  const toggleOverviewMode = useCallback(() => {
+    const canActivate = state?.phase === GamePhase.Exploration;
+    updateOverviewMode({ type: 'TOGGLE', canActivate: Boolean(canActivate) });
+  }, [state?.phase]);
+
+  const panOverview = useCallback(
+    (delta: Position) => {
+      if (!state) {
+        return;
+      }
+      updateOverviewMode({
+        type: 'PAN',
+        delta,
+        map: state.map,
+        playerPosition: state.player.position,
+      });
+    },
+    [state]
+  );
+
+  const resetOverviewCamera = useCallback(() => {
+    updateOverviewMode({ type: 'RESET_CAMERA' });
+  }, []);
 
   return (
-    <GameContext.Provider value={{ state, dispatch }}>
+    <GameContext.Provider
+      value={{
+        state,
+        dispatch,
+        overviewMode,
+        toggleOverviewMode,
+        panOverview,
+        resetOverviewCamera,
+      }}
+    >
       {children}
     </GameContext.Provider>
   );

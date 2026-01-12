@@ -31,6 +31,8 @@ export function createInitialGameState(): GameState {
     time: createInitialTimeState('BROODMOTHER'),
     combat: null,
     activePOI: null,
+    wallHighlight: null,
+    fastTravel: null,
     debug: DEFAULT_DEBUG_STATE,
   };
 }

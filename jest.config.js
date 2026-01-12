@@ -16,6 +16,7 @@ module.exports = {
         // Allow JS imports
         allowJs: true,
         esModuleInterop: true,
+        jsx: 'react-jsx',
         module: 'commonjs',
         moduleResolution: 'node',
         strict: true,

@@ -13,13 +13,14 @@ import { useProfile } from '../contexts/ProfileContext';
 import { useGame, GamePhase } from '../contexts/GameContext';
 import { shortenAddress } from '../utils/storage';
 import { RootStackParamList } from '../navigation';
+import { SpeedControls } from '../components/combat';
 
 type HubScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Hub'>;
 };
 
 export function HubScreen({ navigation }: HubScreenProps) {
-  const { profile, clearProfile } = useProfile();
+  const { profile, clearProfile, updateDefaultCombatSpeed } = useProfile();
   const { state: gameState, dispatch } = useGame();
   const [showSettings, setShowSettings] = useState(false);
 
@@ -170,6 +171,14 @@ export function HubScreen({ navigation }: HubScreenProps) {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Settings</Text>
+
+            <View style={styles.settingRow}>
+              <Text style={styles.settingLabel}>Default combat speed</Text>
+              <SpeedControls
+                currentSpeed={profile?.defaultCombatSpeed ?? 'normal'}
+                onSpeedChange={updateDefaultCombatSpeed}
+              />
+            </View>
 
             <TouchableOpacity
               style={styles.modalButton}
@@ -409,6 +418,15 @@ const styles = StyleSheet.create({
     color: '#c8c8c8',
     marginBottom: 20,
     textAlign: 'center',
+  },
+  settingRow: {
+    gap: 10,
+    marginBottom: 16,
+  },
+  settingLabel: {
+    fontSize: 12,
+    color: '#888888',
+    fontWeight: '600',
   },
   modalButton: {
     backgroundColor: '#0a0a0f',

@@ -3,27 +3,30 @@
  * @see specs/001-pve-dungeon-crawler/spec.md User Story 1
  */
 
-import React, { useCallback, useMemo, useEffect, useState } from 'react';
+import React, { useCallback, useMemo, useEffect, useState, useRef } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation';
 import { useGame, GamePhase } from '../contexts/GameContext';
-import { MapRenderer } from '../components/game/MapRenderer';
 import { DPadControls } from '../components/game/DPadControls';
 import {
   TopBar,
+  GameCanvas,
   StatsPanel,
   InventoryPanel,
   ItemTooltip,
   DebugOverlay,
   POIModal,
+  FastTravelOverlay,
 } from '../components/game';
 import { useDirectionInput } from '../hooks/useInput';
 import { useLandscapeLock } from '../hooks/useOrientationLock';
-import { Direction } from '../game/input/types';
+import { Direction, DIRECTION_DELTA } from '../game/input/types';
 import { TileType } from '../game/map/types';
-import type { GearId, Tool, Gear } from '../game/engine/types';
+import { TimePhase, type GearId, type Tool, type Gear } from '../game/engine/types';
+import { canFastTravel, getDiscoveredWaypoints } from '../game/entities/pois';
+import { canInteractWithPOI } from '../data/pois';
 
 type GameScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Game'>;
@@ -37,7 +40,46 @@ const SAFE_AREA_EDGES = ['left', 'right'] as const;
  * @see T072: Wire up TopBar to GameScreen
  */
 export function GameScreen({ navigation }: GameScreenProps) {
-  const { state, dispatch } = useGame();
+  const { state, dispatch, overviewMode, toggleOverviewMode, panOverview } = useGame();
+  const feedbackTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [wallBreakFeedback, setWallBreakFeedback] = useState<string | null>(null);
+
+  const showWallBreakFeedback = useCallback((message: string) => {
+    if (feedbackTimeout.current) {
+      clearTimeout(feedbackTimeout.current);
+    }
+    setWallBreakFeedback(message);
+    feedbackTimeout.current = setTimeout(() => {
+      setWallBreakFeedback(null);
+      feedbackTimeout.current = null;
+    }, 2000);
+  }, []);
+
+  const discoveredWaypoints = useMemo(
+    () => (state ? getDiscoveredWaypoints(state.map) : []),
+    [state?.map]
+  );
+
+  const fastTravelAvailable = useMemo(() => {
+    if (!state) {
+      return false;
+    }
+    return state.phase === GamePhase.Exploration && canFastTravel(state.map);
+  }, [state?.map, state?.phase]);
+
+  const handleFastTravelPress = useCallback(() => {
+    if (!state) {
+      return;
+    }
+    if (state.fastTravel?.active) {
+      dispatch({ type: 'CYCLE_FAST_TRAVEL' });
+      return;
+    }
+    if (!fastTravelAvailable || overviewMode.active) {
+      return;
+    }
+    dispatch({ type: 'ACTIVATE_FAST_TRAVEL' });
+  }, [dispatch, fastTravelAvailable, overviewMode.active, state]);
 
   // Lock to landscape orientation (FR-044)
   useLandscapeLock();
@@ -45,21 +87,60 @@ export function GameScreen({ navigation }: GameScreenProps) {
   // Handle direction input
   const handleDirection = useCallback(
     (direction: Direction) => {
-      if (state?.phase === GamePhase.Exploration) {
-        dispatch({ type: 'MOVE', direction });
+      if (
+        !state ||
+        state.phase !== GamePhase.Exploration ||
+        overviewMode.active ||
+        state.fastTravel?.active
+      ) {
+        return;
       }
+
+      const delta = DIRECTION_DELTA[direction];
+      const targetPos = {
+        x: state.player.position.x + delta.x,
+        y: state.player.position.y + delta.y,
+      };
+
+      if (
+        targetPos.x >= 0 &&
+        targetPos.x < state.map.width &&
+        targetPos.y >= 0 &&
+        targetPos.y < state.map.height
+      ) {
+        const targetTile = state.map.tiles[targetPos.y][targetPos.x];
+        if (targetTile === TileType.Wall) {
+          if (state.player.stats.dig < 1) {
+            showWallBreakFeedback('Requires DIG to break walls');
+          } else if (
+            state.wallHighlight &&
+            state.wallHighlight.direction === direction &&
+            state.wallHighlight.targetPosition.x === targetPos.x &&
+            state.wallHighlight.targetPosition.y === targetPos.y &&
+            state.time.movesRemaining < state.wallHighlight.cost
+          ) {
+            showWallBreakFeedback(`Not enough moves (need ${state.wallHighlight.cost})`);
+          }
+        }
+      }
+
+      dispatch({ type: 'MOVE', direction });
     },
-    [state?.phase, dispatch]
+    [dispatch, overviewMode.active, showWallBreakFeedback, state]
   );
 
   // Set up keyboard input
   useDirectionInput(handleDirection, {
-    enabled: state?.phase === GamePhase.Exploration,
+    enabled: state?.phase === GamePhase.Exploration && !state.fastTravel?.active,
+    blocked: overviewMode.active || Boolean(state?.fastTravel?.active),
   });
 
   // Calculate disabled directions (tiles player can't move to)
   const disabledDirections = useMemo(() => {
     if (!state) return [];
+    if (overviewMode.active || state.fastTravel?.active) {
+      return [Direction.Up, Direction.Down, Direction.Left, Direction.Right];
+    }
 
     const disabled: Direction[] = [];
     const { x, y } = state.player.position;
@@ -80,19 +161,29 @@ export function GameScreen({ navigation }: GameScreenProps) {
         disabled.push(dir);
         continue;
       }
-
-      // Check if wall
-      if (state.map.tiles[ny][nx] === TileType.Wall) {
-        disabled.push(dir);
-      }
     }
 
     return disabled;
-  }, [state?.player.position, state?.map.tiles, state?.map.width, state?.map.height]);
+  }, [
+    state?.player.position,
+    state?.map.tiles,
+    state?.map.width,
+    state?.map.height,
+    overviewMode.active,
+    state?.fastTravel?.active,
+  ]);
 
-  // Navigate to Combat screen when entering combat
   useEffect(() => {
-    if (state?.phase === GamePhase.Combat) {
+    return () => {
+      if (feedbackTimeout.current) {
+        clearTimeout(feedbackTimeout.current);
+      }
+    };
+  }, []);
+
+  // Navigate to Combat screen when entering combat or boss fight
+  useEffect(() => {
+    if (state?.phase === GamePhase.Combat || state?.phase === GamePhase.BossFight) {
       navigation.navigate('Combat');
     }
   }, [state?.phase, navigation]);
@@ -101,6 +192,32 @@ export function GameScreen({ navigation }: GameScreenProps) {
   const handlePOIClose = useCallback(() => {
     dispatch({ type: 'CLOSE_POI' });
   }, [dispatch]);
+
+  const poiAtPlayer = useMemo(() => {
+    if (!state) return null;
+    const { x, y } = state.player.position;
+    return (
+      state.map.pois.find((poi) => poi.position.x === x && poi.position.y === y) ?? null
+    );
+  }, [state?.map.pois, state?.player.position]);
+
+  const canReopenPOI = useMemo(() => {
+    if (!state) return false;
+    if (state.phase !== GamePhase.Exploration) return false;
+    if (overviewMode.active || state.fastTravel?.active) return false;
+    if (!poiAtPlayer) return false;
+    if (poiAtPlayer.visited) return false;
+    if (poiAtPlayer.definitionId === 'L6') return false; // Survey Beacon auto-activates on step
+
+    const isNight = state.time.phase === TimePhase.Night;
+    return canInteractWithPOI(poiAtPlayer.definitionId, isNight);
+  }, [overviewMode.active, poiAtPlayer, state, state?.fastTravel?.active]);
+
+  const handlePOIReopen = useCallback(() => {
+    if (!state || !poiAtPlayer) return;
+    if (!canReopenPOI) return;
+    dispatch({ type: 'INTERACT_POI', poiId: poiAtPlayer.id });
+  }, [canReopenPOI, dispatch, poiAtPlayer, state]);
 
   const [golemSelection, setGolemSelection] = useState<{
     gearId: GearId | null;
@@ -234,38 +351,77 @@ export function GameScreen({ navigation }: GameScreenProps) {
         {/* Left column: TopBar + Map */}
         <View style={styles.leftColumn}>
           {/* Top Bar with week progress and boss preview */}
-          {state?.time && <TopBar time={state.time} />}
+          {state?.time && (
+            <TopBar
+              time={state.time}
+              overviewActive={overviewMode.active}
+              onToggleOverview={toggleOverviewMode}
+            />
+          )}
 
           {/* Map Area */}
           <View style={styles.mapArea}>
-          <MapRenderer
-            map={state.map}
-            playerPosition={state.player.position}
-            timePhase={state.time.phase}
-          />
-
-          {/* Debug Overlay (top-left) - P15: Debug Tooling Isolation */}
-          <DebugOverlay
-            debug={state.debug}
-            seed={state.seed}
-            phase={state.phase}
-            time={state.time}
-          />
-
-          {/* D-Pad Controls (bottom-left overlay per FR-002) */}
-          <View style={styles.dpadOverlay}>
-            <DPadControls
-              onDirection={handleDirection}
-              disabledDirections={disabledDirections}
-              size={120}
+            <GameCanvas
+              map={state.map}
+              playerPosition={state.player.position}
+              timePhase={state.time.phase}
+              wallHighlight={state.wallHighlight}
+              overviewMode={overviewMode}
+              onPanOverview={panOverview}
+              feedbackMessage={wallBreakFeedback}
             />
-          </View>
 
-          {/* Gold Display (top-right of map) */}
-          <View style={styles.goldOverlay}>
-            <Text style={styles.goldEmoji}>🪙</Text>
-            <Text style={styles.goldValue}>{state.player.stats.gold}</Text>
-          </View>
+            {/* Debug Overlay (top-left) - P15: Debug Tooling Isolation */}
+            <DebugOverlay
+              debug={state.debug}
+              seed={state.seed}
+              phase={state.phase}
+              time={state.time}
+            />
+
+            {/* D-Pad Controls (bottom-left overlay per FR-002) */}
+            <View
+              style={styles.dpadOverlay}
+              pointerEvents={overviewMode.active || state.fastTravel?.active ? 'none' : 'auto'}
+            >
+              <DPadControls
+                onDirection={handleDirection}
+                onCenterPress={handlePOIReopen}
+                centerDisabled={!canReopenPOI}
+                centerLabel="A"
+                disabledDirections={disabledDirections}
+                size={120}
+              />
+            </View>
+
+            {/* Gold Display (top-right of map) */}
+            <View style={styles.goldOverlay}>
+              <Text style={styles.goldEmoji}>🪙</Text>
+              <Text style={styles.goldValue}>{state.player.stats.gold}</Text>
+            </View>
+
+            {state.fastTravel?.active && (
+              <FastTravelOverlay
+                waypoints={discoveredWaypoints}
+                selectedIndex={state.fastTravel.selectedIndex}
+                currentPosition={state.player.position}
+                overviewMode={overviewMode}
+                onCycle={() => dispatch({ type: 'CYCLE_FAST_TRAVEL' })}
+                onConfirm={() => dispatch({ type: 'CONFIRM_FAST_TRAVEL' })}
+                onCancel={() => dispatch({ type: 'CANCEL_FAST_TRAVEL' })}
+              />
+            )}
+
+            {/* POI Interaction Modal - inside mapArea for proper overlay positioning */}
+            <POIModal
+              visible={state.phase === GamePhase.POIInteraction}
+              interaction={state.activePOI}
+              onSelectOption={handlePOIOption}
+              onClose={handlePOIClose}
+              golemSelection={golemSelection}
+              golemFuseOptionIndex={golemFuseOptionIndex}
+              onGolemSlotPress={handleGolemSlotPress}
+            />
           </View>
         </View>
 
@@ -286,17 +442,6 @@ export function GameScreen({ navigation }: GameScreenProps) {
           />
         </View>
       </View>
-
-      {/* POI Interaction Modal */}
-      <POIModal
-        visible={state.phase === GamePhase.POIInteraction}
-        interaction={state.activePOI}
-        onSelectOption={handlePOIOption}
-        onClose={handlePOIClose}
-        golemSelection={golemSelection}
-        golemFuseOptionIndex={golemFuseOptionIndex}
-        onGolemSlotPress={handleGolemSlotPress}
-      />
 
       <ItemTooltip
         item={inspectedItem}
@@ -333,6 +478,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#000000',
     position: 'relative',
+    overflow: 'hidden',
   },
   dpadOverlay: {
     position: 'absolute',

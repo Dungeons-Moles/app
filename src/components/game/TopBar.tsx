@@ -17,6 +17,8 @@ import { getWeekProgress } from '../../game/time/progression';
 
 interface TopBarProps {
   time: TimeState;
+  overviewActive: boolean;
+  onToggleOverview: () => void;
 }
 
 // ============================================================================
@@ -27,7 +29,7 @@ interface TopBarProps {
  * TopBar - Displays week progress and boss preview
  * Shows current Day/Night cycle progress and the week's boss
  */
-export function TopBar({ time }: TopBarProps) {
+export function TopBar({ time, overviewActive, onToggleOverview }: TopBarProps) {
   const [showBossTooltip, setShowBossTooltip] = useState(false);
   const boss = getBoss(time.weekBoss);
   const progress = getWeekProgress(time);
@@ -37,8 +39,19 @@ export function TopBar({ time }: TopBarProps) {
 
   return (
     <View style={styles.container}>
-      {/* Week Progress Timeline (T069) - Left side */}
-      <WeekProgressTimeline time={time} progress={progress} />
+      <View style={styles.leftCluster}>
+        <Pressable
+          style={[styles.mapToggle, overviewActive && styles.mapToggleActive]}
+          onPress={onToggleOverview}
+          accessibilityLabel="Toggle map overview"
+          accessibilityRole="button"
+        >
+          <Text style={styles.mapToggleIcon}>🗺️</Text>
+        </Pressable>
+
+        {/* Week Progress Timeline (T069) - Left side */}
+        <WeekProgressTimeline time={time} progress={progress} />
+      </View>
 
       {/* Boss Preview (T070) - Right side */}
       <BossPreview
@@ -318,11 +331,34 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#2a2a30',
   },
+  leftCluster: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  mapToggle: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#1a1a22',
+    borderWidth: 1,
+    borderColor: '#2a2a35',
+    marginRight: 10,
+  },
+  mapToggleActive: {
+    backgroundColor: '#1f2a37',
+    borderColor: '#60a5fa',
+  },
+  mapToggleIcon: {
+    fontSize: 16,
+  },
 
   // Timeline styles
   timelineContainer: {
     flex: 1,
-    marginRight: 12,
   },
   weekText: {
     fontSize: 10,

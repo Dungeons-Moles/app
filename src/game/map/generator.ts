@@ -9,6 +9,7 @@ import { SeededRNG } from '../engine/rng';
 import { GAME_CONSTANTS } from '../engine/constants';
 import type { Position } from '../engine/types';
 import { TileType, FogState, GameMap, MapEnemy, MapPOI, EnemyId, POIId } from './types';
+import { getSpawnZone, selectTierForZone } from './spawn-zones';
 
 // ============================================================================
 // Types
@@ -548,11 +549,9 @@ function placeEnemies(
     const key = `${pos.x},${pos.y}`;
     if (usedPositions.has(key)) continue;
 
-    const distanceFromSpawn = Math.abs(pos.x - spawn.x) + Math.abs(pos.y - spawn.y);
-    if (distanceFromSpawn < 5) continue;
-
+    const zone = getSpawnZone(pos, moleDenPos);
     const enemyId = rng.pick(ENEMY_IDS);
-    const tier = rng.pick([1, 2, 3] as const);
+    const tier = selectTierForZone(zone, rng);
     const stats = ENEMY_STATS[enemyId][tier - 1];
 
     enemies.push({

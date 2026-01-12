@@ -40,28 +40,6 @@ function StatRow({ label, value, icon }: StatRowProps) {
   );
 }
 
-interface StatusBadgeProps {
-  type: 'chill' | 'shrapnel' | 'rust';
-  stacks: number;
-}
-
-function StatusBadge({ type, stacks }: StatusBadgeProps) {
-  const config = {
-    chill: { emoji: '❄️', color: '#60a5fa', name: 'Chill' },
-    shrapnel: { emoji: '💥', color: '#f97316', name: 'Shrapnel' },
-    rust: { emoji: '🦠', color: '#a16207', name: 'Rust' },
-  };
-
-  const { emoji, color } = config[type];
-
-  return (
-    <View style={[styles.statusBadge, { borderColor: color }]}>
-      <Text style={styles.statusEmoji}>{emoji}</Text>
-      <Text style={[styles.statusStacks, { color }]}>{stacks}</Text>
-    </View>
-  );
-}
-
 export function EnemyPanel({
   name,
   emoji,
@@ -85,8 +63,6 @@ export function EnemyPanel({
     if (hpPercent > 25) return '#eab308';
     return '#dc2626';
   }, [hpPercent]);
-
-  const hasStatusEffects = statusEffects.chill > 0 || statusEffects.shrapnel > 0 || statusEffects.rust > 0;
 
   return (
     <View style={styles.container}>
@@ -143,23 +119,6 @@ export function EnemyPanel({
         </View>
       )}
 
-      {/* Status Effects */}
-      {hasStatusEffects && (
-        <View style={styles.statusSection}>
-          <Text style={styles.statusTitle}>Effects</Text>
-          <View style={styles.statusRow}>
-            {statusEffects.chill > 0 && (
-              <StatusBadge type="chill" stacks={statusEffects.chill} />
-            )}
-            {statusEffects.shrapnel > 0 && (
-              <StatusBadge type="shrapnel" stacks={statusEffects.shrapnel} />
-            )}
-            {statusEffects.rust > 0 && (
-              <StatusBadge type="rust" stacks={statusEffects.rust} />
-            )}
-          </View>
-        </View>
-      )}
     </View>
   );
 }
@@ -266,38 +225,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: '#9ca3af',
     lineHeight: 14,
-  },
-  statusSection: {
-    marginTop: 'auto',
-  },
-  statusTitle: {
-    fontSize: 10,
-    color: '#6b7280',
-    marginBottom: 4,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  statusRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 4,
-  },
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-    borderRadius: 4,
-    borderWidth: 1,
-    backgroundColor: '#1a1a2e',
-  },
-  statusEmoji: {
-    fontSize: 11,
-    marginRight: 3,
-  },
-  statusStacks: {
-    fontSize: 10,
-    fontWeight: 'bold',
   },
 });
 

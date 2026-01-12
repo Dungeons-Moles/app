@@ -16,12 +16,15 @@ export { PHASE_MOVES, WEEK_PHASES, SIGHT_RADIUS } from '../game/time/types';
 // Input types (Direction, InputEvent, DIRECTION_DELTA)
 export * from '../game/input/types';
 
+export type CombatSpeed = 'paused' | 'normal' | 'fast';
+
 export interface PlayerProfile {
   id: string;
   walletAddress: string;
   displayName: string;
   createdAt: number;
   lastPlayedAt: number;
+  defaultCombatSpeed?: CombatSpeed;
 }
 
 export interface WalletState {
