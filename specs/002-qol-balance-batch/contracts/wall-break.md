@@ -21,12 +21,15 @@ Players with DIG stat can break wall tiles using a double-tap interaction. First
  * @param dig - Player's current DIG stat
  * @returns Move cost (1-3), or null if wall cannot be broken
  *
+ * Formula: max(2, 6 - DIG)
+ *
  * @example
  * calculateWallBreakCost(0) // => null (cannot break)
- * calculateWallBreakCost(1) // => 3
- * calculateWallBreakCost(2) // => 2
- * calculateWallBreakCost(3) // => 1
- * calculateWallBreakCost(4) // => 1 (minimum)
+ * calculateWallBreakCost(1) // => 5
+ * calculateWallBreakCost(2) // => 4
+ * calculateWallBreakCost(3) // => 3
+ * calculateWallBreakCost(4) // => 2
+ * calculateWallBreakCost(5) // => 2 (minimum)
  */
 export function calculateWallBreakCost(dig: number): number | null;
 
@@ -191,7 +194,7 @@ interface WallHighlightProps {
 ### Edge Cases
 
 1. **DIG = 0**: First tap shows feedback message, no highlight
-2. **DIG >= 4**: Cost is always 1 (minimum)
+2. **DIG >= 5**: Cost is always 2 (minimum)
 3. **Perimeter walls**: Cannot be broken (would expose out-of-bounds)
 4. **Insufficient moves**: Break action blocked with feedback
 5. **Combat interruption**: If enemy moves to player during night, highlight cleared
@@ -204,21 +207,25 @@ describe('Wall Break Cost', () => {
     expect(calculateWallBreakCost(0)).toBeNull();
   });
 
-  it('returns 3 for DIG 1', () => {
-    expect(calculateWallBreakCost(1)).toBe(3);
+  it('returns 5 for DIG 1', () => {
+    expect(calculateWallBreakCost(1)).toBe(5);
   });
 
-  it('returns 2 for DIG 2', () => {
-    expect(calculateWallBreakCost(2)).toBe(2);
+  it('returns 4 for DIG 2', () => {
+    expect(calculateWallBreakCost(2)).toBe(4);
   });
 
-  it('returns 1 for DIG 3', () => {
-    expect(calculateWallBreakCost(3)).toBe(1);
+  it('returns 3 for DIG 3', () => {
+    expect(calculateWallBreakCost(3)).toBe(3);
   });
 
-  it('returns 1 for DIG 4+ (minimum)', () => {
-    expect(calculateWallBreakCost(4)).toBe(1);
-    expect(calculateWallBreakCost(10)).toBe(1);
+  it('returns 2 for DIG 4', () => {
+    expect(calculateWallBreakCost(4)).toBe(2);
+  });
+
+  it('returns 2 for DIG 5+ (minimum)', () => {
+    expect(calculateWallBreakCost(5)).toBe(2);
+    expect(calculateWallBreakCost(10)).toBe(2);
   });
 });
 
@@ -232,7 +239,7 @@ describe('Wall Break Execution', () => {
   it('deducts move cost from time', () => {
     const state = createTestState({ dig: 2, movesRemaining: 10 });
     const result = gameReducer(state, { type: 'BREAK_WALL' });
-    expect(result.time.movesRemaining).toBe(8); // 10 - 2
+    expect(result.time.movesRemaining).toBe(6); // 10 - 4
   });
 
   it('cannot break perimeter walls', () => {
