@@ -229,10 +229,10 @@
 
 **Purpose**: Final cleanup and validation
 
-- [ ] T077 Run all unit tests: npm test -- __tests__/unit/
-- [ ] T078 Run all integration tests: npm test -- __tests__/integration/
-- [ ] T079 Run typecheck: npm run typecheck
-- [ ] T080 Run linter: npm run lint
+- [x] T077 Run all unit tests: npm test -- __tests__/unit/
+- [x] T078 Run all integration tests: npm test -- __tests__/integration/
+- [x] T079 Run typecheck: npm run typecheck
+- [x] T080 Run linter: npm run lint
 - [ ] T081 Manual testing per quickstart.md checklist
 - [ ] T082 [P] Update specs/002-qol-balance-batch/tasks.md to mark completed tasks
 

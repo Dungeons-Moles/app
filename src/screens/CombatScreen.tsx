@@ -12,6 +12,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation';
 import { useGame } from '../contexts/GameContext';
 import { CombatProvider, useCombat } from '../contexts/CombatContext';
+import { useProfile } from '../contexts/ProfileContext';
 import { useLandscapeLock } from '../hooks/useOrientationLock';
 import {
   CombatArena,
@@ -21,6 +22,7 @@ import {
   SpeedControls,
 } from '../components/combat';
 import { DebugOverlay } from '../components/game';
+import { ENEMY_TRAITS } from '../game/combat/traits';
 
 type CombatScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Combat'>;
@@ -33,8 +35,11 @@ const SAFE_AREA_EDGES = ['left', 'right'] as const;
  * Displays the combat arena, player/enemy panels, and combat log in landscape orientation
  */
 export function CombatScreen({ navigation }: CombatScreenProps) {
+  const { profile, updateDefaultCombatSpeed } = useProfile();
+  const initialSpeed = profile?.defaultCombatSpeed ?? 'normal';
+
   return (
-    <CombatProvider>
+    <CombatProvider initialSpeed={initialSpeed} onSpeedChange={updateDefaultCombatSpeed}>
       <CombatScreenContent navigation={navigation} />
     </CombatProvider>
   );
@@ -65,6 +70,9 @@ function CombatScreenContent({ navigation }: CombatScreenProps) {
         playerGear,
         playerTool: gameState.player.equippedTool,
         playerGold: gameState.player.stats.gold,
+        enemyDefinitionId: gameState.combat.enemyDefinitionId,
+        enemyId: gameState.combat.enemyDefinitionId,
+        enemyTier: gameState.combat.enemyTier,
       });
     }
   }, [gameState?.combat, combatState.combat, startCombat, gameState?.rngState]);
@@ -95,9 +103,13 @@ function CombatScreenContent({ navigation }: CombatScreenProps) {
   const playerMaxArm = player ? Math.max(basePlayerArm, player.arm) : 0;
   const enemyMaxArm = enemy ? Math.max(baseEnemyArm, enemy.arm) : 0;
 
-  // Note: Enemy traits are currently not available in CombatantState
-  // This would need to be looked up from enemy definitions if needed
-  const enemyTrait = undefined;
+  // Look up enemy trait from the combat state's enemy definition ID
+  const enemyTrait = useMemo(() => {
+    const enemyId = combatState.combat?.enemyDefinitionId;
+    if (!enemyId) return undefined;
+    const trait = ENEMY_TRAITS[enemyId];
+    return trait ? { name: trait.name, description: trait.description } : undefined;
+  }, [combatState.combat?.enemyDefinitionId]);
 
   // Extract player equipment for display
   const playerEquipment = useMemo(() => {
@@ -107,6 +119,14 @@ function CombatScreenContent({ navigation }: CombatScreenProps) {
       gear: gameState.player.inventory.map((slot) => slot.item),
     };
   }, [gameState?.player]);
+
+  const activeActor = useMemo(() => {
+    const entry = combatState.resolvedCombat?.log[combatState.currentLogIndex];
+    if (entry?.actor === 'player' || entry?.actor === 'enemy') {
+      return entry.actor;
+    }
+    return null;
+  }, [combatState.currentLogIndex, combatState.resolvedCombat]);
 
   // Show loading if no combat state
   if (!player || !enemy) {
@@ -140,11 +160,22 @@ function CombatScreenContent({ navigation }: CombatScreenProps) {
 
         {/* Combat Arena (CENTER) */}
         <View style={styles.arenaArea}>
+          {/* Gold display in top right of arena area */}
+          {gameState?.player.stats.gold !== undefined && (
+            <View style={styles.goldContainer}>
+              <Text style={styles.goldText}>{gameState.player.stats.gold}g</Text>
+            </View>
+          )}
+
           <CombatArena
             player={player}
             enemy={enemy}
             damageNumbers={combatState.damageNumbers}
+            effectNotifications={combatState.effectNotifications}
             isAnimating={combatState.isAnimating}
+            activeActor={activeActor}
+            playerMaxArm={playerMaxArm}
+            enemyMaxArm={enemyMaxArm}
           />
 
           <View style={styles.controlsArea}>
@@ -233,5 +264,23 @@ const styles = StyleSheet.create({
   },
   controlsArea: {
     marginTop: 12,
+  },
+  goldContainer: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#FFD700',
+    zIndex: 10,
+  },
+  goldText: {
+    fontSize: 14,
+    color: '#FFD700',
+    fontWeight: 'bold',
+    fontFamily: 'monospace',
   },
 });

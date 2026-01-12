@@ -18,15 +18,15 @@ import {
   ItemTooltip,
   DebugOverlay,
   POIModal,
-  FastTravelButton,
   FastTravelOverlay,
 } from '../components/game';
 import { useDirectionInput } from '../hooks/useInput';
 import { useLandscapeLock } from '../hooks/useOrientationLock';
 import { Direction, DIRECTION_DELTA } from '../game/input/types';
 import { TileType } from '../game/map/types';
-import type { GearId, Tool, Gear } from '../game/engine/types';
+import { TimePhase, type GearId, type Tool, type Gear } from '../game/engine/types';
 import { canFastTravel, getDiscoveredWaypoints } from '../game/entities/pois';
+import { canInteractWithPOI } from '../data/pois';
 
 type GameScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Game'>;
@@ -181,9 +181,9 @@ export function GameScreen({ navigation }: GameScreenProps) {
     };
   }, []);
 
-  // Navigate to Combat screen when entering combat
+  // Navigate to Combat screen when entering combat or boss fight
   useEffect(() => {
-    if (state?.phase === GamePhase.Combat) {
+    if (state?.phase === GamePhase.Combat || state?.phase === GamePhase.BossFight) {
       navigation.navigate('Combat');
     }
   }, [state?.phase, navigation]);
@@ -192,6 +192,32 @@ export function GameScreen({ navigation }: GameScreenProps) {
   const handlePOIClose = useCallback(() => {
     dispatch({ type: 'CLOSE_POI' });
   }, [dispatch]);
+
+  const poiAtPlayer = useMemo(() => {
+    if (!state) return null;
+    const { x, y } = state.player.position;
+    return (
+      state.map.pois.find((poi) => poi.position.x === x && poi.position.y === y) ?? null
+    );
+  }, [state?.map.pois, state?.player.position]);
+
+  const canReopenPOI = useMemo(() => {
+    if (!state) return false;
+    if (state.phase !== GamePhase.Exploration) return false;
+    if (overviewMode.active || state.fastTravel?.active) return false;
+    if (!poiAtPlayer) return false;
+    if (poiAtPlayer.visited) return false;
+    if (poiAtPlayer.definitionId === 'L6') return false; // Survey Beacon auto-activates on step
+
+    const isNight = state.time.phase === TimePhase.Night;
+    return canInteractWithPOI(poiAtPlayer.definitionId, isNight);
+  }, [overviewMode.active, poiAtPlayer, state, state?.fastTravel?.active]);
+
+  const handlePOIReopen = useCallback(() => {
+    if (!state || !poiAtPlayer) return;
+    if (!canReopenPOI) return;
+    dispatch({ type: 'INTERACT_POI', poiId: poiAtPlayer.id });
+  }, [canReopenPOI, dispatch, poiAtPlayer, state]);
 
   const [golemSelection, setGolemSelection] = useState<{
     gearId: GearId | null;
@@ -360,17 +386,11 @@ export function GameScreen({ navigation }: GameScreenProps) {
             >
               <DPadControls
                 onDirection={handleDirection}
+                onCenterPress={handlePOIReopen}
+                centerDisabled={!canReopenPOI}
+                centerLabel="A"
                 disabledDirections={disabledDirections}
                 size={120}
-              />
-            </View>
-
-            {/* Fast Travel Button (bottom-right) */}
-            <View style={styles.fastTravelButton}>
-              <FastTravelButton
-                available={fastTravelAvailable}
-                waypointCount={discoveredWaypoints.length}
-                onPress={handleFastTravelPress}
               />
             </View>
 
@@ -391,6 +411,17 @@ export function GameScreen({ navigation }: GameScreenProps) {
                 onCancel={() => dispatch({ type: 'CANCEL_FAST_TRAVEL' })}
               />
             )}
+
+            {/* POI Interaction Modal - inside mapArea for proper overlay positioning */}
+            <POIModal
+              visible={state.phase === GamePhase.POIInteraction}
+              interaction={state.activePOI}
+              onSelectOption={handlePOIOption}
+              onClose={handlePOIClose}
+              golemSelection={golemSelection}
+              golemFuseOptionIndex={golemFuseOptionIndex}
+              onGolemSlotPress={handleGolemSlotPress}
+            />
           </View>
         </View>
 
@@ -411,17 +442,6 @@ export function GameScreen({ navigation }: GameScreenProps) {
           />
         </View>
       </View>
-
-      {/* POI Interaction Modal */}
-      <POIModal
-        visible={state.phase === GamePhase.POIInteraction}
-        interaction={state.activePOI}
-        onSelectOption={handlePOIOption}
-        onClose={handlePOIClose}
-        golemSelection={golemSelection}
-        golemFuseOptionIndex={golemFuseOptionIndex}
-        onGolemSlotPress={handleGolemSlotPress}
-      />
 
       <ItemTooltip
         item={inspectedItem}
@@ -458,16 +478,12 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#000000',
     position: 'relative',
+    overflow: 'hidden',
   },
   dpadOverlay: {
     position: 'absolute',
     bottom: 16,
     left: 16,
-  },
-  fastTravelButton: {
-    position: 'absolute',
-    bottom: 16,
-    right: 16,
   },
   sidePanel: {
     width: 160,

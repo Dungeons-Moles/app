@@ -67,12 +67,13 @@ describe('Wall Break', () => {
       expect(calculateWallBreakCost(0)).toBeNull();
     });
 
-    it('returns expected costs for DIG 1-4+', () => {
-      expect(calculateWallBreakCost(1)).toBe(3);
-      expect(calculateWallBreakCost(2)).toBe(2);
-      expect(calculateWallBreakCost(3)).toBe(1);
-      expect(calculateWallBreakCost(4)).toBe(1);
-      expect(calculateWallBreakCost(10)).toBe(1);
+    it('returns expected costs for DIG 1-5+ (formula: max(2, 6 - DIG))', () => {
+      expect(calculateWallBreakCost(1)).toBe(5);
+      expect(calculateWallBreakCost(2)).toBe(4);
+      expect(calculateWallBreakCost(3)).toBe(3);
+      expect(calculateWallBreakCost(4)).toBe(2);
+      expect(calculateWallBreakCost(5)).toBe(2); // minimum cost
+      expect(calculateWallBreakCost(10)).toBe(2); // minimum cost
     });
   });
 
@@ -84,7 +85,7 @@ describe('Wall Break', () => {
       expect(next.wallHighlight).toEqual({
         targetPosition: { x: 2, y: 1 },
         direction: Direction.Up,
-        cost: 2,
+        cost: 4, // max(2, 6 - 2) = 4
       });
       expect(next.player.position).toEqual(state.player.position);
       expect(next.time.movesRemaining).toBe(state.time.movesRemaining);
@@ -97,8 +98,8 @@ describe('Wall Break', () => {
 
       expect(afterBreak.wallHighlight).toBeNull();
       expect(afterBreak.map.tiles[1][2]).toBe(TileType.Floor);
-      expect(afterBreak.time.movesRemaining).toBe(8);
-      expect(afterBreak.player.position).toEqual(state.player.position);
+      expect(afterBreak.time.movesRemaining).toBe(6); // 10 - 4 = 6
+      expect(afterBreak.player.position).toEqual({ x: 2, y: 1 });
     });
 
     it('cancels highlight when moving a different direction', () => {

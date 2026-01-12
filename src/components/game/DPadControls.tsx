@@ -18,6 +18,21 @@ export interface DPadControlsProps {
   onDirection: (direction: Direction) => void;
 
   /**
+   * Callback when the center action button is pressed.
+   */
+  onCenterPress?: () => void;
+
+  /**
+   * Whether the center action button should be disabled.
+   */
+  centerDisabled?: boolean;
+
+  /**
+   * Label for the center action button (default: 'A').
+   */
+  centerLabel?: string;
+
+  /**
    * Directions that should be disabled (e.g., blocked by walls).
    */
   disabledDirections?: Direction[];
@@ -34,6 +49,9 @@ export interface DPadControlsProps {
 
 export function DPadControls({
   onDirection,
+  onCenterPress,
+  centerDisabled = false,
+  centerLabel = 'A',
   disabledDirections = [],
   size = 150,
 }: DPadControlsProps) {
@@ -102,12 +120,25 @@ export function DPadControls({
           </Text>
         </TouchableOpacity>
 
-        <View
+        <TouchableOpacity
           style={[
-            styles.center,
+            styles.centerButton,
             { width: buttonSize, height: buttonSize },
+            (centerDisabled || !onCenterPress) && styles.buttonDisabled,
           ]}
-        />
+          onPress={onCenterPress}
+          disabled={centerDisabled || !onCenterPress}
+          activeOpacity={0.6}
+        >
+          <Text
+            style={[
+              styles.centerLabel,
+              (centerDisabled || !onCenterPress) && styles.arrowDisabled,
+            ]}
+          >
+            {centerLabel}
+          </Text>
+        </TouchableOpacity>
 
         <TouchableOpacity
           style={[
@@ -184,10 +215,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#1a1a1f',
     borderColor: '#252528',
   },
-  center: {
+  centerButton: {
     backgroundColor: '#151518',
     borderWidth: 1,
     borderColor: '#252528',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   arrow: {
     fontSize: 20,
@@ -195,5 +228,10 @@ const styles = StyleSheet.create({
   },
   arrowDisabled: {
     color: '#444444',
+  },
+  centerLabel: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#aaaaaa',
   },
 });

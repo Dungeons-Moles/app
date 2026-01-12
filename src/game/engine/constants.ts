@@ -21,7 +21,7 @@ export const GAME_CONSTANTS = {
   INITIAL_ATK: 0,
   INITIAL_ARM: 0,
   INITIAL_SPD: 0,
-  INITIAL_DIG: 0,
+  INITIAL_DIG: 1,
   INITIAL_GOLD: 0,
 
   // Inventory
@@ -106,10 +106,11 @@ export const BOSS_POOLS: Record<1 | 2 | 3, BossId[]> = {
 
 /**
  * Wall break cost calculation constants.
- * Formula: max(WALL_BREAK_MIN_COST, WALL_BREAK_BASE_COST - dig)
+ * Formula: digMoves = max(2, 6 - DIG)
+ * Minimum cost is 2 moves (reached at DIG >= 4)
  */
-export const WALL_BREAK_BASE_COST = 4;
-export const WALL_BREAK_MIN_COST = 1;
+export const WALL_BREAK_BASE_COST = 6;
+export const WALL_BREAK_MIN_COST = 2;
 export const WALL_BREAK_MIN_DIG = 1;
 
 // ============================================================================

@@ -153,23 +153,39 @@ function getCameraOffset(
 // Memoized Render Components
 // ============================================================================
 
+interface TileRectProps {
+  x: number;
+  y: number;
+  type: TileType;
+  fog: FogState;
+  showRevealOverlay: boolean;
+  offsetX: number;
+  offsetY: number;
+  zoom: number;
+}
+
 const TileRect = memo(function TileRect({
   x,
   y,
   type,
   fog,
   showRevealOverlay,
-}: TileData & { showRevealOverlay: boolean }) {
-  const screenX = x * TILE_SIZE;
-  const screenY = y * TILE_SIZE;
+  offsetX,
+  offsetY,
+  zoom,
+}: TileRectProps) {
+  // Calculate screen position with camera offset applied directly
+  const screenX = x * TILE_SIZE * zoom + offsetX;
+  const screenY = y * TILE_SIZE * zoom + offsetY;
+  const tileSize = TILE_SIZE * zoom;
 
   if (fog === FogState.Hidden) {
     return (
       <Rect
         x={screenX}
         y={screenY}
-        width={TILE_SIZE}
-        height={TILE_SIZE}
+        width={tileSize}
+        height={tileSize}
         color={FOG_COLOR_HIDDEN}
       />
     );
@@ -181,15 +197,15 @@ const TileRect = memo(function TileRect({
         <Rect
           x={screenX}
           y={screenY}
-          width={TILE_SIZE}
-          height={TILE_SIZE}
+          width={tileSize}
+          height={tileSize}
           color={TILE_COLORS[type]}
         />
         <Rect
           x={screenX}
           y={screenY}
-          width={TILE_SIZE}
-          height={TILE_SIZE}
+          width={tileSize}
+          height={tileSize}
           color={FOG_COLOR_REVEALED}
         />
       </Group>
@@ -200,8 +216,8 @@ const TileRect = memo(function TileRect({
     <Rect
       x={screenX}
       y={screenY}
-      width={TILE_SIZE}
-      height={TILE_SIZE}
+      width={tileSize}
+      height={tileSize}
       color={TILE_COLORS[type]}
     />
   );
@@ -447,19 +463,21 @@ export const MapRenderer = memo(function MapRenderer({
 
   return (
     <View style={styles.container} onLayout={handleLayout} {...panResponder.panHandlers}>
-      <Canvas style={{ width, height }}>
-        <Group transform={cameraTransform}>
-          {visibleTiles.map(tile => (
-            <TileRect
-              key={`tile-${tile.x}-${tile.y}`}
-              x={tile.x}
-              y={tile.y}
-              type={tile.type}
-              fog={tile.fog}
-              showRevealOverlay={showRevealOverlay}
-            />
-          ))}
-        </Group>
+      <Canvas style={styles.canvas}>
+        {/* Render tiles with pre-calculated screen positions (no Group transform) */}
+        {visibleTiles.map(tile => (
+          <TileRect
+            key={`tile-${tile.x}-${tile.y}`}
+            x={tile.x}
+            y={tile.y}
+            type={tile.type}
+            fog={tile.fog}
+            showRevealOverlay={showRevealOverlay}
+            offsetX={cameraOffset.x}
+            offsetY={cameraOffset.y}
+            zoom={zoom}
+          />
+        ))}
       </Canvas>
 
       {/* Layered View for Wall Emoji and Entities */}
@@ -543,6 +561,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#000000', // Pure black background
+  },
+  canvas: {
+    ...StyleSheet.absoluteFillObject,
   },
   entityOverlay: {
     ...StyleSheet.absoluteFillObject,

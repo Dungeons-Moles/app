@@ -4,6 +4,7 @@
 
 export { CombatArena } from './CombatArena';
 export { DamageNumbers } from './DamageNumbers';
+export { EffectNotifications } from './EffectNotifications';
 export { VictoryDefeatDisplay } from './VictoryDefeatDisplay';
 export type { VictoryDefeatDisplayProps } from './VictoryDefeatDisplay';
 export { CombatResult } from './CombatResult';

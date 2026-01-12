@@ -4,15 +4,20 @@
 
 import React from 'react';
 import { StyleSheet, View, useWindowDimensions, Text } from 'react-native';
-import type { CombatantState } from '../../game/engine/types';
+import type { CombatantState, StatusEffects } from '../../game/engine/types';
 import { DamageNumbers } from './DamageNumbers';
-import type { DamageNumber } from '../../contexts/CombatContext';
+import { EffectNotifications } from './EffectNotifications';
+import type { DamageNumber, EffectNotification } from '../../contexts/CombatContext';
 
 interface CombatArenaProps {
   player: CombatantState | null;
   enemy: CombatantState | null;
   damageNumbers: DamageNumber[];
+  effectNotifications: EffectNotification[];
   isAnimating: boolean;
+  activeActor?: 'player' | 'enemy' | null;
+  playerMaxArm?: number;
+  enemyMaxArm?: number;
 }
 
 /**
@@ -23,6 +28,10 @@ export function CombatArena({
   player,
   enemy,
   damageNumbers,
+  effectNotifications,
+  activeActor = null,
+  playerMaxArm = 0,
+  enemyMaxArm = 0,
 }: CombatArenaProps) {
   const { width: screenWidth } = useWindowDimensions();
   const arenaWidth = Math.min(screenWidth * 0.5, 400);
@@ -46,9 +55,20 @@ export function CombatArena({
   const hpBarHeight = 8;
   const hpBarY = combatantY + combatantRadius + 20;
 
+  // Armor bar dimensions
+  const armBarHeight = 6;
+  const armBarY = hpBarY + hpBarHeight + 4;
+
   // Calculate HP percentages
   const playerHpPercent = Math.max(0, player.hp / player.maxHp);
   const enemyHpPercent = Math.max(0, enemy.hp / enemy.maxHp);
+
+  // Calculate Armor percentages
+  const playerArmPercent = playerMaxArm > 0 ? Math.max(0, player.arm / playerMaxArm) : 0;
+  const enemyArmPercent = enemyMaxArm > 0 ? Math.max(0, enemy.arm / enemyMaxArm) : 0;
+
+  // Status effects position (below the floor line)
+  const statusEffectsY = arenaHeight * 0.75;
 
   return (
     <View style={[styles.container, { width: arenaWidth, height: arenaHeight }]}>
@@ -56,32 +76,20 @@ export function CombatArena({
       <View style={[styles.floor, { left: 20, top: arenaHeight * 0.7, width: arenaWidth - 40 }]} />
 
       {/* Enemy combatant (LEFT) */}
-      <View
-        style={[
-          styles.combatantOuter,
-          {
-            left: enemyX - combatantRadius,
-            top: combatantY - combatantRadius,
-            width: combatantRadius * 2,
-            height: combatantRadius * 2,
-            borderRadius: combatantRadius,
-            backgroundColor: enemy.hp > 0 ? '#dc2626' : '#4a4a4a',
-          },
-        ]}
-      />
-      <View
-        style={[
-          styles.combatantInner,
-          {
-            left: enemyX - combatantRadius * 0.7,
-            top: combatantY - combatantRadius * 0.7,
-            width: combatantRadius * 1.4,
-            height: combatantRadius * 1.4,
-            borderRadius: combatantRadius * 0.7,
-            backgroundColor: enemy.hp > 0 ? '#ef4444' : '#5a5a5a',
-          },
-        ]}
-      />
+      {activeActor === 'enemy' ? (
+        <View
+          style={[
+            styles.activeRing,
+            {
+              left: enemyX - combatantRadius,
+              top: combatantY - combatantRadius,
+              width: combatantRadius * 2,
+              height: combatantRadius * 2,
+              borderRadius: combatantRadius,
+            },
+          ]}
+        />
+      ) : null}
 
       {/* Enemy HP bar */}
       <View
@@ -113,33 +121,45 @@ export function CombatArena({
         ]}
       />
 
+      {/* Enemy Armor bar */}
+      <View
+        style={[
+          styles.armBarBackground,
+          {
+            left: enemyX - hpBarWidth / 2,
+            top: armBarY,
+            width: hpBarWidth,
+            height: armBarHeight,
+          },
+        ]}
+      />
+      <View
+        style={[
+          styles.armBarFill,
+          {
+            left: enemyX - hpBarWidth / 2,
+            top: armBarY,
+            width: hpBarWidth * enemyArmPercent,
+            height: armBarHeight,
+          },
+        ]}
+      />
+
       {/* Player combatant (RIGHT) */}
-      <View
-        style={[
-          styles.combatantOuter,
-          {
-            left: playerX - combatantRadius,
-            top: combatantY - combatantRadius,
-            width: combatantRadius * 2,
-            height: combatantRadius * 2,
-            borderRadius: combatantRadius,
-            backgroundColor: player.hp > 0 ? '#8b5cf6' : '#4a4a4a',
-          },
-        ]}
-      />
-      <View
-        style={[
-          styles.combatantInner,
-          {
-            left: playerX - combatantRadius * 0.7,
-            top: combatantY - combatantRadius * 0.7,
-            width: combatantRadius * 1.4,
-            height: combatantRadius * 1.4,
-            borderRadius: combatantRadius * 0.7,
-            backgroundColor: player.hp > 0 ? '#a78bfa' : '#5a5a5a',
-          },
-        ]}
-      />
+      {activeActor === 'player' ? (
+        <View
+          style={[
+            styles.activeRing,
+            {
+              left: playerX - combatantRadius,
+              top: combatantY - combatantRadius,
+              width: combatantRadius * 2,
+              height: combatantRadius * 2,
+              borderRadius: combatantRadius,
+            },
+          ]}
+        />
+      ) : null}
 
       {/* Player HP bar */}
       <View
@@ -171,12 +191,41 @@ export function CombatArena({
         ]}
       />
 
+      {/* Player Armor bar */}
+      <View
+        style={[
+          styles.armBarBackground,
+          {
+            left: playerX - hpBarWidth / 2,
+            top: armBarY,
+            width: hpBarWidth,
+            height: armBarHeight,
+          },
+        ]}
+      />
+      <View
+        style={[
+          styles.armBarFill,
+          {
+            left: playerX - hpBarWidth / 2,
+            top: armBarY,
+            width: hpBarWidth * playerArmPercent,
+            height: armBarHeight,
+          },
+        ]}
+      />
+
       {/* Overlay damage numbers using separate component */}
       <View style={styles.overlay}>
         <DamageNumbers
           damageNumbers={damageNumbers}
           enemyPosition={{ x: enemyX, y: combatantY - combatantRadius - 20 }}
           playerPosition={{ x: playerX, y: combatantY - combatantRadius - 20 }}
+        />
+        <EffectNotifications
+          notifications={effectNotifications}
+          enemyPosition={{ x: enemyX, y: combatantY - combatantRadius - 40 }}
+          playerPosition={{ x: playerX, y: combatantY - combatantRadius - 40 }}
         />
       </View>
 
@@ -188,17 +237,68 @@ export function CombatArena({
         <Text style={styles.emoji}>{player.emoji}</Text>
       </View>
 
-      {/* Stats labels below HP bars */}
-      <View style={[styles.statsLabel, { left: enemyX - 40, top: hpBarY + 15 }]}>
-        <Text style={styles.stats}>
-          {enemy.hp}/{enemy.maxHp} HP | {enemy.atk} ATK | {enemy.arm} ARM
-        </Text>
-      </View>
-      <View style={[styles.statsLabel, { left: playerX - 40, top: hpBarY + 15 }]}>
-        <Text style={styles.stats}>
-          {player.hp}/{player.maxHp} HP | {player.atk} ATK | {player.arm} ARM
-        </Text>
-      </View>
+      {/* Status effects for enemy (below floor line) */}
+      <StatusEffectsRow
+        statusEffects={enemy.statusEffects}
+        x={enemyX}
+        y={statusEffectsY}
+      />
+
+      {/* Status effects for player (below floor line) */}
+      <StatusEffectsRow
+        statusEffects={player.statusEffects}
+        x={playerX}
+        y={statusEffectsY}
+      />
+    </View>
+  );
+}
+
+// Status effects row component
+interface StatusEffectsRowProps {
+  statusEffects: StatusEffects;
+  x: number;
+  y: number;
+}
+
+function StatusEffectsRow({ statusEffects, x, y }: StatusEffectsRowProps) {
+  const effects: { type: 'chill' | 'shrapnel' | 'rust'; stacks: number }[] = [];
+
+  if (statusEffects.chill > 0) {
+    effects.push({ type: 'chill', stacks: statusEffects.chill });
+  }
+  if (statusEffects.shrapnel > 0) {
+    effects.push({ type: 'shrapnel', stacks: statusEffects.shrapnel });
+  }
+  if (statusEffects.rust > 0) {
+    effects.push({ type: 'rust', stacks: statusEffects.rust });
+  }
+
+  if (effects.length === 0) {
+    return null;
+  }
+
+  const config = {
+    chill: { emoji: '❄️', color: '#60a5fa' },
+    shrapnel: { emoji: '💥', color: '#f97316' },
+    rust: { emoji: '🦠', color: '#a16207' },
+  };
+
+  const badgeWidth = 28;
+  const totalWidth = effects.length * badgeWidth + (effects.length - 1) * 4;
+  const startX = x - totalWidth / 2;
+
+  return (
+    <View style={[styles.statusRow, { left: startX, top: y }]}>
+      {effects.map((effect) => {
+        const { emoji, color } = config[effect.type];
+        return (
+          <View key={effect.type} style={[styles.statusBadge, { borderColor: color }]}>
+            <Text style={styles.statusEmoji}>{emoji}</Text>
+            <Text style={[styles.statusStacks, { color }]}>{effect.stacks}</Text>
+          </View>
+        );
+      })}
     </View>
   );
 }
@@ -221,11 +321,11 @@ const styles = StyleSheet.create({
     height: 2,
     backgroundColor: '#333355',
   },
-  combatantOuter: {
+  activeRing: {
     position: 'absolute',
-  },
-  combatantInner: {
-    position: 'absolute',
+    borderWidth: 4,
+    borderColor: '#333355',
+    backgroundColor: 'transparent',
   },
   hpBarBackground: {
     position: 'absolute',
@@ -235,6 +335,16 @@ const styles = StyleSheet.create({
   hpBarFill: {
     position: 'absolute',
     borderRadius: 4,
+  },
+  armBarBackground: {
+    position: 'absolute',
+    backgroundColor: '#2a2a3a',
+    borderRadius: 3,
+  },
+  armBarFill: {
+    position: 'absolute',
+    borderRadius: 3,
+    backgroundColor: '#a855f7',
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
@@ -251,14 +361,26 @@ const styles = StyleSheet.create({
     fontSize: 28,
     textAlign: 'center',
   },
-  statsLabel: {
+  statusRow: {
     position: 'absolute',
-    width: 80,
-    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 4,
   },
-  stats: {
-    fontSize: 8,
-    color: '#888888',
-    textAlign: 'center',
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 1,
+    backgroundColor: '#1a1a2e',
+  },
+  statusEmoji: {
+    fontSize: 10,
+  },
+  statusStacks: {
+    fontSize: 9,
+    fontWeight: 'bold',
+    marginLeft: 2,
   },
 });

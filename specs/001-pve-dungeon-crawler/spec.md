@@ -7,7 +7,7 @@
 
 ---
 
-## User Scenarios & Testing *(mandatory)*
+## User Scenarios & Testing _(mandatory)_
 
 ### User Story 1 - Dungeon Exploration (Priority: P1)
 
@@ -170,7 +170,7 @@ As a player, I want a clear landscape UI with D-pad controls, stats display, inv
 
 ---
 
-## Requirements *(mandatory)*
+## Requirements _(mandatory)_
 
 ### Functional Requirements
 
@@ -285,7 +285,7 @@ As a player, I want a clear landscape UI with D-pad controls, stats display, inv
 
 ---
 
-## Success Criteria *(mandatory)*
+## Success Criteria _(mandatory)_
 
 ### Measurable Outcomes
 
@@ -324,75 +324,105 @@ As a player, I want a clear landscape UI with D-pad controls, stats display, inv
 
 ### Appendix A: Enemy Data Reference
 
-| Enemy | Emoji | T1 Stats | T2 Stats | T3 Stats | Trait |
-|-------|-------|----------|----------|----------|-------|
-| Tunnel Rat | 🐀 | 3/1/0/2 | 5/2/0/3 | 7/3/0/4 | On Hit: Steal 1 Gold (max once/turn) |
-| Cave Bat | 🦇 | 4/1/0/2 | 6/2/0/3 | 8/3/0/4 | Every other strike: restore 1 HP |
-| Spore Slime | 🟢 | 6/1/2/0 | 9/2/3/0 | 12/3/4/0 | Battle Start: Give player 2 Chill |
-| Rust Mite Swarm | 🐜 | 5/1/0/3 | 8/2/0/4 | 11/3/0/5 | On Hit: Apply 1 Rust |
-| Collapsed Miner | 🧟 | 8/2/0/1 | 12/3/0/2 | 16/4/0/3 | Wounded: Gain +3 ATK |
-| Shard Beetle | 🪲 | 7/1/3/1 | 10/2/4/1 | 13/3/5/2 | Battle Start: Gain 5 Shrapnel |
-| Tunnel Warden | 🦀 | 6/2/4/2 | 9/3/6/3 | 12/4/8/4 | First strike: Remove 4 Armor before damage |
-| Burrow Ambusher | 🦂 | 5/4/0/3 | 8/6/0/4 | 11/8/0/5 | Ambush: Battle Start deal 3 damage (ignores armor) |
+| Enemy           | Emoji | T1 Stats | T2 Stats | T3 Stats | Trait                                              |
+| --------------- | ----- | -------- | -------- | -------- | -------------------------------------------------- |
+| Tunnel Rat      | 🐀    | 3/1/0/2  | 5/2/0/3  | 7/3/0/4  | On Hit: Steal 1 Gold (max once/turn)               |
+| Cave Bat        | 🦇    | 4/1/0/2  | 6/2/0/3  | 8/3/0/4  | Every other strike: restore 1 HP                   |
+| Spore Slime     | 🟢    | 6/1/2/0  | 9/2/3/0  | 12/3/4/0 | Battle Start: Give player 2 Chill                  |
+| Rust Mite Swarm | 🐜    | 5/1/0/3  | 8/2/0/4  | 11/3/0/5 | On Hit: Apply 1 Rust                               |
+| Collapsed Miner | 🧟    | 8/2/0/1  | 12/3/0/2 | 16/4/0/3 | Wounded: Gain +3 ATK                               |
+| Shard Beetle    | 🪲    | 7/1/3/1  | 10/2/4/1 | 13/3/5/2 | Battle Start: Gain 5 Shrapnel                      |
+| Tunnel Warden   | 🦀    | 6/2/4/2  | 9/3/6/3  | 12/4/8/4 | First strike: Remove 4 Armor before damage         |
+| Burrow Ambusher | 🦂    | 5/4/0/3  | 8/6/0/4  | 11/8/0/5 | Ambush: Battle Start deal 3 damage (ignores armor) |
 
 ### Appendix B: Boss Data Reference
 
-| Boss | Emoji | Week | Stats | Trait |
-|------|-------|------|-------|-------|
-| The Broodmother | 🕷️ | 1 | 20/1/0/3 | Swarm: Strikes 3 times per turn |
-| Obsidian Golem | 🗿 | 1 | 12/3/18/0 | Hardened: Turn Start regenerate +3 Armor |
-| Gas Anomaly | ☁️ | 1 | 28/2/0/2 | Toxic Seep: Turn Start deal 2 damage ignoring Armor |
-| Mad Miner | ⛏️ | 1 | 22/3/6/2 | Scavenger Mirror: Battle Start gains one of your Common item effects |
-| Drill Sergeant | 🪖 | 2 | 26/0/10/2 | Rev Up: Gains +2 ATK at Turn Start |
-| Crystal Mimic | 💎 | 2 | 30/4/8/3 | Reflection: First status application per turn reflects to player |
-| The Eldritch Mole | 🐲 | 3 | 60/5/12/3 | Three Phases: 75% +12 Armor, 50% strike twice, 25% +3 ATK +2 DIG |
+| Boss              | Emoji | Week | Stats     | Trait                                                                |
+| ----------------- | ----- | ---- | --------- | -------------------------------------------------------------------- |
+| The Broodmother   | 🕷️    | 1    | 20/1/0/3  | Swarm: Strikes 3 times per turn                                      |
+| Obsidian Golem    | 🗿    | 1    | 12/3/18/0 | Hardened: Turn Start regenerate +3 Armor                             |
+| Gas Anomaly       | ☁️    | 1    | 28/2/0/2  | Toxic Seep: Turn Start deal 2 damage ignoring Armor                  |
+| Mad Miner         | ⛏️    | 1    | 22/3/6/2  | Scavenger Mirror: Battle Start gains one of your Common item effects |
+| Drill Sergeant    | 🪖    | 2    | 26/0/10/2 | Rev Up: Gains +2 ATK at Turn Start                                   |
+| Crystal Mimic     | 💎    | 2    | 30/4/8/3  | Reflection: First status application per turn reflects to player     |
+| The Eldritch Mole | 🐲    | 3    | 60/5/12/3 | Three Phases: 75% +12 Armor, 50% strike twice, 25% +3 ATK +2 DIG     |
 
 ### Appendix C: Tool Data Reference
 
-| ID | Name | Emoji | Rarity | Stats | Tags | Effect |
-|----|------|-------|--------|-------|------|--------|
-| T1 | Polished Pickaxe | ⛏️ | Common | +3 ATK | STONE | - |
-| T2 | Reinforced Shovel | 🛠️ | Common | +1 ATK, +6 ARM | STONE | - |
-| T3 | Twin Picks | ⛏️⛏️ (stacked) | Common | +1 ATK | SCOUT | Strike twice each turn |
-| T4 | Prospector's Pike | 🗡️ | Common | +2 ATK, +2 DIG | SCOUT | - |
-| T5 | Pneumatic Drill | 🌀 | Rare | +1 ATK | SCOUT | Strike 3 times each turn |
-| T6 | Shadow Burrowblade | 🗡️ | Rare | +2 ATK | SCOUT | On Hit: strikes ignore Armor |
-| T7 | Gemfinder Staff | 🔮 | Heroic | +1 ATK, +1 ARM, +1 DIG | GREED | Gains On-Hit effects from Shards |
-| T8 | Tempest Drill | 🌪️ | Mythic | +0 | SCOUT | Attack equals your DIG |
-| T9 | Rusty Pickaxe | ⛏️ | Common | +1 ATK | STONE | - |
+| ID  | Name               | Emoji          | Rarity | Stats                  | Tags  | Effect                           |
+| --- | ------------------ | -------------- | ------ | ---------------------- | ----- | -------------------------------- |
+| T1  | Polished Pickaxe   | ⛏️             | Common | +3 ATK                 | STONE | -                                |
+| T2  | Reinforced Shovel  | 🛠️             | Common | +1 ATK, +6 ARM         | STONE | -                                |
+| T3  | Twin Picks         | ⛏️⛏️ (stacked) | Common | +1 ATK                 | SCOUT | Strike twice each turn           |
+| T4  | Prospector's Pike  | 🗡️             | Common | +2 ATK, +2 DIG         | SCOUT | -                                |
+| T5  | Pneumatic Drill    | 🌀             | Rare   | +1 ATK                 | SCOUT | Strike 3 times each turn         |
+| T6  | Shadow Burrowblade | 🗡️             | Rare   | +2 ATK                 | SCOUT | On Hit: strikes ignore Armor     |
+| T7  | Gemfinder Staff    | 🔮             | Heroic | +1 ATK, +1 ARM, +1 DIG | GREED | Gains On-Hit effects from Shards |
+| T8  | Tempest Drill      | 🌪️             | Mythic | +0                     | SCOUT | Attack equals your DIG           |
+| T9  | Rusty Pickaxe      | ⛏️             | Common | +1 ATK                 | STONE | -                                |
 
 Starter note: Each run begins with the Rusty Pickaxe (T9) equipped.
 
 ### Appendix D: Gear Data Reference
 
-*(See full item tables in implementation documents)*
+| ID  | Name                | Emoji | Slot | Rarity | Stats                    | Tags  | Effect                                                                                                       |
+| --- | ------------------- | ----- | ---- | ------ | ------------------------ | ----- | ------------------------------------------------------------------------------------------------------------ |
+| I1  | Miner’s Boots       | 🥾    | Gear | Common | +2 / +4 / +8 DIG         | SCOUT | —                                                                                                            |
+| I2  | Miner’s Helmet      | ⛑️    | Gear | Common | +2 / +4 / +8 ARM         | STONE | —                                                                                                            |
+| I3  | Work Vest           | 🦺    | Gear | Common | +4 / +8 / +16 HP, +1 ARM | STONE | —                                                                                                            |
+| I4  | Leather Gloves      | 🧤    | Gear | Common | +2 ATK, +1 DIG           | SCOUT | —                                                                                                            |
+| I5  | Cracked Whetstone   | 🪨    | Gear | Common | —                        | STONE | **First Turn:** temporarily gain **+2 / +4 / +8 ATK**.                                                       |
+| I6  | Spiked Bracers      | 🥊    | Gear | Common | —                        | STONE | **Battle Start:** gain **1 / 2 / 4 Shrapnel**.                                                               |
+| I7  | Frost Lantern       | 🏮    | Gear | Common | —                        | FROST | **Battle Start:** give enemy **1 / 2 / 4 Chill**.                                                            |
+| I8  | Loose Nuggets       | 🪙    | Gear | Common | —                        | GREED | **Start of each Day:** gain **3 / 6 / 12 Gold**.                                                             |
+| I9  | Canary Charm        | 🐤    | Gear | Common | —                        | SCOUT | **One Use:** the first time you would die, **revive at 1 HP** (then breaks).                                 |
+| I10 | Small Charge        | 🧨    | Gear | Common | —                        | BLAST | **Countdown (2):** deal **10** damage to enemy **and you**. _(non-weapon)_                                   |
+| I11 | Emerald Shard       | 💚    | Gear | Common | —                        | GREED | **Every other turn:** restore **1** HP.                                                                      |
+| I12 | Ruby Shard          | ❤️    | Gear | Common | —                        | GREED | **Every other turn:** deal **1** non-weapon damage.                                                          |
+| I13 | Sapphire Shard      | 💎    | Gear | Common | —                        | GREED | **Every other turn:** gain **1 Armor**.                                                                      |
+| I14 | Citrine Shard       | 🔶    | Gear | Common | —                        | GREED | **Every other turn:** gain **1 DIG**.                                                                        |
+| I15 | Frostguard Buckler  | 🛡️    | Gear | Rare   | +8 ARM                   | FROST | **Battle Start:** gain **2 Chill** _(on you)_.                                                               |
+| I16 | Blast Suit          | 🧥    | Gear | Rare   | +10 ARM                  | BLAST | **You ignore damage from your own BLAST items.** _(Charges still trigger.)_                                  |
+| I17 | Bomb Satchel        | 🎒    | Gear | Rare   | —                        | BLAST | **Battle Start, Exposed, Wounded:** spend **3 DIG** to **retrigger a random bomb** you have.                 |
+| I18 | Explosive Powder    | 🧪    | Gear | Rare   | —                        | BLAST | **All bomb damage** is increased by **+1**.                                                                  |
+| I19 | Kindling Charge     | 🔥    | Gear | Rare   | —                        | BLAST | **Battle Start:** deal **1** damage. **The next bomb** you trigger this battle deals **+3** damage.          |
+| I20 | Double Detonation   | 💥    | Gear | Rare   | —                        | BLAST | **The second time** you deal non-weapon damage each turn, deal **+3** damage.                                |
+| I21 | Shrapnel Talisman   | 📿    | Gear | Rare   | —                        | STONE | **Whenever you gain Shrapnel,** also gain **+1 Armor**.                                                      |
+| I22 | Rust Spike          | 🪛    | Gear | Rare   | —                        | RUST  | **On Hit:** apply **1 Rust** to the enemy.                                                                   |
+| I23 | Corroded Greaves    | 🥾    | Gear | Rare   | -1 DIG                   | RUST  | **Wounded:** apply **3 Rust** to enemy.                                                                      |
+| I24 | Crystal Crown       | 👑    | Gear | Heroic | —                        | STONE | **Battle Start:** gain **Max HP equal to your Base Armor**.                                                  |
+| I25 | Royal Bracer        | 💠    | Gear | Heroic | —                        | GREED | **Turn Start:** convert **1 Gold → 3 Armor**.                                                                |
+| I26 | Time Charge         | ⏳    | Gear | Heroic | —                        | BLAST | **Exposed:** deal **1** damage. **Turn Start:** this item gains **+2** damage (permanently for this battle). |
+| I27 | Drill Servo         | ⚙️    | Gear | Heroic | —                        | SCOUT | **Wounded:** gain **+2 additional strikes** (this battle).                                                   |
+| I28 | Gear-Link Medallion | 🔗    | Gear | Mythic | —                        | SCOUT | **Your On Hit effects trigger twice.**                                                                       |
+| I29 | Twin-Fuse Knot      | 🧬    | Gear | Mythic | —                        | BLAST | **Your bomb items trigger twice.**                                                                           |
 
 ### Appendix E: Itemset Data Reference
 
-| Set Name | Emoji | Required Items | Bonus |
-|----------|-------|----------------|-------|
-| Union Standard | 🧰 | I2 + I3 + I1 | Battle Start: +4 Armor, +1 DIG |
-| Shard Circuit | 🔁 | I11 + I12 + I13 + I14 | Shards trigger every turn |
-| Demolition Permit | 🧾 | I16 + I18 + I10 | Countdown items trigger 1 turn sooner |
-| Fuse Network | 🕸️ | I17 + I19 + I20 | First non-weapon damage per turn deals +2 |
-| Shrapnel Harness | 🛡️ | I6 + I21 + T2 | Keep up to 3 Shrapnel at end of turn |
-| Rust Ritual | ☣️ | I22 + I23 + I5 | On Hit: apply +1 additional Rust |
-| Swift Digger Kit | ⚡ | T3 + I1 + I27 | Battle Start: If DIG > enemy DIG, +2 strikes |
-| Royal Extraction | 🏦 | I8 + I25 + T7 | Gold to Armor conversion becomes 1:4 |
+| Set Name          | Emoji | Required Items        | Bonus                                        |
+| ----------------- | ----- | --------------------- | -------------------------------------------- |
+| Union Standard    | 🧰    | I2 + I3 + I1          | Battle Start: +4 Armor, +1 DIG               |
+| Shard Circuit     | 🔁    | I11 + I12 + I13 + I14 | Shards trigger every turn                    |
+| Demolition Permit | 🧾    | I16 + I18 + I10       | Countdown items trigger 1 turn sooner        |
+| Fuse Network      | 🕸️    | I17 + I19 + I20       | First non-weapon damage per turn deals +2    |
+| Shrapnel Harness  | 🛡️    | I6 + I21 + T2         | Keep up to 3 Shrapnel at end of turn         |
+| Rust Ritual       | ☣️    | I22 + I23 + I5        | On Hit: apply +1 additional Rust             |
+| Swift Digger Kit  | ⚡    | T3 + I1 + I27         | Battle Start: If DIG > enemy DIG, +2 strikes |
+| Royal Extraction  | 🏦    | I8 + I25 + T7         | Gold to Armor conversion becomes 1:4         |
 
 ### Appendix F: POI Data Reference
 
-| ID | Location | Emoji | Rarity | Interaction |
-|----|----------|-------|--------|-------------|
-| L1 | Mole Den | 🏠 | Fixed | Night only: Skip to Day, restore all HP |
-| L2 | Supply Cache | 📦 | Common | Pick 1 of 3 Common items |
-| L3 | Tool Crate | 🧰 | Uncommon | Pick 1 of 3 Tools |
-| L4 | Tool Oil Rack | 🛢️ | Common | Modify tool: +1 ATK/ARM/DIG (once per tool) |
-| L5 | Rest Alcove | 🕯️ | Common | Night only: Skip to Day, restore 10 HP |
-| L6 | Survey Beacon | 📡 | Common | Reveal tiles in radius 13 |
-| L7 | Seismic Scanner | 📍 | Uncommon | Choose POI type, reveal nearest instance |
-| L8 | Rail Waypoint | 🚇 | Uncommon | Fast travel between discovered waypoints |
-| L9 | Smuggler Hatch | 🕳️ | Uncommon | Shop: 5 Rare + 1 Heroic items |
-| L10 | Rusty Anvil | ⚒️ | Uncommon | Upgrade tool with forge mods (costs Gold) |
-| L11 | Crusher Golem | 🗿 | Rare | Fuse 2 identical items to upgrade tier |
-| L12 | Geode Vault | 💠 | Rare | Pick 1 of 3 Heroic items |
+| ID  | Location        | Emoji | Rarity   | Interaction                                 |
+| --- | --------------- | ----- | -------- | ------------------------------------------- |
+| L1  | Mole Den        | 🏠    | Fixed    | Night only: Skip to Day, restore all HP     |
+| L2  | Supply Cache    | 📦    | Common   | Pick 1 of 3 Common items                    |
+| L3  | Tool Crate      | 🧰    | Uncommon | Pick 1 of 3 Tools                           |
+| L4  | Tool Oil Rack   | 🛢️    | Common   | Modify tool: +1 ATK/ARM/DIG (once per tool) |
+| L5  | Rest Alcove     | 🕯️    | Common   | Night only: Skip to Day, restore 10 HP      |
+| L6  | Survey Beacon   | 📡    | Common   | Reveal tiles in radius 13                   |
+| L7  | Seismic Scanner | 📍    | Uncommon | Choose POI type, reveal nearest instance    |
+| L8  | Rail Waypoint   | 🚇    | Uncommon | Fast travel between discovered waypoints    |
+| L9  | Smuggler Hatch  | 🕳️    | Uncommon | Shop: 5 Rare + 1 Heroic items               |
+| L10 | Rusty Anvil     | ⚒️    | Uncommon | Upgrade tool with forge mods (costs Gold)   |
+| L11 | Crusher Golem   | 🗿    | Rare     | Fuse 2 identical items to upgrade tier      |
+| L12 | Geode Vault     | 💠    | Rare     | Pick 1 of 3 Heroic items                    |

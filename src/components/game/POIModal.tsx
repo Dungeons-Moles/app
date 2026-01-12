@@ -10,7 +10,6 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  Modal,
   type GestureResponderEvent,
 } from 'react-native';
 import type {
@@ -20,8 +19,11 @@ import type {
   Gear,
   GearId,
   ItemRarity,
+  ToolId,
 } from '@/game/engine/types';
 import { POI_DEFINITIONS } from '@/data/pois';
+import { TOOL_DEFINITIONS } from '@/game/entities/items';
+import { GEAR_DEFINITIONS } from '@/data/gear';
 import type { POIId } from '@/game/map/types';
 import { extractStatBonuses, formatStatBonuses } from '@/utils/stat-display';
 import { SimplifiedItemOption } from '@/components/poi/SimplifiedItemOption';
@@ -39,6 +41,28 @@ interface POIModalProps {
 
 // POI types that use the 3-choice card layout
 const THREE_CHOICE_POIS: POIId[] = ['L2', 'L3', 'L4', 'L12'];
+
+// Stat-to-emoji mapping for Tool Oil Rack (L4) options
+const STAT_EMOJI_MAP: Record<string, { emoji: string; name: string }> = {
+  '+1 ATK': { emoji: '⚔️', name: 'Attack Oil' },
+  '+1 ARM': { emoji: '🛡️', name: 'Armor Oil' },
+  '+1 DIG': { emoji: '⛏️', name: 'Dig Oil' },
+};
+
+// Helper to get effect description from item definitions
+function getItemEffectDescription(item: Tool | Gear | undefined): string | undefined {
+  if (!item) return undefined;
+
+  // Check if it's a tool (has 'rarity' but not 'currentRarity')
+  if ('rarity' in item && !('currentRarity' in item)) {
+    const toolDef = TOOL_DEFINITIONS[item.id as ToolId];
+    return toolDef?.effect?.description;
+  }
+
+  // It's gear
+  const gearDef = GEAR_DEFINITIONS[item.id as GearId];
+  return gearDef?.effect?.description;
+}
 
 type TooltipState = {
   name: string;
@@ -301,313 +325,13 @@ export function POIModal({
   }
 
   if (isThreeChoicePOI && hasValidOptions) {
-    return (
-      <Modal
-        visible={visible}
-        transparent
-        animationType="fade"
-        onRequestClose={onClose}
-      >
-        <View style={styles.overlay}>
-          <View style={styles.threeChoiceModal}>
-            <TouchableOpacity
-              style={styles.closeButtonTop}
-              onPress={onClose}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.closeButtonTopText}>X</Text>
-            </TouchableOpacity>
-
-            <Text style={styles.threeChoiceTitle}>{poiDef.name}</Text>
-
-            <View style={styles.cardsContainer}>
-              {options.slice(0, 3).map((option, index) => {
-                const statDisplay = getOptionDisplay(option);
-                const rarity = getOptionRarity(option);
-                return (
-                  <SimplifiedItemOption
-                    key={index}
-                    statDisplay={statDisplay}
-                    rarity={rarity}
-                    itemName={option.item?.name ?? option.label}
-                    disabled={option.disabled}
-                    onSelect={() => handleOptionSelect(index)}
-                    onLongPress={(event) => handleOptionLongPress(option, event)}
-                  />
-                );
-              })}
-            </View>
-            {tooltip ? (
-              <PoiItemTooltip
-                name={tooltip.name}
-                description={tooltip.description}
-                rarity={tooltip.rarity}
-                anchorPosition={tooltip.position}
-                onDismiss={handleTooltipDismiss}
-              />
-            ) : null}
-          </View>
-        </View>
-      </Modal>
-    );
-  }
-
-  if (isRailWaypoint) {
-    const hasOtherWaypoints = displayOptions.some(
-      ({ option }) => !option.disabled && option.label.startsWith('Travel')
-    );
-    return (
-      <Modal
-        visible={visible}
-        transparent
-        animationType="fade"
-        onRequestClose={onClose}
-      >
-        <View style={styles.overlay}>
-          <View style={styles.standardModal}>
-            <TouchableOpacity
-              style={styles.closeButtonTop}
-              onPress={onClose}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.closeButtonTopText}>X</Text>
-            </TouchableOpacity>
-
-            <Text style={styles.threeChoiceTitle}>{poiDef.name}</Text>
-
-            {hasOtherWaypoints ? (
-              <TouchableOpacity
-                style={styles.primaryButton}
-                onPress={() => {}}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.primaryButtonText}>Fast travel?</Text>
-              </TouchableOpacity>
-            ) : (
-              <Text style={styles.helperText}>No other waypoints discovered</Text>
-            )}
-          </View>
-        </View>
-      </Modal>
-    );
-  }
-
-  if (isSmugglerHatch) {
-    const shopItems = displayOptions.filter(({ option }) => option.item);
-    const rerollOption = indexedOptions.find(({ option }) => option.label.includes('Reroll'));
-    const rerollDisabled = !rerollOption || rerollOption.option.disabled;
-    const gridItems = shopItems.slice(0, 6);
+    if (!visible) {
+      return null;
+    }
 
     return (
-      <Modal
-        visible={visible}
-        transparent
-        animationType="fade"
-        onRequestClose={onClose}
-      >
-        <View style={styles.overlay}>
-          <View style={styles.standardModal}>
-            <TouchableOpacity
-              style={styles.closeButtonTop}
-              onPress={onClose}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.closeButtonTopText}>X</Text>
-            </TouchableOpacity>
-
-            <Text style={styles.threeChoiceTitle}>{poiDef.name}</Text>
-
-            <View style={styles.gridWrapper}>
-              <View style={styles.shopGrid}>
-                {gridItems.map(({ option, index: optionIndex }) => {
-                  const disabled = option.disabled;
-                  return (
-                    <TouchableOpacity
-                      key={`shop-${optionIndex}`}
-                      style={[styles.shopCell, disabled && styles.shopCellDisabled]}
-                      onPress={() => onSelectOption(optionIndex)}
-                      activeOpacity={0.7}
-                      disabled={disabled}
-                    >
-                      <Text style={styles.shopEmoji}>{option.item?.emoji}</Text>
-                      {option.cost !== undefined && (
-                        <Text style={styles.shopCost}>{option.cost}g</Text>
-                      )}
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </View>
-
-            <TouchableOpacity
-              style={[styles.rerollButton, rerollDisabled && styles.rerollButtonDisabled]}
-              onPress={() => rerollOption && onSelectOption(rerollOption.index)}
-              activeOpacity={0.7}
-              disabled={rerollDisabled}
-            >
-              <Text style={styles.rerollButtonText}>
-                {rerollOption?.option.label ?? 'Reroll shop'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-    );
-  }
-
-  if (isRustyAnvil) {
-    const noToolOption = displayOptions.find(({ option }) => option.label === 'No tool equipped');
-    const forgeOptions = noToolOption ? [] : displayOptions;
-
-    return (
-      <Modal
-        visible={visible}
-        transparent
-        animationType="fade"
-        onRequestClose={onClose}
-      >
-        <View style={styles.overlay}>
-          <View style={[styles.standardModal, styles.compactModal]}>
-            <TouchableOpacity
-              style={styles.closeButtonTop}
-              onPress={onClose}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.closeButtonTopText}>X</Text>
-            </TouchableOpacity>
-
-            <Text style={styles.threeChoiceTitle}>{poiDef.name}</Text>
-
-            {noToolOption ? (
-              <Text style={styles.helperText}>{noToolOption.option.label}</Text>
-            ) : (
-              <View style={styles.gridWrapper}>
-                <View style={styles.anvilGrid}>
-                  {forgeOptions.map(({ option, index }) => {
-                    const emoji = option.label.split(' ')[0];
-                    const disabled = option.disabled;
-                    return (
-                      <TouchableOpacity
-                        key={`anvil-${index}`}
-                        style={[styles.anvilCell, disabled && styles.shopCellDisabled]}
-                        onPress={() => onSelectOption(index)}
-                        activeOpacity={0.7}
-                        disabled={disabled}
-                      >
-                        <Text style={styles.shopEmoji}>{emoji}</Text>
-                        {option.cost !== undefined && (
-                          <Text style={styles.shopCost}>{option.cost}g</Text>
-                        )}
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </View>
-            )}
-          </View>
-        </View>
-      </Modal>
-    );
-  }
-
-  if (isRestAlcove) {
-    const restOption = displayOptions[0];
-    return (
-      <Modal
-        visible={visible}
-        transparent
-        animationType="fade"
-        onRequestClose={onClose}
-      >
-        <View style={styles.overlay}>
-          <View style={styles.standardModal}>
-            <TouchableOpacity
-              style={styles.closeButtonTop}
-              onPress={onClose}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.closeButtonTopText}>X</Text>
-            </TouchableOpacity>
-
-            <Text style={styles.threeChoiceTitle}>{poiDef.name}</Text>
-
-            {restOption && (
-              <TouchableOpacity
-                style={[styles.primaryButton, restOption.option.disabled && styles.primaryButtonDisabled]}
-                onPress={() => onSelectOption(restOption.index)}
-                activeOpacity={0.7}
-                disabled={restOption.option.disabled}
-              >
-                <Text style={styles.primaryButtonText}>{restOption.option.label}</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        </View>
-      </Modal>
-    );
-  }
-
-  if (isSeismicScanner) {
-    const activeScannerOptions = displayOptions.filter(({ option }) => !option.disabled);
-    const emptyOption = displayOptions.find(({ option }) => option.disabled);
-
-    return (
-      <Modal
-        visible={visible}
-        transparent
-        animationType="fade"
-        onRequestClose={onClose}
-      >
-        <View style={styles.overlay}>
-          <View style={styles.standardModal}>
-            <TouchableOpacity
-              style={styles.closeButtonTop}
-              onPress={onClose}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.closeButtonTopText}>X</Text>
-            </TouchableOpacity>
-
-            <Text style={styles.threeChoiceTitle}>{poiDef.name}</Text>
-
-            {activeScannerOptions.length > 0 ? (
-              <View style={styles.gridWrapper}>
-                <View style={styles.scannerGrid}>
-                  {activeScannerOptions.map(({ option, index }) => {
-                    const emoji = option.label.split(' ')[0];
-                    return (
-                      <TouchableOpacity
-                        key={`scan-${index}`}
-                        style={styles.scannerCell}
-                        onPress={() => onSelectOption(index)}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={styles.scannerEmoji}>{emoji}</Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </View>
-            ) : (
-              <Text style={styles.helperText}>
-                {emptyOption?.option.label ?? 'No POIs to reveal'}
-              </Text>
-            )}
-          </View>
-        </View>
-      </Modal>
-    );
-  }
-
-  return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onClose}
-    >
-      <View style={styles.overlay}>
-        <View style={styles.standardModal}>
+      <View style={styles.overlay} pointerEvents="box-none">
+        <View style={styles.threeChoiceModal} pointerEvents="auto">
           <TouchableOpacity
             style={styles.closeButtonTop}
             onPress={onClose}
@@ -617,23 +341,311 @@ export function POIModal({
           </TouchableOpacity>
 
           <Text style={styles.threeChoiceTitle}>{poiDef.name}</Text>
-          {poiDef.description ? (
-            <Text style={styles.description}>{poiDef.description}</Text>
-          ) : null}
 
-          <View style={styles.optionsContent}>
-            {displayOptions.map(({ option, index }) => (
-              <ListOptionButton
-                key={index}
-                option={option}
-                index={index}
-                onPress={onSelectOption}
-              />
-            ))}
+          <View style={styles.cardsContainer}>
+            {options.slice(0, 3).map((option, index) => {
+              const statDisplay = option.item
+                ? formatStatBonuses(extractStatBonuses(option.item)) || undefined
+                : getOptionDisplay(option);
+              const rarity = getOptionRarity(option);
+              // For Tool Oil Rack (L4), use stat emoji mapping
+              const statMapping = STAT_EMOJI_MAP[option.label];
+              const emoji = option.item?.emoji ?? statMapping?.emoji;
+              const itemName = option.item?.name ?? statMapping?.name ?? option.label;
+              const effectDescription = getItemEffectDescription(option.item);
+              return (
+                <SimplifiedItemOption
+                  key={index}
+                  emoji={emoji}
+                  statDisplay={statDisplay}
+                  effectDescription={effectDescription}
+                  rarity={rarity}
+                  itemName={itemName}
+                  disabled={option.disabled}
+                  onSelect={() => handleOptionSelect(index)}
+                  onLongPress={(event) => handleOptionLongPress(option, event)}
+                />
+              );
+            })}
           </View>
+          {tooltip ? (
+            <PoiItemTooltip
+              name={tooltip.name}
+              description={tooltip.description}
+              rarity={tooltip.rarity}
+              anchorPosition={tooltip.position}
+              onDismiss={handleTooltipDismiss}
+            />
+          ) : null}
         </View>
       </View>
-    </Modal>
+    );
+  }
+
+  if (isRailWaypoint) {
+    if (!visible) {
+      return null;
+    }
+
+    const hasOtherWaypoints = displayOptions.some(
+      ({ option }) => !option.disabled && option.label.startsWith('Travel')
+    );
+    return (
+      <View style={styles.overlay} pointerEvents="box-none">
+        <View style={styles.standardModal} pointerEvents="auto">
+          <TouchableOpacity
+            style={styles.closeButtonTop}
+            onPress={onClose}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.closeButtonTopText}>X</Text>
+          </TouchableOpacity>
+
+          <Text style={styles.threeChoiceTitle}>{poiDef.name}</Text>
+
+          {hasOtherWaypoints ? (
+            <TouchableOpacity
+              style={styles.primaryButton}
+              onPress={() => {}}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.primaryButtonText}>Fast travel?</Text>
+            </TouchableOpacity>
+          ) : (
+            <Text style={styles.helperText}>No other waypoints discovered</Text>
+          )}
+        </View>
+      </View>
+    );
+  }
+
+  if (isSmugglerHatch) {
+    if (!visible) {
+      return null;
+    }
+
+    const shopItems = displayOptions.filter(({ option }) => option.item);
+    const rerollOption = indexedOptions.find(({ option }) => option.label.includes('Reroll'));
+    const rerollDisabled = !rerollOption || rerollOption.option.disabled;
+    const gridItems = shopItems.slice(0, 6);
+
+    return (
+      <View style={styles.overlay} pointerEvents="box-none">
+        <View style={styles.standardModal} pointerEvents="auto">
+          <TouchableOpacity
+            style={styles.closeButtonTop}
+            onPress={onClose}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.closeButtonTopText}>X</Text>
+          </TouchableOpacity>
+
+          <Text style={styles.threeChoiceTitle}>{poiDef.name}</Text>
+
+          <View style={styles.gridWrapper}>
+            <View style={styles.shopGrid}>
+              {gridItems.map(({ option, index: optionIndex }) => {
+                const disabled = option.disabled;
+                return (
+                  <TouchableOpacity
+                    key={`shop-${optionIndex}`}
+                    style={[styles.shopCell, disabled && styles.shopCellDisabled]}
+                    onPress={() => onSelectOption(optionIndex)}
+                    activeOpacity={0.7}
+                    disabled={disabled}
+                  >
+                    <Text style={styles.shopEmoji}>{option.item?.emoji}</Text>
+                    {option.cost !== undefined && (
+                      <Text style={styles.shopCost}>{option.cost}g</Text>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+
+          <TouchableOpacity
+            style={[styles.rerollButton, rerollDisabled && styles.rerollButtonDisabled]}
+            onPress={() => rerollOption && onSelectOption(rerollOption.index)}
+            activeOpacity={0.7}
+            disabled={rerollDisabled}
+          >
+            <Text style={styles.rerollButtonText}>
+              {rerollOption?.option.label ?? 'Reroll shop'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  if (isRustyAnvil) {
+    if (!visible) {
+      return null;
+    }
+
+    const noToolOption = displayOptions.find(({ option }) => option.label === 'No tool equipped');
+    const forgeOptions = noToolOption ? [] : displayOptions;
+
+    return (
+      <View style={styles.overlay} pointerEvents="box-none">
+        <View style={[styles.standardModal, styles.compactModal]} pointerEvents="auto">
+          <TouchableOpacity
+            style={styles.closeButtonTop}
+            onPress={onClose}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.closeButtonTopText}>X</Text>
+          </TouchableOpacity>
+
+          <Text style={styles.threeChoiceTitle}>{poiDef.name}</Text>
+
+          {noToolOption ? (
+            <Text style={styles.helperText}>{noToolOption.option.label}</Text>
+          ) : (
+            <View style={styles.gridWrapper}>
+              <View style={styles.anvilGrid}>
+                {forgeOptions.map(({ option, index }) => {
+                  const emoji = option.label.split(' ')[0];
+                  const disabled = option.disabled;
+                  return (
+                    <TouchableOpacity
+                      key={`anvil-${index}`}
+                      style={[styles.anvilCell, disabled && styles.shopCellDisabled]}
+                      onPress={() => onSelectOption(index)}
+                      activeOpacity={0.7}
+                      disabled={disabled}
+                    >
+                      <Text style={styles.shopEmoji}>{emoji}</Text>
+                      {option.cost !== undefined && (
+                        <Text style={styles.shopCost}>{option.cost}g</Text>
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+          )}
+        </View>
+      </View>
+    );
+  }
+
+  if (isRestAlcove) {
+    if (!visible) {
+      return null;
+    }
+
+    const restOption = displayOptions[0];
+    return (
+      <View style={styles.overlay} pointerEvents="box-none">
+        <View style={styles.standardModal} pointerEvents="auto">
+          <TouchableOpacity
+            style={styles.closeButtonTop}
+            onPress={onClose}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.closeButtonTopText}>X</Text>
+          </TouchableOpacity>
+
+          <Text style={styles.threeChoiceTitle}>{poiDef.name}</Text>
+
+          {restOption && (
+            <TouchableOpacity
+              style={[styles.primaryButton, restOption.option.disabled && styles.primaryButtonDisabled]}
+              onPress={() => onSelectOption(restOption.index)}
+              activeOpacity={0.7}
+              disabled={restOption.option.disabled}
+            >
+              <Text style={styles.primaryButtonText}>{restOption.option.label}</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+    );
+  }
+
+  if (isSeismicScanner) {
+    if (!visible) {
+      return null;
+    }
+
+    const activeScannerOptions = displayOptions.filter(({ option }) => !option.disabled);
+    const emptyOption = displayOptions.find(({ option }) => option.disabled);
+
+    return (
+      <View style={styles.overlay} pointerEvents="box-none">
+        <View style={styles.standardModal} pointerEvents="auto">
+          <TouchableOpacity
+            style={styles.closeButtonTop}
+            onPress={onClose}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.closeButtonTopText}>X</Text>
+          </TouchableOpacity>
+
+          <Text style={styles.threeChoiceTitle}>{poiDef.name}</Text>
+
+          {activeScannerOptions.length > 0 ? (
+            <View style={styles.gridWrapper}>
+              <View style={styles.scannerGrid}>
+                {activeScannerOptions.map(({ option, index }) => {
+                  const emoji = option.label.split(' ')[0];
+                  return (
+                    <TouchableOpacity
+                      key={`scan-${index}`}
+                      style={styles.scannerCell}
+                      onPress={() => onSelectOption(index)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.scannerEmoji}>{emoji}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+          ) : (
+            <Text style={styles.helperText}>
+              {emptyOption?.option.label ?? 'No POIs to reveal'}
+            </Text>
+          )}
+        </View>
+      </View>
+    );
+  }
+
+  if (!visible) {
+    return null;
+  }
+
+  return (
+    <View style={styles.overlay} pointerEvents="box-none">
+      <View style={styles.standardModal} pointerEvents="auto">
+        <TouchableOpacity
+          style={styles.closeButtonTop}
+          onPress={onClose}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.closeButtonTopText}>X</Text>
+        </TouchableOpacity>
+
+        <Text style={styles.threeChoiceTitle}>{poiDef.name}</Text>
+        {poiDef.description ? (
+          <Text style={styles.description}>{poiDef.description}</Text>
+        ) : null}
+
+        <View style={styles.optionsContent}>
+          {displayOptions.map(({ option, index }) => (
+            <ListOptionButton
+              key={index}
+              option={option}
+              index={index}
+              onPress={onSelectOption}
+            />
+          ))}
+        </View>
+      </View>
+    </View>
   );
 }
 
@@ -642,17 +654,14 @@ const styles = StyleSheet.create({
   // Overlay & Container
   // ============================================================================
   overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
   },
   inlineOverlay: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingRight: 160,
   },
 
   // ============================================================================
@@ -665,7 +674,7 @@ const styles = StyleSheet.create({
     borderColor: '#4a4a55',
     padding: 16,
     paddingTop: 24,
-    maxWidth: 500,
+    maxWidth: 580,
     width: '100%',
     position: 'relative',
   },

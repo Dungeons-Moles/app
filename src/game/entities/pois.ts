@@ -32,6 +32,39 @@ import { SeededRNG } from '../engine/rng';
 // Item Description Helpers
 // ============================================================================
 
+function pickUniqueById<T, Id extends string>(
+  rng: SeededRNG,
+  pool: readonly T[],
+  count: number,
+  getId: (item: T) => Id,
+  exclude: ReadonlySet<Id> = new Set()
+): T[] {
+  const selected: T[] = [];
+  const selectedIds = new Set<Id>(exclude);
+  let attempts = 0;
+
+  while (selected.length < count && attempts < 1000) {
+    attempts += 1;
+    const candidate = rng.pick(pool);
+    const id = getId(candidate);
+    if (selectedIds.has(id)) continue;
+    selectedIds.add(id);
+    selected.push(candidate);
+  }
+
+  if (selected.length < count) {
+    for (const candidate of pool) {
+      if (selected.length >= count) break;
+      const id = getId(candidate);
+      if (selectedIds.has(id)) continue;
+      selectedIds.add(id);
+      selected.push(candidate);
+    }
+  }
+
+  return selected;
+}
+
 /**
  * Generates a description string from item stats
  */
@@ -159,9 +192,9 @@ function generateSupplyCacheOptions(
   const commonGear = getGearByRarity('COMMON');
   const options: POIOption[] = [];
 
-  // Generate 3 random items
-  for (let i = 0; i < 3; i++) {
-    const gearDef = rng.pick(commonGear);
+  // Generate 3 unique random items
+  const pickedGear = pickUniqueById(rng, commonGear, 3, (gearDef) => gearDef.id);
+  for (const gearDef of pickedGear) {
     // Small chance for rarity upgrade
     const roll = rng.next();
     let rarity: ItemRarity = 'COMMON';
@@ -190,11 +223,15 @@ function generateToolCrateOptions(
   state: GameState,
   rng: SeededRNG
 ): POIOption[] {
-  const commonTools = getToolsByRarity('COMMON');
+  const commonTools = getToolsByRarity('COMMON').filter((tool) => tool.id !== 'T9');
   const rareTools = getToolsByRarity('RARE');
   const options: POIOption[] = [];
 
-  for (let i = 0; i < 3; i++) {
+  const selectedIds = new Set<string>();
+  let attempts = 0;
+
+  while (options.length < 3 && attempts < 1000) {
+    attempts += 1;
     const roll = rng.next();
     let toolDef;
     if (roll < 0.25 && rareTools.length > 0) {
@@ -203,6 +240,11 @@ function generateToolCrateOptions(
     } else {
       toolDef = rng.pick(commonTools);
     }
+
+    if (selectedIds.has(toolDef.id)) {
+      continue;
+    }
+    selectedIds.add(toolDef.id);
     const tool = createToolInstance(toolDef.id);
     options.push({
       label: tool.name,
@@ -381,9 +423,9 @@ function generateSmugglerHatchOptions(
   const heroicGear = getGearByRarity('HEROIC');
   const options: POIOption[] = [];
 
-  // Generate 5 rare items
-  for (let i = 0; i < 5; i++) {
-    const gearDef = rng.pick(rareGear);
+  // Generate 5 unique rare items
+  const pickedRareGear = pickUniqueById(rng, rareGear, 5, (gearDef) => gearDef.id);
+  for (const gearDef of pickedRareGear) {
     const gear = createGearInstance(gearDef.id);
     const cost = calculateItemCost(gear);
     const canAfford = state.player.stats.gold >= cost;

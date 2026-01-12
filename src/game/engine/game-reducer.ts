@@ -15,6 +15,7 @@ import type {
   Gear,
   GearId,
   CombatState,
+  Player,
 } from './types';
 import { GamePhase, CombatPhase, DEFAULT_STATUS_EFFECTS, TimePhase } from './types';
 import { Direction, DIRECTION_DELTA } from '../input/types';
@@ -39,7 +40,9 @@ import {
   consumeMove,
   advanceTimePhase,
   shouldTriggerBoss,
+  advanceToNextWeek,
 } from '../time/progression';
+import { SeededRNG } from './rng';
 import {
   createPOIInteraction,
   applyPOIOption,
@@ -53,6 +56,7 @@ import {
 import { moveEnemiesNight, isWithinSightRange } from '../map/pathfinding';
 import { SIGHT_RADIUS } from './constants';
 import { RARITY_MULTIPLIER } from '../../data/gear';
+import { BOSSES } from '../../data/bosses';
 
 // ============================================================================
 // Game Actions
@@ -366,6 +370,37 @@ function handleMove(state: GameState, direction: Direction): GameState {
 
   // Check if boss should trigger (Night 3 complete) (T065)
   if (shouldTriggerBoss(newTime)) {
+    // Create player combatant for boss fight
+    const playerCombatant: CombatantState = {
+      name: 'Player',
+      emoji: '🦦',
+      isPlayer: true,
+      maxHp: newState.player.stats.maxHp,
+      hp: newState.player.stats.hp,
+      atk: newState.player.stats.atk,
+      arm: newState.player.stats.arm,
+      spd: newState.player.stats.spd,
+      dig: newState.player.stats.dig,
+      bonusAtk: 0,
+      bonusArm: 0,
+      bonusSpd: 0,
+      statusEffects: { ...newState.player.statusEffects },
+      strikesPerTurn: getPlayerStrikesPerTurn(newState),
+      ignoresArmor: hasArmorIgnore(newState),
+    };
+
+    // Create boss combatant
+    const bossCombatant = createBossCombatant(newState.time.weekBoss);
+
+    // Create combat state for boss fight
+    const combatState = createCombatState({
+      player: playerCombatant,
+      enemy: bossCombatant,
+      seed: newState.rngState,
+      bossId: newState.time.weekBoss,
+      playerGold: newState.player.stats.gold,
+    });
+
     return {
       ...newState,
       time: {
@@ -373,6 +408,7 @@ function handleMove(state: GameState, direction: Direction): GameState {
         phase: TimePhase.Boss,
       },
       phase: GamePhase.BossFight,
+      combat: combatState,
     };
   }
 
@@ -464,13 +500,17 @@ function handleBreakWall(state: GameState): GameState {
 
   let newMap = breakWall(state.map, targetPosition);
 
+  // Auto-move player to the broken wall tile
   const isDay = state.time.phase === TimePhase.Day;
-  newMap = updateFogOfWar(newMap, state.player.position, isDay);
+  newMap = updateFogOfWar(newMap, targetPosition, isDay);
 
   const newTime = consumeMove(state.time, cost);
   const advancedTime = advanceTimePhase(newTime);
 
-  let updatedPlayer = state.player;
+  let updatedPlayer: Player = {
+    ...state.player,
+    position: targetPosition,
+  };
   const isDayStart = state.time.phase === TimePhase.Night && advancedTime.phase === TimePhase.Day;
   if (isDayStart) {
     const nuggetSlots = updatedPlayer.inventory.filter((slot) => slot.item.id === 'I8');
@@ -492,6 +532,37 @@ function handleBreakWall(state: GameState): GameState {
   };
 
   if (shouldTriggerBoss(newTime)) {
+    // Create player combatant for boss fight
+    const playerCombatant: CombatantState = {
+      name: 'Player',
+      emoji: '🦦',
+      isPlayer: true,
+      maxHp: newState.player.stats.maxHp,
+      hp: newState.player.stats.hp,
+      atk: newState.player.stats.atk,
+      arm: newState.player.stats.arm,
+      spd: newState.player.stats.spd,
+      dig: newState.player.stats.dig,
+      bonusAtk: 0,
+      bonusArm: 0,
+      bonusSpd: 0,
+      statusEffects: { ...newState.player.statusEffects },
+      strikesPerTurn: getPlayerStrikesPerTurn(newState),
+      ignoresArmor: hasArmorIgnore(newState),
+    };
+
+    // Create boss combatant
+    const bossCombatant = createBossCombatant(newState.time.weekBoss);
+
+    // Create combat state for boss fight
+    const combatState = createCombatState({
+      player: playerCombatant,
+      enemy: bossCombatant,
+      seed: newState.rngState,
+      bossId: newState.time.weekBoss,
+      playerGold: newState.player.stats.gold,
+    });
+
     return {
       ...newState,
       time: {
@@ -499,6 +570,7 @@ function handleBreakWall(state: GameState): GameState {
         phase: TimePhase.Boss,
       },
       phase: GamePhase.BossFight,
+      combat: combatState,
     };
   }
 
@@ -729,6 +801,34 @@ function createEnemyCombatant(enemy: MapEnemy): CombatantState {
 }
 
 /**
+ * Create a boss combatant from a BossId
+ */
+function createBossCombatant(bossId: string): CombatantState {
+  const boss = BOSSES[bossId as keyof typeof BOSSES];
+  if (!boss) {
+    throw new Error(`Unknown boss: ${bossId}`);
+  }
+
+  return {
+    name: boss.name,
+    emoji: boss.emoji,
+    isPlayer: false,
+    maxHp: boss.stats.hp,
+    hp: boss.stats.hp,
+    atk: boss.stats.atk,
+    arm: boss.stats.arm,
+    spd: boss.stats.spd,
+    dig: boss.stats.dig ?? 0,
+    bonusAtk: 0,
+    bonusArm: 0,
+    bonusSpd: 0,
+    statusEffects: { ...DEFAULT_STATUS_EFFECTS },
+    strikesPerTurn: 1, // Boss traits may modify this
+    ignoresArmor: false,
+  };
+}
+
+/**
  * Calculate player strikes per turn based on equipped tool
  */
 function getPlayerStrikesPerTurn(state: GameState): number {
@@ -776,16 +876,26 @@ function handleResolveCombat(
   const goldReward = result === 'VICTORY' ? combatState.goldReward : 0;
   const totalGold = combatState.playerGold + goldReward;
 
-  // Update player HP from combat result
+  const preCombatMaxHp = state.combat?.player.maxHp ?? state.player.stats.maxHp;
+  const temporaryMaxHpBonus = Math.max(0, combatState.player.maxHp - preCombatMaxHp);
+
+  // Update player HP from combat result, removing any temporary HP granted by combat-only effects.
+  // Example: Crystal Crown temporarily increases maxHp and hp at battle start; that bonus should not persist.
+  const postCombatHp = Math.min(
+    preCombatMaxHp,
+    Math.max(0, combatState.player.hp - temporaryMaxHpBonus)
+  );
+
   let updatedPlayer = {
     ...state.player,
     baseStats: {
       ...state.player.baseStats,
+      hp: postCombatHp,
       gold: totalGold,
     },
     stats: {
       ...state.player.stats,
-      hp: Math.max(0, combatState.player.hp),
+      hp: postCombatHp,
       gold: totalGold,
     },
     statusEffects: { ...combatState.player.statusEffects },
@@ -796,6 +906,21 @@ function handleResolveCombat(
       const removal = removeGearById(updatedPlayer, gearId);
       updatedPlayer = removal.player;
     }
+  }
+
+  if (updatedPlayer.stats.hp > updatedPlayer.stats.maxHp) {
+    const clampedHp = updatedPlayer.stats.maxHp;
+    updatedPlayer = {
+      ...updatedPlayer,
+      baseStats: {
+        ...updatedPlayer.baseStats,
+        hp: clampedHp,
+      },
+      stats: {
+        ...updatedPlayer.stats,
+        hp: clampedHp,
+      },
+    };
   }
 
   // Update RNG state from combat
@@ -836,6 +961,18 @@ function handleResolveCombat(
     ? state.map.enemies.filter((e) => e.id !== enemyToRemove.id)
     : state.map.enemies;
 
+  // Advance to next week after boss victory (weeks 1-2)
+  let newTime = state.time;
+  let finalRngState = updatedRngState;
+  if (state.phase === GamePhase.BossFight && state.time.week < 3) {
+    const rng = new SeededRNG(updatedRngState);
+    const nextWeekTime = advanceToNextWeek(state.time, rng);
+    if (nextWeekTime) {
+      newTime = nextWeekTime;
+      finalRngState = rng.getState();
+    }
+  }
+
   return {
     ...state,
     phase: GamePhase.Exploration,
@@ -843,7 +980,8 @@ function handleResolveCombat(
       ...updatedPlayer,
       inventoryCapacity: bossSlotBonus,
     },
-    rngState: updatedRngState,
+    time: newTime,
+    rngState: finalRngState,
     map: {
       ...state.map,
       enemies: updatedEnemies,
@@ -997,11 +1135,42 @@ function handleTriggerBoss(state: GameState): GameState {
     movesRemaining: 0,
   };
 
-  // TODO: Create combat state with week boss using BOSSES[state.time.weekBoss]
+  // Create player combatant for boss fight
+  const playerCombatant: CombatantState = {
+    name: 'Player',
+    emoji: '🦦',
+    isPlayer: true,
+    maxHp: state.player.stats.maxHp,
+    hp: state.player.stats.hp,
+    atk: state.player.stats.atk,
+    arm: state.player.stats.arm,
+    spd: state.player.stats.spd,
+    dig: state.player.stats.dig,
+    bonusAtk: 0,
+    bonusArm: 0,
+    bonusSpd: 0,
+    statusEffects: { ...state.player.statusEffects },
+    strikesPerTurn: getPlayerStrikesPerTurn(state),
+    ignoresArmor: hasArmorIgnore(state),
+  };
+
+  // Create boss combatant
+  const bossCombatant = createBossCombatant(state.time.weekBoss);
+
+  // Create combat state for boss fight
+  const combatState = createCombatState({
+    player: playerCombatant,
+    enemy: bossCombatant,
+    seed: state.rngState,
+    bossId: state.time.weekBoss,
+    playerGold: state.player.stats.gold,
+  });
+
   return {
     ...state,
     phase: GamePhase.BossFight,
     time: bossTime,
+    combat: combatState,
   };
 }
 

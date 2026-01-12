@@ -9,7 +9,9 @@ import type { ItemRarity } from '@/game/engine/types';
 import { ITEM_RARITY_BG_COLORS, ITEM_RARITY_COLORS } from '@/utils/rarity-colors';
 
 interface SimplifiedItemOptionProps {
-  statDisplay: string;
+  emoji?: string;
+  statDisplay?: string;
+  effectDescription?: string;
   rarity: ItemRarity;
   itemName: string;
   selected?: boolean;
@@ -19,7 +21,9 @@ interface SimplifiedItemOptionProps {
 }
 
 export function SimplifiedItemOption({
+  emoji,
   statDisplay,
+  effectDescription,
   rarity,
   itemName,
   selected = false,
@@ -55,12 +59,19 @@ export function SimplifiedItemOption({
       disabled={disabled}
       activeOpacity={0.75}
       accessibilityRole="button"
-      accessibilityLabel={`${statDisplay}, ${rarity.toLowerCase()} rarity`}
+      accessibilityLabel={`${itemName}, ${statDisplay ?? effectDescription ?? 'No stats'}, ${rarity.toLowerCase()} rarity`}
       accessibilityHint={`Long press to view ${itemName} details`}
     >
-      <Text style={textStyle} numberOfLines={2}>
-        {statDisplay}
+      {emoji && <Text style={styles.emoji}>{emoji}</Text>}
+      <Text style={styles.itemName} numberOfLines={2}>
+        {itemName}
       </Text>
+      {statDisplay ? <Text style={textStyle}>{statDisplay}</Text> : null}
+      {effectDescription && (
+        <Text style={styles.effectText} numberOfLines={3}>
+          {effectDescription}
+        </Text>
+      )}
     </TouchableOpacity>
   );
 }
@@ -72,11 +83,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#3a3a45',
     borderLeftWidth: 5,
-    paddingVertical: 14,
-    paddingHorizontal: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
     justifyContent: 'center',
     alignItems: 'center',
-    minHeight: 84,
+    minHeight: 160,
   },
   selected: {
     borderColor: '#f97316',
@@ -88,8 +99,19 @@ const styles = StyleSheet.create({
   disabled: {
     opacity: 0.5,
   },
+  emoji: {
+    fontSize: 28,
+    marginBottom: 6,
+  },
+  itemName: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#374151',
+    textAlign: 'center',
+    marginBottom: 4,
+  },
   statText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: 'bold',
     color: '#111827',
     textAlign: 'center',
@@ -97,5 +119,12 @@ const styles = StyleSheet.create({
   },
   statTextDisabled: {
     color: '#6b7280',
+  },
+  effectText: {
+    fontSize: 11,
+    color: '#6b21a8',
+    textAlign: 'center',
+    marginTop: 4,
+    fontStyle: 'italic',
   },
 });

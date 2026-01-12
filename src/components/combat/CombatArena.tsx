@@ -16,15 +16,20 @@ import {
   vec,
 } from '@shopify/react-native-skia';
 import { StyleSheet, View, useWindowDimensions } from 'react-native';
-import type { CombatantState } from '../../game/engine/types';
+import type { CombatantState, StatusEffects } from '../../game/engine/types';
 import { DamageNumbers } from './DamageNumbers';
-import type { DamageNumber } from '../../contexts/CombatContext';
+import { EffectNotifications } from './EffectNotifications';
+import type { DamageNumber, EffectNotification } from '../../contexts/CombatContext';
 
 interface CombatArenaProps {
   player: CombatantState | null;
   enemy: CombatantState | null;
   damageNumbers: DamageNumber[];
+  effectNotifications: EffectNotification[];
   isAnimating: boolean;
+  activeActor?: 'player' | 'enemy' | null;
+  playerMaxArm?: number;
+  enemyMaxArm?: number;
 }
 
 /**
@@ -35,7 +40,11 @@ export function CombatArena({
   player,
   enemy,
   damageNumbers,
+  effectNotifications,
   isAnimating,
+  activeActor = null,
+  playerMaxArm = 0,
+  enemyMaxArm = 0,
 }: CombatArenaProps) {
   const { width: screenWidth } = useWindowDimensions();
   const arenaWidth = Math.min(screenWidth * 0.5, 400);
@@ -68,9 +77,22 @@ export function CombatArena({
   const hpBarHeight = 8;
   const hpBarY = combatantY + combatantRadius + 20;
 
+  // Armor bar dimensions
+  const armBarHeight = 6;
+  const armBarY = hpBarY + hpBarHeight + 4;
+
   // Calculate HP percentages
   const playerHpPercent = Math.max(0, player.hp / player.maxHp);
   const enemyHpPercent = Math.max(0, enemy.hp / enemy.maxHp);
+
+  // Calculate Armor percentages
+  const playerArmPercent = playerMaxArm > 0 ? Math.max(0, player.arm / playerMaxArm) : 0;
+  const enemyArmPercent = enemyMaxArm > 0 ? Math.max(0, enemy.arm / enemyMaxArm) : 0;
+  const ringColor = '#333355';
+  const ringStrokeWidth = 4;
+
+  // Status effects position (below the floor line)
+  const statusEffectsY = arenaHeight * 0.75;
 
   return (
     <View style={[styles.container, { width: arenaWidth, height: arenaHeight }]}>
@@ -95,20 +117,16 @@ export function CombatArena({
 
         {/* Enemy combatant (LEFT) */}
         <Group>
-          {/* Enemy body */}
-          <Circle
-            cx={enemyX}
-            cy={combatantY}
-            r={combatantRadius}
-            color={enemy.hp > 0 ? '#dc2626' : '#4a4a4a'}
-          />
-          {/* Enemy inner circle */}
-          <Circle
-            cx={enemyX}
-            cy={combatantY}
-            r={combatantRadius * 0.7}
-            color={enemy.hp > 0 ? '#ef4444' : '#5a5a5a'}
-          />
+          {activeActor === 'enemy' ? (
+            <Circle
+              cx={enemyX}
+              cy={combatantY}
+              r={combatantRadius}
+              color={ringColor}
+              style="stroke"
+              strokeWidth={ringStrokeWidth}
+            />
+          ) : null}
 
           {/* Enemy HP bar background */}
           <RoundedRect
@@ -128,24 +146,39 @@ export function CombatArena({
             r={4}
             color={enemyHpPercent > 0.5 ? '#22c55e' : enemyHpPercent > 0.25 ? '#eab308' : '#dc2626'}
           />
+
+          {/* Enemy Armor bar background */}
+          <RoundedRect
+            x={enemyX - hpBarWidth / 2}
+            y={armBarY}
+            width={hpBarWidth}
+            height={armBarHeight}
+            r={3}
+            color="#2a2a3a"
+          />
+          {/* Enemy Armor bar fill */}
+          <RoundedRect
+            x={enemyX - hpBarWidth / 2}
+            y={armBarY}
+            width={hpBarWidth * enemyArmPercent}
+            height={armBarHeight}
+            r={3}
+            color="#a855f7"
+          />
         </Group>
 
         {/* Player combatant (RIGHT) */}
         <Group>
-          {/* Player body */}
-          <Circle
-            cx={playerX}
-            cy={combatantY}
-            r={combatantRadius}
-            color={player.hp > 0 ? '#8b5cf6' : '#4a4a4a'}
-          />
-          {/* Player inner circle */}
-          <Circle
-            cx={playerX}
-            cy={combatantY}
-            r={combatantRadius * 0.7}
-            color={player.hp > 0 ? '#a78bfa' : '#5a5a5a'}
-          />
+          {activeActor === 'player' ? (
+            <Circle
+              cx={playerX}
+              cy={combatantY}
+              r={combatantRadius}
+              color={ringColor}
+              style="stroke"
+              strokeWidth={ringStrokeWidth}
+            />
+          ) : null}
 
           {/* Player HP bar background */}
           <RoundedRect
@@ -165,6 +198,25 @@ export function CombatArena({
             r={4}
             color={playerHpPercent > 0.5 ? '#22c55e' : playerHpPercent > 0.25 ? '#eab308' : '#dc2626'}
           />
+
+          {/* Player Armor bar background */}
+          <RoundedRect
+            x={playerX - hpBarWidth / 2}
+            y={armBarY}
+            width={hpBarWidth}
+            height={armBarHeight}
+            r={3}
+            color="#2a2a3a"
+          />
+          {/* Player Armor bar fill */}
+          <RoundedRect
+            x={playerX - hpBarWidth / 2}
+            y={armBarY}
+            width={hpBarWidth * playerArmPercent}
+            height={armBarHeight}
+            r={3}
+            color="#a855f7"
+          />
         </Group>
       </Canvas>
 
@@ -174,6 +226,11 @@ export function CombatArena({
           damageNumbers={damageNumbers}
           enemyPosition={{ x: enemyX, y: combatantY - combatantRadius - 20 }}
           playerPosition={{ x: playerX, y: combatantY - combatantRadius - 20 }}
+        />
+        <EffectNotifications
+          notifications={effectNotifications}
+          enemyPosition={{ x: enemyX, y: combatantY - combatantRadius - 40 }}
+          playerPosition={{ x: playerX, y: combatantY - combatantRadius - 40 }}
         />
       </View>
 
@@ -189,13 +246,69 @@ export function CombatArena({
         </View>
       </View>
 
-      {/* Stats labels below HP bars */}
-      <View style={[styles.statsLabel, { left: enemyX - 40, top: hpBarY + 15 }]}>
-        <StatsText hp={enemy.hp} maxHp={enemy.maxHp} atk={enemy.atk} arm={enemy.arm} />
-      </View>
-      <View style={[styles.statsLabel, { left: playerX - 40, top: hpBarY + 15 }]}>
-        <StatsText hp={player.hp} maxHp={player.maxHp} atk={player.atk} arm={player.arm} />
-      </View>
+      {/* Status effects for enemy (below floor line) */}
+      <StatusEffectsRow
+        statusEffects={enemy.statusEffects}
+        x={enemyX}
+        y={statusEffectsY}
+      />
+
+      {/* Status effects for player (below floor line) */}
+      <StatusEffectsRow
+        statusEffects={player.statusEffects}
+        x={playerX}
+        y={statusEffectsY}
+      />
+    </View>
+  );
+}
+
+// Status effects row component
+interface StatusEffectsRowProps {
+  statusEffects: StatusEffects;
+  x: number;
+  y: number;
+}
+
+function StatusEffectsRow({ statusEffects, x, y }: StatusEffectsRowProps) {
+  const { Text } = require('react-native');
+  const effects: { type: 'chill' | 'shrapnel' | 'rust'; stacks: number }[] = [];
+
+  if (statusEffects.chill > 0) {
+    effects.push({ type: 'chill', stacks: statusEffects.chill });
+  }
+  if (statusEffects.shrapnel > 0) {
+    effects.push({ type: 'shrapnel', stacks: statusEffects.shrapnel });
+  }
+  if (statusEffects.rust > 0) {
+    effects.push({ type: 'rust', stacks: statusEffects.rust });
+  }
+
+  if (effects.length === 0) {
+    return null;
+  }
+
+  const config = {
+    chill: { emoji: '❄️', color: '#60a5fa' },
+    shrapnel: { emoji: '💥', color: '#f97316' },
+    rust: { emoji: '🦠', color: '#a16207' },
+  };
+
+  const badgeWidth = 28;
+  const totalWidth = effects.length * badgeWidth + (effects.length - 1) * 4;
+  const startX = x - totalWidth / 2;
+
+  return (
+    <View style={[styles.statusRow, { left: startX, top: y }]}>
+      {effects.map((effect, index) => {
+        const { emoji, color } = config[effect.type];
+        return (
+          <View key={effect.type} style={[styles.statusBadge, { borderColor: color }]}>
+            <Text style={styles.statusEmoji}>{emoji}</Text>
+            <Text style={[styles.statusStacks, { color }]}>{effect.stacks}</Text>
+          </View>
+        );
+      })}
     </View>
   );
 }
@@ -204,26 +317,6 @@ export function CombatArena({
 function EmojiText({ children }: { children: string }) {
   const { Text } = require('react-native');
   return <Text style={styles.emoji}>{children}</Text>;
-}
-
-// Helper component for stats display
-function StatsText({
-  hp,
-  maxHp,
-  atk,
-  arm,
-}: {
-  hp: number;
-  maxHp: number;
-  atk: number;
-  arm: number;
-}) {
-  const { Text } = require('react-native');
-  return (
-    <Text style={styles.stats}>
-      {hp}/{maxHp} HP | {atk} ATK | {arm} ARM
-    </Text>
-  );
 }
 
 const styles = StyleSheet.create({
@@ -254,14 +347,26 @@ const styles = StyleSheet.create({
     fontSize: 28,
     textAlign: 'center',
   },
-  statsLabel: {
+  statusRow: {
     position: 'absolute',
-    width: 80,
-    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 4,
   },
-  stats: {
-    fontSize: 8,
-    color: '#888888',
-    textAlign: 'center',
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 1,
+    backgroundColor: '#1a1a2e',
+  },
+  statusEmoji: {
+    fontSize: 10,
+  },
+  statusStacks: {
+    fontSize: 9,
+    fontWeight: 'bold',
+    marginLeft: 2,
   },
 });

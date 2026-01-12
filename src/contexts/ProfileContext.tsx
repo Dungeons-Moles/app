@@ -1,11 +1,12 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
-import { PlayerProfile } from '../types';
+import type { CombatSpeed, PlayerProfile } from '../types';
 import { saveProfile, loadProfile, deleteProfile, generateProfileId } from '../utils/storage';
 
 interface ProfileContextType {
   profile: PlayerProfile | null;
   isLoading: boolean;
   createProfile: (walletAddress: string) => Promise<PlayerProfile>;
+  updateDefaultCombatSpeed: (speed: CombatSpeed) => Promise<void>;
   updateLastPlayed: () => Promise<void>;
   clearProfile: () => Promise<void>;
 }
@@ -18,7 +19,23 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     loadProfile()
-      .then(setProfile)
+      .then((loaded) => {
+        if (!loaded) {
+          setProfile(null);
+          return;
+        }
+
+        const normalized: PlayerProfile = {
+          ...loaded,
+          defaultCombatSpeed: loaded.defaultCombatSpeed ?? 'normal',
+        };
+
+        setProfile(normalized);
+
+        if (normalized.defaultCombatSpeed !== loaded.defaultCombatSpeed) {
+          void saveProfile(normalized);
+        }
+      })
       .finally(() => setIsLoading(false));
   }, []);
 
@@ -29,12 +46,23 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       displayName: `Mole_${walletAddress.slice(-4)}`,
       createdAt: Date.now(),
       lastPlayedAt: Date.now(),
+      defaultCombatSpeed: 'normal',
     };
 
     await saveProfile(newProfile);
     setProfile(newProfile);
     return newProfile;
   }, []);
+
+  const updateDefaultCombatSpeed = useCallback(
+    async (speed: CombatSpeed) => {
+      if (!profile) return;
+      const updated: PlayerProfile = { ...profile, defaultCombatSpeed: speed };
+      await saveProfile(updated);
+      setProfile(updated);
+    },
+    [profile]
+  );
 
   const updateLastPlayed = useCallback(async () => {
     if (profile) {
@@ -55,6 +83,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
         profile,
         isLoading,
         createProfile,
+        updateDefaultCombatSpeed,
         updateLastPlayed,
         clearProfile,
       }}
