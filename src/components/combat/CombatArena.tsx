@@ -15,11 +15,13 @@ import {
   Line,
   vec,
 } from '@shopify/react-native-skia';
-import { StyleSheet, View, useWindowDimensions } from 'react-native';
+import { StyleSheet, View, useWindowDimensions, Image as RNImage } from 'react-native';
 import type { CombatantState, StatusEffects } from '../../game/engine/types';
 import { DamageNumbers } from './DamageNumbers';
 import { EffectNotifications } from './EffectNotifications';
 import type { DamageNumber, EffectNotification } from '../../contexts/CombatContext';
+
+const defaultMoleImageSource = require('../../../assets/characters/default-mole.png');
 
 interface CombatArenaProps {
   player: CombatantState | null;
@@ -54,14 +56,7 @@ export function CombatArena({
     return (
       <View style={[styles.container, { width: arenaWidth, height: arenaHeight }]}>
         <Canvas style={{ width: arenaWidth, height: arenaHeight }}>
-          <RoundedRect
-            x={0}
-            y={0}
-            width={arenaWidth}
-            height={arenaHeight}
-            r={16}
-            color="#1a1a2e"
-          />
+          <RoundedRect x={0} y={0} width={arenaWidth} height={arenaHeight} r={16} color="#1a1a2e" />
         </Canvas>
       </View>
     );
@@ -98,14 +93,7 @@ export function CombatArena({
     <View style={[styles.container, { width: arenaWidth, height: arenaHeight }]}>
       <Canvas style={{ width: arenaWidth, height: arenaHeight }}>
         {/* Background */}
-        <RoundedRect
-          x={0}
-          y={0}
-          width={arenaWidth}
-          height={arenaHeight}
-          r={16}
-          color="#1a1a2e"
-        />
+        <RoundedRect x={0} y={0} width={arenaWidth} height={arenaHeight} r={16} color="#1a1a2e" />
 
         {/* Combat arena floor */}
         <Line
@@ -196,7 +184,9 @@ export function CombatArena({
             width={hpBarWidth * playerHpPercent}
             height={hpBarHeight}
             r={4}
-            color={playerHpPercent > 0.5 ? '#22c55e' : playerHpPercent > 0.25 ? '#eab308' : '#dc2626'}
+            color={
+              playerHpPercent > 0.5 ? '#22c55e' : playerHpPercent > 0.25 ? '#eab308' : '#dc2626'
+            }
           />
 
           {/* Player Armor bar background */}
@@ -242,23 +232,19 @@ export function CombatArena({
       </View>
       <View style={[styles.emojiContainer, { left: playerX - 20, top: combatantY - 15 }]}>
         <View style={styles.emojiText}>
-          <EmojiText>{player.emoji}</EmojiText>
+          <RNImage
+            source={defaultMoleImageSource}
+            style={styles.combatantImage}
+            resizeMode="contain"
+          />
         </View>
       </View>
 
       {/* Status effects for enemy (below floor line) */}
-      <StatusEffectsRow
-        statusEffects={enemy.statusEffects}
-        x={enemyX}
-        y={statusEffectsY}
-      />
+      <StatusEffectsRow statusEffects={enemy.statusEffects} x={enemyX} y={statusEffectsY} />
 
       {/* Status effects for player (below floor line) */}
-      <StatusEffectsRow
-        statusEffects={player.statusEffects}
-        x={playerX}
-        y={statusEffectsY}
-      />
+      <StatusEffectsRow statusEffects={player.statusEffects} x={playerX} y={statusEffectsY} />
     </View>
   );
 }
@@ -346,6 +332,10 @@ const styles = StyleSheet.create({
   emoji: {
     fontSize: 28,
     textAlign: 'center',
+  },
+  combatantImage: {
+    width: 60,
+    height: 60,
   },
   statusRow: {
     position: 'absolute',

@@ -283,7 +283,7 @@ interface Gear {
   name: string;
   emoji: string;
   baseRarity: ItemRarity;
-  currentRarity: ItemRarity; // Can be upgraded via Crusher Golem
+  currentRarity: ItemRarity; // Can be upgraded via Rune Kiln
   stats: ItemStats; // Scaled by rarity tier
   tags: ItemTag[];
   effect?: ItemEffect;
@@ -511,7 +511,7 @@ type POIInteractionType =
   | 'FAST_TRAVEL'       // Rail Waypoint
   | 'SHOP'              // Smuggler Hatch
   | 'UPGRADE'           // Rusty Anvil
-  | 'FUSE';             // Crusher Golem
+  | 'FUSE';             // Rune Kiln
 
 interface MapPOI {
   id: string; // Unique instance ID
@@ -532,7 +532,7 @@ type POIId =
   | 'L8'  // Rail Waypoint
   | 'L9'  // Smuggler Hatch
   | 'L10' // Rusty Anvil
-  | 'L11' // Crusher Golem
+  | 'L11' // Rune Kiln
   | 'L12';// Geode Vault
 
 interface POIInteraction {

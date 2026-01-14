@@ -34,9 +34,9 @@ interface POIModalProps {
   visible: boolean;
   onSelectOption: (optionIndex: number) => void;
   onClose: () => void;
-  golemSelection?: { gearId: GearId | null; emoji: string; count: number };
-  golemFuseOptionIndex?: number | null;
-  onGolemSlotPress?: (slotIndex: number) => void;
+  kilnSelection?: { gearId: GearId | null; emoji: string; count: number };
+  kilnFuseOptionIndex?: number | null;
+  onKilnSlotPress?: (slotIndex: number) => void;
 }
 
 // POI types that use the 3-choice card layout
@@ -152,9 +152,9 @@ export function POIModal({
   visible,
   onSelectOption,
   onClose,
-  golemSelection,
-  golemFuseOptionIndex,
-  onGolemSlotPress,
+  kilnSelection,
+  kilnFuseOptionIndex,
+  onKilnSlotPress,
 }: POIModalProps) {
   if (!interaction) {
     return null;
@@ -179,7 +179,7 @@ export function POIModal({
 
   const isThreeChoicePOI = THREE_CHOICE_POIS.includes(poiId);
   const hasValidOptions = options.length > 0 && !options[0]?.disabled;
-  const isCrusherGolem = poiId === 'L11';
+  const isRuneKiln = poiId === 'L11';
   const isRailWaypoint = poiId === 'L8';
   const isSmugglerHatch = poiId === 'L9';
   const isRustyAnvil = poiId === 'L10';
@@ -260,23 +260,23 @@ export function POIModal({
     [getOptionRarity]
   );
 
-  const handleGolemFuse = useCallback(() => {
-    if (golemFuseOptionIndex === null || golemFuseOptionIndex === undefined) {
+  const handleKilnFuse = useCallback(() => {
+    if (kilnFuseOptionIndex === null || kilnFuseOptionIndex === undefined) {
       return;
     }
-    onSelectOption(golemFuseOptionIndex);
-  }, [golemFuseOptionIndex, onSelectOption]);
+    onSelectOption(kilnFuseOptionIndex);
+  }, [kilnFuseOptionIndex, onSelectOption]);
 
-  if (isCrusherGolem) {
+  if (isRuneKiln) {
     if (!visible) {
       return null;
     }
 
-    const selectedEmoji = golemSelection?.emoji ?? '';
-    const filledSlots = golemSelection?.count ?? 0;
-    const fuseDisabled = golemFuseOptionIndex === null || golemFuseOptionIndex === undefined;
-    const canRemoveSlotOne = filledSlots >= 1 && !!onGolemSlotPress;
-    const canRemoveSlotTwo = filledSlots >= 2 && !!onGolemSlotPress;
+    const selectedEmoji = kilnSelection?.emoji ?? '';
+    const filledSlots = kilnSelection?.count ?? 0;
+    const fuseDisabled = kilnFuseOptionIndex === null || kilnFuseOptionIndex === undefined;
+    const canRemoveSlotOne = filledSlots >= 1 && !!onKilnSlotPress;
+    const canRemoveSlotTwo = filledSlots >= 2 && !!onKilnSlotPress;
 
     return (
       <View style={styles.inlineOverlay} pointerEvents="box-none">
@@ -294,7 +294,7 @@ export function POIModal({
           <View style={styles.fuseRow}>
             <TouchableOpacity
               style={[styles.fuseSlot, filledSlots < 1 && styles.fuseSlotEmpty]}
-              onPress={() => onGolemSlotPress?.(0)}
+              onPress={() => onKilnSlotPress?.(0)}
               activeOpacity={0.7}
               disabled={!canRemoveSlotOne}
             >
@@ -303,7 +303,7 @@ export function POIModal({
             <Text style={styles.fusePlus}>+</Text>
             <TouchableOpacity
               style={[styles.fuseSlot, filledSlots < 2 && styles.fuseSlotEmpty]}
-              onPress={() => onGolemSlotPress?.(1)}
+              onPress={() => onKilnSlotPress?.(1)}
               activeOpacity={0.7}
               disabled={!canRemoveSlotTwo}
             >
@@ -313,7 +313,7 @@ export function POIModal({
 
           <TouchableOpacity
             style={[styles.fuseButton, fuseDisabled && styles.fuseButtonDisabled]}
-            onPress={handleGolemFuse}
+            onPress={handleKilnFuse}
             activeOpacity={0.7}
             disabled={fuseDisabled}
           >
@@ -925,7 +925,7 @@ const styles = StyleSheet.create({
   },
 
   // ============================================================================
-  // Crusher Golem Fuse
+  // Rune Kiln Fuse
   // ============================================================================
   fuseRow: {
     flexDirection: 'row',

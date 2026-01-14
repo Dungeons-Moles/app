@@ -24,8 +24,8 @@ interface FastTravelOverlayProps {
   onCancel: () => void;
 }
 
-const TILE_SIZE = 24;
-const ENTITY_SIZE = 30;
+const TILE_SIZE = 32;
+const ENTITY_SIZE = 40;
 const ENTITY_OFFSET = (ENTITY_SIZE - TILE_SIZE) / 2;
 
 function getCameraOffset(
@@ -86,14 +86,12 @@ export function FastTravelOverlay({
   const selectableWaypoints = useMemo(
     () =>
       waypoints.filter(
-        (poi) =>
-          poi.position.x !== currentPosition.x || poi.position.y !== currentPosition.y
+        (poi) => poi.position.x !== currentPosition.x || poi.position.y !== currentPosition.y
       ),
     [waypoints, currentPosition.x, currentPosition.y]
   );
 
-  const selectedWaypoint =
-    selectableWaypoints[selectedIndex] ?? selectableWaypoints[0] ?? null;
+  const selectedWaypoint = selectableWaypoints[selectedIndex] ?? selectableWaypoints[0] ?? null;
 
   useEffect(() => {
     const animation = Animated.loop(
@@ -241,7 +239,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(148, 163, 184, 0.25)',
   },
   waypointEmoji: {
-    fontSize: 14,
+    fontSize: 22,
   },
   selectedRing: {
     position: 'absolute',

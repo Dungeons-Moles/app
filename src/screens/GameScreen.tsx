@@ -219,7 +219,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
     dispatch({ type: 'INTERACT_POI', poiId: poiAtPlayer.id });
   }, [canReopenPOI, dispatch, poiAtPlayer, state]);
 
-  const [golemSelection, setGolemSelection] = useState<{
+  const [kilnSelection, setKilnSelection] = useState<{
     gearId: GearId | null;
     emoji: string;
     count: number;
@@ -229,7 +229,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
   useEffect(() => {
     if (state?.activePOI?.poi.definitionId !== 'L11') {
-      setGolemSelection({ gearId: null, emoji: '', count: 0 });
+      setKilnSelection({ gearId: null, emoji: '', count: 0 });
     }
   }, [state?.activePOI?.poi.definitionId]);
 
@@ -256,7 +256,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
         return;
       }
 
-      setGolemSelection((prev) => {
+      setKilnSelection((prev) => {
         if (!prev.gearId || prev.gearId !== item.id) {
           return { gearId: item.id, emoji: item.emoji, count: 1 };
         }
@@ -270,11 +270,11 @@ export function GameScreen({ navigation }: GameScreenProps) {
     [state?.phase, state?.activePOI, state?.player.inventory]
   );
 
-  const golemFuseOptionIndex = useMemo(() => {
+  const kilnFuseOptionIndex = useMemo(() => {
     if (state?.activePOI?.poi.definitionId !== 'L11') {
       return null;
     }
-    if (!golemSelection.gearId || golemSelection.count < 2) {
+    if (!kilnSelection.gearId || kilnSelection.count < 2) {
       return null;
     }
 
@@ -283,14 +283,14 @@ export function GameScreen({ navigation }: GameScreenProps) {
       option =>
         option.item &&
         'currentRarity' in option.item &&
-        option.item.id === golemSelection.gearId
+        option.item.id === kilnSelection.gearId
     );
 
     return optionIndex >= 0 ? optionIndex : null;
-  }, [state?.activePOI, golemSelection]);
+  }, [state?.activePOI, kilnSelection]);
 
-  const handleGolemSlotPress = useCallback((_slotIndex: number) => {
-    setGolemSelection((prev) => {
+  const handleKilnSlotPress = useCallback((_slotIndex: number) => {
+    setKilnSelection((prev) => {
       if (!prev.gearId || prev.count === 0) {
         return prev;
       }
@@ -307,17 +307,17 @@ export function GameScreen({ navigation }: GameScreenProps) {
     (optionIndex: number) => {
       if (
         state?.activePOI?.poi.definitionId === 'L11' &&
-        golemFuseOptionIndex !== null &&
-        optionIndex === golemFuseOptionIndex
+        kilnFuseOptionIndex !== null &&
+        optionIndex === kilnFuseOptionIndex
       ) {
-        setGolemSelection({ gearId: null, emoji: '', count: 0 });
+        setKilnSelection({ gearId: null, emoji: '', count: 0 });
       }
       dispatch({ type: 'SELECT_POI_OPTION', optionIndex });
     },
-    [dispatch, state?.activePOI?.poi.definitionId, golemFuseOptionIndex]
+    [dispatch, state?.activePOI?.poi.definitionId, kilnFuseOptionIndex]
   );
 
-  const isCrusherGolemActive =
+  const isRuneKilnActive =
     state?.phase === GamePhase.POIInteraction && state.activePOI?.poi.definitionId === 'L11';
 
   const handleInspectItem = useCallback((item: Tool | Gear, _slotIndex: number) => {
@@ -418,9 +418,9 @@ export function GameScreen({ navigation }: GameScreenProps) {
               interaction={state.activePOI}
               onSelectOption={handlePOIOption}
               onClose={handlePOIClose}
-              golemSelection={golemSelection}
-              golemFuseOptionIndex={golemFuseOptionIndex}
-              onGolemSlotPress={handleGolemSlotPress}
+              kilnSelection={kilnSelection}
+              kilnFuseOptionIndex={kilnFuseOptionIndex}
+              onKilnSlotPress={handleKilnSlotPress}
             />
           </View>
         </View>
@@ -436,7 +436,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
             equippedTool={state.player.equippedTool}
             inventoryCapacity={state.player.inventoryCapacity}
             activeItemsets={state.player.activeItemsets}
-            onItemPress={isCrusherGolemActive ? handleInventoryItemPress : undefined}
+            onItemPress={isRuneKilnActive ? handleInventoryItemPress : undefined}
             onItemInspect={handleInspectItem}
             onToolInspect={handleInspectTool}
           />

@@ -3,11 +3,13 @@
  */
 
 import React from 'react';
-import { StyleSheet, View, useWindowDimensions, Text } from 'react-native';
+import { StyleSheet, View, useWindowDimensions, Text, Image } from 'react-native';
 import type { CombatantState, StatusEffects } from '../../game/engine/types';
 import { DamageNumbers } from './DamageNumbers';
 import { EffectNotifications } from './EffectNotifications';
 import type { DamageNumber, EffectNotification } from '../../contexts/CombatContext';
+
+const defaultMoleImageSource = require('../../../assets/characters/default-mole.png');
 
 interface CombatArenaProps {
   player: CombatantState | null;
@@ -112,11 +114,7 @@ export function CombatArena({
             width: hpBarWidth * enemyHpPercent,
             height: hpBarHeight,
             backgroundColor:
-              enemyHpPercent > 0.5
-                ? '#22c55e'
-                : enemyHpPercent > 0.25
-                ? '#eab308'
-                : '#dc2626',
+              enemyHpPercent > 0.5 ? '#22c55e' : enemyHpPercent > 0.25 ? '#eab308' : '#dc2626',
           },
         ]}
       />
@@ -182,11 +180,7 @@ export function CombatArena({
             width: hpBarWidth * playerHpPercent,
             height: hpBarHeight,
             backgroundColor:
-              playerHpPercent > 0.5
-                ? '#22c55e'
-                : playerHpPercent > 0.25
-                ? '#eab308'
-                : '#dc2626',
+              playerHpPercent > 0.5 ? '#22c55e' : playerHpPercent > 0.25 ? '#eab308' : '#dc2626',
           },
         ]}
       />
@@ -234,22 +228,14 @@ export function CombatArena({
         <Text style={styles.emoji}>{enemy.emoji}</Text>
       </View>
       <View style={[styles.emojiContainer, { left: playerX - 20, top: combatantY - 15 }]}>
-        <Text style={styles.emoji}>{player.emoji}</Text>
+        <Image source={defaultMoleImageSource} style={styles.combatantImage} resizeMode="contain" />
       </View>
 
       {/* Status effects for enemy (below floor line) */}
-      <StatusEffectsRow
-        statusEffects={enemy.statusEffects}
-        x={enemyX}
-        y={statusEffectsY}
-      />
+      <StatusEffectsRow statusEffects={enemy.statusEffects} x={enemyX} y={statusEffectsY} />
 
       {/* Status effects for player (below floor line) */}
-      <StatusEffectsRow
-        statusEffects={player.statusEffects}
-        x={playerX}
-        y={statusEffectsY}
-      />
+      <StatusEffectsRow statusEffects={player.statusEffects} x={playerX} y={statusEffectsY} />
     </View>
   );
 }
@@ -360,6 +346,10 @@ const styles = StyleSheet.create({
   emoji: {
     fontSize: 28,
     textAlign: 'center',
+  },
+  combatantImage: {
+    width: 60,
+    height: 60,
   },
   statusRow: {
     position: 'absolute',

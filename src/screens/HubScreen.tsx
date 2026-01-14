@@ -1,12 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  Modal,
-  Alert,
-} from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Modal, Alert, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useProfile } from '../contexts/ProfileContext';
@@ -14,6 +7,8 @@ import { useGame, GamePhase } from '../contexts/GameContext';
 import { shortenAddress } from '../utils/storage';
 import { RootStackParamList } from '../navigation';
 import { SpeedControls } from '../components/combat';
+
+const defaultMoleImageSource = require('../../assets/characters/default-mole.png');
 
 type HubScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Hub'>;
@@ -36,10 +31,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
     // Generate a random seed for the game
     const seed = Math.floor(Math.random() * 2147483647);
 
-    if (
-      gameState?.phase === GamePhase.Defeat ||
-      gameState?.phase === GamePhase.Victory
-    ) {
+    if (gameState?.phase === GamePhase.Defeat || gameState?.phase === GamePhase.Victory) {
       dispatch({ type: 'RETURN_TO_MENU' });
     }
 
@@ -76,9 +68,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
             {profile?.walletAddress ? (
               <View style={styles.walletRow}>
                 <View style={styles.walletDot} />
-                <Text style={styles.walletAddress}>
-                  {shortenAddress(profile.walletAddress)}
-                </Text>
+                <Text style={styles.walletAddress}>{shortenAddress(profile.walletAddress)}</Text>
               </View>
             ) : null}
           </View>
@@ -105,16 +95,16 @@ export function HubScreen({ navigation }: HubScreenProps) {
 
         {/* CENTER - Character */}
         <View style={styles.center}>
-          <Text style={styles.character}>🦦</Text>
+          <Image
+            source={defaultMoleImageSource}
+            style={styles.characterImage}
+            resizeMode="contain"
+          />
         </View>
 
         {/* BOTTOM LEFT - Secondary Navigation */}
         <View style={styles.bottomLeft}>
-          <TouchableOpacity
-            style={styles.navButton}
-            onPress={handleQuests}
-            activeOpacity={0.7}
-          >
+          <TouchableOpacity style={styles.navButton} onPress={handleQuests} activeOpacity={0.7}>
             <Text style={styles.navButtonText}>Quests</Text>
           </TouchableOpacity>
 
@@ -303,6 +293,10 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  characterImage: {
+    width: 250,
+    height: 250,
   },
   character: {
     fontSize: 80,

@@ -327,7 +327,7 @@ Some POIs are one-time, others are repeatable utilities.
 | L8 | Rail Waypoint | 🚇 | Uncommon | Repeatable | Anytime | Fast travel between discovered waypoints |
 | L9 | Smuggler Hatch | 🕳️ | Uncommon | Repeatable | Anytime | Shop: 1 Tool + 5 Gear; reroll costs Gold |
 | L10 | Rusty Anvil | ⚒️ | Uncommon | One-time | Anytime | Upgrade Tool tier (I→II costs 8 Gold; II→III costs 16 Gold) |
-| L11 | Crusher Golem | 🗿 | Rare | Repeatable | Anytime | Fuse 2 identical items → upgrade tier (II/III); no gold cost |
+| L11 | Rune Kiln | 🏺 | Rare | Repeatable | Anytime | Fuse 2 identical items → upgrade tier (II/III); no gold cost |
 | L12 | Geode Vault | 💠 | Rare | One-time | Anytime | Pick 1 of 3 Heroic items (tag-weighted) |
 | L13 | Counter Cache | 🎯 | Uncommon | One-time | Anytime | Pick 1 of 3 items drawn only from the 2 weakness tags of the current week boss |
 | L14 | Scrap Chute | 🗑️ | Uncommon | One-time | Anytime | Destroy 1 Gear item (no reward). Costs Gold (by act). |
@@ -536,7 +536,7 @@ Inventory slots:
 - After Week 2 boss: 8 slots.
 
 Design intent:
-- Players will see more items than they can hold; Scrap Chute + Crusher Golem provide agency.
+- Players will see more items than they can hold; Scrap Chute + Rune Kiln provide agency.
 
 ### Expected fights and Gold (baseline, without Greed items)
 Expected gold per enemy by act (given tier mix):
@@ -576,4 +576,3 @@ Shop affordability (Act 1 baseline):
    - act+ modifiers
 7. Add minimal telemetry for balancing:
    - stage winrate, boss winrate, average fights per run, gold earned/spent, item pick rates.
-

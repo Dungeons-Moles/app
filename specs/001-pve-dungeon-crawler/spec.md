@@ -101,7 +101,7 @@ As a player, I want to interact with Points of Interest (Supply Caches, Tool Cra
 3. **Given** the player steps onto the Mole Den during Night, **When** choosing to rest, **Then** time skips to the next Day and player HP is fully restored
 4. **Given** the player steps onto a Smuggler Hatch, **When** the shop opens, **Then** 5 Rare + 1 Heroic items are displayed with Gold prices and a reroll option
 5. **Given** the player steps onto a Rusty Anvil, **When** upgrading a tool, **Then** 2 forge mod options are presented and applying a mod costs Gold
-6. **Given** the player has 2 identical items and steps onto a Crusher Golem, **When** choosing to fuse, **Then** the items combine (Common to Gilded, Gilded to Diamond)
+6. **Given** the player has 2 identical items and steps onto a Rune Kiln, **When** choosing to fuse, **Then** the items combine (Common to Gilded, Gilded to Diamond)
 
 ---
 
@@ -424,5 +424,5 @@ Starter note: Each run begins with the Rusty Pickaxe (T9) equipped.
 | L8  | Rail Waypoint   | 🚇    | Uncommon | Fast travel between discovered waypoints    |
 | L9  | Smuggler Hatch  | 🕳️    | Uncommon | Shop: 5 Rare + 1 Heroic items               |
 | L10 | Rusty Anvil     | ⚒️    | Uncommon | Upgrade tool with forge mods (costs Gold)   |
-| L11 | Crusher Golem   | 🗿    | Rare     | Fuse 2 identical items to upgrade tier      |
+| L11 | Rune Kiln       | 🏺    | Rare     | Fuse 2 identical items to upgrade tier      |
 | L12 | Geode Vault     | 💠    | Rare     | Pick 1 of 3 Heroic items                    |
