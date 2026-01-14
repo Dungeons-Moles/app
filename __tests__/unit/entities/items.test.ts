@@ -1,7 +1,7 @@
 /**
- * Item Entity Tests - T073
+ * Item Entity Tests - Updated for GDD 80 items
  * Tests for item stat calculations, rarity multipliers, and tool/gear instances
- * @see specs/001-pve-dungeon-crawler/data-model.md
+ * @see docs/gdd.md Section 9: Item System
  */
 
 import {
@@ -13,30 +13,30 @@ import {
   getGearDefinition,
   TOOL_DEFINITIONS,
 } from '../../../src/game/entities/items';
-import type { ItemStats, ItemRarity, ToolId, GearId } from '../../../src/game/engine/types';
+import type { ToolId, GearId } from '../../../src/game/engine/types';
 
 describe('Items Entity', () => {
   describe('createToolInstance', () => {
     it('creates a tool instance with correct base stats', () => {
-      const tool = createToolInstance('T1'); // Polished Pickaxe: +3 ATK
+      const tool = createToolInstance('T1'); // Bulwark Shovel: +1 ATK, +4 ARM
 
       expect(tool.id).toBe('T1');
-      expect(tool.name).toBe('Polished Pickaxe');
-      expect(tool.emoji).toBe('⛏️');
+      expect(tool.name).toBe('Bulwark Shovel');
+      expect(tool.emoji).toBe('🛠️');
       expect(tool.rarity).toBe('COMMON');
-      expect(tool.stats.atk).toBe(3);
+      expect(tool.stats.atk).toBe(1);
+      expect(tool.stats.arm).toBe(4);
       expect(tool.tags).toContain('STONE');
     });
 
-    it('creates Rusty Pickaxe with starter stats', () => {
-      const tool = createToolInstance('T9'); // Rusty Pickaxe: +1 ATK
+    it('creates Rime Pike with FROST tag', () => {
+      const tool = createToolInstance('T9'); // Rime Pike: +2 ATK
 
       expect(tool.id).toBe('T9');
-      expect(tool.name).toBe('Rusty Pickaxe');
-      expect(tool.emoji).toBe('⛏️');
+      expect(tool.name).toBe('Rime Pike');
       expect(tool.rarity).toBe('COMMON');
-      expect(tool.stats.atk).toBe(1);
-      expect(tool.tags).toContain('STONE');
+      expect(tool.stats.atk).toBe(2);
+      expect(tool.tags).toContain('FROST');
     });
 
     it('creates Twin Picks with correct multi-strike property', () => {
@@ -48,8 +48,25 @@ describe('Items Entity', () => {
       expect(tool.tags).toContain('SCOUT');
     });
 
-    it('creates all 9 tools with valid definitions', () => {
-      const toolIds: ToolId[] = ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9'];
+    it('creates all 16 tools with valid definitions', () => {
+      const toolIds: ToolId[] = [
+        'T1',
+        'T2',
+        'T3',
+        'T4',
+        'T5',
+        'T6',
+        'T7',
+        'T8',
+        'T9',
+        'T10',
+        'T11',
+        'T12',
+        'T13',
+        'T14',
+        'T15',
+        'T16',
+      ];
 
       for (const id of toolIds) {
         const tool = createToolInstance(id);
@@ -60,27 +77,27 @@ describe('Items Entity', () => {
       }
     });
 
-    it('creates Reinforced Shovel with ATK and ARM stats', () => {
-      const tool = createToolInstance('T2'); // +1 ATK, +6 ARM
-
-      expect(tool.stats.atk).toBe(1);
-      expect(tool.stats.arm).toBe(6);
-    });
-
-    it('creates Prospectors Pike with ATK and DIG stats', () => {
-      const tool = createToolInstance('T4'); // +2 ATK, +2 DIG
+    it('creates Cragbreaker Hammer with ATK and ARM stats', () => {
+      const tool = createToolInstance('T2'); // +2 ATK, +3 ARM
 
       expect(tool.stats.atk).toBe(2);
-      expect(tool.stats.dig).toBe(2);
+      expect(tool.stats.arm).toBe(3);
+    });
+
+    it('creates Pneumatic Drill with multi-strike', () => {
+      const tool = createToolInstance('T4'); // +1 ATK, strikes 3 times
+
+      expect(tool.stats.atk).toBe(1);
+      expect(tool.tags).toContain('SCOUT');
     });
   });
 
   describe('createGearInstance', () => {
     it('creates a gear instance with base rarity stats', () => {
-      const gear = createGearInstance('I1'); // Miner's Boots: +2 DIG
+      const gear = createGearInstance('I9'); // Miner Boots: +2 DIG
 
-      expect(gear.id).toBe('I1');
-      expect(gear.name).toBe("Miner's Boots");
+      expect(gear.id).toBe('I9');
+      expect(gear.name).toBe('Miner Boots');
       expect(gear.emoji).toBe('🥾');
       expect(gear.baseRarity).toBe('COMMON');
       expect(gear.currentRarity).toBe('COMMON');
@@ -89,33 +106,32 @@ describe('Items Entity', () => {
     });
 
     it('creates gear with Gilded rarity applying 2x multiplier', () => {
-      const gear = createGearInstance('I1', 'GILDED'); // DIG: 2*2=4
+      const gear = createGearInstance('I9', 'GILDED'); // DIG: 2*2=4
 
       expect(gear.currentRarity).toBe('GILDED');
       expect(gear.stats.dig).toBe(4);
     });
 
     it('creates gear with Diamond rarity applying 4x multiplier', () => {
-      const gear = createGearInstance('I1', 'DIAMOND'); // DIG: 2*4=8
+      const gear = createGearInstance('I9', 'DIAMOND'); // DIG: 2*4=8
 
       expect(gear.currentRarity).toBe('DIAMOND');
       expect(gear.stats.dig).toBe(8);
     });
 
     it('does not apply multiplier to Rare rarity items', () => {
-      const gear = createGearInstance('I15'); // Frostguard Buckler: RARE, +8 ARM
+      const gear = createGearInstance('I34'); // Frostguard Buckler: RARE, +6 ARM
 
       expect(gear.baseRarity).toBe('RARE');
       expect(gear.currentRarity).toBe('RARE');
-      expect(gear.stats.arm).toBe(8); // No multiplier for RARE
+      expect(gear.stats.arm).toBe(6); // No multiplier for RARE
     });
 
-    it('creates all 29 gear items with valid definitions', () => {
-      const gearIds: GearId[] = [
-        'I1', 'I2', 'I3', 'I4', 'I5', 'I6', 'I7', 'I8', 'I9', 'I10',
-        'I11', 'I12', 'I13', 'I14', 'I15', 'I16', 'I17', 'I18', 'I19', 'I20',
-        'I21', 'I22', 'I23', 'I24', 'I25', 'I26', 'I27', 'I28', 'I29',
-      ];
+    it('creates all 64 gear items with valid definitions', () => {
+      const gearIds: GearId[] = [];
+      for (let i = 1; i <= 64; i++) {
+        gearIds.push(`I${i}` as GearId);
+      }
 
       for (const id of gearIds) {
         const gear = createGearInstance(id);
@@ -149,19 +165,19 @@ describe('Items Entity', () => {
 
   describe('calculateItemStats', () => {
     it('calculates combined stats from single tool', () => {
-      const tool = createToolInstance('T1'); // +3 ATK
+      const tool = createToolInstance('T1'); // +1 ATK, +4 ARM
 
       const stats = calculateItemStats(tool, []);
 
-      expect(stats.atk).toBe(3);
-      expect(stats.arm).toBe(0);
+      expect(stats.atk).toBe(1);
+      expect(stats.arm).toBe(4);
       expect(stats.spd).toBe(0);
       expect(stats.dig).toBe(0);
       expect(stats.hp).toBe(0);
     });
 
     it('calculates combined stats from single gear item', () => {
-      const gear = createGearInstance('I3'); // Work Vest: +4 HP, +1 ARM
+      const gear = createGearInstance('I2'); // Work Vest: +4 HP, +1 ARM
 
       const stats = calculateItemStats(null, [gear]);
 
@@ -171,35 +187,35 @@ describe('Items Entity', () => {
     });
 
     it('calculates combined stats from tool + multiple gear', () => {
-      const tool = createToolInstance('T2'); // +1 ATK, +6 ARM
-      const gear1 = createGearInstance('I2'); // +2 ARM
-      const gear2 = createGearInstance('I3'); // +4 HP, +1 ARM
-      const gear3 = createGearInstance('I4'); // +2 ATK, +1 DIG
+      const tool = createToolInstance('T2'); // Cragbreaker: +2 ATK, +3 ARM
+      const gear1 = createGearInstance('I1'); // Miner Helmet: +3 ARM
+      const gear2 = createGearInstance('I2'); // Work Vest: +4 HP, +1 ARM
+      const gear3 = createGearInstance('I10'); // Leather Gloves: +1 ATK, +1 DIG
 
       const stats = calculateItemStats(tool, [gear1, gear2, gear3]);
 
-      expect(stats.atk).toBe(3); // T2(1) + I4(2)
-      expect(stats.arm).toBe(9); // T2(6) + I2(2) + I3(1)
-      expect(stats.dig).toBe(1); // I4
-      expect(stats.hp).toBe(4); // I3
+      expect(stats.atk).toBe(3); // T2(2) + I10(1)
+      expect(stats.arm).toBe(7); // T2(3) + I1(3) + I2(1)
+      expect(stats.dig).toBe(1); // I10
+      expect(stats.hp).toBe(4); // I2
     });
 
     it('handles null tool correctly', () => {
-      const gear = createGearInstance('I4'); // +2 ATK, +1 DIG
+      const gear = createGearInstance('I10'); // Leather Gloves: +1 ATK, +1 DIG
 
       const stats = calculateItemStats(null, [gear]);
 
-      expect(stats.atk).toBe(2);
+      expect(stats.atk).toBe(1);
       expect(stats.dig).toBe(1);
     });
 
     it('handles empty gear array correctly', () => {
-      const tool = createToolInstance('T4'); // +2 ATK, +2 DIG
+      const tool = createToolInstance('T15'); // Quickpick: +1 ATK, +1 SPD
 
       const stats = calculateItemStats(tool, []);
 
-      expect(stats.atk).toBe(2);
-      expect(stats.dig).toBe(2);
+      expect(stats.atk).toBe(1);
+      expect(stats.spd).toBe(1);
       expect(stats.arm).toBe(0);
     });
 
@@ -214,79 +230,79 @@ describe('Items Entity', () => {
     });
 
     it('correctly sums all stat types from multiple gear', () => {
-      const gear1 = createGearInstance('I1'); // +2 DIG
-      const gear2 = createGearInstance('I2'); // +2 ARM
-      const gear3 = createGearInstance('I3'); // +4 HP, +1 ARM
-      const gear4 = createGearInstance('I4'); // +2 ATK, +1 DIG
+      const gear1 = createGearInstance('I9'); // Miner Boots: +2 DIG
+      const gear2 = createGearInstance('I1'); // Miner Helmet: +3 ARM
+      const gear3 = createGearInstance('I2'); // Work Vest: +4 HP, +1 ARM
+      const gear4 = createGearInstance('I10'); // Leather Gloves: +1 ATK, +1 DIG
 
       const stats = calculateItemStats(null, [gear1, gear2, gear3, gear4]);
 
-      expect(stats.atk).toBe(2);
-      expect(stats.arm).toBe(3); // I2(2) + I3(1)
+      expect(stats.atk).toBe(1); // I10
+      expect(stats.arm).toBe(4); // I1(3) + I2(1)
       expect(stats.spd).toBe(0);
-      expect(stats.dig).toBe(3); // I1(2) + I4(1)
-      expect(stats.hp).toBe(4); // I3
+      expect(stats.dig).toBe(3); // I9(2) + I10(1)
+      expect(stats.hp).toBe(4); // I2
     });
   });
 
   describe('getToolDefinition', () => {
-    it('returns correct definition for T1 Polished Pickaxe', () => {
+    it('returns correct definition for T1 Bulwark Shovel', () => {
       const def = getToolDefinition('T1');
 
       expect(def.id).toBe('T1');
-      expect(def.name).toBe('Polished Pickaxe');
-      expect(def.emoji).toBe('⛏️');
+      expect(def.name).toBe('Bulwark Shovel');
       expect(def.rarity).toBe('COMMON');
-      expect(def.stats.atk).toBe(3);
+      expect(def.stats.atk).toBe(1);
+      expect(def.stats.arm).toBe(4);
     });
 
-    it('returns correct definition for T5 Pneumatic Drill (Rare)', () => {
+    it('returns correct definition for T5 Glittering Pick (Common)', () => {
       const def = getToolDefinition('T5');
 
       expect(def.id).toBe('T5');
-      expect(def.name).toBe('Pneumatic Drill');
-      expect(def.rarity).toBe('RARE');
+      expect(def.name).toBe('Glittering Pick');
+      expect(def.rarity).toBe('COMMON');
     });
 
-    it('returns correct definition for T8 Tempest Drill (Mythic)', () => {
+    it('returns correct definition for T8 Spark Pick (Rare)', () => {
       const def = getToolDefinition('T8');
 
       expect(def.id).toBe('T8');
-      expect(def.name).toBe('Tempest Drill');
-      expect(def.rarity).toBe('MYTHIC');
+      expect(def.name).toBe('Spark Pick');
+      expect(def.rarity).toBe('RARE');
     });
   });
 
   describe('getGearDefinition', () => {
-    it('returns correct definition for I1 Miners Boots', () => {
+    it('returns correct definition for I1 Miner Helmet', () => {
       const def = getGearDefinition('I1');
 
       expect(def.id).toBe('I1');
-      expect(def.name).toBe("Miner's Boots");
+      expect(def.name).toBe('Miner Helmet');
       expect(def.baseRarity).toBe('COMMON');
     });
 
-    it('returns correct definition for I15 Frostguard Buckler (Rare)', () => {
-      const def = getGearDefinition('I15');
+    it('returns correct definition for I34 Frostguard Buckler (Rare)', () => {
+      const def = getGearDefinition('I34');
 
-      expect(def.id).toBe('I15');
+      expect(def.id).toBe('I34');
       expect(def.name).toBe('Frostguard Buckler');
       expect(def.baseRarity).toBe('RARE');
     });
 
-    it('returns correct definition for I26 Time Charge (Heroic)', () => {
-      const def = getGearDefinition('I26');
+    it('returns correct definition for I31 Time Charge (Heroic)', () => {
+      const def = getGearDefinition('I31');
 
-      expect(def.id).toBe('I26');
+      expect(def.id).toBe('I31');
       expect(def.name).toBe('Time Charge');
       expect(def.baseRarity).toBe('HEROIC');
     });
   });
 
   describe('TOOL_DEFINITIONS data integrity', () => {
-    it('contains exactly 9 tools', () => {
+    it('contains exactly 17 tools', () => {
       const toolCount = Object.keys(TOOL_DEFINITIONS).length;
-      expect(toolCount).toBe(9);
+      expect(toolCount).toBe(17);
     });
 
     it('all tools have required fields', () => {
@@ -300,8 +316,8 @@ describe('Items Entity', () => {
       }
     });
 
-    it('T7 Gemfinder Staff has GREED tag', () => {
-      const def = getToolDefinition('T7');
+    it('T6 Gemfinder Staff has GREED tag', () => {
+      const def = getToolDefinition('T6');
       expect(def.tags).toContain('GREED');
     });
   });

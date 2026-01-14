@@ -21,7 +21,7 @@ function createTestEnemy(): CombatantState {
     bonusAtk: 0,
     bonusArm: 0,
     bonusSpd: 0,
-    statusEffects: { chill: 0, shrapnel: 0, rust: 0 },
+    statusEffects: { chill: 0, shrapnel: 0, rust: 0, bleed: 0 },
     strikesPerTurn: 1,
     ignoresArmor: false,
   };
@@ -88,4 +88,3 @@ describe('Post-combat HP', () => {
     expect(result.player.stats.hp).toBe(9);
   });
 });
-

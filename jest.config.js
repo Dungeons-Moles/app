@@ -11,18 +11,21 @@ module.exports = {
 
   // TypeScript transformation
   transform: {
-    '^.+\\.tsx?$': ['ts-jest', {
-      tsconfig: {
-        // Allow JS imports
-        allowJs: true,
-        esModuleInterop: true,
-        jsx: 'react-jsx',
-        module: 'commonjs',
-        moduleResolution: 'node',
-        strict: true,
-        target: 'ES2020',
+    '^.+\\.tsx?$': [
+      'ts-jest',
+      {
+        tsconfig: {
+          // Allow JS imports
+          allowJs: true,
+          esModuleInterop: true,
+          jsx: 'react-jsx',
+          module: 'commonjs',
+          moduleResolution: 'node',
+          strict: true,
+          target: 'ES2020',
+        },
       },
-    }],
+    ],
   },
 
   // Don't transform node_modules
@@ -34,14 +37,11 @@ module.exports = {
   // Path aliases
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
+    '\\.(png|jpg|jpeg|gif|webp|svg)$': '<rootDir>/__tests__/__mocks__/fileMock.js',
   },
 
   // Coverage settings
-  collectCoverageFrom: [
-    'src/game/**/*.ts',
-    '!src/**/*.d.ts',
-    '!src/**/index.ts',
-  ],
+  collectCoverageFrom: ['src/game/**/*.ts', '!src/**/*.d.ts', '!src/**/index.ts'],
 
   // Verbose output
   verbose: true,

@@ -50,14 +50,14 @@ function getTagColor(tag: ItemTag): string {
       return '#FFD700';
     case 'FROST':
       return '#87CEEB';
-    case 'SHRAPNEL':
-      return '#CD5C5C';
-    case 'SHARD':
-      return '#9370DB';
     case 'BLAST':
       return '#f97316';
     case 'RUST':
       return '#a16207';
+    case 'BLOOD':
+      return '#dc2626';
+    case 'TEMPO':
+      return '#9333ea';
     default:
       return '#808080';
   }

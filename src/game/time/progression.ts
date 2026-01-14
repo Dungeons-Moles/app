@@ -87,6 +87,79 @@ export function consumeMove(time: TimeState, cost: number): TimeState {
   };
 }
 
+/**
+ * Calculates available moves for an action that can span phase transitions.
+ * For actions like wall breaking, we allow spending moves from the current phase
+ * plus moves from the next phase if needed.
+ *
+ * @param time - Current time state
+ * @returns Total available moves (current + next phase if applicable)
+ */
+export function getAvailableMovesAcrossPhases(time: TimeState): number {
+  // Boss phase has no moves
+  if (time.phase === TimePhase.Boss) {
+    return 0;
+  }
+
+  const currentMoves = time.movesRemaining;
+
+  // Day can transition to Night (same cycle)
+  if (time.phase === TimePhase.Day) {
+    return currentMoves + PHASE_MOVES[TimePhase.Night];
+  }
+
+  // Night can transition to Day (next cycle) or Boss (after Night 3)
+  if (time.phase === TimePhase.Night) {
+    if (time.cycle === 3) {
+      // Night 3 -> Boss, no additional moves available
+      return currentMoves;
+    }
+    // Night 1 or 2 -> next Day
+    return currentMoves + PHASE_MOVES[TimePhase.Day];
+  }
+
+  return currentMoves;
+}
+
+/**
+ * Checks if a cost can be afforded, potentially spanning phase transitions.
+ * Used for actions like wall breaking that should work across day/night boundaries.
+ *
+ * @param time - Current time state
+ * @param cost - Number of moves required
+ * @returns True if the cost can be afforded
+ */
+export function canAffordCostAcrossPhases(time: TimeState, cost: number): boolean {
+  return getAvailableMovesAcrossPhases(time) >= cost;
+}
+
+/**
+ * Consumes moves across phase transitions if needed.
+ * If the cost exceeds current phase moves, the remainder is taken from the next phase.
+ *
+ * @param time - Current time state
+ * @param cost - Number of moves to consume
+ * @returns Updated time state after consuming moves (may be in a new phase)
+ */
+export function consumeMoveAcrossPhases(time: TimeState, cost: number): TimeState {
+  // If we have enough moves in current phase, just consume normally
+  if (time.movesRemaining >= cost) {
+    return consumeMove(time, cost);
+  }
+
+  // Not enough in current phase - need to span across phases
+  const remainingCost = cost - time.movesRemaining;
+
+  // First, consume all remaining moves in current phase
+  let newTime = consumeMove(time, time.movesRemaining);
+
+  // Advance to next phase
+  newTime = advanceTimePhase(newTime);
+
+  // Then consume the remainder from the new phase
+  return consumeMove(newTime, remainingCost);
+}
+
 // ============================================================================
 // Time Phase Transitions (T063)
 // ============================================================================
@@ -154,11 +227,7 @@ export function advanceTimePhase(time: TimeState): TimeState {
  * @returns True if boss should be triggered
  */
 export function shouldTriggerBoss(time: TimeState): boolean {
-  return (
-    time.phase === TimePhase.Night &&
-    time.cycle === 3 &&
-    time.movesRemaining === 0
-  );
+  return time.phase === TimePhase.Night && time.cycle === 3 && time.movesRemaining === 0;
 }
 
 // ============================================================================
@@ -197,10 +266,7 @@ export function getCurrentSightRadius(phase: TimePhase): number {
  * @param rng - Seeded RNG for boss selection
  * @returns New time state for next week, or null if Week 3 completed
  */
-export function advanceToNextWeek(
-  time: TimeState,
-  rng: SeededRNG
-): TimeState | null {
+export function advanceToNextWeek(time: TimeState, rng: SeededRNG): TimeState | null {
   if (time.week === 3) {
     // Game victory - no more weeks
     return null;

@@ -41,11 +41,12 @@ export function createPlayer(spawnPosition: Position): Player {
     position: spawnPosition,
     baseStats,
     stats: { ...baseStats },
-    equippedTool: createToolInstance('T9'),
+    equippedTool: createToolInstance('T0'),
     inventory: [],
     inventoryCapacity: GAME_CONSTANTS.INITIAL_INVENTORY_SLOTS,
     statusEffects: { ...DEFAULT_STATUS_EFFECTS },
     activeItemsets: [],
+    facing: 'right',
   };
 
   return refreshPlayerStats(player);
@@ -199,10 +200,7 @@ export function getAvailableSlots(player: Player): number {
 /**
  * Add gear to inventory (returns null if inventory full)
  */
-export function addGearToInventory(
-  player: Player,
-  gear: Gear
-): Player | null {
+export function addGearToInventory(player: Player, gear: Gear): Player | null {
   if (!hasInventorySpace(player)) {
     return null;
   }
@@ -369,10 +367,7 @@ export function addGold(player: Player, amount: number): Player {
 /**
  * Remove gold from player (returns false if insufficient)
  */
-export function removeGold(
-  player: Player,
-  amount: number
-): { player: Player; success: boolean } {
+export function removeGold(player: Player, amount: number): { player: Player; success: boolean } {
   if (player.stats.gold < amount) {
     return { player, success: false };
   }
@@ -503,9 +498,15 @@ export function isWounded(player: Player): boolean {
  * Update player position
  */
 export function movePlayer(player: Player, newPosition: Position): Player {
+  const dx = newPosition.x - player.position.x;
+  let facing = player.facing;
+  if (dx < 0) facing = 'left';
+  if (dx > 0) facing = 'right';
+
   return {
     ...player,
     position: { ...newPosition },
+    facing,
   };
 }
 

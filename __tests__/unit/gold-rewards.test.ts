@@ -1,8 +1,10 @@
 /**
- * T069, T070: Gold reward calculation and determinism tests.
+ * Gold reward calculation and determinism tests.
+ * Updated to match GDD Section 11: T1=2, T2=4, T3=6 for all enemies
+ * @see docs/gdd.md Section 11: Field Enemies
  */
 
-import { calculateGoldReward } from '../../src/game/entities/enemies';
+import { calculateGoldReward, TIER_GOLD_REWARDS } from '../../src/game/entities/enemies';
 import { createCombatState, type CombatResolverInput } from '../../src/game/combat/resolver';
 import type { CombatantState } from '../../src/game/engine/types';
 import { DEFAULT_STATUS_EFFECTS } from '../../src/game/engine/types';
@@ -59,62 +61,49 @@ function createTestInput(overrides: Partial<CombatResolverInput> = {}): CombatRe
 }
 
 describe('Enemy Gold Rewards', () => {
-  describe('Reward Calculation', () => {
-    describe('BASIC enemies (base 1)', () => {
-      const basicEnemies: EnemyId[] = [
-        'TUNNEL_RAT',
-        'CAVE_BAT',
-        'SPORE_SLIME',
-        'RUST_MITE_SWARM',
-      ];
-
-      basicEnemies.forEach((enemyId) => {
-        it(`${enemyId} T1 = 1 gold`, () => {
-          expect(calculateGoldReward(enemyId, 1)).toBe(1);
-        });
-
-        it(`${enemyId} T2 = 2 gold`, () => {
-          expect(calculateGoldReward(enemyId, 2)).toBe(2);
-        });
-
-        it(`${enemyId} T3 = 3 gold`, () => {
-          expect(calculateGoldReward(enemyId, 3)).toBe(3);
-        });
-      });
+  describe('Tier Gold Constants', () => {
+    it('T1 = 2 gold', () => {
+      expect(TIER_GOLD_REWARDS[1]).toBe(2);
     });
 
-    describe('MID enemies (base 2)', () => {
-      const midEnemies: EnemyId[] = ['COLLAPSED_MINER', 'SHARD_BEETLE'];
+    it('T2 = 4 gold', () => {
+      expect(TIER_GOLD_REWARDS[2]).toBe(4);
+    });
 
-      midEnemies.forEach((enemyId) => {
-        it(`${enemyId} T1 = 2 gold`, () => {
+    it('T3 = 6 gold', () => {
+      expect(TIER_GOLD_REWARDS[3]).toBe(6);
+    });
+  });
+
+  describe('Reward Calculation (GDD: T1=2, T2=4, T3=6 for all enemies)', () => {
+    // All 12 enemy types should follow the same reward pattern
+    const allEnemies: EnemyId[] = [
+      'TUNNEL_RAT',
+      'CAVE_BAT',
+      'SPORE_SLIME',
+      'RUST_MITE_SWARM',
+      'COLLAPSED_MINER',
+      'SHARD_BEETLE',
+      'TUNNEL_WARDEN',
+      'BURROW_AMBUSHER',
+      'FROST_WISP',
+      'POWDER_TICK',
+      'COIN_SLUG',
+      'BLOOD_MOSQUITO',
+    ];
+
+    allEnemies.forEach((enemyId) => {
+      describe(enemyId, () => {
+        it('T1 = 2 gold', () => {
           expect(calculateGoldReward(enemyId, 1)).toBe(2);
         });
 
-        it(`${enemyId} T2 = 3 gold`, () => {
-          expect(calculateGoldReward(enemyId, 2)).toBe(3);
-        });
-
-        it(`${enemyId} T3 = 4 gold`, () => {
-          expect(calculateGoldReward(enemyId, 3)).toBe(4);
-        });
-      });
-    });
-
-    describe('STRONG enemies (base 3)', () => {
-      const strongEnemies: EnemyId[] = ['TUNNEL_WARDEN', 'BURROW_AMBUSHER'];
-
-      strongEnemies.forEach((enemyId) => {
-        it(`${enemyId} T1 = 3 gold`, () => {
-          expect(calculateGoldReward(enemyId, 1)).toBe(3);
-        });
-
-        it(`${enemyId} T2 = 4 gold`, () => {
+        it('T2 = 4 gold', () => {
           expect(calculateGoldReward(enemyId, 2)).toBe(4);
         });
 
-        it(`${enemyId} T3 = 5 gold`, () => {
-          expect(calculateGoldReward(enemyId, 3)).toBe(5);
+        it('T3 = 6 gold', () => {
+          expect(calculateGoldReward(enemyId, 3)).toBe(6);
         });
       });
     });

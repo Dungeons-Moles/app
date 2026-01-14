@@ -2,12 +2,13 @@
  * CombatArena - Web fallback without Skia.
  */
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { StyleSheet, View, useWindowDimensions, Text, Image } from 'react-native';
 import type { CombatantState, StatusEffects } from '../../game/engine/types';
 import { DamageNumbers } from './DamageNumbers';
 import { EffectNotifications } from './EffectNotifications';
 import type { DamageNumber, EffectNotification } from '../../contexts/CombatContext';
+import { getEntityImageSource } from '../game/entityImages';
 
 const defaultMoleImageSource = require('../../../assets/characters/default-mole.png');
 
@@ -22,10 +23,6 @@ interface CombatArenaProps {
   enemyMaxArm?: number;
 }
 
-/**
- * CombatArena renders the battle scene with combatants
- * Enemy on LEFT, Player on RIGHT per spec FR-048/FR-049
- */
 export function CombatArena({
   player,
   enemy,
@@ -93,6 +90,17 @@ export function CombatArena({
         />
       ) : null}
 
+      {/* Enemy Image */}
+      <View style={[styles.imageContainer, { left: enemyX - 40, top: combatantY - 40 }]}>
+        {enemy.definitionId ? (
+          <Image
+            source={getEntityImageSource(enemy.definitionId)}
+            style={styles.combatantImage}
+            resizeMode="contain"
+          />
+        ) : null}
+      </View>
+
       {/* Enemy HP bar */}
       <View
         style={[
@@ -159,6 +167,16 @@ export function CombatArena({
         />
       ) : null}
 
+      {/* Player Image */}
+      <View
+        style={[
+          styles.imageContainer,
+          { left: playerX - 40, top: combatantY - 40, transform: [{ scaleX: -1 }] },
+        ]}
+      >
+        <Image source={defaultMoleImageSource} style={styles.combatantImage} resizeMode="contain" />
+      </View>
+
       {/* Player HP bar */}
       <View
         style={[
@@ -221,14 +239,6 @@ export function CombatArena({
           enemyPosition={{ x: enemyX, y: combatantY - combatantRadius - 40 }}
           playerPosition={{ x: playerX, y: combatantY - combatantRadius - 40 }}
         />
-      </View>
-
-      {/* Emoji labels */}
-      <View style={[styles.emojiContainer, { left: enemyX - 20, top: combatantY - 15 }]}>
-        <Text style={styles.emoji}>{enemy.emoji}</Text>
-      </View>
-      <View style={[styles.emojiContainer, { left: playerX - 20, top: combatantY - 15 }]}>
-        <Image source={defaultMoleImageSource} style={styles.combatantImage} resizeMode="contain" />
       </View>
 
       {/* Status effects for enemy (below floor line) */}
@@ -336,20 +346,16 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     pointerEvents: 'none',
   },
-  emojiContainer: {
+  imageContainer: {
     position: 'absolute',
-    width: 40,
-    height: 40,
+    width: 80,
+    height: 80,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  emoji: {
-    fontSize: 28,
-    textAlign: 'center',
-  },
   combatantImage: {
-    width: 60,
-    height: 60,
+    width: 80,
+    height: 80,
   },
   statusRow: {
     position: 'absolute',

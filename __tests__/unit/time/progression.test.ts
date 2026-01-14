@@ -1,8 +1,7 @@
 /**
  * Time Progression Tests (T060, T061)
  * Tests for time system including Day/Night cycles and boss selection
- * @see specs/001-pve-dungeon-crawler/spec.md - User Story 3
- * @see specs/001-pve-dungeon-crawler/data-model.md - TimeState
+ * @see docs/gdd.md Section 3 - Session & Time Structure
  */
 
 import { SeededRNG } from '../../../src/game/engine/rng';
@@ -54,7 +53,7 @@ describe('Time Progression (T060)', () => {
         phase: TimePhase.Day,
         cycle: 1,
         movesRemaining: 50,
-        weekBoss: 'BROODMOTHER',
+        weekBoss: 'B-A-W1-01',
       };
 
       const result = consumeMove(time, 1);
@@ -67,7 +66,7 @@ describe('Time Progression (T060)', () => {
         phase: TimePhase.Day,
         cycle: 1,
         movesRemaining: 50,
-        weekBoss: 'BROODMOTHER',
+        weekBoss: 'B-A-W1-01',
       };
 
       const result = consumeMove(time, 2);
@@ -80,7 +79,7 @@ describe('Time Progression (T060)', () => {
         phase: TimePhase.Day,
         cycle: 1,
         movesRemaining: 1,
-        weekBoss: 'BROODMOTHER',
+        weekBoss: 'B-A-W1-01',
       };
 
       const result = consumeMove(time, 5);
@@ -95,7 +94,7 @@ describe('Time Progression (T060)', () => {
         phase: TimePhase.Day,
         cycle: 1,
         movesRemaining: 0,
-        weekBoss: 'BROODMOTHER',
+        weekBoss: 'B-A-W1-01',
       };
 
       const result = advanceTimePhase(time);
@@ -111,7 +110,7 @@ describe('Time Progression (T060)', () => {
         phase: TimePhase.Night,
         cycle: 1,
         movesRemaining: 0,
-        weekBoss: 'BROODMOTHER',
+        weekBoss: 'B-A-W1-01',
       };
 
       const result = advanceTimePhase(time);
@@ -127,7 +126,7 @@ describe('Time Progression (T060)', () => {
         phase: TimePhase.Night,
         cycle: 3,
         movesRemaining: 0,
-        weekBoss: 'BROODMOTHER',
+        weekBoss: 'B-A-W1-01',
       };
 
       const result = advanceTimePhase(time);
@@ -143,7 +142,7 @@ describe('Time Progression (T060)', () => {
         phase: TimePhase.Day,
         cycle: 1,
         movesRemaining: 25,
-        weekBoss: 'BROODMOTHER',
+        weekBoss: 'B-A-W1-01',
       };
 
       const result = advanceTimePhase(time);
@@ -158,7 +157,7 @@ describe('Time Progression (T060)', () => {
         phase: TimePhase.Night,
         cycle: 3,
         movesRemaining: 0,
-        weekBoss: 'BROODMOTHER',
+        weekBoss: 'B-A-W1-01',
       };
 
       expect(shouldTriggerBoss(time)).toBe(true);
@@ -170,7 +169,7 @@ describe('Time Progression (T060)', () => {
         phase: TimePhase.Day,
         cycle: 3,
         movesRemaining: 0,
-        weekBoss: 'BROODMOTHER',
+        weekBoss: 'B-A-W1-01',
       };
 
       expect(shouldTriggerBoss(time)).toBe(false);
@@ -182,7 +181,7 @@ describe('Time Progression (T060)', () => {
         phase: TimePhase.Night,
         cycle: 1,
         movesRemaining: 0,
-        weekBoss: 'BROODMOTHER',
+        weekBoss: 'B-A-W1-01',
       };
 
       const time2: TimeState = {
@@ -190,7 +189,7 @@ describe('Time Progression (T060)', () => {
         phase: TimePhase.Night,
         cycle: 2,
         movesRemaining: 0,
-        weekBoss: 'BROODMOTHER',
+        weekBoss: 'B-A-W1-01',
       };
 
       expect(shouldTriggerBoss(time1)).toBe(false);
@@ -203,7 +202,7 @@ describe('Time Progression (T060)', () => {
         phase: TimePhase.Night,
         cycle: 3,
         movesRemaining: 5,
-        weekBoss: 'BROODMOTHER',
+        weekBoss: 'B-A-W1-01',
       };
 
       expect(shouldTriggerBoss(time)).toBe(false);
@@ -267,7 +266,7 @@ describe('Time Progression (T060)', () => {
 
 describe('Boss Selection (T061)', () => {
   describe('selectWeekBoss', () => {
-    it('selects from Week 1 pool (4 bosses)', () => {
+    it('selects from Week 1 pool (5 bosses)', () => {
       const week1Bosses = new Set<BossId>();
 
       // Run multiple seeds to see variety
@@ -278,7 +277,7 @@ describe('Boss Selection (T061)', () => {
       }
 
       // Should only select from Week 1 pool
-      week1Bosses.forEach(boss => {
+      week1Bosses.forEach((boss) => {
         expect(BOSS_POOLS[1]).toContain(boss);
       });
 
@@ -286,7 +285,7 @@ describe('Boss Selection (T061)', () => {
       expect(week1Bosses.size).toBeGreaterThan(1);
     });
 
-    it('selects from Week 2 pool (2 bosses)', () => {
+    it('selects from Week 2 pool (5 bosses)', () => {
       const week2Bosses = new Set<BossId>();
 
       for (let seed = 0; seed < 100; seed++) {
@@ -295,20 +294,27 @@ describe('Boss Selection (T061)', () => {
         week2Bosses.add(boss);
       }
 
-      week2Bosses.forEach(boss => {
+      week2Bosses.forEach((boss) => {
         expect(BOSS_POOLS[2]).toContain(boss);
       });
 
-      // Should see both Week 2 bosses
-      expect(week2Bosses.size).toBe(2);
+      // Should see multiple Week 2 bosses
+      expect(week2Bosses.size).toBeGreaterThan(1);
     });
 
-    it('always selects ELDRITCH_MOLE for Week 3', () => {
+    it('selects from Week 3 pool (2 finalists)', () => {
+      const week3Bosses = new Set<BossId>();
+
       for (let seed = 0; seed < 50; seed++) {
         const rng = new SeededRNG(seed);
         const boss = selectWeekBoss(3, rng);
-        expect(boss).toBe('ELDRITCH_MOLE');
+        week3Bosses.add(boss);
       }
+
+      // Should only select from Week 3 pool
+      week3Bosses.forEach((boss) => {
+        expect(BOSS_POOLS[3]).toContain(boss);
+      });
     });
 
     it('produces deterministic selection with same seed', () => {
@@ -322,13 +328,20 @@ describe('Boss Selection (T061)', () => {
   describe('boss selection distribution', () => {
     it('Week 1 bosses have roughly equal probability', () => {
       const counts: Record<BossId, number> = {
-        BROODMOTHER: 0,
-        OBSIDIAN_GOLEM: 0,
-        GAS_ANOMALY: 0,
-        MAD_MINER: 0,
-        DRILL_SERGEANT: 0,
-        CRYSTAL_MIMIC: 0,
-        ELDRITCH_MOLE: 0,
+        'B-A-W1-01': 0,
+        'B-A-W1-02': 0,
+        'B-A-W1-03': 0,
+        'B-A-W1-04': 0,
+        'B-A-W1-05': 0,
+        'B-A-W2-01': 0,
+        'B-A-W2-02': 0,
+        'B-A-W2-03': 0,
+        'B-A-W2-04': 0,
+        'B-A-W2-05': 0,
+        'B-A-W3-01': 0,
+        'B-A-W3-02': 0,
+        'B-B-W3-01': 0,
+        'B-B-W3-02': 0,
       };
 
       const iterations = 1000;
@@ -338,16 +351,16 @@ describe('Boss Selection (T061)', () => {
         counts[boss]++;
       }
 
-      // Each Week 1 boss should be selected roughly 25% of the time (250 +/- 100)
-      BOSS_POOLS[1].forEach(boss => {
-        expect(counts[boss]).toBeGreaterThan(150);
+      // Each Week 1 boss should be selected roughly 20% of the time (200 +/- 100)
+      BOSS_POOLS[1].forEach((boss) => {
+        expect(counts[boss]).toBeGreaterThan(100);
         expect(counts[boss]).toBeLessThan(350);
       });
 
       // Week 2 and 3 bosses should never be selected for Week 1
-      expect(counts.DRILL_SERGEANT).toBe(0);
-      expect(counts.CRYSTAL_MIMIC).toBe(0);
-      expect(counts.ELDRITCH_MOLE).toBe(0);
+      expect(counts['B-A-W2-01']).toBe(0);
+      expect(counts['B-A-W2-02']).toBe(0);
+      expect(counts['B-A-W3-01']).toBe(0);
     });
   });
 
@@ -361,7 +374,7 @@ describe('Boss Selection (T061)', () => {
 
       expect(BOSS_POOLS[1]).toContain(week1Boss);
       expect(BOSS_POOLS[2]).toContain(week2Boss);
-      expect(week3Boss).toBe('ELDRITCH_MOLE');
+      expect(BOSS_POOLS[3]).toContain(week3Boss);
     });
   });
 });

@@ -5,13 +5,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  type GestureResponderEvent,
-} from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, type GestureResponderEvent } from 'react-native';
 import type {
   POIInteraction,
   POIOption,
@@ -24,7 +18,7 @@ import type {
 import { POI_DEFINITIONS } from '@/data/pois';
 import { TOOL_DEFINITIONS } from '@/game/entities/items';
 import { GEAR_DEFINITIONS } from '@/data/gear';
-import type { POIId } from '@/game/map/types';
+import type { POIId } from '@/game/engine/types';
 import { extractStatBonuses, formatStatBonuses } from '@/utils/stat-display';
 import { SimplifiedItemOption } from '@/components/poi/SimplifiedItemOption';
 import { ItemTooltip as PoiItemTooltip } from '@/components/poi/ItemTooltip';
@@ -118,10 +112,7 @@ function ListOptionButton({ option, index, onPress }: ListOptionButtonProps) {
   );
 
   const textStyle = useMemo(
-    () => [
-      styles.listOptionText,
-      option.disabled && styles.listOptionTextDisabled,
-    ],
+    () => [styles.listOptionText, option.disabled && styles.listOptionTextDisabled],
     [option.disabled]
   );
 
@@ -281,11 +272,7 @@ export function POIModal({
     return (
       <View style={styles.inlineOverlay} pointerEvents="box-none">
         <View style={styles.inlineModal} pointerEvents="auto">
-          <TouchableOpacity
-            style={styles.closeButtonTop}
-            onPress={onClose}
-            activeOpacity={0.7}
-          >
+          <TouchableOpacity style={styles.closeButtonTop} onPress={onClose} activeOpacity={0.7}>
             <Text style={styles.closeButtonTopText}>X</Text>
           </TouchableOpacity>
 
@@ -332,11 +319,7 @@ export function POIModal({
     return (
       <View style={styles.overlay} pointerEvents="box-none">
         <View style={styles.threeChoiceModal} pointerEvents="auto">
-          <TouchableOpacity
-            style={styles.closeButtonTop}
-            onPress={onClose}
-            activeOpacity={0.7}
-          >
+          <TouchableOpacity style={styles.closeButtonTop} onPress={onClose} activeOpacity={0.7}>
             <Text style={styles.closeButtonTopText}>X</Text>
           </TouchableOpacity>
 
@@ -393,22 +376,14 @@ export function POIModal({
     return (
       <View style={styles.overlay} pointerEvents="box-none">
         <View style={styles.standardModal} pointerEvents="auto">
-          <TouchableOpacity
-            style={styles.closeButtonTop}
-            onPress={onClose}
-            activeOpacity={0.7}
-          >
+          <TouchableOpacity style={styles.closeButtonTop} onPress={onClose} activeOpacity={0.7}>
             <Text style={styles.closeButtonTopText}>X</Text>
           </TouchableOpacity>
 
           <Text style={styles.threeChoiceTitle}>{poiDef.name}</Text>
 
           {hasOtherWaypoints ? (
-            <TouchableOpacity
-              style={styles.primaryButton}
-              onPress={() => {}}
-              activeOpacity={0.7}
-            >
+            <TouchableOpacity style={styles.primaryButton} onPress={() => {}} activeOpacity={0.7}>
               <Text style={styles.primaryButtonText}>Fast travel?</Text>
             </TouchableOpacity>
           ) : (
@@ -432,11 +407,7 @@ export function POIModal({
     return (
       <View style={styles.overlay} pointerEvents="box-none">
         <View style={styles.standardModal} pointerEvents="auto">
-          <TouchableOpacity
-            style={styles.closeButtonTop}
-            onPress={onClose}
-            activeOpacity={0.7}
-          >
+          <TouchableOpacity style={styles.closeButtonTop} onPress={onClose} activeOpacity={0.7}>
             <Text style={styles.closeButtonTopText}>X</Text>
           </TouchableOpacity>
 
@@ -490,11 +461,7 @@ export function POIModal({
     return (
       <View style={styles.overlay} pointerEvents="box-none">
         <View style={[styles.standardModal, styles.compactModal]} pointerEvents="auto">
-          <TouchableOpacity
-            style={styles.closeButtonTop}
-            onPress={onClose}
-            activeOpacity={0.7}
-          >
+          <TouchableOpacity style={styles.closeButtonTop} onPress={onClose} activeOpacity={0.7}>
             <Text style={styles.closeButtonTopText}>X</Text>
           </TouchableOpacity>
 
@@ -540,11 +507,7 @@ export function POIModal({
     return (
       <View style={styles.overlay} pointerEvents="box-none">
         <View style={styles.standardModal} pointerEvents="auto">
-          <TouchableOpacity
-            style={styles.closeButtonTop}
-            onPress={onClose}
-            activeOpacity={0.7}
-          >
+          <TouchableOpacity style={styles.closeButtonTop} onPress={onClose} activeOpacity={0.7}>
             <Text style={styles.closeButtonTopText}>X</Text>
           </TouchableOpacity>
 
@@ -552,7 +515,10 @@ export function POIModal({
 
           {restOption && (
             <TouchableOpacity
-              style={[styles.primaryButton, restOption.option.disabled && styles.primaryButtonDisabled]}
+              style={[
+                styles.primaryButton,
+                restOption.option.disabled && styles.primaryButtonDisabled,
+              ]}
               onPress={() => onSelectOption(restOption.index)}
               activeOpacity={0.7}
               disabled={restOption.option.disabled}
@@ -576,11 +542,7 @@ export function POIModal({
     return (
       <View style={styles.overlay} pointerEvents="box-none">
         <View style={styles.standardModal} pointerEvents="auto">
-          <TouchableOpacity
-            style={styles.closeButtonTop}
-            onPress={onClose}
-            activeOpacity={0.7}
-          >
+          <TouchableOpacity style={styles.closeButtonTop} onPress={onClose} activeOpacity={0.7}>
             <Text style={styles.closeButtonTopText}>X</Text>
           </TouchableOpacity>
 
@@ -621,27 +583,16 @@ export function POIModal({
   return (
     <View style={styles.overlay} pointerEvents="box-none">
       <View style={styles.standardModal} pointerEvents="auto">
-        <TouchableOpacity
-          style={styles.closeButtonTop}
-          onPress={onClose}
-          activeOpacity={0.7}
-        >
+        <TouchableOpacity style={styles.closeButtonTop} onPress={onClose} activeOpacity={0.7}>
           <Text style={styles.closeButtonTopText}>X</Text>
         </TouchableOpacity>
 
         <Text style={styles.threeChoiceTitle}>{poiDef.name}</Text>
-        {poiDef.description ? (
-          <Text style={styles.description}>{poiDef.description}</Text>
-        ) : null}
+        {poiDef.description ? <Text style={styles.description}>{poiDef.description}</Text> : null}
 
         <View style={styles.optionsContent}>
           {displayOptions.map(({ option, index }) => (
-            <ListOptionButton
-              key={index}
-              option={option}
-              index={index}
-              onPress={onSelectOption}
-            />
+            <ListOptionButton key={index} option={option} index={index} onPress={onSelectOption} />
           ))}
         </View>
       </View>

@@ -1,6 +1,6 @@
 /**
- * Wall break helpers for DIG stat.
- * @see specs/002-qol-balance-batch/contracts/wall-break.md
+ * Dig mechanic helpers.
+ * @see specs/003-gdd-mechanics-update/spec.md
  */
 
 import { WALL_BREAK_BASE_COST, WALL_BREAK_MIN_COST, WALL_BREAK_MIN_DIG } from '../engine/constants';
@@ -9,9 +9,10 @@ import type { GameMap } from './types';
 import { TileType } from './types';
 
 /**
- * Calculate the move cost to break a wall based on DIG stat.
+ * Calculate the move cost to dig a wall based on DIG stat.
+ * Formula: max(2, 6 - DIG)
  */
-export function calculateWallBreakCost(dig: number): number | null {
+export function calculateDigCost(dig: number): number | null {
   if (dig < WALL_BREAK_MIN_DIG) {
     return null;
   }
@@ -20,9 +21,9 @@ export function calculateWallBreakCost(dig: number): number | null {
 }
 
 /**
- * Check if a wall can be broken at the given position.
+ * Check if a wall can be dug at the given position.
  */
-export function canBreakWall(map: GameMap, position: Position): boolean {
+export function canDig(map: GameMap, position: Position): boolean {
   if (
     position.x <= 0 ||
     position.y <= 0 ||
@@ -36,15 +37,10 @@ export function canBreakWall(map: GameMap, position: Position): boolean {
 }
 
 /**
- * Execute wall break, converting wall to floor.
+ * Execute dig, converting wall to floor.
  */
-export function breakWall(map: GameMap, position: Position): GameMap {
-  if (
-    position.x < 0 ||
-    position.y < 0 ||
-    position.x >= map.width ||
-    position.y >= map.height
-  ) {
+export function executeDig(map: GameMap, position: Position): GameMap {
+  if (position.x < 0 || position.y < 0 || position.x >= map.width || position.y >= map.height) {
     return map;
   }
 
@@ -53,9 +49,7 @@ export function breakWall(map: GameMap, position: Position): GameMap {
   }
 
   const tiles = map.tiles.map((row, y) =>
-    y === position.y
-      ? row.map((tile, x) => (x === position.x ? TileType.Floor : tile))
-      : [...row]
+    y === position.y ? row.map((tile, x) => (x === position.x ? TileType.Floor : tile)) : [...row]
   );
 
   return {

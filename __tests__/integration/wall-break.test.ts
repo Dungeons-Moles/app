@@ -1,8 +1,9 @@
 import { gameReducer } from '../../src/game/engine/game-reducer';
 import { createInitialGameState } from '../../src/game/engine/state-factory';
 import { Direction } from '../../src/game/input/types';
-import { calculateWallBreakCost } from '../../src/game/map/wall-break';
+import { calculateDigCost, canDig } from '../../src/game/map/dig';
 import { TileType } from '../../src/game/map/types';
+import type { GameState } from '../../src/game/engine/types';
 
 const TEST_SEED = 4242;
 
@@ -13,60 +14,70 @@ const DIRECTION_OFFSETS = [
   { direction: Direction.Right, dx: 1, dy: 0 },
 ] as const;
 
-function findBreakTarget(state: ReturnType<typeof gameReducer>) {
-  const { x, y } = state.player.position;
-  for (const entry of DIRECTION_OFFSETS) {
-    const targetX = x + entry.dx;
-    const targetY = y + entry.dy;
-    if (
-      targetX > 0 &&
-      targetX < state.map.width - 1 &&
-      targetY > 0 &&
-      targetY < state.map.height - 1
-    ) {
-      return {
-        direction: entry.direction,
-        position: { x: targetX, y: targetY },
-      };
+function findDiggableSetup(state: GameState) {
+  for (let y = 1; y < state.map.height - 1; y++) {
+    for (let x = 1; x < state.map.width - 1; x++) {
+      // Find a diggable wall
+      if (canDig(state.map, { x, y })) {
+        // Find adjacent floor to stand on
+        for (const entry of DIRECTION_OFFSETS) {
+          const px = x - entry.dx; // Player position (reverse of direction)
+          const py = y - entry.dy;
+          if (state.map.tiles[py]?.[px] === TileType.Floor) {
+            return {
+              playerPos: { x: px, y: py },
+              direction: entry.direction,
+              targetPos: { x, y },
+            };
+          }
+        }
+      }
     }
   }
-
-  throw new Error('No breakable adjacent tile found for wall break test.');
+  return null;
 }
 
 describe('Wall Break Integration', () => {
-  it('executes double-tap flow to break a wall', () => {
-    const initialState = createInitialGameState();
-    let state = gameReducer(initialState, { type: 'START_GAME', seed: TEST_SEED });
+  it('highlights and breaks a wall', () => {
+    let state = createInitialGameState();
+    // Initialize game to generate map
+    state = gameReducer(state, { type: 'START_GAME', seed: TEST_SEED });
 
-    const { direction, position } = findBreakTarget(state);
-    const tiles = state.map.tiles.map(row => [...row]);
-    tiles[position.y][position.x] = TileType.Wall;
+    const setup = findDiggableSetup(state);
 
+    expect(setup).not.toBeNull();
+    if (!setup) return;
+
+    // Move player to setup position
     state = {
       ...state,
       player: {
         ...state.player,
-        baseStats: { ...state.player.baseStats, dig: 2 },
-        stats: { ...state.player.stats, dig: 2 },
-      },
-      time: {
-        ...state.time,
-        movesRemaining: 10,
-      },
-      map: {
-        ...state.map,
-        tiles,
+        position: setup.playerPos,
       },
     };
 
-    const highlighted = gameReducer(state, { type: 'MOVE', direction });
-    expect(highlighted.wallHighlight).not.toBeNull();
+    // 1. Highlight
+    const highlightedState = gameReducer(state, {
+      type: 'MOVE',
+      direction: setup.direction,
+    });
 
-    const afterBreak = gameReducer(highlighted, { type: 'MOVE', direction });
-    const cost = calculateWallBreakCost(2) ?? 0;
+    expect(highlightedState.wallHighlight).not.toBeNull();
+    expect(highlightedState.wallHighlight?.direction).toBe(setup.direction);
 
-    expect(afterBreak.map.tiles[position.y][position.x]).toBe(TileType.Floor);
-    expect(afterBreak.time.movesRemaining).toBe(highlighted.time.movesRemaining - cost);
+    // 2. Break
+    const afterBreak = gameReducer(highlightedState, {
+      type: 'MOVE',
+      direction: setup.direction,
+    });
+
+    // Verify wall is gone
+    const { x, y } = setup.targetPos;
+    expect(afterBreak.map.tiles[y][x]).toBe(TileType.Floor);
+
+    // Verify time consumed
+    const cost = calculateDigCost(state.player.stats.dig) ?? 0;
+    expect(afterBreak.time.movesRemaining).toBe(state.time.movesRemaining - cost);
   });
 });

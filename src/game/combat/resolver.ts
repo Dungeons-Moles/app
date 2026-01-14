@@ -11,6 +11,7 @@ import type {
   Gear,
   Tool,
   GearId,
+  ItemsetId,
 } from '../engine/types';
 import { CombatPhase } from '../engine/types';
 import type { EnemyId as MapEnemyId } from '../map/types';
@@ -45,8 +46,10 @@ export interface CombatResolverInput {
   enemyTier?: 1 | 2 | 3;
   /** Optional gold reward for combat victory */
   goldReward?: number;
-  /** True if player has Shrapnel Harness itemset */
+  /** True if player has Shrapnel Harness itemset (deprecated, use activeItemSets) */
   hasShrapnelHarness?: boolean;
+  /** Active itemsets */
+  activeItemSets?: ItemsetId[];
   /** Player gear for combat effects */
   playerGear?: Gear[];
   /** Player tool for combat effects */
@@ -90,7 +93,9 @@ export function createCombatState(input: CombatResolverInput): CombatState {
 export function resolveCombat(input: CombatResolverInput): CombatState {
   let state = createCombatState(input);
   const rng = new SeededRNG(input.seed);
-  const { bossId, enemyId, hasShrapnelHarness = false } = input;
+  const { bossId, enemyId, activeItemSets = [] } = input;
+  const hasShrapnelHarness =
+    input.hasShrapnelHarness || activeItemSets.includes('SHRAPNEL_HARNESS');
   const playerGear = input.playerGear ?? [];
   const playerTool = input.playerTool ?? null;
 
@@ -109,34 +114,49 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
       0
     );
 
-  const whetstoneBonus = sumScaled('I5', 2);
-  const spikedBracersShrapnel = sumScaled('I6', 1);
-  const frostLanternChill = sumScaled('I7', 1);
-  const canaryCharges = countGear('I9');
-  const smallChargeCount = countGear('I10');
-  const shardEmerald = countGear('I11');
-  const shardRuby = countGear('I12');
-  const shardSapphire = countGear('I13');
-  const shardCitrine = countGear('I14');
-  const frostguardCount = countGear('I15');
-  const blastSuitActive = countGear('I16') > 0;
-  const bombSatchelCount = countGear('I17');
-  const explosivePowderCount = countGear('I18');
-  const kindlingChargeCount = countGear('I19');
-  const doubleDetonationBonus = countGear('I20') * 3;
-  const shrapnelTalismanCount = countGear('I21');
-  const rustSpikeCount = countGear('I22');
-  const corrodedGreavesCount = countGear('I23');
-  const crystalCrownCount = countGear('I24');
-  const royalBracerCount = countGear('I25');
-  const timeChargeCount = countGear('I26');
-  const drillServoCount = countGear('I27');
-  const gearLinkMultiplier = countGear('I28') > 0 ? 2 : 1;
-  const twinFuseMultiplier = countGear('I29') > 0 ? 2 : 1;
+  // STONE items
+  const spikedBracersShrapnel = sumScaled('I3', 2); // G-ST-03: Battle Start: gain 2 Shrapnel
+  const shrapnelTalismanCount = countGear('I6'); // G-ST-06: gain 1 Armor when gaining Shrapnel
+  const crystalCrownCount = countGear('I7'); // G-ST-07: gain Max HP equal to starting Armor
+  const stoneSigilCount = countGear('I8'); // G-ST-08: End of turn: if you have Armor, gain 1 Armor
+
+  // SCOUT items
+  const drillServoCount = countGear('I14'); // G-SC-06: Wounded: gain +1 strikes
+  const gearLinkMultiplier = countGear('I16') > 0 ? 2 : 1; // G-SC-08: On Hit effects trigger twice
+
+  // GREED items
+  const royalBracerCount = countGear('I20'); // G-GR-04: Turn Start: convert 1 Gold -> 2 Armor
+  const shardEmerald = countGear('I21'); // G-GR-05: Every other turn: heal 1 HP
+  const shardRuby = countGear('I22'); // G-GR-06: Every other turn: deal 1 non-weapon damage
+  const shardSapphire = countGear('I23'); // G-GR-07: Every other turn: gain 1 Armor
+  const shardCitrine = countGear('I24'); // G-GR-08: Every other turn: gain 1 Gold
+
+  // BLAST items
+  const smallChargeCount = countGear('I25'); // G-BL-01: Countdown(2): deal 8 to enemy and you
+  const blastSuitActive = countGear('I26') > 0; // G-BL-02: Ignore damage from your own BLAST items
+  const explosivePowderCount = countGear('I27'); // G-BL-03: Non-weapon damage deals +1
+  const doubleDetonationBonus = countGear('I28') * 3; // G-BL-04: Second non-weapon damage deals +2
+  const bombSatchelCount = countGear('I29'); // G-BL-05: Battle Start: reduce Countdown by 1
+  const kindlingChargeCount = countGear('I30'); // G-BL-06: Battle Start: deal 1; next bomb deals +3
+  const timeChargeCount = countGear('I31'); // G-BL-07: Turn Start: gain stored damage; Exposed: deal it
+  const twinFuseMultiplier = countGear('I32') > 0 ? 2 : 1; // G-BL-08: Bomb triggers happen twice
+
+  // FROST items
+  const frostLanternChill = sumScaled('I33', 1); // G-FR-01: Battle Start: give enemy 1 Chill
+  const frostguardCount = countGear('I34'); // G-FR-02: Battle Start: if enemy has Chill, gain +2 Armor
+
+  // RUST items
+  const rustSpikeCount = countGear('I42'); // G-RU-02: On Hit: apply 1 Rust
+  const corrodedGreavesCount = countGear('I43'); // G-RU-03: Wounded: apply 2 Rust
+
+  // BLOOD items
+  const canaryCharges = countGear('I49'); // G-BO-01: Last Breath Sigil - prevent death, heal 2 HP
 
   let remainingCanaryCharges = canaryCharges;
+  const demolitionPermitActive = activeItemSets.includes('DEMOLITION_PERMIT');
+  const countdownStart = demolitionPermitActive ? 1 : 2;
   let countdownItems: CountdownItem[] = Array.from({ length: smallChargeCount }, () => ({
-    remaining: 2,
+    remaining: countdownStart,
   }));
   let nextBombBonus = 0;
   let nonWeaponDamageCount = 0;
@@ -147,7 +167,8 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
 
   const bombPool: GearId[] = [];
   for (const gear of playerGear) {
-    if (gear.id === 'I10' || gear.id === 'I19' || gear.id === 'I26') {
+    // Updated IDs: I25 (Small Charge), I30 (Kindling Charge), I31 (Time Charge)
+    if (gear.id === 'I25' || gear.id === 'I30' || gear.id === 'I31') {
       bombPool.push(gear.id);
     }
   }
@@ -273,6 +294,29 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
     });
   };
 
+  const applyBleed = (target: 'player' | 'enemy', stacks: number, effectName?: string) => {
+    if (stacks <= 0) return;
+    const combatant = target === 'player' ? state.player : state.enemy;
+    const updated = applyStatus(combatant, 'bleed', stacks);
+    state = {
+      ...state,
+      [target]: updated,
+    };
+
+    state = addLogEntry(state, {
+      turn: state.turn,
+      timing: state.phase,
+      actor: 'player', // Attribute to player
+      action: 'APPLY_STATUS',
+      target,
+      result: {
+        statusApplied: { type: 'bleed', stacks },
+        effectName,
+      },
+      rngValues: [],
+    });
+  };
+
   const applyNonWeaponDamage = (
     target: 'player' | 'enemy',
     baseDamage: number,
@@ -294,6 +338,20 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
     }
 
     if (target === 'enemy' && options.countForDetonation !== false) {
+      // FUSE_NETWORK: First non-weapon damage per turn deals +2
+      if (nonWeaponDamageCount === 0 && activeItemSets.includes('FUSE_NETWORK')) {
+        damage += 2;
+      }
+
+      // CORROSION_PAYLOAD: First time your bomb deals damage each turn: apply 1 Rust
+      if (
+        nonWeaponDamageCount === 0 &&
+        options.isBomb &&
+        activeItemSets.includes('CORROSION_PAYLOAD')
+      ) {
+        applyRustToEnemy(1, 'Corrosion Payload');
+      }
+
       if (nonWeaponDamageCount === 1) {
         damage += doubleDetonationBonus;
       }
@@ -332,12 +390,14 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
     const triggerCount = twinFuseMultiplier;
     const shouldCount = countForDetonation;
 
-    if (bombId === 'I19') {
+    // I30: Kindling Charge - Battle Start: deal 1; your next bomb deals +3
+    if (bombId === 'I30') {
       nextBombBonus += 3;
     }
 
     for (let trigger = 0; trigger < triggerCount; trigger += 1) {
-      if (bombId === 'I10') {
+      // I25: Small Charge - Countdown(2): deal 8 to enemy and you
+      if (bombId === 'I25') {
         applyNonWeaponDamage('enemy', 10, {
           source: 'Small Charge',
           isBomb: true,
@@ -350,7 +410,8 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
         });
       }
 
-      if (bombId === 'I19') {
+      // I30: Kindling Charge
+      if (bombId === 'I30') {
         applyNonWeaponDamage('enemy', 1, {
           source: 'Kindling Charge',
           isBomb: true,
@@ -358,7 +419,8 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
         });
       }
 
-      if (bombId === 'I26') {
+      // I31: Time Charge
+      if (bombId === 'I31') {
         applyNonWeaponDamage('enemy', 1, {
           source: 'Time Charge',
           isBomb: true,
@@ -407,7 +469,7 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
         ...state.player,
         hp: 1,
       },
-      consumedGearIds: [...state.consumedGearIds, 'I9'],
+      consumedGearIds: [...state.consumedGearIds, 'I49'], // I49: Last Breath Sigil
     };
 
     state = addLogEntry(state, {
@@ -416,7 +478,7 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
       actor: 'player',
       action: 'TRIGGER_ITEM',
       target: 'player',
-      result: { healing: 1, effectName: 'Canary Charm' },
+      result: { healing: 1, effectName: 'Last Breath Sigil' },
       rngValues: [],
     });
   };
@@ -491,12 +553,89 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
 
     if (kindlingChargeCount > 0) {
       for (let i = 0; i < kindlingChargeCount; i += 1) {
-        applyBombEffect('I19', false);
+        applyBombEffect('I30', false); // I30: Kindling Charge
       }
     }
 
     if (bombSatchelCount > 0) {
       triggerBombSatchel('Battle Start', false);
+    }
+
+    // ============================================================================
+    // Itemset Bonuses (BATTLE_START)
+    // ============================================================================
+
+    // UNION_STANDARD: +4 Armor, +1 DIG
+    if (activeItemSets.includes('UNION_STANDARD')) {
+      applyPlayerArmor(4, 'Union Standard');
+      state = {
+        ...state,
+        player: {
+          ...state.player,
+          dig: state.player.dig + 1,
+        },
+      };
+      state = addLogEntry(state, {
+        turn: 0,
+        timing: 'BATTLE_START',
+        actor: 'player',
+        action: 'TRIGGER_ITEMSET',
+        target: 'player',
+        result: { effectName: 'Union Standard (+1 DIG)' },
+        rngValues: [],
+      });
+    }
+
+    // SWIFT_DIGGER_KIT: If DIG > enemy DIG, +2 strikes
+    if (activeItemSets.includes('SWIFT_DIGGER_KIT')) {
+      if (state.player.dig > state.enemy.dig) {
+        state = {
+          ...state,
+          player: {
+            ...state.player,
+            strikesPerTurn: state.player.strikesPerTurn + 2,
+          },
+        };
+        state = addLogEntry(state, {
+          turn: 0,
+          timing: 'BATTLE_START',
+          actor: 'player',
+          action: 'TRIGGER_ITEMSET',
+          target: 'player',
+          result: { effectName: 'Swift Digger Kit (+2 Strikes)' },
+          rngValues: [],
+        });
+      }
+    }
+
+    // WHITEOUT_INITIATIVE: +1 SPD; if first, +2 Chill
+    if (activeItemSets.includes('WHITEOUT_INITIATIVE')) {
+      state = {
+        ...state,
+        player: {
+          ...state.player,
+          spd: state.player.spd + 1,
+        },
+      };
+      state = addLogEntry(state, {
+        turn: 0,
+        timing: 'BATTLE_START',
+        actor: 'player',
+        action: 'TRIGGER_ITEMSET',
+        target: 'player',
+        result: { effectName: 'Whiteout Initiative (+1 SPD)' },
+        rngValues: [],
+      });
+
+      // Apply Chill if player acts first (SPD >= Enemy SPD)
+      if (state.player.spd >= state.enemy.spd) {
+        applyChill('enemy', 2, 'Whiteout Initiative');
+      }
+    }
+
+    // BLOODRUSH_PROTOCOL: Turn 1 apply 2 Bleed
+    if (activeItemSets.includes('BLOODRUSH_PROTOCOL')) {
+      applyBleed('enemy', 2, 'Bloodrush Protocol');
     }
   };
 
@@ -526,7 +665,7 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
     if (isExposedNow && !wasPlayerExposed) {
       if (timeChargeCount > 0) {
         for (let i = 0; i < timeChargeCount; i += 1) {
-          applyBombEffect('I26');
+          applyBombEffect('I31'); // I31: Time Charge
         }
       }
 
@@ -539,30 +678,33 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
     if (royalBracerCount > 0) {
       let gold = state.playerGold;
       let armorGained = 0;
+      const conversionRate = activeItemSets.includes('ROYAL_EXTRACTION') ? 4 : 2;
 
       for (let i = 0; i < royalBracerCount; i += 1) {
         if (gold <= 0) break;
         gold -= 1;
-        armorGained += 3;
+        armorGained += conversionRate;
       }
 
       updatePlayerGold(gold);
       if (armorGained > 0) {
         applyPlayerArmor(armorGained, 'Royal Bracer');
+        if (activeItemSets.includes('GOLDEN_SHRAPNEL_EXCHANGE')) {
+          applyShrapnelToPlayer(3, 'Golden Shrapnel Exchange');
+        }
       }
     }
 
     if (timeChargeCount > 0) {
-      state = {
-        ...state,
-        player: {
-          ...state.player,
-          bonusAtk: state.player.bonusAtk + 2 * timeChargeCount,
-        },
-      };
+      for (let i = 0; i < timeChargeCount; i += 1) {
+        // I31: Time Charge - Turn Start: gain stored damage
+        nextBombBonus += 1;
+      }
     }
 
-    if (playerTurnsTaken % 2 === 0) {
+    // Shard Circuit: Shards trigger every turn
+    const shardCircuitActive = activeItemSets.includes('SHARD_CIRCUIT');
+    if (shardCircuitActive || playerTurnsTaken % 2 === 0) {
       if (shardEmerald > 0) {
         applyHealing('player', shardEmerald, 'Emerald Shard');
       }
@@ -602,7 +744,11 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
       : effectiveAttacker;
 
     const damageResult = calculateDamage(attackerForDamage, defenderState);
-    const { combatant: updatedDefender, armorLost, hpLost } = applyDamage(defenderState, {
+    const {
+      combatant: updatedDefender,
+      armorLost,
+      hpLost,
+    } = applyDamage(defenderState, {
       armor: damageResult.armorDamage,
       hp: damageResult.hpDamage,
     });
@@ -674,7 +820,7 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
       for (const item of countdownItems) {
         const nextRemaining = item.remaining - 1;
         if (nextRemaining <= 0) {
-          applyBombEffect('I10');
+          applyBombEffect('I25'); // I25: Small Charge
         } else {
           updatedCountdowns.push({ remaining: nextRemaining });
         }
@@ -683,10 +829,60 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
     }
 
     if (actor === 'player') {
-      state = { ...state, player: processStatusEffectsTurnEnd(state.player, hasShrapnelHarness) };
+      const statusResult = processStatusEffectsTurnEnd(state.player, hasShrapnelHarness);
+      state = { ...state, player: statusResult.combatant };
+      if (statusResult.bleedDamage > 0) {
+        state = addLogEntry(state, {
+          turn: state.turn,
+          timing: 'TURN_END',
+          actor: 'system',
+          action: 'ATTACK',
+          target: 'player',
+          result: {
+            damage: statusResult.bleedDamage,
+            statusApplied: { type: 'bleed', stacks: -1 },
+          },
+          rngValues: [],
+        });
+      }
       playerTurnsTaken += 1;
     } else {
-      state = { ...state, enemy: processStatusEffectsTurnEnd(state.enemy, false) };
+      const statusResult = processStatusEffectsTurnEnd(state.enemy, false);
+      state = { ...state, enemy: statusResult.combatant };
+      if (statusResult.bleedDamage > 0) {
+        state = addLogEntry(state, {
+          turn: state.turn,
+          timing: 'TURN_END',
+          actor: 'system',
+          action: 'ATTACK',
+          target: 'enemy',
+          result: {
+            damage: statusResult.bleedDamage,
+            statusApplied: { type: 'bleed', stacks: -1 },
+          },
+          rngValues: [],
+        });
+
+        // BLOODRUSH_PROTOCOL: Gain +1 SPD when enemy takes Bleed damage
+        if (activeItemSets.includes('BLOODRUSH_PROTOCOL')) {
+          state = {
+            ...state,
+            player: {
+              ...state.player,
+              spd: state.player.spd + 1,
+            },
+          };
+          state = addLogEntry(state, {
+            turn: state.turn,
+            timing: 'TURN_END',
+            actor: 'player',
+            action: 'TRIGGER_ITEMSET',
+            target: 'player',
+            result: { effectName: 'Bloodrush Protocol (+1 SPD)' },
+            rngValues: [],
+          });
+        }
+      }
     }
   };
 
@@ -713,7 +909,7 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
       handlePlayerTurnStart();
     } else {
       if (bossId) {
-        if (bossId === 'CRYSTAL_MIMIC') {
+        if (bossId === 'B-A-W2-02') {
           resetStatusReflectionFlag();
         }
 
@@ -725,7 +921,7 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
             timing: 'TURN_START',
             actor: 'enemy',
             action: 'TRIGGER_TRAIT',
-            target: bossId === 'GAS_ANOMALY' ? 'player' : 'enemy',
+            target: bossId === 'B-A-W1-03' ? 'player' : 'enemy',
             result: {
               effectName: traitResult.effectName,
             },
@@ -753,7 +949,8 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
     const attackerState = nextAttacker === 'player' ? state.player : state.enemy;
     const strikes = attackerState.strikesPerTurn;
     let strikesLanded = 0;
-    const tempAtkBonus = nextAttacker === 'player' && playerTurnsTaken === 0 ? whetstoneBonus : 0;
+    // Removed whetstoneBonus - that item no longer exists in the new item system
+    const tempAtkBonus = 0;
 
     for (let strike = 0; strike < strikes; strike += 1) {
       if (isDefeated(nextAttacker === 'player' ? state.enemy : state.player)) {
@@ -763,7 +960,7 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
       const { hpLost } = resolveWeaponStrike(nextAttacker, tempAtkBonus);
       strikesLanded += 1;
 
-      if (bossId === 'ELDRITCH_MOLE' && nextAttacker === 'player' && hpLost > 0) {
+      if (bossId === 'B-A-W3-01' && nextAttacker === 'player' && hpLost > 0) {
         const phaseResult = checkEldritchMolePhases(state, bossId);
         if (phaseResult.phaseTriggered) {
           state = phaseResult.state;
@@ -788,9 +985,16 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
       }
     }
 
-    if (nextAttacker === 'player' && rustSpikeCount > 0 && strikesLanded > 0) {
-      const totalRustStacks = strikesLanded * rustSpikeCount * gearLinkMultiplier;
-      applyRustToEnemy(totalRustStacks, 'Rust Spike');
+    if (nextAttacker === 'player' && strikesLanded > 0) {
+      if (rustSpikeCount > 0) {
+        const totalRustStacks = strikesLanded * rustSpikeCount * gearLinkMultiplier;
+        applyRustToEnemy(totalRustStacks, 'Rust Spike');
+      }
+      // RUST_RITUAL: On Hit apply +1 Rust
+      if (activeItemSets.includes('RUST_RITUAL')) {
+        const totalRustStacks = strikesLanded * 1 * gearLinkMultiplier;
+        applyRustToEnemy(totalRustStacks, 'Rust Ritual');
+      }
     }
 
     if (checkCombatEnd(state)) {

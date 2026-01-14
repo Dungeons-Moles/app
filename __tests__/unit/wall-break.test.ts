@@ -3,7 +3,7 @@ import { createInitialGameState } from '../../src/game/engine/state-factory';
 import { GamePhase, TimePhase } from '../../src/game/engine/types';
 import { createPlayer } from '../../src/game/entities/player';
 import { Direction } from '../../src/game/input/types';
-import { calculateWallBreakCost } from '../../src/game/map/wall-break';
+import { calculateDigCost } from '../../src/game/map/dig';
 import { FogState, GameMap, TileType } from '../../src/game/map/types';
 
 function createTestMap(): GameMap {
@@ -64,16 +64,16 @@ function createTestState({ dig = 2, moves = 10 }: { dig?: number; moves?: number
 describe('Wall Break', () => {
   describe('Cost Calculation', () => {
     it('returns null for DIG 0', () => {
-      expect(calculateWallBreakCost(0)).toBeNull();
+      expect(calculateDigCost(0)).toBeNull();
     });
 
     it('returns expected costs for DIG 1-5+ (formula: max(2, 6 - DIG))', () => {
-      expect(calculateWallBreakCost(1)).toBe(5);
-      expect(calculateWallBreakCost(2)).toBe(4);
-      expect(calculateWallBreakCost(3)).toBe(3);
-      expect(calculateWallBreakCost(4)).toBe(2);
-      expect(calculateWallBreakCost(5)).toBe(2); // minimum cost
-      expect(calculateWallBreakCost(10)).toBe(2); // minimum cost
+      expect(calculateDigCost(1)).toBe(5);
+      expect(calculateDigCost(2)).toBe(4);
+      expect(calculateDigCost(3)).toBe(3);
+      expect(calculateDigCost(4)).toBe(2);
+      expect(calculateDigCost(5)).toBe(2); // minimum cost
+      expect(calculateDigCost(10)).toBe(2); // minimum cost
     });
   });
 
@@ -121,14 +121,66 @@ describe('Wall Break', () => {
       expect(next.time.movesRemaining).toBe(state.time.movesRemaining);
     });
 
-    it('does not break wall when moves are insufficient', () => {
+    it('does not break wall when moves are insufficient (Night 3, cannot span phases)', () => {
+      // Night 3 cannot span to another phase, so we need exactly enough moves
       const state = createTestState({ dig: 1, moves: 2 });
-      const highlighted = gameReducer(state, { type: 'MOVE', direction: Direction.Up });
+      // Set to Night 3 (which cannot span to another phase)
+      const stateNight3 = {
+        ...state,
+        time: {
+          ...state.time,
+          phase: TimePhase.Night,
+          cycle: 3 as 1 | 2 | 3,
+          movesRemaining: 2,
+        },
+      };
+      const highlighted = gameReducer(stateNight3, { type: 'MOVE', direction: Direction.Up });
       const afterBreak = gameReducer(highlighted, { type: 'MOVE', direction: Direction.Up });
 
+      // Wall should NOT be broken because Night 3 only has 2 moves and cost is 5
       expect(afterBreak.map.tiles[1][2]).toBe(TileType.Wall);
       expect(afterBreak.time.movesRemaining).toBe(2);
       expect(afterBreak.wallHighlight).toEqual(highlighted.wallHighlight);
+    });
+
+    it('breaks wall by spanning moves across day-to-night transition', () => {
+      // Day phase with only 3 moves, wall costs 5 (DIG=1)
+      // Should span: 3 from Day + 2 from Night = 5 total
+      const state = createTestState({ dig: 1, moves: 3 });
+      const highlighted = gameReducer(state, { type: 'MOVE', direction: Direction.Up });
+      const afterBreak = gameReducer(highlighted, { type: 'MOVE', direction: Direction.Up });
+
+      // Wall SHOULD be broken by spanning phases
+      expect(afterBreak.map.tiles[1][2]).toBe(TileType.Floor);
+      // Should have transitioned to Night with (30 - 2) = 28 moves remaining
+      expect(afterBreak.time.phase).toBe(TimePhase.Night);
+      expect(afterBreak.time.movesRemaining).toBe(28);
+      expect(afterBreak.player.position).toEqual({ x: 2, y: 1 });
+    });
+
+    it('breaks wall by spanning moves across night-to-day transition', () => {
+      // Night 1 with only 3 moves, wall costs 5 (DIG=1)
+      // Should span: 3 from Night + 2 from Day = 5 total
+      const state = createTestState({ dig: 1, moves: 3 });
+      const stateNight1 = {
+        ...state,
+        time: {
+          ...state.time,
+          phase: TimePhase.Night,
+          cycle: 1 as 1 | 2 | 3,
+          movesRemaining: 3,
+        },
+      };
+      const highlighted = gameReducer(stateNight1, { type: 'MOVE', direction: Direction.Up });
+      const afterBreak = gameReducer(highlighted, { type: 'MOVE', direction: Direction.Up });
+
+      // Wall SHOULD be broken by spanning phases
+      expect(afterBreak.map.tiles[1][2]).toBe(TileType.Floor);
+      // Should have transitioned to Day 2 with (50 - 2) = 48 moves remaining
+      expect(afterBreak.time.phase).toBe(TimePhase.Day);
+      expect(afterBreak.time.cycle).toBe(2);
+      expect(afterBreak.time.movesRemaining).toBe(48);
+      expect(afterBreak.player.position).toEqual({ x: 2, y: 1 });
     });
   });
 });

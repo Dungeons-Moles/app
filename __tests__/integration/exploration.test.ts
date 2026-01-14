@@ -71,7 +71,7 @@ describe('Exploration Integration', () => {
   describe('Player Movement', () => {
     it('should move player in valid direction', () => {
       const initialState = createInitialGameState();
-      let state = gameReducer(initialState, { type: 'START_GAME', seed: TEST_SEED });
+      const state = gameReducer(initialState, { type: 'START_GAME', seed: TEST_SEED });
 
       const initialPos = { ...state.player.position };
 
@@ -101,7 +101,7 @@ describe('Exploration Integration', () => {
 
     it('should not move player into wall', () => {
       const initialState = createInitialGameState();
-      let state = gameReducer(initialState, { type: 'START_GAME', seed: TEST_SEED });
+      const state = gameReducer(initialState, { type: 'START_GAME', seed: TEST_SEED });
 
       const initialPos = { ...state.player.position };
 
@@ -133,7 +133,7 @@ describe('Exploration Integration', () => {
 
     it('should consume 1 time unit for Floor movement', () => {
       const initialState = createInitialGameState();
-      let state = gameReducer(initialState, { type: 'START_GAME', seed: TEST_SEED });
+      const state = gameReducer(initialState, { type: 'START_GAME', seed: TEST_SEED });
 
       const initialMoves = state.time.movesRemaining;
 

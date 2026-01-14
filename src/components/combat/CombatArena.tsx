@@ -14,14 +14,14 @@ import {
   RoundedRect,
   Line,
   vec,
+  Image,
 } from '@shopify/react-native-skia';
 import { StyleSheet, View, useWindowDimensions, Image as RNImage } from 'react-native';
 import type { CombatantState, StatusEffects } from '../../game/engine/types';
 import { DamageNumbers } from './DamageNumbers';
 import { EffectNotifications } from './EffectNotifications';
 import type { DamageNumber, EffectNotification } from '../../contexts/CombatContext';
-
-const defaultMoleImageSource = require('../../../assets/characters/default-mole.png');
+import { useSkiaEntityImages } from '../../hooks/useEntityImages';
 
 interface CombatArenaProps {
   player: CombatantState | null;
@@ -51,6 +51,7 @@ export function CombatArena({
   const { width: screenWidth } = useWindowDimensions();
   const arenaWidth = Math.min(screenWidth * 0.5, 400);
   const arenaHeight = 300;
+  const entityImages = useSkiaEntityImages();
 
   if (!player || !enemy) {
     return (
@@ -116,6 +117,18 @@ export function CombatArena({
             />
           ) : null}
 
+          {/* Enemy Image */}
+          {enemy.definitionId && entityImages[enemy.definitionId] && (
+            <Image
+              image={entityImages[enemy.definitionId]}
+              x={enemyX - combatantRadius}
+              y={combatantY - combatantRadius}
+              width={combatantRadius * 2}
+              height={combatantRadius * 2}
+              fit="contain"
+            />
+          )}
+
           {/* Enemy HP bar background */}
           <RoundedRect
             x={enemyX - hpBarWidth / 2}
@@ -167,6 +180,20 @@ export function CombatArena({
               strokeWidth={ringStrokeWidth}
             />
           ) : null}
+
+          {/* Player Image */}
+          {entityImages.player && (
+            <Group origin={{ x: playerX, y: combatantY }} transform={[{ scaleX: -1 }]}>
+              <Image
+                image={entityImages.player}
+                x={playerX - combatantRadius}
+                y={combatantY - combatantRadius}
+                width={combatantRadius * 2}
+                height={combatantRadius * 2}
+                fit="contain"
+              />
+            </Group>
+          )}
 
           {/* Player HP bar background */}
           <RoundedRect
@@ -222,22 +249,6 @@ export function CombatArena({
           enemyPosition={{ x: enemyX, y: combatantY - combatantRadius - 40 }}
           playerPosition={{ x: playerX, y: combatantY - combatantRadius - 40 }}
         />
-      </View>
-
-      {/* Emoji labels (rendered as React Native Text for emoji support) */}
-      <View style={[styles.emojiContainer, { left: enemyX - 20, top: combatantY - 15 }]}>
-        <View style={styles.emojiText}>
-          <EmojiText>{enemy.emoji}</EmojiText>
-        </View>
-      </View>
-      <View style={[styles.emojiContainer, { left: playerX - 20, top: combatantY - 15 }]}>
-        <View style={styles.emojiText}>
-          <RNImage
-            source={defaultMoleImageSource}
-            style={styles.combatantImage}
-            resizeMode="contain"
-          />
-        </View>
       </View>
 
       {/* Status effects for enemy (below floor line) */}
@@ -299,12 +310,6 @@ function StatusEffectsRow({ statusEffects, x, y }: StatusEffectsRowProps) {
   );
 }
 
-// Helper component for emoji rendering
-function EmojiText({ children }: { children: string }) {
-  const { Text } = require('react-native');
-  return <Text style={styles.emoji}>{children}</Text>;
-}
-
 const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
@@ -317,25 +322,6 @@ const styles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
     pointerEvents: 'none',
-  },
-  emojiContainer: {
-    position: 'absolute',
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emojiText: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emoji: {
-    fontSize: 28,
-    textAlign: 'center',
-  },
-  combatantImage: {
-    width: 60,
-    height: 60,
   },
   statusRow: {
     position: 'absolute',

@@ -7,12 +7,7 @@ import React, {
   useCallback,
   useEffect,
 } from 'react';
-import {
-  GamePhase,
-  type GameState,
-  type CombatState,
-  type Position,
-} from '../game/engine/types';
+import { GamePhase, type GameState, type CombatState, type Position } from '../game/engine/types';
 import {
   GameAction as CoreGameAction,
   gameReducer as coreGameReducer,
@@ -38,12 +33,15 @@ export const DEFAULT_OVERVIEW_STATE: OverviewModeState = {
 
 export const OVERVIEW_CONFIG = {
   activeZoom: 0.5,
+  minZoom: 0.25,
+  maxZoom: 1.0,
   maxPanDistance: 50,
 } as const;
 
 type OverviewAction =
   | { type: 'TOGGLE'; canActivate: boolean }
   | { type: 'PAN'; delta: Position; map: GameMap; playerPosition: Position }
+  | { type: 'ZOOM'; zoomDelta: number }
   | { type: 'RESET_CAMERA' }
   | { type: 'RESET' };
 
@@ -51,21 +49,9 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-function clampOverviewOffset(
-  offset: Position,
-  map: GameMap,
-  playerPosition: Position
-): Position {
-  const limitedX = clamp(
-    offset.x,
-    -OVERVIEW_CONFIG.maxPanDistance,
-    OVERVIEW_CONFIG.maxPanDistance
-  );
-  const limitedY = clamp(
-    offset.y,
-    -OVERVIEW_CONFIG.maxPanDistance,
-    OVERVIEW_CONFIG.maxPanDistance
-  );
+function clampOverviewOffset(offset: Position, map: GameMap, playerPosition: Position): Position {
+  const limitedX = clamp(offset.x, -OVERVIEW_CONFIG.maxPanDistance, OVERVIEW_CONFIG.maxPanDistance);
+  const limitedY = clamp(offset.y, -OVERVIEW_CONFIG.maxPanDistance, OVERVIEW_CONFIG.maxPanDistance);
 
   const minX = -playerPosition.x;
   const maxX = map.width - 1 - playerPosition.x;
@@ -110,6 +96,20 @@ export function applyOverviewAction(
         offset: clampOverviewOffset(nextOffset, action.map, action.playerPosition),
       };
     }
+    case 'ZOOM': {
+      if (!state.active) {
+        return state;
+      }
+      const newZoom = clamp(
+        state.zoom + action.zoomDelta,
+        OVERVIEW_CONFIG.minZoom,
+        OVERVIEW_CONFIG.maxZoom
+      );
+      return {
+        ...state,
+        zoom: newZoom,
+      };
+    }
     case 'RESET_CAMERA':
       return { ...state, offset: { x: 0, y: 0 } };
     case 'RESET':
@@ -151,10 +151,7 @@ function isContextAction(action: GameAction): action is ContextAction {
   return ['SET_PHASE', 'UPDATE_COMBAT', 'TOGGLE_DEBUG', 'RESET_GAME'].includes(action.type);
 }
 
-export function gameReducer(
-  state: GameState | null,
-  action: GameAction
-): GameState | null {
+export function gameReducer(state: GameState | null, action: GameAction): GameState | null {
   // Handle null state - only START_GAME can initialize
   if (!state) {
     if (action.type === 'START_GAME') {
@@ -196,6 +193,7 @@ interface GameContextType {
   overviewMode: OverviewModeState;
   toggleOverviewMode: () => void;
   panOverview: (delta: Position) => void;
+  zoomOverview: (zoomDelta: number) => void;
   resetOverviewCamera: () => void;
 }
 
@@ -246,6 +244,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
     updateOverviewMode({ type: 'RESET_CAMERA' });
   }, []);
 
+  const zoomOverview = useCallback((zoomDelta: number) => {
+    updateOverviewMode({ type: 'ZOOM', zoomDelta });
+  }, []);
+
   return (
     <GameContext.Provider
       value={{
@@ -254,6 +256,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         overviewMode,
         toggleOverviewMode,
         panOverview,
+        zoomOverview,
         resetOverviewCamera,
       }}
     >

@@ -23,6 +23,7 @@ import {
 } from '../components/combat';
 import { DebugOverlay } from '../components/game';
 import { ENEMY_TRAITS } from '../game/combat/traits';
+import { getEntityImageSource } from '../components/game/entityImages';
 
 type CombatScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Combat'>;
@@ -82,7 +83,11 @@ function CombatScreenContent({ navigation }: CombatScreenProps) {
     const result = getResult();
     if (!result) return;
 
-    gameDispatch({ type: 'RESOLVE_COMBAT', result, combat: combatState.resolvedCombat ?? undefined });
+    gameDispatch({
+      type: 'RESOLVE_COMBAT',
+      result,
+      combat: combatState.resolvedCombat ?? undefined,
+    });
 
     if (result === 'DEFEAT') {
       navigation.replace('Hub');
@@ -96,10 +101,10 @@ function CombatScreenContent({ navigation }: CombatScreenProps) {
   const speedControlsDisabled = !combatState.resolvedCombat || combatState.isComplete;
   const basePlayerArm = combatState.combat
     ? combatState.combat.player.arm + combatState.combat.player.bonusArm
-    : player?.arm ?? 0;
+    : (player?.arm ?? 0);
   const baseEnemyArm = combatState.combat
     ? combatState.combat.enemy.arm + combatState.combat.enemy.bonusArm
-    : enemy?.arm ?? 0;
+    : (enemy?.arm ?? 0);
   const playerMaxArm = player ? Math.max(basePlayerArm, player.arm) : 0;
   const enemyMaxArm = enemy ? Math.max(baseEnemyArm, enemy.arm) : 0;
 
@@ -147,6 +152,7 @@ function CombatScreenContent({ navigation }: CombatScreenProps) {
           <EnemyPanel
             name={enemy.name}
             emoji={enemy.emoji}
+            imageSource={enemy.definitionId ? getEntityImageSource(enemy.definitionId) : undefined}
             hp={enemy.hp}
             maxHp={enemy.maxHp}
             atk={enemy.atk}
@@ -195,7 +201,6 @@ function CombatScreenContent({ navigation }: CombatScreenProps) {
               time={gameState.time}
             />
           )}
-
         </View>
 
         {/* Player Panel (RIGHT) - FR-049 */}
@@ -220,11 +225,7 @@ function CombatScreenContent({ navigation }: CombatScreenProps) {
       {combatState.isComplete && result && (
         <VictoryDefeatDisplay
           result={result}
-          goldReward={
-            result === 'VICTORY'
-              ? combatState.resolvedCombat?.goldReward
-              : undefined
-          }
+          goldReward={result === 'VICTORY' ? combatState.resolvedCombat?.goldReward : undefined}
           onComplete={handleCombatComplete}
         />
       )}

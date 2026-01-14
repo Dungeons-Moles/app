@@ -17,16 +17,19 @@ import type {
   ToolOil,
   Player,
   TimeState,
+  ItemTag,
+  POIId,
 } from '../engine/types';
 import { TimePhase, GamePhase } from '../engine/types';
 import type { POIId as DataPOIId, POIDefinition } from '../../data/pois';
 import { POI_DEFINITIONS, getPOIDefinition, canInteractWithPOI } from '../../data/pois';
-import type { MapPOI, POIId, GameMap } from '../map/types';
+import type { MapPOI, GameMap } from '../map/types';
 import { FogState } from '../map/types';
 import { createToolInstance, getToolsByRarity } from './items';
 import { addGearToInventory, equipTool, refreshPlayerStats } from './player';
 import { createGearInstance, getGearByRarity, GEAR_DEFINITIONS } from '../../data/gear';
 import { SeededRNG } from '../engine/rng';
+import { getBossWeaknessTags } from './bosses';
 
 // ============================================================================
 // Item Description Helpers
@@ -41,25 +44,57 @@ function pickUniqueById<T, Id extends string>(
 ): T[] {
   const selected: T[] = [];
   const selectedIds = new Set<Id>(exclude);
-  let attempts = 0;
+  const available = [...pool].filter((item) => !selectedIds.has(getId(item)));
 
-  while (selected.length < count && attempts < 1000) {
-    attempts += 1;
-    const candidate = rng.pick(pool);
-    const id = getId(candidate);
-    if (selectedIds.has(id)) continue;
-    selectedIds.add(id);
-    selected.push(candidate);
+  while (selected.length < count && available.length > 0) {
+    const index = rng.nextInt(0, available.length - 1);
+    const item = available[index];
+    selected.push(item);
+    selectedIds.add(getId(item));
+    available.splice(index, 1);
   }
 
-  if (selected.length < count) {
-    for (const candidate of pool) {
-      if (selected.length >= count) break;
-      const id = getId(candidate);
-      if (selectedIds.has(id)) continue;
-      selectedIds.add(id);
-      selected.push(candidate);
+  return selected;
+}
+
+function pickUniqueWeighted<T extends { tags: ItemTag[]; id: string }>(
+  rng: SeededRNG,
+  pool: readonly T[],
+  count: number,
+  weaknessTags: ItemTag[],
+  exclude: ReadonlySet<string> = new Set()
+): T[] {
+  const selected: T[] = [];
+  const selectedIds = new Set<string>(exclude);
+  const available = [...pool].filter((item) => !selectedIds.has(item.id));
+
+  while (selected.length < count && available.length > 0) {
+    // Calculate weights: 1.0 base, 1.4 if matches weakness tag
+    const weights = available.map((item) => {
+      const isWeakness = item.tags.some((tag) => weaknessTags.includes(tag));
+      return isWeakness ? 1.4 : 1.0;
+    });
+
+    const totalWeight = weights.reduce((sum, w) => sum + w, 0);
+    let roll = rng.next() * totalWeight;
+    let chosenIndex = -1;
+
+    for (let i = 0; i < available.length; i++) {
+      roll -= weights[i];
+      if (roll <= 0) {
+        chosenIndex = i;
+        break;
+      }
     }
+
+    if (chosenIndex === -1) {
+      chosenIndex = available.length - 1;
+    }
+
+    const item = available[chosenIndex];
+    selected.push(item);
+    selectedIds.add(item.id);
+    available.splice(chosenIndex, 1);
   }
 
   return selected;
@@ -68,7 +103,13 @@ function pickUniqueById<T, Id extends string>(
 /**
  * Generates a description string from item stats
  */
-function formatItemStats(stats: { atk?: number; arm?: number; spd?: number; dig?: number; hp?: number }): string {
+function formatItemStats(stats: {
+  atk?: number;
+  arm?: number;
+  spd?: number;
+  dig?: number;
+  hp?: number;
+}): string {
   const parts: string[] = [];
   if (stats.atk) parts.push(`+${stats.atk} ATK`);
   if (stats.arm) parts.push(`+${stats.arm} ARM`);
@@ -107,10 +148,7 @@ function getToolDescription(tool: Tool): string {
  * @param state - Current game state
  * @returns POI interaction with generated options, or null if interaction not allowed
  */
-export function createPOIInteraction(
-  poi: MapPOI,
-  state: GameState
-): POIInteraction | null {
+export function createPOIInteraction(poi: MapPOI, state: GameState): POIInteraction | null {
   const definition = getPOIDefinition(poi.definitionId);
   const isNight = state.time.phase === TimePhase.Night;
 
@@ -145,11 +183,7 @@ export function createPOIInteraction(
 /**
  * Generates interaction options for a POI based on its type
  */
-function generatePOIOptions(
-  poiId: POIId,
-  state: GameState,
-  rng: SeededRNG
-): POIOption[] {
+function generatePOIOptions(poiId: POIId, state: GameState, rng: SeededRNG): POIOption[] {
   switch (poiId) {
     case 'L1': // Mole Den
       return generateMoleDenOptions(state);
@@ -175,6 +209,10 @@ function generatePOIOptions(
       return generateRuneKilnOptions(state);
     case 'L12': // Geode Vault
       return generateGeodeVaultOptions(state, rng);
+    case 'L13': // Counter Cache - T086
+      return generateCounterCacheOptions(state, rng);
+    case 'L14': // Scrap Chute - T087
+      return generateScrapChuteOptions(state);
     default:
       return [];
   }
@@ -185,15 +223,14 @@ function generatePOIOptions(
 // Pick 1 of 3 Common items (with chance of Gilded/Diamond variants)
 // ============================================================================
 
-function generateSupplyCacheOptions(
-  state: GameState,
-  rng: SeededRNG
-): POIOption[] {
+function generateSupplyCacheOptions(state: GameState, rng: SeededRNG): POIOption[] {
   const commonGear = getGearByRarity('COMMON');
   const options: POIOption[] = [];
+  const weekBossId = state.time.weekBoss;
+  const weaknessTags = getBossWeaknessTags(weekBossId);
 
-  // Generate 3 unique random items
-  const pickedGear = pickUniqueById(rng, commonGear, 3, (gearDef) => gearDef.id);
+  // Generate 3 unique random items (weighted by boss weakness)
+  const pickedGear = pickUniqueWeighted(rng, commonGear, 3, weaknessTags);
   for (const gearDef of pickedGear) {
     // Small chance for rarity upgrade
     const roll = rng.next();
@@ -219,13 +256,12 @@ function generateSupplyCacheOptions(
 // Pick 1 of 3 Tools (Common/Rare distribution)
 // ============================================================================
 
-function generateToolCrateOptions(
-  state: GameState,
-  rng: SeededRNG
-): POIOption[] {
+function generateToolCrateOptions(state: GameState, rng: SeededRNG): POIOption[] {
   const commonTools = getToolsByRarity('COMMON').filter((tool) => tool.id !== 'T9');
   const rareTools = getToolsByRarity('RARE');
   const options: POIOption[] = [];
+  const weekBossId = state.time.weekBoss;
+  const weaknessTags = getBossWeaknessTags(weekBossId);
 
   const selectedIds = new Set<string>();
   let attempts = 0;
@@ -234,16 +270,22 @@ function generateToolCrateOptions(
     attempts += 1;
     const roll = rng.next();
     let toolDef;
+
+    // Rarity roll logic (kept from before)
     if (roll < 0.25 && rareTools.length > 0) {
-      // 25% chance for rare
-      toolDef = rng.pick(rareTools);
+      // Pick weighted from rare
+      const picked = pickUniqueWeighted(rng, rareTools, 1, weaknessTags, selectedIds);
+      if (picked.length > 0) toolDef = picked[0];
     } else {
-      toolDef = rng.pick(commonTools);
+      // Pick weighted from common
+      const picked = pickUniqueWeighted(rng, commonTools, 1, weaknessTags, selectedIds);
+      if (picked.length > 0) toolDef = picked[0];
     }
 
-    if (selectedIds.has(toolDef.id)) {
+    if (!toolDef) {
       continue;
     }
+
     selectedIds.add(toolDef.id);
     const tool = createToolInstance(toolDef.id);
     options.push({
@@ -415,10 +457,7 @@ function generateRailWaypointOptions(state: GameState): POIOption[] {
 // Shop: 5 Rare + 1 Heroic items
 // ============================================================================
 
-function generateSmugglerHatchOptions(
-  state: GameState,
-  rng: SeededRNG
-): POIOption[] {
+function generateSmugglerHatchOptions(state: GameState, rng: SeededRNG): POIOption[] {
   const rareGear = getGearByRarity('RARE');
   const heroicGear = getGearByRarity('HEROIC');
   const options: POIOption[] = [];
@@ -645,25 +684,20 @@ function generateRuneKilnOptions(state: GameState): POIOption[] {
 // Pick 1 of 3 Heroic items
 // ============================================================================
 
-function generateGeodeVaultOptions(
-  state: GameState,
-  rng: SeededRNG
-): POIOption[] {
+function generateGeodeVaultOptions(state: GameState, rng: SeededRNG): POIOption[] {
   const heroicGear = getGearByRarity('HEROIC');
+  const weekBossId = state.time.weekBoss;
+  const weaknessTags = getBossWeaknessTags(weekBossId);
   const options: POIOption[] = [];
 
   if (heroicGear.length === 0) {
     return [];
   }
 
-  // Generate 3 heroic items
-  const selectedIds = new Set<string>();
-  for (let i = 0; i < 3 && selectedIds.size < heroicGear.length; i++) {
-    let gearDef;
-    do {
-      gearDef = rng.pick(heroicGear);
-    } while (selectedIds.has(gearDef.id) && selectedIds.size < heroicGear.length);
-    selectedIds.add(gearDef.id);
+  // Generate 3 heroic items weighted by weakness
+  const pickedGear = pickUniqueWeighted(rng, heroicGear, 3, weaknessTags);
+
+  for (const gearDef of pickedGear) {
     const gear = createGearInstance(gearDef.id);
     options.push({
       label: gear.name,
@@ -676,6 +710,79 @@ function generateGeodeVaultOptions(
 }
 
 // ============================================================================
+// T086: Counter Cache (L13)
+// Pick 1 of 3 items from boss weakness tags only
+// ============================================================================
+
+function generateCounterCacheOptions(state: GameState, rng: SeededRNG): POIOption[] {
+  const weekBossId = state.time.weekBoss;
+  const weaknessTags = getBossWeaknessTags(weekBossId);
+  const options: POIOption[] = [];
+
+  // Filter gear by weakness tags
+  const validGear = Object.values(GEAR_DEFINITIONS).filter((def) => {
+    // Check if gear has one of the weakness tags
+    return def.tags.some((tag) => weaknessTags.includes(tag));
+  });
+
+  if (validGear.length === 0) {
+    return [];
+  }
+
+  // Generate 3 unique items
+  const pickedGear = pickUniqueById(rng, validGear, 3, (gearDef) => gearDef.id);
+  for (const gearDef of pickedGear) {
+    const gear = createGearInstance(gearDef.id);
+    options.push({
+      label: gear.name,
+      description: getGearDescription(gear),
+      item: gear,
+    });
+  }
+
+  return options;
+}
+
+// ============================================================================
+// T087: Scrap Chute (L14)
+// Destroy 1 Gear item (costs Gold by act)
+// ============================================================================
+
+function generateScrapChuteOptions(state: GameState): POIOption[] {
+  const options: POIOption[] = [];
+  const inventory = state.player.inventory;
+
+  // Cost based on Act (approximate via week/cycle)
+  // Act 1: 5g, Act 2: 10g, etc.
+  // Using simplified cost for now: 5 * Week
+  const scrapCost = 5 * state.time.week;
+
+  if (inventory.length === 0) {
+    options.push({
+      label: 'No gear to scrap',
+      disabled: true,
+      disabledReason: 'Inventory is empty',
+    });
+  } else {
+    for (const slot of inventory) {
+      const gear = slot.item;
+      const canAfford = state.player.stats.gold >= scrapCost;
+      options.push({
+        label: `Scrap ${gear.name} (-${scrapCost}g)`,
+        description: getGearDescription(gear),
+        item: gear,
+        cost: scrapCost,
+        disabled: !canAfford,
+        disabledReason: canAfford ? undefined : 'Not enough gold',
+      });
+    }
+  }
+
+  options.push({ label: 'Leave' });
+  return options;
+}
+
+// ============================================================================
 // POI Effect Application
 // ============================================================================
 
@@ -683,10 +790,7 @@ function generateGeodeVaultOptions(
  * Apply the effects of selecting a POI option
  * @returns Updated game state after applying effects
  */
-export function applyPOIOption(
-  state: GameState,
-  optionIndex: number
-): GameState {
+export function applyPOIOption(state: GameState, optionIndex: number): GameState {
   const { activePOI } = state;
   if (!activePOI || !activePOI.options) {
     return state;
@@ -705,6 +809,7 @@ export function applyPOIOption(
     case 'L2':
     case 'L3':
     case 'L12':
+    case 'L13':
       return applyItemSelectionEffect(state, option);
     case 'L4':
       return applyToolOilRackEffect(state, optionIndex);
@@ -722,6 +827,8 @@ export function applyPOIOption(
       return applyRustyAnvilEffect(state, optionIndex, option);
     case 'L11':
       return applyRuneKilnEffect(state, optionIndex);
+    case 'L14':
+      return applyScrapChuteEffect(state, optionIndex, option);
     default:
       return state;
   }
@@ -764,10 +871,7 @@ function applyMoleDenEffect(state: GameState, optionIndex: number): GameState {
 /**
  * Rest Alcove: Skip to Day, restore 10 HP
  */
-function applyRestAlcoveEffect(
-  state: GameState,
-  optionIndex: number
-): GameState {
+function applyRestAlcoveEffect(state: GameState, optionIndex: number): GameState {
   if (optionIndex !== 0) {
     return state;
   }
@@ -796,10 +900,7 @@ function applyRestAlcoveEffect(
 /**
  * Item Selection (Supply Cache, Tool Crate, Geode Vault)
  */
-function applyItemSelectionEffect(
-  state: GameState,
-  option: POIOption
-): GameState {
+function applyItemSelectionEffect(state: GameState, option: POIOption): GameState {
   if (!option.item) {
     return state;
   }
@@ -829,10 +930,7 @@ function applyItemSelectionEffect(
 /**
  * Tool Oil Rack: +1 ATK/ARM/DIG
  */
-function applyToolOilRackEffect(
-  state: GameState,
-  optionIndex: number
-): GameState {
+function applyToolOilRackEffect(state: GameState, optionIndex: number): GameState {
   const tool = state.player.equippedTool;
   if (!tool || optionIndex > 2) {
     // Invalid option or no tool
@@ -872,10 +970,7 @@ function applyToolOilRackEffect(
 /**
  * Survey Beacon: Reveal tiles in radius 13
  */
-function applySurveyBeaconEffect(
-  state: GameState,
-  optionIndex: number
-): GameState {
+function applySurveyBeaconEffect(state: GameState, optionIndex: number): GameState {
   if (optionIndex !== 0) {
     return state;
   }
@@ -930,10 +1025,7 @@ export function activateSurveyBeacon(state: GameState): GameState {
 /**
  * Seismic Scanner: Reveal a random instance of selected POI type
  */
-function applySeismicScannerEffect(
-  state: GameState,
-  optionIndex: number
-): GameState {
+function applySeismicScannerEffect(state: GameState, optionIndex: number): GameState {
   const options = state.activePOI?.options;
   if (!options) {
     return state;
@@ -952,9 +1044,7 @@ function applySeismicScannerEffect(
 
   // Find the POI type from label
   const poiTypes = Object.values(POI_DEFINITIONS);
-  const selectedPOI = poiTypes.find((poi) =>
-    option.label.includes(poi.name)
-  );
+  const selectedPOI = poiTypes.find((poi) => option.label.includes(poi.name));
 
   if (!selectedPOI) {
     return state;
@@ -1003,10 +1093,7 @@ function applySeismicScannerEffect(
 /**
  * Rail Waypoint: Fast travel to another waypoint
  */
-function applyRailWaypointEffect(
-  state: GameState,
-  optionIndex: number
-): GameState {
+function applyRailWaypointEffect(state: GameState, optionIndex: number): GameState {
   const options = state.activePOI?.options;
   if (!options) {
     return state;
@@ -1059,7 +1146,7 @@ function applySmugglerHatchEffect(
     return state;
   }
 
-  let newState = {
+  const newState = {
     ...state,
     player: {
       ...state.player,
@@ -1082,9 +1169,7 @@ function applySmugglerHatchEffect(
     return {
       ...newState,
       rngState: state.rngState + 1,
-      activePOI: state.activePOI
-        ? { ...state.activePOI, options: newOptions }
-        : null,
+      activePOI: state.activePOI ? { ...state.activePOI, options: newOptions } : null,
     };
   }
 
@@ -1158,10 +1243,7 @@ function applyRustyAnvilEffect(
 /**
  * Rune Kiln: Fuse 2 identical items
  */
-function applyRuneKilnEffect(
-  state: GameState,
-  optionIndex: number
-): GameState {
+function applyRuneKilnEffect(state: GameState, optionIndex: number): GameState {
   const options = state.activePOI?.options;
   if (!options) {
     return state;
@@ -1172,8 +1254,7 @@ function applyRuneKilnEffect(
     return state;
   }
 
-  const optionGear =
-    option.item && 'currentRarity' in option.item ? option.item : null;
+  const optionGear = option.item && 'currentRarity' in option.item ? option.item : null;
   const gearDef = optionGear
     ? GEAR_DEFINITIONS[optionGear.id]
     : Object.values(GEAR_DEFINITIONS).find((g) => option.label.includes(g.name));
@@ -1197,9 +1278,7 @@ function applyRuneKilnEffect(
   }
 
   // Remove the two items
-  const newInventory = state.player.inventory.filter(
-    (slot) => !slotsToRemove.includes(slot.index)
-  );
+  const newInventory = state.player.inventory.filter((slot) => !slotsToRemove.includes(slot.index));
 
   // Add the upgraded item
   const nextRarity: ItemRarity = currentRarity === 'COMMON' ? 'GILDED' : 'DIAMOND';
@@ -1217,6 +1296,61 @@ function applyRuneKilnEffect(
     player: refreshPlayerStats({
       ...state.player,
       inventory: [...newInventory, { item: upgradedGear, index: nextIndex }],
+    }),
+  };
+}
+
+/**
+ * Scrap Chute: Destroy gear for gold
+ */
+function applyScrapChuteEffect(
+  state: GameState,
+  optionIndex: number,
+  option: POIOption
+): GameState {
+  if (option.label === 'Leave' || option.disabled || !option.item) {
+    return state;
+  }
+
+  const gearId = option.item.id;
+  const cost = option.cost ?? 0;
+
+  if (state.player.stats.gold < cost) {
+    return state;
+  }
+
+  // Remove the specific item instance
+  // Since we don't have unique instance IDs in inventory (just definition ID + rarity),
+  // and inventory is slots, we should try to match by slot index if we had it.
+  // But POIOption doesn't store slot index.
+  // We'll remove the first matching item. This might be slightly inaccurate if duplicates exist,
+  // but acceptable for MVP given uniqueness constraints elsewhere.
+  // Actually, wait, `generateScrapChuteOptions` iterates inventory.
+  // We can pass the gear object reference from inventory.
+  // `state.player.inventory` contains `{ item: Gear, index: number }`.
+  // `option.item` is the Gear object.
+  // If we assume `option.item` IS the object reference from inventory (which it is in `generateScrapChuteOptions`),
+  // we can find the slot by object equality.
+
+  const slotIndex = state.player.inventory.findIndex((slot) => slot.item === option.item);
+
+  if (slotIndex === -1) {
+    // Should not happen if object reference is preserved
+    return state;
+  }
+
+  const newInventory = [...state.player.inventory];
+  newInventory.splice(slotIndex, 1);
+
+  return {
+    ...state,
+    player: refreshPlayerStats({
+      ...state.player,
+      baseStats: {
+        ...state.player.baseStats,
+        gold: state.player.baseStats.gold - cost,
+      },
+      inventory: newInventory,
     }),
   };
 }
@@ -1246,7 +1380,7 @@ function skipToNextDay(time: TimeState): TimeState {
   return {
     ...time,
     phase: TimePhase.Day,
-    cycle: ((time.cycle + 1) as 1 | 2 | 3),
+    cycle: (time.cycle + 1) as 1 | 2 | 3,
     movesRemaining: 50, // DAY_MOVES
   };
 }
@@ -1257,9 +1391,7 @@ function skipToNextDay(time: TimeState): TimeState {
 export function markPOIVisited(map: GameMap, poiId: string): GameMap {
   return {
     ...map,
-    pois: map.pois.map((poi) =>
-      poi.id === poiId ? { ...poi, visited: true } : poi
-    ),
+    pois: map.pois.map((poi) => (poi.id === poiId ? { ...poi, visited: true } : poi)),
   };
 }
 
@@ -1269,9 +1401,7 @@ export function markPOIVisited(map: GameMap, poiId: string): GameMap {
 export function markPOIDiscovered(map: GameMap, poiId: string): GameMap {
   return {
     ...map,
-    pois: map.pois.map((poi) =>
-      poi.id === poiId ? { ...poi, discovered: true } : poi
-    ),
+    pois: map.pois.map((poi) => (poi.id === poiId ? { ...poi, discovered: true } : poi)),
   };
 }
 
@@ -1294,9 +1424,7 @@ export function canFastTravel(map: GameMap): boolean {
  */
 export function findPOIAtPosition(map: GameMap, position: Position): MapPOI | null {
   return (
-    map.pois.find(
-      (poi) => poi.position.x === position.x && poi.position.y === position.y
-    ) ?? null
+    map.pois.find((poi) => poi.position.x === position.x && poi.position.y === position.y) ?? null
   );
 }
 

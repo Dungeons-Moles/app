@@ -7,8 +7,8 @@
 
 import { SeededRNG } from '../engine/rng';
 import { GAME_CONSTANTS } from '../engine/constants';
-import type { Position } from '../engine/types';
-import { TileType, FogState, GameMap, MapEnemy, MapPOI, EnemyId, POIId } from './types';
+import type { Position, POIId } from '../engine/types';
+import { TileType, FogState, GameMap, MapEnemy, MapPOI, EnemyId } from './types';
 import { getSpawnZone, selectTierForZone } from './spawn-zones';
 
 // ============================================================================
@@ -58,6 +58,8 @@ const POI_DEFINITIONS: Array<{ id: POIId; rarity: 'COMMON' | 'UNCOMMON' | 'RARE'
   { id: 'L10', rarity: 'UNCOMMON' },
   { id: 'L11', rarity: 'RARE' },
   { id: 'L12', rarity: 'RARE' },
+  { id: 'L13', rarity: 'UNCOMMON' },
+  { id: 'L14', rarity: 'UNCOMMON' },
 ];
 
 const ENEMY_IDS: EnemyId[] = [
@@ -69,48 +71,72 @@ const ENEMY_IDS: EnemyId[] = [
   'SHARD_BEETLE',
   'TUNNEL_WARDEN',
   'BURROW_AMBUSHER',
+  'FROST_WISP',
+  'POWDER_TICK',
+  'COIN_SLUG',
+  'BLOOD_MOSQUITO',
 ];
 
 const ENEMY_STATS: Record<EnemyId, Array<{ hp: number; atk: number; arm: number; spd: number }>> = {
-  'TUNNEL_RAT': [
-    { hp: 3, atk: 1, arm: 0, spd: 2 },
-    { hp: 5, atk: 2, arm: 0, spd: 3 },
-    { hp: 7, atk: 3, arm: 0, spd: 4 },
-  ],
-  'CAVE_BAT': [
-    { hp: 4, atk: 1, arm: 0, spd: 2 },
-    { hp: 6, atk: 2, arm: 0, spd: 3 },
-    { hp: 8, atk: 3, arm: 0, spd: 4 },
-  ],
-  'SPORE_SLIME': [
-    { hp: 6, atk: 1, arm: 2, spd: 0 },
-    { hp: 9, atk: 2, arm: 3, spd: 0 },
-    { hp: 12, atk: 3, arm: 4, spd: 0 },
-  ],
-  'RUST_MITE_SWARM': [
+  TUNNEL_RAT: [
     { hp: 5, atk: 1, arm: 0, spd: 3 },
+    { hp: 7, atk: 2, arm: 0, spd: 4 },
+    { hp: 9, atk: 3, arm: 1, spd: 5 },
+  ],
+  CAVE_BAT: [
+    { hp: 6, atk: 1, arm: 0, spd: 3 },
     { hp: 8, atk: 2, arm: 0, spd: 4 },
-    { hp: 11, atk: 3, arm: 0, spd: 5 },
+    { hp: 10, atk: 3, arm: 0, spd: 5 },
   ],
-  'COLLAPSED_MINER': [
-    { hp: 8, atk: 2, arm: 0, spd: 1 },
-    { hp: 12, atk: 3, arm: 0, spd: 2 },
-    { hp: 16, atk: 4, arm: 0, spd: 3 },
+  SPORE_SLIME: [
+    { hp: 8, atk: 1, arm: 2, spd: 0 },
+    { hp: 11, atk: 2, arm: 3, spd: 0 },
+    { hp: 14, atk: 3, arm: 4, spd: 0 },
   ],
-  'SHARD_BEETLE': [
-    { hp: 7, atk: 1, arm: 3, spd: 1 },
-    { hp: 10, atk: 2, arm: 4, spd: 1 },
-    { hp: 13, atk: 3, arm: 5, spd: 2 },
+  RUST_MITE_SWARM: [
+    { hp: 6, atk: 1, arm: 0, spd: 3 },
+    { hp: 9, atk: 2, arm: 0, spd: 4 },
+    { hp: 12, atk: 3, arm: 0, spd: 5 },
   ],
-  'TUNNEL_WARDEN': [
-    { hp: 6, atk: 2, arm: 4, spd: 2 },
-    { hp: 9, atk: 3, arm: 6, spd: 3 },
-    { hp: 12, atk: 4, arm: 8, spd: 4 },
+  COLLAPSED_MINER: [
+    { hp: 10, atk: 2, arm: 0, spd: 1 },
+    { hp: 14, atk: 3, arm: 0, spd: 2 },
+    { hp: 18, atk: 4, arm: 1, spd: 3 },
   ],
-  'BURROW_AMBUSHER': [
-    { hp: 5, atk: 4, arm: 0, spd: 3 },
-    { hp: 8, atk: 6, arm: 0, spd: 4 },
-    { hp: 11, atk: 8, arm: 0, spd: 5 },
+  SHARD_BEETLE: [
+    { hp: 9, atk: 1, arm: 3, spd: 1 },
+    { hp: 12, atk: 2, arm: 4, spd: 1 },
+    { hp: 15, atk: 3, arm: 5, spd: 2 },
+  ],
+  TUNNEL_WARDEN: [
+    { hp: 8, atk: 2, arm: 4, spd: 2 },
+    { hp: 11, atk: 3, arm: 6, spd: 3 },
+    { hp: 14, atk: 4, arm: 8, spd: 4 },
+  ],
+  BURROW_AMBUSHER: [
+    { hp: 6, atk: 3, arm: 0, spd: 4 },
+    { hp: 9, atk: 4, arm: 0, spd: 5 },
+    { hp: 12, atk: 5, arm: 0, spd: 6 },
+  ],
+  FROST_WISP: [
+    { hp: 7, atk: 1, arm: 0, spd: 4 },
+    { hp: 10, atk: 2, arm: 0, spd: 5 },
+    { hp: 13, atk: 3, arm: 0, spd: 6 },
+  ],
+  POWDER_TICK: [
+    { hp: 7, atk: 1, arm: 0, spd: 2 },
+    { hp: 10, atk: 2, arm: 0, spd: 3 },
+    { hp: 13, atk: 3, arm: 0, spd: 4 },
+  ],
+  COIN_SLUG: [
+    { hp: 7, atk: 1, arm: 2, spd: 1 },
+    { hp: 10, atk: 2, arm: 3, spd: 1 },
+    { hp: 13, atk: 3, arm: 4, spd: 2 },
+  ],
+  BLOOD_MOSQUITO: [
+    { hp: 6, atk: 1, arm: 0, spd: 3 },
+    { hp: 9, atk: 2, arm: 0, spd: 4 },
+    { hp: 12, atk: 3, arm: 0, spd: 5 },
   ],
 };
 
@@ -263,9 +289,9 @@ function generateCorridorMaze(width: number, height: number, rng: SeededRNG): Ma
   // Direction vectors
   const directions = [
     { dx: 0, dy: -1 }, // Up
-    { dx: 0, dy: 1 },  // Down
+    { dx: 0, dy: 1 }, // Down
     { dx: -1, dy: 0 }, // Left
-    { dx: 1, dy: 0 },  // Right
+    { dx: 1, dy: 0 }, // Right
   ];
 
   while (stack.length > 0) {
@@ -350,13 +376,9 @@ function initializeFog(width: number, height: number): FogState[][] {
 // Spawn Point
 // ============================================================================
 
-function findSpawnPoint(
-  tiles: TileType[][],
-  walkableTiles: Position[],
-  rng: SeededRNG
-): Position {
+function findSpawnPoint(tiles: TileType[][], walkableTiles: Position[], rng: SeededRNG): Position {
   const candidates = walkableTiles.filter(
-    pos => pos.y > 0 && tiles[pos.y - 1][pos.x] === TileType.Wall
+    (pos) => pos.y > 0 && tiles[pos.y - 1][pos.x] === TileType.Wall
   );
 
   if (candidates.length > 0) {
@@ -372,14 +394,15 @@ function findSpawnPoint(
     { x: 1, y: 0 },
   ];
   const carveCandidates = directions
-    .map(dir => ({ x: origin.x + dir.x, y: origin.y + dir.y }))
-    .filter(pos =>
-      pos.x >= 1 &&
-      pos.x < tiles[0].length - 1 &&
-      pos.y > 0 &&
-      pos.y < tiles.length - 1 &&
-      tiles[pos.y][pos.x] === TileType.Wall &&
-      tiles[pos.y - 1][pos.x] === TileType.Wall
+    .map((dir) => ({ x: origin.x + dir.x, y: origin.y + dir.y }))
+    .filter(
+      (pos) =>
+        pos.x >= 1 &&
+        pos.x < tiles[0].length - 1 &&
+        pos.y > 0 &&
+        pos.y < tiles.length - 1 &&
+        tiles[pos.y][pos.x] === TileType.Wall &&
+        tiles[pos.y - 1][pos.x] === TileType.Wall
     );
 
   if (carveCandidates.length > 0) {
@@ -389,7 +412,7 @@ function findSpawnPoint(
     return spawn;
   }
 
-  const inBounds = walkableTiles.filter(pos => pos.y > 0);
+  const inBounds = walkableTiles.filter((pos) => pos.y > 0);
   if (inBounds.length > 0) {
     return rng.pick(inBounds);
   }
@@ -447,9 +470,9 @@ function placePOIs(
   };
 
   const poiByRarity = {
-    COMMON: POI_DEFINITIONS.filter(p => p.rarity === 'COMMON'),
-    UNCOMMON: POI_DEFINITIONS.filter(p => p.rarity === 'UNCOMMON'),
-    RARE: POI_DEFINITIONS.filter(p => p.rarity === 'RARE'),
+    COMMON: POI_DEFINITIONS.filter((p) => p.rarity === 'COMMON'),
+    UNCOMMON: POI_DEFINITIONS.filter((p) => p.rarity === 'UNCOMMON'),
+    RARE: POI_DEFINITIONS.filter((p) => p.rarity === 'RARE'),
   };
 
   for (const rarity of ['COMMON', 'UNCOMMON', 'RARE'] as const) {
