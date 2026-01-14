@@ -171,8 +171,8 @@ function generatePOIOptions(
       return generateSmugglerHatchOptions(state, rng);
     case 'L10': // Rusty Anvil
       return generateRustyAnvilOptions(state);
-    case 'L11': // Crusher Golem
-      return generateCrusherGolemOptions(state);
+    case 'L11': // Rune Kiln
+      return generateRuneKilnOptions(state);
     case 'L12': // Geode Vault
       return generateGeodeVaultOptions(state, rng);
     default:
@@ -592,11 +592,11 @@ function generateRustyAnvilOptions(state: GameState): POIOption[] {
 }
 
 // ============================================================================
-// T097: Crusher Golem (L11)
+// T097: Rune Kiln (L11)
 // Fuse 2 identical items to upgrade tier (Common->Gilded->Diamond)
 // ============================================================================
 
-function generateCrusherGolemOptions(state: GameState): POIOption[] {
+function generateRuneKilnOptions(state: GameState): POIOption[] {
   const options: POIOption[] = [];
 
   // Find pairs of identical items that can be fused
@@ -721,7 +721,7 @@ export function applyPOIOption(
     case 'L10':
       return applyRustyAnvilEffect(state, optionIndex, option);
     case 'L11':
-      return applyCrusherGolemEffect(state, optionIndex);
+      return applyRuneKilnEffect(state, optionIndex);
     default:
       return state;
   }
@@ -1156,9 +1156,9 @@ function applyRustyAnvilEffect(
 }
 
 /**
- * Crusher Golem: Fuse 2 identical items
+ * Rune Kiln: Fuse 2 identical items
  */
-function applyCrusherGolemEffect(
+function applyRuneKilnEffect(
   state: GameState,
   optionIndex: number
 ): GameState {

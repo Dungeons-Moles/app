@@ -78,7 +78,7 @@ export type POIId =
   | 'L8'   // Rail Waypoint
   | 'L9'   // Smuggler Hatch
   | 'L10'  // Rusty Anvil
-  | 'L11'  // Crusher Golem
+  | 'L11'  // Rune Kiln
   | 'L12'; // Geode Vault
 
 export type POIRarity = 'FIXED' | 'COMMON' | 'UNCOMMON' | 'RARE';

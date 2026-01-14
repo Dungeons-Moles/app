@@ -209,7 +209,7 @@
 - [x] T094 [US5] Implement Smuggler Hatch shop interaction
 - [x] T095 [US5] Implement Tool Oil Rack interaction (+1 ATK/ARM/DIG)
 - [x] T096 [US5] Implement Rusty Anvil forge mod system
-- [x] T097 [US5] Implement Crusher Golem fusion (Common->Gilded->Diamond)
+- [x] T097 [US5] Implement Rune Kiln fusion (Common->Gilded->Diamond)
 - [x] T098 [US5] Implement Geode Vault interaction (pick 1 of 3 Heroic items)
 - [x] T099 [US5] Add INTERACT_POI, SELECT_POI_OPTION, CLOSE_POI actions to reducer
 - [x] T100 [US5] Implement POI interaction modal/overlay UI component

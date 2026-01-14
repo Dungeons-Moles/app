@@ -5,8 +5,10 @@
  */
 
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Image } from 'react-native';
 import type { StatusEffects, Tool, Gear } from '../../game/engine/types';
+
+const defaultMoleImageSource = require('../../../assets/characters/default-mole.png');
 
 export interface PlayerPanelProps {
   name: string;
@@ -82,7 +84,7 @@ export function PlayerPanel({
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.emoji}>{emoji}</Text>
+        <Image source={defaultMoleImageSource} style={styles.headerImage} resizeMode="contain" />
         <Text style={styles.name}>{name}</Text>
       </View>
 
@@ -90,10 +92,7 @@ export function PlayerPanel({
       <View style={styles.hpSection}>
         <View style={styles.hpBarBackground}>
           <View
-            style={[
-              styles.hpBarFill,
-              { width: `${hpPercent}%`, backgroundColor: hpBarColor },
-            ]}
+            style={[styles.hpBarFill, { width: `${hpPercent}%`, backgroundColor: hpBarColor }]}
           />
         </View>
         <Text style={styles.hpText}>
@@ -104,12 +103,7 @@ export function PlayerPanel({
       {/* Armor Bar */}
       <View style={styles.armorSection}>
         <View style={styles.armorBarBackground}>
-          <View
-            style={[
-              styles.armorBarFill,
-              { width: `${armorPercent}%` },
-            ]}
-          />
+          <View style={[styles.armorBarFill, { width: `${armorPercent}%` }]} />
         </View>
         <Text style={styles.armorText}>
           {arm}/{maxArm}
@@ -133,9 +127,7 @@ export function PlayerPanel({
             showsVerticalScrollIndicator={false}
           >
             <View style={styles.itemsGrid}>
-              {equippedTool && (
-                <ItemBadge emoji={equippedTool.emoji} name={equippedTool.name} />
-              )}
+              {equippedTool && <ItemBadge emoji={equippedTool.emoji} name={equippedTool.name} />}
               {equippedGear.map((gear, index) => (
                 <ItemBadge key={index} emoji={gear.emoji} name={gear.name} />
               ))}
@@ -158,6 +150,11 @@ const styles = StyleSheet.create({
   },
   emoji: {
     fontSize: 36,
+    marginBottom: 4,
+  },
+  headerImage: {
+    width: 60,
+    height: 60,
     marginBottom: 4,
   },
   name: {

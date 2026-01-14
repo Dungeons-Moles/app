@@ -17,7 +17,7 @@ export type POIId =
   | 'L8'  // Rail Waypoint
   | 'L9'  // Smuggler Hatch
   | 'L10' // Rusty Anvil
-  | 'L11' // Crusher Golem
+  | 'L11' // Rune Kiln
   | 'L12'; // Geode Vault
 
 export type POIRarity = 'FIXED' | 'COMMON' | 'UNCOMMON' | 'RARE';
@@ -159,12 +159,12 @@ export const POI_DEFINITIONS: Record<POIId, POIDefinition> = {
   },
 
   // ============================================================================
-  // L11 - Crusher Golem (Rare)
+  // L11 - Rune Kiln (Rare)
   // ============================================================================
   L11: {
     id: 'L11',
-    name: 'Crusher Golem',
-    emoji: '🗿',
+    name: 'Rune Kiln',
+    emoji: '🏺',
     rarity: 'RARE',
     interaction: 'FUSE',
     description: 'Fuse 2 identical items to upgrade tier',

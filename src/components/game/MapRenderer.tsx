@@ -5,8 +5,15 @@
  */
 
 import React, { useMemo, useCallback, useRef, memo } from 'react';
-import { View, StyleSheet, LayoutChangeEvent, Text, PanResponder } from 'react-native';
-import { Canvas, Rect, Group } from '@shopify/react-native-skia';
+import {
+  View,
+  StyleSheet,
+  LayoutChangeEvent,
+  Text,
+  PanResponder,
+  Image as RNImage,
+} from 'react-native';
+import { Canvas, Rect, Group, Image, useImage } from '@shopify/react-native-skia';
 import type { Position, WallHighlightState } from '../../game/engine/types';
 import { TimePhase } from '../../game/engine/types';
 import type { GameMap, MapEnemy } from '../../game/map/types';
@@ -20,23 +27,25 @@ import { WallHighlight } from './WallHighlight';
 // Constants
 // ============================================================================
 
-const TILE_SIZE = 24;
-const ENTITY_SIZE = 30;
+const TILE_SIZE = 32;
+const ENTITY_SIZE = 40;
 const ENTITY_OFFSET = (ENTITY_SIZE - TILE_SIZE) / 2;
 const BUFFER_TILES = 2;
 const STROKE_WIDTH = 3;
 
 // Tile colors - simplified: one color for floor, black for wall
 const TILE_COLORS = {
-  [TileType.Floor]: '#795040', // Brown corridor
-  [TileType.Wall]: '#000000',  // Black environment
+  [TileType.Floor]: '#795040', // Brown corridor (fallback)
+  [TileType.Wall]: '#000000', // Black environment (fallback)
 } as const;
 
 const FOG_COLOR_HIDDEN = '#000000';
 const FOG_COLOR_REVEALED = 'rgba(0, 0, 0, 0.35)';
 
-// Rock emoji for wall tiles
-const WALL_EMOJI = '🪨';
+// Tile images
+const floorImageSource = require('../../../assets/map/floor.png');
+const rockImageSource = require('../../../assets/map/rock.png');
+const defaultMoleImageSource = require('../../../assets/characters/default-mole.png');
 
 // Player emoji per spec
 const PLAYER_EMOJI = '🦦';
@@ -162,6 +171,8 @@ interface TileRectProps {
   offsetX: number;
   offsetY: number;
   zoom: number;
+  floorImage: ReturnType<typeof useImage>;
+  rockImage: ReturnType<typeof useImage>;
 }
 
 const TileRect = memo(function TileRect({
@@ -173,6 +184,8 @@ const TileRect = memo(function TileRect({
   offsetX,
   offsetY,
   zoom,
+  floorImage,
+  rockImage,
 }: TileRectProps) {
   // Calculate screen position with camera offset applied directly
   const screenX = x * TILE_SIZE * zoom + offsetX;
@@ -181,26 +194,33 @@ const TileRect = memo(function TileRect({
 
   if (fog === FogState.Hidden) {
     return (
-      <Rect
-        x={screenX}
-        y={screenY}
-        width={tileSize}
-        height={tileSize}
-        color={FOG_COLOR_HIDDEN}
-      />
+      <Rect x={screenX} y={screenY} width={tileSize} height={tileSize} color={FOG_COLOR_HIDDEN} />
     );
   }
+
+  const tileImage = type === TileType.Floor ? floorImage : rockImage;
 
   if (fog === FogState.Revealed && showRevealOverlay) {
     return (
       <Group>
-        <Rect
-          x={screenX}
-          y={screenY}
-          width={tileSize}
-          height={tileSize}
-          color={TILE_COLORS[type]}
-        />
+        {tileImage ? (
+          <Image
+            image={tileImage}
+            x={screenX}
+            y={screenY}
+            width={tileSize}
+            height={tileSize}
+            fit="cover"
+          />
+        ) : (
+          <Rect
+            x={screenX}
+            y={screenY}
+            width={tileSize}
+            height={tileSize}
+            color={TILE_COLORS[type]}
+          />
+        )}
         <Rect
           x={screenX}
           y={screenY}
@@ -212,47 +232,21 @@ const TileRect = memo(function TileRect({
     );
   }
 
-  return (
-    <Rect
-      x={screenX}
-      y={screenY}
-      width={tileSize}
-      height={tileSize}
-      color={TILE_COLORS[type]}
-    />
-  );
-});
-
-/**
- * Wall tile emoji overlay - renders rock emoji centered on wall tiles
- */
-const WallEmojiView = memo(function WallEmojiView({
-  x,
-  y,
-  dimmed,
-}: {
-  x: number;
-  y: number;
-  dimmed: boolean;
-}) {
-  const screenX = x * TILE_SIZE;
-  const screenY = y * TILE_SIZE;
+  if (tileImage) {
+    return (
+      <Image
+        image={tileImage}
+        x={screenX}
+        y={screenY}
+        width={tileSize}
+        height={tileSize}
+        fit="cover"
+      />
+    );
+  }
 
   return (
-    <View
-      style={[
-        styles.wallEmojiContainer,
-        {
-          left: screenX,
-          top: screenY,
-          width: TILE_SIZE,
-          height: TILE_SIZE,
-        },
-        dimmed && styles.dimmedOverlay,
-      ]}
-    >
-      <Text style={styles.wallEmoji}>{WALL_EMOJI}</Text>
-    </View>
+    <Rect x={screenX} y={screenY} width={tileSize} height={tileSize} color={TILE_COLORS[type]} />
   );
 });
 
@@ -263,13 +257,15 @@ const EntityView = memo(function EntityView({
   x,
   y,
   emoji,
+  image,
   colors,
   textColor,
   opacity,
 }: {
   x: number;
   y: number;
-  emoji: string;
+  emoji?: string;
+  image?: any;
   colors: { fill: string; stroke: string };
   textColor?: string;
   opacity?: number;
@@ -293,7 +289,11 @@ const EntityView = memo(function EntityView({
         },
       ]}
     >
-      <Text style={[styles.entityEmoji, textColor && { color: textColor }]}>{emoji}</Text>
+      {image ? (
+        <RNImage source={image} style={styles.entityImage} resizeMode="contain" />
+      ) : (
+        <Text style={[styles.entityEmoji, textColor && { color: textColor }]}>{emoji}</Text>
+      )}
     </View>
   );
 });
@@ -312,6 +312,10 @@ export const MapRenderer = memo(function MapRenderer({
   overviewMode,
   onPanOverview,
 }: MapRendererProps) {
+  // Load tile images
+  const floorImage = useImage(floorImageSource);
+  const rockImage = useImage(rockImageSource);
+
   const [dimensions, setDimensions] = React.useState({
     width: propWidth || 300,
     height: propHeight || 300,
@@ -364,16 +368,9 @@ export const MapRenderer = memo(function MapRenderer({
     return tiles;
   }, [visibleRange, map.tiles, map.fog]);
 
-  // Get visible wall tiles for emoji overlay (only visible/revealed, not hidden)
-  const visibleWallTiles = useMemo(() => {
-    return visibleTiles.filter(
-      tile => tile.type === TileType.Wall && tile.fog !== FogState.Hidden
-    );
-  }, [visibleTiles]);
-
   const visiblePOIs = useMemo(() => {
     return map.pois.filter(
-      poi =>
+      (poi) =>
         poi.position.x >= visibleRange.startX &&
         poi.position.x <= visibleRange.endX &&
         poi.position.y >= visibleRange.startY &&
@@ -407,7 +404,9 @@ export const MapRenderer = memo(function MapRenderer({
 
         return { enemy, variant: 'known' as const };
       })
-      .filter((entry): entry is { enemy: MapEnemy; variant: 'known' | 'unknown' } => entry !== null);
+      .filter(
+        (entry): entry is { enemy: MapEnemy; variant: 'known' | 'unknown' } => entry !== null
+      );
   }, [map.enemies, map.fog, visibleRange, isNight]);
 
   const highlightVisible = useMemo(() => {
@@ -434,8 +433,7 @@ export const MapRenderer = memo(function MapRenderer({
       PanResponder.create({
         onStartShouldSetPanResponder: () => overview.active,
         onMoveShouldSetPanResponder: (_event, gestureState) =>
-          overview.active &&
-          (Math.abs(gestureState.dx) > 2 || Math.abs(gestureState.dy) > 2),
+          overview.active && (Math.abs(gestureState.dx) > 2 || Math.abs(gestureState.dy) > 2),
         onPanResponderGrant: () => {
           panOffsetRef.current = { x: 0, y: 0 };
         },
@@ -465,7 +463,7 @@ export const MapRenderer = memo(function MapRenderer({
     <View style={styles.container} onLayout={handleLayout} {...panResponder.panHandlers}>
       <Canvas style={styles.canvas}>
         {/* Render tiles with pre-calculated screen positions (no Group transform) */}
-        {visibleTiles.map(tile => (
+        {visibleTiles.map((tile) => (
           <TileRect
             key={`tile-${tile.x}-${tile.y}`}
             x={tile.x}
@@ -476,23 +474,15 @@ export const MapRenderer = memo(function MapRenderer({
             offsetX={cameraOffset.x}
             offsetY={cameraOffset.y}
             zoom={zoom}
+            floorImage={floorImage}
+            rockImage={rockImage}
           />
         ))}
       </Canvas>
 
-      {/* Layered View for Wall Emoji and Entities */}
+      {/* Layered View for Entities */}
       <View style={styles.entityOverlay} pointerEvents="none">
         <View style={[styles.entityLayer, { transform: cameraTransform }]}>
-          {/* 0. Wall emoji (below entities) */}
-          {visibleWallTiles.map(tile => (
-            <WallEmojiView
-              key={`wall-${tile.x}-${tile.y}`}
-              x={tile.x}
-              y={tile.y}
-              dimmed={isNight && tile.fog === FogState.Revealed}
-            />
-          ))}
-
           {wallHighlight && highlightVisible && (
             <WallHighlight
               position={wallHighlight.targetPosition}
@@ -503,7 +493,7 @@ export const MapRenderer = memo(function MapRenderer({
           )}
 
           {/* 1. POIs */}
-          {visiblePOIs.map(poi => {
+          {visiblePOIs.map((poi) => {
             const def = getPOIDefinition(poi.definitionId);
             const isUsed = poi.visited && SINGLE_USE_POIS.includes(poi.definitionId);
             const colors = isUsed ? POI_COLORS_VISITED : POI_COLORS_ACTIVE;
@@ -533,7 +523,7 @@ export const MapRenderer = memo(function MapRenderer({
                 key={`enemy-${enemy.id}`}
                 x={enemy.position.x}
                 y={enemy.position.y}
-                emoji={isUnknown ? '?' : (ENEMY_EMOJIS[enemy.definitionId] || '👾')}
+                emoji={isUnknown ? '?' : ENEMY_EMOJIS[enemy.definitionId] || '👾'}
                 colors={isUnknown ? ENEMY_UNKNOWN_COLORS : ENEMY_COLORS}
                 textColor={isUnknown ? '#ffffff' : undefined}
               />
@@ -544,7 +534,7 @@ export const MapRenderer = memo(function MapRenderer({
           <EntityView
             x={playerPosition.x}
             y={playerPosition.y}
-            emoji={PLAYER_EMOJI}
+            image={defaultMoleImageSource}
             colors={PLAYER_COLORS}
           />
         </View>
@@ -572,18 +562,6 @@ const styles = StyleSheet.create({
   entityLayer: {
     ...StyleSheet.absoluteFillObject,
   },
-  wallEmojiContainer: {
-    position: 'absolute',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  wallEmoji: {
-    fontSize: 14,
-    textAlign: 'center',
-  },
-  dimmedOverlay: {
-    opacity: 0.6,
-  },
   entityContainer: {
     position: 'absolute',
     justifyContent: 'center',
@@ -591,7 +569,11 @@ const styles = StyleSheet.create({
     borderRadius: 2,
   },
   entityEmoji: {
-    fontSize: 16,
+    fontSize: 22,
     textAlign: 'center',
+  },
+  entityImage: {
+    width: '90%',
+    height: '90%',
   },
 });
