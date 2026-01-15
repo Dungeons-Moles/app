@@ -24,7 +24,7 @@ import { initializeGame, consumeMoves } from './state-factory';
 import { GAME_CONSTANTS } from './constants';
 import { TileType, TILE_MOVE_COST, type MapEnemy } from '../map/types';
 import { updateFogOfWar } from '../map/fog-of-war';
-import { calculateWallBreakCost, canBreakWall, breakWall } from '../map/wall-break';
+import { calculateDigCost, canDig, executeDig } from '../map/dig';
 import {
   movePlayer,
   equipTool,
@@ -41,6 +41,8 @@ import {
   advanceTimePhase,
   shouldTriggerBoss,
   advanceToNextWeek,
+  canAffordCostAcrossPhases,
+  consumeMoveAcrossPhases,
 } from '../time/progression';
 import { SeededRNG } from './rng';
 import {
@@ -57,6 +59,7 @@ import { moveEnemiesNight, isWithinSightRange } from '../map/pathfinding';
 import { SIGHT_RADIUS } from './constants';
 import { RARITY_MULTIPLIER } from '../../data/gear';
 import { BOSSES } from '../../data/bosses';
+import { ENEMY_DEFINITIONS } from '../entities/enemies';
 
 // ============================================================================
 // Game Actions
@@ -103,9 +106,7 @@ export function isStartGameAction(
   return action.type === 'START_GAME';
 }
 
-export function isMoveAction(
-  action: GameAction
-): action is { type: 'MOVE'; direction: Direction } {
+export function isMoveAction(action: GameAction): action is { type: 'MOVE'; direction: Direction } {
   return action.type === 'MOVE';
 }
 
@@ -215,9 +216,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
  */
 function handleStartGame(state: GameState, seed: number): GameState {
   if (!isValidTransition(state.phase, GamePhase.Exploration)) {
-    throw new Error(
-      `Invalid transition: cannot start game from ${state.phase}`
-    );
+    throw new Error(`Invalid transition: cannot start game from ${state.phase}`);
   }
 
   // Initialize game with seed (map generation, player setup, etc.)
@@ -269,12 +268,12 @@ function handleMove(state: GameState, direction: Direction): GameState {
       return handleBreakWall(state);
     }
 
-    const cost = calculateWallBreakCost(state.player.stats.dig);
+    const cost = calculateDigCost(state.player.stats.dig);
     if (cost === null) {
       return state;
     }
 
-    if (!canBreakWall(state.map, targetPos)) {
+    if (!canDig(state.map, targetPos)) {
       return state;
     }
 
@@ -288,7 +287,7 @@ function handleMove(state: GameState, direction: Direction): GameState {
 
   // Check for enemy at target position
   const enemyAtTarget = clearedState.map.enemies.find(
-    e => e.position.x === targetPos.x && e.position.y === targetPos.y
+    (e) => e.position.x === targetPos.x && e.position.y === targetPos.y
   );
 
   // Move player
@@ -309,7 +308,8 @@ function handleMove(state: GameState, direction: Direction): GameState {
   const advancedTime = advanceTimePhase(newTime);
 
   let updatedPlayer = newState.player;
-  const isDayStart = newState.time.phase === TimePhase.Night && advancedTime.phase === TimePhase.Day;
+  const isDayStart =
+    newState.time.phase === TimePhase.Night && advancedTime.phase === TimePhase.Day;
   if (isDayStart) {
     const nuggetSlots = updatedPlayer.inventory.filter((slot) => slot.item.id === 'I8');
     const goldGain = nuggetSlots.reduce(
@@ -478,6 +478,7 @@ function handleHighlightWall(
 
 /**
  * Handles BREAK_WALL action.
+ * Supports consuming moves across phase transitions (e.g., 3 moves from Night + 2 from Day).
  */
 function handleBreakWall(state: GameState): GameState {
   if (state.phase !== GamePhase.Exploration) {
@@ -490,27 +491,26 @@ function handleBreakWall(state: GameState): GameState {
 
   const { targetPosition, cost } = state.wallHighlight;
 
-  if (!canBreakWall(state.map, targetPosition)) {
+  if (!canDig(state.map, targetPosition)) {
     return handleCancelWallHighlight(state);
   }
 
-  if (state.time.movesRemaining < cost) {
+  // Check if we can afford the cost across phase transitions
+  if (!canAffordCostAcrossPhases(state.time, cost)) {
     return state;
   }
 
-  let newMap = breakWall(state.map, targetPosition);
+  let newMap = executeDig(state.map, targetPosition);
 
-  // Auto-move player to the broken wall tile
-  const isDay = state.time.phase === TimePhase.Day;
-  newMap = updateFogOfWar(newMap, targetPosition, isDay);
-
-  const newTime = consumeMove(state.time, cost);
+  // Consume moves across phases if needed
+  const newTime = consumeMoveAcrossPhases(state.time, cost);
   const advancedTime = advanceTimePhase(newTime);
 
-  let updatedPlayer: Player = {
-    ...state.player,
-    position: targetPosition,
-  };
+  // Update fog of war based on the resulting phase (after potential phase transition)
+  const isDay = advancedTime.phase === TimePhase.Day;
+  newMap = updateFogOfWar(newMap, targetPosition, isDay);
+
+  let updatedPlayer: Player = movePlayer(state.player, targetPosition);
   const isDayStart = state.time.phase === TimePhase.Night && advancedTime.phase === TimePhase.Day;
   if (isDayStart) {
     const nuggetSlots = updatedPlayer.inventory.filter((slot) => slot.item.id === 'I8');
@@ -705,9 +705,7 @@ function handleCancelFastTravel(state: GameState): GameState {
  */
 function handleEnterCombat(state: GameState, enemyId: string): GameState {
   if (!isValidTransition(state.phase, GamePhase.Combat)) {
-    throw new Error(
-      `Invalid transition: cannot enter combat from ${state.phase}`
-    );
+    throw new Error(`Invalid transition: cannot enter combat from ${state.phase}`);
   }
 
   // Find enemy on map
@@ -759,31 +757,12 @@ function handleEnterCombat(state: GameState, enemyId: string): GameState {
  * Create enemy combatant state from map enemy
  */
 function createEnemyCombatant(enemy: MapEnemy): CombatantState {
-  const enemyEmojis: Record<string, string> = {
-    TUNNEL_RAT: '🐀',
-    CAVE_BAT: '🦇',
-    SPORE_SLIME: '🟢',
-    RUST_MITE_SWARM: '🐜',
-    COLLAPSED_MINER: '🧟',
-    SHARD_BEETLE: '🪲',
-    TUNNEL_WARDEN: '🦀',
-    BURROW_AMBUSHER: '🦂',
-  };
-
-  const enemyNames: Record<string, string> = {
-    TUNNEL_RAT: 'Tunnel Rat',
-    CAVE_BAT: 'Cave Bat',
-    SPORE_SLIME: 'Spore Slime',
-    RUST_MITE_SWARM: 'Rust Mite Swarm',
-    COLLAPSED_MINER: 'Collapsed Miner',
-    SHARD_BEETLE: 'Shard Beetle',
-    TUNNEL_WARDEN: 'Tunnel Warden',
-    BURROW_AMBUSHER: 'Burrow Ambusher',
-  };
+  const def = ENEMY_DEFINITIONS[enemy.definitionId];
 
   return {
-    name: enemyNames[enemy.definitionId] || enemy.definitionId,
-    emoji: enemyEmojis[enemy.definitionId] || '👾',
+    name: def ? def.name : enemy.definitionId,
+    emoji: def ? def.emoji : '👾',
+    definitionId: enemy.definitionId,
     isPlayer: false,
     maxHp: enemy.stats.hp,
     hp: enemy.stats.hp,
@@ -812,6 +791,7 @@ function createBossCombatant(bossId: string): CombatantState {
   return {
     name: boss.name,
     emoji: boss.emoji,
+    definitionId: boss.id,
     isPlayer: false,
     maxHp: boss.stats.hp,
     hp: boss.stats.hp,
@@ -950,9 +930,9 @@ function handleResolveCombat(
   const bossSlotBonus =
     state.phase === GamePhase.BossFight
       ? Math.min(
-        updatedPlayer.inventoryCapacity + GAME_CONSTANTS.INVENTORY_SLOTS_PER_WEEK,
-        GAME_CONSTANTS.MAX_INVENTORY_SLOTS
-      )
+          updatedPlayer.inventoryCapacity + GAME_CONSTANTS.INVENTORY_SLOTS_PER_WEEK,
+          GAME_CONSTANTS.MAX_INVENTORY_SLOTS
+        )
       : updatedPlayer.inventoryCapacity;
 
   // Remove defeated enemy from map
@@ -995,9 +975,7 @@ function handleResolveCombat(
  */
 function findEnemyAtPlayerPosition(state: GameState): MapEnemy | undefined {
   return state.map.enemies.find(
-    (e) =>
-      e.position.x === state.player.position.x &&
-      e.position.y === state.player.position.y
+    (e) => e.position.x === state.player.position.x && e.position.y === state.player.position.y
   );
 }
 
@@ -1008,9 +986,7 @@ function findEnemyAtPlayerPosition(state: GameState): MapEnemy | undefined {
  */
 function handleInteractPOI(state: GameState, poiId: string): GameState {
   if (!isValidTransition(state.phase, GamePhase.POIInteraction)) {
-    throw new Error(
-      `Invalid transition: cannot interact with POI from ${state.phase}`
-    );
+    throw new Error(`Invalid transition: cannot interact with POI from ${state.phase}`);
   }
 
   // Find the POI on the map
@@ -1076,9 +1052,7 @@ function handleSelectPOIOption(state: GameState, optionIndex: number): GameState
   // Update the selected option
   newState = {
     ...newState,
-    activePOI: newState.activePOI
-      ? { ...newState.activePOI, selectedOption: optionIndex }
-      : null,
+    activePOI: newState.activePOI ? { ...newState.activePOI, selectedOption: optionIndex } : null,
   };
 
   // Mark POI as visited (except for shops that can be reused)
@@ -1123,9 +1097,7 @@ function handleClosePOI(state: GameState): GameState {
  */
 function handleTriggerBoss(state: GameState): GameState {
   if (!isValidTransition(state.phase, GamePhase.BossFight)) {
-    throw new Error(
-      `Invalid transition: cannot trigger boss from ${state.phase}`
-    );
+    throw new Error(`Invalid transition: cannot trigger boss from ${state.phase}`);
   }
 
   // Update time to Boss phase
@@ -1178,16 +1150,11 @@ function handleTriggerBoss(state: GameState): GameState {
  * Handles END_GAME action.
  * Transitions to Victory or Defeat phase.
  */
-function handleEndGame(
-  state: GameState,
-  result: 'VICTORY' | 'DEFEAT'
-): GameState {
+function handleEndGame(state: GameState, result: 'VICTORY' | 'DEFEAT'): GameState {
   const targetPhase = result === 'VICTORY' ? GamePhase.Victory : GamePhase.Defeat;
 
   if (!isValidTransition(state.phase, targetPhase)) {
-    throw new Error(
-      `Invalid transition: cannot end game with ${result} from ${state.phase}`
-    );
+    throw new Error(`Invalid transition: cannot end game with ${result} from ${state.phase}`);
   }
 
   return {
@@ -1202,9 +1169,7 @@ function handleEndGame(
  */
 function handleReturnToMenu(state: GameState): GameState {
   if (!isValidTransition(state.phase, GamePhase.MainMenu)) {
-    throw new Error(
-      `Invalid transition: cannot return to menu from ${state.phase}`
-    );
+    throw new Error(`Invalid transition: cannot return to menu from ${state.phase}`);
   }
 
   // TODO: Reset game state to initial values
@@ -1229,7 +1194,7 @@ function handleNightEnemyMovement(state: GameState): GameState {
   const playerPos = state.player.position;
 
   // Filter enemies within Night sight range
-  const enemiesInRange = state.map.enemies.filter(enemy =>
+  const enemiesInRange = state.map.enemies.filter((enemy) =>
     isWithinSightRange(enemy.position, playerPos, SIGHT_RADIUS.night)
   );
 
@@ -1245,19 +1210,14 @@ function handleNightEnemyMovement(state: GameState): GameState {
   };
 
   // Move enemies toward player
-  const { updatedEnemies, combatTriggered } = moveEnemiesNight(
-    mapForPathfinding,
-    playerPos
-  );
+  const { updatedEnemies, combatTriggered } = moveEnemiesNight(mapForPathfinding, playerPos);
 
   // Merge updated enemy positions back into full enemy list
-  const updatedEnemyMap = new Map(updatedEnemies.map(e => [e.id, e]));
-  const finalEnemies = state.map.enemies.map(enemy =>
-    updatedEnemyMap.get(enemy.id) || enemy
-  );
+  const updatedEnemyMap = new Map(updatedEnemies.map((e) => [e.id, e]));
+  const finalEnemies = state.map.enemies.map((enemy) => updatedEnemyMap.get(enemy.id) || enemy);
 
   // Create new state with updated enemies
-  let newState: GameState = {
+  const newState: GameState = {
     ...state,
     map: {
       ...state.map,
@@ -1267,7 +1227,7 @@ function handleNightEnemyMovement(state: GameState): GameState {
 
   // If an enemy reached the player, trigger combat
   if (combatTriggered) {
-    const attackingEnemy = finalEnemies.find(e => e.id === combatTriggered);
+    const attackingEnemy = finalEnemies.find((e) => e.id === combatTriggered);
     if (attackingEnemy) {
       // Create player combatant state from current player
       const playerCombatant: CombatantState = {

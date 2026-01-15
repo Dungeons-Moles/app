@@ -1,5 +1,15 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Modal, Alert, Image } from 'react-native';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  Modal,
+  Alert,
+  Image,
+  ImageBackground,
+  Platform,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useProfile } from '../contexts/ProfileContext';
@@ -9,6 +19,12 @@ import { RootStackParamList } from '../navigation';
 import { SpeedControls } from '../components/combat';
 
 const defaultMoleImageSource = require('../../assets/characters/default-mole.png');
+const backgroundImageSource = require('../../assets/hub/background.png');
+const buttonV1Source = require('../../assets/hub/button-v1.png');
+const buttonV2Source = require('../../assets/hub/button-v2.png');
+const buttonV3Source = require('../../assets/hub/button-v3.png');
+const engineImageSource = require('../../assets/hub/engine.png');
+const walletImageSource = require('../../assets/hub/wallet.png');
 
 type HubScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Hub'>;
@@ -59,136 +75,197 @@ export function HubScreen({ navigation }: HubScreenProps) {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['left', 'right']}>
-      <View style={styles.hubLayout}>
-        {/* TOP LEFT - Player Info */}
-        <View style={styles.topLeft}>
-          <View style={styles.playerPanel}>
-            <Text style={styles.playerName}>{profile?.displayName}</Text>
-            {profile?.walletAddress ? (
-              <View style={styles.walletRow}>
-                <View style={styles.walletDot} />
-                <Text style={styles.walletAddress}>{shortenAddress(profile.walletAddress)}</Text>
+    <View style={styles.container}>
+      <Image source={backgroundImageSource} style={styles.backgroundImage} resizeMode="stretch" />
+      <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
+        <View style={styles.hubLayout}>
+          {/* TOP LEFT - Player Info */}
+          <View style={styles.topLeft}>
+            <ImageBackground
+              source={walletImageSource}
+              style={styles.playerPanel}
+              resizeMode="stretch"
+            >
+              {/* Avatar Square */}
+              <View style={styles.avatarContainer}>
+                <Image
+                  source={defaultMoleImageSource}
+                  style={styles.avatarImage}
+                  resizeMode="cover"
+                />
               </View>
-            ) : null}
+
+              {/* Player Info */}
+              <View style={styles.playerInfo}>
+                <Text style={styles.playerName} numberOfLines={1}>
+                  {profile?.displayName}
+                </Text>
+                {profile?.walletAddress ? (
+                  <Text style={styles.walletAddress}>{shortenAddress(profile.walletAddress)}</Text>
+                ) : null}
+              </View>
+            </ImageBackground>
           </View>
-        </View>
 
-        {/* TOP CENTER - Points */}
-        <View style={styles.topCenter}>
-          <View style={styles.pointsPanel}>
-            <Text style={styles.pointsLabel}>POINTS</Text>
-            <Text style={styles.pointsValue}>0</Text>
+          {/* TOP CENTER - Points */}
+          <View style={styles.topCenter}>
+            <ImageBackground
+              source={buttonV3Source}
+              style={styles.pointsPanel}
+              resizeMode="stretch"
+            >
+              <Text style={styles.pointsLabel}>POINTS</Text>
+              <Text style={[styles.pointsValue, { color: '#FABC0F' }]}>0</Text>
+            </ImageBackground>
           </View>
-        </View>
 
-        {/* TOP RIGHT - Settings */}
-        <View style={styles.topRight}>
-          <TouchableOpacity
-            style={styles.settingsBtn}
-            onPress={() => setShowSettings(true)}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.settingsIcon}>⚙</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* CENTER - Character */}
-        <View style={styles.center}>
-          <Image
-            source={defaultMoleImageSource}
-            style={styles.characterImage}
-            resizeMode="contain"
-          />
-        </View>
-
-        {/* BOTTOM LEFT - Secondary Navigation */}
-        <View style={styles.bottomLeft}>
-          <TouchableOpacity style={styles.navButton} onPress={handleQuests} activeOpacity={0.7}>
-            <Text style={styles.navButtonText}>Quests</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.navButton}
-            onPress={handleLeaderboard}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.navButtonText}>Ranks</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* BOTTOM RIGHT - Primary Actions */}
-        <View style={styles.bottomRight}>
-          {/* Shop above play buttons */}
-          <TouchableOpacity
-            style={styles.shopButton}
-            onPress={handleMarketplace}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.shopButtonText}>Shop</Text>
-          </TouchableOpacity>
-
-          {/* Campaign and Gauntlet side by side */}
-          <View style={styles.playButtonsRow}>
-            <TouchableOpacity
-              style={styles.campaignButton}
-              onPress={handlePlayPvE}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.campaignButtonText}>Campaign</Text>
-              <Text style={styles.buttonSub}>PvE</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.gauntletButton}
-              onPress={handlePlayPvP}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.gauntletButtonText}>Gauntlet</Text>
-              <Text style={styles.gauntletSub}>PvP</Text>
+          {/* TOP RIGHT - Settings */}
+          <View style={styles.topRight}>
+            <TouchableOpacity onPress={() => setShowSettings(true)} activeOpacity={0.7}>
+              <ImageBackground
+                source={buttonV1Source}
+                style={styles.settingsBtn}
+                resizeMode="stretch"
+              >
+                <Image
+                  source={engineImageSource}
+                  style={styles.settingsIconImage}
+                  resizeMode="contain"
+                />
+              </ImageBackground>
             </TouchableOpacity>
           </View>
-        </View>
-      </View>
 
-      {/* Settings Modal */}
-      <Modal
-        visible={showSettings}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowSettings(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Settings</Text>
-
-            <View style={styles.settingRow}>
-              <Text style={styles.settingLabel}>Default combat speed</Text>
-              <SpeedControls
-                currentSpeed={profile?.defaultCombatSpeed ?? 'normal'}
-                onSpeedChange={updateDefaultCombatSpeed}
+          {/* CENTER - Character */}
+          <View style={styles.center}>
+            <View style={styles.characterContainer}>
+              <View style={styles.characterShadow} />
+              <Image
+                source={defaultMoleImageSource}
+                style={styles.characterImage}
+                resizeMode="contain"
               />
             </View>
+          </View>
 
-            <TouchableOpacity
-              style={styles.modalButton}
-              onPress={handleResetProfile}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.disconnectText}>Reset Profile</Text>
+          {/* BOTTOM LEFT - Secondary Navigation */}
+          <View style={styles.bottomLeft}>
+            <TouchableOpacity onPress={handleQuests} activeOpacity={0.7}>
+              <ImageBackground
+                source={buttonV1Source}
+                style={styles.navButton}
+                resizeMode="stretch"
+              >
+                <Text style={styles.navButtonText}>Quests</Text>
+              </ImageBackground>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.modalButton}
-              onPress={() => setShowSettings(false)}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.modalButtonText}>Close</Text>
+            <TouchableOpacity onPress={handleLeaderboard} activeOpacity={0.7}>
+              <ImageBackground
+                source={buttonV1Source}
+                style={styles.navButton}
+                resizeMode="stretch"
+              >
+                <Text style={styles.navButtonText}>Ranks</Text>
+              </ImageBackground>
             </TouchableOpacity>
           </View>
+
+          {/* BOTTOM RIGHT - Primary Actions */}
+          <View style={styles.bottomRight}>
+            {/* Shop above play buttons */}
+            <TouchableOpacity onPress={handleMarketplace} activeOpacity={0.7}>
+              <ImageBackground
+                source={buttonV1Source}
+                style={styles.shopButton}
+                resizeMode="stretch"
+              >
+                <Text style={styles.shopButtonText}>Shop</Text>
+              </ImageBackground>
+            </TouchableOpacity>
+
+            {/* Campaign and Gauntlet side by side */}
+            <View style={styles.playButtonsRow}>
+              <TouchableOpacity onPress={handlePlayPvE} activeOpacity={0.7}>
+                <ImageBackground
+                  source={buttonV1Source}
+                  style={styles.campaignButton}
+                  resizeMode="stretch"
+                >
+                  <Text style={styles.campaignButtonText}>Campaign</Text>
+                  <Text style={styles.buttonSub}>PvE</Text>
+                </ImageBackground>
+              </TouchableOpacity>
+
+              <TouchableOpacity onPress={handlePlayPvP} activeOpacity={0.7}>
+                <ImageBackground
+                  source={buttonV2Source}
+                  style={styles.gauntletButton}
+                  resizeMode="stretch"
+                >
+                  <Text style={styles.gauntletButtonText}>Gauntlet</Text>
+                  <Text style={styles.gauntletSub}>PvP</Text>
+                </ImageBackground>
+              </TouchableOpacity>
+            </View>
+          </View>
         </View>
-      </Modal>
-    </SafeAreaView>
+
+        {/* Settings Modal */}
+        <Modal
+          visible={showSettings}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowSettings(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalParchment}>
+                <Text style={styles.modalTitle}>Settings</Text>
+
+                <View style={styles.settingRow}>
+                  <Text style={styles.settingLabel}>Combat speed</Text>
+                  <SpeedControls
+                    currentSpeed={profile?.defaultCombatSpeed ?? 'normal'}
+                    onSpeedChange={updateDefaultCombatSpeed}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.modalParchment}>
+                <TouchableOpacity
+                  style={styles.modalButton}
+                  onPress={handleResetProfile}
+                  activeOpacity={0.7}
+                >
+                  <ImageBackground
+                    source={require('../../assets/account/button.png')}
+                    style={styles.buttonImage}
+                    resizeMode="stretch"
+                  >
+                    <Text style={styles.disconnectText}>Reset Profile</Text>
+                  </ImageBackground>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.modalButton}
+                  onPress={() => setShowSettings(false)}
+                  activeOpacity={0.7}
+                >
+                  <ImageBackground
+                    source={require('../../assets/account/button.png')}
+                    style={styles.buttonImage}
+                    resizeMode="stretch"
+                  >
+                    <Text style={styles.modalButtonText}>Close</Text>
+                  </ImageBackground>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      </SafeAreaView>
+    </View>
   );
 }
 
@@ -196,6 +273,16 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#0a0a0f',
+  },
+  backgroundImage: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: '100%',
+    height: '100%',
+  },
+  safeArea: {
+    flex: 1,
   },
   hubLayout: {
     flex: 1,
@@ -210,33 +297,48 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   playerPanel: {
-    backgroundColor: '#151518',
-    borderWidth: 1,
-    borderColor: '#2a2a30',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-  },
-  playerName: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#c8c8c8',
-  },
-  walletRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 2,
+    paddingLeft: 4,
+    width: 160, // (46 height * 2.6 ratio)
+    height: 53,
+    ...(Platform.OS === 'web' ? { width: 160, height: 53 } : {}),
   },
-  walletDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#4a7c4a',
-    marginRight: 6,
+  avatarContainer: {
+    width: 40.5,
+    height: 39,
+    borderRadius: 2,
+    overflow: 'hidden',
+    marginLeft: 3.5,
+    marginRight: 10,
+    justifyContent: 'flex-start',
+  },
+  avatarImage: {
+    width: '165%', // Zoom in
+    height: '160%',
+    position: 'absolute',
+    top: 0, // Align to top to show head
+    left: '-35%', // Center horizontally (160 - 100) / 2
+    resizeMode: 'cover',
+  },
+  playerInfo: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingRight: 8,
+    gap: 0,
+  },
+  playerName: {
+    fontSize: 12, // Bigger
+    fontWeight: '600',
+    color: '#c8c8c8',
+    lineHeight: 14,
   },
   walletAddress: {
-    fontSize: 11,
-    color: '#666666',
+    fontSize: 10, // Bigger
+    color: '#888888',
     fontFamily: 'monospace',
+    fontWeight: 'bold',
+    lineHeight: 12,
   },
 
   // TOP CENTER - Points
@@ -249,16 +351,15 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   pointsPanel: {
-    backgroundColor: '#151518',
-    borderWidth: 1,
-    borderColor: '#2a2a30',
     paddingVertical: 6,
     paddingHorizontal: 20,
     alignItems: 'center',
+    justifyContent: 'center',
+    width: 100,
+    height: 53,
   },
   pointsLabel: {
     fontSize: 10,
-    color: '#555555',
     letterSpacing: 1,
   },
   pointsValue: {
@@ -275,17 +376,15 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   settingsBtn: {
-    backgroundColor: '#151518',
-    borderWidth: 1,
-    borderColor: '#2a2a30',
-    width: 40,
-    height: 40,
+    width: 60,
+    height: 60,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  settingsIcon: {
-    fontSize: 18,
-    color: '#888888',
+  settingsIconImage: {
+    width: 30,
+    height: 30,
+    marginBottom: 4,
   },
 
   // CENTER - Character
@@ -294,9 +393,27 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  characterContainer: {
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   characterImage: {
-    width: 250,
-    height: 250,
+    width: 175,
+    height: 175,
+    marginTop: 50,
+    zIndex: 1, // Ensure image is above shadow
+  },
+  characterShadow: {
+    position: 'absolute',
+    bottom: 0, // Adjusted to sit under the feet
+    left: 27,
+    width: 100,
+    height: 22,
+    borderRadius: 10,
+    backgroundColor: '#BAA071',
+    opacity: 0.5,
+    zIndex: 0,
   },
   character: {
     fontSize: 80,
@@ -311,18 +428,17 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   navButton: {
-    backgroundColor: '#151518',
-    borderWidth: 1,
-    borderColor: '#2a2a30',
     paddingVertical: 10,
     paddingHorizontal: 16,
     alignItems: 'center',
-    minWidth: 80,
+    justifyContent: 'center',
+    width: 120,
+    height: 48,
   },
   navButtonText: {
     fontSize: 12,
-    color: '#888888',
     fontWeight: '500',
+    marginBottom: 4,
   },
 
   // BOTTOM RIGHT - Primary Actions
@@ -335,107 +451,128 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   shopButton: {
-    backgroundColor: '#151518',
-    borderWidth: 1,
-    borderColor: '#2a2a30',
     paddingVertical: 8,
     paddingHorizontal: 16,
     alignItems: 'center',
+    justifyContent: 'center',
+    width: 100,
+    height: 45,
   },
   shopButtonText: {
     fontSize: 12,
-    color: '#888888',
     fontWeight: '500',
+    marginBottom: 4,
   },
   playButtonsRow: {
     flexDirection: 'row',
     gap: 8,
   },
   campaignButton: {
-    backgroundColor: '#151518',
-    borderWidth: 1,
-    borderColor: '#2a2a30',
     paddingVertical: 12,
     paddingHorizontal: 16,
     alignItems: 'center',
-    minWidth: 90,
+    justifyContent: 'center',
+    width: 135,
+    height: 68,
   },
   campaignButtonText: {
     fontSize: 13,
-    color: '#888888',
     fontWeight: '600',
   },
   buttonSub: {
     fontSize: 10,
     color: '#555555',
     marginTop: 2,
+    marginBottom: 4,
   },
   gauntletButton: {
-    backgroundColor: '#1a1215',
-    borderWidth: 1,
-    borderColor: '#6b2020',
     paddingVertical: 12,
     paddingHorizontal: 16,
     alignItems: 'center',
-    minWidth: 90,
+    justifyContent: 'center',
+    width: 135,
+    height: 68,
   },
   gauntletButtonText: {
     fontSize: 13,
-    color: '#a33a3a',
     fontWeight: '600',
   },
   gauntletSub: {
     fontSize: 10,
-    color: '#6b2020',
+    color: '#a33a3a',
     marginTop: 2,
+    marginBottom: 4,
   },
 
   // MODAL
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
   },
   modalContent: {
-    backgroundColor: '#151518',
-    borderWidth: 1,
-    borderColor: '#2a2a30',
-    padding: 24,
-    width: '100%',
-    maxWidth: 300,
+    width: '90%',
+    maxWidth: 360,
+    backgroundColor: '#8b4513', // Wood color
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 4,
+    borderColor: '#5c4033', // Darker wood edge
+    shadowColor: '#000',
+    shadowOffset: { width: 4, height: 4 },
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    elevation: 10,
+    gap: 12,
+  },
+  modalParchment: {
+    backgroundColor: '#f4e4bc', // Parchment color
+    padding: 20,
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: '#d4c49c',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   modalTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#c8c8c8',
-    marginBottom: 20,
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#3d2b1f',
+    marginBottom: 16,
     textAlign: 'center',
   },
   settingRow: {
-    gap: 10,
-    marginBottom: 16,
+    alignItems: 'center',
+    gap: 12,
   },
   settingLabel: {
-    fontSize: 12,
-    color: '#888888',
-    fontWeight: '600',
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#3d2b1f',
   },
   modalButton: {
-    backgroundColor: '#0a0a0f',
-    borderWidth: 1,
-    borderColor: '#2a2a30',
-    paddingVertical: 12,
+    width: '100%',
+    height: 48,
+    justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 8,
+    marginVertical: 4,
+  },
+  buttonImage: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   modalButtonText: {
-    fontSize: 14,
-    color: '#888888',
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#ffffff',
   },
   disconnectText: {
-    fontSize: 14,
-    color: '#a33a3a',
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#ffffff',
   },
 });

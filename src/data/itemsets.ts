@@ -29,7 +29,7 @@ export const ITEMSET_DEFINITIONS: Record<ItemsetId, ItemsetDefinition> = {
     id: 'UNION_STANDARD',
     name: 'Union Standard',
     emoji: '🧰',
-    requiredItems: ['I2', 'I3', 'I1'],
+    requiredItems: ['I1', 'I2', 'I9'], // G-ST-01 + G-ST-02 + G-SC-01
     bonus: {
       description: 'Battle Start: +4 Armor, +1 DIG',
       timing: 'BATTLE_START',
@@ -43,7 +43,7 @@ export const ITEMSET_DEFINITIONS: Record<ItemsetId, ItemsetDefinition> = {
     id: 'SHARD_CIRCUIT',
     name: 'Shard Circuit',
     emoji: '🔁',
-    requiredItems: ['I11', 'I12', 'I13', 'I14'],
+    requiredItems: ['I21', 'I22', 'I23', 'I24'], // G-GR-05 to G-GR-08
     bonus: {
       description: 'Shards trigger every turn',
       timing: 'TURN_START',
@@ -57,7 +57,7 @@ export const ITEMSET_DEFINITIONS: Record<ItemsetId, ItemsetDefinition> = {
     id: 'DEMOLITION_PERMIT',
     name: 'Demolition Permit',
     emoji: '🧾',
-    requiredItems: ['I16', 'I18', 'I10'],
+    requiredItems: ['I25', 'I26', 'I27'], // G-BL-01 to G-BL-03
     bonus: {
       description: 'Countdown items trigger 1 turn sooner',
       passive: true,
@@ -71,7 +71,7 @@ export const ITEMSET_DEFINITIONS: Record<ItemsetId, ItemsetDefinition> = {
     id: 'FUSE_NETWORK',
     name: 'Fuse Network',
     emoji: '🕸️',
-    requiredItems: ['I17', 'I19', 'I20'],
+    requiredItems: ['T8', 'I29', 'I28'], // T-BL-02 + G-BL-05 + G-BL-04
     bonus: {
       description: 'First non-weapon damage per turn deals +2',
       passive: true,
@@ -85,7 +85,7 @@ export const ITEMSET_DEFINITIONS: Record<ItemsetId, ItemsetDefinition> = {
     id: 'SHRAPNEL_HARNESS',
     name: 'Shrapnel Harness',
     emoji: '🛡️',
-    requiredItems: ['I6', 'I21', 'T2'],
+    requiredItems: ['I3', 'I6', 'T1'], // G-ST-03 + G-ST-06 + T-ST-01
     bonus: {
       description: 'Keep up to 3 Shrapnel at end of turn',
       timing: 'TURN_END',
@@ -99,7 +99,7 @@ export const ITEMSET_DEFINITIONS: Record<ItemsetId, ItemsetDefinition> = {
     id: 'RUST_RITUAL',
     name: 'Rust Ritual',
     emoji: '☣️',
-    requiredItems: ['I22', 'I23', 'I5'],
+    requiredItems: ['T11', 'I42', 'I43'], // T-RU-01 + G-RU-02 + G-RU-03
     bonus: {
       description: 'On Hit: apply +1 additional Rust',
       timing: 'ON_HIT',
@@ -113,7 +113,7 @@ export const ITEMSET_DEFINITIONS: Record<ItemsetId, ItemsetDefinition> = {
     id: 'SWIFT_DIGGER_KIT',
     name: 'Swift Digger Kit',
     emoji: '⚡',
-    requiredItems: ['T3', 'I1', 'I27'],
+    requiredItems: ['T3', 'I9', 'I14'], // T-SC-01 + G-SC-01 + G-SC-06
     bonus: {
       description: 'Battle Start: If DIG > enemy DIG, +2 strikes',
       timing: 'BATTLE_START',
@@ -127,9 +127,69 @@ export const ITEMSET_DEFINITIONS: Record<ItemsetId, ItemsetDefinition> = {
     id: 'ROYAL_EXTRACTION',
     name: 'Royal Extraction',
     emoji: '🏦',
-    requiredItems: ['I8', 'I25', 'T7'],
+    requiredItems: ['I17', 'I20', 'T6'], // G-GR-01 + G-GR-04 + T-GR-02
     bonus: {
       description: 'Gold to Armor conversion becomes 1:4',
+      passive: true,
+    },
+  },
+
+  // ============================================================================
+  // Whiteout Initiative - Frost/Tempo synergy
+  // GDD: G-FR-04 + G-FR-03 + G-TE-05
+  // ============================================================================
+  WHITEOUT_INITIATIVE: {
+    id: 'WHITEOUT_INITIATIVE',
+    name: 'Whiteout Initiative',
+    emoji: '🧊',
+    requiredItems: ['I36', 'I35', 'I61'],
+    bonus: {
+      description: 'Battle Start: +1 SPD; if you act first Turn 1, apply +2 Chill',
+      timing: 'BATTLE_START',
+    },
+  },
+
+  // ============================================================================
+  // Bloodrush Protocol - Blood/Tempo synergy
+  // GDD: T-BO-01 + G-BO-05 + G-TE-01
+  // ============================================================================
+  BLOODRUSH_PROTOCOL: {
+    id: 'BLOODRUSH_PROTOCOL',
+    name: 'Bloodrush Protocol',
+    emoji: '🩸',
+    requiredItems: ['T13', 'I53', 'I57'],
+    bonus: {
+      description: 'Turn 1: apply 2 Bleed; when enemy takes Bleed dmg, gain +1 SPD this turn',
+      timing: 'FIRST_TURN',
+    },
+  },
+
+  // ============================================================================
+  // Corrosion Payload - Rust/Blast synergy
+  // GDD: G-RU-02 + G-BL-03 + G-BL-05
+  // ============================================================================
+  CORROSION_PAYLOAD: {
+    id: 'CORROSION_PAYLOAD',
+    name: 'Corrosion Payload',
+    emoji: '💥☣️',
+    requiredItems: ['I42', 'I27', 'I29'],
+    bonus: {
+      description: 'First time your bomb deals damage each turn: apply 1 Rust',
+      passive: true,
+    },
+  },
+
+  // ============================================================================
+  // Golden Shrapnel Exchange - Greed/Stone synergy
+  // GDD: G-GR-04 + G-ST-06 + G-GR-03
+  // ============================================================================
+  GOLDEN_SHRAPNEL_EXCHANGE: {
+    id: 'GOLDEN_SHRAPNEL_EXCHANGE',
+    name: 'Golden Shrapnel Exchange',
+    emoji: '🪙🛡️',
+    requiredItems: ['I20', 'I6', 'I19'],
+    bonus: {
+      description: 'When you convert Gold to Armor: gain +3 Shrapnel (once/turn)',
       passive: true,
     },
   },
@@ -182,9 +242,7 @@ export function getActiveItemsets(
  * Get itemsets that a specific item contributes to
  */
 export function getItemsetsForItem(itemId: ToolId | GearId): ItemsetDefinition[] {
-  return getAllItemsetDefinitions().filter((itemset) =>
-    itemset.requiredItems.includes(itemId)
-  );
+  return getAllItemsetDefinitions().filter((itemset) => itemset.requiredItems.includes(itemId));
 }
 
 /**

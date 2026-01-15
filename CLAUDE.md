@@ -119,6 +119,7 @@ Product specifications live in `specs/001-pve-dungeon-crawler/`:
 ## Active Technologies
 - TypeScript 5.x (strict mode) + React Native, Expo, @shopify/react-native-skia (canvas rendering) (002-qol-balance-batch)
 - In-memory game state (no persistence for this feature set) (002-qol-balance-batch)
+- TypeScript 5.x (strict mode) + React Native, Expo, @shopify/react-native-skia (2.2.12) for canvas rendering (003-gdd-mechanics-update)
 
 ## Recent Changes
 - 002-qol-balance-batch: Added TypeScript 5.x (strict mode) + React Native, Expo, @shopify/react-native-skia (canvas rendering)

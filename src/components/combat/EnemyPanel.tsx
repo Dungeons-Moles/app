@@ -5,12 +5,13 @@
  */
 
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Image } from 'react-native';
 import type { StatusEffects } from '../../game/engine/types';
 
 export interface EnemyPanelProps {
   name: string;
   emoji: string;
+  imageSource?: any;
   hp: number;
   maxHp: number;
   atk: number;
@@ -51,6 +52,7 @@ export function EnemyPanel({
   spd,
   statusEffects,
   trait,
+  imageSource,
 }: EnemyPanelProps) {
   const hpPercent = useMemo(() => Math.max(0, (hp / maxHp) * 100), [hp, maxHp]);
   const armorPercent = useMemo(
@@ -68,18 +70,17 @@ export function EnemyPanel({
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.emoji}>{emoji}</Text>
-        <Text style={styles.name} numberOfLines={2}>{name}</Text>
+        {imageSource && <Image source={imageSource} style={styles.image} resizeMode="contain" />}
+        <Text style={styles.name} numberOfLines={2}>
+          {name}
+        </Text>
       </View>
 
       {/* HP Bar */}
       <View style={styles.hpSection}>
         <View style={styles.hpBarBackground}>
           <View
-            style={[
-              styles.hpBarFill,
-              { width: `${hpPercent}%`, backgroundColor: hpBarColor },
-            ]}
+            style={[styles.hpBarFill, { width: `${hpPercent}%`, backgroundColor: hpBarColor }]}
           />
         </View>
         <Text style={styles.hpText}>
@@ -90,12 +91,7 @@ export function EnemyPanel({
       {/* Armor Bar */}
       <View style={styles.armorSection}>
         <View style={styles.armorBarBackground}>
-          <View
-            style={[
-              styles.armorBarFill,
-              { width: `${armorPercent}%` },
-            ]}
-          />
+          <View style={[styles.armorBarFill, { width: `${armorPercent}%` }]} />
         </View>
         <Text style={styles.armorText}>
           {arm}/{maxArm}
@@ -118,7 +114,6 @@ export function EnemyPanel({
           </Text>
         </View>
       )}
-
     </View>
   );
 }
@@ -132,8 +127,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 12,
   },
-  emoji: {
-    fontSize: 36,
+  image: {
+    width: 60,
+    height: 60,
     marginBottom: 4,
   },
   name: {

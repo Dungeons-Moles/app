@@ -398,8 +398,8 @@ export function CombatProvider({ children, initialSpeed, onSpeedChange }: Combat
       statusEffects: { ...combatant.statusEffects },
     });
 
-    let player = normalizeCombatant(state.combat.player);
-    let enemy = normalizeCombatant(state.combat.enemy);
+    const player = normalizeCombatant(state.combat.player);
+    const enemy = normalizeCombatant(state.combat.enemy);
 
     const log = state.resolvedCombat.log;
     const maxIndex = Math.min(state.currentLogIndex, log.length - 1);

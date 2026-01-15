@@ -5,15 +5,8 @@
  */
 
 import React, { useMemo, useCallback, useRef, memo } from 'react';
-import {
-  View,
-  StyleSheet,
-  LayoutChangeEvent,
-  Text,
-  PanResponder,
-  Image as RNImage,
-} from 'react-native';
-import { Canvas, Rect, Group, Image, useImage } from '@shopify/react-native-skia';
+import { View, StyleSheet, LayoutChangeEvent, PanResponder } from 'react-native';
+import { Canvas, Rect, Group, Image, useImage, ColorMatrix } from '@shopify/react-native-skia';
 import type { Position, WallHighlightState } from '../../game/engine/types';
 import { TimePhase } from '../../game/engine/types';
 import type { GameMap, MapEnemy } from '../../game/map/types';
@@ -22,6 +15,7 @@ import { getPOIDefinition } from '../../data/pois';
 import type { OverviewModeState } from '../../contexts/GameContext';
 import { DEFAULT_OVERVIEW_STATE } from '../../contexts/GameContext';
 import { WallHighlight } from './WallHighlight';
+import { useSkiaEntityImages } from '../../hooks/useEntityImages';
 
 // ============================================================================
 // Constants
@@ -31,7 +25,6 @@ const TILE_SIZE = 32;
 const ENTITY_SIZE = 40;
 const ENTITY_OFFSET = (ENTITY_SIZE - TILE_SIZE) / 2;
 const BUFFER_TILES = 2;
-const STROKE_WIDTH = 3;
 
 // Tile colors - simplified: one color for floor, black for wall
 const TILE_COLORS = {
@@ -42,53 +35,16 @@ const TILE_COLORS = {
 const FOG_COLOR_HIDDEN = '#000000';
 const FOG_COLOR_REVEALED = 'rgba(0, 0, 0, 0.35)';
 
+const GRAYSCALE_MATRIX = [
+  0.2126, 0.7152, 0.0722, 0, 0, 0.2126, 0.7152, 0.0722, 0, 0, 0.2126, 0.7152, 0.0722, 0, 0, 0, 0, 0,
+  1, 0,
+];
+
 // Tile images
 const floorImageSource = require('../../../assets/map/floor.png');
 const rockImageSource = require('../../../assets/map/rock.png');
-const defaultMoleImageSource = require('../../../assets/characters/default-mole.png');
 
-// Player emoji per spec
-const PLAYER_EMOJI = '🦦';
-
-// Enemy emojis per spec Appendix A
-const ENEMY_EMOJIS: Record<string, string> = {
-  TUNNEL_RAT: '🐀',
-  CAVE_BAT: '🦇',
-  SPORE_SLIME: '🟢',
-  RUST_MITE_SWARM: '🐜',
-  COLLAPSED_MINER: '🧟',
-  SHARD_BEETLE: '🪲',
-  TUNNEL_WARDEN: '🦀',
-  BURROW_AMBUSHER: '🦂',
-};
-
-// Entity Colors
-const PLAYER_COLORS = {
-  fill: '#6b21a8',
-  stroke: '#d8b4fe',
-};
-
-const ENEMY_COLORS = {
-  fill: '#991b1b',
-  stroke: '#fca5a5',
-};
-
-const ENEMY_UNKNOWN_COLORS = {
-  fill: '#000000',
-  stroke: '#ffffff',
-};
-
-const POI_COLORS_ACTIVE = {
-  fill: '#854d0e',
-  stroke: '#fde047',
-};
-
-const POI_COLORS_VISITED = {
-  fill: '#374151',
-  stroke: '#9ca3af',
-};
-
-const SINGLE_USE_POIS = ['L2', 'L3', 'L6', 'L7', 'L12'];
+const SINGLE_USE_POIS = ['L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L12', 'L13'];
 
 // ============================================================================
 // Types
@@ -97,12 +53,14 @@ const SINGLE_USE_POIS = ['L2', 'L3', 'L6', 'L7', 'L12'];
 export interface MapRendererProps {
   map: GameMap;
   playerPosition: Position;
+  playerFacing?: 'left' | 'right';
   timePhase: TimePhase;
   wallHighlight?: WallHighlightState;
   width?: number;
   height?: number;
   overviewMode?: OverviewModeState;
   onPanOverview?: (delta: Position) => void;
+  onZoomOverview?: (zoomDelta: number) => void;
 }
 
 interface VisibleTileRange {
@@ -250,52 +208,61 @@ const TileRect = memo(function TileRect({
   );
 });
 
-/**
- * Entity renderer that combines the colored square background with an emoji on top.
- */
-const EntityView = memo(function EntityView({
-  x,
-  y,
-  emoji,
-  image,
-  colors,
-  textColor,
-  opacity,
-}: {
+interface SkiaEntityProps {
   x: number;
   y: number;
-  emoji?: string;
   image?: any;
-  colors: { fill: string; stroke: string };
-  textColor?: string;
   opacity?: number;
-}) {
-  const screenX = x * TILE_SIZE - ENTITY_OFFSET;
-  const screenY = y * TILE_SIZE - ENTITY_OFFSET;
+  offsetX: number;
+  offsetY: number;
+  zoom: number;
+  flipX?: boolean;
+  grayscale?: boolean;
+}
 
-  return (
-    <View
-      style={[
-        styles.entityContainer,
-        {
-          left: screenX,
-          top: screenY,
-          width: ENTITY_SIZE,
-          height: ENTITY_SIZE,
-          backgroundColor: colors.fill,
-          borderColor: colors.stroke,
-          borderWidth: STROKE_WIDTH,
-          opacity,
-        },
-      ]}
-    >
-      {image ? (
-        <RNImage source={image} style={styles.entityImage} resizeMode="contain" />
-      ) : (
-        <Text style={[styles.entityEmoji, textColor && { color: textColor }]}>{emoji}</Text>
-      )}
-    </View>
-  );
+const SkiaEntity = memo(function SkiaEntity({
+  x,
+  y,
+  image,
+  opacity = 1,
+  offsetX,
+  offsetY,
+  zoom,
+  flipX = false,
+  grayscale = false,
+}: SkiaEntityProps) {
+  const size = ENTITY_SIZE * zoom;
+  const offset = ENTITY_OFFSET * zoom;
+  const drawX = x * TILE_SIZE * zoom + offsetX - offset;
+  const drawY = y * TILE_SIZE * zoom + offsetY - offset;
+
+  if (image) {
+    const ImageComponent = (
+      <Image
+        image={image}
+        x={drawX}
+        y={drawY}
+        width={size}
+        height={size}
+        opacity={opacity}
+        fit="contain"
+      >
+        {grayscale && <ColorMatrix matrix={GRAYSCALE_MATRIX} />}
+      </Image>
+    );
+
+    if (flipX) {
+      return (
+        <Group origin={{ x: drawX + size / 2, y: drawY + size / 2 }} transform={[{ scaleX: -1 }]}>
+          {ImageComponent}
+        </Group>
+      );
+    }
+    return ImageComponent;
+  }
+
+  // No fallback: Do not render colored squares as per user request
+  return null;
 });
 
 // ============================================================================
@@ -305,16 +272,19 @@ const EntityView = memo(function EntityView({
 export const MapRenderer = memo(function MapRenderer({
   map,
   playerPosition,
+  playerFacing = 'right',
   timePhase,
   wallHighlight,
   width: propWidth,
   height: propHeight,
   overviewMode,
   onPanOverview,
+  onZoomOverview,
 }: MapRendererProps) {
   // Load tile images
   const floorImage = useImage(floorImageSource);
   const rockImage = useImage(rockImageSource);
+  const entityImages = useSkiaEntityImages();
 
   const [dimensions, setDimensions] = React.useState({
     width: propWidth || 300,
@@ -329,7 +299,7 @@ export const MapRenderer = memo(function MapRenderer({
   const { width, height } = dimensions;
 
   const overview = overviewMode ?? DEFAULT_OVERVIEW_STATE;
-  const zoom = overview.active ? overview.zoom : 1;
+  const zoom = overview.active ? overview.zoom : 1.5;
   const cameraCenter = useMemo(
     () => ({
       x: playerPosition.x + (overview.active ? overview.offset.x : 0),
@@ -349,10 +319,6 @@ export const MapRenderer = memo(function MapRenderer({
   const cameraOffset = useMemo(
     () => getCameraOffset(cameraCenter, width, height, zoom),
     [cameraCenter, width, height, zoom]
-  );
-  const cameraTransform = useMemo(
-    () => [{ scale: zoom }, { translateX: cameraOffset.x }, { translateY: cameraOffset.y }],
-    [zoom, cameraOffset.x, cameraOffset.y]
   );
 
   const isNight = timePhase === TimePhase.Night;
@@ -393,16 +359,26 @@ export const MapRenderer = memo(function MapRenderer({
 
         const fog = map.fog[enemy.position.y][enemy.position.x];
         const isVisible = fog === FogState.Visible;
-        const isKnown = enemy.discovered || isVisible;
-        if (!isKnown) {
+        const isRevealed = fog === FogState.Revealed;
+
+        if (isNight) {
+          // At night: show all enemies on non-hidden tiles
+          // - Visible tiles (in sight range): show actual enemy
+          // - Revealed tiles (outside sight range): show question mark
+          if (isVisible) {
+            return { enemy, variant: 'known' as const };
+          } else if (isRevealed) {
+            return { enemy, variant: 'unknown' as const };
+          }
           return null;
+        } else {
+          // During day: only show discovered or visible enemies
+          const isKnown = enemy.discovered || isVisible;
+          if (!isKnown) {
+            return null;
+          }
+          return { enemy, variant: 'known' as const };
         }
-
-        if (isNight && !isVisible) {
-          return { enemy, variant: 'unknown' as const };
-        }
-
-        return { enemy, variant: 'known' as const };
       })
       .filter(
         (entry): entry is { enemy: MapEnemy; variant: 'known' | 'unknown' } => entry !== null
@@ -428,17 +404,58 @@ export const MapRenderer = memo(function MapRenderer({
   }, [wallHighlight, visibleRange, map.fog]);
 
   const panOffsetRef = useRef({ x: 0, y: 0 });
+  const pinchDistanceRef = useRef<number | null>(null);
+
+  const getDistance = useCallback((touches: { pageX: number; pageY: number }[]) => {
+    if (touches.length < 2) return null;
+    const dx = touches[0].pageX - touches[1].pageX;
+    const dy = touches[0].pageY - touches[1].pageY;
+    return Math.sqrt(dx * dx + dy * dy);
+  }, []);
+
   const panResponder = useMemo(
     () =>
       PanResponder.create({
         onStartShouldSetPanResponder: () => overview.active,
         onMoveShouldSetPanResponder: (_event, gestureState) =>
           overview.active && (Math.abs(gestureState.dx) > 2 || Math.abs(gestureState.dy) > 2),
-        onPanResponderGrant: () => {
+        onPanResponderGrant: (event) => {
           panOffsetRef.current = { x: 0, y: 0 };
+          const touches = event.nativeEvent.touches;
+          if (touches && touches.length >= 2) {
+            pinchDistanceRef.current = getDistance(
+              touches as unknown as { pageX: number; pageY: number }[]
+            );
+          } else {
+            pinchDistanceRef.current = null;
+          }
         },
-        onPanResponderMove: (_event, gestureState) => {
-          if (!overview.active || !onPanOverview) {
+        onPanResponderMove: (event, gestureState) => {
+          if (!overview.active) {
+            return;
+          }
+
+          const touches = event.nativeEvent.touches;
+
+          // Handle pinch zoom (two fingers)
+          if (touches && touches.length >= 2 && onZoomOverview) {
+            const currentDistance = getDistance(
+              touches as unknown as { pageX: number; pageY: number }[]
+            );
+            if (currentDistance !== null && pinchDistanceRef.current !== null) {
+              const zoomDelta = (currentDistance - pinchDistanceRef.current) / 200;
+              if (Math.abs(zoomDelta) > 0.01) {
+                onZoomOverview(zoomDelta);
+                pinchDistanceRef.current = currentDistance;
+              }
+            } else {
+              pinchDistanceRef.current = currentDistance;
+            }
+            return;
+          }
+
+          // Handle single finger pan
+          if (!onPanOverview) {
             return;
           }
           const deltaX = (gestureState.dx - panOffsetRef.current.x) / (TILE_SIZE * zoom);
@@ -451,18 +468,20 @@ export const MapRenderer = memo(function MapRenderer({
         },
         onPanResponderRelease: () => {
           panOffsetRef.current = { x: 0, y: 0 };
+          pinchDistanceRef.current = null;
         },
         onPanResponderTerminate: () => {
           panOffsetRef.current = { x: 0, y: 0 };
+          pinchDistanceRef.current = null;
         },
       }),
-    [overview.active, onPanOverview, zoom]
+    [overview.active, onPanOverview, onZoomOverview, zoom, getDistance]
   );
 
   return (
     <View style={styles.container} onLayout={handleLayout} {...panResponder.panHandlers}>
       <Canvas style={styles.canvas}>
-        {/* Render tiles with pre-calculated screen positions (no Group transform) */}
+        {/* 1. Tiles */}
         {visibleTiles.map((tile) => (
           <TileRect
             key={`tile-${tile.x}-${tile.y}`}
@@ -478,67 +497,72 @@ export const MapRenderer = memo(function MapRenderer({
             rockImage={rockImage}
           />
         ))}
+
+        {/* 3. POIs */}
+        {visiblePOIs.map((poi) => {
+          const isUsed = poi.visited && SINGLE_USE_POIS.includes(poi.definitionId);
+          const isUnusableDay = poi.definitionId === 'L5' && !isNight;
+          const shouldBeGray = isUsed || isUnusableDay;
+
+          const fog = map.fog[poi.position.y][poi.position.x];
+          const dimmed = isNight && fog === FogState.Revealed;
+
+          return (
+            <SkiaEntity
+              key={`poi-${poi.id}`}
+              x={poi.position.x}
+              y={poi.position.y}
+              image={entityImages[poi.definitionId]}
+              opacity={dimmed ? 0.6 : 1}
+              grayscale={shouldBeGray}
+              offsetX={cameraOffset.x}
+              offsetY={cameraOffset.y}
+              zoom={zoom}
+            />
+          );
+        })}
+
+        {/* 4. Enemies */}
+        {visibleEnemies.map((entry) => {
+          const { enemy, variant } = entry;
+          const isUnknown = variant === 'unknown';
+          return (
+            <SkiaEntity
+              key={`enemy-${enemy.id}`}
+              x={enemy.position.x}
+              y={enemy.position.y}
+              image={isUnknown ? entityImages.unknownEnemy : entityImages[enemy.definitionId]}
+              opacity={1}
+              offsetX={cameraOffset.x}
+              offsetY={cameraOffset.y}
+              zoom={zoom}
+            />
+          );
+        })}
+
+        {/* 5. Player */}
+        <SkiaEntity
+          x={playerPosition.x}
+          y={playerPosition.y}
+          image={entityImages.player}
+          offsetX={cameraOffset.x}
+          offsetY={cameraOffset.y}
+          zoom={zoom}
+          flipX={playerFacing === 'left'}
+        />
       </Canvas>
 
-      {/* Layered View for Entities */}
-      <View style={styles.entityOverlay} pointerEvents="none">
-        <View style={[styles.entityLayer, { transform: cameraTransform }]}>
-          {wallHighlight && highlightVisible && (
-            <WallHighlight
-              position={wallHighlight.targetPosition}
-              cost={wallHighlight.cost}
-              tileSize={TILE_SIZE}
-              cameraOffset={{ x: 0, y: 0 }}
-            />
-          )}
-
-          {/* 1. POIs */}
-          {visiblePOIs.map((poi) => {
-            const def = getPOIDefinition(poi.definitionId);
-            const isUsed = poi.visited && SINGLE_USE_POIS.includes(poi.definitionId);
-            const colors = isUsed ? POI_COLORS_VISITED : POI_COLORS_ACTIVE;
-            const fog = map.fog[poi.position.y][poi.position.x];
-            const dimmed = isNight && fog === FogState.Revealed;
-            return (
-              <EntityView
-                key={`poi-${poi.id}`}
-                x={poi.position.x}
-                y={poi.position.y}
-                emoji={def.emoji}
-                colors={colors}
-                opacity={dimmed ? 0.6 : 1}
-              />
-            );
-          })}
-
-          {/* 2. Enemies */}
-          {visibleEnemies.map((entry) => {
-            if (!entry) {
-              return null;
-            }
-            const { enemy, variant } = entry;
-            const isUnknown = variant === 'unknown';
-            return (
-              <EntityView
-                key={`enemy-${enemy.id}`}
-                x={enemy.position.x}
-                y={enemy.position.y}
-                emoji={isUnknown ? '?' : ENEMY_EMOJIS[enemy.definitionId] || '👾'}
-                colors={isUnknown ? ENEMY_UNKNOWN_COLORS : ENEMY_COLORS}
-                textColor={isUnknown ? '#ffffff' : undefined}
-              />
-            );
-          })}
-
-          {/* 3. Player (Topmost) */}
-          <EntityView
-            x={playerPosition.x}
-            y={playerPosition.y}
-            image={defaultMoleImageSource}
-            colors={PLAYER_COLORS}
+      {/* 2. Wall Highlight (UI Overlay) */}
+      {wallHighlight && highlightVisible && (
+        <View style={styles.entityOverlay} pointerEvents="none">
+          <WallHighlight
+            position={wallHighlight.targetPosition}
+            cost={wallHighlight.cost}
+            tileSize={TILE_SIZE * zoom}
+            cameraOffset={cameraOffset}
           />
         </View>
-      </View>
+      )}
     </View>
   );
 });
@@ -557,23 +581,5 @@ const styles = StyleSheet.create({
   },
   entityOverlay: {
     ...StyleSheet.absoluteFillObject,
-    overflow: 'hidden',
-  },
-  entityLayer: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  entityContainer: {
-    position: 'absolute',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: 2,
-  },
-  entityEmoji: {
-    fontSize: 22,
-    textAlign: 'center',
-  },
-  entityImage: {
-    width: '90%',
-    height: '90%',
   },
 });

@@ -5,11 +5,12 @@
  */
 
 import React, { useState, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, Pressable, Modal } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Modal, Image } from 'react-native';
 import type { TimeState } from '../../game/engine/types';
 import { TimePhase } from '../../game/engine/types';
 import { getBoss, type BossDefinition } from '../../data/bosses';
 import { getWeekProgress } from '../../game/time/progression';
+import { getEntityImageSource } from './entityImages';
 
 // ============================================================================
 // Component Props
@@ -54,17 +55,10 @@ export function TopBar({ time, overviewActive, onToggleOverview }: TopBarProps) 
       </View>
 
       {/* Boss Preview (T070) - Right side */}
-      <BossPreview
-        boss={boss}
-        onPress={handleBossPress}
-      />
+      <BossPreview boss={boss} onPress={handleBossPress} />
 
       {/* Boss Tooltip Modal */}
-      <BossTooltipModal
-        visible={showBossTooltip}
-        boss={boss}
-        onClose={handleTooltipClose}
-      />
+      <BossTooltipModal visible={showBossTooltip} boss={boss} onClose={handleTooltipClose} />
     </View>
   );
 }
@@ -74,8 +68,8 @@ export function TopBar({ time, overviewActive, onToggleOverview }: TopBarProps) 
 // ============================================================================
 
 // Constants for tick calculation
-const DAY_TICKS = 10;   // 50 moves / 5 moves per tick
-const NIGHT_TICKS = 6;  // 30 moves / 5 moves per tick
+const DAY_TICKS = 10; // 50 moves / 5 moves per tick
+const NIGHT_TICKS = 6; // 30 moves / 5 moves per tick
 const TOTAL_TICKS = 3 * (DAY_TICKS + NIGHT_TICKS); // 48 ticks total
 const MOVES_PER_TICK = 5;
 
@@ -144,15 +138,17 @@ function WeekProgressTimeline({ time }: WeekProgressTimelineProps) {
         {/* Icons row - each icon centered above its segment */}
         <View style={styles.iconsRow}>
           {timelineSegments.map((segment, index) => {
-            const isActive = segment.type === 'day'
-              ? time.phase === TimePhase.Day && time.cycle === segment.cycle
-              : time.phase === TimePhase.Night && time.cycle === segment.cycle;
+            const isActive =
+              segment.type === 'day'
+                ? time.phase === TimePhase.Day && time.cycle === segment.cycle
+                : time.phase === TimePhase.Night && time.cycle === segment.cycle;
 
-            const isCompleted = segment.type === 'day'
-              ? time.cycle > segment.cycle ||
-                (time.cycle === segment.cycle && time.phase !== TimePhase.Day) ||
-                time.phase === TimePhase.Boss
-              : time.cycle > segment.cycle || time.phase === TimePhase.Boss;
+            const isCompleted =
+              segment.type === 'day'
+                ? time.cycle > segment.cycle ||
+                  (time.cycle === segment.cycle && time.phase !== TimePhase.Day) ||
+                  time.phase === TimePhase.Boss
+                : time.cycle > segment.cycle || time.phase === TimePhase.Boss;
 
             const icon = segment.type === 'day' ? '☀️' : '🌙';
 
@@ -164,13 +160,8 @@ function WeekProgressTimeline({ time }: WeekProgressTimelineProps) {
 
             // Each icon container is sized proportionally to its tick count
             return (
-              <View
-                key={index}
-                style={[styles.iconContainer, { flex: segment.ticks }]}
-              >
-                <Text style={[styles.phaseIcon, iconStyle]}>
-                  {icon}
-                </Text>
+              <View key={index} style={[styles.iconContainer, { flex: segment.ticks }]}>
+                <Text style={[styles.phaseIcon, iconStyle]}>{icon}</Text>
               </View>
             );
           })}
@@ -180,23 +171,25 @@ function WeekProgressTimeline({ time }: WeekProgressTimelineProps) {
         <View style={styles.tickBarWrapper}>
           <View style={styles.tickBarBackground}>
             {/* Render all ticks with equal spacing */}
-            {timelineSegments.map((segment) => (
-              Array.from({ length: segment.ticks }).map((_, tickIdx) => {
-                const globalTick = segment.startTick + tickIdx;
-                const isConsumed = globalTick < currentTickPosition;
+            {timelineSegments
+              .map((segment) =>
+                Array.from({ length: segment.ticks }).map((_, tickIdx) => {
+                  const globalTick = segment.startTick + tickIdx;
+                  const isConsumed = globalTick < currentTickPosition;
 
-                return (
-                  <View
-                    key={globalTick}
-                    style={[
-                      styles.tick,
-                      segment.type === 'day' ? styles.tickDay : styles.tickNight,
-                      isConsumed && styles.tickConsumed,
-                    ]}
-                  />
-                );
-              })
-            )).flat()}
+                  return (
+                    <View
+                      key={globalTick}
+                      style={[
+                        styles.tick,
+                        segment.type === 'day' ? styles.tickDay : styles.tickNight,
+                        isConsumed && styles.tickConsumed,
+                      ]}
+                    />
+                  );
+                })
+              )
+              .flat()}
           </View>
 
           {/* Marker row - same padding as tick bar for alignment */}
@@ -208,7 +201,7 @@ function WeekProgressTimeline({ time }: WeekProgressTimelineProps) {
                   // With space-between: first tick at 0%, last at 100%
                   // Tick n is at n/(TOTAL_TICKS-1) * 100%
                   left: `${(currentTickPosition / (TOTAL_TICKS - 1)) * 100}%`,
-                }
+                },
               ]}
             >
               <Text style={styles.markerTriangle}>▲</Text>
@@ -219,7 +212,6 @@ function WeekProgressTimeline({ time }: WeekProgressTimelineProps) {
     </View>
   );
 }
-
 
 // ============================================================================
 // Boss Preview (T070)
@@ -238,7 +230,7 @@ function BossPreview({ boss, onPress }: BossPreviewProps) {
       accessibilityLabel={`View ${boss.name} details`}
       accessibilityRole="button"
     >
-      <Text style={styles.bossEmoji}>{boss.emoji}</Text>
+      <Image source={getEntityImageSource(boss.id)} style={styles.bossImage} resizeMode="contain" />
       <View style={styles.bossInfo}>
         <Text style={styles.bossName} numberOfLines={1}>
           {boss.name}
@@ -261,17 +253,16 @@ interface BossTooltipModalProps {
 
 function BossTooltipModal({ visible, boss, onClose }: BossTooltipModalProps) {
   return (
-    <Modal
-      visible={visible}
-      transparent={true}
-      animationType="fade"
-      onRequestClose={onClose}
-    >
+    <Modal visible={visible} transparent={true} animationType="fade" onRequestClose={onClose}>
       <Pressable style={styles.modalBackdrop} onPress={onClose}>
         <View style={styles.tooltipContainer}>
           {/* Header */}
           <View style={styles.tooltipHeader}>
-            <Text style={styles.tooltipEmoji}>{boss.emoji}</Text>
+            <Image
+              source={getEntityImageSource(boss.id)}
+              style={styles.tooltipImage}
+              resizeMode="contain"
+            />
             <Text style={styles.tooltipName}>{boss.name}</Text>
           </View>
 
@@ -283,11 +274,13 @@ function BossTooltipModal({ visible, boss, onClose }: BossTooltipModalProps) {
             <StatBox label="SPD" value={boss.stats.spd} color="#10b981" />
           </View>
 
-          {/* Trait */}
-          <View style={styles.traitSection}>
-            <Text style={styles.traitName}>{boss.trait.name}</Text>
-            <Text style={styles.traitDescription}>{boss.trait.description}</Text>
-          </View>
+          {/* Abilities */}
+          {boss.abilities.map((ability, index) => (
+            <View key={index} style={styles.traitSection}>
+              <Text style={styles.traitName}>{ability.name}</Text>
+              <Text style={styles.traitDescription}>{ability.description}</Text>
+            </View>
+          ))}
 
           {/* Close hint */}
           <Text style={styles.closeHint}>Tap anywhere to close</Text>
@@ -441,8 +434,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#2a2a35',
   },
-  bossEmoji: {
-    fontSize: 24,
+  bossImage: {
+    width: 24,
+    height: 24,
     marginRight: 8,
   },
   bossInfo: {
@@ -479,8 +473,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 12,
   },
-  tooltipEmoji: {
-    fontSize: 32,
+  tooltipImage: {
+    width: 32,
+    height: 32,
     marginRight: 12,
   },
   tooltipName: {

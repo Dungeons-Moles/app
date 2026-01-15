@@ -1,33 +1,39 @@
 /**
- * T119: Enemy traits that apply status effects
- * Implements enemy traits that interact with the status effects system
- * @see specs/001-pve-dungeon-crawler/spec.md Appendix A: Enemy Data
- * @see specs/001-pve-dungeon-crawler/data-model.md EnemyTrait
+ * Enemy Traits - Phase 4 (User Story 2)
+ * Implements all 12 enemy trait handlers per GDD Section 11
+ * @see docs/gdd.md Section 11: Field Enemies
  */
 
-import type { CombatState, CombatantState, EffectTiming, CombatLogEntry } from '../engine/types';
+import type { CombatState, CombatLogEntry, EffectTiming } from '../engine/types';
 import { applyStatus } from './status-effects';
+import type { EnemyId } from '../map/types';
+
+// Re-export EnemyId for convenience
+export type { EnemyId } from '../map/types';
 
 // ============================================================================
 // Types
 // ============================================================================
 
-export type EnemyId =
-  | 'TUNNEL_RAT'
-  | 'CAVE_BAT'
-  | 'SPORE_SLIME'
-  | 'RUST_MITE_SWARM'
-  | 'COLLAPSED_MINER'
-  | 'SHARD_BEETLE'
-  | 'TUNNEL_WARDEN'
-  | 'BURROW_AMBUSHER';
-
 export interface EnemyTrait {
   id: EnemyId;
   name: string;
   description: string;
-  timing: EffectTiming;
-  execute: (state: CombatState, source: 'player' | 'enemy') => CombatState;
+  timing: EffectTiming | 'BEFORE_ATTACK' | 'COUNTDOWN' | 'FIRST_TURN' | 'FIRST_STRIKE' | 'WOUNDED';
+  execute: (state: CombatState, source: 'player' | 'enemy', context?: TraitContext) => CombatState;
+}
+
+export interface TraitContext {
+  /** Current turn number */
+  turn?: number;
+  /** Whether this is the first strike of the turn */
+  isFirstStrike?: boolean;
+  /** Whether the enemy acted first on turn 1 */
+  enemyActedFirstOnTurn1?: boolean;
+  /** Player's gold amount for Coin Slug trait */
+  playerGold?: number;
+  /** Countdown remaining for Powder Tick */
+  countdownRemaining?: number;
 }
 
 // ============================================================================
@@ -36,29 +42,29 @@ export interface EnemyTrait {
 
 /**
  * Tunnel Rat: On Hit: Steal 1 Gold (max once/turn)
- * Note: Gold stealing is not a status effect, handled separately
+ * Note: Gold stealing is handled in combat resolver
  */
 const tunnelRatTrait: EnemyTrait = {
   id: 'TUNNEL_RAT',
   name: 'Thief',
-  description: 'On Hit: Steal 1 Gold (max once/turn)',
+  description: 'On Hit (once/turn): steal 1 Gold',
   timing: 'ON_HIT',
-  execute: (state: CombatState, source: 'player' | 'enemy'): CombatState => {
+  execute: (state: CombatState): CombatState => {
     // Gold stealing handled in combat resolver
     return state;
   },
 };
 
 /**
- * Cave Bat: Every other strike: restore 1 HP
+ * Cave Bat: Every other turn: restore 1 HP
  * Note: HP restoration handled in combat resolver
  */
 const caveBatTrait: EnemyTrait = {
   id: 'CAVE_BAT',
   name: 'Leech',
-  description: 'Every other strike: restore 1 HP',
-  timing: 'ON_HIT',
-  execute: (state: CombatState, source: 'player' | 'enemy'): CombatState => {
+  description: 'Every other turn: restore 1 HP',
+  timing: 'EVERY_OTHER_TURN',
+  execute: (state: CombatState): CombatState => {
     // HP restoration handled in combat resolver
     return state;
   },
@@ -71,10 +77,9 @@ const caveBatTrait: EnemyTrait = {
 const sporeSlimeTrait: EnemyTrait = {
   id: 'SPORE_SLIME',
   name: 'Spore Cloud',
-  description: 'Battle Start: Give player 2 Chill',
+  description: 'Battle Start: apply 2 Chill to you',
   timing: 'BATTLE_START',
   execute: (state: CombatState, source: 'player' | 'enemy'): CombatState => {
-    // Only apply if the enemy is the Spore Slime
     if (source !== 'enemy') return state;
 
     const updatedPlayer = applyStatus(state.player, 'chill', 2);
@@ -107,10 +112,9 @@ const sporeSlimeTrait: EnemyTrait = {
 const rustMiteSwarmTrait: EnemyTrait = {
   id: 'RUST_MITE_SWARM',
   name: 'Corrosive',
-  description: 'On Hit: Apply 1 Rust',
+  description: 'On Hit (once/turn): apply 1 Rust',
   timing: 'ON_HIT',
   execute: (state: CombatState, source: 'player' | 'enemy'): CombatState => {
-    // Only apply if the enemy is hitting the player
     if (source !== 'enemy') return state;
 
     const updatedPlayer = applyStatus(state.player, 'rust', 1);
@@ -138,33 +142,53 @@ const rustMiteSwarmTrait: EnemyTrait = {
 
 /**
  * Collapsed Miner: Wounded: Gain +3 ATK
- * Note: ATK gain handled in combat resolver
  */
 const collapsedMinerTrait: EnemyTrait = {
   id: 'COLLAPSED_MINER',
   name: 'Rage',
-  description: 'Wounded: Gain +3 ATK',
-  timing: 'ON_WOUNDED',
+  description: 'Wounded: gain +3 ATK (this battle)',
+  timing: 'WOUNDED',
   execute: (state: CombatState, source: 'player' | 'enemy'): CombatState => {
-    // ATK gain handled in combat resolver
-    return state;
+    if (source !== 'enemy') return state;
+
+    const updatedEnemy = {
+      ...state.enemy,
+      bonusAtk: state.enemy.bonusAtk + 3,
+    };
+
+    const logEntry: CombatLogEntry = {
+      turn: state.turn,
+      timing: 'WOUNDED',
+      actor: 'enemy',
+      action: 'TRIGGER_TRAIT',
+      target: 'enemy',
+      result: {
+        effectName: 'Rage (+3 ATK)',
+      },
+      rngValues: [],
+    };
+
+    return {
+      ...state,
+      enemy: updatedEnemy,
+      log: [...state.log, logEntry],
+    };
   },
 };
 
 /**
- * Shard Beetle: Battle Start: Gain 5 Shrapnel
+ * Shard Beetle: Battle Start: Gain 6 Shrapnel
  * STATUS EFFECT TRAIT
  */
 const shardBeetleTrait: EnemyTrait = {
   id: 'SHARD_BEETLE',
   name: 'Shards',
-  description: 'Battle Start: Gain 5 Shrapnel',
+  description: 'Battle Start: gain 6 Shrapnel',
   timing: 'BATTLE_START',
   execute: (state: CombatState, source: 'player' | 'enemy'): CombatState => {
-    // Only apply if the enemy is the Shard Beetle
     if (source !== 'enemy') return state;
 
-    const updatedEnemy = applyStatus(state.enemy, 'shrapnel', 5);
+    const updatedEnemy = applyStatus(state.enemy, 'shrapnel', 6);
 
     const logEntry: CombatLogEntry = {
       turn: state.turn,
@@ -173,7 +197,7 @@ const shardBeetleTrait: EnemyTrait = {
       action: 'APPLY_STATUS',
       target: 'enemy',
       result: {
-        statusApplied: { type: 'shrapnel', stacks: 5 },
+        statusApplied: { type: 'shrapnel', stacks: 6 },
         effectName: 'Shards',
       },
       rngValues: [],
@@ -188,32 +212,256 @@ const shardBeetleTrait: EnemyTrait = {
 };
 
 /**
- * Tunnel Warden: First strike: Remove 4 Armor before damage
- * Note: Armor removal handled in combat resolver
+ * Tunnel Warden: First strike each turn: remove 3 Armor before damage
  */
 const tunnelWardenTrait: EnemyTrait = {
   id: 'TUNNEL_WARDEN',
   name: 'Armor Pierce',
-  description: 'First strike: Remove 4 Armor before damage',
-  timing: 'BEFORE_ATTACK',
-  execute: (state: CombatState, source: 'player' | 'enemy'): CombatState => {
-    // Armor piercing handled in combat resolver
-    return state;
+  description: 'First strike each turn: remove 3 Armor from you before damage',
+  timing: 'FIRST_STRIKE',
+  execute: (
+    state: CombatState,
+    source: 'player' | 'enemy',
+    context?: TraitContext
+  ): CombatState => {
+    if (source !== 'enemy') return state;
+    if (!context?.isFirstStrike) return state;
+
+    const armorRemoved = Math.min(3, state.player.arm);
+    if (armorRemoved <= 0) return state;
+
+    const updatedPlayer = {
+      ...state.player,
+      arm: state.player.arm - armorRemoved,
+    };
+
+    const logEntry: CombatLogEntry = {
+      turn: state.turn,
+      timing: 'BEFORE_ATTACK',
+      actor: 'enemy',
+      action: 'TRIGGER_TRAIT',
+      target: 'player',
+      result: {
+        effectName: 'Armor Pierce',
+        armorLost: armorRemoved,
+      },
+      rngValues: [],
+    };
+
+    return {
+      ...state,
+      player: updatedPlayer,
+      log: [...state.log, logEntry],
+    };
   },
 };
 
 /**
- * Burrow Ambusher: Ambush: Battle Start deal 3 damage (ignores armor)
- * Note: Direct damage handled in combat resolver
+ * Burrow Ambusher: Battle Start: deal 3 damage ignoring Armor
  */
 const burrowAmbusherTrait: EnemyTrait = {
   id: 'BURROW_AMBUSHER',
   name: 'Ambush',
-  description: 'Battle Start: Deal 3 damage (ignores armor)',
+  description: 'Battle Start: deal 3 damage ignoring Armor',
   timing: 'BATTLE_START',
   execute: (state: CombatState, source: 'player' | 'enemy'): CombatState => {
-    // Direct damage handled in combat resolver
-    return state;
+    if (source !== 'enemy') return state;
+
+    const damage = 3;
+    const updatedPlayer = {
+      ...state.player,
+      hp: Math.max(0, state.player.hp - damage),
+    };
+
+    const logEntry: CombatLogEntry = {
+      turn: state.turn,
+      timing: 'BATTLE_START',
+      actor: 'enemy',
+      action: 'TRIGGER_TRAIT',
+      target: 'player',
+      result: {
+        damage,
+        effectName: 'Ambush',
+      },
+      rngValues: [],
+    };
+
+    return {
+      ...state,
+      player: updatedPlayer,
+      log: [...state.log, logEntry],
+    };
+  },
+};
+
+/**
+ * Frost Wisp: If it acts first on Turn 1: apply 2 Chill
+ * STATUS EFFECT TRAIT
+ */
+const frostWispTrait: EnemyTrait = {
+  id: 'FROST_WISP',
+  name: 'Frost Aura',
+  description: 'If it acts first on Turn 1: apply 2 Chill',
+  timing: 'FIRST_TURN',
+  execute: (
+    state: CombatState,
+    source: 'player' | 'enemy',
+    context?: TraitContext
+  ): CombatState => {
+    if (source !== 'enemy') return state;
+    if (!context?.enemyActedFirstOnTurn1) return state;
+
+    const updatedPlayer = applyStatus(state.player, 'chill', 2);
+
+    const logEntry: CombatLogEntry = {
+      turn: state.turn,
+      timing: 'FIRST_TURN',
+      actor: 'enemy',
+      action: 'APPLY_STATUS',
+      target: 'player',
+      result: {
+        statusApplied: { type: 'chill', stacks: 2 },
+        effectName: 'Frost Aura',
+      },
+      rngValues: [],
+    };
+
+    return {
+      ...state,
+      player: updatedPlayer,
+      log: [...state.log, logEntry],
+    };
+  },
+};
+
+/**
+ * Powder Tick: Countdown(2): deal 6 damage to you and itself (non-weapon)
+ * Note: Countdown logic handled in combat resolver
+ */
+const powderTickTrait: EnemyTrait = {
+  id: 'POWDER_TICK',
+  name: 'Explosive',
+  description: 'Countdown(2): deal 6 damage to you and itself (non-weapon)',
+  timing: 'COUNTDOWN',
+  execute: (
+    state: CombatState,
+    source: 'player' | 'enemy',
+    context?: TraitContext
+  ): CombatState => {
+    if (source !== 'enemy') return state;
+    // Only trigger when countdown reaches 0
+    if (context?.countdownRemaining !== 0) return state;
+
+    const damage = 6;
+    const updatedPlayer = {
+      ...state.player,
+      hp: Math.max(0, state.player.hp - damage),
+    };
+    const updatedEnemy = {
+      ...state.enemy,
+      hp: Math.max(0, state.enemy.hp - damage),
+    };
+
+    const logEntry: CombatLogEntry = {
+      turn: state.turn,
+      timing: 'TURN_END',
+      actor: 'enemy',
+      action: 'TRIGGER_TRAIT',
+      target: 'player',
+      result: {
+        damage,
+        effectName: 'Explosive',
+      },
+      rngValues: [],
+    };
+
+    return {
+      ...state,
+      player: updatedPlayer,
+      enemy: updatedEnemy,
+      log: [...state.log, logEntry],
+    };
+  },
+};
+
+/**
+ * Coin Slug: Battle Start: gain Armor equal to floor(your Gold/10) (cap 3)
+ */
+const coinSlugTrait: EnemyTrait = {
+  id: 'COIN_SLUG',
+  name: 'Gilded Shell',
+  description: 'Battle Start: gain Armor equal to floor(your Gold/10) (cap 3)',
+  timing: 'BATTLE_START',
+  execute: (
+    state: CombatState,
+    source: 'player' | 'enemy',
+    context?: TraitContext
+  ): CombatState => {
+    if (source !== 'enemy') return state;
+
+    const playerGold = context?.playerGold ?? state.playerGold ?? 0;
+    const armorGained = Math.min(3, Math.floor(playerGold / 10));
+
+    if (armorGained <= 0) return state;
+
+    const updatedEnemy = {
+      ...state.enemy,
+      arm: state.enemy.arm + armorGained,
+    };
+
+    const logEntry: CombatLogEntry = {
+      turn: state.turn,
+      timing: 'BATTLE_START',
+      actor: 'enemy',
+      action: 'TRIGGER_TRAIT',
+      target: 'enemy',
+      result: {
+        armorGained,
+        effectName: 'Gilded Shell',
+      },
+      rngValues: [],
+    };
+
+    return {
+      ...state,
+      enemy: updatedEnemy,
+      log: [...state.log, logEntry],
+    };
+  },
+};
+
+/**
+ * Blood Mosquito: On Hit (once/turn): apply 1 Bleed
+ * STATUS EFFECT TRAIT
+ */
+const bloodMosquitoTrait: EnemyTrait = {
+  id: 'BLOOD_MOSQUITO',
+  name: 'Bloodsucker',
+  description: 'On Hit (once/turn): apply 1 Bleed',
+  timing: 'ON_HIT',
+  execute: (state: CombatState, source: 'player' | 'enemy'): CombatState => {
+    if (source !== 'enemy') return state;
+
+    const updatedPlayer = applyStatus(state.player, 'bleed', 1);
+
+    const logEntry: CombatLogEntry = {
+      turn: state.turn,
+      timing: 'ON_HIT',
+      actor: 'enemy',
+      action: 'APPLY_STATUS',
+      target: 'player',
+      result: {
+        statusApplied: { type: 'bleed', stacks: 1 },
+        effectName: 'Bloodsucker',
+      },
+      rngValues: [],
+    };
+
+    return {
+      ...state,
+      player: updatedPlayer,
+      log: [...state.log, logEntry],
+    };
   },
 };
 
@@ -230,7 +478,15 @@ export const ENEMY_TRAITS: Record<EnemyId, EnemyTrait> = {
   SHARD_BEETLE: shardBeetleTrait,
   TUNNEL_WARDEN: tunnelWardenTrait,
   BURROW_AMBUSHER: burrowAmbusherTrait,
+  FROST_WISP: frostWispTrait,
+  POWDER_TICK: powderTickTrait,
+  COIN_SLUG: coinSlugTrait,
+  BLOOD_MOSQUITO: bloodMosquitoTrait,
 };
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
 
 /**
  * Get trait by enemy ID
@@ -246,14 +502,16 @@ export function executeTraitEffects(
   state: CombatState,
   timing: EffectTiming,
   enemyId: EnemyId | null,
-  source: 'player' | 'enemy'
+  source: 'player' | 'enemy',
+  context?: TraitContext
 ): CombatState {
   if (!enemyId) return state;
 
   const trait = ENEMY_TRAITS[enemyId];
+  if (!trait) return state;
   if (trait.timing !== timing) return state;
 
-  return trait.execute(state, source);
+  return trait.execute(state, source, context);
 }
 
 /**
@@ -267,6 +525,12 @@ export function getTraitsForTiming(timing: EffectTiming): EnemyTrait[] {
  * Check if a trait applies status effects
  */
 export function traitAppliesStatus(enemyId: EnemyId): boolean {
-  const statusTraits: EnemyId[] = ['SPORE_SLIME', 'RUST_MITE_SWARM', 'SHARD_BEETLE'];
+  const statusTraits: EnemyId[] = [
+    'SPORE_SLIME',
+    'RUST_MITE_SWARM',
+    'SHARD_BEETLE',
+    'FROST_WISP',
+    'BLOOD_MOSQUITO',
+  ];
   return statusTraits.includes(enemyId);
 }

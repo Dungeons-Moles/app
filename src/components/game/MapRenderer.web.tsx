@@ -3,15 +3,15 @@
  */
 
 import React, { useMemo, useCallback, useRef, memo } from 'react';
-import { View, StyleSheet, LayoutChangeEvent, Text, PanResponder, Image } from 'react-native';
+import { View, StyleSheet, LayoutChangeEvent, PanResponder, Image } from 'react-native';
 import type { Position, WallHighlightState } from '../../game/engine/types';
 import { TimePhase } from '../../game/engine/types';
 import type { GameMap, MapEnemy } from '../../game/map/types';
 import { TileType, FogState } from '../../game/map/types';
-import { getPOIDefinition } from '../../data/pois';
 import type { OverviewModeState } from '../../contexts/GameContext';
 import { DEFAULT_OVERVIEW_STATE } from '../../contexts/GameContext';
 import { WallHighlight } from './WallHighlight';
+import { getEntityImageSource } from './entityImages';
 
 // ============================================================================
 // Constants
@@ -21,7 +21,8 @@ const TILE_SIZE = 32;
 const ENTITY_SIZE = 40;
 const ENTITY_OFFSET = (ENTITY_SIZE - TILE_SIZE) / 2;
 const BUFFER_TILES = 2;
-const STROKE_WIDTH = 3;
+
+const SINGLE_USE_POIS = ['L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L12', 'L13'];
 
 // Tile colors - simplified: one color for floor, black for wall (fallback)
 const TILE_COLORS = {
@@ -36,49 +37,7 @@ const FOG_COLOR_REVEALED = 'rgba(0, 0, 0, 0.35)';
 const floorImageSource = require('../../../assets/map/floor.png');
 const rockImageSource = require('../../../assets/map/rock.png');
 const defaultMoleImageSource = require('../../../assets/characters/default-mole.png');
-
-// Player emoji per spec
-const PLAYER_EMOJI = '🦦';
-
-// Enemy emojis per spec Appendix A
-const ENEMY_EMOJIS: Record<string, string> = {
-  TUNNEL_RAT: '🐀',
-  CAVE_BAT: '🦇',
-  SPORE_SLIME: '🟢',
-  RUST_MITE_SWARM: '🐜',
-  COLLAPSED_MINER: '🧟',
-  SHARD_BEETLE: '🪲',
-  TUNNEL_WARDEN: '🦀',
-  BURROW_AMBUSHER: '🦂',
-};
-
-// Entity Colors
-const PLAYER_COLORS = {
-  fill: '#6b21a8',
-  stroke: '#d8b4fe',
-};
-
-const ENEMY_COLORS = {
-  fill: '#991b1b',
-  stroke: '#fca5a5',
-};
-
-const ENEMY_UNKNOWN_COLORS = {
-  fill: '#000000',
-  stroke: '#ffffff',
-};
-
-const POI_COLORS_ACTIVE = {
-  fill: '#854d0e',
-  stroke: '#fde047',
-};
-
-const POI_COLORS_VISITED = {
-  fill: '#374151',
-  stroke: '#9ca3af',
-};
-
-const SINGLE_USE_POIS = ['L2', 'L3', 'L6', 'L7', 'L12'];
+const unknownEnemyImageSource = require('../../../assets/map/question-mark.png');
 
 // ============================================================================
 // Types
@@ -87,12 +46,14 @@ const SINGLE_USE_POIS = ['L2', 'L3', 'L6', 'L7', 'L12'];
 export interface MapRendererProps {
   map: GameMap;
   playerPosition: Position;
+  playerFacing?: 'left' | 'right';
   timePhase: TimePhase;
   wallHighlight?: WallHighlightState;
   width?: number;
   height?: number;
   overviewMode?: OverviewModeState;
   onPanOverview?: (delta: Position) => void;
+  onZoomOverview?: (zoomDelta: number) => void;
 }
 
 interface VisibleTileRange {
@@ -158,9 +119,18 @@ const TileView = memo(function TileView({
   type,
   fog,
   showRevealOverlay,
-}: TileData & { showRevealOverlay: boolean }) {
-  const screenX = x * TILE_SIZE;
-  const screenY = y * TILE_SIZE;
+  offsetX,
+  offsetY,
+  zoom,
+}: TileData & {
+  showRevealOverlay: boolean;
+  offsetX: number;
+  offsetY: number;
+  zoom: number;
+}) {
+  const screenX = x * TILE_SIZE * zoom + offsetX;
+  const screenY = y * TILE_SIZE * zoom + offsetY;
+  const size = TILE_SIZE * zoom;
   const tileImage = type === TileType.Floor ? floorImageSource : rockImageSource;
 
   if (fog === FogState.Hidden) {
@@ -171,6 +141,8 @@ const TileView = memo(function TileView({
           {
             left: screenX,
             top: screenY,
+            width: size,
+            height: size,
             backgroundColor: FOG_COLOR_HIDDEN,
           },
         ]}
@@ -186,10 +158,12 @@ const TileView = memo(function TileView({
           {
             left: screenX,
             top: screenY,
+            width: size,
+            height: size,
           },
         ]}
       >
-        <Image source={tileImage} style={styles.tileImage} />
+        <Image source={tileImage} style={[styles.tileImage, { width: size, height: size }]} />
         <View style={styles.tileFog} />
       </View>
     );
@@ -202,10 +176,12 @@ const TileView = memo(function TileView({
         {
           left: screenX,
           top: screenY,
+          width: size,
+          height: size,
         },
       ]}
     >
-      <Image source={tileImage} style={styles.tileImage} />
+      <Image source={tileImage} style={[styles.tileImage, { width: size, height: size }]} />
     </View>
   );
 });
@@ -216,22 +192,31 @@ const TileView = memo(function TileView({
 const EntityView = memo(function EntityView({
   x,
   y,
-  emoji,
   image,
-  colors,
-  textColor,
   opacity,
+  offsetX,
+  offsetY,
+  zoom,
+  flipX = false,
+  grayscale = false,
 }: {
   x: number;
   y: number;
-  emoji?: string;
   image?: any;
-  colors: { fill: string; stroke: string };
-  textColor?: string;
   opacity?: number;
+  offsetX: number;
+  offsetY: number;
+  zoom: number;
+  flipX?: boolean;
+  grayscale?: boolean;
 }) {
-  const screenX = x * TILE_SIZE - ENTITY_OFFSET;
-  const screenY = y * TILE_SIZE - ENTITY_OFFSET;
+  const size = ENTITY_SIZE * zoom;
+  const offset = ENTITY_OFFSET * zoom;
+  const screenX = x * TILE_SIZE * zoom + offsetX - offset;
+  const screenY = y * TILE_SIZE * zoom + offsetY - offset;
+
+  const transform = [];
+  if (flipX) transform.push({ scaleX: -1 });
 
   return (
     <View
@@ -240,20 +225,16 @@ const EntityView = memo(function EntityView({
         {
           left: screenX,
           top: screenY,
-          width: ENTITY_SIZE,
-          height: ENTITY_SIZE,
-          backgroundColor: colors.fill,
-          borderColor: colors.stroke,
-          borderWidth: STROKE_WIDTH,
+          width: size,
+          height: size,
           opacity,
+          transform,
+          // @ts-ignore - grayscale filter for web
+          filter: grayscale ? 'grayscale(100%)' : 'none',
         },
       ]}
     >
-      {image ? (
-        <Image source={image} style={styles.entityImage} resizeMode="contain" />
-      ) : (
-        <Text style={[styles.entityEmoji, textColor && { color: textColor }]}>{emoji}</Text>
-      )}
+      {image && <Image source={image} style={styles.entityImage} resizeMode="contain" />}
     </View>
   );
 });
@@ -265,12 +246,14 @@ const EntityView = memo(function EntityView({
 export const MapRenderer = memo(function MapRenderer({
   map,
   playerPosition,
+  playerFacing = 'right',
   timePhase,
   wallHighlight,
   width: propWidth,
   height: propHeight,
   overviewMode,
   onPanOverview,
+  onZoomOverview,
 }: MapRendererProps) {
   const [dimensions, setDimensions] = React.useState({
     width: propWidth || 300,
@@ -285,7 +268,7 @@ export const MapRenderer = memo(function MapRenderer({
   const { width, height } = dimensions;
 
   const overview = overviewMode ?? DEFAULT_OVERVIEW_STATE;
-  const zoom = overview.active ? overview.zoom : 1;
+  const zoom = overview.active ? overview.zoom : 1.5;
   const cameraCenter = useMemo(
     () => ({
       x: playerPosition.x + (overview.active ? overview.offset.x : 0),
@@ -349,16 +332,26 @@ export const MapRenderer = memo(function MapRenderer({
 
         const fog = map.fog[enemy.position.y][enemy.position.x];
         const isVisible = fog === FogState.Visible;
-        const isKnown = enemy.discovered || isVisible;
-        if (!isKnown) {
+        const isRevealed = fog === FogState.Revealed;
+
+        if (isNight) {
+          // At night: show all enemies on non-hidden tiles
+          // - Visible tiles (in sight range): show actual enemy
+          // - Revealed tiles (outside sight range): show question mark
+          if (isVisible) {
+            return { enemy, variant: 'known' as const };
+          } else if (isRevealed) {
+            return { enemy, variant: 'unknown' as const };
+          }
           return null;
+        } else {
+          // During day: only show discovered or visible enemies
+          const isKnown = enemy.discovered || isVisible;
+          if (!isKnown) {
+            return null;
+          }
+          return { enemy, variant: 'known' as const };
         }
-
-        if (isNight && !isVisible) {
-          return { enemy, variant: 'unknown' as const };
-        }
-
-        return { enemy, variant: 'known' as const };
       })
       .filter(
         (entry): entry is { enemy: MapEnemy; variant: 'known' | 'unknown' } => entry !== null
@@ -384,17 +377,58 @@ export const MapRenderer = memo(function MapRenderer({
   }, [wallHighlight, visibleRange, map.fog]);
 
   const panOffsetRef = useRef({ x: 0, y: 0 });
+  const pinchDistanceRef = useRef<number | null>(null);
+
+  const getDistance = useCallback((touches: { pageX: number; pageY: number }[]) => {
+    if (touches.length < 2) return null;
+    const dx = touches[0].pageX - touches[1].pageX;
+    const dy = touches[0].pageY - touches[1].pageY;
+    return Math.sqrt(dx * dx + dy * dy);
+  }, []);
+
   const panResponder = useMemo(
     () =>
       PanResponder.create({
         onStartShouldSetPanResponder: () => overview.active,
         onMoveShouldSetPanResponder: (_event, gestureState) =>
           overview.active && (Math.abs(gestureState.dx) > 2 || Math.abs(gestureState.dy) > 2),
-        onPanResponderGrant: () => {
+        onPanResponderGrant: (event) => {
           panOffsetRef.current = { x: 0, y: 0 };
+          const touches = event.nativeEvent.touches;
+          if (touches && touches.length >= 2) {
+            pinchDistanceRef.current = getDistance(
+              touches as unknown as { pageX: number; pageY: number }[]
+            );
+          } else {
+            pinchDistanceRef.current = null;
+          }
         },
-        onPanResponderMove: (_event, gestureState) => {
-          if (!overview.active || !onPanOverview) {
+        onPanResponderMove: (event, gestureState) => {
+          if (!overview.active) {
+            return;
+          }
+
+          const touches = event.nativeEvent.touches;
+
+          // Handle pinch zoom (two fingers)
+          if (touches && touches.length >= 2 && onZoomOverview) {
+            const currentDistance = getDistance(
+              touches as unknown as { pageX: number; pageY: number }[]
+            );
+            if (currentDistance !== null && pinchDistanceRef.current !== null) {
+              const zoomDelta = (currentDistance - pinchDistanceRef.current) / 200;
+              if (Math.abs(zoomDelta) > 0.01) {
+                onZoomOverview(zoomDelta);
+                pinchDistanceRef.current = currentDistance;
+              }
+            } else {
+              pinchDistanceRef.current = currentDistance;
+            }
+            return;
+          }
+
+          // Handle single finger pan
+          if (!onPanOverview) {
             return;
           }
           const deltaX = (gestureState.dx - panOffsetRef.current.x) / (TILE_SIZE * zoom);
@@ -407,17 +441,19 @@ export const MapRenderer = memo(function MapRenderer({
         },
         onPanResponderRelease: () => {
           panOffsetRef.current = { x: 0, y: 0 };
+          pinchDistanceRef.current = null;
         },
         onPanResponderTerminate: () => {
           panOffsetRef.current = { x: 0, y: 0 };
+          pinchDistanceRef.current = null;
         },
       }),
-    [overview.active, onPanOverview, zoom]
+    [overview.active, onPanOverview, onZoomOverview, zoom, getDistance]
   );
 
   return (
     <View style={styles.container} onLayout={handleLayout} {...panResponder.panHandlers}>
-      <View style={[styles.tileLayer, { transform: cameraTransform }]}>
+      <View style={styles.tileLayer}>
         {visibleTiles.map((tile) => (
           <TileView
             key={`tile-${tile.x}-${tile.y}`}
@@ -426,27 +462,31 @@ export const MapRenderer = memo(function MapRenderer({
             type={tile.type}
             fog={tile.fog}
             showRevealOverlay={showRevealOverlay}
+            offsetX={cameraOffset.x}
+            offsetY={cameraOffset.y}
+            zoom={zoom}
           />
         ))}
       </View>
 
       {/* Layered View for Entities */}
       <View style={styles.entityOverlay} pointerEvents="none">
-        <View style={[styles.entityLayer, { transform: cameraTransform }]}>
+        <View style={styles.entityLayer}>
           {wallHighlight && highlightVisible && (
             <WallHighlight
               position={wallHighlight.targetPosition}
               cost={wallHighlight.cost}
-              tileSize={TILE_SIZE}
-              cameraOffset={{ x: 0, y: 0 }}
+              tileSize={TILE_SIZE * zoom}
+              cameraOffset={cameraOffset}
             />
           )}
 
           {/* 1. POIs */}
           {visiblePOIs.map((poi) => {
-            const def = getPOIDefinition(poi.definitionId);
             const isUsed = poi.visited && SINGLE_USE_POIS.includes(poi.definitionId);
-            const colors = isUsed ? POI_COLORS_VISITED : POI_COLORS_ACTIVE;
+            const isUnusableDay = poi.definitionId === 'L5' && !isNight;
+            const shouldBeGray = isUsed || isUnusableDay;
+
             const fog = map.fog[poi.position.y][poi.position.x];
             const dimmed = isNight && fog === FogState.Revealed;
             return (
@@ -454,9 +494,12 @@ export const MapRenderer = memo(function MapRenderer({
                 key={`poi-${poi.id}`}
                 x={poi.position.x}
                 y={poi.position.y}
-                emoji={def.emoji}
-                colors={colors}
+                image={getEntityImageSource(poi.definitionId)}
                 opacity={dimmed ? 0.6 : 1}
+                grayscale={shouldBeGray}
+                offsetX={cameraOffset.x}
+                offsetY={cameraOffset.y}
+                zoom={zoom}
               />
             );
           })}
@@ -470,9 +513,12 @@ export const MapRenderer = memo(function MapRenderer({
                 key={`enemy-${enemy.id}`}
                 x={enemy.position.x}
                 y={enemy.position.y}
-                emoji={isUnknown ? '?' : ENEMY_EMOJIS[enemy.definitionId] || '👾'}
-                colors={isUnknown ? ENEMY_UNKNOWN_COLORS : ENEMY_COLORS}
-                textColor={isUnknown ? '#ffffff' : undefined}
+                image={
+                  isUnknown ? unknownEnemyImageSource : getEntityImageSource(enemy.definitionId)
+                }
+                offsetX={cameraOffset.x}
+                offsetY={cameraOffset.y}
+                zoom={zoom}
               />
             );
           })}
@@ -482,7 +528,10 @@ export const MapRenderer = memo(function MapRenderer({
             x={playerPosition.x}
             y={playerPosition.y}
             image={defaultMoleImageSource}
-            colors={PLAYER_COLORS}
+            offsetX={cameraOffset.x}
+            offsetY={cameraOffset.y}
+            zoom={zoom}
+            flipX={playerFacing === 'left'}
           />
         </View>
       </View>

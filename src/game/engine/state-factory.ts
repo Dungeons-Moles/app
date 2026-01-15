@@ -28,7 +28,7 @@ export function createInitialGameState(): GameState {
     rngState: 0,
     player: createEmptyPlayer(),
     map: createEmptyMap(),
-    time: createInitialTimeState('BROODMOTHER'),
+    time: createInitialTimeState('B-A-W1-01'),
     combat: null,
     activePOI: null,
     wallHighlight: null,
@@ -108,6 +108,7 @@ function createEmptyPlayer(): Player {
     inventoryCapacity: GAME_CONSTANTS.INITIAL_INVENTORY_SLOTS,
     statusEffects: { ...DEFAULT_STATUS_EFFECTS },
     activeItemsets: [],
+    facing: 'right',
   };
 }
 

@@ -15,7 +15,11 @@ import type {
   ItemTag,
   EffectTiming,
 } from '../engine/types';
-import { GEAR_DEFINITIONS, RARITY_MULTIPLIER, createGearInstance as createGearFromData } from '../../data/gear';
+import {
+  GEAR_DEFINITIONS,
+  RARITY_MULTIPLIER,
+  createGearInstance as createGearFromData,
+} from '../../data/gear';
 
 // ============================================================================
 // Tool Definitions (per spec.md Appendix C)
@@ -35,25 +39,47 @@ export interface ToolDefinition {
 }
 
 /**
- * All tool definitions per spec.md Appendix C
+ * All tool definitions per GDD (16 tools: 2 per tag)
+ * @see docs/gdd.md Section 9: Item System
  */
 export const TOOL_DEFINITIONS: Record<ToolId, ToolDefinition> = {
-  T1: {
-    id: 'T1',
-    name: 'Polished Pickaxe',
+  // ============================================================================
+  // STARTER (1 tool: T0)
+  // ============================================================================
+  T0: {
+    id: 'T0',
+    name: 'Rusty Pickaxe',
     emoji: '⛏️',
     rarity: 'COMMON',
-    stats: { atk: 3 },
+    stats: { atk: 1 },
+    tags: [],
+  },
+  // ============================================================================
+  // STONE (2 tools: T1, T2)
+  // ============================================================================
+  T1: {
+    id: 'T1',
+    name: 'Bulwark Shovel',
+    emoji: '🛠️',
+    rarity: 'COMMON',
+    stats: { atk: 1, arm: 4 },
     tags: ['STONE'],
   },
   T2: {
     id: 'T2',
-    name: 'Reinforced Shovel',
-    emoji: '🛠️',
-    rarity: 'COMMON',
-    stats: { atk: 1, arm: 6 },
+    name: 'Cragbreaker Hammer',
+    emoji: '🔨',
+    rarity: 'RARE',
+    stats: { atk: 2, arm: 3 },
     tags: ['STONE'],
+    effect: {
+      timing: 'ON_HIT',
+      description: 'First strike each turn removes 1 enemy Armor before damage',
+    },
   },
+  // ============================================================================
+  // SCOUT (2 tools: T3, T4)
+  // ============================================================================
   T3: {
     id: 'T3',
     name: 'Twin Picks',
@@ -63,19 +89,11 @@ export const TOOL_DEFINITIONS: Record<ToolId, ToolDefinition> = {
     tags: ['SCOUT'],
     effect: {
       timing: 'ON_HIT',
-      description: 'Strike twice each turn',
+      description: 'Strike 2 times per turn',
     },
   },
   T4: {
     id: 'T4',
-    name: "Prospector's Pike",
-    emoji: '🗡️',
-    rarity: 'COMMON',
-    stats: { atk: 2, dig: 2 },
-    tags: ['SCOUT'],
-  },
-  T5: {
-    id: 'T5',
     name: 'Pneumatic Drill',
     emoji: '🌀',
     rarity: 'RARE',
@@ -83,23 +101,26 @@ export const TOOL_DEFINITIONS: Record<ToolId, ToolDefinition> = {
     tags: ['SCOUT'],
     effect: {
       timing: 'ON_HIT',
-      description: 'Strike 3 times each turn',
+      description: 'Strike 3 times per turn',
+    },
+  },
+  // ============================================================================
+  // GREED (2 tools: T5, T6)
+  // ============================================================================
+  T5: {
+    id: 'T5',
+    name: 'Glittering Pick',
+    emoji: '✨⛏️',
+    rarity: 'COMMON',
+    stats: { atk: 1 },
+    tags: ['GREED'],
+    effect: {
+      timing: 'ON_HIT',
+      description: 'On Hit (once/turn): gain 1 Gold',
     },
   },
   T6: {
     id: 'T6',
-    name: 'Shadow Burrowblade',
-    emoji: '🗡️',
-    rarity: 'RARE',
-    stats: { atk: 2 },
-    tags: ['SCOUT'],
-    effect: {
-      timing: 'ON_HIT',
-      description: 'On Hit: strikes ignore Armor',
-    },
-  },
-  T7: {
-    id: 'T7',
     name: 'Gemfinder Staff',
     emoji: '🔮',
     rarity: 'HEROIC',
@@ -107,28 +128,139 @@ export const TOOL_DEFINITIONS: Record<ToolId, ToolDefinition> = {
     tags: ['GREED'],
     effect: {
       timing: 'ON_HIT',
-      description: 'Gains On-Hit effects from Shards',
+      description: 'First hit each turn triggers all your Shard effects',
+    },
+  },
+  // ============================================================================
+  // BLAST (2 tools: T7, T8)
+  // ============================================================================
+  T7: {
+    id: 'T7',
+    name: 'Fuse Pick',
+    emoji: '🔥⛏️',
+    rarity: 'COMMON',
+    stats: { atk: 1 },
+    tags: ['BLAST'],
+    effect: {
+      timing: 'ON_HIT',
+      description: 'First hit each turn: deal 1 non-weapon damage',
     },
   },
   T8: {
     id: 'T8',
-    name: 'Tempest Drill',
-    emoji: '🌪️',
-    rarity: 'MYTHIC',
-    stats: {},
-    tags: ['SCOUT'],
+    name: 'Spark Pick',
+    emoji: '⚡⛏️',
+    rarity: 'RARE',
+    stats: { atk: 1 },
+    tags: ['BLAST'],
     effect: {
-      timing: 'BEFORE_ATTACK',
-      description: 'Attack equals your DIG',
+      timing: 'ON_HIT',
+      description: 'On Hit (once/turn): reduce your highest Countdown by 1',
     },
   },
+  // ============================================================================
+  // FROST (2 tools: T9, T10)
+  // ============================================================================
   T9: {
     id: 'T9',
-    name: 'Rusty Pickaxe',
-    emoji: '⛏️',
+    name: 'Rime Pike',
+    emoji: '❄️🗡️',
+    rarity: 'COMMON',
+    stats: { atk: 2 },
+    tags: ['FROST'],
+    effect: {
+      timing: 'ON_HIT',
+      description: 'On Hit (once/turn): apply 1 Chill',
+    },
+  },
+  T10: {
+    id: 'T10',
+    name: 'Glacier Fang',
+    emoji: '🦷❄️',
+    rarity: 'RARE',
+    stats: { atk: 2 },
+    tags: ['FROST'],
+    effect: {
+      timing: 'ON_HIT',
+      description: 'On Hit (once/turn): apply 1 Chill; if enemy has Chill, gain +1 SPD this turn',
+    },
+  },
+  // ============================================================================
+  // RUST (2 tools: T11, T12)
+  // ============================================================================
+  T11: {
+    id: 'T11',
+    name: 'Corrosive Pick',
+    emoji: '☣️⛏️',
     rarity: 'COMMON',
     stats: { atk: 1 },
-    tags: ['STONE'],
+    tags: ['RUST'],
+    effect: {
+      timing: 'ON_HIT',
+      description: 'On Hit (once/turn): apply 1 Rust',
+    },
+  },
+  T12: {
+    id: 'T12',
+    name: 'Etched Burrowblade',
+    emoji: '🗡️☣️',
+    rarity: 'RARE',
+    stats: { atk: 2, spd: 1 },
+    tags: ['RUST'],
+    effect: {
+      timing: 'ON_HIT',
+      description: 'If enemy has Rust, your strikes ignore 1 Armor',
+    },
+  },
+  // ============================================================================
+  // BLOOD (2 tools: T13, T14)
+  // ============================================================================
+  T13: {
+    id: 'T13',
+    name: 'Serrated Drill',
+    emoji: '🩸⛏️',
+    rarity: 'COMMON',
+    stats: { atk: 1 },
+    tags: ['BLOOD'],
+    effect: {
+      timing: 'ON_HIT',
+      description: 'On Hit (once/turn): apply 1 Bleed',
+    },
+  },
+  T14: {
+    id: 'T14',
+    name: 'Reaper Pick',
+    emoji: '💀⛏️',
+    rarity: 'RARE',
+    stats: { atk: 2 },
+    tags: ['BLOOD'],
+    effect: {
+      timing: 'ON_HIT',
+      description: 'On Hit (once/turn): apply 1 Bleed (if enemy is Wounded, apply +1 Bleed)',
+    },
+  },
+  // ============================================================================
+  // TEMPO (2 tools: T15, T16)
+  // ============================================================================
+  T15: {
+    id: 'T15',
+    name: 'Quickpick',
+    emoji: '⚡⛏️',
+    rarity: 'COMMON',
+    stats: { atk: 1, spd: 1 },
+    tags: ['TEMPO'],
+  },
+  T16: {
+    id: 'T16',
+    name: 'Chrono Rapier',
+    emoji: '⏰🗡️',
+    rarity: 'HEROIC',
+    stats: { atk: 1, spd: 2 },
+    tags: ['TEMPO'],
+    effect: {
+      timing: 'FIRST_TURN',
+      description: 'If you act first on Turn 1, gain +2 ATK (this battle)',
+    },
   },
 };
 
@@ -202,10 +334,7 @@ export function getAllGearDefinitions() {
 /**
  * Create a gear instance from a definition with optional rarity upgrade
  */
-export function createGearInstance(
-  id: GearId,
-  currentRarity?: ItemRarity
-): Gear {
+export function createGearInstance(id: GearId, currentRarity?: ItemRarity): Gear {
   const result = createGearFromData(id, currentRarity);
   return {
     id: result.id,
@@ -226,10 +355,7 @@ export function createGearInstance(
  * Calculate combined stats from equipped tool and gear
  * Returns total bonuses from all equipment
  */
-export function calculateItemStats(
-  tool: Tool | null,
-  gear: Gear[]
-): ItemStats {
+export function calculateItemStats(tool: Tool | null, gear: Gear[]): ItemStats {
   const result: ItemStats = {
     atk: 0,
     arm: 0,

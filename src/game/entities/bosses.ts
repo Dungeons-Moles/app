@@ -13,6 +13,7 @@ import type {
   EffectTiming,
   Gear,
   GearId,
+  ItemTag,
 } from '../engine/types';
 import { BOSSES, type BossDefinition } from '../../data/bosses';
 import { GEAR_DEFINITIONS, type GearDefinition } from '../../data/gear';
@@ -32,10 +33,7 @@ export interface BossTraitResult {
   effectName?: string;
 }
 
-export type BossTraitExecutor = (
-  state: CombatState,
-  context: BossTraitContext
-) => BossTraitResult;
+export type BossTraitExecutor = (state: CombatState, context: BossTraitContext) => BossTraitResult;
 
 export interface BossTrait {
   id: BossId;
@@ -83,8 +81,8 @@ export function getBossPhaseState(): BossPhaseState {
 // ============================================================================
 
 const broodmotherTrait: BossTrait = {
-  id: 'BROODMOTHER',
-  name: 'Swarm',
+  id: 'B-A-W1-01',
+  name: 'Swarm Queen',
   description: 'Strikes 3 times per turn',
   timings: ['BATTLE_START'],
   execute: (state, context) => {
@@ -107,23 +105,23 @@ const broodmotherTrait: BossTrait = {
 };
 
 // ============================================================================
-// T104: Obsidian Golem Trait - Hardened (+3 Armor on Turn Start)
+// T104: Obsidian Golem Trait - Hardened (+4 Armor on Turn Start per GDD)
 // ============================================================================
 
 const obsidianGolemTrait: BossTrait = {
-  id: 'OBSIDIAN_GOLEM',
+  id: 'B-A-W1-02',
   name: 'Hardened',
-  description: 'Turn Start: Regenerate +3 Armor',
+  description: 'Turn Start: Regenerate +4 Armor',
   timings: ['TURN_START'],
   execute: (state, context) => {
     if (context.timing !== 'TURN_START') {
       return { state, triggered: false };
     }
 
-    // Add +3 to bonus armor
+    // Add +4 to bonus armor (per GDD Section 10)
     const newEnemy: CombatantState = {
       ...state.enemy,
-      bonusArm: state.enemy.bonusArm + 3,
+      bonusArm: state.enemy.bonusArm + 4,
     };
 
     return {
@@ -139,7 +137,7 @@ const obsidianGolemTrait: BossTrait = {
 // ============================================================================
 
 const gasAnomalyTrait: BossTrait = {
-  id: 'GAS_ANOMALY',
+  id: 'B-A-W1-03',
   name: 'Toxic Seep',
   description: 'Turn Start: Deal 2 damage ignoring Armor',
   timings: ['TURN_START'],
@@ -166,13 +164,9 @@ const gasAnomalyTrait: BossTrait = {
 // T106: Mad Miner Trait - Scavenger Mirror (Battle Start: copy Common item)
 // ============================================================================
 
-function getRandomCommonItemEffect(
-  playerGear: Gear[]
-): GearDefinition | null {
+function getRandomCommonItemEffect(playerGear: Gear[]): GearDefinition | null {
   // Filter for Common items that have effects
-  const commonItemIds = playerGear
-    .filter((g) => g.currentRarity === 'COMMON')
-    .map((g) => g.id);
+  const commonItemIds = playerGear.filter((g) => g.currentRarity === 'COMMON').map((g) => g.id);
 
   const commonWithEffects = commonItemIds
     .map((id) => GEAR_DEFINITIONS[id])
@@ -190,7 +184,7 @@ function getRandomCommonItemEffect(
 }
 
 const madMinerTrait: BossTrait = {
-  id: 'MAD_MINER',
+  id: 'B-A-W1-04',
   name: 'Scavenger Mirror',
   description: 'Battle Start: Gains one of your Common item effects',
   timings: ['BATTLE_START'],
@@ -216,7 +210,7 @@ const madMinerTrait: BossTrait = {
 // ============================================================================
 
 const drillSergeantTrait: BossTrait = {
-  id: 'DRILL_SERGEANT',
+  id: 'B-A-W2-01',
   name: 'Rev Up',
   description: 'Turn Start: Gain +2 ATK',
   timings: ['TURN_START'],
@@ -244,7 +238,7 @@ const drillSergeantTrait: BossTrait = {
 // ============================================================================
 
 const crystalMimicTrait: BossTrait = {
-  id: 'CRYSTAL_MIMIC',
+  id: 'B-A-W2-02',
   name: 'Reflection',
   description: 'First status application per turn reflects to player',
   timings: ['TURN_START'], // Reset flag at turn start
@@ -270,7 +264,7 @@ export function applyCrystalMimicReflection(
   statusType: keyof StatusEffects,
   stacks: number
 ): CombatState {
-  if (bossId !== 'CRYSTAL_MIMIC') {
+  if (bossId !== 'B-A-W2-02') {
     return state;
   }
 
@@ -299,7 +293,7 @@ export function applyCrystalMimicReflection(
 // ============================================================================
 
 const eldritchMoleTrait: BossTrait = {
-  id: 'ELDRITCH_MOLE',
+  id: 'B-A-W3-01',
   name: 'Three Phases',
   description: '75% HP: +12 Armor | 50% HP: Strike twice | 25% HP: +3 ATK, +2 DIG',
   timings: ['ON_STRUCK'], // Check phases after taking damage
@@ -318,7 +312,7 @@ export function checkEldritchMolePhases(
   state: CombatState,
   bossId: BossId
 ): { state: CombatState; phaseTriggered: string | null } {
-  if (bossId !== 'ELDRITCH_MOLE') {
+  if (bossId !== 'B-A-W3-01') {
     return { state, phaseTriggered: null };
   }
 
@@ -372,17 +366,380 @@ export function checkEldritchMolePhases(
 }
 
 // ============================================================================
+// T072: Shard Colossus Trait - Prismatic Spines (8 Shrapnel at Battle Start)
+// ============================================================================
+
+const shardColossusTrait: BossTrait = {
+  id: 'B-A-W1-05',
+  name: 'Prismatic Spines',
+  description: 'Battle Start: Gain 8 Shrapnel. Every other turn: +4 Shrapnel',
+  timings: ['BATTLE_START', 'EVERY_OTHER_TURN'],
+  execute: (state, context) => {
+    if (context.timing === 'BATTLE_START') {
+      const newEnemy: CombatantState = {
+        ...state.enemy,
+        statusEffects: {
+          ...state.enemy.statusEffects,
+          shrapnel: state.enemy.statusEffects.shrapnel + 8,
+        },
+      };
+      return {
+        state: { ...state, enemy: newEnemy },
+        triggered: true,
+        effectName: 'Prismatic Spines',
+      };
+    }
+
+    if (context.timing === 'EVERY_OTHER_TURN') {
+      const newEnemy: CombatantState = {
+        ...state.enemy,
+        statusEffects: {
+          ...state.enemy.statusEffects,
+          shrapnel: state.enemy.statusEffects.shrapnel + 4,
+        },
+      };
+      return {
+        state: { ...state, enemy: newEnemy },
+        triggered: true,
+        effectName: 'Refracting Hide',
+      };
+    }
+
+    return { state, triggered: false };
+  },
+};
+
+// ============================================================================
+// T073: Rust Regent Trait - Corroding Edict (1 Rust on hit, once/turn)
+// ============================================================================
+
+const rustRegentTrait: BossTrait = {
+  id: 'B-A-W2-03',
+  name: 'Corroding Edict',
+  description: 'On Hit (once/turn): apply 1 Rust',
+  timings: ['ON_HIT'],
+  execute: (state, context) => {
+    if (context.timing !== 'ON_HIT') {
+      return { state, triggered: false };
+    }
+
+    // Apply 1 Rust to player
+    const newPlayer: CombatantState = {
+      ...state.player,
+      statusEffects: {
+        ...state.player.statusEffects,
+        rust: state.player.statusEffects.rust + 1,
+      },
+    };
+
+    return {
+      state: { ...state, player: newPlayer },
+      triggered: true,
+      effectName: 'Corroding Edict',
+    };
+  },
+};
+
+// ============================================================================
+// T073: Powder Keg Baron Trait - Countdown(3) bomb
+// ============================================================================
+
+// Track countdown state for Powder Keg Baron
+let powderKegCountdown = 3;
+
+export function resetPowderKegCountdown(): void {
+  powderKegCountdown = 3;
+}
+
+export function getPowderKegCountdown(): number {
+  return powderKegCountdown;
+}
+
+const powderKegBaronTrait: BossTrait = {
+  id: 'B-A-W2-04',
+  name: 'Volatile Countdown',
+  description: 'Countdown(3): deal 10 damage to both. Short Fuse: Wounded reduces countdown by 1',
+  timings: ['TURN_END', 'WOUNDED'],
+  execute: (state, context) => {
+    if (context.timing === 'TURN_END') {
+      powderKegCountdown--;
+
+      if (powderKegCountdown <= 0) {
+        // BOOM! Deal 10 damage to both (non-weapon, ignores armor)
+        const newPlayer: CombatantState = {
+          ...state.player,
+          hp: Math.max(0, state.player.hp - 10),
+        };
+        const newEnemy: CombatantState = {
+          ...state.enemy,
+          hp: Math.max(0, state.enemy.hp - 10),
+        };
+
+        // Reset countdown for next explosion
+        powderKegCountdown = 3;
+
+        return {
+          state: { ...state, player: newPlayer, enemy: newEnemy },
+          triggered: true,
+          effectName: 'Volatile Countdown BOOM!',
+        };
+      }
+
+      return {
+        state,
+        triggered: true,
+        effectName: `Volatile Countdown (${powderKegCountdown})`,
+      };
+    }
+
+    if (context.timing === 'WOUNDED') {
+      // Short Fuse: reduce countdown by 1 (min 1)
+      powderKegCountdown = Math.max(1, powderKegCountdown - 1);
+      return {
+        state,
+        triggered: true,
+        effectName: `Short Fuse (${powderKegCountdown})`,
+      };
+    }
+
+    return { state, triggered: false };
+  },
+};
+
+// ============================================================================
+// T073: Greedkeeper Trait - Toll Collector (steal gold, gain armor)
+// ============================================================================
+
+const greedkeeperTrait: BossTrait = {
+  id: 'B-A-W2-05',
+  name: 'Toll Collector',
+  description: 'Battle Start: Steal 10 Gold, gain Armor = floor(stolen/5) (cap 6)',
+  timings: ['BATTLE_START'],
+  execute: (state, context) => {
+    if (context.timing !== 'BATTLE_START') {
+      return { state, triggered: false };
+    }
+
+    // Steal up to 10 gold
+    const stolen = Math.min(10, state.playerGold);
+    const armorGain = Math.min(6, Math.floor(stolen / 5));
+
+    const newEnemy: CombatantState = {
+      ...state.enemy,
+      bonusArm: state.enemy.bonusArm + armorGain,
+    };
+
+    return {
+      state: {
+        ...state,
+        enemy: newEnemy,
+        playerGold: state.playerGold - stolen,
+      },
+      triggered: true,
+      effectName: `Toll Collector (-${stolen}g, +${armorGain} ARM)`,
+    };
+  },
+};
+
+// ============================================================================
+// T074: Gilded Devourer Trait - Tax Feast (convert gold to armor)
+// ============================================================================
+
+const gildedDevourerTrait: BossTrait = {
+  id: 'B-A-W3-02',
+  name: 'Tax Feast',
+  description:
+    'Battle Start: Convert your Gold to Armor (+1 ARM per 5g, cap 10). Wounded: apply 3 Bleed',
+  timings: ['BATTLE_START', 'WOUNDED'],
+  execute: (state, context) => {
+    if (context.timing === 'BATTLE_START') {
+      // Convert gold to armor
+      const armorGain = Math.min(10, Math.floor(state.playerGold / 5));
+
+      const newEnemy: CombatantState = {
+        ...state.enemy,
+        bonusArm: state.enemy.bonusArm + armorGain,
+      };
+
+      return {
+        state: { ...state, enemy: newEnemy },
+        triggered: true,
+        effectName: `Tax Feast (+${armorGain} ARM)`,
+      };
+    }
+
+    if (context.timing === 'WOUNDED') {
+      // Apply 3 Bleed to player
+      const newPlayer: CombatantState = {
+        ...state.player,
+        statusEffects: {
+          ...state.player.statusEffects,
+          bleed: state.player.statusEffects.bleed + 3,
+        },
+      };
+
+      return {
+        state: { ...state, player: newPlayer },
+        triggered: true,
+        effectName: 'Hunger (3 Bleed)',
+      };
+    }
+
+    return { state, triggered: false };
+  },
+};
+
+// ============================================================================
+// T075: Frostbound Leviathan Trait - Whiteout (3 Chill at Battle Start)
+// ============================================================================
+
+const frostboundLeviathanTrait: BossTrait = {
+  id: 'B-B-W3-01',
+  name: 'Whiteout',
+  description:
+    'Battle Start: Apply 3 Chill. Every other turn: +4 Armor. Exposed: remove Chill, +2 SPD',
+  timings: ['BATTLE_START', 'EVERY_OTHER_TURN', 'EXPOSED'],
+  execute: (state, context) => {
+    if (context.timing === 'BATTLE_START') {
+      const newPlayer: CombatantState = {
+        ...state.player,
+        statusEffects: {
+          ...state.player.statusEffects,
+          chill: state.player.statusEffects.chill + 3,
+        },
+      };
+
+      return {
+        state: { ...state, player: newPlayer },
+        triggered: true,
+        effectName: 'Whiteout (3 Chill)',
+      };
+    }
+
+    if (context.timing === 'EVERY_OTHER_TURN') {
+      const newEnemy: CombatantState = {
+        ...state.enemy,
+        bonusArm: state.enemy.bonusArm + 4,
+      };
+
+      return {
+        state: { ...state, enemy: newEnemy },
+        triggered: true,
+        effectName: 'Glacial Bulk (+4 ARM)',
+      };
+    }
+
+    if (context.timing === 'EXPOSED') {
+      // Remove all Chill from player, boss gains +2 SPD
+      const newPlayer: CombatantState = {
+        ...state.player,
+        statusEffects: {
+          ...state.player.statusEffects,
+          chill: 0,
+        },
+      };
+      const newEnemy: CombatantState = {
+        ...state.enemy,
+        bonusSpd: state.enemy.bonusSpd + 2,
+      };
+
+      return {
+        state: { ...state, player: newPlayer, enemy: newEnemy },
+        triggered: true,
+        effectName: 'Crack Ice (+2 SPD)',
+      };
+    }
+
+    return { state, triggered: false };
+  },
+};
+
+// ============================================================================
+// T075: Rusted Chronomancer Trait - Time Shear (2 strikes first turn)
+// ============================================================================
+
+const rustedChronomancerTrait: BossTrait = {
+  id: 'B-B-W3-02',
+  name: 'Time Shear',
+  description: 'First Turn: Strike twice. Turn Start: Apply 1 Rust. Wounded: Apply 4 Bleed',
+  timings: ['FIRST_TURN', 'TURN_START', 'WOUNDED'],
+  execute: (state, context) => {
+    if (context.timing === 'FIRST_TURN') {
+      const newEnemy: CombatantState = {
+        ...state.enemy,
+        strikesPerTurn: 2,
+      };
+
+      return {
+        state: { ...state, enemy: newEnemy },
+        triggered: true,
+        effectName: 'Time Shear (2 strikes)',
+      };
+    }
+
+    if (context.timing === 'TURN_START') {
+      // Apply 1 Rust to player
+      const newPlayer: CombatantState = {
+        ...state.player,
+        statusEffects: {
+          ...state.player.statusEffects,
+          rust: state.player.statusEffects.rust + 1,
+        },
+      };
+
+      return {
+        state: { ...state, player: newPlayer },
+        triggered: true,
+        effectName: 'Oxidized Future (1 Rust)',
+      };
+    }
+
+    if (context.timing === 'WOUNDED') {
+      // Apply 4 Bleed to player
+      const newPlayer: CombatantState = {
+        ...state.player,
+        statusEffects: {
+          ...state.player.statusEffects,
+          bleed: state.player.statusEffects.bleed + 4,
+        },
+      };
+
+      return {
+        state: { ...state, player: newPlayer },
+        triggered: true,
+        effectName: 'Blood Price (4 Bleed)',
+      };
+    }
+
+    return { state, triggered: false };
+  },
+};
+
+// ============================================================================
 // Boss Traits Registry
 // ============================================================================
 
-export const BOSS_TRAITS: Record<BossId, BossTrait> = {
-  BROODMOTHER: broodmotherTrait,
-  OBSIDIAN_GOLEM: obsidianGolemTrait,
-  GAS_ANOMALY: gasAnomalyTrait,
-  MAD_MINER: madMinerTrait,
-  DRILL_SERGEANT: drillSergeantTrait,
-  CRYSTAL_MIMIC: crystalMimicTrait,
-  ELDRITCH_MOLE: eldritchMoleTrait,
+// Note: Only some bosses have custom trait logic defined here.
+// Other bosses use ability definitions from data/bosses.ts
+export const BOSS_TRAITS: Partial<Record<BossId, BossTrait>> = {
+  // Biome A - Week 1
+  'B-A-W1-01': broodmotherTrait, // The Broodmother
+  'B-A-W1-02': obsidianGolemTrait, // Obsidian Golem
+  'B-A-W1-03': gasAnomalyTrait, // Gas Anomaly
+  'B-A-W1-04': madMinerTrait, // Mad Miner
+  'B-A-W1-05': shardColossusTrait, // Shard Colossus
+  // Biome A - Week 2
+  'B-A-W2-01': drillSergeantTrait, // Drill Sergeant
+  'B-A-W2-02': crystalMimicTrait, // Crystal Mimic
+  'B-A-W2-03': rustRegentTrait, // Rust Regent
+  'B-A-W2-04': powderKegBaronTrait, // Powder Keg Baron
+  'B-A-W2-05': greedkeeperTrait, // Greedkeeper
+  // Biome A - Week 3
+  'B-A-W3-01': eldritchMoleTrait, // The Eldritch Mole
+  'B-A-W3-02': gildedDevourerTrait, // The Gilded Devourer
+  // Biome B - Week 3
+  'B-B-W3-01': frostboundLeviathanTrait, // Frostbound Leviathan
+  'B-B-W3-02': rustedChronomancerTrait, // Rusted Chronomancer
 };
 
 // ============================================================================
@@ -390,9 +747,9 @@ export const BOSS_TRAITS: Record<BossId, BossTrait> = {
 // ============================================================================
 
 /**
- * Get boss trait by ID
+ * Get boss trait by ID (returns undefined if no custom trait)
  */
-export function getBossTrait(bossId: BossId): BossTrait {
+export function getBossTrait(bossId: BossId): BossTrait | undefined {
   return BOSS_TRAITS[bossId];
 }
 
@@ -415,7 +772,7 @@ export function createBossCombatant(bossId: BossId): CombatantState {
     bonusAtk: 0,
     bonusArm: 0,
     bonusSpd: 0,
-    statusEffects: { chill: 0, shrapnel: 0, rust: 0 },
+    statusEffects: { chill: 0, shrapnel: 0, rust: 0, bleed: 0 },
     strikesPerTurn: 1, // Will be modified by traits like Broodmother
     ignoresArmor: false,
   };
@@ -431,7 +788,7 @@ export function executeBossTrait(
 ): BossTraitResult {
   const trait = BOSS_TRAITS[bossId];
 
-  if (!trait.timings.includes(timing)) {
+  if (!trait || !trait.timings.includes(timing)) {
     return { state, triggered: false };
   }
 
@@ -442,7 +799,17 @@ export function executeBossTrait(
  * Check if boss ID is valid
  */
 export function isBoss(id: string): id is BossId {
-  return id in BOSS_TRAITS;
+  return id in BOSSES;
+}
+
+/**
+ * T077: Get boss weakness tags for loot weighting
+ * Returns the 2 weakness tags of the specified boss
+ * Used by POI item generation to weight items toward boss counters
+ */
+export function getBossWeaknessTags(bossId: BossId): [ItemTag, ItemTag] {
+  const boss = BOSSES[bossId];
+  return boss.weaknessTags;
 }
 
 /**

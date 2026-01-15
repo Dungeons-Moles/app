@@ -28,7 +28,7 @@ export const STATUS_EFFECT_ICONS: Record<StatusEffectType, StatusEffectInfo> = {
   chill: {
     emoji: '❄️',
     name: 'Chill',
-    description: 'Halves ATK. Loses 1 stack at end of turn.',
+    description: 'Reduces strikes by stack count (min 1). Loses 1 stack at end of turn.',
     color: '#60a5fa', // Blue
   },
   shrapnel: {
@@ -40,28 +40,39 @@ export const STATUS_EFFECT_ICONS: Record<StatusEffectType, StatusEffectInfo> = {
   rust: {
     emoji: '🟤',
     name: 'Rust',
-    description: 'Reduces ARM by stack count.',
+    description: 'Reduces ARM by stack count. Persists indefinitely.',
     color: '#a16207', // Brown
+  },
+  bleed: {
+    emoji: '🩸',
+    name: 'Bleed',
+    description: 'Takes damage equal to stacks at turn end. Loses 1 stack at end of turn.',
+    color: '#dc2626', // Red
   },
 };
 
 // ============================================================================
 // T114: Chill Effect
-// Halves ATK while stacks exist, remove 1 stack at end of turn
+// Reduces strikes by stack count (min 1), remove 1 stack at end of turn
 // ============================================================================
 
 /**
- * Get effective ATK after applying Chill reduction
- * Chill halves ATK (rounded down) when stacks > 0
+ * Get effective strikes per turn after applying Chill reduction
+ * Chill reduces strikes by stack count (minimum 1 strike)
+ */
+export function getEffectiveStrikes(combatant: CombatantState): number {
+  const baseStrikes = combatant.strikesPerTurn;
+  if (combatant.statusEffects.chill > 0) {
+    return Math.max(1, baseStrikes - combatant.statusEffects.chill);
+  }
+  return baseStrikes;
+}
+
+/**
+ * Get effective ATK (no longer affected by Chill per GDD)
  */
 export function getEffectiveAtk(combatant: CombatantState): number {
-  const baseAtk = combatant.atk + combatant.bonusAtk;
-
-  if (combatant.statusEffects.chill > 0) {
-    return Math.floor(baseAtk / 2);
-  }
-
-  return baseAtk;
+  return combatant.atk + combatant.bonusAtk;
 }
 
 /**
@@ -142,6 +153,51 @@ export function getEffectiveArm(combatant: CombatantState): number {
 export function processRustDamage(combatant: CombatantState): CombatantState {
   // Rust doesn't decay naturally - it persists until removed
   return combatant;
+}
+
+// ============================================================================
+// T008-T011: Bleed Effect
+// Takes damage equal to stacks at turn end, loses 1 stack at turn end
+// ============================================================================
+
+/**
+ * Get Bleed damage to be dealt at turn end
+ * Returns damage equal to Bleed stacks (non-weapon, ignores armor)
+ */
+export function getBleedDamage(combatant: CombatantState): number {
+  return combatant.statusEffects.bleed;
+}
+
+/**
+ * Process Bleed damage at turn end
+ * - Deals damage equal to Bleed stacks
+ * - Removes 1 Bleed stack
+ * Returns updated combatant and damage dealt
+ */
+export function processBleedDamage(combatant: CombatantState): {
+  combatant: CombatantState;
+  damage: number;
+} {
+  const damage = combatant.statusEffects.bleed;
+
+  if (damage <= 0) {
+    return { combatant, damage: 0 };
+  }
+
+  const newHp = Math.max(0, combatant.hp - damage);
+  const newBleed = Math.max(0, combatant.statusEffects.bleed - 1);
+
+  return {
+    combatant: {
+      ...combatant,
+      hp: newHp,
+      statusEffects: {
+        ...combatant.statusEffects,
+        bleed: newBleed,
+      },
+    },
+    damage,
+  };
 }
 
 // ============================================================================
@@ -234,7 +290,7 @@ export function getActiveStatusEffects(
 ): Array<{ type: StatusEffectType; stacks: number; info: StatusEffectInfo }> {
   const effects: Array<{ type: StatusEffectType; stacks: number; info: StatusEffectInfo }> = [];
 
-  const types: StatusEffectType[] = ['chill', 'shrapnel', 'rust'];
+  const types: StatusEffectType[] = ['chill', 'shrapnel', 'rust', 'bleed'];
 
   for (const type of types) {
     const stacks = combatant.statusEffects[type];
@@ -259,14 +315,21 @@ export function getActiveStatusEffects(
  * - Chill: decay by 1
  * - Shrapnel: clear (unless Shrapnel Harness)
  * - Rust: persists
+ * - Bleed: deal damage and decay by 1
+ * Returns updated combatant and bleed damage dealt
  */
 export function processStatusEffectsTurnEnd(
   combatant: CombatantState,
   hasShrapnelHarness: boolean = false
-): CombatantState {
+): { combatant: CombatantState; bleedDamage: number } {
   let updated = combatant;
   updated = processChillDecay(updated);
   updated = processShrapnelClear(updated, hasShrapnelHarness);
   // Rust persists - no processing needed
-  return updated;
+
+  // Process Bleed damage and decay
+  const bleedResult = processBleedDamage(updated);
+  updated = bleedResult.combatant;
+
+  return { combatant: updated, bleedDamage: bleedResult.damage };
 }

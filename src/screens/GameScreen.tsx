@@ -27,6 +27,7 @@ import { TileType } from '../game/map/types';
 import { TimePhase, type GearId, type Tool, type Gear } from '../game/engine/types';
 import { canFastTravel, getDiscoveredWaypoints } from '../game/entities/pois';
 import { canInteractWithPOI } from '../data/pois';
+import { canAffordCostAcrossPhases } from '../game/time/progression';
 
 type GameScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Game'>;
@@ -40,7 +41,8 @@ const SAFE_AREA_EDGES = ['left', 'right'] as const;
  * @see T072: Wire up TopBar to GameScreen
  */
 export function GameScreen({ navigation }: GameScreenProps) {
-  const { state, dispatch, overviewMode, toggleOverviewMode, panOverview } = useGame();
+  const { state, dispatch, overviewMode, toggleOverviewMode, panOverview, zoomOverview } =
+    useGame();
   const feedbackTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [wallBreakFeedback, setWallBreakFeedback] = useState<string | null>(null);
 
@@ -117,7 +119,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
             state.wallHighlight.direction === direction &&
             state.wallHighlight.targetPosition.x === targetPos.x &&
             state.wallHighlight.targetPosition.y === targetPos.y &&
-            state.time.movesRemaining < state.wallHighlight.cost
+            !canAffordCostAcrossPhases(state.time, state.wallHighlight.cost)
           ) {
             showWallBreakFeedback(`Not enough moves (need ${state.wallHighlight.cost})`);
           }
@@ -196,9 +198,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
   const poiAtPlayer = useMemo(() => {
     if (!state) return null;
     const { x, y } = state.player.position;
-    return (
-      state.map.pois.find((poi) => poi.position.x === x && poi.position.y === y) ?? null
-    );
+    return state.map.pois.find((poi) => poi.position.x === x && poi.position.y === y) ?? null;
   }, [state?.map.pois, state?.player.position]);
 
   const canReopenPOI = useMemo(() => {
@@ -249,7 +249,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
       }
 
       const availableCount = state.player.inventory.filter(
-        slot => slot.item.id === item.id
+        (slot) => slot.item.id === item.id
       ).length;
 
       if (availableCount === 0) {
@@ -280,10 +280,8 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
     const options = state.activePOI.options ?? [];
     const optionIndex = options.findIndex(
-      option =>
-        option.item &&
-        'currentRarity' in option.item &&
-        option.item.id === kilnSelection.gearId
+      (option) =>
+        option.item && 'currentRarity' in option.item && option.item.id === kilnSelection.gearId
     );
 
     return optionIndex >= 0 ? optionIndex : null;
@@ -364,10 +362,12 @@ export function GameScreen({ navigation }: GameScreenProps) {
             <GameCanvas
               map={state.map}
               playerPosition={state.player.position}
+              playerFacing={state.player.facing}
               timePhase={state.time.phase}
               wallHighlight={state.wallHighlight}
               overviewMode={overviewMode}
               onPanOverview={panOverview}
+              onZoomOverview={zoomOverview}
               feedbackMessage={wallBreakFeedback}
             />
 
@@ -443,11 +443,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
         </View>
       </View>
 
-      <ItemTooltip
-        item={inspectedItem}
-        visible={isTooltipVisible}
-        onClose={handleCloseTooltip}
-      />
+      <ItemTooltip item={inspectedItem} visible={isTooltipVisible} onClose={handleCloseTooltip} />
     </SafeAreaView>
   );
 }

@@ -5,20 +5,23 @@
  */
 
 import type { POIInteractionType, Position } from '../game/engine/types';
+import type { MapPOI } from '../game/map/types';
 
 export type POIId =
-  | 'L1'  // Mole Den
-  | 'L2'  // Supply Cache
-  | 'L3'  // Tool Crate
-  | 'L4'  // Tool Oil Rack
-  | 'L5'  // Rest Alcove
-  | 'L6'  // Survey Beacon
-  | 'L7'  // Seismic Scanner
-  | 'L8'  // Rail Waypoint
-  | 'L9'  // Smuggler Hatch
+  | 'L1' // Mole Den
+  | 'L2' // Supply Cache
+  | 'L3' // Tool Crate
+  | 'L4' // Tool Oil Rack
+  | 'L5' // Rest Alcove
+  | 'L6' // Survey Beacon
+  | 'L7' // Seismic Scanner
+  | 'L8' // Rail Waypoint
+  | 'L9' // Smuggler Hatch
   | 'L10' // Rusty Anvil
   | 'L11' // Rune Kiln
-  | 'L12'; // Geode Vault
+  | 'L12' // Geode Vault
+  | 'L13' // Counter Cache
+  | 'L14'; // Scrap Chute
 
 export type POIRarity = 'FIXED' | 'COMMON' | 'UNCOMMON' | 'RARE';
 
@@ -181,6 +184,32 @@ export const POI_DEFINITIONS: Record<POIId, POIDefinition> = {
     interaction: 'ITEM_SELECTION',
     description: 'Pick 1 of 3 Heroic items',
   },
+
+  // ============================================================================
+  // L13 - Counter Cache (Uncommon) - T083
+  // Pick 1 of 3 items from boss weakness tags only
+  // ============================================================================
+  L13: {
+    id: 'L13',
+    name: 'Counter Cache',
+    emoji: '🎯',
+    rarity: 'UNCOMMON',
+    interaction: 'ITEM_SELECTION',
+    description: 'Pick 1 of 3 items from boss weakness tags',
+  },
+
+  // ============================================================================
+  // L14 - Scrap Chute (Uncommon) - T084
+  // Destroy 1 Gear item (costs Gold by act)
+  // ============================================================================
+  L14: {
+    id: 'L14',
+    name: 'Scrap Chute',
+    emoji: '🗑️',
+    rarity: 'UNCOMMON',
+    interaction: 'DESTROY',
+    description: 'Destroy 1 Gear item (costs Gold)',
+  },
 };
 
 /**
@@ -233,10 +262,10 @@ export function canInteractWithPOI(poiId: POIId, isNight: boolean): boolean {
  * POI spawn weights based on rarity
  */
 export const POI_SPAWN_WEIGHTS: Record<POIRarity, number> = {
-  FIXED: 0,      // Mole Den is placed manually, not spawned randomly
-  COMMON: 10,    // High spawn chance
-  UNCOMMON: 5,   // Medium spawn chance
-  RARE: 2,       // Low spawn chance
+  FIXED: 0, // Mole Den is placed manually, not spawned randomly
+  COMMON: 10, // High spawn chance
+  UNCOMMON: 5, // Medium spawn chance
+  RARE: 2, // Low spawn chance
 };
 
 /**
@@ -245,26 +274,11 @@ export const POI_SPAWN_WEIGHTS: Record<POIRarity, number> = {
 export const POI_MIN_SPACING = 10;
 
 /**
- * Map POI instance (placed on map)
- */
-export interface MapPOI {
-  instanceId: string;
-  definitionId: POIId;
-  position: Position;
-  visited: boolean;
-  discovered: boolean;
-}
-
-/**
  * Create a map POI instance
  */
-export function createMapPOI(
-  definitionId: POIId,
-  position: Position,
-  instanceId?: string
-): MapPOI {
+export function createMapPOI(definitionId: POIId, position: Position, instanceId?: string): MapPOI {
   return {
-    instanceId: instanceId ?? `${definitionId}_${position.x}_${position.y}`,
+    id: instanceId ?? `${definitionId}_${position.x}_${position.y}`,
     definitionId,
     position,
     visited: false,
@@ -276,17 +290,12 @@ export function createMapPOI(
  * Get weighted random POI for spawning (excludes FIXED rarity)
  */
 export function getRandomPOIForSpawn(rng: () => number): POIId | null {
-  const spawnablePOIs = getAllPOIDefinitions().filter(
-    (poi) => poi.rarity !== 'FIXED'
-  );
+  const spawnablePOIs = getAllPOIDefinitions().filter((poi) => poi.rarity !== 'FIXED');
 
   if (spawnablePOIs.length === 0) return null;
 
   // Calculate total weight
-  const totalWeight = spawnablePOIs.reduce(
-    (sum, poi) => sum + POI_SPAWN_WEIGHTS[poi.rarity],
-    0
-  );
+  const totalWeight = spawnablePOIs.reduce((sum, poi) => sum + POI_SPAWN_WEIGHTS[poi.rarity], 0);
 
   // Pick weighted random
   let roll = rng() * totalWeight;

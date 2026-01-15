@@ -9,10 +9,12 @@ import { MapRenderer } from './MapRenderer';
 interface GameCanvasProps {
   map: GameMap;
   playerPosition: Position;
+  playerFacing?: 'left' | 'right';
   timePhase: TimePhase;
   wallHighlight?: WallHighlightState;
   overviewMode?: OverviewModeState;
   onPanOverview?: (delta: Position) => void;
+  onZoomOverview?: (zoomDelta: number) => void;
   feedbackMessage?: string | null;
   width?: number;
   height?: number;
@@ -21,10 +23,12 @@ interface GameCanvasProps {
 export function GameCanvas({
   map,
   playerPosition,
+  playerFacing,
   timePhase,
   wallHighlight,
   overviewMode,
   onPanOverview,
+  onZoomOverview,
   feedbackMessage,
   width,
   height,
@@ -34,10 +38,12 @@ export function GameCanvas({
       <MapRenderer
         map={map}
         playerPosition={playerPosition}
+        playerFacing={playerFacing}
         timePhase={timePhase}
         wallHighlight={wallHighlight}
         overviewMode={overviewMode}
         onPanOverview={onPanOverview}
+        onZoomOverview={onZoomOverview}
         width={width}
         height={height}
       />

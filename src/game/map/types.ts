@@ -3,15 +3,15 @@
  * @see specs/001-pve-dungeon-crawler/data-model.md
  */
 
-import type { Position } from '../engine/types';
+import type { Position, POIId } from '../engine/types';
 
 // ============================================================================
 // Tile Types
 // ============================================================================
 
 export enum TileType {
-  Floor = 'FLOOR',  // Walkable corridor
-  Wall = 'WALL',    // Impassable environment (black + rock emoji)
+  Floor = 'FLOOR', // Walkable corridor
+  Wall = 'WALL', // Impassable environment (black + rock emoji)
 }
 
 // ============================================================================
@@ -45,7 +45,11 @@ export type EnemyId =
   | 'COLLAPSED_MINER'
   | 'SHARD_BEETLE'
   | 'TUNNEL_WARDEN'
-  | 'BURROW_AMBUSHER';
+  | 'BURROW_AMBUSHER'
+  | 'FROST_WISP'
+  | 'POWDER_TICK'
+  | 'COIN_SLUG'
+  | 'BLOOD_MOSQUITO';
 
 export interface EnemyStats {
   hp: number;
@@ -62,24 +66,6 @@ export interface MapEnemy {
   stats: EnemyStats;
   discovered: boolean;
 }
-
-// ============================================================================
-// POI Types
-// ============================================================================
-
-export type POIId =
-  | 'L1'   // Mole Den
-  | 'L2'   // Supply Cache
-  | 'L3'   // Tool Crate
-  | 'L4'   // Tool Oil Rack
-  | 'L5'   // Rest Alcove
-  | 'L6'   // Survey Beacon
-  | 'L7'   // Seismic Scanner
-  | 'L8'   // Rail Waypoint
-  | 'L9'   // Smuggler Hatch
-  | 'L10'  // Rusty Anvil
-  | 'L11'  // Rune Kiln
-  | 'L12'; // Geode Vault
 
 export type POIRarity = 'FIXED' | 'COMMON' | 'UNCOMMON' | 'RARE';
 
