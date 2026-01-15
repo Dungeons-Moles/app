@@ -220,31 +220,47 @@ export function HubScreen({ navigation }: HubScreenProps) {
         >
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
-              <Text style={styles.modalTitle}>Settings</Text>
+              <View style={styles.modalParchment}>
+                <Text style={styles.modalTitle}>Settings</Text>
 
-              <View style={styles.settingRow}>
-                <Text style={styles.settingLabel}>Default combat speed</Text>
-                <SpeedControls
-                  currentSpeed={profile?.defaultCombatSpeed ?? 'normal'}
-                  onSpeedChange={updateDefaultCombatSpeed}
-                />
+                <View style={styles.settingRow}>
+                  <Text style={styles.settingLabel}>Combat speed</Text>
+                  <SpeedControls
+                    currentSpeed={profile?.defaultCombatSpeed ?? 'normal'}
+                    onSpeedChange={updateDefaultCombatSpeed}
+                  />
+                </View>
               </View>
 
-              <TouchableOpacity
-                style={styles.modalButton}
-                onPress={handleResetProfile}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.disconnectText}>Reset Profile</Text>
-              </TouchableOpacity>
+              <View style={styles.modalParchment}>
+                <TouchableOpacity
+                  style={styles.modalButton}
+                  onPress={handleResetProfile}
+                  activeOpacity={0.7}
+                >
+                  <ImageBackground
+                    source={require('../../assets/account/button.png')}
+                    style={styles.buttonImage}
+                    resizeMode="stretch"
+                  >
+                    <Text style={styles.disconnectText}>Reset Profile</Text>
+                  </ImageBackground>
+                </TouchableOpacity>
 
-              <TouchableOpacity
-                style={styles.modalButton}
-                onPress={() => setShowSettings(false)}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.modalButtonText}>Close</Text>
-              </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.modalButton}
+                  onPress={() => setShowSettings(false)}
+                  activeOpacity={0.7}
+                >
+                  <ImageBackground
+                    source={require('../../assets/account/button.png')}
+                    style={styles.buttonImage}
+                    resizeMode="stretch"
+                  >
+                    <Text style={styles.modalButtonText}>Close</Text>
+                  </ImageBackground>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
         </Modal>
@@ -289,11 +305,11 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? { width: 160, height: 53 } : {}),
   },
   avatarContainer: {
-    width: 40,
+    width: 40.5,
     height: 39,
     borderRadius: 2,
     overflow: 'hidden',
-    marginLeft: 2,
+    marginLeft: 3.5,
     marginRight: 10,
     justifyContent: 'flex-start',
   },
@@ -491,47 +507,72 @@ const styles = StyleSheet.create({
   // MODAL
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
   },
   modalContent: {
-    backgroundColor: '#151518',
-    borderWidth: 1,
-    borderColor: '#2a2a30',
-    padding: 24,
-    width: '100%',
-    maxWidth: 300,
+    width: '90%',
+    maxWidth: 360,
+    backgroundColor: '#8b4513', // Wood color
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 4,
+    borderColor: '#5c4033', // Darker wood edge
+    shadowColor: '#000',
+    shadowOffset: { width: 4, height: 4 },
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    elevation: 10,
+    gap: 12,
+  },
+  modalParchment: {
+    backgroundColor: '#f4e4bc', // Parchment color
+    padding: 20,
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: '#d4c49c',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   modalTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#c8c8c8',
-    marginBottom: 20,
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#3d2b1f',
+    marginBottom: 16,
     textAlign: 'center',
   },
   settingRow: {
-    gap: 10,
-    marginBottom: 16,
+    alignItems: 'center',
+    gap: 12,
   },
   settingLabel: {
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#3d2b1f',
   },
   modalButton: {
-    backgroundColor: '#0a0a0f',
-    borderWidth: 1,
-    borderColor: '#2a2a30',
-    paddingVertical: 12,
+    width: '100%',
+    height: 48,
+    justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 8,
+    marginVertical: 4,
+  },
+  buttonImage: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   modalButtonText: {
-    fontSize: 14,
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#ffffff',
   },
   disconnectText: {
-    fontSize: 14,
-    color: '#a33a3a',
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#ffffff',
   },
 });

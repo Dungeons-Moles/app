@@ -24,11 +24,7 @@ export function SpeedControls({
     return (
       <TouchableOpacity
         key={speed}
-        style={[
-          styles.button,
-          isActive && styles.buttonActive,
-          disabled && styles.buttonDisabled,
-        ]}
+        style={[styles.button, isActive && styles.buttonActive, disabled && styles.buttonDisabled]}
         onPress={() => onSpeedChange(speed)}
         disabled={disabled}
         activeOpacity={0.7}
@@ -59,39 +55,40 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#151518',
-    borderRadius: 12,
-    padding: 4,
+    backgroundColor: '#f4e4bc',
+    borderRadius: 8,
+    padding: 2,
     borderWidth: 1,
-    borderColor: '#2a2a30',
+    borderColor: '#c4a484',
   },
   button: {
-    width: 44,
-    height: 36,
-    borderRadius: 8,
-    backgroundColor: '#1f1f25',
+    width: 40,
+    height: 32,
+    borderRadius: 6,
+    backgroundColor: '#e4d4ac',
     justifyContent: 'center',
     alignItems: 'center',
-    marginHorizontal: 4,
+    marginHorizontal: 2,
     borderWidth: 1,
-    borderColor: '#2a2a30',
+    borderColor: '#d4c49c',
   },
   buttonActive: {
-    backgroundColor: '#2b3442',
-    borderColor: '#4b5563',
+    backgroundColor: '#8b4513',
+    borderColor: '#5c4033',
   },
   buttonDisabled: {
-    backgroundColor: '#151518',
-    borderColor: '#1f1f25',
+    backgroundColor: '#d4c49c',
+    borderColor: '#c4a484',
+    opacity: 0.5,
   },
   buttonText: {
-    fontSize: 16,
-    color: '#cbd5f5',
+    fontSize: 14,
+    color: '#5c4033',
   },
   buttonTextActive: {
     color: '#ffffff',
   },
   buttonTextDisabled: {
-    color: '#555555',
+    color: '#888888',
   },
 });
