@@ -284,19 +284,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingLeft: 4,
-    width: 120, // (46 height * 2.6 ratio)
-    height: 40,
+    width: 160, // (46 height * 2.6 ratio)
+    height: 53,
     ...(Platform.OS === 'web' ? { width: 160, height: 53 } : {}),
   },
   avatarContainer: {
-    width: 30,
-    height: 30,
+    width: 40,
+    height: 39,
     borderRadius: 2,
     overflow: 'hidden',
-    marginLeft: 11, // Push right to fit inside the drawn square
+    marginLeft: 2,
     marginRight: 10,
     justifyContent: 'flex-start',
-    ...(Platform.OS === 'web' ? { width: 40, height: 39, marginLeft: 4 } : {}),
   },
   avatarImage: {
     width: '165%', // Zoom in
@@ -340,7 +339,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    ...(Platform.OS === 'web' ? { width: 160, height: 53 } : {}),
+    width: 100,
+    height: 53,
   },
   pointsLabel: {
     fontSize: 10,
@@ -360,11 +360,10 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   settingsBtn: {
-    width: 40,
-    height: 40,
+    width: 60,
+    height: 60,
     justifyContent: 'center',
     alignItems: 'center',
-    ...(Platform.OS === 'web' ? { width: 60, height: 60 } : {}),
   },
   settingsIconImage: {
     width: 30,
@@ -417,8 +416,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: 80,
-    ...(Platform.OS === 'web' ? { width: 120, height: 48 } : {}),
+    width: 120,
+    height: 48,
   },
   navButtonText: {
     fontSize: 12,
@@ -440,7 +439,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    ...(Platform.OS === 'web' ? { width: 100, height: 45 } : {}),
+    width: 100,
+    height: 45,
   },
   shopButtonText: {
     fontSize: 12,
@@ -456,8 +456,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: 90,
-    ...(Platform.OS === 'web' ? { width: 140, height: 70 } : {}),
+    width: 135,
+    height: 68,
   },
   campaignButtonText: {
     fontSize: 13,
@@ -474,8 +474,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: 90,
-    ...(Platform.OS === 'web' ? { width: 140, height: 70 } : {}),
+    width: 135,
+    height: 68,
   },
   gauntletButtonText: {
     fontSize: 13,

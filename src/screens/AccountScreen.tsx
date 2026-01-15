@@ -5,13 +5,14 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  Image,
+  ImageBackground,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useProfile } from '../contexts/ProfileContext';
 import { shortenAddress } from '../utils/storage';
 import { RootStackParamList } from '../navigation';
-import { GameCanvas } from '../game/GameCanvas';
 
 type AccountScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Account'>;
@@ -45,73 +46,90 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
   const canContinue = Boolean(profile);
 
   return (
-    <SafeAreaView style={styles.container} edges={['left', 'right']}>
-      <View style={styles.content}>
-        {/* Left Panel - Branding */}
-        <View style={styles.leftPanel}>
-          <View style={styles.brandingContainer}>
-            <GameCanvas width={140} height={140} />
-            <Text style={styles.title}>Dungeons & Moles</Text>
+    <View style={styles.container}>
+      <Image
+        source={require('../../assets/account/background.png')}
+        style={styles.backgroundImage}
+        resizeMode="stretch"
+      />
+      <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
+        <View style={styles.content}>
+          {/* Left Panel - Branding */}
+          <View style={styles.leftPanel}>
+            <View style={styles.brandingContainer}>
+              <Image
+                source={require('../../assets/logo.png')}
+                style={styles.logo}
+                resizeMode="contain"
+              />
+            </View>
+          </View>
+
+          {/* Right Panel - Actions */}
+          <View style={styles.rightPanel}>
+            {isLoading ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color="#1a1a20" />
+                <Text style={styles.loadingText}>
+                  {isCreatingProfile ? 'Creating profile...' : 'Loading...'}
+                </Text>
+              </View>
+            ) : canContinue ? (
+              <ImageBackground
+                source={require('../../assets/account/wooden-panel.png')}
+                style={styles.connectedContainer}
+                resizeMode="contain"
+              >
+                <View style={styles.profileCard}>
+                  <Text style={styles.profileLabel}>ADVENTURER</Text>
+                  <Text style={styles.profileName}>{profile?.displayName}</Text>
+                  <View style={styles.walletRow}>
+                    <Text style={styles.walletAddress}>
+                      {shortenAddress(profile?.walletAddress || '')}
+                    </Text>
+                  </View>
+                </View>
+
+                <TouchableOpacity
+                  style={styles.continueButton}
+                  onPress={handleContinue}
+                  activeOpacity={0.7}
+                >
+                  <ImageBackground
+                    source={require('../../assets/account/button.png')}
+                    style={styles.buttonImage}
+                    resizeMode="contain"
+                  >
+                    <Text style={styles.continueButtonText}>Enter Game</Text>
+                  </ImageBackground>
+                </TouchableOpacity>
+              </ImageBackground>
+            ) : (
+              <View style={styles.connectContainer}>
+                <Text style={styles.connectTitle}>Profile unavailable</Text>
+                <Text style={styles.connectPrompt}>Create a local profile to continue</Text>
+
+                <TouchableOpacity
+                  style={styles.connectButton}
+                  onPress={() => {
+                    setIsCreatingProfile(true);
+                    createProfile(GUEST_WALLET_ADDRESS)
+                      .catch((error) => {
+                        console.error('Failed to create guest profile:', error);
+                      })
+                      .finally(() => setIsCreatingProfile(false));
+                  }}
+                  disabled={isLoading}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.connectButtonText}>Create Profile</Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
         </View>
-
-        {/* Right Panel - Actions */}
-        <View style={styles.rightPanel}>
-          {isLoading ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color="#888888" />
-              <Text style={styles.loadingText}>
-                {isCreatingProfile ? 'Creating profile...' : 'Loading...'}
-              </Text>
-            </View>
-          ) : canContinue ? (
-            <View style={styles.connectedContainer}>
-              <View style={styles.profileCard}>
-                <Text style={styles.profileLabel}>ADVENTURER</Text>
-                <Text style={styles.profileName}>{profile?.displayName}</Text>
-                <View style={styles.walletRow}>
-                  <View style={styles.walletDot} />
-                  <Text style={styles.walletAddress}>
-                    {shortenAddress(profile?.walletAddress || '')}
-                  </Text>
-                </View>
-              </View>
-
-              <TouchableOpacity
-                style={styles.continueButton}
-                onPress={handleContinue}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.continueButtonText}>Enter Game</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <View style={styles.connectContainer}>
-              <Text style={styles.connectTitle}>Profile unavailable</Text>
-              <Text style={styles.connectPrompt}>
-                Create a local profile to continue
-              </Text>
-
-              <TouchableOpacity
-                style={styles.connectButton}
-                onPress={() => {
-                  setIsCreatingProfile(true);
-                  createProfile(GUEST_WALLET_ADDRESS)
-                    .catch((error) => {
-                      console.error('Failed to create guest profile:', error);
-                    })
-                    .finally(() => setIsCreatingProfile(false));
-                }}
-                disabled={isLoading}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.connectButtonText}>Create Profile</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
-      </View>
-    </SafeAreaView>
+      </SafeAreaView>
+    </View>
   );
 }
 
@@ -119,6 +137,16 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#0a0a0f',
+  },
+  backgroundImage: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: '100%',
+    height: '100%',
+  },
+  safeArea: {
+    flex: 1,
   },
   content: {
     flex: 1,
@@ -130,18 +158,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 24,
-    borderRightWidth: 1,
-    borderRightColor: '#1a1a20',
   },
   brandingContainer: {
-    alignItems: 'center',
+    left: 20,
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
   },
-  title: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: '#c8c8c8',
-    marginTop: 16,
-    textAlign: 'center',
+  logo: {
+    width: '100%',
+    height: '80%',
   },
   // Right Panel - Actions
   rightPanel: {
@@ -156,59 +182,67 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 16,
     fontSize: 14,
-    color: '#666666',
+    color: '#1a1a20',
   },
   // Connected State
   connectedContainer: {
     width: '100%',
-    maxWidth: 280,
+    aspectRatio: 0.85,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 20,
   },
   profileCard: {
-    backgroundColor: '#151518',
-    borderWidth: 1,
-    borderColor: '#2a2a30',
-    padding: 16,
-    marginBottom: 16,
+    width: '80%',
+    height: '40%',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 16,
+    paddingBottom: 42,
+    marginBottom: 10,
   },
   profileLabel: {
-    fontSize: 10,
-    color: '#555555',
+    fontSize: 12,
+    color: '#000000',
     letterSpacing: 1,
     marginBottom: 4,
+    fontWeight: 'bold',
   },
   profileName: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#c8c8c8',
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#000000',
     marginBottom: 8,
   },
   walletRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  walletDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#4a7c4a',
-    marginRight: 6,
-  },
   walletAddress: {
-    fontSize: 11,
-    color: '#666666',
+    fontSize: 14,
+    color: '#000000',
     fontFamily: 'monospace',
+    fontWeight: '600',
   },
   continueButton: {
-    backgroundColor: '#1a1215',
-    borderWidth: 1,
-    borderColor: '#6b2020',
-    paddingVertical: 14,
+    width: '60%',
+    height: '40%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  buttonImage: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
     alignItems: 'center',
   },
   continueButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#a33a3a',
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
   },
   // Disconnected State
   connectContainer: {
@@ -218,12 +252,12 @@ const styles = StyleSheet.create({
   connectTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#c8c8c8',
+    color: '#1a1a20',
     marginBottom: 8,
   },
   connectPrompt: {
     fontSize: 12,
-    color: '#666666',
+    color: '#333333',
     marginBottom: 20,
   },
   connectButton: {
