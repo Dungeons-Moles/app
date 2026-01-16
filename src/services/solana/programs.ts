@@ -1,4 +1,4 @@
-import { AnchorProvider, Program } from '@coral-xyz/anchor';
+import { AnchorProvider, Program, Idl } from '@coral-xyz/anchor';
 import { Connection } from '@solana/web3.js';
 import { SOLANA_CONFIG } from './config';
 import playerProfileIdl from './idl/player_profile.json';
@@ -25,34 +25,34 @@ export function createAnchorProvider(
 }
 
 export function createPlayerProfileProgram(connection: Connection) {
-  return new Program(playerProfileIdl as never, {
+  return new Program(playerProfileIdl as Idl, {
     connection,
     publicKey: SOLANA_CONFIG.programs.playerProfile,
   });
 }
 
 export function createSessionManagerProgram(connection: Connection) {
-  return new Program(sessionManagerIdl as never, {
+  return new Program(sessionManagerIdl as Idl, {
     connection,
     publicKey: SOLANA_CONFIG.programs.sessionManager,
   });
 }
 
 export function createMapGeneratorProgram(connection: Connection) {
-  return new Program(mapGeneratorIdl as never, {
+  return new Program(mapGeneratorIdl as Idl, {
     connection,
     publicKey: SOLANA_CONFIG.programs.mapGenerator,
   });
 }
 
 export function createPlayerProfileProgramWithProvider(provider: AnchorProvider) {
-  return new Program(playerProfileIdl as never, provider);
+  return new Program(playerProfileIdl as Idl, provider);
 }
 
 export function createSessionManagerProgramWithProvider(provider: AnchorProvider) {
-  return new Program(sessionManagerIdl as never, provider);
+  return new Program(sessionManagerIdl as Idl, provider);
 }
 
 export function createMapGeneratorProgramWithProvider(provider: AnchorProvider) {
-  return new Program(mapGeneratorIdl as never, provider);
+  return new Program(mapGeneratorIdl as Idl, provider);
 }

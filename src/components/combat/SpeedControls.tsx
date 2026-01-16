@@ -4,7 +4,14 @@
  */
 
 import React from 'react';
-import { View, StyleSheet, TouchableOpacity, Image, ImageBackground } from 'react-native';
+import {
+  View,
+  StyleSheet,
+  TouchableOpacity,
+  Image,
+  ImageBackground,
+  ImageSourcePropType,
+} from 'react-native';
 import type { CombatSpeed } from '../../contexts/CombatContext';
 
 const buttonBgSource = require('../../../assets/hub/button-v1.png');
@@ -24,7 +31,7 @@ export function SpeedControls({
   onSpeedChange,
   disabled = false,
 }: SpeedControlsProps) {
-  const renderButton = (speed: CombatSpeed, iconSource: any) => {
+  const renderButton = (speed: CombatSpeed, iconSource: ImageSourcePropType) => {
     const isActive = currentSpeed === speed;
 
     return (
@@ -42,7 +49,7 @@ export function SpeedControls({
         >
           <Image
             source={iconSource}
-            style={[styles.icon, isActive && { tintColor: '#FABC0F' }]}
+            style={[styles.icon, isActive && styles.iconActive]}
             resizeMode="contain"
           />
         </ImageBackground>
@@ -83,5 +90,8 @@ const styles = StyleSheet.create({
     height: 20,
     marginBottom: 5,
     tintColor: '#5c4033', // Dark wood color by default
+  },
+  iconActive: {
+    tintColor: '#FABC0F',
   },
 });

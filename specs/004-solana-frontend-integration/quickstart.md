@@ -40,15 +40,21 @@ Create `src/services/solana/config.ts`:
 ```typescript
 import { PublicKey } from '@solana/web3.js';
 
+const playerProfileId = process.env.EXPO_PUBLIC_PLAYER_PROFILE_PROGRAM_ID;
+const sessionManagerId = process.env.EXPO_PUBLIC_SESSION_MANAGER_PROGRAM_ID;
+const mapGeneratorId = process.env.EXPO_PUBLIC_MAP_GENERATOR_PROGRAM_ID;
+
+if (!playerProfileId || !sessionManagerId || !mapGeneratorId) {
+  throw new Error('Missing required Solana program IDs in environment variables');
+}
+
 export const SOLANA_CONFIG = {
   cluster: 'devnet' as const,
   rpcUrl: 'https://api.devnet.solana.com',
-
-  // Program IDs (update after deployment)
   programs: {
-    playerProfile: new PublicKey('YOUR_PLAYER_PROFILE_PROGRAM_ID'),
-    sessionManager: new PublicKey('YOUR_SESSION_MANAGER_PROGRAM_ID'),
-    mapGenerator: new PublicKey('YOUR_MAP_GENERATOR_PROGRAM_ID'),
+    playerProfile: new PublicKey(playerProfileId),
+    sessionManager: new PublicKey(sessionManagerId),
+    mapGenerator: new PublicKey(mapGeneratorId),
   },
 };
 ```
@@ -113,6 +119,7 @@ const handleCreate = async () => {
 ```
 
 **Expected behavior**:
+
 1. User enters name "TestPlayer"
 2. Wallet prompts for transaction approval
 3. Transaction confirms within 5 seconds
@@ -143,13 +150,10 @@ useEffect(() => {
 const { getCampaignLevels } = useMapGenerator();
 const { profile } = usePlayerProfile();
 
-const levels = getCampaignLevels(
-  profile?.currentLevel ?? 0,
-  profile?.unlockedTier ?? 0
-);
+const levels = getCampaignLevels(profile?.currentLevel ?? 0, profile?.unlockedTier ?? 0);
 
 // Verify first 40 levels are unlocked for new player
-console.log('Unlocked levels:', levels.filter(l => l.isUnlocked).length);
+console.log('Unlocked levels:', levels.filter((l) => l.isUnlocked).length);
 ```
 
 ### 4. Tier Unlock Payment
@@ -223,19 +227,23 @@ console.log('Maps match:', JSON.stringify(map1) === JSON.stringify(map2));
 ## Common Issues
 
 ### "Wallet not connected" Error
+
 - Ensure wallet app is installed
 - Check devnet is selected in wallet
 - Try disconnecting and reconnecting
 
 ### "Insufficient funds" Error
+
 - Run `solana airdrop 2 YOUR_ADDRESS --url devnet`
 - Wait for airdrop to confirm
 
 ### "Profile already exists" Error
+
 - Profile already created for this wallet
 - Use a different wallet or clear on-chain state
 
 ### Transaction Timeout
+
 - Devnet can be slow; increase timeout
 - Check Solana network status
 - Retry transaction

@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import Svg, { Ellipse, Defs, Pattern, Line } from 'react-native-svg';
 import { useProfile } from '../contexts/ProfileContext';
 import { useGame, GamePhase } from '../contexts/GameContext';
 import { shortenAddress } from '../utils/storage';
@@ -157,7 +158,22 @@ export function HubScreen({ navigation }: HubScreenProps) {
           {/* CENTER - Character */}
           <View style={styles.center}>
             <View style={styles.characterContainer}>
-              <View style={styles.characterShadow} />
+              <View style={styles.characterShadow}>
+                <Svg height="100%" width="100%">
+                  <Defs>
+                    <Pattern
+                      id="diagonalLines"
+                      patternUnits="userSpaceOnUse"
+                      width="4"
+                      height="4"
+                      patternTransform="rotate(45)"
+                    >
+                      <Line x1="0" y1="0" x2="0" y2="4" stroke="black" strokeWidth="2" />
+                    </Pattern>
+                  </Defs>
+                  <Ellipse cx="50" cy="11" rx="50" ry="11" fill="url(#diagonalLines)" />
+                </Svg>
+              </View>
               <Image
                 source={defaultMoleImageSource}
                 style={styles.characterImage}
@@ -448,9 +464,7 @@ const styles = StyleSheet.create({
     left: 27,
     width: 100,
     height: 22,
-    borderRadius: 10,
-    backgroundColor: '#BAA071',
-    opacity: 0.5,
+    opacity: 0.6,
     zIndex: 0,
   },
   character: {
