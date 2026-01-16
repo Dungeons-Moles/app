@@ -1,0 +1,9 @@
+node_modules/
+dist/
+build/
+*.log
+.env*
+.expo/
+coverage/
+__tests__/
+__mocks__/

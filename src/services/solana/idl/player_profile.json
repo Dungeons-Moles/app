@@ -1,0 +1,447 @@
+{
+  "address": "29DPbP1zuCCRg63PiShMjxAmZos97BR5TmhpijUYQzze",
+  "metadata": {
+    "name": "player_profile",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Player Profile Program for Dungeons & Moles"
+  },
+  "instructions": [
+    {
+      "name": "initialize_profile",
+      "docs": [
+        "Creates a new player profile for the signer's wallet.",
+        "Each wallet can only have one profile."
+      ],
+      "discriminator": [32, 145, 77, 213, 58, 39, 251, 234],
+      "accounts": [
+        {
+          "name": "player_profile",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [112, 108, 97, 121, 101, 114]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "initialize_treasury",
+      "docs": ["Initializes the treasury account (admin only, one-time)."],
+      "discriminator": [124, 186, 211, 195, 85, 165, 129, 166],
+      "accounts": [
+        {
+          "name": "treasury",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [116, 114, 101, 97, 115, 117, 114, 121]
+              }
+            ]
+          }
+        },
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "record_run_result",
+      "docs": ["Records the result of a completed dungeon run."],
+      "discriminator": [135, 126, 78, 133, 237, 190, 21, 71],
+      "accounts": [
+        {
+          "name": "player_profile",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [112, 108, 97, 121, 101, 114]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "owner",
+          "signer": true,
+          "relations": ["player_profile"]
+        }
+      ],
+      "args": [
+        {
+          "name": "level_reached",
+          "type": "u8"
+        },
+        {
+          "name": "victory",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "name": "unlock_campaign_tier",
+      "docs": ["Pays 0.05 SOL to unlock the next 40 campaign levels."],
+      "discriminator": [23, 254, 114, 21, 157, 157, 226, 85],
+      "accounts": [
+        {
+          "name": "player_profile",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [112, 108, 97, 121, 101, 114]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true,
+          "relations": ["player_profile"]
+        },
+        {
+          "name": "treasury",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [116, 114, 101, 97, 115, 117, 114, 121]
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "update_profile_name",
+      "docs": ["Updates the display name of an existing profile."],
+      "discriminator": [96, 69, 10, 229, 192, 184, 200, 20],
+      "accounts": [
+        {
+          "name": "player_profile",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [112, 108, 97, 121, 101, 114]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "owner",
+          "signer": true,
+          "relations": ["player_profile"]
+        }
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "withdraw_treasury",
+      "docs": ["Withdraws SOL from the treasury (admin only)."],
+      "discriminator": [40, 63, 122, 158, 144, 216, 83, 96],
+      "accounts": [
+        {
+          "name": "treasury",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [116, 114, 101, 97, 115, 117, 114, 121]
+              }
+            ]
+          }
+        },
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": ["treasury"]
+        },
+        {
+          "name": "recipient",
+          "writable": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "PlayerProfile",
+      "discriminator": [82, 226, 99, 87, 164, 130, 181, 80]
+    },
+    {
+      "name": "Treasury",
+      "discriminator": [238, 239, 123, 238, 89, 1, 168, 253]
+    }
+  ],
+  "events": [
+    {
+      "name": "ProfileCreated",
+      "discriminator": [134, 233, 199, 153, 77, 206, 128, 94]
+    },
+    {
+      "name": "RunCompleted",
+      "discriminator": [233, 115, 120, 101, 166, 52, 138, 133]
+    },
+    {
+      "name": "TierUnlocked",
+      "discriminator": [45, 255, 94, 72, 220, 16, 65, 145]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "ProfileAlreadyExists",
+      "msg": "Player profile already exists for this wallet"
+    },
+    {
+      "code": 6001,
+      "name": "NameTooLong",
+      "msg": "Display name exceeds 32 character limit"
+    },
+    {
+      "code": 6002,
+      "name": "TierNotReached",
+      "msg": "Must complete current tier before unlocking next"
+    },
+    {
+      "code": 6003,
+      "name": "InsufficientFunds",
+      "msg": "Insufficient SOL balance for tier unlock"
+    },
+    {
+      "code": 6004,
+      "name": "Unauthorized",
+      "msg": "Signer is not the profile owner"
+    },
+    {
+      "code": 6005,
+      "name": "InvalidLevel",
+      "msg": "Level exceeds unlocked tier maximum"
+    },
+    {
+      "code": 6006,
+      "name": "ArithmeticOverflow",
+      "msg": "Arithmetic overflow occurred"
+    },
+    {
+      "code": 6007,
+      "name": "InvalidTreasury",
+      "msg": "Invalid treasury account"
+    }
+  ],
+  "types": [
+    {
+      "name": "PlayerProfile",
+      "docs": [
+        "Player profile account storing identity and progression data.",
+        "PDA Seeds: [b\"player\", owner.key()]"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "docs": ["Wallet address that owns this profile"],
+            "type": "pubkey"
+          },
+          {
+            "name": "name",
+            "docs": ["Display name (max 32 chars)"],
+            "type": "string"
+          },
+          {
+            "name": "total_runs",
+            "docs": ["Total dungeon runs completed"],
+            "type": "u32"
+          },
+          {
+            "name": "current_level",
+            "docs": ["Current campaign level (0-80+)"],
+            "type": "u8"
+          },
+          {
+            "name": "available_runs",
+            "docs": ["Remaining available dungeon runs"],
+            "type": "u32"
+          },
+          {
+            "name": "created_at",
+            "docs": ["Unix timestamp of profile creation"],
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "docs": ["PDA bump seed"],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ProfileCreated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "RunCompleted",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "total_runs",
+            "type": "u32"
+          },
+          {
+            "name": "level_reached",
+            "type": "u8"
+          },
+          {
+            "name": "victory",
+            "type": "bool"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "TierUnlocked",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "tier",
+            "type": "u8"
+          },
+          {
+            "name": "amount_paid",
+            "type": "u64"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Treasury",
+      "docs": [
+        "Treasury account holding collected SOL from tier unlocks.",
+        "PDA Seeds: [b\"treasury\"]"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "admin",
+            "docs": ["Authority that can withdraw funds"],
+            "type": "pubkey"
+          },
+          {
+            "name": "total_collected",
+            "docs": ["Total SOL collected (in lamports)"],
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "docs": ["PDA bump seed"],
+            "type": "u8"
+          }
+        ]
+      }
+    }
+  ]
+}

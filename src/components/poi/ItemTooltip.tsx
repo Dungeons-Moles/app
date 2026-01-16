@@ -2,6 +2,7 @@ import React, { useEffect, useMemo } from 'react';
 import { View, Text, Pressable, StyleSheet, Dimensions, Modal } from 'react-native';
 import type { ItemRarity } from '@/game/engine/types';
 import { ITEM_RARITY_COLORS } from '@/utils/rarity-colors';
+import { Typography } from '@/theme/typography';
 
 interface ItemTooltipProps {
   name: string;
@@ -62,19 +63,12 @@ export function ItemTooltip({
   );
 
   return (
-    <Modal
-      transparent
-      visible
-      animationType="fade"
-      onRequestClose={onDismiss}
-    >
+    <Modal transparent visible animationType="fade" onRequestClose={onDismiss}>
       <View style={styles.modalRoot}>
         <Pressable style={styles.backdrop} onPress={onDismiss} />
         <View style={[styles.tooltip, { left, top, maxWidth, borderColor: rarityColor }]}>
           <Text style={styles.name}>{name}</Text>
-          <Text style={[styles.rarity, { color: rarityColor }]}>
-            {formatRarityLabel(rarity)}
-          </Text>
+          <Text style={[styles.rarity, { color: rarityColor }]}>{formatRarityLabel(rarity)}</Text>
           {normalizedDescription ? (
             <Text style={styles.description}>{normalizedDescription}</Text>
           ) : null}
@@ -105,22 +99,20 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
   },
   name: {
-    fontSize: 13,
-    fontWeight: 'bold',
+    fontFamily: Typography.header,
+    fontSize: 16,
     color: '#f9fafb',
     marginBottom: 2,
-    fontFamily: 'monospace',
   },
   rarity: {
-    fontSize: 11,
-    fontWeight: '600',
+    fontFamily: Typography.stat,
+    fontSize: 12,
     marginBottom: 6,
-    fontFamily: 'monospace',
   },
   description: {
+    fontFamily: Typography.body,
     fontSize: 11,
     color: '#e5e7eb',
     lineHeight: 16,
-    fontFamily: 'monospace',
   },
 });

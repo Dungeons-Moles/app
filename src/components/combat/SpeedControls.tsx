@@ -4,8 +4,14 @@
  */
 
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Image, ImageBackground } from 'react-native';
 import type { CombatSpeed } from '../../contexts/CombatContext';
+
+const buttonBgSource = require('../../../assets/hub/button-v1.png');
+const buttonBgActiveSource = require('../../../assets/hub/button-v3.png');
+const stopIconSource = require('../../../assets/icons/stop.png');
+const normalIconSource = require('../../../assets/icons/normal-speed.png');
+const fastIconSource = require('../../../assets/icons/fast-speed.png');
 
 export interface SpeedControlsProps {
   currentSpeed: CombatSpeed;
@@ -18,35 +24,37 @@ export function SpeedControls({
   onSpeedChange,
   disabled = false,
 }: SpeedControlsProps) {
-  const renderButton = (speed: CombatSpeed, label: string) => {
+  const renderButton = (speed: CombatSpeed, iconSource: any) => {
     const isActive = currentSpeed === speed;
 
     return (
       <TouchableOpacity
         key={speed}
-        style={[styles.button, isActive && styles.buttonActive, disabled && styles.buttonDisabled]}
+        style={[styles.buttonWrapper, disabled && styles.buttonDisabled]}
         onPress={() => onSpeedChange(speed)}
         disabled={disabled}
         activeOpacity={0.7}
       >
-        <Text
-          style={[
-            styles.buttonText,
-            isActive && styles.buttonTextActive,
-            disabled && styles.buttonTextDisabled,
-          ]}
+        <ImageBackground
+          source={isActive ? buttonBgActiveSource : buttonBgSource}
+          style={styles.buttonBg}
+          resizeMode="stretch"
         >
-          {label}
-        </Text>
+          <Image
+            source={iconSource}
+            style={[styles.icon, isActive && { tintColor: '#FABC0F' }]}
+            resizeMode="contain"
+          />
+        </ImageBackground>
       </TouchableOpacity>
     );
   };
 
   return (
     <View style={styles.container}>
-      {renderButton('paused', '⏸')}
-      {renderButton('normal', '▶')}
-      {renderButton('fast', '⏩')}
+      {renderButton('paused', stopIconSource)}
+      {renderButton('normal', normalIconSource)}
+      {renderButton('fast', fastIconSource)}
     </View>
   );
 }
@@ -55,40 +63,25 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f4e4bc',
-    borderRadius: 8,
-    padding: 2,
-    borderWidth: 1,
-    borderColor: '#c4a484',
+    gap: 8,
   },
-  button: {
-    width: 40,
-    height: 32,
-    borderRadius: 6,
-    backgroundColor: '#e4d4ac',
+  buttonWrapper: {
+    width: 60,
+    height: 48,
+  },
+  buttonBg: {
+    width: '100%',
+    height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
-    marginHorizontal: 2,
-    borderWidth: 1,
-    borderColor: '#d4c49c',
-  },
-  buttonActive: {
-    backgroundColor: '#8b4513',
-    borderColor: '#5c4033',
   },
   buttonDisabled: {
-    backgroundColor: '#d4c49c',
-    borderColor: '#c4a484',
     opacity: 0.5,
   },
-  buttonText: {
-    fontSize: 14,
-    color: '#5c4033',
-  },
-  buttonTextActive: {
-    color: '#ffffff',
-  },
-  buttonTextDisabled: {
-    color: '#888888',
+  icon: {
+    width: 20,
+    height: 20,
+    marginBottom: 5,
+    tintColor: '#5c4033', // Dark wood color by default
   },
 });

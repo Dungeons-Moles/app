@@ -14,6 +14,8 @@ export { EffectContext, Effect } from '../game/combat/types';
 export { PHASE_MOVES, WEEK_PHASES, SIGHT_RADIUS } from '../game/time/types';
 
 // Input types (Direction, InputEvent, DIRECTION_DELTA)
+import type { PublicKey } from '@solana/web3.js';
+
 export * from '../game/input/types';
 
 export type CombatSpeed = 'paused' | 'normal' | 'fast';
@@ -30,6 +32,7 @@ export interface PlayerProfile {
 export interface WalletState {
   isConnected: boolean;
   address: string | null;
+  publicKey: PublicKey | null;
   authToken: string | null;
 }
 
@@ -47,4 +50,4 @@ export const GAME_RULES = {
   CYCLES_PER_WEEK: 3,
 } as const;
 
-export type PhaseType = typeof GAME_RULES.WEEK_STRUCTURE[number];
+export type PhaseType = (typeof GAME_RULES.WEEK_STRUCTURE)[number];

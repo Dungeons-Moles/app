@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,43 +7,83 @@ import {
   ActivityIndicator,
   Image,
   ImageBackground,
+  TextInput,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useProfile } from '../contexts/ProfileContext';
-import { shortenAddress } from '../utils/storage';
+import { useWallet, type SupportedWallet } from '../contexts/WalletContext';
 import { RootStackParamList } from '../navigation';
+import { JupiterIcon } from '../components/wallet/JupiterIcon';
+import { PhantomIcon } from '../components/wallet/PhantomIcon';
 
 type AccountScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Account'>;
 };
 
-// Wallet login disabled: create a local guest profile on startup.
-const GUEST_WALLET_ADDRESS = 'GUEST0000';
-
 export function AccountScreen({ navigation }: AccountScreenProps) {
-  const { profile, isLoading: isProfileLoading, createProfile } = useProfile();
-  const [isCreatingProfile, setIsCreatingProfile] = useState(false);
+  const { profile, createProfile, isLoading: isProfileLoading, error: profileError } = useProfile();
+  const { wallet, connect, isConnecting, error: walletError } = useWallet();
+  const [selectedWallet, setSelectedWallet] = useState<SupportedWallet>('Jupiter');
+  const [profileName, setProfileName] = useState('');
+  const [localError, setLocalError] = useState<string | null>(null);
+  const [isActionLoading, setIsActionLoading] = useState(false);
+  const hasInitialized = useRef(false);
 
+  // Track when initial load completes to prevent flickering
   useEffect(() => {
-    if (isProfileLoading || profile || isCreatingProfile) {
+    if (!isProfileLoading && !hasInitialized.current) {
+      hasInitialized.current = true;
+    }
+  }, [isProfileLoading]);
+
+  // Only show loading for user-initiated actions OR initial load
+  const showLoading =
+    isActionLoading || isConnecting || (!hasInitialized.current && isProfileLoading);
+  const isConnected = wallet.isConnected;
+  const errorMessage = localError ?? walletError ?? profileError;
+
+  // Navigate to Hub if profile exists
+  useEffect(() => {
+    if (isConnected && profile && !isProfileLoading) {
+      navigation.replace('Hub');
+    }
+  }, [isConnected, profile, isProfileLoading, navigation]);
+
+  const handleSignIn = async () => {
+    setLocalError(null);
+    const result = await connect(selectedWallet);
+    if (!result) {
+      return;
+    }
+  };
+
+  const handleCreateProfile = async () => {
+    if (!profileName.trim()) {
+      setLocalError('Enter a display name to continue');
       return;
     }
 
-    setIsCreatingProfile(true);
-    createProfile(GUEST_WALLET_ADDRESS)
-      .catch((error) => {
-        console.error('Failed to create guest profile:', error);
-      })
-      .finally(() => setIsCreatingProfile(false));
-  }, [createProfile, isCreatingProfile, isProfileLoading, profile]);
+    if (profileName.trim().length > 32) {
+      setLocalError('Name must be 32 characters or less');
+      return;
+    }
 
-  const handleContinue = () => {
-    navigation.navigate('Hub');
+    setLocalError(null);
+    setIsActionLoading(true);
+    try {
+      const result = await createProfile(profileName.trim());
+      if (result.success) {
+        // Navigate to Hub after successful profile creation
+        navigation.replace('Hub');
+      } else {
+        setLocalError(result.error ?? 'Failed to create profile');
+      }
+    } finally {
+      setIsActionLoading(false);
+    }
   };
-
-  const isLoading = isProfileLoading || isCreatingProfile;
-  const canContinue = Boolean(profile);
 
   return (
     <View style={styles.container}>
@@ -67,65 +107,94 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
 
           {/* Right Panel - Actions */}
           <View style={styles.rightPanel}>
-            {isLoading ? (
-              <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color="#1a1a20" />
-                <Text style={styles.loadingText}>
-                  {isCreatingProfile ? 'Creating profile...' : 'Loading...'}
-                </Text>
+            <ImageBackground
+              source={require('../../assets/account/wooden-panel.png')}
+              style={styles.panel}
+              resizeMode="contain"
+            >
+              <View style={styles.panelContent}>
+                {!isConnected ? (
+                  <>
+                    <Text style={styles.profileLabel}>SUPPORTED WALLETS</Text>
+                    <View style={styles.walletOptions}>
+                      {(
+                        [
+                          { id: 'Jupiter' as const, Icon: JupiterIcon },
+                          { id: 'Phantom' as const, Icon: PhantomIcon },
+                        ] as const
+                      ).map(({ id, Icon }) => (
+                        <TouchableOpacity
+                          key={id}
+                          style={[
+                            styles.walletOption,
+                            id === selectedWallet && styles.walletOptionSelected,
+                          ]}
+                          onPress={() => setSelectedWallet(id)}
+                          activeOpacity={0.7}
+                          disabled={showLoading}
+                        >
+                          <Icon
+                            color={
+                              id === selectedWallet
+                                ? styles.walletIconActive.color
+                                : styles.walletIconInactive.color
+                            }
+                            size={36}
+                          />
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                    <Text style={styles.walletHint}>Select a wallet to sign in</Text>
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.profileLabel}>CREATE PROFILE</Text>
+                    <TextInput
+                      style={styles.profileInput}
+                      placeholder="Adventurer name"
+                      placeholderTextColor="#999999"
+                      value={profileName}
+                      onChangeText={setProfileName}
+                      maxLength={32}
+                      autoCapitalize="words"
+                      editable={!showLoading}
+                    />
+                  </>
+                )}
               </View>
-            ) : canContinue ? (
-              <ImageBackground
-                source={require('../../assets/account/wooden-panel.png')}
-                style={styles.connectedContainer}
-                resizeMode="contain"
-              >
-                <View style={styles.profileCard}>
-                  <Text style={styles.profileLabel}>ADVENTURER</Text>
-                  <Text style={styles.profileName}>{profile?.displayName}</Text>
-                  <View style={styles.walletRow}>
-                    <Text style={styles.walletAddress}>
-                      {shortenAddress(profile?.walletAddress || '')}
-                    </Text>
-                  </View>
-                </View>
 
+              <View style={styles.buttonWrapper}>
                 <TouchableOpacity
-                  style={styles.continueButton}
-                  onPress={handleContinue}
+                  style={[styles.primaryButton, isConnected ? styles.createProfileButton : null]}
+                  onPress={!isConnected ? () => handleSignIn() : handleCreateProfile}
                   activeOpacity={0.7}
+                  disabled={showLoading}
                 >
                   <ImageBackground
                     source={require('../../assets/account/button.png')}
                     style={styles.buttonImage}
                     resizeMode="contain"
                   >
-                    <Text style={styles.continueButtonText}>Enter Game</Text>
+                    {showLoading ? (
+                      <View style={styles.loadingRow}>
+                        <ActivityIndicator size="small" color="#ffffff" />
+                        <Text style={[styles.primaryButtonText, { marginLeft: 8 }]}>
+                          Loading...
+                        </Text>
+                      </View>
+                    ) : (
+                      <Text style={styles.primaryButtonText}>
+                        {!isConnected ? 'Sign In' : 'Create Profile'}
+                      </Text>
+                    )}
                   </ImageBackground>
                 </TouchableOpacity>
-              </ImageBackground>
-            ) : (
-              <View style={styles.connectContainer}>
-                <Text style={styles.connectTitle}>Profile unavailable</Text>
-                <Text style={styles.connectPrompt}>Create a local profile to continue</Text>
-
-                <TouchableOpacity
-                  style={styles.connectButton}
-                  onPress={() => {
-                    setIsCreatingProfile(true);
-                    createProfile(GUEST_WALLET_ADDRESS)
-                      .catch((error) => {
-                        console.error('Failed to create guest profile:', error);
-                      })
-                      .finally(() => setIsCreatingProfile(false));
-                  }}
-                  disabled={isLoading}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.connectButtonText}>Create Profile</Text>
-                </TouchableOpacity>
               </View>
-            )}
+
+              <View style={styles.errorSlot}>
+                {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
+              </View>
+            </ImageBackground>
           </View>
         </View>
       </SafeAreaView>
@@ -176,40 +245,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 32,
   },
-  loadingContainer: {
-    alignItems: 'center',
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 14,
-    color: '#1a1a20',
-  },
-  // Connected State
-  connectedContainer: {
+  panel: {
     width: '100%',
     aspectRatio: 0.85,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingTop: 20,
+    ...(Platform.OS === 'web' ? { height: 380 } : {}),
   },
-  profileCard: {
+  panelContent: {
     width: '80%',
-    height: '40%',
     justifyContent: 'center',
     alignItems: 'center',
     paddingTop: 16,
-    paddingBottom: 42,
-    marginBottom: 10,
+    paddingBottom: 30,
   },
   profileLabel: {
     fontSize: 12,
     color: '#000000',
     letterSpacing: 1,
-    marginBottom: 4,
+    marginBottom: 8,
     fontWeight: 'bold',
   },
   profileName: {
-    fontSize: 28,
+    fontSize: 26,
     fontWeight: 'bold',
     color: '#000000',
     marginBottom: 8,
@@ -224,10 +282,67 @@ const styles = StyleSheet.create({
     fontFamily: 'monospace',
     fontWeight: '600',
   },
-  continueButton: {
-    width: '60%',
+  walletOptions: {
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 12,
+    marginBottom: 8,
+  },
+  walletOption: {
+    width: 64,
+    height: 64,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  walletOptionSelected: {},
+  walletOptionText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333333',
+  },
+  walletOptionTextSelected: {
+    color: '#000000',
+  },
+  walletIconActive: {
+    color: '#000000',
+  },
+  walletIconInactive: {
+    color: '#5f5548',
+  },
+  walletHint: {
+    fontSize: 12,
+    color: '#333333',
+    textAlign: 'center',
+  },
+  profileInput: {
+    width: '75%',
+    backgroundColor: '#f4e4bc',
+    borderWidth: 1,
+    borderColor: '#d4c49c',
+    borderRadius: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: '#000000',
+  },
+  buttonWrapper: {
+    width: '50%',
     height: '40%',
     justifyContent: 'center',
+    alignItems: 'center',
+  },
+  primaryButton: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  createProfileButton: {
+    paddingTop: 49,
+  },
+  errorSlot: {
+    position: 'absolute',
+    width: '65%',
     alignItems: 'center',
   },
   buttonImage: {
@@ -236,7 +351,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  continueButtonText: {
+  primaryButtonText: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#ffffff',
@@ -244,37 +359,14 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 1, height: 1 },
     textShadowRadius: 2,
   },
-  // Disconnected State
-  connectContainer: {
-    width: '100%',
-    maxWidth: 280,
-  },
-  connectTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1a1a20',
-    marginBottom: 8,
-  },
-  connectPrompt: {
-    fontSize: 12,
-    color: '#333333',
-    marginBottom: 20,
-  },
-  connectButton: {
-    backgroundColor: '#151518',
-    borderWidth: 1,
-    borderColor: '#2a2a30',
-    paddingVertical: 14,
+  loadingRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-  },
-  connectButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#888888',
+    justifyContent: 'center',
   },
   errorText: {
-    marginTop: 12,
     fontSize: 12,
     color: '#a33a3a',
+    textAlign: 'center',
   },
 });

@@ -30,7 +30,8 @@
     },
     "plugins": [
       "expo-secure-store",
-      "expo-screen-orientation"
+      "expo-screen-orientation",
+      "expo-font"
     ],
     "extra": {
       "solanaCluster": "devnet"

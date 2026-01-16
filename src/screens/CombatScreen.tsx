@@ -24,6 +24,7 @@ import {
 import { DebugOverlay } from '../components/game';
 import { ENEMY_TRAITS } from '../game/combat/traits';
 import { getEntityImageSource } from '../components/game/entityImages';
+import { Typography } from '../theme/typography';
 
 type CombatScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Combat'>;
@@ -36,8 +37,8 @@ const SAFE_AREA_EDGES = ['left', 'right'] as const;
  * Displays the combat arena, player/enemy panels, and combat log in landscape orientation
  */
 export function CombatScreen({ navigation }: CombatScreenProps) {
-  const { profile, updateDefaultCombatSpeed } = useProfile();
-  const initialSpeed = profile?.defaultCombatSpeed ?? 'normal';
+  const { updateDefaultCombatSpeed } = useProfile();
+  const initialSpeed = 'normal';
 
   return (
     <CombatProvider initialSpeed={initialSpeed} onSpeedChange={updateDefaultCombatSpeed}>
@@ -248,7 +249,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   loadingText: {
-    fontSize: 16,
+    fontFamily: Typography.header,
+    fontSize: 20,
     color: '#888888',
   },
   sidePanel: {
@@ -279,9 +281,9 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   goldText: {
-    fontSize: 14,
+    fontFamily: Typography.number,
+    fontSize: 16,
     color: '#FFD700',
     fontWeight: 'bold',
-    fontFamily: 'monospace',
   },
 });

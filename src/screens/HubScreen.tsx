@@ -9,6 +9,7 @@ import {
   Image,
   ImageBackground,
   Platform,
+  TouchableWithoutFeedback,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -17,12 +18,17 @@ import { useGame, GamePhase } from '../contexts/GameContext';
 import { shortenAddress } from '../utils/storage';
 import { RootStackParamList } from '../navigation';
 import { SpeedControls } from '../components/combat';
+import { ProfileCard } from '../components/profile/ProfileCard';
+import { Typography } from '../theme/typography';
+import type { CombatSpeed } from '../contexts/CombatContext';
 
 const defaultMoleImageSource = require('../../assets/characters/default-mole.png');
 const backgroundImageSource = require('../../assets/hub/background.png');
 const buttonV1Source = require('../../assets/hub/button-v1.png');
 const buttonV2Source = require('../../assets/hub/button-v2.png');
 const buttonV3Source = require('../../assets/hub/button-v3.png');
+const buttonV4Source = require('../../assets/hub/button-v4.png');
+const paperPanelSource = require('../../assets/hub/paper-panel.png');
 const engineImageSource = require('../../assets/hub/engine.png');
 const walletImageSource = require('../../assets/hub/wallet.png');
 
@@ -34,6 +40,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
   const { profile, clearProfile, updateDefaultCombatSpeed } = useProfile();
   const { state: gameState, dispatch } = useGame();
   const [showSettings, setShowSettings] = useState(false);
+  const [combatSpeed, setCombatSpeed] = useState<CombatSpeed>('normal');
 
   const handleResetProfile = async () => {
     await clearProfile();
@@ -74,6 +81,10 @@ export function HubScreen({ navigation }: HubScreenProps) {
     Alert.alert('Coming Soon', 'Quests are under development!');
   };
 
+  const handleSkins = () => {
+    Alert.alert('Coming Soon', 'Skins are under development!');
+  };
+
   return (
     <View style={styles.container}>
       <Image source={backgroundImageSource} style={styles.backgroundImage} resizeMode="stretch" />
@@ -98,13 +109,20 @@ export function HubScreen({ navigation }: HubScreenProps) {
               {/* Player Info */}
               <View style={styles.playerInfo}>
                 <Text style={styles.playerName} numberOfLines={1}>
-                  {profile?.displayName}
+                  {profile?.name ?? 'Adventurer'}
                 </Text>
-                {profile?.walletAddress ? (
-                  <Text style={styles.walletAddress}>{shortenAddress(profile.walletAddress)}</Text>
+                {profile?.owner ? (
+                  <Text style={styles.walletAddress}>
+                    {shortenAddress(profile.owner.toBase58())}
+                  </Text>
                 ) : null}
               </View>
             </ImageBackground>
+            {profile ? (
+              <View style={styles.profileCardWrapper}>
+                <ProfileCard profile={profile} />
+              </View>
+            ) : null}
           </View>
 
           {/* TOP CENTER - Points */}
@@ -160,27 +178,39 @@ export function HubScreen({ navigation }: HubScreenProps) {
               </ImageBackground>
             </TouchableOpacity>
 
-            <TouchableOpacity onPress={handleLeaderboard} activeOpacity={0.7}>
-              <ImageBackground
-                source={buttonV1Source}
-                style={styles.navButton}
-                resizeMode="stretch"
-              >
-                <Text style={styles.navButtonText}>Ranks</Text>
-              </ImageBackground>
-            </TouchableOpacity>
+            <View style={styles.sideBySideRow}>
+              <TouchableOpacity onPress={handleLeaderboard} activeOpacity={0.7}>
+                <ImageBackground
+                  source={buttonV1Source}
+                  style={styles.navButton}
+                  resizeMode="stretch"
+                >
+                  <Text style={styles.navButtonText}>Ranks</Text>
+                </ImageBackground>
+              </TouchableOpacity>
+
+              <TouchableOpacity onPress={handleSkins} activeOpacity={0.7}>
+                <ImageBackground
+                  source={buttonV1Source}
+                  style={styles.navButton}
+                  resizeMode="stretch"
+                >
+                  <Text style={styles.navButtonText}>Skins</Text>
+                </ImageBackground>
+              </TouchableOpacity>
+            </View>
           </View>
 
           {/* BOTTOM RIGHT - Primary Actions */}
           <View style={styles.bottomRight}>
-            {/* Shop above play buttons */}
+            {/* Marketplace above play buttons */}
             <TouchableOpacity onPress={handleMarketplace} activeOpacity={0.7}>
               <ImageBackground
                 source={buttonV1Source}
                 style={styles.shopButton}
                 resizeMode="stretch"
               >
-                <Text style={styles.shopButtonText}>Shop</Text>
+                <Text style={styles.shopButtonText}>Marketplace</Text>
               </ImageBackground>
             </TouchableOpacity>
 
@@ -188,12 +218,12 @@ export function HubScreen({ navigation }: HubScreenProps) {
             <View style={styles.playButtonsRow}>
               <TouchableOpacity onPress={handlePlayPvE} activeOpacity={0.7}>
                 <ImageBackground
-                  source={buttonV1Source}
+                  source={buttonV4Source}
                   style={styles.campaignButton}
                   resizeMode="stretch"
                 >
                   <Text style={styles.campaignButtonText}>Campaign</Text>
-                  <Text style={styles.buttonSub}>PvE</Text>
+                  <Text style={styles.buttonSub}>{(profile?.currentLevel ?? 0) + 1} / 80</Text>
                 </ImageBackground>
               </TouchableOpacity>
 
@@ -203,8 +233,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
                   style={styles.gauntletButton}
                   resizeMode="stretch"
                 >
-                  <Text style={styles.gauntletButtonText}>Gauntlet</Text>
-                  <Text style={styles.gauntletSub}>PvP</Text>
+                  <Text style={styles.gauntletButtonText}>PVP</Text>
                 </ImageBackground>
               </TouchableOpacity>
             </View>
@@ -218,51 +247,55 @@ export function HubScreen({ navigation }: HubScreenProps) {
           animationType="fade"
           onRequestClose={() => setShowSettings(false)}
         >
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <View style={styles.modalParchment}>
-                <Text style={styles.modalTitle}>Settings</Text>
-
-                <View style={styles.settingRow}>
-                  <Text style={styles.settingLabel}>Combat speed</Text>
-                  <SpeedControls
-                    currentSpeed={profile?.defaultCombatSpeed ?? 'normal'}
-                    onSpeedChange={updateDefaultCombatSpeed}
-                  />
-                </View>
-              </View>
-
-              <View style={styles.modalParchment}>
-                <TouchableOpacity
-                  style={styles.modalButton}
-                  onPress={handleResetProfile}
-                  activeOpacity={0.7}
+          <TouchableWithoutFeedback onPress={() => setShowSettings(false)}>
+            <View style={styles.modalOverlay}>
+              <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
+                <ImageBackground
+                  source={paperPanelSource}
+                  style={styles.modalContent}
+                  resizeMode="stretch"
                 >
-                  <ImageBackground
-                    source={require('../../assets/account/button.png')}
-                    style={styles.buttonImage}
-                    resizeMode="stretch"
-                  >
-                    <Text style={styles.disconnectText}>Reset Profile</Text>
-                  </ImageBackground>
-                </TouchableOpacity>
+                  <View style={styles.modalHeader}>
+                    <Text style={styles.modalTitle}>Settings</Text>
+                    <TouchableOpacity
+                      onPress={() => setShowSettings(false)}
+                      style={styles.closeButton}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    >
+                      <Text style={styles.closeButtonText}>✕</Text>
+                    </TouchableOpacity>
+                  </View>
 
-                <TouchableOpacity
-                  style={styles.modalButton}
-                  onPress={() => setShowSettings(false)}
-                  activeOpacity={0.7}
-                >
-                  <ImageBackground
-                    source={require('../../assets/account/button.png')}
-                    style={styles.buttonImage}
-                    resizeMode="stretch"
-                  >
-                    <Text style={styles.modalButtonText}>Close</Text>
-                  </ImageBackground>
-                </TouchableOpacity>
-              </View>
+                  <View style={styles.modalBody}>
+                    <View style={styles.settingRow}>
+                      <Text style={styles.settingLabel}>Combat speed</Text>
+                      <SpeedControls
+                        currentSpeed={combatSpeed}
+                        onSpeedChange={(speed) => {
+                          setCombatSpeed(speed);
+                          updateDefaultCombatSpeed(speed);
+                        }}
+                      />
+                    </View>
+
+                    <TouchableOpacity
+                      style={styles.resetButton}
+                      onPress={handleResetProfile}
+                      activeOpacity={0.7}
+                    >
+                      <ImageBackground
+                        source={buttonV1Source}
+                        style={styles.buttonImage}
+                        resizeMode="stretch"
+                      >
+                        <Text style={styles.disconnectText}>Reset Profile</Text>
+                      </ImageBackground>
+                    </TouchableOpacity>
+                  </View>
+                </ImageBackground>
+              </TouchableWithoutFeedback>
             </View>
-          </View>
+          </TouchableWithoutFeedback>
         </Modal>
       </SafeAreaView>
     </View>
@@ -296,6 +329,9 @@ const styles = StyleSheet.create({
     left: 16,
     zIndex: 10,
   },
+  profileCardWrapper: {
+    marginTop: 8,
+  },
   playerPanel: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -328,15 +364,15 @@ const styles = StyleSheet.create({
     gap: 0,
   },
   playerName: {
-    fontSize: 12, // Bigger
-    fontWeight: '600',
-    color: '#c8c8c8',
-    lineHeight: 14,
+    fontFamily: Typography.header,
+    fontSize: 14,
+    color: '#888888',
+    lineHeight: 16,
   },
   walletAddress: {
-    fontSize: 10, // Bigger
+    fontFamily: Typography.number,
+    fontSize: 11,
     color: '#888888',
-    fontFamily: 'monospace',
     fontWeight: 'bold',
     lineHeight: 12,
   },
@@ -359,11 +395,13 @@ const styles = StyleSheet.create({
     height: 53,
   },
   pointsLabel: {
-    fontSize: 10,
+    fontFamily: Typography.header,
+    fontSize: 12,
     letterSpacing: 1,
   },
   pointsValue: {
-    fontSize: 16,
+    fontFamily: Typography.number,
+    fontSize: 18,
     fontWeight: 'bold',
     color: '#c8c8c8',
   },
@@ -401,7 +439,7 @@ const styles = StyleSheet.create({
   characterImage: {
     width: 175,
     height: 175,
-    marginTop: 50,
+    marginTop: 40,
     zIndex: 1, // Ensure image is above shadow
   },
   characterShadow: {
@@ -436,9 +474,13 @@ const styles = StyleSheet.create({
     height: 48,
   },
   navButtonText: {
-    fontSize: 12,
-    fontWeight: '500',
+    fontFamily: Typography.button,
+    fontSize: 14,
     marginBottom: 4,
+  },
+  sideBySideRow: {
+    flexDirection: 'row',
+    gap: 8,
   },
 
   // BOTTOM RIGHT - Primary Actions
@@ -452,15 +494,15 @@ const styles = StyleSheet.create({
   },
   shopButton: {
     paddingVertical: 8,
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    width: 100,
+    width: 130,
     height: 45,
   },
   shopButtonText: {
-    fontSize: 12,
-    fontWeight: '500',
+    fontFamily: Typography.button,
+    fontSize: 14,
     marginBottom: 4,
   },
   playButtonsRow: {
@@ -476,11 +518,12 @@ const styles = StyleSheet.create({
     height: 68,
   },
   campaignButtonText: {
-    fontSize: 13,
-    fontWeight: '600',
+    fontFamily: Typography.button,
+    fontSize: 16,
   },
   buttonSub: {
-    fontSize: 10,
+    fontFamily: Typography.body,
+    fontSize: 11,
     color: '#555555',
     marginTop: 2,
     marginBottom: 4,
@@ -494,14 +537,10 @@ const styles = StyleSheet.create({
     height: 68,
   },
   gauntletButtonText: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  gauntletSub: {
-    fontSize: 10,
+    fontFamily: Typography.button,
+    fontSize: 22,
     color: '#a33a3a',
-    marginTop: 2,
-    marginBottom: 4,
+    marginBottom: 6,
   },
 
   // MODAL
@@ -513,51 +552,57 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   modalContent: {
-    width: '90%',
-    maxWidth: 360,
-    backgroundColor: '#8b4513', // Wood color
-    padding: 12,
-    borderRadius: 8,
-    borderWidth: 4,
-    borderColor: '#5c4033', // Darker wood edge
-    shadowColor: '#000',
-    shadowOffset: { width: 4, height: 4 },
-    shadowOpacity: 0.5,
-    shadowRadius: 10,
-    elevation: 10,
-    gap: 12,
-  },
-  modalParchment: {
-    backgroundColor: '#f4e4bc', // Parchment color
-    padding: 20,
-    borderRadius: 4,
-    borderWidth: 2,
-    borderColor: '#d4c49c',
+    width: 380,
+    height: 380,
+    padding: 40,
     alignItems: 'center',
+    justifyContent: 'flex-start',
+  },
+  modalHeader: {
+    width: '100%',
+    flexDirection: 'row',
     justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 30,
+    position: 'relative',
   },
   modalTitle: {
+    fontFamily: Typography.header,
+    fontSize: 32,
+    marginTop: 12,
+    color: '#3d2b1f',
+    textAlign: 'center',
+  },
+  closeButton: {
+    position: 'absolute',
+    right: -10,
+    top: -5,
+    padding: 10,
+  },
+  closeButtonText: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#3d2b1f',
-    marginBottom: 16,
-    textAlign: 'center',
+    color: '#5c4033',
+  },
+  modalBody: {
+    width: '100%',
+    alignItems: 'center',
+    gap: 30,
   },
   settingRow: {
     alignItems: 'center',
     gap: 12,
   },
   settingLabel: {
-    fontSize: 14,
-    fontWeight: 'bold',
+    fontFamily: Typography.header,
+    fontSize: 20,
     color: '#3d2b1f',
+    marginBottom: 2,
   },
-  modalButton: {
-    width: '100%',
+  resetButton: {
+    width: 180,
     height: 48,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginVertical: 4,
+    marginTop: 10,
   },
   buttonImage: {
     width: '100%',
@@ -565,14 +610,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  modalButtonText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#ffffff',
-  },
   disconnectText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#ffffff',
+    fontFamily: Typography.button,
+    fontSize: 18,
+    color: '#a33a3a', // Red color
   },
 });

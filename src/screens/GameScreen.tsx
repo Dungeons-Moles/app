@@ -28,6 +28,7 @@ import { TimePhase, type GearId, type Tool, type Gear } from '../game/engine/typ
 import { canFastTravel, getDiscoveredWaypoints } from '../game/entities/pois';
 import { canInteractWithPOI } from '../data/pois';
 import { canAffordCostAcrossPhases } from '../game/time/progression';
+import { Typography } from '../theme/typography';
 
 type GameScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Game'>;
@@ -467,7 +468,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   loadingText: {
-    fontSize: 16,
+    fontFamily: Typography.header,
+    fontSize: 20,
     color: '#666666',
   },
   mapArea: {
@@ -507,6 +509,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   goldValue: {
+    fontFamily: Typography.number,
     fontSize: 14,
     fontWeight: 'bold',
     color: '#FFD700',

@@ -1,0 +1,657 @@
+{
+  "address": "FcMT7MzBLVQGaMATEMws3fjsL2Q77QSHmoEPdowTMxJa",
+  "metadata": {
+    "name": "session_manager",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Session Manager Program for MagicBlock Ephemeral Rollup integration"
+  },
+  "instructions": [
+    {
+      "name": "commit_session",
+      "docs": [
+        "Commits the current game state from the ephemeral rollup.",
+        "Updates the state hash and last activity timestamp."
+      ],
+      "discriminator": [
+        75,
+        2,
+        56,
+        144,
+        89,
+        208,
+        173,
+        167
+      ],
+      "accounts": [
+        {
+          "name": "game_session",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "player"
+              }
+            ]
+          }
+        },
+        {
+          "name": "player",
+          "signer": true,
+          "relations": [
+            "game_session"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "state_hash",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "delegate_session",
+      "docs": [
+        "Delegates the session to the MagicBlock ephemeral rollup.",
+        "NOTE: MagicBlock SDK is blocked due to Rust edition 2024 requirement.",
+        "This is a stub that just sets the is_delegated flag."
+      ],
+      "discriminator": [
+        82,
+        83,
+        119,
+        119,
+        196,
+        219,
+        5,
+        197
+      ],
+      "accounts": [
+        {
+          "name": "game_session",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "player"
+              }
+            ]
+          }
+        },
+        {
+          "name": "player",
+          "signer": true,
+          "relations": [
+            "game_session"
+          ]
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "end_session",
+      "docs": [
+        "Ends the session normally, undelegating from rollup and closing the account."
+      ],
+      "discriminator": [
+        11,
+        244,
+        61,
+        154,
+        212,
+        249,
+        15,
+        66
+      ],
+      "accounts": [
+        {
+          "name": "game_session",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "player"
+              }
+            ]
+          }
+        },
+        {
+          "name": "player",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "game_session"
+          ]
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "force_close_session",
+      "docs": [
+        "Forces a session to close after timeout (1 hour inactivity).",
+        "Can be called by anyone to clean up abandoned sessions."
+      ],
+      "discriminator": [
+        7,
+        248,
+        122,
+        200,
+        47,
+        119,
+        244,
+        82
+      ],
+      "accounts": [
+        {
+          "name": "game_session",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "session_owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "session_owner"
+        },
+        {
+          "name": "recipient",
+          "writable": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "initialize_counter",
+      "docs": [
+        "Initializes the global session counter (one-time admin operation)."
+      ],
+      "discriminator": [
+        67,
+        89,
+        100,
+        87,
+        231,
+        172,
+        35,
+        124
+      ],
+      "accounts": [
+        {
+          "name": "session_counter",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  95,
+                  99,
+                  111,
+                  117,
+                  110,
+                  116,
+                  101,
+                  114
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "start_session",
+      "docs": [
+        "Starts a new game session for the player.",
+        "Validates that the campaign level is within the player's unlocked tier."
+      ],
+      "discriminator": [
+        23,
+        227,
+        111,
+        142,
+        212,
+        230,
+        3,
+        175
+      ],
+      "accounts": [
+        {
+          "name": "game_session",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "player"
+              }
+            ]
+          }
+        },
+        {
+          "name": "session_counter",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  95,
+                  99,
+                  111,
+                  117,
+                  110,
+                  116,
+                  101,
+                  114
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "player",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "campaign_level",
+          "type": "u8"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "GameSession",
+      "discriminator": [
+        150,
+        116,
+        20,
+        197,
+        205,
+        121,
+        220,
+        240
+      ]
+    },
+    {
+      "name": "SessionCounter",
+      "discriminator": [
+        86,
+        109,
+        126,
+        139,
+        64,
+        30,
+        254,
+        100
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "SessionDelegated",
+      "discriminator": [
+        196,
+        91,
+        183,
+        117,
+        146,
+        74,
+        195,
+        49
+      ]
+    },
+    {
+      "name": "SessionEnded",
+      "discriminator": [
+        58,
+        51,
+        229,
+        78,
+        240,
+        232,
+        236,
+        18
+      ]
+    },
+    {
+      "name": "SessionStarted",
+      "discriminator": [
+        97,
+        241,
+        44,
+        75,
+        210,
+        66,
+        122,
+        96
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "SessionAlreadyActive",
+      "msg": "Player already has an active session"
+    },
+    {
+      "code": 6001,
+      "name": "SessionNotFound",
+      "msg": "No active session found for player"
+    },
+    {
+      "code": 6002,
+      "name": "SessionNotDelegated",
+      "msg": "Session must be delegated first"
+    },
+    {
+      "code": 6003,
+      "name": "SessionAlreadyDelegated",
+      "msg": "Session is already delegated"
+    },
+    {
+      "code": 6004,
+      "name": "SessionNotTimedOut",
+      "msg": "Session has not timed out yet"
+    },
+    {
+      "code": 6005,
+      "name": "Unauthorized",
+      "msg": "Signer is not the session owner"
+    },
+    {
+      "code": 6006,
+      "name": "InvalidCampaignLevel",
+      "msg": "Campaign level exceeds player's unlocked tier"
+    },
+    {
+      "code": 6007,
+      "name": "ProfileNotFound",
+      "msg": "Player profile does not exist"
+    },
+    {
+      "code": 6008,
+      "name": "ArithmeticOverflow",
+      "msg": "Arithmetic overflow occurred"
+    }
+  ],
+  "types": [
+    {
+      "name": "GameSession",
+      "docs": [
+        "Represents an active game session for a player.",
+        "One session allowed per player (enforced via PDA uniqueness)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "player",
+            "docs": [
+              "Player profile owner's wallet"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "session_id",
+            "docs": [
+              "Unique session identifier (incrementing)"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "campaign_level",
+            "docs": [
+              "Level being played in this session (campaign mode)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "started_at",
+            "docs": [
+              "Unix timestamp when session started"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "last_activity",
+            "docs": [
+              "Unix timestamp of last activity"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "is_delegated",
+            "docs": [
+              "Whether state is delegated to ephemeral rollup"
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "state_hash",
+            "docs": [
+              "Hash of current game state (for verification)"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump seed"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "SessionCounter",
+      "docs": [
+        "Global counter for generating unique session IDs"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "count",
+            "docs": [
+              "Global session counter for unique IDs"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump seed"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "SessionDelegated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "session_id",
+            "type": "u64"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "SessionEnded",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "session_id",
+            "type": "u64"
+          },
+          {
+            "name": "final_state_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "SessionStarted",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "session_id",
+            "type": "u64"
+          },
+          {
+            "name": "campaign_level",
+            "type": "u8"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    }
+  ]
+}

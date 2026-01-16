@@ -22,6 +22,7 @@ import type { POIId } from '@/game/engine/types';
 import { extractStatBonuses, formatStatBonuses } from '@/utils/stat-display';
 import { SimplifiedItemOption } from '@/components/poi/SimplifiedItemOption';
 import { ItemTooltip as PoiItemTooltip } from '@/components/poi/ItemTooltip';
+import { Typography } from '@/theme/typography';
 
 interface POIModalProps {
   interaction: POIInteraction | null;
@@ -655,14 +656,14 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   threeChoiceTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontFamily: Typography.header,
+    fontSize: 22,
     color: '#ffffff',
     textAlign: 'center',
     marginBottom: 16,
-    fontFamily: 'monospace',
   },
   description: {
+    fontFamily: Typography.body,
     fontSize: 12,
     color: '#888888',
     marginBottom: 16,
@@ -693,10 +694,10 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   closeButtonTopText: {
+    fontFamily: Typography.number,
     fontSize: 12,
     color: '#aa4444',
     fontWeight: 'bold',
-    fontFamily: 'monospace',
   },
 
   // ============================================================================
@@ -758,15 +759,15 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   primaryButtonText: {
-    fontSize: 13,
+    fontFamily: Typography.button,
+    fontSize: 15,
     color: '#ffffff',
-    fontFamily: 'monospace',
   },
   helperText: {
+    fontFamily: Typography.body,
     fontSize: 12,
     color: '#888888',
     textAlign: 'center',
-    fontFamily: 'monospace',
   },
   gridWrapper: {
     width: '100%',
@@ -806,10 +807,10 @@ const styles = StyleSheet.create({
     fontSize: 20,
   },
   shopCost: {
-    fontSize: 11,
+    fontFamily: Typography.number,
+    fontSize: 12,
     color: '#FFD700',
     marginTop: 4,
-    fontFamily: 'monospace',
   },
   rerollButton: {
     backgroundColor: '#2a2a35',
@@ -823,9 +824,9 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   rerollButtonText: {
-    fontSize: 12,
+    fontFamily: Typography.button,
+    fontSize: 14,
     color: '#ffffff',
-    fontFamily: 'monospace',
   },
 
   // ============================================================================
@@ -903,9 +904,9 @@ const styles = StyleSheet.create({
     fontSize: 20,
   },
   fusePlus: {
+    fontFamily: Typography.number,
     fontSize: 18,
     color: '#ffffff',
-    fontFamily: 'monospace',
   },
   fuseButton: {
     backgroundColor: '#252530',
@@ -919,9 +920,9 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   fuseButtonText: {
-    fontSize: 13,
+    fontFamily: Typography.button,
+    fontSize: 15,
     color: '#ffffff',
-    fontFamily: 'monospace',
   },
 });
 

@@ -6,6 +6,7 @@
 import React, { useCallback } from 'react';
 import { View, TouchableOpacity, StyleSheet, Text } from 'react-native';
 import { Direction } from '../../game/input/types';
+import { Typography } from '../../theme/typography';
 
 // ============================================================================
 // Types
@@ -86,14 +87,7 @@ export function DPadControls({
           disabled={isDisabled(Direction.Up)}
           activeOpacity={0.6}
         >
-          <Text
-            style={[
-              styles.arrow,
-              isDisabled(Direction.Up) && styles.arrowDisabled,
-            ]}
-          >
-            ▲
-          </Text>
+          <Text style={[styles.arrow, isDisabled(Direction.Up) && styles.arrowDisabled]}>▲</Text>
         </TouchableOpacity>
         <View style={[styles.spacer, { width: buttonSize, height: buttonSize }]} />
       </View>
@@ -110,14 +104,7 @@ export function DPadControls({
           disabled={isDisabled(Direction.Left)}
           activeOpacity={0.6}
         >
-          <Text
-            style={[
-              styles.arrow,
-              isDisabled(Direction.Left) && styles.arrowDisabled,
-            ]}
-          >
-            ◀
-          </Text>
+          <Text style={[styles.arrow, isDisabled(Direction.Left) && styles.arrowDisabled]}>◀</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -131,10 +118,7 @@ export function DPadControls({
           activeOpacity={0.6}
         >
           <Text
-            style={[
-              styles.centerLabel,
-              (centerDisabled || !onCenterPress) && styles.arrowDisabled,
-            ]}
+            style={[styles.centerLabel, (centerDisabled || !onCenterPress) && styles.arrowDisabled]}
           >
             {centerLabel}
           </Text>
@@ -150,14 +134,7 @@ export function DPadControls({
           disabled={isDisabled(Direction.Right)}
           activeOpacity={0.6}
         >
-          <Text
-            style={[
-              styles.arrow,
-              isDisabled(Direction.Right) && styles.arrowDisabled,
-            ]}
-          >
-            ▶
-          </Text>
+          <Text style={[styles.arrow, isDisabled(Direction.Right) && styles.arrowDisabled]}>▶</Text>
         </TouchableOpacity>
       </View>
 
@@ -174,14 +151,7 @@ export function DPadControls({
           disabled={isDisabled(Direction.Down)}
           activeOpacity={0.6}
         >
-          <Text
-            style={[
-              styles.arrow,
-              isDisabled(Direction.Down) && styles.arrowDisabled,
-            ]}
-          >
-            ▼
-          </Text>
+          <Text style={[styles.arrow, isDisabled(Direction.Down) && styles.arrowDisabled]}>▼</Text>
         </TouchableOpacity>
         <View style={[styles.spacer, { width: buttonSize, height: buttonSize }]} />
       </View>
@@ -230,8 +200,8 @@ const styles = StyleSheet.create({
     color: '#444444',
   },
   centerLabel: {
-    fontSize: 18,
-    fontWeight: '700',
+    fontFamily: Typography.header,
+    fontSize: 24,
     color: '#aaaaaa',
   },
 });
