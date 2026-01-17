@@ -286,7 +286,12 @@ export const MapRenderer = memo(function MapRenderer({
   const { width, height } = dimensions;
 
   const overview = overviewMode ?? DEFAULT_OVERVIEW_STATE;
-  const zoom = overview.active ? overview.zoom : 1.5;
+
+  // T142: Calculate dynamic zoom to show 3 tiles above/below (7 tiles total height)
+  const targetVerticalTiles = 7;
+  const dynamicZoom = height / (targetVerticalTiles * TILE_SIZE);
+  const zoom = overview.active ? overview.zoom : dynamicZoom;
+
   const cameraCenter = useMemo(
     () => ({
       x: playerPosition.x + (overview.active ? overview.offset.x : 0),
