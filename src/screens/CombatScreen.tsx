@@ -7,7 +7,6 @@
 
 import React, { useEffect, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation';
 import { useGame } from '../contexts/GameContext';
@@ -137,16 +136,16 @@ function CombatScreenContent({ navigation }: CombatScreenProps) {
   // Show loading if no combat state
   if (!player || !enemy) {
     return (
-      <SafeAreaView style={styles.container} edges={SAFE_AREA_EDGES}>
+      <View style={styles.container}>
         <View style={styles.loadingContainer}>
           <Text style={styles.loadingText}>Preparing combat...</Text>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={SAFE_AREA_EDGES}>
+    <View style={styles.container}>
       <View style={styles.content}>
         {/* Enemy Panel (LEFT) - FR-048 */}
         <View style={styles.sidePanel}>
@@ -230,7 +229,7 @@ function CombatScreenContent({ navigation }: CombatScreenProps) {
           onComplete={handleCombatComplete}
         />
       )}
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -270,8 +269,8 @@ const styles = StyleSheet.create({
   },
   goldContainer: {
     position: 'absolute',
-    top: 8,
-    right: 8,
+    top: 16,
+    right: 16,
     backgroundColor: 'rgba(0, 0, 0, 0.6)',
     paddingHorizontal: 12,
     paddingVertical: 6,

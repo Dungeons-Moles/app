@@ -10,7 +10,6 @@ import {
   TextInput,
   Platform,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useProfile } from '../contexts/ProfileContext';
 import { useWallet, type SupportedWallet } from '../contexts/WalletContext';
@@ -92,112 +91,108 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
         style={styles.backgroundImage}
         resizeMode="stretch"
       />
-      <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
-        <View style={styles.content}>
-          {/* Left Panel - Branding */}
-          <View style={styles.leftPanel}>
-            <View style={styles.brandingContainer}>
-              <Image
-                source={require('../../assets/logo.png')}
-                style={styles.logo}
-                resizeMode="contain"
-              />
-            </View>
-          </View>
-
-          {/* Right Panel - Actions */}
-          <View style={styles.rightPanel}>
-            <ImageBackground
-              source={require('../../assets/account/wooden-panel.png')}
-              style={styles.panel}
+      <View style={styles.content}>
+        {/* Left Panel - Branding */}
+        <View style={styles.leftPanel}>
+          <View style={styles.brandingContainer}>
+            <Image
+              source={require('../../assets/logo.png')}
+              style={styles.logo}
               resizeMode="contain"
-            >
-              <View style={styles.panelContent}>
-                {!isConnected ? (
-                  <>
-                    <Text style={styles.profileLabel}>SUPPORTED WALLETS</Text>
-                    <View style={styles.walletOptions}>
-                      {(
-                        [
-                          { id: 'Jupiter' as const, Icon: JupiterIcon },
-                          { id: 'Phantom' as const, Icon: PhantomIcon },
-                        ] as const
-                      ).map(({ id, Icon }) => (
-                        <TouchableOpacity
-                          key={id}
-                          style={[
-                            styles.walletOption,
-                            id === selectedWallet && styles.walletOptionSelected,
-                          ]}
-                          onPress={() => setSelectedWallet(id)}
-                          activeOpacity={0.7}
-                          disabled={showLoading}
-                        >
-                          <Icon
-                            color={
-                              id === selectedWallet
-                                ? styles.walletIconActive.color
-                                : styles.walletIconInactive.color
-                            }
-                            size={36}
-                          />
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                    <Text style={styles.walletHint}>Select a wallet to sign in</Text>
-                  </>
-                ) : (
-                  <>
-                    <Text style={styles.profileLabel}>CREATE PROFILE</Text>
-                    <TextInput
-                      style={styles.profileInput}
-                      placeholder="Adventurer name"
-                      placeholderTextColor="#999999"
-                      value={profileName}
-                      onChangeText={setProfileName}
-                      maxLength={32}
-                      autoCapitalize="words"
-                      editable={!showLoading}
-                    />
-                  </>
-                )}
-              </View>
-
-              <View style={styles.buttonWrapper}>
-                <TouchableOpacity
-                  style={[styles.primaryButton, isConnected ? styles.createProfileButton : null]}
-                  onPress={!isConnected ? () => handleSignIn() : handleCreateProfile}
-                  activeOpacity={0.7}
-                  disabled={showLoading}
-                >
-                  <ImageBackground
-                    source={require('../../assets/account/button.png')}
-                    style={styles.buttonImage}
-                    resizeMode="contain"
-                  >
-                    {showLoading ? (
-                      <View style={styles.loadingRow}>
-                        <ActivityIndicator size="small" color="#ffffff" />
-                        <Text style={[styles.primaryButtonText, { marginLeft: 8 }]}>
-                          Loading...
-                        </Text>
-                      </View>
-                    ) : (
-                      <Text style={styles.primaryButtonText}>
-                        {!isConnected ? 'Sign In' : 'Create Profile'}
-                      </Text>
-                    )}
-                  </ImageBackground>
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.errorSlot}>
-                {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
-              </View>
-            </ImageBackground>
+            />
           </View>
         </View>
-      </SafeAreaView>
+
+        {/* Right Panel - Actions */}
+        <View style={styles.rightPanel}>
+          <ImageBackground
+            source={require('../../assets/account/wooden-panel.png')}
+            style={styles.panel}
+            resizeMode="contain"
+          >
+            <View style={styles.panelContent}>
+              {!isConnected ? (
+                <>
+                  <Text style={styles.profileLabel}>SUPPORTED WALLETS</Text>
+                  <View style={styles.walletOptions}>
+                    {(
+                      [
+                        { id: 'Jupiter' as const, Icon: JupiterIcon },
+                        { id: 'Phantom' as const, Icon: PhantomIcon },
+                      ] as const
+                    ).map(({ id, Icon }) => (
+                      <TouchableOpacity
+                        key={id}
+                        style={[
+                          styles.walletOption,
+                          id === selectedWallet && styles.walletOptionSelected,
+                        ]}
+                        onPress={() => setSelectedWallet(id)}
+                        activeOpacity={0.7}
+                        disabled={showLoading}
+                      >
+                        <Icon
+                          color={
+                            id === selectedWallet
+                              ? styles.walletIconActive.color
+                              : styles.walletIconInactive.color
+                          }
+                          size={36}
+                        />
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  <Text style={styles.walletHint}>Select a wallet to sign in</Text>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.profileLabel}>CREATE PROFILE</Text>
+                  <TextInput
+                    style={styles.profileInput}
+                    placeholder="Adventurer name"
+                    placeholderTextColor="#999999"
+                    value={profileName}
+                    onChangeText={setProfileName}
+                    maxLength={32}
+                    autoCapitalize="words"
+                    editable={!showLoading}
+                  />
+                </>
+              )}
+            </View>
+
+            <View style={styles.buttonWrapper}>
+              <TouchableOpacity
+                style={[styles.primaryButton, isConnected ? styles.createProfileButton : null]}
+                onPress={!isConnected ? () => handleSignIn() : handleCreateProfile}
+                activeOpacity={0.7}
+                disabled={showLoading}
+              >
+                <ImageBackground
+                  source={require('../../assets/account/button.png')}
+                  style={styles.buttonImage}
+                  resizeMode="contain"
+                >
+                  {showLoading ? (
+                    <View style={styles.loadingRow}>
+                      <ActivityIndicator size="small" color="#ffffff" />
+                      <Text style={[styles.primaryButtonText, { marginLeft: 8 }]}>Loading...</Text>
+                    </View>
+                  ) : (
+                    <Text style={styles.primaryButtonText}>
+                      {!isConnected ? 'Sign In' : 'Create Profile'}
+                    </Text>
+                  )}
+                </ImageBackground>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.errorSlot}>
+              {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
+            </View>
+          </ImageBackground>
+        </View>
+      </View>
     </View>
   );
 }
