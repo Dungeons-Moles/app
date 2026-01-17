@@ -34,8 +34,17 @@ const FOG_COLOR_HIDDEN = '#000000';
 const FOG_COLOR_REVEALED = 'rgba(0, 0, 0, 0.35)';
 
 // Tile images
-const floorImageSource = require('../../../assets/map/floor.png');
-const rockImageSource = require('../../../assets/map/rock.png');
+const floorV1Source = require('../../../assets/map/floor-v1.png');
+const floorV2Source = require('../../../assets/map/floor-v2.png');
+const floorV3Source = require('../../../assets/map/floor-v3.png');
+const floorV4Source = require('../../../assets/map/floor-v4.png');
+const floorV5Source = require('../../../assets/map/floor-v5.png');
+const floorImages = [floorV1Source, floorV2Source, floorV3Source, floorV4Source, floorV5Source];
+const rockV1Source = require('../../../assets/map/rock-v1.png');
+const rockV2Source = require('../../../assets/map/rock-v2.png');
+const rockV3Source = require('../../../assets/map/rock-v3.png');
+const rockV4Source = require('../../../assets/map/rock-v4.png');
+const rockImages = [rockV1Source, rockV2Source, rockV3Source, rockV4Source];
 const defaultMoleImageSource = require('../../../assets/characters/default-mole.png');
 const unknownEnemyImageSource = require('../../../assets/map/question-mark.png');
 
@@ -131,7 +140,14 @@ const TileView = memo(function TileView({
   const screenX = x * TILE_SIZE * zoom + offsetX;
   const screenY = y * TILE_SIZE * zoom + offsetY;
   const size = TILE_SIZE * zoom;
-  const tileImage = type === TileType.Floor ? floorImageSource : rockImageSource;
+
+  const variation = Math.abs(x * 7 + y * 13);
+  let tileImage;
+  if (type === TileType.Floor) {
+    tileImage = floorImages[variation % floorImages.length];
+  } else {
+    tileImage = rockImages[variation % rockImages.length];
+  }
 
   if (fog === FogState.Hidden) {
     return (
@@ -199,6 +215,7 @@ const EntityView = memo(function EntityView({
   zoom,
   flipX = false,
   grayscale = false,
+  yOffset = 0,
 }: {
   x: number;
   y: number;
@@ -209,11 +226,12 @@ const EntityView = memo(function EntityView({
   zoom: number;
   flipX?: boolean;
   grayscale?: boolean;
+  yOffset?: number;
 }) {
   const size = ENTITY_SIZE * zoom;
   const offset = ENTITY_OFFSET * zoom;
   const screenX = x * TILE_SIZE * zoom + offsetX - offset;
-  const screenY = y * TILE_SIZE * zoom + offsetY - offset;
+  const screenY = y * TILE_SIZE * zoom + offsetY - offset - yOffset * zoom;
 
   const transform = [];
   if (flipX) transform.push({ scaleX: -1 });
@@ -268,7 +286,12 @@ export const MapRenderer = memo(function MapRenderer({
   const { width, height } = dimensions;
 
   const overview = overviewMode ?? DEFAULT_OVERVIEW_STATE;
-  const zoom = overview.active ? overview.zoom : 1.5;
+
+  // T142: Calculate dynamic zoom to show 3 tiles above/below (7 tiles total height)
+  const targetVerticalTiles = 7;
+  const dynamicZoom = height / (targetVerticalTiles * TILE_SIZE);
+  const zoom = overview.active ? overview.zoom : dynamicZoom;
+
   const cameraCenter = useMemo(
     () => ({
       x: playerPosition.x + (overview.active ? overview.offset.x : 0),
@@ -532,6 +555,7 @@ export const MapRenderer = memo(function MapRenderer({
             offsetY={cameraOffset.y}
             zoom={zoom}
             flipX={playerFacing === 'left'}
+            yOffset={4}
           />
         </View>
       </View>

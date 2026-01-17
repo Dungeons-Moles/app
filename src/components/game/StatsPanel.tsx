@@ -7,6 +7,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import type { PlayerStats } from '../../game/engine/types';
+import { Typography } from '../../theme/typography';
 
 interface StatsPanelProps {
   stats: PlayerStats;
@@ -37,37 +38,11 @@ export function StatsPanel({ stats }: StatsPanelProps) {
     <View style={styles.container}>
       <Text style={styles.title}>Stats</Text>
       <View style={styles.statsContainer}>
-        <StatRow
-          emoji="❤️"
-          label="HP"
-          value={stats.hp}
-          maxValue={stats.maxHp}
-          color="#FF6B6B"
-        />
-        <StatRow
-          emoji="⚔️"
-          label="ATK"
-          value={stats.atk}
-          color="#FFB347"
-        />
-        <StatRow
-          emoji="🛡️"
-          label="ARM"
-          value={stats.arm}
-          color="#87CEEB"
-        />
-        <StatRow
-          emoji="⚡"
-          label="SPD"
-          value={stats.spd}
-          color="#98FB98"
-        />
-        <StatRow
-          emoji="⛏️"
-          label="DIG"
-          value={stats.dig}
-          color="#DEB887"
-        />
+        <StatRow emoji="❤️" label="HP" value={stats.hp} maxValue={stats.maxHp} color="#FF6B6B" />
+        <StatRow emoji="⚔️" label="ATK" value={stats.atk} color="#FFB347" />
+        <StatRow emoji="🛡️" label="ARM" value={stats.arm} color="#87CEEB" />
+        <StatRow emoji="⚡" label="SPD" value={stats.spd} color="#98FB98" />
+        <StatRow emoji="⛏️" label="DIG" value={stats.dig} color="#DEB887" />
       </View>
     </View>
   );
@@ -81,7 +56,8 @@ const styles = StyleSheet.create({
   },
   title: {
     color: '#FFFFFF',
-    fontSize: 9,
+    fontFamily: Typography.header,
+    fontSize: 12,
     fontWeight: 'bold',
     textAlign: 'center',
     marginBottom: 3,
@@ -102,11 +78,12 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   label: {
+    fontFamily: Typography.stat,
     fontSize: 9,
-    fontWeight: '600',
     width: 30,
   },
   value: {
+    fontFamily: Typography.number,
     fontSize: 10,
     fontWeight: 'bold',
     flex: 1,

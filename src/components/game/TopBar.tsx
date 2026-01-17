@@ -11,6 +11,7 @@ import { TimePhase } from '../../game/engine/types';
 import { getBoss, type BossDefinition } from '../../data/bosses';
 import { getWeekProgress } from '../../game/time/progression';
 import { getEntityImageSource } from './entityImages';
+import { Typography } from '../../theme/typography';
 
 // ============================================================================
 // Component Props
@@ -354,8 +355,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   weekText: {
-    fontSize: 10,
-    fontWeight: '600',
+    fontFamily: Typography.header,
+    fontSize: 12,
     color: '#9ca3af',
     marginBottom: 2,
   },
@@ -443,12 +444,13 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   bossName: {
-    fontSize: 11,
-    fontWeight: '600',
+    fontFamily: Typography.header,
+    fontSize: 12,
     color: '#e5e5e5',
     maxWidth: 80,
   },
   bossSubtext: {
+    fontFamily: Typography.body,
     fontSize: 9,
     color: '#6b7280',
   },
@@ -479,8 +481,8 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   tooltipName: {
-    fontSize: 18,
-    fontWeight: '700',
+    fontFamily: Typography.header,
+    fontSize: 20,
     color: '#ffffff',
     flex: 1,
   },
@@ -500,10 +502,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#0f0f14',
   },
   statValue: {
+    fontFamily: Typography.number,
     fontSize: 16,
     fontWeight: '700',
   },
   statLabel: {
+    fontFamily: Typography.stat,
     fontSize: 9,
     color: '#9ca3af',
     marginTop: 2,
@@ -517,12 +521,13 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   traitName: {
-    fontSize: 12,
-    fontWeight: '600',
+    fontFamily: Typography.header,
+    fontSize: 14,
     color: '#f59e0b',
     marginBottom: 4,
   },
   traitDescription: {
+    fontFamily: Typography.body,
     fontSize: 11,
     color: '#d1d5db',
     lineHeight: 16,

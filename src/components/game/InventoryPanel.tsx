@@ -8,6 +8,7 @@ import React, { useCallback, useMemo, useRef } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import type { Tool, Gear, InventorySlot, ItemsetId, ToolOil } from '../../game/engine/types';
 import { getItemsetDefinition } from '../../game/entities/itemsets';
+import { Typography } from '../../theme/typography';
 
 interface InventoryPanelProps {
   equippedTool: Tool | null;
@@ -57,14 +58,8 @@ function ItemSlot({
     }
   }, [item, slotIndex, onLongPress]);
 
-  const rarityColor = useMemo(
-    () => (item ? getRarityColor(item) : DEFAULT_RARITY_COLOR),
-    [item]
-  );
-  const slotStyle = useMemo(
-    () => [styles.itemSlot, { borderColor: rarityColor }],
-    [rarityColor]
-  );
+  const rarityColor = useMemo(() => (item ? getRarityColor(item) : DEFAULT_RARITY_COLOR), [item]);
+  const slotStyle = useMemo(() => [styles.itemSlot, { borderColor: rarityColor }], [rarityColor]);
   const indicatorStyle = useMemo(
     () => [styles.rarityIndicator, { backgroundColor: rarityColor }],
     [rarityColor]
@@ -302,7 +297,8 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     color: '#FFFFFF',
-    fontSize: 9,
+    fontFamily: Typography.header,
+    fontSize: 10,
     fontWeight: 'bold',
     marginBottom: 4,
     textTransform: 'uppercase',
@@ -348,6 +344,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   emptyText: {
+    fontFamily: Typography.number,
     color: '#4A4A4A',
     fontSize: 12,
   },

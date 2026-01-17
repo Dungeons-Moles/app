@@ -7,6 +7,7 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, StyleSheet, View, Text } from 'react-native';
 import type { DamageNumber } from '../../contexts/CombatContext';
+import { Typography } from '../../theme/typography';
 
 interface DamageNumbersProps {
   damageNumbers: DamageNumber[];
@@ -93,7 +94,7 @@ function FloatingNumber({ number, position }: FloatingNumberProps) {
   };
 
   // Add some random horizontal offset for variety
-  const randomOffset = ((number.id.charCodeAt(0) % 20) - 10);
+  const randomOffset = (number.id.charCodeAt(0) % 20) - 10;
 
   return (
     <Animated.View
@@ -107,9 +108,7 @@ function FloatingNumber({ number, position }: FloatingNumberProps) {
         },
       ]}
     >
-      <Text style={[styles.numberText, { color: getColor() }]}>
-        {getText()}
-      </Text>
+      <Text style={[styles.numberText, { color: getColor() }]}>{getText()}</Text>
     </Animated.View>
   );
 }
@@ -125,7 +124,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   numberText: {
-    fontSize: 20,
+    fontFamily: Typography.number,
+    fontSize: 24,
     fontWeight: 'bold',
     textShadowColor: 'rgba(0, 0, 0, 0.8)',
     textShadowOffset: { width: 1, height: 1 },

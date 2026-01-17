@@ -1,0 +1,529 @@
+{
+  "address": "BYdGuEGf8NqtLnHpSRuZFrPGEgvdxMfGfTt71QVBxYHa",
+  "metadata": {
+    "name": "map_generator",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Map Generator Program for deterministic procedural dungeon generation"
+  },
+  "instructions": [
+    {
+      "name": "batch_update_map_config",
+      "docs": [
+        "Batch updates multiple seed mappings (admin only)."
+      ],
+      "discriminator": [
+        237,
+        50,
+        79,
+        73,
+        13,
+        64,
+        249,
+        35
+      ],
+      "accounts": [
+        {
+          "name": "map_config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  112,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "map_config"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "updates",
+          "type": {
+            "vec": {
+              "defined": {
+                "name": "SeedUpdate"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "get_map_seed",
+      "docs": [
+        "Returns the seed for a given level.",
+        "This is a view function - state is not modified."
+      ],
+      "discriminator": [
+        62,
+        220,
+        207,
+        99,
+        99,
+        196,
+        117,
+        214
+      ],
+      "accounts": [
+        {
+          "name": "map_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  112,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "level",
+          "type": "u8"
+        }
+      ],
+      "returns": "u64"
+    },
+    {
+      "name": "initialize_map_config",
+      "docs": [
+        "Initializes the map configuration with default seed mappings.",
+        "Each level i gets seed value i as default."
+      ],
+      "discriminator": [
+        158,
+        211,
+        210,
+        224,
+        140,
+        216,
+        211,
+        35
+      ],
+      "accounts": [
+        {
+          "name": "map_config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  112,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "transfer_admin",
+      "docs": [
+        "Transfers admin authority to a new address."
+      ],
+      "discriminator": [
+        42,
+        242,
+        66,
+        106,
+        228,
+        10,
+        111,
+        156
+      ],
+      "accounts": [
+        {
+          "name": "map_config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  112,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "map_config"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "new_admin",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "update_map_config",
+      "docs": [
+        "Updates the seed for a single level (admin only)."
+      ],
+      "discriminator": [
+        155,
+        134,
+        158,
+        245,
+        122,
+        214,
+        185,
+        116
+      ],
+      "accounts": [
+        {
+          "name": "map_config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  112,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "map_config"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "level",
+          "type": "u8"
+        },
+        {
+          "name": "seed",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "verify_map_hash",
+      "docs": [
+        "Verifies that a submitted map hash matches the expected hash.",
+        "Used to validate off-chain map generation."
+      ],
+      "discriminator": [
+        8,
+        182,
+        82,
+        250,
+        35,
+        144,
+        217,
+        47
+      ],
+      "accounts": [
+        {
+          "name": "map_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  112,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "level",
+          "type": "u8"
+        },
+        {
+          "name": "submitted_hash",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ],
+      "returns": "bool"
+    }
+  ],
+  "accounts": [
+    {
+      "name": "MapConfig",
+      "discriminator": [
+        186,
+        3,
+        214,
+        68,
+        161,
+        115,
+        92,
+        173
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "AdminTransferred",
+      "discriminator": [
+        255,
+        147,
+        182,
+        5,
+        199,
+        217,
+        38,
+        179
+      ]
+    },
+    {
+      "name": "MapConfigUpdated",
+      "discriminator": [
+        75,
+        210,
+        48,
+        93,
+        233,
+        166,
+        60,
+        111
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "InvalidLevel",
+      "msg": "Campaign level must be 0-80"
+    },
+    {
+      "code": 6001,
+      "name": "Unauthorized",
+      "msg": "Signer is not the config admin"
+    },
+    {
+      "code": 6002,
+      "name": "ConfigAlreadyInitialized",
+      "msg": "Map config is already initialized"
+    },
+    {
+      "code": 6003,
+      "name": "InvalidMapHash",
+      "msg": "Map hash does not match expected value"
+    },
+    {
+      "code": 6004,
+      "name": "TooManyUpdates",
+      "msg": "Batch update exceeds maximum allowed"
+    }
+  ],
+  "types": [
+    {
+      "name": "AdminTransferred",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "old_admin",
+            "type": "pubkey"
+          },
+          {
+            "name": "new_admin",
+            "type": "pubkey"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MapConfig",
+      "docs": [
+        "Configuration for map generation, storing seed values for each level."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "admin",
+            "docs": [
+              "Authority that can update seed mappings"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "seeds",
+            "docs": [
+              "Seed values for campaign levels 0-80"
+            ],
+            "type": {
+              "array": [
+                "u64",
+                81
+              ]
+            }
+          },
+          {
+            "name": "version",
+            "docs": [
+              "Config version for migrations"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump seed"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MapConfigUpdated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "admin",
+            "type": "pubkey"
+          },
+          {
+            "name": "level",
+            "type": "u8"
+          },
+          {
+            "name": "old_seed",
+            "type": "u64"
+          },
+          {
+            "name": "new_seed",
+            "type": "u64"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "SeedUpdate",
+      "docs": [
+        "Represents a single seed update for batch operations"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "level",
+            "docs": [
+              "Level to update (0-80)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "seed",
+            "docs": [
+              "New seed value"
+            ],
+            "type": "u64"
+          }
+        ]
+      }
+    }
+  ]
+}

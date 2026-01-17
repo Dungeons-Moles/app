@@ -1,96 +1,128 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
-import type { CombatSpeed, PlayerProfile } from '../types';
-import { saveProfile, loadProfile, deleteProfile, generateProfileId } from '../utils/storage';
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useCallback,
+  useRef,
+  ReactNode,
+} from 'react';
+import { useWallet } from '@/contexts/WalletContext';
+import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
+import { usePlayerProfile } from '@/hooks/usePlayerProfile';
+import { detectConnectivity } from '@/services/solana/connectivity';
+import { getUserErrorMessage } from '@/services/solana/errors';
+import type { CombatSpeed } from '@/types';
+import type { TransactionResult } from '@/types/solana';
 
 interface ProfileContextType {
-  profile: PlayerProfile | null;
+  profile: ReturnType<typeof usePlayerProfile>['profile'];
   isLoading: boolean;
-  createProfile: (walletAddress: string) => Promise<PlayerProfile>;
+  error: string | null;
+  exists: boolean;
+  isCached: boolean;
+  mode: 'online' | 'cached' | 'guest';
+  refresh: () => Promise<void>;
+  createProfile: (name: string) => Promise<TransactionResult>;
+  clearProfile: () => Promise<void>;
   updateDefaultCombatSpeed: (speed: CombatSpeed) => Promise<void>;
   updateLastPlayed: () => Promise<void>;
-  clearProfile: () => Promise<void>;
 }
 
 const ProfileContext = createContext<ProfileContextType | undefined>(undefined);
 
 export function ProfileProvider({ children }: { children: ReactNode }) {
-  const [profile, setProfile] = useState<PlayerProfile | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const { wallet } = useWallet();
+  const { connection } = useSolanaConnection();
+  const profileApi = usePlayerProfile();
+  const [mode, setMode] = React.useState<'online' | 'cached' | 'guest'>('guest');
+  const [error, setError] = React.useState<string | null>(null);
+  const hasFetchedRef = useRef(false);
+  const fetchProfileRef = useRef(profileApi.fetchProfile);
 
+  // Keep ref updated with latest fetchProfile
   useEffect(() => {
-    loadProfile()
-      .then((loaded) => {
-        if (!loaded) {
-          setProfile(null);
-          return;
-        }
+    fetchProfileRef.current = profileApi.fetchProfile;
+  }, [profileApi.fetchProfile]);
 
-        const normalized: PlayerProfile = {
-          ...loaded,
-          defaultCombatSpeed: loaded.defaultCombatSpeed ?? 'normal',
-        };
-
-        setProfile(normalized);
-
-        if (normalized.defaultCombatSpeed !== loaded.defaultCombatSpeed) {
-          void saveProfile(normalized);
-        }
-      })
-      .finally(() => setIsLoading(false));
+  const refresh = useCallback(async () => {
+    await fetchProfileRef.current();
   }, []);
 
-  const createProfile = useCallback(async (walletAddress: string): Promise<PlayerProfile> => {
-    const newProfile: PlayerProfile = {
-      id: generateProfileId(),
-      walletAddress,
-      displayName: `Mole_${walletAddress.slice(-4)}`,
-      createdAt: Date.now(),
-      lastPlayedAt: Date.now(),
-      defaultCombatSpeed: 'normal',
-    };
+  // Only run once per wallet address change
+  useEffect(() => {
+    let isMounted = true;
 
-    await saveProfile(newProfile);
-    setProfile(newProfile);
-    return newProfile;
-  }, []);
+    async function load() {
+      if (!wallet.address) {
+        if (isMounted) {
+          setMode('guest');
+          hasFetchedRef.current = false;
+        }
+        return;
+      }
 
-  const updateDefaultCombatSpeed = useCallback(
-    async (speed: CombatSpeed) => {
-      if (!profile) return;
-      const updated: PlayerProfile = { ...profile, defaultCombatSpeed: speed };
-      await saveProfile(updated);
-      setProfile(updated);
-    },
-    [profile]
-  );
+      // Prevent duplicate fetches for the same wallet
+      if (hasFetchedRef.current) {
+        return;
+      }
+      hasFetchedRef.current = true;
 
-  const updateLastPlayed = useCallback(async () => {
-    if (profile) {
-      const updated = { ...profile, lastPlayedAt: Date.now() };
-      await saveProfile(updated);
-      setProfile(updated);
+      try {
+        const connectivity = await detectConnectivity(connection, wallet.address);
+        if (isMounted) {
+          setMode(connectivity.mode);
+        }
+
+        if (connectivity.mode !== 'guest') {
+          await fetchProfileRef.current();
+        }
+      } catch (loadError) {
+        if (isMounted) {
+          setError(getUserErrorMessage(loadError));
+        }
+      }
     }
-  }, [profile]);
+
+    void load();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [connection, wallet.address]);
 
   const clearProfile = useCallback(async () => {
-    await deleteProfile();
-    setProfile(null);
+    setError(null);
+    await profileApi.resetProfile();
+    hasFetchedRef.current = false;
+  }, [profileApi]);
+
+  const updateDefaultCombatSpeed = useCallback(async (_speed: CombatSpeed) => {
+    return;
   }, []);
 
-  return (
-    <ProfileContext.Provider
-      value={{
-        profile,
-        isLoading,
-        createProfile,
-        updateDefaultCombatSpeed,
-        updateLastPlayed,
-        clearProfile,
-      }}
-    >
-      {children}
-    </ProfileContext.Provider>
+  const updateLastPlayed = useCallback(async () => {
+    return;
+  }, []);
+
+  const value = useMemo(
+    () => ({
+      profile: profileApi.profile,
+      isLoading: profileApi.isLoading,
+      error: error ?? profileApi.error,
+      exists: profileApi.exists,
+      isCached: profileApi.isCached,
+      mode,
+      refresh,
+      createProfile: profileApi.createProfile,
+      clearProfile,
+      updateDefaultCombatSpeed,
+      updateLastPlayed,
+    }),
+    [clearProfile, error, mode, profileApi, refresh, updateDefaultCombatSpeed, updateLastPlayed]
   );
+
+  return <ProfileContext.Provider value={value}>{children}</ProfileContext.Provider>;
 }
 
 export function useProfile() {

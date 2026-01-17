@@ -41,8 +41,15 @@ const GRAYSCALE_MATRIX = [
 ];
 
 // Tile images
-const floorImageSource = require('../../../assets/map/floor.png');
-const rockImageSource = require('../../../assets/map/rock.png');
+const floorV1Source = require('../../../assets/map/floor-v1.png');
+const floorV2Source = require('../../../assets/map/floor-v2.png');
+const floorV3Source = require('../../../assets/map/floor-v3.png');
+const floorV4Source = require('../../../assets/map/floor-v4.png');
+const floorV5Source = require('../../../assets/map/floor-v5.png');
+const rockV1Source = require('../../../assets/map/rock-v1.png');
+const rockV2Source = require('../../../assets/map/rock-v2.png');
+const rockV3Source = require('../../../assets/map/rock-v3.png');
+const rockV4Source = require('../../../assets/map/rock-v4.png');
 
 const SINGLE_USE_POIS = ['L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L12', 'L13'];
 
@@ -218,6 +225,7 @@ interface SkiaEntityProps {
   zoom: number;
   flipX?: boolean;
   grayscale?: boolean;
+  yOffset?: number; // Added vertical offset
 }
 
 const SkiaEntity = memo(function SkiaEntity({
@@ -230,11 +238,12 @@ const SkiaEntity = memo(function SkiaEntity({
   zoom,
   flipX = false,
   grayscale = false,
+  yOffset = 0,
 }: SkiaEntityProps) {
   const size = ENTITY_SIZE * zoom;
   const offset = ENTITY_OFFSET * zoom;
   const drawX = x * TILE_SIZE * zoom + offsetX - offset;
-  const drawY = y * TILE_SIZE * zoom + offsetY - offset;
+  const drawY = y * TILE_SIZE * zoom + offsetY - offset - yOffset * zoom;
 
   if (image) {
     const ImageComponent = (
@@ -282,8 +291,25 @@ export const MapRenderer = memo(function MapRenderer({
   onZoomOverview,
 }: MapRendererProps) {
   // Load tile images
-  const floorImage = useImage(floorImageSource);
-  const rockImage = useImage(rockImageSource);
+  const floorV1 = useImage(floorV1Source);
+  const floorV2 = useImage(floorV2Source);
+  const floorV3 = useImage(floorV3Source);
+  const floorV4 = useImage(floorV4Source);
+  const floorV5 = useImage(floorV5Source);
+  const floorImages = useMemo(
+    () => [floorV1, floorV2, floorV3, floorV4, floorV5],
+    [floorV1, floorV2, floorV3, floorV4, floorV5]
+  );
+
+  const rockV1 = useImage(rockV1Source);
+  const rockV2 = useImage(rockV2Source);
+  const rockV3 = useImage(rockV3Source);
+  const rockV4 = useImage(rockV4Source);
+  const rockImages = useMemo(
+    () => [rockV1, rockV2, rockV3, rockV4],
+    [rockV1, rockV2, rockV3, rockV4]
+  );
+
   const entityImages = useSkiaEntityImages();
 
   const [dimensions, setDimensions] = React.useState({
@@ -299,7 +325,12 @@ export const MapRenderer = memo(function MapRenderer({
   const { width, height } = dimensions;
 
   const overview = overviewMode ?? DEFAULT_OVERVIEW_STATE;
-  const zoom = overview.active ? overview.zoom : 1.5;
+
+  // T142: Calculate dynamic zoom to show 3 tiles above/below (7 tiles total height)
+  const targetVerticalTiles = 7;
+  const dynamicZoom = height / (targetVerticalTiles * TILE_SIZE);
+  const zoom = overview.active ? overview.zoom : dynamicZoom;
+
   const cameraCenter = useMemo(
     () => ({
       x: playerPosition.x + (overview.active ? overview.offset.x : 0),
@@ -482,21 +513,28 @@ export const MapRenderer = memo(function MapRenderer({
     <View style={styles.container} onLayout={handleLayout} {...panResponder.panHandlers}>
       <Canvas style={styles.canvas}>
         {/* 1. Tiles */}
-        {visibleTiles.map((tile) => (
-          <TileRect
-            key={`tile-${tile.x}-${tile.y}`}
-            x={tile.x}
-            y={tile.y}
-            type={tile.type}
-            fog={tile.fog}
-            showRevealOverlay={showRevealOverlay}
-            offsetX={cameraOffset.x}
-            offsetY={cameraOffset.y}
-            zoom={zoom}
-            floorImage={floorImage}
-            rockImage={rockImage}
-          />
-        ))}
+        {visibleTiles.map((tile) => {
+          // Select a stable random variation based on coordinates
+          const variation = Math.abs(tile.x * 7 + tile.y * 13);
+          const floorVariation = variation % floorImages.length;
+          const rockVariation = variation % rockImages.length;
+
+          return (
+            <TileRect
+              key={`tile-${tile.x}-${tile.y}`}
+              x={tile.x}
+              y={tile.y}
+              type={tile.type}
+              fog={tile.fog}
+              showRevealOverlay={showRevealOverlay}
+              offsetX={cameraOffset.x}
+              offsetY={cameraOffset.y}
+              zoom={zoom}
+              floorImage={floorImages[floorVariation]}
+              rockImage={rockImages[rockVariation]}
+            />
+          );
+        })}
 
         {/* 3. POIs */}
         {visiblePOIs.map((poi) => {
@@ -549,6 +587,7 @@ export const MapRenderer = memo(function MapRenderer({
           offsetY={cameraOffset.y}
           zoom={zoom}
           flipX={playerFacing === 'left'}
+          yOffset={4}
         />
       </Canvas>
 

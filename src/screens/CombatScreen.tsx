@@ -7,7 +7,6 @@
 
 import React, { useEffect, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation';
 import { useGame } from '../contexts/GameContext';
@@ -24,6 +23,7 @@ import {
 import { DebugOverlay } from '../components/game';
 import { ENEMY_TRAITS } from '../game/combat/traits';
 import { getEntityImageSource } from '../components/game/entityImages';
+import { Typography } from '../theme/typography';
 
 type CombatScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Combat'>;
@@ -36,8 +36,8 @@ const SAFE_AREA_EDGES = ['left', 'right'] as const;
  * Displays the combat arena, player/enemy panels, and combat log in landscape orientation
  */
 export function CombatScreen({ navigation }: CombatScreenProps) {
-  const { profile, updateDefaultCombatSpeed } = useProfile();
-  const initialSpeed = profile?.defaultCombatSpeed ?? 'normal';
+  const { updateDefaultCombatSpeed } = useProfile();
+  const initialSpeed = 'normal';
 
   return (
     <CombatProvider initialSpeed={initialSpeed} onSpeedChange={updateDefaultCombatSpeed}>
@@ -136,16 +136,16 @@ function CombatScreenContent({ navigation }: CombatScreenProps) {
   // Show loading if no combat state
   if (!player || !enemy) {
     return (
-      <SafeAreaView style={styles.container} edges={SAFE_AREA_EDGES}>
+      <View style={styles.container}>
         <View style={styles.loadingContainer}>
           <Text style={styles.loadingText}>Preparing combat...</Text>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={SAFE_AREA_EDGES}>
+    <View style={styles.container}>
       <View style={styles.content}>
         {/* Enemy Panel (LEFT) - FR-048 */}
         <View style={styles.sidePanel}>
@@ -229,7 +229,7 @@ function CombatScreenContent({ navigation }: CombatScreenProps) {
           onComplete={handleCombatComplete}
         />
       )}
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -248,7 +248,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   loadingText: {
-    fontSize: 16,
+    fontFamily: Typography.header,
+    fontSize: 20,
     color: '#888888',
   },
   sidePanel: {
@@ -268,8 +269,8 @@ const styles = StyleSheet.create({
   },
   goldContainer: {
     position: 'absolute',
-    top: 8,
-    right: 8,
+    top: 16,
+    right: 16,
     backgroundColor: 'rgba(0, 0, 0, 0.6)',
     paddingHorizontal: 12,
     paddingVertical: 6,
@@ -279,9 +280,9 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   goldText: {
-    fontSize: 14,
+    fontFamily: Typography.number,
+    fontSize: 16,
     color: '#FFD700',
     fontWeight: 'bold',
-    fontFamily: 'monospace',
   },
 });

@@ -7,6 +7,7 @@
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, Image } from 'react-native';
 import type { StatusEffects } from '../../game/engine/types';
+import { Typography } from '../../theme/typography';
 
 export interface EnemyPanelProps {
   name: string;
@@ -133,8 +134,8 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   name: {
-    fontSize: 14,
-    fontWeight: 'bold',
+    fontFamily: Typography.header,
+    fontSize: 18,
     color: '#ffffff',
     textAlign: 'center',
   },
@@ -152,7 +153,8 @@ const styles = StyleSheet.create({
     borderRadius: 7,
   },
   hpText: {
-    fontSize: 11,
+    fontFamily: Typography.number,
+    fontSize: 12,
     color: '#888888',
     textAlign: 'center',
     marginTop: 4,
@@ -172,7 +174,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#a855f7',
   },
   armorText: {
-    fontSize: 10,
+    fontFamily: Typography.number,
+    fontSize: 11,
     color: '#a855f7',
     textAlign: 'center',
     marginTop: 3,
@@ -194,12 +197,14 @@ const styles = StyleSheet.create({
     width: 18,
   },
   statLabel: {
+    fontFamily: Typography.stat,
     fontSize: 10,
     color: '#888888',
     flex: 1,
   },
   statValue: {
-    fontSize: 12,
+    fontFamily: Typography.number,
+    fontSize: 14,
     color: '#ffffff',
     fontWeight: 'bold',
   },
@@ -212,12 +217,13 @@ const styles = StyleSheet.create({
     borderColor: '#2a2a35',
   },
   traitName: {
-    fontSize: 11,
-    fontWeight: '600',
+    fontFamily: Typography.header,
+    fontSize: 13,
     color: '#f59e0b',
     marginBottom: 4,
   },
   traitDescription: {
+    fontFamily: Typography.body,
     fontSize: 10,
     color: '#9ca3af',
     lineHeight: 14,

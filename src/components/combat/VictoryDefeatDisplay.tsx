@@ -10,6 +10,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { View, Text, StyleSheet, Animated, Easing } from 'react-native';
 import { GAME_CONSTANTS } from '../../game/engine/constants';
+import { Typography } from '../../theme/typography';
 
 export interface VictoryDefeatDisplayProps {
   result: 'VICTORY' | 'DEFEAT';
@@ -148,26 +149,15 @@ export function VictoryDefeatDisplay({
         ]}
       >
         {/* Result emoji */}
-        <Text style={styles.emoji}>
-          {isVictory ? '🏆' : '💀'}
-        </Text>
+        <Text style={styles.emoji}>{isVictory ? '🏆' : '💀'}</Text>
 
         {/* Result text */}
-        <Text
-          style={[
-            styles.resultText,
-            { color: isVictory ? '#22c55e' : '#dc2626' },
-          ]}
-        >
+        <Text style={[styles.resultText, { color: isVictory ? '#22c55e' : '#dc2626' }]}>
           {result}
         </Text>
 
         {/* Subtext */}
-        <Text style={styles.subtext}>
-          {isVictory
-            ? 'Enemy defeated!'
-            : 'You have fallen...'}
-        </Text>
+        <Text style={styles.subtext}>{isVictory ? 'Enemy defeated!' : 'You have fallen...'}</Text>
 
         {/* T075: Gold reward display (only on victory) */}
         {showGoldReward && (
@@ -186,9 +176,7 @@ export function VictoryDefeatDisplay({
         )}
 
         {/* Countdown */}
-        <Text style={styles.countdown}>
-          Returning in {countdown}...
-        </Text>
+        <Text style={styles.countdown}>Returning in {countdown}...</Text>
       </Animated.View>
 
       {/* Background overlay */}
@@ -226,13 +214,14 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   resultText: {
-    fontSize: 36,
-    fontWeight: 'bold',
+    fontFamily: Typography.header,
+    fontSize: 48,
     letterSpacing: 4,
     marginBottom: 8,
   },
   subtext: {
-    fontSize: 16,
+    fontFamily: Typography.body,
+    fontSize: 18,
     color: '#888888',
     marginBottom: 16,
   },
@@ -253,12 +242,14 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   goldAmount: {
-    fontSize: 20,
+    fontFamily: Typography.number,
+    fontSize: 24,
     fontWeight: 'bold',
     color: '#eab308', // Gold/yellow color
     letterSpacing: 1,
   },
   countdown: {
+    fontFamily: Typography.number,
     fontSize: 14,
     color: '#666666',
   },

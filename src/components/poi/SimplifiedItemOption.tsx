@@ -1,12 +1,8 @@
 import React, { useMemo } from 'react';
-import {
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  type GestureResponderEvent,
-} from 'react-native';
+import { Text, TouchableOpacity, StyleSheet, type GestureResponderEvent } from 'react-native';
 import type { ItemRarity } from '@/game/engine/types';
 import { ITEM_RARITY_BG_COLORS, ITEM_RARITY_COLORS } from '@/utils/rarity-colors';
+import { Typography } from '@/theme/typography';
 
 interface SimplifiedItemOptionProps {
   emoji?: string;
@@ -104,23 +100,24 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   itemName: {
-    fontSize: 12,
-    fontWeight: '600',
+    fontFamily: Typography.header,
+    fontSize: 14,
     color: '#374151',
     textAlign: 'center',
     marginBottom: 4,
   },
   statText: {
-    fontSize: 13,
+    fontFamily: Typography.number,
+    fontSize: 14,
     fontWeight: 'bold',
     color: '#111827',
     textAlign: 'center',
-    fontFamily: 'monospace',
   },
   statTextDisabled: {
     color: '#6b7280',
   },
   effectText: {
+    fontFamily: Typography.body,
     fontSize: 11,
     color: '#6b21a8',
     textAlign: 'center',

@@ -5,7 +5,6 @@
 
 import React, { useCallback, useMemo, useEffect, useState, useRef } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation';
 import { useGame, GamePhase } from '../contexts/GameContext';
@@ -28,6 +27,7 @@ import { TimePhase, type GearId, type Tool, type Gear } from '../game/engine/typ
 import { canFastTravel, getDiscoveredWaypoints } from '../game/entities/pois';
 import { canInteractWithPOI } from '../data/pois';
 import { canAffordCostAcrossPhases } from '../game/time/progression';
+import { Typography } from '../theme/typography';
 
 type GameScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Game'>;
@@ -335,16 +335,16 @@ export function GameScreen({ navigation }: GameScreenProps) {
   // If no game state, show loading
   if (!state) {
     return (
-      <SafeAreaView style={styles.container} edges={SAFE_AREA_EDGES}>
+      <View style={styles.container}>
         <View style={styles.loading}>
           <Text style={styles.loadingText}>Loading...</Text>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={SAFE_AREA_EDGES}>
+    <View style={styles.container}>
       <View style={styles.content}>
         {/* Left column: TopBar + Map */}
         <View style={styles.leftColumn}>
@@ -444,7 +444,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
       </View>
 
       <ItemTooltip item={inspectedItem} visible={isTooltipVisible} onClose={handleCloseTooltip} />
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -467,7 +467,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   loadingText: {
-    fontSize: 16,
+    fontFamily: Typography.header,
+    fontSize: 20,
     color: '#666666',
   },
   mapArea: {
@@ -478,23 +479,23 @@ const styles = StyleSheet.create({
   },
   dpadOverlay: {
     position: 'absolute',
-    bottom: 16,
-    left: 16,
+    bottom: 24,
+    left: 24,
   },
   sidePanel: {
-    width: 160,
+    width: 170, // Increased width slightly
     backgroundColor: '#151518',
     borderLeftWidth: 1,
     borderLeftColor: '#2a2a30',
-    paddingVertical: 8,
-    paddingHorizontal: 6,
+    paddingVertical: 12, // Increased padding
+    paddingHorizontal: 10,
     justifyContent: 'flex-start',
-    gap: 6,
+    gap: 8,
   },
   goldOverlay: {
     position: 'absolute',
-    top: 8,
-    right: 8,
+    top: 16,
+    right: 16,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
@@ -507,6 +508,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   goldValue: {
+    fontFamily: Typography.number,
     fontSize: 14,
     fontWeight: 'bold',
     color: '#FFD700',

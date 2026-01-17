@@ -7,6 +7,7 @@
 import React, { useRef, useEffect, useMemo, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, FlatList } from 'react-native';
 import type { CombatLogEntry } from '../../game/engine/types';
+import { Typography } from '../../theme/typography';
 
 export interface CombatLogProps {
   entries: CombatLogEntry[];
@@ -22,7 +23,8 @@ interface FormattedEntry {
 }
 
 function formatEntry(entry: CombatLogEntry, index: number): FormattedEntry {
-  const actorName = entry.actor === 'player' ? 'Player' : entry.actor === 'enemy' ? 'Enemy' : 'System';
+  const actorName =
+    entry.actor === 'player' ? 'Player' : entry.actor === 'enemy' ? 'Enemy' : 'System';
 
   let text = '';
   let color = '#9ca3af';
@@ -147,7 +149,10 @@ export function CombatLog({ entries, maxVisible = 5 }: CombatLogProps) {
 
   // Format entries
   const formattedEntries = useMemo(
-    () => entries.slice(-maxVisible).map((entry, index) => formatEntry(entry, entries.length - maxVisible + index)),
+    () =>
+      entries
+        .slice(-maxVisible)
+        .map((entry, index) => formatEntry(entry, entries.length - maxVisible + index)),
     [entries, maxVisible]
   );
 
@@ -205,14 +210,15 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   title: {
-    fontSize: 10,
-    fontWeight: '600',
+    fontFamily: Typography.header,
+    fontSize: 12,
     color: '#6b7280',
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
   count: {
-    fontSize: 9,
+    fontFamily: Typography.number,
+    fontSize: 10,
     color: '#4b5563',
     backgroundColor: '#1f2937',
     paddingHorizontal: 6,
@@ -231,7 +237,8 @@ const styles = StyleSheet.create({
     marginVertical: 2,
   },
   turnNumber: {
-    fontSize: 9,
+    fontFamily: Typography.number,
+    fontSize: 10,
     color: '#4b5563',
     width: 24,
   },
@@ -241,7 +248,8 @@ const styles = StyleSheet.create({
     marginRight: 4,
   },
   text: {
-    fontSize: 10,
+    fontFamily: Typography.body,
+    fontSize: 11,
     flex: 1,
   },
   emptyContainer: {
@@ -249,7 +257,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   emptyText: {
-    fontSize: 10,
+    fontFamily: Typography.body,
+    fontSize: 11,
     color: '#4b5563',
     fontStyle: 'italic',
   },
