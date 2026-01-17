@@ -67,7 +67,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       sessionManager.resetSession();
       setMapSeed(null);
     }
-  }, [wallet.isConnected, wallet.publicKey]);
+  }, [wallet.isConnected, wallet.publicKey, sessionManager]);
 
   // Fetch map seed when session changes
   useEffect(() => {
@@ -78,7 +78,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     } else {
       setMapSeed(null);
     }
-  }, [sessionManager.session?.campaignLevel]);
+  }, [mapGenerator, sessionManager.session?.campaignLevel]);
 
   const startGame = useCallback(
     async (campaignLevel: number): Promise<TransactionResult> => {
