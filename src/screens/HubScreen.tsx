@@ -14,6 +14,7 @@ import {
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Svg, { Ellipse, Defs, Pattern, Line } from 'react-native-svg';
 import { useProfile } from '../contexts/ProfileContext';
+import { useSession } from '../contexts/SessionContext';
 import { useGame, GamePhase } from '../contexts/GameContext';
 import { shortenAddress } from '../utils/storage';
 import { RootStackParamList } from '../navigation';
@@ -38,6 +39,7 @@ type HubScreenProps = {
 
 export function HubScreen({ navigation }: HubScreenProps) {
   const { profile, clearProfile, updateDefaultCombatSpeed } = useProfile();
+  const { startGame: startSessionOnChain, mapSeed, isLoading: sessionLoading } = useSession();
   const { state: gameState, dispatch } = useGame();
   const [showSettings, setShowSettings] = useState(false);
   const [combatSpeed, setCombatSpeed] = useState<CombatSpeed>('normal');
@@ -50,9 +52,26 @@ export function HubScreen({ navigation }: HubScreenProps) {
     });
   };
 
-  const handlePlayPvE = useCallback(() => {
-    // Generate a random seed for the game
-    const seed = Math.floor(Math.random() * 2147483647);
+  const handlePlayPvE = useCallback(async () => {
+    // Get current campaign level from profile (default to 0)
+    const campaignLevel = profile?.currentLevel ?? 0;
+
+    // Try to start on-chain session first
+    const result = await startSessionOnChain(campaignLevel);
+
+    // Use on-chain map seed if available, otherwise fallback to random
+    let seed: number;
+    if (result.success && mapSeed !== null) {
+      // Convert BigInt seed to a 32-bit number for the game engine
+      seed = Number(mapSeed % BigInt(2147483647));
+    } else {
+      // Fallback to random seed if on-chain session fails
+      // (e.g., when playing offline or session counter not initialized)
+      seed = Math.floor(Math.random() * 2147483647);
+      if (!result.success && result.error) {
+        console.warn('On-chain session start failed, using offline mode:', result.error);
+      }
+    }
 
     if (gameState?.phase === GamePhase.Defeat || gameState?.phase === GamePhase.Victory) {
       dispatch({ type: 'RETURN_TO_MENU' });
@@ -63,7 +82,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
 
     // Navigate to the game screen
     navigation.navigate('Game');
-  }, [dispatch, navigation, gameState?.phase]);
+  }, [dispatch, navigation, gameState?.phase, profile?.currentLevel, startSessionOnChain, mapSeed]);
 
   const handlePlayPvP = () => {
     Alert.alert('Coming Soon', 'PvP Gauntlet is under development!');

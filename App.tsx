@@ -15,6 +15,7 @@ import {
 } from '@expo-google-fonts/im-fell-english';
 import { Inter_400Regular, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
 import { ProfileProvider } from './src/contexts/ProfileContext';
+import { SessionProvider } from './src/contexts/SessionContext';
 import { WalletProvider } from './src/contexts/WalletContext';
 import { SolanaConnectionProvider } from './src/contexts/SolanaConnectionContext';
 import { GameProvider } from './src/contexts/GameContext';
@@ -56,10 +57,12 @@ export default function App() {
       <WalletProvider>
         <SolanaConnectionProvider>
           <ProfileProvider>
-            <GameProvider>
-              <StatusBar style="light" hidden />
-              <AppNavigator />
-            </GameProvider>
+            <SessionProvider>
+              <GameProvider>
+                <StatusBar style="light" hidden />
+                <AppNavigator />
+              </GameProvider>
+            </SessionProvider>
           </ProfileProvider>
         </SolanaConnectionProvider>
       </WalletProvider>

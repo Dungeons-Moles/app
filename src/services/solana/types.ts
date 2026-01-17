@@ -23,6 +23,9 @@ export function deriveMapConfigPda(): [PublicKey, number] {
   return PublicKey.findProgramAddressSync([Buffer.from('map_config')], MAP_GENERATOR_PROGRAM_ID);
 }
 
-export function deriveTreasuryPda(): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync([Buffer.from('treasury')], PLAYER_PROFILE_PROGRAM_ID);
+export function deriveSessionCounterPda(): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from('session_counter')],
+    SESSION_MANAGER_PROGRAM_ID
+  );
 }
