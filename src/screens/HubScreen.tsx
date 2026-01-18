@@ -17,6 +17,7 @@ import {
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Svg, { Ellipse, Defs, Pattern, Line } from 'react-native-svg';
 import { useProfile } from '../contexts/ProfileContext';
+import { useSession } from '../contexts/SessionContext';
 import { shortenAddress } from '../utils/storage';
 import { RootStackParamList } from '../navigation';
 import { SpeedControls } from '../components/combat';
@@ -41,10 +42,12 @@ type HubScreenProps = {
 
 export function HubScreen({ navigation }: HubScreenProps) {
   const { profile, isLoading, clearProfile, updateDefaultCombatSpeed, refresh } = useProfile();
+  const { hasPendingCleanups, processPendingCleanups } = useSession();
   const [showSettings, setShowSettings] = useState(false);
   const [combatSpeed, setCombatSpeed] = useState<CombatSpeed>('normal');
   const [refreshing, setRefreshing] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const hasProcessedCleanups = useRef(false);
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -53,6 +56,17 @@ export function HubScreen({ navigation }: HubScreenProps) {
       useNativeDriver: true,
     }).start();
   }, []);
+
+  // Process any pending cleanups when arriving at the Hub
+  useEffect(() => {
+    if (hasPendingCleanups && !hasProcessedCleanups.current) {
+      hasProcessedCleanups.current = true;
+      console.log('[HubScreen] Processing pending cleanups in background...');
+      processPendingCleanups().catch((error) => {
+        console.warn('[HubScreen] Failed to process pending cleanups:', error);
+      });
+    }
+  }, [hasPendingCleanups, processPendingCleanups]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);

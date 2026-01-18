@@ -4,6 +4,7 @@ import { SOLANA_CONFIG } from './config';
 import playerProfileIdl from './idl/player_profile.json';
 import sessionManagerIdl from './idl/session_manager.json';
 import mapGeneratorIdl from './idl/map_generator.json';
+import gameplayStateIdl from './idl/gameplay_state.json';
 
 export type AnchorWalletAdapter = {
   publicKey: AnchorProvider['wallet']['publicKey'];
@@ -55,4 +56,15 @@ export function createSessionManagerProgramWithProvider(provider: AnchorProvider
 
 export function createMapGeneratorProgramWithProvider(provider: AnchorProvider) {
   return new Program(mapGeneratorIdl as Idl, provider);
+}
+
+export function createGameplayStateProgram(connection: Connection) {
+  return new Program(gameplayStateIdl as Idl, {
+    connection,
+    publicKey: SOLANA_CONFIG.programs.gameplayState,
+  });
+}
+
+export function createGameplayStateProgramWithProvider(provider: AnchorProvider) {
+  return new Program(gameplayStateIdl as Idl, provider);
 }

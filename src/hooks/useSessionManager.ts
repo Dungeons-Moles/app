@@ -108,7 +108,14 @@ export function useSessionManager() {
 
   const startSession = useCallback(
     async (campaignLevel: number): Promise<TransactionResult> => {
+      console.log('[useSessionManager] startSession called', {
+        campaignLevel,
+        walletPublicKey: wallet.publicKey?.toBase58(),
+        hasWriteProgram: !!writeProgram,
+      });
+
       if (!wallet.publicKey || !writeProgram) {
+        console.log('[useSessionManager] No wallet or write program');
         return { success: false, error: 'Wallet not connected' };
       }
 
@@ -127,7 +134,12 @@ export function useSessionManager() {
       try {
         const [sessionPda] = deriveGameSessionPda(wallet.publicKey);
         const [counterPda] = deriveSessionCounterPda();
+        console.log('[useSessionManager] PDAs derived', {
+          sessionPda: sessionPda.toBase58(),
+          counterPda: counterPda.toBase58(),
+        });
 
+        console.log('[useSessionManager] Building transaction...');
         const transaction = await writeProgram.methods
           .startSession(campaignLevel)
           .accounts({
@@ -138,14 +150,18 @@ export function useSessionManager() {
           })
           .transaction();
 
+        console.log('[useSessionManager] Requesting wallet signature...');
         const signature = await signAndSendTransaction(transaction);
+        console.log('[useSessionManager] Transaction sent:', signature);
         await connection.confirmTransaction(signature, 'confirmed');
+        console.log('[useSessionManager] Transaction confirmed');
 
         // Fetch the created session
         await fetchSession();
 
         return { success: true, signature };
       } catch (txError) {
+        console.error('[useSessionManager] Transaction error:', txError);
         const message = getUserErrorMessage(txError);
         if (isMountedRef.current) setError(message);
         return { success: false, error: message };
