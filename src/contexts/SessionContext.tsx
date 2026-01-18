@@ -8,9 +8,10 @@ import React, {
   ReactNode,
 } from 'react';
 import { Alert } from 'react-native';
-import { Keypair } from '@solana/web3.js';
+import { Keypair, Transaction } from '@solana/web3.js';
 import { useWallet } from './WalletContext';
 import { useProfile } from './ProfileContext';
+import { useSolanaConnection } from './SolanaConnectionContext';
 import { useSessionManager } from '@/hooks/useSessionManager';
 import { useMapGenerator } from '@/hooks/useMapGenerator';
 import { useBurnerWallet } from '@/hooks/useBurnerWallet';
@@ -109,7 +110,8 @@ const SessionContext = createContext<SessionContextType | undefined>(undefined);
 // ============================================================================
 
 export function SessionProvider({ children }: { children: ReactNode }) {
-  const { wallet } = useWallet();
+  const { wallet, signAndSendTransaction } = useWallet();
+  const { connection } = useSolanaConnection();
   const { profile } = useProfile();
   const sessionManager = useSessionManager();
   const mapGenerator = useMapGenerator();
@@ -183,40 +185,72 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         return { success: false, error: 'Campaign level not unlocked yet' };
       }
 
-      // Step 1: Create and fund burner wallet (requires main wallet signature)
-      console.log('[SessionContext] Step 1: Creating and funding burner wallet...');
-      const burnerFunded = await burnerWallet.createAndFund();
-      console.log('[SessionContext] Burner funded result:', {
-        burnerFunded,
-        hasKeypair: !!burnerWallet.keypair,
-      });
-      if (!burnerFunded || !burnerWallet.keypair) {
+      // Step 1: Create burner wallet and build fund transaction (no signature yet)
+      console.log('[SessionContext] Step 1: Creating burner wallet...');
+      const burnerResult = await burnerWallet.createWithoutFunding();
+      if (!burnerResult) {
         return { success: false, error: 'Failed to create burner wallet' };
       }
+      const { keypair: newBurnerKeypair, fundTransaction } = burnerResult;
+      console.log(
+        '[SessionContext] Burner keypair created:',
+        newBurnerKeypair.publicKey.toBase58()
+      );
 
-      // Step 2: Start the session on-chain
-      console.log('[SessionContext] Step 2: Starting session on-chain...');
-      const result = await sessionManager.startSession(campaignLevel);
-      console.log('[SessionContext] Session start result:', result);
-      if (!result.success) {
-        // Drain burner if session start failed
-        await burnerWallet.drain();
+      // Step 2: Build start session transaction (no signature yet)
+      console.log('[SessionContext] Step 2: Building start session transaction...');
+      const sessionResult = await sessionManager.buildStartSessionTransaction(campaignLevel);
+      if (!sessionResult) {
         await burnerWallet.clear();
-        return result;
+        return { success: false, error: 'Failed to build session transaction' };
+      }
+      const { transaction: sessionTransaction, sessionPda } = sessionResult;
+
+      // Step 3: Combine both transactions into one
+      console.log('[SessionContext] Step 3: Combining transactions...');
+      const combinedTransaction = new Transaction();
+
+      // Add fund burner instruction(s) first
+      combinedTransaction.add(...fundTransaction.instructions);
+
+      // Then add start session instruction(s)
+      combinedTransaction.add(...sessionTransaction.instructions);
+
+      // Step 4: Sign and send the combined transaction (ONE signature prompt!)
+      console.log(
+        '[SessionContext] Step 4: Requesting single wallet signature for combined transaction...'
+      );
+      try {
+        const signature = await signAndSendTransaction(combinedTransaction);
+        console.log('[SessionContext] Combined transaction sent:', signature);
+        await connection.confirmTransaction(signature, 'confirmed');
+        console.log('[SessionContext] Combined transaction confirmed');
+
+        // Mark burner as active now that funding is confirmed
+        await burnerWallet.markAsActive(newBurnerKeypair);
+
+        // Fetch the created session
+        await sessionManager.fetchSession();
+      } catch (txError) {
+        console.error('[SessionContext] Combined transaction failed:', txError);
+        await burnerWallet.clear();
+        return {
+          success: false,
+          error: txError instanceof Error ? txError.message : 'Transaction failed',
+        };
       }
 
-      // Step 3: Fetch the map seed for this level
-      console.log('[SessionContext] Step 3: Fetching map seed...');
+      // Step 5: Fetch the map seed for this level
+      console.log('[SessionContext] Step 5: Fetching map seed...');
       const seed = await mapGenerator.getMapSeed(campaignLevel);
       console.log('[SessionContext] Map seed:', seed?.toString());
       setMapSeed(seed);
 
-      // Step 4: Initialize gameplay state on-chain with burner
-      console.log('[SessionContext] Step 4: Initializing gameplay state...');
+      // Step 6: Initialize gameplay state on-chain with burner
+      console.log('[SessionContext] Step 6: Initializing gameplay state...');
       if (wallet.publicKey) {
-        const [sessionPda] = deriveGameSessionPda(wallet.publicKey);
         // Default map dimensions - should be passed from game context in real usage
-        const initialized = await gameplayState.initialize(sessionPda, burnerWallet.keypair, {
+        const initialized = await gameplayState.initialize(sessionPda, newBurnerKeypair, {
           mapWidth: 32,
           mapHeight: 32,
           startX: 16,
@@ -231,10 +265,19 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      console.log('[SessionContext] startGame complete, returning result');
-      return result;
+      console.log('[SessionContext] startGame complete');
+      return { success: true };
     },
-    [burnerWallet, gameplayState, mapGenerator, profile, sessionManager, wallet.publicKey]
+    [
+      burnerWallet,
+      connection,
+      gameplayState,
+      mapGenerator,
+      profile,
+      sessionManager,
+      signAndSendTransaction,
+      wallet.publicKey,
+    ]
   );
 
   const endGame = useCallback(async (): Promise<TransactionResult> => {
