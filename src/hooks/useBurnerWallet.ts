@@ -6,7 +6,7 @@
  */
 
 import { useCallback, useState, useEffect, useRef } from 'react';
-import { Keypair } from '@solana/web3.js';
+import { Keypair, Transaction } from '@solana/web3.js';
 import { useWallet } from '@/contexts/WalletContext';
 import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
 import {
@@ -39,6 +39,12 @@ export interface UseBurnerWalletReturn {
   error: string | null;
   /** Create a new burner and fund it from main wallet */
   createAndFund: (amount?: number) => Promise<boolean>;
+  /** Create a burner without funding (returns fund transaction for combining) */
+  createWithoutFunding: (
+    amount?: number
+  ) => Promise<{ keypair: Keypair; fundTransaction: Transaction } | null>;
+  /** Mark burner as active after external funding transaction confirms */
+  markAsActive: (burnerKeypair: Keypair) => Promise<void>;
   /** Top up the burner with additional SOL */
   topUp: (amount?: number) => Promise<boolean>;
   /** Drain all remaining SOL back to main wallet */
@@ -282,6 +288,72 @@ export function useBurnerWallet(): UseBurnerWalletReturn {
     }
   }, []);
 
+  /**
+   * Create a burner wallet without funding it.
+   * Used when combining with other instructions in a single transaction.
+   * Returns the keypair and the fund transaction instruction.
+   */
+  const createWithoutFunding = useCallback(
+    async (
+      amount: number = DEFAULT_FUND_AMOUNT
+    ): Promise<{
+      keypair: Keypair;
+      fundTransaction: ReturnType<typeof createFundBurnerTransaction>;
+    } | null> => {
+      if (!wallet.address || !wallet.publicKey) {
+        console.log('[useBurnerWallet] createWithoutFunding: No wallet connected');
+        return null;
+      }
+
+      try {
+        // Create a new burner wallet
+        const newBurner = await createBurnerWallet(wallet.address);
+        console.log(
+          '[useBurnerWallet] Burner created (not funded yet):',
+          newBurner.publicKey.toBase58()
+        );
+
+        // Create fund transaction (but don't send it)
+        const fundTx = createFundBurnerTransaction(wallet.publicKey, newBurner.publicKey, amount);
+
+        // Update state
+        if (isMountedRef.current) {
+          setKeypair(newBurner);
+          setState('funding');
+        }
+
+        return { keypair: newBurner, fundTransaction: fundTx };
+      } catch (err) {
+        console.error('[useBurnerWallet] Failed to create burner:', err);
+        if (isMountedRef.current) {
+          setError(err instanceof Error ? err.message : 'Failed to create burner wallet');
+          setState('failed');
+        }
+        return null;
+      }
+    },
+    [wallet.address, wallet.publicKey]
+  );
+
+  /**
+   * Mark burner as active after external funding transaction confirms.
+   * Called after a combined transaction that includes the fund instruction.
+   */
+  const markAsActive = useCallback(
+    async (burnerKeypair: Keypair): Promise<void> => {
+      if (isMountedRef.current) {
+        setKeypair(burnerKeypair);
+        const { balance: newBalance } = await checkBurnerBalance(
+          connection,
+          burnerKeypair.publicKey
+        );
+        setBalance(newBalance);
+        setState('active');
+      }
+    },
+    [connection]
+  );
+
   // Auto-load existing burner when wallet connects
   useEffect(() => {
     if (wallet.address && state === 'idle') {
@@ -306,6 +378,8 @@ export function useBurnerWallet(): UseBurnerWalletReturn {
     isLowBalance: balance < LOW_BALANCE_THRESHOLD,
     error,
     createAndFund,
+    createWithoutFunding,
+    markAsActive,
     topUp,
     drain,
     clear,

@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
-import { SystemProgram, PublicKey } from '@solana/web3.js';
+import { SystemProgram, PublicKey, Transaction } from '@solana/web3.js';
 import { AnchorProvider } from '@coral-xyz/anchor';
 import { useWallet } from '@/contexts/WalletContext';
 import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
@@ -172,6 +172,40 @@ export function useSessionManager() {
     [connection, fetchSession, signAndSendTransaction, wallet.publicKey, writeProgram]
   );
 
+  /**
+   * Builds a start session transaction without sending it.
+   * Used for combining with other instructions in a single transaction.
+   */
+  const buildStartSessionTransaction = useCallback(
+    async (
+      campaignLevel: number
+    ): Promise<{ transaction: Transaction; sessionPda: PublicKey } | null> => {
+      if (!wallet.publicKey || !writeProgram) {
+        return null;
+      }
+
+      if (campaignLevel < 0 || campaignLevel > MAX_CAMPAIGN_LEVEL) {
+        return null;
+      }
+
+      const [sessionPda] = deriveGameSessionPda(wallet.publicKey);
+      const [counterPda] = deriveSessionCounterPda();
+
+      const transaction = await writeProgram.methods
+        .startSession(campaignLevel)
+        .accounts({
+          gameSession: sessionPda,
+          sessionCounter: counterPda,
+          player: wallet.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .transaction();
+
+      return { transaction, sessionPda };
+    },
+    [wallet.publicKey, writeProgram]
+  );
+
   const delegateSession = useCallback(async (): Promise<TransactionResult> => {
     if (!wallet.publicKey || !writeProgram) {
       return { success: false, error: 'Wallet not connected' };
@@ -332,6 +366,7 @@ export function useSessionManager() {
     error,
     fetchSession,
     startSession,
+    buildStartSessionTransaction,
     delegateSession,
     commitSession,
     endSession,
