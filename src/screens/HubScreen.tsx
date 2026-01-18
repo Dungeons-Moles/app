@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,17 +10,19 @@ import {
   ImageBackground,
   Platform,
   TouchableWithoutFeedback,
+  ScrollView,
+  RefreshControl,
+  Animated,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Svg, { Ellipse, Defs, Pattern, Line } from 'react-native-svg';
 import { useProfile } from '../contexts/ProfileContext';
-import { useSession } from '../contexts/SessionContext';
-import { useGame, GamePhase } from '../contexts/GameContext';
 import { shortenAddress } from '../utils/storage';
 import { RootStackParamList } from '../navigation';
 import { SpeedControls } from '../components/combat';
-import { ProfileCard } from '../components/profile/ProfileCard';
+import { Skeleton } from '../components/common/Skeleton';
 import { Typography } from '../theme/typography';
+import { MAX_CAMPAIGN_LEVEL } from '../hooks/useMapGenerator';
 import type { CombatSpeed } from '../contexts/CombatContext';
 
 const defaultMoleImageSource = require('../../assets/characters/default-mole.png');
@@ -38,11 +40,25 @@ type HubScreenProps = {
 };
 
 export function HubScreen({ navigation }: HubScreenProps) {
-  const { profile, clearProfile, updateDefaultCombatSpeed } = useProfile();
-  const { startGame: startSessionOnChain, mapSeed, isLoading: sessionLoading } = useSession();
-  const { state: gameState, dispatch } = useGame();
+  const { profile, isLoading, clearProfile, updateDefaultCombatSpeed, refresh } = useProfile();
   const [showSettings, setShowSettings] = useState(false);
   const [combatSpeed, setCombatSpeed] = useState<CombatSpeed>('normal');
+  const [refreshing, setRefreshing] = useState(false);
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 600,
+      useNativeDriver: true,
+    }).start();
+  }, []);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await refresh();
+    setRefreshing(false);
+  }, [refresh]);
 
   const handleResetProfile = async () => {
     await clearProfile();
@@ -53,36 +69,9 @@ export function HubScreen({ navigation }: HubScreenProps) {
   };
 
   const handlePlayPvE = useCallback(async () => {
-    // Get current campaign level from profile (default to 0)
-    const campaignLevel = profile?.currentLevel ?? 0;
-
-    // Try to start on-chain session first
-    const result = await startSessionOnChain(campaignLevel);
-
-    // Use on-chain map seed if available, otherwise fallback to random
-    let seed: number;
-    if (result.success && mapSeed !== null) {
-      // Convert BigInt seed to a 32-bit number for the game engine
-      seed = Number(mapSeed % BigInt(2147483647));
-    } else {
-      // Fallback to random seed if on-chain session fails
-      // (e.g., when playing offline or session counter not initialized)
-      seed = Math.floor(Math.random() * 2147483647);
-      if (!result.success && result.error) {
-        console.warn('On-chain session start failed, using offline mode:', result.error);
-      }
-    }
-
-    if (gameState?.phase === GamePhase.Defeat || gameState?.phase === GamePhase.Victory) {
-      dispatch({ type: 'RETURN_TO_MENU' });
-    }
-
-    // Start the game with the seed
-    dispatch({ type: 'START_GAME', seed });
-
-    // Navigate to the game screen
-    navigation.navigate('Game');
-  }, [dispatch, navigation, gameState?.phase, profile?.currentLevel, startSessionOnChain, mapSeed]);
+    // Navigate to campaign selection screen
+    navigation.navigate('CampaignSelect');
+  }, [navigation]);
 
   const handlePlayPvP = () => {
     Alert.alert('Coming Soon', 'PvP Gauntlet is under development!');
@@ -104,160 +93,211 @@ export function HubScreen({ navigation }: HubScreenProps) {
     Alert.alert('Coming Soon', 'Skins are under development!');
   };
 
+  const handleItems = () => {
+    Alert.alert('Coming Soon', 'Items are under development!');
+  };
+
   return (
-    <View style={styles.container}>
+    <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
       <Image source={backgroundImageSource} style={styles.backgroundImage} resizeMode="stretch" />
-      <View style={styles.hubLayout}>
-        {/* TOP LEFT - Player Info */}
-        <View style={styles.topLeft}>
-          <ImageBackground
-            source={walletImageSource}
-            style={styles.playerPanel}
-            resizeMode="stretch"
-          >
-            {/* Avatar Square */}
-            <View style={styles.avatarContainer}>
-              <Image
-                source={defaultMoleImageSource}
-                style={styles.avatarImage}
-                resizeMode="cover"
-              />
-            </View>
+      <ScrollView
+        contentContainerStyle={{ flex: 1 }}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#FABC0F" />
+        }
+      >
+        <View style={styles.hubLayout}>
+          {/* TOP LEFT - Player Info */}
+          <View style={styles.topLeft}>
+            <TouchableOpacity
+              onPress={() => navigation.navigate('ProfileSettings')}
+              activeOpacity={0.8}
+            >
+              <ImageBackground
+                source={walletImageSource}
+                style={styles.playerPanel}
+                resizeMode="stretch"
+              >
+                {/* Avatar Square */}
+                <View style={styles.avatarContainer}>
+                  <Image
+                    source={defaultMoleImageSource}
+                    style={styles.avatarImage}
+                    resizeMode="cover"
+                  />
+                </View>
 
-            {/* Player Info */}
-            <View style={styles.playerInfo}>
-              <Text style={styles.playerName} numberOfLines={1}>
-                {profile?.name ?? 'Adventurer'}
-              </Text>
-              {profile?.owner ? (
-                <Text style={styles.walletAddress}>{shortenAddress(profile.owner.toBase58())}</Text>
-              ) : null}
-            </View>
-          </ImageBackground>
-          {profile ? (
-            <View style={styles.profileCardWrapper}>
-              <ProfileCard profile={profile} />
-            </View>
-          ) : null}
-        </View>
+                {/* Player Info */}
+                <View style={styles.playerInfo}>
+                  {isLoading ? (
+                    <View style={{ gap: 4 }}>
+                      <Skeleton width={80} height={16} borderRadius={4} />
+                      <Skeleton width={60} height={12} borderRadius={4} />
+                    </View>
+                  ) : (
+                    <>
+                      <Text style={styles.playerName} numberOfLines={1}>
+                        {profile?.name ?? 'Adventurer'}
+                      </Text>
+                      {profile?.owner ? (
+                        <Text style={styles.walletAddress}>
+                          {shortenAddress(profile.owner.toBase58())}
+                        </Text>
+                      ) : null}
+                    </>
+                  )}
+                </View>
+              </ImageBackground>
+            </TouchableOpacity>
 
-        {/* TOP CENTER - Points */}
-        <View style={styles.topCenter}>
-          <ImageBackground source={buttonV3Source} style={styles.pointsPanel} resizeMode="stretch">
-            <Text style={styles.pointsLabel}>POINTS</Text>
-            <Text style={[styles.pointsValue, { color: '#FABC0F' }]}>0</Text>
-          </ImageBackground>
-        </View>
+            {/* Items Button - Below Profile */}
+            <TouchableOpacity onPress={handleItems} activeOpacity={0.7} style={{ marginTop: 8 }}>
+              <ImageBackground
+                source={buttonV1Source}
+                style={styles.navButton}
+                resizeMode="stretch"
+              >
+                <Text style={styles.navButtonText}>Items</Text>
+              </ImageBackground>
+            </TouchableOpacity>
+          </View>
 
-        {/* TOP RIGHT - Settings */}
-        <View style={styles.topRight}>
-          <TouchableOpacity onPress={() => setShowSettings(true)} activeOpacity={0.7}>
+          {/* TOP CENTER - Points */}
+          <View style={styles.topCenter}>
             <ImageBackground
-              source={buttonV1Source}
-              style={styles.settingsBtn}
+              source={buttonV3Source}
+              style={styles.pointsPanel}
               resizeMode="stretch"
             >
+              <Text style={styles.pointsLabel}>POINTS</Text>
+              <Text style={[styles.pointsValue, { color: '#FABC0F' }]}>0</Text>
+            </ImageBackground>
+          </View>
+
+          {/* TOP RIGHT - Settings */}
+          <View style={styles.topRight}>
+            <TouchableOpacity onPress={() => setShowSettings(true)} activeOpacity={0.7}>
+              <ImageBackground
+                source={buttonV1Source}
+                style={styles.settingsBtn}
+                resizeMode="stretch"
+              >
+                <Image
+                  source={engineImageSource}
+                  style={styles.settingsIconImage}
+                  resizeMode="contain"
+                />
+              </ImageBackground>
+            </TouchableOpacity>
+          </View>
+
+          {/* CENTER - Character */}
+          <View style={styles.center}>
+            <View style={styles.characterContainer}>
+              <View style={styles.characterShadow}>
+                <Svg height="100%" width="100%">
+                  <Defs>
+                    <Pattern
+                      id="diagonalLines"
+                      patternUnits="userSpaceOnUse"
+                      width="4"
+                      height="4"
+                      patternTransform="rotate(45)"
+                    >
+                      <Line x1="0" y1="0" x2="0" y2="4" stroke="black" strokeWidth="2" />
+                    </Pattern>
+                  </Defs>
+                  <Ellipse cx="50" cy="11" rx="50" ry="11" fill="url(#diagonalLines)" />
+                </Svg>
+              </View>
               <Image
-                source={engineImageSource}
-                style={styles.settingsIconImage}
+                source={defaultMoleImageSource}
+                style={styles.characterImage}
                 resizeMode="contain"
               />
-            </ImageBackground>
-          </TouchableOpacity>
-        </View>
-
-        {/* CENTER - Character */}
-        <View style={styles.center}>
-          <View style={styles.characterContainer}>
-            <View style={styles.characterShadow}>
-              <Svg height="100%" width="100%">
-                <Defs>
-                  <Pattern
-                    id="diagonalLines"
-                    patternUnits="userSpaceOnUse"
-                    width="4"
-                    height="4"
-                    patternTransform="rotate(45)"
-                  >
-                    <Line x1="0" y1="0" x2="0" y2="4" stroke="black" strokeWidth="2" />
-                  </Pattern>
-                </Defs>
-                <Ellipse cx="50" cy="11" rx="50" ry="11" fill="url(#diagonalLines)" />
-              </Svg>
             </View>
-            <Image
-              source={defaultMoleImageSource}
-              style={styles.characterImage}
-              resizeMode="contain"
-            />
           </View>
-        </View>
 
-        {/* BOTTOM LEFT - Secondary Navigation */}
-        <View style={styles.bottomLeft}>
-          <TouchableOpacity onPress={handleQuests} activeOpacity={0.7}>
-            <ImageBackground source={buttonV1Source} style={styles.navButton} resizeMode="stretch">
-              <Text style={styles.navButtonText}>Quests</Text>
-            </ImageBackground>
-          </TouchableOpacity>
-
-          <View style={styles.sideBySideRow}>
-            <TouchableOpacity onPress={handleLeaderboard} activeOpacity={0.7}>
+          {/* BOTTOM LEFT - Secondary Navigation */}
+          <View style={styles.bottomLeft}>
+            <TouchableOpacity onPress={handleQuests} activeOpacity={0.7}>
               <ImageBackground
                 source={buttonV1Source}
                 style={styles.navButton}
                 resizeMode="stretch"
               >
-                <Text style={styles.navButtonText}>Ranks</Text>
+                <Text style={styles.navButtonText}>Quests</Text>
               </ImageBackground>
             </TouchableOpacity>
 
-            <TouchableOpacity onPress={handleSkins} activeOpacity={0.7}>
+            <View style={styles.sideBySideRow}>
+              <TouchableOpacity onPress={handleLeaderboard} activeOpacity={0.7}>
+                <ImageBackground
+                  source={buttonV1Source}
+                  style={styles.navButton}
+                  resizeMode="stretch"
+                >
+                  <Text style={styles.navButtonText}>Ranks</Text>
+                </ImageBackground>
+              </TouchableOpacity>
+
+              <TouchableOpacity onPress={handleSkins} activeOpacity={0.7}>
+                <ImageBackground
+                  source={buttonV1Source}
+                  style={styles.navButton}
+                  resizeMode="stretch"
+                >
+                  <Text style={styles.navButtonText}>Skins</Text>
+                </ImageBackground>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* BOTTOM RIGHT - Primary Actions */}
+          <View style={styles.bottomRight}>
+            {/* Marketplace above play buttons */}
+            <TouchableOpacity onPress={handleMarketplace} activeOpacity={0.7}>
               <ImageBackground
                 source={buttonV1Source}
-                style={styles.navButton}
+                style={styles.shopButton}
                 resizeMode="stretch"
               >
-                <Text style={styles.navButtonText}>Skins</Text>
+                <Text style={styles.shopButtonText}>Marketplace</Text>
               </ImageBackground>
             </TouchableOpacity>
+
+            {/* Campaign and Gauntlet side by side */}
+            <View style={styles.playButtonsRow}>
+              <TouchableOpacity onPress={handlePlayPvE} activeOpacity={0.7}>
+                <ImageBackground
+                  source={buttonV4Source}
+                  style={styles.campaignButton}
+                  resizeMode="stretch"
+                >
+                  <Text style={styles.campaignButtonText}>Campaign</Text>
+                  {isLoading ? (
+                    <Skeleton width={50} height={12} style={{ marginTop: 4, marginBottom: 2 }} />
+                  ) : (
+                    <Text style={styles.buttonSub}>
+                      {(profile?.currentLevel ?? 0) + 1} / {MAX_CAMPAIGN_LEVEL + 1}
+                    </Text>
+                  )}
+                </ImageBackground>
+              </TouchableOpacity>
+
+              <TouchableOpacity onPress={handlePlayPvP} activeOpacity={0.7}>
+                <ImageBackground
+                  source={buttonV2Source}
+                  style={styles.gauntletButton}
+                  resizeMode="stretch"
+                >
+                  <Text style={styles.gauntletButtonText}>PVP</Text>
+                </ImageBackground>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
-
-        {/* BOTTOM RIGHT - Primary Actions */}
-        <View style={styles.bottomRight}>
-          {/* Marketplace above play buttons */}
-          <TouchableOpacity onPress={handleMarketplace} activeOpacity={0.7}>
-            <ImageBackground source={buttonV1Source} style={styles.shopButton} resizeMode="stretch">
-              <Text style={styles.shopButtonText}>Marketplace</Text>
-            </ImageBackground>
-          </TouchableOpacity>
-
-          {/* Campaign and Gauntlet side by side */}
-          <View style={styles.playButtonsRow}>
-            <TouchableOpacity onPress={handlePlayPvE} activeOpacity={0.7}>
-              <ImageBackground
-                source={buttonV4Source}
-                style={styles.campaignButton}
-                resizeMode="stretch"
-              >
-                <Text style={styles.campaignButtonText}>Campaign</Text>
-                <Text style={styles.buttonSub}>{(profile?.currentLevel ?? 0) + 1} / 80</Text>
-              </ImageBackground>
-            </TouchableOpacity>
-
-            <TouchableOpacity onPress={handlePlayPvP} activeOpacity={0.7}>
-              <ImageBackground
-                source={buttonV2Source}
-                style={styles.gauntletButton}
-                resizeMode="stretch"
-              >
-                <Text style={styles.gauntletButtonText}>PVP</Text>
-              </ImageBackground>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
+      </ScrollView>
 
       {/* Settings Modal */}
       <Modal
@@ -316,7 +356,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
           </View>
         </TouchableWithoutFeedback>
       </Modal>
-    </View>
+    </Animated.View>
   );
 }
 

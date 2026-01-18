@@ -8,7 +8,7 @@ import {
   Image,
   ImageBackground,
   TextInput,
-  Platform,
+  Animated,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useProfile } from '../contexts/ProfileContext';
@@ -29,6 +29,18 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
   const [localError, setLocalError] = useState<string | null>(null);
   const [isActionLoading, setIsActionLoading] = useState(false);
   const hasInitialized = useRef(false);
+  const [panelDimensions, setPanelDimensions] = useState<{ width: number; height: number } | null>(
+    null
+  );
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 600,
+      useNativeDriver: true,
+    }).start();
+  }, []);
 
   // Track when initial load completes to prevent flickering
   useEffect(() => {
@@ -84,8 +96,31 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
     }
   };
 
+  const handlePanelLayout = (event: any) => {
+    const { width, height } = event.nativeEvent.layout;
+    const availableWidth = width - 64; // paddingHorizontal: 32 * 2
+    const availableHeight = height;
+    const ratio = 0.85;
+
+    let w = availableWidth;
+    let h = w / ratio;
+
+    if (h > availableHeight) {
+      h = availableHeight;
+      w = h * ratio;
+    }
+
+    if (
+      !panelDimensions ||
+      Math.abs(panelDimensions.width - w) > 1 ||
+      Math.abs(panelDimensions.height - h) > 1
+    ) {
+      setPanelDimensions({ width: w, height: h });
+    }
+  };
+
   return (
-    <View style={styles.container}>
+    <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
       <Image
         source={require('../../assets/account/background.png')}
         style={styles.backgroundImage}
@@ -104,13 +139,18 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
         </View>
 
         {/* Right Panel - Actions */}
-        <View style={styles.rightPanel}>
+        <View style={styles.rightPanel} onLayout={handlePanelLayout}>
           <ImageBackground
             source={require('../../assets/account/wooden-panel.png')}
-            style={styles.panel}
+            style={[
+              styles.panel,
+              panelDimensions
+                ? { width: panelDimensions.width, height: panelDimensions.height }
+                : { opacity: 0 },
+            ]}
             resizeMode="contain"
           >
-            <View style={styles.panelContent}>
+            <View style={styles.topSlot}>
               {!isConnected ? (
                 <>
                   <Text style={styles.profileLabel}>SUPPORTED WALLETS</Text>
@@ -161,10 +201,10 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
               )}
             </View>
 
-            <View style={styles.buttonWrapper}>
+            <View style={styles.buttonSlot}>
               <TouchableOpacity
-                style={[styles.primaryButton, isConnected ? styles.createProfileButton : null]}
-                onPress={!isConnected ? () => handleSignIn() : handleCreateProfile}
+                style={styles.primaryButton}
+                onPress={!isConnected ? handleSignIn : handleCreateProfile}
                 activeOpacity={0.7}
                 disabled={showLoading}
               >
@@ -193,7 +233,7 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
           </ImageBackground>
         </View>
       </View>
-    </View>
+    </Animated.View>
   );
 }
 
@@ -241,11 +281,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
   },
   panel: {
-    width: '100%',
     aspectRatio: 0.85,
-    justifyContent: 'center',
     alignItems: 'center',
-    ...(Platform.OS === 'web' ? { height: 380 } : {}),
+    justifyContent: 'center',
+    position: 'relative',
   },
   panelContent: {
     width: '80%',
@@ -258,7 +297,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#000000',
     letterSpacing: 1,
-    marginBottom: 8,
+    marginBottom: 12,
     fontWeight: 'bold',
   },
   profileName: {
@@ -282,7 +321,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     gap: 12,
-    marginBottom: 8,
   },
   walletOption: {
     width: 64,
@@ -321,23 +359,33 @@ const styles = StyleSheet.create({
     color: '#000000',
   },
   buttonWrapper: {
+    position: 'absolute',
+    bottom: '14%',
     width: '50%',
-    height: '40%',
-    justifyContent: 'center',
+    aspectRatio: 3.2,
     alignItems: 'center',
+    justifyContent: 'center',
+  },
+  topSlot: {
+    position: 'absolute',
+    top: '16%',
+    width: '80%',
+    alignItems: 'center',
+  },
+  buttonSlot: {
+    position: 'absolute',
+    bottom: '20%',
+    width: '50%',
+    aspectRatio: 3.2,
   },
   primaryButton: {
     width: '100%',
     height: '100%',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  createProfileButton: {
-    paddingTop: 49,
   },
   errorSlot: {
     position: 'absolute',
-    width: '65%',
+    bottom: '14%',
+    width: '70%',
     alignItems: 'center',
   },
   buttonImage: {

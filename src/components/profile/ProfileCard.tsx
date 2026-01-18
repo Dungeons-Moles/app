@@ -34,10 +34,12 @@ const styles = StyleSheet.create({
   label: {
     fontFamily: Typography.stat,
     fontSize: 12,
+    color: '#888888',
   },
   value: {
     fontFamily: Typography.number,
     fontSize: 12,
     fontWeight: '600',
+    color: '#c8c8c8',
   },
 });

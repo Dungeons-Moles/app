@@ -17,6 +17,8 @@ export function LoadingScreen({ navigation }: LoadingScreenProps) {
   const [hasNavigated, setHasNavigated] = useState(false);
   const [isReady, setIsReady] = useState(false);
 
+  const backgroundImage = require('../../assets/loading/background.png');
+
   // Pulsing animation for logo and bar
   useEffect(() => {
     const pulse = Animated.loop(
@@ -89,6 +91,7 @@ export function LoadingScreen({ navigation }: LoadingScreenProps) {
 
   return (
     <View style={styles.container}>
+      <Image source={backgroundImage} style={styles.backgroundImage} resizeMode="stretch" />
       <View style={styles.content}>
         <Animated.View style={[styles.logoContainer, { opacity: pulseAnim }]}>
           <Image
@@ -114,6 +117,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#F5F0DD',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  backgroundImage: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: '100%',
+    height: '100%',
   },
   content: {
     alignItems: 'center',
