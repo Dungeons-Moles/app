@@ -49,8 +49,8 @@ export function CombatScreen({ navigation }: CombatScreenProps) {
 
 function CombatScreenContent({ navigation }: CombatScreenProps) {
   const { state: gameState, dispatch: gameDispatch } = useGame();
-  const { profile, recordRunResult } = useProfile();
-  const { endGame, stopAutoCommit, hasActiveSession } = useSession();
+  const { profile, recordRunResult, mode } = useProfile();
+  const { queueEndGame, stopAutoCommit, hasActiveSession } = useSession();
   const {
     state: combatState,
     speed,
@@ -81,7 +81,7 @@ function CombatScreenContent({ navigation }: CombatScreenProps) {
     }
   }, [gameState?.combat, combatState.combat, startCombat, gameState?.rngState]);
 
-  // Handle combat completion
+  // Handle combat completion - now uses deferred cleanup for instant navigation
   const handleCombatComplete = useCallback(async () => {
     const result = getResult();
     if (!result) return;
@@ -94,33 +94,29 @@ function CombatScreenContent({ navigation }: CombatScreenProps) {
     // Stop the auto-commit timer
     stopAutoCommit();
 
-    // End on-chain session if one exists
-    if (hasActiveSession) {
-      try {
-        await endGame();
-      } catch (error) {
-        console.warn('Failed to end on-chain session:', error);
-      }
+    // Queue cleanup for later processing (no signature needed, instant return)
+    // Only queue if we have an active session and not in guest mode
+    if (hasActiveSession && mode !== 'guest') {
+      console.log('[CombatScreen] Queueing deferred cleanup');
+      await queueEndGame(levelReached, isVictory && wasBossFight);
     }
 
-    // Record run result on-chain (updates profile with victory/defeat)
-    // Only record if we have a profile
-    if (profile) {
-      try {
-        // For boss fights with victory, this increments level
-        // For defeats or regular combat, just increments totalRuns
-        await recordRunResult(levelReached, isVictory && wasBossFight);
-      } catch (error) {
-        console.warn('Failed to record run result on-chain:', error);
-      }
+    // Record run result - this may also be deferred in cached mode
+    if (profile && mode !== 'guest') {
+      // Fire and forget - don't await, let it happen in background
+      recordRunResult(levelReached, isVictory && wasBossFight).catch((error) => {
+        console.warn('[CombatScreen] Failed to record run result:', error);
+      });
     }
 
+    // Update local game state immediately
     gameDispatch({
       type: 'RESOLVE_COMBAT',
       result,
       combat: combatState.resolvedCombat ?? undefined,
     });
 
+    // Navigate immediately - no waiting for signatures!
     if (result === 'DEFEAT') {
       navigation.replace('Hub');
     } else {
@@ -132,9 +128,10 @@ function CombatScreenContent({ navigation }: CombatScreenProps) {
     navigation,
     gameState?.phase,
     profile,
+    mode,
     stopAutoCommit,
     hasActiveSession,
-    endGame,
+    queueEndGame,
     recordRunResult,
     combatState.resolvedCombat,
   ]);

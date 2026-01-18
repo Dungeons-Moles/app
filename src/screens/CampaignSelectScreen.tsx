@@ -25,6 +25,8 @@ import type { CampaignLevel } from '../types/solana';
 const backgroundImageSource = require('../../assets/hub/campaign-background.png');
 const buttonV1Source = require('../../assets/hub/button-v1.png');
 const buttonV4Source = require('../../assets/hub/button-v4.png');
+const squareSource = require('../../assets/campaign/square.png');
+const lockSource = require('../../assets/campaign/lock.png');
 
 type CampaignSelectScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'CampaignSelect'>;
@@ -105,7 +107,16 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
 
   const handleLevelSelect = useCallback(
     async (level: CampaignLevel) => {
+      console.log('[CampaignSelect] handleLevelSelect called', {
+        level: level.level,
+        isUnlocked: level.isUnlocked,
+        isStartingGame,
+        isGuestMode,
+        mode,
+      });
+
       if (!level.isUnlocked || isStartingGame) {
+        console.log('[CampaignSelect] Early return - locked or already starting');
         return;
       }
 
@@ -117,21 +128,27 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
 
         // In guest mode, skip on-chain session and use random seed
         if (isGuestMode) {
+          console.log('[CampaignSelect] Guest mode - using random seed');
           seed = Math.floor(Math.random() * 2147483647);
         } else {
+          console.log('[CampaignSelect] Online mode - calling startSessionOnChain...');
           // Start on-chain session for this level
           const result = await startSessionOnChain(level.level);
+          console.log('[CampaignSelect] startSessionOnChain result:', result);
 
           // Determine seed to use
           if (result.success && mapSeed !== null) {
             // Convert BigInt seed to a 32-bit number for the game engine
             seed = Number(mapSeed % BigInt(2147483647));
+            console.log('[CampaignSelect] Using on-chain seed:', seed);
           } else if (level.seed !== null) {
             // Use the level's seed from getCampaignLevels
             seed = Number(level.seed % BigInt(2147483647));
+            console.log('[CampaignSelect] Using level seed:', seed);
           } else {
             // Fallback to random seed if on-chain session fails
             seed = Math.floor(Math.random() * 2147483647);
+            console.log('[CampaignSelect] Fallback to random seed:', seed);
             if (!result.success && result.error) {
               console.warn('On-chain session start failed, using offline mode:', result.error);
             }
@@ -175,31 +192,55 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
 
       return (
         <TouchableOpacity
-          style={[
-            styles.levelCell,
-            item.isUnlocked ? styles.levelUnlocked : styles.levelLocked,
-            item.isCompleted && styles.levelCompleted,
-            isCurrentLevel && styles.levelCurrent,
-            isSelected && styles.levelSelected,
-          ]}
+          style={styles.levelCell}
           onPress={() => handleLevelSelect(item)}
           disabled={!item.isUnlocked || isStartingGame}
           activeOpacity={item.isUnlocked ? 0.7 : 1}
         >
-          <Text
-            style={[
-              styles.levelNumber,
-              item.isUnlocked ? styles.levelNumberUnlocked : styles.levelNumberLocked,
-              isCurrentLevel && styles.levelNumberCurrent,
-            ]}
+          <ImageBackground
+            source={squareSource}
+            style={styles.levelCellBackground}
+            resizeMode="stretch"
           >
-            {item.level + 1}
-          </Text>
-          {item.isCompleted && <Text style={styles.checkmark}>&#10003;</Text>}
-          {!item.isUnlocked && <Text style={styles.lockIcon}>&#128274;</Text>}
-          {isSelected && isStartingGame && (
-            <ActivityIndicator size="small" color="#ffffff" style={styles.loadingIndicator} />
-          )}
+            {/* Dark overlay for locked levels */}
+            {!item.isUnlocked && <View style={styles.lockedOverlay} />}
+
+            {/* Completed overlay */}
+            {item.isCompleted && <View style={styles.completedOverlay} />}
+
+            {/* Current level border highlight */}
+            {isCurrentLevel && <View style={styles.currentLevelBorder} />}
+
+            {/* Selected state overlay */}
+            {isSelected && <View style={styles.selectedOverlay} />}
+
+            {/* Level number */}
+            <Text
+              style={[
+                styles.levelNumber,
+                item.isUnlocked ? styles.levelNumberUnlocked : styles.levelNumberLocked,
+                item.isCompleted && styles.levelNumberCompleted,
+                isCurrentLevel && styles.levelNumberCurrent,
+              ]}
+            >
+              {item.level + 1}
+            </Text>
+
+            {/* Completed checkmark */}
+            {item.isCompleted && <Text style={styles.checkmark}>&#10003;</Text>}
+
+            {/* Lock icon for locked levels */}
+            {!item.isUnlocked && (
+              <Image source={lockSource} style={styles.lockIcon} resizeMode="contain" />
+            )}
+
+            {/* Loading indicator */}
+            {isSelected && isStartingGame && (
+              <View style={styles.loadingOverlay}>
+                <ActivityIndicator size="small" color="#ffffff" />
+              </View>
+            )}
+          </ImageBackground>
         </TouchableOpacity>
       );
     },
@@ -346,11 +387,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 24,
     right: 16,
-    backgroundColor: 'rgba(20, 16, 14, 0.7)',
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: 4,
-    minWidth: 120,
   },
   modeIndicator: {
     backgroundColor: 'rgba(163, 58, 58, 0.8)',
@@ -407,11 +443,37 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     margin: 6,
-    borderRadius: 8,
+  },
+  levelCellBackground: {
+    width: '100%',
+    height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 2,
-    position: 'relative',
+    overflow: 'hidden',
+  },
+  lockedOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.25)',
+  },
+  completedOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(34, 85, 34, 0.35)',
+  },
+  currentLevelBorder: {
+    ...StyleSheet.absoluteFillObject,
+    borderWidth: 3,
+    borderColor: '#FABC0F',
+    borderRadius: 4,
+  },
+  selectedOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(250, 188, 15, 0.3)',
+  },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   levelUnlocked: {
     backgroundColor: 'rgba(61, 43, 31, 0.8)',
@@ -443,6 +505,9 @@ const styles = StyleSheet.create({
   levelNumberLocked: {
     color: '#555555',
   },
+  levelNumberCompleted: {
+    color: '#90EE90',
+  },
   levelNumberCurrent: {
     color: '#FABC0F',
   },
@@ -455,12 +520,11 @@ const styles = StyleSheet.create({
   },
   lockIcon: {
     position: 'absolute',
-    bottom: 2,
+    bottom: 4,
     right: 4,
-    fontSize: 10,
-  },
-  loadingIndicator: {
-    position: 'absolute',
+    width: 14,
+    height: 14,
+    opacity: 0.8,
   },
   loadingGrid: {
     flexDirection: 'row',

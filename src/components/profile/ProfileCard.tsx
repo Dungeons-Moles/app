@@ -1,7 +1,9 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, ImageBackground } from 'react-native';
 import type { OnChainPlayerProfile } from '@/types/solana';
 import { Typography } from '@/theme/typography';
+
+const rectangleSource = require('../../../assets/campaign/rectangle.png');
 
 interface ProfileCardProps {
   profile: OnChainPlayerProfile;
@@ -9,23 +11,32 @@ interface ProfileCardProps {
 
 export function ProfileCard({ profile }: ProfileCardProps) {
   return (
-    <View style={styles.card}>
-      <View style={styles.row}>
-        <Text style={styles.label}>Total Runs:</Text>
-        <Text style={styles.value}>{profile.totalRuns}</Text>
+    <ImageBackground source={rectangleSource} style={styles.card} resizeMode="stretch">
+      <View style={styles.content}>
+        <View style={styles.row}>
+          <Text style={styles.label}>Total Runs:</Text>
+          <Text style={styles.value}>{profile.totalRuns}</Text>
+        </View>
+        <View style={styles.row}>
+          <Text style={styles.label}>PvE Runs Available:</Text>
+          <Text style={styles.value}>{profile.availableRuns}</Text>
+        </View>
       </View>
-      <View style={styles.row}>
-        <Text style={styles.label}>PvE Runs Available:</Text>
-        <Text style={styles.value}>{profile.availableRuns}</Text>
-      </View>
-    </View>
+    </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 2,
+    width: 170,
+    height: 55,
+  },
+  content: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
     gap: 3,
+    justifyContent: 'center',
   },
   row: {
     flexDirection: 'row',
@@ -34,12 +45,12 @@ const styles = StyleSheet.create({
   label: {
     fontFamily: Typography.stat,
     fontSize: 12,
-    color: '#888888',
+    color: '#1a1a1a',
   },
   value: {
     fontFamily: Typography.number,
     fontSize: 12,
     fontWeight: '600',
-    color: '#c8c8c8',
+    color: '#000000',
   },
 });

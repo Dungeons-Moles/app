@@ -6,8 +6,14 @@ const rpcUrl = process.env.EXPO_PUBLIC_SOLANA_RPC_URL ?? 'https://api.devnet.sol
 const playerProfileProgramId = process.env.EXPO_PUBLIC_PLAYER_PROFILE_PROGRAM_ID;
 const sessionManagerProgramId = process.env.EXPO_PUBLIC_SESSION_MANAGER_PROGRAM_ID;
 const mapGeneratorProgramId = process.env.EXPO_PUBLIC_MAP_GENERATOR_PROGRAM_ID;
+const gameplayStateProgramId = process.env.EXPO_PUBLIC_GAMEPLAY_STATE_PROGRAM_ID;
 
-if (!playerProfileProgramId || !sessionManagerProgramId || !mapGeneratorProgramId) {
+if (
+  !playerProfileProgramId ||
+  !sessionManagerProgramId ||
+  !mapGeneratorProgramId ||
+  !gameplayStateProgramId
+) {
   throw new Error('Missing required Solana program IDs in environment variables');
 }
 
@@ -18,5 +24,6 @@ export const SOLANA_CONFIG = {
     playerProfile: new PublicKey(playerProfileProgramId),
     sessionManager: new PublicKey(sessionManagerProgramId),
     mapGenerator: new PublicKey(mapGeneratorProgramId),
+    gameplayState: new PublicKey(gameplayStateProgramId),
   },
 };
