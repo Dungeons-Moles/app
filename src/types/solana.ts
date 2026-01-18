@@ -23,3 +23,17 @@ export interface TransactionResult {
   signature?: string;
   error?: string;
 }
+
+/**
+ * Represents a campaign level for UI display.
+ */
+export interface CampaignLevel {
+  /** Level number (0-80) */
+  level: number;
+  /** Whether player can access this level */
+  isUnlocked: boolean;
+  /** Whether player has completed this level */
+  isCompleted: boolean;
+  /** Seed for map generation (if unlocked) */
+  seed: bigint | null;
+}

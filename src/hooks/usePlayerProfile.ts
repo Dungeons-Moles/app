@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
 import { SystemProgram, PublicKey } from '@solana/web3.js';
 import { AnchorProvider } from '@coral-xyz/anchor';
 import { useWallet } from '@/contexts/WalletContext';
@@ -11,6 +11,7 @@ import {
 import { derivePlayerProfilePda } from '@/services/solana/types';
 import { getCachedProfile, setCachedProfile, clearCachedProfile } from '@/services/solana/cache';
 import { getUserErrorMessage } from '@/services/solana/errors';
+import { MAX_CAMPAIGN_LEVEL } from './useMapGenerator';
 import type { CachedProfileData, OnChainPlayerProfile, TransactionResult } from '@/types/solana';
 
 const NAME_MAX_LENGTH = 32;
@@ -24,6 +25,15 @@ export function usePlayerProfile() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isCached, setIsCached] = useState(false);
+
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   const provider = useMemo(() => {
     if (!wallet.publicKey) {
@@ -48,21 +58,25 @@ export function usePlayerProfile() {
 
   const updateState = useCallback(
     (nextProfile: OnChainPlayerProfile | null, nextExists: boolean, cached = false) => {
-      setProfile(nextProfile);
-      setExists(nextExists);
-      setIsCached(cached);
+      if (isMountedRef.current) {
+        setProfile(nextProfile);
+        setExists(nextExists);
+        setIsCached(cached);
+      }
     },
     []
   );
 
   const fetchProfile = useCallback(async () => {
     if (!wallet.publicKey || !wallet.address) {
-      setError('Wallet not connected');
+      if (isMountedRef.current) setError('Wallet not connected');
       return;
     }
 
-    setIsLoading(true);
-    setError(null);
+    if (isMountedRef.current) {
+      setIsLoading(true);
+      setError(null);
+    }
 
     try {
       const [profilePda] = derivePlayerProfilePda(wallet.publicKey);
@@ -113,11 +127,11 @@ export function usePlayerProfile() {
           true
         );
       } else {
-        setError(getUserErrorMessage(fetchError));
+        if (isMountedRef.current) setError(getUserErrorMessage(fetchError));
         updateState(null, false);
       }
     } finally {
-      setIsLoading(false);
+      if (isMountedRef.current) setIsLoading(false);
     }
   }, [readOnlyProgram, updateState, wallet.address, wallet.publicKey]);
 
@@ -135,8 +149,10 @@ export function usePlayerProfile() {
         return { success: false, error: `Name must be ${NAME_MAX_LENGTH} characters or less` };
       }
 
-      setIsLoading(true);
-      setError(null);
+      if (isMountedRef.current) {
+        setIsLoading(true);
+        setError(null);
+      }
 
       try {
         const [profilePda] = derivePlayerProfilePda(wallet.publicKey);
@@ -181,10 +197,10 @@ export function usePlayerProfile() {
         return { success: true, signature };
       } catch (txError) {
         const message = getUserErrorMessage(txError);
-        setError(message);
+        if (isMountedRef.current) setError(message);
         return { success: false, error: message };
       } finally {
-        setIsLoading(false);
+        if (isMountedRef.current) setIsLoading(false);
       }
     },
     [
@@ -212,6 +228,124 @@ export function usePlayerProfile() {
     }
   }, [updateState, wallet.address]);
 
+  /**
+   * Records the result of a completed dungeon run on-chain.
+   * Updates the profile with total runs, level progression (on victory), and available runs.
+   *
+   * @param levelReached - The level the player reached during the run
+   * @param victory - Whether the player defeated the boss (true) or died (false)
+   * @returns Transaction result with success status and optional signature
+   */
+  const recordRunResult = useCallback(
+    async (levelReached: number, victory: boolean): Promise<TransactionResult> => {
+      if (!wallet.publicKey || !wallet.address || !writeProgram) {
+        return { success: false, error: 'Wallet not connected' };
+      }
+
+      if (levelReached < 0 || levelReached > MAX_CAMPAIGN_LEVEL) {
+        return { success: false, error: `Level must be between 0 and ${MAX_CAMPAIGN_LEVEL}` };
+      }
+
+      if (isMountedRef.current) {
+        setIsLoading(true);
+        setError(null);
+      }
+
+      try {
+        const [profilePda] = derivePlayerProfilePda(wallet.publicKey);
+        const transaction = await writeProgram.methods
+          .recordRunResult(levelReached, victory)
+          .accounts({
+            playerProfile: profilePda,
+            owner: wallet.publicKey,
+          })
+          .transaction();
+
+        const signature = await signAndSendTransaction(transaction);
+        await connection.confirmTransaction(signature, 'confirmed');
+
+        // Refresh profile data after successful transaction
+        await fetchProfile();
+
+        return { success: true, signature };
+      } catch (txError) {
+        const message = getUserErrorMessage(txError);
+        if (isMountedRef.current) setError(message);
+        return { success: false, error: message };
+      } finally {
+        if (isMountedRef.current) setIsLoading(false);
+      }
+    },
+    [
+      connection,
+      fetchProfile,
+      signAndSendTransaction,
+      wallet.address,
+      wallet.publicKey,
+      writeProgram,
+    ]
+  );
+
+  /**
+   * Updates the display name of an existing profile on-chain.
+   *
+   * @param name - New display name (max 32 characters)
+   * @returns Transaction result with success status and optional signature
+   */
+  const updateName = useCallback(
+    async (name: string): Promise<TransactionResult> => {
+      if (!wallet.publicKey || !wallet.address || !writeProgram) {
+        return { success: false, error: 'Wallet not connected' };
+      }
+
+      if (!name.trim()) {
+        return { success: false, error: 'Name is required' };
+      }
+
+      if (name.length > NAME_MAX_LENGTH) {
+        return { success: false, error: `Name must be ${NAME_MAX_LENGTH} characters or less` };
+      }
+
+      if (isMountedRef.current) {
+        setIsLoading(true);
+        setError(null);
+      }
+
+      try {
+        const [profilePda] = derivePlayerProfilePda(wallet.publicKey);
+        const transaction = await writeProgram.methods
+          .updateProfileName(name)
+          .accounts({
+            playerProfile: profilePda,
+            owner: wallet.publicKey,
+          })
+          .transaction();
+
+        const signature = await signAndSendTransaction(transaction);
+        await connection.confirmTransaction(signature, 'confirmed');
+
+        // Refresh profile data after successful transaction
+        await fetchProfile();
+
+        return { success: true, signature };
+      } catch (txError) {
+        const message = getUserErrorMessage(txError);
+        if (isMountedRef.current) setError(message);
+        return { success: false, error: message };
+      } finally {
+        if (isMountedRef.current) setIsLoading(false);
+      }
+    },
+    [
+      connection,
+      fetchProfile,
+      signAndSendTransaction,
+      wallet.address,
+      wallet.publicKey,
+      writeProgram,
+    ]
+  );
+
   return {
     profile,
     exists,
@@ -220,6 +354,8 @@ export function usePlayerProfile() {
     isCached,
     fetchProfile,
     createProfile,
+    recordRunResult,
+    updateName,
     clearCache,
     resetProfile,
   };

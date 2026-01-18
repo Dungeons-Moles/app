@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
 import { SystemProgram, PublicKey } from '@solana/web3.js';
 import { AnchorProvider } from '@coral-xyz/anchor';
 import { useWallet } from '@/contexts/WalletContext';
@@ -10,6 +10,7 @@ import {
 } from '@/services/solana/programs';
 import { deriveGameSessionPda, deriveSessionCounterPda } from '@/services/solana/types';
 import { getUserErrorMessage } from '@/services/solana/errors';
+import { MAX_CAMPAIGN_LEVEL } from './useMapGenerator';
 import type { TransactionResult } from '@/types/solana';
 import type { OnChainGameSession } from '@/services/solana/types/session_manager';
 
@@ -21,6 +22,15 @@ export function useSessionManager() {
   const [hasActiveSession, setHasActiveSession] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   const provider = useMemo(() => {
     if (!wallet.publicKey) {
@@ -45,12 +55,14 @@ export function useSessionManager() {
 
   const fetchSession = useCallback(async () => {
     if (!wallet.publicKey) {
-      setError('Wallet not connected');
+      if (isMountedRef.current) setError('Wallet not connected');
       return;
     }
 
-    setIsLoading(true);
-    setError(null);
+    if (isMountedRef.current) {
+      setIsLoading(true);
+      setError(null);
+    }
 
     try {
       const [sessionPda] = deriveGameSessionPda(wallet.publicKey);
@@ -61,6 +73,8 @@ export function useSessionManager() {
           };
         }
       ).gameSession.fetchNullable(sessionPda);
+
+      if (!isMountedRef.current) return;
 
       if (!account) {
         setSession(null);
@@ -82,11 +96,13 @@ export function useSessionManager() {
       setSession(sessionData);
       setHasActiveSession(true);
     } catch (fetchError) {
-      setError(getUserErrorMessage(fetchError));
-      setSession(null);
-      setHasActiveSession(false);
+      if (isMountedRef.current) {
+        setError(getUserErrorMessage(fetchError));
+        setSession(null);
+        setHasActiveSession(false);
+      }
     } finally {
-      setIsLoading(false);
+      if (isMountedRef.current) setIsLoading(false);
     }
   }, [readOnlyProgram, wallet.publicKey]);
 
@@ -96,12 +112,17 @@ export function useSessionManager() {
         return { success: false, error: 'Wallet not connected' };
       }
 
-      if (campaignLevel < 0 || campaignLevel > 80) {
-        return { success: false, error: 'Campaign level must be between 0 and 80' };
+      if (campaignLevel < 0 || campaignLevel > MAX_CAMPAIGN_LEVEL) {
+        return {
+          success: false,
+          error: `Campaign level must be between 0 and ${MAX_CAMPAIGN_LEVEL}`,
+        };
       }
 
-      setIsLoading(true);
-      setError(null);
+      if (isMountedRef.current) {
+        setIsLoading(true);
+        setError(null);
+      }
 
       try {
         const [sessionPda] = deriveGameSessionPda(wallet.publicKey);
@@ -126,10 +147,10 @@ export function useSessionManager() {
         return { success: true, signature };
       } catch (txError) {
         const message = getUserErrorMessage(txError);
-        setError(message);
+        if (isMountedRef.current) setError(message);
         return { success: false, error: message };
       } finally {
-        setIsLoading(false);
+        if (isMountedRef.current) setIsLoading(false);
       }
     },
     [connection, fetchSession, signAndSendTransaction, wallet.publicKey, writeProgram]
@@ -144,8 +165,10 @@ export function useSessionManager() {
       return { success: false, error: 'No active session to delegate' };
     }
 
-    setIsLoading(true);
-    setError(null);
+    if (isMountedRef.current) {
+      setIsLoading(true);
+      setError(null);
+    }
 
     try {
       const [sessionPda] = deriveGameSessionPda(wallet.publicKey);
@@ -167,10 +190,10 @@ export function useSessionManager() {
       return { success: true, signature };
     } catch (txError) {
       const message = getUserErrorMessage(txError);
-      setError(message);
+      if (isMountedRef.current) setError(message);
       return { success: false, error: message };
     } finally {
-      setIsLoading(false);
+      if (isMountedRef.current) setIsLoading(false);
     }
   }, [
     connection,
@@ -195,8 +218,10 @@ export function useSessionManager() {
         return { success: false, error: 'State hash must be 32 bytes' };
       }
 
-      setIsLoading(true);
-      setError(null);
+      if (isMountedRef.current) {
+        setIsLoading(true);
+        setError(null);
+      }
 
       try {
         const [sessionPda] = deriveGameSessionPda(wallet.publicKey);
@@ -218,10 +243,10 @@ export function useSessionManager() {
         return { success: true, signature };
       } catch (txError) {
         const message = getUserErrorMessage(txError);
-        setError(message);
+        if (isMountedRef.current) setError(message);
         return { success: false, error: message };
       } finally {
-        setIsLoading(false);
+        if (isMountedRef.current) setIsLoading(false);
       }
     },
     [
@@ -243,8 +268,10 @@ export function useSessionManager() {
       return { success: false, error: 'No active session to end' };
     }
 
-    setIsLoading(true);
-    setError(null);
+    if (isMountedRef.current) {
+      setIsLoading(true);
+      setError(null);
+    }
 
     try {
       const [sessionPda] = deriveGameSessionPda(wallet.publicKey);
@@ -261,16 +288,18 @@ export function useSessionManager() {
       await connection.confirmTransaction(signature, 'confirmed');
 
       // Clear session state
-      setSession(null);
-      setHasActiveSession(false);
+      if (isMountedRef.current) {
+        setSession(null);
+        setHasActiveSession(false);
+      }
 
       return { success: true, signature };
     } catch (txError) {
       const message = getUserErrorMessage(txError);
-      setError(message);
+      if (isMountedRef.current) setError(message);
       return { success: false, error: message };
     } finally {
-      setIsLoading(false);
+      if (isMountedRef.current) setIsLoading(false);
     }
   }, [connection, hasActiveSession, signAndSendTransaction, wallet.publicKey, writeProgram]);
 

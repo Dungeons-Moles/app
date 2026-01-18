@@ -4,7 +4,7 @@
  */
 
 import React, { useCallback, useMemo, useEffect, useState, useRef } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Animated } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation';
 import { useGame, GamePhase } from '../contexts/GameContext';
@@ -45,6 +45,15 @@ export function GameScreen({ navigation }: GameScreenProps) {
     useGame();
   const feedbackTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [wallBreakFeedback, setWallBreakFeedback] = useState<string | null>(null);
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 800,
+      useNativeDriver: true,
+    }).start();
+  }, []);
 
   const showWallBreakFeedback = useCallback((message: string) => {
     if (feedbackTimeout.current) {
@@ -344,7 +353,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
   }
 
   return (
-    <View style={styles.container}>
+    <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
       <View style={styles.content}>
         {/* Left column: TopBar + Map */}
         <View style={styles.leftColumn}>
@@ -444,7 +453,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
       </View>
 
       <ItemTooltip item={inspectedItem} visible={isTooltipVisible} onClose={handleCloseTooltip} />
-    </View>
+    </Animated.View>
   );
 }
 

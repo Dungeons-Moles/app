@@ -9,9 +9,10 @@ import React, { useEffect, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation';
-import { useGame } from '../contexts/GameContext';
+import { useGame, GamePhase } from '../contexts/GameContext';
 import { CombatProvider, useCombat } from '../contexts/CombatContext';
 import { useProfile } from '../contexts/ProfileContext';
+import { useSession } from '../contexts/SessionContext';
 import { useLandscapeLock } from '../hooks/useOrientationLock';
 import {
   CombatArena,
@@ -48,6 +49,8 @@ export function CombatScreen({ navigation }: CombatScreenProps) {
 
 function CombatScreenContent({ navigation }: CombatScreenProps) {
   const { state: gameState, dispatch: gameDispatch } = useGame();
+  const { profile, recordRunResult } = useProfile();
+  const { endGame, stopAutoCommit, hasActiveSession } = useSession();
   const {
     state: combatState,
     speed,
@@ -79,9 +82,38 @@ function CombatScreenContent({ navigation }: CombatScreenProps) {
   }, [gameState?.combat, combatState.combat, startCombat, gameState?.rngState]);
 
   // Handle combat completion
-  const handleCombatComplete = useCallback(() => {
+  const handleCombatComplete = useCallback(async () => {
     const result = getResult();
     if (!result) return;
+
+    // Determine if this was a boss fight (victory means boss defeated)
+    const wasBossFight = gameState?.phase === GamePhase.BossFight;
+    const isVictory = result === 'VICTORY';
+    const levelReached = profile?.currentLevel ?? 0;
+
+    // Stop the auto-commit timer
+    stopAutoCommit();
+
+    // End on-chain session if one exists
+    if (hasActiveSession) {
+      try {
+        await endGame();
+      } catch (error) {
+        console.warn('Failed to end on-chain session:', error);
+      }
+    }
+
+    // Record run result on-chain (updates profile with victory/defeat)
+    // Only record if we have a profile
+    if (profile) {
+      try {
+        // For boss fights with victory, this increments level
+        // For defeats or regular combat, just increments totalRuns
+        await recordRunResult(levelReached, isVictory && wasBossFight);
+      } catch (error) {
+        console.warn('Failed to record run result on-chain:', error);
+      }
+    }
 
     gameDispatch({
       type: 'RESOLVE_COMBAT',
@@ -94,7 +126,18 @@ function CombatScreenContent({ navigation }: CombatScreenProps) {
     } else {
       navigation.goBack();
     }
-  }, [getResult, gameDispatch, navigation]);
+  }, [
+    getResult,
+    gameDispatch,
+    navigation,
+    gameState?.phase,
+    profile,
+    stopAutoCommit,
+    hasActiveSession,
+    endGame,
+    recordRunResult,
+    combatState.resolvedCombat,
+  ]);
 
   const { player, enemy } = getDisplayStates();
   const result = getResult();
