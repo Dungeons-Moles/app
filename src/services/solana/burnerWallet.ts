@@ -313,11 +313,11 @@ export async function checkForPendingSession(
     };
   }
 
-  // Burner exists but empty - clear it
-  await clearBurnerWallet();
+  // Burner exists but empty - Keep it! It might be needed for an active session.
+  // We can top it up later if needed.
   return {
-    hasPendingSession: false,
+    hasPendingSession: true, // Treat as pending so it loads
     burnerBalance: 0,
-    burnerPublicKey: null,
+    burnerPublicKey: burner.publicKey,
   };
 }

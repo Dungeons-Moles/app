@@ -36,7 +36,12 @@ const NUM_COLUMNS = 5;
 
 export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) {
   const { profile, mode } = useProfile();
-  const { startGame: startSessionOnChain, mapSeed, isLoading: sessionLoading } = useSession();
+  const {
+    startGame: startSessionOnChain,
+    mapSeed,
+    isLoading: sessionLoading,
+    gameplayState,
+  } = useSession();
   const { state: gameState, dispatch } = useGame();
   const {
     getCampaignLevels,
@@ -125,6 +130,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
 
       try {
         let seed: number;
+        let result;
 
         // In guest mode, skip on-chain session and use random seed
         if (isGuestMode) {
@@ -133,7 +139,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
         } else {
           console.log('[CampaignSelect] Online mode - calling startSessionOnChain...');
           // Start on-chain session for this level
-          const result = await startSessionOnChain(level.level);
+          result = await startSessionOnChain(level.level);
           console.log('[CampaignSelect] startSessionOnChain result:', result);
 
           // Determine seed to use
@@ -150,7 +156,13 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
             seed = Math.floor(Math.random() * 2147483647);
             console.log('[CampaignSelect] Fallback to random seed:', seed);
             if (!result.success && result.error) {
-              console.warn('On-chain session start failed, using offline mode:', result.error);
+              if (result.error === 'Session counter not initialized') {
+                console.log(
+                  '[CampaignSelect] Falling back to offline mode (Session counter missing)'
+                );
+              } else {
+                console.warn('On-chain session start failed, using offline mode:', result.error);
+              }
             }
           }
         }
@@ -160,11 +172,60 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
           dispatch({ type: 'RETURN_TO_MENU' });
         }
 
-        // Start the game with the seed
-        dispatch({ type: 'START_GAME', seed });
+        // Use returned state if available (restored), otherwise fallback to context state
+        // If result.gameState is present, it means we are reusing an existing session and fetched its state
+        let stateToRestore = result?.gameState;
+        let restorePayload = undefined;
+
+        if (stateToRestore) {
+          // Map ServiceGameState (flat) to EngineGameState (nested)
+          // Note: On-chain state is partial compared to client state (missing inventory, tools)
+          // We use 'any' cast here because we are merging partial player data,
+          // and the reducer will merge this with the default initialized player.
+          restorePayload = {
+            player: {
+              position: {
+                x: stateToRestore.positionX,
+                y: stateToRestore.positionY,
+              },
+              stats: {
+                hp: stateToRestore.hp,
+                maxHp: stateToRestore.maxHp,
+                atk: stateToRestore.atk,
+                arm: stateToRestore.arm,
+                spd: stateToRestore.spd,
+                dig: stateToRestore.dig,
+                gold: 0,
+              },
+              baseStats: {
+                hp: stateToRestore.maxHp,
+                maxHp: stateToRestore.maxHp,
+                atk: stateToRestore.atk,
+                arm: stateToRestore.arm,
+                spd: stateToRestore.spd,
+                dig: stateToRestore.dig,
+                gold: 0,
+              },
+            } as any,
+          };
+          console.log(
+            '[CampaignSelect] Restoring state with position:',
+            restorePayload.player.position
+          );
+        }
+
+        // Start the game with the seed and potentially restored state
+        dispatch({
+          type: 'START_GAME',
+          seed,
+          restore: restorePayload,
+        });
 
         // Navigate to the game screen
+        console.log('[CampaignSelect] Navigating to Game screen...');
         navigation.navigate('Game');
+      } catch (error) {
+        console.error('[CampaignSelect] Error starting game:', error);
       } finally {
         setIsStartingGame(false);
         setSelectedLevel(null);

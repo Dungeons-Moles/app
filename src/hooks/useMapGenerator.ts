@@ -7,8 +7,25 @@ import { getUserErrorMessage } from '@/services/solana/errors';
 import type { OnChainMapConfig } from '@/services/solana/types/map_generator';
 import type { CampaignLevel } from '@/types/solana';
 
+import { SeededRNG } from '@/game/engine/rng';
+import { generateMap } from '@/game/map/generator';
+import { GAME_CONSTANTS } from '@/game/engine/constants';
+
 /** Maximum campaign level (0-79 = 80 levels total) */
 export const MAX_CAMPAIGN_LEVEL = 79;
+
+/**
+ * Generate map locally to find spawn point.
+ * This ensures the on-chain initialization matches the client-side map.
+ */
+export function generateMapLocally(seed: number) {
+  const generated = generateMap({
+    width: GAME_CONSTANTS.MAP_WIDTH,
+    height: GAME_CONSTANTS.MAP_HEIGHT,
+    seed,
+  });
+  return generated;
+}
 
 export function useMapGenerator() {
   const { connection } = useSolanaConnection();

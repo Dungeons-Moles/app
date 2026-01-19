@@ -13,9 +13,18 @@ import { useWallet } from './WalletContext';
 import { useProfile } from './ProfileContext';
 import { useSolanaConnection } from './SolanaConnectionContext';
 import { useSessionManager } from '@/hooks/useSessionManager';
-import { useMapGenerator } from '@/hooks/useMapGenerator';
+import { useMapGenerator, generateMapLocally } from '@/hooks/useMapGenerator';
 import { useBurnerWallet } from '@/hooks/useBurnerWallet';
 import { useGameplayState } from '@/hooks/useGameplayState';
+import {
+  initializeGameState,
+  getGameStatePda,
+  fetchGameState,
+} from '@/services/solana/gameplayState';
+import {
+  createGameplayStateProgramWithProvider,
+  createAnchorProvider,
+} from '@/services/solana/programs';
 import { deriveGameSessionPda } from '@/services/solana/types';
 import {
   queueCleanup,
@@ -155,13 +164,19 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   // Fetch map seed when session changes
   useEffect(() => {
+    let isMounted = true;
     if (sessionManager.session) {
       mapGenerator.getMapSeed(sessionManager.session.campaignLevel).then((seed) => {
-        setMapSeed(seed);
+        if (isMounted) {
+          setMapSeed(seed);
+        }
       });
     } else {
       setMapSeed(null);
     }
+    return () => {
+      isMounted = false;
+    };
   }, [mapGenerator, sessionManager.session?.campaignLevel]);
 
   const startGame = useCallback(
@@ -177,6 +192,68 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       if (profile && profile.availableRuns <= 0) {
         console.log('[SessionContext] No available runs');
         return { success: false, error: 'No available runs remaining' };
+      }
+
+      // Check if session already exists on-chain before trying to create a new one
+      if (sessionManager.session && sessionManager.session.campaignLevel === campaignLevel) {
+        console.log('[SessionContext] Session already exists, reusing...');
+        // Just fetch map seed and ensure burner is ready
+        const seed = await mapGenerator.getMapSeed(campaignLevel);
+        setMapSeed(seed);
+
+        // If burner wallet doesn't exist locally but we're reusing session,
+        // we CANNOT just create a new one because it won't match the on-chain owner.
+        // We must attempt to load it again or fail.
+        if (!burnerWallet.keypair) {
+          console.warn('[SessionContext] Burner wallet missing for active session!');
+          // Try one last check
+          const recovered = await burnerWallet.checkPendingSession();
+          if (!recovered) {
+            return {
+              success: false,
+              error: 'Session credentials lost. Please reset or abandon run.',
+            };
+          }
+        }
+
+        // Initialize gameplay state for reused session if session PDA is available
+        if (sessionManager.session && wallet.publicKey) {
+          const [sessionPda] = deriveGameSessionPda(wallet.publicKey);
+          // Manually derive the GameState PDA and set it in the hook so it can start working
+          const [gameStatePda] = getGameStatePda(sessionPda);
+          gameplayState.setGameStatePda(gameStatePda);
+          console.log(
+            '[SessionContext] Restored GameState PDA for existing session:',
+            gameStatePda.toBase58()
+          );
+
+          // Force fetch the game state directly to bypass hook update latency
+          let restoredState = null;
+          try {
+            // We need a program instance. Since we don't have direct access to the hook's internal program,
+            // we'll recreate a temporary one here just for fetching the restore data.
+            // This is safer than relying on the hook's state which might not have updated yet.
+            if (wallet.publicKey) {
+              const provider = createAnchorProvider(connection, {
+                publicKey: wallet.publicKey,
+                signTransaction: async (tx) => tx,
+                signAllTransactions: async (txs) => txs,
+              });
+              const program = createGameplayStateProgramWithProvider(provider);
+              restoredState = await fetchGameState(program, gameStatePda);
+              console.log(
+                '[SessionContext] Fetched restored state directly:',
+                restoredState ? 'Found' : 'Null'
+              );
+            }
+          } catch (e) {
+            console.error('[SessionContext] Failed to fetch restored state:', e);
+          }
+
+          return { success: true, gameState: restoredState };
+        }
+
+        return { success: true };
       }
 
       // Validate campaign level is unlocked
@@ -231,12 +308,35 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
         // Fetch the created session
         await sessionManager.fetchSession();
-      } catch (txError) {
-        console.error('[SessionContext] Combined transaction failed:', txError);
+      } catch (txError: unknown) {
+        // Check for session_counter not initialized error (Code 3012)
+        // This is common on devnet/testnet if the program hasn't been initialized by an admin
+        const error = txError as { message?: string; logs?: string[] };
+        const isCounterUninitialized =
+          error?.message?.includes('AccountNotInitialized') ||
+          (Array.isArray(error?.logs) &&
+            error.logs.some(
+              (log: string) =>
+                log.includes('Error Code: AccountNotInitialized') && log.includes('session_counter')
+            ));
+
+        if (isCounterUninitialized) {
+          console.warn(
+            '[SessionContext] Session counter not initialized on-chain. Falling back to offline mode.'
+          );
+        } else {
+          console.error('[SessionContext] Combined transaction failed:', txError);
+        }
+
         await burnerWallet.clear();
         return {
           success: false,
-          error: txError instanceof Error ? txError.message : 'Transaction failed',
+          error:
+            txError instanceof Error
+              ? txError.message
+              : isCounterUninitialized
+                ? 'Session counter not initialized'
+                : 'Transaction failed',
         };
       }
 
@@ -248,20 +348,32 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
       // Step 6: Initialize gameplay state on-chain with burner
       console.log('[SessionContext] Step 6: Initializing gameplay state...');
-      if (wallet.publicKey) {
+      if (wallet.publicKey && seed !== null && seed !== undefined) {
         // Default map dimensions - should be passed from game context in real usage
-        const initialized = await gameplayState.initialize(sessionPda, newBurnerKeypair, {
-          mapWidth: 32,
-          mapHeight: 32,
-          startX: 16,
-          startY: 16,
-        });
+        try {
+          // Determine spawn position based on map generator logic
+          // Generate map locally using the seed to find the EXACT spawn point
+          const generatedMap = generateMapLocally(Number(seed));
+          const startX = generatedMap.spawn.x;
+          const startY = generatedMap.spawn.y;
 
-        console.log('[SessionContext] Gameplay state initialized:', initialized);
-        if (!initialized) {
-          console.warn(
-            'Failed to initialize gameplay state, session created without on-chain state'
-          );
+          console.log(`[SessionContext] Map generated locally. Spawn: (${startX}, ${startY})`);
+
+          const initialized = await gameplayState.initialize(sessionPda, newBurnerKeypair, {
+            mapWidth: 32,
+            mapHeight: 32,
+            startX,
+            startY,
+          });
+
+          console.log('[SessionContext] Gameplay state initialized:', initialized);
+          if (!initialized) {
+            console.warn(
+              'Failed to initialize gameplay state, session created without on-chain state'
+            );
+          }
+        } catch (error) {
+          console.warn('[SessionContext] Failed to initialize gameplay state (ignoring):', error);
         }
       }
 
