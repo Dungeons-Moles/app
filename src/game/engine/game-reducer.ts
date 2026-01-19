@@ -70,7 +70,7 @@ import { ENEMY_DEFINITIONS } from '../entities/enemies';
  * Per research.md R3: Using typed actions for state machine transitions.
  */
 export type GameAction =
-  | { type: 'START_GAME'; seed: number }
+  | { type: 'START_GAME'; seed: number; restore?: Partial<GameState> }
   | { type: 'MOVE'; direction: Direction }
   | { type: 'HIGHLIGHT_WALL'; direction: Direction; targetPosition: Position; cost: number }
   | { type: 'BREAK_WALL' }
@@ -102,7 +102,7 @@ export type GameAction =
 
 export function isStartGameAction(
   action: GameAction
-): action is { type: 'START_GAME'; seed: number } {
+): action is { type: 'START_GAME'; seed: number; restore?: Partial<GameState> } {
   return action.type === 'START_GAME';
 }
 
@@ -126,7 +126,7 @@ export function isMoveAction(action: GameAction): action is { type: 'MOVE'; dire
 export function gameReducer(state: GameState, action: GameAction): GameState {
   switch (action.type) {
     case 'START_GAME':
-      return handleStartGame(state, action.seed);
+      return handleStartGame(state, action.seed, action.restore);
 
     case 'MOVE':
       return handleMove(state, action.direction);
@@ -214,13 +214,28 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
  * Handles START_GAME action.
  * Transitions from MainMenu to Exploration with initialized game state.
  */
-function handleStartGame(state: GameState, seed: number): GameState {
+function handleStartGame(state: GameState, seed: number, restore?: Partial<GameState>): GameState {
   if (!isValidTransition(state.phase, GamePhase.Exploration)) {
     throw new Error(`Invalid transition: cannot start game from ${state.phase}`);
   }
 
   // Initialize game with seed (map generation, player setup, etc.)
-  return initializeGame(state, seed);
+  let newState = initializeGame(state, seed);
+
+  // Apply restored state if present (for session resumption)
+  if (restore) {
+    newState = {
+      ...newState,
+      ...restore,
+      // Ensure we preserve the correct phase if restored
+      phase: restore.phase || newState.phase,
+      // Map and Player must be merged carefully if provided partially
+      player: restore.player ? { ...newState.player, ...restore.player } : newState.player,
+      time: restore.time ? { ...newState.time, ...restore.time } : newState.time,
+    };
+  }
+
+  return newState;
 }
 
 /**

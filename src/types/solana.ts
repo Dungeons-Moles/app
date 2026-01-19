@@ -1,4 +1,5 @@
 import type { PublicKey } from '@solana/web3.js';
+import type { GameState } from '@/services/solana/types/gameplay_state';
 
 export interface OnChainPlayerProfile {
   owner: PublicKey;
@@ -22,6 +23,7 @@ export interface TransactionResult {
   success: boolean;
   signature?: string;
   error?: string;
+  gameState?: GameState | null;
 }
 
 /**

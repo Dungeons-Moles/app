@@ -25,6 +25,9 @@ export function useOrientationLock(orientation: OrientationLockType = 'landscape
 
     async function lockOrientation() {
       try {
+        // Only run on native platforms
+        if (Platform.OS === 'web') return;
+
         // Store original orientation to restore later
         const currentOrientation = await ScreenOrientation.getOrientationLockAsync();
         originalOrientation = currentOrientation;
@@ -32,14 +35,10 @@ export function useOrientationLock(orientation: OrientationLockType = 'landscape
         // Lock to the requested orientation
         switch (orientation) {
           case 'landscape':
-            await ScreenOrientation.lockAsync(
-              ScreenOrientation.OrientationLock.LANDSCAPE
-            );
+            await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
             break;
           case 'portrait':
-            await ScreenOrientation.lockAsync(
-              ScreenOrientation.OrientationLock.PORTRAIT
-            );
+            await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT);
             break;
           case 'default':
             await ScreenOrientation.unlockAsync();

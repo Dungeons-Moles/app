@@ -22,13 +22,21 @@ type AccountScreenProps = {
 };
 
 export function AccountScreen({ navigation }: AccountScreenProps) {
-  const { profile, createProfile, isLoading: isProfileLoading, error: profileError } = useProfile();
+  const {
+    profile,
+    createProfile,
+    isLoading: isProfileLoading,
+    error: profileError,
+    loginAsGuest,
+    mode,
+  } = useProfile();
   const { wallet, connect, isConnecting, error: walletError } = useWallet();
   const [selectedWallet, setSelectedWallet] = useState<SupportedWallet>('Jupiter');
   const [profileName, setProfileName] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
   const [isActionLoading, setIsActionLoading] = useState(false);
   const hasInitialized = useRef(false);
+  const [guestModeActivated, setGuestModeActivated] = useState(false);
   const [panelDimensions, setPanelDimensions] = useState<{ width: number; height: number } | null>(
     null
   );
@@ -62,12 +70,25 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
     }
   }, [isConnected, profile, isProfileLoading, navigation]);
 
+  // Navigate to Hub if guest mode is explicitly activated (T007)
+  useEffect(() => {
+    if (guestModeActivated && mode === 'guest' && !isConnected) {
+      navigation.replace('Hub');
+    }
+  }, [guestModeActivated, mode, isConnected, navigation]);
+
   const handleSignIn = async () => {
     setLocalError(null);
     const result = await connect(selectedWallet);
     if (!result) {
       return;
     }
+  };
+
+  const handlePlayAsGuest = () => {
+    setLocalError(null);
+    setGuestModeActivated(true);
+    loginAsGuest();
   };
 
   const handleCreateProfile = async () => {
@@ -227,6 +248,15 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
               </TouchableOpacity>
             </View>
 
+            {/* Guest Mode Link - only show when not connected (T002) */}
+            {!isConnected && (
+              <View style={styles.guestSlot}>
+                <TouchableOpacity onPress={handlePlayAsGuest} disabled={showLoading}>
+                  <Text style={styles.guestText}>or play as guest</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
             <View style={styles.errorSlot}>
               {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
             </View>
@@ -341,7 +371,7 @@ const styles = StyleSheet.create({
     color: '#000000',
   },
   walletIconInactive: {
-    color: '#5f5548',
+    color: 'rgba(95, 85, 72, 0.3)',
   },
   walletHint: {
     fontSize: 12,
@@ -384,9 +414,20 @@ const styles = StyleSheet.create({
   },
   errorSlot: {
     position: 'absolute',
-    bottom: '14%',
+    bottom: '10%',
     width: '70%',
     alignItems: 'center',
+  },
+  guestSlot: {
+    position: 'absolute',
+    bottom: '15%',
+    width: '70%',
+    alignItems: 'center',
+  },
+  guestText: {
+    fontSize: 14,
+    color: '#666666',
+    textDecorationLine: 'underline',
   },
   buttonImage: {
     width: '100%',

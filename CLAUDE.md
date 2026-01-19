@@ -122,6 +122,8 @@ Product specifications live in `specs/001-pve-dungeon-crawler/`:
 - TypeScript 5.x (strict mode) + React Native, Expo, @shopify/react-native-skia (2.2.12) for canvas rendering (003-gdd-mechanics-update)
 - @coral-xyz/anchor, @solana/web3.js, expo-secure-store for Solana integration (004-solana-frontend-integration)
 - Burner wallet for gasless gameplay transactions (005-gameplay-burner-integration)
+- TypeScript 5.x (strict mode) + React Native, Expo, @coral-xyz/anchor, @solana/web3.js (006-guest-mode-movement)
+- In-memory game state (no persistence), expo-secure-store for burner wallet (006-guest-mode-movement)
 
 ## Recent Changes
 - 002-qol-balance-batch: Added TypeScript 5.x (strict mode) + React Native, Expo, @shopify/react-native-skia (canvas rendering)

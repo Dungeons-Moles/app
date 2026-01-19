@@ -34,6 +34,8 @@ interface ProfileContextType {
   updateDefaultCombatSpeed: (speed: CombatSpeed) => Promise<void>;
   updateLastPlayed: () => Promise<void>;
   syncPendingResults: () => Promise<void>;
+  /** Login as guest (no wallet connection required) */
+  loginAsGuest: () => void;
 }
 
 const ProfileContext = createContext<ProfileContextType | undefined>(undefined);
@@ -144,6 +146,12 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     await offlineSync.syncAll();
   }, [offlineSync]);
 
+  const loginAsGuest = useCallback(() => {
+    console.log('[ProfileContext] loginAsGuest called');
+    setMode('guest');
+    setError(null);
+  }, []);
+
   const handleRecordRunResult = useCallback(
     async (levelReached: number, victory: boolean): Promise<TransactionResult> => {
       // Guest mode: no recording
@@ -185,11 +193,13 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       updateDefaultCombatSpeed,
       updateLastPlayed,
       syncPendingResults,
+      loginAsGuest,
     }),
     [
       clearProfile,
       error,
       handleRecordRunResult,
+      loginAsGuest,
       mode,
       offlineSync.pendingCount,
       offlineSync.isSyncing,

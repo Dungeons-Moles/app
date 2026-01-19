@@ -65,7 +65,7 @@ export interface UseGameplayStateReturn {
   /** Close the game state */
   close: (burnerKeypair: Keypair) => Promise<boolean>;
   /** Refresh game state from chain */
-  refresh: () => Promise<void>;
+  refresh: () => Promise<GameState | null>;
   /** Current sync status */
   syncStatus: SyncStatus;
   /** Last sync timestamp */
@@ -125,9 +125,9 @@ export function useGameplayState(): UseGameplayStateReturn {
   /**
    * Refresh game state from chain.
    */
-  const refresh = useCallback(async (): Promise<void> => {
+  const refresh = useCallback(async (): Promise<GameState | null> => {
     if (!program || !gameStatePda) {
-      return;
+      return null;
     }
 
     if (isMountedRef.current) {
@@ -143,12 +143,14 @@ export function useGameplayState(): UseGameplayStateReturn {
         setLastSyncAt(Date.now());
         setError(null);
       }
+      return state;
     } catch (err) {
       console.error('Failed to refresh game state:', err);
       if (isMountedRef.current) {
         setSyncStatus('error');
         setError(getGameplayErrorMessage(err));
       }
+      return null;
     }
   }, [gameStatePda, program]);
 

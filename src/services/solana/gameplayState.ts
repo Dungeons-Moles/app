@@ -175,7 +175,20 @@ export async function movePlayer(
     })
     .transaction();
 
-  return sendBurnerTransaction(connection, transaction, burnerKeypair);
+  // IMPORTANT: For moves, we don't want to wait for confirmation
+  // This allows "fire-and-forget" behavior for responsive gameplay
+  // The client optimistic update handles the UI, and if this fails, the client state will eventually desync/revert
+  transaction.feePayer = burnerKeypair.publicKey;
+  const { blockhash } = await connection.getLatestBlockhash();
+  transaction.recentBlockhash = blockhash;
+  transaction.sign(burnerKeypair);
+
+  // Send raw transaction without confirming
+  const signature = await connection.sendRawTransaction(transaction.serialize(), {
+    skipPreflight: true, // Skip simulation to maximize speed
+  });
+
+  return signature;
 }
 
 /**

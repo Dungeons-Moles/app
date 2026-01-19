@@ -18,6 +18,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Svg, { Ellipse, Defs, Pattern, Line } from 'react-native-svg';
 import { useProfile } from '../contexts/ProfileContext';
 import { useSession } from '../contexts/SessionContext';
+import { useGame, GamePhase } from '../contexts/GameContext';
 import { shortenAddress } from '../utils/storage';
 import { RootStackParamList } from '../navigation';
 import { SpeedControls } from '../components/combat';
@@ -41,8 +42,11 @@ type HubScreenProps = {
 };
 
 export function HubScreen({ navigation }: HubScreenProps) {
-  const { profile, isLoading, clearProfile, updateDefaultCombatSpeed, refresh } = useProfile();
+  const { profile, isLoading, clearProfile, updateDefaultCombatSpeed, refresh, mode } =
+    useProfile();
+  const isGuest = mode === 'guest';
   const { hasPendingCleanups, processPendingCleanups } = useSession();
+  const { state: gameState, dispatch } = useGame();
   const [showSettings, setShowSettings] = useState(false);
   const [combatSpeed, setCombatSpeed] = useState<CombatSpeed>('normal');
   const [refreshing, setRefreshing] = useState(false);
@@ -83,9 +87,21 @@ export function HubScreen({ navigation }: HubScreenProps) {
   };
 
   const handlePlayPvE = useCallback(async () => {
-    // Navigate to campaign selection screen
-    navigation.navigate('CampaignSelect');
-  }, [navigation]);
+    if (isGuest) {
+      // Guest mode: Start game directly with random seed
+      const seed = Math.floor(Math.random() * 2147483647);
+
+      if (gameState?.phase === GamePhase.Defeat || gameState?.phase === GamePhase.Victory) {
+        dispatch({ type: 'RETURN_TO_MENU' });
+      }
+
+      dispatch({ type: 'START_GAME', seed });
+      navigation.navigate('Game');
+    } else {
+      // Navigate to campaign selection screen
+      navigation.navigate('CampaignSelect');
+    }
+  }, [navigation, isGuest, dispatch, gameState?.phase]);
 
   const handlePlayPvP = () => {
     Alert.alert('Coming Soon', 'PvP Gauntlet is under development!');
@@ -153,7 +169,9 @@ export function HubScreen({ navigation }: HubScreenProps) {
                       <Text style={styles.playerName} numberOfLines={1}>
                         {profile?.name ?? 'Adventurer'}
                       </Text>
-                      {profile?.owner ? (
+                      {isGuest ? (
+                        <Text style={styles.walletAddress}>(GUEST)</Text>
+                      ) : profile?.owner ? (
                         <Text style={styles.walletAddress}>
                           {shortenAddress(profile.owner.toBase58())}
                         </Text>
@@ -165,27 +183,31 @@ export function HubScreen({ navigation }: HubScreenProps) {
             </TouchableOpacity>
 
             {/* Items Button - Below Profile */}
-            <TouchableOpacity onPress={handleItems} activeOpacity={0.7} style={{ marginTop: 8 }}>
-              <ImageBackground
-                source={buttonV1Source}
-                style={styles.navButton}
-                resizeMode="stretch"
-              >
-                <Text style={styles.navButtonText}>Items</Text>
-              </ImageBackground>
-            </TouchableOpacity>
+            {!isGuest && (
+              <TouchableOpacity onPress={handleItems} activeOpacity={0.7} style={{ marginTop: 8 }}>
+                <ImageBackground
+                  source={buttonV1Source}
+                  style={styles.navButton}
+                  resizeMode="stretch"
+                >
+                  <Text style={styles.navButtonText}>Items</Text>
+                </ImageBackground>
+              </TouchableOpacity>
+            )}
           </View>
 
           {/* TOP CENTER - Points */}
           <View style={styles.topCenter}>
-            <ImageBackground
-              source={buttonV3Source}
-              style={styles.pointsPanel}
-              resizeMode="stretch"
-            >
-              <Text style={styles.pointsLabel}>POINTS</Text>
-              <Text style={[styles.pointsValue, { color: '#FABC0F' }]}>0</Text>
-            </ImageBackground>
+            {!isGuest && (
+              <ImageBackground
+                source={buttonV3Source}
+                style={styles.pointsPanel}
+                resizeMode="stretch"
+              >
+                <Text style={styles.pointsLabel}>POINTS</Text>
+                <Text style={[styles.pointsValue, { color: '#FABC0F' }]}>0</Text>
+              </ImageBackground>
+            )}
           </View>
 
           {/* TOP RIGHT - Settings */}
@@ -234,53 +256,59 @@ export function HubScreen({ navigation }: HubScreenProps) {
 
           {/* BOTTOM LEFT - Secondary Navigation */}
           <View style={styles.bottomLeft}>
-            <TouchableOpacity onPress={handleQuests} activeOpacity={0.7}>
-              <ImageBackground
-                source={buttonV1Source}
-                style={styles.navButton}
-                resizeMode="stretch"
-              >
-                <Text style={styles.navButtonText}>Quests</Text>
-              </ImageBackground>
-            </TouchableOpacity>
-
-            <View style={styles.sideBySideRow}>
-              <TouchableOpacity onPress={handleLeaderboard} activeOpacity={0.7}>
+            {!isGuest && (
+              <TouchableOpacity onPress={handleQuests} activeOpacity={0.7}>
                 <ImageBackground
                   source={buttonV1Source}
                   style={styles.navButton}
                   resizeMode="stretch"
                 >
-                  <Text style={styles.navButtonText}>Ranks</Text>
+                  <Text style={styles.navButtonText}>Quests</Text>
                 </ImageBackground>
               </TouchableOpacity>
+            )}
 
-              <TouchableOpacity onPress={handleSkins} activeOpacity={0.7}>
-                <ImageBackground
-                  source={buttonV1Source}
-                  style={styles.navButton}
-                  resizeMode="stretch"
-                >
-                  <Text style={styles.navButtonText}>Skins</Text>
-                </ImageBackground>
-              </TouchableOpacity>
-            </View>
+            {!isGuest && (
+              <View style={styles.sideBySideRow}>
+                <TouchableOpacity onPress={handleLeaderboard} activeOpacity={0.7}>
+                  <ImageBackground
+                    source={buttonV1Source}
+                    style={styles.navButton}
+                    resizeMode="stretch"
+                  >
+                    <Text style={styles.navButtonText}>Ranks</Text>
+                  </ImageBackground>
+                </TouchableOpacity>
+
+                <TouchableOpacity onPress={handleSkins} activeOpacity={0.7}>
+                  <ImageBackground
+                    source={buttonV1Source}
+                    style={styles.navButton}
+                    resizeMode="stretch"
+                  >
+                    <Text style={styles.navButtonText}>Skins</Text>
+                  </ImageBackground>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
 
           {/* BOTTOM RIGHT - Primary Actions */}
           <View style={styles.bottomRight}>
-            {/* Marketplace above play buttons */}
-            <TouchableOpacity onPress={handleMarketplace} activeOpacity={0.7}>
-              <ImageBackground
-                source={buttonV1Source}
-                style={styles.shopButton}
-                resizeMode="stretch"
-              >
-                <Text style={styles.shopButtonText}>Marketplace</Text>
-              </ImageBackground>
-            </TouchableOpacity>
+            {/* Marketplace above play buttons - hidden for guests */}
+            {!isGuest && (
+              <TouchableOpacity onPress={handleMarketplace} activeOpacity={0.7}>
+                <ImageBackground
+                  source={buttonV1Source}
+                  style={styles.shopButton}
+                  resizeMode="stretch"
+                >
+                  <Text style={styles.shopButtonText}>Marketplace</Text>
+                </ImageBackground>
+              </TouchableOpacity>
+            )}
 
-            {/* Campaign and Gauntlet side by side */}
+            {/* Campaign/Play and PVP side by side */}
             <View style={styles.playButtonsRow}>
               <TouchableOpacity onPress={handlePlayPvE} activeOpacity={0.7}>
                 <ImageBackground
@@ -288,26 +316,31 @@ export function HubScreen({ navigation }: HubScreenProps) {
                   style={styles.campaignButton}
                   resizeMode="stretch"
                 >
-                  <Text style={styles.campaignButtonText}>Campaign</Text>
+                  <Text style={styles.campaignButtonText}>{isGuest ? 'Play' : 'Campaign'}</Text>
                   {isLoading ? (
                     <Skeleton width={50} height={12} style={{ marginTop: 4, marginBottom: 2 }} />
                   ) : (
-                    <Text style={styles.buttonSub}>
-                      {(profile?.currentLevel ?? 0) + 1} / {MAX_CAMPAIGN_LEVEL + 1}
-                    </Text>
+                    !isGuest && (
+                      <Text style={styles.buttonSub}>
+                        {`${(profile?.currentLevel ?? 0) + 1} / ${MAX_CAMPAIGN_LEVEL + 1}`}
+                      </Text>
+                    )
                   )}
                 </ImageBackground>
               </TouchableOpacity>
 
-              <TouchableOpacity onPress={handlePlayPvP} activeOpacity={0.7}>
-                <ImageBackground
-                  source={buttonV2Source}
-                  style={styles.gauntletButton}
-                  resizeMode="stretch"
-                >
-                  <Text style={styles.gauntletButtonText}>PVP</Text>
-                </ImageBackground>
-              </TouchableOpacity>
+              {/* PVP button - hidden for guests */}
+              {!isGuest && (
+                <TouchableOpacity onPress={handlePlayPvP} activeOpacity={0.7}>
+                  <ImageBackground
+                    source={buttonV2Source}
+                    style={styles.gauntletButton}
+                    resizeMode="stretch"
+                  >
+                    <Text style={styles.gauntletButtonText}>PVP</Text>
+                  </ImageBackground>
+                </TouchableOpacity>
+              )}
             </View>
           </View>
         </View>
@@ -361,7 +394,9 @@ export function HubScreen({ navigation }: HubScreenProps) {
                       style={styles.buttonImage}
                       resizeMode="stretch"
                     >
-                      <Text style={styles.disconnectText}>Reset Profile</Text>
+                      <Text style={styles.disconnectText}>
+                        {isGuest ? 'Disconnect' : 'Reset Profile'}
+                      </Text>
                     </ImageBackground>
                   </TouchableOpacity>
                 </View>

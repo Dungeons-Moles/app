@@ -8,6 +8,8 @@ import { View, Text, StyleSheet, Animated } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation';
 import { useGame, GamePhase } from '../contexts/GameContext';
+import { useSession } from '../contexts/SessionContext';
+import { useProfile } from '../contexts/ProfileContext';
 import { DPadControls } from '../components/game/DPadControls';
 import {
   TopBar,
@@ -43,6 +45,8 @@ const SAFE_AREA_EDGES = ['left', 'right'] as const;
 export function GameScreen({ navigation }: GameScreenProps) {
   const { state, dispatch, overviewMode, toggleOverviewMode, panOverview, zoomOverview } =
     useGame();
+  const { mode } = useProfile();
+  const { hasActiveSession, movePlayer } = useSession();
   const feedbackTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [wallBreakFeedback, setWallBreakFeedback] = useState<string | null>(null);
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -113,14 +117,32 @@ export function GameScreen({ navigation }: GameScreenProps) {
         y: state.player.position.y + delta.y,
       };
 
-      if (
+      const inBounds =
         targetPos.x >= 0 &&
         targetPos.x < state.map.width &&
         targetPos.y >= 0 &&
-        targetPos.y < state.map.height
-      ) {
+        targetPos.y < state.map.height;
+
+      let isWall = false;
+      let shouldSendTransaction = true;
+
+      if (inBounds) {
         const targetTile = state.map.tiles[targetPos.y][targetPos.x];
-        if (targetTile === TileType.Wall) {
+        isWall = targetTile === TileType.Wall;
+
+        if (isWall) {
+          // Check if already highlighted
+          const isHighlighted =
+            state.wallHighlight &&
+            state.wallHighlight.direction === direction &&
+            state.wallHighlight.targetPosition.x === targetPos.x &&
+            state.wallHighlight.targetPosition.y === targetPos.y;
+
+          if (!isHighlighted) {
+            // First click: Highlight only. No transaction.
+            shouldSendTransaction = false;
+          }
+
           if (state.player.stats.dig < 1) {
             showWallBreakFeedback('Requires DIG to break walls');
           } else if (
@@ -136,8 +158,70 @@ export function GameScreen({ navigation }: GameScreenProps) {
       }
 
       dispatch({ type: 'MOVE', direction });
+
+      // US3: On-chain movement tracking (fire-and-forget)
+      if (shouldSendTransaction && mode !== 'guest' && hasActiveSession && inBounds) {
+        console.log(`[GameContext] Movement tracking: ${direction}`);
+        movePlayer({
+          targetX: targetPos.x,
+          targetY: targetPos.y,
+          isWall,
+        })
+          .then(({ success }) => {
+            if (!success) {
+              // Revert move if on-chain fails
+              // This prevents visual desync
+              // We calculate opposite direction to move back
+              let reverseDir: Direction;
+              switch (direction) {
+                case Direction.Up:
+                  reverseDir = Direction.Down;
+                  break;
+                case Direction.Down:
+                  reverseDir = Direction.Up;
+                  break;
+                case Direction.Left:
+                  reverseDir = Direction.Right;
+                  break;
+                case Direction.Right:
+                  reverseDir = Direction.Left;
+                  break;
+              }
+              dispatch({ type: 'MOVE', direction: reverseDir });
+              showWallBreakFeedback('Movement failed on-chain');
+            }
+          })
+          .catch(() => {
+            // Revert move on error too
+            let reverseDir: Direction;
+            switch (direction) {
+              case Direction.Up:
+                reverseDir = Direction.Down;
+                break;
+              case Direction.Down:
+                reverseDir = Direction.Up;
+                break;
+              case Direction.Left:
+                reverseDir = Direction.Right;
+                break;
+              case Direction.Right:
+                reverseDir = Direction.Left;
+                break;
+            }
+            dispatch({ type: 'MOVE', direction: reverseDir });
+            showWallBreakFeedback('Movement sync error');
+          });
+      }
     },
-    [dispatch, overviewMode.active, showWallBreakFeedback, state]
+    [
+      dispatch,
+      overviewMode.active,
+      showWallBreakFeedback,
+      state,
+      mode,
+      hasActiveSession,
+      movePlayer,
+    ]
   );
 
   // Set up keyboard input
