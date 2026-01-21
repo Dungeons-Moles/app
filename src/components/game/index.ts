@@ -11,3 +11,4 @@ export { POIModal } from './POIModal';
 export { DebugOverlay } from './DebugOverlay';
 export { FastTravelButton } from './FastTravelButton';
 export { FastTravelOverlay } from './FastTravelOverlay';
+export { BossTooltipModal } from './BossTooltipModal';

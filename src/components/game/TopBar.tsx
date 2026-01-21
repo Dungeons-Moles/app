@@ -1,78 +1,37 @@
 /**
- * TopBar Component (T068-T070)
- * Displays week progress timeline and boss preview
- * @see specs/001-pve-dungeon-crawler/spec.md - User Story 3, FR-046
+ * TopBar Component - Displays week progress timeline
  */
 
-import React, { useState, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, Pressable, Modal, Image } from 'react-native';
+import React, { useMemo } from 'react';
+import { View, Text, StyleSheet, Image } from 'react-native';
 import type { TimeState } from '../../game/engine/types';
 import { TimePhase } from '../../game/engine/types';
-import { getBoss, type BossDefinition } from '../../data/bosses';
 import { getWeekProgress } from '../../game/time/progression';
-import { getEntityImageSource } from './entityImages';
 import { Typography } from '../../theme/typography';
 
-// ============================================================================
-// Component Props
-// ============================================================================
+const SUN_ICON = require('../../../assets/icons/sun.png');
+const MOON_ICON = require('../../../assets/icons/moon.png');
+const SKULL_ICON = require('../../../assets/icons/skull.png');
+
+// Constants for tick calculation
+const DAY_TICKS = 10;
+const NIGHT_TICKS = 6;
+const TOTAL_TICKS = 3 * (DAY_TICKS + NIGHT_TICKS);
+const MOVES_PER_TICK = 5;
 
 interface TopBarProps {
   time: TimeState;
-  overviewActive: boolean;
-  onToggleOverview: () => void;
 }
 
-// ============================================================================
-// TopBar Component
-// ============================================================================
-
-/**
- * TopBar - Displays week progress and boss preview
- * Shows current Day/Night cycle progress and the week's boss
- */
-export function TopBar({ time, overviewActive, onToggleOverview }: TopBarProps) {
-  const [showBossTooltip, setShowBossTooltip] = useState(false);
-  const boss = getBoss(time.weekBoss);
+export function TopBar({ time }: TopBarProps) {
   const progress = getWeekProgress(time);
-
-  const handleBossPress = useCallback(() => setShowBossTooltip(true), []);
-  const handleTooltipClose = useCallback(() => setShowBossTooltip(false), []);
 
   return (
     <View style={styles.container}>
-      <View style={styles.leftCluster}>
-        <Pressable
-          style={[styles.mapToggle, overviewActive && styles.mapToggleActive]}
-          onPress={onToggleOverview}
-          accessibilityLabel="Toggle map overview"
-          accessibilityRole="button"
-        >
-          <Text style={styles.mapToggleIcon}>🗺️</Text>
-        </Pressable>
-
-        {/* Week Progress Timeline (T069) - Left side */}
-        <WeekProgressTimeline time={time} progress={progress} />
-      </View>
-
-      {/* Boss Preview (T070) - Right side */}
-      <BossPreview boss={boss} onPress={handleBossPress} />
-
-      {/* Boss Tooltip Modal */}
-      <BossTooltipModal visible={showBossTooltip} boss={boss} onClose={handleTooltipClose} />
+      <WeekProgressTimeline time={time} progress={progress} />
     </View>
   );
 }
-
-// ============================================================================
-// Week Progress Timeline (T069)
-// ============================================================================
-
-// Constants for tick calculation
-const DAY_TICKS = 10; // 50 moves / 5 moves per tick
-const NIGHT_TICKS = 6; // 30 moves / 5 moves per tick
-const TOTAL_TICKS = 3 * (DAY_TICKS + NIGHT_TICKS); // 48 ticks total
-const MOVES_PER_TICK = 5;
 
 interface WeekProgressTimelineProps {
   time: TimeState;
@@ -80,36 +39,28 @@ interface WeekProgressTimelineProps {
 }
 
 function WeekProgressTimeline({ time }: WeekProgressTimelineProps) {
-  // Calculate which tick we're on (0-indexed position across all ticks)
   const currentTickPosition = useMemo(() => {
-    const ticksPerCycle = DAY_TICKS + NIGHT_TICKS; // 16 ticks per cycle
+    const ticksPerCycle = DAY_TICKS + NIGHT_TICKS;
 
     if (time.phase === TimePhase.Boss) {
-      // At the boss (end of timeline)
       return TOTAL_TICKS;
     }
 
-    // Completed cycles before current one
     const completedCycles = time.cycle - 1;
     let position = completedCycles * ticksPerCycle;
 
     if (time.phase === TimePhase.Day) {
-      // In day phase: calculate how many day ticks we've consumed
       const movesUsed = 50 - time.movesRemaining;
-      const ticksUsed = Math.floor(movesUsed / MOVES_PER_TICK);
-      position += ticksUsed;
+      position += Math.floor(movesUsed / MOVES_PER_TICK);
     } else if (time.phase === TimePhase.Night) {
-      // In night phase: all day ticks + night ticks consumed
       position += DAY_TICKS;
       const movesUsed = 30 - time.movesRemaining;
-      const ticksUsed = Math.floor(movesUsed / MOVES_PER_TICK);
-      position += ticksUsed;
+      position += Math.floor(movesUsed / MOVES_PER_TICK);
     }
 
     return position;
   }, [time]);
 
-  // Build the timeline structure (without boss)
   const timelineSegments = useMemo(() => {
     const segments: Array<{
       type: 'day' | 'night';
@@ -130,415 +81,134 @@ function WeekProgressTimeline({ time }: WeekProgressTimelineProps) {
   }, []);
 
   return (
-    <View style={styles.timelineContainer}>
-      {/* Week indicator */}
-      <Text style={styles.weekText}>Week {time.week}</Text>
+    <View style={styles.tickBarContainer}>
+      {/* Icons Row */}
+      <View style={styles.iconsRow}>
+        {timelineSegments.map((segment, index) => (
+          <View
+            key={`icon-${index}`}
+            style={[styles.iconContainer, { flex: segment.ticks }]} // Proportionally size containers
+          >
+            {segment.type === 'day' ? (
+              <Image source={SUN_ICON} style={styles.phaseIcon} resizeMode="contain" />
+            ) : (
+              <Image source={MOON_ICON} style={styles.phaseIcon} resizeMode="contain" />
+            )}
+          </View>
+        ))}
+        {/* Skull icon at the end */}
+        <View style={styles.skullContainer}>
+          <Image source={SKULL_ICON} style={styles.skullIcon} resizeMode="contain" />
+        </View>
+      </View>
 
-      {/* Tick marks progress bar with icons above each segment */}
-      <View style={styles.tickBarContainer}>
-        {/* Icons row - each icon centered above its segment */}
-        <View style={styles.iconsRow}>
-          {timelineSegments.map((segment, index) => {
-            const isActive =
-              segment.type === 'day'
-                ? time.phase === TimePhase.Day && time.cycle === segment.cycle
-                : time.phase === TimePhase.Night && time.cycle === segment.cycle;
-
-            const isCompleted =
-              segment.type === 'day'
-                ? time.cycle > segment.cycle ||
-                  (time.cycle === segment.cycle && time.phase !== TimePhase.Day) ||
-                  time.phase === TimePhase.Boss
-                : time.cycle > segment.cycle || time.phase === TimePhase.Boss;
-
-            const icon = segment.type === 'day' ? '☀️' : '🌙';
-
-            const iconStyle = isActive
-              ? styles.iconActive
-              : isCompleted
-                ? styles.iconCompleted
-                : styles.iconPending;
-
-            // Each icon container is sized proportionally to its tick count
-            return (
-              <View key={index} style={[styles.iconContainer, { flex: segment.ticks }]}>
-                <Text style={[styles.phaseIcon, iconStyle]}>{icon}</Text>
-              </View>
-            );
-          })}
+      {/* Tick Bar Row */}
+      <View style={styles.tickBarWrapper}>
+        <View style={styles.tickBarBackground}>
+          {timelineSegments
+            .map((segment) =>
+              Array.from({ length: segment.ticks }).map((_, tickIdx) => {
+                const globalTick = segment.startTick + tickIdx;
+                const isConsumed = globalTick < currentTickPosition;
+                return (
+                  <View
+                    key={globalTick}
+                    style={[styles.tick, isConsumed ? styles.tickConsumed : styles.tickPending]}
+                  />
+                );
+              })
+            )
+            .flat()}
         </View>
 
-        {/* Tick marks bar with marker below */}
-        <View style={styles.tickBarWrapper}>
-          <View style={styles.tickBarBackground}>
-            {/* Render all ticks with equal spacing */}
-            {timelineSegments
-              .map((segment) =>
-                Array.from({ length: segment.ticks }).map((_, tickIdx) => {
-                  const globalTick = segment.startTick + tickIdx;
-                  const isConsumed = globalTick < currentTickPosition;
-
-                  return (
-                    <View
-                      key={globalTick}
-                      style={[
-                        styles.tick,
-                        segment.type === 'day' ? styles.tickDay : styles.tickNight,
-                        isConsumed && styles.tickConsumed,
-                      ]}
-                    />
-                  );
-                })
-              )
-              .flat()}
-          </View>
-
-          {/* Marker row - same padding as tick bar for alignment */}
-          <View style={styles.markerRow}>
-            <View
-              style={[
-                styles.positionMarker,
-                {
-                  // With space-between: first tick at 0%, last at 100%
-                  // Tick n is at n/(TOTAL_TICKS-1) * 100%
-                  left: `${(currentTickPosition / (TOTAL_TICKS - 1)) * 100}%`,
-                },
-              ]}
-            >
-              <Text style={styles.markerTriangle}>▲</Text>
-            </View>
+        <View style={styles.markerRow}>
+          <View
+            style={[
+              styles.positionMarker,
+              { left: `${(currentTickPosition / (TOTAL_TICKS - 1)) * 100}%` },
+            ]}
+          >
+            <Text style={styles.markerLine}>|</Text>
           </View>
         </View>
       </View>
     </View>
   );
 }
-
-// ============================================================================
-// Boss Preview (T070)
-// ============================================================================
-
-interface BossPreviewProps {
-  boss: BossDefinition;
-  onPress: () => void;
-}
-
-function BossPreview({ boss, onPress }: BossPreviewProps) {
-  return (
-    <Pressable
-      style={styles.bossPreview}
-      onPress={onPress}
-      accessibilityLabel={`View ${boss.name} details`}
-      accessibilityRole="button"
-    >
-      <Image source={getEntityImageSource(boss.id)} style={styles.bossImage} resizeMode="contain" />
-      <View style={styles.bossInfo}>
-        <Text style={styles.bossName} numberOfLines={1}>
-          {boss.name}
-        </Text>
-        <Text style={styles.bossSubtext}>Tap for details</Text>
-      </View>
-    </Pressable>
-  );
-}
-
-// ============================================================================
-// Boss Tooltip Modal
-// ============================================================================
-
-interface BossTooltipModalProps {
-  visible: boolean;
-  boss: BossDefinition;
-  onClose: () => void;
-}
-
-function BossTooltipModal({ visible, boss, onClose }: BossTooltipModalProps) {
-  return (
-    <Modal visible={visible} transparent={true} animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.modalBackdrop} onPress={onClose}>
-        <View style={styles.tooltipContainer}>
-          {/* Header */}
-          <View style={styles.tooltipHeader}>
-            <Image
-              source={getEntityImageSource(boss.id)}
-              style={styles.tooltipImage}
-              resizeMode="contain"
-            />
-            <Text style={styles.tooltipName}>{boss.name}</Text>
-          </View>
-
-          {/* Stats */}
-          <View style={styles.statsGrid}>
-            <StatBox label="HP" value={boss.stats.hp} color="#ef4444" />
-            <StatBox label="ATK" value={boss.stats.atk} color="#f59e0b" />
-            <StatBox label="ARM" value={boss.stats.arm} color="#3b82f6" />
-            <StatBox label="SPD" value={boss.stats.spd} color="#10b981" />
-          </View>
-
-          {/* Abilities */}
-          {boss.abilities.map((ability, index) => (
-            <View key={index} style={styles.traitSection}>
-              <Text style={styles.traitName}>{ability.name}</Text>
-              <Text style={styles.traitDescription}>{ability.description}</Text>
-            </View>
-          ))}
-
-          {/* Close hint */}
-          <Text style={styles.closeHint}>Tap anywhere to close</Text>
-        </View>
-      </Pressable>
-    </Modal>
-  );
-}
-
-// ============================================================================
-// Stat Box Component
-// ============================================================================
-
-interface StatBoxProps {
-  label: string;
-  value: number;
-  color: string;
-}
-
-function StatBox({ label, value, color }: StatBoxProps) {
-  return (
-    <View style={[styles.statBox, { borderColor: color }]}>
-      <Text style={[styles.statValue, { color }]}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
-    </View>
-  );
-}
-
-// ============================================================================
-// Styles
-// ============================================================================
 
 const styles = StyleSheet.create({
   container: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#0f0f14',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#2a2a30',
-  },
-  leftCluster: {
     flex: 1,
     flexDirection: 'row',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  mapToggle: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#1a1a22',
-    borderWidth: 1,
-    borderColor: '#2a2a35',
-    marginRight: 10,
-  },
-  mapToggleActive: {
-    backgroundColor: '#1f2a37',
-    borderColor: '#60a5fa',
-  },
-  mapToggleIcon: {
-    fontSize: 16,
-  },
-
-  // Timeline styles
-  timelineContainer: {
-    flex: 1,
-  },
-  weekText: {
-    fontFamily: Typography.header,
-    fontSize: 12,
-    color: '#9ca3af',
-    marginBottom: 2,
+    backgroundColor: 'transparent',
+    paddingHorizontal: 10,
   },
   tickBarContainer: {
-    marginTop: 2,
+    flex: 1,
+    justifyContent: 'center',
+    maxWidth: 500, // Increased max width to accommodate spread
   },
   iconsRow: {
     flexDirection: 'row',
-    marginBottom: 2,
+    marginBottom: 4,
+    width: '100%',
   },
   iconContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: 'flex-start', // Align icons to the start of their segment
+    justifyContent: 'flex-end',
   },
   phaseIcon: {
-    fontSize: 12,
+    width: 16,
+    height: 16,
+    marginLeft: -7, // Center 16px icon over 2px tick (8px center - 1px center = 7px shift)
   },
-  iconActive: {
-    opacity: 1,
+  skullContainer: {
+    position: 'absolute',
+    right: -8, // Center 16px icon over the end edge
+    bottom: 0,
   },
-  iconCompleted: {
-    opacity: 0.4,
-  },
-  iconPending: {
-    opacity: 0.6,
+  skullIcon: {
+    width: 16,
+    height: 16,
   },
   tickBarWrapper: {
-    // Wrapper to contain tick bar and marker row
+    height: 20,
+    justifyContent: 'center',
+    width: '100%',
   },
   tickBarBackground: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    height: 8,
-    backgroundColor: '#1a1a22',
-    borderRadius: 2,
-    paddingHorizontal: 4,
+    height: 12,
   },
   tick: {
     width: 2,
-    height: 6,
-    borderRadius: 1,
+    height: 10,
   },
-  tickDay: {
-    backgroundColor: '#f59e0b',
-  },
-  tickNight: {
-    backgroundColor: '#6366f1',
+  tickPending: {
+    backgroundColor: '#000000',
   },
   tickConsumed: {
-    backgroundColor: '#4b5563',
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
   },
   markerRow: {
-    position: 'relative',
-    height: 12,
-    marginHorizontal: 4, // Match tick bar padding
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: 20,
   },
   positionMarker: {
     position: 'absolute',
-    top: 0,
-    marginLeft: -6, // Center the triangle on the tick
+    top: -2,
+    marginLeft: -2,
   },
-  markerTriangle: {
-    fontSize: 10,
-    color: '#e5e5e5',
-  },
-
-  // Boss preview styles
-  bossPreview: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#1a1a22',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#2a2a35',
-  },
-  bossImage: {
-    width: 24,
-    height: 24,
-    marginRight: 8,
-  },
-  bossInfo: {
-    alignItems: 'flex-start',
-  },
-  bossName: {
-    fontFamily: Typography.header,
-    fontSize: 12,
-    color: '#e5e5e5',
-    maxWidth: 80,
-  },
-  bossSubtext: {
-    fontFamily: Typography.body,
-    fontSize: 9,
-    color: '#6b7280',
-  },
-
-  // Modal styles
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  tooltipContainer: {
-    backgroundColor: '#1a1a22',
-    borderRadius: 12,
-    padding: 16,
-    width: 280,
-    borderWidth: 1,
-    borderColor: '#3a3a45',
-  },
-  tooltipHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  tooltipImage: {
-    width: 32,
-    height: 32,
-    marginRight: 12,
-  },
-  tooltipName: {
-    fontFamily: Typography.header,
-    fontSize: 20,
-    color: '#ffffff',
-    flex: 1,
-  },
-
-  // Stats grid
-  statsGrid: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  statBox: {
-    alignItems: 'center',
-    padding: 8,
-    borderRadius: 6,
-    borderWidth: 1,
-    minWidth: 50,
-    backgroundColor: '#0f0f14',
-  },
-  statValue: {
-    fontFamily: Typography.number,
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  statLabel: {
-    fontFamily: Typography.stat,
-    fontSize: 9,
-    color: '#9ca3af',
-    marginTop: 2,
-  },
-
-  // Trait section
-  traitSection: {
-    backgroundColor: '#0f0f14',
-    padding: 10,
-    borderRadius: 6,
-    marginBottom: 12,
-  },
-  traitName: {
-    fontFamily: Typography.header,
-    fontSize: 14,
-    color: '#f59e0b',
-    marginBottom: 4,
-  },
-  traitDescription: {
-    fontFamily: Typography.body,
-    fontSize: 11,
-    color: '#d1d5db',
-    lineHeight: 16,
-  },
-
-  // Close hint
-  closeHint: {
-    textAlign: 'center',
-    fontSize: 10,
-    color: '#4b5563',
-    marginTop: 8,
+  markerLine: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#000000',
   },
 });
 

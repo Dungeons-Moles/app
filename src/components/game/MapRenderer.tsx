@@ -32,7 +32,7 @@ const TILE_COLORS = {
   [TileType.Wall]: '#000000', // Black environment (fallback)
 } as const;
 
-const FOG_COLOR_HIDDEN = '#000000';
+const FOG_COLOR_HIDDEN = 'transparent'; // Fully transparent to show parchment background
 const FOG_COLOR_REVEALED = 'rgba(0, 0, 0, 0.35)';
 
 const GRAYSCALE_MATRIX = [
@@ -138,6 +138,7 @@ interface TileRectProps {
   zoom: number;
   floorImage: ReturnType<typeof useImage>;
   rockImage: ReturnType<typeof useImage>;
+  opacity?: number;
 }
 
 const TileRect = memo(function TileRect({
@@ -151,6 +152,7 @@ const TileRect = memo(function TileRect({
   zoom,
   floorImage,
   rockImage,
+  opacity = 0.7, // More transparent to show background
 }: TileRectProps) {
   // Calculate screen position with camera offset applied directly
   const screenX = x * TILE_SIZE * zoom + offsetX;
@@ -167,7 +169,7 @@ const TileRect = memo(function TileRect({
 
   if (fog === FogState.Revealed && showRevealOverlay) {
     return (
-      <Group>
+      <Group opacity={opacity}>
         {tileImage ? (
           <Image
             image={tileImage}
@@ -205,13 +207,21 @@ const TileRect = memo(function TileRect({
         y={screenY}
         width={tileSize}
         height={tileSize}
+        opacity={opacity}
         fit="cover"
       />
     );
   }
 
   return (
-    <Rect x={screenX} y={screenY} width={tileSize} height={tileSize} color={TILE_COLORS[type]} />
+    <Rect
+      x={screenX}
+      y={screenY}
+      width={tileSize}
+      height={tileSize}
+      color={TILE_COLORS[type]}
+      opacity={opacity}
+    />
   );
 });
 
@@ -613,7 +623,7 @@ export const MapRenderer = memo(function MapRenderer({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000000', // Pure black background
+    backgroundColor: 'transparent',
   },
   canvas: {
     ...StyleSheet.absoluteFillObject,

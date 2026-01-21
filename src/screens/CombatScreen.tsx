@@ -5,8 +5,8 @@
  * @see specs/001-pve-dungeon-crawler/spec.md User Story 2, FR-048, FR-049
  */
 
-import React, { useEffect, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useEffect, useCallback, useMemo, useRef } from 'react';
+import { View, Text, StyleSheet, ImageBackground, Animated } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation';
 import { useGame, GamePhase } from '../contexts/GameContext';
@@ -25,6 +25,8 @@ import { DebugOverlay } from '../components/game';
 import { ENEMY_TRAITS } from '../game/combat/traits';
 import { getEntityImageSource } from '../components/game/entityImages';
 import { Typography } from '../theme/typography';
+
+const BACKGROUND_IMAGE = require('../../assets/loading/background.png');
 
 type CombatScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Combat'>;
@@ -59,6 +61,15 @@ function CombatScreenContent({ navigation }: CombatScreenProps) {
     getDisplayStates,
     getResult,
   } = useCombat();
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 800,
+      useNativeDriver: true,
+    }).start();
+  }, []);
 
   // Lock to landscape orientation (FR-044)
   useLandscapeLock();
@@ -177,106 +188,119 @@ function CombatScreenContent({ navigation }: CombatScreenProps) {
   if (!player || !enemy) {
     return (
       <View style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText}>Preparing combat...</Text>
-        </View>
+        <ImageBackground
+          source={BACKGROUND_IMAGE}
+          style={styles.backgroundImage}
+          resizeMode="cover"
+        >
+          <View style={styles.darkOverlay}>
+            <View style={styles.loadingContainer}>
+              <Text style={styles.loadingText}>Preparing combat...</Text>
+            </View>
+          </View>
+        </ImageBackground>
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <View style={styles.content}>
-        {/* Enemy Panel (LEFT) - FR-048 */}
-        <View style={styles.sidePanel}>
-          <EnemyPanel
-            name={enemy.name}
-            emoji={enemy.emoji}
-            imageSource={enemy.definitionId ? getEntityImageSource(enemy.definitionId) : undefined}
-            hp={enemy.hp}
-            maxHp={enemy.maxHp}
-            atk={enemy.atk}
-            arm={enemy.arm}
-            maxArm={enemyMaxArm}
-            spd={enemy.spd}
-            statusEffects={enemy.statusEffects}
-            trait={enemyTrait}
-          />
-        </View>
+    <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
+      <ImageBackground source={BACKGROUND_IMAGE} style={styles.backgroundImage} resizeMode="cover">
+        <View style={styles.darkOverlay}>
+          <View style={styles.content}>
+            {/* Enemy Panel (LEFT) - FR-048 */}
+            <EnemyPanel
+              name={enemy.name}
+              emoji={enemy.emoji}
+              imageSource={
+                enemy.definitionId ? getEntityImageSource(enemy.definitionId) : undefined
+              }
+              hp={enemy.hp}
+              maxHp={enemy.maxHp}
+              atk={enemy.atk}
+              arm={enemy.arm}
+              maxArm={enemyMaxArm}
+              spd={enemy.spd}
+              dig={0}
+              statusEffects={enemy.statusEffects}
+              trait={enemyTrait}
+            />
 
-        {/* Combat Arena (CENTER) */}
-        <View style={styles.arenaArea}>
-          {/* Gold display in top right of arena area */}
-          {gameState?.player.stats.gold !== undefined && (
-            <View style={styles.goldContainer}>
-              <Text style={styles.goldText}>{gameState.player.stats.gold}g</Text>
+            {/* Combat Arena (CENTER) */}
+            <View style={styles.arenaArea}>
+              <CombatArena
+                player={player}
+                enemy={enemy}
+                damageNumbers={combatState.damageNumbers}
+                effectNotifications={combatState.effectNotifications}
+                isAnimating={combatState.isAnimating}
+                activeActor={activeActor}
+                playerMaxArm={playerMaxArm}
+                enemyMaxArm={enemyMaxArm}
+              />
+
+              <View style={styles.controlsArea}>
+                <SpeedControls
+                  currentSpeed={speed}
+                  onSpeedChange={setSpeed}
+                  disabled={speedControlsDisabled}
+                />
+              </View>
+
+              {/* Debug Overlay - P15: Debug Tooling Isolation */}
+              {gameState && (
+                <DebugOverlay
+                  debug={gameState.debug}
+                  seed={gameState.seed}
+                  phase={gameState.phase}
+                  time={gameState.time}
+                />
+              )}
             </View>
-          )}
 
-          <CombatArena
-            player={player}
-            enemy={enemy}
-            damageNumbers={combatState.damageNumbers}
-            effectNotifications={combatState.effectNotifications}
-            isAnimating={combatState.isAnimating}
-            activeActor={activeActor}
-            playerMaxArm={playerMaxArm}
-            enemyMaxArm={enemyMaxArm}
-          />
-
-          <View style={styles.controlsArea}>
-            <SpeedControls
-              currentSpeed={speed}
-              onSpeedChange={setSpeed}
-              disabled={speedControlsDisabled}
+            {/* Player Panel (RIGHT) - FR-049 */}
+            <PlayerPanel
+              name={player.name}
+              emoji={player.emoji}
+              hp={player.hp}
+              maxHp={player.maxHp}
+              atk={player.atk}
+              arm={player.arm}
+              maxArm={playerMaxArm}
+              spd={player.spd}
+              dig={gameState?.player.stats.dig ?? 0}
+              gold={gameState?.player.stats.gold}
+              statusEffects={player.statusEffects}
+              equippedTool={playerEquipment.tool}
+              equippedGear={playerEquipment.gear}
             />
           </View>
 
-          {/* Debug Overlay - P15: Debug Tooling Isolation */}
-          {gameState && (
-            <DebugOverlay
-              debug={gameState.debug}
-              seed={gameState.seed}
-              phase={gameState.phase}
-              time={gameState.time}
+          {/* Victory/Defeat Overlay - T075: Pass goldReward for display */}
+          {combatState.isComplete && result && (
+            <VictoryDefeatDisplay
+              result={result}
+              goldReward={result === 'VICTORY' ? combatState.resolvedCombat?.goldReward : undefined}
+              onComplete={handleCombatComplete}
             />
           )}
         </View>
-
-        {/* Player Panel (RIGHT) - FR-049 */}
-        <View style={styles.sidePanel}>
-          <PlayerPanel
-            name={player.name}
-            emoji={player.emoji}
-            hp={player.hp}
-            maxHp={player.maxHp}
-            atk={player.atk}
-            arm={player.arm}
-            maxArm={playerMaxArm}
-            spd={player.spd}
-            statusEffects={player.statusEffects}
-            equippedTool={playerEquipment.tool}
-            equippedGear={playerEquipment.gear}
-          />
-        </View>
-      </View>
-
-      {/* Victory/Defeat Overlay - T075: Pass goldReward for display */}
-      {combatState.isComplete && result && (
-        <VictoryDefeatDisplay
-          result={result}
-          goldReward={result === 'VICTORY' ? combatState.resolvedCombat?.goldReward : undefined}
-          onComplete={handleCombatComplete}
-        />
-      )}
-    </View>
+      </ImageBackground>
+    </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0a0a0f',
+  },
+  backgroundImage: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
+  },
+  darkOverlay: {
+    flex: 1,
   },
   content: {
     flex: 1,
@@ -290,13 +314,7 @@ const styles = StyleSheet.create({
   loadingText: {
     fontFamily: Typography.header,
     fontSize: 20,
-    color: '#888888',
-  },
-  sidePanel: {
-    flex: 1,
-    backgroundColor: '#151518',
-    borderColor: '#2a2a30',
-    borderWidth: 1,
+    color: '#333',
   },
   arenaArea: {
     flex: 2,
@@ -306,23 +324,5 @@ const styles = StyleSheet.create({
   },
   controlsArea: {
     marginTop: 12,
-  },
-  goldContainer: {
-    position: 'absolute',
-    top: 16,
-    right: 16,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: '#FFD700',
-    zIndex: 10,
-  },
-  goldText: {
-    fontFamily: Typography.number,
-    fontSize: 16,
-    color: '#FFD700',
-    fontWeight: 'bold',
   },
 });

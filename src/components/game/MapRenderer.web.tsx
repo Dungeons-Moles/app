@@ -30,7 +30,7 @@ const TILE_COLORS = {
   [TileType.Wall]: '#000000', // Black environment
 } as const;
 
-const FOG_COLOR_HIDDEN = '#000000';
+const FOG_COLOR_HIDDEN = 'transparent';
 const FOG_COLOR_REVEALED = 'rgba(0, 0, 0, 0.35)';
 
 // Tile images
@@ -570,7 +570,7 @@ export const MapRenderer = memo(function MapRenderer({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000000', // Pure black background
+    backgroundColor: 'transparent',
     position: 'relative',
   },
   tileLayer: {
@@ -584,6 +584,7 @@ const styles = StyleSheet.create({
   tileImage: {
     width: TILE_SIZE,
     height: TILE_SIZE,
+    opacity: 0.7,
   },
   tileFog: {
     ...StyleSheet.absoluteFillObject,

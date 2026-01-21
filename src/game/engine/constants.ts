@@ -27,7 +27,7 @@ export const GAME_CONSTANTS = {
   // Inventory
   INITIAL_INVENTORY_SLOTS: 4,
   INVENTORY_SLOTS_PER_WEEK: 2,
-  MAX_INVENTORY_SLOTS: 12,
+  MAX_INVENTORY_SLOTS: 8,
 
   // Time
   DAY_MOVES: 50,
@@ -59,13 +59,13 @@ export const PHASE_MOVES: Record<TimePhase, number> = {
 };
 
 export const WEEK_PHASES: TimePhase[] = [
-  TimePhase.Day,   // Day 1
+  TimePhase.Day, // Day 1
   TimePhase.Night, // Night 1
-  TimePhase.Day,   // Day 2
+  TimePhase.Day, // Day 2
   TimePhase.Night, // Night 2
-  TimePhase.Day,   // Day 3
+  TimePhase.Day, // Day 3
   TimePhase.Night, // Night 3
-  TimePhase.Boss,  // Boss fight
+  TimePhase.Boss, // Boss fight
 ];
 
 // ============================================================================

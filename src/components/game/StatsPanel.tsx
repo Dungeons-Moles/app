@@ -5,44 +5,114 @@
  */
 
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Image } from 'react-native';
 import type { PlayerStats } from '../../game/engine/types';
 import { Typography } from '../../theme/typography';
 
+const ICONS = {
+  HP: require('../../../assets/icons/HP.png'),
+  ATK: require('../../../assets/icons/ATK.png'),
+  ARM: require('../../../assets/icons/ARM.png'),
+  SPD: require('../../../assets/icons/speed.png'),
+  DIG: require('../../../assets/icons/DIG.png'),
+};
+
 interface StatsPanelProps {
   stats: PlayerStats;
+  isSidebar?: boolean;
 }
 
 interface StatRowProps {
-  emoji: string;
+  icon: any;
   label: string;
   value: number;
   maxValue?: number;
   color?: string;
+  isSidebar?: boolean;
 }
 
-function StatRow({ emoji, label, value, maxValue, color = '#E0E0E0' }: StatRowProps) {
+function StatRow({ icon, label, value, maxValue, color = '#E0E0E0', isSidebar }: StatRowProps) {
   const displayValue = maxValue !== undefined ? `${value}/${maxValue}` : `${value}`;
+  const textColor = isSidebar ? '#000000' : color;
 
   return (
     <View style={styles.statRow}>
-      <Text style={styles.emoji}>{emoji}</Text>
-      <Text style={[styles.label, { color }]}>{label}</Text>
-      <Text style={[styles.value, { color }]}>{displayValue}</Text>
+      <Image
+        source={icon}
+        style={[styles.icon, isSidebar && { tintColor: '#000000' }]}
+        resizeMode="contain"
+      />
+      <Text style={[styles.label, { color: textColor }]}>{label}</Text>
+      <Text style={[styles.value, { color: textColor }]}>{displayValue}</Text>
     </View>
   );
 }
 
-export function StatsPanel({ stats }: StatsPanelProps) {
+export function StatsPanel({ stats, isSidebar }: StatsPanelProps) {
+  if (isSidebar) {
+    return (
+      <View style={[styles.container, styles.sidebarContainer]}>
+        <View style={styles.twoColumnStats}>
+          <View style={styles.column}>
+            <StatRow
+              icon={ICONS.HP}
+              label="HP"
+              value={stats.hp}
+              maxValue={stats.maxHp}
+              color="#FF6B6B"
+              isSidebar={true}
+            />
+            <StatRow
+              icon={ICONS.ATK}
+              label="ATK"
+              value={stats.atk}
+              color="#FFB347"
+              isSidebar={true}
+            />
+            <StatRow
+              icon={ICONS.ARM}
+              label="ARM"
+              value={stats.arm}
+              color="#87CEEB"
+              isSidebar={true}
+            />
+          </View>
+          <View style={styles.column}>
+            <StatRow
+              icon={ICONS.SPD}
+              label="SPD"
+              value={stats.spd}
+              color="#98FB98"
+              isSidebar={true}
+            />
+            <StatRow
+              icon={ICONS.DIG}
+              label="DIG"
+              value={stats.dig}
+              color="#DEB887"
+              isSidebar={true}
+            />
+          </View>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Stats</Text>
       <View style={styles.statsContainer}>
-        <StatRow emoji="❤️" label="HP" value={stats.hp} maxValue={stats.maxHp} color="#FF6B6B" />
-        <StatRow emoji="⚔️" label="ATK" value={stats.atk} color="#FFB347" />
-        <StatRow emoji="🛡️" label="ARM" value={stats.arm} color="#87CEEB" />
-        <StatRow emoji="⚡" label="SPD" value={stats.spd} color="#98FB98" />
-        <StatRow emoji="⛏️" label="DIG" value={stats.dig} color="#DEB887" />
+        <StatRow
+          icon={ICONS.HP}
+          label="HP"
+          value={stats.hp}
+          maxValue={stats.maxHp}
+          color="#FF6B6B"
+          isSidebar={false}
+        />
+        <StatRow icon={ICONS.ATK} label="ATK" value={stats.atk} color="#FFB347" isSidebar={false} />
+        <StatRow icon={ICONS.ARM} label="ARM" value={stats.arm} color="#87CEEB" isSidebar={false} />
+        <StatRow icon={ICONS.SPD} label="SPD" value={stats.spd} color="#98FB98" isSidebar={false} />
+        <StatRow icon={ICONS.DIG} label="DIG" value={stats.dig} color="#DEB887" isSidebar={false} />
       </View>
     </View>
   );
@@ -50,41 +120,46 @@ export function StatsPanel({ stats }: StatsPanelProps) {
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
     borderRadius: 6,
     padding: 6,
   },
-  title: {
-    color: '#FFFFFF',
-    fontFamily: Typography.header,
-    fontSize: 12,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginBottom: 3,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+  sidebarContainer: {
+    backgroundColor: 'transparent',
+    padding: 0,
   },
   statsContainer: {
     gap: 1,
   },
+  twoColumnStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+    paddingHorizontal: 10,
+  },
+  column: {
+    flex: 1,
+    gap: 6,
+  },
   statRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
+    gap: 6,
+    marginVertical: 2,
   },
-  emoji: {
-    fontSize: 10,
-    width: 14,
-    textAlign: 'center',
+  icon: {
+    width: 18,
+    height: 18,
   },
   label: {
-    fontFamily: Typography.stat,
-    fontSize: 9,
-    width: 30,
+    fontFamily: Typography.header,
+    fontSize: 14,
+    width: 40, // Slightly reduced to fit 2 columns
+    fontWeight: 'bold',
   },
   value: {
     fontFamily: Typography.number,
-    fontSize: 10,
+    fontSize: 14,
     fontWeight: 'bold',
     flex: 1,
     textAlign: 'right',

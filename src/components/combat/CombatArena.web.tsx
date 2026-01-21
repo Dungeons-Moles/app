@@ -3,7 +3,7 @@
  */
 
 import React, { useMemo } from 'react';
-import { StyleSheet, View, useWindowDimensions, Text, Image } from 'react-native';
+import { StyleSheet, View, useWindowDimensions, Text, Image, ImageBackground } from 'react-native';
 import type { CombatantState, StatusEffects } from '../../game/engine/types';
 import { DamageNumbers } from './DamageNumbers';
 import { EffectNotifications } from './EffectNotifications';
@@ -11,6 +11,7 @@ import type { DamageNumber, EffectNotification } from '../../contexts/CombatCont
 import { getEntityImageSource } from '../game/entityImages';
 
 const defaultMoleImageSource = require('../../../assets/characters/default-mole.png');
+const BATTLEGROUND_BG = require('../../../assets/combat/battleground.png');
 
 interface CombatArenaProps {
   player: CombatantState | null;
@@ -44,10 +45,10 @@ export function CombatArena({
     );
   }
 
-  const combatantRadius = 40;
+  const combatantRadius = 50;
   const enemyX = arenaWidth * 0.25;
   const playerX = arenaWidth * 0.75;
-  const combatantY = arenaHeight * 0.4;
+  const combatantY = arenaHeight * 0.45;
 
   // HP bar dimensions
   const hpBarWidth = 60;
@@ -71,181 +72,184 @@ export function CombatArena({
 
   return (
     <View style={[styles.container, { width: arenaWidth, height: arenaHeight }]}>
-      <View style={styles.placeholder} />
-      <View style={[styles.floor, { left: 20, top: arenaHeight * 0.7, width: arenaWidth - 40 }]} />
+      <ImageBackground source={BATTLEGROUND_BG} style={styles.background} resizeMode="contain">
+        {/* Enemy combatant (LEFT) */}
+        {activeActor === 'enemy' ? (
+          <View
+            style={[
+              styles.activeRing,
+              {
+                left: enemyX - combatantRadius,
+                top: combatantY - combatantRadius,
+                width: combatantRadius * 2,
+                height: combatantRadius * 2,
+                borderRadius: combatantRadius,
+              },
+            ]}
+          />
+        ) : null}
 
-      {/* Enemy combatant (LEFT) */}
-      {activeActor === 'enemy' ? (
+        {/* Enemy Image */}
+        <View style={[styles.imageContainer, { left: enemyX - 40, top: combatantY - 40 }]}>
+          {enemy.definitionId ? (
+            <Image
+              source={getEntityImageSource(enemy.definitionId)}
+              style={styles.combatantImage}
+              resizeMode="contain"
+            />
+          ) : null}
+        </View>
+
+        {/* Enemy HP bar */}
         <View
           style={[
-            styles.activeRing,
+            styles.hpBarBackground,
             {
-              left: enemyX - combatantRadius,
-              top: combatantY - combatantRadius,
-              width: combatantRadius * 2,
-              height: combatantRadius * 2,
-              borderRadius: combatantRadius,
+              left: enemyX - hpBarWidth / 2,
+              top: hpBarY,
+              width: hpBarWidth,
+              height: hpBarHeight,
             },
           ]}
         />
-      ) : null}
+        <View
+          style={[
+            styles.hpBarFill,
+            {
+              left: enemyX - hpBarWidth / 2,
+              top: hpBarY,
+              width: hpBarWidth * enemyHpPercent,
+              height: hpBarHeight,
+              backgroundColor:
+                enemyHpPercent > 0.5 ? '#22c55e' : enemyHpPercent > 0.25 ? '#eab308' : '#dc2626',
+            },
+          ]}
+        />
 
-      {/* Enemy Image */}
-      <View style={[styles.imageContainer, { left: enemyX - 40, top: combatantY - 40 }]}>
-        {enemy.definitionId ? (
+        {/* Enemy Armor bar */}
+        <View
+          style={[
+            styles.armBarBackground,
+            {
+              left: enemyX - hpBarWidth / 2,
+              top: armBarY,
+              width: hpBarWidth,
+              height: armBarHeight,
+            },
+          ]}
+        />
+        <View
+          style={[
+            styles.armBarFill,
+            {
+              left: enemyX - hpBarWidth / 2,
+              top: armBarY,
+              width: hpBarWidth * enemyArmPercent,
+              height: armBarHeight,
+            },
+          ]}
+        />
+
+        {/* Player combatant (RIGHT) */}
+        {activeActor === 'player' ? (
+          <View
+            style={[
+              styles.activeRing,
+              {
+                left: playerX - combatantRadius,
+                top: combatantY - combatantRadius,
+                width: combatantRadius * 2,
+                height: combatantRadius * 2,
+                borderRadius: combatantRadius,
+              },
+            ]}
+          />
+        ) : null}
+
+        {/* Player Image */}
+        <View
+          style={[
+            styles.imageContainer,
+            { left: playerX - 40, top: combatantY - 40, transform: [{ scaleX: -1 }] },
+          ]}
+        >
           <Image
-            source={getEntityImageSource(enemy.definitionId)}
+            source={defaultMoleImageSource}
             style={styles.combatantImage}
             resizeMode="contain"
           />
-        ) : null}
-      </View>
+        </View>
 
-      {/* Enemy HP bar */}
-      <View
-        style={[
-          styles.hpBarBackground,
-          {
-            left: enemyX - hpBarWidth / 2,
-            top: hpBarY,
-            width: hpBarWidth,
-            height: hpBarHeight,
-          },
-        ]}
-      />
-      <View
-        style={[
-          styles.hpBarFill,
-          {
-            left: enemyX - hpBarWidth / 2,
-            top: hpBarY,
-            width: hpBarWidth * enemyHpPercent,
-            height: hpBarHeight,
-            backgroundColor:
-              enemyHpPercent > 0.5 ? '#22c55e' : enemyHpPercent > 0.25 ? '#eab308' : '#dc2626',
-          },
-        ]}
-      />
-
-      {/* Enemy Armor bar */}
-      <View
-        style={[
-          styles.armBarBackground,
-          {
-            left: enemyX - hpBarWidth / 2,
-            top: armBarY,
-            width: hpBarWidth,
-            height: armBarHeight,
-          },
-        ]}
-      />
-      <View
-        style={[
-          styles.armBarFill,
-          {
-            left: enemyX - hpBarWidth / 2,
-            top: armBarY,
-            width: hpBarWidth * enemyArmPercent,
-            height: armBarHeight,
-          },
-        ]}
-      />
-
-      {/* Player combatant (RIGHT) */}
-      {activeActor === 'player' ? (
+        {/* Player HP bar */}
         <View
           style={[
-            styles.activeRing,
+            styles.hpBarBackground,
             {
-              left: playerX - combatantRadius,
-              top: combatantY - combatantRadius,
-              width: combatantRadius * 2,
-              height: combatantRadius * 2,
-              borderRadius: combatantRadius,
+              left: playerX - hpBarWidth / 2,
+              top: hpBarY,
+              width: hpBarWidth,
+              height: hpBarHeight,
             },
           ]}
         />
-      ) : null}
-
-      {/* Player Image */}
-      <View
-        style={[
-          styles.imageContainer,
-          { left: playerX - 40, top: combatantY - 40, transform: [{ scaleX: -1 }] },
-        ]}
-      >
-        <Image source={defaultMoleImageSource} style={styles.combatantImage} resizeMode="contain" />
-      </View>
-
-      {/* Player HP bar */}
-      <View
-        style={[
-          styles.hpBarBackground,
-          {
-            left: playerX - hpBarWidth / 2,
-            top: hpBarY,
-            width: hpBarWidth,
-            height: hpBarHeight,
-          },
-        ]}
-      />
-      <View
-        style={[
-          styles.hpBarFill,
-          {
-            left: playerX - hpBarWidth / 2,
-            top: hpBarY,
-            width: hpBarWidth * playerHpPercent,
-            height: hpBarHeight,
-            backgroundColor:
-              playerHpPercent > 0.5 ? '#22c55e' : playerHpPercent > 0.25 ? '#eab308' : '#dc2626',
-          },
-        ]}
-      />
-
-      {/* Player Armor bar */}
-      <View
-        style={[
-          styles.armBarBackground,
-          {
-            left: playerX - hpBarWidth / 2,
-            top: armBarY,
-            width: hpBarWidth,
-            height: armBarHeight,
-          },
-        ]}
-      />
-      <View
-        style={[
-          styles.armBarFill,
-          {
-            left: playerX - hpBarWidth / 2,
-            top: armBarY,
-            width: hpBarWidth * playerArmPercent,
-            height: armBarHeight,
-          },
-        ]}
-      />
-
-      {/* Overlay damage numbers using separate component */}
-      <View style={styles.overlay}>
-        <DamageNumbers
-          damageNumbers={damageNumbers}
-          enemyPosition={{ x: enemyX, y: combatantY - combatantRadius - 20 }}
-          playerPosition={{ x: playerX, y: combatantY - combatantRadius - 20 }}
+        <View
+          style={[
+            styles.hpBarFill,
+            {
+              left: playerX - hpBarWidth / 2,
+              top: hpBarY,
+              width: hpBarWidth * playerHpPercent,
+              height: hpBarHeight,
+              backgroundColor:
+                playerHpPercent > 0.5 ? '#22c55e' : playerHpPercent > 0.25 ? '#eab308' : '#dc2626',
+            },
+          ]}
         />
-        <EffectNotifications
-          notifications={effectNotifications}
-          enemyPosition={{ x: enemyX, y: combatantY - combatantRadius - 40 }}
-          playerPosition={{ x: playerX, y: combatantY - combatantRadius - 40 }}
+
+        {/* Player Armor bar */}
+        <View
+          style={[
+            styles.armBarBackground,
+            {
+              left: playerX - hpBarWidth / 2,
+              top: armBarY,
+              width: hpBarWidth,
+              height: armBarHeight,
+            },
+          ]}
         />
-      </View>
+        <View
+          style={[
+            styles.armBarFill,
+            {
+              left: playerX - hpBarWidth / 2,
+              top: armBarY,
+              width: hpBarWidth * playerArmPercent,
+              height: armBarHeight,
+            },
+          ]}
+        />
 
-      {/* Status effects for enemy (below floor line) */}
-      <StatusEffectsRow statusEffects={enemy.statusEffects} x={enemyX} y={statusEffectsY} />
+        {/* Overlay damage numbers using separate component */}
+        <View style={styles.overlay}>
+          <DamageNumbers
+            damageNumbers={damageNumbers}
+            enemyPosition={{ x: enemyX, y: combatantY - combatantRadius - 20 }}
+            playerPosition={{ x: playerX, y: combatantY - combatantRadius - 20 }}
+          />
+          <EffectNotifications
+            notifications={effectNotifications}
+            enemyPosition={{ x: enemyX, y: combatantY - combatantRadius - 40 }}
+            playerPosition={{ x: playerX, y: combatantY - combatantRadius - 40 }}
+          />
+        </View>
 
-      {/* Status effects for player (below floor line) */}
-      <StatusEffectsRow statusEffects={player.statusEffects} x={playerX} y={statusEffectsY} />
+        {/* Status effects for enemy (below floor line) */}
+        <StatusEffectsRow statusEffects={enemy.statusEffects} x={enemyX} y={statusEffectsY} />
+
+        {/* Status effects for player (below floor line) */}
+        <StatusEffectsRow statusEffects={player.statusEffects} x={playerX} y={statusEffectsY} />
+      </ImageBackground>
     </View>
   );
 }
@@ -305,41 +309,39 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: 16,
     overflow: 'hidden',
-    backgroundColor: '#0f0f1a',
+    backgroundColor: 'transparent',
     position: 'relative',
+  },
+  background: {
+    width: '100%',
+    height: '100%',
   },
   placeholder: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#1a1a2e',
   },
   floor: {
     position: 'absolute',
     height: 2,
-    backgroundColor: '#333355',
   },
   activeRing: {
     position: 'absolute',
-    borderWidth: 4,
-    borderColor: '#333355',
+    borderWidth: 3,
+    borderColor: 'black',
     backgroundColor: 'transparent',
   },
   hpBarBackground: {
     position: 'absolute',
     backgroundColor: '#2a2a3a',
-    borderRadius: 4,
   },
   hpBarFill: {
     position: 'absolute',
-    borderRadius: 4,
   },
   armBarBackground: {
     position: 'absolute',
     backgroundColor: '#2a2a3a',
-    borderRadius: 3,
   },
   armBarFill: {
     position: 'absolute',
-    borderRadius: 3,
     backgroundColor: '#a855f7',
   },
   overlay: {
@@ -354,8 +356,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   combatantImage: {
-    width: 80,
-    height: 80,
+    width: 120,
+    height: 120,
   },
   statusRow: {
     position: 'absolute',

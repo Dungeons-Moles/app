@@ -11,10 +11,11 @@ import {
   Group,
   Text as SkiaText,
   useFont,
-  RoundedRect,
+  Rect,
   Line,
   vec,
   Image,
+  useImage,
 } from '@shopify/react-native-skia';
 import { StyleSheet, View, useWindowDimensions, Image as RNImage } from 'react-native';
 import type { CombatantState, StatusEffects } from '../../game/engine/types';
@@ -22,6 +23,8 @@ import { DamageNumbers } from './DamageNumbers';
 import { EffectNotifications } from './EffectNotifications';
 import type { DamageNumber, EffectNotification } from '../../contexts/CombatContext';
 import { useSkiaEntityImages } from '../../hooks/useEntityImages';
+
+const BATTLEGROUND_BG = require('../../../assets/combat/battleground.png');
 
 interface CombatArenaProps {
   player: CombatantState | null;
@@ -52,12 +55,13 @@ export function CombatArena({
   const arenaWidth = Math.min(screenWidth * 0.5, 400);
   const arenaHeight = 300;
   const entityImages = useSkiaEntityImages();
+  const bgImage = useImage(BATTLEGROUND_BG);
 
   if (!player || !enemy) {
     return (
       <View style={[styles.container, { width: arenaWidth, height: arenaHeight }]}>
         <Canvas style={{ width: arenaWidth, height: arenaHeight }}>
-          <RoundedRect x={0} y={0} width={arenaWidth} height={arenaHeight} r={16} color="#1a1a2e" />
+          <Rect x={0} y={0} width={arenaWidth} height={arenaHeight} color="transparent" />
         </Canvas>
       </View>
     );
@@ -94,15 +98,21 @@ export function CombatArena({
     <View style={[styles.container, { width: arenaWidth, height: arenaHeight }]}>
       <Canvas style={{ width: arenaWidth, height: arenaHeight }}>
         {/* Background */}
-        <RoundedRect x={0} y={0} width={arenaWidth} height={arenaHeight} r={16} color="#1a1a2e" />
+        {bgImage ? (
+          <Image
+            image={bgImage}
+            x={0}
+            y={0}
+            width={arenaWidth}
+            height={arenaHeight}
+            fit="contain"
+          />
+        ) : (
+          <Rect x={0} y={0} width={arenaWidth} height={arenaHeight} color="#1a1a2e" />
+        )}
 
-        {/* Combat arena floor */}
-        <Line
-          p1={vec(20, arenaHeight * 0.7)}
-          p2={vec(arenaWidth - 20, arenaHeight * 0.7)}
-          color="#333355"
-          strokeWidth={2}
-        />
+        {/* Combat arena floor - Removed line as image provides it */}
+        {/* <Line ... /> */}
 
         {/* Enemy combatant (LEFT) */}
         <Group>
@@ -130,40 +140,36 @@ export function CombatArena({
           )}
 
           {/* Enemy HP bar background */}
-          <RoundedRect
+          <Rect
             x={enemyX - hpBarWidth / 2}
             y={hpBarY}
             width={hpBarWidth}
             height={hpBarHeight}
-            r={4}
             color="#2a2a3a"
           />
           {/* Enemy HP bar fill */}
-          <RoundedRect
+          <Rect
             x={enemyX - hpBarWidth / 2}
             y={hpBarY}
             width={hpBarWidth * enemyHpPercent}
             height={hpBarHeight}
-            r={4}
             color={enemyHpPercent > 0.5 ? '#22c55e' : enemyHpPercent > 0.25 ? '#eab308' : '#dc2626'}
           />
 
           {/* Enemy Armor bar background */}
-          <RoundedRect
+          <Rect
             x={enemyX - hpBarWidth / 2}
             y={armBarY}
             width={hpBarWidth}
             height={armBarHeight}
-            r={3}
             color="#2a2a3a"
           />
           {/* Enemy Armor bar fill */}
-          <RoundedRect
+          <Rect
             x={enemyX - hpBarWidth / 2}
             y={armBarY}
             width={hpBarWidth * enemyArmPercent}
             height={armBarHeight}
-            r={3}
             color="#a855f7"
           />
         </Group>
@@ -196,42 +202,38 @@ export function CombatArena({
           )}
 
           {/* Player HP bar background */}
-          <RoundedRect
+          <Rect
             x={playerX - hpBarWidth / 2}
             y={hpBarY}
             width={hpBarWidth}
             height={hpBarHeight}
-            r={4}
             color="#2a2a3a"
           />
           {/* Player HP bar fill */}
-          <RoundedRect
+          <Rect
             x={playerX - hpBarWidth / 2}
             y={hpBarY}
             width={hpBarWidth * playerHpPercent}
             height={hpBarHeight}
-            r={4}
             color={
               playerHpPercent > 0.5 ? '#22c55e' : playerHpPercent > 0.25 ? '#eab308' : '#dc2626'
             }
           />
 
           {/* Player Armor bar background */}
-          <RoundedRect
+          <Rect
             x={playerX - hpBarWidth / 2}
             y={armBarY}
             width={hpBarWidth}
             height={armBarHeight}
-            r={3}
             color="#2a2a3a"
           />
           {/* Player Armor bar fill */}
-          <RoundedRect
+          <Rect
             x={playerX - hpBarWidth / 2}
             y={armBarY}
             width={hpBarWidth * playerArmPercent}
             height={armBarHeight}
-            r={3}
             color="#a855f7"
           />
         </Group>
@@ -316,7 +318,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: 16,
     overflow: 'hidden',
-    backgroundColor: '#0f0f1a',
+    backgroundColor: 'transparent',
     position: 'relative',
   },
   overlay: {

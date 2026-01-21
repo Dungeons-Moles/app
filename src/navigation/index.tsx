@@ -28,7 +28,7 @@ export function AppNavigator() {
         initialRouteName="Loading"
         screenOptions={{
           headerShown: false,
-          contentStyle: { backgroundColor: '#000000' },
+          contentStyle: { backgroundColor: 'transparent' },
           animation: 'fade',
         }}
       >

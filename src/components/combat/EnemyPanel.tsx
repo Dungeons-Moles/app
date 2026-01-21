@@ -5,9 +5,17 @@
  */
 
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, Image } from 'react-native';
+import { View, Text, StyleSheet, Image, ImageBackground } from 'react-native';
 import type { StatusEffects } from '../../game/engine/types';
 import { Typography } from '../../theme/typography';
+
+const ICONS = {
+  ATK: require('../../../assets/icons/ATK.png'),
+  SPD: require('../../../assets/icons/speed.png'),
+  DIG: require('../../../assets/icons/DIG.png'),
+};
+
+const SIDEBAR_BG = require('../../../assets/map/sidebar.png');
 
 export interface EnemyPanelProps {
   name: string;
@@ -19,6 +27,7 @@ export interface EnemyPanelProps {
   arm: number;
   maxArm: number;
   spd: number;
+  dig: number;
   statusEffects: StatusEffects;
   trait?: {
     name: string;
@@ -29,13 +38,13 @@ export interface EnemyPanelProps {
 interface StatRowProps {
   label: string;
   value: number;
-  icon: string;
+  icon: any;
 }
 
 function StatRow({ label, value, icon }: StatRowProps) {
   return (
     <View style={styles.statRow}>
-      <Text style={styles.statIcon}>{icon}</Text>
+      <Image source={icon} style={styles.statIcon} resizeMode="contain" />
       <Text style={styles.statLabel}>{label}</Text>
       <Text style={styles.statValue}>{value}</Text>
     </View>
@@ -51,6 +60,7 @@ export function EnemyPanel({
   arm,
   maxArm,
   spd,
+  dig,
   statusEffects,
   trait,
   imageSource,
@@ -69,60 +79,80 @@ export function EnemyPanel({
 
   return (
     <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        {imageSource && <Image source={imageSource} style={styles.image} resizeMode="contain" />}
-        <Text style={styles.name} numberOfLines={2}>
-          {name}
-        </Text>
-      </View>
+      <ImageBackground source={SIDEBAR_BG} style={styles.sidePanelBg} resizeMode="stretch">
+        <View style={styles.content}>
+          {/* Header */}
+          <View style={styles.header}>
+            {imageSource && (
+              <Image source={imageSource} style={styles.image} resizeMode="contain" />
+            )}
+            <Text style={styles.name} numberOfLines={2}>
+              {name}
+            </Text>
+          </View>
 
-      {/* HP Bar */}
-      <View style={styles.hpSection}>
-        <View style={styles.hpBarBackground}>
-          <View
-            style={[styles.hpBarFill, { width: `${hpPercent}%`, backgroundColor: hpBarColor }]}
-          />
+          {/* HP Bar */}
+          <View style={styles.hpSection}>
+            <View style={styles.hpBarBackground}>
+              <View
+                style={[styles.hpBarFill, { width: `${hpPercent}%`, backgroundColor: hpBarColor }]}
+              />
+            </View>
+            <Text style={styles.hpText}>
+              {hp}/{maxHp}
+            </Text>
+          </View>
+
+          {/* Armor Bar */}
+          <View style={styles.armorSection}>
+            <View style={styles.armorBarBackground}>
+              <View style={[styles.armorBarFill, { width: `${armorPercent}%` }]} />
+            </View>
+            <Text style={styles.armorText}>
+              {arm}/{maxArm}
+            </Text>
+          </View>
+
+          {/* Stats */}
+          <View style={styles.statsSection}>
+            <View style={styles.statsRow}>
+              <StatRow label="ATK" value={atk} icon={ICONS.ATK} />
+              <StatRow label="DIG" value={dig} icon={ICONS.DIG} />
+            </View>
+            <View style={styles.statsRow}>
+              <StatRow label="SPD" value={spd} icon={ICONS.SPD} />
+            </View>
+          </View>
+
+          {/* Trait */}
+          {trait && (
+            <View style={styles.traitSection}>
+              <Text style={styles.traitName}>{trait.name}</Text>
+              <Text style={styles.traitDescription} numberOfLines={3}>
+                {trait.description}
+              </Text>
+            </View>
+          )}
         </View>
-        <Text style={styles.hpText}>
-          {hp}/{maxHp}
-        </Text>
-      </View>
-
-      {/* Armor Bar */}
-      <View style={styles.armorSection}>
-        <View style={styles.armorBarBackground}>
-          <View style={[styles.armorBarFill, { width: `${armorPercent}%` }]} />
-        </View>
-        <Text style={styles.armorText}>
-          {arm}/{maxArm}
-        </Text>
-      </View>
-
-      {/* Stats */}
-      <View style={styles.statsSection}>
-        <StatRow label="ATK" value={atk} icon="⚔️" />
-        <StatRow label="ARM" value={arm} icon="🛡️" />
-        <StatRow label="SPD" value={spd} icon="⚡" />
-      </View>
-
-      {/* Trait */}
-      {trait && (
-        <View style={styles.traitSection}>
-          <Text style={styles.traitName}>{trait.name}</Text>
-          <Text style={styles.traitDescription} numberOfLines={3}>
-            {trait.description}
-          </Text>
-        </View>
-      )}
+      </ImageBackground>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    padding: 8,
+    width: '25%',
+    height: '100%',
+    overflow: 'hidden',
+  },
+  sidePanelBg: {
+    margin: 'auto',
+    width: '100%',
+    height: '100%',
+  },
+  content: {
+    padding: 12,
+    height: '100%',
   },
   header: {
     alignItems: 'center',
@@ -136,8 +166,9 @@ const styles = StyleSheet.create({
   name: {
     fontFamily: Typography.header,
     fontSize: 18,
-    color: '#ffffff',
+    color: '#000000', // Black text
     textAlign: 'center',
+    fontWeight: 'bold',
   },
   hpSection: {
     marginBottom: 6,
@@ -145,19 +176,22 @@ const styles = StyleSheet.create({
   hpBarBackground: {
     height: 14,
     backgroundColor: '#2a2a3a',
-    borderRadius: 7,
+    borderRadius: 0, // Rectangle
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#000',
   },
   hpBarFill: {
     height: '100%',
-    borderRadius: 7,
+    borderRadius: 0, // Rectangle
   },
   hpText: {
     fontFamily: Typography.number,
     fontSize: 12,
-    color: '#888888',
+    color: '#000000',
     textAlign: 'center',
     marginTop: 4,
+    fontWeight: 'bold',
   },
   armorSection: {
     marginBottom: 12,
@@ -165,69 +199,78 @@ const styles = StyleSheet.create({
   armorBarBackground: {
     height: 10,
     backgroundColor: '#2a2a3a',
-    borderRadius: 5,
+    borderRadius: 0, // Rectangle
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#000',
   },
   armorBarFill: {
     height: '100%',
-    borderRadius: 5,
+    borderRadius: 0, // Rectangle
     backgroundColor: '#a855f7',
   },
   armorText: {
     fontFamily: Typography.number,
     fontSize: 11,
-    color: '#a855f7',
+    color: '#000000',
     textAlign: 'center',
     marginTop: 3,
+    fontWeight: 'bold',
   },
   statsSection: {
     marginBottom: 12,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#2a2a35',
+    borderBottomColor: 'rgba(0,0,0,0.2)',
+  },
+  statsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
   },
   statRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 2,
+    width: '48%',
   },
   statIcon: {
-    fontSize: 12,
-    marginRight: 6,
     width: 18,
+    height: 18,
+    marginRight: 8,
   },
   statLabel: {
-    fontFamily: Typography.stat,
-    fontSize: 10,
-    color: '#888888',
+    fontFamily: Typography.header,
+    fontSize: 12,
+    color: '#000000',
     flex: 1,
+    fontWeight: 'bold',
   },
   statValue: {
     fontFamily: Typography.number,
-    fontSize: 14,
-    color: '#ffffff',
+    fontSize: 16,
+    color: '#000000',
     fontWeight: 'bold',
   },
   traitSection: {
-    backgroundColor: '#1a1a25',
-    borderRadius: 6,
     padding: 8,
     marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#2a2a35',
+    marginHorizontal: 5,
+    borderWidth: 2,
+    borderColor: '#8B4513',
+    backgroundColor: 'rgba(139, 69, 19, 0.1)',
+    borderRadius: 4,
   },
   traitName: {
     fontFamily: Typography.header,
     fontSize: 13,
-    color: '#f59e0b',
+    color: '#000000',
     marginBottom: 4,
+    fontWeight: 'bold',
   },
   traitDescription: {
     fontFamily: Typography.body,
     fontSize: 10,
-    color: '#9ca3af',
+    color: '#333333',
     lineHeight: 14,
   },
 });
-
-export default EnemyPanel;

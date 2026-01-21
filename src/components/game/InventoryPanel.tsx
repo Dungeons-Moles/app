@@ -5,10 +5,14 @@
  */
 
 import React, { useCallback, useMemo, useRef } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Image, ImageBackground } from 'react-native';
 import type { Tool, Gear, InventorySlot, ItemsetId, ToolOil } from '../../game/engine/types';
 import { getItemsetDefinition } from '../../game/entities/itemsets';
 import { Typography } from '../../theme/typography';
+
+const SLOT_BG = require('../../../assets/campaign/square.png');
+const LOCK_ICON = require('../../../assets/campaign/lock.png');
+const SLOT_SIZE = 52;
 
 interface InventoryPanelProps {
   equippedTool: Tool | null;
@@ -19,6 +23,7 @@ interface InventoryPanelProps {
   onToolPress?: (tool: Tool) => void;
   onItemInspect?: (item: Tool | Gear, slotIndex: number) => void;
   onToolInspect?: (tool: Tool) => void;
+  isSidebar?: boolean;
 }
 
 interface ItemSlotProps {
@@ -28,6 +33,8 @@ interface ItemSlotProps {
   slotIndex?: number;
   onPress?: (item: Tool | Gear, index: number) => void;
   onLongPress?: (item: Tool | Gear, index: number) => void;
+  isSidebar?: boolean;
+  size?: number;
 }
 
 const DEFAULT_RARITY_COLOR = '#4A4A4A';
@@ -39,6 +46,8 @@ function ItemSlot({
   slotIndex,
   onPress,
   onLongPress,
+  isSidebar,
+  size = 28,
 }: ItemSlotProps) {
   const didLongPressRef = useRef(false);
   const handlePress = useCallback(() => {
@@ -59,24 +68,56 @@ function ItemSlot({
   }, [item, slotIndex, onLongPress]);
 
   const rarityColor = useMemo(() => (item ? getRarityColor(item) : DEFAULT_RARITY_COLOR), [item]);
-  const slotStyle = useMemo(() => [styles.itemSlot, { borderColor: rarityColor }], [rarityColor]);
+  const slotStyle = useMemo(
+    () => [
+      styles.itemSlot,
+      { width: size, height: size },
+      !isSidebar && { borderColor: rarityColor },
+    ],
+    [rarityColor, isSidebar, size]
+  );
+
   const indicatorStyle = useMemo(
     () => [styles.rarityIndicator, { backgroundColor: rarityColor }],
     [rarityColor]
   );
 
-  if (isLocked) {
+  const content = (
+    <>
+      {isLocked ? (
+        <Image
+          source={LOCK_ICON}
+          style={{ width: size * 0.6, height: size * 0.6 }}
+          resizeMode="contain"
+        />
+      ) : item ? (
+        <Text style={[styles.itemEmoji, { fontSize: size * 0.5 }]}>{item.emoji}</Text>
+      ) : (
+        !isSidebar && <Text style={styles.emptyText}>-</Text>
+      )}
+      {item && !isSidebar && <View style={indicatorStyle} />}
+    </>
+  );
+
+  if (isSidebar) {
     return (
-      <View style={[styles.itemSlot, styles.lockedSlot]}>
-        <Text style={styles.lockedIcon}>🔒</Text>
-      </View>
+      <TouchableOpacity
+        onPress={handlePress}
+        onLongPress={handleLongPress}
+        delayLongPress={350}
+        activeOpacity={0.7}
+      >
+        <ImageBackground source={SLOT_BG} style={slotStyle} resizeMode="stretch">
+          {content}
+        </ImageBackground>
+      </TouchableOpacity>
     );
   }
 
-  if (isEmpty || !item) {
+  if (isLocked) {
     return (
-      <View style={[styles.itemSlot, styles.emptySlot]}>
-        <Text style={styles.emptyText}>-</Text>
+      <View style={[styles.itemSlot, styles.lockedSlot, { width: size, height: size }]}>
+        <Text style={styles.lockedIcon}>🔒</Text>
       </View>
     );
   }
@@ -89,8 +130,7 @@ function ItemSlot({
       delayLongPress={350}
       activeOpacity={0.7}
     >
-      <Text style={styles.itemEmoji}>{item.emoji}</Text>
-      <View style={indicatorStyle} />
+      {content}
     </TouchableOpacity>
   );
 }
@@ -121,19 +161,49 @@ const OIL_ICONS: Record<ToolOil, string> = {
   DIG: '⛏️',
 };
 
-function OilSlot({ oil }: { oil?: ToolOil | null }) {
+function OilSlot({
+  oil,
+  isSidebar,
+  size = 28,
+}: {
+  oil?: ToolOil | null;
+  isSidebar?: boolean;
+  size?: number;
+}) {
   if (!oil) {
-    return <View style={[styles.itemSlot, styles.oilSlotEmpty]} />;
+    return isSidebar ? (
+      <ImageBackground
+        source={SLOT_BG}
+        style={[styles.itemSlot, { width: size, height: size }]}
+        resizeMode="stretch"
+      />
+    ) : (
+      <View style={[styles.itemSlot, styles.oilSlotEmpty, { width: size, height: size }]} />
+    );
+  }
+
+  const content = (
+    <Text style={[styles.itemEmoji, { fontSize: size * 0.5 }]}>{OIL_ICONS[oil]}</Text>
+  );
+
+  if (isSidebar) {
+    return (
+      <ImageBackground
+        source={SLOT_BG}
+        style={[styles.itemSlot, { width: size, height: size }]}
+        resizeMode="stretch"
+      >
+        {content}
+      </ImageBackground>
+    );
   }
 
   return (
-    <View style={[styles.itemSlot, styles.oilSlot]}>
-      <Text style={styles.itemEmoji}>{OIL_ICONS[oil]}</Text>
-    </View>
+    <View style={[styles.itemSlot, styles.oilSlot, { width: size, height: size }]}>{content}</View>
   );
 }
 
-function ActiveItemsets({ itemsets }: { itemsets: ItemsetId[] }) {
+function ActiveItemsets({ itemsets, isSidebar }: { itemsets: ItemsetId[]; isSidebar?: boolean }) {
   if (itemsets.length === 0) {
     return null;
   }
@@ -143,7 +213,13 @@ function ActiveItemsets({ itemsets }: { itemsets: ItemsetId[] }) {
       {itemsets.map((id) => {
         const def = getItemsetDefinition(id);
         return (
-          <View key={id} style={styles.itemsetBadge}>
+          <View
+            key={id}
+            style={[
+              styles.itemsetBadge,
+              isSidebar && { backgroundColor: 'transparent', borderColor: '#000000' },
+            ]}
+          >
             <Text style={styles.itemsetEmoji}>{def.emoji}</Text>
           </View>
         );
@@ -161,9 +237,10 @@ export function InventoryPanel({
   onToolPress,
   onItemInspect,
   onToolInspect,
+  isSidebar,
 }: InventoryPanelProps) {
-  // Create inventory grid with 4 items per row (4 starting + 6 unlocked = 10 slots)
-  const maxSlots = 10; // 4 unlocked from start + 2 per week × 3 weeks
+  // Create inventory grid with 4 items per row (4 starting + 4 locked = 8 slots)
+  const maxSlots = 8;
   const slots: (InventorySlot | null)[] = [];
 
   // Fill slots up to capacity - items unlock left-to-right
@@ -176,7 +253,7 @@ export function InventoryPanel({
     }
   }
 
-  // Create rows of 4 items each (4 columns x 3 rows)
+  // Create rows of 4 items each (4 columns x 2 rows = 8 slots)
   const rows: (InventorySlot | null)[][] = [];
   for (let i = 0; i < slots.length; i += 4) {
     rows.push(slots.slice(i, i + 4));
@@ -200,12 +277,14 @@ export function InventoryPanel({
     [onToolInspect]
   );
 
+  const textColor = isSidebar ? '#000000' : '#FFFFFF';
+
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, isSidebar && styles.sidebarContainer]}>
       {/* Gear Section - Top */}
       <View style={styles.gearSection}>
-        <Text style={styles.sectionTitle}>
-          Gear ({inventory.length}/{inventoryCapacity})
+        <Text style={[styles.sectionTitle, { color: textColor }]}>
+          GEAR ({inventory.length}/{inventoryCapacity})
         </Text>
         <View style={styles.gearGrid}>
           {rows.map((row, rowIndex) => (
@@ -222,6 +301,8 @@ export function InventoryPanel({
                     slotIndex={slot?.index}
                     onPress={onItemPress}
                     onLongPress={onItemInspect}
+                    isSidebar={isSidebar}
+                    size={32}
                   />
                 );
               })}
@@ -233,11 +314,11 @@ export function InventoryPanel({
       {/* Tool Section - Center */}
       <View style={styles.toolSection}>
         <View style={styles.toolHeaderRow}>
-          <View style={styles.toolHeaderSlot}>
-            <Text style={[styles.sectionTitle, styles.toolHeaderText]}>Weapon</Text>
+          <View style={[styles.toolHeaderCell, { width: SLOT_SIZE }]}>
+            <Text style={[styles.sectionTitle, { color: textColor, marginBottom: 0 }]}>WEAPON</Text>
           </View>
-          <View style={styles.toolHeaderSlot}>
-            <Text style={[styles.sectionTitle, styles.toolHeaderText]}>Oil</Text>
+          <View style={[styles.toolHeaderCell, { width: SLOT_SIZE }]}>
+            <Text style={[styles.sectionTitle, { color: textColor, marginBottom: 0 }]}>OIL</Text>
           </View>
         </View>
         <View style={styles.toolRow}>
@@ -247,13 +328,15 @@ export function InventoryPanel({
             slotIndex={-1}
             onPress={handleToolPress}
             onLongPress={handleToolInspect}
+            isSidebar={isSidebar}
+            size={SLOT_SIZE}
           />
-          <OilSlot oil={equippedTool?.oil ?? null} />
+          <OilSlot oil={equippedTool?.oil ?? null} isSidebar={isSidebar} size={SLOT_SIZE} />
         </View>
       </View>
 
       {/* Active Itemsets - Bottom */}
-      <ActiveItemsets itemsets={activeItemsets} />
+      <ActiveItemsets itemsets={activeItemsets} isSidebar={isSidebar} />
     </View>
   );
 }
@@ -261,84 +344,78 @@ export function InventoryPanel({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
     borderRadius: 6,
     padding: 6,
     gap: 8,
+  },
+  sidebarContainer: {
+    backgroundColor: 'transparent',
   },
   gearSection: {
     // Top section - compact
   },
   toolSection: {
     alignItems: 'stretch',
-    paddingVertical: 6,
+    paddingVertical: 10,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.1)',
+    borderTopColor: 'rgba(0, 0, 0, 0.1)',
   },
   toolHeaderRow: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    justifyContent: 'center',
     width: '100%',
-    paddingHorizontal: 10,
     marginBottom: 4,
-  },
-  toolHeaderText: {
-    marginBottom: 0,
-  },
-  toolHeaderSlot: {
-    width: 28,
-    alignItems: 'flex-start',
+    gap: 24,
   },
   toolRow: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    justifyContent: 'center',
     width: '100%',
-    paddingHorizontal: 10,
+    gap: 24,
+  },
+  toolHeaderCell: {
+    alignItems: 'center',
   },
   sectionTitle: {
     color: '#FFFFFF',
     fontFamily: Typography.header,
-    fontSize: 10,
+    fontSize: 14,
     fontWeight: 'bold',
-    marginBottom: 4,
+    marginBottom: 6,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
+    textAlign: 'center',
   },
   gearGrid: {
-    gap: 3,
+    gap: 6,
+    marginVertical: 4,
   },
   gearRow: {
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 3,
+    gap: 6,
   },
   itemSlot: {
     width: 28,
     height: 28,
     borderRadius: 4,
-    borderWidth: 1.5,
-    borderColor: '#4A4A4A',
-    backgroundColor: 'rgba(50, 50, 50, 0.8)',
     justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
+    overflow: 'hidden',
   },
   oilSlot: {
-    borderColor: '#d4a4ff',
-    backgroundColor: 'rgba(40, 30, 50, 0.8)',
+    // Removed specific styling that might overlap with SLOT_BG
   },
   oilSlotEmpty: {
-    borderStyle: 'solid',
-    backgroundColor: 'rgba(30, 30, 30, 0.5)',
+    // Removed specific styling
   },
   emptySlot: {
-    borderStyle: 'dashed',
-    backgroundColor: 'rgba(30, 30, 30, 0.5)',
+    // Removed specific styling
   },
   lockedSlot: {
-    borderStyle: 'dotted',
-    backgroundColor: 'rgba(20, 20, 20, 0.3)',
-    borderColor: '#2A2A2A',
+    // Removed specific styling
   },
   itemEmoji: {
     fontSize: 14,
@@ -365,14 +442,14 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     justifyContent: 'center',
     gap: 4,
-    paddingTop: 6,
+    paddingTop: 10,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.1)',
+    borderTopColor: 'rgba(0, 0, 0, 0.1)',
   },
   itemsetBadge: {
-    width: 22,
-    height: 22,
-    borderRadius: 3,
+    width: 28,
+    height: 28,
+    borderRadius: 4,
     backgroundColor: 'rgba(100, 100, 100, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
@@ -380,7 +457,7 @@ const styles = StyleSheet.create({
     borderColor: '#FFD700',
   },
   itemsetEmoji: {
-    fontSize: 11,
+    fontSize: 14,
   },
 });
 
