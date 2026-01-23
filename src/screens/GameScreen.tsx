@@ -233,9 +233,18 @@ export function GameScreen({ navigation }: GameScreenProps) {
       navigation.navigate('Combat');
   }, [state?.phase, navigation]);
 
-  const handlePOIClose = useCallback(() => dispatch({ type: 'CLOSE_POI' }), [dispatch]);
+  const handlePOIClose = useCallback(() => {
+    setKilnSelection({ gearId: null, emoji: '', count: 0 });
+    setScrapSelection(null);
+    dispatch({ type: 'CLOSE_POI' });
+  }, [dispatch]);
+
   const handlePOIOption = useCallback(
-    (optionIndex: number) => dispatch({ type: 'SELECT_POI_OPTION', optionIndex }),
+    (optionIndex: number) => {
+      setKilnSelection({ gearId: null, emoji: '', count: 0 });
+      setScrapSelection(null);
+      dispatch({ type: 'SELECT_POI_OPTION', optionIndex });
+    },
     [dispatch]
   );
 
@@ -244,6 +253,8 @@ export function GameScreen({ navigation }: GameScreenProps) {
     emoji: string;
     count: number;
   }>({ gearId: null, emoji: '', count: 0 });
+  const [scrapSelection, setScrapSelection] = useState<Gear | null>(null);
+
   const [inspectedItem, setInspectedItem] = useState<Tool | Gear | null>(null);
   const [isTooltipVisible, setTooltipVisible] = useState(false);
 
@@ -259,23 +270,28 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
   const handleInventoryItemPress = useCallback(
     (item: Tool | Gear) => {
-      if (
-        state?.phase !== GamePhase.POIInteraction ||
-        state.activePOI?.poi.definitionId !== 'L11' ||
-        !('currentRarity' in item)
-      )
+      if (state?.phase !== GamePhase.POIInteraction) return;
+
+      // Rune Kiln (L11) Logic
+      if (state.activePOI?.poi.definitionId === 'L11' && 'currentRarity' in item) {
+        if (item.currentRarity !== 'COMMON' && item.currentRarity !== 'GILDED') return;
+        const availableCount = state.player.inventory.filter(
+          (slot) => slot.item.id === item.id
+        ).length;
+        if (availableCount === 0) return;
+        setKilnSelection((prev) => {
+          if (!prev.gearId || prev.gearId !== item.id)
+            return { gearId: item.id, emoji: item.emoji, count: 1 };
+          const maxCount = Math.min(2, availableCount);
+          return prev.count < maxCount ? { ...prev, count: prev.count + 1 } : prev;
+        });
         return;
-      if (item.currentRarity !== 'COMMON' && item.currentRarity !== 'GILDED') return;
-      const availableCount = state.player.inventory.filter(
-        (slot) => slot.item.id === item.id
-      ).length;
-      if (availableCount === 0) return;
-      setKilnSelection((prev) => {
-        if (!prev.gearId || prev.gearId !== item.id)
-          return { gearId: item.id, emoji: item.emoji, count: 1 };
-        const maxCount = Math.min(2, availableCount);
-        return prev.count < maxCount ? { ...prev, count: prev.count + 1 } : prev;
-      });
+      }
+
+      // Scrap Chute (L14) Logic
+      if (state.activePOI?.poi.definitionId === 'L14' && 'currentRarity' in item) {
+        setScrapSelection(item as Gear);
+      }
     },
     [state]
   );
@@ -294,6 +310,12 @@ export function GameScreen({ navigation }: GameScreenProps) {
     return index >= 0 ? index : null;
   }, [state, kilnSelection]);
 
+  const scrapOptionIndex = useMemo(() => {
+    if (state?.activePOI?.poi.definitionId !== 'L14' || !scrapSelection) return null;
+    const options = state.activePOI.options ?? [];
+    return options.findIndex((opt) => opt.item === scrapSelection);
+  }, [state, scrapSelection]);
+
   const handleKilnSlotPress = useCallback(() => {
     setKilnSelection((prev) => {
       if (!prev.gearId || prev.count === 0) return prev;
@@ -301,6 +323,10 @@ export function GameScreen({ navigation }: GameScreenProps) {
         ? { gearId: null, emoji: '', count: 0 }
         : { ...prev, count: prev.count - 1 };
     });
+  }, []);
+
+  const handleScrapSlotPress = useCallback(() => {
+    setScrapSelection(null);
   }, []);
 
   const isRuneKilnActive =
@@ -412,6 +438,10 @@ export function GameScreen({ navigation }: GameScreenProps) {
                   kilnSelection={kilnSelection}
                   kilnFuseOptionIndex={kilnFuseOptionIndex}
                   onKilnSlotPress={handleKilnSlotPress}
+                  scrapSelection={scrapSelection}
+                  scrapOptionIndex={scrapOptionIndex}
+                  onScrapSlotPress={handleScrapSlotPress}
+                  equippedTool={state.player.equippedTool}
                 />
               </View>
               <View style={styles.sidebarBottomContainer}>
@@ -457,7 +487,11 @@ const styles = StyleSheet.create({
   navbarCenter: { flex: 1, justifyContent: 'center' },
   navbarRight: { width: 80, justifyContent: 'center', alignItems: 'flex-end' },
   weekText: {
-    alignSelf: 'center', fontFamily: Typography.header, fontSize: 12, color: '#000000', fontWeight: 'bold'
+    alignSelf: 'center',
+    fontFamily: Typography.header,
+    fontSize: 12,
+    color: '#000000',
+    fontWeight: 'bold',
   },
   bossTopContainer: { width: SIDEBAR_WIDTH },
   bottomRow: { flex: 1, flexDirection: 'row' },

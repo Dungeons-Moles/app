@@ -19,15 +19,21 @@ import type {
   TimeState,
   ItemTag,
   POIId,
+  ItemStats,
 } from '../engine/types';
 import { TimePhase, GamePhase } from '../engine/types';
 import type { POIId as DataPOIId, POIDefinition } from '../../data/pois';
 import { POI_DEFINITIONS, getPOIDefinition, canInteractWithPOI } from '../../data/pois';
 import type { MapPOI, GameMap } from '../map/types';
 import { FogState } from '../map/types';
-import { createToolInstance, getToolsByRarity } from './items';
+import { createToolInstance, getToolsByRarity, TOOL_DEFINITIONS } from './items';
 import { addGearToInventory, equipTool, refreshPlayerStats } from './player';
-import { createGearInstance, getGearByRarity, GEAR_DEFINITIONS } from '../../data/gear';
+import {
+  createGearInstance,
+  getGearByRarity,
+  GEAR_DEFINITIONS,
+  RARITY_MULTIPLIER,
+} from '../../data/gear';
 import { SeededRNG } from '../engine/rng';
 import { getBossWeaknessTags } from './bosses';
 
@@ -547,58 +553,56 @@ function generateToolOilRackOptions(state: GameState): POIOption[] {
     ];
   }
 
-  return [
+  const allOptions: { option: POIOption; id: string }[] = [
     {
-      label: '+1 ATK',
-      description: 'Increase attack power.\nDeal more damage in combat.',
+      id: 'ATK',
+      option: {
+        label: '+1 ATK',
+        description: 'Increase attack power.\nDeal more damage in combat.',
+      },
     },
     {
-      label: '+1 ARM',
-      description: 'Increase armor.\nReduce damage taken in combat.',
+      id: 'ARM',
+      option: {
+        label: '+1 ARM',
+        description: 'Increase armor.\nReduce damage taken in combat.',
+      },
     },
     {
-      label: '+1 DIG',
-      description: 'Increase dig speed.\nBreak walls faster.',
+      id: 'DIG',
+      option: {
+        label: '+1 DIG',
+        description: 'Increase dig speed.\nBreak walls faster.',
+      },
+    },
+    {
+      id: 'SPD',
+      option: {
+        label: '+1 SPD',
+        description: 'Increase speed.\nAct sooner in combat.',
+      },
     },
   ];
+
+  // Randomly select 3 unique options
+  const rng = new SeededRNG(state.rngState);
+  const selectedOptions: POIOption[] = [];
+  const available = [...allOptions];
+
+  while (selectedOptions.length < 3 && available.length > 0) {
+    const index = rng.nextInt(0, available.length - 1);
+    selectedOptions.push(available[index].option);
+    available.splice(index, 1);
+  }
+
+  return selectedOptions;
 }
 
 // ============================================================================
 // T096: Rusty Anvil (L10)
-// Upgrade tool with forge mods (costs Gold)
+// Upgrade tool tier (Common -> Gilded -> Diamond)
+// Cost: 8g (to Gilded), 16g (to Diamond)
 // ============================================================================
-
-export type ForgeMod = 'SHARPENING' | 'REINFORCING' | 'EXTENDING' | 'LIGHTNING';
-
-export const FORGE_MODS: Record<
-  ForgeMod,
-  { name: string; emoji: string; description: string; cost: number }
-> = {
-  SHARPENING: {
-    name: 'Sharpening',
-    emoji: '🔪',
-    description: '+2 ATK',
-    cost: 10,
-  },
-  REINFORCING: {
-    name: 'Reinforcing',
-    emoji: '🛡️',
-    description: '+3 ARM',
-    cost: 10,
-  },
-  EXTENDING: {
-    name: 'Extending',
-    emoji: '📏',
-    description: '+1 DIG',
-    cost: 8,
-  },
-  LIGHTNING: {
-    name: 'Lightning',
-    emoji: '⚡',
-    description: '+1 SPD',
-    cost: 12,
-  },
-};
 
 function generateRustyAnvilOptions(state: GameState): POIOption[] {
   const tool = state.player.equippedTool;
@@ -614,15 +618,34 @@ function generateRustyAnvilOptions(state: GameState): POIOption[] {
     ];
   }
 
+  const rarity = tool.rarity;
+  let nextRarity: ItemRarity | null = null;
+  let cost = 0;
+
+  if (rarity === 'COMMON') {
+    nextRarity = 'GILDED';
+    cost = 8;
+  } else if (rarity === 'GILDED') {
+    nextRarity = 'DIAMOND';
+    cost = 16;
+  }
+
   const options: POIOption[] = [];
 
-  for (const [modId, mod] of Object.entries(FORGE_MODS)) {
-    const canAfford = state.player.stats.gold >= mod.cost;
+  if (nextRarity) {
+    const canAfford = state.player.stats.gold >= cost;
     options.push({
-      label: `${mod.emoji} ${mod.name}: ${mod.description} (${mod.cost}g)`,
-      cost: mod.cost,
+      label: `Upgrade to ${nextRarity}`,
+      description: 'Increases stats multiplier',
+      cost,
       disabled: !canAfford,
       disabledReason: canAfford ? undefined : 'Not enough gold',
+    });
+  } else {
+    options.push({
+      label: 'Max Upgrade Reached',
+      disabled: true,
+      disabledReason: 'Tool cannot be upgraded further',
     });
   }
 
@@ -931,27 +954,29 @@ function applyItemSelectionEffect(state: GameState, option: POIOption): GameStat
  * Tool Oil Rack: +1 ATK/ARM/DIG
  */
 function applyToolOilRackEffect(state: GameState, optionIndex: number): GameState {
+  const { activePOI } = state;
   const tool = state.player.equippedTool;
-  if (!tool || optionIndex > 2) {
-    // Invalid option or no tool
+
+  if (!tool || !activePOI || !activePOI.options || optionIndex >= activePOI.options.length) {
     return state;
   }
 
+  const selectedOption = activePOI.options[optionIndex];
   const newStats = { ...tool.stats };
   let oil: ToolOil | null = null;
-  switch (optionIndex) {
-    case 0:
-      newStats.atk = (newStats.atk ?? 0) + 1;
-      oil = 'ATK';
-      break;
-    case 1:
-      newStats.arm = (newStats.arm ?? 0) + 1;
-      oil = 'ARM';
-      break;
-    case 2:
-      newStats.dig = (newStats.dig ?? 0) + 1;
-      oil = 'DIG';
-      break;
+
+  if (selectedOption.label.includes('+1 ATK')) {
+    newStats.atk = (newStats.atk ?? 0) + 1;
+    oil = 'ATK';
+  } else if (selectedOption.label.includes('+1 ARM')) {
+    newStats.arm = (newStats.arm ?? 0) + 1;
+    oil = 'ARM';
+  } else if (selectedOption.label.includes('+1 DIG')) {
+    newStats.dig = (newStats.dig ?? 0) + 1;
+    oil = 'DIG';
+  } else if (selectedOption.label.includes('+1 SPD')) {
+    newStats.spd = (newStats.spd ?? 0) + 1;
+    oil = 'SPD';
   }
 
   return {
@@ -1182,7 +1207,7 @@ function applySmugglerHatchEffect(
 }
 
 /**
- * Rusty Anvil: Apply forge mod to tool
+ * Rusty Anvil: Apply forge mod to tool (Upgrade Tier)
  */
 function applyRustyAnvilEffect(
   state: GameState,
@@ -1190,6 +1215,7 @@ function applyRustyAnvilEffect(
   option: POIOption
 ): GameState {
   const tool = state.player.equippedTool;
+  // If Leave or Max Upgrade (disabled)
   if (!tool || option.label === 'Leave' || option.disabled) {
     return state;
   }
@@ -1199,30 +1225,29 @@ function applyRustyAnvilEffect(
     return state;
   }
 
-  // Find the mod from the option index
-  const modKeys = Object.keys(FORGE_MODS) as ForgeMod[];
-  const modKey = modKeys[optionIndex];
-  if (!modKey) {
-    return state;
-  }
+  // Determine next rarity based on current
+  let nextRarity: ItemRarity = tool.rarity;
+  if (tool.rarity === 'COMMON') nextRarity = 'GILDED';
+  else if (tool.rarity === 'GILDED') nextRarity = 'DIAMOND';
+  else return state; // Should not happen if options generated correctly
 
-  const mod = FORGE_MODS[modKey];
-  const newStats = { ...tool.stats };
+  // Calculate new stats: Base * Multiplier + Oil Bonus
+  const baseDef = TOOL_DEFINITIONS[tool.id];
+  const multiplier = RARITY_MULTIPLIER[nextRarity];
+  const newStats: ItemStats = {};
 
-  switch (modKey) {
-    case 'SHARPENING':
-      newStats.atk = (newStats.atk ?? 0) + 2;
-      break;
-    case 'REINFORCING':
-      newStats.arm = (newStats.arm ?? 0) + 3;
-      break;
-    case 'EXTENDING':
-      newStats.dig = (newStats.dig ?? 0) + 1;
-      break;
-    case 'LIGHTNING':
-      newStats.spd = (newStats.spd ?? 0) + 1;
-      break;
-  }
+  // Base stats * multiplier
+  if (baseDef.stats.atk) newStats.atk = Math.floor(baseDef.stats.atk * multiplier);
+  if (baseDef.stats.arm) newStats.arm = Math.floor(baseDef.stats.arm * multiplier);
+  if (baseDef.stats.spd) newStats.spd = Math.floor(baseDef.stats.spd * multiplier);
+  if (baseDef.stats.dig) newStats.dig = Math.floor(baseDef.stats.dig * multiplier);
+  if (baseDef.stats.hp) newStats.hp = Math.floor(baseDef.stats.hp * multiplier);
+
+  // Re-apply Oil bonus if present
+  if (tool.oil === 'ATK') newStats.atk = (newStats.atk ?? 0) + 1;
+  if (tool.oil === 'ARM') newStats.arm = (newStats.arm ?? 0) + 1;
+  if (tool.oil === 'DIG') newStats.dig = (newStats.dig ?? 0) + 1;
+  if (tool.oil === 'SPD') newStats.spd = (newStats.spd ?? 0) + 1;
 
   return {
     ...state,
@@ -1234,6 +1259,7 @@ function applyRustyAnvilEffect(
       },
       equippedTool: {
         ...tool,
+        rarity: nextRarity,
         stats: newStats,
       },
     }),

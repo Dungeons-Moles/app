@@ -91,7 +91,15 @@ function ItemSlot({
           resizeMode="contain"
         />
       ) : item ? (
-        <Text style={[styles.itemEmoji, { fontSize: size * 0.5 }]}>{item.emoji}</Text>
+        item.image ? (
+          <Image
+            source={item.image}
+            style={{ width: size * 0.8, height: size * 0.8 }}
+            resizeMode="contain"
+          />
+        ) : (
+          <Text style={[styles.itemEmoji, { fontSize: size * 0.5 }]}>{item.emoji}</Text>
+        )
       ) : (
         !isSidebar && <Text style={styles.emptyText}>-</Text>
       )}
@@ -155,10 +163,11 @@ function getRarityColor(item: Tool | Gear): string {
   }
 }
 
-const OIL_ICONS: Record<ToolOil, string> = {
-  ATK: '⚔️',
-  ARM: '🛡️',
-  DIG: '⛏️',
+const OIL_IMAGES: Record<ToolOil, any> = {
+  ATK: require('../../../assets/icons/oils/ATK.png'),
+  ARM: require('../../../assets/icons/oils/ARM.png'),
+  DIG: require('../../../assets/icons/oils/DIG.png'),
+  SPD: require('../../../assets/icons/oils/SPD.png'),
 };
 
 function OilSlot({
@@ -183,7 +192,11 @@ function OilSlot({
   }
 
   const content = (
-    <Text style={[styles.itemEmoji, { fontSize: size * 0.5 }]}>{OIL_ICONS[oil]}</Text>
+    <Image
+      source={OIL_IMAGES[oil]}
+      style={{ width: size * 0.8, height: size * 0.8 }}
+      resizeMode="contain"
+    />
   );
 
   if (isSidebar) {

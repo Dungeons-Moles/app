@@ -1,11 +1,21 @@
 import React, { useMemo } from 'react';
-import { Text, TouchableOpacity, StyleSheet, type GestureResponderEvent } from 'react-native';
+import {
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  type GestureResponderEvent,
+  Image,
+  View,
+} from 'react-native';
 import type { ItemRarity } from '@/game/engine/types';
-import { ITEM_RARITY_BG_COLORS, ITEM_RARITY_COLORS } from '@/utils/rarity-colors';
+import { ITEM_RARITY_COLORS } from '@/utils/rarity-colors';
 import { Typography } from '@/theme/typography';
+
+const squareSource = require('../../../assets/campaign/square.png');
 
 interface SimplifiedItemOptionProps {
   emoji?: string;
+  image?: any;
   statDisplay?: string;
   effectDescription?: string;
   rarity: ItemRarity;
@@ -18,6 +28,7 @@ interface SimplifiedItemOptionProps {
 
 export function SimplifiedItemOption({
   emoji,
+  image,
   statDisplay,
   effectDescription,
   rarity,
@@ -27,23 +38,19 @@ export function SimplifiedItemOption({
   onSelect,
   onLongPress,
 }: SimplifiedItemOptionProps) {
-  const backgroundColor = ITEM_RARITY_BG_COLORS[rarity] ?? '#1f1f2a';
   const rarityColor = ITEM_RARITY_COLORS[rarity] ?? '#9ca3af';
 
   const containerStyle = useMemo(
-    () => [
-      styles.container,
-      { backgroundColor, borderLeftColor: rarityColor },
-      selected && styles.selected,
-      disabled && styles.disabled,
-    ],
-    [backgroundColor, rarityColor, selected, disabled]
+    () => [styles.container, selected && styles.selected, disabled && styles.disabled],
+    [selected, disabled]
   );
 
   const textStyle = useMemo(
     () => [styles.statText, disabled && styles.statTextDisabled],
     [disabled]
   );
+
+  const isCommon = rarity === 'COMMON';
 
   return (
     <TouchableOpacity
@@ -58,16 +65,33 @@ export function SimplifiedItemOption({
       accessibilityLabel={`${itemName}, ${statDisplay ?? effectDescription ?? 'No stats'}, ${rarity.toLowerCase()} rarity`}
       accessibilityHint={`Long press to view ${itemName} details`}
     >
-      {emoji && <Text style={styles.emoji}>{emoji}</Text>}
-      <Text style={styles.itemName} numberOfLines={2}>
-        {itemName}
-      </Text>
-      {statDisplay ? <Text style={textStyle}>{statDisplay}</Text> : null}
-      {effectDescription && (
-        <Text style={styles.effectText} numberOfLines={3}>
-          {effectDescription}
+      <Image
+        source={squareSource}
+        style={{
+          position: 'absolute',
+          width: '100%',
+          height: '100%',
+          backgroundColor: isCommon ? undefined : rarityColor,
+          opacity: isCommon ? 1 : 0.3,
+          resizeMode: 'stretch',
+        }}
+      />
+      <View style={styles.contentContainer}>
+        {image ? (
+          <Image source={image} style={styles.image} resizeMode="contain" />
+        ) : (
+          emoji && <Text style={styles.emoji}>{emoji}</Text>
+        )}
+        <Text style={styles.itemName} numberOfLines={2}>
+          {itemName}
         </Text>
-      )}
+        {statDisplay ? <Text style={textStyle}>{statDisplay}</Text> : null}
+        {effectDescription && (
+          <Text style={styles.effectText} numberOfLines={3}>
+            {effectDescription}
+          </Text>
+        )}
+      </View>
     </TouchableOpacity>
   );
 }
@@ -75,22 +99,22 @@ export function SimplifiedItemOption({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#3a3a45',
-    borderLeftWidth: 5,
     paddingVertical: 12,
     paddingHorizontal: 8,
     justifyContent: 'center',
     alignItems: 'center',
     minHeight: 160,
+    position: 'relative',
+    overflow: 'hidden', // Added to clip the border overlay
+  },
+  contentContainer: {
+    width: '100%',
+    alignItems: 'center',
+    padding: 8,
   },
   selected: {
-    borderColor: '#f97316',
-    shadowColor: '#f97316',
-    shadowOpacity: 0.35,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
+    // We might want to add some specific style for selected items if needed,
+    // but the tint color handles the rarity visualization now.
   },
   disabled: {
     opacity: 0.5,
@@ -99,18 +123,24 @@ const styles = StyleSheet.create({
     fontSize: 28,
     marginBottom: 6,
   },
+  image: {
+    width: 40,
+    height: 40,
+    marginBottom: 6,
+  },
   itemName: {
     fontFamily: Typography.header,
     fontSize: 14,
-    color: '#374151',
+    color: '#3d2b1f',
     textAlign: 'center',
     marginBottom: 4,
+    fontWeight: 'bold',
   },
   statText: {
     fontFamily: Typography.number,
     fontSize: 14,
     fontWeight: 'bold',
-    color: '#111827',
+    color: '#3d2b1f',
     textAlign: 'center',
   },
   statTextDisabled: {
@@ -119,7 +149,7 @@ const styles = StyleSheet.create({
   effectText: {
     fontFamily: Typography.body,
     fontSize: 11,
-    color: '#6b21a8',
+    color: '#3d2b1f',
     textAlign: 'center',
     marginTop: 4,
     fontStyle: 'italic',

@@ -120,7 +120,7 @@ export function CombatArena({
             <Circle
               cx={enemyX}
               cy={combatantY}
-              r={combatantRadius}
+              r={100}
               color={ringColor}
               style="stroke"
               strokeWidth={ringStrokeWidth}
