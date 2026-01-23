@@ -657,8 +657,8 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   modalContent: {
-    width: 380,
-    height: 380,
+    width: 340,
+    height: 340,
     padding: 40,
     alignItems: 'center',
     justifyContent: 'flex-start',

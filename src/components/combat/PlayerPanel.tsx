@@ -57,12 +57,17 @@ const SQUARE_BG = require('../../../assets/campaign/square.png');
 interface ItemBadgeProps {
   emoji: string;
   name: string;
+  image?: any;
 }
 
-function ItemBadge({ emoji, name }: ItemBadgeProps) {
+function ItemBadge({ emoji, name, image }: ItemBadgeProps) {
   return (
     <ImageBackground source={SQUARE_BG} style={styles.itemBadge} resizeMode="stretch">
-      <Text style={styles.itemEmoji}>{emoji}</Text>
+      {image ? (
+        <Image source={image} style={styles.itemImage} resizeMode="contain" />
+      ) : (
+        <Text style={styles.itemEmoji}>{emoji}</Text>
+      )}
     </ImageBackground>
   );
 }
@@ -163,10 +168,14 @@ export function PlayerPanel({
               >
                 <View style={styles.itemsGrid}>
                   {equippedTool && (
-                    <ItemBadge emoji={equippedTool.emoji} name={equippedTool.name} />
+                    <ItemBadge
+                      emoji={equippedTool.emoji}
+                      image={equippedTool.image}
+                      name={equippedTool.name}
+                    />
                   )}
                   {equippedGear.map((gear, index) => (
-                    <ItemBadge key={index} emoji={gear.emoji} name={gear.name} />
+                    <ItemBadge key={index} emoji={gear.emoji} image={gear.image} name={gear.name} />
                   ))}
                 </View>
               </ScrollView>
@@ -327,6 +336,10 @@ const styles = StyleSheet.create({
   },
   itemEmoji: {
     fontSize: 16,
+  },
+  itemImage: {
+    width: 24,
+    height: 24,
   },
   goldContainer: {
     position: 'absolute',

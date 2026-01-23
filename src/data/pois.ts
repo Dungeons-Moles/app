@@ -29,6 +29,7 @@ export interface POIDefinition {
   id: POIId;
   name: string;
   emoji: string;
+  image?: any;
   rarity: POIRarity;
   interaction: POIInteractionType;
   nightOnly?: boolean;
@@ -46,6 +47,7 @@ export const POI_DEFINITIONS: Record<POIId, POIDefinition> = {
     id: 'L1',
     name: 'Mole Den',
     emoji: '🏠',
+    image: require('../../assets/POIs/mole-den.png'),
     rarity: 'FIXED',
     interaction: 'REST',
     nightOnly: true,
@@ -59,6 +61,7 @@ export const POI_DEFINITIONS: Record<POIId, POIDefinition> = {
     id: 'L2',
     name: 'Supply Cache',
     emoji: '📦',
+    image: require('../../assets/POIs/supply-cache.png'),
     rarity: 'COMMON',
     interaction: 'ITEM_SELECTION',
     description: 'Pick 1 of 3 Common items',
@@ -71,6 +74,7 @@ export const POI_DEFINITIONS: Record<POIId, POIDefinition> = {
     id: 'L3',
     name: 'Tool Crate',
     emoji: '🧰',
+    image: require('../../assets/POIs/tool-crate.png'),
     rarity: 'UNCOMMON',
     interaction: 'ITEM_SELECTION',
     description: 'Pick 1 of 3 Tools',
@@ -83,9 +87,10 @@ export const POI_DEFINITIONS: Record<POIId, POIDefinition> = {
     id: 'L4',
     name: 'Tool Oil Rack',
     emoji: '🛢️',
+    image: require('../../assets/POIs/tool-oil-rack.png'),
     rarity: 'COMMON',
     interaction: 'TOOL_MODIFY',
-    description: 'Modify tool: +1 ATK/ARM/DIG (once per tool)',
+    description: 'Modify tool: +1 ATK/ARM/DIG/SPD (once per tool)',
   },
 
   // ============================================================================
@@ -95,6 +100,7 @@ export const POI_DEFINITIONS: Record<POIId, POIDefinition> = {
     id: 'L5',
     name: 'Rest Alcove',
     emoji: '🕯️',
+    image: require('../../assets/POIs/rest-alcove.png'),
     rarity: 'COMMON',
     interaction: 'REST',
     nightOnly: true,
@@ -108,6 +114,7 @@ export const POI_DEFINITIONS: Record<POIId, POIDefinition> = {
     id: 'L6',
     name: 'Survey Beacon',
     emoji: '📡',
+    image: require('../../assets/POIs/survey-beacon.png'),
     rarity: 'COMMON',
     interaction: 'REVEAL',
     description: 'Reveal tiles in radius 13',
@@ -120,6 +127,7 @@ export const POI_DEFINITIONS: Record<POIId, POIDefinition> = {
     id: 'L7',
     name: 'Seismic Scanner',
     emoji: '📍',
+    image: require('../../assets/POIs/seismic-scanner.png'),
     rarity: 'UNCOMMON',
     interaction: 'REVEAL',
     description: 'Choose POI type, reveal nearest instance',
@@ -132,6 +140,7 @@ export const POI_DEFINITIONS: Record<POIId, POIDefinition> = {
     id: 'L8',
     name: 'Rail Waypoint',
     emoji: '🚇',
+    image: require('../../assets/POIs/rail-waypoint.png'),
     rarity: 'UNCOMMON',
     interaction: 'FAST_TRAVEL',
     description: 'Fast travel between discovered waypoints',
@@ -144,6 +153,7 @@ export const POI_DEFINITIONS: Record<POIId, POIDefinition> = {
     id: 'L9',
     name: 'Smuggler Hatch',
     emoji: '🕳️',
+    image: require('../../assets/POIs/smuggler-hatch.png'),
     rarity: 'UNCOMMON',
     interaction: 'SHOP',
     description: 'Shop: 5 Rare + 1 Heroic items',
@@ -156,6 +166,7 @@ export const POI_DEFINITIONS: Record<POIId, POIDefinition> = {
     id: 'L10',
     name: 'Rusty Anvil',
     emoji: '⚒️',
+    image: require('../../assets/POIs/rusty-anvil.png'),
     rarity: 'UNCOMMON',
     interaction: 'UPGRADE',
     description: 'Upgrade tool with forge mods (costs Gold)',
@@ -168,6 +179,7 @@ export const POI_DEFINITIONS: Record<POIId, POIDefinition> = {
     id: 'L11',
     name: 'Rune Kiln',
     emoji: '🏺',
+    image: require('../../assets/POIs/rune-kiln.png'),
     rarity: 'RARE',
     interaction: 'FUSE',
     description: 'Fuse 2 identical items to upgrade tier',
@@ -180,6 +192,7 @@ export const POI_DEFINITIONS: Record<POIId, POIDefinition> = {
     id: 'L12',
     name: 'Geode Vault',
     emoji: '💠',
+    image: require('../../assets/POIs/geode-vault.png'),
     rarity: 'RARE',
     interaction: 'ITEM_SELECTION',
     description: 'Pick 1 of 3 Heroic items',
@@ -193,6 +206,7 @@ export const POI_DEFINITIONS: Record<POIId, POIDefinition> = {
     id: 'L13',
     name: 'Counter Cache',
     emoji: '🎯',
+    image: require('../../assets/POIs/counter-cache.png'),
     rarity: 'UNCOMMON',
     interaction: 'ITEM_SELECTION',
     description: 'Pick 1 of 3 items from boss weakness tags',
@@ -206,6 +220,7 @@ export const POI_DEFINITIONS: Record<POIId, POIDefinition> = {
     id: 'L14',
     name: 'Scrap Chute',
     emoji: '🗑️',
+    image: require('../../assets/POIs/scrap-chute.png'),
     rarity: 'UNCOMMON',
     interaction: 'DESTROY',
     description: 'Destroy 1 Gear item (costs Gold)',

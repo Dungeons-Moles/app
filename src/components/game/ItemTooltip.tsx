@@ -4,12 +4,47 @@
  * @see specs/001-pve-dungeon-crawler/spec.md FR-021
  */
 
-import React from 'react';
-import { View, Text, TouchableOpacity, Modal, StyleSheet } from 'react-native';
+import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  Modal,
+  StyleSheet,
+  Image,
+  ImageBackground,
+} from 'react-native';
 import type { Tool, Gear, ItemStats, ItemTag } from '../../game/engine/types';
 import { getToolDefinition, TOOL_DEFINITIONS } from '../../game/entities/items';
 import { GEAR_DEFINITIONS } from '../../data/gear';
 import { getItemsetsForItem } from '../../game/entities/itemsets';
+
+const paperPanelSource = require('../../../assets/hub/paper-panel.png');
+const rectangleSource = require('../../../assets/campaign/rectangle.png');
+const squareSource = require('../../../assets/campaign/square.png');
+
+const STAT_ICONS = {
+  HP: require('../../../assets/icons/HP.png'),
+  ATK: require('../../../assets/icons/ATK.png'),
+  ARM: require('../../../assets/icons/ARM.png'),
+  SPD: require('../../../assets/icons/speed.png'),
+  DIG: require('../../../assets/icons/DIG.png'),
+};
+
+const ITEMSET_ICONS = {
+  UNION_STANDARD: require('../../../assets/icons/itemsets/union_standard.png'),
+  SHARD_CIRCUIT: require('../../../assets/icons/itemsets/shard_circuit.png'),
+  DEMOLITION_PERMIT: require('../../../assets/icons/itemsets/demolition_permit.png'),
+  FUSE_NETWORK: require('../../../assets/icons/itemsets/fuse_network.png'),
+  SHRAPNEL_HARNESS: require('../../../assets/icons/itemsets/shrapnel_harness.png'),
+  RUST_RITUAL: require('../../../assets/icons/itemsets/rust_ritual.png'),
+  SWIFT_DIGGER_KIT: require('../../../assets/icons/itemsets/swift_digger_kit.png'),
+  ROYAL_EXTRACTION: require('../../../assets/icons/itemsets/royal_extraction.png'),
+  WHITEOUT_INITIATIVE: require('../../../assets/icons/itemsets/whiteout_initiative.png'),
+  BLOODRUSH_PROTOCOL: require('../../../assets/icons/itemsets/bloodrush_protocol.png'),
+  CORROSION_PAYLOAD: require('../../../assets/icons/itemsets/corrosion_payload.png'),
+  GOLDEN_SHRAPNEL_EXCHANGE: require('../../../assets/icons/itemsets/golden_shrapnel_exchange.png'),
+};
 
 interface ItemTooltipProps {
   item: Tool | Gear | null;
@@ -18,6 +53,25 @@ interface ItemTooltipProps {
 }
 
 function getRarityColor(rarity: string): string {
+  switch (rarity) {
+    case 'COMMON':
+      return '#696969'; // DimGray
+    case 'GILDED':
+      return '#B8860B'; // DarkGoldenRod
+    case 'DIAMOND':
+      return '#008B8B'; // DarkCyan
+    case 'RARE':
+      return '#00008B'; // DarkBlue
+    case 'HEROIC':
+      return '#800080'; // Purple
+    case 'MYTHIC':
+      return '#8B0000'; // DarkRed
+    default:
+      return '#696969';
+  }
+}
+
+function getOriginalRarityColor(rarity: string): string {
   switch (rarity) {
     case 'COMMON':
       return '#A0A0A0';
@@ -47,9 +101,9 @@ function getTagColor(tag: ItemTag): string {
     case 'SCOUT':
       return '#4682B4';
     case 'GREED':
-      return '#FFD700';
+      return '#DAA520'; // Darker Gold
     case 'FROST':
-      return '#87CEEB';
+      return '#5F9EA0'; // CadetBlue
     case 'BLAST':
       return '#f97316';
     case 'RUST':
@@ -64,13 +118,13 @@ function getTagColor(tag: ItemTag): string {
 }
 
 function StatDisplay({ stats }: { stats: ItemStats }) {
-  const statEntries: { label: string; emoji: string; value: number }[] = [];
+  const statEntries: { label: string; icon: any; value: number }[] = [];
 
-  if (stats.hp) statEntries.push({ label: 'HP', emoji: '❤️', value: stats.hp });
-  if (stats.atk) statEntries.push({ label: 'ATK', emoji: '⚔️', value: stats.atk });
-  if (stats.arm) statEntries.push({ label: 'ARM', emoji: '🛡️', value: stats.arm });
-  if (stats.spd) statEntries.push({ label: 'SPD', emoji: '⚡', value: stats.spd });
-  if (stats.dig) statEntries.push({ label: 'DIG', emoji: '⛏️', value: stats.dig });
+  if (stats.hp) statEntries.push({ label: 'HP', icon: STAT_ICONS.HP, value: stats.hp });
+  if (stats.atk) statEntries.push({ label: 'ATK', icon: STAT_ICONS.ATK, value: stats.atk });
+  if (stats.arm) statEntries.push({ label: 'ARM', icon: STAT_ICONS.ARM, value: stats.arm });
+  if (stats.spd) statEntries.push({ label: 'SPD', icon: STAT_ICONS.SPD, value: stats.spd });
+  if (stats.dig) statEntries.push({ label: 'DIG', icon: STAT_ICONS.DIG, value: stats.dig });
 
   if (statEntries.length === 0) {
     return null;
@@ -80,7 +134,7 @@ function StatDisplay({ stats }: { stats: ItemStats }) {
     <View style={styles.statsSection}>
       {statEntries.map((stat) => (
         <View key={stat.label} style={styles.statItem}>
-          <Text style={styles.statEmoji}>{stat.emoji}</Text>
+          <Image source={stat.icon} style={styles.statIcon} resizeMode="contain" />
           <Text style={styles.statValue}>+{stat.value}</Text>
           <Text style={styles.statLabel}>{stat.label}</Text>
         </View>
@@ -97,8 +151,8 @@ function TagsDisplay({ tags }: { tags: ItemTag[] }) {
   return (
     <View style={styles.tagsSection}>
       {tags.map((tag) => (
-        <View key={tag} style={[styles.tag, { backgroundColor: getTagColor(tag) }]}>
-          <Text style={styles.tagText}>{tag}</Text>
+        <View key={tag} style={styles.tagContainer}>
+          <Text style={[styles.tagText, { color: getTagColor(tag) }]}>{tag}</Text>
         </View>
       ))}
     </View>
@@ -117,7 +171,11 @@ function ItemsetsDisplay({ itemId }: { itemId: string }) {
       <Text style={styles.itemsetsSectionTitle}>Part of:</Text>
       {itemsets.map((itemset) => (
         <View key={itemset.id} style={styles.itemsetRow}>
-          <Text style={styles.itemsetEmoji}>{itemset.emoji}</Text>
+          <Image
+            source={ITEMSET_ICONS[itemset.id as keyof typeof ITEMSET_ICONS]}
+            style={styles.itemsetIcon}
+            resizeMode="contain"
+          />
           <Text style={styles.itemsetName}>{itemset.name}</Text>
         </View>
       ))}
@@ -126,6 +184,8 @@ function ItemsetsDisplay({ itemId }: { itemId: string }) {
 }
 
 export function ItemTooltip({ item, visible, onClose }: ItemTooltipProps) {
+  const [layout, setLayout] = useState({ width: 0, height: 0 });
+
   if (!item) {
     return null;
   }
@@ -134,6 +194,7 @@ export function ItemTooltip({ item, visible, onClose }: ItemTooltipProps) {
   const rarity = isTool ? item.rarity : item.currentRarity;
   const baseRarity = isTool ? item.rarity : item.baseRarity;
   const rarityColor = getRarityColor(rarity);
+  const borderColor = getOriginalRarityColor(rarity);
 
   // Get effect description from definitions
   let effectDescription: string | null = null;
@@ -152,22 +213,42 @@ export function ItemTooltip({ item, visible, onClose }: ItemTooltipProps) {
   const effectText = effectDescription ?? 'No effect.';
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onClose}
-    >
-      <TouchableOpacity
-        style={styles.overlay}
-        activeOpacity={1}
-        onPress={onClose}
-      >
-        <View style={styles.tooltipContainer}>
-          <TouchableOpacity activeOpacity={1}>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onClose}>
+        <View
+          style={styles.tooltipContainer}
+          onLayout={(event) => setLayout(event.nativeEvent.layout)}
+        >
+          {layout.width > 0 && (
+            <Image
+              source={paperPanelSource}
+              style={{
+                position: 'absolute',
+                width: layout.height,
+                height: layout.width,
+                top: (layout.height - layout.width) / 2,
+                left: (layout.width - layout.height) / 2,
+                transform: [{ rotate: '90deg' }],
+              }}
+              resizeMode="stretch"
+            />
+          )}
+
+          <TouchableOpacity activeOpacity={1} style={styles.contentContainer}>
             {/* Header */}
-            <View style={[styles.header, { borderBottomColor: rarityColor }]}>
-              <Text style={styles.emoji}>{item.emoji}</Text>
+            <View style={[styles.header, { borderBottomColor: borderColor }]}>
+              <View style={styles.iconContainer}>
+                <Image
+                  source={squareSource}
+                  style={{ position: 'absolute', width: '100%', height: '100%' }}
+                  resizeMode="stretch"
+                />
+                {item.image ? (
+                  <Image source={item.image} style={styles.image} resizeMode="contain" />
+                ) : (
+                  <Text style={styles.emoji}>{item.emoji}</Text>
+                )}
+              </View>
               <View style={styles.headerText}>
                 <Text style={styles.name}>{item.name}</Text>
                 <Text style={[styles.rarity, { color: rarityColor }]}>
@@ -182,6 +263,11 @@ export function ItemTooltip({ item, visible, onClose }: ItemTooltipProps) {
 
             {/* Effect */}
             <View style={styles.effectSection}>
+              <Image
+                source={rectangleSource}
+                style={{ position: 'absolute', width: '100%', height: '100%' }}
+                resizeMode="stretch"
+              />
               <Text style={styles.effectText}>{effectText}</Text>
             </View>
 
@@ -210,13 +296,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   tooltipContainer: {
-    backgroundColor: '#1a1a22',
     borderRadius: 12,
-    padding: 16,
-    minWidth: 250,
-    maxWidth: 300,
-    borderWidth: 1,
-    borderColor: '#3a3a45',
+    minWidth: 380,
+    maxWidth: 440,
+    overflow: 'hidden', // Ensures the image doesn't bleed out if calculations are slightly off
+  },
+  contentContainer: {
+    padding: 48,
   },
   header: {
     flexDirection: 'row',
@@ -227,13 +313,25 @@ const styles = StyleSheet.create({
   },
   emoji: {
     fontSize: 36,
+  },
+  iconContainer: {
+    width: 64,
+    height: 64,
+    justifyContent: 'center',
+    alignItems: 'center',
     marginRight: 12,
+    padding: 8,
+    overflow: 'hidden',
+  },
+  image: {
+    width: '100%',
+    height: '100%',
   },
   headerText: {
     flex: 1,
   },
   name: {
-    color: '#FFFFFF',
+    color: '#3d2b1f',
     fontSize: 18,
     fontWeight: 'bold',
   },
@@ -255,28 +353,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
   },
-  statEmoji: {
-    fontSize: 14,
+  statIcon: {
+    width: 16,
+    height: 16,
   },
   statValue: {
-    color: '#98FB98',
+    color: '#3d2b1f',
     fontSize: 14,
     fontWeight: 'bold',
   },
   statLabel: {
-    color: '#808080',
+    color: '#5c4033',
     fontSize: 12,
   },
   effectSection: {
-    backgroundColor: '#0f0f14',
-    borderRadius: 6,
-    padding: 10,
+    paddingVertical: 12,
     marginBottom: 12,
+    justifyContent: 'center',
+    overflow: 'hidden',
   },
   effectText: {
-    color: '#d1d5db',
+    color: '#3d2b1f',
     fontSize: 12,
     lineHeight: 16,
+    paddingLeft: 12,
   },
   tagsSection: {
     flexDirection: 'row',
@@ -284,23 +384,22 @@ const styles = StyleSheet.create({
     gap: 6,
     marginBottom: 12,
   },
-  tag: {
+  tagContainer: {
+    backgroundColor: 'rgba(0, 0, 0, 0.05)',
     paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingVertical: 4,
     borderRadius: 4,
   },
   tagText: {
-    color: '#FFFFFF',
     fontSize: 10,
     fontWeight: 'bold',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
   },
   itemsetsSection: {
     marginBottom: 8,
   },
   itemsetsSectionTitle: {
-    color: '#808080',
+    color: '#5c4033',
     fontSize: 10,
     textTransform: 'uppercase',
     marginBottom: 4,
@@ -311,18 +410,19 @@ const styles = StyleSheet.create({
     gap: 6,
     marginVertical: 2,
   },
-  itemsetEmoji: {
-    fontSize: 14,
+  itemsetIcon: {
+    width: 20,
+    height: 20,
   },
   itemsetName: {
-    color: '#FFD700',
+    color: '#8B4513',
     fontSize: 12,
   },
   typeIndicator: {
     position: 'absolute',
-    top: 8,
-    right: 8,
-    backgroundColor: '#0f0f14',
+    top: 46,
+    right: 52,
+    backgroundColor: 'rgba(0, 0, 0, 0.05)',
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
