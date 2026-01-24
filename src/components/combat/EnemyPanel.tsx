@@ -10,12 +10,12 @@ import type { StatusEffects } from '../../game/engine/types';
 import { Typography } from '../../theme/typography';
 
 const ICONS = {
-  ATK: require('../../../assets/icons/ATK.png'),
-  SPD: require('../../../assets/icons/speed.png'),
-  DIG: require('../../../assets/icons/DIG.png'),
+  ATK: require('../../../assets/icons/stats/ATK.png'),
+  SPD: require('../../../assets/icons/stats/speed.png'),
+  DIG: require('../../../assets/icons/stats/DIG.png'),
 };
 
-const SIDEBAR_BG = require('../../../assets/map/sidebar.png');
+const SIDEBAR_BG = require('../../../assets/ui/panels/sidebar.png');
 
 export interface EnemyPanelProps {
   name: string;

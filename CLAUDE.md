@@ -1,131 +1,98 @@
-# CLAUDE.md
+# Dungeons & Moles - Coding Agent Guide
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This repository hosts the React Native + Expo codebase for Dungeons & Moles, a PvE roguelike dungeon crawler with deterministic gameplay, auto-battler combat, and a Day/Night/Week loop. Use this guide to keep changes consistent with the game design and engine constraints.
 
 ## Project Overview
 
-Dungeons & Moles is a React Native + Expo roguelike dungeon crawler mobile game with Solana wallet integration. The game features deterministic combat, procedural map generation, and a Day/Night/Week time cycle.
+- **Game loop:** Explore a seeded map, fight auto-resolving combat, use POIs for upgrades, and clear week bosses.
+- **Determinism:** `src/game/` logic must be deterministic for replay/debugging.
+- **Specs:** Product specs live in `specs/001-pve-dungeon-crawler/` and design detail is summarized in `specs/gdd.md`.
 
-## Commands
+## Architecture & Data Flow
 
-```bash
-# Development
-npm install          # Install dependencies
-npm start            # Start Expo dev server
-npm run android      # Run on Android device/emulator
-npm run ios          # Run on iOS device/simulator
-npm run web          # Run in web browser
+- **Pure logic vs UI:** `src/game/` contains pure logic (no React). UI lives in `src/components/` and `src/screens/`.
+- **State machine:** `src/game/engine/state-machine.ts` defines phase transitions (Exploration, Combat, POI, Boss, Victory/Defeat).
+- **Reducer:** `src/game/engine/game-reducer.ts` is the single source of truth for game state updates.
+- **RNG:** Use `SeededRNG` from `src/game/engine/rng.ts`; avoid `Math.random()` and `Date.now()` in game logic.
 
-# Quality
-npm run lint         # Run ESLint
-npm run lint:fix     # Run ESLint with auto-fix
-npm run format       # Format src/ with Prettier
-npm run typecheck    # TypeScript type checking
+## Key Directories
 
-# Testing
-npm test                                    # Run all tests
-npm test -- --watch                         # Watch mode
-npm test -- __tests__/unit/combat/          # Run specific test directory
-npm test -- path/to/file.test.ts            # Run single test file
-npm test -- --coverage                      # With coverage report
-```
+- `src/game/`: Deterministic engine, combat, map generation, entities.
+- `src/data/`: Static definitions for items, gear, bosses, POIs.
+- `src/components/` + `src/screens/`: React Native UI.
+- `assets/`: All static images (see structure below).
+- `specs/`: Product specs and plans (`specs/gdd.md` is the design reference).
 
-## Architecture
+## Assets
 
-### State Management Pattern
+- The assets tree is type-based (not screen-based).
+- Use `assets.json` as the canonical index for asset paths and dimensions.
+- Structure highlights:
+  - `assets/branding/` (app icons, logo, splash)
+  - `assets/ui/` (backgrounds, buttons, panels, frames, illustrations)
+  - `assets/icons/` (items, itemsets, oils, stats, ui)
+  - `assets/world/` (tiles, markers, pois)
+  - `assets/entities/` (characters, enemies)
 
-The game uses a reducer-based architecture with a clear separation between pure game logic and React:
+## Build, Test, and Development Commands
 
-- **`src/game/engine/game-reducer.ts`**: Central pure reducer that handles all game state transitions via typed `GameAction` discriminated union
-- **`src/contexts/GameContext.tsx`**: React wrapper that delegates core actions to the pure reducer and handles context-specific actions (debug toggles, etc.)
-- **`src/game/engine/types.ts`**: Root `GameState` interface and all core types
-
-### Game State Machine
-
-Defined in `src/game/engine/state-machine.ts`. Valid phase transitions:
-- MainMenu → Exploration
-- Exploration → Combat, POIInteraction, BossFight
-- Combat → Exploration, Defeat
-- POIInteraction → Exploration
-- BossFight → Exploration, Victory, Defeat
-- Victory/Defeat → MainMenu
-
-### Determinism Requirements
-
-All game logic in `src/game/` MUST be deterministic for replay/debugging:
-- Use `SeededRNG` from `src/game/engine/rng.ts` instead of `Math.random()`
-- No `Date.now()` in game logic
-- Avoid object key iteration order issues (use arrays or sorted keys)
-
-### Directory Structure
-
-```
-src/
-├── game/           # Pure game logic (no React dependencies)
-│   ├── engine/     # State management, reducer, RNG, state machine
-│   ├── combat/     # Combat resolution, damage calculation, status effects
-│   ├── map/        # Procedural map generation, fog of war, pathfinding
-│   ├── entities/   # Player, items, POIs, bosses logic
-│   ├── time/       # Day/Night/Week cycle progression
-│   └── input/      # Direction types and input handling
-├── data/           # Static data definitions (gear, itemsets, POIs, bosses)
-├── screens/        # React Native screen components
-├── components/     # UI components (game/, combat/)
-├── contexts/       # React contexts (Game, Profile, Wallet, Combat)
-├── hooks/          # Custom hooks (useInput, useOrientationLock)
-└── navigation/     # React Navigation setup
-```
-
-### Key Subsystems
-
-**Combat**: Auto-resolving turn-based system in `src/game/combat/`. Uses `CombatState` with phases (BattleStart → TurnStart → Attacks → TurnEnd → BattleEnd). Status effects: Chill, Shrapnel, Rust.
-
-**Map**: Procedural generation in `src/game/map/generator.ts`. Tiles (Floor, Wall, Gravel, Water), fog of war, enemy spawning, POI placement.
-
-**Time**: 3 weeks, each with 3 cycles of Day (50 moves) + Night (25 moves). Boss fight triggers after Night 3 each week.
-
-**Rendering**: Uses `@shopify/react-native-skia` for the game canvas in `src/game/GameCanvas.tsx`.
-
-### Import Alias
-
-Use `@/` for `src/` imports (configured in `tsconfig.json`):
-```typescript
-import { GameState } from '@/game/engine/types';
-```
-
-## Testing
-
-- Tests in `__tests__/` (unit and integration subdirs) and `src/`
-- Files must be named `*.test.ts`
-- Coverage collected from `src/game/**/*.ts`
-- Game logic tests should verify determinism with fixed seeds
+- `npm install`: install dependencies
+- `npm start`: start Expo dev server
+- `npm run android` / `npm run ios` / `npm run web`: run on device/emulator/web
+- `npm run lint` / `npm run lint:fix`: lint code
+- `npm run format`: format code with Prettier
+- `npm run typecheck`: TypeScript type check
+- `npm test` / `npm run test:watch` / `npm run test:coverage`: Jest tests
 
 ## Coding Conventions
 
-- TypeScript strict mode
-- 2-space indentation, single quotes, semicolons (Prettier)
-- Commit messages: `feat(scope):`, `fix:`, `docs:`, `merge:`
-- Reference task IDs in commits when relevant (e.g., T134)
+- TypeScript only for app code (`.ts`, `.tsx`).
+- Prettier: 2 spaces, single quotes, semicolons, print width 100.
+- Use `@/` alias for `src/` imports.
+- Test files: `*.test.ts`.
 
-## Spec Files
+## Testing Guidelines
 
-Product specifications live in `specs/001-pve-dungeon-crawler/`:
-- `spec.md`: Feature specification
-- `plan.md`: Implementation plan
-- `tasks.md`: Task tracking (update when completing tasks)
-- `research.md`: Technical decisions
-- `quickstart.md`: Development guide
+- Jest tests live in `__tests__/` and `src/`.
+- Coverage targets `src/game/**/*.ts`.
+- Add deterministic tests for game logic changes (fixed seeds).
 
-## Active Technologies
-- TypeScript 5.x (strict mode) + React Native, Expo, @shopify/react-native-skia (canvas rendering) (002-qol-balance-batch)
-- In-memory game state (no persistence for this feature set) (002-qol-balance-batch)
-- TypeScript 5.x (strict mode) + React Native, Expo, @shopify/react-native-skia (2.2.12) for canvas rendering (003-gdd-mechanics-update)
-- @coral-xyz/anchor, @solana/web3.js, expo-secure-store for Solana integration (004-solana-frontend-integration)
-- Burner wallet for gasless gameplay transactions (005-gameplay-burner-integration)
-- TypeScript 5.x (strict mode) + React Native, Expo, @coral-xyz/anchor, @solana/web3.js (006-guest-mode-movement)
-- In-memory game state (no persistence), expo-secure-store for burner wallet (006-guest-mode-movement)
+## Commit/PR Notes
 
-## Recent Changes
-- 002-qol-balance-batch: Added TypeScript 5.x (strict mode) + React Native, Expo, @shopify/react-native-skia (canvas rendering)
-- 004-solana-frontend-integration: Added wallet connection, player profiles, session management, map seed fetching
-- 005-gameplay-burner-integration: Adding gameplay-state program integration with burner wallet for gasless gameplay
+- Commit format: `feat(scope): ...`, `fix: ...`, `docs: ...`, `merge: ...`.
+- Reference task IDs when relevant (e.g., `T134`).
+- Update `specs/001-pve-dungeon-crawler/tasks.md` when completing planned tasks.
+
+## Core Loop Integration (007)
+
+The core loop integration feature (specs/007-core-loop-integration/) adds:
+
+### Screens
+- `DeathScreen` - Run summary after player death
+- `VictoryScreen` - Level completion with unlock animations
+- `RunPurchaseScreen` - Purchase runs (20 for 0.001 SOL)
+
+### Components
+- `src/components/combat/` - CombatOverlay, BossIntro, TurnDisplay
+- `src/components/session/` - SessionCard for multi-session display
+- `src/components/items/` - ItemCard, ItemGrid, UnlockAnimation
+
+### Hooks
+- `useSessionList` - Multi-session management (fetch, switch, abandon)
+- `useCombatReplay` - Combat event parsing and replay
+- `useNightMovement` - Enemy movement during night phase
+- `usePoiInteraction` - POI interaction handling
+
+### Services
+- `src/services/solana/sessionList.ts` - Session list fetching and switching
+- `src/services/solana/sessionBundle.ts` - Session creation with burner wallet
+- `src/services/solana/eventParser.ts` - Combat event parsing from transaction logs
+
+### Navigation Routes
+- Death, Victory, RunPurchase screens added to navigation
+- Route params include combat replay data, level info, and unlock data
+
+### Time/Phase System
+- 3 weeks per level, each with Day 1-3 and Night 1-3 phases
+- Boss fight triggers at end of Night 3 for each week
+- Phase labels utility in `src/utils/phase-labels.ts`

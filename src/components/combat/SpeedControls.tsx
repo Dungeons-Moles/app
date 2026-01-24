@@ -14,11 +14,11 @@ import {
 } from 'react-native';
 import type { CombatSpeed } from '../../contexts/CombatContext';
 
-const buttonBgSource = require('../../../assets/hub/button-v1.png');
-const buttonBgActiveSource = require('../../../assets/hub/button-v3.png');
-const stopIconSource = require('../../../assets/icons/stop.png');
-const normalIconSource = require('../../../assets/icons/normal-speed.png');
-const fastIconSource = require('../../../assets/icons/fast-speed.png');
+const buttonBgSource = require('../../../assets/ui/buttons/button-v1.png');
+const buttonBgActiveSource = require('../../../assets/ui/buttons/button-v3.png');
+const stopIconSource = require('../../../assets/icons/ui/stop.png');
+const normalIconSource = require('../../../assets/icons/ui/normal-speed.png');
+const fastIconSource = require('../../../assets/icons/ui/fast-speed.png');
 
 export interface SpeedControlsProps {
   currentSpeed: CombatSpeed;

@@ -10,11 +10,11 @@ import type { PlayerStats } from '../../game/engine/types';
 import { Typography } from '../../theme/typography';
 
 const ICONS = {
-  HP: require('../../../assets/icons/HP.png'),
-  ATK: require('../../../assets/icons/ATK.png'),
-  ARM: require('../../../assets/icons/ARM.png'),
-  SPD: require('../../../assets/icons/speed.png'),
-  DIG: require('../../../assets/icons/DIG.png'),
+  HP: require('../../../assets/icons/stats/HP.png'),
+  ATK: require('../../../assets/icons/stats/ATK.png'),
+  ARM: require('../../../assets/icons/stats/ARM.png'),
+  SPD: require('../../../assets/icons/stats/speed.png'),
+  DIG: require('../../../assets/icons/stats/DIG.png'),
 };
 
 interface StatsPanelProps {

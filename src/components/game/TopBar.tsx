@@ -9,9 +9,9 @@ import { TimePhase } from '../../game/engine/types';
 import { getWeekProgress } from '../../game/time/progression';
 import { Typography } from '../../theme/typography';
 
-const SUN_ICON = require('../../../assets/icons/sun.png');
-const MOON_ICON = require('../../../assets/icons/moon.png');
-const SKULL_ICON = require('../../../assets/icons/skull.png');
+const SUN_ICON = require('../../../assets/icons/ui/sun.png');
+const MOON_ICON = require('../../../assets/icons/ui/moon.png');
+const SKULL_ICON = require('../../../assets/icons/ui/skull.png');
 
 // Constants for tick calculation
 const DAY_TICKS = 10;

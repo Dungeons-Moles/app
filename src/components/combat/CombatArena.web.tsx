@@ -10,8 +10,8 @@ import { EffectNotifications } from './EffectNotifications';
 import type { DamageNumber, EffectNotification } from '../../contexts/CombatContext';
 import { getEntityImageSource } from '../game/entityImages';
 
-const defaultMoleImageSource = require('../../../assets/characters/default-mole.png');
-const BATTLEGROUND_BG = require('../../../assets/combat/battleground.png');
+const defaultMoleImageSource = require('../../../assets/entities/characters/default-mole.png');
+const BATTLEGROUND_BG = require('../../../assets/ui/backgrounds/combat-background.png');
 
 interface CombatArenaProps {
   player: CombatantState | null;

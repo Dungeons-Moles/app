@@ -238,9 +238,9 @@
 
 ### Tests for User Story 7
 
-- [x] T102 [P] [US7] Add asset validation test: all enemy images exist in assets/field-enemies/ in **tests**/unit/assets/images.test.ts
-- [x] T103 [P] [US7] Add asset validation test: all boss images exist in assets/bosses/ in **tests**/unit/assets/images.test.ts
-- [x] T104 [P] [US7] Add asset validation test: all POI images exist in assets/POIs/ in **tests**/unit/assets/images.test.ts
+- [x] T102 [P] [US7] Add asset validation test: all enemy images exist in assets/entities/enemies/field/ in **tests**/unit/assets/images.test.ts
+- [x] T103 [P] [US7] Add asset validation test: all boss images exist in assets/entities/enemies/bosses/ in **tests**/unit/assets/images.test.ts
+- [x] T104 [P] [US7] Add asset validation test: all POI images exist in assets/world/pois/ in **tests**/unit/assets/images.test.ts
 
 ### Implementation for User Story 7
 

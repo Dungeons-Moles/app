@@ -11,21 +11,24 @@
 **Decision**: Use `useImage` hook with preloading at app startup, combined with image atlas for frequently rendered entities.
 
 **Rationale**:
+
 - `@shopify/react-native-skia` provides `useImage` hook that returns `SkImage` for efficient rendering
 - Images are cached automatically by Skia once loaded
 - Preloading at startup avoids frame drops during gameplay
 - Single image per entity type is sufficient (no animation frames needed)
 
 **Alternatives Considered**:
+
 - **Runtime loading**: Rejected due to potential frame drops when entities first appear
 - **Sprite sheets**: Considered but unnecessary complexity since entities don't animate
 - **React Native Image component**: Not compatible with Skia Canvas rendering
 
 **Implementation Pattern**:
+
 ```typescript
 // Preload images at app startup
 const enemyImages = {
-  'TUNNEL_RAT': useImage(require('@/assets/field-enemies/tunnel-rat.png')),
+  'TUNNEL_RAT': useImage(require('@/assets/entities/enemies/field/tunnel-rat.png')),
   // ...
 };
 
@@ -38,6 +41,7 @@ const enemyImages = {
 **Decision**: Implement Bleed following the same pattern as existing status effects (Chill, Shrapnel, Rust).
 
 **Rationale**:
+
 - Existing `StatusEffects` interface in `status-effects.ts` already supports stack-based effects
 - Turn-end processing already exists in `processStatusEffectsTurnEnd()`
 - Adding Bleed requires only:
@@ -46,6 +50,7 @@ const enemyImages = {
   3. Add visual display (emoji: 🩸, color: #dc2626 red)
 
 **GDD Specification**:
+
 - At end of turn: take damage equal to Bleed stacks
 - Remove 1 Bleed stack at end of turn
 - Bleed damage is non-weapon (ignores armor)
@@ -63,19 +68,21 @@ const enemyImages = {
 **Decision**: Use tiered numeric arrays in item definitions: `[tierI, tierII, tierIII]`.
 
 **Rationale**:
+
 - GDD uses `I/II/III` notation for all scaled values (e.g., `+1/2/3 ATK`)
 - Single source of truth: definition includes all tier values
 - Runtime resolution: `value = definition.values[tier - 1]`
 - Matches existing rarity multiplier pattern in `gear.ts`
 
 **Implementation Pattern**:
+
 ```typescript
 interface ItemDefinition {
   id: ItemId;
   name: string;
   tier: 1 | 2 | 3;
   baseStats: {
-    atk?: [number, number, number];  // Tier I/II/III values
+    atk?: [number, number, number]; // Tier I/II/III values
     arm?: [number, number, number];
     hp?: [number, number, number];
     // ...
@@ -91,6 +98,7 @@ const atk = item.baseStats.atk?.[item.tier - 1] ?? 0;
 **Decision**: Implement enemy traits as pure functions in the combat resolver, triggered at specific combat phases.
 
 **Rationale**:
+
 - Matches existing boss trait implementation pattern
 - Traits are deterministic (no side effects)
 - Each trait specifies its trigger timing (BATTLE_START, ON_HIT, TURN_START, etc.)
@@ -117,15 +125,17 @@ const atk = item.baseStats.atk?.[item.tier - 1] ?? 0;
 **Decision**: Use weighted random selection from boss pools, respecting week assignments.
 
 **Rationale**:
+
 - GDD assigns bosses to weeks (Week 1, Week 2, Week 3)
 - Without campaign/act system, randomly select from the pool for each week
 - Week 3 finals alternate or randomize between the two options per biome
 - Store selected boss weaknesses for loot weighting
 
 **Implementation**:
+
 ```typescript
 function selectBossForWeek(week: 1 | 2 | 3, rng: SeededRNG): BossDefinition {
-  const pool = BOSSES.filter(b => b.week === week);
+  const pool = BOSSES.filter((b) => b.week === week);
   return pool[rng.nextInt(0, pool.length - 1)];
 }
 ```
@@ -135,11 +145,13 @@ function selectBossForWeek(week: 1 | 2 | 3, rng: SeededRNG): BossDefinition {
 **Decision**: Implement tag weighting at item generation time using boss weakness tags.
 
 **Rationale**:
+
 - GDD specifies 1.4x weight for boss weakness tags vs 1.0 base
 - Current week's boss weaknesses are known at POI interaction time
 - Apply weighting before random selection, not after
 
 **Implementation Pattern**:
+
 ```typescript
 function generateItemOffer(
   rng: SeededRNG,
@@ -157,12 +169,14 @@ function generateItemOffer(
 **Decision**: Remove fill and stroke from entity rendering, display only the image.
 
 **Rationale**:
+
 - Current implementation draws colored background squares behind emojis
 - With images, the sprite contains all visual information
 - Remove `<RoundedRect>` background elements from entity rendering
 - Keep fog-of-war overlay separate (applies to tiles, not entities)
 
 **Before**:
+
 ```typescript
 <Group>
   <RoundedRect x={x} y={y} width={40} height={40} r={4} color={fillColor} />
@@ -171,6 +185,7 @@ function generateItemOffer(
 ```
 
 **After**:
+
 ```typescript
 <Image image={entityImage} x={x} y={y} width={40} height={40} />
 ```
@@ -180,45 +195,47 @@ function generateItemOffer(
 **Decision**: Check equipped items against itemset requirements at combat start.
 
 **Rationale**:
+
 - Itemsets activate when all required items are equipped
 - Check once at BATTLE_START phase, cache result for combat duration
 - Store active itemset IDs for effect application during combat
 
 **Implementation**:
+
 ```typescript
 function getActiveItemsets(equippedIds: ItemId[]): ItemsetId[] {
-  return ITEMSETS.filter(set =>
-    set.requiredItems.every(id => equippedIds.includes(id))
-  ).map(set => set.id);
+  return ITEMSETS.filter((set) => set.requiredItems.every((id) => equippedIds.includes(id))).map(
+    (set) => set.id
+  );
 }
 ```
 
 ## Resolved Clarifications
 
-| Topic | Resolution | Source |
-|-------|------------|--------|
-| Enemy tier distribution | T1: 50%, T2: 35%, T3: 15% (flat, no act progression) | Spec assumption |
-| Boss selection method | Random from week pool | Design decision |
-| Image asset format | PNG files already exist in assets/ | Codebase exploration |
-| Existing status effects | Chill, Shrapnel, Rust implemented | Code review |
-| Combat log format | Structured with turn/actor/action/result | Code review |
+| Topic                   | Resolution                                           | Source               |
+| ----------------------- | ---------------------------------------------------- | -------------------- |
+| Enemy tier distribution | T1: 50%, T2: 35%, T3: 15% (flat, no act progression) | Spec assumption      |
+| Boss selection method   | Random from week pool                                | Design decision      |
+| Image asset format      | PNG files already exist in assets/                   | Codebase exploration |
+| Existing status effects | Chill, Shrapnel, Rust implemented                    | Code review          |
+| Combat log format       | Structured with turn/actor/action/result             | Code review          |
 
 ## Dependencies Identified
 
-| Dependency | Version | Purpose |
-|------------|---------|---------|
-| @shopify/react-native-skia | 2.2.12 | Canvas rendering, image loading |
-| jest | existing | Unit testing |
-| typescript | 5.x | Type definitions |
+| Dependency                 | Version  | Purpose                         |
+| -------------------------- | -------- | ------------------------------- |
+| @shopify/react-native-skia | 2.2.12   | Canvas rendering, image loading |
+| jest                       | existing | Unit testing                    |
+| typescript                 | 5.x      | Type definitions                |
 
 ## Risk Assessment
 
-| Risk | Likelihood | Impact | Mitigation |
-|------|------------|--------|------------|
-| Image loading performance | Medium | High | Preload at startup, measure on device |
-| Combat resolver complexity | Low | Medium | Maintain existing patterns, comprehensive tests |
-| Data entry errors (80 items) | Medium | Low | Automated validation tests |
-| Boss balance issues | Low | Low | Out of scope (no act modifiers) |
+| Risk                         | Likelihood | Impact | Mitigation                                      |
+| ---------------------------- | ---------- | ------ | ----------------------------------------------- |
+| Image loading performance    | Medium     | High   | Preload at startup, measure on device           |
+| Combat resolver complexity   | Low        | Medium | Maintain existing patterns, comprehensive tests |
+| Data entry errors (80 items) | Medium     | Low    | Automated validation tests                      |
+| Boss balance issues          | Low        | Low    | Out of scope (no act modifiers)                 |
 
 ## Next Steps
 

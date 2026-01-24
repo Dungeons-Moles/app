@@ -1,0 +1,982 @@
+{
+  "branding": {
+    "adaptive-icon.png": {
+      "height": 1024,
+      "path": "assets/branding/adaptive-icon.png",
+      "width": 1024
+    },
+    "favicon.png": {
+      "height": 48,
+      "path": "assets/branding/favicon.png",
+      "width": 48
+    },
+    "icon.png": {
+      "height": 1024,
+      "path": "assets/branding/icon.png",
+      "width": 1024
+    },
+    "logo.png": {
+      "height": 1536,
+      "path": "assets/branding/logo.png",
+      "width": 2752
+    },
+    "splash-icon.png": {
+      "height": 1024,
+      "path": "assets/branding/splash-icon.png",
+      "width": 1024
+    }
+  },
+  "entities": {
+    "characters": {
+      "default-mole.png": {
+        "height": 2000,
+        "path": "assets/entities/characters/default-mole.png",
+        "width": 2000
+      }
+    },
+    "enemies": {
+      "bosses": {
+        "broodmother.png": {
+          "height": 465,
+          "path": "assets/entities/enemies/bosses/broodmother.png",
+          "width": 465
+        },
+        "crystal-mimic.png": {
+          "height": 465,
+          "path": "assets/entities/enemies/bosses/crystal-mimic.png",
+          "width": 465
+        },
+        "drill-sergeant.png": {
+          "height": 465,
+          "path": "assets/entities/enemies/bosses/drill-sergeant.png",
+          "width": 465
+        },
+        "gas-anomaly.png": {
+          "height": 465,
+          "path": "assets/entities/enemies/bosses/gas-anomaly.png",
+          "width": 465
+        },
+        "greedkeeper.png": {
+          "height": 465,
+          "path": "assets/entities/enemies/bosses/greedkeeper.png",
+          "width": 465
+        },
+        "mad-miner.png": {
+          "height": 465,
+          "path": "assets/entities/enemies/bosses/mad-miner.png",
+          "width": 465
+        },
+        "obisidian-golem.png": {
+          "height": 465,
+          "path": "assets/entities/enemies/bosses/obisidian-golem.png",
+          "width": 465
+        },
+        "powder-keg-baron.png": {
+          "height": 465,
+          "path": "assets/entities/enemies/bosses/powder-keg-baron.png",
+          "width": 465
+        },
+        "rust-regent.png": {
+          "height": 465,
+          "path": "assets/entities/enemies/bosses/rust-regent.png",
+          "width": 465
+        },
+        "shard-colossus.png": {
+          "height": 465,
+          "path": "assets/entities/enemies/bosses/shard-colossus.png",
+          "width": 465
+        },
+        "the-eldritch-mole.png": {
+          "height": 465,
+          "path": "assets/entities/enemies/bosses/the-eldritch-mole.png",
+          "width": 465
+        },
+        "the-frostbound-leviathan.png": {
+          "height": 465,
+          "path": "assets/entities/enemies/bosses/the-frostbound-leviathan.png",
+          "width": 465
+        },
+        "the-gilded-devourer.png": {
+          "height": 465,
+          "path": "assets/entities/enemies/bosses/the-gilded-devourer.png",
+          "width": 465
+        },
+        "the-rusted-chronomancer.png": {
+          "height": 465,
+          "path": "assets/entities/enemies/bosses/the-rusted-chronomancer.png",
+          "width": 465
+        }
+      },
+      "field": {
+        "blood-mosquito.png": {
+          "height": 465,
+          "path": "assets/entities/enemies/field/blood-mosquito.png",
+          "width": 465
+        },
+        "burrow-ambusher.png": {
+          "height": 465,
+          "path": "assets/entities/enemies/field/burrow-ambusher.png",
+          "width": 465
+        },
+        "cave-bat.png": {
+          "height": 465,
+          "path": "assets/entities/enemies/field/cave-bat.png",
+          "width": 465
+        },
+        "coin-slug.png": {
+          "height": 465,
+          "path": "assets/entities/enemies/field/coin-slug.png",
+          "width": 465
+        },
+        "collapsed-miner.png": {
+          "height": 465,
+          "path": "assets/entities/enemies/field/collapsed-miner.png",
+          "width": 465
+        },
+        "frost-wisp.png": {
+          "height": 465,
+          "path": "assets/entities/enemies/field/frost-wisp.png",
+          "width": 465
+        },
+        "powder-tick.png": {
+          "height": 465,
+          "path": "assets/entities/enemies/field/powder-tick.png",
+          "width": 465
+        },
+        "rust-mite-swarm.png": {
+          "height": 465,
+          "path": "assets/entities/enemies/field/rust-mite-swarm.png",
+          "width": 465
+        },
+        "shard-beetle.png": {
+          "height": 465,
+          "path": "assets/entities/enemies/field/shard-beetle.png",
+          "width": 465
+        },
+        "spore-slime.png": {
+          "height": 465,
+          "path": "assets/entities/enemies/field/spore-slime.png",
+          "width": 465
+        },
+        "tunnel-rat.png": {
+          "height": 465,
+          "path": "assets/entities/enemies/field/tunnel-rat.png",
+          "width": 465
+        },
+        "tunnel-warden.png": {
+          "height": 465,
+          "path": "assets/entities/enemies/field/tunnel-warden.png",
+          "width": 465
+        }
+      }
+    }
+  },
+  "icons": {
+    "items": {
+      "blast": {
+        "blast_suit.png": {
+          "height": 450,
+          "path": "assets/icons/items/blast/blast_suit.png",
+          "width": 450
+        },
+        "bomb_satchel.png": {
+          "height": 450,
+          "path": "assets/icons/items/blast/bomb_satchel.png",
+          "width": 450
+        },
+        "double_detonation.png": {
+          "height": 450,
+          "path": "assets/icons/items/blast/double_detonation.png",
+          "width": 450
+        },
+        "explosive_powder.png": {
+          "height": 450,
+          "path": "assets/icons/items/blast/explosive_powder.png",
+          "width": 450
+        },
+        "fuse_pick.png": {
+          "height": 450,
+          "path": "assets/icons/items/blast/fuse_pick.png",
+          "width": 450
+        },
+        "kindling_charge.png": {
+          "height": 450,
+          "path": "assets/icons/items/blast/kindling_charge.png",
+          "width": 450
+        },
+        "small_charge.png": {
+          "height": 450,
+          "path": "assets/icons/items/blast/small_charge.png",
+          "width": 450
+        },
+        "spark_pick.png": {
+          "height": 450,
+          "path": "assets/icons/items/blast/spark_pick.png",
+          "width": 450
+        },
+        "time_charge.png": {
+          "height": 450,
+          "path": "assets/icons/items/blast/time_charge.png",
+          "width": 450
+        },
+        "twin-fuse_knot.png": {
+          "height": 450,
+          "path": "assets/icons/items/blast/twin-fuse_knot.png",
+          "width": 450
+        }
+      },
+      "blood": {
+        "blood_chalice.png": {
+          "height": 450,
+          "path": "assets/icons/items/blood/blood_chalice.png",
+          "width": 450
+        },
+        "bloodletting_fang.png": {
+          "height": 450,
+          "path": "assets/icons/items/blood/bloodletting_fang.png",
+          "width": 450
+        },
+        "execution_emblem.png": {
+          "height": 450,
+          "path": "assets/icons/items/blood/execution_emblem.png",
+          "width": 450
+        },
+        "gore_mantle.png": {
+          "height": 450,
+          "path": "assets/icons/items/blood/gore_mantle.png",
+          "width": 450
+        },
+        "hemorrhage_hook.png": {
+          "height": 450,
+          "path": "assets/icons/items/blood/hemorrhage_hook.png",
+          "width": 450
+        },
+        "last_breath_sigil.png": {
+          "height": 450,
+          "path": "assets/icons/items/blood/last_breath_sigil.png",
+          "width": 450
+        },
+        "leech_wraps.png": {
+          "height": 450,
+          "path": "assets/icons/items/blood/leech_wraps.png",
+          "width": 450
+        },
+        "reaper_pick.png": {
+          "height": 450,
+          "path": "assets/icons/items/blood/reaper_pick.png",
+          "width": 450
+        },
+        "serrated_drill.png": {
+          "height": 450,
+          "path": "assets/icons/items/blood/serrated_drill.png",
+          "width": 450
+        },
+        "vampiric_tooth.png": {
+          "height": 450,
+          "path": "assets/icons/items/blood/vampiric_tooth.png",
+          "width": 450
+        }
+      },
+      "frost": {
+        "cold_front_idol.png": {
+          "height": 450,
+          "path": "assets/icons/items/frost/cold_front_idol.png",
+          "width": 450
+        },
+        "cold_snap_charm.png": {
+          "height": 450,
+          "path": "assets/icons/items/frost/cold_snap_charm.png",
+          "width": 450
+        },
+        "deep_freeze_charm.png": {
+          "height": 450,
+          "path": "assets/icons/items/frost/deep_freeze_charm.png",
+          "width": 450
+        },
+        "frost_lantern.png": {
+          "height": 450,
+          "path": "assets/icons/items/frost/frost_lantern.png",
+          "width": 450
+        },
+        "frostguard_buckler.png": {
+          "height": 450,
+          "path": "assets/icons/items/frost/frostguard_buckler.png",
+          "width": 450
+        },
+        "glacier_fang.png": {
+          "height": 450,
+          "path": "assets/icons/items/frost/glacier_fang.png",
+          "width": 450
+        },
+        "ice_skates.png": {
+          "height": 450,
+          "path": "assets/icons/items/frost/ice_skates.png",
+          "width": 450
+        },
+        "permafrost_core.png": {
+          "height": 450,
+          "path": "assets/icons/items/frost/permafrost_core.png",
+          "width": 450
+        },
+        "rime_cloak.png": {
+          "height": 450,
+          "path": "assets/icons/items/frost/rime_cloak.png",
+          "width": 450
+        },
+        "rime_pike.png": {
+          "height": 450,
+          "path": "assets/icons/items/frost/rime_pike.png",
+          "width": 450
+        }
+      },
+      "greed": {
+        "citrine_shard.png": {
+          "height": 450,
+          "path": "assets/icons/items/greed/citrine_shard.png",
+          "width": 450
+        },
+        "emerald_shard.png": {
+          "height": 450,
+          "path": "assets/icons/items/greed/emerald_shard.png",
+          "width": 450
+        },
+        "gemfinder_staff.png": {
+          "height": 450,
+          "path": "assets/icons/items/greed/gemfinder_staff.png",
+          "width": 450
+        },
+        "gilded_band.png": {
+          "height": 450,
+          "path": "assets/icons/items/greed/gilded_band.png",
+          "width": 450
+        },
+        "glittering_pick.png": {
+          "height": 450,
+          "path": "assets/icons/items/greed/glittering_pick.png",
+          "width": 450
+        },
+        "loose_nuggets.png": {
+          "height": 450,
+          "path": "assets/icons/items/greed/loose_nuggets.png",
+          "width": 450
+        },
+        "lucky_coin.png": {
+          "height": 450,
+          "path": "assets/icons/items/greed/lucky_coin.png",
+          "width": 450
+        },
+        "royal_bracer.png": {
+          "height": 450,
+          "path": "assets/icons/items/greed/royal_bracer.png",
+          "width": 450
+        },
+        "ruby_shard.png": {
+          "height": 450,
+          "path": "assets/icons/items/greed/ruby_shard.png",
+          "width": 450
+        },
+        "sapphire_shard.png": {
+          "height": 450,
+          "path": "assets/icons/items/greed/sapphire_shard.png",
+          "width": 450
+        }
+      },
+      "rust": {
+        "acid_phial.png": {
+          "height": 450,
+          "path": "assets/icons/items/rust/acid_phial.png",
+          "width": 450
+        },
+        "corroded_greaves.png": {
+          "height": 450,
+          "path": "assets/icons/items/rust/corroded_greaves.png",
+          "width": 450
+        },
+        "corrosion_loop.png": {
+          "height": 450,
+          "path": "assets/icons/items/rust/corrosion_loop.png",
+          "width": 450
+        },
+        "corrosive_pick.png": {
+          "height": 450,
+          "path": "assets/icons/items/rust/corrosive_pick.png",
+          "width": 450
+        },
+        "etched_burrowblade.png": {
+          "height": 450,
+          "path": "assets/icons/items/rust/etched_burrowblade.png",
+          "width": 450
+        },
+        "flaking_plating.png": {
+          "height": 450,
+          "path": "assets/icons/items/rust/flaking_plating.png",
+          "width": 450
+        },
+        "oxidizer_vial.png": {
+          "height": 450,
+          "path": "assets/icons/items/rust/oxidizer_vial.png",
+          "width": 450
+        },
+        "rust_engine.png": {
+          "height": 450,
+          "path": "assets/icons/items/rust/rust_engine.png",
+          "width": 450
+        },
+        "rust_spike.png": {
+          "height": 450,
+          "path": "assets/icons/items/rust/rust_spike.png",
+          "width": 450
+        },
+        "salvage_clamp.png": {
+          "height": 450,
+          "path": "assets/icons/items/rust/salvage_clamp.png",
+          "width": 450
+        }
+      },
+      "scout": {
+        "drill_servo.png": {
+          "height": 450,
+          "path": "assets/icons/items/scout/drill_servo.png",
+          "width": 450
+        },
+        "gear-link_medallion.png": {
+          "height": 450,
+          "path": "assets/icons/items/scout/gear-link_medallion.png",
+          "width": 450
+        },
+        "leather_gloves.png": {
+          "height": 450,
+          "path": "assets/icons/items/scout/leather_gloves.png",
+          "width": 450
+        },
+        "miner_boots.png": {
+          "height": 450,
+          "path": "assets/icons/items/scout/miner_boots.png",
+          "width": 450
+        },
+        "pneumatic_drill.png": {
+          "height": 450,
+          "path": "assets/icons/items/scout/pneumatic_drill.png",
+          "width": 450
+        },
+        "tunnel_instinct.png": {
+          "height": 450,
+          "path": "assets/icons/items/scout/tunnel_instinct.png",
+          "width": 450
+        },
+        "tunneler_spurs.png": {
+          "height": 450,
+          "path": "assets/icons/items/scout/tunneler_spurs.png",
+          "width": 450
+        },
+        "twin_picks.png": {
+          "height": 450,
+          "path": "assets/icons/items/scout/twin_picks.png",
+          "width": 450
+        },
+        "wall-sense_visor.png": {
+          "height": 450,
+          "path": "assets/icons/items/scout/wall-sense_visor.png",
+          "width": 450
+        },
+        "weak-point_manual.png": {
+          "height": 450,
+          "path": "assets/icons/items/scout/weak-point_manual.png",
+          "width": 450
+        }
+      },
+      "stone": {
+        "bulwark_shovel.png": {
+          "height": 450,
+          "path": "assets/icons/items/stone/bulwark_shovel.png",
+          "width": 450
+        },
+        "cragbreaker_hammer.png": {
+          "height": 450,
+          "path": "assets/icons/items/stone/cragbreaker_hammer.png",
+          "width": 450
+        },
+        "crystal_crown.png": {
+          "height": 450,
+          "path": "assets/icons/items/stone/crystal_crown.png",
+          "width": 450
+        },
+        "miner_helmet.png": {
+          "height": 450,
+          "path": "assets/icons/items/stone/miner_helmet.png",
+          "width": 450
+        },
+        "rebar_carapace.png": {
+          "height": 450,
+          "path": "assets/icons/items/stone/rebar_carapace.png",
+          "width": 450
+        },
+        "reinforcement_plate.png": {
+          "height": 450,
+          "path": "assets/icons/items/stone/reinforcement_plate.png",
+          "width": 450
+        },
+        "shrapnel_talisman.png": {
+          "height": 450,
+          "path": "assets/icons/items/stone/shrapnel_talisman.png",
+          "width": 450
+        },
+        "spiked_bracers.png": {
+          "height": 450,
+          "path": "assets/icons/items/stone/spiked_bracers.png",
+          "width": 450
+        },
+        "stone_sigil.png": {
+          "height": 450,
+          "path": "assets/icons/items/stone/stone_sigil.png",
+          "width": 450
+        },
+        "work_vest.png": {
+          "height": 450,
+          "path": "assets/icons/items/stone/work_vest.png",
+          "width": 450
+        }
+      },
+      "tempo": {
+        "ambush_charm.png": {
+          "height": 450,
+          "path": "assets/icons/items/tempo/ambush_charm.png",
+          "width": 450
+        },
+        "backstep_buckle.png": {
+          "height": 450,
+          "path": "assets/icons/items/tempo/backstep_buckle.png",
+          "width": 450
+        },
+        "chrono_rapier.png": {
+          "height": 450,
+          "path": "assets/icons/items/tempo/chrono_rapier.png",
+          "width": 450
+        },
+        "counterweight_buckle.png": {
+          "height": 450,
+          "path": "assets/icons/items/tempo/counterweight_buckle.png",
+          "width": 450
+        },
+        "hourglass_charge.png": {
+          "height": 450,
+          "path": "assets/icons/items/tempo/hourglass_charge.png",
+          "width": 450
+        },
+        "initiative_lens.png": {
+          "height": 450,
+          "path": "assets/icons/items/tempo/initiative_lens.png",
+          "width": 450
+        },
+        "quickpick.png": {
+          "height": 450,
+          "path": "assets/icons/items/tempo/quickpick.png",
+          "width": 450
+        },
+        "second_wind_clock.png": {
+          "height": 450,
+          "path": "assets/icons/items/tempo/second_wind_clock.png",
+          "width": 450
+        },
+        "tempo_battery.png": {
+          "height": 450,
+          "path": "assets/icons/items/tempo/tempo_battery.png",
+          "width": 450
+        },
+        "wind-up_spring.png": {
+          "height": 450,
+          "path": "assets/icons/items/tempo/wind-up_spring.png",
+          "width": 450
+        }
+      }
+    },
+    "itemsets": {
+      "bloodrush_protocol.png": {
+        "height": 420,
+        "path": "assets/icons/itemsets/bloodrush_protocol.png",
+        "width": 420
+      },
+      "corrosion_payload.png": {
+        "height": 420,
+        "path": "assets/icons/itemsets/corrosion_payload.png",
+        "width": 420
+      },
+      "demolition_permit.png": {
+        "height": 420,
+        "path": "assets/icons/itemsets/demolition_permit.png",
+        "width": 420
+      },
+      "fuse_network.png": {
+        "height": 420,
+        "path": "assets/icons/itemsets/fuse_network.png",
+        "width": 420
+      },
+      "golden_shrapnel_exchange.png": {
+        "height": 420,
+        "path": "assets/icons/itemsets/golden_shrapnel_exchange.png",
+        "width": 420
+      },
+      "royal_extraction.png": {
+        "height": 420,
+        "path": "assets/icons/itemsets/royal_extraction.png",
+        "width": 420
+      },
+      "rust_ritual.png": {
+        "height": 420,
+        "path": "assets/icons/itemsets/rust_ritual.png",
+        "width": 420
+      },
+      "shard_circuit.png": {
+        "height": 420,
+        "path": "assets/icons/itemsets/shard_circuit.png",
+        "width": 420
+      },
+      "shrapnel_harness.png": {
+        "height": 420,
+        "path": "assets/icons/itemsets/shrapnel_harness.png",
+        "width": 420
+      },
+      "swift_digger_kit.png": {
+        "height": 420,
+        "path": "assets/icons/itemsets/swift_digger_kit.png",
+        "width": 420
+      },
+      "union_standard.png": {
+        "height": 420,
+        "path": "assets/icons/itemsets/union_standard.png",
+        "width": 420
+      },
+      "whiteout_initiative.png": {
+        "height": 420,
+        "path": "assets/icons/itemsets/whiteout_initiative.png",
+        "width": 420
+      }
+    },
+    "oils": {
+      "ARM.png": {
+        "height": 600,
+        "path": "assets/icons/oils/ARM.png",
+        "width": 500
+      },
+      "ATK.png": {
+        "height": 600,
+        "path": "assets/icons/oils/ATK.png",
+        "width": 500
+      },
+      "DIG.png": {
+        "height": 600,
+        "path": "assets/icons/oils/DIG.png",
+        "width": 500
+      },
+      "SPD.png": {
+        "height": 600,
+        "path": "assets/icons/oils/SPD.png",
+        "width": 500
+      }
+    },
+    "stats": {
+      "ARM.png": {
+        "height": 330,
+        "path": "assets/icons/stats/ARM.png",
+        "width": 330
+      },
+      "ATK.png": {
+        "height": 330,
+        "path": "assets/icons/stats/ATK.png",
+        "width": 330
+      },
+      "DIG.png": {
+        "height": 330,
+        "path": "assets/icons/stats/DIG.png",
+        "width": 330
+      },
+      "HP.png": {
+        "height": 330,
+        "path": "assets/icons/stats/HP.png",
+        "width": 330
+      },
+      "speed.png": {
+        "height": 330,
+        "path": "assets/icons/stats/speed.png",
+        "width": 330
+      }
+    },
+    "ui": {
+      "coin.png": {
+        "height": 330,
+        "path": "assets/icons/ui/coin.png",
+        "width": 330
+      },
+      "fast-speed.png": {
+        "height": 350,
+        "path": "assets/icons/ui/fast-speed.png",
+        "width": 350
+      },
+      "lock.png": {
+        "height": 291,
+        "path": "assets/icons/ui/lock.png",
+        "width": 229
+      },
+      "map.png": {
+        "height": 1278,
+        "path": "assets/icons/ui/map.png",
+        "width": 1526
+      },
+      "moon.png": {
+        "height": 1176,
+        "path": "assets/icons/ui/moon.png",
+        "width": 1176
+      },
+      "normal-speed.png": {
+        "height": 350,
+        "path": "assets/icons/ui/normal-speed.png",
+        "width": 350
+      },
+      "skull.png": {
+        "height": 1216,
+        "path": "assets/icons/ui/skull.png",
+        "width": 987
+      },
+      "stop.png": {
+        "height": 350,
+        "path": "assets/icons/ui/stop.png",
+        "width": 350
+      },
+      "sun.png": {
+        "height": 1176,
+        "path": "assets/icons/ui/sun.png",
+        "width": 1176
+      }
+    }
+  },
+  "ui": {
+    "backgrounds": {
+      "account-background.png": {
+        "height": 1536,
+        "path": "assets/ui/backgrounds/account-background.png",
+        "width": 2752
+      },
+      "campaign-background.png": {
+        "height": 1536,
+        "path": "assets/ui/backgrounds/campaign-background.png",
+        "width": 2731
+      },
+      "combat-background.png": {
+        "height": 936,
+        "path": "assets/ui/backgrounds/combat-background.png",
+        "width": 1198
+      },
+      "hub-background.png": {
+        "height": 1342,
+        "path": "assets/ui/backgrounds/hub-background.png",
+        "width": 2386
+      },
+      "loading-background.png": {
+        "height": 1342,
+        "path": "assets/ui/backgrounds/loading-background.png",
+        "width": 2386
+      }
+    },
+    "buttons": {
+      "button-v1.png": {
+        "height": 516,
+        "path": "assets/ui/buttons/button-v1.png",
+        "width": 1616
+      },
+      "button-v2.png": {
+        "height": 516,
+        "path": "assets/ui/buttons/button-v2.png",
+        "width": 1616
+      },
+      "button-v3.png": {
+        "height": 516,
+        "path": "assets/ui/buttons/button-v3.png",
+        "width": 1616
+      },
+      "button-v4.png": {
+        "height": 516,
+        "path": "assets/ui/buttons/button-v4.png",
+        "width": 1616
+      },
+      "button.png": {
+        "height": 761,
+        "path": "assets/ui/buttons/button.png",
+        "width": 2150
+      }
+    },
+    "frames": {
+      "rectangle.png": {
+        "height": 783,
+        "path": "assets/ui/frames/rectangle.png",
+        "width": 2329
+      },
+      "square.png": {
+        "height": 777,
+        "path": "assets/ui/frames/square.png",
+        "width": 777
+      }
+    },
+    "illustrations": {
+      "engine.png": {
+        "height": 350,
+        "path": "assets/ui/illustrations/engine.png",
+        "width": 350
+      },
+      "wallet.png": {
+        "height": 783,
+        "path": "assets/ui/illustrations/wallet.png",
+        "width": 2329
+      }
+    },
+    "panels": {
+      "boss-panel.png": {
+        "height": 136,
+        "path": "assets/ui/panels/boss-panel.png",
+        "width": 626
+      },
+      "paper-panel.png": {
+        "height": 1991,
+        "path": "assets/ui/panels/paper-panel.png",
+        "width": 1625
+      },
+      "sidebar.png": {
+        "height": 1372,
+        "path": "assets/ui/panels/sidebar.png",
+        "width": 620
+      },
+      "wooden-panel.png": {
+        "height": 1481,
+        "path": "assets/ui/panels/wooden-panel.png",
+        "width": 1307
+      }
+    }
+  },
+  "world": {
+    "markers": {
+      "question-mark.png": {
+        "height": 465,
+        "path": "assets/world/markers/question-mark.png",
+        "width": 465
+      }
+    },
+    "pois": {
+      "counter-cache.png": {
+        "height": 465,
+        "path": "assets/world/pois/counter-cache.png",
+        "width": 465
+      },
+      "geode-vault.png": {
+        "height": 465,
+        "path": "assets/world/pois/geode-vault.png",
+        "width": 465
+      },
+      "mole-den.png": {
+        "height": 465,
+        "path": "assets/world/pois/mole-den.png",
+        "width": 465
+      },
+      "rail-waypoint.png": {
+        "height": 465,
+        "path": "assets/world/pois/rail-waypoint.png",
+        "width": 465
+      },
+      "rest-alcove.png": {
+        "height": 465,
+        "path": "assets/world/pois/rest-alcove.png",
+        "width": 465
+      },
+      "rune-kiln.png": {
+        "height": 465,
+        "path": "assets/world/pois/rune-kiln.png",
+        "width": 465
+      },
+      "rusty-anvil.png": {
+        "height": 465,
+        "path": "assets/world/pois/rusty-anvil.png",
+        "width": 465
+      },
+      "scrap-chute.png": {
+        "height": 465,
+        "path": "assets/world/pois/scrap-chute.png",
+        "width": 465
+      },
+      "seismic-scanner.png": {
+        "height": 465,
+        "path": "assets/world/pois/seismic-scanner.png",
+        "width": 465
+      },
+      "smuggler-hatch.png": {
+        "height": 465,
+        "path": "assets/world/pois/smuggler-hatch.png",
+        "width": 465
+      },
+      "supply-cache.png": {
+        "height": 465,
+        "path": "assets/world/pois/supply-cache.png",
+        "width": 465
+      },
+      "survey-beacon.png": {
+        "height": 465,
+        "path": "assets/world/pois/survey-beacon.png",
+        "width": 465
+      },
+      "tool-crate.png": {
+        "height": 465,
+        "path": "assets/world/pois/tool-crate.png",
+        "width": 465
+      },
+      "tool-oil-rack.png": {
+        "height": 465,
+        "path": "assets/world/pois/tool-oil-rack.png",
+        "width": 465
+      }
+    },
+    "tiles": {
+      "floor-v1.png": {
+        "height": 338,
+        "path": "assets/world/tiles/floor-v1.png",
+        "width": 338
+      },
+      "floor-v2.png": {
+        "height": 338,
+        "path": "assets/world/tiles/floor-v2.png",
+        "width": 338
+      },
+      "floor-v3.png": {
+        "height": 338,
+        "path": "assets/world/tiles/floor-v3.png",
+        "width": 338
+      },
+      "floor-v4.png": {
+        "height": 338,
+        "path": "assets/world/tiles/floor-v4.png",
+        "width": 338
+      },
+      "floor-v5.png": {
+        "height": 338,
+        "path": "assets/world/tiles/floor-v5.png",
+        "width": 338
+      },
+      "rock-v1.png": {
+        "height": 670,
+        "path": "assets/world/tiles/rock-v1.png",
+        "width": 670
+      },
+      "rock-v2.png": {
+        "height": 670,
+        "path": "assets/world/tiles/rock-v2.png",
+        "width": 670
+      },
+      "rock-v3.png": {
+        "height": 670,
+        "path": "assets/world/tiles/rock-v3.png",
+        "width": 670
+      },
+      "rock-v4.png": {
+        "height": 670,
+        "path": "assets/world/tiles/rock-v4.png",
+        "width": 670
+      }
+    }
+  }
+}

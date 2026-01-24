@@ -36,8 +36,19 @@ yarn-error.*
 .DS_Store
 *.pem
 
+# Windows
+Thumbs.db
+
+# editors
+.vscode/
+.idea/
+
+# temp files
+*.tmp
+*.swp
+
 # local env files
-.env
+.env*
 
 # typescript
 *.tsbuildinfo

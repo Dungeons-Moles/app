@@ -33,5 +33,5 @@ module.exports = {
     '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
     '@typescript-eslint/no-require-imports': 'off',
   },
-  ignorePatterns: ['node_modules/', '.expo/', 'dist/', 'build/'],
+  ignorePatterns: ['node_modules/', '.expo/', 'dist/', 'build/', 'coverage/', '*.min.js'],
 };

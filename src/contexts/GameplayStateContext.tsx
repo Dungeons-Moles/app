@@ -3,11 +3,15 @@
  *
  * Provides on-chain gameplay state to UI components.
  * Acts as a bridge between the useGameplayState hook and the component tree.
+ * Extended to include MapEnemies and MapPois from on-chain state.
+ *
+ * @see data-model.md for MapEnemies and MapPois structure
  */
 
-import React, { createContext, useContext, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
 import { Keypair, PublicKey } from '@solana/web3.js';
 import { useGameplayState, SyncStatus } from '@/hooks/useGameplayState';
+import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
 import {
   GameState,
   Phase,
@@ -17,6 +21,14 @@ import {
   ModifyStatParams,
   PHASE_MOVE_ALLOWANCE,
 } from '@/services/solana/types/gameplay_state';
+import {
+  type MapEnemiesAccount,
+  type MapPoisAccount,
+  type EnemyData,
+  type PoiData,
+  fetchSessionRawData,
+} from '@/services/solana/sessionList';
+import { deriveMapEnemiesPda, deriveMapPoisPda } from '@/services/solana/constants';
 
 // ============================================================================
 // Types
@@ -35,6 +47,14 @@ interface GameplayStateContextType {
   syncStatus: SyncStatus;
   /** Last sync timestamp */
   lastSyncAt: number | null;
+
+  // Map entities from on-chain state
+  /** Enemies on the map (from MapEnemies account) */
+  enemies: EnemyData[];
+  /** POIs on the map (from MapPois account) */
+  pois: PoiData[];
+  /** Whether map entities are loading */
+  isMapEntitiesLoading: boolean;
 
   // Computed properties for UI
   /** Current position as [x, y] */
@@ -81,6 +101,16 @@ interface GameplayStateContextType {
   getMoveCost: (isWall: boolean) => number;
   /** Set the game state PDA */
   setGameStatePda: (pda: PublicKey | null) => void;
+  /** Refresh map entities (enemies and POIs) */
+  refreshMapEntities: (sessionPda: PublicKey) => Promise<void>;
+  /** Remove an enemy from the local list (after combat) */
+  removeEnemy: (x: number, y: number) => void;
+  /** Mark a POI as consumed */
+  consumePoi: (x: number, y: number) => void;
+  /** Get enemy at a specific position */
+  getEnemyAt: (x: number, y: number) => EnemyData | undefined;
+  /** Get POI at a specific position */
+  getPoiAt: (x: number, y: number) => PoiData | undefined;
 }
 
 interface PlayerStats {
@@ -104,6 +134,99 @@ const GameplayStateContext = createContext<GameplayStateContextType | undefined>
 
 export function GameplayStateProvider({ children }: { children: ReactNode }) {
   const gameplay = useGameplayState();
+  const { connection } = useSolanaConnection();
+
+  // Map entities state
+  const [enemies, setEnemies] = useState<EnemyData[]>([]);
+  const [pois, setPois] = useState<PoiData[]>([]);
+  const [isMapEntitiesLoading, setIsMapEntitiesLoading] = useState(false);
+  const [sessionPdaForEntities, setSessionPdaForEntities] = useState<PublicKey | null>(null);
+
+  /**
+   * Refresh map entities (enemies and POIs) from on-chain state.
+   */
+  const refreshMapEntities = useCallback(
+    async (sessionPda: PublicKey): Promise<void> => {
+      if (!connection) {
+        return;
+      }
+
+      setIsMapEntitiesLoading(true);
+      setSessionPdaForEntities(sessionPda);
+
+      try {
+        const rawData = await fetchSessionRawData(connection, sessionPda);
+
+        // Parse enemies (simplified - real implementation would decode properly)
+        if (rawData.enemiesAccount) {
+          // For now, set empty - actual parsing would use program decoder
+          // This will be populated when the Anchor program is available
+          console.log('[GameplayStateContext] Enemies data available, decoding pending');
+          setEnemies([]);
+        } else {
+          setEnemies([]);
+        }
+
+        // Parse POIs (simplified - real implementation would decode properly)
+        if (rawData.poisAccount) {
+          // For now, set empty - actual parsing would use program decoder
+          console.log('[GameplayStateContext] POIs data available, decoding pending');
+          setPois([]);
+        } else {
+          setPois([]);
+        }
+      } catch (error) {
+        console.error('[GameplayStateContext] Failed to fetch map entities:', error);
+        setEnemies([]);
+        setPois([]);
+      } finally {
+        setIsMapEntitiesLoading(false);
+      }
+    },
+    [connection]
+  );
+
+  /**
+   * Remove an enemy from the local list (after combat victory).
+   */
+  const removeEnemy = useCallback((x: number, y: number): void => {
+    setEnemies((prev) =>
+      prev.map((enemy) =>
+        enemy.x === x && enemy.y === y ? { ...enemy, alive: false } : enemy
+      )
+    );
+  }, []);
+
+  /**
+   * Mark a POI as consumed.
+   */
+  const consumePoi = useCallback((x: number, y: number): void => {
+    setPois((prev) =>
+      prev.map((poi) =>
+        poi.x === x && poi.y === y ? { ...poi, consumed: true } : poi
+      )
+    );
+  }, []);
+
+  /**
+   * Get enemy at a specific position.
+   */
+  const getEnemyAt = useCallback(
+    (x: number, y: number): EnemyData | undefined => {
+      return enemies.find((e) => e.x === x && e.y === y && e.alive);
+    },
+    [enemies]
+  );
+
+  /**
+   * Get POI at a specific position.
+   */
+  const getPoiAt = useCallback(
+    (x: number, y: number): PoiData | undefined => {
+      return pois.find((p) => p.x === x && p.y === y && !p.consumed);
+    },
+    [pois]
+  );
 
   // Compute derived values for UI convenience
   const position: [number, number] | null = gameplay.gameState
@@ -135,6 +258,11 @@ export function GameplayStateProvider({ children }: { children: ReactNode }) {
     syncStatus: gameplay.syncStatus,
     lastSyncAt: gameplay.lastSyncAt,
 
+    // Map entities
+    enemies,
+    pois,
+    isMapEntitiesLoading,
+
     // Computed properties
     position,
     stats,
@@ -154,6 +282,11 @@ export function GameplayStateProvider({ children }: { children: ReactNode }) {
     refresh: gameplay.refresh,
     getMoveCost: gameplay.getMoveCost,
     setGameStatePda: gameplay.setGameStatePda,
+    refreshMapEntities,
+    removeEnemy,
+    consumePoi,
+    getEnemyAt,
+    getPoiAt,
   };
 
   return <GameplayStateContext.Provider value={value}>{children}</GameplayStateContext.Provider>;
@@ -198,4 +331,4 @@ function getPhaseName(phase: Phase): string {
 }
 
 // Re-export types for convenience
-export type { GameState, Phase, StatType, PlayerStats, SyncStatus };
+export type { GameState, Phase, StatType, PlayerStats, SyncStatus, EnemyData, PoiData };

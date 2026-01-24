@@ -10,8 +10,8 @@ import type { Tool, Gear, InventorySlot, ItemsetId, ToolOil } from '../../game/e
 import { getItemsetDefinition } from '../../game/entities/itemsets';
 import { Typography } from '../../theme/typography';
 
-const SLOT_BG = require('../../../assets/campaign/square.png');
-const LOCK_ICON = require('../../../assets/campaign/lock.png');
+const SLOT_BG = require('../../../assets/ui/frames/square.png');
+const LOCK_ICON = require('../../../assets/icons/ui/lock.png');
 const SLOT_SIZE = 52;
 
 interface InventoryPanelProps {

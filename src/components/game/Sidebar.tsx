@@ -20,8 +20,8 @@ import type {
   GearId,
 } from '../../game/engine/types';
 
-const SIDEBAR_BG = require('../../../assets/map/sidebar.png');
-const BOSS_PANEL_BG = require('../../../assets/map/boss-panel.png');
+const SIDEBAR_BG = require('../../../assets/ui/panels/sidebar.png');
+const BOSS_PANEL_BG = require('../../../assets/ui/panels/boss-panel.png');
 
 interface SidebarProps {
   time: TimeState;

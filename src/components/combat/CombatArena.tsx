@@ -24,7 +24,7 @@ import { EffectNotifications } from './EffectNotifications';
 import type { DamageNumber, EffectNotification } from '../../contexts/CombatContext';
 import { useSkiaEntityImages } from '../../hooks/useEntityImages';
 
-const BATTLEGROUND_BG = require('../../../assets/combat/battleground.png');
+const BATTLEGROUND_BG = require('../../../assets/ui/backgrounds/combat-background.png');
 
 interface CombatArenaProps {
   player: CombatantState | null;

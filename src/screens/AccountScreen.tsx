@@ -143,7 +143,7 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
   return (
     <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
       <Image
-        source={require('../../assets/account/background.png')}
+        source={require('../../assets/ui/backgrounds/account-background.png')}
         style={styles.backgroundImage}
         resizeMode="stretch"
       />
@@ -152,7 +152,7 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
         <View style={styles.leftPanel}>
           <View style={styles.brandingContainer}>
             <Image
-              source={require('../../assets/logo.png')}
+              source={require('../../assets/branding/logo.png')}
               style={styles.logo}
               resizeMode="contain"
             />
@@ -162,7 +162,7 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
         {/* Right Panel - Actions */}
         <View style={styles.rightPanel} onLayout={handlePanelLayout}>
           <ImageBackground
-            source={require('../../assets/account/wooden-panel.png')}
+            source={require('../../assets/ui/panels/wooden-panel.png')}
             style={[
               styles.panel,
               panelDimensions
@@ -230,7 +230,7 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
                 disabled={showLoading}
               >
                 <ImageBackground
-                  source={require('../../assets/account/button.png')}
+                  source={require('../../assets/ui/buttons/button.png')}
                   style={styles.buttonImage}
                   resizeMode="contain"
                 >

@@ -485,4 +485,6 @@ export interface GameState {
   wallHighlight: WallHighlightState;
   fastTravel: FastTravelState;
   debug: DebugState;
+  /** Active item pool bitmask (80 bits = 10 bytes), filters available shop items */
+  activeItemPool?: Uint8Array;
 }

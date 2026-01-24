@@ -10,23 +10,31 @@ import {
   ActivityIndicator,
   RefreshControl,
   Animated,
+  Modal,
+  Alert,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { PublicKey } from '@solana/web3.js';
 import { useProfile } from '../contexts/ProfileContext';
 import { useSession } from '../contexts/SessionContext';
 import { useGame, GamePhase } from '../contexts/GameContext';
+import { useSolanaConnection } from '../contexts/SolanaConnectionContext';
 import { useMapGenerator, MAX_CAMPAIGN_LEVEL } from '../hooks/useMapGenerator';
 import { RootStackParamList } from '../navigation';
 import { Typography } from '../theme/typography';
 import { Skeleton } from '../components/common/Skeleton';
 import { ProfileCard } from '../components/profile/ProfileCard';
+import { createGameplayStateProgram } from '../services/solana/programs';
+import { fetchGameState, getGameStatePda } from '../services/solana/gameplayState';
+import { promptTransactionRetry } from '../utils/transaction-alerts';
 import type { CampaignLevel } from '../types/solana';
+import type { GameState as OnChainGameState } from '../services/solana/types/gameplay_state';
 
-const backgroundImageSource = require('../../assets/hub/campaign-background.png');
-const buttonV1Source = require('../../assets/hub/button-v1.png');
-const buttonV4Source = require('../../assets/hub/button-v4.png');
-const squareSource = require('../../assets/campaign/square.png');
-const lockSource = require('../../assets/campaign/lock.png');
+const backgroundImageSource = require('../../assets/ui/backgrounds/campaign-background.png');
+const buttonV1Source = require('../../assets/ui/buttons/button-v1.png');
+const buttonV4Source = require('../../assets/ui/buttons/button-v4.png');
+const squareSource = require('../../assets/ui/frames/square.png');
+const lockSource = require('../../assets/icons/ui/lock.png');
 
 type CampaignSelectScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'CampaignSelect'>;
@@ -35,12 +43,16 @@ type CampaignSelectScreenProps = {
 const NUM_COLUMNS = 5;
 
 export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) {
-  const { profile, mode } = useProfile();
+  const { profile, mode, availableRuns, highestLevelUnlocked } = useProfile();
+  const { connection } = useSolanaConnection();
   const {
     startGame: startSessionOnChain,
     mapSeed,
-    isLoading: sessionLoading,
-    gameplayState,
+    hasSessionForLevel,
+    activeSessions,
+    switchToSession,
+    getSessionPdaForLevel,
+    getMapSeedForLevel,
   } = useSession();
   const { state: gameState, dispatch } = useGame();
   const {
@@ -55,6 +67,13 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
   const [selectedLevel, setSelectedLevel] = useState<number | null>(null);
   const [isStartingGame, setIsStartingGame] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [showNoRunsModal, setShowNoRunsModal] = useState(false);
+  const [showLockedModal, setShowLockedModal] = useState(false);
+  const [showSessionExistsModal, setShowSessionExistsModal] = useState(false);
+  const [attemptedLevel, setAttemptedLevel] = useState<number | null>(null);
+  const [pendingLevelWithSession, setPendingLevelWithSession] = useState<CampaignLevel | null>(
+    null
+  );
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -67,6 +86,119 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
 
   const isGuestMode = mode === 'guest';
   const isCachedMode = mode === 'cached';
+
+  const createRestorePayload = useCallback((stateToRestore?: OnChainGameState | null) => {
+    if (!stateToRestore) {
+      return undefined;
+    }
+
+    return {
+      player: {
+        position: {
+          x: stateToRestore.positionX,
+          y: stateToRestore.positionY,
+        },
+        stats: {
+          hp: stateToRestore.hp,
+          maxHp: stateToRestore.maxHp,
+          atk: stateToRestore.atk,
+          arm: stateToRestore.arm,
+          spd: stateToRestore.spd,
+          dig: stateToRestore.dig,
+          gold: 0,
+        },
+        baseStats: {
+          hp: stateToRestore.maxHp,
+          maxHp: stateToRestore.maxHp,
+          atk: stateToRestore.atk,
+          arm: stateToRestore.arm,
+          spd: stateToRestore.spd,
+          dig: stateToRestore.dig,
+          gold: 0,
+        },
+      } as any,
+    };
+  }, []);
+
+  const resumeSession = useCallback(
+    async (level: CampaignLevel) => {
+      setIsStartingGame(true);
+      setSelectedLevel(level.level);
+
+      try {
+        let shouldRetry = true;
+
+        while (shouldRetry) {
+          shouldRetry = false;
+
+          try {
+            const sessionPda = await getSessionPdaForLevel(level.level);
+            if (!sessionPda) {
+              Alert.alert('Session Not Found', 'No active session was found for this level.');
+              return;
+            }
+
+            const switchResult = await switchToSession(sessionPda);
+            if (!switchResult.success) {
+              Alert.alert(
+                'Unable to Resume',
+                switchResult.error ?? 'Failed to switch to the selected session.'
+              );
+              return;
+            }
+
+            const seedFromChain = await getMapSeedForLevel(level.level);
+            let seed: number;
+
+            if (seedFromChain !== null) {
+              seed = Number(seedFromChain % BigInt(2147483647));
+            } else if (level.seed !== null) {
+              seed = Number(level.seed % BigInt(2147483647));
+            } else {
+              seed = Math.floor(Math.random() * 2147483647);
+            }
+
+            let stateToRestore: OnChainGameState | null = null;
+            if (connection) {
+              const program = createGameplayStateProgram(connection);
+              const [gameStatePda] = getGameStatePda(new PublicKey(sessionPda));
+              stateToRestore = await fetchGameState(program, gameStatePda);
+            }
+
+            const restorePayload = createRestorePayload(stateToRestore);
+
+            dispatch({
+              type: 'START_GAME',
+              seed,
+              restore: restorePayload,
+            });
+
+            navigation.navigate('Game');
+          } catch (error) {
+            const message =
+              error instanceof Error ? error.message : 'Failed to resume the session.';
+            shouldRetry = await promptTransactionRetry({
+              title: 'Resume Failed',
+              message,
+            });
+          }
+        }
+      } finally {
+        setIsStartingGame(false);
+        setSelectedLevel(null);
+        setPendingLevelWithSession(null);
+      }
+    },
+    [
+      connection,
+      createRestorePayload,
+      dispatch,
+      getMapSeedForLevel,
+      getSessionPdaForLevel,
+      navigation,
+      switchToSession,
+    ]
+  );
 
   // Fetch campaign levels on mount
   useEffect(() => {
@@ -118,11 +250,46 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
         isStartingGame,
         isGuestMode,
         mode,
+        availableRuns,
+        highestLevelUnlocked,
       });
 
-      if (!level.isUnlocked || isStartingGame) {
-        console.log('[CampaignSelect] Early return - locked or already starting');
+      if (isStartingGame) {
+        console.log('[CampaignSelect] Early return - already starting');
         return;
+      }
+
+      // T021: Check if level is locked
+      if (!level.isUnlocked) {
+        console.log('[CampaignSelect] Level is locked');
+        setAttemptedLevel(level.level);
+        setShowLockedModal(true);
+        return;
+      }
+
+      // T017/T020: Validate available runs (only for non-guest mode)
+      if (!isGuestMode && availableRuns <= 0) {
+        // Check if there's already a session for this level (resuming doesn't cost a run)
+        const hasExisting = activeSessions.some((s) => s.level === level.level);
+        if (!hasExisting) {
+          console.log('[CampaignSelect] No runs available');
+          setShowNoRunsModal(true);
+          return;
+        }
+        console.log('[CampaignSelect] Resuming existing session - no run cost');
+      }
+
+      if (!isGuestMode) {
+        const localSession = activeSessions.find((session) => session.level === level.level);
+        const hasExistingSession = localSession
+          ? true
+          : !isCachedMode && (await hasSessionForLevel(level.level));
+
+        if (hasExistingSession) {
+          setPendingLevelWithSession(level);
+          setShowSessionExistsModal(true);
+          return;
+        }
       }
 
       setSelectedLevel(level.level);
@@ -139,11 +306,36 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
         } else {
           console.log('[CampaignSelect] Online mode - calling startSessionOnChain...');
           // Start on-chain session for this level
-          result = await startSessionOnChain(level.level);
-          console.log('[CampaignSelect] startSessionOnChain result:', result);
+          let shouldRetry = true;
+
+          while (shouldRetry) {
+            shouldRetry = false;
+            try {
+              result = await startSessionOnChain(level.level);
+              console.log('[CampaignSelect] startSessionOnChain result:', result);
+
+              if (result && !result.success) {
+                const message = result.error ?? 'Failed to start session.';
+                shouldRetry = await promptTransactionRetry({
+                  title: 'Session Start Failed',
+                  message,
+                  retryLabel: 'Retry',
+                  cancelLabel: 'Continue Offline',
+                });
+              }
+            } catch (error) {
+              const message = error instanceof Error ? error.message : 'Failed to start session.';
+              shouldRetry = await promptTransactionRetry({
+                title: 'Session Start Failed',
+                message,
+                retryLabel: 'Retry',
+                cancelLabel: 'Continue Offline',
+              });
+            }
+          }
 
           // Determine seed to use
-          if (result.success && mapSeed !== null) {
+          if (result?.success && mapSeed !== null) {
             // Convert BigInt seed to a 32-bit number for the game engine
             seed = Number(mapSeed % BigInt(2147483647));
             console.log('[CampaignSelect] Using on-chain seed:', seed);
@@ -155,7 +347,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
             // Fallback to random seed if on-chain session fails
             seed = Math.floor(Math.random() * 2147483647);
             console.log('[CampaignSelect] Fallback to random seed:', seed);
-            if (!result.success && result.error) {
+            if (result && !result.success && result.error) {
               if (result.error === 'Session counter not initialized') {
                 console.log(
                   '[CampaignSelect] Falling back to offline mode (Session counter missing)'
@@ -174,44 +366,14 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
 
         // Use returned state if available (restored), otherwise fallback to context state
         // If result.gameState is present, it means we are reusing an existing session and fetched its state
-        let stateToRestore = result?.gameState;
-        let restorePayload = undefined;
+        const stateToRestore = result?.gameState ?? null;
+        const restorePayload = createRestorePayload(stateToRestore);
 
-        if (stateToRestore) {
-          // Map ServiceGameState (flat) to EngineGameState (nested)
-          // Note: On-chain state is partial compared to client state (missing inventory, tools)
-          // We use 'any' cast here because we are merging partial player data,
-          // and the reducer will merge this with the default initialized player.
-          restorePayload = {
-            player: {
-              position: {
-                x: stateToRestore.positionX,
-                y: stateToRestore.positionY,
-              },
-              stats: {
-                hp: stateToRestore.hp,
-                maxHp: stateToRestore.maxHp,
-                atk: stateToRestore.atk,
-                arm: stateToRestore.arm,
-                spd: stateToRestore.spd,
-                dig: stateToRestore.dig,
-                gold: 0,
-              },
-              baseStats: {
-                hp: stateToRestore.maxHp,
-                maxHp: stateToRestore.maxHp,
-                atk: stateToRestore.atk,
-                arm: stateToRestore.arm,
-                spd: stateToRestore.spd,
-                dig: stateToRestore.dig,
-                gold: 0,
-              },
-            } as any,
-          };
-          console.log(
-            '[CampaignSelect] Restoring state with position:',
-            restorePayload.player.position
-          );
+        if (stateToRestore && restorePayload) {
+          console.log('[CampaignSelect] Restoring state with position:', {
+            x: stateToRestore.positionX,
+            y: stateToRestore.positionY,
+          });
         }
 
         // Start the game with the seed and potentially restored state
@@ -232,19 +394,34 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
       }
     },
     [
+      activeSessions,
+      availableRuns,
+      createRestorePayload,
       dispatch,
       navigation,
       gameState?.phase,
+      hasSessionForLevel,
+      highestLevelUnlocked,
+      isCachedMode,
       startSessionOnChain,
       mapSeed,
       isStartingGame,
       isGuestMode,
+      mode,
     ]
   );
 
   const handleBack = useCallback(() => {
     navigation.goBack();
   }, [navigation]);
+
+  const handleResumeExistingSession = useCallback(async () => {
+    if (!pendingLevelWithSession) {
+      return;
+    }
+    setShowSessionExistsModal(false);
+    await resumeSession(pendingLevelWithSession);
+  }, [pendingLevelWithSession, resumeSession]);
 
   const renderLevelItem = useCallback(
     ({ item }: { item: CampaignLevel }) => {
@@ -385,6 +562,97 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
           <ProfileCard profile={profile} />
         </View>
       )}
+
+      {/* T020: No Runs Available Modal */}
+      <Modal
+        visible={showNoRunsModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowNoRunsModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>No Runs Available</Text>
+            <Text style={styles.modalText}>
+              You need at least 1 run to start a new game.{'\n'}
+              Purchase more runs to continue playing.
+            </Text>
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={styles.modalButtonSecondary}
+                onPress={() => setShowNoRunsModal(false)}
+              >
+                <Text style={styles.modalButtonTextSecondary}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalButtonPrimary}
+                onPress={() => {
+                  setShowNoRunsModal(false);
+                  navigation.navigate('RunPurchase');
+                }}
+              >
+                <Text style={styles.modalButtonTextPrimary}>Purchase Runs</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* T065: Session Already Exists Modal */}
+      <Modal
+        visible={showSessionExistsModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowSessionExistsModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Session Already Exists</Text>
+            <Text style={styles.modalText}>
+              You already have an active session for level{' '}
+              {(pendingLevelWithSession?.level ?? 0) + 1}. Resume it to continue your run.
+            </Text>
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={styles.modalButtonSecondary}
+                onPress={() => setShowSessionExistsModal(false)}
+              >
+                <Text style={styles.modalButtonTextSecondary}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalButtonPrimary}
+                onPress={handleResumeExistingSession}
+              >
+                <Text style={styles.modalButtonTextPrimary}>Resume</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* T021: Level Locked Modal */}
+      <Modal
+        visible={showLockedModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowLockedModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Level Locked</Text>
+            <Text style={styles.modalText}>
+              Level {(attemptedLevel ?? 0) + 1} is not yet unlocked.{'\n'}
+              Complete level {highestLevelUnlocked} to progress.
+            </Text>
+            <TouchableOpacity
+              style={styles.modalButtonPrimary}
+              onPress={() => setShowLockedModal(false)}
+            >
+              <Text style={styles.modalButtonTextPrimary}>OK</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </Animated.View>
   );
 }
@@ -598,5 +866,69 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     margin: 6,
+  },
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#3d2b1f',
+    borderRadius: 12,
+    padding: 24,
+    width: '80%',
+    maxWidth: 320,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#5c4033',
+  },
+  modalTitle: {
+    fontFamily: Typography.header,
+    fontSize: 20,
+    color: '#FABC0F',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  modalText: {
+    fontFamily: Typography.body,
+    fontSize: 14,
+    color: '#c8c8c8',
+    textAlign: 'center',
+    marginBottom: 20,
+    lineHeight: 20,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  modalButtonPrimary: {
+    backgroundColor: '#FABC0F',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    minWidth: 100,
+  },
+  modalButtonSecondary: {
+    backgroundColor: 'transparent',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#5c4033',
+    minWidth: 100,
+  },
+  modalButtonTextPrimary: {
+    fontFamily: Typography.button,
+    fontSize: 14,
+    color: '#3d2b1f',
+    textAlign: 'center',
+  },
+  modalButtonTextSecondary: {
+    fontFamily: Typography.button,
+    fontSize: 14,
+    color: '#c8c8c8',
+    textAlign: 'center',
   },
 });
