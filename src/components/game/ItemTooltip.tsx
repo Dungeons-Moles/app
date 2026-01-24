@@ -19,16 +19,16 @@ import { getToolDefinition, TOOL_DEFINITIONS } from '../../game/entities/items';
 import { GEAR_DEFINITIONS } from '../../data/gear';
 import { getItemsetsForItem } from '../../game/entities/itemsets';
 
-const paperPanelSource = require('../../../assets/hub/paper-panel.png');
-const rectangleSource = require('../../../assets/campaign/rectangle.png');
-const squareSource = require('../../../assets/campaign/square.png');
+const paperPanelSource = require('../../../assets/ui/panels/paper-panel.png');
+const rectangleSource = require('../../../assets/ui/frames/rectangle.png');
+const squareSource = require('../../../assets/ui/frames/square.png');
 
 const STAT_ICONS = {
-  HP: require('../../../assets/icons/HP.png'),
-  ATK: require('../../../assets/icons/ATK.png'),
-  ARM: require('../../../assets/icons/ARM.png'),
-  SPD: require('../../../assets/icons/speed.png'),
-  DIG: require('../../../assets/icons/DIG.png'),
+  HP: require('../../../assets/icons/stats/HP.png'),
+  ATK: require('../../../assets/icons/stats/ATK.png'),
+  ARM: require('../../../assets/icons/stats/ARM.png'),
+  SPD: require('../../../assets/icons/stats/speed.png'),
+  DIG: require('../../../assets/icons/stats/DIG.png'),
 };
 
 const ITEMSET_ICONS = {

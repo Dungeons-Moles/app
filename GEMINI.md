@@ -1,74 +1,64 @@
-# Dungeons & Moles - Gemini Context
+# Dungeons & Moles - Coding Agent Guide
+
+This repository hosts the React Native + Expo codebase for Dungeons & Moles, a PvE roguelike dungeon crawler with deterministic gameplay, auto-battler combat, and a Day/Night/Week loop. Use this guide to keep changes consistent with the game design and engine constraints.
 
 ## Project Overview
-**Dungeons & Moles** is a PvE dungeon crawler built with **React Native**, **Expo**, and **Solana Mobile Stack**. It features a "He Is Coming" inspired loop: exploration, auto-battler combat, and week-based progression.
 
-**Tech Stack:**
--   **Framework:** React Native + Expo (SDK 54)
--   **Rendering:** React Native Skia (Game Canvas)
--   **State:** React Context + Custom State Machine
--   **Language:** TypeScript
--   **Testing:** Jest + Testing Library
+- **Game loop:** Explore a seeded map, fight auto-resolving combat, use POIs for upgrades, and clear week bosses.
+- **Determinism:** `src/game/` logic must be deterministic for replay/debugging.
+- **Specs:** Product specs live in `specs/001-pve-dungeon-crawler/` and design detail is summarized in `specs/gdd.md`.
 
-## Game Mechanics (The "Business Logic")
-The game is deterministic and strictly specified in `specs/001-pve-dungeon-crawler/spec.md`.
+## Architecture & Data Flow
 
-### 1. Core Loop
--   **Week Structure:** 3 Cycles of (Day → Night) → Boss Fight.
--   **Day Phase:** 50 moves. Sight radius 5.
--   **Night Phase:** 30 moves. Sight radius 3. Enemies move towards player.
--   **Boss Fight:** Auto-triggered after Night 3.
--   **Victory/Defeat:** Player wins by defeating Week 3 boss. Player loses if HP reaches 0.
+- **Pure logic vs UI:** `src/game/` contains pure logic (no React). UI lives in `src/components/` and `src/screens/`.
+- **State machine:** `src/game/engine/state-machine.ts` defines phase transitions (Exploration, Combat, POI, Boss, Victory/Defeat).
+- **Reducer:** `src/game/engine/game-reducer.ts` is the single source of truth for game state updates.
+- **RNG:** Use `SeededRNG` from `src/game/engine/rng.ts`; avoid `Math.random()` and `Date.now()` in game logic.
 
-### 2. Exploration
--   **Map:** Procedurally generated corridors (no open rooms).
--   **Movement:** D-Pad only. 1 move = 1 time unit (Hard Rock = 2).
--   **POIs:** Interactable spots (Mole Den, Supply Cache, Shops).
+## Key Directories
 
-### 3. Combat (Auto-Battler)
--   **Trigger:** Stepping on an enemy.
--   **Flow:** Battle Start effects → Turn loop (Speed check → Attack → End Turn).
--   **Damage Formula:** `ATK - ARM = DMG` (min 0).
--   **Status Effects:**
-    -   **Chill:** Halves ATK. Decays 1/turn.
-    -   **Shrapnel:** Thorns damage when struck. Clears at turn end.
-    -   **Rust:** Reduces Armor at turn end.
--   **Determinism:** Same seed + same state = identical combat outcome.
+- `src/game/`: Deterministic engine, combat, map generation, entities.
+- `src/data/`: Static definitions for items, gear, bosses, POIs.
+- `src/components/` + `src/screens/`: React Native UI.
+- `assets/`: All static images (see structure below).
+- `specs/`: Product specs and plans (`specs/gdd.md` is the design reference).
 
-### 4. Items & Progression
--   **Tools:** 1 Weapon slot (e.g., Pickaxe, Drill).
--   **Gear:** Grid inventory. Stats stack.
--   **Itemsets:** Bonus effects when specific items are combined.
+## Assets
 
-## Architecture
+- The assets tree is type-based (not screen-based).
+- Use `assets.json` as the canonical index for asset paths and dimensions.
+- Structure highlights:
+  - `assets/branding/` (app icons, logo, splash)
+  - `assets/ui/` (backgrounds, buttons, panels, frames, illustrations)
+  - `assets/icons/` (items, itemsets, oils, stats, ui)
+  - `assets/world/` (tiles, markers, pois)
+  - `assets/entities/` (characters, enemies)
 
-### State Management
-The game uses a **finite state machine** defined in `src/game/engine/state-machine.ts`.
--   **`GamePhase`**: `EXPLORATION` ↔ `COMBAT` / `POI_INTERACTION` / `BOSS_FIGHT`.
--   **`GameState`**: The single source of truth containing `Player`, `Map`, `Time`, and `Combat` states.
+## Build, Test, and Development Commands
 
-### Directory Structure
--   **`src/game/`**: Pure game logic (engine, entities, combat calculator). **No UI code.**
-    -   `engine/`: State machine, reducer, RNG.
-    -   `combat/`: Damage formulas, resolver.
-    -   `entities/`: Definitions for Players, Enemies, Items.
--   **`src/components/game/`**: UI components that render game state (StatsPanel, Inventory).
--   **`src/screens/`**: High-level screens (`GameScreen` hosts the canvas).
+- `npm install`: install dependencies
+- `npm start`: start Expo dev server
+- `npm run android` / `npm run ios` / `npm run web`: run on device/emulator/web
+- `npm run lint` / `npm run lint:fix`: lint code
+- `npm run format`: format code with Prettier
+- `npm run typecheck`: TypeScript type check
+- `npm test` / `npm run test:watch` / `npm run test:coverage`: Jest tests
 
-## Development Workflow
+## Coding Conventions
 
-### Key Commands
--   **Start Dev Server:** `npm start`
--   **Run on Android:** `npm run android` (Required for Wallet/Skia testing)
--   **Run Tests:** `npm test` (Jest)
--   **Lint/Format:** `npm run lint`, `npm run format`
+- TypeScript only for app code (`.ts`, `.tsx`).
+- Prettier: 2 spaces, single quotes, semicolons, print width 100.
+- Use `@/` alias for `src/` imports.
+- Test files: `*.test.ts`.
 
-### Conventions
--   **Files:** `src/` uses `@/` alias.
--   **Testing:** Unit tests in `__tests__/unit` mirror `src/` structure.
--   **Styling:** Tailwind-like or StyleSheet.
--   **Commits:** `feat(scope): ...`, `fix: ...`
+## Testing Guidelines
 
-## Critical Documentation
--   **`specs/001-pve-dungeon-crawler/spec.md`**: The Bible. If code contradicts spec, code is wrong.
--   **`AGENTS.md`**: Instructions for AI agents.
+- Jest tests live in `__tests__/` and `src/`.
+- Coverage targets `src/game/**/*.ts`.
+- Add deterministic tests for game logic changes (fixed seeds).
+
+## Commit/PR Notes
+
+- Commit format: `feat(scope): ...`, `fix: ...`, `docs: ...`, `merge: ...`.
+- Reference task IDs when relevant (e.g., `T134`).
+- Update `specs/001-pve-dungeon-crawler/tasks.md` when completing planned tasks.

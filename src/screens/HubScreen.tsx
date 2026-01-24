@@ -27,31 +27,41 @@ import { Typography } from '../theme/typography';
 import { MAX_CAMPAIGN_LEVEL } from '../hooks/useMapGenerator';
 import type { CombatSpeed } from '../contexts/CombatContext';
 
-const defaultMoleImageSource = require('../../assets/characters/default-mole.png');
-const backgroundImageSource = require('../../assets/hub/background.png');
-const buttonV1Source = require('../../assets/hub/button-v1.png');
-const buttonV2Source = require('../../assets/hub/button-v2.png');
-const buttonV3Source = require('../../assets/hub/button-v3.png');
-const buttonV4Source = require('../../assets/hub/button-v4.png');
-const paperPanelSource = require('../../assets/hub/paper-panel.png');
-const engineImageSource = require('../../assets/hub/engine.png');
-const walletImageSource = require('../../assets/hub/wallet.png');
+const defaultMoleImageSource = require('../../assets/entities/characters/default-mole.png');
+const backgroundImageSource = require('../../assets/ui/backgrounds/hub-background.png');
+const buttonV1Source = require('../../assets/ui/buttons/button-v1.png');
+const buttonV2Source = require('../../assets/ui/buttons/button-v2.png');
+const buttonV3Source = require('../../assets/ui/buttons/button-v3.png');
+const buttonV4Source = require('../../assets/ui/buttons/button-v4.png');
+const paperPanelSource = require('../../assets/ui/panels/paper-panel.png');
+const engineImageSource = require('../../assets/ui/illustrations/engine.png');
+const walletImageSource = require('../../assets/ui/illustrations/wallet.png');
 
 type HubScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Hub'>;
 };
 
 export function HubScreen({ navigation }: HubScreenProps) {
-  const { profile, isLoading, clearProfile, updateDefaultCombatSpeed, refresh, mode } =
-    useProfile();
+  const {
+    profile,
+    isLoading,
+    clearProfile,
+    updateDefaultCombatSpeed,
+    refresh,
+    mode,
+    availableRuns,
+  } = useProfile();
   const isGuest = mode === 'guest';
-  const { hasPendingCleanups, processPendingCleanups } = useSession();
+  const { hasPendingCleanups, processPendingCleanups, activeSessions } = useSession();
   const { state: gameState, dispatch } = useGame();
   const [showSettings, setShowSettings] = useState(false);
+  const [showResumePrompt, setShowResumePrompt] = useState(false);
   const [combatSpeed, setCombatSpeed] = useState<CombatSpeed>('normal');
   const [refreshing, setRefreshing] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const hasProcessedCleanups = useRef(false);
+  const hasPromptedResume = useRef(false);
+  const hasLowRuns = !isGuest && availableRuns <= 3;
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -71,6 +81,17 @@ export function HubScreen({ navigation }: HubScreenProps) {
       });
     }
   }, [hasPendingCleanups, processPendingCleanups]);
+
+  useEffect(() => {
+    if (isGuest || hasPromptedResume.current) {
+      return;
+    }
+
+    if (activeSessions.length > 0) {
+      hasPromptedResume.current = true;
+      setShowResumePrompt(true);
+    }
+  }, [activeSessions.length, isGuest]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -163,6 +184,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
                     <View style={{ gap: 4 }}>
                       <Skeleton width={80} height={16} borderRadius={4} />
                       <Skeleton width={60} height={12} borderRadius={4} />
+                      {!isGuest && <Skeleton width={50} height={10} borderRadius={4} />}
                     </View>
                   ) : (
                     <>
@@ -176,6 +198,11 @@ export function HubScreen({ navigation }: HubScreenProps) {
                           {shortenAddress(profile.owner.toBase58())}
                         </Text>
                       ) : null}
+                      {!isGuest && (
+                        <Text style={[styles.runCountText, hasLowRuns && styles.runCountTextLow]}>
+                          Runs: {availableRuns}
+                        </Text>
+                      )}
                     </>
                   )}
                 </View>
@@ -191,6 +218,24 @@ export function HubScreen({ navigation }: HubScreenProps) {
                   resizeMode="stretch"
                 >
                   <Text style={styles.navButtonText}>Items</Text>
+                </ImageBackground>
+              </TouchableOpacity>
+            )}
+
+            {!isGuest && (
+              <TouchableOpacity
+                onPress={() => navigation.navigate('RunPurchase')}
+                activeOpacity={0.7}
+                style={{ marginTop: 8 }}
+              >
+                <ImageBackground
+                  source={buttonV1Source}
+                  style={styles.navButton}
+                  resizeMode="stretch"
+                >
+                  <Text style={[styles.navButtonText, hasLowRuns && styles.navButtonTextWarning]}>
+                    Purchase Runs
+                  </Text>
                 </ImageBackground>
               </TouchableOpacity>
             )}
@@ -405,6 +450,67 @@ export function HubScreen({ navigation }: HubScreenProps) {
           </View>
         </TouchableWithoutFeedback>
       </Modal>
+
+      <Modal
+        visible={showResumePrompt}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowResumePrompt(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setShowResumePrompt(false)}>
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
+              <ImageBackground
+                source={paperPanelSource}
+                style={styles.resumeModalContent}
+                resizeMode="stretch"
+              >
+                <Text style={styles.resumeModalTitle}>Resume Session</Text>
+                <Text style={styles.resumeModalText}>
+                  You have {activeSessions.length} active session
+                  {activeSessions.length === 1 ? '' : 's'} waiting. Jump back in or manage them from
+                  your list.
+                </Text>
+                <View style={styles.resumeModalButtons}>
+                  <TouchableOpacity
+                    style={styles.resumeModalButton}
+                    onPress={() => setShowResumePrompt(false)}
+                    activeOpacity={0.7}
+                  >
+                    <ImageBackground
+                      source={buttonV1Source}
+                      style={styles.resumeModalButtonImage}
+                      resizeMode="stretch"
+                    >
+                      <Text style={styles.resumeModalButtonText}>Later</Text>
+                    </ImageBackground>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.resumeModalButton}
+                    onPress={() => {
+                      setShowResumePrompt(false);
+                      navigation.navigate('SessionList');
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <ImageBackground
+                      source={buttonV4Source}
+                      style={styles.resumeModalButtonImage}
+                      resizeMode="stretch"
+                    >
+                      <Text
+                        style={[styles.resumeModalButtonText, styles.resumeModalButtonTextPrimary]}
+                      >
+                        View Sessions
+                      </Text>
+                    </ImageBackground>
+                  </TouchableOpacity>
+                </View>
+              </ImageBackground>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
     </Animated.View>
   );
 }
@@ -482,6 +588,16 @@ const styles = StyleSheet.create({
     color: '#888888',
     fontWeight: 'bold',
     lineHeight: 12,
+  },
+  runCountText: {
+    fontFamily: Typography.number,
+    fontSize: 11,
+    color: '#6f6f6f',
+    fontWeight: 'bold',
+    lineHeight: 12,
+  },
+  runCountTextLow: {
+    color: '#a33a3a',
   },
 
   // TOP CENTER - Points
@@ -582,6 +698,9 @@ const styles = StyleSheet.create({
     fontFamily: Typography.button,
     fontSize: 14,
     marginBottom: 4,
+  },
+  navButtonTextWarning: {
+    color: '#a33a3a',
   },
   sideBySideRow: {
     flexDirection: 'row',
@@ -693,6 +812,50 @@ const styles = StyleSheet.create({
     width: '100%',
     alignItems: 'center',
     gap: 30,
+  },
+  resumeModalContent: {
+    width: 320,
+    paddingVertical: 28,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  resumeModalTitle: {
+    fontFamily: Typography.header,
+    fontSize: 24,
+    color: '#3d2b1f',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  resumeModalText: {
+    fontFamily: Typography.body,
+    fontSize: 14,
+    color: '#5c4033',
+    textAlign: 'center',
+    lineHeight: 18,
+    marginBottom: 20,
+  },
+  resumeModalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  resumeModalButton: {
+    width: 140,
+    height: 44,
+  },
+  resumeModalButtonImage: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  resumeModalButtonText: {
+    fontFamily: Typography.button,
+    fontSize: 14,
+    color: '#3d2b1f',
+  },
+  resumeModalButtonTextPrimary: {
+    color: '#ffffff',
   },
   settingRow: {
     alignItems: 'center',

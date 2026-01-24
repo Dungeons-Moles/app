@@ -1,15 +1,19 @@
 /**
- * Combat components exports
+ * Combat Components
+ *
+ * Components for displaying combat animations and results.
  */
 
+export { CombatOverlay } from './CombatOverlay';
+export { TurnDisplay } from './TurnDisplay';
+export { BossIntro } from './BossIntro';
 export { CombatArena } from './CombatArena';
-export { DamageNumbers } from './DamageNumbers';
-export { EffectNotifications } from './EffectNotifications';
 export { VictoryDefeatDisplay } from './VictoryDefeatDisplay';
-export type { VictoryDefeatDisplayProps } from './VictoryDefeatDisplay';
-export { CombatResult } from './CombatResult';
-export type { CombatResultProps } from './CombatResult';
-export { StatusEffectIcons, StatusEffectIcon, StatusEffectsFromState } from './StatusEffectIcons';
 export { EnemyPanel } from './EnemyPanel';
 export { PlayerPanel } from './PlayerPanel';
 export { SpeedControls } from './SpeedControls';
+export { CombatLog } from './CombatLog';
+export { CombatResult } from './CombatResult';
+export { DamageNumbers } from './DamageNumbers';
+export { EffectNotifications } from './EffectNotifications';
+export { StatusEffectIcons } from './StatusEffectIcons';

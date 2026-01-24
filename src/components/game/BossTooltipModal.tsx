@@ -17,7 +17,7 @@ import { Typography } from '../../theme/typography';
 import { getEntityImageSource } from './entityImages';
 import type { BossDefinition } from '../../data/bosses';
 
-const SIDEBAR_BG = require('../../../assets/map/sidebar.png');
+const SIDEBAR_BG = require('../../../assets/ui/panels/sidebar.png');
 
 interface BossTooltipModalProps {
   visible: boolean;

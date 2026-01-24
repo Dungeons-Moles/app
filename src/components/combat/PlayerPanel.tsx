@@ -9,16 +9,16 @@ import { View, Text, StyleSheet, ScrollView, Image, ImageBackground } from 'reac
 import type { StatusEffects, Tool, Gear } from '../../game/engine/types';
 import { Typography } from '../../theme/typography';
 
-const defaultMoleImageSource = require('../../../assets/characters/default-mole.png');
-const COIN_ICON = require('../../../assets/icons/coin.png');
+const defaultMoleImageSource = require('../../../assets/entities/characters/default-mole.png');
+const COIN_ICON = require('../../../assets/icons/ui/coin.png');
 
 const ICONS = {
-  ATK: require('../../../assets/icons/ATK.png'),
-  SPD: require('../../../assets/icons/speed.png'),
-  DIG: require('../../../assets/icons/DIG.png'),
+  ATK: require('../../../assets/icons/stats/ATK.png'),
+  SPD: require('../../../assets/icons/stats/speed.png'),
+  DIG: require('../../../assets/icons/stats/DIG.png'),
 };
 
-const SIDEBAR_BG = require('../../../assets/map/sidebar.png');
+const SIDEBAR_BG = require('../../../assets/ui/panels/sidebar.png');
 
 export interface PlayerPanelProps {
   name: string;
@@ -52,7 +52,7 @@ function StatRow({ label, value, icon }: StatRowProps) {
   );
 }
 
-const SQUARE_BG = require('../../../assets/campaign/square.png');
+const SQUARE_BG = require('../../../assets/ui/frames/square.png');
 
 interface ItemBadgeProps {
   emoji: string;

@@ -9,6 +9,9 @@ import { RootStackParamList } from '../navigation';
 import { useGame, GamePhase } from '../contexts/GameContext';
 import { useSession } from '../contexts/SessionContext';
 import { useProfile } from '../contexts/ProfileContext';
+import { useCombatReplay } from '../hooks/useCombatReplay';
+import { useNightMovement } from '../hooks/useNightMovement';
+import { usePoiInteraction } from '../hooks/usePoiInteraction';
 import { DPadControls } from '../components/game/DPadControls';
 import {
   TopBar,
@@ -18,23 +21,112 @@ import {
   FastTravelOverlay,
   ItemTooltip,
 } from '../components/game';
+import { CombatOverlay } from '../components/combat';
 import { Sidebar } from '../components/game/Sidebar';
+import { BurnerBalanceIndicator } from '../components/common/BurnerBalanceIndicator';
 import { useDirectionInput } from '../hooks/useInput';
 import { useLandscapeLock } from '../hooks/useOrientationLock';
 import { Direction, DIRECTION_DELTA } from '../game/input/types';
 import { TileType } from '../game/map/types';
 import { canFastTravel, getDiscoveredWaypoints } from '../game/entities/pois';
 import { canAffordCostAcrossPhases } from '../game/time/progression';
+import { TimePhase } from '../game/engine/types';
 import { Typography } from '../theme/typography';
-import type { Gear, GearId, Tool } from '../game/engine/types';
+import { getPhaseInfo } from '../utils/phase-labels';
+import { promptTransactionRetry } from '../utils/transaction-alerts';
+import type { Gear, GearId, Tool, CombatState, BossId } from '../game/engine/types';
+import type { CombatReplay, BossCombatStartedEvent } from '../services/solana/types/combat_events';
+import { Keypair, PublicKey } from '@solana/web3.js';
 import Svg, { Path } from 'react-native-svg';
 
-const BACKGROUND_IMAGE = require('../../assets/loading/background.png');
-const COIN_ICON = require('../../assets/icons/coin.png');
-const MAP_ICON = require('../../assets/icons/map.png');
+const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.png');
+const COIN_ICON = require('../../assets/icons/ui/coin.png');
+const MAP_ICON = require('../../assets/icons/ui/map.png');
 
 const SIDEBAR_WIDTH = 230;
 const NAVBAR_HEIGHT = 60;
+
+/**
+ * Creates a mock CombatReplay from local CombatState for offline/fallback display.
+ * Real combat data comes from on-chain transaction logs.
+ *
+ * @param combatState - The local combat state
+ * @param bossInfo - Optional boss info if this is a boss fight
+ */
+function createMockCombatReplay(
+  combatState: CombatState,
+  bossInfo?: { bossId: BossId; week: 1 | 2 | 3 }
+): CombatReplay {
+  const playerWon = combatState.result === 'VICTORY';
+
+  // Group log entries by turn and extract damage information
+  const turnMap = new Map<number, { playerDamage: number; enemyDamage: number }>();
+  for (const entry of combatState.log) {
+    if (entry.action === 'ATTACK' && entry.result.damage !== undefined) {
+      const turnData = turnMap.get(entry.turn) ?? { playerDamage: 0, enemyDamage: 0 };
+      if (entry.actor === 'player') {
+        turnData.playerDamage += entry.result.damage;
+      } else if (entry.actor === 'enemy') {
+        turnData.enemyDamage += entry.result.damage;
+      }
+      turnMap.set(entry.turn, turnData);
+    }
+  }
+
+  const turns = Array.from(turnMap.entries()).map(([turn, data]) => ({
+    turn,
+    playerHp: combatState.player.hp,
+    enemyHp: combatState.enemy.hp,
+    playerDamage: data.playerDamage,
+    enemyDamage: data.enemyDamage,
+  }));
+
+  // Create boss intro event if this is a boss fight
+  let bossIntro: BossCombatStartedEvent | undefined;
+  if (bossInfo) {
+    bossIntro = {
+      player: PublicKey.default,
+      bossId: bossInfo.bossId,
+      bossHp: combatState.enemy.maxHp,
+      week: bossInfo.week,
+    };
+  }
+
+  return {
+    signature: 'mock-combat-' + Date.now(),
+    combatStarted: {
+      player: PublicKey.default,
+      playerHp: combatState.player.maxHp,
+      playerAtk: combatState.player.atk,
+      enemyArchetype: 0,
+      enemyHp: combatState.enemy.maxHp,
+      enemyAtk: combatState.enemy.atk,
+    },
+    turns:
+      turns.length > 0
+        ? turns
+        : [
+            {
+              turn: 1,
+              playerHp: combatState.player.hp,
+              enemyHp: combatState.enemy.hp,
+              playerDamage: combatState.player.atk,
+              enemyDamage: combatState.enemy.atk,
+            },
+          ],
+    statusEffects: [],
+    combatEnded: {
+      player: PublicKey.default,
+      playerWon,
+      finalPlayerHp: combatState.player.hp,
+      finalEnemyHp: combatState.enemy.hp,
+      goldEarned: playerWon ? combatState.goldReward : 0,
+      turnsTaken: combatState.turn,
+    },
+    isBoss: !!bossInfo,
+    bossIntro,
+  };
+}
 
 function ThinSeparator({ horizontal = true }: { horizontal?: boolean }) {
   if (horizontal) {
@@ -68,6 +160,35 @@ function CrossingLines() {
   );
 }
 
+/**
+ * Formats the phase label (e.g., "Day 1" or "Night 2").
+ */
+function formatPhaseLabel(phase: TimePhase, cycle: number): string {
+  switch (phase) {
+    case TimePhase.Day:
+      return `Day ${cycle}`;
+    case TimePhase.Night:
+      return `Night ${cycle}`;
+    case TimePhase.Boss:
+      return 'Boss Fight';
+    default:
+      return 'Unknown';
+  }
+}
+
+function getReverseDirection(direction: Direction): Direction {
+  switch (direction) {
+    case Direction.Up:
+      return Direction.Down;
+    case Direction.Down:
+      return Direction.Up;
+    case Direction.Left:
+      return Direction.Right;
+    case Direction.Right:
+      return Direction.Left;
+  }
+}
+
 type GameScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Game'>;
 };
@@ -76,14 +197,100 @@ export function GameScreen({ navigation }: GameScreenProps) {
   const { state, dispatch, overviewMode, toggleOverviewMode, panOverview, zoomOverview } =
     useGame();
   const { mode } = useProfile();
-  const { hasActiveSession, movePlayer } = useSession();
+  const {
+    hasActiveSession,
+    movePlayer,
+    queueEndGame,
+    currentLevel: sessionLevel,
+    burnerBalance,
+    isBurnerLowBalance,
+    gameplayState: onChainState,
+    gameplaySyncStatus,
+  } = useSession();
+  const combat = useCombatReplay();
+  const nightMovement = useNightMovement();
+  const poiInteraction = usePoiInteraction();
   const feedbackTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [wallBreakFeedback, setWallBreakFeedback] = useState<string | null>(null);
+  const [combatOverlayVisible, setCombatOverlayVisible] = useState(false);
+  const [currentEnemyName, setCurrentEnemyName] = useState<string>('Enemy');
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     Animated.timing(fadeAnim, { toValue: 1, duration: 800, useNativeDriver: true }).start();
   }, []);
+
+  useEffect(() => {
+    if (
+      !state ||
+      !onChainState ||
+      mode === 'guest' ||
+      gameplaySyncStatus !== 'synced' ||
+      state.phase !== GamePhase.Exploration
+    ) {
+      return;
+    }
+
+    const phaseInfo = getPhaseInfo(onChainState.phase);
+    const onChainPhase = phaseInfo.isNight ? TimePhase.Night : TimePhase.Day;
+    const onChainCycle = phaseInfo.number as 1 | 2 | 3;
+
+    const hasMismatch =
+      state.player.position.x !== onChainState.positionX ||
+      state.player.position.y !== onChainState.positionY ||
+      state.player.stats.hp !== onChainState.hp ||
+      state.player.stats.maxHp !== onChainState.maxHp ||
+      state.player.stats.atk !== onChainState.atk ||
+      state.player.stats.arm !== onChainState.arm ||
+      state.player.stats.spd !== onChainState.spd ||
+      state.player.stats.dig !== onChainState.dig ||
+      state.time.week !== onChainState.week ||
+      state.time.phase !== onChainPhase ||
+      state.time.cycle !== onChainCycle ||
+      state.time.movesRemaining !== onChainState.movesRemaining;
+
+    if (!hasMismatch) {
+      return;
+    }
+
+    dispatch({
+      type: 'START_GAME',
+      seed: state.seed,
+      restore: {
+        player: {
+          position: {
+            x: onChainState.positionX,
+            y: onChainState.positionY,
+          },
+          stats: {
+            hp: onChainState.hp,
+            maxHp: onChainState.maxHp,
+            atk: onChainState.atk,
+            arm: onChainState.arm,
+            spd: onChainState.spd,
+            dig: onChainState.dig,
+            gold: state.player.stats.gold,
+          },
+          baseStats: {
+            hp: onChainState.maxHp,
+            maxHp: onChainState.maxHp,
+            atk: onChainState.atk,
+            arm: onChainState.arm,
+            spd: onChainState.spd,
+            dig: onChainState.dig,
+            gold: state.player.stats.gold,
+          },
+        } as any,
+        time: {
+          week: onChainState.week as 1 | 2 | 3,
+          phase: onChainPhase,
+          cycle: onChainCycle,
+          movesRemaining: onChainState.movesRemaining,
+          weekBoss: state.time.weekBoss,
+        },
+      },
+    });
+  }, [dispatch, gameplaySyncStatus, mode, onChainState, state]);
 
   const showWallBreakFeedback = useCallback((message: string) => {
     if (feedbackTimeout.current) clearTimeout(feedbackTimeout.current);
@@ -149,47 +356,31 @@ export function GameScreen({ navigation }: GameScreenProps) {
       dispatch({ type: 'MOVE', direction });
 
       if (shouldSendTransaction && mode !== 'guest' && hasActiveSession && inBounds) {
-        movePlayer({ targetX: targetPos.x, targetY: targetPos.y, isWall })
-          .then(({ success }) => {
-            if (!success) {
-              let reverseDir: Direction;
-              switch (direction) {
-                case Direction.Up:
-                  reverseDir = Direction.Down;
-                  break;
-                case Direction.Down:
-                  reverseDir = Direction.Up;
-                  break;
-                case Direction.Left:
-                  reverseDir = Direction.Right;
-                  break;
-                case Direction.Right:
-                  reverseDir = Direction.Left;
-                  break;
+        function attemptMove() {
+          movePlayer({ targetX: targetPos.x, targetY: targetPos.y, isWall })
+            .then(({ success }) => {
+              if (!success) {
+                handleMoveFailure('Movement failed on-chain');
               }
-              dispatch({ type: 'MOVE', direction: reverseDir });
-              showWallBreakFeedback('Movement failed on-chain');
+            })
+            .catch(() => {
+              handleMoveFailure('Movement sync error');
+            });
+        }
+
+        function handleMoveFailure(message: string) {
+          const reverseDir = getReverseDirection(direction);
+          dispatch({ type: 'MOVE', direction: reverseDir });
+          showWallBreakFeedback(message);
+          void promptTransactionRetry({ title: 'Movement Failed', message }).then((shouldRetry) => {
+            if (shouldRetry) {
+              dispatch({ type: 'MOVE', direction });
+              attemptMove();
             }
-          })
-          .catch(() => {
-            let reverseDir: Direction;
-            switch (direction) {
-              case Direction.Up:
-                reverseDir = Direction.Down;
-                break;
-              case Direction.Down:
-                reverseDir = Direction.Up;
-                break;
-              case Direction.Left:
-                reverseDir = Direction.Right;
-                break;
-              case Direction.Right:
-                reverseDir = Direction.Left;
-                break;
-            }
-            dispatch({ type: 'MOVE', direction: reverseDir });
-            showWallBreakFeedback('Movement sync error');
           });
+        }
+
+        attemptMove();
       }
     },
     [
@@ -228,10 +419,37 @@ export function GameScreen({ navigation }: GameScreenProps) {
     return disabled;
   }, [state, overviewMode.active]);
 
+  /**
+   * Handle combat phase transition.
+   * When game phase changes to Combat or BossFight, show the CombatOverlay.
+   * If combat replay data is available from on-chain events, use it.
+   * Otherwise, create mock combat data from the game state.
+   */
   useEffect(() => {
-    if (state?.phase === GamePhase.Combat || state?.phase === GamePhase.BossFight)
-      navigation.navigate('Combat');
-  }, [state?.phase, navigation]);
+    if (state?.phase === GamePhase.Combat || state?.phase === GamePhase.BossFight) {
+      // Get enemy name from combat state if available
+      if (state.combat?.enemy) {
+        setCurrentEnemyName(state.combat.enemy.name ?? 'Enemy');
+      }
+
+      // If we have combat replay data (from on-chain events), it will auto-play
+      // Otherwise, we need to create mock combat data from the local combat state
+      if (!combat.combatReplay && state.combat) {
+        // Determine if this is a boss fight and get boss info
+        const isBossFight = state.phase === GamePhase.BossFight;
+        const bossInfo = isBossFight
+          ? { bossId: state.time.weekBoss, week: state.time.week }
+          : undefined;
+
+        // Create mock combat replay from local state
+        // Real combat data will come from on-chain transaction logs
+        const mockReplay = createMockCombatReplay(state.combat, bossInfo);
+        combat.startReplay(mockReplay);
+      }
+
+      setCombatOverlayVisible(true);
+    }
+  }, [state?.phase, state?.combat, state?.time.weekBoss, state?.time.week, combat]);
 
   const handlePOIClose = useCallback(() => {
     setKilnSelection({ gearId: null, emoji: '', count: 0 });
@@ -267,6 +485,89 @@ export function GameScreen({ navigation }: GameScreenProps) {
     setTooltipVisible(true);
   }, []);
   const handleCloseTooltip = useCallback(() => setTooltipVisible(false), []);
+
+  /**
+   * Handles combat completion (victory or defeat).
+   * Clears combat state and handles game state transitions.
+   * T043-T046: Boss fight detection and victory/defeat handling
+   */
+  const handleCombatComplete = useCallback(
+    (playerWon: boolean, goldEarned: number) => {
+      // Hide overlay
+      setCombatOverlayVisible(false);
+
+      // Capture current state for navigation params before dispatching
+      const currentReplay = combat.combatReplay;
+      const isBossFight = state?.phase === GamePhase.BossFight;
+      const currentWeek = state?.time.week ?? 1;
+      const currentLevel = sessionLevel ?? 1;
+      const totalMoves = state?.time.movesRemaining ?? 0;
+      const phase =
+        state?.time.phase === TimePhase.Day
+          ? `Day ${state.time.cycle}`
+          : state?.time.phase === TimePhase.Night
+            ? `Night ${state.time.cycle}`
+            : 'Boss';
+
+      // Clear combat replay state
+      combat.clear();
+
+      if (playerWon) {
+        // Victory: dispatch action to update game state
+        if (goldEarned > 0) {
+          dispatch({ type: 'ADD_GOLD', amount: goldEarned });
+        }
+        dispatch({ type: 'RESOLVE_COMBAT', result: 'VICTORY' });
+
+        // T044-T045: Handle boss victory navigation
+        if (isBossFight) {
+          if (currentWeek === 3) {
+            // T045: Week 3 boss victory -> Victory screen
+            // Queue session close with victory flag (doesn't deduct run)
+            queueEndGame(currentLevel, true).catch((err) => {
+              console.warn('[GameScreen] Failed to queue session cleanup:', err);
+            });
+
+            navigation.navigate('Victory', {
+              replay: currentReplay ?? undefined,
+              level: currentLevel,
+              totalMoves,
+              levelUnlocked: currentLevel + 1, // Unlock next level
+              // itemUnlocked will be populated from on-chain events
+            });
+          } else {
+            // T044: Week 1/2 boss victory -> Continue (week advances via reducer)
+            // The game reducer handles week advancement and gear slot unlock
+            // UI feedback is shown via the week display update
+          }
+        }
+      } else {
+        // Defeat: resolve combat then navigate to death screen
+        dispatch({ type: 'RESOLVE_COMBAT', result: 'DEFEAT' });
+
+        // T049: Queue session close and profile update (deducts run) atomically
+        // This returns immediately without requiring signatures for instant navigation
+        queueEndGame(currentLevel, false).catch((err) => {
+          console.warn('[GameScreen] Failed to queue session cleanup:', err);
+        });
+
+        // T046/T048: Navigate to DeathScreen for any defeat
+        const killedBy = isBossFight
+          ? `Week ${currentWeek} Boss`
+          : (state?.combat?.enemy?.name ?? 'Enemy');
+
+        navigation.navigate('Death', {
+          replay: currentReplay ?? undefined,
+          totalMoves,
+          level: currentLevel,
+          week: currentWeek,
+          phase,
+          killedBy,
+        });
+      }
+    },
+    [combat, dispatch, navigation, state, queueEndGame, sessionLevel]
+  );
 
   const handleInventoryItemPress = useCallback(
     (item: Tool | Gear) => {
@@ -364,10 +665,20 @@ export function GameScreen({ navigation }: GameScreenProps) {
                   </Pressable>
                 </View>
                 <View style={styles.navbarCenter}>
-                  <Text style={styles.weekText}>Week {state.time.week}</Text>
+                  <Text style={styles.weekText}>
+                    Week {state.time.week} - {formatPhaseLabel(state.time.phase, state.time.cycle)}
+                  </Text>
                   <TopBar time={state.time} />
                 </View>
                 <View style={styles.navbarRight}>
+                  {mode !== 'guest' && hasActiveSession && (
+                    <BurnerBalanceIndicator
+                      balance={burnerBalance}
+                      isLowBalance={isBurnerLowBalance}
+                      compact
+                      style={styles.burnerBalance}
+                    />
+                  )}
                   <View style={styles.goldDisplay}>
                     <Image source={COIN_ICON} style={styles.coinIcon} resizeMode="contain" />
                     <Text style={styles.goldValue}>{state.player.stats.gold}</Text>
@@ -418,6 +729,19 @@ export function GameScreen({ navigation }: GameScreenProps) {
                     disabledDirections={disabledDirections}
                   />
                 </View>
+
+                {/* POI Interact Button - Shows when player is on a valid POI */}
+                {poiInteraction.canInteract && state.phase === GamePhase.Exploration && (
+                  <Pressable
+                    style={styles.interactButton}
+                    onPress={() => poiInteraction.interact()}
+                    disabled={poiInteraction.isInteracting}
+                  >
+                    <Text style={styles.interactButtonText}>
+                      {poiInteraction.isInteracting ? '...' : 'Interact'}
+                    </Text>
+                  </Pressable>
+                )}
 
                 {state.fastTravel?.active && (
                   <FastTravelOverlay
@@ -470,6 +794,14 @@ export function GameScreen({ navigation }: GameScreenProps) {
             visible={isTooltipVisible}
             onClose={handleCloseTooltip}
           />
+
+          {/* Combat Overlay - Shows when combat events are received */}
+          <CombatOverlay
+            visible={combatOverlayVisible}
+            enemyName={currentEnemyName}
+            onComplete={handleCombatComplete}
+            onDismiss={() => setCombatOverlayVisible(false)}
+          />
         </View>
       </ImageBackground>
     </Animated.View>
@@ -486,6 +818,7 @@ const styles = StyleSheet.create({
   navbarLeft: { width: 100, justifyContent: 'center', alignItems: 'flex-start', gap: 2 },
   navbarCenter: { flex: 1, justifyContent: 'center' },
   navbarRight: { width: 80, justifyContent: 'center', alignItems: 'flex-end' },
+  burnerBalance: { marginBottom: 6 },
   weekText: {
     alignSelf: 'center',
     fontFamily: Typography.header,
@@ -505,6 +838,23 @@ const styles = StyleSheet.create({
   loading: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   loadingText: { fontFamily: Typography.header, fontSize: 20, color: '#666666' },
   dpadOverlay: { position: 'absolute', bottom: 24, left: 24 },
+  interactButton: {
+    position: 'absolute',
+    bottom: 24,
+    right: 24,
+    backgroundColor: '#4a4a6a',
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#6a6a8a',
+  },
+  interactButtonText: {
+    fontFamily: Typography.button,
+    fontSize: 16,
+    color: '#ffffff',
+    fontWeight: 'bold',
+  },
   goldDisplay: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   coinIcon: { width: 28, height: 28 },
   goldValue: { fontFamily: Typography.number, fontSize: 24, fontWeight: 'bold', color: '#000000' },

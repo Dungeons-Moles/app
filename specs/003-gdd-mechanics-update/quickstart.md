@@ -48,26 +48,26 @@ npm test -- __tests__/unit/combat/  # Specific directory
 
 ### Data Definitions (src/data/)
 
-| File | Current | Target | Changes |
-|------|---------|--------|---------|
-| `gear.ts` | 29 items | 80 items | Add 51 items with tier scaling |
-| `bosses.ts` | 7 bosses | 16 bosses | Add Biome B bosses |
-| `pois.ts` | 12 POIs | 14 POIs | Add Counter Cache, Scrap Chute |
-| `itemsets.ts` | 8 sets | 12 sets | Add 4 new itemsets |
-| `enemies.ts` | NEW | 12×3 | Create field enemy definitions |
+| File          | Current  | Target    | Changes                        |
+| ------------- | -------- | --------- | ------------------------------ |
+| `gear.ts`     | 29 items | 80 items  | Add 51 items with tier scaling |
+| `bosses.ts`   | 7 bosses | 16 bosses | Add Biome B bosses             |
+| `pois.ts`     | 12 POIs  | 14 POIs   | Add Counter Cache, Scrap Chute |
+| `itemsets.ts` | 8 sets   | 12 sets   | Add 4 new itemsets             |
+| `enemies.ts`  | NEW      | 12×3      | Create field enemy definitions |
 
 ### Combat System (src/game/combat/)
 
-| File | Changes |
-|------|---------|
+| File                | Changes                              |
+| ------------------- | ------------------------------------ |
 | `status-effects.ts` | Add Bleed effect type and processing |
-| `damage.ts` | Integrate Bleed damage at turn end |
-| `resolver.ts` | Add enemy traits, new item effects |
+| `damage.ts`         | Integrate Bleed damage at turn end   |
+| `resolver.ts`       | Add enemy traits, new item effects   |
 
 ### Map Rendering (src/components/game/)
 
-| File | Changes |
-|------|---------|
+| File              | Changes                            |
+| ----------------- | ---------------------------------- |
 | `MapRenderer.tsx` | Replace emoji with image rendering |
 
 ## Testing Strategy
@@ -93,7 +93,7 @@ const rng = new SeededRNG(12345);
 
 // Test with factory helpers
 const combatant = createTestCombatant({
-  statusEffects: { chill: 2, shrapnel: 0, rust: 1, bleed: 3 }
+  statusEffects: { chill: 2, shrapnel: 0, rust: 1, bleed: 3 },
 });
 
 // Verify determinism
@@ -128,7 +128,7 @@ assets/
 // Preload in component or context
 import { useImage } from '@shopify/react-native-skia';
 
-const tunnelRatImage = useImage(require('@/assets/field-enemies/tunnel-rat.png'));
+const tunnelRatImage = useImage(require('@/assets/entities/enemies/field/tunnel-rat.png'));
 
 // Render without background square
 <Image
@@ -154,20 +154,24 @@ Before submitting PR, verify:
 ## Common Issues
 
 ### Image not loading
+
 - Verify asset path matches filesystem case exactly
 - Check that image is imported with `require()` not string path
 
 ### Combat determinism failure
+
 - Ensure SeededRNG is used for all random selections
 - Check that effect order is consistent (sort by ID if needed)
 
 ### Itemset not activating
+
 - Verify all required item IDs are exact matches
 - Check that player.equippedGear includes all items
 
 ## GDD Reference
 
 The Game Design Document is at `docs/gdd.md` and contains:
+
 - Item definitions (Section 9, lines 128-249)
 - Enemy archetypes (Section 11, lines 273-310)
 - Boss definitions (Section 13, lines 413-500)

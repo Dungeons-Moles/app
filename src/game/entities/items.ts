@@ -51,7 +51,7 @@ export const TOOL_DEFINITIONS: Record<ToolId, ToolDefinition> = {
     id: 'T0',
     name: 'Basic Pickaxe',
     emoji: '⛏️',
-    image: require('../../../assets/icons/DIG.png'),
+    image: require('../../../assets/icons/stats/DIG.png'),
     rarity: 'COMMON',
     stats: { atk: 1 },
     tags: [],

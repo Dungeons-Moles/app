@@ -36,6 +36,7 @@ import {
 } from '../../data/gear';
 import { SeededRNG } from '../engine/rng';
 import { getBossWeaknessTags } from './bosses';
+import { isGearInActivePool, createStarterBitmask } from '../../services/solana/types/item_pool';
 
 // ============================================================================
 // Item Description Helpers
@@ -230,7 +231,9 @@ function generatePOIOptions(poiId: POIId, state: GameState, rng: SeededRNG): POI
 // ============================================================================
 
 function generateSupplyCacheOptions(state: GameState, rng: SeededRNG): POIOption[] {
-  const commonGear = getGearByRarity('COMMON');
+  // T040: Filter common gear by active item pool
+  const allCommonGear = getGearByRarity('COMMON');
+  const commonGear = filterGearByPool(allCommonGear, state.activeItemPool);
   const options: POIOption[] = [];
   const weekBossId = state.time.weekBoss;
   const weaknessTags = getBossWeaknessTags(weekBossId);
@@ -459,16 +462,41 @@ function generateRailWaypointOptions(state: GameState): POIOption[] {
 }
 
 // ============================================================================
+// T040: Active Item Pool Filtering Helper
+// ============================================================================
+
+/**
+ * Filters gear definitions by the active item pool.
+ * Only gear items that are enabled in the active pool will be returned.
+ *
+ * @param gearDefs - Array of gear definitions to filter
+ * @param activeItemPool - Active item pool bitmask (10 bytes), or undefined for all items
+ * @returns Filtered gear definitions
+ */
+function filterGearByPool<T extends { id: string }>(
+  gearDefs: readonly T[],
+  activeItemPool?: Uint8Array
+): T[] {
+  // If no active pool specified, use starter bitmask (items 0-39 enabled)
+  const pool = activeItemPool ?? createStarterBitmask();
+
+  return gearDefs.filter((gear) => isGearInActivePool(gear.id, pool));
+}
+
+// ============================================================================
 // T094: Smuggler Hatch (L9)
-// Shop: 5 Rare + 1 Heroic items
+// Shop: 5 Rare + 1 Heroic items (filtered by active item pool)
 // ============================================================================
 
 function generateSmugglerHatchOptions(state: GameState, rng: SeededRNG): POIOption[] {
-  const rareGear = getGearByRarity('RARE');
-  const heroicGear = getGearByRarity('HEROIC');
+  // T040: Filter gear by active item pool
+  const allRareGear = getGearByRarity('RARE');
+  const allHeroicGear = getGearByRarity('HEROIC');
+  const rareGear = filterGearByPool(allRareGear, state.activeItemPool);
+  const heroicGear = filterGearByPool(allHeroicGear, state.activeItemPool);
   const options: POIOption[] = [];
 
-  // Generate 5 unique rare items
+  // Generate 5 unique rare items from filtered pool
   const pickedRareGear = pickUniqueById(rng, rareGear, 5, (gearDef) => gearDef.id);
   for (const gearDef of pickedRareGear) {
     const gear = createGearInstance(gearDef.id);
@@ -708,7 +736,9 @@ function generateRuneKilnOptions(state: GameState): POIOption[] {
 // ============================================================================
 
 function generateGeodeVaultOptions(state: GameState, rng: SeededRNG): POIOption[] {
-  const heroicGear = getGearByRarity('HEROIC');
+  // T040: Filter heroic gear by active item pool
+  const allHeroicGear = getGearByRarity('HEROIC');
+  const heroicGear = filterGearByPool(allHeroicGear, state.activeItemPool);
   const weekBossId = state.time.weekBoss;
   const weaknessTags = getBossWeaknessTags(weekBossId);
   const options: POIOption[] = [];
@@ -742,11 +772,12 @@ function generateCounterCacheOptions(state: GameState, rng: SeededRNG): POIOptio
   const weaknessTags = getBossWeaknessTags(weekBossId);
   const options: POIOption[] = [];
 
-  // Filter gear by weakness tags
-  const validGear = Object.values(GEAR_DEFINITIONS).filter((def) => {
+  // T040: Filter gear by weakness tags AND active item pool
+  const allValidGear = Object.values(GEAR_DEFINITIONS).filter((def) => {
     // Check if gear has one of the weakness tags
     return def.tags.some((tag) => weaknessTags.includes(tag));
   });
+  const validGear = filterGearByPool(allValidGear, state.activeItemPool);
 
   if (validGear.length === 0) {
     return [];

@@ -8,7 +8,7 @@ import React, {
   ReactNode,
 } from 'react';
 import { Alert } from 'react-native';
-import { Keypair, Transaction } from '@solana/web3.js';
+import { Keypair, PublicKey, Transaction } from '@solana/web3.js';
 import { useWallet } from './WalletContext';
 import { useProfile } from './ProfileContext';
 import { useSolanaConnection } from './SolanaConnectionContext';
@@ -34,6 +34,13 @@ import {
   incrementRetryCount,
   type PendingCleanup,
 } from '@/services/solana/deferredCleanup';
+import {
+  fetchSessionList,
+  checkSessionExists,
+  getSessionForLevel,
+  type ActiveSession,
+  type SessionData,
+} from '@/services/solana/sessionList';
 import type { OnChainGameSession } from '@/services/solana/types/session_manager';
 import type {
   GameState,
@@ -73,6 +80,12 @@ export interface SessionState {
   gameplayState: GameState | null;
   /** Gameplay sync status */
   gameplaySyncStatus: 'synced' | 'syncing' | 'offline' | 'error';
+  /** List of all active sessions across levels */
+  activeSessions: ActiveSession[];
+  /** Whether session list is loading */
+  isSessionListLoading: boolean;
+  /** Current session level (convenience accessor) */
+  currentLevel: number | null;
 }
 
 interface SessionContextType extends SessionState {
@@ -110,6 +123,16 @@ interface SessionContextType extends SessionState {
   topUpBurner: (amount?: number) => Promise<boolean>;
   /** Get current burner keypair (for direct use) */
   getBurnerKeypair: () => Keypair | null;
+  /** Refresh the list of all active sessions */
+  refreshSessionList: () => Promise<void>;
+  /** Switch to a different active session */
+  switchToSession: (sessionPda: string) => Promise<TransactionResult>;
+  /** Abandon a session (deducts 1 run) */
+  abandonSession: (sessionPda: string) => Promise<TransactionResult>;
+  /** Check if a session exists for a given level */
+  hasSessionForLevel: (level: number) => Promise<boolean>;
+  /** Get the session PDA for a level if it exists */
+  getSessionPdaForLevel: (level: number) => Promise<string | null>;
 }
 
 const SessionContext = createContext<SessionContextType | undefined>(undefined);
@@ -130,6 +153,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [mapSeed, setMapSeed] = useState<bigint | null>(null);
   const [isAutoCommitActive, setIsAutoCommitActive] = useState(false);
   const [isWalletDisconnected, setIsWalletDisconnected] = useState(false);
+  const [activeSessions, setActiveSessions] = useState<ActiveSession[]>([]);
+  const [isSessionListLoading, setIsSessionListLoading] = useState(false);
   const commitTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const getStateHashRef = useRef<(() => number[]) | null>(null);
 
@@ -570,6 +595,138 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [hasPendingCleanupsState, setHasPendingCleanupsState] = useState(false);
 
   /**
+   * Refresh the list of all active sessions for the player.
+   */
+  const refreshSessionList = useCallback(async (): Promise<void> => {
+    if (!wallet.publicKey || !connection) {
+      setActiveSessions([]);
+      return;
+    }
+
+    setIsSessionListLoading(true);
+    try {
+      // For now, use direct account fetching since we may not have all programs
+      // The sessionList service handles this
+      const sessions = await fetchSessionList(
+        connection,
+        null as any, // Program will be created internally if needed
+        null as any, // Program will be created internally if needed
+        wallet.publicKey
+      ).catch(() => []);
+      setActiveSessions(sessions);
+    } catch (error) {
+      console.warn('[SessionContext] Failed to fetch session list:', error);
+      setActiveSessions([]);
+    } finally {
+      setIsSessionListLoading(false);
+    }
+  }, [connection, wallet.publicKey]);
+
+  // Fetch session list when wallet connects
+  useEffect(() => {
+    if (wallet.isConnected && wallet.publicKey) {
+      refreshSessionList();
+    } else {
+      setActiveSessions([]);
+    }
+  }, [wallet.isConnected, wallet.publicKey, refreshSessionList]);
+
+  /**
+   * Check if a session exists for a specific level.
+   */
+  const hasSessionForLevel = useCallback(
+    async (level: number): Promise<boolean> => {
+      if (!wallet.publicKey || !connection) {
+        return false;
+      }
+      return checkSessionExists(connection, wallet.publicKey, level);
+    },
+    [connection, wallet.publicKey]
+  );
+
+  /**
+   * Get the session PDA for a level if it exists.
+   */
+  const getSessionPdaForLevel = useCallback(
+    async (level: number): Promise<string | null> => {
+      if (!wallet.publicKey || !connection) {
+        return null;
+      }
+      const pda = await getSessionForLevel(connection, wallet.publicKey, level);
+      return pda ? pda.toBase58() : null;
+    },
+    [connection, wallet.publicKey]
+  );
+
+  /**
+   * Switch to a different active session.
+   */
+  const switchToSessionFn = useCallback(
+    async (sessionPda: string): Promise<TransactionResult> => {
+      if (!wallet.publicKey || !connection) {
+        return { success: false, error: 'Wallet not connected' };
+      }
+
+      try {
+        const sessionPubkey = new PublicKey(sessionPda);
+
+        // Find the session in our active sessions list
+        const session = activeSessions.find((s) => s.sessionPda === sessionPda);
+        if (!session) {
+          return { success: false, error: 'Session not found' };
+        }
+
+        // If burner wallet doesn't exist, we need to recover or fail
+        if (!burnerWallet.keypair) {
+          const recovered = await burnerWallet.checkPendingSession();
+          if (!recovered) {
+            return {
+              success: false,
+              error: 'Burner wallet not available. Please reconnect your wallet.',
+            };
+          }
+        }
+
+        // Get the session's game state PDA and set it
+        const [gameStatePda] = getGameStatePda(sessionPubkey);
+        gameplayState.setGameStatePda(gameStatePda);
+
+        // Fetch map seed for this level
+        const seed = await mapGenerator.getMapSeed(session.level);
+        setMapSeed(seed);
+
+        // Refresh the session manager to point to this session
+        await sessionManager.fetchSession();
+
+        // Refresh session list to update last played time
+        await refreshSessionList();
+
+        console.log('[SessionContext] Switched to session:', sessionPda, 'level:', session.level);
+        return { success: true };
+      } catch (error) {
+        console.error('[SessionContext] Failed to switch session:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to switch session',
+        };
+      }
+    },
+    [
+      activeSessions,
+      burnerWallet,
+      connection,
+      gameplayState,
+      mapGenerator,
+      sessionManager,
+      wallet.publicKey,
+      refreshSessionList,
+    ]
+  );
+
+  // Derive current level from session
+  const currentLevel = sessionManager.session?.campaignLevel ?? null;
+
+  /**
    * Queue session cleanup for deferred processing.
    * This returns immediately without requiring any signatures,
    * allowing instant navigation after combat ends.
@@ -688,6 +845,41 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
   }, [wallet.address]);
 
+  /**
+   * Abandon a session (end it as a defeat, deducting 1 run).
+   */
+  const abandonSessionFn = useCallback(
+    async (sessionPda: string): Promise<TransactionResult> => {
+      if (!wallet.publicKey || !connection) {
+        return { success: false, error: 'Wallet not connected' };
+      }
+
+      try {
+        // Find the session
+        const session = activeSessions.find((s) => s.sessionPda === sessionPda);
+        if (!session) {
+          return { success: false, error: 'Session not found' };
+        }
+
+        // Queue cleanup for the session (this will end it as a defeat)
+        await queueEndGame(session.level, false);
+
+        // Refresh session list
+        await refreshSessionList();
+
+        console.log('[SessionContext] Abandoned session:', sessionPda);
+        return { success: true };
+      } catch (error) {
+        console.error('[SessionContext] Failed to abandon session:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to abandon session',
+        };
+      }
+    },
+    [activeSessions, connection, wallet.publicKey, refreshSessionList, queueEndGame]
+  );
+
   const value: SessionContextType = {
     session: sessionManager.session,
     hasActiveSession: sessionManager.hasActiveSession,
@@ -700,6 +892,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     isBurnerLowBalance: burnerWallet.isLowBalance,
     gameplayState: gameplayState.gameState,
     gameplaySyncStatus: gameplayState.syncStatus,
+    activeSessions,
+    isSessionListLoading,
+    currentLevel,
     startGame,
     endGame,
     queueEndGame,
@@ -717,6 +912,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     modifyPlayerStat,
     topUpBurner,
     getBurnerKeypair,
+    refreshSessionList,
+    switchToSession: switchToSessionFn,
+    abandonSession: abandonSessionFn,
+    hasSessionForLevel,
+    getSessionPdaForLevel,
   };
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

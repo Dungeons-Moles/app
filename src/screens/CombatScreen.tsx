@@ -26,7 +26,7 @@ import { ENEMY_TRAITS } from '../game/combat/traits';
 import { getEntityImageSource } from '../components/game/entityImages';
 import { Typography } from '../theme/typography';
 
-const BACKGROUND_IMAGE = require('../../assets/loading/background.png');
+const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.png');
 
 type CombatScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Combat'>;

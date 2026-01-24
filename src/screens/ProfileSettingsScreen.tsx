@@ -16,9 +16,9 @@ import { useProfile } from '../contexts/ProfileContext';
 import { RootStackParamList } from '../navigation';
 import { Typography } from '../theme/typography';
 
-const backgroundImageSource = require('../../assets/hub/background.png');
-const buttonV1Source = require('../../assets/hub/button-v1.png');
-const paperPanelSource = require('../../assets/hub/paper-panel.png');
+const backgroundImageSource = require('../../assets/ui/backgrounds/hub-background.png');
+const buttonV1Source = require('../../assets/ui/buttons/button-v1.png');
+const paperPanelSource = require('../../assets/ui/panels/paper-panel.png');
 
 type ProfileSettingsScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'ProfileSettings'>;

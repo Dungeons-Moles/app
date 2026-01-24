@@ -4,11 +4,11 @@
     "slug": "dungeons-and-moles",
     "version": "0.1.0",
     "orientation": "landscape",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/branding/icon.png",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/branding/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#0f0f1a"
     },
@@ -18,7 +18,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/branding/adaptive-icon.png",
         "backgroundColor": "#0f0f1a"
       },
       "package": "io.dungeonsandmoles.app",
@@ -26,13 +26,9 @@
       "predictiveBackGestureEnabled": false
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/branding/favicon.png"
     },
-    "plugins": [
-      "expo-secure-store",
-      "expo-screen-orientation",
-      "expo-font"
-    ],
+    "plugins": ["expo-secure-store", "expo-screen-orientation", "expo-font"],
     "extra": {
       "solanaCluster": "devnet"
     }

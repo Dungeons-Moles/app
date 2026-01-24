@@ -26,9 +26,9 @@ import type {
 } from '@/game/engine/types';
 import { POI_DEFINITIONS, type POIDefinition } from '@/data/pois';
 
-const paperPanelSource = require('../../../assets/hub/paper-panel.png');
+const paperPanelSource = require('../../../assets/ui/panels/paper-panel.png');
 
-const squareSource = require('../../../assets/campaign/square.png');
+const squareSource = require('../../../assets/ui/frames/square.png');
 
 import { TOOL_DEFINITIONS } from '@/game/entities/items';
 import { GEAR_DEFINITIONS } from '@/data/gear';
@@ -772,11 +772,7 @@ export function POIModal({
                 }}
               />
               {tool && tool.image ? (
-                <Image
-                  source={tool.image}
-                  style={{ width: 64, height: 64 }}
-                  resizeMode="contain"
-                />
+                <Image source={tool.image} style={{ width: 64, height: 64 }} resizeMode="contain" />
               ) : tool ? (
                 <Text style={{ fontSize: 32 }}>{tool.emoji}</Text>
               ) : (
@@ -790,13 +786,13 @@ export function POIModal({
                 { marginTop: 16 },
                 (!upgradeOption || !canAfford) && styles.primaryButtonDisabled,
               ]}
-              onPress={() =>
-                upgradeOption && onSelectOption(displayOptions[0].index)
-              }
+              onPress={() => upgradeOption && onSelectOption(displayOptions[0].index)}
               disabled={!upgradeOption || !canAfford}
             >
               <Text style={styles.primaryButtonText}>
-                {upgradeOption?.cost ? `Upgrade (${upgradeOption.cost}g)` : upgradeOption?.label || 'Upgrade'}
+                {upgradeOption?.cost
+                  ? `Upgrade (${upgradeOption.cost}g)`
+                  : upgradeOption?.label || 'Upgrade'}
               </Text>
             </TouchableOpacity>
           </View>

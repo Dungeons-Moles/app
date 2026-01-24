@@ -9,7 +9,7 @@ This document consolidates the current gameplay design for the PvE prototype ins
 
 ## 1) High Concept
 
-Mobile-first, landscape, D-pad/controller dungeon crawler that plays like a board game: you move tile-by-tile on a seeded map, make exploration decisions, and all combat resolves automatically. Runs are structured into weeks (Day/Night cycles) ending in bosses. The campaign is an 80-stage ladder that ramps difficulty across 4 acts with biome emphasis shifts.
+Mobile-first, landscape, D-pad/controller dungeon crawler that plays like a board game: you move tile-by-tile on a seeded map, make exploration decisions, and all combat resolves automatically. Runs are structured into weeks (Day/Night cycles) ending in bosses. The campaign is an 40-stage ladder that ramps difficulty across 4 acts with biome emphasis shifts.
 
 ---
 
@@ -36,7 +36,7 @@ Mobile-first, landscape, D-pad/controller dungeon crawler that plays like a boar
 
 - Landscape-only.
 - D-pad movement (PSG1/controller-first).
-- Emojis for entities (prototype visuals).
+- Image assets for entities (prototype visuals).
 
 ---
 
@@ -149,103 +149,103 @@ Common, Rare, Heroic, Mythic.
 
 ### Full item list (80)
 
-Format: `ID — Name (Type) [Tag] {Rarity} — Effect`
+Format: `ID — Name (Type) [Tag] {Rarity} — Image: <path> — Effect`
 
 #### STONE (10)
-- `T-ST-01` — Bulwark Shovel (Tool) [STONE] {Common} — `+1/2/3 ATK, +4/6/8 ARM`
-- `T-ST-02` — Cragbreaker Hammer (Tool) [STONE] {Rare} — `+2/3/4 ATK, +3/5/7 ARM`; first strike each turn removes `1/2/3` enemy Armor before damage
-- `G-ST-01` — Miner Helmet (Gear) [STONE] {Common} — `+3/6/9 ARM`
-- `G-ST-02` — Work Vest (Gear) [STONE] {Common} — `+4/8/12 HP, +1 ARM`
-- `G-ST-03` — Spiked Bracers (Gear) [STONE] {Common} — Battle Start: gain `2/4/6` Shrapnel
-- `G-ST-04` — Reinforcement Plate (Gear) [STONE] {Rare} — Every other turn: gain `1/2/3` Armor
-- `G-ST-05` — Rebar Carapace (Gear) [STONE] {Rare} — Exposed: gain `3/5/7` Armor
-- `G-ST-06` — Shrapnel Talisman (Gear) [STONE] {Rare} — Whenever you gain Shrapnel (once/turn): gain `1/2/3` Armor
-- `G-ST-07` — Crystal Crown (Gear) [STONE] {Heroic} — Battle Start: gain Max HP equal to your starting Armor (cap `12/18/24`)
-- `G-ST-08` — Stone Sigil (Gear) [STONE] {Heroic} — End of turn: if you have Armor, gain `1/2/3` Armor
+- `T-ST-01` — Bulwark Shovel (Tool) [STONE] {Common} — Image: assets/icons/items/stone/bulwark_shovel.png — `+1/2/3 ATK, +4/6/8 ARM`
+- `T-ST-02` — Cragbreaker Hammer (Tool) [STONE] {Rare} — Image: assets/icons/items/stone/cragbreaker_hammer.png — `+2/3/4 ATK, +3/5/7 ARM`; first strike each turn removes `1/2/3` enemy Armor before damage
+- `G-ST-01` — Miner Helmet (Gear) [STONE] {Common} — Image: assets/icons/items/stone/miner_helmet.png — `+3/6/9 ARM`
+- `G-ST-02` — Work Vest (Gear) [STONE] {Common} — Image: assets/icons/items/stone/work_vest.png — `+4/8/12 HP, +1 ARM`
+- `G-ST-03` — Spiked Bracers (Gear) [STONE] {Common} — Image: assets/icons/items/stone/spiked_bracers.png — Battle Start: gain `2/4/6` Shrapnel
+- `G-ST-04` — Reinforcement Plate (Gear) [STONE] {Rare} — Image: assets/icons/items/stone/reinforcement_plate.png — Every other turn: gain `1/2/3` Armor
+- `G-ST-05` — Rebar Carapace (Gear) [STONE] {Rare} — Image: assets/icons/items/stone/rebar_carapace.png — Exposed: gain `3/5/7` Armor
+- `G-ST-06` — Shrapnel Talisman (Gear) [STONE] {Rare} — Image: assets/icons/items/stone/shrapnel_talisman.png — Whenever you gain Shrapnel (once/turn): gain `1/2/3` Armor
+- `G-ST-07` — Crystal Crown (Gear) [STONE] {Heroic} — Image: assets/icons/items/stone/crystal_crown.png — Battle Start: gain Max HP equal to your starting Armor (cap `12/18/24`)
+- `G-ST-08` — Stone Sigil (Gear) [STONE] {Heroic} — Image: assets/icons/items/stone/stone_sigil.png — End of turn: if you have Armor, gain `1/2/3` Armor
 
 #### SCOUT (10)
-- `T-SC-01` — Twin Picks (Tool) [SCOUT] {Common} — `+1/2/3 ATK`; strike 2 times per turn
-- `T-SC-02` — Pneumatic Drill (Tool) [SCOUT] {Rare} — `+1/2/3 ATK`; strike 3 times per turn
-- `G-SC-01` — Miner Boots (Gear) [SCOUT] {Common} — `+2/3/4 DIG`
-- `G-SC-02` — Leather Gloves (Gear) [SCOUT] {Common} — `+1/2/3 ATK, +1 DIG`
-- `G-SC-03` — Tunnel Instinct (Gear) [SCOUT] {Rare} — Battle Start: if DIG > enemy DIG, gain `+1/2/3 SPD` (this battle)
-- `G-SC-04` — Tunneler Spurs (Gear) [SCOUT] {Rare} — `+1/2/3 SPD`; if you act first on Turn 1, gain `+1/2/3 DIG` (this battle)
-- `G-SC-05` — Wall-Sense Visor (Gear) [SCOUT] {Rare} — `+1/2/3 DIG`; Battle Start: if DIG > enemy DIG, gain `+2/3/4` Armor
-- `G-SC-06` — Drill Servo (Gear) [SCOUT] {Heroic} — Wounded: gain `+1/2/3` additional strikes (this battle)
-- `G-SC-07` — Weak-Point Manual (Gear) [SCOUT] {Heroic} — If DIG > enemy Armor: your strikes ignore `1/2/3` Armor (this battle)
-- `G-SC-08` — Gear-Link Medallion (Gear) [SCOUT] {Mythic} — Your On Hit effects trigger twice (once/turn)
+- `T-SC-01` — Twin Picks (Tool) [SCOUT] {Common} — Image: assets/icons/items/scout/twin_picks.png — `+1/2/3 ATK`; strike 2 times per turn
+- `T-SC-02` — Pneumatic Drill (Tool) [SCOUT] {Rare} — Image: assets/icons/items/scout/pneumatic_drill.png — `+1/2/3 ATK`; strike 3 times per turn
+- `G-SC-01` — Miner Boots (Gear) [SCOUT] {Common} — Image: assets/icons/items/scout/miner_boots.png — `+2/3/4 DIG`
+- `G-SC-02` — Leather Gloves (Gear) [SCOUT] {Common} — Image: assets/icons/items/scout/leather_gloves.png — `+1/2/3 ATK, +1 DIG`
+- `G-SC-03` — Tunnel Instinct (Gear) [SCOUT] {Rare} — Image: assets/icons/items/scout/tunnel_instinct.png — Battle Start: if DIG > enemy DIG, gain `+1/2/3 SPD` (this battle)
+- `G-SC-04` — Tunneler Spurs (Gear) [SCOUT] {Rare} — Image: assets/icons/items/scout/tunneler_spurs.png — `+1/2/3 SPD`; if you act first on Turn 1, gain `+1/2/3 DIG` (this battle)
+- `G-SC-05` — Wall-Sense Visor (Gear) [SCOUT] {Rare} — Image: assets/icons/items/scout/wall-sense_visor.png — `+1/2/3 DIG`; Battle Start: if DIG > enemy DIG, gain `+2/3/4` Armor
+- `G-SC-06` — Drill Servo (Gear) [SCOUT] {Heroic} — Image: assets/icons/items/scout/drill_servo.png — Wounded: gain `+1/2/3` additional strikes (this battle)
+- `G-SC-07` — Weak-Point Manual (Gear) [SCOUT] {Heroic} — Image: assets/icons/items/scout/weak-point_manual.png — If DIG > enemy Armor: your strikes ignore `1/2/3` Armor (this battle)
+- `G-SC-08` — Gear-Link Medallion (Gear) [SCOUT] {Mythic} — Image: assets/icons/items/scout/gear-link_medallion.png — Your On Hit effects trigger twice (once/turn)
 
 #### GREED (10)
-- `T-GR-01` — Glittering Pick (Tool) [GREED] {Common} — `+1/2/3 ATK`; On Hit (once/turn): gain 1 Gold
-- `T-GR-02` — Gemfinder Staff (Tool) [GREED] {Heroic} — `+1 ATK, +1 ARM, +1 DIG`; first hit each turn triggers all your Shard effects
-- `G-GR-01` — Loose Nuggets (Gear) [GREED] {Common} — Start of each Day: gain `3/6/9` Gold
-- `G-GR-02` — Lucky Coin (Gear) [GREED] {Common} — Victory: gain `2/4/6` Gold
-- `G-GR-03` — Gilded Band (Gear) [GREED] {Rare} — Battle Start: gain Armor equal to `floor(Gold/10)` (cap `2/3/4`)
-- `G-GR-04` — Royal Bracer (Gear) [GREED] {Heroic} — Turn Start: convert 1 Gold → `2/3/4` Armor
-- `G-GR-05` — Emerald Shard (Gear) [GREED] {Common} — Every other turn (on first hit): heal `1/2/3` HP
-- `G-GR-06` — Ruby Shard (Gear) [GREED] {Common} — Every other turn (on first hit): deal `1/2/3` non-weapon damage
-- `G-GR-07` — Sapphire Shard (Gear) [GREED] {Common} — Every other turn (on first hit): gain `1/2/3` Armor
-- `G-GR-08` — Citrine Shard (Gear) [GREED] {Common} — Every other turn (on first hit): gain `1/2/3` Gold
+- `T-GR-01` — Glittering Pick (Tool) [GREED] {Common} — Image: assets/icons/items/greed/glittering_pick.png — `+1/2/3 ATK`; On Hit (once/turn): gain 1 Gold
+- `T-GR-02` — Gemfinder Staff (Tool) [GREED] {Heroic} — Image: assets/icons/items/greed/gemfinder_staff.png — `+1 ATK, +1 ARM, +1 DIG`; first hit each turn triggers all your Shard effects
+- `G-GR-01` — Loose Nuggets (Gear) [GREED] {Common} — Image: assets/icons/items/greed/loose_nuggets.png — Start of each Day: gain `3/6/9` Gold
+- `G-GR-02` — Lucky Coin (Gear) [GREED] {Common} — Image: assets/icons/items/greed/lucky_coin.png — Victory: gain `2/4/6` Gold
+- `G-GR-03` — Gilded Band (Gear) [GREED] {Rare} — Image: assets/icons/items/greed/gilded_band.png — Battle Start: gain Armor equal to `floor(Gold/10)` (cap `2/3/4`)
+- `G-GR-04` — Royal Bracer (Gear) [GREED] {Heroic} — Image: assets/icons/items/greed/royal_bracer.png — Turn Start: convert 1 Gold → `2/3/4` Armor
+- `G-GR-05` — Emerald Shard (Gear) [GREED] {Common} — Image: assets/icons/items/greed/emerald_shard.png — Every other turn (on first hit): heal `1/2/3` HP
+- `G-GR-06` — Ruby Shard (Gear) [GREED] {Common} — Image: assets/icons/items/greed/ruby_shard.png — Every other turn (on first hit): deal `1/2/3` non-weapon damage
+- `G-GR-07` — Sapphire Shard (Gear) [GREED] {Common} — Image: assets/icons/items/greed/sapphire_shard.png — Every other turn (on first hit): gain `1/2/3` Armor
+- `G-GR-08` — Citrine Shard (Gear) [GREED] {Common} — Image: assets/icons/items/greed/citrine_shard.png — Every other turn (on first hit): gain `1/2/3` Gold
 
 #### BLAST (10)
-- `T-BL-01` — Fuse Pick (Tool) [BLAST] {Common} — `+1/2/3 ATK`; first hit each turn: deal 1 non-weapon damage
-- `T-BL-02` — Spark Pick (Tool) [BLAST] {Rare} — `+1/2/3 ATK`; On Hit (once/turn): reduce your highest Countdown by 1
-- `G-BL-01` — Small Charge (Gear) [BLAST] {Common} — Countdown(2): deal `8/10/12` to enemy and you (non-weapon)
-- `G-BL-02` — Blast Suit (Gear) [BLAST] {Rare} — You ignore damage from your own BLAST items
-- `G-BL-03` — Explosive Powder (Gear) [BLAST] {Rare} — Your non-weapon damage deals `+1/2/3`
-- `G-BL-04` — Double Detonation (Gear) [BLAST] {Rare} — Second time you deal non-weapon damage each turn: deal `+2/3/4` more
-- `G-BL-05` — Bomb Satchel (Gear) [BLAST] {Heroic} — Battle Start: reduce Countdown of all your bomb items by 1 (min 0)
-- `G-BL-06` — Kindling Charge (Gear) [BLAST] {Rare} — Battle Start: deal `1/2/3`; your next bomb this battle deals `+3/5/7`
-- `G-BL-07` — Time Charge (Gear) [BLAST] {Heroic} — Turn Start: gain `+1/2/3` stored damage (this battle); when Exposed: deal stored damage
-- `G-BL-08` — Twin-Fuse Knot (Gear) [BLAST] {Mythic} — Your bomb triggers happen twice
+- `T-BL-01` — Fuse Pick (Tool) [BLAST] {Common} — Image: assets/icons/items/blast/fuse_pick.png — `+1/2/3 ATK`; first hit each turn: deal 1 non-weapon damage
+- `T-BL-02` — Spark Pick (Tool) [BLAST] {Rare} — Image: assets/icons/items/blast/spark_pick.png — `+1/2/3 ATK`; On Hit (once/turn): reduce your highest Countdown by 1
+- `G-BL-01` — Small Charge (Gear) [BLAST] {Common} — Image: assets/icons/items/blast/small_charge.png — Countdown(2): deal `8/10/12` to enemy and you (non-weapon)
+- `G-BL-02` — Blast Suit (Gear) [BLAST] {Rare} — Image: assets/icons/items/blast/blast_suit.png — You ignore damage from your own BLAST items
+- `G-BL-03` — Explosive Powder (Gear) [BLAST] {Rare} — Image: assets/icons/items/blast/explosive_powder.png — Your non-weapon damage deals `+1/2/3`
+- `G-BL-04` — Double Detonation (Gear) [BLAST] {Rare} — Image: assets/icons/items/blast/double_detonation.png — Second time you deal non-weapon damage each turn: deal `+2/3/4` more
+- `G-BL-05` — Bomb Satchel (Gear) [BLAST] {Heroic} — Image: assets/icons/items/blast/bomb_satchel.png — Battle Start: reduce Countdown of all your bomb items by 1 (min 0)
+- `G-BL-06` — Kindling Charge (Gear) [BLAST] {Rare} — Image: assets/icons/items/blast/kindling_charge.png — Battle Start: deal `1/2/3`; your next bomb this battle deals `+3/5/7`
+- `G-BL-07` — Time Charge (Gear) [BLAST] {Heroic} — Image: assets/icons/items/blast/time_charge.png — Turn Start: gain `+1/2/3` stored damage (this battle); when Exposed: deal stored damage
+- `G-BL-08` — Twin-Fuse Knot (Gear) [BLAST] {Mythic} — Image: assets/icons/items/blast/twin-fuse_knot.png — Your bomb triggers happen twice
 
 #### FROST (10)
-- `T-FR-01` — Rime Pike (Tool) [FROST] {Common} — `+2/3/4 ATK`; On Hit (once/turn): apply 1 Chill
-- `T-FR-02` — Glacier Fang (Tool) [FROST] {Rare} — `+2/3/4 ATK`; On Hit (once/turn): apply 1 Chill; if enemy has Chill, gain +1 SPD this turn
-- `G-FR-01` — Frost Lantern (Gear) [FROST] {Common} — Battle Start: give enemy `1/2/3` Chill
-- `G-FR-02` — Frostguard Buckler (Gear) [FROST] {Rare} — `+6/8/10 ARM`; Battle Start: if enemy has Chill, gain `+2/3/4` Armor
-- `G-FR-03` — Cold Snap Charm (Gear) [FROST] {Rare} — If you act first on Turn 1: apply `2/3/4` Chill
-- `G-FR-04` — Ice Skates (Gear) [FROST] {Rare} — `+1/2/3 SPD`
-- `G-FR-05` — Rime Cloak (Gear) [FROST] {Rare} — `+3/5/7 ARM`; when struck (once/turn): apply 1 Chill to attacker
-- `G-FR-06` — Permafrost Core (Gear) [FROST] {Heroic} — Turn Start: if enemy has Chill, gain `1/2/3` Armor
-- `G-FR-07` — Cold Front Idol (Gear) [FROST] {Heroic} — Every other turn: apply 1 Chill; if enemy already has Chill, gain +1 SPD this turn
-- `G-FR-08` — Deep Freeze Charm (Gear) [FROST] {Heroic} — Wounded: apply `2/3/4` Chill and reduce enemy SPD by 1 (this battle)
+- `T-FR-01` — Rime Pike (Tool) [FROST] {Common} — Image: assets/icons/items/frost/rime_pike.png — `+2/3/4 ATK`; On Hit (once/turn): apply 1 Chill
+- `T-FR-02` — Glacier Fang (Tool) [FROST] {Rare} — Image: assets/icons/items/frost/glacier_fang.png — `+2/3/4 ATK`; On Hit (once/turn): apply 1 Chill; if enemy has Chill, gain +1 SPD this turn
+- `G-FR-01` — Frost Lantern (Gear) [FROST] {Common} — Image: assets/icons/items/frost/frost_lantern.png — Battle Start: give enemy `1/2/3` Chill
+- `G-FR-02` — Frostguard Buckler (Gear) [FROST] {Rare} — Image: assets/icons/items/frost/frostguard_buckler.png — `+6/8/10 ARM`; Battle Start: if enemy has Chill, gain `+2/3/4` Armor
+- `G-FR-03` — Cold Snap Charm (Gear) [FROST] {Rare} — Image: assets/icons/items/frost/cold_snap_charm.png — If you act first on Turn 1: apply `2/3/4` Chill
+- `G-FR-04` — Ice Skates (Gear) [FROST] {Rare} — Image: assets/icons/items/frost/ice_skates.png — `+1/2/3 SPD`
+- `G-FR-05` — Rime Cloak (Gear) [FROST] {Rare} — Image: assets/icons/items/frost/rime_cloak.png — `+3/5/7 ARM`; when struck (once/turn): apply 1 Chill to attacker
+- `G-FR-06` — Permafrost Core (Gear) [FROST] {Heroic} — Image: assets/icons/items/frost/permafrost_core.png — Turn Start: if enemy has Chill, gain `1/2/3` Armor
+- `G-FR-07` — Cold Front Idol (Gear) [FROST] {Heroic} — Image: assets/icons/items/frost/cold_front_idol.png — Every other turn: apply 1 Chill; if enemy already has Chill, gain +1 SPD this turn
+- `G-FR-08` — Deep Freeze Charm (Gear) [FROST] {Heroic} — Image: assets/icons/items/frost/deep_freeze_charm.png — Wounded: apply `2/3/4` Chill and reduce enemy SPD by 1 (this battle)
 
 #### RUST (10)
-- `T-RU-01` — Corrosive Pick (Tool) [RUST] {Common} — `+1/2/3 ATK`; On Hit (once/turn): apply 1 Rust
-- `T-RU-02` — Etched Burrowblade (Tool) [RUST] {Rare} — `+2/3/4 ATK, +1/2/3 SPD`; if enemy has Rust, your strikes ignore `1/2/3` Armor
-- `G-RU-01` — Oxidizer Vial (Gear) [RUST] {Common} — Battle Start: apply `1/2/3` Rust (if enemy has Armor, apply +1 more)
-- `G-RU-02` — Rust Spike (Gear) [RUST] {Rare} — On Hit (once/turn): apply 1 Rust
-- `G-RU-03` — Corroded Greaves (Gear) [RUST] {Rare} — `+1/2/3 SPD`; Wounded: apply `2/3/4` Rust
-- `G-RU-04` — Acid Phial (Gear) [RUST] {Rare} — Battle Start: reduce enemy Armor by `2/3/4`
-- `G-RU-05` — Flaking Plating (Gear) [RUST] {Rare} — `+6/8/10 ARM`; Exposed: apply `2/3/4` Rust to enemy
-- `G-RU-06` — Rust Engine (Gear) [RUST] {Heroic} — Turn Start: if enemy has Rust, deal `1/2/3` non-weapon damage
-- `G-RU-07` — Corrosion Loop (Gear) [RUST] {Heroic} — On Hit (once/turn): if enemy has Armor, apply +1 additional Rust
-- `G-RU-08` — Salvage Clamp (Gear) [RUST] {Common} — Whenever you apply Rust (once/turn): gain 1 Gold
+- `T-RU-01` — Corrosive Pick (Tool) [RUST] {Common} — Image: assets/icons/items/rust/corrosive_pick.png — `+1/2/3 ATK`; On Hit (once/turn): apply 1 Rust
+- `T-RU-02` — Etched Burrowblade (Tool) [RUST] {Rare} — Image: assets/icons/items/rust/etched_burrowblade.png — `+2/3/4 ATK, +1/2/3 SPD`; if enemy has Rust, your strikes ignore `1/2/3` Armor
+- `G-RU-01` — Oxidizer Vial (Gear) [RUST] {Common} — Image: assets/icons/items/rust/oxidizer_vial.png — Battle Start: apply `1/2/3` Rust (if enemy has Armor, apply +1 more)
+- `G-RU-02` — Rust Spike (Gear) [RUST] {Rare} — Image: assets/icons/items/rust/rust_spike.png — On Hit (once/turn): apply 1 Rust
+- `G-RU-03` — Corroded Greaves (Gear) [RUST] {Rare} — Image: assets/icons/items/rust/corroded_greaves.png — `+1/2/3 SPD`; Wounded: apply `2/3/4` Rust
+- `G-RU-04` — Acid Phial (Gear) [RUST] {Rare} — Image: assets/icons/items/rust/acid_phial.png — Battle Start: reduce enemy Armor by `2/3/4`
+- `G-RU-05` — Flaking Plating (Gear) [RUST] {Rare} — Image: assets/icons/items/rust/flaking_plating.png — `+6/8/10 ARM`; Exposed: apply `2/3/4` Rust to enemy
+- `G-RU-06` — Rust Engine (Gear) [RUST] {Heroic} — Image: assets/icons/items/rust/rust_engine.png — Turn Start: if enemy has Rust, deal `1/2/3` non-weapon damage
+- `G-RU-07` — Corrosion Loop (Gear) [RUST] {Heroic} — Image: assets/icons/items/rust/corrosion_loop.png — On Hit (once/turn): if enemy has Armor, apply +1 additional Rust
+- `G-RU-08` — Salvage Clamp (Gear) [RUST] {Common} — Image: assets/icons/items/rust/salvage_clamp.png — Whenever you apply Rust (once/turn): gain 1 Gold
 
 #### BLOOD (10)
-- `T-BO-01` — Serrated Drill (Tool) [BLOOD] {Common} — `+1/2/3 ATK`; On Hit (once/turn): apply 1 Bleed
-- `T-BO-02` — Reaper Pick (Tool) [BLOOD] {Rare} — `+2/3/4 ATK`; On Hit (once/turn): apply 1 Bleed (if enemy is Wounded, apply +1 Bleed)
-- `G-BO-01` — Last Breath Sigil (Gear) [BLOOD] {Common} — One use: first time you would die in battle, prevent it and heal `2/3/4` HP
-- `G-BO-02` — Bloodletting Fang (Gear) [BLOOD] {Rare} — Your attacks deal `+1/2/3` damage to Bleeding enemies
-- `G-BO-03` — Leech Wraps (Gear) [BLOOD] {Rare} — When enemy takes Bleed damage: heal `1/2/3` HP (once/turn)
-- `G-BO-04` — Blood Chalice (Gear) [BLOOD] {Rare} — Victory: heal `3/5/7` HP
-- `G-BO-05` — Hemorrhage Hook (Gear) [BLOOD] {Heroic} — Wounded: apply `2/3/4` Bleed
-- `G-BO-06` — Execution Emblem (Gear) [BLOOD] {Heroic} — If enemy is Wounded, your first strike each turn deals `+2/3/4` damage
-- `G-BO-07` — Gore Mantle (Gear) [BLOOD] {Rare} — First time you become Wounded in battle: gain `4/6/8` Armor
-- `G-BO-08` — Vampiric Tooth (Gear) [BLOOD] {Mythic} — Your first hit each turn vs a Bleeding enemy heals 2 HP
+- `T-BO-01` — Serrated Drill (Tool) [BLOOD] {Common} — Image: assets/icons/items/blood/serrated_drill.png — `+1/2/3 ATK`; On Hit (once/turn): apply 1 Bleed
+- `T-BO-02` — Reaper Pick (Tool) [BLOOD] {Rare} — Image: assets/icons/items/blood/reaper_pick.png — `+2/3/4 ATK`; On Hit (once/turn): apply 1 Bleed (if enemy is Wounded, apply +1 Bleed)
+- `G-BO-01` — Last Breath Sigil (Gear) [BLOOD] {Common} — Image: assets/icons/items/blood/last_breath_sigil.png — One use: first time you would die in battle, prevent it and heal `2/3/4` HP
+- `G-BO-02` — Bloodletting Fang (Gear) [BLOOD] {Rare} — Image: assets/icons/items/blood/bloodletting_fang.png — Your attacks deal `+1/2/3` damage to Bleeding enemies
+- `G-BO-03` — Leech Wraps (Gear) [BLOOD] {Rare} — Image: assets/icons/items/blood/leech_wraps.png — When enemy takes Bleed damage: heal `1/2/3` HP (once/turn)
+- `G-BO-04` — Blood Chalice (Gear) [BLOOD] {Rare} — Image: assets/icons/items/blood/blood_chalice.png — Victory: heal `3/5/7` HP
+- `G-BO-05` — Hemorrhage Hook (Gear) [BLOOD] {Heroic} — Image: assets/icons/items/blood/hemorrhage_hook.png — Wounded: apply `2/3/4` Bleed
+- `G-BO-06` — Execution Emblem (Gear) [BLOOD] {Heroic} — Image: assets/icons/items/blood/execution_emblem.png — If enemy is Wounded, your first strike each turn deals `+2/3/4` damage
+- `G-BO-07` — Gore Mantle (Gear) [BLOOD] {Rare} — Image: assets/icons/items/blood/gore_mantle.png — First time you become Wounded in battle: gain `4/6/8` Armor
+- `G-BO-08` — Vampiric Tooth (Gear) [BLOOD] {Mythic} — Image: assets/icons/items/blood/vampiric_tooth.png — Your first hit each turn vs a Bleeding enemy heals 2 HP
 
 #### TEMPO (10)
-- `T-TE-01` — Quickpick (Tool) [TEMPO] {Common} — `+1/2/3 ATK, +1/2/3 SPD`
-- `T-TE-02` — Chrono Rapier (Tool) [TEMPO] {Heroic} — `+1/2/3 ATK, +2/3/4 SPD`; if you act first on Turn 1, gain `+2/3/4` ATK (this battle)
-- `G-TE-01` — Wind-Up Spring (Gear) [TEMPO] {Common} — Turn 1: gain `+1/2/3 SPD` and `+2/3/4` ATK (this battle)
-- `G-TE-02` — Ambush Charm (Gear) [TEMPO] {Rare} — If you act first on Turn 1, your first strike deals `+3/5/7` damage
-- `G-TE-03` — Counterweight Buckle (Gear) [TEMPO] {Rare} — If enemy acts first on Turn 1, gain `5/7/9` Armor before damage
-- `G-TE-04` — Hourglass Charge (Gear) [TEMPO] {Rare} — Turn 5: gain `+2/3/4` ATK and +1 SPD (this battle)
-- `G-TE-05` — Initiative Lens (Gear) [TEMPO] {Rare} — `+1/2/3 SPD`; Battle Start: if your SPD > enemy SPD, gain `3/5/7` Armor
-- `G-TE-06` — Backstep Buckle (Gear) [TEMPO] {Rare} — If enemy acts first on Turn 1, your first strike deals `+3/5/7` damage
-- `G-TE-07` — Tempo Battery (Gear) [TEMPO] {Heroic} — Every other turn: gain `+1/2/3 SPD` (this battle)
-- `G-TE-08` — Second Wind Clock (Gear) [TEMPO] {Heroic} — Turn 5: heal `4/6/8` HP and gain +1 SPD (this battle)
+- `T-TE-01` — Quickpick (Tool) [TEMPO] {Common} — Image: assets/icons/items/tempo/quickpick.png — `+1/2/3 ATK, +1/2/3 SPD`
+- `T-TE-02` — Chrono Rapier (Tool) [TEMPO] {Heroic} — Image: assets/icons/items/tempo/chrono_rapier.png — `+1/2/3 ATK, +2/3/4 SPD`; if you act first on Turn 1, gain `+2/3/4` ATK (this battle)
+- `G-TE-01` — Wind-Up Spring (Gear) [TEMPO] {Common} — Image: assets/icons/items/tempo/wind-up_spring.png — Turn 1: gain `+1/2/3 SPD` and `+2/3/4` ATK (this battle)
+- `G-TE-02` — Ambush Charm (Gear) [TEMPO] {Rare} — Image: assets/icons/items/tempo/ambush_charm.png — If you act first on Turn 1, your first strike deals `+3/5/7` damage
+- `G-TE-03` — Counterweight Buckle (Gear) [TEMPO] {Rare} — Image: assets/icons/items/tempo/counterweight_buckle.png — If enemy acts first on Turn 1, gain `5/7/9` Armor before damage
+- `G-TE-04` — Hourglass Charge (Gear) [TEMPO] {Rare} — Image: assets/icons/items/tempo/hourglass_charge.png — Turn 5: gain `+2/3/4` ATK and +1 SPD (this battle)
+- `G-TE-05` — Initiative Lens (Gear) [TEMPO] {Rare} — Image: assets/icons/items/tempo/initiative_lens.png — `+1/2/3 SPD`; Battle Start: if your SPD > enemy SPD, gain `3/5/7` Armor
+- `G-TE-06` — Backstep Buckle (Gear) [TEMPO] {Rare} — Image: assets/icons/items/tempo/backstep_buckle.png — If enemy acts first on Turn 1, your first strike deals `+3/5/7` damage
+- `G-TE-07` — Tempo Battery (Gear) [TEMPO] {Heroic} — Image: assets/icons/items/tempo/tempo_battery.png — Every other turn: gain `+1/2/3 SPD` (this battle)
+- `G-TE-08` — Second Wind Clock (Gear) [TEMPO] {Heroic} — Image: assets/icons/items/tempo/second_wind_clock.png — Turn 5: heal `4/6/8` HP and gain +1 SPD (this battle)
 
 ---
 
@@ -253,20 +253,20 @@ Format: `ID — Name (Type) [Tag] {Rarity} — Effect`
 
 Itemsets activate when all required items are equipped.
 
-| Set | Emoji | Required | Bonus |
+| Set | Image | Required | Bonus |
 |---|---|---|---|
-| Union Standard | 🧰 | `G-ST-01 + G-ST-02 + G-SC-01` | Battle Start: `+4 Armor, +1 DIG` |
-| Shard Circuit | 🔁 | `G-GR-05 + G-GR-06 + G-GR-07 + G-GR-08` | Shards trigger every turn |
-| Demolition Permit | 🧾 | `G-BL-01 + G-BL-02 + G-BL-03` | Countdown bombs tick 1 turn faster |
-| Fuse Network | 🕸️ | `T-BL-02 + G-BL-05 + G-BL-04` | First non-weapon damage each turn deals +2 |
-| Shrapnel Harness | 🛡️ | `G-ST-03 + G-ST-06 + T-ST-01` | Keep up to 3 Shrapnel at end of turn |
-| Rust Ritual | ☣️ | `T-RU-01 + G-RU-02 + G-RU-03` | On Hit (once/turn): apply +1 extra Rust |
-| Swift Digger Kit | ⚡ | `T-SC-01 + G-SC-01 + G-SC-06` | Battle Start: if DIG > enemy DIG, gain +2 strikes (this battle) |
-| Royal Extraction | 🏦 | `G-GR-01 + G-GR-04 + T-GR-02` | Gold→Armor becomes 1→4 |
-| Whiteout Initiative | 🧊 | `G-FR-04 + G-FR-03 + G-TE-05` | Battle Start: +1 SPD; if you act first Turn 1, apply +2 Chill |
-| Bloodrush Protocol | 🩸 | `T-BO-01 + G-BO-05 + G-TE-01` | Turn 1: apply 2 Bleed; when enemy takes Bleed dmg, gain +1 SPD this turn (once/turn) |
-| Corrosion Payload | 💥☣️ | `G-RU-02 + G-BL-03 + G-BL-05` | First time your bomb deals damage each turn: apply 1 Rust |
-| Golden Shrapnel Exchange | 🪙🛡️ | `G-GR-04 + G-ST-06 + G-GR-03` | When you convert Gold→Armor: gain +3 Shrapnel (once/turn) |
+| Union Standard | assets/icons/itemsets/union_standard.png | `G-ST-01 + G-ST-02 + G-SC-01` | Battle Start: `+4 Armor, +1 DIG` |
+| Shard Circuit | assets/icons/itemsets/shard_circuit.png | `G-GR-05 + G-GR-06 + G-GR-07 + G-GR-08` | Shards trigger every turn |
+| Demolition Permit | assets/icons/itemsets/demolition_permit.png | `G-BL-01 + G-BL-02 + G-BL-03` | Countdown bombs tick 1 turn faster |
+| Fuse Network | assets/icons/itemsets/fuse_network.png | `T-BL-02 + G-BL-05 + G-BL-04` | First non-weapon damage each turn deals +2 |
+| Shrapnel Harness | assets/icons/itemsets/shrapnel_harness.png | `G-ST-03 + G-ST-06 + T-ST-01` | Keep up to 3 Shrapnel at end of turn |
+| Rust Ritual | assets/icons/itemsets/rust_ritual.png | `T-RU-01 + G-RU-02 + G-RU-03` | On Hit (once/turn): apply +1 extra Rust |
+| Swift Digger Kit | assets/icons/itemsets/swift_digger_kit.png | `T-SC-01 + G-SC-01 + G-SC-06` | Battle Start: if DIG > enemy DIG, gain +2 strikes (this battle) |
+| Royal Extraction | assets/icons/itemsets/royal_extraction.png | `G-GR-01 + G-GR-04 + T-GR-02` | Gold→Armor becomes 1→4 |
+| Whiteout Initiative | assets/icons/itemsets/whiteout_initiative.png | `G-FR-04 + G-FR-03 + G-TE-05` | Battle Start: +1 SPD; if you act first Turn 1, apply +2 Chill |
+| Bloodrush Protocol | assets/icons/itemsets/bloodrush_protocol.png | `T-BO-01 + G-BO-05 + G-TE-01` | Turn 1: apply 2 Bleed; when enemy takes Bleed dmg, gain +1 SPD this turn (once/turn) |
+| Corrosion Payload | assets/icons/itemsets/corrosion_payload.png | `G-RU-02 + G-BL-03 + G-BL-05` | First time your bomb deals damage each turn: apply 1 Rust |
+| Golden Shrapnel Exchange | assets/icons/itemsets/golden_shrapnel_exchange.png | `G-GR-04 + G-ST-06 + G-GR-03` | When you convert Gold→Armor: gain +3 Shrapnel (once/turn) |
 
 ---
 
@@ -288,20 +288,20 @@ Biome weighting:
 
 Stat format per tier: `HP/ATK/ARM/SPD/DIG`
 
-| Enemy | Emoji | T1 | T2 | T3 | Trait |
+| Enemy | Image | T1 | T2 | T3 | Trait |
 |---|---|---:|---:|---:|---|
-| Tunnel Rat | 🐀 | 5/1/0/3/1 | 7/2/0/4/1 | 9/3/1/5/2 | On Hit (once/turn): steal 1 Gold |
-| Cave Bat | 🦇 | 6/1/0/3/1 | 8/2/0/4/1 | 10/3/0/5/2 | Every other turn: restore 1 HP |
-| Spore Slime | 🟢 | 8/1/2/0/1 | 11/2/3/0/1 | 14/3/4/0/2 | Battle Start: apply 2 Chill to you |
-| Rust Mite Swarm | 🐜 | 6/1/0/3/2 | 9/2/0/4/2 | 12/3/0/5/3 | On Hit (once/turn): apply 1 Rust |
-| Collapsed Miner | 🧟 | 10/2/0/1/3 | 14/3/0/2/3 | 18/4/1/3/4 | Wounded: gain +3 ATK (this battle) |
-| Shard Beetle | 🪲 | 9/1/3/1/2 | 12/2/4/1/2 | 15/3/5/2/3 | Battle Start: gain 6 Shrapnel |
-| Tunnel Warden | 🦀 | 8/2/4/2/2 | 11/3/6/3/2 | 14/4/8/4/3 | First strike each turn: remove 3 Armor from you before damage |
-| Burrow Ambusher | 🦂 | 6/3/0/4/2 | 9/4/0/5/2 | 12/5/0/6/3 | Battle Start: deal 3 damage ignoring Armor |
-| Frost Wisp | 🧊 | 7/1/0/4/1 | 10/2/0/5/1 | 13/3/0/6/2 | If it acts first on Turn 1: apply 2 Chill |
-| Powder Tick | 🧨 | 7/1/0/2/1 | 10/2/0/3/1 | 13/3/0/4/2 | Countdown(2): deal 6 damage to you and itself (non-weapon) |
-| Coin Slug | 🐌🪙 | 7/1/2/1/1 | 10/2/3/1/1 | 13/3/4/2/2 | Battle Start: gain Armor equal to floor(your Gold/10) (cap 3) |
-| Blood Mosquito | 🦟 | 6/1/0/3/1 | 9/2/0/4/1 | 12/3/0/5/2 | On Hit (once/turn): apply 1 Bleed |
+| Tunnel Rat | assets/entities/enemies/field/tunnel-rat.png | 5/1/0/3/1 | 7/2/0/4/1 | 9/3/1/5/2 | On Hit (once/turn): steal 1 Gold |
+| Cave Bat | assets/entities/enemies/field/cave-bat.png | 6/1/0/3/1 | 8/2/0/4/1 | 10/3/0/5/2 | Every other turn: restore 1 HP |
+| Spore Slime | assets/entities/enemies/field/spore-slime.png | 8/1/2/0/1 | 11/2/3/0/1 | 14/3/4/0/2 | Battle Start: apply 2 Chill to you |
+| Rust Mite Swarm | assets/entities/enemies/field/rust-mite-swarm.png | 6/1/0/3/2 | 9/2/0/4/2 | 12/3/0/5/3 | On Hit (once/turn): apply 1 Rust |
+| Collapsed Miner | assets/entities/enemies/field/collapsed-miner.png | 10/2/0/1/3 | 14/3/0/2/3 | 18/4/1/3/4 | Wounded: gain +3 ATK (this battle) |
+| Shard Beetle | assets/entities/enemies/field/shard-beetle.png | 9/1/3/1/2 | 12/2/4/1/2 | 15/3/5/2/3 | Battle Start: gain 6 Shrapnel |
+| Tunnel Warden | assets/entities/enemies/field/tunnel-warden.png | 8/2/4/2/2 | 11/3/6/3/2 | 14/4/8/4/3 | First strike each turn: remove 3 Armor from you before damage |
+| Burrow Ambusher | assets/entities/enemies/field/burrow-ambusher.png | 6/3/0/4/2 | 9/4/0/5/2 | 12/5/0/6/3 | Battle Start: deal 3 damage ignoring Armor |
+| Frost Wisp | assets/entities/enemies/field/frost-wisp.png | 7/1/0/4/1 | 10/2/0/5/1 | 13/3/0/6/2 | If it acts first on Turn 1: apply 2 Chill |
+| Powder Tick | assets/entities/enemies/field/powder-tick.png | 7/1/0/2/1 | 10/2/0/3/1 | 13/3/0/4/2 | Countdown(2): deal 6 damage to you and itself (non-weapon) |
+| Coin Slug | assets/entities/enemies/field/coin-slug.png | 7/1/2/1/1 | 10/2/3/1/1 | 13/3/4/2/2 | Battle Start: gain Armor equal to floor(your Gold/10) (cap 3) |
+| Blood Mosquito | assets/entities/enemies/field/blood-mosquito.png | 6/1/0/3/1 | 9/2/0/4/1 | 12/3/0/5/2 | On Hit (once/turn): apply 1 Bleed |
 
 Enemy spawn targets per run (initial tuning):
 - Act 1: 36 enemies on map
@@ -315,22 +315,22 @@ Enemy spawn targets per run (initial tuning):
 
 Some POIs are one-time, others are repeatable utilities.
 
-| ID | Location | Emoji | Rarity | Use | Active | Interaction |
+| ID | Location | Image | Rarity | Use | Active | Interaction |
 |---|---|---|---|---|---|---|
-| L1 | Mole Den | 🏠 | Fixed | Repeatable | Night-only | Skip to Day; restore all HP |
-| L2 | Supply Cache | 📦 | Common | One-time | Anytime | Pick 1 of 3 Common Gear (tag-weighted to current week boss weaknesses) |
-| L3 | Tool Crate | 🧰 | Uncommon | One-time | Anytime | Pick 1 of 3 Tools (tag-weighted) |
-| L4 | Tool Oil Rack | 🛢️ | Common | Repeatable (per tool) | Anytime | Modify current tool: +1 ATK or +1 SPD or +1 DIG (once per tool) |
-| L5 | Rest Alcove | 🕯️ | Common | One-time | Night-only | Skip to Day; heal 10 HP |
-| L6 | Survey Beacon | 📡 | Common | One-time | Anytime | Reveal tiles in radius 13 |
-| L7 | Seismic Scanner | 📍 | Uncommon | One-time | Anytime | Choose a POI category → reveal nearest instance |
-| L8 | Rail Waypoint | 🚇 | Uncommon | Repeatable | Anytime | Fast travel between discovered waypoints |
-| L9 | Smuggler Hatch | 🕳️ | Uncommon | Repeatable | Anytime | Shop: 1 Tool + 5 Gear; reroll costs Gold |
-| L10 | Rusty Anvil | ⚒️ | Uncommon | One-time | Anytime | Upgrade Tool tier (I→II costs 8 Gold; II→III costs 16 Gold) |
-| L11 | Rune Kiln | 🏺 | Rare | Repeatable | Anytime | Fuse 2 identical items → upgrade tier (II/III); no gold cost |
-| L12 | Geode Vault | 💠 | Rare | One-time | Anytime | Pick 1 of 3 Heroic items (tag-weighted) |
-| L13 | Counter Cache | 🎯 | Uncommon | One-time | Anytime | Pick 1 of 3 items drawn only from the 2 weakness tags of the current week boss |
-| L14 | Scrap Chute | 🗑️ | Uncommon | One-time | Anytime | Destroy 1 Gear item (no reward). Costs Gold (by act). |
+| L1 | Mole Den | assets/world/pois/mole-den.png | Fixed | Repeatable | Night-only | Skip to Day; restore all HP |
+| L2 | Supply Cache | assets/world/pois/supply-cache.png | Common | One-time | Anytime | Pick 1 of 3 Common Gear (tag-weighted to current week boss weaknesses) |
+| L3 | Tool Crate | assets/world/pois/tool-crate.png | Uncommon | One-time | Anytime | Pick 1 of 3 Tools (tag-weighted) |
+| L4 | Tool Oil Rack | assets/world/pois/tool-oil-rack.png | Common | Repeatable (per tool) | Anytime | Modify current tool: +1 ATK or +1 SPD or +1 DIG (once per tool) |
+| L5 | Rest Alcove | assets/world/pois/rest-alcove.png | Common | One-time | Night-only | Skip to Day; heal 10 HP |
+| L6 | Survey Beacon | assets/world/pois/survey-beacon.png | Common | One-time | Anytime | Reveal tiles in radius 13 |
+| L7 | Seismic Scanner | assets/world/pois/seismic-scanner.png | Uncommon | One-time | Anytime | Choose a POI category → reveal nearest instance |
+| L8 | Rail Waypoint | assets/world/pois/rail-waypoint.png | Uncommon | Repeatable | Anytime | Fast travel between discovered waypoints |
+| L9 | Smuggler Hatch | assets/world/pois/smuggler-hatch.png | Uncommon | Repeatable | Anytime | Shop: 1 Tool + 5 Gear; reroll costs Gold |
+| L10 | Rusty Anvil | assets/world/pois/rusty-anvil.png | Uncommon | One-time | Anytime | Upgrade Tool tier (I→II costs 8 Gold; II→III costs 16 Gold) |
+| L11 | Rune Kiln | assets/world/pois/rune-kiln.png | Rare | Repeatable | Anytime | Fuse 2 identical items → upgrade tier (II/III); no gold cost |
+| L12 | Geode Vault | assets/world/pois/geode-vault.png | Rare | One-time | Anytime | Pick 1 of 3 Heroic items (tag-weighted) |
+| L13 | Counter Cache | assets/world/pois/counter-cache.png | Uncommon | One-time | Anytime | Pick 1 of 3 items drawn only from the 2 weakness tags of the current week boss |
+| L14 | Scrap Chute | assets/world/pois/scrap-chute.png | Uncommon | One-time | Anytime | Destroy 1 Gear item (no reward). Costs Gold (by act). |
 
 ### POI Guarantees per run (by act)
 Guarantees are in addition to baseline spawns (below).
@@ -558,21 +558,3 @@ Shop affordability (Act 1 baseline):
 ### Target stage difficulty (“fair” loss rate)
 - A “not-yet-ready” run can lose to a stage at ~60–70% rate.
 - A run at the intended stage power level should feel hard but not bricked (tune via POI weights + Act+ modifiers + enemy tier mix).
-
----
-
-## 16) Implementation Checklist (execute next)
-
-1. Move all items/enemies/bosses/POIs into data tables (TypeScript/JSON) keyed by IDs.
-2. Implement dig action and dig cost formula (`max(2, 6-DIG)`).
-3. Implement combat engine with deterministic ordering + sudden death + turn cap resolution.
-4. Implement status effects exactly as defined (Chill/Shrapnel/Rust/Bleed) with deterministic stack handling.
-5. Implement item offer generation:
-   - rarity table (by POI and act)
-   - tag weighting (boss weaknesses)
-6. Implement campaign stage config:
-   - act mapping (A/B/A+/B+)
-   - boss schedule (stage-determined)
-   - act+ modifiers
-7. Add minimal telemetry for balancing:
-   - stage winrate, boss winrate, average fights per run, gold earned/spent, item pick rates.

@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ImageBackground } from 'react-native';
 import type { OnChainPlayerProfile } from '@/types/solana';
 import { Typography } from '@/theme/typography';
 
-const rectangleSource = require('../../../assets/campaign/rectangle.png');
+const rectangleSource = require('../../../assets/ui/frames/rectangle.png');
 
 interface ProfileCardProps {
   profile: OnChainPlayerProfile;

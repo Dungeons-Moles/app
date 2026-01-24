@@ -11,7 +11,7 @@ import type { ItemRarity } from '@/game/engine/types';
 import { ITEM_RARITY_COLORS } from '@/utils/rarity-colors';
 import { Typography } from '@/theme/typography';
 
-const squareSource = require('../../../assets/campaign/square.png');
+const squareSource = require('../../../assets/ui/frames/square.png');
 
 interface SimplifiedItemOptionProps {
   emoji?: string;
