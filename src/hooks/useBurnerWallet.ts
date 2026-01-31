@@ -21,6 +21,7 @@ import {
   LOW_BALANCE_THRESHOLD,
   type BurnerState,
 } from '@/services/solana/burnerWallet';
+import { SOLANA_CONFIG } from '@/services/solana/config';
 
 // ============================================================================
 // Types
@@ -102,27 +103,37 @@ export function useBurnerWallet(): UseBurnerWalletReturn {
    * Returns true if a pending session was found and loaded.
    */
   const checkPendingSession = useCallback(async (): Promise<boolean> => {
+    console.log('[useBurnerWallet] checkPendingSession called | wallet.address:', wallet.address);
     if (!wallet.address) {
+      console.log('[useBurnerWallet] checkPendingSession: no wallet address, returning false');
       return false;
     }
 
     try {
       const recovery = await checkForPendingSession(wallet.address, connection);
+      console.log('[useBurnerWallet] checkPendingSession recovery result:', {
+        hasPendingSession: recovery.hasPendingSession,
+        burnerBalance: recovery.burnerBalance,
+        burnerPublicKey: recovery.burnerPublicKey?.toBase58() ?? null,
+      });
 
       if (recovery.hasPendingSession && recovery.burnerPublicKey) {
         // Load the existing burner
         const existingBurner = await loadBurnerWallet(wallet.address);
+        console.log('[useBurnerWallet] checkPendingSession: existingBurner loaded?', !!existingBurner);
         if (existingBurner && isMountedRef.current) {
           setKeypair(existingBurner);
           setBalance(recovery.burnerBalance);
           setState('active');
+          console.log('[useBurnerWallet] checkPendingSession: burner restored successfully');
           return true;
         }
       }
 
+      console.log('[useBurnerWallet] checkPendingSession: no pending session to restore');
       return false;
     } catch (err) {
-      console.error('Failed to check for pending session:', err);
+      console.error('[useBurnerWallet] Failed to check for pending session:', err);
       return false;
     }
   }, [connection, wallet.address]);
@@ -167,7 +178,7 @@ export function useBurnerWallet(): UseBurnerWalletReturn {
         console.log('[useBurnerWallet] Requesting wallet signature for funding...');
         const signature = await signAndSendTransaction(fundTx);
         console.log('[useBurnerWallet] Transaction signed and sent:', signature);
-        await connection.confirmTransaction(signature, 'confirmed');
+        await connection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
         console.log('[useBurnerWallet] Transaction confirmed');
 
         // Verify balance
@@ -212,7 +223,7 @@ export function useBurnerWallet(): UseBurnerWalletReturn {
 
         // Sign and send via main wallet
         const signature = await signAndSendTransaction(fundTx);
-        await connection.confirmTransaction(signature, 'confirmed');
+        await connection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
 
         // Refresh balance
         const { balance: newBalance } = await checkBurnerBalance(connection, keypair.publicKey);

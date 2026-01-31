@@ -80,11 +80,13 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
 
   // Update unlocked items when profile loads (based on highest level completed)
   useEffect(() => {
-    if (profileApi.profile?.currentLevel) {
-      const highestLevel = profileApi.profile.currentLevel;
+    if (profileApi.profile?.highestLevelUnlocked) {
+      // highestLevelUnlocked is 1-indexed (on-chain value)
+      // Levels below it have been completed
+      const highestLevel = profileApi.profile.highestLevelUnlocked;
       setUnlockedItemIds((prev) => {
         const newSet = new Set(prev);
-        // Unlock items for all completed levels
+        // Unlock items for all completed levels (1-indexed)
         for (let level = 1; level < highestLevel; level++) {
           const item = getItemForLevel(level);
           if (item) {
@@ -94,7 +96,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
         return newSet;
       });
     }
-  }, [profileApi.profile?.currentLevel]);
+  }, [profileApi.profile?.highestLevelUnlocked]);
 
   // Keep ref updated with latest fetchProfile
   useEffect(() => {
@@ -204,7 +206,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
   const purchaseRuns = useCallback(async (): Promise<TransactionResult> => {
     // Guest mode: no purchasing
     if (mode === 'guest') {
-      return { success: false, error: 'Cannot purchase runs in guest mode' };
+      return { success: false, error: 'Cannot purchase sessions in guest mode' };
     }
 
     if (!wallet.publicKey || !connection) {
@@ -224,20 +226,19 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
         };
       }
 
-      // Use the profile API to purchase runs
-      // This will call the on-chain purchase_runs instruction
-      const result = await profileApi.purchaseRuns?.();
-      if (result?.success) {
+      // Use the profile API to purchase runs via on-chain purchase_runs instruction
+      const result = await profileApi.purchaseRuns();
+      if (result.success) {
         // Refresh profile to get updated run count
         await fetchProfileRef.current();
         console.log('[ProfileContext] Runs purchased successfully');
       }
-      return result ?? { success: false, error: 'Purchase method not available' };
+      return result;
     } catch (err) {
       console.error('[ProfileContext] Failed to purchase runs:', err);
       return {
         success: false,
-        error: err instanceof Error ? err.message : 'Failed to purchase runs',
+        error: err instanceof Error ? err.message : 'Failed to purchase sessions',
       };
     } finally {
       setIsPurchasing(false);
@@ -298,7 +299,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
 
   // Convenience accessors
   const availableRuns = profileApi.profile?.availableRuns ?? 0;
-  const highestLevelUnlocked = profileApi.profile?.currentLevel ?? 1;
+  const highestLevelUnlocked = profileApi.profile?.highestLevelUnlocked ?? 1;
 
   const handleRecordRunResult = useCallback(
     async (levelReached: number, victory: boolean): Promise<TransactionResult> => {

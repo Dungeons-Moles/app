@@ -11,6 +11,8 @@ import {
 import { derivePlayerProfilePda } from '@/services/solana/types';
 import { getCachedProfile, setCachedProfile, clearCachedProfile } from '@/services/solana/cache';
 import { getUserErrorMessage } from '@/services/solana/errors';
+import { TREASURY_PUBKEY } from '@/services/solana/constants';
+import { SOLANA_CONFIG } from '@/services/solana/config';
 import { MAX_CAMPAIGN_LEVEL } from './useMapGenerator';
 import type { CachedProfileData, OnChainPlayerProfile, TransactionResult } from '@/types/solana';
 
@@ -92,13 +94,22 @@ export function usePlayerProfile() {
         return;
       }
 
+      const highestLevel = account.highestLevelUnlocked ?? account.currentLevel ?? 1;
+      // On-chain is 1-indexed (level 1 = first level), frontend is 0-indexed
       const profileData: OnChainPlayerProfile = {
         owner: account.owner,
         name: account.name,
         totalRuns: account.totalRuns,
-        currentLevel: account.currentLevel,
-        availableRuns: account.availableRuns ?? 0, // Fallback for old accounts
+        currentLevel: highestLevel - 1,
+        highestLevelUnlocked: highestLevel,
+        availableRuns: account.availableRuns ?? 0,
         createdAt: Number(account.createdAt),
+        unlockedItems: account.unlockedItems
+          ? new Uint8Array(account.unlockedItems)
+          : new Uint8Array(10),
+        activeItemPool: account.activeItemPool
+          ? new Uint8Array(account.activeItemPool)
+          : new Uint8Array(10),
       };
 
       updateState(profileData, true);
@@ -120,8 +131,11 @@ export function usePlayerProfile() {
             name: cached.name,
             totalRuns: cached.totalRuns,
             currentLevel: cached.currentLevel,
+            highestLevelUnlocked: cached.currentLevel,
             availableRuns: cached.availableRuns,
             createdAt: cached.createdAt,
+            unlockedItems: new Uint8Array(10),
+            activeItemPool: new Uint8Array(10),
           },
           true,
           true
@@ -166,7 +180,7 @@ export function usePlayerProfile() {
           .transaction();
 
         const signature = await signAndSendTransaction(transaction);
-        await connection.confirmTransaction(signature, 'confirmed');
+        await connection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
 
         const account = await (
           readOnlyProgram.account as {
@@ -175,13 +189,23 @@ export function usePlayerProfile() {
             };
           }
         ).playerProfile.fetch(profilePda);
+        const createHighestLevel =
+          account.highestLevelUnlocked ?? account.currentLevel ?? 1;
+        // On-chain is 1-indexed (level 1 = first level), frontend is 0-indexed
         const profileData: OnChainPlayerProfile = {
           owner: account.owner,
           name: account.name,
           totalRuns: account.totalRuns,
-          currentLevel: account.currentLevel,
+          currentLevel: createHighestLevel - 1,
+          highestLevelUnlocked: createHighestLevel,
           availableRuns: account.availableRuns ?? 0,
           createdAt: Number(account.createdAt),
+          unlockedItems: account.unlockedItems
+            ? new Uint8Array(account.unlockedItems)
+            : new Uint8Array(10),
+          activeItemPool: account.activeItemPool
+            ? new Uint8Array(account.activeItemPool)
+            : new Uint8Array(10),
         };
 
         updateState(profileData, true);
@@ -196,7 +220,7 @@ export function usePlayerProfile() {
         await setCachedProfile(wallet.address, cachePayload);
         return { success: true, signature };
       } catch (txError) {
-        const message = getUserErrorMessage(txError);
+        const message = getUserErrorMessage(txError, 'player_profile');
         if (isMountedRef.current) setError(message);
         return { success: false, error: message };
       } finally {
@@ -262,14 +286,14 @@ export function usePlayerProfile() {
           .transaction();
 
         const signature = await signAndSendTransaction(transaction);
-        await connection.confirmTransaction(signature, 'confirmed');
+        await connection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
 
         // Refresh profile data after successful transaction
         await fetchProfile();
 
         return { success: true, signature };
       } catch (txError) {
-        const message = getUserErrorMessage(txError);
+        const message = getUserErrorMessage(txError, 'player_profile');
         if (isMountedRef.current) setError(message);
         return { success: false, error: message };
       } finally {
@@ -322,14 +346,14 @@ export function usePlayerProfile() {
           .transaction();
 
         const signature = await signAndSendTransaction(transaction);
-        await connection.confirmTransaction(signature, 'confirmed');
+        await connection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
 
         // Refresh profile data after successful transaction
         await fetchProfile();
 
         return { success: true, signature };
       } catch (txError) {
-        const message = getUserErrorMessage(txError);
+        const message = getUserErrorMessage(txError, 'player_profile');
         if (isMountedRef.current) setError(message);
         return { success: false, error: message };
       } finally {
@@ -346,6 +370,54 @@ export function usePlayerProfile() {
     ]
   );
 
+  /**
+   * Purchases 20 additional runs by paying 0.001 SOL to the treasury.
+   */
+  const purchaseRuns = useCallback(async (): Promise<TransactionResult> => {
+    if (!wallet.publicKey || !wallet.address || !writeProgram) {
+      return { success: false, error: 'Wallet not connected' };
+    }
+
+    if (isMountedRef.current) {
+      setIsLoading(true);
+      setError(null);
+    }
+
+    try {
+      const [profilePda] = derivePlayerProfilePda(wallet.publicKey);
+      const transaction = await writeProgram.methods
+        .purchaseRuns()
+        .accounts({
+          playerProfile: profilePda,
+          owner: wallet.publicKey,
+          treasury: TREASURY_PUBKEY,
+          systemProgram: SystemProgram.programId,
+        })
+        .transaction();
+
+      const signature = await signAndSendTransaction(transaction);
+      await connection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
+
+      // Refresh profile data after successful transaction
+      await fetchProfile();
+
+      return { success: true, signature };
+    } catch (txError) {
+      const message = getUserErrorMessage(txError, 'player_profile');
+      if (isMountedRef.current) setError(message);
+      return { success: false, error: message };
+    } finally {
+      if (isMountedRef.current) setIsLoading(false);
+    }
+  }, [
+    connection,
+    fetchProfile,
+    signAndSendTransaction,
+    wallet.address,
+    wallet.publicKey,
+    writeProgram,
+  ]);
+
   return {
     profile,
     exists,
@@ -356,6 +428,7 @@ export function usePlayerProfile() {
     createProfile,
     recordRunResult,
     updateName,
+    purchaseRuns,
     clearCache,
     resetProfile,
   };

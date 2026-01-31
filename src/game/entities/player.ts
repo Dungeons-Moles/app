@@ -110,15 +110,25 @@ export function calculatePlayerStats(player: Player): PlayerStats {
 }
 
 /**
- * Update player with recalculated stats and active itemsets
+ * Update player with recalculated stats and active itemsets.
+ * Ensures HP never exceeds maxHP (can happen when gear bonuses are recalculated
+ * after on-chain operations that don't account for gear).
  */
 export function refreshPlayerStats(player: Player): Player {
   const gearIds = player.inventory.map((slot) => slot.item.id);
   const toolId = player.equippedTool?.id ?? null;
+  const stats = calculatePlayerStats(player);
+
+  // Cap HP at maxHP to prevent HP > maxHP edge cases
+  // This can occur when on-chain healing/combat sets baseStats.hp to a value
+  // that, when gear HP bonus is added, exceeds the calculated maxHP.
+  if (stats.hp > stats.maxHp) {
+    stats.hp = stats.maxHp;
+  }
 
   return {
     ...player,
-    stats: calculatePlayerStats(player),
+    stats,
     activeItemsets: getActiveItemsets(toolId, gearIds),
   };
 }

@@ -165,9 +165,9 @@ function getRarityColor(item: Tool | Gear): string {
 
 const OIL_IMAGES: Record<ToolOil, any> = {
   ATK: require('../../../assets/icons/oils/ATK.png'),
-  ARM: require('../../../assets/icons/oils/ARM.png'),
   DIG: require('../../../assets/icons/oils/DIG.png'),
   SPD: require('../../../assets/icons/oils/SPD.png'),
+  ARM: require('../../../assets/icons/oils/ARM.png'),
 };
 
 function OilSlot({

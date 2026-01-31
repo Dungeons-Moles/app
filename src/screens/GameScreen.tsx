@@ -9,9 +9,12 @@ import { RootStackParamList } from '../navigation';
 import { useGame, GamePhase } from '../contexts/GameContext';
 import { useSession } from '../contexts/SessionContext';
 import { useProfile } from '../contexts/ProfileContext';
-import { useCombatReplay } from '../hooks/useCombatReplay';
+import { useGameplayStateContext } from '../contexts/GameplayStateContext';
+import { useWallet } from '../contexts/WalletContext';
+import { deriveSessionPda } from '../services/solana/constants';
 import { useNightMovement } from '../hooks/useNightMovement';
 import { usePoiInteraction } from '../hooks/usePoiInteraction';
+import { useFogPersistence } from '../hooks/useFogPersistence';
 import { DPadControls } from '../components/game/DPadControls';
 import {
   TopBar,
@@ -21,7 +24,6 @@ import {
   FastTravelOverlay,
   ItemTooltip,
 } from '../components/game';
-import { CombatOverlay } from '../components/combat';
 import { Sidebar } from '../components/game/Sidebar';
 import { BurnerBalanceIndicator } from '../components/common/BurnerBalanceIndicator';
 import { useDirectionInput } from '../hooks/useInput';
@@ -30,13 +32,9 @@ import { Direction, DIRECTION_DELTA } from '../game/input/types';
 import { TileType } from '../game/map/types';
 import { canFastTravel, getDiscoveredWaypoints } from '../game/entities/pois';
 import { canAffordCostAcrossPhases } from '../game/time/progression';
-import { TimePhase } from '../game/engine/types';
 import { Typography } from '../theme/typography';
-import { getPhaseInfo } from '../utils/phase-labels';
 import { promptTransactionRetry } from '../utils/transaction-alerts';
-import type { Gear, GearId, Tool, CombatState, BossId } from '../game/engine/types';
-import type { CombatReplay, BossCombatStartedEvent } from '../services/solana/types/combat_events';
-import { Keypair, PublicKey } from '@solana/web3.js';
+import type { Gear, GearId, Tool } from '../game/engine/types';
 import Svg, { Path } from 'react-native-svg';
 
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.png');
@@ -45,88 +43,6 @@ const MAP_ICON = require('../../assets/icons/ui/map.png');
 
 const SIDEBAR_WIDTH = 230;
 const NAVBAR_HEIGHT = 60;
-
-/**
- * Creates a mock CombatReplay from local CombatState for offline/fallback display.
- * Real combat data comes from on-chain transaction logs.
- *
- * @param combatState - The local combat state
- * @param bossInfo - Optional boss info if this is a boss fight
- */
-function createMockCombatReplay(
-  combatState: CombatState,
-  bossInfo?: { bossId: BossId; week: 1 | 2 | 3 }
-): CombatReplay {
-  const playerWon = combatState.result === 'VICTORY';
-
-  // Group log entries by turn and extract damage information
-  const turnMap = new Map<number, { playerDamage: number; enemyDamage: number }>();
-  for (const entry of combatState.log) {
-    if (entry.action === 'ATTACK' && entry.result.damage !== undefined) {
-      const turnData = turnMap.get(entry.turn) ?? { playerDamage: 0, enemyDamage: 0 };
-      if (entry.actor === 'player') {
-        turnData.playerDamage += entry.result.damage;
-      } else if (entry.actor === 'enemy') {
-        turnData.enemyDamage += entry.result.damage;
-      }
-      turnMap.set(entry.turn, turnData);
-    }
-  }
-
-  const turns = Array.from(turnMap.entries()).map(([turn, data]) => ({
-    turn,
-    playerHp: combatState.player.hp,
-    enemyHp: combatState.enemy.hp,
-    playerDamage: data.playerDamage,
-    enemyDamage: data.enemyDamage,
-  }));
-
-  // Create boss intro event if this is a boss fight
-  let bossIntro: BossCombatStartedEvent | undefined;
-  if (bossInfo) {
-    bossIntro = {
-      player: PublicKey.default,
-      bossId: bossInfo.bossId,
-      bossHp: combatState.enemy.maxHp,
-      week: bossInfo.week,
-    };
-  }
-
-  return {
-    signature: 'mock-combat-' + Date.now(),
-    combatStarted: {
-      player: PublicKey.default,
-      playerHp: combatState.player.maxHp,
-      playerAtk: combatState.player.atk,
-      enemyArchetype: 0,
-      enemyHp: combatState.enemy.maxHp,
-      enemyAtk: combatState.enemy.atk,
-    },
-    turns:
-      turns.length > 0
-        ? turns
-        : [
-            {
-              turn: 1,
-              playerHp: combatState.player.hp,
-              enemyHp: combatState.enemy.hp,
-              playerDamage: combatState.player.atk,
-              enemyDamage: combatState.enemy.atk,
-            },
-          ],
-    statusEffects: [],
-    combatEnded: {
-      player: PublicKey.default,
-      playerWon,
-      finalPlayerHp: combatState.player.hp,
-      finalEnemyHp: combatState.enemy.hp,
-      goldEarned: playerWon ? combatState.goldReward : 0,
-      turnsTaken: combatState.turn,
-    },
-    isBoss: !!bossInfo,
-    bossIntro,
-  };
-}
 
 function ThinSeparator({ horizontal = true }: { horizontal?: boolean }) {
   if (horizontal) {
@@ -160,35 +76,6 @@ function CrossingLines() {
   );
 }
 
-/**
- * Formats the phase label (e.g., "Day 1" or "Night 2").
- */
-function formatPhaseLabel(phase: TimePhase, cycle: number): string {
-  switch (phase) {
-    case TimePhase.Day:
-      return `Day ${cycle}`;
-    case TimePhase.Night:
-      return `Night ${cycle}`;
-    case TimePhase.Boss:
-      return 'Boss Fight';
-    default:
-      return 'Unknown';
-  }
-}
-
-function getReverseDirection(direction: Direction): Direction {
-  switch (direction) {
-    case Direction.Up:
-      return Direction.Down;
-    case Direction.Down:
-      return Direction.Up;
-    case Direction.Left:
-      return Direction.Right;
-    case Direction.Right:
-      return Direction.Left;
-  }
-}
-
 type GameScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Game'>;
 };
@@ -200,97 +87,87 @@ export function GameScreen({ navigation }: GameScreenProps) {
   const {
     hasActiveSession,
     movePlayer,
-    queueEndGame,
-    currentLevel: sessionLevel,
-    burnerBalance,
-    isBurnerLowBalance,
     gameplayState: onChainState,
     gameplaySyncStatus,
+    sessionKey,
+    burnerBalance,
+    isBurnerLowBalance,
+    topUpBurner,
+    currentLevel,
   } = useSession();
-  const combat = useCombatReplay();
+  const { wallet } = useWallet();
+  const { refreshMapEntities } = useGameplayStateContext();
   const nightMovement = useNightMovement();
   const poiInteraction = usePoiInteraction();
+
+  // Derive session PDA for refreshing map entities after moves
+  const sessionPda = useMemo(() => {
+    if (!wallet.publicKey || currentLevel === null) return null;
+    const [pda] = deriveSessionPda(wallet.publicKey, currentLevel);
+    return pda;
+  }, [wallet.publicKey, currentLevel]);
+
+  // Persist fog of war state to AsyncStorage for session restore
+  useFogPersistence({
+    sessionKey,
+    fog: state?.map.fog ?? null,
+    isActive: hasActiveSession,
+  });
   const feedbackTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [wallBreakFeedback, setWallBreakFeedback] = useState<string | null>(null);
-  const [combatOverlayVisible, setCombatOverlayVisible] = useState(false);
-  const [currentEnemyName, setCurrentEnemyName] = useState<string>('Enemy');
+  const [isMovePending, setIsMovePending] = useState(false);
+  // Use a ref for synchronous pending check to prevent race conditions with rapid clicks
+  const isMovePendingRef = useRef(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  // Ref to skip mismatch-detection after POI interactions (updated synchronously)
+  const skipMismatchDetectionRef = useRef(false);
+  const skipMismatchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     Animated.timing(fadeAnim, { toValue: 1, duration: 800, useNativeDriver: true }).start();
   }, []);
 
+  // Cleanup skip mismatch timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (skipMismatchTimeoutRef.current) {
+        clearTimeout(skipMismatchTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // On-chain state drift correction: periodically sync local state from on-chain.
+  // This catches any drift from missed events or reconnection scenarios.
+  // With on-chain-first movement, this should rarely trigger during normal play.
   useEffect(() => {
     if (
       !state ||
       !onChainState ||
       mode === 'guest' ||
       gameplaySyncStatus !== 'synced' ||
-      state.phase !== GamePhase.Exploration
+      state.phase !== GamePhase.Exploration ||
+      isMovePending ||
+      // Skip during/after POI interactions - the hook handles its own state sync
+      // Use ref for synchronous check (state-based checks have timing issues)
+      skipMismatchDetectionRef.current ||
+      poiInteraction.isInteracting
     ) {
       return;
     }
 
-    const phaseInfo = getPhaseInfo(onChainState.phase);
-    const onChainPhase = phaseInfo.isNight ? TimePhase.Night : TimePhase.Day;
-    const onChainCycle = phaseInfo.number as 1 | 2 | 3;
-
+    // Compare baseStats.hp (not stats.hp) because on-chain stores base HP only,
+    // while stats.hp includes gear bonuses (e.g., Work Vest +4 HP).
+    // Using stats.hp would cause constant mismatch when +HP gear is equipped.
     const hasMismatch =
       state.player.position.x !== onChainState.positionX ||
       state.player.position.y !== onChainState.positionY ||
-      state.player.stats.hp !== onChainState.hp ||
-      state.player.stats.maxHp !== onChainState.maxHp ||
-      state.player.stats.atk !== onChainState.atk ||
-      state.player.stats.arm !== onChainState.arm ||
-      state.player.stats.spd !== onChainState.spd ||
-      state.player.stats.dig !== onChainState.dig ||
-      state.time.week !== onChainState.week ||
-      state.time.phase !== onChainPhase ||
-      state.time.cycle !== onChainCycle ||
+      state.player.baseStats.hp !== onChainState.hp ||
       state.time.movesRemaining !== onChainState.movesRemaining;
 
-    if (!hasMismatch) {
-      return;
+    if (hasMismatch) {
+      dispatch({ type: 'SYNC_MOVE', confirmedState: onChainState });
     }
-
-    dispatch({
-      type: 'START_GAME',
-      seed: state.seed,
-      restore: {
-        player: {
-          position: {
-            x: onChainState.positionX,
-            y: onChainState.positionY,
-          },
-          stats: {
-            hp: onChainState.hp,
-            maxHp: onChainState.maxHp,
-            atk: onChainState.atk,
-            arm: onChainState.arm,
-            spd: onChainState.spd,
-            dig: onChainState.dig,
-            gold: state.player.stats.gold,
-          },
-          baseStats: {
-            hp: onChainState.maxHp,
-            maxHp: onChainState.maxHp,
-            atk: onChainState.atk,
-            arm: onChainState.arm,
-            spd: onChainState.spd,
-            dig: onChainState.dig,
-            gold: state.player.stats.gold,
-          },
-        } as any,
-        time: {
-          week: onChainState.week as 1 | 2 | 3,
-          phase: onChainPhase,
-          cycle: onChainCycle,
-          movesRemaining: onChainState.movesRemaining,
-          weekBoss: state.time.weekBoss,
-        },
-      },
-    });
-  }, [dispatch, gameplaySyncStatus, mode, onChainState, state]);
+  }, [dispatch, gameplaySyncStatus, mode, onChainState, state, isMovePending, poiInteraction.isInteracting]);
 
   const showWallBreakFeedback = useCallback((message: string) => {
     if (feedbackTimeout.current) clearTimeout(feedbackTimeout.current);
@@ -298,7 +175,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
     feedbackTimeout.current = setTimeout(() => {
       setWallBreakFeedback(null);
       feedbackTimeout.current = null;
-    }, 2000);
+    }, 3500);
   }, []);
 
   const discoveredWaypoints = useMemo(
@@ -314,13 +191,17 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
   const handleDirection = useCallback(
     (direction: Direction) => {
+      console.log('[GameScreen] handleDirection called:', direction, '| mode:', mode, '| hasActiveSession:', hasActiveSession, '| phase:', state?.phase, '| isMovePending:', isMovePendingRef.current);
+      // Use ref for synchronous check to prevent race conditions with rapid clicks
       if (
         !state ||
         state.phase !== GamePhase.Exploration ||
         overviewMode.active ||
-        state.fastTravel?.active
+        state.fastTravel?.active ||
+        isMovePendingRef.current
       )
         return;
+
       const delta = DIRECTION_DELTA[direction];
       const targetPos = {
         x: state.player.position.x + delta.x,
@@ -331,57 +212,137 @@ export function GameScreen({ navigation }: GameScreenProps) {
         targetPos.x < state.map.width &&
         targetPos.y >= 0 &&
         targetPos.y < state.map.height;
-      let isWall = false;
-      let shouldSendTransaction = true;
 
-      if (inBounds) {
-        isWall = state.map.tiles[targetPos.y][targetPos.x] === TileType.Wall;
-        if (isWall) {
-          const isHighlighted =
-            state.wallHighlight &&
-            state.wallHighlight.direction === direction &&
-            state.wallHighlight.targetPosition.x === targetPos.x &&
-            state.wallHighlight.targetPosition.y === targetPos.y;
-          if (!isHighlighted) shouldSendTransaction = false;
+      if (!inBounds) return;
+
+      // Guest mode: use local reducer (preserves offline play)
+      if (mode === 'guest' || !hasActiveSession) {
+        console.log('[GameScreen] Using local MOVE (guest or no session)');
+        dispatch({ type: 'MOVE', direction });
+        return;
+      }
+      console.log('[GameScreen] Using on-chain move path');
+
+      // On-chain mode: validate locally first, then send on-chain
+      const isWall = state.map.tiles[targetPos.y][targetPos.x] === TileType.Wall;
+      if (isWall) {
+        const isHighlighted =
+          state.wallHighlight &&
+          state.wallHighlight.direction === direction &&
+          state.wallHighlight.targetPosition.x === targetPos.x &&
+          state.wallHighlight.targetPosition.y === targetPos.y;
+
+        if (!isHighlighted) {
+          // First tap on wall: show highlight (local only, no transaction)
+          dispatch({ type: 'MOVE', direction });
           if (state.player.stats.dig < 1) showWallBreakFeedback('Requires DIG to break walls');
-          else if (
-            state.wallHighlight &&
-            state.wallHighlight.direction === direction &&
-            !canAffordCostAcrossPhases(state.time, state.wallHighlight.cost)
-          )
-            showWallBreakFeedback(`Not enough moves (need ${state.wallHighlight.cost})`);
+          return;
+        }
+
+        // Second tap on highlighted wall: check cost before sending
+        if (
+          state.wallHighlight &&
+          !canAffordCostAcrossPhases(state.time, state.wallHighlight.cost)
+        ) {
+          showWallBreakFeedback(`Not enough moves (need ${state.wallHighlight.cost})`);
+          return;
         }
       }
 
-      dispatch({ type: 'MOVE', direction });
+      // On-chain-first: send transaction, await confirmation, then sync local state
+      isMovePendingRef.current = true;
+      setIsMovePending(true);
+      console.log('[GameScreen] Sending on-chain move to', targetPos.x, targetPos.y);
 
-      if (shouldSendTransaction && mode !== 'guest' && hasActiveSession && inBounds) {
-        function attemptMove() {
-          movePlayer({ targetX: targetPos.x, targetY: targetPos.y, isWall })
-            .then(({ success }) => {
-              if (!success) {
-                handleMoveFailure('Movement failed on-chain');
+      movePlayer({ targetX: targetPos.x, targetY: targetPos.y })
+        .then((result) => {
+          console.log('[GameScreen] movePlayer result:', JSON.stringify({ success: result.success, hasNewState: !!result.newState, combatOccurred: result.combatOccurred, isDead: result.isDead }));
+          if (!result.success) {
+            showWallBreakFeedback('Movement failed on-chain');
+            void promptTransactionRetry({
+              title: 'Movement Failed',
+              message: 'The on-chain transaction failed.',
+            }).then((shouldRetry) => {
+              if (shouldRetry) {
+                // Retry the same move
+                isMovePendingRef.current = true;
+                setIsMovePending(true);
+                movePlayer({ targetX: targetPos.x, targetY: targetPos.y })
+                  .then((retryResult) => {
+                    if (retryResult.success && retryResult.newState) {
+                      dispatch({ type: 'SYNC_MOVE', confirmedState: retryResult.newState });
+                    }
+                  })
+                  .finally(() => {
+                    isMovePendingRef.current = false;
+                    setIsMovePending(false);
+                  });
               }
-            })
-            .catch(() => {
-              handleMoveFailure('Movement sync error');
             });
-        }
+            return;
+          }
 
-        function handleMoveFailure(message: string) {
-          const reverseDir = getReverseDirection(direction);
-          dispatch({ type: 'MOVE', direction: reverseDir });
-          showWallBreakFeedback(message);
-          void promptTransactionRetry({ title: 'Movement Failed', message }).then((shouldRetry) => {
-            if (shouldRetry) {
-              dispatch({ type: 'MOVE', direction });
-              attemptMove();
+          if (result.newState) {
+            // Update local state from confirmed on-chain state
+            dispatch({ type: 'SYNC_MOVE', confirmedState: result.newState });
+
+            // Refresh map entities (enemies/POIs) to get updated positions
+            // During night phases, enemies move toward the player after each player move
+            // Only sync enemy positions during night when enemies actually move
+            const isNightPhase =
+              result.newState.phase === 1 || // Night1
+              result.newState.phase === 3 || // Night2
+              result.newState.phase === 5;   // Night3
+
+            if (sessionPda && isNightPhase) {
+              refreshMapEntities(sessionPda)
+                .then((data) => {
+                  if (data?.enemies && data.enemies.length > 0) {
+                    console.log('[GameScreen] Syncing enemy positions, count:', data.enemies.length);
+                    // Sync enemy positions from on-chain to local game state
+                    dispatch({ type: 'SYNC_ENEMY_POSITIONS', enemies: data.enemies });
+                  }
+                })
+                .catch((err) =>
+                  console.warn('[GameScreen] Failed to refresh map entities after move:', err)
+                );
             }
-          });
-        }
 
-        attemptMove();
-      }
+            // Handle death — navigate to DeathScreen with available info
+            if (result.isDead) {
+              navigation.navigate('Death', {
+                totalMoves: result.newState.totalMoves,
+                level: result.newState.campaignLevel,
+                week: result.newState.week,
+              });
+            } else if (result.combatOccurred) {
+              // Combat was resolved on-chain during move_player.
+              // SYNC_MOVE already updated local state with post-combat HP/gold/enemy removal.
+              // Show feedback to player. Full combat replay from on-chain events
+              // will be added in a future iteration.
+              if (result.previousState && result.newState.gold > result.previousState.gold) {
+                const goldGained = result.newState.gold - result.previousState.gold;
+                showWallBreakFeedback(`Victory! +${goldGained} gold`);
+              } else {
+                showWallBreakFeedback('Combat resolved!');
+              }
+            } else if (result.bossFightReady) {
+              // Boss fight ready — dispatch trigger and navigate to Combat.
+              // Boss fights use the trigger_boss_fight instruction.
+              // For now, use local boss fight handling (guest mode path)
+              // until on-chain boss fight integration is complete.
+              dispatch({ type: 'TRIGGER_BOSS' });
+            }
+          }
+        })
+        .catch((err) => {
+          console.error('[GameScreen] movePlayer error:', err);
+          showWallBreakFeedback('Movement sync error');
+        })
+        .finally(() => {
+          isMovePendingRef.current = false;
+          setIsMovePending(false);
+        });
     },
     [
       dispatch,
@@ -391,6 +352,10 @@ export function GameScreen({ navigation }: GameScreenProps) {
       mode,
       hasActiveSession,
       movePlayer,
+      isMovePending,
+      navigation,
+      sessionPda,
+      refreshMapEntities,
     ]
   );
 
@@ -419,52 +384,159 @@ export function GameScreen({ navigation }: GameScreenProps) {
     return disabled;
   }, [state, overviewMode.active]);
 
-  /**
-   * Handle combat phase transition.
-   * When game phase changes to Combat or BossFight, show the CombatOverlay.
-   * If combat replay data is available from on-chain events, use it.
-   * Otherwise, create mock combat data from the game state.
-   */
+  // Navigate to CombatScreen when game phase transitions to Combat or BossFight.
+  // In on-chain mode, combat navigation is handled directly by handleDirection.
+  // This effect only applies to guest mode where the local reducer triggers combat.
   useEffect(() => {
-    if (state?.phase === GamePhase.Combat || state?.phase === GamePhase.BossFight) {
-      // Get enemy name from combat state if available
-      if (state.combat?.enemy) {
-        setCurrentEnemyName(state.combat.enemy.name ?? 'Enemy');
-      }
-
-      // If we have combat replay data (from on-chain events), it will auto-play
-      // Otherwise, we need to create mock combat data from the local combat state
-      if (!combat.combatReplay && state.combat) {
-        // Determine if this is a boss fight and get boss info
-        const isBossFight = state.phase === GamePhase.BossFight;
-        const bossInfo = isBossFight
-          ? { bossId: state.time.weekBoss, week: state.time.week }
-          : undefined;
-
-        // Create mock combat replay from local state
-        // Real combat data will come from on-chain transaction logs
-        const mockReplay = createMockCombatReplay(state.combat, bossInfo);
-        combat.startReplay(mockReplay);
-      }
-
-      setCombatOverlayVisible(true);
+    if (mode === 'guest' && (state?.phase === GamePhase.Combat || state?.phase === GamePhase.BossFight)) {
+      navigation.navigate('Combat');
     }
-  }, [state?.phase, state?.combat, state?.time.weekBoss, state?.time.week, combat]);
+  }, [state?.phase, navigation, mode]);
+
+  // Auto-trigger POI interaction when player moves onto a POI
+  // Track position to only trigger on actual position changes
+  // Uses shouldAutoOpen instead of canInteract to skip auto-open for POIs with unmet preconditions
+  // (e.g., inventory full for pick-item POIs, already has oil for Tool Oil Rack)
+  const prevPositionRef = useRef<{ x: number; y: number } | null>(null);
+  // Track last auto-triggered position to prevent re-triggering when modal closes
+  const lastAutoTriggeredPosRef = useRef<{ x: number; y: number } | null>(null);
+
+  // Extract stable values from poiInteraction to avoid re-triggering on every hook state change
+  const { shouldAutoOpen, isInteracting, interact: poiInteract } = poiInteraction;
+
+  useEffect(() => {
+    if (!state?.player?.position || state.phase !== GamePhase.Exploration) return;
+    const currentPos = state.player.position;
+    const prevPos = prevPositionRef.current;
+    const lastAutoPos = lastAutoTriggeredPosRef.current;
+
+    // Only trigger if position actually changed and POI should auto-open
+    // Also prevent re-triggering at the same position after modal close
+    const positionChanged = prevPos && (prevPos.x !== currentPos.x || prevPos.y !== currentPos.y);
+    const alreadyTriggeredHere =
+      lastAutoPos && lastAutoPos.x === currentPos.x && lastAutoPos.y === currentPos.y;
+
+    if (positionChanged && shouldAutoOpen && !isInteracting && !alreadyTriggeredHere) {
+      console.log('[GameScreen] Auto-triggering POI interaction at', currentPos.x, currentPos.y);
+      lastAutoTriggeredPosRef.current = { x: currentPos.x, y: currentPos.y };
+      poiInteract();
+    }
+
+    // Clear last auto-triggered position when player moves away from it
+    if (lastAutoPos && (lastAutoPos.x !== currentPos.x || lastAutoPos.y !== currentPos.y)) {
+      lastAutoTriggeredPosRef.current = null;
+    }
+
+    prevPositionRef.current = { x: currentPos.x, y: currentPos.y };
+  }, [state?.player?.position, state?.phase, shouldAutoOpen, isInteracting, poiInteract]);
 
   const handlePOIClose = useCallback(() => {
     setKilnSelection({ gearId: null, emoji: '', count: 0 });
     setScrapSelection(null);
+    poiInteraction.clearCacheOffers();
     dispatch({ type: 'CLOSE_POI' });
-  }, [dispatch]);
+  }, [dispatch, poiInteraction]);
 
   const handlePOIOption = useCallback(
     (optionIndex: number) => {
+      console.log('[GameScreen] handlePOIOption called | optionIndex:', optionIndex, '| deferredPoiType:', poiInteraction.deferredPoiType, '| hasCacheOffers:', !!(poiInteraction.cacheOfferOptions && poiInteraction.cacheOfferOptions.length > 0), '| cacheOfferCount:', poiInteraction.cacheOfferOptions?.length ?? 0);
       setKilnSelection({ gearId: null, emoji: '', count: 0 });
       setScrapSelection(null);
+
+      // For deferred-selection POIs (Tool Oil, Scanner, Shop), confirm on-chain
+      if (poiInteraction.deferredPoiType !== null) {
+        // Skip mismatch-detection during POI interaction to prevent stale state from reverting changes
+        skipMismatchDetectionRef.current = true;
+        if (skipMismatchTimeoutRef.current) {
+          clearTimeout(skipMismatchTimeoutRef.current);
+        }
+
+        // Capture item before on-chain call (shop purchases update cacheOfferOptions)
+        const selectedItem = poiInteraction.cacheOfferOptions?.[optionIndex]?.item;
+        console.log('[GameScreen] handlePOIOption: DEFERRED path | type:', poiInteraction.deferredPoiType, '| selectedItem:', selectedItem?.name ?? 'none');
+        poiInteraction.confirmPoiSelection(optionIndex).then((result) => {
+          console.log('[GameScreen] confirmPoiSelection result:', result);
+          if (result.success) {
+            // For shop purchases (keepOpen), add item to local inventory after confirmation
+            if (result.keepOpen && selectedItem) {
+              console.log('[GameScreen] Adding purchased item to inventory after on-chain confirmation:', selectedItem.name);
+              if ('currentRarity' in selectedItem) {
+                dispatch({ type: 'COLLECT_GEAR', gear: selectedItem as Gear });
+              } else {
+                dispatch({ type: 'EQUIP_TOOL', tool: selectedItem as Tool });
+              }
+            }
+            if (!result.keepOpen) {
+              dispatch({ type: 'CLOSE_POI' });
+            }
+          } else if (result.error) {
+            // Close modal and show error as top-center feedback toast
+            dispatch({ type: 'CLOSE_POI' });
+            showWallBreakFeedback(result.error);
+          }
+          // Reset skip flag after a delay to allow state to fully propagate
+          skipMismatchTimeoutRef.current = setTimeout(() => {
+            skipMismatchDetectionRef.current = false;
+          }, 1000);
+        });
+        return;
+      }
+
+      // For pick-item POIs with on-chain offers, send on-chain transaction
+      if (poiInteraction.cacheOfferOptions && poiInteraction.cacheOfferOptions.length > 0) {
+        // Skip mismatch-detection during POI interaction to prevent stale state from reverting changes
+        skipMismatchDetectionRef.current = true;
+        if (skipMismatchTimeoutRef.current) {
+          clearTimeout(skipMismatchTimeoutRef.current);
+        }
+
+        // Capture item before on-chain call (selectCacheOffer clears cacheOfferOptions)
+        const selectedItem = poiInteraction.cacheOfferOptions[optionIndex]?.item;
+        console.log('[GameScreen] handlePOIOption: ON-CHAIN pick-item path | selectedItem:', selectedItem?.name ?? 'none');
+        poiInteraction.selectCacheOffer(optionIndex).then((result) => {
+          console.log('[GameScreen] selectCacheOffer result:', result);
+          if (result.success) {
+            // Add item to inventory only after blockchain confirmation
+            if (selectedItem) {
+              console.log('[GameScreen] Adding item to inventory after on-chain confirmation:', selectedItem.name);
+              if ('currentRarity' in selectedItem) {
+                dispatch({ type: 'COLLECT_GEAR', gear: selectedItem as Gear });
+              } else {
+                dispatch({ type: 'EQUIP_TOOL', tool: selectedItem as Tool });
+              }
+            }
+            dispatch({ type: 'CLOSE_POI' });
+          } else if (result.error) {
+            // Close modal and show error as top-center feedback toast
+            dispatch({ type: 'CLOSE_POI' });
+            showWallBreakFeedback(result.error);
+          }
+          // Reset skip flag after a delay to allow state to fully propagate
+          skipMismatchTimeoutRef.current = setTimeout(() => {
+            skipMismatchDetectionRef.current = false;
+          }, 1000);
+        });
+        return;
+      }
+
+      // Default: local-only dispatch for auto-trigger POIs (L1, L5, L8, L10, L11, L14)
+      console.log('[GameScreen] handlePOIOption: LOCAL fallback path | activePOI:', state?.activePOI?.poi?.definitionId);
       dispatch({ type: 'SELECT_POI_OPTION', optionIndex });
     },
-    [dispatch]
+    [dispatch, poiInteraction, state?.activePOI?.poi?.definitionId]
   );
+
+  // Override POI interaction options with on-chain cache offers when available
+  const effectiveInteraction = useMemo(() => {
+    if (!state?.activePOI) return null;
+    if (poiInteraction.cacheOfferOptions && poiInteraction.cacheOfferOptions.length > 0) {
+      return {
+        ...state.activePOI,
+        options: poiInteraction.cacheOfferOptions,
+      };
+    }
+    return state.activePOI;
+  }, [state?.activePOI, poiInteraction.cacheOfferOptions]);
 
   const [kilnSelection, setKilnSelection] = useState<{
     gearId: GearId | null;
@@ -485,89 +557,6 @@ export function GameScreen({ navigation }: GameScreenProps) {
     setTooltipVisible(true);
   }, []);
   const handleCloseTooltip = useCallback(() => setTooltipVisible(false), []);
-
-  /**
-   * Handles combat completion (victory or defeat).
-   * Clears combat state and handles game state transitions.
-   * T043-T046: Boss fight detection and victory/defeat handling
-   */
-  const handleCombatComplete = useCallback(
-    (playerWon: boolean, goldEarned: number) => {
-      // Hide overlay
-      setCombatOverlayVisible(false);
-
-      // Capture current state for navigation params before dispatching
-      const currentReplay = combat.combatReplay;
-      const isBossFight = state?.phase === GamePhase.BossFight;
-      const currentWeek = state?.time.week ?? 1;
-      const currentLevel = sessionLevel ?? 1;
-      const totalMoves = state?.time.movesRemaining ?? 0;
-      const phase =
-        state?.time.phase === TimePhase.Day
-          ? `Day ${state.time.cycle}`
-          : state?.time.phase === TimePhase.Night
-            ? `Night ${state.time.cycle}`
-            : 'Boss';
-
-      // Clear combat replay state
-      combat.clear();
-
-      if (playerWon) {
-        // Victory: dispatch action to update game state
-        if (goldEarned > 0) {
-          dispatch({ type: 'ADD_GOLD', amount: goldEarned });
-        }
-        dispatch({ type: 'RESOLVE_COMBAT', result: 'VICTORY' });
-
-        // T044-T045: Handle boss victory navigation
-        if (isBossFight) {
-          if (currentWeek === 3) {
-            // T045: Week 3 boss victory -> Victory screen
-            // Queue session close with victory flag (doesn't deduct run)
-            queueEndGame(currentLevel, true).catch((err) => {
-              console.warn('[GameScreen] Failed to queue session cleanup:', err);
-            });
-
-            navigation.navigate('Victory', {
-              replay: currentReplay ?? undefined,
-              level: currentLevel,
-              totalMoves,
-              levelUnlocked: currentLevel + 1, // Unlock next level
-              // itemUnlocked will be populated from on-chain events
-            });
-          } else {
-            // T044: Week 1/2 boss victory -> Continue (week advances via reducer)
-            // The game reducer handles week advancement and gear slot unlock
-            // UI feedback is shown via the week display update
-          }
-        }
-      } else {
-        // Defeat: resolve combat then navigate to death screen
-        dispatch({ type: 'RESOLVE_COMBAT', result: 'DEFEAT' });
-
-        // T049: Queue session close and profile update (deducts run) atomically
-        // This returns immediately without requiring signatures for instant navigation
-        queueEndGame(currentLevel, false).catch((err) => {
-          console.warn('[GameScreen] Failed to queue session cleanup:', err);
-        });
-
-        // T046/T048: Navigate to DeathScreen for any defeat
-        const killedBy = isBossFight
-          ? `Week ${currentWeek} Boss`
-          : (state?.combat?.enemy?.name ?? 'Enemy');
-
-        navigation.navigate('Death', {
-          replay: currentReplay ?? undefined,
-          totalMoves,
-          level: currentLevel,
-          week: currentWeek,
-          phase,
-          killedBy,
-        });
-      }
-    },
-    [combat, dispatch, navigation, state, queueEndGame, sessionLevel]
-  );
 
   const handleInventoryItemPress = useCallback(
     (item: Tool | Gear) => {
@@ -663,22 +652,21 @@ export function GameScreen({ navigation }: GameScreenProps) {
                   <Pressable style={styles.mapToggleButton} onPress={toggleOverviewMode}>
                     <Image source={MAP_ICON} style={styles.mapIcon} resizeMode="contain" />
                   </Pressable>
+                  {mode !== 'guest' && hasActiveSession && (
+                    <Pressable onPress={() => topUpBurner()}>
+                      <BurnerBalanceIndicator
+                        balance={burnerBalance}
+                        isLowBalance={isBurnerLowBalance}
+                        compact
+                      />
+                    </Pressable>
+                  )}
                 </View>
                 <View style={styles.navbarCenter}>
-                  <Text style={styles.weekText}>
-                    Week {state.time.week} - {formatPhaseLabel(state.time.phase, state.time.cycle)}
-                  </Text>
+                  <Text style={styles.weekText}>Week {state.time.week}</Text>
                   <TopBar time={state.time} />
                 </View>
                 <View style={styles.navbarRight}>
-                  {mode !== 'guest' && hasActiveSession && (
-                    <BurnerBalanceIndicator
-                      balance={burnerBalance}
-                      isLowBalance={isBurnerLowBalance}
-                      compact
-                      style={styles.burnerBalance}
-                    />
-                  )}
                   <View style={styles.goldDisplay}>
                     <Image source={COIN_ICON} style={styles.coinIcon} resizeMode="contain" />
                     <Text style={styles.goldValue}>{state.player.stats.gold}</Text>
@@ -727,21 +715,17 @@ export function GameScreen({ navigation }: GameScreenProps) {
                     onDirection={handleDirection}
                     size={120}
                     disabledDirections={disabledDirections}
+                    onCenterPress={
+                      poiInteraction.canInteract && state.phase === GamePhase.Exploration
+                        ? () => {
+                            console.log('[GameScreen] A button pressed | currentPoi:', poiInteraction.currentPoi ? { x: poiInteraction.currentPoi.x, y: poiInteraction.currentPoi.y, poiType: poiInteraction.currentPoi.poiType } : null);
+                            poiInteraction.interact();
+                          }
+                        : undefined
+                    }
+                    centerDisabled={poiInteraction.isInteracting}
                   />
                 </View>
-
-                {/* POI Interact Button - Shows when player is on a valid POI */}
-                {poiInteraction.canInteract && state.phase === GamePhase.Exploration && (
-                  <Pressable
-                    style={styles.interactButton}
-                    onPress={() => poiInteraction.interact()}
-                    disabled={poiInteraction.isInteracting}
-                  >
-                    <Text style={styles.interactButtonText}>
-                      {poiInteraction.isInteracting ? '...' : 'Interact'}
-                    </Text>
-                  </Pressable>
-                )}
 
                 {state.fastTravel?.active && (
                   <FastTravelOverlay
@@ -756,7 +740,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
                 )}
                 <POIModal
                   visible={state.phase === GamePhase.POIInteraction}
-                  interaction={state.activePOI}
+                  interaction={effectiveInteraction}
                   onSelectOption={handlePOIOption}
                   onClose={handlePOIClose}
                   kilnSelection={kilnSelection}
@@ -794,14 +778,6 @@ export function GameScreen({ navigation }: GameScreenProps) {
             visible={isTooltipVisible}
             onClose={handleCloseTooltip}
           />
-
-          {/* Combat Overlay - Shows when combat events are received */}
-          <CombatOverlay
-            visible={combatOverlayVisible}
-            enemyName={currentEnemyName}
-            onComplete={handleCombatComplete}
-            onDismiss={() => setCombatOverlayVisible(false)}
-          />
         </View>
       </ImageBackground>
     </Animated.View>
@@ -818,7 +794,6 @@ const styles = StyleSheet.create({
   navbarLeft: { width: 100, justifyContent: 'center', alignItems: 'flex-start', gap: 2 },
   navbarCenter: { flex: 1, justifyContent: 'center' },
   navbarRight: { width: 80, justifyContent: 'center', alignItems: 'flex-end' },
-  burnerBalance: { marginBottom: 6 },
   weekText: {
     alignSelf: 'center',
     fontFamily: Typography.header,
@@ -838,23 +813,6 @@ const styles = StyleSheet.create({
   loading: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   loadingText: { fontFamily: Typography.header, fontSize: 20, color: '#666666' },
   dpadOverlay: { position: 'absolute', bottom: 24, left: 24 },
-  interactButton: {
-    position: 'absolute',
-    bottom: 24,
-    right: 24,
-    backgroundColor: '#4a4a6a',
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: '#6a6a8a',
-  },
-  interactButtonText: {
-    fontFamily: Typography.button,
-    fontSize: 16,
-    color: '#ffffff',
-    fontWeight: 'bold',
-  },
   goldDisplay: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   coinIcon: { width: 28, height: 28 },
   goldValue: { fontFamily: Typography.number, fontSize: 24, fontWeight: 'bold', color: '#000000' },

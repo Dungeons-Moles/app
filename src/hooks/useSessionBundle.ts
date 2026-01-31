@@ -13,7 +13,6 @@ import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
 import { useWallet } from '@/contexts/WalletContext';
 import {
   createSessionBundle,
-  createSimplifiedSessionBundle,
   validateSessionCreation,
   type SessionBundleResult,
   type SessionPrograms,
@@ -25,6 +24,7 @@ import {
   deriveMapPoisPda,
   deriveInventoryPda,
 } from '@/services/solana/constants';
+import { SOLANA_CONFIG } from '@/services/solana/config';
 import type { TransactionResult } from '@/types/solana';
 
 // ============================================================================
@@ -150,10 +150,10 @@ export function useSessionBundle(): UseSessionBundleResult {
         // TODO: Inject program instances from context when available
         const programs: SessionPrograms = {
           sessionManager: null as any,
+          mapGenerator: null as any,
           gameplayState: null as any,
-          fieldEnemies: null as any,
+          playerInventory: null as any,
           poiSystem: null as any,
-          inventory: null as any,
         };
 
         const result = await createSessionBundle(
@@ -168,7 +168,7 @@ export function useSessionBundle(): UseSessionBundleResult {
 
         // Sign and send the transaction
         const signature = await signAndSendTransaction(result.transaction);
-        await connection.confirmTransaction(signature, 'confirmed');
+        await connection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
 
         console.log('[useSessionBundle] Bundle transaction confirmed:', signature);
 

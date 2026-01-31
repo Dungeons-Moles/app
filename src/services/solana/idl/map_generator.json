@@ -8,24 +8,41 @@
   },
   "instructions": [
     {
-      "name": "batch_update_map_config",
+      "name": "generate_map",
       "docs": [
-        "Batch updates multiple seed mappings (admin only)."
+        "Generates a map for a game session based on the campaign level.",
+        "Uses the seed from map_config for the given level."
       ],
       "discriminator": [
-        237,
+        47,
+        250,
+        155,
         50,
-        79,
-        73,
-        13,
-        64,
-        249,
-        35
+        125,
+        160,
+        21,
+        74
       ],
       "accounts": [
         {
-          "name": "map_config",
+          "name": "payer",
+          "docs": [
+            "Payer for rent"
+          ],
           "writable": true,
+          "signer": true
+        },
+        {
+          "name": "session",
+          "docs": [
+            "Game session PDA reference (validated externally)"
+          ]
+        },
+        {
+          "name": "map_config",
+          "docs": [
+            "Map configuration with seeds"
+          ],
           "pda": {
             "seeds": [
               {
@@ -47,73 +64,49 @@
           }
         },
         {
-          "name": "admin",
-          "signer": true,
-          "relations": [
-            "map_config"
-          ]
-        }
-      ],
-      "args": [
-        {
-          "name": "updates",
-          "type": {
-            "vec": {
-              "defined": {
-                "name": "SeedUpdate"
-              }
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "get_map_seed",
-      "docs": [
-        "Returns the seed for a given level.",
-        "This is a view function - state is not modified."
-      ],
-      "discriminator": [
-        62,
-        220,
-        207,
-        99,
-        99,
-        196,
-        117,
-        214
-      ],
-      "accounts": [
-        {
-          "name": "map_config",
+          "name": "generated_map",
+          "docs": [
+            "Generated map output"
+          ],
+          "writable": true,
           "pda": {
             "seeds": [
               {
                 "kind": "const",
                 "value": [
+                  103,
+                  101,
+                  110,
+                  101,
+                  114,
+                  97,
+                  116,
+                  101,
+                  100,
+                  95,
                   109,
                   97,
-                  112,
-                  95,
-                  99,
-                  111,
-                  110,
-                  102,
-                  105,
-                  103
+                  112
                 ]
+              },
+              {
+                "kind": "account",
+                "path": "session"
               }
             ]
           }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
         }
       ],
       "args": [
         {
-          "name": "level",
+          "name": "campaign_level",
           "type": "u8"
         }
-      ],
-      "returns": "u64"
+      ]
     },
     {
       "name": "initialize_map_config",
@@ -168,176 +161,234 @@
       "args": []
     },
     {
-      "name": "transfer_admin",
+      "name": "mark_poi_used",
       "docs": [
-        "Transfers admin authority to a new address."
+        "Marks a POI as used on the generated map."
       ],
       "discriminator": [
-        42,
-        242,
-        66,
-        106,
-        228,
+        169,
+        171,
+        86,
+        233,
+        88,
+        181,
+        97,
+        224
+      ],
+      "accounts": [
+        {
+          "name": "generated_map",
+          "docs": [
+            "Generated map output"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  101,
+                  110,
+                  101,
+                  114,
+                  97,
+                  116,
+                  101,
+                  100,
+                  95,
+                  109,
+                  97,
+                  112
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "session"
+              }
+            ]
+          }
+        },
+        {
+          "name": "session",
+          "docs": [
+            "Game session PDA reference (validated by owner + has_one)"
+          ],
+          "relations": [
+            "generated_map"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "poi_index",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "set_tile_floor",
+      "docs": [
+        "Converts a wall tile to a floor tile, authorized by gameplay-state.",
+        "",
+        "This instruction is called via CPI from gameplay-state when a player",
+        "breaks through a wall. The change persists for the entire session,",
+        "so future movement to this tile costs only 1 move (floor cost).",
+        "",
+        "Authorization: Requires gameplay_authority PDA as signer."
+      ],
+      "discriminator": [
+        120,
+        87,
+        151,
+        177,
+        84,
+        101,
         10,
-        111,
-        156
+        134
       ],
       "accounts": [
         {
-          "name": "map_config",
+          "name": "generated_map",
+          "docs": [
+            "Generated map to modify"
+          ],
           "writable": true,
           "pda": {
             "seeds": [
               {
                 "kind": "const",
                 "value": [
+                  103,
+                  101,
+                  110,
+                  101,
+                  114,
+                  97,
+                  116,
+                  101,
+                  100,
+                  95,
                   109,
                   97,
-                  112,
-                  95,
-                  99,
-                  111,
-                  110,
-                  102,
-                  105,
-                  103
+                  112
                 ]
+              },
+              {
+                "kind": "account",
+                "path": "session"
               }
             ]
           }
         },
         {
-          "name": "admin",
-          "signer": true,
+          "name": "session",
+          "docs": [
+            "Game session PDA reference (validated by has_one)"
+          ],
           "relations": [
-            "map_config"
+            "generated_map"
           ]
-        }
-      ],
-      "args": [
+        },
         {
-          "name": "new_admin",
-          "type": "pubkey"
-        }
-      ]
-    },
-    {
-      "name": "update_map_config",
-      "docs": [
-        "Updates the seed for a single level (admin only)."
-      ],
-      "discriminator": [
-        155,
-        134,
-        158,
-        245,
-        122,
-        214,
-        185,
-        116
-      ],
-      "accounts": [
-        {
-          "name": "map_config",
-          "writable": true,
+          "name": "gameplay_authority",
+          "docs": [
+            "Gameplay authority PDA from gameplay-state that must sign",
+            "This ensures only gameplay-state can call this instruction"
+          ],
+          "signer": true,
           "pda": {
             "seeds": [
               {
                 "kind": "const",
                 "value": [
-                  109,
+                  103,
                   97,
+                  109,
+                  101,
                   112,
+                  108,
+                  97,
+                  121,
                   95,
-                  99,
+                  97,
+                  117,
+                  116,
+                  104,
                   111,
-                  110,
-                  102,
+                  114,
                   105,
-                  103
+                  116,
+                  121
                 ]
               }
-            ]
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                66,
+                165,
+                213,
+                208,
+                125,
+                103,
+                44,
+                88,
+                115,
+                217,
+                192,
+                197,
+                1,
+                117,
+                7,
+                170,
+                78,
+                32,
+                208,
+                143,
+                119,
+                94,
+                47,
+                124,
+                229,
+                196,
+                47,
+                149,
+                235,
+                227,
+                237,
+                31
+              ]
+            }
           }
-        },
-        {
-          "name": "admin",
-          "signer": true,
-          "relations": [
-            "map_config"
-          ]
         }
       ],
       "args": [
         {
-          "name": "level",
+          "name": "x",
           "type": "u8"
         },
         {
-          "name": "seed",
-          "type": "u64"
+          "name": "y",
+          "type": "u8"
         }
       ]
-    },
-    {
-      "name": "verify_map_hash",
-      "docs": [
-        "Verifies that a submitted map hash matches the expected hash.",
-        "Used to validate off-chain map generation."
-      ],
-      "discriminator": [
-        8,
-        182,
-        82,
-        250,
-        35,
-        144,
-        217,
-        47
-      ],
-      "accounts": [
-        {
-          "name": "map_config",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  109,
-                  97,
-                  112,
-                  95,
-                  99,
-                  111,
-                  110,
-                  102,
-                  105,
-                  103
-                ]
-              }
-            ]
-          }
-        }
-      ],
-      "args": [
-        {
-          "name": "level",
-          "type": "u8"
-        },
-        {
-          "name": "submitted_hash",
-          "type": {
-            "array": [
-              "u8",
-              32
-            ]
-          }
-        }
-      ],
-      "returns": "bool"
     }
   ],
   "accounts": [
+    {
+      "name": "GeneratedMap",
+      "discriminator": [
+        192,
+        250,
+        64,
+        211,
+        84,
+        36,
+        83,
+        95
+      ]
+    },
     {
       "name": "MapConfig",
       "discriminator": [
@@ -349,34 +400,6 @@
         115,
         92,
         173
-      ]
-    }
-  ],
-  "events": [
-    {
-      "name": "AdminTransferred",
-      "discriminator": [
-        255,
-        147,
-        182,
-        5,
-        199,
-        217,
-        38,
-        179
-      ]
-    },
-    {
-      "name": "MapConfigUpdated",
-      "discriminator": [
-        75,
-        210,
-        48,
-        93,
-        233,
-        166,
-        60,
-        111
       ]
     }
   ],
@@ -405,25 +428,215 @@
       "code": 6004,
       "name": "TooManyUpdates",
       "msg": "Batch update exceeds maximum allowed"
+    },
+    {
+      "code": 6005,
+      "name": "MapGenerationFailed",
+      "msg": "Map generation failed"
+    },
+    {
+      "code": 6006,
+      "name": "MapAlreadyExists",
+      "msg": "Map already exists for this session"
+    },
+    {
+      "code": 6007,
+      "name": "InvalidSessionOwner",
+      "msg": "Invalid session owner"
+    },
+    {
+      "code": 6008,
+      "name": "InvalidPoiIndex",
+      "msg": "POI index out of bounds"
+    },
+    {
+      "code": 6009,
+      "name": "TileOutOfBounds",
+      "msg": "Tile position out of bounds"
     }
   ],
   "types": [
     {
-      "name": "AdminTransferred",
+      "name": "EnemySpawn",
+      "docs": [
+        "Initial enemy spawn position (4 bytes)"
+      ],
       "type": {
         "kind": "struct",
         "fields": [
           {
-            "name": "old_admin",
+            "name": "archetype_id",
+            "docs": [
+              "Enemy archetype ID (0-11)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "tier",
+            "docs": [
+              "Enemy tier: 0=T1, 1=T2, 2=T3"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "x",
+            "docs": [
+              "X position on map"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "y",
+            "docs": [
+              "Y position on map"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "GeneratedMap",
+      "docs": [
+        "Generated map account storing tiles, enemies, and POI positions.",
+        "PDA seeds: [\"generated_map\", session.key()]",
+        "",
+        "**Persistence invariant:** This account is session-scoped and its layout",
+        "(including `packed_tiles`) persists unchanged across week transitions.",
+        "Week advancement in gameplay-state only modifies `GameState.week` —",
+        "`packed_tiles` is never reset. Wall-to-floor conversions via `set_floor()`",
+        "write directly to `packed_tiles` and persist for the entire session."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "session",
+            "docs": [
+              "Session this map belongs to"
+            ],
             "type": "pubkey"
           },
           {
-            "name": "new_admin",
-            "type": "pubkey"
+            "name": "width",
+            "docs": [
+              "Map width in tiles"
+            ],
+            "type": "u8"
           },
           {
-            "name": "timestamp",
-            "type": "i64"
+            "name": "height",
+            "docs": [
+              "Map height in tiles"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "seed",
+            "docs": [
+              "Seed used for generation"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "spawn_x",
+            "docs": [
+              "Player spawn X position"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "spawn_y",
+            "docs": [
+              "Player spawn Y position"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "mole_den_x",
+            "docs": [
+              "Mole den X position (above spawn)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "mole_den_y",
+            "docs": [
+              "Mole den Y position"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "walkable_count",
+            "docs": [
+              "Number of walkable (floor) tiles"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "packed_tiles",
+            "docs": [
+              "Bit-packed tiles (0=floor, 1=wall), 313 bytes for 2500 tiles"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                313
+              ]
+            }
+          },
+          {
+            "name": "enemy_count",
+            "docs": [
+              "Number of enemies placed"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "enemies",
+            "docs": [
+              "Enemy spawn positions (max 48)"
+            ],
+            "type": {
+              "array": [
+                {
+                  "defined": {
+                    "name": "EnemySpawn"
+                  }
+                },
+                48
+              ]
+            }
+          },
+          {
+            "name": "poi_count",
+            "docs": [
+              "Number of POIs placed"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "pois",
+            "docs": [
+              "POI spawn positions (max 50)"
+            ],
+            "type": {
+              "array": [
+                {
+                  "defined": {
+                    "name": "PoiSpawn"
+                  }
+                },
+                50
+              ]
+            }
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump seed"
+            ],
+            "type": "u8"
           }
         ]
       }
@@ -446,12 +659,12 @@
           {
             "name": "seeds",
             "docs": [
-              "Seed values for campaign levels 0-80"
+              "Seed values for campaign levels 1-40 (index = level - 1)"
             ],
             "type": {
               "array": [
                 "u64",
-                81
+                40
               ]
             }
           },
@@ -473,54 +686,40 @@
       }
     },
     {
-      "name": "MapConfigUpdated",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "admin",
-            "type": "pubkey"
-          },
-          {
-            "name": "level",
-            "type": "u8"
-          },
-          {
-            "name": "old_seed",
-            "type": "u64"
-          },
-          {
-            "name": "new_seed",
-            "type": "u64"
-          },
-          {
-            "name": "timestamp",
-            "type": "i64"
-          }
-        ]
-      }
-    },
-    {
-      "name": "SeedUpdate",
+      "name": "PoiSpawn",
       "docs": [
-        "Represents a single seed update for batch operations"
+        "Initial POI spawn position (4 bytes)"
       ],
       "type": {
         "kind": "struct",
         "fields": [
           {
-            "name": "level",
+            "name": "poi_type",
             "docs": [
-              "Level to update (0-80)"
+              "POI definition ID (1-14)"
             ],
             "type": "u8"
           },
           {
-            "name": "seed",
+            "name": "is_used",
             "docs": [
-              "New seed value"
+              "True if POI has been used"
             ],
-            "type": "u64"
+            "type": "bool"
+          },
+          {
+            "name": "x",
+            "docs": [
+              "X position on map"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "y",
+            "docs": [
+              "Y position on map"
+            ],
+            "type": "u8"
           }
         ]
       }

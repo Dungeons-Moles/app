@@ -13,6 +13,7 @@ import {
   ScrollView,
   RefreshControl,
   Animated,
+  ActivityIndicator,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Svg, { Ellipse, Defs, Pattern, Line } from 'react-native-svg';
@@ -49,19 +50,21 @@ export function HubScreen({ navigation }: HubScreenProps) {
     updateDefaultCombatSpeed,
     refresh,
     mode,
-    availableRuns,
   } = useProfile();
   const isGuest = mode === 'guest';
-  const { hasPendingCleanups, processPendingCleanups, activeSessions } = useSession();
+  const { activeSessions } = useSession();
   const { state: gameState, dispatch } = useGame();
+  const { purchaseRuns, availableRuns } = useProfile();
   const [showSettings, setShowSettings] = useState(false);
   const [showResumePrompt, setShowResumePrompt] = useState(false);
+  const [showMarketplace, setShowMarketplace] = useState(false);
+  const [marketplaceTab, setMarketplaceTab] = useState<'skins' | 'items' | 'pve'>('pve');
+  const [isPurchasing, setIsPurchasing] = useState(false);
+  const [purchaseError, setPurchaseError] = useState<string | null>(null);
   const [combatSpeed, setCombatSpeed] = useState<CombatSpeed>('normal');
   const [refreshing, setRefreshing] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const hasProcessedCleanups = useRef(false);
   const hasPromptedResume = useRef(false);
-  const hasLowRuns = !isGuest && availableRuns <= 3;
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -70,17 +73,6 @@ export function HubScreen({ navigation }: HubScreenProps) {
       useNativeDriver: true,
     }).start();
   }, []);
-
-  // Process any pending cleanups when arriving at the Hub
-  useEffect(() => {
-    if (hasPendingCleanups && !hasProcessedCleanups.current) {
-      hasProcessedCleanups.current = true;
-      console.log('[HubScreen] Processing pending cleanups in background...');
-      processPendingCleanups().catch((error) => {
-        console.warn('[HubScreen] Failed to process pending cleanups:', error);
-      });
-    }
-  }, [hasPendingCleanups, processPendingCleanups]);
 
   useEffect(() => {
     if (isGuest || hasPromptedResume.current) {
@@ -129,7 +121,26 @@ export function HubScreen({ navigation }: HubScreenProps) {
   };
 
   const handleMarketplace = () => {
-    Alert.alert('Coming Soon', 'Marketplace is under development!');
+    setShowMarketplace(true);
+    setMarketplaceTab('pve');
+    setPurchaseError(null);
+  };
+
+  const handlePurchaseSessions = async () => {
+    setIsPurchasing(true);
+    setPurchaseError(null);
+    try {
+      const result = await purchaseRuns();
+      if (result?.success) {
+        setShowMarketplace(false);
+      } else {
+        setPurchaseError(result?.error ?? 'Purchase failed');
+      }
+    } catch (e) {
+      setPurchaseError(e instanceof Error ? e.message : 'Purchase failed');
+    } finally {
+      setIsPurchasing(false);
+    }
   };
 
   const handleLeaderboard = () => {
@@ -184,7 +195,6 @@ export function HubScreen({ navigation }: HubScreenProps) {
                     <View style={{ gap: 4 }}>
                       <Skeleton width={80} height={16} borderRadius={4} />
                       <Skeleton width={60} height={12} borderRadius={4} />
-                      {!isGuest && <Skeleton width={50} height={10} borderRadius={4} />}
                     </View>
                   ) : (
                     <>
@@ -198,11 +208,6 @@ export function HubScreen({ navigation }: HubScreenProps) {
                           {shortenAddress(profile.owner.toBase58())}
                         </Text>
                       ) : null}
-                      {!isGuest && (
-                        <Text style={[styles.runCountText, hasLowRuns && styles.runCountTextLow]}>
-                          Runs: {availableRuns}
-                        </Text>
-                      )}
                     </>
                   )}
                 </View>
@@ -222,23 +227,6 @@ export function HubScreen({ navigation }: HubScreenProps) {
               </TouchableOpacity>
             )}
 
-            {!isGuest && (
-              <TouchableOpacity
-                onPress={() => navigation.navigate('RunPurchase')}
-                activeOpacity={0.7}
-                style={{ marginTop: 8 }}
-              >
-                <ImageBackground
-                  source={buttonV1Source}
-                  style={styles.navButton}
-                  resizeMode="stretch"
-                >
-                  <Text style={[styles.navButtonText, hasLowRuns && styles.navButtonTextWarning]}>
-                    Purchase Runs
-                  </Text>
-                </ImageBackground>
-              </TouchableOpacity>
-            )}
           </View>
 
           {/* TOP CENTER - Points */}
@@ -511,6 +499,113 @@ export function HubScreen({ navigation }: HubScreenProps) {
           </View>
         </TouchableWithoutFeedback>
       </Modal>
+
+      {/* Marketplace Modal */}
+      <Modal
+        visible={showMarketplace}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowMarketplace(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setShowMarketplace(false)}>
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
+              <View style={styles.marketplaceModal}>
+                <ImageBackground
+                  source={paperPanelSource}
+                  style={styles.marketplaceBg}
+                  resizeMode="stretch"
+                />
+                <View style={styles.marketplaceInner}>
+                  <View style={styles.modalHeader}>
+                    <Text style={styles.modalTitle}>Marketplace</Text>
+                    <TouchableOpacity
+                      onPress={() => setShowMarketplace(false)}
+                      style={styles.closeButton}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    >
+                      <Text style={styles.closeButtonText}>✕</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Tabs */}
+                  <View style={styles.marketplaceTabs}>
+                    {(['skins', 'items', 'pve'] as const).map((tab) => (
+                      <TouchableOpacity
+                        key={tab}
+                        style={[
+                          styles.marketplaceTab,
+                          marketplaceTab === tab && styles.marketplaceTabActive,
+                        ]}
+                        onPress={() => setMarketplaceTab(tab)}
+                        activeOpacity={0.7}
+                      >
+                        <Text
+                          style={[
+                            styles.marketplaceTabText,
+                            marketplaceTab === tab && styles.marketplaceTabTextActive,
+                          ]}
+                        >
+                          {tab === 'pve' ? 'PvE' : tab.charAt(0).toUpperCase() + tab.slice(1)}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+
+                  {/* Tab Content */}
+                  <View style={styles.marketplaceContent}>
+                    {marketplaceTab === 'skins' && (
+                      <Text style={styles.comingSoonText}>Coming Soon</Text>
+                    )}
+                    {marketplaceTab === 'items' && (
+                      <Text style={styles.comingSoonText}>Coming Soon</Text>
+                    )}
+                    {marketplaceTab === 'pve' && (
+                      <View style={styles.pveContent}>
+                        <View style={styles.sessionBundle}>
+                          <Text style={styles.bundleAmount}>20</Text>
+                          <Text style={styles.bundleLabel}>Sessions</Text>
+                        </View>
+
+                        <View style={styles.bundlePriceRow}>
+                          <Text style={styles.bundlePriceLabel}>Price</Text>
+                          <Text style={styles.bundlePriceValue}>0.005 SOL</Text>
+                        </View>
+
+                        <Text style={styles.bundleCurrent}>
+                          Current: {availableRuns} sessions
+                        </Text>
+
+                        {purchaseError && (
+                          <Text style={styles.purchaseErrorText}>{purchaseError}</Text>
+                        )}
+
+                        <TouchableOpacity
+                          onPress={handlePurchaseSessions}
+                          activeOpacity={0.7}
+                          disabled={isPurchasing}
+                        >
+                          <ImageBackground
+                            source={buttonV4Source}
+                            style={[styles.purchaseBtn, isPurchasing && { opacity: 0.6 }]}
+                            resizeMode="stretch"
+                          >
+                            {isPurchasing ? (
+                              <ActivityIndicator color="#1a1a1a" size="small" />
+                            ) : (
+                              <Text style={styles.purchaseBtnText}>Purchase</Text>
+                            )}
+                          </ImageBackground>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                  </View>
+                </View>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
     </Animated.View>
   );
 }
@@ -588,16 +683,6 @@ const styles = StyleSheet.create({
     color: '#888888',
     fontWeight: 'bold',
     lineHeight: 12,
-  },
-  runCountText: {
-    fontFamily: Typography.number,
-    fontSize: 11,
-    color: '#6f6f6f',
-    fontWeight: 'bold',
-    lineHeight: 12,
-  },
-  runCountTextLow: {
-    color: '#a33a3a',
   },
 
   // TOP CENTER - Points
@@ -881,6 +966,127 @@ const styles = StyleSheet.create({
   disconnectText: {
     fontFamily: Typography.button,
     fontSize: 18,
-    color: '#a33a3a', // Red color
+    color: '#a33a3a',
+  },
+
+  // MARKETPLACE MODAL
+  marketplaceModal: {
+    width: 431,
+    height: 380,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  marketplaceBg: {
+    position: 'absolute',
+    top: (380 - 453) / 2,
+    left: (431 - 380) / 2,
+    width: 380,
+    height: 453,
+    transform: [{ rotate: '90deg' }],
+  },
+  marketplaceInner: {
+    flex: 1,
+    padding: 36,
+    paddingTop: 24,
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+  },
+  marketplaceTabs: {
+    flexDirection: 'row',
+    gap: 6,
+    marginBottom: 16,
+  },
+  marketplaceTab: {
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+    borderRadius: 4,
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  marketplaceTabActive: {
+    borderBottomColor: '#3d2b1f',
+  },
+  marketplaceTabText: {
+    fontFamily: Typography.button,
+    fontSize: 14,
+    color: '#8a7a6a',
+  },
+  marketplaceTabTextActive: {
+    color: '#3d2b1f',
+  },
+  marketplaceContent: {
+    flex: 1,
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  comingSoonText: {
+    fontFamily: Typography.header,
+    fontSize: 22,
+    color: '#8a7a6a',
+  },
+  pveContent: {
+    width: '100%',
+    alignItems: 'center',
+    gap: 10,
+  },
+  sessionBundle: {
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  bundleAmount: {
+    fontFamily: Typography.number,
+    fontSize: 48,
+    fontWeight: 'bold',
+    color: '#3d2b1f',
+  },
+  bundleLabel: {
+    fontFamily: Typography.body,
+    fontSize: 16,
+    color: '#5c4033',
+    marginTop: -4,
+  },
+  bundlePriceRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '80%',
+    paddingVertical: 6,
+    borderTopWidth: 1,
+    borderTopColor: '#c4a882',
+  },
+  bundlePriceLabel: {
+    fontFamily: Typography.body,
+    fontSize: 15,
+    color: '#8a7a6a',
+  },
+  bundlePriceValue: {
+    fontFamily: Typography.number,
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: '#3d2b1f',
+  },
+  bundleCurrent: {
+    fontFamily: Typography.body,
+    fontSize: 13,
+    color: '#8a7a6a',
+  },
+  purchaseErrorText: {
+    fontFamily: Typography.body,
+    fontSize: 12,
+    color: '#a33a3a',
+    textAlign: 'center',
+  },
+  purchaseBtn: {
+    width: 140,
+    height: 48,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  purchaseBtnText: {
+    fontFamily: Typography.button,
+    fontSize: 16,
+    color: '#1a1a1a',
+    marginBottom: 4,
   },
 });

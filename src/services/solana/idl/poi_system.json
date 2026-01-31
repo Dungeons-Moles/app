@@ -1,0 +1,4261 @@
+{
+  "address": "6E27r1Cyo2CNPvtRsonn3uHUAdznS3cMXEBX4HRbfBQY",
+  "metadata": {
+    "name": "poi_system",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "POI System Program for Points of Interest interactions"
+  },
+  "instructions": [
+    {
+      "name": "close_map_pois",
+      "docs": [
+        "Close MapPois account, returning rent to the session owner."
+      ],
+      "discriminator": [
+        13,
+        31,
+        234,
+        191,
+        102,
+        175,
+        103,
+        202
+      ],
+      "accounts": [
+        {
+          "name": "map_pois",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  112,
+                  95,
+                  112,
+                  111,
+                  105,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois.session",
+                "account": "MapPois"
+              }
+            ]
+          }
+        },
+        {
+          "name": "game_session",
+          "docs": [
+            "The session that owns this MapPois.",
+            "Player field is extracted from account data in the instruction body."
+          ]
+        },
+        {
+          "name": "player",
+          "docs": [
+            "Session owner — must match GameSession.player (validated in instruction body)."
+          ],
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "discover_waypoint",
+      "docs": [
+        "Discover a Rail Waypoint (L8).",
+        "",
+        "On first visit, marks the waypoint as discovered for fast travel.",
+        "Must be called when player first reaches a waypoint."
+      ],
+      "discriminator": [
+        133,
+        84,
+        181,
+        197,
+        13,
+        108,
+        43,
+        73
+      ],
+      "accounts": [
+        {
+          "name": "map_pois",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  112,
+                  95,
+                  112,
+                  111,
+                  105,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois.session",
+                "account": "MapPois"
+              }
+            ]
+          }
+        },
+        {
+          "name": "game_state",
+          "docs": [
+            "Player's GameState for position/time validation"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois.session",
+                "account": "MapPois"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                66,
+                165,
+                213,
+                208,
+                125,
+                103,
+                44,
+                88,
+                115,
+                217,
+                192,
+                197,
+                1,
+                117,
+                7,
+                170,
+                78,
+                32,
+                208,
+                143,
+                119,
+                94,
+                47,
+                124,
+                229,
+                196,
+                47,
+                149,
+                235,
+                227,
+                237,
+                31
+              ]
+            }
+          }
+        },
+        {
+          "name": "player",
+          "docs": [
+            "Player discovering"
+          ],
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "poi_index",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "enter_shop",
+      "docs": [
+        "Enter the Smuggler Hatch shop (L9).",
+        "",
+        "Generates 6 offers (1 Tool + 5 Gear) and starts a shopping session.",
+        "Only one shop session can be active at a time."
+      ],
+      "discriminator": [
+        130,
+        200,
+        218,
+        59,
+        93,
+        201,
+        80,
+        237
+      ],
+      "accounts": [
+        {
+          "name": "map_pois",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  112,
+                  95,
+                  112,
+                  111,
+                  105,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois.session",
+                "account": "MapPois"
+              }
+            ]
+          }
+        },
+        {
+          "name": "game_state",
+          "docs": [
+            "Player's GameState for position/time validation"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois.session",
+                "account": "MapPois"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                66,
+                165,
+                213,
+                208,
+                125,
+                103,
+                44,
+                88,
+                115,
+                217,
+                192,
+                197,
+                1,
+                117,
+                7,
+                170,
+                78,
+                32,
+                208,
+                143,
+                119,
+                94,
+                47,
+                124,
+                229,
+                196,
+                47,
+                149,
+                235,
+                227,
+                237,
+                31
+              ]
+            }
+          }
+        },
+        {
+          "name": "game_session",
+          "docs": [
+            "Game session for active_item_pool filtering"
+          ]
+        },
+        {
+          "name": "player",
+          "docs": [
+            "Player initiating the interaction"
+          ],
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "poi_index",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "fast_travel",
+      "docs": [
+        "Fast travel between Rail Waypoints (L8).",
+        "",
+        "Player must be at a discovered waypoint and select another discovered waypoint.",
+        "The caller is responsible for updating player position via CPI."
+      ],
+      "discriminator": [
+        65,
+        122,
+        37,
+        120,
+        68,
+        85,
+        33,
+        203
+      ],
+      "accounts": [
+        {
+          "name": "map_pois",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  112,
+                  95,
+                  112,
+                  111,
+                  105,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois.session",
+                "account": "MapPois"
+              }
+            ]
+          }
+        },
+        {
+          "name": "game_state",
+          "docs": [
+            "Player's GameState for position/time validation"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois.session",
+                "account": "MapPois"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                66,
+                165,
+                213,
+                208,
+                125,
+                103,
+                44,
+                88,
+                115,
+                217,
+                192,
+                197,
+                1,
+                117,
+                7,
+                170,
+                78,
+                32,
+                208,
+                143,
+                119,
+                94,
+                47,
+                124,
+                229,
+                196,
+                47,
+                149,
+                235,
+                227,
+                237,
+                31
+              ]
+            }
+          }
+        },
+        {
+          "name": "player",
+          "docs": [
+            "Player traveling"
+          ],
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "from_poi_index",
+          "type": "u8"
+        },
+        {
+          "name": "to_poi_index",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "generate_cache_offer",
+      "docs": [
+        "Generate and store cache offers for a pick-item POI (L2, L3, L12, L13).",
+        "",
+        "This instruction generates offers using an on-chain derived seed (Clock)",
+        "and stores them in `MapPois.current_offer` so the frontend can read them.",
+        "The user then calls `interact_pick_item` with their chosen index.",
+        "",
+        "Must be called before `interact_pick_item` for pick-item POIs."
+      ],
+      "discriminator": [
+        228,
+        167,
+        175,
+        194,
+        67,
+        179,
+        62,
+        96
+      ],
+      "accounts": [
+        {
+          "name": "map_pois",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  112,
+                  95,
+                  112,
+                  111,
+                  105,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois.session",
+                "account": "MapPois"
+              }
+            ]
+          }
+        },
+        {
+          "name": "game_state",
+          "docs": [
+            "Player's GameState for position/time validation"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois.session",
+                "account": "MapPois"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                66,
+                165,
+                213,
+                208,
+                125,
+                103,
+                44,
+                88,
+                115,
+                217,
+                192,
+                197,
+                1,
+                117,
+                7,
+                170,
+                78,
+                32,
+                208,
+                143,
+                119,
+                94,
+                47,
+                124,
+                229,
+                196,
+                47,
+                149,
+                235,
+                227,
+                237,
+                31
+              ]
+            }
+          }
+        },
+        {
+          "name": "game_session",
+          "docs": [
+            "Game session for active_item_pool filtering"
+          ]
+        },
+        {
+          "name": "player",
+          "docs": [
+            "Player initiating the interaction"
+          ],
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "poi_index",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "generate_oil_offer",
+      "docs": [
+        "Generate and store oil offers for a Tool Oil Rack (L4).",
+        "",
+        "This instruction generates 3 of 4 possible oils using an on-chain derived seed",
+        "and stores them in `MapPois.current_oil_offer` so the frontend can read them.",
+        "The user then calls `interact_tool_oil` with their chosen oil.",
+        "",
+        "Must be called before `interact_tool_oil` for Tool Oil Rack POIs."
+      ],
+      "discriminator": [
+        214,
+        120,
+        197,
+        181,
+        57,
+        88,
+        230,
+        151
+      ],
+      "accounts": [
+        {
+          "name": "map_pois",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  112,
+                  95,
+                  112,
+                  111,
+                  105,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois.session",
+                "account": "MapPois"
+              }
+            ]
+          }
+        },
+        {
+          "name": "game_state",
+          "docs": [
+            "Player's GameState for position/time validation"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois.session",
+                "account": "MapPois"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                66,
+                165,
+                213,
+                208,
+                125,
+                103,
+                44,
+                88,
+                115,
+                217,
+                192,
+                197,
+                1,
+                117,
+                7,
+                170,
+                78,
+                32,
+                208,
+                143,
+                119,
+                94,
+                47,
+                124,
+                229,
+                196,
+                47,
+                149,
+                235,
+                227,
+                237,
+                31
+              ]
+            }
+          }
+        },
+        {
+          "name": "player",
+          "docs": [
+            "Player initiating the interaction"
+          ],
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "poi_index",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "get_poi_definition",
+      "docs": [
+        "Get POI definition by type ID (view function).",
+        "Returns POI properties for UI/client consumption."
+      ],
+      "discriminator": [
+        75,
+        154,
+        178,
+        167,
+        223,
+        150,
+        150,
+        50
+      ],
+      "accounts": [],
+      "args": [
+        {
+          "name": "poi_type",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "initialize_map_pois",
+      "docs": [
+        "Initializes POI state for a session by copying POIs from the generated map.",
+        "",
+        "The generated_map account contains POIs placed during map generation.",
+        "This instruction copies them to the MapPois account for runtime management."
+      ],
+      "discriminator": [
+        168,
+        236,
+        255,
+        55,
+        238,
+        210,
+        25,
+        251
+      ],
+      "accounts": [
+        {
+          "name": "map_pois",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  112,
+                  95,
+                  112,
+                  111,
+                  105,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "session"
+              }
+            ]
+          }
+        },
+        {
+          "name": "session",
+          "docs": [
+            "The GameSession PDA (must exist)"
+          ]
+        },
+        {
+          "name": "generated_map",
+          "docs": [
+            "Generated map containing POIs to copy",
+            "and PDA derivation (seeds = [\"generated_map\", session])"
+          ]
+        },
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "act",
+          "type": "u8"
+        },
+        {
+          "name": "week",
+          "type": "u8"
+        },
+        {
+          "name": "seed",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "interact_pick_item",
+      "docs": [
+        "Interact with a pick-item POI (L2, L3, L12, L13).",
+        "",
+        "- L2 (Supply Cache): Pick 1 of 3 Gear",
+        "- L3 (Tool Crate): Pick 1 of 3 Tools",
+        "- L12 (Geode Vault): Pick 1 of 3 Heroic+ items",
+        "- L13 (Counter Cache): Pick 1 of 3 weakness-tagged items",
+        "",
+        "Requires `generate_cache_offer` to have been called first.",
+        "Reads the stored offers from `current_offer` and applies the user's choice."
+      ],
+      "discriminator": [
+        29,
+        27,
+        189,
+        64,
+        24,
+        254,
+        44,
+        16
+      ],
+      "accounts": [
+        {
+          "name": "map_pois",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  112,
+                  95,
+                  112,
+                  111,
+                  105,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois.session",
+                "account": "MapPois"
+              }
+            ]
+          }
+        },
+        {
+          "name": "game_state",
+          "docs": [
+            "Player's GameState for position/time validation"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois.session",
+                "account": "MapPois"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                66,
+                165,
+                213,
+                208,
+                125,
+                103,
+                44,
+                88,
+                115,
+                217,
+                192,
+                197,
+                1,
+                117,
+                7,
+                170,
+                78,
+                32,
+                208,
+                143,
+                119,
+                94,
+                47,
+                124,
+                229,
+                196,
+                47,
+                149,
+                235,
+                227,
+                237,
+                31
+              ]
+            }
+          }
+        },
+        {
+          "name": "game_session",
+          "docs": [
+            "Game session for active_item_pool filtering"
+          ]
+        },
+        {
+          "name": "player",
+          "docs": [
+            "Player initiating the interaction"
+          ],
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "poi_index",
+          "type": "u8"
+        },
+        {
+          "name": "choice_index",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "interact_rest",
+      "docs": [
+        "Interact with a rest POI (L1 Mole Den or L5 Rest Alcove).",
+        "",
+        "- L1: Full heal, repeatable, night-only, skip to day",
+        "- L5: Heal 10 HP, one-time, night-only, skip to day",
+        "",
+        "This instruction validates the interaction, marks the POI as used (if applicable),",
+        "heals the player, and skips to the next day phase via CPI to gameplay-state.",
+        "If used during Night3, triggers the boss fight (cannot skip end-of-week boss)."
+      ],
+      "discriminator": [
+        104,
+        139,
+        206,
+        68,
+        84,
+        130,
+        182,
+        241
+      ],
+      "accounts": [
+        {
+          "name": "map_pois",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  112,
+                  95,
+                  112,
+                  111,
+                  105,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois.session",
+                "account": "MapPois"
+              }
+            ]
+          }
+        },
+        {
+          "name": "game_state",
+          "docs": [
+            "Player's GameState for position/time validation (mut for CPI)"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois.session",
+                "account": "MapPois"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                66,
+                165,
+                213,
+                208,
+                125,
+                103,
+                44,
+                88,
+                115,
+                217,
+                192,
+                197,
+                1,
+                117,
+                7,
+                170,
+                78,
+                32,
+                208,
+                143,
+                119,
+                94,
+                47,
+                124,
+                229,
+                196,
+                47,
+                149,
+                235,
+                227,
+                237,
+                31
+              ]
+            }
+          }
+        },
+        {
+          "name": "inventory",
+          "docs": [
+            "Player's inventory for deriving max_hp and boss fight resolution (mut for gear slot expansion)"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  110,
+                  118,
+                  101,
+                  110,
+                  116,
+                  111,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "game_state.session",
+                "account": "GameState"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                62,
+                57,
+                43,
+                224,
+                11,
+                129,
+                112,
+                214,
+                10,
+                252,
+                5,
+                51,
+                143,
+                242,
+                213,
+                246,
+                99,
+                145,
+                248,
+                173,
+                61,
+                133,
+                58,
+                191,
+                234,
+                132,
+                254,
+                214,
+                152,
+                21,
+                230,
+                167
+              ]
+            }
+          }
+        },
+        {
+          "name": "poi_authority",
+          "docs": [
+            "POI authority PDA for signing CPI calls"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  105,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "gameplay_state_program",
+          "docs": [
+            "Gameplay state program for CPI (heal_player and skip_to_day)"
+          ],
+          "address": "5VAaGSSoBP4UEt3RL2EXvDwpeDxAXMndsJn7QX96nc4n"
+        },
+        {
+          "name": "player_inventory_program",
+          "docs": [
+            "Player inventory program for CPI (expand gear slots on boss victory via skip_to_day)"
+          ],
+          "address": "5BtqiWegvVAgEnTRUofB9oUoQvPztYqSkMPwRpYQacP8"
+        },
+        {
+          "name": "player",
+          "docs": [
+            "Player initiating the interaction"
+          ],
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "poi_index",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "interact_rune_kiln",
+      "docs": [
+        "Fuse two identical items at the Rune Kiln (L11).",
+        "",
+        "Items must have the same ID and tier. Free to use.",
+        "POI is repeatable."
+      ],
+      "discriminator": [
+        49,
+        204,
+        136,
+        96,
+        184,
+        146,
+        34,
+        87
+      ],
+      "accounts": [
+        {
+          "name": "map_pois",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  112,
+                  95,
+                  112,
+                  111,
+                  105,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois.session",
+                "account": "MapPois"
+              }
+            ]
+          }
+        },
+        {
+          "name": "game_state",
+          "docs": [
+            "Player's GameState for position/time validation"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois.session",
+                "account": "MapPois"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                66,
+                165,
+                213,
+                208,
+                125,
+                103,
+                44,
+                88,
+                115,
+                217,
+                192,
+                197,
+                1,
+                117,
+                7,
+                170,
+                78,
+                32,
+                208,
+                143,
+                119,
+                94,
+                47,
+                124,
+                229,
+                196,
+                47,
+                149,
+                235,
+                227,
+                237,
+                31
+              ]
+            }
+          }
+        },
+        {
+          "name": "player",
+          "docs": [
+            "Player fusing"
+          ],
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "poi_index",
+          "type": "u8"
+        },
+        {
+          "name": "item1_id",
+          "type": {
+            "array": [
+              "u8",
+              8
+            ]
+          }
+        },
+        {
+          "name": "item1_tier",
+          "type": "u8"
+        },
+        {
+          "name": "item2_id",
+          "type": {
+            "array": [
+              "u8",
+              8
+            ]
+          }
+        },
+        {
+          "name": "item2_tier",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "interact_rusty_anvil",
+      "docs": [
+        "Upgrade a tool at the Rusty Anvil (L10).",
+        "",
+        "Tier I -> II costs 8 Gold, II -> III costs 16 Gold.",
+        "POI is one-time use. Gold is deducted atomically via CPI."
+      ],
+      "discriminator": [
+        219,
+        127,
+        133,
+        176,
+        196,
+        66,
+        36,
+        205
+      ],
+      "accounts": [
+        {
+          "name": "map_pois",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  112,
+                  95,
+                  112,
+                  111,
+                  105,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois.session",
+                "account": "MapPois"
+              }
+            ]
+          }
+        },
+        {
+          "name": "game_state",
+          "docs": [
+            "Player's GameState for position/time validation and gold deduction via CPI"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois.session",
+                "account": "MapPois"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                66,
+                165,
+                213,
+                208,
+                125,
+                103,
+                44,
+                88,
+                115,
+                217,
+                192,
+                197,
+                1,
+                117,
+                7,
+                170,
+                78,
+                32,
+                208,
+                143,
+                119,
+                94,
+                47,
+                124,
+                229,
+                196,
+                47,
+                149,
+                235,
+                227,
+                237,
+                31
+              ]
+            }
+          }
+        },
+        {
+          "name": "poi_authority",
+          "docs": [
+            "POI authority PDA for signing CPI calls"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  105,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "gameplay_state_program",
+          "docs": [
+            "Gameplay state program for CPI"
+          ],
+          "address": "5VAaGSSoBP4UEt3RL2EXvDwpeDxAXMndsJn7QX96nc4n"
+        },
+        {
+          "name": "player",
+          "docs": [
+            "Player upgrading"
+          ],
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "poi_index",
+          "type": "u8"
+        },
+        {
+          "name": "item_id",
+          "type": {
+            "array": [
+              "u8",
+              8
+            ]
+          }
+        },
+        {
+          "name": "current_tier",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "interact_scrap_chute",
+      "docs": [
+        "Scrap a gear item at the Scrap Chute (L14).",
+        "",
+        "Destroys one gear item for a gold cost (8-12 depending on act).",
+        "POI is one-time use. Gold is deducted atomically via CPI.",
+        "The caller is responsible for removing the item from inventory via CPI."
+      ],
+      "discriminator": [
+        229,
+        240,
+        228,
+        120,
+        177,
+        246,
+        137,
+        103
+      ],
+      "accounts": [
+        {
+          "name": "map_pois",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  112,
+                  95,
+                  112,
+                  111,
+                  105,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois.session",
+                "account": "MapPois"
+              }
+            ]
+          }
+        },
+        {
+          "name": "game_state",
+          "docs": [
+            "Player's GameState for position/time validation and gold deduction via CPI"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois.session",
+                "account": "MapPois"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                66,
+                165,
+                213,
+                208,
+                125,
+                103,
+                44,
+                88,
+                115,
+                217,
+                192,
+                197,
+                1,
+                117,
+                7,
+                170,
+                78,
+                32,
+                208,
+                143,
+                119,
+                94,
+                47,
+                124,
+                229,
+                196,
+                47,
+                149,
+                235,
+                227,
+                237,
+                31
+              ]
+            }
+          }
+        },
+        {
+          "name": "poi_authority",
+          "docs": [
+            "POI authority PDA for signing CPI calls"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  105,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "gameplay_state_program",
+          "docs": [
+            "Gameplay state program for CPI"
+          ],
+          "address": "5VAaGSSoBP4UEt3RL2EXvDwpeDxAXMndsJn7QX96nc4n"
+        },
+        {
+          "name": "player",
+          "docs": [
+            "Player scrapping"
+          ],
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "poi_index",
+          "type": "u8"
+        },
+        {
+          "name": "item_id",
+          "type": {
+            "array": [
+              "u8",
+              8
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "interact_seismic_scanner",
+      "docs": [
+        "Activate a Seismic Scanner (L7).",
+        "",
+        "Reveals the nearest undiscovered POI of the selected category.",
+        "POI is one-time use."
+      ],
+      "discriminator": [
+        187,
+        244,
+        47,
+        181,
+        200,
+        43,
+        227,
+        72
+      ],
+      "accounts": [
+        {
+          "name": "map_pois",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  112,
+                  95,
+                  112,
+                  111,
+                  105,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois.session",
+                "account": "MapPois"
+              }
+            ]
+          }
+        },
+        {
+          "name": "game_state",
+          "docs": [
+            "Player's GameState for position/time validation"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois.session",
+                "account": "MapPois"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                66,
+                165,
+                213,
+                208,
+                125,
+                103,
+                44,
+                88,
+                115,
+                217,
+                192,
+                197,
+                1,
+                117,
+                7,
+                170,
+                78,
+                32,
+                208,
+                143,
+                119,
+                94,
+                47,
+                124,
+                229,
+                196,
+                47,
+                149,
+                235,
+                227,
+                237,
+                31
+              ]
+            }
+          }
+        },
+        {
+          "name": "player",
+          "docs": [
+            "Player activating"
+          ],
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "poi_index",
+          "type": "u8"
+        },
+        {
+          "name": "category",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "interact_survey_beacon",
+      "docs": [
+        "Activate a Survey Beacon (L6).",
+        "",
+        "Reveals all tiles within radius 13 of the beacon.",
+        "POI is one-time use."
+      ],
+      "discriminator": [
+        235,
+        153,
+        45,
+        128,
+        176,
+        158,
+        20,
+        209
+      ],
+      "accounts": [
+        {
+          "name": "map_pois",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  112,
+                  95,
+                  112,
+                  111,
+                  105,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois.session",
+                "account": "MapPois"
+              }
+            ]
+          }
+        },
+        {
+          "name": "game_state",
+          "docs": [
+            "Player's GameState for position/time validation"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois.session",
+                "account": "MapPois"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                66,
+                165,
+                213,
+                208,
+                125,
+                103,
+                44,
+                88,
+                115,
+                217,
+                192,
+                197,
+                1,
+                117,
+                7,
+                170,
+                78,
+                32,
+                208,
+                143,
+                119,
+                94,
+                47,
+                124,
+                229,
+                196,
+                47,
+                149,
+                235,
+                227,
+                237,
+                31
+              ]
+            }
+          }
+        },
+        {
+          "name": "player",
+          "docs": [
+            "Player activating"
+          ],
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "poi_index",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "interact_tool_oil",
+      "docs": [
+        "Interact with a Tool Oil Rack (L4).",
+        "",
+        "Applies +1 to ATK, SPD, DIG, or ARM on the player's current tool.",
+        "This is a one-time use POI - user picks one oil and the POI is consumed.",
+        "",
+        "Requires `generate_oil_offer` to have been called first.",
+        "Validates the selected oil is one of the 3 generated offers.",
+        "",
+        "Arguments:",
+        "- `poi_index`: Index of the POI in map_pois.pois",
+        "- `current_oil_flags`: Current tool oil flags (unused, kept for API compat)",
+        "- `modification`: Oil type (1=ATK, 2=SPD, 4=DIG, 8=ARM)"
+      ],
+      "discriminator": [
+        62,
+        5,
+        100,
+        32,
+        201,
+        16,
+        150,
+        134
+      ],
+      "accounts": [
+        {
+          "name": "map_pois",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  112,
+                  95,
+                  112,
+                  111,
+                  105,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois.session",
+                "account": "MapPois"
+              }
+            ]
+          }
+        },
+        {
+          "name": "game_state",
+          "docs": [
+            "Player's GameState for position/time validation"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois.session",
+                "account": "MapPois"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                66,
+                165,
+                213,
+                208,
+                125,
+                103,
+                44,
+                88,
+                115,
+                217,
+                192,
+                197,
+                1,
+                117,
+                7,
+                170,
+                78,
+                32,
+                208,
+                143,
+                119,
+                94,
+                47,
+                124,
+                229,
+                196,
+                47,
+                149,
+                235,
+                227,
+                237,
+                31
+              ]
+            }
+          }
+        },
+        {
+          "name": "player",
+          "docs": [
+            "Player initiating the interaction"
+          ],
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "poi_index",
+          "type": "u8"
+        },
+        {
+          "name": "_current_oil_flags",
+          "type": "u8"
+        },
+        {
+          "name": "modification",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "leave_shop",
+      "docs": [
+        "Exit the shop without purchasing."
+      ],
+      "discriminator": [
+        55,
+        182,
+        221,
+        181,
+        222,
+        162,
+        148,
+        151
+      ],
+      "accounts": [
+        {
+          "name": "map_pois",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  112,
+                  95,
+                  112,
+                  111,
+                  105,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois.session",
+                "account": "MapPois"
+              }
+            ]
+          }
+        },
+        {
+          "name": "player",
+          "docs": [
+            "Player leaving"
+          ],
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "shop_purchase",
+      "docs": [
+        "Purchase an item from the active shop.",
+        "",
+        "Validates player has enough gold, marks the offer as purchased,",
+        "and atomically deducts gold via CPI to gameplay-state."
+      ],
+      "discriminator": [
+        185,
+        234,
+        158,
+        26,
+        40,
+        213,
+        190,
+        42
+      ],
+      "accounts": [
+        {
+          "name": "map_pois",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  112,
+                  95,
+                  112,
+                  111,
+                  105,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois.session",
+                "account": "MapPois"
+              }
+            ]
+          }
+        },
+        {
+          "name": "game_state",
+          "docs": [
+            "Player's GameState for gold deduction via CPI"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois.session",
+                "account": "MapPois"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                66,
+                165,
+                213,
+                208,
+                125,
+                103,
+                44,
+                88,
+                115,
+                217,
+                192,
+                197,
+                1,
+                117,
+                7,
+                170,
+                78,
+                32,
+                208,
+                143,
+                119,
+                94,
+                47,
+                124,
+                229,
+                196,
+                47,
+                149,
+                235,
+                227,
+                237,
+                31
+              ]
+            }
+          }
+        },
+        {
+          "name": "poi_authority",
+          "docs": [
+            "POI authority PDA for signing CPI calls"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  105,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "gameplay_state_program",
+          "docs": [
+            "Gameplay state program for CPI"
+          ],
+          "address": "5VAaGSSoBP4UEt3RL2EXvDwpeDxAXMndsJn7QX96nc4n"
+        },
+        {
+          "name": "player",
+          "docs": [
+            "Player making the purchase"
+          ],
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "offer_index",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "shop_reroll",
+      "docs": [
+        "Reroll the shop offers for a gold cost.",
+        "",
+        "Cost increases with each reroll: 4, 6, 8, 10, ...",
+        "Gold is deducted atomically via CPI to gameplay-state."
+      ],
+      "discriminator": [
+        161,
+        13,
+        151,
+        58,
+        45,
+        255,
+        151,
+        40
+      ],
+      "accounts": [
+        {
+          "name": "map_pois",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  112,
+                  95,
+                  112,
+                  111,
+                  105,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois.session",
+                "account": "MapPois"
+              }
+            ]
+          }
+        },
+        {
+          "name": "game_state",
+          "docs": [
+            "Player's GameState for gold deduction via CPI"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois.session",
+                "account": "MapPois"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                66,
+                165,
+                213,
+                208,
+                125,
+                103,
+                44,
+                88,
+                115,
+                217,
+                192,
+                197,
+                1,
+                117,
+                7,
+                170,
+                78,
+                32,
+                208,
+                143,
+                119,
+                94,
+                47,
+                124,
+                229,
+                196,
+                47,
+                149,
+                235,
+                227,
+                237,
+                31
+              ]
+            }
+          }
+        },
+        {
+          "name": "game_session",
+          "docs": [
+            "Game session for active_item_pool filtering"
+          ]
+        },
+        {
+          "name": "poi_authority",
+          "docs": [
+            "POI authority PDA for signing CPI calls"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  105,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "gameplay_state_program",
+          "docs": [
+            "Gameplay state program for CPI"
+          ],
+          "address": "5VAaGSSoBP4UEt3RL2EXvDwpeDxAXMndsJn7QX96nc4n"
+        },
+        {
+          "name": "player",
+          "docs": [
+            "Player rerolling"
+          ],
+          "signer": true
+        }
+      ],
+      "args": []
+    }
+  ],
+  "accounts": [
+    {
+      "name": "GameSession",
+      "discriminator": [
+        150,
+        116,
+        20,
+        197,
+        205,
+        121,
+        220,
+        240
+      ]
+    },
+    {
+      "name": "GameState",
+      "discriminator": [
+        144,
+        94,
+        208,
+        172,
+        248,
+        99,
+        134,
+        120
+      ]
+    },
+    {
+      "name": "MapPois",
+      "discriminator": [
+        96,
+        0,
+        249,
+        194,
+        162,
+        165,
+        195,
+        252
+      ]
+    },
+    {
+      "name": "PlayerInventory",
+      "discriminator": [
+        101,
+        75,
+        0,
+        132,
+        216,
+        157,
+        45,
+        32
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "CacheOfferGenerated",
+      "discriminator": [
+        199,
+        81,
+        89,
+        7,
+        181,
+        104,
+        64,
+        8
+      ]
+    },
+    {
+      "name": "FastTravelCompleted",
+      "discriminator": [
+        49,
+        147,
+        42,
+        30,
+        156,
+        194,
+        235,
+        212
+      ]
+    },
+    {
+      "name": "GearScrapped",
+      "discriminator": [
+        184,
+        27,
+        151,
+        156,
+        187,
+        56,
+        237,
+        3
+      ]
+    },
+    {
+      "name": "ItemPicked",
+      "discriminator": [
+        43,
+        188,
+        146,
+        146,
+        180,
+        105,
+        74,
+        82
+      ]
+    },
+    {
+      "name": "ItemPurchased",
+      "discriminator": [
+        33,
+        219,
+        12,
+        58,
+        205,
+        48,
+        63,
+        143
+      ]
+    },
+    {
+      "name": "ItemsFused",
+      "discriminator": [
+        86,
+        205,
+        203,
+        152,
+        55,
+        147,
+        166,
+        36
+      ]
+    },
+    {
+      "name": "OilOfferGenerated",
+      "discriminator": [
+        138,
+        42,
+        124,
+        59,
+        162,
+        174,
+        56,
+        233
+      ]
+    },
+    {
+      "name": "PoiDefinitionQueried",
+      "discriminator": [
+        153,
+        57,
+        169,
+        94,
+        244,
+        172,
+        41,
+        85
+      ]
+    },
+    {
+      "name": "PoiInteracted",
+      "discriminator": [
+        166,
+        228,
+        126,
+        249,
+        255,
+        102,
+        170,
+        18
+      ]
+    },
+    {
+      "name": "PoiRevealed",
+      "discriminator": [
+        87,
+        178,
+        222,
+        31,
+        164,
+        65,
+        41,
+        161
+      ]
+    },
+    {
+      "name": "PoisClosed",
+      "discriminator": [
+        248,
+        119,
+        204,
+        131,
+        183,
+        104,
+        156,
+        217
+      ]
+    },
+    {
+      "name": "PoisInitialized",
+      "discriminator": [
+        108,
+        9,
+        193,
+        244,
+        57,
+        33,
+        108,
+        66
+      ]
+    },
+    {
+      "name": "RestCompleted",
+      "discriminator": [
+        132,
+        132,
+        97,
+        150,
+        174,
+        11,
+        177,
+        227
+      ]
+    },
+    {
+      "name": "ShopEntered",
+      "discriminator": [
+        195,
+        50,
+        86,
+        6,
+        50,
+        215,
+        129,
+        50
+      ]
+    },
+    {
+      "name": "ShopExited",
+      "discriminator": [
+        170,
+        178,
+        129,
+        112,
+        193,
+        105,
+        239,
+        190
+      ]
+    },
+    {
+      "name": "ShopRerolled",
+      "discriminator": [
+        107,
+        18,
+        68,
+        43,
+        187,
+        207,
+        95,
+        180
+      ]
+    },
+    {
+      "name": "TilesRevealed",
+      "discriminator": [
+        117,
+        235,
+        111,
+        148,
+        193,
+        196,
+        114,
+        141
+      ]
+    },
+    {
+      "name": "ToolOilApplied",
+      "discriminator": [
+        125,
+        236,
+        74,
+        253,
+        255,
+        102,
+        150,
+        56
+      ]
+    },
+    {
+      "name": "ToolUpgraded",
+      "discriminator": [
+        44,
+        105,
+        250,
+        13,
+        131,
+        91,
+        49,
+        151
+      ]
+    },
+    {
+      "name": "WaypointDiscovered",
+      "discriminator": [
+        157,
+        91,
+        193,
+        29,
+        216,
+        238,
+        251,
+        64
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "InvalidAct",
+      "msg": "Act must be 1-4"
+    },
+    {
+      "code": 6001,
+      "name": "InvalidPoiType",
+      "msg": "POI type must be 1-14"
+    },
+    {
+      "code": 6002,
+      "name": "PoiNotFound",
+      "msg": "No POI at specified position"
+    },
+    {
+      "code": 6003,
+      "name": "PoiAlreadyUsed",
+      "msg": "One-time POI already used"
+    },
+    {
+      "code": 6004,
+      "name": "NightOnlyPoi",
+      "msg": "This POI can only be used at night"
+    },
+    {
+      "code": 6005,
+      "name": "NoToolEquipped",
+      "msg": "Player has no tool equipped"
+    },
+    {
+      "code": 6006,
+      "name": "OilAlreadyApplied",
+      "msg": "Tool oil modification already applied"
+    },
+    {
+      "code": 6007,
+      "name": "InsufficientGold",
+      "msg": "Not enough gold"
+    },
+    {
+      "code": 6008,
+      "name": "InventoryFull",
+      "msg": "No space in inventory"
+    },
+    {
+      "code": 6009,
+      "name": "ItemsNotIdentical",
+      "msg": "Items must be identical for fusion"
+    },
+    {
+      "code": 6010,
+      "name": "AlreadyMaxTier",
+      "msg": "Item is already maximum tier"
+    },
+    {
+      "code": 6011,
+      "name": "ShopNotActive",
+      "msg": "No active shop session"
+    },
+    {
+      "code": 6012,
+      "name": "OfferAlreadyPurchased",
+      "msg": "Offer already purchased"
+    },
+    {
+      "code": 6013,
+      "name": "DestinationNotDiscovered",
+      "msg": "Waypoint destination not discovered"
+    },
+    {
+      "code": 6014,
+      "name": "NoDestinationsAvailable",
+      "msg": "No other discovered waypoints"
+    },
+    {
+      "code": 6015,
+      "name": "InvalidOfferIndex",
+      "msg": "Offer index out of bounds"
+    },
+    {
+      "code": 6016,
+      "name": "InvalidGearSlot",
+      "msg": "Gear slot index out of bounds or empty"
+    },
+    {
+      "code": 6017,
+      "name": "InvalidPoiIndex",
+      "msg": "POI index out of bounds"
+    },
+    {
+      "code": 6018,
+      "name": "Unauthorized",
+      "msg": "Unauthorized: only session owner can interact"
+    },
+    {
+      "code": 6019,
+      "name": "ArithmeticOverflow",
+      "msg": "Arithmetic overflow"
+    },
+    {
+      "code": 6020,
+      "name": "AlreadyInitialized",
+      "msg": "POIs already initialized for this session"
+    },
+    {
+      "code": 6021,
+      "name": "ShopAlreadyActive",
+      "msg": "Shop already active"
+    },
+    {
+      "code": 6022,
+      "name": "InvalidInteraction",
+      "msg": "Invalid interaction for this POI type"
+    },
+    {
+      "code": 6023,
+      "name": "NoActiveInteraction",
+      "msg": "No POI interaction is currently active"
+    },
+    {
+      "code": 6024,
+      "name": "NoActiveShop",
+      "msg": "No active shop to reroll"
+    },
+    {
+      "code": 6025,
+      "name": "NoItemsAvailable",
+      "msg": "No items available for the selected tag and rarity"
+    },
+    {
+      "code": 6026,
+      "name": "InvalidOfferContext",
+      "msg": "Invalid offer context"
+    },
+    {
+      "code": 6027,
+      "name": "PlayerNotOnPoiTile",
+      "msg": "Player is not on the POI tile"
+    },
+    {
+      "code": 6028,
+      "name": "InvalidSessionOwner",
+      "msg": "Session account is not owned by session-manager program"
+    },
+    {
+      "code": 6029,
+      "name": "InvalidGeneratedMap",
+      "msg": "Invalid generated map account"
+    },
+    {
+      "code": 6030,
+      "name": "InvalidSession",
+      "msg": "Invalid game session account"
+    },
+    {
+      "code": 6031,
+      "name": "InvalidWeek",
+      "msg": "Week must be 1-3"
+    },
+    {
+      "code": 6032,
+      "name": "InvalidBossWeek",
+      "msg": "Failed to fetch boss weaknesses"
+    },
+    {
+      "code": 6033,
+      "name": "InvalidOilSelection",
+      "msg": "Selected oil is not in the generated offer"
+    }
+  ],
+  "types": [
+    {
+      "name": "CacheOffer",
+      "docs": [
+        "Cache offer for pick-item POIs (L2, L3, L12, L13)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "poi_index",
+            "docs": [
+              "Which POI this offer belongs to"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "items",
+            "docs": [
+              "The 3 items offered"
+            ],
+            "type": {
+              "array": [
+                {
+                  "defined": {
+                    "name": "OfferItem"
+                  }
+                },
+                3
+              ]
+            }
+          },
+          {
+            "name": "generated_at_seed",
+            "docs": [
+              "Seed used to generate this offer (for verification)"
+            ],
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CacheOfferGenerated",
+      "docs": [
+        "Emitted when a cache offer is generated for pick-item POIs."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "session",
+            "type": "pubkey"
+          },
+          {
+            "name": "poi_index",
+            "type": "u8"
+          },
+          {
+            "name": "poi_type",
+            "type": "u8"
+          },
+          {
+            "name": "item0",
+            "type": {
+              "array": [
+                "u8",
+                8
+              ]
+            }
+          },
+          {
+            "name": "item1",
+            "type": {
+              "array": [
+                "u8",
+                8
+              ]
+            }
+          },
+          {
+            "name": "item2",
+            "type": {
+              "array": [
+                "u8",
+                8
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "FastTravelCompleted",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "session",
+            "type": "pubkey"
+          },
+          {
+            "name": "from_x",
+            "type": "u8"
+          },
+          {
+            "name": "from_y",
+            "type": "u8"
+          },
+          {
+            "name": "to_x",
+            "type": "u8"
+          },
+          {
+            "name": "to_y",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "GameSession",
+      "docs": [
+        "Represents an active game session for a player.",
+        "PDA Seeds: [b\"session\", player.key(), &[campaign_level]]",
+        "Changed from single session per player to one session per (player, level) pair."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "player",
+            "docs": [
+              "Player profile owner's wallet"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "session_id",
+            "docs": [
+              "Unique session identifier (incrementing)"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "campaign_level",
+            "docs": [
+              "Level being played in this session (campaign mode, 1-40)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "started_at",
+            "docs": [
+              "Unix timestamp when session started"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "last_activity",
+            "docs": [
+              "Unix timestamp of last activity"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "is_delegated",
+            "docs": [
+              "Whether state is delegated to ephemeral rollup"
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump seed"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "active_item_pool",
+            "docs": [
+              "Snapshot of player's active_item_pool at session start",
+              "Determines which items can appear in POI offers during this session"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                10
+              ]
+            }
+          },
+          {
+            "name": "burner_wallet",
+            "docs": [
+              "Burner wallet pubkey for gameplay transactions",
+              "SOL is transferred to this wallet at session start"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "state_hash",
+            "docs": [
+              "Hash of the current game state (for validation)"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "GameState",
+      "docs": [
+        "Core gameplay state account linked to a GameSession.",
+        "Contains all mutable game data for a single run.",
+        "Stats (ATK, ARM, SPD, DIG, MaxHP) are derived from inventory at runtime.",
+        "PDA Seeds: [\"game_state\", session_pda.as_ref()]"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "player",
+            "docs": [
+              "Session owner's main wallet (used for lifecycle operations like close)"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "burner_wallet",
+            "docs": [
+              "Burner wallet authorized for gameplay transactions (move, boss fight)"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "session",
+            "docs": [
+              "Linked GameSession PDA"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "position_x",
+            "docs": [
+              "Current X coordinate (0 <= x < map_width)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "position_y",
+            "docs": [
+              "Current Y coordinate (0 <= y < map_height)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "map_width",
+            "docs": [
+              "Map boundary X (immutable after init)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "map_height",
+            "docs": [
+              "Map boundary Y (immutable after init)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "hp",
+            "docs": [
+              "Current health points (0 <= hp <= derived max_hp)"
+            ],
+            "type": "i16"
+          },
+          {
+            "name": "gear_slots",
+            "docs": [
+              "Gear slot capacity (4 -> 6 -> 8)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "week",
+            "docs": [
+              "Current week (1-3)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "phase",
+            "docs": [
+              "Current time phase"
+            ],
+            "type": {
+              "defined": {
+                "name": "Phase"
+              }
+            }
+          },
+          {
+            "name": "moves_remaining",
+            "docs": [
+              "Moves remaining in current phase (0-50)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "total_moves",
+            "docs": [
+              "Total moves made across session"
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "boss_fight_ready",
+            "docs": [
+              "Boss fight triggered flag"
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "gold",
+            "docs": [
+              "Current gold amount (0-65535)"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump seed"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "campaign_level",
+            "docs": [
+              "Campaign level for this session (1-40)",
+              "Stored at init to prevent user manipulation of boss stage"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "is_dead",
+            "docs": [
+              "Player death flag - once set, all gameplay instructions are blocked"
+            ],
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "GearScrapped",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "session",
+            "type": "pubkey"
+          },
+          {
+            "name": "item_id",
+            "type": {
+              "array": [
+                "u8",
+                8
+              ]
+            }
+          },
+          {
+            "name": "cost",
+            "type": "u16"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ItemInstance",
+      "docs": [
+        "A specific item owned by a player"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "item_id",
+            "docs": [
+              "References ItemDefinition ID (e.g., \"T-ST-01\\0\")"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                8
+              ]
+            }
+          },
+          {
+            "name": "tier",
+            "docs": [
+              "Upgrade tier"
+            ],
+            "type": {
+              "defined": {
+                "name": "Tier"
+              }
+            }
+          },
+          {
+            "name": "tool_oil_flags",
+            "docs": [
+              "Tool Oil bitflags: 0x01=+ATK, 0x02=+SPD, 0x04=+DIG, 0x08=+ARM"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ItemOffer",
+      "docs": [
+        "Single item offer at a POI or shop"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "item_id",
+            "docs": [
+              "Item definition ID (e.g., \"T-ST-01\\0\")"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                8
+              ]
+            }
+          },
+          {
+            "name": "tier",
+            "docs": [
+              "Item tier (always Tier::I for fresh offers)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "price",
+            "docs": [
+              "Gold cost (0 for free POIs)"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "purchased",
+            "docs": [
+              "Whether this offer has been purchased (for shop)"
+            ],
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ItemPicked",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "session",
+            "type": "pubkey"
+          },
+          {
+            "name": "poi_type",
+            "type": "u8"
+          },
+          {
+            "name": "item_id",
+            "type": {
+              "array": [
+                "u8",
+                8
+              ]
+            }
+          },
+          {
+            "name": "tier",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ItemPurchased",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "session",
+            "type": "pubkey"
+          },
+          {
+            "name": "item_id",
+            "type": {
+              "array": [
+                "u8",
+                8
+              ]
+            }
+          },
+          {
+            "name": "price",
+            "type": "u16"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ItemsFused",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "session",
+            "type": "pubkey"
+          },
+          {
+            "name": "item_id",
+            "type": {
+              "array": [
+                "u8",
+                8
+              ]
+            }
+          },
+          {
+            "name": "result_tier",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MapPois",
+      "docs": [
+        "Session-scoped account holding all POI instances for a map"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "session",
+            "docs": [
+              "Reference to GameSession PDA"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump seed"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "count",
+            "docs": [
+              "Number of POIs"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "act",
+            "docs": [
+              "Current act (1-4)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "week",
+            "docs": [
+              "Current week (1-3)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "seed",
+            "docs": [
+              "Seed for deterministic POI generation"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "pois",
+            "docs": [
+              "All POIs on this map"
+            ],
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "PoiInstance"
+                }
+              }
+            }
+          },
+          {
+            "name": "shop_state",
+            "docs": [
+              "Active shop session (if any)"
+            ],
+            "type": {
+              "defined": {
+                "name": "ShopState"
+              }
+            }
+          },
+          {
+            "name": "current_offer",
+            "docs": [
+              "Current cache offer (for pick-item POIs)"
+            ],
+            "type": {
+              "option": {
+                "defined": {
+                  "name": "CacheOffer"
+                }
+              }
+            }
+          },
+          {
+            "name": "current_oil_offer",
+            "docs": [
+              "Current oil offer (for Tool Oil Rack L4)"
+            ],
+            "type": {
+              "option": {
+                "defined": {
+                  "name": "OilOffer"
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "OfferItem",
+      "docs": [
+        "Offer item for cache POIs (simplified, without price/purchased)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "item_id",
+            "docs": [
+              "Item definition ID (e.g., \"G-ST-01\\0\")"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                8
+              ]
+            }
+          },
+          {
+            "name": "rarity",
+            "docs": [
+              "Item rarity (0=Common, 1=Rare, 2=Heroic, 3=Mythic)"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "OilOffer",
+      "docs": [
+        "Oil offer for Tool Oil Rack (L4).",
+        "Stores 3 of 4 possible oils generated deterministically."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "poi_index",
+            "docs": [
+              "Which POI this offer belongs to"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "oils",
+            "docs": [
+              "The 3 oil flags offered (from OIL_FLAG_ATK, SPD, DIG, ARM)"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                3
+              ]
+            }
+          },
+          {
+            "name": "generated_at_seed",
+            "docs": [
+              "Seed used to generate this offer (for verification)"
+            ],
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "OilOfferGenerated",
+      "docs": [
+        "Emitted when oil offers are generated for Tool Oil Rack (L4)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "session",
+            "type": "pubkey"
+          },
+          {
+            "name": "poi_index",
+            "type": "u8"
+          },
+          {
+            "name": "oils",
+            "docs": [
+              "The 3 oil flags offered (from OIL_FLAG_ATK=1, SPD=2, DIG=4, ARM=8)"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                3
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Phase",
+      "docs": [
+        "Time phase enumeration determining move allowance.",
+        "Each day has 50 moves, each night has 30 moves."
+      ],
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Day1"
+          },
+          {
+            "name": "Night1"
+          },
+          {
+            "name": "Day2"
+          },
+          {
+            "name": "Night2"
+          },
+          {
+            "name": "Day3"
+          },
+          {
+            "name": "Night3"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PlayerInventory",
+      "docs": [
+        "Player's equipped items and slot capacity"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "session",
+            "docs": [
+              "The session this inventory belongs to"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "player",
+            "docs": [
+              "Owner's wallet (for authorization)"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "tool",
+            "docs": [
+              "Equipped tool (0 or 1)"
+            ],
+            "type": {
+              "option": {
+                "defined": {
+                  "name": "ItemInstance"
+                }
+              }
+            }
+          },
+          {
+            "name": "gear",
+            "docs": [
+              "Equipped gear (0-8)"
+            ],
+            "type": {
+              "array": [
+                {
+                  "option": {
+                    "defined": {
+                      "name": "ItemInstance"
+                    }
+                  }
+                },
+                8
+              ]
+            }
+          },
+          {
+            "name": "gear_slot_capacity",
+            "docs": [
+              "Current gear limit (4, 6, or 8)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump seed"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PoiDefinitionQueried",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "poi_type",
+            "type": "u8"
+          },
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "rarity",
+            "type": "u8"
+          },
+          {
+            "name": "use_type",
+            "type": "u8"
+          },
+          {
+            "name": "active_condition",
+            "type": "u8"
+          },
+          {
+            "name": "interaction_type",
+            "type": "u8"
+          },
+          {
+            "name": "category",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PoiInstance",
+      "docs": [
+        "Runtime POI placed on the map"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "poi_type",
+            "docs": [
+              "References PoiDefinition ID (1-14)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "x",
+            "docs": [
+              "X coordinate on map (0-31)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "y",
+            "docs": [
+              "Y coordinate on map (0-31)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "used",
+            "docs": [
+              "True if one-time POI has been used"
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "discovered",
+            "docs": [
+              "True if Rail Waypoint discovered"
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "week_spawned",
+            "docs": [
+              "Week when spawned (for Counter Cache)"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PoiInteracted",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "session",
+            "type": "pubkey"
+          },
+          {
+            "name": "poi_type",
+            "type": "u8"
+          },
+          {
+            "name": "x",
+            "type": "u8"
+          },
+          {
+            "name": "y",
+            "type": "u8"
+          },
+          {
+            "name": "interaction",
+            "type": "string"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PoiRevealed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "session",
+            "type": "pubkey"
+          },
+          {
+            "name": "poi_type",
+            "type": "u8"
+          },
+          {
+            "name": "x",
+            "type": "u8"
+          },
+          {
+            "name": "y",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PoisClosed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "session",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PoisInitialized",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "session",
+            "type": "pubkey"
+          },
+          {
+            "name": "count",
+            "type": "u8"
+          },
+          {
+            "name": "act",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "RestCompleted",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "session",
+            "type": "pubkey"
+          },
+          {
+            "name": "poi_type",
+            "type": "u8"
+          },
+          {
+            "name": "x",
+            "type": "u8"
+          },
+          {
+            "name": "y",
+            "type": "u8"
+          },
+          {
+            "name": "heal_amount",
+            "docs": [
+              "Heal amount (u16 to support max_hp > 255)"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "full_heal",
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ShopEntered",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "session",
+            "type": "pubkey"
+          },
+          {
+            "name": "poi_index",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ShopExited",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "session",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ShopRerolled",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "session",
+            "type": "pubkey"
+          },
+          {
+            "name": "cost",
+            "type": "u16"
+          },
+          {
+            "name": "reroll_count",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ShopState",
+      "docs": [
+        "State for active Smuggler Hatch shopping session"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "poi_index",
+            "docs": [
+              "Index of Smuggler Hatch in MapPois.pois"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "offers",
+            "docs": [
+              "Current item offers (1 Tool + 5 Gear)"
+            ],
+            "type": {
+              "array": [
+                {
+                  "defined": {
+                    "name": "ItemOffer"
+                  }
+                },
+                6
+              ]
+            }
+          },
+          {
+            "name": "reroll_count",
+            "docs": [
+              "Number of rerolls this visit"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "active",
+            "docs": [
+              "Whether shop session is active"
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "rng_state",
+            "docs": [
+              "RNG state for next reroll (for deterministic regeneration)"
+            ],
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Tier",
+      "docs": [
+        "Item tier (upgrade level)"
+      ],
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "I"
+          },
+          {
+            "name": "II"
+          },
+          {
+            "name": "III"
+          }
+        ]
+      }
+    },
+    {
+      "name": "TilesRevealed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "session",
+            "type": "pubkey"
+          },
+          {
+            "name": "count",
+            "type": "u16"
+          },
+          {
+            "name": "center_x",
+            "type": "u8"
+          },
+          {
+            "name": "center_y",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ToolOilApplied",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "session",
+            "type": "pubkey"
+          },
+          {
+            "name": "modification",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ToolUpgraded",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "session",
+            "type": "pubkey"
+          },
+          {
+            "name": "item_id",
+            "type": {
+              "array": [
+                "u8",
+                8
+              ]
+            }
+          },
+          {
+            "name": "old_tier",
+            "type": "u8"
+          },
+          {
+            "name": "new_tier",
+            "type": "u8"
+          },
+          {
+            "name": "cost",
+            "type": "u16"
+          }
+        ]
+      }
+    },
+    {
+      "name": "WaypointDiscovered",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "session",
+            "type": "pubkey"
+          },
+          {
+            "name": "x",
+            "type": "u8"
+          },
+          {
+            "name": "y",
+            "type": "u8"
+          }
+        ]
+      }
+    }
+  ]
+}

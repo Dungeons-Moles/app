@@ -6,8 +6,11 @@ export interface OnChainPlayerProfile {
   name: string;
   totalRuns: number;
   currentLevel: number;
+  highestLevelUnlocked: number;
   availableRuns: number;
   createdAt: number;
+  unlockedItems: Uint8Array;
+  activeItemPool: Uint8Array;
 }
 
 export interface CachedProfileData {
@@ -24,6 +27,8 @@ export interface TransactionResult {
   signature?: string;
   error?: string;
   gameState?: GameState | null;
+  mapSeed?: bigint | null;
+  isResumed?: boolean;
 }
 
 /**

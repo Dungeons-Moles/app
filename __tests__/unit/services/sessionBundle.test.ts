@@ -6,8 +6,16 @@
  * @see src/services/solana/sessionBundle.ts
  */
 
+// Set required env vars before imports trigger config validation
+process.env.EXPO_PUBLIC_SESSION_MANAGER_PROGRAM_ID = '11111111111111111111111111111111';
+process.env.EXPO_PUBLIC_MAP_GENERATOR_PROGRAM_ID = '11111111111111111111111111111111';
+process.env.EXPO_PUBLIC_PLAYER_PROFILE_PROGRAM_ID = '11111111111111111111111111111111';
+process.env.EXPO_PUBLIC_GAMEPLAY_STATE_PROGRAM_ID = '11111111111111111111111111111111';
+process.env.EXPO_PUBLIC_PLAYER_INVENTORY_PROGRAM_ID = '11111111111111111111111111111111';
+process.env.EXPO_PUBLIC_POI_SYSTEM_PROGRAM_ID = '11111111111111111111111111111111';
+
 import { PublicKey } from '@solana/web3.js';
-import { validateSessionCreation, estimateTransactionSize } from '@/services/solana/sessionBundle';
+import { validateSessionCreation } from '@/services/solana/sessionBundle';
 import {
   deriveSessionPda,
   deriveGameStatePda,
@@ -104,13 +112,13 @@ describe('Session Bundle Builder', () => {
   describe('validateSessionCreation', () => {
     const testWallet = new PublicKey('11111111111111111111111111111111');
 
-    it('should fail when no runs available', async () => {
+    it('should fail when no sessions available', async () => {
       const profile = { availableRuns: 0, highestLevelUnlocked: 10 };
 
       const result = await validateSessionCreation(mockConnection, testWallet, 1, profile);
 
       expect(result.valid).toBe(false);
-      expect(result.error).toContain('No available runs');
+      expect(result.error).toContain('No available sessions');
     });
 
     it('should fail when level not unlocked', async () => {
@@ -178,23 +186,7 @@ describe('Session Bundle Builder', () => {
     });
   });
 
-  describe('estimateTransactionSize', () => {
-    it('should estimate transaction size under limit', () => {
-      const estimate = estimateTransactionSize();
-
-      expect(estimate.limit).toBe(1232);
-      expect(estimate.estimated).toBeLessThan(estimate.limit);
-      expect(estimate.fits).toBe(true);
-    });
-
-    it('should return reasonable estimate', () => {
-      const estimate = estimateTransactionSize();
-
-      // 5 instructions should be around 900 bytes
-      expect(estimate.estimated).toBeGreaterThan(800);
-      expect(estimate.estimated).toBeLessThan(1100);
-    });
-  });
+  // estimateTransactionSize removed — start_session is now a single atomic instruction
 });
 
 describe('Session Bundle Constants', () => {
@@ -217,7 +209,7 @@ describe('Session Bundle Constants', () => {
     expect(MAX_SESSIONS).toBe(40);
     expect(MAX_ENEMIES).toBe(10);
     expect(INITIAL_GEAR_SLOTS).toBe(4);
-    expect(RUN_PRICE_LAMPORTS).toBe(1_000_000); // 0.001 SOL
+    expect(RUN_PRICE_LAMPORTS).toBe(5_000_000); // 0.005 SOL
     expect(RUNS_PER_PURCHASE).toBe(20);
   });
 });

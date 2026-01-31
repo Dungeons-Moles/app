@@ -139,7 +139,7 @@ export function useCombatReplay(): UseCombatReplayResult {
   const startNightMovementFromLogs = useCallback(
     (logs: string[]) => {
       // Check if logs contain night movement events
-      if (hasNightMovementEvents(logs)) {
+      if (logs.some((log) => log.includes('EnemyMoved'))) {
         console.log('[useCombatReplay] Night movement events detected, animation not yet implemented');
       }
     },

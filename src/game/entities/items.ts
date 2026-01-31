@@ -359,6 +359,7 @@ export function createGearInstance(id: GearId, currentRarity?: ItemRarity): Gear
     id: result.id,
     name: result.name,
     emoji: result.emoji,
+    image: result.image,
     baseRarity: result.baseRarity,
     currentRarity: result.currentRarity,
     stats: result.stats,
@@ -390,6 +391,24 @@ export function calculateItemStats(tool: Tool | null, gear: Gear[]): ItemStats {
     result.spd = (result.spd ?? 0) + (tool.stats.spd ?? 0);
     result.dig = (result.dig ?? 0) + (tool.stats.dig ?? 0);
     result.hp = (result.hp ?? 0) + (tool.stats.hp ?? 0);
+
+    // Add tool oil bonus (+1 to corresponding stat)
+    if (tool.oil) {
+      switch (tool.oil) {
+        case 'ATK':
+          result.atk = (result.atk ?? 0) + 1;
+          break;
+        case 'SPD':
+          result.spd = (result.spd ?? 0) + 1;
+          break;
+        case 'DIG':
+          result.dig = (result.dig ?? 0) + 1;
+          break;
+        case 'ARM':
+          result.arm = (result.arm ?? 0) + 1;
+          break;
+      }
+    }
   }
 
   // Add gear stats

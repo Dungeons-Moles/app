@@ -171,7 +171,7 @@ export function ProfileSettingsScreen({ navigation }: ProfileSettingsScreenProps
 
             <View style={styles.statsGrid}>
               <View style={styles.statRow}>
-                <Text style={styles.statLabel}>Total Runs</Text>
+                <Text style={styles.statLabel}>Sessions Played</Text>
                 <Text style={styles.statValue}>{profile?.totalRuns ?? 0}</Text>
               </View>
 
@@ -181,7 +181,7 @@ export function ProfileSettingsScreen({ navigation }: ProfileSettingsScreenProps
               </View>
 
               <View style={styles.statRow}>
-                <Text style={styles.statLabel}>Available Runs</Text>
+                <Text style={styles.statLabel}>Available Sessions</Text>
                 <Text style={styles.statValue}>{profile?.availableRuns ?? 0}</Text>
               </View>
 

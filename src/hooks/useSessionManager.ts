@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
-import { SystemProgram, PublicKey, Transaction } from '@solana/web3.js';
+import { SystemProgram, PublicKey, Transaction, ComputeBudgetProgram, Keypair } from '@solana/web3.js';
 import { AnchorProvider } from '@coral-xyz/anchor';
 import { useWallet } from '@/contexts/WalletContext';
 import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
@@ -8,7 +8,18 @@ import {
   createSessionManagerProgram,
   createSessionManagerProgramWithProvider,
 } from '@/services/solana/programs';
-import { deriveGameSessionPda, deriveSessionCounterPda } from '@/services/solana/types';
+import { deriveSessionCounterPda } from '@/services/solana/types';
+import { deriveSessionPda } from '@/services/solana/constants';
+import {
+  derivePlayerProfilePda,
+  deriveGameStatePda,
+  deriveMapEnemiesPda,
+  deriveMapPoisPda,
+  deriveInventoryPda,
+  deriveGeneratedMapPda,
+  deriveMapConfigPda,
+} from '@/services/solana/constants';
+import { SOLANA_CONFIG } from '@/services/solana/config';
 import { getUserErrorMessage } from '@/services/solana/errors';
 import { MAX_CAMPAIGN_LEVEL } from './useMapGenerator';
 import type { TransactionResult } from '@/types/solana';
@@ -24,6 +35,8 @@ export function useSessionManager() {
   const [error, setError] = useState<string | null>(null);
 
   const isMountedRef = useRef(true);
+  /** Tracks the on-chain level (1-indexed) of the current/last session for PDA derivation */
+  const activeOnChainLevelRef = useRef<number>(1);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -65,7 +78,7 @@ export function useSessionManager() {
     }
 
     try {
-      const [sessionPda] = deriveGameSessionPda(wallet.publicKey);
+      const [sessionPda] = deriveSessionPda(wallet.publicKey, activeOnChainLevelRef.current);
       const account = await (
         readOnlyProgram.account as {
           gameSession: {
@@ -89,8 +102,10 @@ export function useSessionManager() {
         startedAt: Number(account.startedAt),
         lastActivity: Number(account.lastActivity),
         isDelegated: account.isDelegated,
-        stateHash: Array.from(account.stateHash),
         bump: account.bump,
+        activeItemPool: Array.from(account.activeItemPool ?? []),
+        burnerWallet: account.burnerWallet,
+        stateHash: Array.from(account.stateHash),
       };
 
       setSession(sessionData);
@@ -132,28 +147,56 @@ export function useSessionManager() {
       }
 
       try {
-        const [sessionPda] = deriveGameSessionPda(wallet.publicKey);
+        // Frontend levels are 0-indexed, on-chain expects 1-indexed (1-40)
+        const onChainLevel = campaignLevel + 1;
+        activeOnChainLevelRef.current = onChainLevel;
+
+        const [sessionPda] = deriveSessionPda(wallet.publicKey, onChainLevel);
         const [counterPda] = deriveSessionCounterPda();
+        const [profilePda] = derivePlayerProfilePda(wallet.publicKey);
+        const [gameStatePda] = deriveGameStatePda(sessionPda);
+        const [enemiesPda] = deriveMapEnemiesPda(sessionPda);
+        const [poisPda] = deriveMapPoisPda(sessionPda);
+        const [inventoryPda] = deriveInventoryPda(sessionPda);
+        const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
+        const [mapConfigPda] = deriveMapConfigPda();
         console.log('[useSessionManager] PDAs derived', {
           sessionPda: sessionPda.toBase58(),
           counterPda: counterPda.toBase58(),
         });
-
         console.log('[useSessionManager] Building transaction...');
         const transaction = await writeProgram.methods
-          .startSession(campaignLevel)
+          .startSession(onChainLevel)
           .accounts({
             gameSession: sessionPda,
             sessionCounter: counterPda,
+            playerProfile: profilePda,
             player: wallet.publicKey,
+            burnerWallet: wallet.publicKey, // Will be overridden by caller
+            mapConfig: mapConfigPda,
+            generatedMap: generatedMapPda,
+            gameState: gameStatePda,
+            mapEnemies: enemiesPda,
+            mapPois: poisPda,
+            inventory: inventoryPda,
+            mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
+            gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
+            poiSystemProgram: SOLANA_CONFIG.programs.poiSystem,
+            playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
             systemProgram: SystemProgram.programId,
           })
           .transaction();
 
+        // start_session does multiple CPIs (map gen ~378k CUs, game state, inventory, POIs),
+        // which far exceeds the default 200k compute unit limit
+        transaction.instructions.unshift(
+          ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 })
+        );
+
         console.log('[useSessionManager] Requesting wallet signature...');
         const signature = await signAndSendTransaction(transaction);
         console.log('[useSessionManager] Transaction sent:', signature);
-        await connection.confirmTransaction(signature, 'confirmed');
+        await connection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
         console.log('[useSessionManager] Transaction confirmed');
 
         // Fetch the created session
@@ -162,7 +205,7 @@ export function useSessionManager() {
         return { success: true, signature };
       } catch (txError) {
         console.error('[useSessionManager] Transaction error:', txError);
-        const message = getUserErrorMessage(txError);
+        const message = getUserErrorMessage(txError, 'session_manager');
         if (isMountedRef.current) setError(message);
         return { success: false, error: message };
       } finally {
@@ -178,7 +221,8 @@ export function useSessionManager() {
    */
   const buildStartSessionTransaction = useCallback(
     async (
-      campaignLevel: number
+      campaignLevel: number,
+      burnerPublicKey: PublicKey
     ): Promise<{ transaction: Transaction; sessionPda: PublicKey } | null> => {
       if (!wallet.publicKey || !writeProgram) {
         return null;
@@ -188,15 +232,37 @@ export function useSessionManager() {
         return null;
       }
 
-      const [sessionPda] = deriveGameSessionPda(wallet.publicKey);
-      const [counterPda] = deriveSessionCounterPda();
+      // Frontend levels are 0-indexed, on-chain expects 1-indexed (1-40)
+      const onChainLevel = campaignLevel + 1;
+      activeOnChainLevelRef.current = onChainLevel;
 
+      const [sessionPda] = deriveSessionPda(wallet.publicKey, onChainLevel);
+      const [counterPda] = deriveSessionCounterPda();
+      const [profilePda] = derivePlayerProfilePda(wallet.publicKey);
+      const [gameStatePda] = deriveGameStatePda(sessionPda);
+      const [enemiesPda] = deriveMapEnemiesPda(sessionPda);
+      const [poisPda] = deriveMapPoisPda(sessionPda);
+      const [inventoryPda] = deriveInventoryPda(sessionPda);
+      const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
+      const [mapConfigPda] = deriveMapConfigPda();
       const transaction = await writeProgram.methods
-        .startSession(campaignLevel)
+        .startSession(onChainLevel)
         .accounts({
           gameSession: sessionPda,
           sessionCounter: counterPda,
+          playerProfile: profilePda,
           player: wallet.publicKey,
+          burnerWallet: burnerPublicKey,
+          mapConfig: mapConfigPda,
+          generatedMap: generatedMapPda,
+          gameState: gameStatePda,
+          mapEnemies: enemiesPda,
+          mapPois: poisPda,
+          inventory: inventoryPda,
+          mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
+          gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
+          poiSystemProgram: SOLANA_CONFIG.programs.poiSystem,
+          playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
           systemProgram: SystemProgram.programId,
         })
         .transaction();
@@ -221,10 +287,11 @@ export function useSessionManager() {
     }
 
     try {
-      const [sessionPda] = deriveGameSessionPda(wallet.publicKey);
+      const onChainLevel = session?.campaignLevel ?? activeOnChainLevelRef.current;
+      const [sessionPda] = deriveSessionPda(wallet.publicKey, onChainLevel);
 
       const transaction = await writeProgram.methods
-        .delegateSession()
+        .delegateSession(onChainLevel)
         .accounts({
           gameSession: sessionPda,
           player: wallet.publicKey,
@@ -232,7 +299,7 @@ export function useSessionManager() {
         .transaction();
 
       const signature = await signAndSendTransaction(transaction);
-      await connection.confirmTransaction(signature, 'confirmed');
+      await connection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
 
       // Refresh session state
       await fetchSession();
@@ -274,10 +341,11 @@ export function useSessionManager() {
       }
 
       try {
-        const [sessionPda] = deriveGameSessionPda(wallet.publicKey);
+        const onChainLevel = session?.campaignLevel ?? activeOnChainLevelRef.current;
+        const [sessionPda] = deriveSessionPda(wallet.publicKey, onChainLevel);
 
         const transaction = await writeProgram.methods
-          .commitSession(stateHash)
+          .commitSession(onChainLevel, stateHash)
           .accounts({
             gameSession: sessionPda,
             player: wallet.publicKey,
@@ -285,7 +353,7 @@ export function useSessionManager() {
           .transaction();
 
         const signature = await signAndSendTransaction(transaction);
-        await connection.confirmTransaction(signature, 'confirmed');
+        await connection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
 
         // Refresh session state
         await fetchSession();
@@ -309,49 +377,73 @@ export function useSessionManager() {
     ]
   );
 
-  const endSession = useCallback(async (): Promise<TransactionResult> => {
-    if (!wallet.publicKey || !writeProgram) {
-      return { success: false, error: 'Wallet not connected' };
-    }
-
-    if (!hasActiveSession) {
-      return { success: false, error: 'No active session to end' };
-    }
-
-    if (isMountedRef.current) {
-      setIsLoading(true);
-      setError(null);
-    }
-
-    try {
-      const [sessionPda] = deriveGameSessionPda(wallet.publicKey);
-
-      const transaction = await writeProgram.methods
-        .endSession()
-        .accounts({
-          gameSession: sessionPda,
-          player: wallet.publicKey,
-        })
-        .transaction();
-
-      const signature = await signAndSendTransaction(transaction);
-      await connection.confirmTransaction(signature, 'confirmed');
-
-      // Clear session state
-      if (isMountedRef.current) {
-        setSession(null);
-        setHasActiveSession(false);
+  const endSession = useCallback(
+    async (victory: boolean = false, burnerKeypair?: Keypair): Promise<TransactionResult> => {
+      if (!wallet.publicKey || !writeProgram) {
+        return { success: false, error: 'Wallet not connected' };
       }
 
-      return { success: true, signature };
-    } catch (txError) {
-      const message = getUserErrorMessage(txError);
-      if (isMountedRef.current) setError(message);
-      return { success: false, error: message };
-    } finally {
-      if (isMountedRef.current) setIsLoading(false);
-    }
-  }, [connection, hasActiveSession, signAndSendTransaction, wallet.publicKey, writeProgram]);
+      if (!hasActiveSession || !session) {
+        return { success: false, error: 'No active session to end' };
+      }
+
+      if (isMountedRef.current) {
+        setIsLoading(true);
+        setError(null);
+      }
+
+      try {
+        const [sessionPda] = deriveSessionPda(wallet.publicKey, session.campaignLevel);
+        const [inventoryPda] = deriveInventoryPda(sessionPda);
+
+        // Get the burner wallet public key from the session
+        const burnerWalletPubkey = session.burnerWallet;
+        if (!burnerWalletPubkey) {
+          return { success: false, error: 'Session missing burner wallet' };
+        }
+
+        const transaction = await writeProgram.methods
+          .endSession(session.campaignLevel, victory)
+          .accounts({
+            gameSession: sessionPda,
+            player: wallet.publicKey,
+            burnerWallet: burnerWalletPubkey,
+            inventory: inventoryPda,
+            playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
+          })
+          .transaction();
+
+        // Set blockhash and fee payer
+        const { blockhash } = await connection.getLatestBlockhash('confirmed');
+        transaction.recentBlockhash = blockhash;
+        transaction.feePayer = wallet.publicKey;
+
+        // If burner keypair is provided, partially sign the transaction
+        // (burner_wallet is a Signer in the program)
+        if (burnerKeypair) {
+          transaction.partialSign(burnerKeypair);
+        }
+
+        const signature = await signAndSendTransaction(transaction);
+        await connection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
+
+        // Clear session state
+        if (isMountedRef.current) {
+          setSession(null);
+          setHasActiveSession(false);
+        }
+
+        return { success: true, signature };
+      } catch (txError) {
+        const message = getUserErrorMessage(txError, 'session_manager');
+        if (isMountedRef.current) setError(message);
+        return { success: false, error: message };
+      } finally {
+        if (isMountedRef.current) setIsLoading(false);
+      }
+    },
+    [connection, hasActiveSession, session, signAndSendTransaction, wallet.publicKey, writeProgram]
+  );
 
   const resetSession = useCallback(() => {
     setSession(null);

@@ -209,15 +209,75 @@ export const EVENT_NAMES = {
   COMBAT_ENDED: 'CombatEnded',
   BOSS_COMBAT_STARTED: 'BossCombatStarted',
   ENEMY_MOVED: 'EnemyMoved',
+  PLAYER_MOVED: 'PlayerMoved',
   PLAYER_DEFEATED: 'PlayerDefeated',
   LEVEL_COMPLETED: 'LevelCompleted',
   ITEM_UNLOCKED: 'ItemUnlocked',
   RUNS_PURCHASED: 'RunsPurchased',
+  PHASE_ADVANCED: 'PhaseAdvanced',
+  BOSS_FIGHT_READY: 'BossFightReady',
+  PLAYER_HEALED: 'PlayerHealed',
+  GOLD_MODIFIED_AUTHORIZED: 'GoldModifiedAuthorized',
+  COMBAT_LOG: 'CombatLog',
 } as const;
 
 // ============================================================================
 // Helper Types
 // ============================================================================
+
+/**
+ * Emitted when player moves to a new tile.
+ */
+export interface PlayerMovedEvent {
+  player: PublicKey;
+  fromX: number;
+  fromY: number;
+  toX: number;
+  toY: number;
+}
+
+/**
+ * Emitted when phase advances (day to night, night to day, etc.).
+ */
+export interface PhaseAdvancedEvent {
+  player: PublicKey;
+  oldPhase: number;
+  newPhase: number;
+  movesAllowed: number;
+}
+
+/**
+ * Emitted when boss fight becomes ready at end of Night3.
+ */
+export interface BossFightReadyEvent {
+  player: PublicKey;
+  week: number;
+}
+
+/**
+ * Emitted when player is healed (via POI CPI).
+ */
+export interface PlayerHealedEvent {
+  player: PublicKey;
+  amount: number;
+  newHp: number;
+}
+
+/**
+ * Emitted when gold is modified via authorized CPI.
+ */
+export interface GoldModifiedAuthorizedEvent {
+  player: PublicKey;
+  delta: number;
+  newGold: number;
+}
+
+/**
+ * Compressed combat log entry.
+ */
+export interface CombatLogEvent {
+  entries: Uint8Array;
+}
 
 /**
  * Parsed event with name and data.
@@ -241,4 +301,29 @@ export interface CombatEventParseResult {
   levelCompleted: LevelCompletedEvent | null;
   /** Item unlocked event if an item was unlocked */
   itemUnlocked: ItemUnlockedEvent | null;
+}
+
+/**
+ * Unified result from a move_player transaction.
+ * Contains all possible events that can occur in a single move.
+ */
+export interface MoveResult {
+  /** Player position change */
+  playerMoved: PlayerMovedEvent | null;
+  /** Enemy movements during night phase */
+  enemyMoves: EnemyMovedEvent[];
+  /** Combat replay if combat occurred */
+  combat: CombatReplay | null;
+  /** Phase transition if phase advanced */
+  phaseAdvanced: PhaseAdvancedEvent | null;
+  /** Boss combat replay if boss fight triggered */
+  bossCombat: CombatReplay | null;
+  /** Level completed event */
+  levelCompleted: LevelCompletedEvent | null;
+  /** Player defeated event */
+  playerDefeated: PlayerDefeatedEvent | null;
+  /** Player healed event (from POI CPI) */
+  playerHealed: PlayerHealedEvent | null;
+  /** Gold modification event (from POI CPI) */
+  goldModified: GoldModifiedAuthorizedEvent | null;
 }

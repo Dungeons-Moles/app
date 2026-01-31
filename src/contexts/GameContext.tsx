@@ -152,12 +152,16 @@ function isContextAction(action: GameAction): action is ContextAction {
 }
 
 export function gameReducer(state: GameState | null, action: GameAction): GameState | null {
-  // Handle null state - only START_GAME can initialize
+  // Handle null state - only START_GAME or RESTORE_GAME can initialize
   if (!state) {
     if (action.type === 'START_GAME') {
       // Create initial state and then apply START_GAME action
       const initialState = getInitialState();
       return coreGameReducer(initialState, action);
+    }
+    if (action.type === 'RESTORE_GAME') {
+      // RESTORE_GAME provides a complete state directly
+      return coreGameReducer(getInitialState(), action);
     }
     return state;
   }

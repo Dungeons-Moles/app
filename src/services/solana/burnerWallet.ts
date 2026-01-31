@@ -6,9 +6,17 @@
  * signs all gameplay transactions, and returns remaining SOL at session end.
  */
 
-import { Keypair, PublicKey, Connection, Transaction, SystemProgram } from '@solana/web3.js';
+import {
+  Keypair,
+  PublicKey,
+  Connection,
+  Transaction,
+  SystemProgram,
+  ComputeBudgetProgram,
+} from '@solana/web3.js';
 import * as SecureStorage from '@/services/storage/secureStorage';
 import bs58 from 'bs58';
+import { SOLANA_CONFIG } from './config';
 
 // ============================================================================
 // Constants
@@ -79,6 +87,7 @@ export interface SessionRecoveryState {
  * @returns New Keypair instance
  */
 export async function createBurnerWallet(mainWalletAddress: string): Promise<Keypair> {
+  console.log('[burnerWallet] createBurnerWallet called - creating NEW burner for:', mainWalletAddress);
   const keypair = Keypair.generate();
 
   const stored: StoredBurner = {
@@ -88,6 +97,7 @@ export async function createBurnerWallet(mainWalletAddress: string): Promise<Key
   };
 
   await SecureStorage.setItemAsync(BURNER_STORAGE_KEY, JSON.stringify(stored));
+  console.log('[burnerWallet] NEW burner created and stored:', keypair.publicKey.toBase58());
 
   return keypair;
 }
@@ -100,24 +110,35 @@ export async function createBurnerWallet(mainWalletAddress: string): Promise<Key
  * @returns Keypair if found and matches main wallet, null otherwise
  */
 export async function loadBurnerWallet(mainWalletAddress: string): Promise<Keypair | null> {
+  console.log('[burnerWallet] loadBurnerWallet called with address:', mainWalletAddress);
   try {
     const data = await SecureStorage.getItemAsync(BURNER_STORAGE_KEY);
     if (!data) {
+      console.log('[burnerWallet] No stored burner found in SecureStorage');
       return null;
     }
 
     const stored: StoredBurner = JSON.parse(data);
+    console.log('[burnerWallet] Found stored burner:', {
+      storedMainWallet: stored.mainWalletAddress,
+      requestedMainWallet: mainWalletAddress,
+      match: stored.mainWalletAddress === mainWalletAddress,
+      createdAt: new Date(stored.createdAt).toISOString(),
+    });
 
     // Validate main wallet address matches
     if (stored.mainWalletAddress !== mainWalletAddress) {
+      console.warn('[burnerWallet] Main wallet address mismatch - returning null');
       return null;
     }
 
     // Decode and reconstruct keypair
     const secretKey = bs58.decode(stored.secretKey);
-    return Keypair.fromSecretKey(secretKey);
+    const keypair = Keypair.fromSecretKey(secretKey);
+    console.log('[burnerWallet] Successfully loaded burner keypair:', keypair.publicKey.toBase58());
+    return keypair;
   } catch (error) {
-    console.error('Failed to load burner wallet:', error);
+    console.error('[burnerWallet] Failed to load burner wallet:', error);
     return null;
   }
 }
@@ -264,7 +285,18 @@ export async function sendBurnerTransaction(
   burnerKeypair: Keypair
 ): Promise<string> {
   transaction.feePayer = burnerKeypair.publicKey;
-  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+
+  // Add a random compute unit price to ensure transaction uniqueness on localnet.
+  // This prevents "transaction already processed" errors when making similar
+  // transactions (e.g., moving back and forth) within the same blockhash slot.
+  const randomMicroLamports = Math.floor(Math.random() * 1000) + 1;
+  transaction.add(
+    ComputeBudgetProgram.setComputeUnitPrice({ microLamports: randomMicroLamports })
+  );
+
+  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash(
+    SOLANA_CONFIG.commitment
+  );
   transaction.recentBlockhash = blockhash;
   transaction.sign(burnerKeypair);
 
@@ -275,7 +307,7 @@ export async function sendBurnerTransaction(
       blockhash,
       lastValidBlockHeight,
     },
-    'confirmed'
+    SOLANA_CONFIG.commitment
   );
 
   return signature;

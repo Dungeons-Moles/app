@@ -90,7 +90,7 @@ export const POI_DEFINITIONS: Record<POIId, POIDefinition> = {
     image: require('../../assets/world/pois/tool-oil-rack.png'),
     rarity: 'COMMON',
     interaction: 'TOOL_MODIFY',
-    description: 'Modify tool: +1 ATK/ARM/DIG/SPD (once per tool)',
+    description: 'Modify tool: +1 ATK/SPD/DIG/ARM (once per tool)',
   },
 
   // ============================================================================

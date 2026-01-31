@@ -271,8 +271,10 @@ export interface OnChainGameSession {
   startedAt: number;
   lastActivity: number;
   isDelegated: boolean;
-  stateHash: number[];
   bump: number;
+  activeItemPool: number[];
+  burnerWallet: import('@solana/web3.js').PublicKey;
+  stateHash: number[];
 }
 
 export interface OnChainSessionCounter {

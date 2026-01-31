@@ -565,65 +565,14 @@ function calculateItemCost(item: Gear | Tool): number {
 
 // ============================================================================
 // T095: Tool Oil Rack (L4)
-// Modify tool: +1 ATK/ARM/DIG (once per tool)
+// Modify tool: +1 ATK/SPD/DIG/ARM (once per tool). Oil cannot be replaced.
+// Options are generated on-chain (3 of 4 oils) and fetched by usePoiInteraction.
 // ============================================================================
 
-function generateToolOilRackOptions(state: GameState): POIOption[] {
-  const tool = state.player.equippedTool;
-
-  if (!tool) {
-    return [
-      {
-        label: 'No tool equipped',
-        disabled: true,
-        disabledReason: 'Equip a tool first',
-      },
-    ];
-  }
-
-  const allOptions: { option: POIOption; id: string }[] = [
-    {
-      id: 'ATK',
-      option: {
-        label: '+1 ATK',
-        description: 'Increase attack power.\nDeal more damage in combat.',
-      },
-    },
-    {
-      id: 'ARM',
-      option: {
-        label: '+1 ARM',
-        description: 'Increase armor.\nReduce damage taken in combat.',
-      },
-    },
-    {
-      id: 'DIG',
-      option: {
-        label: '+1 DIG',
-        description: 'Increase dig speed.\nBreak walls faster.',
-      },
-    },
-    {
-      id: 'SPD',
-      option: {
-        label: '+1 SPD',
-        description: 'Increase speed.\nAct sooner in combat.',
-      },
-    },
-  ];
-
-  // Randomly select 3 unique options
-  const rng = new SeededRNG(state.rngState);
-  const selectedOptions: POIOption[] = [];
-  const available = [...allOptions];
-
-  while (selectedOptions.length < 3 && available.length > 0) {
-    const index = rng.nextInt(0, available.length - 1);
-    selectedOptions.push(available[index].option);
-    available.splice(index, 1);
-  }
-
-  return selectedOptions;
+function generateToolOilRackOptions(_state: GameState): POIOption[] {
+  // Return empty array - options come from on-chain via generate_oil_offer instruction
+  // The usePoiInteraction hook will fetch the generated offers from MapPois.current_oil_offer
+  return [];
 }
 
 // ============================================================================
@@ -982,7 +931,8 @@ function applyItemSelectionEffect(state: GameState, option: POIOption): GameStat
 }
 
 /**
- * Tool Oil Rack: +1 ATK/ARM/DIG
+ * Tool Oil Rack: +1 ATK/SPD/DIG/ARM (once per tool).
+ * Oil cannot be replaced.
  */
 function applyToolOilRackEffect(state: GameState, optionIndex: number): GameState {
   const { activePOI } = state;
@@ -992,22 +942,24 @@ function applyToolOilRackEffect(state: GameState, optionIndex: number): GameStat
     return state;
   }
 
+  // Oil cannot be replaced (once per tool).
+  if (tool.oil) {
+    return state;
+  }
+
   const selectedOption = activePOI.options[optionIndex];
-  const newStats = { ...tool.stats };
   let oil: ToolOil | null = null;
 
   if (selectedOption.label.includes('+1 ATK')) {
-    newStats.atk = (newStats.atk ?? 0) + 1;
     oil = 'ATK';
-  } else if (selectedOption.label.includes('+1 ARM')) {
-    newStats.arm = (newStats.arm ?? 0) + 1;
-    oil = 'ARM';
   } else if (selectedOption.label.includes('+1 DIG')) {
-    newStats.dig = (newStats.dig ?? 0) + 1;
     oil = 'DIG';
   } else if (selectedOption.label.includes('+1 SPD')) {
-    newStats.spd = (newStats.spd ?? 0) + 1;
     oil = 'SPD';
+  }
+
+  if (!oil) {
+    return state;
   }
 
   return {
@@ -1016,7 +968,6 @@ function applyToolOilRackEffect(state: GameState, optionIndex: number): GameStat
       ...state.player,
       equippedTool: {
         ...tool,
-        stats: newStats,
         oil,
       },
     }),
@@ -1262,7 +1213,7 @@ function applyRustyAnvilEffect(
   else if (tool.rarity === 'GILDED') nextRarity = 'DIAMOND';
   else return state; // Should not happen if options generated correctly
 
-  // Calculate new stats: Base * Multiplier + Oil Bonus
+  // Calculate new stats: Base * Multiplier (oil is applied separately via tool.oil)
   const baseDef = TOOL_DEFINITIONS[tool.id];
   const multiplier = RARITY_MULTIPLIER[nextRarity];
   const newStats: ItemStats = {};
@@ -1273,12 +1224,6 @@ function applyRustyAnvilEffect(
   if (baseDef.stats.spd) newStats.spd = Math.floor(baseDef.stats.spd * multiplier);
   if (baseDef.stats.dig) newStats.dig = Math.floor(baseDef.stats.dig * multiplier);
   if (baseDef.stats.hp) newStats.hp = Math.floor(baseDef.stats.hp * multiplier);
-
-  // Re-apply Oil bonus if present
-  if (tool.oil === 'ATK') newStats.atk = (newStats.atk ?? 0) + 1;
-  if (tool.oil === 'ARM') newStats.arm = (newStats.arm ?? 0) + 1;
-  if (tool.oil === 'DIG') newStats.dig = (newStats.dig ?? 0) + 1;
-  if (tool.oil === 'SPD') newStats.spd = (newStats.spd ?? 0) + 1;
 
   return {
     ...state,

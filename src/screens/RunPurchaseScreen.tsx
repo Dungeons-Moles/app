@@ -21,7 +21,7 @@ import { promptTransactionRetry } from '../utils/transaction-alerts';
 
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.png');
 
-const RUN_PRICE_SOL = 0.001;
+const RUN_PRICE_SOL = 0.005;
 const RUNS_PER_PURCHASE = 20;
 
 type RunPurchaseScreenProps = {
@@ -91,17 +91,17 @@ export function RunPurchaseScreen({ navigation }: RunPurchaseScreenProps) {
       <ImageBackground source={BACKGROUND_IMAGE} style={styles.backgroundImage} resizeMode="cover">
         <View style={styles.darkOverlay}>
           <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
-            <Text style={styles.title}>Purchase Runs</Text>
+            <Text style={styles.title}>Purchase Sessions</Text>
 
             <View style={styles.infoContainer}>
-              <Text style={styles.currentRunsLabel}>Current Runs</Text>
+              <Text style={styles.currentRunsLabel}>Current Sessions</Text>
               <Text style={styles.currentRunsValue}>{currentRuns}</Text>
             </View>
 
             <View style={styles.purchaseCard}>
               <View style={styles.purchaseHeader}>
                 <Text style={styles.runsAmount}>{RUNS_PER_PURCHASE}</Text>
-                <Text style={styles.runsLabel}>Runs</Text>
+                <Text style={styles.runsLabel}>Sessions</Text>
               </View>
 
               <View style={styles.divider} />
@@ -112,7 +112,7 @@ export function RunPurchaseScreen({ navigation }: RunPurchaseScreenProps) {
               </View>
 
               <Text style={styles.afterPurchase}>
-                After purchase: {currentRuns + RUNS_PER_PURCHASE} runs
+                After purchase: {currentRuns + RUNS_PER_PURCHASE} sessions
               </Text>
             </View>
 

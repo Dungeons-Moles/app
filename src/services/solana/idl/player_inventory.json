@@ -1,0 +1,1375 @@
+{
+  "address": "5BtqiWegvVAgEnTRUofB9oUoQvPztYqSkMPwRpYQacP8",
+  "metadata": {
+    "name": "player_inventory",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Player Inventory Program for item management, fusion, and combat integration"
+  },
+  "instructions": [
+    {
+      "name": "apply_tool_oil",
+      "docs": [
+        "Applies a Tool Oil modification to the equipped tool.",
+        "Each modification (+ATK, +SPD, +DIG) can only be applied once per tool."
+      ],
+      "discriminator": [
+        198,
+        15,
+        92,
+        142,
+        130,
+        139,
+        113,
+        75
+      ],
+      "accounts": [
+        {
+          "name": "inventory",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  110,
+                  118,
+                  101,
+                  110,
+                  116,
+                  111,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "inventory.session",
+                "account": "PlayerInventory"
+              }
+            ]
+          }
+        },
+        {
+          "name": "player",
+          "signer": true,
+          "relations": [
+            "inventory"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "modification",
+          "type": {
+            "defined": {
+              "name": "ToolOilModification"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "close_inventory",
+      "docs": [
+        "Closes the PlayerInventory account, returning rent to the player.",
+        "Called automatically when a session ends (victory, defeat, or quit)",
+        "to ensure fresh inventory for the next session."
+      ],
+      "discriminator": [
+        88,
+        141,
+        102,
+        160,
+        129,
+        133,
+        243,
+        233
+      ],
+      "accounts": [
+        {
+          "name": "inventory",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  110,
+                  118,
+                  101,
+                  110,
+                  116,
+                  111,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "inventory.session",
+                "account": "PlayerInventory"
+              }
+            ]
+          }
+        },
+        {
+          "name": "player",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "inventory"
+          ]
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "equip_gear",
+      "docs": [
+        "Equips a gear item in an available slot.",
+        "Fails if no gear slots are available."
+      ],
+      "discriminator": [
+        29,
+        132,
+        59,
+        6,
+        14,
+        204,
+        167,
+        111
+      ],
+      "accounts": [
+        {
+          "name": "inventory",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  110,
+                  118,
+                  101,
+                  110,
+                  116,
+                  111,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "inventory.session",
+                "account": "PlayerInventory"
+              }
+            ]
+          }
+        },
+        {
+          "name": "player",
+          "signer": true,
+          "relations": [
+            "inventory"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "item_id",
+          "type": {
+            "array": [
+              "u8",
+              8
+            ]
+          }
+        },
+        {
+          "name": "tier",
+          "type": {
+            "defined": {
+              "name": "Tier"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "equip_tool",
+      "docs": [
+        "Equips a tool item. If a tool is already equipped, it is replaced.",
+        "The item must be a valid Tool type."
+      ],
+      "discriminator": [
+        197,
+        129,
+        230,
+        56,
+        120,
+        36,
+        227,
+        133
+      ],
+      "accounts": [
+        {
+          "name": "inventory",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  110,
+                  118,
+                  101,
+                  110,
+                  116,
+                  111,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "inventory.session",
+                "account": "PlayerInventory"
+              }
+            ]
+          }
+        },
+        {
+          "name": "player",
+          "signer": true,
+          "relations": [
+            "inventory"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "item_id",
+          "type": {
+            "array": [
+              "u8",
+              8
+            ]
+          }
+        },
+        {
+          "name": "tier",
+          "type": {
+            "defined": {
+              "name": "Tier"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "expand_gear_slots",
+      "docs": [
+        "Increases gear slot capacity after defeating a boss.",
+        "Week 1 boss: 4 -> 6 slots. Week 2 boss: 6 -> 8 slots."
+      ],
+      "discriminator": [
+        222,
+        70,
+        1,
+        14,
+        182,
+        129,
+        64,
+        67
+      ],
+      "accounts": [
+        {
+          "name": "inventory",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  110,
+                  118,
+                  101,
+                  110,
+                  116,
+                  111,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "inventory.session",
+                "account": "PlayerInventory"
+              }
+            ]
+          }
+        },
+        {
+          "name": "player",
+          "signer": true,
+          "relations": [
+            "inventory"
+          ]
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "fuse_items",
+      "docs": [
+        "Fuses two identical items to produce one item at the next tier.",
+        "Both items must have the same item_id and tier.",
+        "For gear items, specify two gear slot indices."
+      ],
+      "discriminator": [
+        135,
+        50,
+        184,
+        87,
+        220,
+        251,
+        123,
+        247
+      ],
+      "accounts": [
+        {
+          "name": "inventory",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  110,
+                  118,
+                  101,
+                  110,
+                  116,
+                  111,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "inventory.session",
+                "account": "PlayerInventory"
+              }
+            ]
+          }
+        },
+        {
+          "name": "player",
+          "signer": true,
+          "relations": [
+            "inventory"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "slot_a",
+          "type": "u8"
+        },
+        {
+          "name": "slot_b",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "generate_offer",
+      "docs": [
+        "Generates a weighted item offer based on POI type, act, and boss weaknesses.",
+        "Uses deterministic seed for reproducibility."
+      ],
+      "discriminator": [
+        185,
+        117,
+        39,
+        36,
+        159,
+        177,
+        248,
+        217
+      ],
+      "accounts": [
+        {
+          "name": "signer",
+          "docs": [
+            "Any signer can generate offers (view function)"
+          ],
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "poi_type",
+          "type": {
+            "defined": {
+              "name": "PoiType"
+            }
+          }
+        },
+        {
+          "name": "act",
+          "type": "u8"
+        },
+        {
+          "name": "week",
+          "type": "u8"
+        },
+        {
+          "name": "weakness_tag_1",
+          "type": {
+            "defined": {
+              "name": "ItemTag"
+            }
+          }
+        },
+        {
+          "name": "weakness_tag_2",
+          "type": {
+            "defined": {
+              "name": "ItemTag"
+            }
+          }
+        },
+        {
+          "name": "seed",
+          "type": "u64"
+        }
+      ],
+      "returns": {
+        "defined": {
+          "name": "ItemOffer"
+        }
+      }
+    },
+    {
+      "name": "get_combat_effects",
+      "docs": [
+        "Converts equipped items and active itemsets to ItemEffect arrays.",
+        "Returns effects for use by the combat system."
+      ],
+      "discriminator": [
+        50,
+        89,
+        30,
+        73,
+        37,
+        52,
+        84,
+        208
+      ],
+      "accounts": [
+        {
+          "name": "inventory",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  110,
+                  118,
+                  101,
+                  110,
+                  116,
+                  111,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "inventory.session",
+                "account": "PlayerInventory"
+              }
+            ]
+          }
+        },
+        {
+          "name": "player",
+          "signer": true,
+          "relations": [
+            "inventory"
+          ]
+        }
+      ],
+      "args": [],
+      "returns": {
+        "vec": {
+          "defined": {
+            "name": "ItemEffect"
+          }
+        }
+      }
+    },
+    {
+      "name": "initialize_inventory",
+      "docs": [
+        "Creates a new PlayerInventory account for a session.",
+        "Initializes with 4 gear slots and Basic Pickaxe equipped.",
+        "Each session has its own inventory, ensuring clean state per run."
+      ],
+      "discriminator": [
+        75,
+        221,
+        38,
+        238,
+        9,
+        187,
+        237,
+        157
+      ],
+      "accounts": [
+        {
+          "name": "inventory",
+          "docs": [
+            "PDA: [\"inventory\", session.key()] - one inventory per session"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  110,
+                  118,
+                  101,
+                  110,
+                  116,
+                  111,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "session"
+              }
+            ]
+          }
+        },
+        {
+          "name": "session",
+          "docs": [
+            "The game session this inventory belongs to"
+          ]
+        },
+        {
+          "name": "player",
+          "docs": [
+            "Player wallet, pays for account creation"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "unequip_gear",
+      "docs": [
+        "Removes a gear item from a specific slot.",
+        "The item is discarded (not stored elsewhere)."
+      ],
+      "discriminator": [
+        58,
+        33,
+        246,
+        170,
+        186,
+        138,
+        61,
+        226
+      ],
+      "accounts": [
+        {
+          "name": "inventory",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  110,
+                  118,
+                  101,
+                  110,
+                  116,
+                  111,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "inventory.session",
+                "account": "PlayerInventory"
+              }
+            ]
+          }
+        },
+        {
+          "name": "player",
+          "signer": true,
+          "relations": [
+            "inventory"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "slot_index",
+          "type": "u8"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "PlayerInventory",
+      "discriminator": [
+        101,
+        75,
+        0,
+        132,
+        216,
+        157,
+        45,
+        32
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "GearSlotsExpanded",
+      "discriminator": [
+        212,
+        47,
+        146,
+        71,
+        129,
+        116,
+        31,
+        243
+      ]
+    },
+    {
+      "name": "InventoryClosed",
+      "discriminator": [
+        166,
+        57,
+        123,
+        43,
+        179,
+        145,
+        128,
+        81
+      ]
+    },
+    {
+      "name": "InventoryInitialized",
+      "discriminator": [
+        12,
+        143,
+        211,
+        59,
+        178,
+        254,
+        14,
+        86
+      ]
+    },
+    {
+      "name": "ItemEquipped",
+      "discriminator": [
+        233,
+        7,
+        205,
+        251,
+        5,
+        195,
+        180,
+        69
+      ]
+    },
+    {
+      "name": "ItemFused",
+      "discriminator": [
+        207,
+        9,
+        253,
+        223,
+        146,
+        2,
+        203,
+        50
+      ]
+    },
+    {
+      "name": "ItemUnequipped",
+      "discriminator": [
+        121,
+        191,
+        37,
+        35,
+        175,
+        254,
+        201,
+        16
+      ]
+    },
+    {
+      "name": "ToolOilApplied",
+      "discriminator": [
+        125,
+        236,
+        74,
+        253,
+        255,
+        102,
+        150,
+        56
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "InventoryFull",
+      "msg": "No available gear slots"
+    },
+    {
+      "code": 6001,
+      "name": "InvalidItemId",
+      "msg": "Item ID does not exist"
+    },
+    {
+      "code": 6002,
+      "name": "WrongItemType",
+      "msg": "Item type does not match slot type"
+    },
+    {
+      "code": 6003,
+      "name": "FusionMismatch",
+      "msg": "Items must have same ID and tier to fuse"
+    },
+    {
+      "code": 6004,
+      "name": "AlreadyMaxTier",
+      "msg": "Item is already at maximum tier"
+    },
+    {
+      "code": 6005,
+      "name": "NoToolEquipped",
+      "msg": "No tool is currently equipped"
+    },
+    {
+      "code": 6006,
+      "name": "ToolOilAlreadyApplied",
+      "msg": "This Tool Oil modification was already applied"
+    },
+    {
+      "code": 6007,
+      "name": "SlotEmpty",
+      "msg": "The specified slot is empty"
+    },
+    {
+      "code": 6008,
+      "name": "InvalidSlotIndex",
+      "msg": "Slot index is out of bounds"
+    },
+    {
+      "code": 6009,
+      "name": "Unauthorized",
+      "msg": "Signer is not the inventory owner"
+    },
+    {
+      "code": 6010,
+      "name": "AlreadyMaxSlots",
+      "msg": "Gear slots already at maximum capacity"
+    }
+  ],
+  "types": [
+    {
+      "name": "EffectType",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "DealDamage"
+          },
+          {
+            "name": "DealNonWeaponDamage"
+          },
+          {
+            "name": "Heal"
+          },
+          {
+            "name": "GainArmor"
+          },
+          {
+            "name": "GainAtk"
+          },
+          {
+            "name": "GainSpd"
+          },
+          {
+            "name": "GainDig"
+          },
+          {
+            "name": "GainGold"
+          },
+          {
+            "name": "ApplyBomb"
+          },
+          {
+            "name": "ApplyChill"
+          },
+          {
+            "name": "ApplyShrapnel"
+          },
+          {
+            "name": "ApplyRust"
+          },
+          {
+            "name": "ApplyBleed"
+          },
+          {
+            "name": "RemoveArmor"
+          },
+          {
+            "name": "GainStrikes"
+          },
+          {
+            "name": "StealGold"
+          },
+          {
+            "name": "GoldToArmor"
+          },
+          {
+            "name": "ApplyReflection"
+          }
+        ]
+      }
+    },
+    {
+      "name": "GearSlotsExpanded",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "old_capacity",
+            "type": "u8"
+          },
+          {
+            "name": "new_capacity",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "InventoryClosed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "player",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "InventoryInitialized",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "session",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ItemEffect",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "trigger",
+            "type": {
+              "defined": {
+                "name": "TriggerType"
+              }
+            }
+          },
+          {
+            "name": "once_per_turn",
+            "type": "bool"
+          },
+          {
+            "name": "effect_type",
+            "type": {
+              "defined": {
+                "name": "EffectType"
+              }
+            }
+          },
+          {
+            "name": "value",
+            "type": "i16"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ItemEquipped",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "item_id",
+            "type": {
+              "array": [
+                "u8",
+                8
+              ]
+            }
+          },
+          {
+            "name": "tier",
+            "type": {
+              "defined": {
+                "name": "Tier"
+              }
+            }
+          },
+          {
+            "name": "slot",
+            "type": "string"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ItemFused",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "item_id",
+            "type": {
+              "array": [
+                "u8",
+                8
+              ]
+            }
+          },
+          {
+            "name": "old_tier",
+            "type": {
+              "defined": {
+                "name": "Tier"
+              }
+            }
+          },
+          {
+            "name": "new_tier",
+            "type": {
+              "defined": {
+                "name": "Tier"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "ItemInstance",
+      "docs": [
+        "A specific item owned by a player"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "item_id",
+            "docs": [
+              "References ItemDefinition ID (e.g., \"T-ST-01\\0\")"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                8
+              ]
+            }
+          },
+          {
+            "name": "tier",
+            "docs": [
+              "Upgrade tier"
+            ],
+            "type": {
+              "defined": {
+                "name": "Tier"
+              }
+            }
+          },
+          {
+            "name": "tool_oil_flags",
+            "docs": [
+              "Tool Oil bitflags: 0x01=+ATK, 0x02=+SPD, 0x04=+DIG, 0x08=+ARM"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ItemOffer",
+      "docs": [
+        "A generated item offer at a POI"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "item_id",
+            "docs": [
+              "Which item is offered"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                8
+              ]
+            }
+          },
+          {
+            "name": "tier",
+            "docs": [
+              "Always Tier::I for fresh offers"
+            ],
+            "type": {
+              "defined": {
+                "name": "Tier"
+              }
+            }
+          },
+          {
+            "name": "price",
+            "docs": [
+              "Gold cost"
+            ],
+            "type": "u16"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ItemTag",
+      "docs": [
+        "Item tags - 8 thematic categories plus None for special items"
+      ],
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "None"
+          },
+          {
+            "name": "Stone"
+          },
+          {
+            "name": "Scout"
+          },
+          {
+            "name": "Greed"
+          },
+          {
+            "name": "Blast"
+          },
+          {
+            "name": "Frost"
+          },
+          {
+            "name": "Rust"
+          },
+          {
+            "name": "Blood"
+          },
+          {
+            "name": "Tempo"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ItemUnequipped",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "item_id",
+            "type": {
+              "array": [
+                "u8",
+                8
+              ]
+            }
+          },
+          {
+            "name": "slot_index",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PlayerInventory",
+      "docs": [
+        "Player's equipped items and slot capacity"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "session",
+            "docs": [
+              "The session this inventory belongs to"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "player",
+            "docs": [
+              "Owner's wallet (for authorization)"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "tool",
+            "docs": [
+              "Equipped tool (0 or 1)"
+            ],
+            "type": {
+              "option": {
+                "defined": {
+                  "name": "ItemInstance"
+                }
+              }
+            }
+          },
+          {
+            "name": "gear",
+            "docs": [
+              "Equipped gear (0-8)"
+            ],
+            "type": {
+              "array": [
+                {
+                  "option": {
+                    "defined": {
+                      "name": "ItemInstance"
+                    }
+                  }
+                },
+                8
+              ]
+            }
+          },
+          {
+            "name": "gear_slot_capacity",
+            "docs": [
+              "Current gear limit (4, 6, or 8)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump seed"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PoiType",
+      "docs": [
+        "Point of Interest types that offer items"
+      ],
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "SupplyCache"
+          },
+          {
+            "name": "ToolCrate"
+          },
+          {
+            "name": "GeodeVault"
+          },
+          {
+            "name": "SmugglerHatch"
+          },
+          {
+            "name": "CounterCache"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Tier",
+      "docs": [
+        "Item tier (upgrade level)"
+      ],
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "I"
+          },
+          {
+            "name": "II"
+          },
+          {
+            "name": "III"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ToolOilApplied",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "modification",
+            "type": {
+              "defined": {
+                "name": "ToolOilModification"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "ToolOilModification",
+      "docs": [
+        "Tool Oil modification types"
+      ],
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "PlusAtk"
+          },
+          {
+            "name": "PlusSpd"
+          },
+          {
+            "name": "PlusDig"
+          },
+          {
+            "name": "PlusArm"
+          }
+        ]
+      }
+    },
+    {
+      "name": "TriggerType",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "BattleStart"
+          },
+          {
+            "name": "FirstTurn"
+          },
+          {
+            "name": "FirstTurnIfFaster"
+          },
+          {
+            "name": "FirstTurnIfSlower"
+          },
+          {
+            "name": "TurnStart"
+          },
+          {
+            "name": "EveryOtherTurn"
+          },
+          {
+            "name": "OnHit"
+          },
+          {
+            "name": "Exposed"
+          },
+          {
+            "name": "Wounded"
+          },
+          {
+            "name": "Countdown",
+            "fields": [
+              {
+                "name": "turns",
+                "type": "u8"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
