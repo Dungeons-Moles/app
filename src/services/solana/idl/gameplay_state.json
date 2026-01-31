@@ -39,6 +39,172 @@
       "args": []
     },
     {
+      "name": "heal_player",
+      "docs": [
+        "Heals the player by a specified amount, authorized by poi-system.",
+        "",
+        "This instruction can only be called via CPI from poi-system using",
+        "the poi_authority PDA as signer. Used for rest POI healing.",
+        "",
+        "The max HP is derived from the player's inventory (equipped items).",
+        "HP is capped at the derived max_hp value."
+      ],
+      "discriminator": [
+        12,
+        176,
+        30,
+        11,
+        16,
+        116,
+        142,
+        203
+      ],
+      "accounts": [
+        {
+          "name": "game_state",
+          "writable": true
+        },
+        {
+          "name": "inventory",
+          "docs": [
+            "Player inventory for deriving max_hp (PDA derived from session)"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  110,
+                  118,
+                  101,
+                  110,
+                  116,
+                  111,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "game_state.session",
+                "account": "GameState"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                62,
+                57,
+                43,
+                224,
+                11,
+                129,
+                112,
+                214,
+                10,
+                252,
+                5,
+                51,
+                143,
+                242,
+                213,
+                246,
+                99,
+                145,
+                248,
+                173,
+                61,
+                133,
+                58,
+                191,
+                234,
+                132,
+                254,
+                214,
+                152,
+                21,
+                230,
+                167
+              ]
+            }
+          }
+        },
+        {
+          "name": "poi_authority",
+          "docs": [
+            "POI authority PDA from poi-system that must sign"
+          ],
+          "signer": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  105,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                77,
+                160,
+                63,
+                209,
+                182,
+                56,
+                149,
+                181,
+                2,
+                195,
+                173,
+                95,
+                65,
+                136,
+                88,
+                122,
+                235,
+                166,
+                235,
+                216,
+                241,
+                107,
+                2,
+                35,
+                185,
+                14,
+                177,
+                21,
+                150,
+                103,
+                215,
+                77
+              ]
+            }
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u16"
+        }
+      ]
+    },
+    {
       "name": "initialize_game_state",
       "docs": [
         "Initializes a new GameState account linked to an active GameSession."
@@ -88,9 +254,115 @@
           ]
         },
         {
+          "name": "generated_map",
+          "docs": [
+            "Generated map for seeding enemies"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  101,
+                  110,
+                  101,
+                  114,
+                  97,
+                  116,
+                  101,
+                  100,
+                  95,
+                  109,
+                  97,
+                  112
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "game_session"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                156,
+                174,
+                227,
+                192,
+                77,
+                77,
+                237,
+                57,
+                57,
+                229,
+                227,
+                42,
+                100,
+                51,
+                52,
+                5,
+                241,
+                68,
+                44,
+                141,
+                222,
+                59,
+                35,
+                223,
+                249,
+                8,
+                30,
+                121,
+                140,
+                38,
+                69,
+                149
+              ]
+            }
+          }
+        },
+        {
+          "name": "map_enemies",
+          "docs": [
+            "Enemy instances seeded from generated map"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  112,
+                  95,
+                  101,
+                  110,
+                  101,
+                  109,
+                  105,
+                  101,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "game_session"
+              }
+            ]
+          }
+        },
+        {
           "name": "player",
           "writable": true,
           "signer": true
+        },
+        {
+          "name": "burner_wallet",
+          "docs": [
+            "for authorizing gameplay transactions (move, boss fight)."
+          ]
         },
         {
           "name": "system_program",
@@ -98,6 +370,10 @@
         }
       ],
       "args": [
+        {
+          "name": "campaign_level",
+          "type": "u8"
+        },
         {
           "name": "map_width",
           "type": "u8"
@@ -117,19 +393,23 @@
       ]
     },
     {
-      "name": "modify_stat",
+      "name": "modify_gold_authorized",
       "docs": [
-        "Modifies a player stat by a delta value."
+        "Modifies the player's gold by a delta value, authorized by poi-system.",
+        "",
+        "This instruction can only be called via CPI from poi-system using",
+        "the poi_authority PDA as signer. Used for shop purchases, rerolls,",
+        "rusty anvil upgrades, and scrap chute costs."
       ],
       "discriminator": [
-        195,
-        189,
-        89,
-        91,
-        201,
-        202,
-        223,
-        99
+        12,
+        137,
+        153,
+        42,
+        120,
+        141,
+        214,
+        22
       ],
       "accounts": [
         {
@@ -137,32 +417,92 @@
           "writable": true
         },
         {
-          "name": "player",
+          "name": "poi_authority",
+          "docs": [
+            "POI authority PDA from poi-system that must sign"
+          ],
           "signer": true,
-          "relations": [
-            "game_state"
-          ]
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  105,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                77,
+                160,
+                63,
+                209,
+                182,
+                56,
+                149,
+                181,
+                2,
+                195,
+                173,
+                95,
+                65,
+                136,
+                88,
+                122,
+                235,
+                166,
+                235,
+                216,
+                241,
+                107,
+                2,
+                35,
+                185,
+                14,
+                177,
+                21,
+                150,
+                103,
+                215,
+                77
+              ]
+            }
+          }
         }
       ],
       "args": [
         {
-          "name": "stat",
-          "type": {
-            "defined": {
-              "name": "StatType"
-            }
-          }
-        },
-        {
           "name": "delta",
-          "type": "i8"
+          "type": "i16"
         }
       ]
     },
     {
       "name": "move_player",
       "docs": [
-        "Moves the player to an adjacent tile, deducting move cost."
+        "Moves the player to an adjacent tile with automatic combat resolution.",
+        "",
+        "This instruction handles:",
+        "1. Movement validation (bounds, adjacency, move cost)",
+        "2. Night phase enemy movement (enemies within 3 tiles move toward player)",
+        "3. Combat triggered by enemy moving into player's tile",
+        "4. Combat triggered by player moving into enemy's tile",
+        "5. Phase advancement when moves are exhausted",
+        "",
+        "Combat is resolved inline without CPI for compute efficiency."
       ],
       "discriminator": [
         17,
@@ -180,11 +520,221 @@
           "writable": true
         },
         {
+          "name": "game_session",
+          "writable": true
+        },
+        {
+          "name": "map_enemies",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  112,
+                  95,
+                  101,
+                  110,
+                  101,
+                  109,
+                  105,
+                  101,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "game_state.session",
+                "account": "GameState"
+              }
+            ]
+          }
+        },
+        {
+          "name": "generated_map",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  101,
+                  110,
+                  101,
+                  114,
+                  97,
+                  116,
+                  101,
+                  100,
+                  95,
+                  109,
+                  97,
+                  112
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "game_state.session",
+                "account": "GameState"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                156,
+                174,
+                227,
+                192,
+                77,
+                77,
+                237,
+                57,
+                57,
+                229,
+                227,
+                42,
+                100,
+                51,
+                52,
+                5,
+                241,
+                68,
+                44,
+                141,
+                222,
+                59,
+                35,
+                223,
+                249,
+                8,
+                30,
+                121,
+                140,
+                38,
+                69,
+                149
+              ]
+            }
+          }
+        },
+        {
+          "name": "inventory",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  110,
+                  118,
+                  101,
+                  110,
+                  116,
+                  111,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "game_state.session",
+                "account": "GameState"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                62,
+                57,
+                43,
+                224,
+                11,
+                129,
+                112,
+                214,
+                10,
+                252,
+                5,
+                51,
+                143,
+                242,
+                213,
+                246,
+                99,
+                145,
+                248,
+                173,
+                61,
+                133,
+                58,
+                191,
+                234,
+                132,
+                254,
+                214,
+                152,
+                21,
+                230,
+                167
+              ]
+            }
+          }
+        },
+        {
+          "name": "gameplay_authority",
+          "docs": [
+            "Gameplay authority PDA for signing CPI calls to map_generator"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  112,
+                  108,
+                  97,
+                  121,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "player_inventory_program",
+          "docs": [
+            "Player inventory program for CPI (expand gear slots on boss victory)"
+          ],
+          "address": "5BtqiWegvVAgEnTRUofB9oUoQvPztYqSkMPwRpYQacP8"
+        },
+        {
+          "name": "map_generator_program",
+          "docs": [
+            "Map generator program for CPI (set tile floor on wall break)"
+          ],
+          "address": "BYdGuEGf8NqtLnHpSRuZFrPGEgvdxMfGfTt71QVBxYHa"
+        },
+        {
           "name": "player",
-          "signer": true,
-          "relations": [
-            "game_state"
-          ]
+          "writable": true,
+          "signer": true
         }
       ],
       "args": [
@@ -195,12 +745,482 @@
         {
           "name": "target_y",
           "type": "u8"
-        },
-        {
-          "name": "is_wall",
-          "type": "bool"
         }
       ]
+    },
+    {
+      "name": "set_phase_for_testing",
+      "docs": [
+        "TEST ONLY: Sets the game phase and moves remaining directly.",
+        "This instruction is intended for testing purposes to avoid",
+        "doing hundreds of move transactions to reach a specific phase.",
+        "",
+        "WARNING: This should only be used in test environments."
+      ],
+      "discriminator": [
+        19,
+        22,
+        198,
+        202,
+        167,
+        58,
+        188,
+        32
+      ],
+      "accounts": [
+        {
+          "name": "game_state",
+          "writable": true
+        },
+        {
+          "name": "burner_wallet",
+          "signer": true,
+          "relations": [
+            "game_state"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "phase",
+          "type": {
+            "defined": {
+              "name": "Phase"
+            }
+          }
+        },
+        {
+          "name": "moves_remaining",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "skip_to_day",
+      "docs": [
+        "Skips to the next Day phase, authorized by poi-system.",
+        "",
+        "This instruction can only be called via CPI from poi-system using",
+        "the poi_authority PDA as signer. Used by rest POIs (L1 Mole Den, L5 Rest Alcove)",
+        "to skip the night phase.",
+        "",
+        "Behavior:",
+        "- Night1 → Day2 (reset moves to DAY_MOVES)",
+        "- Night2 → Day3 (reset moves to DAY_MOVES)",
+        "- Night3 → triggers boss fight (cannot skip end-of-week boss)",
+        "",
+        "Returns an error if called during a Day phase."
+      ],
+      "discriminator": [
+        102,
+        13,
+        206,
+        71,
+        154,
+        41,
+        247,
+        32
+      ],
+      "accounts": [
+        {
+          "name": "game_state",
+          "writable": true
+        },
+        {
+          "name": "inventory",
+          "docs": [
+            "Player inventory for stats calculation and boss fight resolution"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  110,
+                  118,
+                  101,
+                  110,
+                  116,
+                  111,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "game_state.session",
+                "account": "GameState"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                62,
+                57,
+                43,
+                224,
+                11,
+                129,
+                112,
+                214,
+                10,
+                252,
+                5,
+                51,
+                143,
+                242,
+                213,
+                246,
+                99,
+                145,
+                248,
+                173,
+                61,
+                133,
+                58,
+                191,
+                234,
+                132,
+                254,
+                214,
+                152,
+                21,
+                230,
+                167
+              ]
+            }
+          }
+        },
+        {
+          "name": "poi_authority",
+          "docs": [
+            "POI authority PDA from poi-system that must sign"
+          ],
+          "signer": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  105,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                77,
+                160,
+                63,
+                209,
+                182,
+                56,
+                149,
+                181,
+                2,
+                195,
+                173,
+                95,
+                65,
+                136,
+                88,
+                122,
+                235,
+                166,
+                235,
+                216,
+                241,
+                107,
+                2,
+                35,
+                185,
+                14,
+                177,
+                21,
+                150,
+                103,
+                215,
+                77
+              ]
+            }
+          }
+        },
+        {
+          "name": "player",
+          "docs": [
+            "Player for CPI to player_inventory_program (expand gear slots on boss victory)"
+          ]
+        },
+        {
+          "name": "player_inventory_program",
+          "docs": [
+            "Player inventory program for CPI (expand gear slots on boss victory)"
+          ],
+          "address": "5BtqiWegvVAgEnTRUofB9oUoQvPztYqSkMPwRpYQacP8"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "sync_hp_from_inventory",
+      "docs": [
+        "Syncs HP to reflect current inventory bonuses.",
+        "",
+        "This instruction should be called after equipping gear that provides +HP.",
+        "It calculates the new max_hp from the inventory and adjusts current HP:",
+        "- If player was at full base health (hp == BASE_HP), set hp to new max_hp",
+        "- If player was damaged, add the HP bonus (max_hp - BASE_HP) to current hp",
+        "- HP is always capped at the new max_hp",
+        "",
+        "This ensures that equipping +HP gear immediately grants that HP."
+      ],
+      "discriminator": [
+        233,
+        117,
+        243,
+        76,
+        58,
+        56,
+        180,
+        65
+      ],
+      "accounts": [
+        {
+          "name": "game_state",
+          "writable": true
+        },
+        {
+          "name": "inventory",
+          "docs": [
+            "Player inventory for deriving max_hp (PDA derived from session)"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  110,
+                  118,
+                  101,
+                  110,
+                  116,
+                  111,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "game_state.session",
+                "account": "GameState"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                62,
+                57,
+                43,
+                224,
+                11,
+                129,
+                112,
+                214,
+                10,
+                252,
+                5,
+                51,
+                143,
+                242,
+                213,
+                246,
+                99,
+                145,
+                248,
+                173,
+                61,
+                133,
+                58,
+                191,
+                234,
+                132,
+                254,
+                214,
+                152,
+                21,
+                230,
+                167
+              ]
+            }
+          }
+        },
+        {
+          "name": "player",
+          "docs": [
+            "Player who owns this game state (burner wallet)"
+          ],
+          "signer": true,
+          "relations": [
+            "game_state"
+          ]
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "trigger_boss_fight",
+      "docs": [
+        "Triggers and resolves the boss fight when conditions are met.",
+        "",
+        "This instruction handles:",
+        "1. Validation that boss fight is ready (boss_fight_ready flag set)",
+        "2. Boss selection based on stored campaign_level and week",
+        "3. Combat resolution inline",
+        "4. Victory handling: week advancement or level completion",
+        "5. Defeat handling: player death persisted in state",
+        "",
+        "Must be called after move sets boss_fight_ready = true."
+      ],
+      "discriminator": [
+        58,
+        230,
+        154,
+        228,
+        178,
+        191,
+        34,
+        206
+      ],
+      "accounts": [
+        {
+          "name": "game_state",
+          "writable": true
+        },
+        {
+          "name": "game_session",
+          "writable": true
+        },
+        {
+          "name": "map_enemies",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  112,
+                  95,
+                  101,
+                  110,
+                  101,
+                  109,
+                  105,
+                  101,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "game_state.session",
+                "account": "GameState"
+              }
+            ]
+          }
+        },
+        {
+          "name": "inventory",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  110,
+                  118,
+                  101,
+                  110,
+                  116,
+                  111,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "game_state.session",
+                "account": "GameState"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                62,
+                57,
+                43,
+                224,
+                11,
+                129,
+                112,
+                214,
+                10,
+                252,
+                5,
+                51,
+                143,
+                242,
+                213,
+                246,
+                99,
+                145,
+                248,
+                173,
+                61,
+                133,
+                58,
+                191,
+                234,
+                132,
+                254,
+                214,
+                152,
+                21,
+                230,
+                167
+              ]
+            }
+          }
+        },
+        {
+          "name": "player_inventory_program",
+          "docs": [
+            "Player inventory program for CPI (expand gear slots on boss victory)"
+          ],
+          "address": "5BtqiWegvVAgEnTRUofB9oUoQvPztYqSkMPwRpYQacP8"
+        },
+        {
+          "name": "player",
+          "signer": true
+        }
+      ],
+      "args": []
     }
   ],
   "accounts": [
@@ -216,9 +1236,61 @@
         134,
         120
       ]
+    },
+    {
+      "name": "GeneratedMap",
+      "discriminator": [
+        192,
+        250,
+        64,
+        211,
+        84,
+        36,
+        83,
+        95
+      ]
+    },
+    {
+      "name": "MapEnemies",
+      "discriminator": [
+        235,
+        215,
+        210,
+        109,
+        182,
+        109,
+        178,
+        138
+      ]
+    },
+    {
+      "name": "PlayerInventory",
+      "discriminator": [
+        101,
+        75,
+        0,
+        132,
+        216,
+        157,
+        45,
+        32
+      ]
     }
   ],
   "events": [
+    {
+      "name": "BossCombatStarted",
+      "discriminator": [
+        4,
+        79,
+        224,
+        115,
+        132,
+        134,
+        174,
+        95
+      ]
+    },
     {
       "name": "BossFightReady",
       "discriminator": [
@@ -230,6 +1302,58 @@
         248,
         242,
         178
+      ]
+    },
+    {
+      "name": "CombatEnded",
+      "discriminator": [
+        232,
+        185,
+        180,
+        243,
+        238,
+        87,
+        41,
+        31
+      ]
+    },
+    {
+      "name": "CombatLog",
+      "discriminator": [
+        84,
+        130,
+        187,
+        88,
+        94,
+        235,
+        48,
+        211
+      ]
+    },
+    {
+      "name": "CombatStarted",
+      "discriminator": [
+        172,
+        94,
+        187,
+        254,
+        85,
+        115,
+        217,
+        37
+      ]
+    },
+    {
+      "name": "EnemyMoved",
+      "discriminator": [
+        0,
+        140,
+        109,
+        14,
+        126,
+        219,
+        253,
+        149
       ]
     },
     {
@@ -259,6 +1383,45 @@
       ]
     },
     {
+      "name": "GoldModifiedAuthorized",
+      "discriminator": [
+        185,
+        56,
+        165,
+        16,
+        240,
+        94,
+        168,
+        131
+      ]
+    },
+    {
+      "name": "HpSynced",
+      "discriminator": [
+        130,
+        71,
+        149,
+        19,
+        47,
+        213,
+        234,
+        186
+      ]
+    },
+    {
+      "name": "LevelCompleted",
+      "discriminator": [
+        13,
+        235,
+        21,
+        229,
+        131,
+        175,
+        231,
+        133
+      ]
+    },
+    {
       "name": "PhaseAdvanced",
       "discriminator": [
         123,
@@ -272,6 +1435,32 @@
       ]
     },
     {
+      "name": "PlayerDefeated",
+      "discriminator": [
+        208,
+        144,
+        235,
+        216,
+        100,
+        164,
+        91,
+        222
+      ]
+    },
+    {
+      "name": "PlayerHealed",
+      "discriminator": [
+        19,
+        46,
+        69,
+        22,
+        185,
+        65,
+        37,
+        23
+      ]
+    },
+    {
       "name": "PlayerMoved",
       "discriminator": [
         167,
@@ -282,19 +1471,6 @@
         62,
         98,
         128
-      ]
-    },
-    {
-      "name": "StatModified",
-      "discriminator": [
-        170,
-        63,
-        106,
-        193,
-        82,
-        5,
-        93,
-        45
       ]
     }
   ],
@@ -326,31 +1502,113 @@
     },
     {
       "code": 6005,
+      "name": "GoldUnderflow",
+      "msg": "Gold cannot go below 0"
+    },
+    {
+      "code": 6006,
       "name": "InvalidStatModification",
       "msg": "Invalid stat modification"
     },
     {
-      "code": 6006,
+      "code": 6007,
       "name": "BossFightAlreadyTriggered",
       "msg": "Boss fight already triggered"
     },
     {
-      "code": 6007,
+      "code": 6008,
+      "name": "BossFightNotReady",
+      "msg": "Boss fight not ready - must exhaust moves in Night3 phase first"
+    },
+    {
+      "code": 6009,
       "name": "Unauthorized",
       "msg": "Unauthorized: only session owner can modify state"
     },
     {
-      "code": 6008,
+      "code": 6010,
       "name": "SessionNotActive",
       "msg": "Session is not active"
     },
     {
-      "code": 6009,
+      "code": 6011,
       "name": "ArithmeticOverflow",
       "msg": "Arithmetic overflow"
+    },
+    {
+      "code": 6012,
+      "name": "EnemyNotAtPosition",
+      "msg": "No enemy at the specified position"
+    },
+    {
+      "code": 6013,
+      "name": "PlayerDefeated",
+      "msg": "Player has been defeated"
+    },
+    {
+      "code": 6014,
+      "name": "PlayerDead",
+      "msg": "Player is dead - no further actions allowed"
+    },
+    {
+      "code": 6015,
+      "name": "InvalidWeek",
+      "msg": "Invalid week value"
+    },
+    {
+      "code": 6016,
+      "name": "InvalidEnemyTier",
+      "msg": "Invalid enemy tier"
+    },
+    {
+      "code": 6017,
+      "name": "InvalidSession",
+      "msg": "Invalid session account"
+    },
+    {
+      "code": 6018,
+      "name": "InvalidSessionOwner",
+      "msg": "Invalid session owner program"
+    },
+    {
+      "code": 6019,
+      "name": "NotNightPhase",
+      "msg": "Skip to day can only be used during night phases"
     }
   ],
   "types": [
+    {
+      "name": "BossCombatStarted",
+      "docs": [
+        "Emitted when boss combat starts"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "boss_id",
+            "type": {
+              "array": [
+                "u8",
+                12
+              ]
+            }
+          },
+          {
+            "name": "boss_hp",
+            "type": "i16"
+          },
+          {
+            "name": "week",
+            "type": "u8"
+          }
+        ]
+      }
+    },
     {
       "name": "BossFightReady",
       "type": {
@@ -368,10 +1626,295 @@
       }
     },
     {
+      "name": "CombatEnded",
+      "docs": [
+        "Emitted when combat ends"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "player_won",
+            "type": "bool"
+          },
+          {
+            "name": "final_player_hp",
+            "type": "i16"
+          },
+          {
+            "name": "final_enemy_hp",
+            "type": "i16"
+          },
+          {
+            "name": "gold_earned",
+            "type": "u16"
+          },
+          {
+            "name": "turns_taken",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CombatLog",
+      "docs": [
+        "Detailed combat log for turn-by-turn visualization.",
+        "Contains a serialized vector of CombatLogEntry for replay.",
+        "Note: Solana logs have ~30KB limit; this compact format allows ~300-400 actions per battle."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "entries",
+            "docs": [
+              "Serialized Vec<CombatLogEntry> - each entry is ~5 bytes"
+            ],
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "CombatLogEntry"
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "CombatLogEntry",
+      "docs": [
+        "A single entry in the combat log.",
+        "Compact format to minimize data cost (~5 bytes per entry)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "turn",
+            "docs": [
+              "Turn number (1-50)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "is_player",
+            "docs": [
+              "true = player action, false = enemy action"
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "action",
+            "docs": [
+              "The action type"
+            ],
+            "type": {
+              "defined": {
+                "name": "LogAction"
+              }
+            }
+          },
+          {
+            "name": "value",
+            "docs": [
+              "Primary value (damage, healing, stacks, etc.)"
+            ],
+            "type": "i16"
+          },
+          {
+            "name": "extra",
+            "docs": [
+              "Extra data (status_id for ApplyStatus, 0 otherwise)"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CombatStarted",
+      "docs": [
+        "Emitted when combat starts (either player walked into enemy or enemy walked into player)"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "player_hp",
+            "type": "i16"
+          },
+          {
+            "name": "player_atk",
+            "type": "i16"
+          },
+          {
+            "name": "enemy_archetype",
+            "type": "u8"
+          },
+          {
+            "name": "enemy_hp",
+            "type": "i16"
+          },
+          {
+            "name": "enemy_atk",
+            "type": "i16"
+          }
+        ]
+      }
+    },
+    {
+      "name": "DeathCause",
+      "docs": [
+        "Cause of player death - uses enum instead of String for efficiency"
+      ],
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Enemy"
+          },
+          {
+            "name": "Boss"
+          }
+        ]
+      }
+    },
+    {
+      "name": "EnemyInstance",
+      "docs": [
+        "A spawned enemy instance on the map"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "archetype_id",
+            "docs": [
+              "References EnemyArchetype ID (0-11)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "tier",
+            "docs": [
+              "Tier: 0=T1, 1=T2, 2=T3"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "x",
+            "docs": [
+              "Map X coordinate"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "y",
+            "docs": [
+              "Map Y coordinate"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "defeated",
+            "docs": [
+              "True if already defeated"
+            ],
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "EnemyMoved",
+      "docs": [
+        "Emitted when an enemy moves during night phase"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "enemy_index",
+            "type": "u8"
+          },
+          {
+            "name": "from_x",
+            "type": "u8"
+          },
+          {
+            "name": "from_y",
+            "type": "u8"
+          },
+          {
+            "name": "to_x",
+            "type": "u8"
+          },
+          {
+            "name": "to_y",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "EnemySpawn",
+      "docs": [
+        "Initial enemy spawn position (4 bytes)"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "archetype_id",
+            "docs": [
+              "Enemy archetype ID (0-11)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "tier",
+            "docs": [
+              "Enemy tier: 0=T1, 1=T2, 2=T3"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "x",
+            "docs": [
+              "X position on map"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "y",
+            "docs": [
+              "Y position on map"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
       "name": "GameState",
       "docs": [
         "Core gameplay state account linked to a GameSession.",
         "Contains all mutable game data for a single run.",
+        "Stats (ATK, ARM, SPD, DIG, MaxHP) are derived from inventory at runtime.",
         "PDA Seeds: [\"game_state\", session_pda.as_ref()]"
       ],
       "type": {
@@ -380,7 +1923,14 @@
           {
             "name": "player",
             "docs": [
-              "Session owner's wallet"
+              "Session owner's main wallet (used for lifecycle operations like close)"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "burner_wallet",
+            "docs": [
+              "Burner wallet authorized for gameplay transactions (move, boss fight)"
             ],
             "type": "pubkey"
           },
@@ -422,44 +1972,9 @@
           {
             "name": "hp",
             "docs": [
-              "Current health points (0 <= hp <= max_hp)"
+              "Current health points (0 <= hp <= derived max_hp)"
             ],
-            "type": "i8"
-          },
-          {
-            "name": "max_hp",
-            "docs": [
-              "Maximum health points"
-            ],
-            "type": "u8"
-          },
-          {
-            "name": "atk",
-            "docs": [
-              "Attack stat (allows negative for debuffs)"
-            ],
-            "type": "i8"
-          },
-          {
-            "name": "arm",
-            "docs": [
-              "Armor stat (allows negative for debuffs)"
-            ],
-            "type": "i8"
-          },
-          {
-            "name": "spd",
-            "docs": [
-              "Speed stat (allows negative for debuffs)"
-            ],
-            "type": "i8"
-          },
-          {
-            "name": "dig",
-            "docs": [
-              "Digging stat (affects wall dig cost)"
-            ],
-            "type": "i8"
+            "type": "i16"
           },
           {
             "name": "gear_slots",
@@ -508,11 +2023,33 @@
             "type": "bool"
           },
           {
+            "name": "gold",
+            "docs": [
+              "Current gold amount (0-65535)"
+            ],
+            "type": "u16"
+          },
+          {
             "name": "bump",
             "docs": [
               "PDA bump seed"
             ],
             "type": "u8"
+          },
+          {
+            "name": "campaign_level",
+            "docs": [
+              "Campaign level for this session (1-40)",
+              "Stored at init to prevent user manipulation of boss stage"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "is_dead",
+            "docs": [
+              "Player death flag - once set, all gameplay instructions are blocked"
+            ],
+            "type": "bool"
           }
         ]
       }
@@ -564,6 +2101,369 @@
           },
           {
             "name": "map_height",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "GeneratedMap",
+      "docs": [
+        "Generated map account storing tiles, enemies, and POI positions.",
+        "PDA seeds: [\"generated_map\", session.key()]",
+        "",
+        "**Persistence invariant:** This account is session-scoped and its layout",
+        "(including `packed_tiles`) persists unchanged across week transitions.",
+        "Week advancement in gameplay-state only modifies `GameState.week` —",
+        "`packed_tiles` is never reset. Wall-to-floor conversions via `set_floor()`",
+        "write directly to `packed_tiles` and persist for the entire session."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "session",
+            "docs": [
+              "Session this map belongs to"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "width",
+            "docs": [
+              "Map width in tiles"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "height",
+            "docs": [
+              "Map height in tiles"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "seed",
+            "docs": [
+              "Seed used for generation"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "spawn_x",
+            "docs": [
+              "Player spawn X position"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "spawn_y",
+            "docs": [
+              "Player spawn Y position"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "mole_den_x",
+            "docs": [
+              "Mole den X position (above spawn)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "mole_den_y",
+            "docs": [
+              "Mole den Y position"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "walkable_count",
+            "docs": [
+              "Number of walkable (floor) tiles"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "packed_tiles",
+            "docs": [
+              "Bit-packed tiles (0=floor, 1=wall), 313 bytes for 2500 tiles"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                313
+              ]
+            }
+          },
+          {
+            "name": "enemy_count",
+            "docs": [
+              "Number of enemies placed"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "enemies",
+            "docs": [
+              "Enemy spawn positions (max 48)"
+            ],
+            "type": {
+              "array": [
+                {
+                  "defined": {
+                    "name": "EnemySpawn"
+                  }
+                },
+                48
+              ]
+            }
+          },
+          {
+            "name": "poi_count",
+            "docs": [
+              "Number of POIs placed"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "pois",
+            "docs": [
+              "POI spawn positions (max 50)"
+            ],
+            "type": {
+              "array": [
+                {
+                  "defined": {
+                    "name": "PoiSpawn"
+                  }
+                },
+                50
+              ]
+            }
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump seed"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "GoldModifiedAuthorized",
+      "docs": [
+        "Emitted when gold is modified via authorized CPI from poi-system"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "old_gold",
+            "type": "u16"
+          },
+          {
+            "name": "new_gold",
+            "type": "u16"
+          },
+          {
+            "name": "delta",
+            "type": "i16"
+          }
+        ]
+      }
+    },
+    {
+      "name": "HpSynced",
+      "docs": [
+        "Emitted when HP is synced from inventory after equipping +HP gear"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "old_hp",
+            "type": "i16"
+          },
+          {
+            "name": "new_hp",
+            "type": "i16"
+          },
+          {
+            "name": "hp_bonus",
+            "type": "i16"
+          },
+          {
+            "name": "max_hp",
+            "type": "i16"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ItemInstance",
+      "docs": [
+        "A specific item owned by a player"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "item_id",
+            "docs": [
+              "References ItemDefinition ID (e.g., \"T-ST-01\\0\")"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                8
+              ]
+            }
+          },
+          {
+            "name": "tier",
+            "docs": [
+              "Upgrade tier"
+            ],
+            "type": {
+              "defined": {
+                "name": "Tier"
+              }
+            }
+          },
+          {
+            "name": "tool_oil_flags",
+            "docs": [
+              "Tool Oil bitflags: 0x01=+ATK, 0x02=+SPD, 0x04=+DIG, 0x08=+ARM"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LevelCompleted",
+      "docs": [
+        "Emitted when a level is completed (Week 3 boss defeated)"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "level",
+            "type": "u8"
+          },
+          {
+            "name": "total_moves",
+            "type": "u32"
+          },
+          {
+            "name": "gold_earned",
+            "type": "u16"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LogAction",
+      "docs": [
+        "Actions that can be logged during combat.",
+        "Each action type has a specific meaning for the `value` and `extra` fields."
+      ],
+      "repr": {
+        "kind": "rust"
+      },
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Attack"
+          },
+          {
+            "name": "Heal"
+          },
+          {
+            "name": "ApplyStatus"
+          },
+          {
+            "name": "StatusDamage"
+          },
+          {
+            "name": "ArmorChange"
+          },
+          {
+            "name": "AtkChange"
+          },
+          {
+            "name": "SpdChange"
+          },
+          {
+            "name": "NonWeaponDamage"
+          },
+          {
+            "name": "ShrapnelRetaliation"
+          },
+          {
+            "name": "GoldStolen"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MapEnemies",
+      "docs": [
+        "On-chain account storing all enemy instances for a map",
+        "PDA Seeds: [\"map_enemies\", session.as_ref()]"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "session",
+            "docs": [
+              "Parent session PDA"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "enemies",
+            "docs": [
+              "Enemy instances (max 48)"
+            ],
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "EnemyInstance"
+                }
+              }
+            }
+          },
+          {
+            "name": "count",
+            "docs": [
+              "Actual count of enemies"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump seed"
+            ],
             "type": "u8"
           }
         ]
@@ -628,6 +2528,134 @@
       }
     },
     {
+      "name": "PlayerDefeated",
+      "docs": [
+        "Emitted when the player is defeated (HP <= 0)"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "killed_by",
+            "type": {
+              "defined": {
+                "name": "DeathCause"
+              }
+            }
+          },
+          {
+            "name": "final_hp",
+            "type": "i16"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PlayerHealed",
+      "docs": [
+        "Emitted when player is healed via authorized CPI from poi-system"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "old_hp",
+            "type": "i16"
+          },
+          {
+            "name": "new_hp",
+            "type": "i16"
+          },
+          {
+            "name": "amount",
+            "type": "u16"
+          },
+          {
+            "name": "max_hp",
+            "type": "i16"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PlayerInventory",
+      "docs": [
+        "Player's equipped items and slot capacity"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "session",
+            "docs": [
+              "The session this inventory belongs to"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "player",
+            "docs": [
+              "Owner's wallet (for authorization)"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "tool",
+            "docs": [
+              "Equipped tool (0 or 1)"
+            ],
+            "type": {
+              "option": {
+                "defined": {
+                  "name": "ItemInstance"
+                }
+              }
+            }
+          },
+          {
+            "name": "gear",
+            "docs": [
+              "Equipped gear (0-8)"
+            ],
+            "type": {
+              "array": [
+                {
+                  "option": {
+                    "defined": {
+                      "name": "ItemInstance"
+                    }
+                  }
+                },
+                8
+              ]
+            }
+          },
+          {
+            "name": "gear_slot_capacity",
+            "docs": [
+              "Current gear limit (4, 6, or 8)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump seed"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
       "name": "PlayerMoved",
       "type": {
         "kind": "struct",
@@ -659,63 +2687,73 @@
           {
             "name": "is_dig",
             "type": "bool"
+          },
+          {
+            "name": "combat_triggered",
+            "type": "bool"
+          },
+          {
+            "name": "enemies_moved",
+            "type": "u8"
           }
         ]
       }
     },
     {
-      "name": "StatModified",
+      "name": "PoiSpawn",
+      "docs": [
+        "Initial POI spawn position (4 bytes)"
+      ],
       "type": {
         "kind": "struct",
         "fields": [
           {
-            "name": "player",
-            "type": "pubkey"
+            "name": "poi_type",
+            "docs": [
+              "POI definition ID (1-14)"
+            ],
+            "type": "u8"
           },
           {
-            "name": "stat",
-            "type": {
-              "defined": {
-                "name": "StatType"
-              }
-            }
+            "name": "is_used",
+            "docs": [
+              "True if POI has been used"
+            ],
+            "type": "bool"
           },
           {
-            "name": "old_value",
-            "type": "i8"
+            "name": "x",
+            "docs": [
+              "X position on map"
+            ],
+            "type": "u8"
           },
           {
-            "name": "new_value",
-            "type": "i8"
+            "name": "y",
+            "docs": [
+              "Y position on map"
+            ],
+            "type": "u8"
           }
         ]
       }
     },
     {
-      "name": "StatType",
+      "name": "Tier",
       "docs": [
-        "Stat type enumeration for modify_stat instruction"
+        "Item tier (upgrade level)"
       ],
       "type": {
         "kind": "enum",
         "variants": [
           {
-            "name": "Hp"
+            "name": "I"
           },
           {
-            "name": "MaxHp"
+            "name": "II"
           },
           {
-            "name": "Atk"
-          },
-          {
-            "name": "Arm"
-          },
-          {
-            "name": "Spd"
-          },
-          {
-            "name": "Dig"
+            "name": "III"
           }
         ]
       }

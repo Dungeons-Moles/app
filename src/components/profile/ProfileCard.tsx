@@ -14,11 +14,11 @@ export function ProfileCard({ profile }: ProfileCardProps) {
     <ImageBackground source={rectangleSource} style={styles.card} resizeMode="stretch">
       <View style={styles.content}>
         <View style={styles.row}>
-          <Text style={styles.label}>Total Runs:</Text>
+          <Text style={styles.label}>Sessions Played:</Text>
           <Text style={styles.value}>{profile.totalRuns}</Text>
         </View>
         <View style={styles.row}>
-          <Text style={styles.label}>PvE Runs Available:</Text>
+          <Text style={styles.label}>Sessions Remaining:</Text>
           <Text style={styles.value}>{profile.availableRuns}</Text>
         </View>
       </View>
@@ -28,7 +28,7 @@ export function ProfileCard({ profile }: ProfileCardProps) {
 
 const styles = StyleSheet.create({
   card: {
-    width: 170,
+    width: 185,
     height: 55,
   },
   content: {

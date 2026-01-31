@@ -154,7 +154,7 @@ export type ToolId =
   | 'T15'
   | 'T16'; // TEMPO: Quickpick, Chrono Rapier
 
-export type ToolOil = 'ATK' | 'ARM' | 'DIG' | 'SPD';
+export type ToolOil = 'ATK' | 'DIG' | 'SPD' | 'ARM';
 
 // 64 gear items total: 8 per tag (STONE, SCOUT, GREED, BLAST, FROST, RUST, BLOOD, TEMPO)
 export type GearId =

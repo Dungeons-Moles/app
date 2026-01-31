@@ -52,11 +52,19 @@ export interface UseGameplayStateReturn {
     burnerKeypair: Keypair,
     params: GameStateInitParams
   ) => Promise<boolean>;
-  /** Move player to adjacent tile */
+  /** Move player to adjacent tile (on-chain-first, awaits confirmation) */
   move: (
     burnerKeypair: Keypair,
     params: MovePlayerParams
-  ) => Promise<{ success: boolean; newState?: GameState }>;
+  ) => Promise<{
+    success: boolean;
+    newState?: GameState;
+    previousState?: GameState;
+    combatOccurred?: boolean;
+    bossFightReady?: boolean;
+    isDead?: boolean;
+    signature?: string;
+  }>;
   /** Modify a player stat */
   updateStat: (
     burnerKeypair: Keypair,
@@ -213,51 +221,76 @@ export function useGameplayState(): UseGameplayStateReturn {
 
   /**
    * Move player to adjacent tile.
-   * Uses optimistic update for responsive UI.
+   * On-chain-first: sends transaction, awaits confirmation, fetches confirmed state.
+   * No optimistic updates — local state only changes after on-chain confirmation.
    */
   const move = useCallback(
     async (
       burnerKeypair: Keypair,
       params: MovePlayerParams
-    ): Promise<{ success: boolean; newState?: GameState }> => {
-      if (!program || !gameStatePda || !gameState) {
-        setError('Game state not initialized');
+    ): Promise<{
+      success: boolean;
+      newState?: GameState;
+      previousState?: GameState;
+      combatOccurred?: boolean;
+      bossFightReady?: boolean;
+      isDead?: boolean;
+      signature?: string;
+    }> => {
+      console.log('[useGameplayState] move() called — program:', !!program, ', gameStatePda:', gameStatePda?.toBase58() ?? 'null', ', gameState:', gameState ? 'set' : 'null');
+
+      if (!program) {
+        const msg = 'Program not available';
+        console.error('[useGameplayState] move() failed:', msg);
+        setError(msg);
         return { success: false };
       }
 
-      // Calculate expected move cost
-      const moveCost = calculateMoveCost(params.isWall, gameState.dig);
-
-      // Validate move locally before sending
-      if (gameState.movesRemaining < moveCost) {
-        setError('Not enough moves remaining');
+      if (!gameStatePda) {
+        const msg = 'Game state not connected to blockchain (gameStatePda is null)';
+        console.error('[useGameplayState] move() failed:', msg);
+        setError(msg);
         return { success: false };
       }
 
-      if (gameState.bossFightReady) {
-        setError('Boss fight triggered - end your run!');
+      let currentGameState = gameState;
+
+      if (!currentGameState) {
+        // Auto-refresh may not have completed yet — try fetching on-demand
+        console.warn('[useGameplayState] move(): gameState is null, attempting on-demand fetch...');
+        currentGameState = await fetchGameState(program, gameStatePda);
+        if (currentGameState && isMountedRef.current) {
+          setGameState(currentGameState);
+          console.log('[useGameplayState] move(): on-demand fetch succeeded');
+        }
+      }
+
+      if (!currentGameState) {
+        const msg = 'Game state not initialized — fetch failed';
+        console.error('[useGameplayState] move() failed:', msg);
+        setError(msg);
         return { success: false };
       }
 
-      // Optimistic update
-      const optimisticState: GameState = {
-        ...gameState,
-        positionX: params.targetX,
-        positionY: params.targetY,
-        movesRemaining: gameState.movesRemaining - moveCost,
-        totalMoves: gameState.totalMoves + moveCost,
-      };
+      const previousState = currentGameState;
 
       if (isMountedRef.current) {
-        setGameState(optimisticState);
         setSyncStatus('syncing');
         setError(null);
       }
 
       try {
-        await movePlayer(connection, program, gameStatePda, burnerKeypair, params);
+        const sessionPda = currentGameState.session;
+        const signature = await movePlayer(
+          connection,
+          program,
+          gameStatePda,
+          sessionPda,
+          burnerKeypair,
+          params
+        );
 
-        // Fetch confirmed state
+        // Fetch confirmed state after on-chain confirmation
         const confirmedState = await fetchGameState(program, gameStatePda);
 
         if (isMountedRef.current) {
@@ -266,13 +299,26 @@ export function useGameplayState(): UseGameplayStateReturn {
           setLastSyncAt(Date.now());
         }
 
-        return { success: true, newState: confirmedState ?? undefined };
-      } catch (err) {
-        console.error('Failed to move player:', err);
+        // Detect combat from state changes
+        const combatOccurred =
+          confirmedState != null &&
+          (confirmedState.hp < previousState.hp ||
+            confirmedState.isDead ||
+            confirmedState.gold > previousState.gold);
 
-        // Rollback optimistic update
+        return {
+          success: true,
+          newState: confirmedState ?? undefined,
+          previousState,
+          combatOccurred,
+          bossFightReady: confirmedState?.bossFightReady ?? false,
+          isDead: confirmedState?.isDead ?? false,
+          signature,
+        };
+      } catch (err) {
+        console.error('[useGameplayState] Failed to move player:', err);
+
         if (isMountedRef.current) {
-          setGameState(gameState);
           setSyncStatus('error');
           setError(getGameplayErrorMessage(err));
         }
@@ -385,7 +431,10 @@ export function useGameplayState(): UseGameplayStateReturn {
   // Auto-refresh when gameStatePda changes
   useEffect(() => {
     if (gameStatePda && program) {
-      refresh();
+      console.log('[useGameplayState] Auto-refresh triggered for PDA:', gameStatePda.toBase58());
+      refresh().then((state) => {
+        console.log('[useGameplayState] Auto-refresh complete, gameState:', state ? 'set' : 'null');
+      });
     }
   }, [gameStatePda, program, refresh]);
 

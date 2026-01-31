@@ -19,7 +19,7 @@ const mapGeneratorProgramId = process.env.EXPO_PUBLIC_MAP_GENERATOR_PROGRAM_ID;
 const gameplayStateProgramId = process.env.EXPO_PUBLIC_GAMEPLAY_STATE_PROGRAM_ID;
 const fieldEnemiesProgramId = process.env.EXPO_PUBLIC_FIELD_ENEMIES_PROGRAM_ID;
 const poiSystemProgramId = process.env.EXPO_PUBLIC_POI_SYSTEM_PROGRAM_ID;
-const inventoryProgramId = process.env.EXPO_PUBLIC_INVENTORY_PROGRAM_ID;
+const inventoryProgramId = process.env.EXPO_PUBLIC_PLAYER_INVENTORY_PROGRAM_ID;
 
 // Validate required program IDs
 if (!playerProfileProgramId || !sessionManagerProgramId || !gameplayStateProgramId) {
@@ -89,14 +89,20 @@ export const PDA_SEEDS = {
   SESSION_COUNTER: 'session_counter',
   /** Game state: ["game_state", session_pda] */
   GAME_STATE: 'game_state',
-  /** Map enemies: ["enemies", session_pda] */
-  ENEMIES: 'enemies',
-  /** Map POIs: ["pois", session_pda] */
-  POIS: 'pois',
+  /** Map enemies: ["map_enemies", session_pda] */
+  MAP_ENEMIES: 'map_enemies',
+  /** Map POIs: ["map_pois", session_pda] */
+  MAP_POIS: 'map_pois',
+  /** Generated map: ["generated_map", session_pda] */
+  GENERATED_MAP: 'generated_map',
+  /** POI authority: ["poi_authority"] */
+  POI_AUTHORITY: 'poi_authority',
   /** Player inventory: ["inventory", session_pda] */
   INVENTORY: 'inventory',
-  /** Map generator config: ["map_generator_config"] */
-  MAP_GENERATOR_CONFIG: 'map_generator_config',
+  /** Map generator config: ["map_config"] */
+  MAP_CONFIG: 'map_config',
+  /** Gameplay authority: ["gameplay_authority"] - for CPI calls from gameplay_state */
+  GAMEPLAY_AUTHORITY: 'gameplay_authority',
 } as const;
 
 // ============================================================================
@@ -163,8 +169,8 @@ export function deriveGameStatePda(sessionPda: PublicKey): [PublicKey, number] {
  */
 export function deriveMapEnemiesPda(sessionPda: PublicKey): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
-    [Buffer.from(PDA_SEEDS.ENEMIES), sessionPda.toBuffer()],
-    FIELD_ENEMIES_PROGRAM_ID
+    [Buffer.from(PDA_SEEDS.MAP_ENEMIES), sessionPda.toBuffer()],
+    GAMEPLAY_STATE_PROGRAM_ID
   );
 }
 
@@ -176,7 +182,7 @@ export function deriveMapEnemiesPda(sessionPda: PublicKey): [PublicKey, number] 
  */
 export function deriveMapPoisPda(sessionPda: PublicKey): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
-    [Buffer.from(PDA_SEEDS.POIS), sessionPda.toBuffer()],
+    [Buffer.from(PDA_SEEDS.MAP_POIS), sessionPda.toBuffer()],
     POI_SYSTEM_PROGRAM_ID
   );
 }
@@ -191,6 +197,56 @@ export function deriveInventoryPda(sessionPda: PublicKey): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
     [Buffer.from(PDA_SEEDS.INVENTORY), sessionPda.toBuffer()],
     INVENTORY_PROGRAM_ID
+  );
+}
+
+/**
+ * Derive MapConfig PDA (global, no session-specific seed).
+ *
+ * @returns [PDA, bump]
+ */
+export function deriveMapConfigPda(): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from(PDA_SEEDS.MAP_CONFIG)],
+    MAP_GENERATOR_PROGRAM_ID
+  );
+}
+
+/**
+ * Derive POI Authority PDA (global, no session-specific seed).
+ *
+ * @returns [PDA, bump]
+ */
+export function derivePoiAuthorityPda(): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from(PDA_SEEDS.POI_AUTHORITY)],
+    POI_SYSTEM_PROGRAM_ID
+  );
+}
+
+/**
+ * Derive GeneratedMap PDA for a session.
+ *
+ * @param sessionPda - Session PDA
+ * @returns [PDA, bump]
+ */
+export function deriveGeneratedMapPda(sessionPda: PublicKey): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from(PDA_SEEDS.GENERATED_MAP), sessionPda.toBuffer()],
+    MAP_GENERATOR_PROGRAM_ID
+  );
+}
+
+/**
+ * Derive Gameplay Authority PDA (global, no session-specific seed).
+ * Used for CPI calls from gameplay_state to map_generator.
+ *
+ * @returns [PDA, bump]
+ */
+export function deriveGameplayAuthorityPda(): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from(PDA_SEEDS.GAMEPLAY_AUTHORITY)],
+    GAMEPLAY_STATE_PROGRAM_ID
   );
 }
 
@@ -215,8 +271,8 @@ export const ACCOUNT_SIZES = {
 // Run Economy Constants
 // ============================================================================
 
-/** Price for 20 runs in lamports (0.001 SOL) */
-export const RUN_PRICE_LAMPORTS = 1_000_000;
+/** Price for 20 sessions in lamports (0.005 SOL) */
+export const RUN_PRICE_LAMPORTS = 5_000_000;
 
 /** Number of runs received per purchase */
 export const RUNS_PER_PURCHASE = 20;

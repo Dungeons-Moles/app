@@ -84,6 +84,12 @@ export interface GameState {
   totalMoves: number;
   /** Boss fight triggered flag */
   bossFightReady: boolean;
+  /** Current gold */
+  gold: number;
+  /** Campaign level being played */
+  campaignLevel: number;
+  /** Player death flag */
+  isDead: boolean;
 }
 
 /**
@@ -102,14 +108,37 @@ export interface GameStateInitParams {
 
 /**
  * Move player parameters.
+ * Note: isWall is no longer needed — the on-chain program reads the map directly.
  */
 export interface MovePlayerParams {
   /** Target X coordinate */
   targetX: number;
   /** Target Y coordinate */
   targetY: number;
-  /** True if target is wall tile (digging) */
-  isWall: boolean;
+}
+
+/**
+ * Accounts required for the move_player instruction.
+ */
+export interface MovePlayerAccounts {
+  /** GameState PDA: ["game_state", session] */
+  gameState: PublicKey;
+  /** Session Manager program address (for CPI validation) */
+  sessionManager: PublicKey;
+  /** GameSession PDA: ["session", player, level] */
+  gameSession: PublicKey;
+  /** MapEnemies PDA: ["map_enemies", session] */
+  mapEnemies: PublicKey;
+  /** GeneratedMap PDA: ["generated_map", session] */
+  generatedMap: PublicKey;
+  /** PlayerInventory PDA: ["inventory", session] */
+  inventory: PublicKey;
+  /** Player Inventory program ID */
+  playerInventoryProgram: PublicKey;
+  /** Player signer (burner wallet) */
+  player: PublicKey;
+  /** System program */
+  systemProgram: PublicKey;
 }
 
 /**

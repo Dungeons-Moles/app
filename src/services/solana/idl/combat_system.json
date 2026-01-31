@@ -1,0 +1,703 @@
+{
+  "address": "ArfGqYVEMwX2GzLip1rWxCef4Ewf4imtZGjzEyEhSf6r",
+  "metadata": {
+    "name": "combat_system",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Combat System Program for deterministic auto-battle"
+  },
+  "instructions": [
+    {
+      "name": "close_combat",
+      "docs": [
+        "Closes a combat state account once combat has ended."
+      ],
+      "discriminator": [
+        234,
+        11,
+        233,
+        97,
+        24,
+        97,
+        251,
+        66
+      ],
+      "accounts": [
+        {
+          "name": "combat_state",
+          "writable": true
+        },
+        {
+          "name": "player",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "combat_state"
+          ]
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "initialize_combat",
+      "docs": [
+        "Initializes a new combat state account for the provided combatants.",
+        "",
+        "The combat state seeds are derived from `game_state` and the combatant",
+        "stats are validated before storage. Emits `CombatInitialized`."
+      ],
+      "discriminator": [
+        251,
+        182,
+        194,
+        114,
+        236,
+        10,
+        214,
+        181
+      ],
+      "accounts": [
+        {
+          "name": "combat_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  109,
+                  98,
+                  97,
+                  116,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "game_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "game_state"
+        },
+        {
+          "name": "player",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "player_stats",
+          "type": {
+            "defined": {
+              "name": "CombatantInput"
+            }
+          }
+        },
+        {
+          "name": "enemy_stats",
+          "type": {
+            "defined": {
+              "name": "CombatantInput"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "resolve_combat",
+      "docs": [
+        "Resolves combat deterministically until a winner is decided.",
+        "",
+        "Effects are applied in a fixed order (battle start, first turn, turn start,",
+        "every other turn, strikes, end-of-turn decay). Emits `TurnExecuted` each",
+        "turn and `CombatResult` when combat ends."
+      ],
+      "discriminator": [
+        102,
+        12,
+        186,
+        107,
+        61,
+        197,
+        93,
+        223
+      ],
+      "accounts": [
+        {
+          "name": "combat_state",
+          "writable": true
+        },
+        {
+          "name": "player",
+          "signer": true,
+          "relations": [
+            "combat_state"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "player_effects",
+          "type": {
+            "vec": {
+              "defined": {
+                "name": "ItemEffect"
+              }
+            }
+          }
+        },
+        {
+          "name": "enemy_effects",
+          "type": {
+            "vec": {
+              "defined": {
+                "name": "ItemEffect"
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "CombatState",
+      "discriminator": [
+        30,
+        219,
+        190,
+        221,
+        225,
+        108,
+        27,
+        145
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "CombatInitialized",
+      "discriminator": [
+        101,
+        56,
+        23,
+        5,
+        196,
+        66,
+        101,
+        115
+      ]
+    },
+    {
+      "name": "CombatResult",
+      "discriminator": [
+        173,
+        49,
+        41,
+        89,
+        234,
+        95,
+        115,
+        154
+      ]
+    },
+    {
+      "name": "StatusApplied",
+      "discriminator": [
+        211,
+        190,
+        30,
+        252,
+        189,
+        60,
+        92,
+        92
+      ]
+    },
+    {
+      "name": "TurnExecuted",
+      "discriminator": [
+        169,
+        83,
+        141,
+        74,
+        227,
+        128,
+        198,
+        167
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "CombatAlreadyEnded",
+      "msg": "Combat has already ended"
+    },
+    {
+      "code": 6001,
+      "name": "CombatNotEnded",
+      "msg": "Combat has not ended yet"
+    },
+    {
+      "code": 6002,
+      "name": "Unauthorized",
+      "msg": "Unauthorized: signer is not the combat owner"
+    },
+    {
+      "code": 6003,
+      "name": "InvalidCombatant",
+      "msg": "Invalid combatant stats provided"
+    },
+    {
+      "code": 6004,
+      "name": "ArithmeticOverflow",
+      "msg": "Arithmetic operation overflowed"
+    },
+    {
+      "code": 6005,
+      "name": "MaxTurnsExceeded",
+      "msg": "Combat exceeded maximum turns"
+    },
+    {
+      "code": 6006,
+      "name": "InvalidTrigger",
+      "msg": "Invalid trigger type for this context"
+    }
+  ],
+  "types": [
+    {
+      "name": "CombatInitialized",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "game_state",
+            "type": "pubkey"
+          },
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "player_hp",
+            "type": "i16"
+          },
+          {
+            "name": "enemy_hp",
+            "type": "i16"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CombatResult",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "game_state",
+            "type": "pubkey"
+          },
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "player_won",
+            "type": "bool"
+          },
+          {
+            "name": "final_turn",
+            "type": "u8"
+          },
+          {
+            "name": "player_remaining_hp",
+            "type": "i16"
+          },
+          {
+            "name": "enemy_remaining_hp",
+            "type": "i16"
+          },
+          {
+            "name": "resolution_type",
+            "type": {
+              "defined": {
+                "name": "ResolutionType"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "CombatState",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "game_state",
+            "type": "pubkey"
+          },
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "turn",
+            "type": "u8"
+          },
+          {
+            "name": "player_hp",
+            "type": "i16"
+          },
+          {
+            "name": "player_max_hp",
+            "type": "u16"
+          },
+          {
+            "name": "player_atk",
+            "type": "i16"
+          },
+          {
+            "name": "player_arm",
+            "type": "i16"
+          },
+          {
+            "name": "player_spd",
+            "type": "i16"
+          },
+          {
+            "name": "player_strikes",
+            "type": "u8"
+          },
+          {
+            "name": "player_status",
+            "type": {
+              "defined": {
+                "name": "StatusEffects"
+              }
+            }
+          },
+          {
+            "name": "enemy_hp",
+            "type": "i16"
+          },
+          {
+            "name": "enemy_max_hp",
+            "type": "u16"
+          },
+          {
+            "name": "enemy_atk",
+            "type": "i16"
+          },
+          {
+            "name": "enemy_arm",
+            "type": "i16"
+          },
+          {
+            "name": "enemy_spd",
+            "type": "i16"
+          },
+          {
+            "name": "enemy_strikes",
+            "type": "u8"
+          },
+          {
+            "name": "enemy_status",
+            "type": {
+              "defined": {
+                "name": "StatusEffects"
+              }
+            }
+          },
+          {
+            "name": "sudden_death_bonus",
+            "type": "i16"
+          },
+          {
+            "name": "combat_ended",
+            "type": "bool"
+          },
+          {
+            "name": "player_won",
+            "type": "bool"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CombatantInput",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "hp",
+            "type": "i16"
+          },
+          {
+            "name": "max_hp",
+            "type": "u16"
+          },
+          {
+            "name": "atk",
+            "type": "i16"
+          },
+          {
+            "name": "arm",
+            "type": "i16"
+          },
+          {
+            "name": "spd",
+            "type": "i16"
+          },
+          {
+            "name": "dig",
+            "type": "i16"
+          },
+          {
+            "name": "strikes",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "EffectType",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "DealDamage"
+          },
+          {
+            "name": "DealNonWeaponDamage"
+          },
+          {
+            "name": "Heal"
+          },
+          {
+            "name": "GainArmor"
+          },
+          {
+            "name": "GainAtk"
+          },
+          {
+            "name": "GainSpd"
+          },
+          {
+            "name": "ApplyChill"
+          },
+          {
+            "name": "ApplyShrapnel"
+          },
+          {
+            "name": "ApplyRust"
+          },
+          {
+            "name": "ApplyBleed"
+          },
+          {
+            "name": "RemoveArmor"
+          },
+          {
+            "name": "GainStrikes"
+          },
+          {
+            "name": "StealGold"
+          },
+          {
+            "name": "GoldToArmor"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ItemEffect",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "trigger",
+            "type": {
+              "defined": {
+                "name": "TriggerType"
+              }
+            }
+          },
+          {
+            "name": "once_per_turn",
+            "type": "bool"
+          },
+          {
+            "name": "effect_type",
+            "type": {
+              "defined": {
+                "name": "EffectType"
+              }
+            }
+          },
+          {
+            "name": "value",
+            "type": "i16"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ResolutionType",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "PlayerDefeated"
+          },
+          {
+            "name": "EnemyDefeated"
+          },
+          {
+            "name": "SuddenDeathPlayerWin"
+          },
+          {
+            "name": "SuddenDeathEnemyWin"
+          },
+          {
+            "name": "FailsafePlayerWin"
+          },
+          {
+            "name": "FailsafeEnemyWin"
+          }
+        ]
+      }
+    },
+    {
+      "name": "StatusApplied",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "target",
+            "type": "string"
+          },
+          {
+            "name": "effect_type",
+            "type": "string"
+          },
+          {
+            "name": "stacks",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "StatusEffects",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "chill",
+            "type": "u8"
+          },
+          {
+            "name": "shrapnel",
+            "type": "u8"
+          },
+          {
+            "name": "rust",
+            "type": "u8"
+          },
+          {
+            "name": "bleed",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "TriggerType",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "BattleStart"
+          },
+          {
+            "name": "FirstTurn"
+          },
+          {
+            "name": "TurnStart"
+          },
+          {
+            "name": "EveryOtherTurn"
+          },
+          {
+            "name": "OnHit"
+          },
+          {
+            "name": "Exposed"
+          },
+          {
+            "name": "Wounded"
+          },
+          {
+            "name": "Countdown",
+            "fields": [
+              {
+                "name": "turns",
+                "type": "u8"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "TurnExecuted",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "turn",
+            "type": "u8"
+          },
+          {
+            "name": "player_hp",
+            "type": "i16"
+          },
+          {
+            "name": "enemy_hp",
+            "type": "i16"
+          },
+          {
+            "name": "player_damage_dealt",
+            "type": "i16"
+          },
+          {
+            "name": "enemy_damage_dealt",
+            "type": "i16"
+          }
+        ]
+      }
+    }
+  ]
+}

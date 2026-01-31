@@ -62,11 +62,6 @@ const STAT_EMOJI_MAP: Record<string, { emoji: string; name: string; image?: any 
     name: 'Attack Oil',
     image: require('../../../assets/icons/oils/ATK.png'),
   },
-  '+1 ARM': {
-    emoji: '🛡️',
-    name: 'Armor Oil',
-    image: require('../../../assets/icons/oils/ARM.png'),
-  },
   '+1 DIG': {
     emoji: '⛏️',
     name: 'Dig Oil',
@@ -76,6 +71,11 @@ const STAT_EMOJI_MAP: Record<string, { emoji: string; name: string; image?: any 
     emoji: '⚡',
     name: 'Speed Oil',
     image: require('../../../assets/icons/oils/SPD.png'),
+  },
+  '+1 ARM': {
+    emoji: '🛡️',
+    name: 'Armor Oil',
+    image: require('../../../assets/icons/oils/ARM.png'),
   },
 };
 

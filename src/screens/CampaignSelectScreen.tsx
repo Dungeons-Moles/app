@@ -26,7 +26,10 @@ import { Skeleton } from '../components/common/Skeleton';
 import { ProfileCard } from '../components/profile/ProfileCard';
 import { createGameplayStateProgram } from '../services/solana/programs';
 import { fetchGameState, getGameStatePda } from '../services/solana/gameplayState';
+import { fetchFullSessionState } from '../services/solana/sessionRestore';
+import { deriveSessionPda } from '../services/solana/constants';
 import { promptTransactionRetry } from '../utils/transaction-alerts';
+import { useWallet } from '../contexts/WalletContext';
 import type { CampaignLevel } from '../types/solana';
 import type { GameState as OnChainGameState } from '../services/solana/types/gameplay_state';
 
@@ -44,19 +47,19 @@ const NUM_COLUMNS = 5;
 
 export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) {
   const { profile, mode, availableRuns, highestLevelUnlocked } = useProfile();
+  const { wallet } = useWallet();
   const { connection } = useSolanaConnection();
   const {
     startGame: startSessionOnChain,
-    mapSeed,
     hasSessionForLevel,
     activeSessions,
+    getMapSeedForLevel,
     switchToSession,
     getSessionPdaForLevel,
-    getMapSeedForLevel,
+    setGameStatePda,
   } = useSession();
   const { state: gameState, dispatch } = useGame();
   const {
-    getCampaignLevels,
     fetchMapConfig: refreshConfig,
     isLoading: mapLoading,
     error: mapError,
@@ -132,24 +135,46 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
           shouldRetry = false;
 
           try {
+            if (!connection || !wallet.publicKey) {
+              Alert.alert('Connection Error', 'Wallet or connection not available.');
+              return;
+            }
+
+            // Use switchToSession to set up gameStatePda, recover burner wallet,
+            // and fetch map seed — without creating a new session.
+            // This avoids the "Burner wallet missing" error that startGame hits
+            // when the burner hasn't been loaded from SecureStore yet.
             const sessionPda = await getSessionPdaForLevel(level.level);
+            if (sessionPda) {
+              console.log('[CampaignSelect] Switching to existing session...');
+              const switchResult = await switchToSession(sessionPda);
+              if (!switchResult.success) {
+                console.warn('[CampaignSelect] switchToSession failed:', switchResult.error);
+                // Fall through to try startSessionOnChain as fallback
+              }
+            }
+
+            // If switchToSession didn't work (no PDA found or failed),
+            // fall back to startSessionOnChain which handles the reuse path
             if (!sessionPda) {
-              Alert.alert('Session Not Found', 'No active session was found for this level.');
-              return;
+              console.log('[CampaignSelect] No session PDA found, trying startSessionOnChain...');
+              const result = await startSessionOnChain(level.level);
+              if (result && !result.success) {
+                const message = result.error ?? 'Failed to resume session.';
+                shouldRetry = await promptTransactionRetry({
+                  title: 'Resume Failed',
+                  message,
+                });
+                continue;
+              }
             }
 
-            const switchResult = await switchToSession(sessionPda);
-            if (!switchResult.success) {
-              Alert.alert(
-                'Unable to Resume',
-                switchResult.error ?? 'Failed to switch to the selected session.'
-              );
-              return;
-            }
+            const onChainLevel = level.level + 1;
+            const [sessionPdaKey] = deriveSessionPda(wallet.publicKey, onChainLevel);
 
+            // Determine seed
             const seedFromChain = await getMapSeedForLevel(level.level);
             let seed: number;
-
             if (seedFromChain !== null) {
               seed = Number(seedFromChain % BigInt(2147483647));
             } else if (level.seed !== null) {
@@ -158,13 +183,30 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
               seed = Math.floor(Math.random() * 2147483647);
             }
 
-            let stateToRestore: OnChainGameState | null = null;
-            if (connection) {
-              const program = createGameplayStateProgram(connection);
-              const [gameStatePda] = getGameStatePda(new PublicKey(sessionPda));
-              stateToRestore = await fetchGameState(program, gameStatePda);
+            // Full on-chain restore: fetch all accounts and build complete GameState
+            console.log('[CampaignSelect] Restoring session from on-chain data...');
+            const restoredState = await fetchFullSessionState(
+              connection,
+              sessionPdaKey,
+              seed
+            );
+
+            if (restoredState) {
+              console.log('[CampaignSelect] Full session restore successful');
+              // Set the gameStatePda so gameplay hooks can interact with the blockchain
+              const [derivedGameStatePda] = getGameStatePda(sessionPdaKey);
+              setGameStatePda(derivedGameStatePda);
+              dispatch({ type: 'RESTORE_GAME', state: restoredState });
+              navigation.navigate('Game');
+              return;
             }
 
+            // Fallback: partial restore from GameState only
+            console.warn('[CampaignSelect] Full restore failed, falling back to partial restore');
+            const program = createGameplayStateProgram(connection);
+            const [gameStatePdaFallback] = getGameStatePda(sessionPdaKey);
+            setGameStatePda(gameStatePdaFallback);
+            const stateToRestore = await fetchGameState(program, gameStatePdaFallback);
             const restorePayload = createRestorePayload(stateToRestore);
 
             dispatch({
@@ -196,51 +238,49 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
       getMapSeedForLevel,
       getSessionPdaForLevel,
       navigation,
+      setGameStatePda,
+      startSessionOnChain,
       switchToSession,
+      wallet.publicKey,
     ]
   );
 
-  // Fetch campaign levels on mount
+  // Build campaign levels synchronously from profile data (no RPC needed for grid)
   useEffect(() => {
-    async function loadLevels() {
-      setIsLoadingLevels(true);
+    const playerLevel = profile?.currentLevel ?? 0;
+    const builtLevels: CampaignLevel[] = [];
 
-      // In guest mode, create basic unlocked levels without on-chain data
+    for (let level = 0; level <= MAX_CAMPAIGN_LEVEL; level++) {
       if (isGuestMode) {
-        const guestLevels: CampaignLevel[] = [];
-        // In guest mode, only first 10 levels are unlocked for demo
-        for (let level = 0; level <= MAX_CAMPAIGN_LEVEL; level++) {
-          guestLevels.push({
-            level,
-            isUnlocked: level < 10, // Only first 10 levels in guest mode
-            isCompleted: false,
-            seed: null, // Will use random seed
-          });
-        }
-        setLevels(guestLevels);
-        setIsLoadingLevels(false);
-        return;
+        builtLevels.push({
+          level,
+          isUnlocked: level < 10,
+          isCompleted: false,
+          seed: null,
+        });
+      } else {
+        builtLevels.push({
+          level,
+          isUnlocked: level <= playerLevel,
+          isCompleted: level < playerLevel,
+          seed: null, // Seeds fetched on-demand when starting a game
+        });
       }
-
-      const playerLevel = profile?.currentLevel ?? 0;
-      const campaignLevels = await getCampaignLevels(playerLevel);
-      setLevels(campaignLevels);
-      setIsLoadingLevels(false);
     }
-    loadLevels();
-  }, [getCampaignLevels, profile?.currentLevel, isGuestMode]);
+
+    setLevels(builtLevels);
+    setIsLoadingLevels(false);
+  }, [profile?.currentLevel, isGuestMode]);
 
   const onRefresh = useCallback(async () => {
     if (isGuestMode || isCachedMode) {
       return;
     }
     setRefreshing(true);
+    // Pre-fetch map config in background so seeds are cached for game start
     await refreshConfig();
-    const playerLevel = profile?.currentLevel ?? 0;
-    const campaignLevels = await getCampaignLevels(playerLevel);
-    setLevels(campaignLevels);
     setRefreshing(false);
-  }, [isGuestMode, isCachedMode, refreshConfig, getCampaignLevels, profile?.currentLevel]);
+  }, [isGuestMode, isCachedMode, refreshConfig]);
 
   const handleLevelSelect = useCallback(
     async (level: CampaignLevel) => {
@@ -334,10 +374,12 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
             }
           }
 
-          // Determine seed to use
-          if (result?.success && mapSeed !== null) {
+          // Determine seed to use — prefer the seed returned directly from startGame
+          // (React state via mapSeed may not have updated yet)
+          const returnedSeed = result?.mapSeed ?? null;
+          if (result?.success && returnedSeed !== null) {
             // Convert BigInt seed to a 32-bit number for the game engine
-            seed = Number(mapSeed % BigInt(2147483647));
+            seed = Number(returnedSeed % BigInt(2147483647));
             console.log('[CampaignSelect] Using on-chain seed:', seed);
           } else if (level.seed !== null) {
             // Use the level's seed from getCampaignLevels
@@ -364,23 +406,29 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
           dispatch({ type: 'RETURN_TO_MENU' });
         }
 
-        // Use returned state if available (restored), otherwise fallback to context state
-        // If result.gameState is present, it means we are reusing an existing session and fetched its state
-        const stateToRestore = result?.gameState ?? null;
-        const restorePayload = createRestorePayload(stateToRestore);
+        // For on-chain sessions (resumed or new), always fetch full state from chain
+        if (!isGuestMode && result?.success && connection && wallet.publicKey) {
+          console.log('[CampaignSelect] On-chain session active, fetching full state from chain...');
+          const onChainLevel = level.level + 1; // Convert 0-indexed frontend to 1-indexed on-chain
+          const [sessionPda] = deriveSessionPda(wallet.publicKey, onChainLevel);
+          const restoredState = await fetchFullSessionState(connection, sessionPda, seed);
 
-        if (stateToRestore && restorePayload) {
-          console.log('[CampaignSelect] Restoring state with position:', {
-            x: stateToRestore.positionX,
-            y: stateToRestore.positionY,
-          });
+          if (restoredState) {
+            console.log('[CampaignSelect] Full on-chain state fetch successful');
+            // Set the gameStatePda so gameplay hooks can interact with the blockchain
+            const [derivedPda] = getGameStatePda(sessionPda);
+            setGameStatePda(derivedPda);
+            dispatch({ type: 'RESTORE_GAME', state: restoredState });
+            navigation.navigate('Game');
+            return;
+          }
+          console.warn('[CampaignSelect] On-chain state fetch failed, falling back to START_GAME');
         }
 
-        // Start the game with the seed and potentially restored state
+        // Guest mode or fallback: start with frontend-generated map
         dispatch({
           type: 'START_GAME',
           seed,
-          restore: restorePayload,
         });
 
         // Navigate to the game screen
@@ -396,18 +444,19 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
     [
       activeSessions,
       availableRuns,
-      createRestorePayload,
+      connection,
       dispatch,
       navigation,
       gameState?.phase,
       hasSessionForLevel,
       highestLevelUnlocked,
       isCachedMode,
+      setGameStatePda,
       startSessionOnChain,
-      mapSeed,
       isStartingGame,
       isGuestMode,
       mode,
+      wallet.publicKey,
     ]
   );
 
@@ -572,10 +621,10 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>No Runs Available</Text>
+            <Text style={styles.modalTitle}>No Sessions Available</Text>
             <Text style={styles.modalText}>
-              You need at least 1 run to start a new game.{'\n'}
-              Purchase more runs to continue playing.
+              You need at least 1 session to start a new game.{'\n'}
+              Purchase more sessions to continue playing.
             </Text>
             <View style={styles.modalButtons}>
               <TouchableOpacity
@@ -591,7 +640,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
                   navigation.navigate('RunPurchase');
                 }}
               >
-                <Text style={styles.modalButtonTextPrimary}>Purchase Runs</Text>
+                <Text style={styles.modalButtonTextPrimary}>Purchase Sessions</Text>
               </TouchableOpacity>
             </View>
           </View>

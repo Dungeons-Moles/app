@@ -10,6 +10,13 @@ import { Program } from '@coral-xyz/anchor';
 import { SOLANA_CONFIG } from './config';
 import { sendBurnerTransaction } from './burnerWallet';
 import {
+  deriveMapEnemiesPda,
+  deriveInventoryPda,
+  deriveGeneratedMapPda,
+  deriveGameplayAuthorityPda,
+} from './constants';
+
+import {
   GameState,
   Phase,
   StatType,
@@ -33,7 +40,7 @@ export const GAMEPLAY_ERROR_MESSAGES: Record<number, string> = {
   6003: 'Stat value is at maximum',
   6004: 'HP cannot go below zero',
   6005: 'Invalid stat modification',
-  6006: 'Boss fight triggered - end your run!',
+  6006: 'Boss fight triggered - end your session!',
   6007: 'Not authorized for this action',
   6008: 'Game session is not active',
   6009: 'Calculation overflow',
@@ -138,55 +145,46 @@ export async function initializeGameState(
 
 /**
  * Moves the player to an adjacent tile, deducting move cost.
+ * The on-chain program reads the map directly, so isWall is no longer needed.
  *
  * @param connection - Solana connection
  * @param program - Anchor program instance
  * @param gameStatePda - GameState PDA
+ * @param sessionPda - GameSession PDA
  * @param burnerKeypair - Burner wallet keypair (signer)
- * @param params - Move parameters (targetX, targetY, isWall)
+ * @param params - Move parameters (targetX, targetY)
  * @returns Transaction signature
  */
 export async function movePlayer(
   connection: Connection,
   program: Program,
   gameStatePda: PublicKey,
+  sessionPda: PublicKey,
   burnerKeypair: Keypair,
   params: MovePlayerParams
 ): Promise<string> {
-  const transaction = await (
-    program.methods as unknown as {
-      movePlayer: (
-        targetX: number,
-        targetY: number,
-        isWall: boolean
-      ) => {
-        accounts: (accounts: { gameState: PublicKey; player: PublicKey }) => {
-          transaction: () => Promise<
-            ReturnType<(typeof import('@solana/web3.js').Transaction)['prototype']['add']>
-          >;
-        };
-      };
-    }
-  )
-    .movePlayer(params.targetX, params.targetY, params.isWall)
+  const [mapEnemiesPda] = deriveMapEnemiesPda(sessionPda);
+  const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
+  const [inventoryPda] = deriveInventoryPda(sessionPda);
+  const [gameplayAuthorityPda] = deriveGameplayAuthorityPda();
+
+  const transaction = await program.methods
+    .movePlayer(params.targetX, params.targetY)
     .accounts({
       gameState: gameStatePda,
+      gameSession: sessionPda,
+      mapEnemies: mapEnemiesPda,
+      generatedMap: generatedMapPda,
+      inventory: inventoryPda,
+      gameplayAuthority: gameplayAuthorityPda,
+      playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
+      mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
       player: burnerKeypair.publicKey,
     })
     .transaction();
 
-  // IMPORTANT: For moves, we don't want to wait for confirmation
-  // This allows "fire-and-forget" behavior for responsive gameplay
-  // The client optimistic update handles the UI, and if this fails, the client state will eventually desync/revert
-  transaction.feePayer = burnerKeypair.publicKey;
-  const { blockhash } = await connection.getLatestBlockhash();
-  transaction.recentBlockhash = blockhash;
-  transaction.sign(burnerKeypair);
-
-  // Send raw transaction without confirming
-  const signature = await connection.sendRawTransaction(transaction.serialize(), {
-    skipPreflight: true, // Skip simulation to maximize speed
-  });
+  // Await confirmation — on-chain-first principle requires confirmed state before UI update
+  const signature = await sendBurnerTransaction(connection, transaction, burnerKeypair);
 
   return signature;
 }
@@ -228,6 +226,73 @@ export async function modifyStat(
     .modifyStat(statTypeArg, params.delta)
     .accounts({
       gameState: gameStatePda,
+      player: burnerKeypair.publicKey,
+    })
+    .transaction();
+
+  return sendBurnerTransaction(connection, transaction, burnerKeypair);
+}
+
+/**
+ * Triggers the boss fight for the current week.
+ * Only callable at end of Night3 when all moves are exhausted.
+ */
+export async function triggerBossFight(
+  connection: Connection,
+  program: Program,
+  gameStatePda: PublicKey,
+  sessionPda: PublicKey,
+  burnerKeypair: Keypair
+): Promise<string> {
+  const [mapEnemiesPda] = deriveMapEnemiesPda(sessionPda);
+  const [inventoryPda] = deriveInventoryPda(sessionPda);
+
+  const transaction = await program.methods
+    .triggerBossFight()
+    .accounts({
+      gameState: gameStatePda,
+      gameSession: sessionPda,
+      mapEnemies: mapEnemiesPda,
+      inventory: inventoryPda,
+      playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
+      player: burnerKeypair.publicKey,
+    })
+    .transaction();
+
+  return sendBurnerTransaction(connection, transaction, burnerKeypair);
+}
+
+/**
+ * Syncs on-chain HP to reflect current inventory bonuses.
+ * Should be called after equipping gear that provides +HP.
+ *
+ * The on-chain program reads the player's inventory and calculates max_hp
+ * including gear bonuses, then adjusts current HP:
+ * - If player was at full base health (hp == BASE_HP), set hp to new max_hp
+ * - If player was damaged, add the HP bonus to current hp
+ * - HP is always capped at the new max_hp
+ *
+ * @param connection - Solana connection
+ * @param program - Anchor program instance
+ * @param gameStatePda - GameState PDA
+ * @param sessionPda - GameSession PDA (for deriving inventory PDA)
+ * @param burnerKeypair - Burner wallet keypair (signer)
+ * @returns Transaction signature
+ */
+export async function syncHpFromInventory(
+  connection: Connection,
+  program: Program,
+  gameStatePda: PublicKey,
+  sessionPda: PublicKey,
+  burnerKeypair: Keypair
+): Promise<string> {
+  const [inventoryPda] = deriveInventoryPda(sessionPda);
+
+  const transaction = await program.methods
+    .syncHpFromInventory()
+    .accounts({
+      gameState: gameStatePda,
+      inventory: inventoryPda,
       player: burnerKeypair.publicKey,
     })
     .transaction();
@@ -308,20 +373,25 @@ export async function fetchGameState(
 
 /**
  * On-chain GameState account structure from Anchor.
+ * Note: ATK, ARM, SPD, DIG, MaxHP are NOT stored on-chain - they are derived
+ * from PlayerInventory at runtime. The fields are optional here and will use
+ * defaults if not present (which happens when fetching from chain).
  */
 interface OnChainGameState {
   player: PublicKey;
+  burnerWallet?: PublicKey;
   session: PublicKey;
   positionX: number;
   positionY: number;
   mapWidth: number;
   mapHeight: number;
   hp: number;
-  maxHp: number;
-  atk: number;
-  arm: number;
-  spd: number;
-  dig: number;
+  // Stats derived from inventory - NOT stored on-chain
+  maxHp?: number;
+  atk?: number;
+  arm?: number;
+  spd?: number;
+  dig?: number;
   gearSlots: number;
   week: number;
   phase: {
@@ -335,13 +405,27 @@ interface OnChainGameState {
   movesRemaining: number;
   totalMoves: number;
   bossFightReady: boolean;
+  gold: number;
+  campaignLevel: number;
+  isDead: boolean;
   bump: number;
 }
 
 /**
  * Parses on-chain GameState to typed GameState.
+ * Note: Stats (maxHp, atk, arm, spd, dig) are derived from inventory at runtime
+ * and not stored on-chain. We provide defaults here, but the frontend should
+ * preserve local stats rather than using these placeholders.
  */
 function parseOnChainGameState(account: OnChainGameState): GameState {
+  // Default stats for when inventory derivation isn't available.
+  // These are starting stats for a new game - actual stats come from inventory.
+  const DEFAULT_MAX_HP = 10;
+  const DEFAULT_ATK = 1;
+  const DEFAULT_ARM = 0;
+  const DEFAULT_SPD = 1;
+  const DEFAULT_DIG = 1;
+
   return {
     player: account.player,
     session: account.session,
@@ -350,17 +434,21 @@ function parseOnChainGameState(account: OnChainGameState): GameState {
     mapWidth: account.mapWidth,
     mapHeight: account.mapHeight,
     hp: account.hp,
-    maxHp: account.maxHp,
-    atk: account.atk,
-    arm: account.arm,
-    spd: account.spd,
-    dig: account.dig,
+    // Stats derived from inventory - use defaults if not present
+    maxHp: account.maxHp ?? DEFAULT_MAX_HP,
+    atk: account.atk ?? DEFAULT_ATK,
+    arm: account.arm ?? DEFAULT_ARM,
+    spd: account.spd ?? DEFAULT_SPD,
+    dig: account.dig ?? DEFAULT_DIG,
     gearSlots: account.gearSlots,
     week: account.week,
     phase: parsePhase(account.phase),
     movesRemaining: account.movesRemaining,
     totalMoves: account.totalMoves,
     bossFightReady: account.bossFightReady,
+    gold: account.gold ?? 0,
+    campaignLevel: account.campaignLevel ?? 1,
+    isDead: account.isDead ?? false,
   };
 }
 
@@ -398,6 +486,64 @@ function getStatTypeArg(stat: StatType): { [key: string]: Record<string, never> 
       throw new Error(`Unknown stat type: ${stat}`);
   }
 }
+
+// ============================================================================
+// MapEnemies Fetch (for session restore)
+// ============================================================================
+
+/**
+ * On-chain EnemyInstance structure from Anchor.
+ */
+interface OnChainEnemyInstance {
+  archetypeId: number;
+  tier: number;
+  x: number;
+  y: number;
+  defeated: boolean;
+}
+
+/**
+ * On-chain MapEnemies account structure from Anchor.
+ */
+interface OnChainMapEnemies {
+  session: PublicKey;
+  enemies: OnChainEnemyInstance[];
+  count: number;
+  bump: number;
+}
+
+export type { OnChainEnemyInstance, OnChainMapEnemies };
+
+/**
+ * Fetches current MapEnemies account from chain.
+ *
+ * @param program - Anchor program instance (gameplay_state)
+ * @param mapEnemiesPda - MapEnemies PDA
+ * @returns OnChainMapEnemies or null if not found
+ */
+export async function fetchMapEnemies(
+  program: Program,
+  mapEnemiesPda: PublicKey
+): Promise<OnChainMapEnemies | null> {
+  try {
+    const account = await (
+      program.account as {
+        mapEnemies: {
+          fetchNullable: (address: PublicKey) => Promise<OnChainMapEnemies | null>;
+        };
+      }
+    ).mapEnemies.fetchNullable(mapEnemiesPda);
+
+    return account ?? null;
+  } catch (error) {
+    console.error('Failed to fetch map enemies:', error);
+    return null;
+  }
+}
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
 
 /**
  * Calculates move cost for a tile.

@@ -17,9 +17,13 @@ const isWeb = Platform.OS === 'web';
  * Stores a value securely (native) or in localStorage (web).
  */
 export async function setItemAsync(key: string, value: string): Promise<void> {
+  console.log('[SecureStorage] setItemAsync called | key:', key, '| valueLength:', value.length);
   if (isWeb) {
     try {
       localStorage.setItem(key, value);
+      // Verify write was successful
+      const readBack = localStorage.getItem(key);
+      console.log('[SecureStorage] localStorage write verified:', readBack !== null);
     } catch (error) {
       console.error('[SecureStorage] Failed to set item in localStorage:', error);
       throw error;
@@ -33,9 +37,12 @@ export async function setItemAsync(key: string, value: string): Promise<void> {
  * Retrieves a value from secure storage (native) or localStorage (web).
  */
 export async function getItemAsync(key: string): Promise<string | null> {
+  console.log('[SecureStorage] getItemAsync called | key:', key);
   if (isWeb) {
     try {
-      return localStorage.getItem(key);
+      const value = localStorage.getItem(key);
+      console.log('[SecureStorage] localStorage read result:', value !== null ? `found (${value.length} chars)` : 'NOT FOUND');
+      return value;
     } catch (error) {
       console.error('[SecureStorage] Failed to get item from localStorage:', error);
       return null;

@@ -78,16 +78,16 @@ async function signAndSendWithDevWallet(
   if (transaction instanceof VersionedTransaction) {
     transaction.sign([keypair]);
     return connection.sendTransaction(transaction, {
-      preflightCommitment: 'confirmed',
+      preflightCommitment: SOLANA_CONFIG.commitment,
     });
   }
 
   transaction.feePayer = keypair.publicKey;
-  const latestBlockhash = await connection.getLatestBlockhash('confirmed');
+  const latestBlockhash = await connection.getLatestBlockhash(SOLANA_CONFIG.commitment);
   transaction.recentBlockhash = latestBlockhash.blockhash;
   transaction.sign(keypair);
   return connection.sendRawTransaction(transaction.serialize(), {
-    preflightCommitment: 'confirmed',
+    preflightCommitment: SOLANA_CONFIG.commitment,
   });
 }
 
@@ -262,7 +262,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       const webWallet = getWebWalletProvider();
       if (webWallet) {
         const connection = new Connection(SOLANA_CONFIG.rpcUrl, 'confirmed');
-        const latestBlockhash = await connection.getLatestBlockhash('confirmed');
+        const latestBlockhash = await connection.getLatestBlockhash(SOLANA_CONFIG.commitment);
 
         if (transaction instanceof VersionedTransaction) {
           transaction.message.recentBlockhash = latestBlockhash.blockhash;
@@ -274,7 +274,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         const signed = await webWallet.signTransaction(transaction);
         const serialized = signed.serialize();
         return connection.sendRawTransaction(serialized, {
-          preflightCommitment: 'confirmed',
+          preflightCommitment: SOLANA_CONFIG.commitment,
         });
       }
 

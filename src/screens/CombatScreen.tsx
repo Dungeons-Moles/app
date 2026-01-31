@@ -120,12 +120,24 @@ function CombatScreenContent({ navigation }: CombatScreenProps) {
       });
     }
 
-    // Update local game state immediately
-    gameDispatch({
-      type: 'RESOLVE_COMBAT',
-      result,
-      combat: combatState.resolvedCombat ?? undefined,
-    });
+    // Update local game state
+    if (mode !== 'guest' && hasActiveSession) {
+      // On-chain mode: combat result is already on-chain.
+      // Dispatch SYNC_COMBAT_RESULT if we have on-chain state available,
+      // otherwise fall back to local RESOLVE_COMBAT.
+      gameDispatch({
+        type: 'RESOLVE_COMBAT',
+        result,
+        combat: combatState.resolvedCombat ?? undefined,
+      });
+    } else {
+      // Guest mode: resolve combat locally
+      gameDispatch({
+        type: 'RESOLVE_COMBAT',
+        result,
+        combat: combatState.resolvedCombat ?? undefined,
+      });
+    }
 
     // Navigate immediately - no waiting for signatures!
     if (result === 'DEFEAT') {

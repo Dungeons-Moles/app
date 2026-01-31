@@ -12,8 +12,35 @@ This repository hosts the React Native + Expo codebase for Dungeons & Moles, a P
 
 - **Pure logic vs UI:** `src/game/` contains pure logic (no React). UI lives in `src/components/` and `src/screens/`.
 - **State machine:** `src/game/engine/state-machine.ts` defines phase transitions (Exploration, Combat, POI, Boss, Victory/Defeat).
-- **Reducer:** `src/game/engine/game-reducer.ts` is the single source of truth for game state updates.
+- **Reducer:** `src/game/engine/game-reducer.ts` manages local game state but must defer to on-chain state as the source of truth.
 - **RNG:** Use `SeededRNG` from `src/game/engine/rng.ts`; avoid `Math.random()` and `Date.now()` in game logic.
+
+## CRITICAL: On-Chain-First Principle
+
+**This is a fully on-chain game. Nothing happens in the frontend unless it is first confirmed on-chain.**
+
+- **Movement:** The player cannot move on the map unless the `move_player` Solana instruction succeeds. The local reducer must NOT advance the player position, deduct moves, or trigger any side effects until the on-chain transaction is confirmed.
+- **Combat:** The `move_player` on-chain instruction handles enemy combat inline (no separate CPI). Combat is resolved deterministically on-chain. The frontend must read combat results from on-chain state/events, not resolve combat locally.
+- **Wall breaking:** Handled by `move_player` on-chain — the instruction calculates dig cost (`max(2, 6 - DIG)`) and deducts moves. The frontend must not independently compute wall break results.
+- **POI interactions:** Each POI type has a dedicated on-chain instruction in the `poi-system` program. The frontend must wait for transaction confirmation before updating local state.
+- **Phase/time progression:** Day/Night/Week transitions happen on-chain when `move_player` exhausts remaining moves. The frontend must reflect on-chain phase state, not compute transitions locally.
+- **Boss fights:** The `trigger_boss_fight` instruction resolves boss combat on-chain. The frontend must not resolve boss fights locally.
+
+**Pattern: On-chain instruction → Confirm → Fetch confirmed state → Update local UI**
+
+If the on-chain transaction fails, the local state must NOT change. No optimistic updates that persist on failure. The on-chain programs (`gameplay-state`, `combat-system`, `poi-system`, `session-manager`, `map-generator`, `player-inventory`, `field-enemies`) are the single source of truth.
+
+### On-Chain Instruction Map
+
+| Action | Program | Instruction | Notes |
+|--------|---------|-------------|-------|
+| Move | gameplay-state | `move_player` | Handles movement, wall dig, enemy combat, night enemy movement, phase transitions |
+| Boss fight | gameplay-state | `trigger_boss_fight` | Resolves boss combat inline |
+| Heal (POI) | gameplay-state | `heal_player` | Called via CPI from poi-system |
+| Modify gold (POI) | gameplay-state | `modify_gold_authorized` | Called via CPI from poi-system |
+| POI interactions | poi-system | 15 instructions (rest, pick_item, tool_oil, etc.) | Each POI type has its own instruction |
+| Start session | session-manager | `start_session` | Creates session + derived accounts |
+| End session | session-manager | `end_session` | Closes session + derived accounts |
 
 ## Key Directories
 
@@ -96,3 +123,10 @@ The core loop integration feature (specs/007-core-loop-integration/) adds:
 - 3 weeks per level, each with Day 1-3 and Night 1-3 phases
 - Boss fight triggers at end of Night 3 for each week
 - Phase labels utility in `src/utils/phase-labels.ts`
+
+## Active Technologies
+- TypeScript 5.9.2 (React Native / Expo 54.0) + @solana/web3.js 1.98.4, @coral-xyz/anchor 0.32.1, React Native 0.81.5, Shopify React Native Skia (008-solana-program-instructions)
+- AsyncStorage (profile cache), Expo SecureStore (burner wallet keys) (008-solana-program-instructions)
+
+## Recent Changes
+- 008-solana-program-instructions: Added TypeScript 5.9.2 (React Native / Expo 54.0) + @solana/web3.js 1.98.4, @coral-xyz/anchor 0.32.1, React Native 0.81.5, Shopify React Native Skia

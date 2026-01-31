@@ -5,27 +5,21 @@ import React, {
   useEffect,
   useState,
   useRef,
+  useMemo,
   ReactNode,
 } from 'react';
 import { Alert } from 'react-native';
-import { Keypair, PublicKey, Transaction } from '@solana/web3.js';
+import { Keypair, PublicKey, Transaction, ComputeBudgetProgram } from '@solana/web3.js';
 import { useWallet } from './WalletContext';
 import { useProfile } from './ProfileContext';
 import { useSolanaConnection } from './SolanaConnectionContext';
 import { useSessionManager } from '@/hooks/useSessionManager';
-import { useMapGenerator, generateMapLocally } from '@/hooks/useMapGenerator';
+import { useMapGenerator } from '@/hooks/useMapGenerator';
 import { useBurnerWallet } from '@/hooks/useBurnerWallet';
 import { useGameplayState } from '@/hooks/useGameplayState';
-import {
-  initializeGameState,
-  getGameStatePda,
-  fetchGameState,
-} from '@/services/solana/gameplayState';
-import {
-  createGameplayStateProgramWithProvider,
-  createAnchorProvider,
-} from '@/services/solana/programs';
-import { deriveGameSessionPda } from '@/services/solana/types';
+import { getGameStatePda } from '@/services/solana/gameplayState';
+import { deriveSessionPda } from '@/services/solana/constants';
+import { SOLANA_CONFIG } from '@/services/solana/config';
 import {
   queueCleanup,
   getPendingCleanups,
@@ -41,6 +35,7 @@ import {
   type ActiveSession,
   type SessionData,
 } from '@/services/solana/sessionList';
+import { clearFogState, clearBrokenWalls } from '@/services/solana/sessionRestore';
 import type { OnChainGameSession } from '@/services/solana/types/session_manager';
 import type {
   GameState,
@@ -86,6 +81,8 @@ export interface SessionState {
   isSessionListLoading: boolean;
   /** Current session level (convenience accessor) */
   currentLevel: number | null;
+  /** Session PDA as base58 string (for persistence keys) */
+  sessionKey: string | null;
 }
 
 interface SessionContextType extends SessionState {
@@ -115,8 +112,16 @@ interface SessionContextType extends SessionState {
   stopAutoCommit: () => void;
   /** Whether auto-commit is currently running */
   isAutoCommitActive: boolean;
-  /** Move player on-chain (via burner wallet) */
-  movePlayer: (params: MovePlayerParams) => Promise<{ success: boolean; newState?: GameState }>;
+  /** Move player on-chain (via burner wallet, awaits confirmation) */
+  movePlayer: (params: MovePlayerParams) => Promise<{
+    success: boolean;
+    newState?: GameState;
+    previousState?: GameState;
+    combatOccurred?: boolean;
+    bossFightReady?: boolean;
+    isDead?: boolean;
+    signature?: string;
+  }>;
   /** Modify player stat on-chain (via burner wallet) */
   modifyPlayerStat: (params: ModifyStatParams) => Promise<{ success: boolean; newValue?: number }>;
   /** Top up burner wallet */
@@ -133,6 +138,8 @@ interface SessionContextType extends SessionState {
   hasSessionForLevel: (level: number) => Promise<boolean>;
   /** Get the session PDA for a level if it exists */
   getSessionPdaForLevel: (level: number) => Promise<string | null>;
+  /** Set the game state PDA for on-chain operations */
+  setGameStatePda: (pda: PublicKey | null) => void;
 }
 
 const SessionContext = createContext<SessionContextType | undefined>(undefined);
@@ -174,24 +181,26 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [sessionManager.hasActiveSession, wallet.isConnected]);
 
   // Fetch session when wallet connects
+  const { fetchSession, resetSession, hasActiveSession: smHasActive } = sessionManager;
   useEffect(() => {
     if (wallet.isConnected && wallet.publicKey) {
-      sessionManager.fetchSession();
+      fetchSession();
     } else {
       // Only reset if we don't have an active session that we want to preserve
       // to allow for reconnection handling
-      if (!sessionManager.hasActiveSession) {
-        sessionManager.resetSession();
+      if (!smHasActive) {
+        resetSession();
         setMapSeed(null);
       }
     }
-  }, [wallet.isConnected, wallet.publicKey, sessionManager]);
+  }, [wallet.isConnected, wallet.publicKey, fetchSession, resetSession, smHasActive]);
 
   // Fetch map seed when session changes
+  const getMapSeed = mapGenerator.getMapSeed;
   useEffect(() => {
     let isMounted = true;
     if (sessionManager.session) {
-      mapGenerator.getMapSeed(sessionManager.session.campaignLevel).then((seed) => {
+      getMapSeed(sessionManager.session.campaignLevel).then((seed) => {
         if (isMounted) {
           setMapSeed(seed);
         }
@@ -202,7 +211,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     return () => {
       isMounted = false;
     };
-  }, [mapGenerator, sessionManager.session?.campaignLevel]);
+  }, [getMapSeed, sessionManager.session?.campaignLevel]);
 
   const startGame = useCallback(
     async (campaignLevel: number): Promise<TransactionResult> => {
@@ -216,12 +225,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       // Validate player has available runs
       if (profile && profile.availableRuns <= 0) {
         console.log('[SessionContext] No available runs');
-        return { success: false, error: 'No available runs remaining' };
+        return { success: false, error: 'No available sessions remaining' };
       }
 
       // Check if session already exists on-chain before trying to create a new one
-      if (sessionManager.session && sessionManager.session.campaignLevel === campaignLevel) {
-        console.log('[SessionContext] Session already exists, reusing...');
+      // session.campaignLevel is 1-indexed (on-chain), campaignLevel arg is 0-indexed (frontend)
+      if (sessionManager.session && sessionManager.session.campaignLevel === campaignLevel + 1) {
+        console.log('[SessionContext] Session already exists, signaling resume...');
         // Just fetch map seed and ensure burner is ready
         const seed = await mapGenerator.getMapSeed(campaignLevel);
         setMapSeed(seed);
@@ -241,44 +251,19 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           }
         }
 
-        // Initialize gameplay state for reused session if session PDA is available
+        // Set up GameState PDA for the gameplay state hook
         if (sessionManager.session && wallet.publicKey) {
-          const [sessionPda] = deriveGameSessionPda(wallet.publicKey);
-          // Manually derive the GameState PDA and set it in the hook so it can start working
+          const [sessionPda] = deriveSessionPda(wallet.publicKey, sessionManager.session.campaignLevel);
           const [gameStatePda] = getGameStatePda(sessionPda);
           gameplayState.setGameStatePda(gameStatePda);
           console.log(
             '[SessionContext] Restored GameState PDA for existing session:',
             gameStatePda.toBase58()
           );
-
-          // Force fetch the game state directly to bypass hook update latency
-          let restoredState = null;
-          try {
-            // We need a program instance. Since we don't have direct access to the hook's internal program,
-            // we'll recreate a temporary one here just for fetching the restore data.
-            // This is safer than relying on the hook's state which might not have updated yet.
-            if (wallet.publicKey) {
-              const provider = createAnchorProvider(connection, {
-                publicKey: wallet.publicKey,
-                signTransaction: async (tx) => tx,
-                signAllTransactions: async (txs) => txs,
-              });
-              const program = createGameplayStateProgramWithProvider(provider);
-              restoredState = await fetchGameState(program, gameStatePda);
-              console.log(
-                '[SessionContext] Fetched restored state directly:',
-                restoredState ? 'Found' : 'Null'
-              );
-            }
-          } catch (e) {
-            console.error('[SessionContext] Failed to fetch restored state:', e);
-          }
-
-          return { success: true, gameState: restoredState };
         }
 
-        return { success: true };
+        // Signal resumption — caller will do full on-chain restore
+        return { success: true, isResumed: true, mapSeed: seed };
       }
 
       // Validate campaign level is unlocked
@@ -288,7 +273,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
 
       // Step 1: Create burner wallet and build fund transaction (no signature yet)
-      console.log('[SessionContext] Step 1: Creating burner wallet...');
+      console.log('[SessionContext] Step 1: Creating burner wallet... (current keypair:', burnerWallet.keypair?.publicKey.toBase58() ?? 'null', ')');
       const burnerResult = await burnerWallet.createWithoutFunding();
       if (!burnerResult) {
         return { success: false, error: 'Failed to create burner wallet' };
@@ -299,9 +284,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         newBurnerKeypair.publicKey.toBase58()
       );
 
-      // Step 2: Build start session transaction (no signature yet)
+      // Step 2: Build start session transaction with the new burner's public key
       console.log('[SessionContext] Step 2: Building start session transaction...');
-      const sessionResult = await sessionManager.buildStartSessionTransaction(campaignLevel);
+      const sessionResult = await sessionManager.buildStartSessionTransaction(
+        campaignLevel,
+        newBurnerKeypair.publicKey
+      );
       if (!sessionResult) {
         await burnerWallet.clear();
         return { success: false, error: 'Failed to build session transaction' };
@@ -312,24 +300,46 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       console.log('[SessionContext] Step 3: Combining transactions...');
       const combinedTransaction = new Transaction();
 
-      // Add fund burner instruction(s) first
+      // Set compute budget FIRST — start_session does heavy CPIs (map gen ~378k CUs alone).
+      // Must be the first instruction to avoid wallet-injected compute budgets overriding it.
+      combinedTransaction.add(
+        ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 })
+      );
+
+      // Add fund burner instruction(s)
       combinedTransaction.add(...fundTransaction.instructions);
 
-      // Then add start session instruction(s)
-      combinedTransaction.add(...sessionTransaction.instructions);
+      // Add start session instruction(s), filtering out any existing compute budget instructions
+      // to avoid duplicates (which would cause the first/lower limit to take effect)
+      const COMPUTE_BUDGET_PROGRAM_ID = 'ComputeBudget111111111111111111111111111111';
+      const sessionInstructions = sessionTransaction.instructions.filter(
+        (ix) => ix.programId.toBase58() !== COMPUTE_BUDGET_PROGRAM_ID
+      );
+      combinedTransaction.add(...sessionInstructions);
 
-      // Step 4: Sign and send the combined transaction (ONE signature prompt!)
+      // Set recent blockhash and fee payer before signing
+      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+      combinedTransaction.recentBlockhash = blockhash;
+      combinedTransaction.feePayer = wallet.publicKey ?? undefined;
+
+      // Step 4: Burner wallet must partially sign first (it's a Signer in the program)
+      console.log('[SessionContext] Step 4: Burner wallet partially signing transaction...');
+      combinedTransaction.partialSign(newBurnerKeypair);
+
+      // Step 5: Sign and send the combined transaction (ONE signature prompt for main wallet!)
       console.log(
-        '[SessionContext] Step 4: Requesting single wallet signature for combined transaction...'
+        '[SessionContext] Step 5: Requesting main wallet signature for combined transaction...'
       );
       try {
         const signature = await signAndSendTransaction(combinedTransaction);
         console.log('[SessionContext] Combined transaction sent:', signature);
-        await connection.confirmTransaction(signature, 'confirmed');
+        await connection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
         console.log('[SessionContext] Combined transaction confirmed');
 
         // Mark burner as active now that funding is confirmed
+        console.log('[SessionContext] Marking burner as active:', newBurnerKeypair.publicKey.toBase58());
         await burnerWallet.markAsActive(newBurnerKeypair);
+        console.log('[SessionContext] Burner after markAsActive:', burnerWallet.keypair?.publicKey.toBase58() ?? 'null (state may not have updated yet)');
 
         // Fetch the created session
         await sessionManager.fetchSession();
@@ -365,45 +375,28 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         };
       }
 
-      // Step 5: Fetch the map seed for this level
-      console.log('[SessionContext] Step 5: Fetching map seed...');
+      // Step 6: Fetch the map seed for this level
+      // Note: start_session now atomically creates GameState, MapEnemies,
+      // PlayerInventory, MapPois, and GeneratedMap via CPI, so no separate
+      // initialization step is needed.
+      console.log('[SessionContext] Step 6: Fetching map seed...');
       const seed = await mapGenerator.getMapSeed(campaignLevel);
       console.log('[SessionContext] Map seed:', seed?.toString());
       setMapSeed(seed);
 
-      // Step 6: Initialize gameplay state on-chain with burner
-      console.log('[SessionContext] Step 6: Initializing gameplay state...');
-      if (wallet.publicKey && seed !== null && seed !== undefined) {
-        // Default map dimensions - should be passed from game context in real usage
-        try {
-          // Determine spawn position based on map generator logic
-          // Generate map locally using the seed to find the EXACT spawn point
-          const generatedMap = generateMapLocally(Number(seed));
-          const startX = generatedMap.spawn.x;
-          const startY = generatedMap.spawn.y;
-
-          console.log(`[SessionContext] Map generated locally. Spawn: (${startX}, ${startY})`);
-
-          const initialized = await gameplayState.initialize(sessionPda, newBurnerKeypair, {
-            mapWidth: 32,
-            mapHeight: 32,
-            startX,
-            startY,
-          });
-
-          console.log('[SessionContext] Gameplay state initialized:', initialized);
-          if (!initialized) {
-            console.warn(
-              'Failed to initialize gameplay state, session created without on-chain state'
-            );
-          }
-        } catch (error) {
-          console.warn('[SessionContext] Failed to initialize gameplay state (ignoring):', error);
-        }
+      // Step 7: Set GameState PDA so the gameplay hook can start working
+      console.log('[SessionContext] Step 7: Setting GameState PDA...');
+      if (wallet.publicKey) {
+        const [gameStatePda] = getGameStatePda(sessionPda);
+        gameplayState.setGameStatePda(gameStatePda);
+        console.log(
+          '[SessionContext] GameState PDA set:',
+          gameStatePda.toBase58()
+        );
       }
 
       console.log('[SessionContext] startGame complete');
-      return { success: true };
+      return { success: true, mapSeed: seed };
     },
     [
       burnerWallet,
@@ -423,8 +416,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       await gameplayState.close(burnerWallet.keypair);
     }
 
-    // Step 2: End the session on-chain
-    const result = await sessionManager.endSession();
+    // Step 2: End the session on-chain (pass burner keypair for signing)
+    const result = await sessionManager.endSession(false, burnerWallet.keypair ?? undefined);
 
     // Step 3: Drain burner back to main wallet
     if (burnerWallet.keypair) {
@@ -550,12 +543,25 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   /**
    * Move player on-chain via burner wallet.
+   * On-chain-first: awaits confirmation and returns confirmed state.
    */
   const movePlayer = useCallback(
-    async (params: MovePlayerParams): Promise<{ success: boolean; newState?: GameState }> => {
+    async (
+      params: MovePlayerParams
+    ): Promise<{
+      success: boolean;
+      newState?: GameState;
+      previousState?: GameState;
+      combatOccurred?: boolean;
+      bossFightReady?: boolean;
+      isDead?: boolean;
+      signature?: string;
+    }> => {
       if (!burnerWallet.keypair) {
+        console.error('[SessionContext] movePlayer failed: Burner wallet not available');
         return { success: false };
       }
+      console.log('[SessionContext] movePlayer: burner =', burnerWallet.keypair.publicKey.toBase58(), ', gameStatePda =', gameplayState.gameStatePda?.toBase58() ?? 'null', ', gameState =', gameplayState.gameState ? 'set' : 'null');
       return gameplayState.move(burnerWallet.keypair, params);
     },
     [burnerWallet.keypair, gameplayState]
@@ -726,6 +732,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   // Derive current level from session
   const currentLevel = sessionManager.session?.campaignLevel ?? null;
 
+  // Compute session key (base58 string) for persistence
+  const sessionKey = useMemo(() => {
+    if (!wallet.publicKey || !sessionManager.session?.campaignLevel) {
+      return null;
+    }
+    const [sessionPda] = deriveSessionPda(wallet.publicKey, sessionManager.session.campaignLevel);
+    return sessionPda.toBase58();
+  }, [wallet.publicKey, sessionManager.session?.campaignLevel]);
+
   /**
    * Queue session cleanup for deferred processing.
    * This returns immediately without requiring any signatures,
@@ -762,6 +777,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       // The actual on-chain cleanup will happen later
       setMapSeed(null);
 
+      // Clear fog state and broken walls for this session
+      // This ensures next playthrough starts fresh
+      if (wallet.publicKey && campaignLevel > 0) {
+        const [sessionPda] = deriveSessionPda(wallet.publicKey, campaignLevel);
+        const sessionKeyStr = sessionPda.toBase58();
+        await clearFogState(sessionKeyStr);
+        await clearBrokenWalls(sessionKeyStr);
+        console.log('[SessionContext] Fog and broken walls cleared for session:', sessionKeyStr.slice(0, 8));
+      }
+
       // Clear burner wallet locally (funds will be recovered later)
       await burnerWallet.clear();
 
@@ -769,6 +794,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     },
     [
       wallet.address,
+      wallet.publicKey,
       sessionManager.session?.campaignLevel,
       sessionManager.hasActiveSession,
       burnerWallet,
@@ -799,7 +825,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         // Try to end the session if needed
         if (cleanup.needsSessionEnd) {
           console.log('[SessionContext] Ending session for cleanup:', cleanup.id);
-          const result = await sessionManager.endSession();
+          // Note: Burner keypair may not be available for deferred cleanups
+          // since it was cleared when the cleanup was queued.
+          // This will fail if burner signature is required and keypair is unavailable.
+          const result = await sessionManager.endSession(false, burnerWallet.keypair ?? undefined);
           if (result.success) {
             await updateCleanup(cleanup.id, { needsSessionEnd: false });
           } else {
@@ -895,6 +924,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     activeSessions,
     isSessionListLoading,
     currentLevel,
+    sessionKey,
     startGame,
     endGame,
     queueEndGame,
@@ -917,6 +947,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     abandonSession: abandonSessionFn,
     hasSessionForLevel,
     getSessionPdaForLevel,
+    setGameStatePda: gameplayState.setGameStatePda,
   };
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

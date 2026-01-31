@@ -182,7 +182,7 @@ export async function fetchSessionList(
 
       sessions.push({
         sessionPda: pubkey.toBase58(),
-        level: session.campaignLevel,
+        level: session.campaignLevel - 1, // Convert 1-indexed on-chain to 0-indexed frontend
         week: gameState.week,
         phase: gameState.phase,
         positionX: gameState.positionX,
@@ -205,7 +205,7 @@ export async function fetchSessionList(
  *
  * @param connection - Solana connection
  * @param playerPubkey - Player's main wallet
- * @param level - Campaign level (1-40)
+ * @param level - Campaign level (0-indexed frontend)
  * @returns true if session exists
  */
 export async function checkSessionExists(
@@ -213,7 +213,8 @@ export async function checkSessionExists(
   playerPubkey: PublicKey,
   level: number
 ): Promise<boolean> {
-  const [sessionPda] = deriveSessionPda(playerPubkey, level);
+  const onChainLevel = level + 1; // Convert 0-indexed frontend to 1-indexed on-chain
+  const [sessionPda] = deriveSessionPda(playerPubkey, onChainLevel);
   const account = await connection.getAccountInfo(sessionPda);
   return account !== null;
 }
@@ -223,7 +224,7 @@ export async function checkSessionExists(
  *
  * @param connection - Solana connection
  * @param playerPubkey - Player's main wallet
- * @param level - Campaign level (1-40)
+ * @param level - Campaign level (0-indexed frontend)
  * @returns Session PDA if exists, null otherwise
  */
 export async function getSessionForLevel(
@@ -231,7 +232,8 @@ export async function getSessionForLevel(
   playerPubkey: PublicKey,
   level: number
 ): Promise<PublicKey | null> {
-  const [sessionPda] = deriveSessionPda(playerPubkey, level);
+  const onChainLevel = level + 1; // Convert 0-indexed frontend to 1-indexed on-chain
+  const [sessionPda] = deriveSessionPda(playerPubkey, onChainLevel);
   const account = await connection.getAccountInfo(sessionPda);
   return account ? sessionPda : null;
 }

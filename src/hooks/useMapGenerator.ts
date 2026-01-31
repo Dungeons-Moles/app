@@ -11,8 +11,8 @@ import { SeededRNG } from '@/game/engine/rng';
 import { generateMap } from '@/game/map/generator';
 import { GAME_CONSTANTS } from '@/game/engine/constants';
 
-/** Maximum campaign level (0-79 = 80 levels total) */
-export const MAX_CAMPAIGN_LEVEL = 79;
+/** Maximum campaign level (0-39 = 40 levels total) */
+export const MAX_CAMPAIGN_LEVEL = 39;
 
 /**
  * Generate map locally to find spawn point.

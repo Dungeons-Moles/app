@@ -139,12 +139,12 @@ export function DeathScreen({ navigation, route }: DeathScreenProps) {
             {/* Out of Runs Warning */}
             {isOutOfRuns && (
               <View style={styles.warningContainer}>
-                <Text style={styles.warningText}>You have no runs remaining!</Text>
+                <Text style={styles.warningText}>You have no sessions remaining!</Text>
                 <Pressable
                   style={styles.purchaseButton}
                   onPress={() => navigation.navigate('RunPurchase')}
                 >
-                  <Text style={styles.purchaseButtonText}>Purchase Runs</Text>
+                  <Text style={styles.purchaseButtonText}>Purchase Sessions</Text>
                 </Pressable>
               </View>
             )}

@@ -26,27 +26,7 @@
       "accounts": [
         {
           "name": "game_session",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  115,
-                  101,
-                  115,
-                  115,
-                  105,
-                  111,
-                  110
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "player"
-              }
-            ]
-          }
+          "writable": true
         },
         {
           "name": "player",
@@ -57,6 +37,10 @@
         }
       ],
       "args": [
+        {
+          "name": "_campaign_level",
+          "type": "u8"
+        },
         {
           "name": "state_hash",
           "type": {
@@ -88,27 +72,7 @@
       "accounts": [
         {
           "name": "game_session",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  115,
-                  101,
-                  115,
-                  115,
-                  105,
-                  111,
-                  110
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "player"
-              }
-            ]
-          }
+          "writable": true
         },
         {
           "name": "player",
@@ -118,12 +82,18 @@
           ]
         }
       ],
-      "args": []
+      "args": [
+        {
+          "name": "_campaign_level",
+          "type": "u8"
+        }
+      ]
     },
     {
       "name": "end_session",
       "docs": [
-        "Ends the session normally, undelegating from rollup and closing the account."
+        "Ends the session normally, undelegating from rollup and closing the account.",
+        "Also closes the player's inventory via CPI to ensure fresh inventory for next session."
       ],
       "discriminator": [
         11,
@@ -138,27 +108,7 @@
       "accounts": [
         {
           "name": "game_session",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  115,
-                  101,
-                  115,
-                  115,
-                  105,
-                  111,
-                  110
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "player"
-              }
-            ]
-          }
+          "writable": true
         },
         {
           "name": "player",
@@ -167,60 +117,40 @@
           "relations": [
             "game_session"
           ]
-        }
-      ],
-      "args": []
-    },
-    {
-      "name": "force_close_session",
-      "docs": [
-        "Forces a session to close.",
-        "Can be called by anyone to clean up abandoned sessions."
-      ],
-      "discriminator": [
-        7,
-        248,
-        122,
-        200,
-        47,
-        119,
-        244,
-        82
-      ],
-      "accounts": [
+        },
         {
-          "name": "game_session",
+          "name": "burner_wallet",
+          "docs": [
+            "Burner wallet that owns the inventory (must sign to close inventory)"
+          ],
           "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  115,
-                  101,
-                  115,
-                  115,
-                  105,
-                  111,
-                  110
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "session_owner"
-              }
-            ]
-          }
+          "signer": true,
+          "relations": [
+            "game_session"
+          ]
         },
         {
-          "name": "session_owner"
-        },
-        {
-          "name": "recipient",
+          "name": "inventory",
+          "docs": [
+            "Player's inventory account (closed via CPI to ensure fresh inventory next session)"
+          ],
           "writable": true
+        },
+        {
+          "name": "player_inventory_program",
+          "address": "5BtqiWegvVAgEnTRUofB9oUoQvPztYqSkMPwRpYQacP8"
         }
       ],
-      "args": []
+      "args": [
+        {
+          "name": "_campaign_level",
+          "type": "u8"
+        },
+        {
+          "name": "victory",
+          "type": "bool"
+        }
+      ]
     },
     {
       "name": "initialize_counter",
@@ -281,8 +211,19 @@
     {
       "name": "start_session",
       "docs": [
-        "Starts a new game session for the player.",
-        "Validates that the campaign level is within the player's unlocked tier."
+        "Starts a new game session with all dependencies initialized (Game State, Inventory, etc.).",
+        "",
+        "Validates:",
+        "- Player has available runs > 0",
+        "- Campaign level is within player's unlocked range (1 to highest_level_unlocked)",
+        "- No existing session for this (player, level) pair",
+        "",
+        "Actions:",
+        "- Creates session with snapshot of player's active_item_pool",
+        "- Generates the map via CPI to map-generator",
+        "- Initializes game state via CPI to gameplay-state",
+        "- Initializes inventory via CPI to player-inventory",
+        "- Emits SessionStarted event"
       ],
       "discriminator": [
         23,
@@ -297,27 +238,7 @@
       "accounts": [
         {
           "name": "game_session",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  115,
-                  101,
-                  115,
-                  115,
-                  105,
-                  111,
-                  110
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "player"
-              }
-            ]
-          }
+          "writable": true
         },
         {
           "name": "session_counter",
@@ -348,9 +269,127 @@
           }
         },
         {
+          "name": "player_profile",
+          "docs": [
+            "Player profile for validation and run consumption (from player-profile program)"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  108,
+                  97,
+                  121,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "player"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                16,
+                246,
+                87,
+                160,
+                4,
+                90,
+                95,
+                80,
+                22,
+                83,
+                190,
+                182,
+                115,
+                36,
+                214,
+                171,
+                118,
+                16,
+                77,
+                181,
+                88,
+                7,
+                159,
+                200,
+                56,
+                211,
+                7,
+                33,
+                206,
+                150,
+                68,
+                123
+              ]
+            }
+          }
+        },
+        {
           "name": "player",
           "writable": true,
           "signer": true
+        },
+        {
+          "name": "burner_wallet",
+          "docs": [
+            "Burner wallet that will own all session-specific accounts (inventory, etc.)",
+            "Must be a signer so it can be set as the inventory owner for gameplay transactions."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "map_config",
+          "docs": [
+            "Map configuration for map generation"
+          ]
+        },
+        {
+          "name": "generated_map",
+          "writable": true
+        },
+        {
+          "name": "game_state",
+          "writable": true
+        },
+        {
+          "name": "map_enemies",
+          "writable": true
+        },
+        {
+          "name": "map_pois",
+          "writable": true
+        },
+        {
+          "name": "inventory",
+          "writable": true
+        },
+        {
+          "name": "map_generator_program",
+          "address": "BYdGuEGf8NqtLnHpSRuZFrPGEgvdxMfGfTt71QVBxYHa"
+        },
+        {
+          "name": "gameplay_state_program",
+          "address": "5VAaGSSoBP4UEt3RL2EXvDwpeDxAXMndsJn7QX96nc4n"
+        },
+        {
+          "name": "poi_system_program",
+          "address": "6E27r1Cyo2CNPvtRsonn3uHUAdznS3cMXEBX4HRbfBQY"
+        },
+        {
+          "name": "player_inventory_program",
+          "address": "5BtqiWegvVAgEnTRUofB9oUoQvPztYqSkMPwRpYQacP8"
+        },
+        {
+          "name": "player_profile_program",
+          "address": "29DPbP1zuCCRg63PiShMjxAmZos97BR5TmhpijUYQzze"
         },
         {
           "name": "system_program",
@@ -377,6 +416,32 @@
         121,
         220,
         240
+      ]
+    },
+    {
+      "name": "MapConfig",
+      "discriminator": [
+        186,
+        3,
+        214,
+        68,
+        161,
+        115,
+        92,
+        173
+      ]
+    },
+    {
+      "name": "PlayerProfile",
+      "discriminator": [
+        82,
+        226,
+        99,
+        87,
+        164,
+        130,
+        181,
+        80
       ]
     },
     {
@@ -474,6 +539,21 @@
       "code": 6007,
       "name": "ArithmeticOverflow",
       "msg": "Arithmetic overflow occurred"
+    },
+    {
+      "code": 6008,
+      "name": "LevelNotUnlocked",
+      "msg": "Level is not unlocked"
+    },
+    {
+      "code": 6009,
+      "name": "NoAvailableRuns",
+      "msg": "No available runs remaining"
+    },
+    {
+      "code": 6010,
+      "name": "SessionExistsForLevel",
+      "msg": "Session already exists for this level"
     }
   ],
   "types": [
@@ -481,7 +561,8 @@
       "name": "GameSession",
       "docs": [
         "Represents an active game session for a player.",
-        "One session allowed per player (enforced via PDA uniqueness)."
+        "PDA Seeds: [b\"session\", player.key(), &[campaign_level]]",
+        "Changed from single session per player to one session per (player, level) pair."
       ],
       "type": {
         "kind": "struct",
@@ -503,7 +584,7 @@
           {
             "name": "campaign_level",
             "docs": [
-              "Level being played in this session (campaign mode)"
+              "Level being played in this session (campaign mode, 1-40)"
             ],
             "type": "u8"
           },
@@ -529,9 +610,37 @@
             "type": "bool"
           },
           {
+            "name": "bump",
+            "docs": [
+              "PDA bump seed"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "active_item_pool",
+            "docs": [
+              "Snapshot of player's active_item_pool at session start",
+              "Determines which items can appear in POI offers during this session"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                10
+              ]
+            }
+          },
+          {
+            "name": "burner_wallet",
+            "docs": [
+              "Burner wallet pubkey for gameplay transactions",
+              "SOL is transferred to this wallet at session start"
+            ],
+            "type": "pubkey"
+          },
+          {
             "name": "state_hash",
             "docs": [
-              "Hash of current game state (for verification)"
+              "Hash of the current game state (for validation)"
             ],
             "type": {
               "array": [
@@ -539,6 +648,43 @@
                 32
               ]
             }
+          }
+        ]
+      }
+    },
+    {
+      "name": "MapConfig",
+      "docs": [
+        "Configuration for map generation, storing seed values for each level."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "admin",
+            "docs": [
+              "Authority that can update seed mappings"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "seeds",
+            "docs": [
+              "Seed values for campaign levels 1-40 (index = level - 1)"
+            ],
+            "type": {
+              "array": [
+                "u64",
+                40
+              ]
+            }
+          },
+          {
+            "name": "version",
+            "docs": [
+              "Config version for migrations"
+            ],
+            "type": "u8"
           },
           {
             "name": "bump",
@@ -546,6 +692,66 @@
               "PDA bump seed"
             ],
             "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PlayerProfile",
+      "docs": [
+        "PlayerProfile account - mirrors the structure from player-profile program.",
+        "IMPORTANT: The account name MUST be \"PlayerProfile\" (not PlayerProfileAccount)",
+        "to generate the correct Anchor discriminator (sha256(\"account:PlayerProfile\")[..8]).",
+        "We use AnchorDeserialize manually since we can't use #[account] with a custom owner."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "total_runs",
+            "type": "u32"
+          },
+          {
+            "name": "highest_level_unlocked",
+            "type": "u8"
+          },
+          {
+            "name": "available_runs",
+            "type": "u32"
+          },
+          {
+            "name": "created_at",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "unlocked_items",
+            "type": {
+              "array": [
+                "u8",
+                10
+              ]
+            }
+          },
+          {
+            "name": "active_item_pool",
+            "type": {
+              "array": [
+                "u8",
+                10
+              ]
+            }
           }
         ]
       }
@@ -609,6 +815,14 @@
             "type": "u64"
           },
           {
+            "name": "campaign_level",
+            "type": "u8"
+          },
+          {
+            "name": "victory",
+            "type": "bool"
+          },
+          {
             "name": "final_state_hash",
             "type": {
               "array": [
@@ -640,6 +854,10 @@
           {
             "name": "campaign_level",
             "type": "u8"
+          },
+          {
+            "name": "burner_wallet",
+            "type": "pubkey"
           },
           {
             "name": "timestamp",
