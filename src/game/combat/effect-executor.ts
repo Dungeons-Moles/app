@@ -241,15 +241,24 @@ export function executeEffect(
 
   switch (effect.effectType) {
     case 'DealDamage': {
+      // ARM is "HP before HP": deplete ARM first, overflow to HP
+      const armDamage = Math.min(value, Math.max(0, enemy.arm));
+      const hpDamage = value - armDamage;
       const updatedEnemy = {
         ...enemy,
-        hp: Math.max(0, enemy.hp - value),
+        arm: enemy.arm - armDamage,
+        hp: Math.max(0, enemy.hp - hpDamage),
       };
       state = {
         ...state,
         [target]: updatedEnemy,
       };
-      logs.push({ effectName, target, damage: value });
+      if (armDamage > 0) {
+        logs.push({ effectName, target, armorLost: armDamage });
+      }
+      if (hpDamage > 0) {
+        logs.push({ effectName, target, damage: hpDamage });
+      }
       break;
     }
 
