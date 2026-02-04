@@ -14,7 +14,12 @@ import React, {
   ReactNode,
   Dispatch,
 } from 'react';
-import type { CombatState, CombatantState, CombatLogEntry } from '../game/engine/types';
+import type {
+  CombatState,
+  CombatantState,
+  CombatLogEntry,
+  CombatResult,
+} from '../game/engine/types';
 import { CombatPhase } from '../game/engine/types';
 import {
   resolveCombat,
@@ -229,6 +234,57 @@ function extractEffectNotification(
 }
 
 // ============================================================================
+// Combat Result Derivation
+// ============================================================================
+
+/**
+ * Derive combat result from a combat log by replaying all entries against
+ * initial combatant HP. Used for backend-log combats where the result
+ * is not provided explicitly.
+ */
+function deriveCombatResultFromLog(combat: CombatState, log: CombatLogEntry[]): CombatResult {
+  let playerHp = combat.player.hp;
+  let playerMaxHp = combat.player.maxHp;
+  let enemyHp = combat.enemy.hp;
+  let enemyMaxHp = combat.enemy.maxHp;
+
+  for (const entry of log) {
+    if (entry.target === 'none') continue;
+
+    const isPlayer = entry.target === 'player';
+    const targetHp = isPlayer ? playerHp : enemyHp;
+    const targetMaxHp = isPlayer ? playerMaxHp : enemyMaxHp;
+    const { result } = entry;
+
+    let newHp = targetHp;
+    let newMaxHp = targetMaxHp;
+
+    if (result.damage && result.damage > 0) {
+      newHp = Math.max(0, newHp - result.damage);
+    }
+
+    if (result.healing && result.healing > 0) {
+      if (result.effectName === 'Crystal Crown') {
+        newMaxHp += result.healing;
+        newHp += result.healing;
+      } else {
+        newHp = Math.min(newMaxHp, newHp + result.healing);
+      }
+    }
+
+    if (isPlayer) {
+      playerHp = newHp;
+      playerMaxHp = newMaxHp;
+    } else {
+      enemyHp = newHp;
+      enemyMaxHp = newMaxHp;
+    }
+  }
+
+  return enemyHp <= 0 ? 'VICTORY' : playerHp <= 0 ? 'DEFEAT' : 'VICTORY';
+}
+
+// ============================================================================
 // Reducer
 // ============================================================================
 
@@ -256,19 +312,23 @@ function combatReducer(state: CombatUIState, action: CombatAction): CombatUIStat
       // This ensures frontend animation matches on-chain combat exactly
       const baseCombat = createCombatState(action.input);
       const convertedLog = convertBackendLogToFrontend(action.backendLog);
+      const typedLog = convertedLog as unknown as CombatLogEntry[];
+
+      // Derive the combat result by replaying the log against initial HP
+      const derivedResult = deriveCombatResultFromLog(baseCombat, typedLog);
 
       // Create a resolved combat state with the backend log
       // We still need the combat state structure for the animation system
       const resolvedCombat = {
         ...baseCombat,
-        log: convertedLog as unknown as CombatLogEntry[], // Type cast since format is compatible
-        // Determine result from log - if player HP reached 0, they lost
-        result: null, // Will be determined by animation system from final state
+        log: typedLog,
+        result: derivedResult,
       };
 
       console.log('[CombatContext] Using backend combat log:', {
         entryCount: action.backendLog.length,
         convertedCount: convertedLog.length,
+        derivedResult,
       });
 
       return {
