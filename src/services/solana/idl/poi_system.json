@@ -68,6 +68,74 @@
       "args": []
     },
     {
+      "name": "close_map_pois_via_burner",
+      "docs": [
+        "Close MapPois account via burner wallet authorization.",
+        "Used by session-manager CPI during end_session to clean up.",
+        "Rent is returned to the player wallet."
+      ],
+      "discriminator": [
+        96,
+        5,
+        252,
+        241,
+        226,
+        138,
+        10,
+        215
+      ],
+      "accounts": [
+        {
+          "name": "map_pois",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  112,
+                  95,
+                  112,
+                  111,
+                  105,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois.session",
+                "account": "MapPois"
+              }
+            ]
+          }
+        },
+        {
+          "name": "game_session",
+          "docs": [
+            "The session that owns this MapPois.",
+            "Burner wallet and player fields are extracted in instruction body."
+          ]
+        },
+        {
+          "name": "player",
+          "docs": [
+            "Player wallet receives the rent refund (not a signer)."
+          ],
+          "writable": true
+        },
+        {
+          "name": "burner_wallet",
+          "docs": [
+            "Burner wallet must sign to authorize closure."
+          ],
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "discover_waypoint",
       "docs": [
         "Discover a Rail Waypoint (L8).",
@@ -508,7 +576,7 @@
         {
           "name": "game_state",
           "docs": [
-            "Player's GameState for position/time validation"
+            "Player's GameState for position/time validation (read-only)"
           ],
           "pda": {
             "seeds": [
@@ -571,6 +639,193 @@
               ]
             }
           }
+        },
+        {
+          "name": "game_state_writable",
+          "docs": [
+            "Player's GameState for HP modification via CPI (writable)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "inventory",
+          "docs": [
+            "Player's inventory for equipping items"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  110,
+                  118,
+                  101,
+                  110,
+                  116,
+                  111,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois.session",
+                "account": "MapPois"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                62,
+                57,
+                43,
+                224,
+                11,
+                129,
+                112,
+                214,
+                10,
+                252,
+                5,
+                51,
+                143,
+                242,
+                213,
+                246,
+                99,
+                145,
+                248,
+                173,
+                61,
+                133,
+                58,
+                191,
+                234,
+                132,
+                254,
+                214,
+                152,
+                21,
+                230,
+                167
+              ]
+            }
+          }
+        },
+        {
+          "name": "inventory_authority",
+          "docs": [
+            "Inventory authority PDA from player-inventory for HP modification CPI"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  110,
+                  118,
+                  101,
+                  110,
+                  116,
+                  111,
+                  114,
+                  121,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                62,
+                57,
+                43,
+                224,
+                11,
+                129,
+                112,
+                214,
+                10,
+                252,
+                5,
+                51,
+                143,
+                242,
+                213,
+                246,
+                99,
+                145,
+                248,
+                173,
+                61,
+                133,
+                58,
+                191,
+                234,
+                132,
+                254,
+                214,
+                152,
+                21,
+                230,
+                167
+              ]
+            }
+          }
+        },
+        {
+          "name": "poi_authority",
+          "docs": [
+            "POI authority PDA for signing CPI calls to player-inventory"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  105,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "player_inventory_program",
+          "docs": [
+            "Player inventory program for CPI (equip_gear_authorized, equip_tool_authorized)"
+          ],
+          "address": "5BtqiWegvVAgEnTRUofB9oUoQvPztYqSkMPwRpYQacP8"
+        },
+        {
+          "name": "gameplay_state_program",
+          "docs": [
+            "Gameplay state program for HP modification CPI chain"
+          ],
+          "address": "5VAaGSSoBP4UEt3RL2EXvDwpeDxAXMndsJn7QX96nc4n"
         },
         {
           "name": "game_session",
@@ -840,7 +1095,11 @@
         "- L13 (Counter Cache): Pick 1 of 3 weakness-tagged items",
         "",
         "Requires `generate_cache_offer` to have been called first.",
-        "Reads the stored offers from `current_offer` and applies the user's choice."
+        "Reads the stored offers from `current_offer` and applies the user's choice.",
+        "",
+        "After validating the pick, this instruction calls player-inventory to",
+        "equip the item via CPI (equip_gear_authorized or equip_tool_authorized).",
+        "This ensures items can only be equipped through authorized POI interactions."
       ],
       "discriminator": [
         29,
@@ -882,7 +1141,7 @@
         {
           "name": "game_state",
           "docs": [
-            "Player's GameState for position/time validation"
+            "Player's GameState for position/time validation (read-only)"
           ],
           "pda": {
             "seeds": [
@@ -945,6 +1204,193 @@
               ]
             }
           }
+        },
+        {
+          "name": "game_state_writable",
+          "docs": [
+            "Player's GameState for HP modification via CPI (writable)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "inventory",
+          "docs": [
+            "Player's inventory for equipping items"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  110,
+                  118,
+                  101,
+                  110,
+                  116,
+                  111,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois.session",
+                "account": "MapPois"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                62,
+                57,
+                43,
+                224,
+                11,
+                129,
+                112,
+                214,
+                10,
+                252,
+                5,
+                51,
+                143,
+                242,
+                213,
+                246,
+                99,
+                145,
+                248,
+                173,
+                61,
+                133,
+                58,
+                191,
+                234,
+                132,
+                254,
+                214,
+                152,
+                21,
+                230,
+                167
+              ]
+            }
+          }
+        },
+        {
+          "name": "inventory_authority",
+          "docs": [
+            "Inventory authority PDA from player-inventory for HP modification CPI"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  110,
+                  118,
+                  101,
+                  110,
+                  116,
+                  111,
+                  114,
+                  121,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                62,
+                57,
+                43,
+                224,
+                11,
+                129,
+                112,
+                214,
+                10,
+                252,
+                5,
+                51,
+                143,
+                242,
+                213,
+                246,
+                99,
+                145,
+                248,
+                173,
+                61,
+                133,
+                58,
+                191,
+                234,
+                132,
+                254,
+                214,
+                152,
+                21,
+                230,
+                167
+              ]
+            }
+          }
+        },
+        {
+          "name": "poi_authority",
+          "docs": [
+            "POI authority PDA for signing CPI calls to player-inventory"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  105,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "player_inventory_program",
+          "docs": [
+            "Player inventory program for CPI (equip_gear_authorized, equip_tool_authorized)"
+          ],
+          "address": "5BtqiWegvVAgEnTRUofB9oUoQvPztYqSkMPwRpYQacP8"
+        },
+        {
+          "name": "gameplay_state_program",
+          "docs": [
+            "Gameplay state program for HP modification CPI chain"
+          ],
+          "address": "5VAaGSSoBP4UEt3RL2EXvDwpeDxAXMndsJn7QX96nc4n"
         },
         {
           "name": "game_session",
@@ -1181,6 +1627,76 @@
                 ]
               }
             ]
+          }
+        },
+        {
+          "name": "gameplay_authority",
+          "docs": [
+            "Gameplay authority PDA from gameplay-state for gear slot expansion CPI"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  112,
+                  108,
+                  97,
+                  121,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                66,
+                165,
+                213,
+                208,
+                125,
+                103,
+                44,
+                88,
+                115,
+                217,
+                192,
+                197,
+                1,
+                117,
+                7,
+                170,
+                78,
+                32,
+                208,
+                143,
+                119,
+                94,
+                47,
+                124,
+                229,
+                196,
+                47,
+                149,
+                235,
+                227,
+                237,
+                31
+              ]
+            }
           }
         },
         {
@@ -2172,7 +2688,8 @@
         "Purchase an item from the active shop.",
         "",
         "Validates player has enough gold, marks the offer as purchased,",
-        "and atomically deducts gold via CPI to gameplay-state."
+        "deducts gold via CPI to gameplay-state, and equips the item via CPI",
+        "to player-inventory."
       ],
       "discriminator": [
         185,
@@ -2280,6 +2797,144 @@
           }
         },
         {
+          "name": "inventory",
+          "docs": [
+            "Player's inventory for equipping purchased items"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  110,
+                  118,
+                  101,
+                  110,
+                  116,
+                  111,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois.session",
+                "account": "MapPois"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                62,
+                57,
+                43,
+                224,
+                11,
+                129,
+                112,
+                214,
+                10,
+                252,
+                5,
+                51,
+                143,
+                242,
+                213,
+                246,
+                99,
+                145,
+                248,
+                173,
+                61,
+                133,
+                58,
+                191,
+                234,
+                132,
+                254,
+                214,
+                152,
+                21,
+                230,
+                167
+              ]
+            }
+          }
+        },
+        {
+          "name": "inventory_authority",
+          "docs": [
+            "Inventory authority PDA from player-inventory for HP modification CPI"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  110,
+                  118,
+                  101,
+                  110,
+                  116,
+                  111,
+                  114,
+                  121,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                62,
+                57,
+                43,
+                224,
+                11,
+                129,
+                112,
+                214,
+                10,
+                252,
+                5,
+                51,
+                143,
+                242,
+                213,
+                246,
+                99,
+                145,
+                248,
+                173,
+                61,
+                133,
+                58,
+                191,
+                234,
+                132,
+                254,
+                214,
+                152,
+                21,
+                230,
+                167
+              ]
+            }
+          }
+        },
+        {
           "name": "poi_authority",
           "docs": [
             "POI authority PDA for signing CPI calls"
@@ -2306,6 +2961,13 @@
               }
             ]
           }
+        },
+        {
+          "name": "player_inventory_program",
+          "docs": [
+            "Player inventory program for CPI (equip_gear_authorized, equip_tool_authorized)"
+          ],
+          "address": "5BtqiWegvVAgEnTRUofB9oUoQvPztYqSkMPwRpYQacP8"
         },
         {
           "name": "gameplay_state_program",
@@ -3336,6 +3998,14 @@
             "name": "is_dead",
             "docs": [
               "Player death flag - once set, all gameplay instructions are blocked"
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "completed",
+            "docs": [
+              "Level completion flag - set when week 3 boss is defeated",
+              "Used by session_manager to validate end_session calls"
             ],
             "type": "bool"
           }

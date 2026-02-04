@@ -20,7 +20,7 @@ import {
   createPoiSystemProgram,
   createPlayerInventoryProgram,
 } from './programs';
-import { fetchGameState, fetchMapEnemies, syncHpFromInventory, getGameStatePda } from './gameplayState';
+import { fetchGameState, fetchMapEnemies } from './gameplayState';
 import { fetchGeneratedMap } from './mapGeneratorClient';
 import { fetchMapPois } from './poiSystem';
 import { fetchInventory } from './playerInventory';
@@ -267,29 +267,59 @@ export async function fetchFullSessionState(
     return null;
   }
 
+  // ============================================================
+  // RAW ON-CHAIN GAMESTATE DEBUG
+  // ============================================================
+  console.log('[sessionRestore] ====== RAW ON-CHAIN GAMESTATE ======');
+  console.log('[sessionRestore] gameStateData.hp:', gameStateData.hp);
+  console.log('[sessionRestore] gameStateData.gold:', gameStateData.gold);
+  console.log('[sessionRestore] gameStateData.position:', {
+    x: gameStateData.positionX,
+    y: gameStateData.positionY,
+  });
+  console.log('[sessionRestore] gameStateData.phase:', gameStateData.phase);
+  console.log('[sessionRestore] gameStateData.week:', gameStateData.week);
+  console.log('[sessionRestore] gameStateData.isDead:', gameStateData.isDead);
+  console.log('[sessionRestore] ====================================');
+
   // Debug: Log inventory data
   console.log('[sessionRestore] Inventory data fetched:', {
     hasInventory: !!inventoryData,
     tool: inventoryData?.tool ? decodeItemId(inventoryData.tool.itemId) : null,
-    gearCount: inventoryData?.gear?.filter(g => g !== null).length ?? 0,
-    gearItems: inventoryData?.gear?.map((g, i) => g ? { slot: i, id: decodeItemId(g.itemId) } : null).filter(Boolean),
+    gearCount: inventoryData?.gear?.filter((g) => g !== null).length ?? 0,
+    gearItems: inventoryData?.gear
+      ?.map((g, i) => (g ? { slot: i, id: decodeItemId(g.itemId) } : null))
+      .filter(Boolean),
   });
 
   // Build the complete GameState
-  const tiles = unpackTiles(generatedMapData.packedTiles, generatedMapData.width, generatedMapData.height);
+  const tiles = unpackTiles(
+    generatedMapData.packedTiles,
+    generatedMapData.width,
+    generatedMapData.height
+  );
 
   // Apply broken walls from AsyncStorage (walls dug during gameplay are not stored on-chain)
   const sessionKey = sessionPda.toBase58();
   const brokenWalls = await loadBrokenWalls(sessionKey);
   if (brokenWalls) {
     for (const wall of brokenWalls) {
-      if (wall.y >= 0 && wall.y < generatedMapData.height && wall.x >= 0 && wall.x < generatedMapData.width) {
+      if (
+        wall.y >= 0 &&
+        wall.y < generatedMapData.height &&
+        wall.x >= 0 &&
+        wall.x < generatedMapData.width
+      ) {
         tiles[wall.y][wall.x] = TileType.Floor;
       }
     }
   }
 
-  const enemies = convertEnemies(mapEnemiesData?.enemies ?? [], generatedMapData.enemies, generatedMapData.enemyCount);
+  const enemies = convertEnemies(
+    mapEnemiesData?.enemies ?? [],
+    generatedMapData.enemies,
+    generatedMapData.enemyCount
+  );
   const pois = convertPois(generatedMapData.pois, generatedMapData.poiCount, mapPoisData);
   const time = convertTimeState(gameStateData, seed);
   const player = buildPlayer(gameStateData, inventoryData);
@@ -310,7 +340,11 @@ export async function fetchFullSessionState(
   };
 
   // Restore fog from AsyncStorage or build from player position
-  const restoredFog = await loadFogState(sessionKey, generatedMapData.width, generatedMapData.height);
+  const restoredFog = await loadFogState(
+    sessionKey,
+    generatedMapData.width,
+    generatedMapData.height
+  );
   if (restoredFog) {
     map.fog = restoredFog;
     // Mark enemies as discovered if they're on revealed/visible tiles
@@ -605,7 +639,14 @@ function buildPlayer(
     for (const gearSlot of inventoryData.gear) {
       if (gearSlot) {
         const decodedId = decodeItemId(gearSlot.itemId);
-        console.log('[sessionRestore] buildPlayer: converting gear slot', slotIndex, '| itemId bytes:', Array.from(gearSlot.itemId), '| decoded:', decodedId);
+        console.log(
+          '[sessionRestore] buildPlayer: converting gear slot',
+          slotIndex,
+          '| itemId bytes:',
+          Array.from(gearSlot.itemId),
+          '| decoded:',
+          decodedId
+        );
         const gear = convertGearInstance(gearSlot);
         if (gear) {
           inventory.push({ item: gear, index: slotIndex });
@@ -642,20 +683,49 @@ function buildPlayer(
   const baseHp = GAME_CONSTANTS.INITIAL_HP;
   const computedMaxHp = player.stats.maxHp;
 
+  // ============================================================
+  // ON-CHAIN HP DEBUG - Shows actual blockchain-stored HP value
+  // ============================================================
+  console.log('[sessionRestore] ====== ON-CHAIN HP DEBUG ======');
+  console.log('[sessionRestore] gameState.hp (RAW ON-CHAIN VALUE):', onChainHp);
+  console.log('[sessionRestore] Computed maxHp (with gear bonuses):', computedMaxHp);
+  console.log('[sessionRestore] Base HP constant:', baseHp);
+  console.log('[sessionRestore] Gear provides +HP bonus:', computedMaxHp > baseHp);
+  console.log(
+    '[sessionRestore] On-chain HP equals base (needs workaround):',
+    onChainHp === baseHp && computedMaxHp > baseHp
+  );
+  console.log('[sessionRestore] ================================');
+
+  // Calculate gear HP bonus to determine the true base HP
+  // On-chain HP includes gear bonuses, so we subtract them to get base HP
+  const gearHpBonus = computedMaxHp - baseHp;
+
   if (onChainHp === baseHp && computedMaxHp > baseHp) {
     // On-chain HP equals base HP (10) but player has +HP gear equipped.
     // This means the player was at full health before equipping gear,
     // and the on-chain HP hasn't been synced with gear bonuses.
-    // Set HP to the gear-boosted maxHp (full health with bonuses).
-    console.log('[sessionRestore] buildPlayer: HP sync detected - using maxHp with gear bonus:', computedMaxHp);
+    // Set baseStats.hp to base, stats.hp will be calculated with gear bonus.
+    console.log(
+      '[sessionRestore] buildPlayer: HP WORKAROUND APPLIED - on-chain HP is base, using maxHp with gear bonus:',
+      computedMaxHp
+    );
     player.stats.hp = computedMaxHp;
-    player.baseStats.hp = computedMaxHp;
+    player.baseStats.hp = baseHp; // Store BASE hp, not total
   } else {
     // Player has taken damage or on-chain HP was already synced.
-    // Use the on-chain value, capped at maxHp for safety.
+    // On-chain HP includes gear bonus, so subtract it to get base HP.
     const hp = Math.min(onChainHp, computedMaxHp);
+    const trueBaseHp = Math.max(0, hp - gearHpBonus);
+    console.log('[sessionRestore] buildPlayer: Using on-chain HP value:', {
+      onChainHp,
+      cappedHp: hp,
+      computedMaxHp,
+      gearHpBonus,
+      trueBaseHp,
+    });
     player.stats.hp = hp;
-    player.baseStats.hp = hp;
+    player.baseStats.hp = trueBaseHp; // Store BASE hp, not total
   }
 
   return player;

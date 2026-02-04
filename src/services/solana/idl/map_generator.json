@@ -8,6 +8,82 @@
   },
   "instructions": [
     {
+      "name": "close_generated_map",
+      "docs": [
+        "Closes the GeneratedMap account, returning rent to player.",
+        "Used by session-manager CPI during end_session to clean up.",
+        "",
+        "Authorization: Reads session account to verify burner_wallet matches signer,",
+        "then returns rent to session.player."
+      ],
+      "discriminator": [
+        249,
+        208,
+        241,
+        231,
+        57,
+        214,
+        174,
+        103
+      ],
+      "accounts": [
+        {
+          "name": "generated_map",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  101,
+                  110,
+                  101,
+                  114,
+                  97,
+                  116,
+                  101,
+                  100,
+                  95,
+                  109,
+                  97,
+                  112
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "session"
+              }
+            ]
+          }
+        },
+        {
+          "name": "session",
+          "docs": [
+            "Game session PDA to verify burner_wallet authorization"
+          ],
+          "relations": [
+            "generated_map"
+          ]
+        },
+        {
+          "name": "player",
+          "docs": [
+            "Player wallet receives the rent refund (not a signer)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "burner_wallet",
+          "docs": [
+            "Burner wallet must sign to authorize closure"
+          ],
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "generate_map",
       "docs": [
         "Generates a map for a game session based on the campaign level.",
@@ -403,6 +479,21 @@
       ]
     }
   ],
+  "events": [
+    {
+      "name": "GeneratedMapClosed",
+      "discriminator": [
+        74,
+        159,
+        217,
+        59,
+        194,
+        136,
+        40,
+        170
+      ]
+    }
+  ],
   "errors": [
     {
       "code": 6000,
@@ -453,6 +544,11 @@
       "code": 6009,
       "name": "TileOutOfBounds",
       "msg": "Tile position out of bounds"
+    },
+    {
+      "code": 6010,
+      "name": "InvalidSession",
+      "msg": "Invalid session account"
     }
   ],
   "types": [
@@ -637,6 +733,18 @@
               "PDA bump seed"
             ],
             "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "GeneratedMapClosed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "session",
+            "type": "pubkey"
           }
         ]
       }

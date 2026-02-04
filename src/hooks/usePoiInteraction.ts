@@ -16,17 +16,19 @@ import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
 import {
   createPoiSystemProgramWithProvider,
   createAnchorProvider,
-  createPlayerInventoryProgram,
   createGameplayStateProgram,
 } from '@/services/solana/programs';
-import { equipGear, equipTool } from '@/services/solana/playerInventory';
-import { Tier, oilFlagToModification } from '@/services/solana/types/player_inventory';
+import { oilFlagToModification } from '@/services/solana/types/player_inventory';
 import { useWallet } from '@/contexts/WalletContext';
 import { deriveMapPoisPda } from '@/services/solana/constants';
 import { deriveSessionPda } from '@/services/solana/constants';
-import { getGameStatePda, syncHpFromInventory, fetchGameState } from '@/services/solana/gameplayState';
+import { getGameStatePda, fetchGameState } from '@/services/solana/gameplayState';
 import { POI_TYPES } from '@/services/solana/types/poi_system';
-import type { ItemOffer, PoiInteractionState, CacheOffer } from '@/services/solana/types/poi_system';
+import type {
+  ItemOffer,
+  PoiInteractionState,
+  CacheOffer,
+} from '@/services/solana/types/poi_system';
 import { Phase } from '@/services/solana/types/gameplay_state';
 import { getUserErrorMessage } from '@/services/solana/errors';
 import {
@@ -174,7 +176,9 @@ function labelToOilFlag(label: string): number {
 }
 
 /** Map oil flag to ToolOil type and stat key */
-function oilFlagToToolOil(oilFlag: number): { oil: ToolOil; statKey: 'atk' | 'spd' | 'dig' | 'arm' } | null {
+function oilFlagToToolOil(
+  oilFlag: number
+): { oil: ToolOil; statKey: 'atk' | 'spd' | 'dig' | 'arm' } | null {
   switch (oilFlag) {
     case OIL_FLAG_ATK:
       return { oil: 'ATK', statKey: 'atk' };
@@ -221,7 +225,9 @@ function convertCacheOfferToOptions(cacheOffer: CacheOffer): POIOption[] {
       continue;
     }
 
-    const rawBytes = Array.isArray(offerItem.itemId) ? offerItem.itemId : Array.from(offerItem.itemId as unknown as Iterable<number>);
+    const rawBytes = Array.isArray(offerItem.itemId)
+      ? offerItem.itemId
+      : Array.from(offerItem.itemId as unknown as Iterable<number>);
     const nonZeroBytes = rawBytes.filter((b) => b !== 0);
 
     // Skip empty slots (all zeros means item was filtered out by active_item_pool)
@@ -296,9 +302,7 @@ function convertShopOffersToOptions(
       const canAfford = playerGold >= cost;
 
       options.push({
-        label: offer.purchased
-          ? `${item.name} (Sold)`
-          : `${item.emoji} ${item.name} (${cost}g)`,
+        label: offer.purchased ? `${item.name} (Sold)` : `${item.emoji} ${item.name} (${cost}g)`,
         item,
         cost: offer.purchased ? undefined : cost,
         disabled: offer.purchased || !canAfford,
@@ -361,9 +365,20 @@ function convertOilOfferToOptions(oils: number[]): POIOption[] {
 
 export function usePoiInteraction(): UsePoiInteractionResult {
   const { state: gameState, dispatch } = useGame();
-  const { hasActiveSession, gameplayState: onChainState, getBurnerKeypair, currentLevel } = useSession();
-  const { pois, getPoiAt: getOnChainPoiAt, consumePoi, gameState: chainGameState, refreshMapEntities, refresh: refreshGameplayState } =
-    useGameplayStateContext();
+  const {
+    hasActiveSession,
+    gameplayState: onChainState,
+    getBurnerKeypair,
+    currentLevel,
+  } = useSession();
+  const {
+    pois,
+    getPoiAt: getOnChainPoiAt,
+    consumePoi,
+    gameState: chainGameState,
+    refreshMapEntities,
+    refresh: refreshGameplayState,
+  } = useGameplayStateContext();
   const { connection } = useSolanaConnection();
   const { wallet } = useWallet();
 
@@ -387,7 +402,11 @@ export function usePoiInteraction(): UsePoiInteractionResult {
   // This re-enables mismatch-detection in GameScreen after the POI modal closes.
   // We use a short delay to ensure all state updates have propagated first.
   useEffect(() => {
-    if (interactionState === 'complete' && !isInteracting && gameState?.phase === GamePhase.Exploration) {
+    if (
+      interactionState === 'complete' &&
+      !isInteracting &&
+      gameState?.phase === GamePhase.Exploration
+    ) {
       const timer = setTimeout(() => {
         setInteractionState('idle');
       }, 100);
@@ -439,7 +458,13 @@ export function usePoiInteraction(): UsePoiInteractionResult {
     // Check on-chain POIs
     const onChainPoi = getOnChainPoiAt(playerPosition.x, playerPosition.y);
     if (onChainPoi && !onChainPoi.consumed) {
-      console.log('[usePoiInteraction] currentPoi: found on-chain POI at', playerPosition.x, playerPosition.y, '| poiType:', onChainPoi.poiType);
+      console.log(
+        '[usePoiInteraction] currentPoi: found on-chain POI at',
+        playerPosition.x,
+        playerPosition.y,
+        '| poiType:',
+        onChainPoi.poiType
+      );
       return onChainPoi;
     }
 
@@ -451,7 +476,17 @@ export function usePoiInteraction(): UsePoiInteractionResult {
       if (localPoi) {
         // Derive poiType from definitionId (e.g. 'L2' → 2, 'L13' → 13)
         const poiType = parseInt(localPoi.definitionId.substring(1), 10) || 0;
-        console.log('[usePoiInteraction] currentPoi: local fallback at', playerPosition.x, playerPosition.y, '| definitionId:', localPoi.definitionId, '| derived poiType:', poiType, '| on-chain pois loaded:', pois.length);
+        console.log(
+          '[usePoiInteraction] currentPoi: local fallback at',
+          playerPosition.x,
+          playerPosition.y,
+          '| definitionId:',
+          localPoi.definitionId,
+          '| derived poiType:',
+          poiType,
+          '| on-chain pois loaded:',
+          pois.length
+        );
         return {
           x: localPoi.position.x,
           y: localPoi.position.y,
@@ -478,7 +513,13 @@ export function usePoiInteraction(): UsePoiInteractionResult {
       return false;
     }
 
-    console.log('[usePoiInteraction] canInteract: true | poiType:', currentPoi.poiType, '| pos:', currentPoi.x, currentPoi.y);
+    console.log(
+      '[usePoiInteraction] canInteract: true | poiType:',
+      currentPoi.poiType,
+      '| pos:',
+      currentPoi.x,
+      currentPoi.y
+    );
     return true;
   }, [gameState, currentPoi]);
 
@@ -585,34 +626,75 @@ export function usePoiInteraction(): UsePoiInteractionResult {
    * Dispatches the correct on-chain instruction based on POI type.
    */
   const interact = useCallback(
-    async (
-      params?: PoiInteractParams
-    ): Promise<{ success: boolean; result?: unknown }> => {
-      console.log('[usePoiInteraction] interact() called | canInteract:', canInteract, '| playerPos:', playerPosition, '| currentPoi:', currentPoi ? { x: currentPoi.x, y: currentPoi.y, poiType: currentPoi.poiType, consumed: currentPoi.consumed } : null);
+    async (params?: PoiInteractParams): Promise<{ success: boolean; result?: unknown }> => {
+      console.log(
+        '[usePoiInteraction] interact() called | canInteract:',
+        canInteract,
+        '| playerPos:',
+        playerPosition,
+        '| currentPoi:',
+        currentPoi
+          ? {
+              x: currentPoi.x,
+              y: currentPoi.y,
+              poiType: currentPoi.poiType,
+              consumed: currentPoi.consumed,
+            }
+          : null
+      );
 
       if (!canInteract || !playerPosition || !currentPoi) {
-        console.warn('[usePoiInteraction] interact() BLOCKED: canInteract=', canInteract, 'playerPos=', !!playerPosition, 'currentPoi=', !!currentPoi);
+        console.warn(
+          '[usePoiInteraction] interact() BLOCKED: canInteract=',
+          canInteract,
+          'playerPos=',
+          !!playerPosition,
+          'currentPoi=',
+          !!currentPoi
+        );
         setError('Cannot interact with POI');
         return { success: false };
       }
 
       const burnerKeypair = getBurnerKeypair();
       if (!burnerKeypair || !poiProgram || !mapPoisPda || !gameStatePda || !sessionPda) {
-        console.warn('[usePoiInteraction] interact() BLOCKED: session not ready | burner:', !!burnerKeypair, '| poiProgram:', !!poiProgram, '| mapPoisPda:', !!mapPoisPda, '| gameStatePda:', !!gameStatePda, '| sessionPda:', !!sessionPda);
+        console.warn(
+          '[usePoiInteraction] interact() BLOCKED: session not ready | burner:',
+          !!burnerKeypair,
+          '| poiProgram:',
+          !!poiProgram,
+          '| mapPoisPda:',
+          !!mapPoisPda,
+          '| gameStatePda:',
+          !!gameStatePda,
+          '| sessionPda:',
+          !!sessionPda
+        );
         setError('Session not ready for POI interaction');
         return { success: false };
       }
 
       let poiIndex = findPoiIndex(currentPoi.x, currentPoi.y);
-      console.log('[usePoiInteraction] findPoiIndex result:', poiIndex, '| on-chain pois count:', pois.length);
+      console.log(
+        '[usePoiInteraction] findPoiIndex result:',
+        poiIndex,
+        '| on-chain pois count:',
+        pois.length
+      );
 
       // If POIs haven't been loaded into context yet, fetch directly from on-chain
       if (poiIndex === -1 && mapPoisPda) {
-        console.log('[usePoiInteraction] POI not in context — fetching MapPois directly from on-chain...');
+        console.log(
+          '[usePoiInteraction] POI not in context — fetching MapPois directly from on-chain...'
+        );
         try {
           const mapPoisData = await fetchMapPois(poiProgram, mapPoisPda);
           if (mapPoisData?.pois) {
-            console.log('[usePoiInteraction] Fetched', mapPoisData.pois.length, 'POIs from on-chain');
+            console.log(
+              '[usePoiInteraction] Fetched',
+              mapPoisData.pois.length,
+              'POIs from on-chain'
+            );
             poiIndex = mapPoisData.pois.findIndex(
               (p) => p.x === currentPoi.x && p.y === currentPoi.y && !p.used
             );
@@ -630,7 +712,15 @@ export function usePoiInteraction(): UsePoiInteractionResult {
       }
 
       if (poiIndex === -1) {
-        console.error('[usePoiInteraction] POI NOT FOUND at', currentPoi.x, currentPoi.y, '| context pois:', JSON.stringify(pois.map(p => ({ x: p.x, y: p.y, type: p.poiType, consumed: p.consumed }))));
+        console.error(
+          '[usePoiInteraction] POI NOT FOUND at',
+          currentPoi.x,
+          currentPoi.y,
+          '| context pois:',
+          JSON.stringify(
+            pois.map((p) => ({ x: p.x, y: p.y, type: p.poiType, consumed: p.consumed }))
+          )
+        );
         setError('POI not found on-chain. Try again.');
         return { success: false };
       }
@@ -641,7 +731,12 @@ export function usePoiInteraction(): UsePoiInteractionResult {
 
       try {
         const poiType = currentPoi.poiType;
-        console.log('[usePoiInteraction] Dispatching on-chain interaction | poiType:', poiType, '| poiIndex:', poiIndex);
+        console.log(
+          '[usePoiInteraction] Dispatching on-chain interaction | poiType:',
+          poiType,
+          '| poiIndex:',
+          poiIndex
+        );
 
         switch (poiType) {
           // Rest POIs (L1, L5) — Deferred flow:
@@ -676,7 +771,12 @@ export function usePoiInteraction(): UsePoiInteractionResult {
           case POI_TYPES.TOOL_CRATE:
           case POI_TYPES.GEODE_VAULT:
           case POI_TYPES.COUNTER_CACHE: {
-            console.log('[usePoiInteraction] Pick-item POI flow | poiType:', poiType, '| poiIndex:', poiIndex);
+            console.log(
+              '[usePoiInteraction] Pick-item POI flow | poiType:',
+              poiType,
+              '| poiIndex:',
+              poiIndex
+            );
             // Fetch current MapPois to check for existing offer
             let mapPoisData = await fetchMapPois(poiProgram, mapPoisPda);
 
@@ -700,7 +800,9 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             }
 
             if (!mapPoisData?.currentOffer) {
-              console.error('[usePoiInteraction] Failed to generate cache offers — currentOffer is null');
+              console.error(
+                '[usePoiInteraction] Failed to generate cache offers — currentOffer is null'
+              );
               setError('Failed to generate cache offers');
               setIsInteracting(false);
               setInteractionState('idle');
@@ -709,19 +811,25 @@ export function usePoiInteraction(): UsePoiInteractionResult {
 
             // Convert on-chain offers to POIOption[] for the modal
             const offerOptions = convertCacheOfferToOptions(mapPoisData.currentOffer);
-            console.log('[usePoiInteraction] Cache offers ready:', offerOptions.length, 'items | labels:', offerOptions.map(o => o.label));
+            console.log(
+              '[usePoiInteraction] Cache offers ready:',
+              offerOptions.length,
+              'items | labels:',
+              offerOptions.map((o) => o.label)
+            );
             setCacheOfferOptions(offerOptions);
             setCacheOfferParams({ poiIndex, rawOffer: mapPoisData.currentOffer, poiType });
 
             // Dispatch INTERACT_POI locally to transition to POIInteraction phase (shows modal)
             const pickLocalPoiId = gameState?.map?.pois?.find(
               (p) =>
-                p.position.x === playerPosition.x &&
-                p.position.y === playerPosition.y &&
-                !p.visited
+                p.position.x === playerPosition.x && p.position.y === playerPosition.y && !p.visited
             )?.id;
             if (pickLocalPoiId) {
-              console.log('[usePoiInteraction] Dispatching INTERACT_POI for modal | localPoiId:', pickLocalPoiId);
+              console.log(
+                '[usePoiInteraction] Dispatching INTERACT_POI for modal | localPoiId:',
+                pickLocalPoiId
+              );
               dispatch({ type: 'INTERACT_POI', poiId: pickLocalPoiId });
             } else {
               console.warn('[usePoiInteraction] No local POI found to dispatch INTERACT_POI');
@@ -749,7 +857,10 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             let mapPoisData = await fetchMapPois(poiProgram, mapPoisPda);
 
             // Generate offers if not already present for this POI
-            if (!mapPoisData?.currentOilOffer || mapPoisData.currentOilOffer.poiIndex !== poiIndex) {
+            if (
+              !mapPoisData?.currentOilOffer ||
+              mapPoisData.currentOilOffer.poiIndex !== poiIndex
+            ) {
               console.log('[usePoiInteraction] Sending generateOilOffer on-chain');
               await generateOilOffer(
                 connection,
@@ -766,7 +877,9 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             }
 
             if (!mapPoisData?.currentOilOffer) {
-              console.error('[usePoiInteraction] Failed to generate oil offers — currentOilOffer is null');
+              console.error(
+                '[usePoiInteraction] Failed to generate oil offers — currentOilOffer is null'
+              );
               setError('Failed to generate oil offers');
               setIsInteracting(false);
               setInteractionState('idle');
@@ -774,8 +887,15 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             }
 
             // Convert on-chain oils to POIOption[] for the modal
-            const oilOptions = convertOilOfferToOptions(Array.from(mapPoisData.currentOilOffer.oils));
-            console.log('[usePoiInteraction] Oil offers ready:', oilOptions.length, 'oils | labels:', oilOptions.map(o => o.label));
+            const oilOptions = convertOilOfferToOptions(
+              Array.from(mapPoisData.currentOilOffer.oils)
+            );
+            console.log(
+              '[usePoiInteraction] Oil offers ready:',
+              oilOptions.length,
+              'oils | labels:',
+              oilOptions.map((o) => o.label)
+            );
             setCacheOfferOptions(oilOptions);
 
             setDeferredPoiIndex(poiIndex);
@@ -783,9 +903,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
 
             const oilLocalPoiId = gameState?.map?.pois?.find(
               (p) =>
-                p.position.x === playerPosition.x &&
-                p.position.y === playerPosition.y &&
-                !p.visited
+                p.position.x === playerPosition.x && p.position.y === playerPosition.y && !p.visited
             )?.id;
             if (oilLocalPoiId) {
               dispatch({ type: 'INTERACT_POI', poiId: oilLocalPoiId });
@@ -813,9 +931,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             setDeferredPoiType(POI_TYPES.SEISMIC_SCANNER);
             const scanLocalPoiId = gameState?.map?.pois?.find(
               (p) =>
-                p.position.x === playerPosition.x &&
-                p.position.y === playerPosition.y &&
-                !p.visited
+                p.position.x === playerPosition.x && p.position.y === playerPosition.y && !p.visited
             )?.id;
             if (scanLocalPoiId) {
               dispatch({ type: 'INTERACT_POI', poiId: scanLocalPoiId });
@@ -869,9 +985,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             // Dispatch INTERACT_POI to transition game phase and show modal
             const shopLocalPoiId = gameState?.map?.pois?.find(
               (p) =>
-                p.position.x === playerPosition.x &&
-                p.position.y === playerPosition.y &&
-                !p.visited
+                p.position.x === playerPosition.x && p.position.y === playerPosition.y && !p.visited
             )?.id;
             if (shopLocalPoiId) {
               dispatch({ type: 'INTERACT_POI', poiId: shopLocalPoiId });
@@ -944,7 +1058,11 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             break;
 
           default:
-            console.error('[usePoiInteraction] UNKNOWN POI type:', poiType, '— no on-chain handler matched');
+            console.error(
+              '[usePoiInteraction] UNKNOWN POI type:',
+              poiType,
+              '— no on-chain handler matched'
+            );
             setError(`Unknown POI type: ${poiType}`);
             setIsInteracting(false);
             setInteractionState('idle');
@@ -952,15 +1070,17 @@ export function usePoiInteraction(): UsePoiInteractionResult {
         }
 
         // Mark POI as consumed locally
-        console.log('[usePoiInteraction] On-chain interaction complete, marking POI consumed at', currentPoi.x, currentPoi.y);
+        console.log(
+          '[usePoiInteraction] On-chain interaction complete, marking POI consumed at',
+          currentPoi.x,
+          currentPoi.y
+        );
         consumePoi(currentPoi.x, currentPoi.y);
 
         // Also dispatch to local game state if applicable
         const localPoiId = gameState?.map?.pois?.find(
           (p) =>
-            p.position.x === playerPosition.x &&
-            p.position.y === playerPosition.y &&
-            !p.visited
+            p.position.x === playerPosition.x && p.position.y === playerPosition.y && !p.visited
         )?.id;
         if (localPoiId) {
           dispatch({ type: 'INTERACT_POI', poiId: localPoiId });
@@ -1016,7 +1136,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
   const purchaseItem = useCallback(
     async (offerIndex: number): Promise<{ success: boolean }> => {
       const burnerKeypair = getBurnerKeypair();
-      if (!burnerKeypair || !poiProgram || !mapPoisPda || !gameStatePda) {
+      if (!burnerKeypair || !poiProgram || !mapPoisPda || !gameStatePda || !sessionPda) {
         setError('Session not ready');
         return { success: false };
       }
@@ -1030,6 +1150,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
           poiProgram,
           mapPoisPda,
           gameStatePda,
+          sessionPda,
           burnerKeypair,
           offerIndex
         );
@@ -1043,7 +1164,15 @@ export function usePoiInteraction(): UsePoiInteractionResult {
         setIsInteracting(false);
       }
     },
-    [getBurnerKeypair, poiProgram, mapPoisPda, gameStatePda, connection, refreshShopState]
+    [
+      getBurnerKeypair,
+      poiProgram,
+      mapPoisPda,
+      gameStatePda,
+      sessionPda,
+      connection,
+      refreshShopState,
+    ]
   );
 
   /**
@@ -1052,7 +1181,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
   const rerollShopFn = useCallback(
     async (_seed: bigint): Promise<{ success: boolean }> => {
       const burnerKeypair = getBurnerKeypair();
-      if (!burnerKeypair || !poiProgram || !mapPoisPda || !gameStatePda) {
+      if (!burnerKeypair || !poiProgram || !mapPoisPda || !gameStatePda || !sessionPda) {
         setError('Session not ready');
         return { success: false };
       }
@@ -1066,6 +1195,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
           poiProgram,
           mapPoisPda,
           gameStatePda,
+          sessionPda,
           burnerKeypair
         );
         await refreshShopState();
@@ -1077,7 +1207,15 @@ export function usePoiInteraction(): UsePoiInteractionResult {
         setIsInteracting(false);
       }
     },
-    [getBurnerKeypair, poiProgram, mapPoisPda, gameStatePda, connection, refreshShopState]
+    [
+      getBurnerKeypair,
+      poiProgram,
+      mapPoisPda,
+      gameStatePda,
+      sessionPda,
+      connection,
+      refreshShopState,
+    ]
   );
 
   /**
@@ -1148,15 +1286,38 @@ export function usePoiInteraction(): UsePoiInteractionResult {
    */
   const selectCacheOffer = useCallback(
     async (choiceIndex: number): Promise<{ success: boolean; error?: string }> => {
-      console.log('[usePoiInteraction] selectCacheOffer called | choiceIndex:', choiceIndex, '| cacheOfferParams:', cacheOfferParams ? {
-        poiIndex: cacheOfferParams.poiIndex,
-        poiType: cacheOfferParams.poiType,
-        rawOfferItems: cacheOfferParams.rawOffer?.items?.length ?? 0,
-        rawOfferItemIds: cacheOfferParams.rawOffer?.items?.map(i => i?.itemId ? String.fromCharCode(...i.itemId.filter((b: number) => b !== 0)) : 'null'),
-      } : null);
+      console.log(
+        '[usePoiInteraction] selectCacheOffer called | choiceIndex:',
+        choiceIndex,
+        '| cacheOfferParams:',
+        cacheOfferParams
+          ? {
+              poiIndex: cacheOfferParams.poiIndex,
+              poiType: cacheOfferParams.poiType,
+              rawOfferItems: cacheOfferParams.rawOffer?.items?.length ?? 0,
+              rawOfferItemIds: cacheOfferParams.rawOffer?.items?.map((i) =>
+                i?.itemId ? String.fromCharCode(...i.itemId.filter((b: number) => b !== 0)) : 'null'
+              ),
+            }
+          : null
+      );
       const burnerKeypair = getBurnerKeypair();
-      if (!burnerKeypair || !poiProgram || !mapPoisPda || !gameStatePda || !sessionPda || !cacheOfferParams) {
-        console.warn('[usePoiInteraction] selectCacheOffer BLOCKED: session not ready | burner:', !!burnerKeypair, '| sessionPda:', !!sessionPda, '| cacheOfferParams:', !!cacheOfferParams);
+      if (
+        !burnerKeypair ||
+        !poiProgram ||
+        !mapPoisPda ||
+        !gameStatePda ||
+        !sessionPda ||
+        !cacheOfferParams
+      ) {
+        console.warn(
+          '[usePoiInteraction] selectCacheOffer BLOCKED: session not ready | burner:',
+          !!burnerKeypair,
+          '| sessionPda:',
+          !!sessionPda,
+          '| cacheOfferParams:',
+          !!cacheOfferParams
+        );
         setError('Session not ready for item selection');
         return { success: false };
       }
@@ -1174,7 +1335,12 @@ export function usePoiInteraction(): UsePoiInteractionResult {
       setError(null);
 
       try {
-        console.log('[usePoiInteraction] Sending interactPickItem on-chain | poiIndex:', cacheOfferParams.poiIndex, '| choice:', choiceIndex);
+        console.log(
+          '[usePoiInteraction] Sending interactPickItem on-chain | poiIndex:',
+          cacheOfferParams.poiIndex,
+          '| choice:',
+          choiceIndex
+        );
         await interactPickItem(
           connection,
           poiProgram,
@@ -1187,49 +1353,10 @@ export function usePoiInteraction(): UsePoiInteractionResult {
         );
         console.log('[usePoiInteraction] interactPickItem CONFIRMED on-chain');
 
-        // Equip the selected item to inventory (on-chain)
-        // Note: Local game state is updated by GameScreen.handlePOIOption after this returns
-        const selectedItem = cacheOfferParams.rawOffer.items[choiceIndex];
-        if (selectedItem) {
-          const itemId = new Uint8Array(selectedItem.itemId);
-          const itemIdString = String.fromCharCode(...Array.from(itemId).filter(b => b !== 0));
-          const inventoryProgram = createPlayerInventoryProgram(connection);
-          const isTool = cacheOfferParams.poiType === POI_TYPES.TOOL_CRATE;
-
-          console.log('[usePoiInteraction] Equipping item | itemId:', itemIdString, '| bytes:', Array.from(itemId), '| isTool:', isTool, '| sessionPda:', sessionPda.toBase58());
-
-          try {
-            if (isTool) {
-              await equipTool(connection, inventoryProgram, sessionPda, burnerKeypair, itemId, Tier.I);
-              console.log('[usePoiInteraction] equipTool CONFIRMED');
-            } else {
-              await equipGear(connection, inventoryProgram, sessionPda, burnerKeypair, itemId, Tier.I);
-              console.log('[usePoiInteraction] equipGear CONFIRMED');
-
-              // Sync HP on-chain to reflect gear bonuses (e.g., +HP from Work Vest)
-              // This must be called after equipGear to update gameplay_state.hp
-              try {
-                const gameplayProgram = createGameplayStateProgram(connection);
-                await syncHpFromInventory(
-                  connection,
-                  gameplayProgram,
-                  gameStatePda,
-                  sessionPda,
-                  burnerKeypair
-                );
-                console.log('[usePoiInteraction] syncHpFromInventory CONFIRMED');
-              } catch (syncError) {
-                console.warn('[usePoiInteraction] Failed to sync HP from inventory:', syncError);
-                // Non-fatal: gear is equipped, HP will sync on next move
-              }
-            }
-          } catch (equipError) {
-            console.error('[usePoiInteraction] Failed to equip item:', equipError);
-            // Don't fail the whole interaction if equip fails - item was still picked
-          }
-        } else {
-          console.warn('[usePoiInteraction] No selected item found at index:', choiceIndex);
-        }
+        // Item is now auto-equipped via CPI in the on-chain program.
+        // The poi-system calls player-inventory::equip_gear_authorized or equip_tool_authorized,
+        // which in turn calls gameplay-state::add_hp_bonus_authorized to sync HP bonuses.
+        // No need to call equipGear/equipTool/syncHpFromInventory from the frontend anymore.
 
         // Mark POI as consumed locally after successful on-chain transaction
         if (currentPoi) {
@@ -1312,8 +1439,17 @@ export function usePoiInteraction(): UsePoiInteractionResult {
    * For Smuggler Hatch: routes to purchase, reroll, or leave.
    */
   const confirmPoiSelection = useCallback(
-    async (optionIndex: number): Promise<{ success: boolean; keepOpen?: boolean; error?: string }> => {
-      console.log('[usePoiInteraction] confirmPoiSelection called | optionIndex:', optionIndex, '| deferredPoiType:', deferredPoiType, '| deferredPoiIndex:', deferredPoiIndex);
+    async (
+      optionIndex: number
+    ): Promise<{ success: boolean; keepOpen?: boolean; error?: string }> => {
+      console.log(
+        '[usePoiInteraction] confirmPoiSelection called | optionIndex:',
+        optionIndex,
+        '| deferredPoiType:',
+        deferredPoiType,
+        '| deferredPoiIndex:',
+        deferredPoiIndex
+      );
       const burnerKeypair = getBurnerKeypair();
       if (
         !burnerKeypair ||
@@ -1359,7 +1495,10 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             }
 
             // Send interactRest on-chain
-            console.log('[usePoiInteraction] Sending interactRest on-chain | poiIndex:', deferredPoiIndex);
+            console.log(
+              '[usePoiInteraction] Sending interactRest on-chain | poiIndex:',
+              deferredPoiIndex
+            );
             await interactRest(
               connection,
               poiProgram,
@@ -1380,7 +1519,12 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             const gameplayProgram = createGameplayStateProgram(connection);
             const updatedState = await fetchGameState(gameplayProgram, gameStatePda);
             if (updatedState) {
-              console.log('[usePoiInteraction] Syncing REST result | hp:', updatedState.hp, '| phase:', updatedState.phase);
+              console.log(
+                '[usePoiInteraction] Syncing REST result | hp:',
+                updatedState.hp,
+                '| phase:',
+                updatedState.phase
+              );
               dispatch({ type: 'SYNC_MOVE', confirmedState: updatedState });
             }
 
@@ -1491,7 +1635,10 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             // Dispatch REVEAL_POI_LOCATIONS to update local fog state
             // This reveals all POIs matching the selected category
             dispatch({ type: 'REVEAL_POI_LOCATIONS', category: scanCat });
-            console.log('[usePoiInteraction] Dispatched REVEAL_POI_LOCATIONS for category:', scanCat);
+            console.log(
+              '[usePoiInteraction] Dispatched REVEAL_POI_LOCATIONS for category:',
+              scanCat
+            );
             break;
           }
 
@@ -1515,6 +1662,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
                 poiProgram,
                 mapPoisPda,
                 gameStatePda,
+                sessionPda!,
                 burnerKeypair
               );
               // Re-fetch shop state and update options
@@ -1541,6 +1689,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
               poiProgram,
               mapPoisPda,
               gameStatePda,
+              sessionPda!,
               burnerKeypair,
               optionIndex
             );

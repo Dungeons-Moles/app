@@ -1,5 +1,11 @@
 import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
-import { SystemProgram, PublicKey, Transaction, ComputeBudgetProgram, Keypair } from '@solana/web3.js';
+import {
+  SystemProgram,
+  PublicKey,
+  Transaction,
+  ComputeBudgetProgram,
+  Keypair,
+} from '@solana/web3.js';
 import { AnchorProvider } from '@coral-xyz/anchor';
 import { useWallet } from '@/contexts/WalletContext';
 import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
@@ -377,9 +383,14 @@ export function useSessionManager() {
     ]
   );
 
+  /**
+   * End session after death or level completion.
+   * Only requires burner wallet - no user interaction needed.
+   * Victory/defeat is determined on-chain from game_state.
+   */
   const endSession = useCallback(
-    async (victory: boolean = false, burnerKeypair?: Keypair): Promise<TransactionResult> => {
-      if (!wallet.publicKey || !writeProgram) {
+    async (burnerKeypair: Keypair): Promise<TransactionResult> => {
+      if (!wallet.publicKey) {
         return { success: false, error: 'Wallet not connected' };
       }
 
@@ -394,38 +405,51 @@ export function useSessionManager() {
 
       try {
         const [sessionPda] = deriveSessionPda(wallet.publicKey, session.campaignLevel);
+        const [gameStatePda] = deriveGameStatePda(sessionPda);
         const [inventoryPda] = deriveInventoryPda(sessionPda);
+        const [mapEnemiesPda] = deriveMapEnemiesPda(sessionPda);
+        const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
+        const [mapPoisPda] = deriveMapPoisPda(sessionPda);
+        const [playerProfilePda] = derivePlayerProfilePda(wallet.publicKey);
 
-        // Get the burner wallet public key from the session
-        const burnerWalletPubkey = session.burnerWallet;
-        if (!burnerWalletPubkey) {
-          return { success: false, error: 'Session missing burner wallet' };
-        }
-
-        const transaction = await writeProgram.methods
-          .endSession(session.campaignLevel, victory)
+        // Build transaction manually since we're only using burner wallet
+        const program = createSessionManagerProgram(connection);
+        const transaction = await program.methods
+          .endSession(session.campaignLevel)
           .accounts({
             gameSession: sessionPda,
+            gameState: gameStatePda,
+            mapEnemies: mapEnemiesPda,
+            generatedMap: generatedMapPda,
+            mapPois: mapPoisPda,
+            playerProfile: playerProfilePda,
             player: wallet.publicKey,
-            burnerWallet: burnerWalletPubkey,
+            burnerWallet: burnerKeypair.publicKey,
             inventory: inventoryPda,
             playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
+            gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
+            playerProfileProgram: SOLANA_CONFIG.programs.playerProfile,
+            mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
+            poiSystemProgram: SOLANA_CONFIG.programs.poiSystem,
           })
           .transaction();
 
-        // Set blockhash and fee payer
+        // Set blockhash and fee payer (burner wallet pays)
         const { blockhash } = await connection.getLatestBlockhash('confirmed');
         transaction.recentBlockhash = blockhash;
-        transaction.feePayer = wallet.publicKey;
+        transaction.feePayer = burnerKeypair.publicKey;
 
-        // If burner keypair is provided, partially sign the transaction
-        // (burner_wallet is a Signer in the program)
-        if (burnerKeypair) {
-          transaction.partialSign(burnerKeypair);
-        }
+        // Sign with burner wallet only
+        transaction.sign(burnerKeypair);
 
-        const signature = await signAndSendTransaction(transaction);
+        // Send raw transaction (no user signature needed)
+        const signature = await connection.sendRawTransaction(transaction.serialize(), {
+          skipPreflight: false,
+          preflightCommitment: SOLANA_CONFIG.commitment,
+        });
         await connection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
+
+        console.log('[useSessionManager] Session ended successfully:', signature);
 
         // Clear session state
         if (isMountedRef.current) {
@@ -436,13 +460,14 @@ export function useSessionManager() {
         return { success: true, signature };
       } catch (txError) {
         const message = getUserErrorMessage(txError, 'session_manager');
+        console.error('[useSessionManager] Failed to end session:', message, txError);
         if (isMountedRef.current) setError(message);
         return { success: false, error: message };
       } finally {
         if (isMountedRef.current) setIsLoading(false);
       }
     },
-    [connection, hasActiveSession, session, signAndSendTransaction, wallet.publicKey, writeProgram]
+    [connection, hasActiveSession, session, wallet.publicKey]
   );
 
   const resetSession = useCallback(() => {

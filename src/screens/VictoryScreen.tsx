@@ -12,6 +12,7 @@ import {
   Pressable,
   Animated,
   Image,
+  useWindowDimensions,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
@@ -29,10 +30,14 @@ type VictoryScreenProps = {
 
 export function VictoryScreen({ navigation, route }: VictoryScreenProps) {
   const { replay, level, totalMoves, levelUnlocked, itemUnlocked } = route.params ?? {};
+  const { height } = useWindowDimensions();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
   const glowAnim = useRef(new Animated.Value(0)).current;
   const [showUnlock, setShowUnlock] = useState(false);
+
+  // Use vertical layout for taller screens (portrait or large tablets)
+  const isVerticalLayout = height > 768;
 
   useEffect(() => {
     // Initial fade in
@@ -82,113 +87,182 @@ export function VictoryScreen({ navigation, route }: VictoryScreenProps) {
   const goldEarned = replay?.combatEnded?.goldEarned ?? 0;
   const turnsTaken = replay?.combatEnded?.turnsTaken ?? 0;
 
+  // Shared components
+  const VictoryHeader = () => (
+    <>
+      <View style={isVerticalLayout ? styles.iconContainerVertical : styles.iconContainer}>
+        <Text style={isVerticalLayout ? styles.victoryEmojiVertical : styles.victoryEmoji}>🏆</Text>
+      </View>
+      <Text style={isVerticalLayout ? styles.titleVertical : styles.title}>Victory!</Text>
+      <Text style={isVerticalLayout ? styles.subtitleVertical : styles.subtitle}>
+        Level {level ?? 1} Complete
+      </Text>
+    </>
+  );
+
+  const RunSummary = () => (
+    <View style={isVerticalLayout ? styles.summaryContainerVertical : styles.summaryContainer}>
+      <Text style={isVerticalLayout ? styles.summaryTitleVertical : styles.summaryTitle}>
+        Run Summary
+      </Text>
+
+      {isVerticalLayout ? (
+        // Vertical layout: row-based stats
+        <>
+          <View style={styles.statRowVertical}>
+            <Text style={styles.statLabelVertical}>Level Completed</Text>
+            <Text style={styles.statValueVertical}>{level ?? 1}</Text>
+          </View>
+          <View style={styles.statRowVertical}>
+            <Text style={styles.statLabelVertical}>Total Moves</Text>
+            <Text style={styles.statValueVertical}>{totalMoves ?? 0}</Text>
+          </View>
+          <View style={styles.statRowVertical}>
+            <Text style={styles.statLabelVertical}>Final Combat Turns</Text>
+            <Text style={styles.statValueVertical}>{turnsTaken}</Text>
+          </View>
+          <View style={styles.goldRowVertical}>
+            <Image source={COIN_ICON} style={styles.coinIconVertical} resizeMode="contain" />
+            <Text style={styles.goldValueVertical}>{goldEarned} gold earned</Text>
+          </View>
+        </>
+      ) : (
+        // Horizontal layout: grid-based stats
+        <>
+          {/* First row: Level, Moves, Turns */}
+          <View style={styles.statsRow}>
+            <View style={styles.statItem}>
+              <Text style={styles.statValue}>{level ?? 1}</Text>
+              <Text style={styles.statLabel}>Level</Text>
+            </View>
+            <View style={styles.statItem}>
+              <Text style={styles.statValue}>{totalMoves ?? 0}</Text>
+              <Text style={styles.statLabel}>Moves</Text>
+            </View>
+            <View style={styles.statItem}>
+              <Text style={styles.statValue}>{turnsTaken}</Text>
+              <Text style={styles.statLabel}>Turns</Text>
+            </View>
+          </View>
+          {/* Gold row */}
+          <View style={styles.goldRow}>
+            <Image source={COIN_ICON} style={styles.coinIcon} resizeMode="contain" />
+            <Text style={styles.goldValue}>{goldEarned} gold</Text>
+          </View>
+        </>
+      )}
+    </View>
+  );
+
+  const UnlockDisplays = () => (
+    <>
+      {/* Level Unlock Display */}
+      {showUnlock && levelUnlocked && (
+        <Animated.View
+          style={[
+            isVerticalLayout ? styles.unlockContainerVertical : styles.unlockContainer,
+            { opacity: glowAnim },
+          ]}
+        >
+          <Text style={isVerticalLayout ? styles.unlockTitleVertical : styles.unlockTitle}>
+            Level Unlocked!
+          </Text>
+          <View style={isVerticalLayout ? styles.unlockBadgeVertical : styles.unlockBadge}>
+            <Text style={isVerticalLayout ? styles.unlockLevelVertical : styles.unlockLevel}>
+              {levelUnlocked}
+            </Text>
+          </View>
+          <Text style={isVerticalLayout ? styles.unlockTextVertical : styles.unlockText}>
+            Level {levelUnlocked} is now available
+          </Text>
+        </Animated.View>
+      )}
+
+      {/* Item Unlock Display */}
+      {showUnlock && itemUnlocked && (
+        <Animated.View
+          style={[
+            isVerticalLayout ? styles.itemUnlockContainerVertical : styles.itemUnlockContainer,
+            { opacity: glowAnim },
+          ]}
+        >
+          <Text style={isVerticalLayout ? styles.unlockTitleVertical : styles.unlockTitle}>
+            New Item Unlocked!
+          </Text>
+          <View style={isVerticalLayout ? styles.itemCardVertical : styles.itemCard}>
+            <Text style={isVerticalLayout ? styles.itemEmojiVertical : styles.itemEmoji}>
+              {itemUnlocked.emoji ?? '📦'}
+            </Text>
+            <Text style={isVerticalLayout ? styles.itemNameVertical : styles.itemName}>
+              {itemUnlocked.name ?? 'Mystery Item'}
+            </Text>
+            {itemUnlocked.stats && (
+              <View style={styles.itemStats}>
+                {itemUnlocked.stats.atk && (
+                  <Text style={styles.itemStat}>+{itemUnlocked.stats.atk} ATK</Text>
+                )}
+                {itemUnlocked.stats.arm && (
+                  <Text style={styles.itemStat}>+{itemUnlocked.stats.arm} ARM</Text>
+                )}
+                {itemUnlocked.stats.spd && (
+                  <Text style={styles.itemStat}>+{itemUnlocked.stats.spd} SPD</Text>
+                )}
+                {itemUnlocked.stats.dig && (
+                  <Text style={styles.itemStat}>+{itemUnlocked.stats.dig} DIG</Text>
+                )}
+              </View>
+            )}
+          </View>
+        </Animated.View>
+      )}
+    </>
+  );
+
+  const ReturnButton = () => (
+    <Pressable
+      style={isVerticalLayout ? styles.returnButtonVertical : styles.returnButton}
+      onPress={handleReturnToHub}
+    >
+      <Text style={isVerticalLayout ? styles.returnButtonTextVertical : styles.returnButtonText}>
+        Return to Hub
+      </Text>
+    </Pressable>
+  );
+
   return (
     <View style={styles.container}>
-      <ImageBackground
-        source={BACKGROUND_IMAGE}
-        style={styles.backgroundImage}
-        resizeMode="cover"
-      >
+      <ImageBackground source={BACKGROUND_IMAGE} style={styles.backgroundImage} resizeMode="cover">
         <View style={styles.darkOverlay}>
           <Animated.View
             style={[
-              styles.content,
+              isVerticalLayout ? styles.contentVertical : styles.content,
               {
                 opacity: fadeAnim,
                 transform: [{ translateY: slideAnim }],
               },
             ]}
           >
-            {/* Victory Icon */}
-            <View style={styles.iconContainer}>
-              <Text style={styles.victoryEmoji}>🏆</Text>
-            </View>
-
-            {/* Title */}
-            <Text style={styles.title}>Victory!</Text>
-            <Text style={styles.subtitle}>Level {level ?? 1} Complete</Text>
-
-            {/* Run Summary */}
-            <View style={styles.summaryContainer}>
-              <Text style={styles.summaryTitle}>Run Summary</Text>
-
-              <View style={styles.statRow}>
-                <Text style={styles.statLabel}>Level Completed</Text>
-                <Text style={styles.statValue}>{level ?? 1}</Text>
-              </View>
-
-              <View style={styles.statRow}>
-                <Text style={styles.statLabel}>Total Moves</Text>
-                <Text style={styles.statValue}>{totalMoves ?? 0}</Text>
-              </View>
-
-              <View style={styles.statRow}>
-                <Text style={styles.statLabel}>Final Combat Turns</Text>
-                <Text style={styles.statValue}>{turnsTaken}</Text>
-              </View>
-
-              <View style={styles.goldRow}>
-                <Image source={COIN_ICON} style={styles.coinIcon} resizeMode="contain" />
-                <Text style={styles.goldValue}>{goldEarned} gold earned</Text>
-              </View>
-            </View>
-
-            {/* Level Unlock Display */}
-            {showUnlock && levelUnlocked && (
-              <Animated.View
-                style={[
-                  styles.unlockContainer,
-                  {
-                    opacity: glowAnim,
-                  },
-                ]}
-              >
-                <Text style={styles.unlockTitle}>Level Unlocked!</Text>
-                <View style={styles.unlockBadge}>
-                  <Text style={styles.unlockLevel}>{levelUnlocked}</Text>
+            {isVerticalLayout ? (
+              // Vertical layout (tall screens): stacked components
+              <>
+                <VictoryHeader />
+                <RunSummary />
+                <UnlockDisplays />
+                <ReturnButton />
+              </>
+            ) : (
+              // Horizontal layout (landscape mobile): side-by-side
+              <>
+                <View style={styles.leftColumn}>
+                  <VictoryHeader />
+                  <ReturnButton />
                 </View>
-                <Text style={styles.unlockText}>Level {levelUnlocked} is now available</Text>
-              </Animated.View>
-            )}
-
-            {/* Item Unlock Display */}
-            {showUnlock && itemUnlocked && (
-              <Animated.View
-                style={[
-                  styles.itemUnlockContainer,
-                  {
-                    opacity: glowAnim,
-                  },
-                ]}
-              >
-                <Text style={styles.unlockTitle}>New Item Unlocked!</Text>
-                <View style={styles.itemCard}>
-                  <Text style={styles.itemEmoji}>{itemUnlocked.emoji ?? '📦'}</Text>
-                  <Text style={styles.itemName}>{itemUnlocked.name ?? 'Mystery Item'}</Text>
-                  {itemUnlocked.stats && (
-                    <View style={styles.itemStats}>
-                      {itemUnlocked.stats.atk && (
-                        <Text style={styles.itemStat}>+{itemUnlocked.stats.atk} ATK</Text>
-                      )}
-                      {itemUnlocked.stats.arm && (
-                        <Text style={styles.itemStat}>+{itemUnlocked.stats.arm} ARM</Text>
-                      )}
-                      {itemUnlocked.stats.spd && (
-                        <Text style={styles.itemStat}>+{itemUnlocked.stats.spd} SPD</Text>
-                      )}
-                      {itemUnlocked.stats.dig && (
-                        <Text style={styles.itemStat}>+{itemUnlocked.stats.dig} DIG</Text>
-                      )}
-                    </View>
-                  )}
+                <View style={styles.rightColumn}>
+                  <RunSummary />
+                  <UnlockDisplays />
                 </View>
-              </Animated.View>
+              </>
             )}
-
-            {/* Return Button */}
-            <Pressable style={styles.returnButton} onPress={handleReturnToHub}>
-              <Text style={styles.returnButtonText}>Return to Hub</Text>
-            </Pressable>
           </Animated.View>
         </View>
       </ImageBackground>
@@ -210,13 +284,221 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.6)',
     justifyContent: 'center',
     alignItems: 'center',
+    padding: 16,
   },
+
+  // ==================== HORIZONTAL LAYOUT (Landscape Mobile) ====================
   content: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    maxWidth: 800,
+    gap: 32,
+  },
+  leftColumn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    flex: 1,
+    maxWidth: 280,
+  },
+  rightColumn: {
+    flex: 1,
+    maxWidth: 320,
+  },
+  iconContainer: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(255, 215, 0, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+    borderWidth: 2,
+    borderColor: '#FFD700',
+  },
+  victoryEmoji: {
+    fontSize: 32,
+  },
+  title: {
+    fontFamily: Typography.header,
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#FFD700',
+    marginBottom: 4,
+    textShadowColor: 'rgba(0, 0, 0, 0.8)',
+    textShadowOffset: { width: 2, height: 2 },
+    textShadowRadius: 4,
+  },
+  subtitle: {
+    fontFamily: Typography.body,
+    fontSize: 14,
+    color: '#CCCCCC',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  summaryContainer: {
+    backgroundColor: 'rgba(40, 40, 50, 0.9)',
+    borderRadius: 12,
+    padding: 16,
+    width: '100%',
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#444455',
+  },
+  summaryTitle: {
+    fontFamily: Typography.header,
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  statsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+    gap: 8,
+  },
+  statItem: {
+    alignItems: 'center',
+    minWidth: 60,
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    backgroundColor: 'rgba(60, 60, 80, 0.5)',
+    borderRadius: 8,
+  },
+  statLabel: {
+    fontFamily: Typography.body,
+    fontSize: 11,
+    color: '#AAAAAA',
+    marginTop: 2,
+  },
+  statValue: {
+    fontFamily: Typography.number,
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  goldRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 8,
+    gap: 6,
+  },
+  coinIcon: {
+    width: 20,
+    height: 20,
+  },
+  goldValue: {
+    fontFamily: Typography.number,
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#FFD700',
+  },
+  unlockContainer: {
+    backgroundColor: 'rgba(50, 100, 50, 0.9)',
+    borderRadius: 10,
+    padding: 12,
+    width: '100%',
+    marginBottom: 8,
+    borderWidth: 2,
+    borderColor: '#44AA44',
+    alignItems: 'center',
+  },
+  unlockTitle: {
+    fontFamily: Typography.header,
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#44FF44',
+    marginBottom: 8,
+  },
+  unlockBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#44AA44',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+    borderWidth: 2,
+    borderColor: '#66CC66',
+  },
+  unlockLevel: {
+    fontFamily: Typography.number,
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  unlockText: {
+    fontFamily: Typography.body,
+    fontSize: 12,
+    color: '#AAFFAA',
+  },
+  itemUnlockContainer: {
+    backgroundColor: 'rgba(80, 60, 100, 0.9)',
+    borderRadius: 10,
+    padding: 12,
+    width: '100%',
+    marginBottom: 8,
+    borderWidth: 2,
+    borderColor: '#8866AA',
+    alignItems: 'center',
+  },
+  itemCard: {
+    alignItems: 'center',
+    padding: 8,
+  },
+  itemEmoji: {
+    fontSize: 36,
+    marginBottom: 4,
+  },
+  itemName: {
+    fontFamily: Typography.header,
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    marginBottom: 6,
+  },
+  itemStats: {
+    flexDirection: 'row',
+    gap: 8,
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+  },
+  itemStat: {
+    fontFamily: Typography.number,
+    fontSize: 12,
+    color: '#AADDFF',
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  returnButton: {
+    backgroundColor: '#4a6a4a',
+    paddingVertical: 12,
+    paddingHorizontal: 32,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#6a8a6a',
+  },
+  returnButtonText: {
+    fontFamily: Typography.button,
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+
+  // ==================== VERTICAL LAYOUT (Tall Screens / Portrait) ====================
+  contentVertical: {
     alignItems: 'center',
     padding: 32,
     maxWidth: 400,
   },
-  iconContainer: {
+  iconContainerVertical: {
     width: 80,
     height: 80,
     borderRadius: 40,
@@ -227,10 +509,10 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#FFD700',
   },
-  victoryEmoji: {
+  victoryEmojiVertical: {
     fontSize: 42,
   },
-  title: {
+  titleVertical: {
     fontFamily: Typography.header,
     fontSize: 42,
     fontWeight: 'bold',
@@ -240,13 +522,13 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 2, height: 2 },
     textShadowRadius: 4,
   },
-  subtitle: {
+  subtitleVertical: {
     fontFamily: Typography.body,
     fontSize: 20,
     color: '#CCCCCC',
     marginBottom: 24,
   },
-  summaryContainer: {
+  summaryContainerVertical: {
     backgroundColor: 'rgba(40, 40, 50, 0.9)',
     borderRadius: 12,
     padding: 20,
@@ -255,7 +537,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#444455',
   },
-  summaryTitle: {
+  summaryTitleVertical: {
     fontFamily: Typography.header,
     fontSize: 18,
     fontWeight: 'bold',
@@ -263,42 +545,42 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     textAlign: 'center',
   },
-  statRow: {
+  statRowVertical: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingVertical: 8,
     borderBottomWidth: 1,
     borderBottomColor: '#333344',
   },
-  statLabel: {
+  statLabelVertical: {
     fontFamily: Typography.body,
     fontSize: 16,
     color: '#AAAAAA',
   },
-  statValue: {
+  statValueVertical: {
     fontFamily: Typography.number,
     fontSize: 16,
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
-  goldRow: {
+  goldRowVertical: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
     paddingTop: 16,
     gap: 8,
   },
-  coinIcon: {
+  coinIconVertical: {
     width: 24,
     height: 24,
   },
-  goldValue: {
+  goldValueVertical: {
     fontFamily: Typography.number,
     fontSize: 18,
     fontWeight: 'bold',
     color: '#FFD700',
   },
-  unlockContainer: {
+  unlockContainerVertical: {
     backgroundColor: 'rgba(50, 100, 50, 0.9)',
     borderRadius: 12,
     padding: 20,
@@ -308,14 +590,14 @@ const styles = StyleSheet.create({
     borderColor: '#44AA44',
     alignItems: 'center',
   },
-  unlockTitle: {
+  unlockTitleVertical: {
     fontFamily: Typography.header,
     fontSize: 18,
     fontWeight: 'bold',
     color: '#44FF44',
     marginBottom: 12,
   },
-  unlockBadge: {
+  unlockBadgeVertical: {
     width: 60,
     height: 60,
     borderRadius: 30,
@@ -326,18 +608,18 @@ const styles = StyleSheet.create({
     borderWidth: 3,
     borderColor: '#66CC66',
   },
-  unlockLevel: {
+  unlockLevelVertical: {
     fontFamily: Typography.number,
     fontSize: 28,
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
-  unlockText: {
+  unlockTextVertical: {
     fontFamily: Typography.body,
     fontSize: 14,
     color: '#AAFFAA',
   },
-  itemUnlockContainer: {
+  itemUnlockContainerVertical: {
     backgroundColor: 'rgba(80, 60, 100, 0.9)',
     borderRadius: 12,
     padding: 20,
@@ -347,37 +629,22 @@ const styles = StyleSheet.create({
     borderColor: '#8866AA',
     alignItems: 'center',
   },
-  itemCard: {
+  itemCardVertical: {
     alignItems: 'center',
     padding: 12,
   },
-  itemEmoji: {
+  itemEmojiVertical: {
     fontSize: 48,
     marginBottom: 8,
   },
-  itemName: {
+  itemNameVertical: {
     fontFamily: Typography.header,
     fontSize: 18,
     fontWeight: 'bold',
     color: '#FFFFFF',
     marginBottom: 8,
   },
-  itemStats: {
-    flexDirection: 'row',
-    gap: 12,
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-  },
-  itemStat: {
-    fontFamily: Typography.number,
-    fontSize: 14,
-    color: '#AADDFF',
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
-  },
-  returnButton: {
+  returnButtonVertical: {
     backgroundColor: '#4a6a4a',
     paddingVertical: 16,
     paddingHorizontal: 48,
@@ -385,7 +652,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#6a8a6a',
   },
-  returnButtonText: {
+  returnButtonTextVertical: {
     fontFamily: Typography.button,
     fontSize: 18,
     fontWeight: 'bold',

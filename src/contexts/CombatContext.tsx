@@ -18,10 +18,17 @@ import type {
   CombatState,
   CombatantState,
   CombatLogEntry,
+  CombatResult,
 } from '../game/engine/types';
 import { CombatPhase } from '../game/engine/types';
-import { resolveCombat, createCombatState, type CombatResolverInput } from '../game/combat/resolver';
+import {
+  resolveCombat,
+  createCombatState,
+  type CombatResolverInput,
+} from '../game/combat/resolver';
 import type { CombatSpeed } from '../types';
+import type { BackendCombatLogEntry } from '../services/solana/types/combat_events';
+import { convertBackendLogToFrontend } from '../services/solana/types/combat_events';
 
 export type { CombatSpeed } from '../types';
 
@@ -53,6 +60,11 @@ export function getCombatAnimationIntervalMs(speed: CombatSpeed): number | null 
 
 export type CombatAction =
   | { type: 'START_COMBAT'; input: CombatResolverInput }
+  | {
+      type: 'START_COMBAT_WITH_LOG';
+      input: CombatResolverInput;
+      backendLog: BackendCombatLogEntry[];
+    }
   | { type: 'RESOLVE_COMBAT' }
   | { type: 'ADVANCE_LOG'; index: number }
   | { type: 'COMPLETE_ANIMATION' }
@@ -222,6 +234,57 @@ function extractEffectNotification(
 }
 
 // ============================================================================
+// Combat Result Derivation
+// ============================================================================
+
+/**
+ * Derive combat result from a combat log by replaying all entries against
+ * initial combatant HP. Used for backend-log combats where the result
+ * is not provided explicitly.
+ */
+function deriveCombatResultFromLog(combat: CombatState, log: CombatLogEntry[]): CombatResult {
+  let playerHp = combat.player.hp;
+  let playerMaxHp = combat.player.maxHp;
+  let enemyHp = combat.enemy.hp;
+  let enemyMaxHp = combat.enemy.maxHp;
+
+  for (const entry of log) {
+    if (entry.target === 'none') continue;
+
+    const isPlayer = entry.target === 'player';
+    const targetHp = isPlayer ? playerHp : enemyHp;
+    const targetMaxHp = isPlayer ? playerMaxHp : enemyMaxHp;
+    const { result } = entry;
+
+    let newHp = targetHp;
+    let newMaxHp = targetMaxHp;
+
+    if (result.damage && result.damage > 0) {
+      newHp = Math.max(0, newHp - result.damage);
+    }
+
+    if (result.healing && result.healing > 0) {
+      if (result.effectName === 'Crystal Crown') {
+        newMaxHp += result.healing;
+        newHp += result.healing;
+      } else {
+        newHp = Math.min(newMaxHp, newHp + result.healing);
+      }
+    }
+
+    if (isPlayer) {
+      playerHp = newHp;
+      playerMaxHp = newMaxHp;
+    } else {
+      enemyHp = newHp;
+      enemyMaxHp = newMaxHp;
+    }
+  }
+
+  return enemyHp <= 0 ? 'VICTORY' : playerHp <= 0 ? 'DEFEAT' : 'VICTORY';
+}
+
+// ============================================================================
 // Reducer
 // ============================================================================
 
@@ -231,6 +294,42 @@ function combatReducer(state: CombatUIState, action: CombatAction): CombatUIStat
       // Resolve combat immediately (it's deterministic)
       const baseCombat = createCombatState(action.input);
       const resolvedCombat = resolveCombat(action.input);
+
+      return {
+        ...state,
+        combat: baseCombat,
+        resolvedCombat,
+        currentLogIndex: 0,
+        isAnimating: true,
+        isComplete: false,
+        damageNumbers: [],
+        effectNotifications: [],
+      };
+    }
+
+    case 'START_COMBAT_WITH_LOG': {
+      // Use backend log instead of local resolver
+      // This ensures frontend animation matches on-chain combat exactly
+      const baseCombat = createCombatState(action.input);
+      const convertedLog = convertBackendLogToFrontend(action.backendLog);
+      const typedLog = convertedLog as unknown as CombatLogEntry[];
+
+      // Derive the combat result by replaying the log against initial HP
+      const derivedResult = deriveCombatResultFromLog(baseCombat, typedLog);
+
+      // Create a resolved combat state with the backend log
+      // We still need the combat state structure for the animation system
+      const resolvedCombat = {
+        ...baseCombat,
+        log: typedLog,
+        result: derivedResult,
+      };
+
+      console.log('[CombatContext] Using backend combat log:', {
+        entryCount: action.backendLog.length,
+        convertedCount: convertedLog.length,
+        derivedResult,
+      });
 
       return {
         ...state,
@@ -257,10 +356,7 @@ function combatReducer(state: CombatUIState, action: CombatAction): CombatUIStat
     case 'ADVANCE_LOG': {
       if (!state.resolvedCombat) return state;
 
-      const newIndex = Math.min(
-        action.index,
-        state.resolvedCombat.log.length - 1
-      );
+      const newIndex = Math.min(action.index, state.resolvedCombat.log.length - 1);
 
       // Extract damage number from current log entry
       const entry = state.resolvedCombat.log[newIndex];
@@ -347,6 +443,8 @@ interface CombatContextType {
   setSpeed: (speed: CombatSpeed) => void;
   /** Start a new combat */
   startCombat: (input: CombatResolverInput) => void;
+  /** Start combat using backend log (for on-chain mode) */
+  startCombatWithLog: (input: CombatResolverInput, backendLog: BackendCombatLogEntry[]) => void;
   /** Get current combatant states for display */
   getDisplayStates: () => { player: CombatantState | null; enemy: CombatantState | null };
   /** Get combat result */
@@ -382,9 +480,19 @@ export function CombatProvider({ children, initialSpeed, onSpeedChange }: Combat
     [onSpeedChange]
   );
 
-  const startCombat = useCallback((input: CombatResolverInput) => {
-    dispatch({ type: 'START_COMBAT', input });
-  }, [dispatch]);
+  const startCombat = useCallback(
+    (input: CombatResolverInput) => {
+      dispatch({ type: 'START_COMBAT', input });
+    },
+    [dispatch]
+  );
+
+  const startCombatWithLog = useCallback(
+    (input: CombatResolverInput, backendLog: BackendCombatLogEntry[]) => {
+      dispatch({ type: 'START_COMBAT_WITH_LOG', input, backendLog });
+    },
+    [dispatch]
+  );
 
   const getDisplayStates = useCallback(() => {
     if (!state.resolvedCombat || !state.combat) {
@@ -483,6 +591,7 @@ export function CombatProvider({ children, initialSpeed, onSpeedChange }: Combat
         speed,
         setSpeed,
         startCombat,
+        startCombatWithLog,
         getDisplayStates,
         getResult,
       }}

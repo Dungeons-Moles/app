@@ -32,15 +32,15 @@ If the on-chain transaction fails, the local state must NOT change. No optimisti
 
 ### On-Chain Instruction Map
 
-| Action | Program | Instruction | Notes |
-|--------|---------|-------------|-------|
-| Move | gameplay-state | `move_player` | Handles movement, wall dig, enemy combat, night enemy movement, phase transitions |
-| Boss fight | gameplay-state | `trigger_boss_fight` | Resolves boss combat inline |
-| Heal (POI) | gameplay-state | `heal_player` | Called via CPI from poi-system |
-| Modify gold (POI) | gameplay-state | `modify_gold_authorized` | Called via CPI from poi-system |
-| POI interactions | poi-system | 15 instructions (rest, pick_item, tool_oil, etc.) | Each POI type has its own instruction |
-| Start session | session-manager | `start_session` | Creates session + derived accounts |
-| End session | session-manager | `end_session` | Closes session + derived accounts |
+| Action            | Program         | Instruction                                       | Notes                                                                             |
+| ----------------- | --------------- | ------------------------------------------------- | --------------------------------------------------------------------------------- |
+| Move              | gameplay-state  | `move_player`                                     | Handles movement, wall dig, enemy combat, night enemy movement, phase transitions |
+| Boss fight        | gameplay-state  | `trigger_boss_fight`                              | Resolves boss combat inline                                                       |
+| Heal (POI)        | gameplay-state  | `heal_player`                                     | Called via CPI from poi-system                                                    |
+| Modify gold (POI) | gameplay-state  | `modify_gold_authorized`                          | Called via CPI from poi-system                                                    |
+| POI interactions  | poi-system      | 15 instructions (rest, pick_item, tool_oil, etc.) | Each POI type has its own instruction                                             |
+| Start session     | session-manager | `start_session`                                   | Creates session + derived accounts                                                |
+| End session       | session-manager | `end_session`                                     | Closes session + derived accounts                                                 |
 
 ## Key Directories
 
@@ -49,6 +49,53 @@ If the on-chain transaction fails, the local state must NOT change. No optimisti
 - `src/components/` + `src/screens/`: React Native UI.
 - `assets/`: All static images (see structure below).
 - `specs/`: Product specs and plans (`specs/gdd.md` is the design reference).
+
+## Solana Programs (On-Chain)
+
+The on-chain Solana programs live in the sibling repository at `../solana-programs`. Reference this folder when:
+
+- Implementing frontend interactions with on-chain instructions
+- Understanding account structures and PDAs
+- Debugging on-chain transaction failures
+- Updating programs to work with frontend changes
+
+### Program Structure
+
+| Program          | Path                         | Purpose                                                           |
+| ---------------- | ---------------------------- | ----------------------------------------------------------------- |
+| gameplay-state   | `programs/gameplay-state/`   | Core game state: movement, combat, phase transitions, boss fights |
+| session-manager  | `programs/session-manager/`  | Session lifecycle: start/end session, burner wallet management    |
+| poi-system       | `programs/poi-system/`       | POI interactions: rest, shop, forge, chest, etc.                  |
+| map-generator    | `programs/map-generator/`    | Seeded map generation and tile data                               |
+| player-inventory | `programs/player-inventory/` | Player items, gear, and inventory management                      |
+| player-profile   | `programs/player-profile/`   | Player profile and progression                                    |
+
+### Shared Crates
+
+| Crate         | Path                    | Purpose                                    |
+| ------------- | ----------------------- | ------------------------------------------ |
+| combat-system | `crates/combat-system/` | Deterministic combat resolution logic      |
+| boss-system   | `crates/boss-system/`   | Boss encounter definitions and mechanics   |
+| field-enemies | `crates/field-enemies/` | Field enemy definitions and spawning logic |
+
+**Important:** The programs repo has its own `CLAUDE.md` and `AGENTS.md` with detailed Anchor/Rust conventions. Consult those when making program changes.
+
+### IDL Synchronization (CRITICAL)
+
+**After ANY changes to Solana programs, the IDLs must be copied to the frontend.**
+
+When you run `anchor build` in `../solana-programs`, it generates updated IDLs in `target/idl/`. These MUST be copied to `app/src/services/solana/idl/`:
+
+```bash
+cp ../solana-programs/target/idl/poi_system.json src/services/solana/idl/
+cp ../solana-programs/target/idl/player_inventory.json src/services/solana/idl/
+cp ../solana-programs/target/idl/gameplay_state.json src/services/solana/idl/
+cp ../solana-programs/target/idl/session_manager.json src/services/solana/idl/
+cp ../solana-programs/target/idl/map_generator.json src/services/solana/idl/
+cp ../solana-programs/target/idl/player_profile.json src/services/solana/idl/
+```
+
+**Failure to sync IDLs will cause runtime errors** like `AccountOwnedByWrongProgram` because the frontend will pass incorrect accounts to on-chain instructions.
 
 ## Assets
 
@@ -95,38 +142,46 @@ If the on-chain transaction fails, the local state must NOT change. No optimisti
 The core loop integration feature (specs/007-core-loop-integration/) adds:
 
 ### Screens
+
 - `DeathScreen` - Run summary after player death
 - `VictoryScreen` - Level completion with unlock animations
 - `RunPurchaseScreen` - Purchase runs (20 for 0.001 SOL)
 
 ### Components
+
 - `src/components/combat/` - CombatOverlay, BossIntro, TurnDisplay
 - `src/components/session/` - SessionCard for multi-session display
 - `src/components/items/` - ItemCard, ItemGrid, UnlockAnimation
 
 ### Hooks
+
 - `useSessionList` - Multi-session management (fetch, switch, abandon)
 - `useCombatReplay` - Combat event parsing and replay
 - `useNightMovement` - Enemy movement during night phase
 - `usePoiInteraction` - POI interaction handling
 
 ### Services
+
 - `src/services/solana/sessionList.ts` - Session list fetching and switching
 - `src/services/solana/sessionBundle.ts` - Session creation with burner wallet
 - `src/services/solana/eventParser.ts` - Combat event parsing from transaction logs
 
 ### Navigation Routes
+
 - Death, Victory, RunPurchase screens added to navigation
 - Route params include combat replay data, level info, and unlock data
 
 ### Time/Phase System
+
 - 3 weeks per level, each with Day 1-3 and Night 1-3 phases
 - Boss fight triggers at end of Night 3 for each week
 - Phase labels utility in `src/utils/phase-labels.ts`
 
 ## Active Technologies
+
 - TypeScript 5.9.2 (React Native / Expo 54.0) + @solana/web3.js 1.98.4, @coral-xyz/anchor 0.32.1, React Native 0.81.5, Shopify React Native Skia (008-solana-program-instructions)
 - AsyncStorage (profile cache), Expo SecureStore (burner wallet keys) (008-solana-program-instructions)
 
 ## Recent Changes
+
 - 008-solana-program-instructions: Added TypeScript 5.9.2 (React Native / Expo 54.0) + @solana/web3.js 1.98.4, @coral-xyz/anchor 0.32.1, React Native 0.81.5, Shopify React Native Skia

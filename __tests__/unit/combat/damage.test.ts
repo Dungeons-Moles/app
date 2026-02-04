@@ -101,8 +101,11 @@ describe('Damage Calculation', () => {
       });
     });
 
-    describe('Chill status effect', () => {
-      it('should halve ATK when attacker has Chill stacks', () => {
+    describe('Chill status effect (no longer affects ATK - affects strikes instead)', () => {
+      // Note: Chill now reduces strikes per turn (see status-effects.ts getEffectiveStrikes)
+      // NOT attack damage. This matches on-chain behavior in effects.rs.
+
+      it('should NOT halve ATK when attacker has Chill stacks (Chill affects strikes, not ATK)', () => {
         const attacker = createTestCombatant({
           atk: 10,
           statusEffects: { ...DEFAULT_STATUS_EFFECTS, chill: 2 },
@@ -111,24 +114,26 @@ describe('Damage Calculation', () => {
 
         const result = calculateDamage(attacker, defender);
 
-        expect(result.atkAfterChill).toBe(5); // 10 / 2 = 5
-        expect(result.hpDamage).toBe(5);
+        // Chill does NOT affect ATK - it affects strikes per turn
+        expect(result.effectiveAtk).toBe(10);
+        expect(result.hpDamage).toBe(10);
       });
 
-      it('should round down when halving odd ATK with Chill', () => {
+      it('should NOT reduce ATK with any amount of Chill stacks', () => {
         const attacker = createTestCombatant({
           atk: 7,
-          statusEffects: { ...DEFAULT_STATUS_EFFECTS, chill: 1 },
+          statusEffects: { ...DEFAULT_STATUS_EFFECTS, chill: 5 },
         });
         const defender = createTestCombatant({ arm: 0 });
 
         const result = calculateDamage(attacker, defender);
 
-        expect(result.atkAfterChill).toBe(3); // floor(7 / 2) = 3
-        expect(result.hpDamage).toBe(3);
+        // Chill does NOT affect ATK
+        expect(result.effectiveAtk).toBe(7);
+        expect(result.hpDamage).toBe(7);
       });
 
-      it('should not apply Chill penalty when chill stacks are 0', () => {
+      it('should have same effectiveAtk regardless of chill stacks', () => {
         const attacker = createTestCombatant({
           atk: 10,
           statusEffects: { ...DEFAULT_STATUS_EFFECTS, chill: 0 },
@@ -137,11 +142,11 @@ describe('Damage Calculation', () => {
 
         const result = calculateDamage(attacker, defender);
 
-        expect(result.atkAfterChill).toBe(10);
+        expect(result.effectiveAtk).toBe(10);
         expect(result.hpDamage).toBe(10);
       });
 
-      it('should apply Chill before ARM reduction', () => {
+      it('should calculate damage normally with Chill (Chill affects strikes, not damage)', () => {
         const attacker = createTestCombatant({
           atk: 10,
           statusEffects: { ...DEFAULT_STATUS_EFFECTS, chill: 1 },
@@ -150,10 +155,10 @@ describe('Damage Calculation', () => {
 
         const result = calculateDamage(attacker, defender);
 
-        // ATK 10 -> halved to 5 -> minus ARM 3 -> 2 damage
-        expect(result.atkAfterChill).toBe(5);
+        // ATK 10 is unchanged by Chill -> minus ARM 3 -> 7 damage
+        expect(result.effectiveAtk).toBe(10);
         expect(result.armorDamage).toBe(3);
-        expect(result.hpDamage).toBe(2);
+        expect(result.hpDamage).toBe(7);
       });
     });
 
@@ -207,7 +212,7 @@ describe('Damage Calculation', () => {
         expect(result.hpDamage).toBe(10);
       });
 
-      it('should still apply Chill even when ignoring armor', () => {
+      it('should NOT apply Chill to ATK when ignoring armor (Chill affects strikes, not ATK)', () => {
         const attacker = createTestCombatant({
           atk: 10,
           ignoresArmor: true,
@@ -217,9 +222,10 @@ describe('Damage Calculation', () => {
 
         const result = calculateDamage(attacker, defender);
 
-        expect(result.atkAfterChill).toBe(5);
+        // Chill does NOT affect ATK, full damage goes through
+        expect(result.effectiveAtk).toBe(10);
         expect(result.armorDamage).toBe(0);
-        expect(result.hpDamage).toBe(5);
+        expect(result.hpDamage).toBe(10);
       });
     });
 
@@ -253,7 +259,7 @@ describe('Damage Calculation', () => {
     });
 
     describe('complex scenarios', () => {
-      it('should handle all effects together', () => {
+      it('should handle all effects together (Chill does NOT affect ATK)', () => {
         const attacker = createTestCombatant({
           atk: 12,
           bonusAtk: 2,
@@ -268,14 +274,14 @@ describe('Damage Calculation', () => {
         const result = calculateDamage(attacker, defender);
 
         // Base ATK: 12 + 2 = 14
-        // After Chill: floor(14 / 2) = 7
+        // Chill does NOT affect ATK (it affects strikes per turn)
         // Defender effective ARM: (4 + 1) - 2 = 3
-        // Damage: 7 - 3 = 4
+        // Damage: 14 - 3 = 11
         // Shrapnel reflect: 3
         expect(result.baseAtk).toBe(14);
-        expect(result.atkAfterChill).toBe(7);
+        expect(result.effectiveAtk).toBe(14); // Chill doesn't reduce ATK
         expect(result.armorDamage).toBe(3);
-        expect(result.hpDamage).toBe(4);
+        expect(result.hpDamage).toBe(11);
         expect(result.shrapnelReflect).toBe(3);
       });
     });
@@ -307,7 +313,7 @@ describe('Damage Calculation', () => {
     it('should create a complete damage result structure', () => {
       const result = createDamageResult({
         baseAtk: 10,
-        atkAfterChill: 10,
+        effectiveAtk: 10,
         armorDamage: 3,
         hpDamage: 7,
         shrapnelReflect: 0,
@@ -315,7 +321,7 @@ describe('Damage Calculation', () => {
 
       expect(result).toEqual({
         baseAtk: 10,
-        atkAfterChill: 10,
+        effectiveAtk: 10,
         armorDamage: 3,
         hpDamage: 7,
         shrapnelReflect: 0,

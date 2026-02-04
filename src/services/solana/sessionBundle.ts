@@ -127,33 +127,107 @@ export async function createSessionBundle(
 // ============================================================================
 
 /**
- * End a session (abandon or after defeat/victory).
- * The `end_session` instruction requires inventory PDA and program for cleanup.
- * Both main wallet and burner wallet must sign (burner owns the inventory).
+ * End a session after death or level completion.
+ * Only requires burner wallet signature - no user interaction needed.
+ * Victory/defeat is determined on-chain from game_state.is_dead and game_state.completed.
+ *
+ * @param connection - Solana connection
+ * @param program - Session manager program
+ * @param sessionPda - Session PDA
+ * @param gameStatePda - Game state PDA (for validating death/completion)
+ * @param inventoryPda - Inventory PDA (closed as part of cleanup)
+ * @param playerPubkey - Player wallet (receives rent refund, does NOT sign)
+ * @param burnerPubkey - Burner wallet (must sign)
+ * @param campaignLevel - Campaign level for PDA derivation
  */
 export async function endSession(
+  connection: Connection,
+  program: Program,
+  sessionPda: PublicKey,
+  gameStatePda: PublicKey,
+  inventoryPda: PublicKey,
+  playerPubkey: PublicKey,
+  burnerPubkey: PublicKey,
+  campaignLevel: number
+): Promise<Transaction> {
+  // Derive additional PDAs
+  const [playerProfilePda] = derivePlayerProfilePda(playerPubkey);
+  const [mapEnemiesPda] = deriveMapEnemiesPda(sessionPda);
+  const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
+  const [mapPoisPda] = deriveMapPoisPda(sessionPda);
+
+  const endSessionIx = await program.methods
+    .endSession(campaignLevel)
+    .accounts({
+      gameSession: sessionPda,
+      gameState: gameStatePda,
+      mapEnemies: mapEnemiesPda,
+      generatedMap: generatedMapPda,
+      mapPois: mapPoisPda,
+      playerProfile: playerProfilePda,
+      player: playerPubkey,
+      burnerWallet: burnerPubkey,
+      inventory: inventoryPda,
+      playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
+      gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
+      playerProfileProgram: SOLANA_CONFIG.programs.playerProfile,
+      mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
+      poiSystemProgram: SOLANA_CONFIG.programs.poiSystem,
+    })
+    .instruction();
+
+  const transaction = new Transaction();
+  transaction.add(endSessionIx);
+
+  const { blockhash } = await connection.getLatestBlockhash();
+  transaction.recentBlockhash = blockhash;
+  // Burner wallet pays and signs - no user interaction needed
+  transaction.feePayer = burnerPubkey;
+
+  return transaction;
+}
+
+/**
+ * Abandon a session at any time (user-initiated).
+ * Requires main wallet signature.
+ * Used when player wants to quit a session early.
+ * Closes all session-related accounts to allow starting a new session on the same level.
+ */
+export async function abandonSession(
   connection: Connection,
   program: Program,
   sessionPda: PublicKey,
   inventoryPda: PublicKey,
   playerPubkey: PublicKey,
   burnerPubkey: PublicKey,
-  campaignLevel: number,
-  victory: boolean = false
+  campaignLevel: number
 ): Promise<Transaction> {
-  const endSessionIx = await program.methods
-    .endSession(campaignLevel, victory)
+  // Derive all PDAs that need to be closed
+  const [gameStatePda] = deriveGameStatePda(sessionPda);
+  const [mapEnemiesPda] = deriveMapEnemiesPda(sessionPda);
+  const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
+  const [mapPoisPda] = deriveMapPoisPda(sessionPda);
+
+  const abandonSessionIx = await program.methods
+    .abandonSession(campaignLevel)
     .accounts({
       gameSession: sessionPda,
+      gameState: gameStatePda,
+      mapEnemies: mapEnemiesPda,
+      generatedMap: generatedMapPda,
+      mapPois: mapPoisPda,
       player: playerPubkey,
       burnerWallet: burnerPubkey,
       inventory: inventoryPda,
       playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
+      gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
+      mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
+      poiSystemProgram: SOLANA_CONFIG.programs.poiSystem,
     })
     .instruction();
 
   const transaction = new Transaction();
-  transaction.add(endSessionIx);
+  transaction.add(abandonSessionIx);
 
   const { blockhash } = await connection.getLatestBlockhash();
   transaction.recentBlockhash = blockhash;

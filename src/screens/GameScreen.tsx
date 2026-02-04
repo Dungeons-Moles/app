@@ -5,7 +5,8 @@
 import React, { useCallback, useMemo, useEffect, useState, useRef } from 'react';
 import { View, Text, StyleSheet, Animated, ImageBackground, Image, Pressable } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../navigation';
+import { useIsFocused } from '@react-navigation/native';
+import { RootStackParamList, CombatParams } from '../navigation';
 import { useGame, GamePhase } from '../contexts/GameContext';
 import { useSession } from '../contexts/SessionContext';
 import { useProfile } from '../contexts/ProfileContext';
@@ -29,12 +30,16 @@ import { BurnerBalanceIndicator } from '../components/common/BurnerBalanceIndica
 import { useDirectionInput } from '../hooks/useInput';
 import { useLandscapeLock } from '../hooks/useOrientationLock';
 import { Direction, DIRECTION_DELTA } from '../game/input/types';
-import { TileType } from '../game/map/types';
+import { TileType, MapEnemy } from '../game/map/types';
 import { canFastTravel, getDiscoveredWaypoints } from '../game/entities/pois';
 import { canAffordCostAcrossPhases } from '../game/time/progression';
 import { Typography } from '../theme/typography';
 import { promptTransactionRetry } from '../utils/transaction-alerts';
-import type { Gear, GearId, Tool } from '../game/engine/types';
+import type { Gear, GearId, Tool, CombatantState } from '../game/engine/types';
+import type { BackendCombatLogEntry } from '../services/solana/types/combat_events';
+import { ENEMY_DEFINITIONS, calculateGoldReward } from '../game/entities/enemies';
+import { BOSSES } from '../data/bosses';
+import type { BossId } from '../game/engine/types';
 import Svg, { Path } from 'react-native-svg';
 
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.png');
@@ -43,6 +48,166 @@ const MAP_ICON = require('../../assets/icons/ui/map.png');
 
 const SIDEBAR_WIDTH = 230;
 const NAVBAR_HEIGHT = 60;
+
+/**
+ * Create combat params for CombatScreen from local game state and enemy data
+ */
+function createCombatParams(
+  enemy: MapEnemy,
+  playerStats: {
+    hp: number;
+    maxHp: number;
+    atk: number;
+    arm: number;
+    spd: number;
+    dig: number;
+    gold: number;
+  },
+  playerGear: Gear[],
+  playerTool: Tool | null,
+  activeItemsets: string[],
+  seed: number,
+  week: 1 | 2 | 3,
+  combatLog?: BackendCombatLogEntry[]
+): CombatParams {
+  const enemyDef = ENEMY_DEFINITIONS[enemy.definitionId];
+  const tierStats = enemyDef.tiers[enemy.tier - 1];
+
+  const playerCombatant: CombatantState = {
+    name: 'Player',
+    emoji: '🧑‍🔧',
+    definitionId: 'player',
+    isPlayer: true,
+    maxHp: playerStats.maxHp,
+    hp: playerStats.hp,
+    atk: playerStats.atk,
+    arm: playerStats.arm,
+    spd: playerStats.spd,
+    dig: playerStats.dig,
+    bonusAtk: 0,
+    bonusArm: 0,
+    bonusSpd: 0,
+    statusEffects: { chill: 0, shrapnel: 0, rust: 0, bleed: 0 },
+    strikesPerTurn: 1,
+    ignoresArmor: false,
+  };
+
+  const enemyCombatant: CombatantState = {
+    name: enemyDef.name,
+    emoji: enemyDef.emoji,
+    definitionId: enemy.definitionId,
+    isPlayer: false,
+    maxHp: tierStats.hp,
+    hp: tierStats.hp,
+    atk: tierStats.atk,
+    arm: tierStats.arm,
+    spd: tierStats.spd,
+    dig: tierStats.dig,
+    bonusAtk: 0,
+    bonusArm: 0,
+    bonusSpd: 0,
+    statusEffects: { chill: 0, shrapnel: 0, rust: 0, bleed: 0 },
+    strikesPerTurn: 1,
+    ignoresArmor: false,
+  };
+
+  return {
+    player: playerCombatant,
+    enemy: enemyCombatant,
+    seed,
+    enemyId: enemy.definitionId,
+    enemyDefinitionId: enemy.definitionId,
+    enemyTier: enemy.tier,
+    goldReward: calculateGoldReward(enemy.definitionId, enemy.tier),
+    activeItemSets: activeItemsets as any[],
+    playerGear,
+    playerTool,
+    playerGold: playerStats.gold,
+    week,
+    isBossFight: false,
+    combatLog,
+  };
+}
+
+/**
+ * Create combat params for boss fight
+ */
+function createBossCombatParams(
+  bossId: BossId,
+  playerStats: {
+    hp: number;
+    maxHp: number;
+    atk: number;
+    arm: number;
+    spd: number;
+    dig: number;
+    gold: number;
+  },
+  playerGear: Gear[],
+  playerTool: Tool | null,
+  activeItemsets: string[],
+  seed: number,
+  week: 1 | 2 | 3,
+  combatLog?: BackendCombatLogEntry[]
+): CombatParams {
+  const bossDef = BOSSES[bossId];
+  if (!bossDef) {
+    throw new Error(`Boss definition not found for ID: ${bossId}`);
+  }
+
+  const playerCombatant: CombatantState = {
+    name: 'Player',
+    emoji: '🧑‍🔧',
+    definitionId: 'player',
+    isPlayer: true,
+    maxHp: playerStats.maxHp,
+    hp: playerStats.hp,
+    atk: playerStats.atk,
+    arm: playerStats.arm,
+    spd: playerStats.spd,
+    dig: playerStats.dig,
+    bonusAtk: 0,
+    bonusArm: 0,
+    bonusSpd: 0,
+    statusEffects: { chill: 0, shrapnel: 0, rust: 0, bleed: 0 },
+    strikesPerTurn: 1,
+    ignoresArmor: false,
+  };
+
+  const bossCombatant: CombatantState = {
+    name: bossDef.name,
+    emoji: bossDef.emoji,
+    definitionId: bossId,
+    isPlayer: false,
+    maxHp: bossDef.stats.hp,
+    hp: bossDef.stats.hp,
+    atk: bossDef.stats.atk,
+    arm: bossDef.stats.arm,
+    spd: bossDef.stats.spd,
+    dig: bossDef.stats.dig,
+    bonusAtk: 0,
+    bonusArm: 0,
+    bonusSpd: 0,
+    statusEffects: { chill: 0, shrapnel: 0, rust: 0, bleed: 0 },
+    strikesPerTurn: 1,
+    ignoresArmor: false,
+  };
+
+  return {
+    player: playerCombatant,
+    enemy: bossCombatant,
+    seed,
+    bossId,
+    goldReward: 0, // Bosses don't give gold directly
+    activeItemSets: activeItemsets as any[],
+    playerGear,
+    playerTool,
+    playerGold: playerStats.gold,
+    week,
+    isBossFight: true,
+    combatLog,
+  };
+}
 
 function ThinSeparator({ horizontal = true }: { horizontal?: boolean }) {
   if (horizontal) {
@@ -94,11 +259,13 @@ export function GameScreen({ navigation }: GameScreenProps) {
     isBurnerLowBalance,
     topUpBurner,
     currentLevel,
+    forceAbandonCurrentSession,
   } = useSession();
   const { wallet } = useWallet();
   const { refreshMapEntities } = useGameplayStateContext();
   const nightMovement = useNightMovement();
   const poiInteraction = usePoiInteraction();
+  const isFocused = useIsFocused();
 
   // Derive session PDA for refreshing map entities after moves
   const sessionPda = useMemo(() => {
@@ -116,6 +283,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
   const feedbackTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [wallBreakFeedback, setWallBreakFeedback] = useState<string | null>(null);
   const [isMovePending, setIsMovePending] = useState(false);
+  const [isExitingSession, setIsExitingSession] = useState(false);
   // Use a ref for synchronous pending check to prevent race conditions with rapid clicks
   const isMovePendingRef = useRef(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -147,6 +315,9 @@ export function GameScreen({ navigation }: GameScreenProps) {
       gameplaySyncStatus !== 'synced' ||
       state.phase !== GamePhase.Exploration ||
       isMovePending ||
+      // Skip when screen isn't focused (e.g., during CombatScreen)
+      // Prevents stale onChainState from overwriting correct HP after combat
+      !isFocused ||
       // Skip during/after POI interactions - the hook handles its own state sync
       // Use ref for synchronous check (state-based checks have timing issues)
       skipMismatchDetectionRef.current ||
@@ -161,13 +332,30 @@ export function GameScreen({ navigation }: GameScreenProps) {
     const hasMismatch =
       state.player.position.x !== onChainState.positionX ||
       state.player.position.y !== onChainState.positionY ||
-      state.player.baseStats.hp !== onChainState.hp ||
+      // Compare stats.hp (includes gear bonuses) with on-chain HP (also includes gear bonuses)
+      // Don't compare baseStats.hp which is the raw base HP without gear
+      state.player.stats.hp !== onChainState.hp ||
       state.time.movesRemaining !== onChainState.movesRemaining;
 
     if (hasMismatch) {
+      console.log('[GameScreen] Mismatch detected, syncing:', {
+        localHp: state.player.stats.hp,
+        onChainHp: onChainState.hp,
+        localPos: state.player.position,
+        onChainPos: { x: onChainState.positionX, y: onChainState.positionY },
+      });
       dispatch({ type: 'SYNC_MOVE', confirmedState: onChainState });
     }
-  }, [dispatch, gameplaySyncStatus, mode, onChainState, state, isMovePending, poiInteraction.isInteracting]);
+  }, [
+    dispatch,
+    gameplaySyncStatus,
+    mode,
+    onChainState,
+    state,
+    isMovePending,
+    isFocused,
+    poiInteraction.isInteracting,
+  ]);
 
   const showWallBreakFeedback = useCallback((message: string) => {
     if (feedbackTimeout.current) clearTimeout(feedbackTimeout.current);
@@ -177,6 +365,28 @@ export function GameScreen({ navigation }: GameScreenProps) {
       feedbackTimeout.current = null;
     }, 3500);
   }, []);
+
+  // Debug: Exit session handler for quick testing
+  const handleDebugExitSession = useCallback(async () => {
+    if (isExitingSession) return;
+    setIsExitingSession(true);
+    try {
+      console.log('[GameScreen] Debug: Force abandoning session...');
+      const result = await forceAbandonCurrentSession();
+      if (result.success) {
+        console.log('[GameScreen] Debug: Session abandoned successfully');
+        navigation.replace('Hub');
+      } else {
+        console.error('[GameScreen] Debug: Failed to abandon session:', result.error);
+        showWallBreakFeedback(result.error || 'Failed to exit session');
+      }
+    } catch (error) {
+      console.error('[GameScreen] Debug: Error abandoning session:', error);
+      showWallBreakFeedback('Error exiting session');
+    } finally {
+      setIsExitingSession(false);
+    }
+  }, [isExitingSession, forceAbandonCurrentSession, navigation, showWallBreakFeedback]);
 
   const discoveredWaypoints = useMemo(
     () => (state ? getDiscoveredWaypoints(state.map) : []),
@@ -191,7 +401,18 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
   const handleDirection = useCallback(
     (direction: Direction) => {
-      console.log('[GameScreen] handleDirection called:', direction, '| mode:', mode, '| hasActiveSession:', hasActiveSession, '| phase:', state?.phase, '| isMovePending:', isMovePendingRef.current);
+      console.log(
+        '[GameScreen] handleDirection called:',
+        direction,
+        '| mode:',
+        mode,
+        '| hasActiveSession:',
+        hasActiveSession,
+        '| phase:',
+        state?.phase,
+        '| isMovePending:',
+        isMovePendingRef.current
+      );
       // Use ref for synchronous check to prevent race conditions with rapid clicks
       if (
         !state ||
@@ -254,9 +475,32 @@ export function GameScreen({ navigation }: GameScreenProps) {
       setIsMovePending(true);
       console.log('[GameScreen] Sending on-chain move to', targetPos.x, targetPos.y);
 
+      // Store pre-combat state for potential combat replay
+      // Note: HP/gold are captured inside .then() from result.previousState (on-chain truth)
+      // to avoid desync where local React state is stale. Gear/tool are captured here
+      // since they don't change during move.
+      const preCombatGear = state.player.inventory.map((slot) => slot.item);
+      const preCombatTool = state.player.equippedTool;
+      const preCombatItemsets = state.player.activeItemsets ?? [];
+      const preCombatSeed = state.rngState;
+      const currentWeek = state.time.week;
+
+      // Find enemy at target position (for combat replay)
+      const enemyAtTarget = state.map.enemies.find(
+        (e) => e.position.x === targetPos.x && e.position.y === targetPos.y
+      );
+
       movePlayer({ targetX: targetPos.x, targetY: targetPos.y })
         .then((result) => {
-          console.log('[GameScreen] movePlayer result:', JSON.stringify({ success: result.success, hasNewState: !!result.newState, combatOccurred: result.combatOccurred, isDead: result.isDead }));
+          console.log(
+            '[GameScreen] movePlayer result:',
+            JSON.stringify({
+              success: result.success,
+              hasNewState: !!result.newState,
+              combatOccurred: result.combatOccurred,
+              isDead: result.isDead,
+            })
+          );
           if (!result.success) {
             showWallBreakFeedback('Movement failed on-chain');
             void promptTransactionRetry({
@@ -292,13 +536,16 @@ export function GameScreen({ navigation }: GameScreenProps) {
             const isNightPhase =
               result.newState.phase === 1 || // Night1
               result.newState.phase === 3 || // Night2
-              result.newState.phase === 5;   // Night3
+              result.newState.phase === 5; // Night3
 
             if (sessionPda && isNightPhase) {
               refreshMapEntities(sessionPda)
                 .then((data) => {
                   if (data?.enemies && data.enemies.length > 0) {
-                    console.log('[GameScreen] Syncing enemy positions, count:', data.enemies.length);
+                    console.log(
+                      '[GameScreen] Syncing enemy positions, count:',
+                      data.enemies.length
+                    );
                     // Sync enemy positions from on-chain to local game state
                     dispatch({ type: 'SYNC_ENEMY_POSITIONS', enemies: data.enemies });
                   }
@@ -308,30 +555,156 @@ export function GameScreen({ navigation }: GameScreenProps) {
                 );
             }
 
-            // Handle death — navigate to DeathScreen with available info
-            if (result.isDead) {
+            // Build preCombatPlayerStats from a mix of on-chain and local state:
+            // - HP and Gold: from on-chain previousState (authoritative for these values)
+            // - ATK, ARM, SPD, DIG, MaxHP: from local state (on-chain doesn't store these,
+            //   they're derived from PlayerInventory and calculated client-side)
+            const preCombatPlayerStats = result.previousState
+              ? {
+                  // HP from on-chain is authoritative
+                  hp: result.previousState.hp,
+                  // Gold from on-chain is authoritative
+                  gold: result.previousState.gold,
+                  // Stats derived from gear - use local state which has calculated bonuses
+                  // On-chain returns defaults (ATK=1, ARM=0) since it doesn't store these
+                  maxHp: state.player.stats.maxHp,
+                  atk: state.player.stats.atk,
+                  arm: state.player.stats.arm,
+                  spd: state.player.stats.spd,
+                  dig: state.player.stats.dig,
+                }
+              : {
+                  // Fallback to local state if previousState unavailable (shouldn't happen)
+                  hp: state.player.stats.hp,
+                  maxHp: state.player.stats.maxHp,
+                  atk: state.player.stats.atk,
+                  arm: state.player.stats.arm,
+                  spd: state.player.stats.spd,
+                  dig: state.player.stats.dig,
+                  gold: state.player.stats.gold,
+                };
+
+            // Handle combat - always go through CombatScreen for visualization
+            // This includes deaths from combat (CombatScreen will navigate to DeathScreen)
+            if (result.combatOccurred) {
+              // Find enemy - check both target position and player's current position
+              // During night, enemies move toward player, so combat might occur at player's position
+              let combatEnemy = enemyAtTarget;
+              if (!combatEnemy) {
+                // Check for enemy at player's current position (night combat)
+                combatEnemy = state.map.enemies.find(
+                  (e) =>
+                    e.position.x === state.player.position.x &&
+                    e.position.y === state.player.position.y
+                );
+                if (combatEnemy) {
+                  console.log(
+                    '[GameScreen] Found enemy at player position (night combat):',
+                    combatEnemy.definitionId
+                  );
+                }
+              }
+
+              if (combatEnemy) {
+                // Combat was resolved on-chain during move_player.
+                // Navigate to CombatScreen to show combat replay.
+                console.log('[GameScreen] Combat occurred with enemy:', {
+                  enemyId: combatEnemy.definitionId,
+                  enemyTier: combatEnemy.tier,
+                  enemyPosition: combatEnemy.position,
+                  preCombatPlayerHp: preCombatPlayerStats.hp,
+                  postCombatPlayerHp: result.newState.hp,
+                  goldBefore: preCombatPlayerStats.gold,
+                  goldAfter: result.newState.gold,
+                  playerDied: result.isDead,
+                });
+                const combatParams = createCombatParams(
+                  combatEnemy,
+                  preCombatPlayerStats,
+                  preCombatGear,
+                  preCombatTool,
+                  preCombatItemsets,
+                  preCombatSeed,
+                  currentWeek,
+                  result.combatLog
+                );
+                console.log('[GameScreen] Navigating to CombatScreen with params:', {
+                  playerHp: combatParams.player.hp,
+                  playerAtk: combatParams.player.atk,
+                  enemyName: combatParams.enemy.name,
+                  enemyHp: combatParams.enemy.hp,
+                  seed: combatParams.seed,
+                  week: combatParams.week,
+                  isBossFight: combatParams.isBossFight,
+                  playerDied: result.isDead,
+                  hasCombatLog: !!result.combatLog,
+                  combatLogLength: result.combatLog?.length ?? 0,
+                });
+                navigation.navigate('Combat', { combatInput: combatParams });
+              } else {
+                // Combat occurred but couldn't find enemy - this shouldn't happen
+                // Log error for debugging, but we must still show combat
+                console.error(
+                  '[GameScreen] Combat occurred but no enemy found at target or player position!',
+                  {
+                    targetPos: targetPos,
+                    playerPos: state.player.position,
+                    enemyCount: state.map.enemies.length,
+                    isDead: result.isDead,
+                  }
+                );
+                // If player died, at least navigate to death screen
+                if (result.isDead) {
+                  navigation.navigate('Death', {
+                    totalMoves: result.newState.totalMoves,
+                    level: result.newState.campaignLevel,
+                    week: result.newState.week,
+                    killedBy: 'Unknown enemy',
+                  });
+                }
+              }
+            } else if (result.isDead) {
+              // Non-combat death (shouldn't normally happen, but handle edge case)
+              console.log('[GameScreen] Player died (non-combat), navigating to DeathScreen');
               navigation.navigate('Death', {
                 totalMoves: result.newState.totalMoves,
                 level: result.newState.campaignLevel,
                 week: result.newState.week,
               });
-            } else if (result.combatOccurred) {
-              // Combat was resolved on-chain during move_player.
-              // SYNC_MOVE already updated local state with post-combat HP/gold/enemy removal.
-              // Show feedback to player. Full combat replay from on-chain events
-              // will be added in a future iteration.
-              if (result.previousState && result.newState.gold > result.previousState.gold) {
-                const goldGained = result.newState.gold - result.previousState.gold;
-                showWallBreakFeedback(`Victory! +${goldGained} gold`);
-              } else {
-                showWallBreakFeedback('Combat resolved!');
-              }
             } else if (result.bossFightReady) {
-              // Boss fight ready — dispatch trigger and navigate to Combat.
-              // Boss fights use the trigger_boss_fight instruction.
-              // For now, use local boss fight handling (guest mode path)
-              // until on-chain boss fight integration is complete.
-              dispatch({ type: 'TRIGGER_BOSS' });
+              // Boss fight ready — create combat params and navigate to Combat.
+              // Use the week boss from time state
+              const weekBoss = state.time.weekBoss;
+              console.log(
+                '[GameScreen] Boss fight ready, weekBoss:',
+                weekBoss,
+                'week:',
+                currentWeek
+              );
+              if (weekBoss) {
+                const bossCombatParams = createBossCombatParams(
+                  weekBoss,
+                  preCombatPlayerStats,
+                  preCombatGear,
+                  preCombatTool,
+                  preCombatItemsets,
+                  preCombatSeed,
+                  currentWeek
+                );
+                console.log('[GameScreen] Navigating to CombatScreen for boss fight:', {
+                  bossId: weekBoss,
+                  bossName: bossCombatParams.enemy.name,
+                  bossHp: bossCombatParams.enemy.hp,
+                  playerHp: bossCombatParams.player.hp,
+                  week: currentWeek,
+                  isFinalWeek: currentWeek === 3,
+                });
+                navigation.navigate('Combat', { combatInput: bossCombatParams });
+              } else {
+                // Fallback to local boss fight handling if no weekBoss defined
+                console.log('[GameScreen] No weekBoss defined, using local boss fight handling');
+                dispatch({ type: 'TRIGGER_BOSS' });
+              }
             }
           }
         })
@@ -388,7 +761,10 @@ export function GameScreen({ navigation }: GameScreenProps) {
   // In on-chain mode, combat navigation is handled directly by handleDirection.
   // This effect only applies to guest mode where the local reducer triggers combat.
   useEffect(() => {
-    if (mode === 'guest' && (state?.phase === GamePhase.Combat || state?.phase === GamePhase.BossFight)) {
+    if (
+      mode === 'guest' &&
+      (state?.phase === GamePhase.Combat || state?.phase === GamePhase.BossFight)
+    ) {
       navigation.navigate('Combat');
     }
   }, [state?.phase, navigation, mode]);
@@ -439,7 +815,16 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
   const handlePOIOption = useCallback(
     (optionIndex: number) => {
-      console.log('[GameScreen] handlePOIOption called | optionIndex:', optionIndex, '| deferredPoiType:', poiInteraction.deferredPoiType, '| hasCacheOffers:', !!(poiInteraction.cacheOfferOptions && poiInteraction.cacheOfferOptions.length > 0), '| cacheOfferCount:', poiInteraction.cacheOfferOptions?.length ?? 0);
+      console.log(
+        '[GameScreen] handlePOIOption called | optionIndex:',
+        optionIndex,
+        '| deferredPoiType:',
+        poiInteraction.deferredPoiType,
+        '| hasCacheOffers:',
+        !!(poiInteraction.cacheOfferOptions && poiInteraction.cacheOfferOptions.length > 0),
+        '| cacheOfferCount:',
+        poiInteraction.cacheOfferOptions?.length ?? 0
+      );
       setKilnSelection({ gearId: null, emoji: '', count: 0 });
       setScrapSelection(null);
 
@@ -453,13 +838,21 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
         // Capture item before on-chain call (shop purchases update cacheOfferOptions)
         const selectedItem = poiInteraction.cacheOfferOptions?.[optionIndex]?.item;
-        console.log('[GameScreen] handlePOIOption: DEFERRED path | type:', poiInteraction.deferredPoiType, '| selectedItem:', selectedItem?.name ?? 'none');
+        console.log(
+          '[GameScreen] handlePOIOption: DEFERRED path | type:',
+          poiInteraction.deferredPoiType,
+          '| selectedItem:',
+          selectedItem?.name ?? 'none'
+        );
         poiInteraction.confirmPoiSelection(optionIndex).then((result) => {
           console.log('[GameScreen] confirmPoiSelection result:', result);
           if (result.success) {
             // For shop purchases (keepOpen), add item to local inventory after confirmation
             if (result.keepOpen && selectedItem) {
-              console.log('[GameScreen] Adding purchased item to inventory after on-chain confirmation:', selectedItem.name);
+              console.log(
+                '[GameScreen] Adding purchased item to inventory after on-chain confirmation:',
+                selectedItem.name
+              );
               if ('currentRarity' in selectedItem) {
                 dispatch({ type: 'COLLECT_GEAR', gear: selectedItem as Gear });
               } else {
@@ -492,13 +885,19 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
         // Capture item before on-chain call (selectCacheOffer clears cacheOfferOptions)
         const selectedItem = poiInteraction.cacheOfferOptions[optionIndex]?.item;
-        console.log('[GameScreen] handlePOIOption: ON-CHAIN pick-item path | selectedItem:', selectedItem?.name ?? 'none');
+        console.log(
+          '[GameScreen] handlePOIOption: ON-CHAIN pick-item path | selectedItem:',
+          selectedItem?.name ?? 'none'
+        );
         poiInteraction.selectCacheOffer(optionIndex).then((result) => {
           console.log('[GameScreen] selectCacheOffer result:', result);
           if (result.success) {
             // Add item to inventory only after blockchain confirmation
             if (selectedItem) {
-              console.log('[GameScreen] Adding item to inventory after on-chain confirmation:', selectedItem.name);
+              console.log(
+                '[GameScreen] Adding item to inventory after on-chain confirmation:',
+                selectedItem.name
+              );
               if ('currentRarity' in selectedItem) {
                 dispatch({ type: 'COLLECT_GEAR', gear: selectedItem as Gear });
               } else {
@@ -520,7 +919,10 @@ export function GameScreen({ navigation }: GameScreenProps) {
       }
 
       // Default: local-only dispatch for auto-trigger POIs (L1, L5, L8, L10, L11, L14)
-      console.log('[GameScreen] handlePOIOption: LOCAL fallback path | activePOI:', state?.activePOI?.poi?.definitionId);
+      console.log(
+        '[GameScreen] handlePOIOption: LOCAL fallback path | activePOI:',
+        state?.activePOI?.poi?.definitionId
+      );
       dispatch({ type: 'SELECT_POI_OPTION', optionIndex });
     },
     [dispatch, poiInteraction, state?.activePOI?.poi?.definitionId]
@@ -671,6 +1073,16 @@ export function GameScreen({ navigation }: GameScreenProps) {
                     <Image source={COIN_ICON} style={styles.coinIcon} resizeMode="contain" />
                     <Text style={styles.goldValue}>{state.player.stats.gold}</Text>
                   </View>
+                  {/* Debug: Exit session button for quick testing */}
+                  {__DEV__ && mode !== 'guest' && hasActiveSession && (
+                    <Pressable
+                      style={styles.debugExitButton}
+                      onPress={handleDebugExitSession}
+                      disabled={isExitingSession}
+                    >
+                      <Text style={styles.debugExitText}>{isExitingSession ? '...' : 'X'}</Text>
+                    </Pressable>
+                  )}
                 </View>
               </View>
               <View style={styles.bossTopContainer}>
@@ -718,7 +1130,16 @@ export function GameScreen({ navigation }: GameScreenProps) {
                     onCenterPress={
                       poiInteraction.canInteract && state.phase === GamePhase.Exploration
                         ? () => {
-                            console.log('[GameScreen] A button pressed | currentPoi:', poiInteraction.currentPoi ? { x: poiInteraction.currentPoi.x, y: poiInteraction.currentPoi.y, poiType: poiInteraction.currentPoi.poiType } : null);
+                            console.log(
+                              '[GameScreen] A button pressed | currentPoi:',
+                              poiInteraction.currentPoi
+                                ? {
+                                    x: poiInteraction.currentPoi.x,
+                                    y: poiInteraction.currentPoi.y,
+                                    poiType: poiInteraction.currentPoi.poiType,
+                                  }
+                                : null
+                            );
                             poiInteraction.interact();
                           }
                         : undefined
@@ -825,4 +1246,23 @@ const styles = StyleSheet.create({
   hSeparator: { width: '100%', height: 6 },
   vLineContainer: { position: 'absolute', top: 0, bottom: 0, right: SIDEBAR_WIDTH - 3, width: 6 },
   vSeparator: { height: '100%', width: 6 },
+
+  // Debug exit button (DEV only)
+  debugExitButton: {
+    position: 'absolute',
+    top: -8,
+    right: -8,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#dc3545',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 100,
+  },
+  debugExitText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
 });

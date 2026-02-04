@@ -262,13 +262,29 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       const webWallet = getWebWalletProvider();
       if (webWallet) {
         const connection = new Connection(SOLANA_CONFIG.rpcUrl, 'confirmed');
-        const latestBlockhash = await connection.getLatestBlockhash(SOLANA_CONFIG.commitment);
 
+        // Only set blockhash if the transaction doesn't already have one.
+        // If the transaction has already been partially signed, changing the
+        // blockhash would invalidate those signatures.
         if (transaction instanceof VersionedTransaction) {
-          transaction.message.recentBlockhash = latestBlockhash.blockhash;
+          if (!transaction.message.recentBlockhash) {
+            const latestBlockhash = await connection.getLatestBlockhash(SOLANA_CONFIG.commitment);
+            transaction.message.recentBlockhash = latestBlockhash.blockhash;
+          }
         } else {
-          transaction.recentBlockhash = latestBlockhash.blockhash;
-          transaction.feePayer = webWallet.publicKey ?? wallet.publicKey ?? undefined;
+          // Check if transaction already has partial signatures - if so, don't modify blockhash
+          const hasSignatures = transaction.signatures.some(
+            (sig) => sig.signature !== null && !sig.signature.every((b) => b === 0)
+          );
+          // Only set blockhash if missing AND no partial signatures exist
+          if (!hasSignatures && !transaction.recentBlockhash) {
+            const latestBlockhash = await connection.getLatestBlockhash(SOLANA_CONFIG.commitment);
+            transaction.recentBlockhash = latestBlockhash.blockhash;
+          }
+          // Only set feePayer if not already set
+          if (!transaction.feePayer) {
+            transaction.feePayer = webWallet.publicKey ?? wallet.publicKey ?? undefined;
+          }
         }
 
         const signed = await webWallet.signTransaction(transaction);

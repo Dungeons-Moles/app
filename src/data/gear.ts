@@ -35,6 +35,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     baseRarity: 'COMMON',
     stats: { arm: 3 },
     tags: ['STONE'],
+    // Stats-only passive: no effect needed (stats are self-documenting)
   },
   I2: {
     id: 'I2',
@@ -44,6 +45,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     baseRarity: 'COMMON',
     stats: { hp: 4, arm: 1 },
     tags: ['STONE'],
+    // Stats-only passive: no effect needed (stats are self-documenting)
   },
   I3: {
     id: 'I3',

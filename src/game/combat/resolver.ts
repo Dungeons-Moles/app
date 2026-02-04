@@ -25,7 +25,7 @@ import {
   resetStatusReflectionFlag,
 } from '../entities/bosses';
 import { calculateGoldReward } from '../entities/enemies';
-import { processStatusEffectsTurnEnd, applyStatus } from './status-effects';
+import { processStatusEffectsTurnEnd, applyStatus, getEffectiveStrikes } from './status-effects';
 import { executeTraitEffects, type EnemyId } from './traits';
 import { RARITY_MULTIPLIER } from '../../data/gear';
 
@@ -115,6 +115,8 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
     );
 
   // STONE items
+  // NOTE: I1 (Miner Helmet) and I2 (Work Vest) provide permanent stat bonuses via gear.ts,
+  // not battle start effects. Their stats are already included in player stats.
   const spikedBracersShrapnel = sumScaled('I3', 2); // G-ST-03: Battle Start: gain 2 Shrapnel
   const shrapnelTalismanCount = countGear('I6'); // G-ST-06: gain 1 Armor when gaining Shrapnel
   const crystalCrownCount = countGear('I7'); // G-ST-07: gain Max HP equal to starting Armor
@@ -516,16 +518,23 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
       state = executeTraitEffects(state, 'BATTLE_START', enemyId, 'enemy');
     }
 
+    // NOTE: G-ST-01 (Miner Helmet) and G-ST-02 (Work Vest) now provide permanent stat bonuses
+    // via gear.ts stats property. Their HP/ARM are already included in player stats at combat start.
+
+    // G-ST-03: Spiked Bracers - Battle Start: gain 2/4/6 Shrapnel
     if (spikedBracersShrapnel > 0) {
       applyShrapnelToPlayer(spikedBracersShrapnel, 'Spiked Bracers');
     }
 
+    // G-FR-01: Frost Lantern - Battle Start: give enemy 1/2/3 Chill
     if (frostLanternChill > 0) {
       applyChill('enemy', frostLanternChill, 'Frost Lantern');
     }
 
-    if (frostguardCount > 0) {
-      applyChill('player', frostguardCount * 2, 'Frostguard Buckler');
+    // G-FR-02: Frostguard Buckler - Battle Start: if enemy has Chill, gain +2 Armor
+    // (NOTE: The armor bonus from stats is already included in player.arm)
+    if (frostguardCount > 0 && state.enemy.statusEffects.chill > 0) {
+      applyPlayerArmor(frostguardCount * 2, 'Frostguard Buckler');
     }
 
     if (crystalCrownCount > 0) {
@@ -894,7 +903,9 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
 
   const playerSpeed = state.player.spd + state.player.bonusSpd;
   const enemySpeed = state.enemy.spd + state.enemy.bonusSpd;
-  let nextAttacker: 'player' | 'enemy' = playerSpeed >= enemySpeed ? 'player' : 'enemy';
+  // Player attacks first ONLY if strictly faster (matches on-chain logic in engine.rs)
+  // When speeds are equal, enemy attacks first
+  let nextAttacker: 'player' | 'enemy' = playerSpeed > enemySpeed ? 'player' : 'enemy';
 
   const MAX_TURNS = 200;
   while (state.turn < MAX_TURNS && !state.result) {
@@ -947,7 +958,9 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
     };
 
     const attackerState = nextAttacker === 'player' ? state.player : state.enemy;
-    const strikes = attackerState.strikesPerTurn;
+    // Apply Chill effect: reduces strikes by stack count (min 1)
+    // This matches on-chain behavior in effects.rs:apply_chill_to_strikes()
+    const strikes = getEffectiveStrikes(attackerState);
     let strikesLanded = 0;
     // Removed whetstoneBonus - that item no longer exists in the new item system
     const tempAtkBonus = 0;

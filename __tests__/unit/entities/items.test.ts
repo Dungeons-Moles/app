@@ -177,27 +177,33 @@ describe('Items Entity', () => {
     });
 
     it('calculates combined stats from single gear item', () => {
-      const gear = createGearInstance('I2'); // Work Vest: +4 HP, +1 ARM
+      // Use Frostguard Buckler (I34) which has base stats: { arm: 6 }
+      // Note: I2 (Work Vest) now has stats applied via BattleStart effects, not base stats
+      const gear = createGearInstance('I34'); // Frostguard Buckler: +6 ARM (base)
 
       const stats = calculateItemStats(null, [gear]);
 
-      expect(stats.hp).toBe(4);
-      expect(stats.arm).toBe(1);
+      expect(stats.hp).toBe(0);
+      expect(stats.arm).toBe(6);
       expect(stats.atk).toBe(0);
     });
 
     it('calculates combined stats from tool + multiple gear', () => {
+      // Note: I1 (Miner Helmet), I2 (Work Vest), and I10 (Leather Gloves) now have
+      // stats applied via BattleStart effects, not base stats.
+      // Use items with base stats for this test.
       const tool = createToolInstance('T2'); // Cragbreaker: +2 ATK, +3 ARM
-      const gear1 = createGearInstance('I1'); // Miner Helmet: +3 ARM
-      const gear2 = createGearInstance('I2'); // Work Vest: +4 HP, +1 ARM
-      const gear3 = createGearInstance('I10'); // Leather Gloves: +1 ATK, +1 DIG
+      const gear1 = createGearInstance('I34'); // Frostguard Buckler: +6 ARM (base)
+      const gear2 = createGearInstance('I36'); // Ice Skates: +1 SPD (base)
+      const gear3 = createGearInstance('I9'); // Miner Boots: +2 DIG (base)
 
       const stats = calculateItemStats(tool, [gear1, gear2, gear3]);
 
-      expect(stats.atk).toBe(3); // T2(2) + I10(1)
-      expect(stats.arm).toBe(7); // T2(3) + I1(3) + I2(1)
-      expect(stats.dig).toBe(1); // I10
-      expect(stats.hp).toBe(4); // I2
+      expect(stats.atk).toBe(2); // T2(2)
+      expect(stats.arm).toBe(9); // T2(3) + I34(6)
+      expect(stats.spd).toBe(1); // I36(1)
+      expect(stats.dig).toBe(2); // I9(2)
+      expect(stats.hp).toBe(0);
     });
 
     it('handles null tool correctly', () => {
@@ -230,18 +236,20 @@ describe('Items Entity', () => {
     });
 
     it('correctly sums all stat types from multiple gear', () => {
-      const gear1 = createGearInstance('I9'); // Miner Boots: +2 DIG
-      const gear2 = createGearInstance('I1'); // Miner Helmet: +3 ARM
-      const gear3 = createGearInstance('I2'); // Work Vest: +4 HP, +1 ARM
-      const gear4 = createGearInstance('I10'); // Leather Gloves: +1 ATK, +1 DIG
+      // Note: STONE items (I1, I2) now have stats applied via BattleStart effects.
+      // Use items with base stats for testing stat summing.
+      const gear1 = createGearInstance('I9'); // Miner Boots: +2 DIG (base)
+      const gear2 = createGearInstance('I34'); // Frostguard Buckler: +6 ARM (base)
+      const gear3 = createGearInstance('I36'); // Ice Skates: +1 SPD (base)
+      const gear4 = createGearInstance('I37'); // Rime Cloak: +3 ARM (base)
 
       const stats = calculateItemStats(null, [gear1, gear2, gear3, gear4]);
 
-      expect(stats.atk).toBe(1); // I10
-      expect(stats.arm).toBe(4); // I1(3) + I2(1)
-      expect(stats.spd).toBe(0);
-      expect(stats.dig).toBe(3); // I9(2) + I10(1)
-      expect(stats.hp).toBe(4); // I2
+      expect(stats.atk).toBe(0);
+      expect(stats.arm).toBe(9); // I34(6) + I37(3)
+      expect(stats.spd).toBe(1); // I36
+      expect(stats.dig).toBe(2); // I9
+      expect(stats.hp).toBe(0);
     });
   });
 

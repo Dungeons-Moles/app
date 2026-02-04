@@ -13,8 +13,8 @@ import type { CombatantState } from '../engine/types';
 export interface DamageResult {
   /** Base ATK value (including bonusAtk) */
   baseAtk: number;
-  /** ATK after Chill reduction (halved if chill > 0) */
-  atkAfterChill: number;
+  /** Effective ATK for damage calculation (same as baseAtk - Chill affects strikes, not ATK) */
+  effectiveAtk: number;
   /** Amount of damage absorbed by armor */
   armorDamage: number;
   /** Final HP damage dealt */
@@ -28,49 +28,43 @@ export interface DamageResult {
  *
  * Damage formula per spec FR-014:
  * 1. Calculate base ATK (atk + bonusAtk)
- * 2. Apply Chill: if chill > 0, halve ATK (floor)
- * 3. Calculate effective ARM pool (arm + bonusArm - rust, minimum 0)
- * 4. If ignoresArmor, skip ARM absorption
- * 5. Armor damage = min(effectiveArm, atkAfterChill)
- * 6. HP damage = atkAfterChill - armorDamage (minimum 0)
- * 7. Shrapnel reflect = defender's shrapnel stacks
+ * 2. Calculate effective ARM pool (arm + bonusArm - rust, minimum 0)
+ * 3. If ignoresArmor, skip ARM absorption
+ * 4. Armor damage = min(effectiveArm, effectiveAtk)
+ * 5. HP damage = effectiveAtk - armorDamage (minimum 0)
+ * 6. Shrapnel reflect = defender's shrapnel stacks
+ *
+ * Note: Chill affects strikes per turn (see getEffectiveStrikes in status-effects.ts),
+ * NOT attack damage. This matches the on-chain behavior in effects.rs.
  *
  * @param attacker - The attacking combatant
  * @param defender - The defending combatant
  * @returns DamageResult with breakdown of damage calculation
  */
-export function calculateDamage(
-  attacker: CombatantState,
-  defender: CombatantState
-): DamageResult {
-  // Step 1: Calculate base ATK
+export function calculateDamage(attacker: CombatantState, defender: CombatantState): DamageResult {
+  // Step 1: Calculate base ATK (Chill does NOT affect ATK - it affects strikes)
   const baseAtk = attacker.atk + attacker.bonusAtk;
+  const effectiveAtk = baseAtk;
 
-  // Step 2: Apply Chill (halves ATK, rounded down)
-  let atkAfterChill = baseAtk;
-  if (attacker.statusEffects.chill > 0) {
-    atkAfterChill = Math.floor(baseAtk / 2);
-  }
-
-  // Step 3: Calculate effective ARM pool (reduced by Rust)
+  // Step 2: Calculate effective ARM pool (reduced by Rust)
   const totalArm = defender.arm + defender.bonusArm;
   const effectiveArm = Math.max(0, totalArm - defender.statusEffects.rust);
 
-  // Step 4: Calculate armor damage (0 if ignoresArmor)
+  // Step 3: Calculate armor damage (0 if ignoresArmor)
   let armorDamage = 0;
   if (!attacker.ignoresArmor) {
-    armorDamage = Math.min(effectiveArm, atkAfterChill);
+    armorDamage = Math.min(effectiveArm, effectiveAtk);
   }
 
-  // Step 5: Calculate HP damage (minimum 0)
-  const hpDamage = Math.max(0, atkAfterChill - armorDamage);
+  // Step 4: Calculate HP damage (minimum 0)
+  const hpDamage = Math.max(0, effectiveAtk - armorDamage);
 
-  // Step 6: Calculate Shrapnel reflect
+  // Step 5: Calculate Shrapnel reflect
   const shrapnelReflect = defender.statusEffects.shrapnel;
 
   return {
     baseAtk,
-    atkAfterChill,
+    effectiveAtk,
     armorDamage,
     hpDamage,
     shrapnelReflect,

@@ -1,15 +1,15 @@
-# Dungeons & Moles — PvE Dungeon Crawler (GDD v0.2)
+# Dungeons & Moles — Dungeon Crawler Auto-Battler (GDD v0.3)
 
 Status: Implementation in Progress (Core Loop Active)
-Last updated: 2026-01-25
+Last updated: 2026-02-03
 
-This document consolidates the current gameplay design for the PvE prototype inspired by “He Is Coming”, including items, itemsets, bosses, enemies, POIs, biomes/acts, and balancing knobs.
+This document consolidates the current gameplay design inspired by “He Is Coming”, including items, itemsets, bosses, enemies, POIs, biomes/acts, balancing knobs, and v1 mode/economy rules (PvE + PvP).
 
 ---
 
 ## 1) High Concept
 
-Mobile-first, landscape, D-pad/controller dungeon crawler that plays like a board game: you move tile-by-tile on a seeded map, make exploration decisions, and all combat resolves automatically. Runs are structured into weeks (Day/Night cycles) ending in bosses. The campaign is an 80-stage ladder that ramps difficulty across 4 acts with biome emphasis shifts.
+Mobile-first, landscape, D-pad/controller dungeon crawler that plays like a board game: you move tile-by-tile on a seeded map, make exploration decisions, and all combat resolves automatically. Runs are structured into weeks (Day/Night cycles) ending in bosses. The campaign is a 40-stage ladder that ramps difficulty across 4 acts with biome emphasis shifts.
 
 ---
 
@@ -71,7 +71,7 @@ Player has:
 
 - **HP**: hit points (Persistent state, capped by Max HP).
 - **ATK**: weapon damage baseline (Derived from Items).
-- **ARM**: armor that reduces incoming weapon damage (Derived from Items).
+- **ARM**: armor is "HP before HP" - damage depletes ARM first, excess carries to HP (Derived from Items, resets after combat).
 - **SPD**: determines who acts first each turn (Derived from Items).
 - **DIG**: affects dig cost + some combat comparators (Derived from Items).
 - **GOLD**: earned from field enemies; spent at shops/POIs (Persistent state).
@@ -101,8 +101,10 @@ Inventory:
 
 ### Damage
 
-- Weapon damage: `max(0, attackerATK - targetARM)` to HP.
-- Non-weapon damage ignores Armor unless specified otherwise.
+- Weapon damage: ATK damage is applied to ARM first; any excess damage carries over to HP.
+  - Example: 5 ATK vs 3 ARM, 10 HP → ARM depleted (3→0), HP reduced by excess (10→8).
+- ARM resets after combat ends (not persistent between fights).
+- Non-weapon damage ignores Armor and hits HP directly unless specified otherwise.
 
 ### Visualization (Combat Log)
 
@@ -278,6 +280,64 @@ Format: `ID — Name (Type) [Tag] {Rarity} — Image: <path> — Effect`
 - `G-TE-07` — Tempo Battery (Gear) [TEMPO] {Heroic} — Image: assets/icons/items/tempo/tempo_battery.png — Every other turn: gain `+1/2/3 SPD` (this battle)
 - `G-TE-08` — Second Wind Clock (Gear) [TEMPO] {Heroic} — Image: assets/icons/items/tempo/second_wind_clock.png — Turn 5: heal `4/6/8` HP and gain +1 SPD (this battle)
 
+### On-Chain Item Bitmask
+
+Player unlocked items are stored on-chain as an 80-bit bitmask (10 bytes) in the `PlayerProfile` account.
+
+#### Bitmask Layout
+
+```
+Bytes 0-7: Gear items (64 items, 8 per tag)
+  - Byte 0 (bits 0-7):   STONE gear G-ST-01 to G-ST-08
+  - Byte 1 (bits 8-15):  SCOUT gear G-SC-01 to G-SC-08
+  - Byte 2 (bits 16-23): GREED gear G-GR-01 to G-GR-08
+  - Byte 3 (bits 24-31): BLAST gear G-BL-01 to G-BL-08
+  - Byte 4 (bits 32-39): FROST gear G-FR-01 to G-FR-08
+  - Byte 5 (bits 40-47): RUST gear G-RU-01 to G-RU-08
+  - Byte 6 (bits 48-55): BLOOD gear G-BO-01 to G-BO-08
+  - Byte 7 (bits 56-63): TEMPO gear G-TE-01 to G-TE-08
+
+Bytes 8-9: Tool items (16 items, 2 per tag)
+  - Byte 8 (bits 64-71): Tools T-ST-01, T-ST-02, T-SC-01, T-SC-02, T-GR-01, T-GR-02, T-BL-01, T-BL-02
+  - Byte 9 (bits 72-79): Tools T-FR-01, T-FR-02, T-RU-01, T-RU-02, T-BO-01, T-BO-02, T-TE-01, T-TE-02
+```
+
+#### Index Formulas
+
+- **Gear (I1-I64):** `index = tag_code * 8 + (item_num_in_tag - 1)` (indices 0-63)
+- **Tools (T1-T16):** `index = 64 + tag_code * 2 + (item_num_in_tag - 1)` (indices 64-79)
+
+Tag codes: STONE=0, SCOUT=1, GREED=2, BLAST=3, FROST=4, RUST=5, BLOOD=6, TEMPO=7
+
+#### Starter Items (40 total)
+
+New accounts start with 40 items unlocked (5 per tag = 1 tool + 4 gear):
+
+| Tag   | Tool    | Gear (4 items)                     | Bit Indices        |
+| ----- | ------- | ---------------------------------- | ------------------ |
+| STONE | T-ST-01 | G-ST-01, G-ST-02, G-ST-03, G-ST-04 | 64, 0, 1, 2, 3     |
+| SCOUT | T-SC-01 | G-SC-01, G-SC-02, G-SC-03, G-SC-04 | 66, 8, 9, 10, 11   |
+| GREED | T-GR-01 | G-GR-01, G-GR-02, G-GR-03, G-GR-05 | 68, 16, 17, 18, 20 |
+| BLAST | T-BL-01 | G-BL-01, G-BL-02, G-BL-03, G-BL-04 | 70, 24, 25, 26, 27 |
+| FROST | T-FR-01 | G-FR-01, G-FR-02, G-FR-03, G-FR-04 | 72, 32, 33, 34, 35 |
+| RUST  | T-RU-01 | G-RU-01, G-RU-02, G-RU-03, G-RU-04 | 74, 40, 41, 42, 43 |
+| BLOOD | T-BO-01 | G-BO-01, G-BO-02, G-BO-03, G-BO-04 | 76, 48, 49, 50, 51 |
+| TEMPO | T-TE-01 | G-TE-01, G-TE-02, G-TE-03, G-TE-04 | 78, 56, 57, 58, 59 |
+
+**Note:** GREED starter gear skips G-GR-04 (Royal Bracer, Heroic) in favor of G-GR-05 (Emerald Shard, Common).
+
+#### Starter Bitmask
+
+```
+[0x0F, 0x0F, 0x17, 0x0F, 0x0F, 0x0F, 0x0F, 0x0F, 0x55, 0x55]
+```
+
+#### Item Unlocking
+
+- Players unlock new items by completing campaign levels for the first time with victory.
+- Each first-time victory unlocks one random item from the remaining locked items.
+- The `record_run_result` instruction handles unlocking via deterministic PRNG.
+
 ---
 
 ## 10) Itemsets (12)
@@ -369,7 +429,7 @@ Some POIs are one-time, others are repeatable utilities.
 
 ### POI Guarantees per run (by act)
 
-Guarantees are in addition to baseline spawns (below).
+Guarantees are in addition to baseline spawns (below). **No POI types are biome-gated** in v1 — acts/biomes only change **counts** and **weights**, so players always have access to core progression systems (e.g., Tool Crates).
 
 Act 1 (Biome A):
 
@@ -397,15 +457,14 @@ Act 4 (Biome D):
 
 ### Baseline spawn counts (by act)
 
-Act 1:
+Baseline spawns ensure that every run contains at least one copy of each **common/uncommon** POI type that players rely on for build formation and navigation. Counts vary by act to control the power curve and map routing incentives.
 
-- L2 x10, L3 x2, L4 x2, L6 x1, L10 x1
-  Act 2:
-- L2 x9, L3 x2, L4 x1, L6 +1 (total), L10 x1
-  Act 3:
-- L2 x8, L3 x2, L4 x1, L6 x1, L10 x1
-  Act 4:
-- L2 x7, L3 x2, L4 x1, L6 x1, L10 x1
+| Act | Supply Cache (L2) | Tool Crate (L3) | Tool Oil Rack (L4) | Survey Beacon (L6) | Rusty Anvil (L10) |
+| --- | ----------------- | --------------- | ------------------ | ------------------ | ----------------- |
+| 1   | x10               | x2              | x2                 | x1                 | x1                |
+| 2   | x9                | x2              | x1                 | x2                 | x1                |
+| 3   | x8                | x2              | x1                 | x1                 | x1                |
+| 4   | x7                | x2              | x1                 | x1                 | x1                |
 
 ### Item offer rarity tables
 
@@ -591,9 +650,38 @@ Optional “final prep bias”:
 
 ### Session Cost & Profile
 
-- **Profile Creation:** Players start with 20 free runs.
-- **Top-up:** 20 additional runs cost **0.005 SOL**.
+- **Profile Creation:** Players start with **20 free PvE runs** (Campaign).
+- **Top-up:** 20 additional PvE runs cost **0.05 SOL**.
 - **Run Debit:** A run is debited only upon defeat (HP 0) or level completion.
+
+### Mode Fees & Splits (v1)
+
+All splits below are expressed as % of the **SOL paid**.
+
+#### PvE — Campaign / Practice
+
+- New account: 20 free PvE runs.
+- After that: 0.05 SOL for 20 PvE runs.
+- Split: **50% company / 50% Gauntlet pool**.
+
+#### PvP — Gauntlet (Async)
+
+- Entry: **0.01 SOL** per run.
+- Split: **3% company / 97% Gauntlet pool**.
+
+#### PvP — Duels (Direct)
+
+- Stakes (v1): **0.1 SOL** and **0.2 SOL**.
+- Split: **3% company / 2% Gauntlet pool / 95% winner**.
+
+#### PvP — Pit Draft (Instant)
+
+- Stakes (v1): **0.05 SOL** and **0.1 SOL**.
+- Split: **3% company / 2% Gauntlet pool / 95% winner**.
+
+#### Trading — Skins / Items
+
+- Split: **3% company / 2% Gauntlet pool / 95% seller**.
 
 ### Items seen vs inventory capacity
 
@@ -640,3 +728,34 @@ Shop affordability (Act 1 baseline):
 
 - A “not-yet-ready” run can lose to a stage at ~60–70% rate.
 - A run at the intended stage power level should feel hard but not bricked (tune via POI weights + Act+ modifiers + enemy tier mix).
+
+---
+
+## 16) Game Modes (v1)
+
+### PvE — Campaign / Practice
+
+- Campaign has **40 stages**.
+- A run lasts **3 weeks** (each week = 3 days + 3 nights; Day = 50 moves, Night = 30 moves).
+- Exploration is tile-by-tile on a seeded map; combat is deterministic and resolves automatically.
+- End of each week triggers a boss fight; defeating the **Week 3 boss** clears the stage. Death ends the run.
+
+### PvP — Gauntlet (Async)
+
+- A run lasts **5 weeks**.
+- At the end of each week, the player fights an **Echo** (a snapshot of another player's validated build that survived to that same week).
+- Opponent visibility:
+  - Weeks 1–4: opponent build is visible **at end of the week**.
+  - Week 5: opponent build is visible **only during Week 5**.
+
+### PvP — Duels (Direct)
+
+- Two players stake SOL and play on the **same map seed**.
+- PvE progression builds toward a decisive PvP resolution (Week 3) using deterministic combat.
+- Stakes (v1): 0.1 and 0.2 only (to avoid matchmaking dilution).
+
+### PvP — Pit Draft (Instant)
+
+- Two players are matched, then each draws **1 Tool + 7 Gear** from their active pool.
+- A **random oil** is applied to the Tool.
+- Immediate deterministic combat; winner takes the pot (net of fees).
