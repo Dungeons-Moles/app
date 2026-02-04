@@ -16,6 +16,8 @@ export interface VictoryDefeatDisplayProps {
   result: 'VICTORY' | 'DEFEAT';
   /** Gold rewarded (only shown on VICTORY) */
   goldReward?: number;
+  /** Whether this is the final boss victory (week 3 boss) */
+  isFinalVictory?: boolean;
   onComplete: () => void;
 }
 
@@ -27,6 +29,7 @@ export interface VictoryDefeatDisplayProps {
 export function VictoryDefeatDisplay({
   result,
   goldReward,
+  isFinalVictory = false,
   onComplete,
 }: VictoryDefeatDisplayProps) {
   const [countdown, setCountdown] = useState(3);
@@ -149,15 +152,21 @@ export function VictoryDefeatDisplay({
         ]}
       >
         {/* Result emoji */}
-        <Text style={styles.emoji}>{isVictory ? '🏆' : '💀'}</Text>
+        <Text style={styles.emoji}>{isVictory ? (isFinalVictory ? '👑' : '🏆') : '💀'}</Text>
 
         {/* Result text */}
         <Text style={[styles.resultText, { color: isVictory ? '#22c55e' : '#dc2626' }]}>
-          {result}
+          {isFinalVictory ? 'YOU WIN!' : result}
         </Text>
 
         {/* Subtext */}
-        <Text style={styles.subtext}>{isVictory ? 'Enemy defeated!' : 'You have fallen...'}</Text>
+        <Text style={styles.subtext}>
+          {isVictory
+            ? isFinalVictory
+              ? 'Level Complete!'
+              : 'Enemy defeated!'
+            : 'You have fallen...'}
+        </Text>
 
         {/* T075: Gold reward display (only on victory) */}
         {showGoldReward && (

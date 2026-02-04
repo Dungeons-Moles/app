@@ -23,8 +23,10 @@ import type {
   ParsedEvent,
   CombatEventParseResult,
   StatusEffect,
+  CombatLogEvent,
+  BackendCombatLogEntry,
 } from './types/combat_events';
-import { EVENT_NAMES } from './types/combat_events';
+import { EVENT_NAMES, LogAction } from './types/combat_events';
 import { getItemById, getItemForLevel } from '@/data/items/all-items';
 import type { UnlockedItem } from '@/navigation';
 
@@ -192,6 +194,39 @@ export async function parseGameplayEvents(
   return result;
 }
 
+/**
+ * Parse the CombatLog event from a transaction.
+ * This contains the detailed turn-by-turn combat log entries.
+ *
+ * @param connection - Solana connection
+ * @param program - Anchor program instance with event coder
+ * @param signature - Transaction signature to parse
+ * @returns CombatLogEvent if found, null otherwise
+ */
+export async function parseCombatLog(
+  connection: Connection,
+  program: Program,
+  signature: string
+): Promise<CombatLogEvent | null> {
+  const tx = await connection.getTransaction(signature, {
+    commitment: 'confirmed',
+    maxSupportedTransactionVersion: 0,
+  });
+
+  if (!tx?.meta?.logMessages) {
+    return null;
+  }
+
+  const events = parseEventsFromLogs(program, tx.meta.logMessages);
+  const combatLog = events.find((e) => e.name === EVENT_NAMES.COMBAT_LOG);
+
+  if (!combatLog) {
+    return null;
+  }
+
+  return combatLog.data as CombatLogEvent;
+}
+
 // ============================================================================
 // Low-Level Log Parser
 // ============================================================================
@@ -334,9 +369,79 @@ function convertEventData(name: string, data: Record<string, unknown>): unknown 
         timestamp: Number(data.timestamp ?? 0),
       } as ItemUnlockedEvent;
 
+    case EVENT_NAMES.COMBAT_LOG:
+      return {
+        player: (data.player as PublicKey)?.toString() ?? '',
+        entries: parseCombatLogEntries(data.entries),
+      } as CombatLogEvent;
+
     default:
       return data;
   }
+}
+
+/**
+ * Parse combat log entries from raw event data.
+ * The entries come as an array of objects from Anchor's event decoder.
+ */
+function parseCombatLogEntries(entries: unknown): BackendCombatLogEntry[] {
+  if (!Array.isArray(entries)) {
+    console.warn('[eventParser] CombatLog entries is not an array:', entries);
+    return [];
+  }
+
+  return entries.map((entry: Record<string, unknown>) => ({
+    turn: Number(entry.turn ?? 0),
+    isPlayer: Boolean(entry.isPlayer ?? entry.is_player ?? false),
+    action: parseLogAction(entry.action),
+    value: Number(entry.value ?? 0),
+    extra: Number(entry.extra ?? 0),
+  }));
+}
+
+/**
+ * Parse LogAction from Anchor's decoded enum format.
+ * Anchor decodes enums as objects like { attack: {} } or { heal: {} }
+ */
+function parseLogAction(action: unknown): LogAction {
+  if (typeof action === 'number') {
+    return action as LogAction;
+  }
+
+  if (typeof action === 'object' && action !== null) {
+    const keys = Object.keys(action);
+    if (keys.length > 0) {
+      const actionName = keys[0].toLowerCase();
+      switch (actionName) {
+        case 'attack':
+          return LogAction.Attack;
+        case 'heal':
+          return LogAction.Heal;
+        case 'applystatus':
+          return LogAction.ApplyStatus;
+        case 'statusdamage':
+          return LogAction.StatusDamage;
+        case 'armorchange':
+          return LogAction.ArmorChange;
+        case 'atkchange':
+          return LogAction.AtkChange;
+        case 'spdchange':
+          return LogAction.SpdChange;
+        case 'nonweapondamage':
+          return LogAction.NonWeaponDamage;
+        case 'shrapnelretaliation':
+          return LogAction.ShrapnelRetaliation;
+        case 'goldstolen':
+          return LogAction.GoldStolen;
+        default:
+          console.warn('[eventParser] Unknown LogAction:', actionName);
+          return LogAction.Attack;
+      }
+    }
+  }
+
+  console.warn('[eventParser] Could not parse LogAction:', action);
+  return LogAction.Attack;
 }
 
 /**

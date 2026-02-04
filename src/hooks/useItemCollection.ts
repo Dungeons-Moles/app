@@ -134,7 +134,7 @@ export function useItemCollection(): UseItemCollectionResult {
   const items = useMemo<CollectionItem[]>(() => {
     return ITEM_DEFINITIONS.map((def) => ({
       ...def,
-      isUnlocked: profileIsUnlocked(def.index),
+      isUnlocked: profileIsUnlocked(def.id),
     }));
   }, [profileIsUnlocked, refreshKey]);
 
@@ -164,7 +164,9 @@ export function useItemCollection(): UseItemCollectionResult {
 
   const isItemUnlocked = useCallback(
     (index: number): boolean => {
-      return profileIsUnlocked(index);
+      // Find the item definition to get its string ID
+      const def = ITEM_DEFINITIONS.find((d) => d.index === index);
+      return def ? profileIsUnlocked(def.id) : false;
     },
     [profileIsUnlocked]
   );

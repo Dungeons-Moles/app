@@ -13,6 +13,7 @@ import {
   Pressable,
   Animated,
   Image,
+  useWindowDimensions,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
@@ -23,7 +24,6 @@ import type { CombatReplay } from '../services/solana/types/combat_events';
 
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.png');
 const SKULL_ICON = require('../../assets/icons/ui/skull.png');
-const COIN_ICON = require('../../assets/icons/ui/coin.png');
 
 type DeathScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Death'>;
@@ -33,10 +33,13 @@ type DeathScreenProps = {
 export function DeathScreen({ navigation, route }: DeathScreenProps) {
   const { replay, totalMoves, level, week, phase, killedBy } = route.params ?? {};
   const { availableRuns } = useProfile();
+  const { height } = useWindowDimensions();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
 
   const isOutOfRuns = availableRuns === 0;
+  // Use vertical layout for taller screens (portrait or large tablets)
+  const isVerticalLayout = height > 768;
 
   useEffect(() => {
     Animated.parallel([
@@ -70,89 +73,153 @@ export function DeathScreen({ navigation, route }: DeathScreenProps) {
     return 'Killed in combat';
   };
 
-  const goldEarned = replay?.combatEnded?.goldEarned ?? 0;
   const turnsTaken = replay?.combatEnded?.turnsTaken ?? 0;
+
+  // Shared components
+  const DeathHeader = () => (
+    <>
+      <View style={isVerticalLayout ? styles.iconContainerVertical : styles.iconContainer}>
+        <Image
+          source={SKULL_ICON}
+          style={isVerticalLayout ? styles.skullIconVertical : styles.skullIcon}
+          resizeMode="contain"
+        />
+      </View>
+      <Text style={isVerticalLayout ? styles.titleVertical : styles.title}>You Died</Text>
+      <Text style={isVerticalLayout ? styles.deathCauseVertical : styles.deathCause}>
+        {getDeathCause()}
+      </Text>
+    </>
+  );
+
+  const RunSummary = () => (
+    <View style={isVerticalLayout ? styles.summaryContainerVertical : styles.summaryContainer}>
+      <Text style={isVerticalLayout ? styles.summaryTitleVertical : styles.summaryTitle}>
+        Run Summary
+      </Text>
+
+      {isVerticalLayout ? (
+        // Vertical layout: row-based stats
+        <>
+          <View style={styles.statRow}>
+            <Text style={styles.statLabelVertical}>Level</Text>
+            <Text style={styles.statValueVertical}>{level ?? 1}</Text>
+          </View>
+          <View style={styles.statRow}>
+            <Text style={styles.statLabelVertical}>Week</Text>
+            <Text style={styles.statValueVertical}>{week ?? 1}</Text>
+          </View>
+          <View style={styles.statRow}>
+            <Text style={styles.statLabelVertical}>Phase</Text>
+            <Text style={styles.statValueVertical}>{phase ?? 'Day 1'}</Text>
+          </View>
+          <View style={styles.statRow}>
+            <Text style={styles.statLabelVertical}>Total Moves</Text>
+            <Text style={styles.statValueVertical}>{totalMoves ?? 0}</Text>
+          </View>
+          <View style={styles.statRow}>
+            <Text style={styles.statLabelVertical}>Combat Turns</Text>
+            <Text style={styles.statValueVertical}>{turnsTaken}</Text>
+          </View>
+        </>
+      ) : (
+        // Horizontal layout: grid-based stats
+        <>
+          {/* First row: Level, Week, Phase */}
+          <View style={styles.statsRow}>
+            <View style={styles.statItem}>
+              <Text style={styles.statValue}>{level ?? 1}</Text>
+              <Text style={styles.statLabel}>Level</Text>
+            </View>
+            <View style={styles.statItem}>
+              <Text style={styles.statValue}>{week ?? 1}</Text>
+              <Text style={styles.statLabel}>Week</Text>
+            </View>
+            <View style={styles.statItem}>
+              <Text style={styles.statValue}>{phase ?? 'Day 1'}</Text>
+              <Text style={styles.statLabel}>Phase</Text>
+            </View>
+          </View>
+          {/* Second row: Moves, Turns (centered) */}
+          <View style={styles.statsRowCentered}>
+            <View style={styles.statItem}>
+              <Text style={styles.statValue}>{totalMoves ?? 0}</Text>
+              <Text style={styles.statLabel}>Total Moves</Text>
+            </View>
+            <View style={styles.statItem}>
+              <Text style={styles.statValue}>{turnsTaken}</Text>
+              <Text style={styles.statLabel}>Combat Turns</Text>
+            </View>
+          </View>
+        </>
+      )}
+    </View>
+  );
+
+  const OutOfRunsWarning = () =>
+    isOutOfRuns ? (
+      <View style={isVerticalLayout ? styles.warningContainerVertical : styles.warningContainer}>
+        <Text style={isVerticalLayout ? styles.warningTextVertical : styles.warningText}>
+          {isVerticalLayout ? 'You have no sessions remaining!' : 'No sessions remaining!'}
+        </Text>
+        <Pressable
+          style={isVerticalLayout ? styles.purchaseButtonVertical : styles.purchaseButton}
+          onPress={() => navigation.navigate('RunPurchase')}
+        >
+          <Text
+            style={isVerticalLayout ? styles.purchaseButtonTextVertical : styles.purchaseButtonText}
+          >
+            Purchase Sessions
+          </Text>
+        </Pressable>
+      </View>
+    ) : null;
+
+  const ReturnButton = () => (
+    <Pressable
+      style={isVerticalLayout ? styles.returnButtonVertical : styles.returnButton}
+      onPress={handleReturnToHub}
+    >
+      <Text style={isVerticalLayout ? styles.returnButtonTextVertical : styles.returnButtonText}>
+        Return to Hub
+      </Text>
+    </Pressable>
+  );
 
   return (
     <View style={styles.container}>
-      <ImageBackground
-        source={BACKGROUND_IMAGE}
-        style={styles.backgroundImage}
-        resizeMode="cover"
-      >
+      <ImageBackground source={BACKGROUND_IMAGE} style={styles.backgroundImage} resizeMode="cover">
         <View style={styles.darkOverlay}>
           <Animated.View
             style={[
-              styles.content,
+              isVerticalLayout ? styles.contentVertical : styles.content,
               {
                 opacity: fadeAnim,
                 transform: [{ translateY: slideAnim }],
               },
             ]}
           >
-            {/* Death Icon */}
-            <View style={styles.iconContainer}>
-              <Image source={SKULL_ICON} style={styles.skullIcon} resizeMode="contain" />
-            </View>
-
-            {/* Title */}
-            <Text style={styles.title}>You Died</Text>
-
-            {/* Death cause */}
-            <Text style={styles.deathCause}>{getDeathCause()}</Text>
-
-            {/* Run Summary */}
-            <View style={styles.summaryContainer}>
-              <Text style={styles.summaryTitle}>Run Summary</Text>
-
-              <View style={styles.statRow}>
-                <Text style={styles.statLabel}>Level</Text>
-                <Text style={styles.statValue}>{level ?? 1}</Text>
-              </View>
-
-              <View style={styles.statRow}>
-                <Text style={styles.statLabel}>Week</Text>
-                <Text style={styles.statValue}>{week ?? 1}</Text>
-              </View>
-
-              <View style={styles.statRow}>
-                <Text style={styles.statLabel}>Phase</Text>
-                <Text style={styles.statValue}>{phase ?? 'Day 1'}</Text>
-              </View>
-
-              <View style={styles.statRow}>
-                <Text style={styles.statLabel}>Total Moves</Text>
-                <Text style={styles.statValue}>{totalMoves ?? 0}</Text>
-              </View>
-
-              <View style={styles.statRow}>
-                <Text style={styles.statLabel}>Combat Turns</Text>
-                <Text style={styles.statValue}>{turnsTaken}</Text>
-              </View>
-
-              <View style={styles.goldRow}>
-                <Image source={COIN_ICON} style={styles.coinIcon} resizeMode="contain" />
-                <Text style={styles.goldValue}>{goldEarned} gold earned</Text>
-              </View>
-            </View>
-
-            {/* Out of Runs Warning */}
-            {isOutOfRuns && (
-              <View style={styles.warningContainer}>
-                <Text style={styles.warningText}>You have no sessions remaining!</Text>
-                <Pressable
-                  style={styles.purchaseButton}
-                  onPress={() => navigation.navigate('RunPurchase')}
-                >
-                  <Text style={styles.purchaseButtonText}>Purchase Sessions</Text>
-                </Pressable>
-              </View>
+            {isVerticalLayout ? (
+              // Vertical layout (tall screens): stacked components
+              <>
+                <DeathHeader />
+                <RunSummary />
+                <OutOfRunsWarning />
+                <ReturnButton />
+              </>
+            ) : (
+              // Horizontal layout (landscape mobile): side-by-side
+              <>
+                <View style={styles.leftColumn}>
+                  <DeathHeader />
+                  <ReturnButton />
+                </View>
+                <View style={styles.rightColumn}>
+                  <RunSummary />
+                  <OutOfRunsWarning />
+                </View>
+              </>
             )}
-
-            {/* Return Button */}
-            <Pressable style={styles.returnButton} onPress={handleReturnToHub}>
-              <Text style={styles.returnButtonText}>Return to Hub</Text>
-            </Pressable>
           </Animated.View>
         </View>
       </ImageBackground>
@@ -174,13 +241,163 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
     justifyContent: 'center',
     alignItems: 'center',
+    padding: 16,
   },
+
+  // ==================== HORIZONTAL LAYOUT (Landscape Mobile) ====================
   content: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    maxWidth: 800,
+    gap: 32,
+  },
+  leftColumn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    flex: 1,
+    maxWidth: 280,
+  },
+  rightColumn: {
+    flex: 1,
+    maxWidth: 320,
+  },
+  iconContainer: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(139, 0, 0, 0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+    borderWidth: 2,
+    borderColor: '#8B0000',
+  },
+  skullIcon: {
+    width: 36,
+    height: 36,
+    tintColor: '#FF4444',
+  },
+  title: {
+    fontFamily: Typography.header,
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#FF4444',
+    marginBottom: 4,
+    textShadowColor: 'rgba(0, 0, 0, 0.8)',
+    textShadowOffset: { width: 2, height: 2 },
+    textShadowRadius: 4,
+  },
+  deathCause: {
+    fontFamily: Typography.body,
+    fontSize: 14,
+    color: '#CCCCCC',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  summaryContainer: {
+    backgroundColor: 'rgba(40, 40, 50, 0.9)',
+    borderRadius: 12,
+    padding: 16,
+    width: '100%',
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#444455',
+  },
+  summaryTitle: {
+    fontFamily: Typography.header,
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  statsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+    gap: 8,
+  },
+  statsRowCentered: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  statItem: {
+    alignItems: 'center',
+    minWidth: 60,
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    backgroundColor: 'rgba(60, 60, 80, 0.5)',
+    borderRadius: 8,
+  },
+  statLabel: {
+    fontFamily: Typography.body,
+    fontSize: 11,
+    color: '#AAAAAA',
+    marginTop: 2,
+  },
+  statValue: {
+    fontFamily: Typography.number,
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  warningContainer: {
+    backgroundColor: 'rgba(139, 0, 0, 0.3)',
+    borderRadius: 10,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#8B0000',
+    alignItems: 'center',
+    width: '100%',
+  },
+  warningText: {
+    fontFamily: Typography.body,
+    fontSize: 13,
+    fontWeight: 'bold',
+    color: '#FF6666',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  purchaseButton: {
+    backgroundColor: '#228B22',
+    paddingVertical: 8,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: '#32CD32',
+  },
+  purchaseButtonText: {
+    fontFamily: Typography.button,
+    fontSize: 13,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  returnButton: {
+    backgroundColor: '#4a4a6a',
+    paddingVertical: 12,
+    paddingHorizontal: 32,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#6a6a8a',
+  },
+  returnButtonText: {
+    fontFamily: Typography.button,
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+
+  // ==================== VERTICAL LAYOUT (Tall Screens / Portrait) ====================
+  contentVertical: {
     alignItems: 'center',
     padding: 32,
     maxWidth: 400,
   },
-  iconContainer: {
+  iconContainerVertical: {
     width: 80,
     height: 80,
     borderRadius: 40,
@@ -191,12 +408,12 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#8B0000',
   },
-  skullIcon: {
+  skullIconVertical: {
     width: 48,
     height: 48,
     tintColor: '#FF4444',
   },
-  title: {
+  titleVertical: {
     fontFamily: Typography.header,
     fontSize: 42,
     fontWeight: 'bold',
@@ -206,14 +423,14 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 2, height: 2 },
     textShadowRadius: 4,
   },
-  deathCause: {
+  deathCauseVertical: {
     fontFamily: Typography.body,
     fontSize: 18,
     color: '#CCCCCC',
     marginBottom: 32,
     textAlign: 'center',
   },
-  summaryContainer: {
+  summaryContainerVertical: {
     backgroundColor: 'rgba(40, 40, 50, 0.9)',
     borderRadius: 12,
     padding: 20,
@@ -222,7 +439,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#444455',
   },
-  summaryTitle: {
+  summaryTitleVertical: {
     fontFamily: Typography.header,
     fontSize: 18,
     fontWeight: 'bold',
@@ -237,35 +454,18 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#333344',
   },
-  statLabel: {
+  statLabelVertical: {
     fontFamily: Typography.body,
     fontSize: 16,
     color: '#AAAAAA',
   },
-  statValue: {
+  statValueVertical: {
     fontFamily: Typography.number,
     fontSize: 16,
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
-  goldRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingTop: 16,
-    gap: 8,
-  },
-  coinIcon: {
-    width: 24,
-    height: 24,
-  },
-  goldValue: {
-    fontFamily: Typography.number,
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#FFD700',
-  },
-  warningContainer: {
+  warningContainerVertical: {
     backgroundColor: 'rgba(139, 0, 0, 0.3)',
     borderRadius: 12,
     padding: 16,
@@ -275,7 +475,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     width: '100%',
   },
-  warningText: {
+  warningTextVertical: {
     fontFamily: Typography.body,
     fontSize: 16,
     fontWeight: 'bold',
@@ -283,7 +483,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     textAlign: 'center',
   },
-  purchaseButton: {
+  purchaseButtonVertical: {
     backgroundColor: '#228B22',
     paddingVertical: 12,
     paddingHorizontal: 32,
@@ -291,13 +491,13 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#32CD32',
   },
-  purchaseButtonText: {
+  purchaseButtonTextVertical: {
     fontFamily: Typography.button,
     fontSize: 16,
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
-  returnButton: {
+  returnButtonVertical: {
     backgroundColor: '#4a4a6a',
     paddingVertical: 16,
     paddingHorizontal: 48,
@@ -305,7 +505,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#6a6a8a',
   },
-  returnButtonText: {
+  returnButtonTextVertical: {
     fontFamily: Typography.button,
     fontSize: 18,
     fontWeight: 'bold',

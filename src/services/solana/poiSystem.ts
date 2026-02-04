@@ -7,9 +7,14 @@
  */
 
 import { Connection, PublicKey, Keypair, Transaction } from '@solana/web3.js';
-import { BN, Program } from '@coral-xyz/anchor';
+import { Program } from '@coral-xyz/anchor';
 import { sendBurnerTransaction } from './burnerWallet';
-import { deriveInventoryPda, derivePoiAuthorityPda } from './constants';
+import {
+  deriveInventoryPda,
+  derivePoiAuthorityPda,
+  deriveGameplayAuthorityPda,
+  deriveInventoryAuthorityPda,
+} from './constants';
 import { SOLANA_CONFIG } from './config';
 import { createPlayerInventoryProgram } from './programs';
 import type { MapPoisData, PoiInstance, ShopState, ItemOffer } from './types/poi_system';
@@ -83,6 +88,7 @@ export async function interactRest(
 ): Promise<string> {
   const [inventoryPda] = deriveInventoryPda(sessionPda);
   const [poiAuthorityPda] = derivePoiAuthorityPda();
+  const [gameplayAuthorityPda] = deriveGameplayAuthorityPda();
 
   const transaction = await program.methods
     .interactRest(poiIndex)
@@ -91,6 +97,7 @@ export async function interactRest(
       gameState: gameStatePda,
       inventory: inventoryPda,
       poiAuthority: poiAuthorityPda,
+      gameplayAuthority: gameplayAuthorityPda,
       gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
       playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
       player: burnerKeypair.publicKey,
@@ -128,11 +135,21 @@ export async function generateCacheOffer(
   burnerKeypair: Keypair,
   poiIndex: number
 ): Promise<string> {
+  const [inventoryPda] = deriveInventoryPda(sessionPda);
+  const [inventoryAuthorityPda] = deriveInventoryAuthorityPda();
+  const [poiAuthorityPda] = derivePoiAuthorityPda();
+
   const transaction = await program.methods
     .generateCacheOffer(poiIndex)
     .accounts({
       mapPois: mapPoisPda,
       gameState: gameStatePda,
+      gameStateWritable: gameStatePda,
+      inventory: inventoryPda,
+      inventoryAuthority: inventoryAuthorityPda,
+      poiAuthority: poiAuthorityPda,
+      playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
+      gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
       gameSession: sessionPda,
       player: burnerKeypair.publicKey,
     })
@@ -170,11 +187,21 @@ export async function interactPickItem(
   poiIndex: number,
   choiceIndex: number
 ): Promise<string> {
+  const [inventoryPda] = deriveInventoryPda(sessionPda);
+  const [inventoryAuthorityPda] = deriveInventoryAuthorityPda();
+  const [poiAuthorityPda] = derivePoiAuthorityPda();
+
   const transaction = await program.methods
     .interactPickItem(poiIndex, choiceIndex)
     .accounts({
       mapPois: mapPoisPda,
       gameState: gameStatePda,
+      gameStateWritable: gameStatePda,
+      inventory: inventoryPda,
+      inventoryAuthority: inventoryAuthorityPda,
+      poiAuthority: poiAuthorityPda,
+      playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
+      gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
       gameSession: sessionPda,
       player: burnerKeypair.publicKey,
     })
@@ -515,17 +542,23 @@ export async function shopPurchase(
   program: Program,
   mapPoisPda: PublicKey,
   gameStatePda: PublicKey,
+  sessionPda: PublicKey,
   burnerKeypair: Keypair,
   offerIndex: number
 ): Promise<string> {
   const [poiAuthorityPda] = derivePoiAuthorityPda();
+  const [inventoryPda] = deriveInventoryPda(sessionPda);
+  const [inventoryAuthorityPda] = deriveInventoryAuthorityPda();
 
   const transaction = await program.methods
     .shopPurchase(offerIndex)
     .accounts({
       mapPois: mapPoisPda,
       gameState: gameStatePda,
+      inventory: inventoryPda,
+      inventoryAuthority: inventoryAuthorityPda,
       poiAuthority: poiAuthorityPda,
+      playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
       gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
       player: burnerKeypair.publicKey,
     })
@@ -543,6 +576,7 @@ export async function shopPurchase(
  * @param program - Anchor program instance for poi_system
  * @param mapPoisPda - MapPois PDA
  * @param gameStatePda - GameState PDA
+ * @param sessionPda - GameSession PDA (for active_item_pool filtering)
  * @param burnerKeypair - Burner wallet keypair (signer)
  * @returns Transaction signature
  */
@@ -551,6 +585,7 @@ export async function shopReroll(
   program: Program,
   mapPoisPda: PublicKey,
   gameStatePda: PublicKey,
+  sessionPda: PublicKey,
   burnerKeypair: Keypair
 ): Promise<string> {
   const [poiAuthorityPda] = derivePoiAuthorityPda();
@@ -560,6 +595,7 @@ export async function shopReroll(
     .accounts({
       mapPois: mapPoisPda,
       gameState: gameStatePda,
+      gameSession: sessionPda,
       poiAuthority: poiAuthorityPda,
       gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
       player: burnerKeypair.publicKey,

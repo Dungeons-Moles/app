@@ -13,14 +13,56 @@ import { VictoryScreen } from '../screens/VictoryScreen';
 import { RunPurchaseScreen } from '../screens/RunPurchaseScreen';
 import { SessionListScreen } from '../screens/SessionListScreen';
 import { ItemCollectionScreen } from '../screens/ItemCollectionScreen';
-import type { CombatReplay } from '../services/solana/types/combat_events';
-import type { ItemStats } from '../game/engine/types';
+import type { CombatReplay, BackendCombatLogEntry } from '../services/solana/types/combat_events';
+import type {
+  ItemStats,
+  BossId,
+  Gear,
+  Tool,
+  ItemsetId,
+  CombatantState,
+} from '../game/engine/types';
+import type { EnemyId } from '../game/map/types';
 
 /** Item unlock data for victory screen */
 export interface UnlockedItem {
   name: string;
   emoji: string;
   stats?: ItemStats;
+}
+
+/** Combat input data for on-chain mode combat replay */
+export interface CombatParams {
+  /** Player combatant state before combat */
+  player: CombatantState;
+  /** Enemy combatant state */
+  enemy: CombatantState;
+  /** RNG seed for deterministic combat resolution */
+  seed: number;
+  /** Boss ID if fighting a boss */
+  bossId?: BossId;
+  /** Enemy trait ID for regular enemies */
+  enemyId?: EnemyId;
+  /** Enemy definition ID (for rewards calculation) */
+  enemyDefinitionId?: EnemyId;
+  /** Enemy tier (1, 2, or 3) */
+  enemyTier?: 1 | 2 | 3;
+  /** Gold reward for victory */
+  goldReward?: number;
+  /** Active itemsets */
+  activeItemSets?: ItemsetId[];
+  /** Player gear */
+  playerGear?: Gear[];
+  /** Player tool */
+  playerTool?: Tool | null;
+  /** Player gold */
+  playerGold?: number;
+  /** Current week (for final boss detection) */
+  week?: 1 | 2 | 3;
+  /** Whether this is a boss fight */
+  isBossFight?: boolean;
+  /** Combat log entries from on-chain (skip local resolver if present) */
+  combatLog?: BackendCombatLogEntry[];
 }
 
 export type RootStackParamList = {
@@ -30,7 +72,12 @@ export type RootStackParamList = {
   CampaignSelect: undefined;
   ProfileSettings: undefined;
   Game: undefined;
-  Combat: undefined;
+  Combat:
+    | {
+        /** Combat input data for on-chain mode (undefined for guest mode) */
+        combatInput?: CombatParams;
+      }
+    | undefined;
   Death: {
     replay?: CombatReplay;
     totalMoves?: number;

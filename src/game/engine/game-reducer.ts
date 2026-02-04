@@ -141,7 +141,10 @@ export type GameAction =
   | { type: 'REVEAL_TILES'; center: Position; radius: number }
   | { type: 'REVEAL_POI_LOCATIONS'; category: number }
   // Enemy position sync (for night movement from on-chain)
-  | { type: 'SYNC_ENEMY_POSITIONS'; enemies: Array<{ x: number; y: number; archetypeId: number; tier: number }> };
+  | {
+      type: 'SYNC_ENEMY_POSITIONS';
+      enemies: Array<{ x: number; y: number; archetypeId: number; tier: number }>;
+    };
 
 // ============================================================================
 // Action Type Guards
@@ -327,11 +330,14 @@ function handleRestoreGame(restoredState: GameState): GameState {
   console.log('[RESTORE_GAME] POI Summary:');
   console.log('  Total POIs:', restoredState.map.pois.length);
   console.log('  By type:', poiCounts);
-  console.log('  All POIs:', restoredState.map.pois.map((p) => ({
-    id: p.definitionId,
-    pos: `(${p.position.x},${p.position.y})`,
-    visited: p.visited,
-  })));
+  console.log(
+    '  All POIs:',
+    restoredState.map.pois.map((p) => ({
+      id: p.definitionId,
+      pos: `(${p.position.x},${p.position.y})`,
+      visited: p.visited,
+    }))
+  );
 
   // 1. Refresh player stats to include gear bonuses
   // On-chain stores base stats; gear bonuses need to be recalculated
@@ -1448,6 +1454,15 @@ function mapOnChainPhase(phase: number): { timePhase: TimePhase; cycle: 1 | 2 | 
  * This is the on-chain-first equivalent of the old MOVE action for non-guest mode.
  */
 function handleSyncMove(state: GameState, confirmedState: OnChainGameState): GameState {
+  // Debug: Log HP values to track sync issues
+  console.log('[handleSyncMove] HP sync:', {
+    previousBaseHp: state.player.baseStats.hp,
+    previousStatsHp: state.player.stats.hp,
+    onChainHp: confirmedState.hp,
+    previousGold: state.player.stats.gold,
+    onChainGold: confirmedState.gold,
+  });
+
   const { timePhase, cycle } = mapOnChainPhase(confirmedState.phase);
 
   const targetPos: Position = {
@@ -1467,22 +1482,29 @@ function handleSyncMove(state: GameState, confirmedState: OnChainGameState): Gam
 
   // Determine facing direction from movement delta
   const dx = targetPos.x - state.player.position.x;
-  const newFacing: 'left' | 'right' =
-    dx < 0 ? 'left' : dx > 0 ? 'right' : state.player.facing;
+  const newFacing: 'left' | 'right' = dx < 0 ? 'left' : dx > 0 ? 'right' : state.player.facing;
 
   // Sync player state from on-chain.
-  // Note: ATK, ARM, SPD, DIG, MaxHP are NOT stored on-chain - they are derived
-  // from PlayerInventory. We sync base values and then recalculate derived stats.
-  // - Position (confirmed by move_player)
-  // - HP (base HP, can change from combat during move)
-  // - Gold (can change from combat drops)
+  // On-chain HP already includes gear bonuses (e.g., Work Vest +4 HP).
+  // We must subtract the gear HP bonus before storing as baseStats.hp to avoid
+  // double-counting when refreshPlayerStats recalculates derived stats.
+  //
+  // The gear HP bonus is calculated from equipped gear stats (hp property).
+  // This matches how calculateItemStats computes HP from gear.
+  const gearItems = state.player.inventory.map((slot) => slot.item);
+  const gearHpBonus = gearItems.reduce((total, gear) => total + (gear.stats.hp ?? 0), 0);
+
+  // baseHp = onChainHp - gearBonus (but never below 0)
+  // When refreshPlayerStats runs, it will add gearBonus back, giving us onChainHp
+  const baseHp = Math.max(0, confirmedState.hp - gearHpBonus);
+
   const syncedPlayer: Player = {
     ...state.player,
     position: targetPos,
     facing: newFacing,
     baseStats: {
       ...state.player.baseStats,
-      hp: confirmedState.hp,
+      hp: baseHp,
       gold: confirmedState.gold,
     },
     stats: {
@@ -1493,8 +1515,14 @@ function handleSyncMove(state: GameState, confirmedState: OnChainGameState): Gam
   };
 
   // Recalculate derived stats (HP, ATK, ARM, SPD, DIG) from inventory
-  // This ensures gear bonuses like +HP from Work Vest are applied
+  // This ensures gear bonuses like +HP from Work Vest are applied correctly
   const updatedPlayer = refreshPlayerStats(syncedPlayer);
+
+  // Debug: Log final HP after recalculation
+  console.log('[handleSyncMove] HP after refresh:', {
+    finalBaseHp: updatedPlayer.baseStats.hp,
+    finalStatsHp: updatedPlayer.stats.hp,
+  });
 
   // Sync time state from on-chain
   const updatedTime: TimeState = {
@@ -1517,9 +1545,7 @@ function handleSyncMove(state: GameState, confirmedState: OnChainGameState): Gam
     if (targetTile === TileType.Wall) {
       // On-chain confirmed the move to a wall tile, so it was dug
       const newTiles = finalMap.tiles.map((row, y) =>
-        y === targetPos.y
-          ? row.map((tile, x) => (x === targetPos.x ? TileType.Floor : tile))
-          : row
+        y === targetPos.y ? row.map((tile, x) => (x === targetPos.x ? TileType.Floor : tile)) : row
       );
       finalMap = { ...finalMap, tiles: newTiles };
     }
@@ -1634,13 +1660,19 @@ function handleSyncCombatResult(
   );
 
   // Sync player state from on-chain, then recalculate derived stats.
-  // On-chain stores base values; gear bonuses are derived from PlayerInventory.
+  // On-chain HP already includes gear bonuses (e.g., Work Vest +4 HP).
+  // We must subtract the gear HP bonus before storing as baseStats.hp to avoid
+  // double-counting when refreshPlayerStats recalculates derived stats.
+  const gearItems = state.player.inventory.map((slot) => slot.item);
+  const gearHpBonus = gearItems.reduce((total, gear) => total + (gear.stats.hp ?? 0), 0);
+  const baseHp = Math.max(0, confirmedState.hp - gearHpBonus);
+
   const syncedPlayer: Player = {
     ...state.player,
     position: targetPos,
     baseStats: {
       ...state.player.baseStats,
-      hp: confirmedState.hp,
+      hp: baseHp,
       gold: confirmedState.gold,
     },
     stats: {
@@ -1928,16 +1960,14 @@ function handleSyncEnemyPositions(
 
   // Create a map of on-chain enemy positions for quick lookup
   // Key: "archetype_tier_x_y" for exact position match
-  const onChainByPosition = new Map<string, typeof onChainEnemies[0]>();
+  const onChainByPosition = new Map<string, (typeof onChainEnemies)[0]>();
   for (const enemy of onChainEnemies) {
     const key = `${enemy.archetypeId}_${enemy.tier}_${enemy.x}_${enemy.y}`;
     onChainByPosition.set(key, enemy);
   }
 
   // Create a set of all on-chain positions for existence check
-  const onChainPositions = new Set(
-    onChainEnemies.map((e) => `${e.x}_${e.y}`)
-  );
+  const onChainPositions = new Set(onChainEnemies.map((e) => `${e.x}_${e.y}`));
 
   // Track which on-chain enemies have been matched
   const matchedOnChainKeys = new Set<string>();
@@ -1956,7 +1986,8 @@ function handleSyncEnemyPositions(
 
     // Enemy not at same position - look for matching enemy that moved
     // Find on-chain enemy with same archetype+tier that's nearby
-    let bestMatch: { key: string; enemy: typeof onChainEnemies[0]; distance: number } | null = null;
+    let bestMatch: { key: string; enemy: (typeof onChainEnemies)[0]; distance: number } | null =
+      null;
 
     for (const [key, onChainEnemy] of onChainByPosition.entries()) {
       if (matchedOnChainKeys.has(key)) continue;

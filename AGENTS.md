@@ -23,6 +23,53 @@ This repository hosts the React Native + Expo codebase for Dungeons & Moles, a P
 - `assets/`: All static images (see structure below).
 - `specs/`: Product specs and plans (`specs/gdd.md` is the design reference).
 
+## Solana Programs (On-Chain)
+
+The on-chain Solana programs live in the sibling repository at `../solana-programs`. Reference this folder when:
+
+- Implementing frontend interactions with on-chain instructions
+- Understanding account structures and PDAs
+- Debugging on-chain transaction failures
+- Updating programs to work with frontend changes
+
+### Program Structure
+
+| Program          | Path                         | Purpose                                                           |
+| ---------------- | ---------------------------- | ----------------------------------------------------------------- |
+| gameplay-state   | `programs/gameplay-state/`   | Core game state: movement, combat, phase transitions, boss fights |
+| session-manager  | `programs/session-manager/`  | Session lifecycle: start/end session, burner wallet management    |
+| poi-system       | `programs/poi-system/`       | POI interactions: rest, shop, forge, chest, etc.                  |
+| map-generator    | `programs/map-generator/`    | Seeded map generation and tile data                               |
+| player-inventory | `programs/player-inventory/` | Player items, gear, and inventory management                      |
+| player-profile   | `programs/player-profile/`   | Player profile and progression                                    |
+
+### Shared Crates
+
+| Crate         | Path                    | Purpose                                    |
+| ------------- | ----------------------- | ------------------------------------------ |
+| combat-system | `crates/combat-system/` | Deterministic combat resolution logic      |
+| boss-system   | `crates/boss-system/`   | Boss encounter definitions and mechanics   |
+| field-enemies | `crates/field-enemies/` | Field enemy definitions and spawning logic |
+
+**Important:** The programs repo has its own `CLAUDE.md` and `AGENTS.md` with detailed Anchor/Rust conventions. Consult those when making program changes.
+
+### IDL Synchronization (CRITICAL)
+
+**After ANY changes to Solana programs, the IDLs must be copied to the frontend.**
+
+When you run `anchor build` in `../solana-programs`, it generates updated IDLs in `target/idl/`. These MUST be copied to `app/src/services/solana/idl/`:
+
+```bash
+cp ../solana-programs/target/idl/poi_system.json src/services/solana/idl/
+cp ../solana-programs/target/idl/player_inventory.json src/services/solana/idl/
+cp ../solana-programs/target/idl/gameplay_state.json src/services/solana/idl/
+cp ../solana-programs/target/idl/session_manager.json src/services/solana/idl/
+cp ../solana-programs/target/idl/map_generator.json src/services/solana/idl/
+cp ../solana-programs/target/idl/player_profile.json src/services/solana/idl/
+```
+
+**Failure to sync IDLs will cause runtime errors** like `AccountOwnedByWrongProgram` because the frontend will pass incorrect accounts to on-chain instructions.
+
 ## Assets
 
 - The assets tree is type-based (not screen-based).

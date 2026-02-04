@@ -3,7 +3,9 @@ import type { Program } from '@coral-xyz/anchor';
 import type { PlayerInventoryData, ItemInstance } from './types/player_inventory';
 import { Tier, ToolOilModification } from './types/player_inventory';
 import { sendBurnerTransaction } from './burnerWallet';
-import { deriveInventoryPda } from './constants';
+import { deriveInventoryPda, deriveInventoryAuthorityPda } from './constants';
+import { deriveGameStatePda } from './types/gameplay_state';
+import { SOLANA_CONFIG } from './config';
 
 interface OnChainItemInstance {
   itemId: number[] | Uint8Array;
@@ -81,6 +83,10 @@ function tierToAnchor(tier: Tier): { i: object } | { ii: object } | { iii: objec
 /**
  * Equips a gear item in an available slot.
  *
+ * @deprecated Use poi-system's interactPickItem or shopPurchase instead.
+ * These now handle equipping via CPI, including HP bonus sync.
+ * Direct calls to equipGear will NOT update HP bonuses on-chain.
+ *
  * @param connection - Solana connection
  * @param program - Anchor program instance for player_inventory
  * @param sessionPda - Session PDA (used to derive inventory)
@@ -112,6 +118,10 @@ export async function equipGear(
 
 /**
  * Equips a tool item (replaces existing tool if any).
+ *
+ * @deprecated Use poi-system's interactPickItem instead.
+ * This now handles equipping via CPI, including HP bonus sync.
+ * Direct calls to equipTool will NOT update HP bonuses on-chain.
  *
  * @param connection - Solana connection
  * @param program - Anchor program instance for player_inventory
@@ -184,6 +194,42 @@ export async function applyToolOil(
     .applyToolOil(toolOilModificationToAnchor(modification))
     .accounts({
       inventory: inventoryPda,
+      player: burnerKeypair.publicKey,
+    })
+    .transaction();
+
+  return sendBurnerTransaction(connection, transaction, burnerKeypair);
+}
+
+/**
+ * Unequips a gear item from the specified slot.
+ * Calls remove_hp_bonus_authorized via CPI to gameplay-state if the item had +HP.
+ *
+ * @param connection - Solana connection
+ * @param program - Anchor program instance for player_inventory
+ * @param sessionPda - Session PDA (used to derive inventory and game_state)
+ * @param burnerKeypair - Burner wallet keypair (signer)
+ * @param slotIndex - Index of the gear slot to unequip (0-7)
+ * @returns Transaction signature
+ */
+export async function unequipGear(
+  connection: Connection,
+  program: Program,
+  sessionPda: PublicKey,
+  burnerKeypair: Keypair,
+  slotIndex: number
+): Promise<string> {
+  const [inventoryPda] = deriveInventoryPda(sessionPda);
+  const [gameStatePda] = deriveGameStatePda(sessionPda, SOLANA_CONFIG.programs.gameplayState);
+  const [inventoryAuthorityPda] = deriveInventoryAuthorityPda();
+
+  const transaction = await program.methods
+    .unequipGear(slotIndex)
+    .accounts({
+      inventory: inventoryPda,
+      gameState: gameStatePda,
+      inventoryAuthority: inventoryAuthorityPda,
+      gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
       player: burnerKeypair.publicKey,
     })
     .transaction();

@@ -103,6 +103,8 @@ export const PDA_SEEDS = {
   MAP_CONFIG: 'map_config',
   /** Gameplay authority: ["gameplay_authority"] - for CPI calls from gameplay_state */
   GAMEPLAY_AUTHORITY: 'gameplay_authority',
+  /** Inventory authority: ["inventory_authority"] - for CPI calls from player_inventory */
+  INVENTORY_AUTHORITY: 'inventory_authority',
 } as const;
 
 // ============================================================================
@@ -247,6 +249,19 @@ export function deriveGameplayAuthorityPda(): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
     [Buffer.from(PDA_SEEDS.GAMEPLAY_AUTHORITY)],
     GAMEPLAY_STATE_PROGRAM_ID
+  );
+}
+
+/**
+ * Derive Inventory Authority PDA (global, no session-specific seed).
+ * Used for CPI calls from player_inventory to gameplay_state.
+ *
+ * @returns [PDA, bump]
+ */
+export function deriveInventoryAuthorityPda(): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from(PDA_SEEDS.INVENTORY_AUTHORITY)],
+    INVENTORY_PROGRAM_ID
   );
 }
 

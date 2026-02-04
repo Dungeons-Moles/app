@@ -30,6 +30,8 @@ import {
   MovePlayerParams,
   ModifyStatParams,
 } from '@/services/solana/types/gameplay_state';
+import { parseCombatLog } from '@/services/solana/eventParser';
+import type { BackendCombatLogEntry } from '@/services/solana/types/combat_events';
 
 // ============================================================================
 // Types
@@ -64,6 +66,8 @@ export interface UseGameplayStateReturn {
     bossFightReady?: boolean;
     isDead?: boolean;
     signature?: string;
+    /** Combat log entries from on-chain (if combat occurred) */
+    combatLog?: BackendCombatLogEntry[];
   }>;
   /** Modify a player stat */
   updateStat: (
@@ -233,11 +237,19 @@ export function useGameplayState(): UseGameplayStateReturn {
       newState?: GameState;
       previousState?: GameState;
       combatOccurred?: boolean;
+      combatLog?: BackendCombatLogEntry[];
       bossFightReady?: boolean;
       isDead?: boolean;
       signature?: string;
     }> => {
-      console.log('[useGameplayState] move() called — program:', !!program, ', gameStatePda:', gameStatePda?.toBase58() ?? 'null', ', gameState:', gameState ? 'set' : 'null');
+      console.log(
+        '[useGameplayState] move() called — program:',
+        !!program,
+        ', gameStatePda:',
+        gameStatePda?.toBase58() ?? 'null',
+        ', gameState:',
+        gameState ? 'set' : 'null'
+      );
 
       if (!program) {
         const msg = 'Program not available';
@@ -293,6 +305,14 @@ export function useGameplayState(): UseGameplayStateReturn {
         // Fetch confirmed state after on-chain confirmation
         const confirmedState = await fetchGameState(program, gameStatePda);
 
+        // Debug: Log fetched HP to track sync issues
+        console.log('[useGameplayState] move() fetched state:', {
+          previousHp: previousState.hp,
+          fetchedHp: confirmedState?.hp,
+          previousGold: previousState.gold,
+          fetchedGold: confirmedState?.gold,
+        });
+
         if (isMountedRef.current) {
           setGameState(confirmedState);
           setSyncStatus('synced');
@@ -306,11 +326,42 @@ export function useGameplayState(): UseGameplayStateReturn {
             confirmedState.isDead ||
             confirmedState.gold > previousState.gold);
 
+        // Fetch combat log from transaction if combat occurred
+        let combatLog: BackendCombatLogEntry[] | undefined;
+        if (combatOccurred && signature) {
+          // Try up to 3 times to parse combat log (transaction may need time to finalize)
+          for (let attempt = 0; attempt < 3; attempt++) {
+            try {
+              const combatLogEvent = await parseCombatLog(connection, program, signature);
+              if (combatLogEvent && combatLogEvent.entries.length > 0) {
+                combatLog = combatLogEvent.entries;
+                console.log('[useGameplayState] Parsed combat log:', combatLog.length, 'entries');
+                break;
+              }
+            } catch (logErr) {
+              console.warn(
+                `[useGameplayState] Combat log parse attempt ${attempt + 1} failed:`,
+                logErr
+              );
+              if (attempt < 2) {
+                // Wait 500ms before retry
+                await new Promise((resolve) => setTimeout(resolve, 500));
+              }
+            }
+          }
+          if (!combatLog) {
+            console.warn(
+              '[useGameplayState] Could not parse combat log after 3 attempts, will use local resolver'
+            );
+          }
+        }
+
         return {
           success: true,
           newState: confirmedState ?? undefined,
           previousState,
           combatOccurred,
+          combatLog,
           bossFightReady: confirmedState?.bossFightReady ?? false,
           isDead: confirmedState?.isDead ?? false,
           signature,

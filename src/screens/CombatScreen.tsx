@@ -8,6 +8,7 @@
 import React, { useEffect, useCallback, useMemo, useRef } from 'react';
 import { View, Text, StyleSheet, ImageBackground, Animated } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RouteProp } from '@react-navigation/native';
 import { RootStackParamList } from '../navigation';
 import { useGame, GamePhase } from '../contexts/GameContext';
 import { CombatProvider, useCombat } from '../contexts/CombatContext';
@@ -30,6 +31,7 @@ const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background
 
 type CombatScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Combat'>;
+  route: RouteProp<RootStackParamList, 'Combat'>;
 };
 
 const SAFE_AREA_EDGES = ['left', 'right'] as const;
@@ -38,30 +40,36 @@ const SAFE_AREA_EDGES = ['left', 'right'] as const;
  * CombatScreen - Container for combat gameplay
  * Displays the combat arena, player/enemy panels, and combat log in landscape orientation
  */
-export function CombatScreen({ navigation }: CombatScreenProps) {
+export function CombatScreen({ navigation, route }: CombatScreenProps) {
   const { updateDefaultCombatSpeed } = useProfile();
   const initialSpeed = 'normal';
 
   return (
     <CombatProvider initialSpeed={initialSpeed} onSpeedChange={updateDefaultCombatSpeed}>
-      <CombatScreenContent navigation={navigation} />
+      <CombatScreenContent navigation={navigation} route={route} />
     </CombatProvider>
   );
 }
 
-function CombatScreenContent({ navigation }: CombatScreenProps) {
+function CombatScreenContent({ navigation, route }: CombatScreenProps) {
   const { state: gameState, dispatch: gameDispatch } = useGame();
-  const { profile, recordRunResult, mode } = useProfile();
-  const { queueEndGame, stopAutoCommit, hasActiveSession } = useSession();
+  const { profile, mode } = useProfile();
+  const { endSessionWithBurner, stopAutoCommit, hasActiveSession } = useSession();
   const {
     state: combatState,
     speed,
     setSpeed,
     startCombat,
+    startCombatWithLog,
     getDisplayStates,
     getResult,
   } = useCombat();
   const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  // Get combat input from route params (on-chain mode) or null (guest mode)
+  const combatInput = route?.params?.combatInput;
+  const isBossFight = combatInput?.isBossFight ?? gameState?.phase === GamePhase.BossFight;
+  const currentWeek = combatInput?.week ?? gameState?.time.week ?? 1;
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -76,7 +84,62 @@ function CombatScreenContent({ navigation }: CombatScreenProps) {
 
   // Start combat when screen loads
   useEffect(() => {
-    if (gameState?.combat && !combatState.combat) {
+    // Skip if combat already started
+    if (combatState.combat) return;
+
+    // On-chain mode: use combat input from route params
+    if (combatInput) {
+      const resolverInput = {
+        player: combatInput.player,
+        enemy: combatInput.enemy,
+        seed: combatInput.seed,
+        bossId: combatInput.bossId,
+        enemyId: combatInput.enemyId,
+        enemyDefinitionId: combatInput.enemyDefinitionId,
+        enemyTier: combatInput.enemyTier,
+        goldReward: combatInput.goldReward,
+        activeItemSets: combatInput.activeItemSets,
+        playerGear: combatInput.playerGear,
+        playerTool: combatInput.playerTool,
+        playerGold: combatInput.playerGold,
+      };
+
+      // Use backend log if available (ensures frontend matches on-chain)
+      if (combatInput.combatLog && combatInput.combatLog.length > 0) {
+        console.log('[CombatScreen] Starting combat with backend log (on-chain mode):', {
+          playerHp: combatInput.player.hp,
+          playerAtk: combatInput.player.atk,
+          enemyName: combatInput.enemy.name,
+          enemyHp: combatInput.enemy.hp,
+          logEntries: combatInput.combatLog.length,
+        });
+        startCombatWithLog(resolverInput, combatInput.combatLog);
+      } else {
+        // Fallback to local resolver if no backend log
+        console.log('[CombatScreen] Starting combat (on-chain mode, no backend log):', {
+          playerHp: combatInput.player.hp,
+          playerAtk: combatInput.player.atk,
+          enemyName: combatInput.enemy.name,
+          enemyHp: combatInput.enemy.hp,
+          enemyAtk: combatInput.enemy.atk,
+          seed: combatInput.seed,
+          isBossFight: combatInput.isBossFight,
+          week: combatInput.week,
+          bossId: combatInput.bossId,
+        });
+        startCombat(resolverInput);
+      }
+      return;
+    }
+
+    // Guest mode: use combat state from GameContext
+    if (gameState?.combat) {
+      console.log('[CombatScreen] Starting combat (guest mode):', {
+        playerHp: gameState.combat.player.hp,
+        enemyName: gameState.combat.enemy.name,
+        enemyHp: gameState.combat.enemy.hp,
+        seed: gameState.rngState,
+      });
       const playerGear = gameState.player.inventory.map((slot) => slot.item);
       startCombat({
         player: gameState.combat.player,
@@ -90,72 +153,109 @@ function CombatScreenContent({ navigation }: CombatScreenProps) {
         enemyTier: gameState.combat.enemyTier,
       });
     }
-  }, [gameState?.combat, combatState.combat, startCombat, gameState?.rngState]);
+  }, [
+    combatInput,
+    gameState?.combat,
+    combatState.combat,
+    startCombat,
+    startCombatWithLog,
+    gameState?.rngState,
+  ]);
 
   // Handle combat completion - now uses deferred cleanup for instant navigation
   const handleCombatComplete = useCallback(async () => {
     const result = getResult();
     if (!result) return;
 
-    // Determine if this was a boss fight (victory means boss defeated)
-    const wasBossFight = gameState?.phase === GamePhase.BossFight;
     const isVictory = result === 'VICTORY';
     const levelReached = profile?.currentLevel ?? 0;
+    const isFinalWeekBoss = isBossFight && currentWeek === 3;
+    const isOnChainMode = mode !== 'guest' && combatInput !== undefined;
+
+    console.log('[CombatScreen] Combat complete:', {
+      result,
+      isVictory,
+      isBossFight,
+      currentWeek,
+      isFinalWeekBoss,
+      isOnChainMode,
+      levelReached,
+      goldReward: combatState.resolvedCombat?.goldReward,
+      playerFinalHp: combatState.resolvedCombat?.player.hp,
+      enemyFinalHp: combatState.resolvedCombat?.enemy.hp,
+    });
 
     // Stop the auto-commit timer
     stopAutoCommit();
 
-    // Queue cleanup for later processing (no signature needed, instant return)
-    // Only queue if we have an active session and not in guest mode
-    if (hasActiveSession && mode !== 'guest') {
-      console.log('[CombatScreen] Queueing deferred cleanup');
-      await queueEndGame(levelReached, isVictory && wasBossFight);
+    // For defeat or final week boss victory: end session immediately
+    // For regular victory or non-final boss victory: no cleanup needed, continue playing
+    const shouldEndSession = !isVictory || isFinalWeekBoss;
+
+    if (shouldEndSession && hasActiveSession && mode !== 'guest') {
+      console.log('[CombatScreen] Ending session (shouldEndSession:', shouldEndSession, ')');
+      // End session immediately with burner wallet (no user interaction needed)
+      // The on-chain program validates game_state.is_dead or game_state.completed
+      const endResult = await endSessionWithBurner();
+      if (!endResult.success) {
+        console.warn('[CombatScreen] Failed to end session:', endResult.error);
+        // Continue anyway - navigation should still happen
+      }
     }
 
-    // Record run result - this may also be deferred in cached mode
-    if (profile && mode !== 'guest') {
-      // Fire and forget - don't await, let it happen in background
-      recordRunResult(levelReached, isVictory && wasBossFight).catch((error) => {
-        console.warn('[CombatScreen] Failed to record run result:', error);
-      });
-    }
+    // Note: Run result recording is now handled via CPI in end_session
+    // No need to call recordRunResult separately - it's done on-chain
 
-    // Update local game state
-    if (mode !== 'guest' && hasActiveSession) {
-      // On-chain mode: combat result is already on-chain.
-      // Dispatch SYNC_COMBAT_RESULT if we have on-chain state available,
-      // otherwise fall back to local RESOLVE_COMBAT.
+    // Update local game state - ONLY for guest mode
+    // In on-chain mode, state was already synced via SYNC_MOVE before navigation to CombatScreen
+    // Dispatching RESOLVE_COMBAT in on-chain mode would overwrite the on-chain synced HP with
+    // the local combat replay result, causing HP desync (e.g., on-chain HP=4 but displays HP=10)
+    if (!isOnChainMode) {
+      console.log('[CombatScreen] Guest mode: Dispatching RESOLVE_COMBAT with result:', result);
       gameDispatch({
         type: 'RESOLVE_COMBAT',
         result,
         combat: combatState.resolvedCombat ?? undefined,
       });
     } else {
-      // Guest mode: resolve combat locally
-      gameDispatch({
-        type: 'RESOLVE_COMBAT',
-        result,
-        combat: combatState.resolvedCombat ?? undefined,
-      });
+      console.log('[CombatScreen] On-chain mode: Skipping RESOLVE_COMBAT (state already synced)');
     }
 
-    // Navigate immediately - no waiting for signatures!
+    // Navigate based on result
     if (result === 'DEFEAT') {
-      navigation.replace('Hub');
+      // Defeat: show death screen with combat replay info
+      console.log('[CombatScreen] Navigating to DeathScreen (defeat)');
+      navigation.replace('Death', {
+        totalMoves: gameState?.time.movesRemaining,
+        level: levelReached,
+        week: currentWeek,
+        killedBy: combatState.resolvedCombat?.enemy.name,
+      });
+    } else if (isFinalWeekBoss) {
+      // Final week boss victory: show victory screen
+      console.log('[CombatScreen] Navigating to Victory screen (final week boss victory)');
+      navigation.replace('Victory', {
+        level: levelReached,
+        totalMoves: gameState?.time.movesRemaining,
+      });
     } else {
+      // Victory (regular enemy or non-final boss): return to map
+      console.log('[CombatScreen] Navigating back to map (victory)');
       navigation.goBack();
     }
   }, [
     getResult,
     gameDispatch,
     navigation,
-    gameState?.phase,
+    isBossFight,
+    currentWeek,
+    gameState?.time.movesRemaining,
     profile,
     mode,
+    combatInput,
     stopAutoCommit,
     hasActiveSession,
-    queueEndGame,
-    recordRunResult,
+    endSessionWithBurner,
     combatState.resolvedCombat,
   ]);
 
@@ -293,6 +393,7 @@ function CombatScreenContent({ navigation }: CombatScreenProps) {
             <VictoryDefeatDisplay
               result={result}
               goldReward={result === 'VICTORY' ? combatState.resolvedCombat?.goldReward : undefined}
+              isFinalVictory={result === 'VICTORY' && isBossFight && currentWeek === 3}
               onComplete={handleCombatComplete}
             />
           )}

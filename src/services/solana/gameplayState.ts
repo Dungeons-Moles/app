@@ -263,44 +263,6 @@ export async function triggerBossFight(
 }
 
 /**
- * Syncs on-chain HP to reflect current inventory bonuses.
- * Should be called after equipping gear that provides +HP.
- *
- * The on-chain program reads the player's inventory and calculates max_hp
- * including gear bonuses, then adjusts current HP:
- * - If player was at full base health (hp == BASE_HP), set hp to new max_hp
- * - If player was damaged, add the HP bonus to current hp
- * - HP is always capped at the new max_hp
- *
- * @param connection - Solana connection
- * @param program - Anchor program instance
- * @param gameStatePda - GameState PDA
- * @param sessionPda - GameSession PDA (for deriving inventory PDA)
- * @param burnerKeypair - Burner wallet keypair (signer)
- * @returns Transaction signature
- */
-export async function syncHpFromInventory(
-  connection: Connection,
-  program: Program,
-  gameStatePda: PublicKey,
-  sessionPda: PublicKey,
-  burnerKeypair: Keypair
-): Promise<string> {
-  const [inventoryPda] = deriveInventoryPda(sessionPda);
-
-  const transaction = await program.methods
-    .syncHpFromInventory()
-    .accounts({
-      gameState: gameStatePda,
-      inventory: inventoryPda,
-      player: burnerKeypair.publicKey,
-    })
-    .transaction();
-
-  return sendBurnerTransaction(connection, transaction, burnerKeypair);
-}
-
-/**
  * Closes the GameState account, returning rent to player.
  *
  * @param connection - Solana connection

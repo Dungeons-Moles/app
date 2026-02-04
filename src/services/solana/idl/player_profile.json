@@ -8,6 +8,56 @@
   },
   "instructions": [
     {
+      "name": "consume_run",
+      "docs": [
+        "Consumes one available run from the player's profile.",
+        "Called via CPI from session-manager when starting a new session."
+      ],
+      "discriminator": [
+        107,
+        101,
+        54,
+        82,
+        132,
+        156,
+        15,
+        34
+      ],
+      "accounts": [
+        {
+          "name": "player_profile",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  108,
+                  97,
+                  121,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "owner",
+          "signer": true,
+          "relations": [
+            "player_profile"
+          ]
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "initialize_profile",
       "docs": [
         "Creates a new player profile for the signer's wallet.",
@@ -132,7 +182,9 @@
       "name": "record_run_result",
       "docs": [
         "Records the result of a completed dungeon run.",
-        "On first-time victory, unlocks the next level and a random item."
+        "On first-time victory, unlocks the next level and a random item.",
+        "Note: available_runs is NOT decremented here - it's already done by consume_run",
+        "at session start via CPI from session-manager."
       ],
       "discriminator": [
         135,
@@ -174,6 +226,60 @@
           "relations": [
             "player_profile"
           ]
+        }
+      ],
+      "args": [
+        {
+          "name": "level_completed",
+          "type": "u8"
+        },
+        {
+          "name": "victory",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "name": "record_run_result_cpi",
+      "docs": [
+        "Records the result of a completed dungeon run via CPI from session-manager.",
+        "Uses session account for authorization instead of requiring player signature.",
+        "This allows the burner wallet to trigger run result recording without user interaction.",
+        "",
+        "Authorization: The session account proves player ownership. We verify:",
+        "1. Session's player field matches the profile's owner",
+        "2. Burner wallet is a signer (owns the session for gameplay)"
+      ],
+      "discriminator": [
+        9,
+        175,
+        246,
+        9,
+        31,
+        98,
+        121,
+        69
+      ],
+      "accounts": [
+        {
+          "name": "player_profile",
+          "writable": true
+        },
+        {
+          "name": "session",
+          "docs": [
+            "The session account - used to verify player ownership.",
+            "We manually verify session.player == player_profile.owner.",
+            "Layout: 8 (discriminator) + 32 (player) + ..."
+          ]
+        },
+        {
+          "name": "burner_wallet",
+          "docs": [
+            "Burner wallet - must match session's burner_wallet field.",
+            "This proves the caller has authority over this session."
+          ],
+          "signer": true
         }
       ],
       "args": [
@@ -298,6 +404,19 @@
       ]
     },
     {
+      "name": "RunConsumed",
+      "discriminator": [
+        11,
+        255,
+        222,
+        140,
+        68,
+        177,
+        128,
+        151
+      ]
+    },
+    {
       "name": "RunsPurchased",
       "discriminator": [
         169,
@@ -366,6 +485,11 @@
       "code": 6010,
       "name": "InvalidTreasury",
       "msg": "Invalid treasury account"
+    },
+    {
+      "code": 6011,
+      "name": "InvalidSession",
+      "msg": "Invalid session account"
     }
   ],
   "types": [
@@ -528,6 +652,25 @@
           {
             "name": "timestamp",
             "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "RunConsumed",
+      "docs": [
+        "Emitted when a run is consumed at session start"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "available_runs",
+            "type": "u32"
           }
         ]
       }

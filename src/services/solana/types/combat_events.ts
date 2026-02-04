@@ -272,11 +272,62 @@ export interface GoldModifiedAuthorizedEvent {
   newGold: number;
 }
 
+// ============================================================================
+// Backend Combat Log Types (from Solana combat-system)
+// ============================================================================
+
 /**
- * Compressed combat log entry.
+ * Actions that can be logged during combat (matches Solana LogAction enum).
+ * Order must match the Rust enum discriminant values.
+ */
+export enum LogAction {
+  Attack = 0,
+  Heal = 1,
+  ApplyStatus = 2,
+  StatusDamage = 3,
+  ArmorChange = 4,
+  AtkChange = 5,
+  SpdChange = 6,
+  NonWeaponDamage = 7,
+  ShrapnelRetaliation = 8,
+  GoldStolen = 9,
+}
+
+/**
+ * Status IDs for ApplyStatus action's extra field.
+ * Matches STATUS_* constants in combat-system/src/state.rs
+ */
+export enum StatusId {
+  Chill = 0,
+  Shrapnel = 1,
+  Rust = 2,
+  Bleed = 3,
+  Reflection = 4,
+}
+
+/**
+ * Backend combat log entry (matches CombatLogEntry in Solana).
+ * Compact format: ~5 bytes per entry.
+ */
+export interface BackendCombatLogEntry {
+  /** Turn number (1-50) */
+  turn: number;
+  /** true = player action, false = enemy action */
+  isPlayer: boolean;
+  /** The action type */
+  action: LogAction;
+  /** Primary value (damage, healing, stacks, etc.) */
+  value: number;
+  /** Extra data (status_id for ApplyStatus, 0 otherwise) */
+  extra: number;
+}
+
+/**
+ * CombatLog event from Solana (contains array of log entries).
  */
 export interface CombatLogEvent {
-  entries: Uint8Array;
+  player: string;
+  entries: BackendCombatLogEntry[];
 }
 
 /**
@@ -326,4 +377,234 @@ export interface MoveResult {
   playerHealed: PlayerHealedEvent | null;
   /** Gold modification event (from POI CPI) */
   goldModified: GoldModifiedAuthorizedEvent | null;
+}
+
+// ============================================================================
+// Backend Log to Frontend Log Converter
+// ============================================================================
+
+/**
+ * Frontend CombatLogEntry format (imported from game engine types)
+ * Re-defined here to avoid circular imports
+ */
+export interface FrontendCombatLogEntry {
+  turn: number;
+  timing: string;
+  actor: 'player' | 'enemy' | 'system';
+  action: string;
+  target: 'player' | 'enemy' | 'none';
+  result: {
+    damage?: number;
+    healing?: number;
+    armorGained?: number;
+    armorLost?: number;
+    statusApplied?: { type: string; stacks: number };
+    effectName?: string;
+  };
+  rngValues: number[];
+}
+
+/**
+ * Map StatusId to status name string
+ */
+function getStatusName(statusId: StatusId): string {
+  switch (statusId) {
+    case StatusId.Chill:
+      return 'chill';
+    case StatusId.Shrapnel:
+      return 'shrapnel';
+    case StatusId.Rust:
+      return 'rust';
+    case StatusId.Bleed:
+      return 'bleed';
+    case StatusId.Reflection:
+      return 'reflection';
+    default:
+      return 'unknown';
+  }
+}
+
+/**
+ * Convert backend combat log entries to frontend format for animation.
+ *
+ * Backend format is compact (5 bytes per entry) while frontend needs
+ * detailed action/result info for the animation system.
+ *
+ * @param backendLog - Array of backend log entries from on-chain combat
+ * @returns Array of frontend log entries for combat animation
+ */
+export function convertBackendLogToFrontend(
+  backendLog: BackendCombatLogEntry[]
+): FrontendCombatLogEntry[] {
+  return backendLog.map((entry): FrontendCombatLogEntry => {
+    const actor = entry.isPlayer ? 'player' : 'enemy';
+    // Target is opposite of actor for attacks, same for self-effects
+    const target = entry.isPlayer ? 'enemy' : 'player';
+
+    switch (entry.action) {
+      case LogAction.Attack:
+        return {
+          turn: entry.turn,
+          timing: 'ON_HIT',
+          actor,
+          action: 'ATTACK',
+          target,
+          result: {
+            damage: entry.value,
+          },
+          rngValues: [],
+        };
+
+      case LogAction.Heal:
+        return {
+          turn: entry.turn,
+          timing: 'TURN_START',
+          actor,
+          action: 'HEAL',
+          target: actor, // Heal self
+          result: {
+            healing: entry.value,
+          },
+          rngValues: [],
+        };
+
+      case LogAction.ApplyStatus:
+        return {
+          turn: entry.turn,
+          timing: 'ON_HIT',
+          actor,
+          action: 'APPLY_STATUS',
+          target,
+          result: {
+            statusApplied: {
+              type: getStatusName(entry.extra as StatusId),
+              stacks: entry.value,
+            },
+          },
+          rngValues: [],
+        };
+
+      case LogAction.StatusDamage:
+        return {
+          turn: entry.turn,
+          timing: 'TURN_START',
+          actor: 'system',
+          action: 'ATTACK',
+          target: actor, // Status damages the actor
+          result: {
+            damage: entry.value,
+            effectName: `${getStatusName(entry.extra as StatusId)} damage`,
+          },
+          rngValues: [],
+        };
+
+      case LogAction.ArmorChange:
+        if (entry.value > 0) {
+          return {
+            turn: entry.turn,
+            timing: 'TURN_START',
+            actor,
+            action: 'GAIN_ARMOR',
+            target: actor, // Armor change is self
+            result: {
+              armorGained: entry.value,
+            },
+            rngValues: [],
+          };
+        } else {
+          return {
+            turn: entry.turn,
+            timing: 'ON_HIT',
+            actor: entry.isPlayer ? 'enemy' : 'player', // Opposite actor caused the loss
+            action: 'LOSE_ARMOR',
+            target: actor, // Target lost armor
+            result: {
+              armorLost: Math.abs(entry.value),
+            },
+            rngValues: [],
+          };
+        }
+
+      case LogAction.AtkChange:
+        return {
+          turn: entry.turn,
+          timing: 'TURN_START',
+          actor,
+          action: 'TRIGGER_ITEM',
+          target: actor,
+          result: {
+            effectName: entry.value > 0 ? `+${entry.value} ATK` : `${entry.value} ATK`,
+          },
+          rngValues: [],
+        };
+
+      case LogAction.SpdChange:
+        return {
+          turn: entry.turn,
+          timing: 'TURN_START',
+          actor,
+          action: 'TRIGGER_ITEM',
+          target: actor,
+          result: {
+            effectName: entry.value > 0 ? `+${entry.value} SPD` : `${entry.value} SPD`,
+          },
+          rngValues: [],
+        };
+
+      case LogAction.NonWeaponDamage:
+        return {
+          turn: entry.turn,
+          timing: 'TURN_START',
+          actor,
+          action: 'TRIGGER_ITEM',
+          target,
+          result: {
+            damage: entry.value,
+            effectName: 'Item damage',
+          },
+          rngValues: [],
+        };
+
+      case LogAction.ShrapnelRetaliation:
+        return {
+          turn: entry.turn,
+          timing: 'ON_STRUCK',
+          actor: entry.isPlayer ? 'enemy' : 'player', // Shrapnel damages attacker
+          action: 'TRIGGER_ITEMSET',
+          target: entry.isPlayer ? 'player' : 'enemy', // Shrapnel on the one who attacked
+          result: {
+            damage: entry.value,
+            effectName: 'Shrapnel Harness',
+          },
+          rngValues: [],
+        };
+
+      case LogAction.GoldStolen:
+        return {
+          turn: entry.turn,
+          timing: 'ON_HIT',
+          actor,
+          action: 'TRIGGER_TRAIT',
+          target,
+          result: {
+            effectName: `Stole ${entry.value} gold`,
+          },
+          rngValues: [],
+        };
+
+      default:
+        // Fallback for unknown actions
+        return {
+          turn: entry.turn,
+          timing: 'TURN_START',
+          actor,
+          action: 'ATTACK',
+          target,
+          result: {
+            damage: entry.value,
+          },
+          rngValues: [],
+        };
+    }
+  });
 }

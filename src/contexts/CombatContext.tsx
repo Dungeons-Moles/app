@@ -14,14 +14,16 @@ import React, {
   ReactNode,
   Dispatch,
 } from 'react';
-import type {
-  CombatState,
-  CombatantState,
-  CombatLogEntry,
-} from '../game/engine/types';
+import type { CombatState, CombatantState, CombatLogEntry } from '../game/engine/types';
 import { CombatPhase } from '../game/engine/types';
-import { resolveCombat, createCombatState, type CombatResolverInput } from '../game/combat/resolver';
+import {
+  resolveCombat,
+  createCombatState,
+  type CombatResolverInput,
+} from '../game/combat/resolver';
 import type { CombatSpeed } from '../types';
+import type { BackendCombatLogEntry } from '../services/solana/types/combat_events';
+import { convertBackendLogToFrontend } from '../services/solana/types/combat_events';
 
 export type { CombatSpeed } from '../types';
 
@@ -53,6 +55,11 @@ export function getCombatAnimationIntervalMs(speed: CombatSpeed): number | null 
 
 export type CombatAction =
   | { type: 'START_COMBAT'; input: CombatResolverInput }
+  | {
+      type: 'START_COMBAT_WITH_LOG';
+      input: CombatResolverInput;
+      backendLog: BackendCombatLogEntry[];
+    }
   | { type: 'RESOLVE_COMBAT' }
   | { type: 'ADVANCE_LOG'; index: number }
   | { type: 'COMPLETE_ANIMATION' }
@@ -244,6 +251,38 @@ function combatReducer(state: CombatUIState, action: CombatAction): CombatUIStat
       };
     }
 
+    case 'START_COMBAT_WITH_LOG': {
+      // Use backend log instead of local resolver
+      // This ensures frontend animation matches on-chain combat exactly
+      const baseCombat = createCombatState(action.input);
+      const convertedLog = convertBackendLogToFrontend(action.backendLog);
+
+      // Create a resolved combat state with the backend log
+      // We still need the combat state structure for the animation system
+      const resolvedCombat = {
+        ...baseCombat,
+        log: convertedLog as unknown as CombatLogEntry[], // Type cast since format is compatible
+        // Determine result from log - if player HP reached 0, they lost
+        result: null, // Will be determined by animation system from final state
+      };
+
+      console.log('[CombatContext] Using backend combat log:', {
+        entryCount: action.backendLog.length,
+        convertedCount: convertedLog.length,
+      });
+
+      return {
+        ...state,
+        combat: baseCombat,
+        resolvedCombat,
+        currentLogIndex: 0,
+        isAnimating: true,
+        isComplete: false,
+        damageNumbers: [],
+        effectNotifications: [],
+      };
+    }
+
     case 'RESOLVE_COMBAT': {
       if (!state.resolvedCombat) return state;
 
@@ -257,10 +296,7 @@ function combatReducer(state: CombatUIState, action: CombatAction): CombatUIStat
     case 'ADVANCE_LOG': {
       if (!state.resolvedCombat) return state;
 
-      const newIndex = Math.min(
-        action.index,
-        state.resolvedCombat.log.length - 1
-      );
+      const newIndex = Math.min(action.index, state.resolvedCombat.log.length - 1);
 
       // Extract damage number from current log entry
       const entry = state.resolvedCombat.log[newIndex];
@@ -347,6 +383,8 @@ interface CombatContextType {
   setSpeed: (speed: CombatSpeed) => void;
   /** Start a new combat */
   startCombat: (input: CombatResolverInput) => void;
+  /** Start combat using backend log (for on-chain mode) */
+  startCombatWithLog: (input: CombatResolverInput, backendLog: BackendCombatLogEntry[]) => void;
   /** Get current combatant states for display */
   getDisplayStates: () => { player: CombatantState | null; enemy: CombatantState | null };
   /** Get combat result */
@@ -382,9 +420,19 @@ export function CombatProvider({ children, initialSpeed, onSpeedChange }: Combat
     [onSpeedChange]
   );
 
-  const startCombat = useCallback((input: CombatResolverInput) => {
-    dispatch({ type: 'START_COMBAT', input });
-  }, [dispatch]);
+  const startCombat = useCallback(
+    (input: CombatResolverInput) => {
+      dispatch({ type: 'START_COMBAT', input });
+    },
+    [dispatch]
+  );
+
+  const startCombatWithLog = useCallback(
+    (input: CombatResolverInput, backendLog: BackendCombatLogEntry[]) => {
+      dispatch({ type: 'START_COMBAT_WITH_LOG', input, backendLog });
+    },
+    [dispatch]
+  );
 
   const getDisplayStates = useCallback(() => {
     if (!state.resolvedCombat || !state.combat) {
@@ -483,6 +531,7 @@ export function CombatProvider({ children, initialSpeed, onSpeedChange }: Combat
         speed,
         setSpeed,
         startCombat,
+        startCombatWithLog,
         getDisplayStates,
         getResult,
       }}

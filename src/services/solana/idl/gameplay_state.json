@@ -8,6 +8,117 @@
   },
   "instructions": [
     {
+      "name": "add_hp_bonus_authorized",
+      "docs": [
+        "Adds an HP bonus when equipping +HP gear, authorized by player-inventory.",
+        "",
+        "This instruction can only be called via CPI from player-inventory using",
+        "the inventory_authority PDA as signer. Used when equipping gear that has",
+        "a MaxHp effect.",
+        "",
+        "Behavior:",
+        "- Adds the hp_bonus to both current HP and max HP",
+        "- Current HP increases by hp_bonus (grants immediate HP)",
+        "- Max HP is tracked implicitly via inventory effects",
+        "",
+        "Example: Pick +4 HP item at 10/10 -> 14/14"
+      ],
+      "discriminator": [
+        53,
+        222,
+        119,
+        5,
+        73,
+        255,
+        6,
+        168
+      ],
+      "accounts": [
+        {
+          "name": "game_state",
+          "writable": true
+        },
+        {
+          "name": "inventory_authority",
+          "docs": [
+            "Inventory authority PDA from player-inventory that must sign"
+          ],
+          "signer": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  110,
+                  118,
+                  101,
+                  110,
+                  116,
+                  111,
+                  114,
+                  121,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                62,
+                57,
+                43,
+                224,
+                11,
+                129,
+                112,
+                214,
+                10,
+                252,
+                5,
+                51,
+                143,
+                242,
+                213,
+                246,
+                99,
+                145,
+                248,
+                173,
+                61,
+                133,
+                58,
+                191,
+                234,
+                132,
+                254,
+                214,
+                152,
+                21,
+                230,
+                167
+              ]
+            }
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "hp_bonus",
+          "type": "i16"
+        }
+      ]
+    },
+    {
       "name": "close_game_state",
       "docs": [
         "Closes the GameState account, returning rent to player."
@@ -30,6 +141,96 @@
         {
           "name": "player",
           "writable": true,
+          "signer": true,
+          "relations": [
+            "game_state"
+          ]
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "close_game_state_via_burner",
+      "docs": [
+        "Closes the GameState account via burner wallet authorization.",
+        "Used by session-manager CPI during end_session to clean up game state.",
+        "Rent is returned to the player wallet."
+      ],
+      "discriminator": [
+        71,
+        137,
+        243,
+        70,
+        95,
+        193,
+        114,
+        51
+      ],
+      "accounts": [
+        {
+          "name": "game_state",
+          "writable": true
+        },
+        {
+          "name": "player",
+          "docs": [
+            "Player wallet receives the rent refund (not a signer)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "burner_wallet",
+          "docs": [
+            "Burner wallet must sign to authorize closure"
+          ],
+          "signer": true,
+          "relations": [
+            "game_state"
+          ]
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "close_map_enemies",
+      "docs": [
+        "Closes the MapEnemies account via burner wallet authorization.",
+        "Used by session-manager CPI during end_session to clean up.",
+        "Rent is returned to the player wallet."
+      ],
+      "discriminator": [
+        192,
+        111,
+        190,
+        66,
+        236,
+        132,
+        252,
+        88
+      ],
+      "accounts": [
+        {
+          "name": "map_enemies",
+          "writable": true
+        },
+        {
+          "name": "game_state",
+          "docs": [
+            "GameState to verify burner_wallet authorization"
+          ]
+        },
+        {
+          "name": "player",
+          "docs": [
+            "Player wallet receives the rent refund (not a signer)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "burner_wallet",
+          "docs": [
+            "Burner wallet must sign to authorize closure"
+          ],
           "signer": true,
           "relations": [
             "game_state"
@@ -749,6 +950,123 @@
       ]
     },
     {
+      "name": "remove_hp_bonus_authorized",
+      "docs": [
+        "Removes an HP bonus when unequipping +HP gear, authorized by player-inventory.",
+        "",
+        "This instruction can only be called via CPI from player-inventory using",
+        "the inventory_authority PDA as signer. Used when unequipping gear that has",
+        "a MaxHp effect.",
+        "",
+        "Behavior:",
+        "- Reduces max HP by hp_bonus",
+        "- If current HP exceeds new max HP, caps it at new max HP",
+        "- If current HP is already below new max HP, leaves it unchanged",
+        "",
+        "Example: Unequip +4 HP item at 14/14 -> 10/10",
+        "Example: Unequip +4 HP item at 7/14 -> 7/10",
+        "Example: Unequip +4 HP item at 12/14 -> 10/10 (capped)"
+      ],
+      "discriminator": [
+        209,
+        126,
+        103,
+        160,
+        143,
+        239,
+        173,
+        140
+      ],
+      "accounts": [
+        {
+          "name": "game_state",
+          "writable": true
+        },
+        {
+          "name": "inventory_authority",
+          "docs": [
+            "Inventory authority PDA from player-inventory that must sign"
+          ],
+          "signer": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  110,
+                  118,
+                  101,
+                  110,
+                  116,
+                  111,
+                  114,
+                  121,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                62,
+                57,
+                43,
+                224,
+                11,
+                129,
+                112,
+                214,
+                10,
+                252,
+                5,
+                51,
+                143,
+                242,
+                213,
+                246,
+                99,
+                145,
+                248,
+                173,
+                61,
+                133,
+                58,
+                191,
+                234,
+                132,
+                254,
+                214,
+                152,
+                21,
+                230,
+                167
+              ]
+            }
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "hp_bonus",
+          "type": "i16"
+        },
+        {
+          "name": "new_max_hp",
+          "type": "i16"
+        }
+      ]
+    },
+    {
       "name": "set_phase_for_testing",
       "docs": [
         "TEST ONLY: Sets the game phase and moves remaining directly.",
@@ -960,10 +1278,37 @@
           }
         },
         {
-          "name": "player",
+          "name": "gameplay_authority",
           "docs": [
-            "Player for CPI to player_inventory_program (expand gear slots on boss victory)"
-          ]
+            "Gameplay authority PDA for signing CPI calls to player-inventory"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  112,
+                  108,
+                  97,
+                  121,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
         },
         {
           "name": "player_inventory_program",
@@ -971,113 +1316,6 @@
             "Player inventory program for CPI (expand gear slots on boss victory)"
           ],
           "address": "5BtqiWegvVAgEnTRUofB9oUoQvPztYqSkMPwRpYQacP8"
-        }
-      ],
-      "args": []
-    },
-    {
-      "name": "sync_hp_from_inventory",
-      "docs": [
-        "Syncs HP to reflect current inventory bonuses.",
-        "",
-        "This instruction should be called after equipping gear that provides +HP.",
-        "It calculates the new max_hp from the inventory and adjusts current HP:",
-        "- If player was at full base health (hp == BASE_HP), set hp to new max_hp",
-        "- If player was damaged, add the HP bonus (max_hp - BASE_HP) to current hp",
-        "- HP is always capped at the new max_hp",
-        "",
-        "This ensures that equipping +HP gear immediately grants that HP."
-      ],
-      "discriminator": [
-        233,
-        117,
-        243,
-        76,
-        58,
-        56,
-        180,
-        65
-      ],
-      "accounts": [
-        {
-          "name": "game_state",
-          "writable": true
-        },
-        {
-          "name": "inventory",
-          "docs": [
-            "Player inventory for deriving max_hp (PDA derived from session)"
-          ],
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  105,
-                  110,
-                  118,
-                  101,
-                  110,
-                  116,
-                  111,
-                  114,
-                  121
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "game_state.session",
-                "account": "GameState"
-              }
-            ],
-            "program": {
-              "kind": "const",
-              "value": [
-                62,
-                57,
-                43,
-                224,
-                11,
-                129,
-                112,
-                214,
-                10,
-                252,
-                5,
-                51,
-                143,
-                242,
-                213,
-                246,
-                99,
-                145,
-                248,
-                173,
-                61,
-                133,
-                58,
-                191,
-                234,
-                132,
-                254,
-                214,
-                152,
-                21,
-                230,
-                167
-              ]
-            }
-          }
-        },
-        {
-          "name": "player",
-          "docs": [
-            "Player who owns this game state (burner wallet)"
-          ],
-          "signer": true,
-          "relations": [
-            "game_state"
-          ]
         }
       ],
       "args": []
@@ -1206,6 +1444,39 @@
                 167
               ]
             }
+          }
+        },
+        {
+          "name": "gameplay_authority",
+          "docs": [
+            "Gameplay authority PDA for signing CPI calls to player-inventory"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  112,
+                  108,
+                  97,
+                  121,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
           }
         },
         {
@@ -1396,16 +1667,29 @@
       ]
     },
     {
-      "name": "HpSynced",
+      "name": "HpBonusAdded",
       "discriminator": [
-        130,
-        71,
-        149,
-        19,
-        47,
-        213,
-        234,
-        186
+        163,
+        44,
+        25,
+        67,
+        242,
+        177,
+        105,
+        114
+      ]
+    },
+    {
+      "name": "HpBonusRemoved",
+      "discriminator": [
+        35,
+        175,
+        112,
+        94,
+        152,
+        121,
+        54,
+        206
       ]
     },
     {
@@ -1419,6 +1703,19 @@
         175,
         231,
         133
+      ]
+    },
+    {
+      "name": "MapEnemiesClosed",
+      "discriminator": [
+        66,
+        210,
+        53,
+        9,
+        131,
+        252,
+        18,
+        171
       ]
     },
     {
@@ -1574,6 +1871,11 @@
       "code": 6019,
       "name": "NotNightPhase",
       "msg": "Skip to day can only be used during night phases"
+    },
+    {
+      "code": 6020,
+      "name": "InvalidHpBonus",
+      "msg": "Invalid HP bonus value"
     }
   ],
   "types": [
@@ -2050,6 +2352,14 @@
               "Player death flag - once set, all gameplay instructions are blocked"
             ],
             "type": "bool"
+          },
+          {
+            "name": "completed",
+            "docs": [
+              "Level completion flag - set when week 3 boss is defeated",
+              "Used by session_manager to validate end_session calls"
+            ],
+            "type": "bool"
           }
         ]
       }
@@ -2280,9 +2590,36 @@
       }
     },
     {
-      "name": "HpSynced",
+      "name": "HpBonusAdded",
       "docs": [
-        "Emitted when HP is synced from inventory after equipping +HP gear"
+        "Emitted when HP bonus is added via authorized CPI from player-inventory (equipping +HP gear)"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "old_hp",
+            "type": "i16"
+          },
+          {
+            "name": "new_hp",
+            "type": "i16"
+          },
+          {
+            "name": "hp_bonus",
+            "type": "i16"
+          }
+        ]
+      }
+    },
+    {
+      "name": "HpBonusRemoved",
+      "docs": [
+        "Emitted when HP bonus is removed via authorized CPI from player-inventory (unequipping +HP gear)"
       ],
       "type": {
         "kind": "struct",
@@ -2304,7 +2641,7 @@
             "type": "i16"
           },
           {
-            "name": "max_hp",
+            "name": "new_max_hp",
             "type": "i16"
           }
         ]
@@ -2465,6 +2802,18 @@
               "PDA bump seed"
             ],
             "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MapEnemiesClosed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "session",
+            "type": "pubkey"
           }
         ]
       }
