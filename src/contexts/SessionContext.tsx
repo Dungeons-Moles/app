@@ -17,7 +17,7 @@ import { useSessionManager } from '@/hooks/useSessionManager';
 import { useMapGenerator } from '@/hooks/useMapGenerator';
 import { useBurnerWallet } from '@/hooks/useBurnerWallet';
 import { useGameplayState } from '@/hooks/useGameplayState';
-import { getGameStatePda } from '@/services/solana/gameplayState';
+import { getGameStatePda, triggerBossFight } from '@/services/solana/gameplayState';
 import { deriveSessionPda } from '@/services/solana/constants';
 import { SOLANA_CONFIG } from '@/services/solana/config';
 import {
@@ -46,6 +46,7 @@ import type {
 import type { TransactionResult } from '@/types/solana';
 import type { BurnerState } from '@/services/solana/burnerWallet';
 import type { BackendCombatLogEntry } from '@/services/solana/types/combat_events';
+import type { CombatEnemyInfo } from '@/services/solana/eventParser';
 
 /** Commit interval in milliseconds (30 seconds) */
 const COMMIT_INTERVAL_MS = 30_000;
@@ -123,8 +124,18 @@ interface SessionContextType extends SessionState {
     previousState?: GameState;
     combatOccurred?: boolean;
     combatLog?: BackendCombatLogEntry[];
+    combatEnemyInfo?: CombatEnemyInfo;
     bossFightReady?: boolean;
     isDead?: boolean;
+    signature?: string;
+  }>;
+  /** Trigger boss fight on-chain (via burner wallet) */
+  triggerBoss: () => Promise<{
+    success: boolean;
+    newState?: GameState;
+    previousState?: GameState;
+    isDead?: boolean;
+    combatLog?: BackendCombatLogEntry[];
     signature?: string;
   }>;
   /** Modify player stat on-chain (via burner wallet) */
@@ -147,6 +158,8 @@ interface SessionContextType extends SessionState {
   getSessionPdaForLevel: (level: number) => Promise<string | null>;
   /** Set the game state PDA for on-chain operations */
   setGameStatePda: (pda: PublicKey | null) => void;
+  /** Refresh on-chain gameplay state (re-fetches from chain) */
+  refreshGameplayState: () => Promise<GameState | null>;
 }
 
 const SessionContext = createContext<SessionContextType | undefined>(undefined);
@@ -594,6 +607,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       newState?: GameState;
       previousState?: GameState;
       combatOccurred?: boolean;
+      combatLog?: BackendCombatLogEntry[];
+      combatEnemyInfo?: CombatEnemyInfo;
       bossFightReady?: boolean;
       isDead?: boolean;
       signature?: string;
@@ -614,6 +629,24 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     },
     [burnerWallet.keypair, gameplayState]
   );
+
+  /**
+   * Trigger boss fight on-chain via burner wallet.
+   */
+  const triggerBoss = useCallback(async (): Promise<{
+    success: boolean;
+    newState?: GameState;
+    previousState?: GameState;
+    isDead?: boolean;
+    combatLog?: BackendCombatLogEntry[];
+    signature?: string;
+  }> => {
+    if (!burnerWallet.keypair) {
+      console.error('[SessionContext] triggerBoss failed: Burner wallet not available');
+      return { success: false };
+    }
+    return gameplayState.triggerBoss(burnerWallet.keypair);
+  }, [burnerWallet.keypair, gameplayState]);
 
   /**
    * Modify player stat on-chain via burner wallet.
@@ -1088,6 +1121,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     stopAutoCommit,
     isAutoCommitActive,
     movePlayer,
+    triggerBoss,
     modifyPlayerStat,
     topUpBurner,
     getBurnerKeypair,
@@ -1098,6 +1132,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     hasSessionForLevel,
     getSessionPdaForLevel,
     setGameStatePda: gameplayState.setGameStatePda,
+    refreshGameplayState: gameplayState.refresh,
   };
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

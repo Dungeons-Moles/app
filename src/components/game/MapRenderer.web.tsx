@@ -63,6 +63,7 @@ export interface MapRendererProps {
   overviewMode?: OverviewModeState;
   onPanOverview?: (delta: Position) => void;
   onZoomOverview?: (zoomDelta: number) => void;
+  cameraFocusOverride?: Position;
 }
 
 interface VisibleTileRange {
@@ -272,6 +273,7 @@ export const MapRenderer = memo(function MapRenderer({
   overviewMode,
   onPanOverview,
   onZoomOverview,
+  cameraFocusOverride,
 }: MapRendererProps) {
   const [dimensions, setDimensions] = React.useState({
     width: propWidth || 300,
@@ -292,12 +294,13 @@ export const MapRenderer = memo(function MapRenderer({
   const dynamicZoom = height / (targetVerticalTiles * TILE_SIZE);
   const zoom = overview.active ? overview.zoom : dynamicZoom;
 
+  const cameraFocus = cameraFocusOverride ?? playerPosition;
   const cameraCenter = useMemo(
     () => ({
-      x: playerPosition.x + (overview.active ? overview.offset.x : 0),
-      y: playerPosition.y + (overview.active ? overview.offset.y : 0),
+      x: cameraFocus.x + (overview.active ? overview.offset.x : 0),
+      y: cameraFocus.y + (overview.active ? overview.offset.y : 0),
     }),
-    [playerPosition.x, playerPosition.y, overview.active, overview.offset.x, overview.offset.y]
+    [cameraFocus.x, cameraFocus.y, overview.active, overview.offset.x, overview.offset.y]
   );
 
   const scaledWidth = width / zoom;

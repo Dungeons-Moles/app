@@ -230,7 +230,7 @@ describe('Status Effects System', () => {
         expect(updatedCombatant.statusEffects.rust).toBe(3);
       });
 
-      it('should keep up to 3 Shrapnel when Shrapnel Harness itemset is active', () => {
+      it('should keep up to 2 Shrapnel when Shrapnel Harness itemset is active', () => {
         const combatant = createTestCombatant({
           statusEffects: { ...DEFAULT_STATUS_EFFECTS, shrapnel: 8 },
         });
@@ -238,10 +238,10 @@ describe('Status Effects System', () => {
         // With Shrapnel Harness active
         const updatedCombatant = processShrapnelClear(combatant, true);
 
-        expect(updatedCombatant.statusEffects.shrapnel).toBe(3); // Cap at 3
+        expect(updatedCombatant.statusEffects.shrapnel).toBe(2); // Cap at 2
       });
 
-      it('should keep existing Shrapnel if less than 3 with Shrapnel Harness', () => {
+      it('should keep existing Shrapnel if at or below 2 with Shrapnel Harness', () => {
         const combatant = createTestCombatant({
           statusEffects: { ...DEFAULT_STATUS_EFFECTS, shrapnel: 2 },
         });

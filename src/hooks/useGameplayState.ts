@@ -22,6 +22,7 @@ import {
   fetchGameState,
   getGameplayErrorMessage,
   calculateMoveCost,
+  triggerBossFight,
 } from '@/services/solana/gameplayState';
 import {
   GameState,
@@ -31,6 +32,7 @@ import {
   ModifyStatParams,
 } from '@/services/solana/types/gameplay_state';
 import { parseCombatLog } from '@/services/solana/eventParser';
+import type { CombatEnemyInfo } from '@/services/solana/eventParser';
 import type { BackendCombatLogEntry } from '@/services/solana/types/combat_events';
 
 // ============================================================================
@@ -68,6 +70,8 @@ export interface UseGameplayStateReturn {
     signature?: string;
     /** Combat log entries from on-chain (if combat occurred) */
     combatLog?: BackendCombatLogEntry[];
+    /** Enemy info from CombatStarted event (archetype + HP for tier derivation) */
+    combatEnemyInfo?: CombatEnemyInfo;
   }>;
   /** Modify a player stat */
   updateStat: (
@@ -82,6 +86,15 @@ export interface UseGameplayStateReturn {
   syncStatus: SyncStatus;
   /** Last sync timestamp */
   lastSyncAt: number | null;
+  /** Trigger boss fight on-chain */
+  triggerBoss: (burnerKeypair: Keypair) => Promise<{
+    success: boolean;
+    newState?: GameState;
+    previousState?: GameState;
+    isDead?: boolean;
+    combatLog?: BackendCombatLogEntry[];
+    signature?: string;
+  }>;
   /** Calculate move cost for a tile */
   getMoveCost: (isWall: boolean) => number;
   /** Set the game state PDA (for loading existing sessions) */
@@ -238,6 +251,7 @@ export function useGameplayState(): UseGameplayStateReturn {
       previousState?: GameState;
       combatOccurred?: boolean;
       combatLog?: BackendCombatLogEntry[];
+      combatEnemyInfo?: CombatEnemyInfo;
       bossFightReady?: boolean;
       isDead?: boolean;
       signature?: string;
@@ -326,34 +340,13 @@ export function useGameplayState(): UseGameplayStateReturn {
             confirmedState.isDead ||
             confirmedState.gold > previousState.gold);
 
-        // Fetch combat log from transaction if combat occurred
+        // Fetch combat log and enemy info from transaction if combat occurred
         let combatLog: BackendCombatLogEntry[] | undefined;
+        let combatEnemyInfo: CombatEnemyInfo | undefined;
         if (combatOccurred && signature) {
-          // Try up to 3 times to parse combat log (transaction may need time to finalize)
-          for (let attempt = 0; attempt < 3; attempt++) {
-            try {
-              const combatLogEvent = await parseCombatLog(connection, program, signature);
-              if (combatLogEvent && combatLogEvent.entries.length > 0) {
-                combatLog = combatLogEvent.entries;
-                console.log('[useGameplayState] Parsed combat log:', combatLog.length, 'entries');
-                break;
-              }
-            } catch (logErr) {
-              console.warn(
-                `[useGameplayState] Combat log parse attempt ${attempt + 1} failed:`,
-                logErr
-              );
-              if (attempt < 2) {
-                // Wait 500ms before retry
-                await new Promise((resolve) => setTimeout(resolve, 500));
-              }
-            }
-          }
-          if (!combatLog) {
-            console.warn(
-              '[useGameplayState] Could not parse combat log after 3 attempts, will use local resolver'
-            );
-          }
+          const parsed = await parseCombatLogWithRetry(connection, program, signature, 'move');
+          combatLog = parsed.combatLog;
+          combatEnemyInfo = parsed.combatEnemyInfo;
         }
 
         return {
@@ -362,6 +355,7 @@ export function useGameplayState(): UseGameplayStateReturn {
           previousState,
           combatOccurred,
           combatLog,
+          combatEnemyInfo,
           bossFightReady: confirmedState?.bossFightReady ?? false,
           isDead: confirmedState?.isDead ?? false,
           signature,
@@ -416,6 +410,87 @@ export function useGameplayState(): UseGameplayStateReturn {
         return { success: true, newValue };
       } catch (err) {
         console.error('Failed to modify stat:', err);
+
+        if (isMountedRef.current) {
+          setSyncStatus('error');
+          setError(getGameplayErrorMessage(err));
+        }
+
+        return { success: false };
+      }
+    },
+    [connection, gameState, gameStatePda, program]
+  );
+
+  /**
+   * Trigger boss fight on-chain.
+   * Calls the trigger_boss_fight instruction, fetches confirmed state, and parses combat log.
+   */
+  const triggerBoss = useCallback(
+    async (
+      burnerKeypair: Keypair
+    ): Promise<{
+      success: boolean;
+      newState?: GameState;
+      previousState?: GameState;
+      isDead?: boolean;
+      combatLog?: BackendCombatLogEntry[];
+      signature?: string;
+    }> => {
+      if (!program || !gameStatePda || !gameState) {
+        setError('Game state not initialized');
+        return { success: false };
+      }
+
+      const previousState = gameState;
+
+      if (isMountedRef.current) {
+        setSyncStatus('syncing');
+        setError(null);
+      }
+
+      try {
+        const sessionPda = gameState.session;
+        const signature = await triggerBossFight(
+          connection,
+          program,
+          gameStatePda,
+          sessionPda,
+          burnerKeypair
+        );
+
+        // Fetch confirmed state after on-chain confirmation
+        const confirmedState = await fetchGameState(program, gameStatePda);
+
+        console.log('[useGameplayState] triggerBoss() fetched state:', {
+          previousHp: previousState.hp,
+          fetchedHp: confirmedState?.hp,
+          isDead: confirmedState?.isDead,
+        });
+
+        if (isMountedRef.current) {
+          setGameState(confirmedState);
+          setSyncStatus('synced');
+          setLastSyncAt(Date.now());
+        }
+
+        // Parse combat log from transaction
+        let combatLog: BackendCombatLogEntry[] | undefined;
+        if (signature) {
+          const parsed = await parseCombatLogWithRetry(connection, program, signature, 'boss');
+          combatLog = parsed.combatLog;
+        }
+
+        return {
+          success: true,
+          newState: confirmedState ?? undefined,
+          previousState,
+          isDead: confirmedState?.isDead ?? false,
+          combatLog,
+          signature,
+        };
+      } catch (err) {
+        console.error('[useGameplayState] Failed to trigger boss fight:', err);
 
         if (isMountedRef.current) {
           setSyncStatus('error');
@@ -496,6 +571,7 @@ export function useGameplayState(): UseGameplayStateReturn {
     error,
     initialize,
     move,
+    triggerBoss,
     updateStat,
     close,
     refresh,
@@ -509,6 +585,57 @@ export function useGameplayState(): UseGameplayStateReturn {
 // ============================================================================
 // Helper Functions
 // ============================================================================
+
+/**
+ * Parse combat log from a transaction signature with retry.
+ * Returns entries and enemy info if available.
+ */
+async function parseCombatLogWithRetry(
+  connection: Parameters<typeof parseCombatLog>[0],
+  program: Parameters<typeof parseCombatLog>[1],
+  signature: string,
+  label: string
+): Promise<{
+  combatLog?: BackendCombatLogEntry[];
+  combatEnemyInfo?: CombatEnemyInfo;
+}> {
+  let combatLog: BackendCombatLogEntry[] | undefined;
+  let combatEnemyInfo: CombatEnemyInfo | undefined;
+  const maxAttempts = 3;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      const result = await parseCombatLog(connection, program, signature);
+      if (result.enemyInfo) {
+        combatEnemyInfo = result.enemyInfo;
+      }
+      if (result.log && result.log.entries.length > 0) {
+        combatLog = result.log.entries;
+        console.log(`[useGameplayState] Parsed ${label} combat log:`, combatLog.length, 'entries');
+        break;
+      }
+      console.warn(
+        `[useGameplayState] ${label} combat log parse attempt ${attempt + 1}/${maxAttempts}: no CombatLog event found`
+      );
+    } catch (logErr) {
+      console.warn(
+        `[useGameplayState] ${label} combat log parse attempt ${attempt + 1}/${maxAttempts} error:`,
+        logErr
+      );
+    }
+    if (attempt < maxAttempts - 1) {
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    }
+  }
+
+  if (!combatLog) {
+    console.warn(
+      `[useGameplayState] Could not parse ${label} combat log after ${maxAttempts} attempts, using on-chain outcome fallback`
+    );
+  }
+
+  return { combatLog, combatEnemyInfo };
+}
 
 /**
  * Get a stat value from game state.

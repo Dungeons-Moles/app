@@ -23,6 +23,8 @@ import {
   hasMinimumActivePool,
   calculateItemCollection,
   isCollectionComplete,
+  getGearItemPoolIndex,
+  isGearInActivePool,
   TOTAL_ITEMS,
   STARTER_ITEMS,
   MIN_ACTIVE_POOL,
@@ -39,25 +41,19 @@ describe('Item Pool Bitmask Utilities', () => {
   });
 
   describe('createStarterBitmask', () => {
-    it('should create a bitmask with first 40 items unlocked', () => {
+    it('should create a bitmask matching the on-chain starter layout', () => {
       const bitmask = createStarterBitmask();
 
-      // First 5 bytes should be 0xFF (all 8 bits set)
-      for (let i = 0; i < 5; i++) {
-        expect(bitmask[i]).toBe(0xff);
-      }
-
-      // Last 5 bytes should be 0
-      for (let i = 5; i < 10; i++) {
-        expect(bitmask[i]).toBe(0);
-      }
+      expect(Array.from(bitmask)).toEqual([
+        0x0f, 0x0f, 0x17, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x55, 0x55,
+      ]);
 
       expect(countUnlockedItems(bitmask)).toBe(STARTER_ITEMS);
     });
   });
 
   describe('createFullBitmask', () => {
-    it('should create a bitmask with all 80 items unlocked', () => {
+    it('should create a bitmask with all slots unlocked', () => {
       const bitmask = createFullBitmask();
       expect(Array.from(bitmask).every((b) => b === 0xff)).toBe(true);
       expect(countUnlockedItems(bitmask)).toBe(TOTAL_ITEMS);
@@ -68,17 +64,19 @@ describe('Item Pool Bitmask Utilities', () => {
     it('should return true for unlocked items', () => {
       const bitmask = createStarterBitmask();
 
-      for (let i = 0; i < 40; i++) {
-        expect(isItemUnlocked(bitmask, i)).toBe(true);
-      }
+      expect(isItemUnlocked(bitmask, 0)).toBe(true); // STONE gear starter
+      expect(isItemUnlocked(bitmask, 20)).toBe(true); // GREED starter exception
+      expect(isItemUnlocked(bitmask, 64)).toBe(true); // STONE tool starter
+      expect(isItemUnlocked(bitmask, 78)).toBe(true); // TEMPO tool starter
     });
 
     it('should return false for locked items', () => {
       const bitmask = createStarterBitmask();
 
-      for (let i = 40; i < 80; i++) {
-        expect(isItemUnlocked(bitmask, i)).toBe(false);
-      }
+      expect(isItemUnlocked(bitmask, 4)).toBe(false);
+      expect(isItemUnlocked(bitmask, 19)).toBe(false);
+      expect(isItemUnlocked(bitmask, 79)).toBe(false);
+      expect(isItemUnlocked(bitmask, 79)).toBe(false);
     });
 
     it('should return false for out-of-range indices', () => {
@@ -139,8 +137,9 @@ describe('Item Pool Bitmask Utilities', () => {
       const unlocked = getUnlockedItems(bitmask);
 
       expect(unlocked.length).toBe(40);
-      expect(unlocked[0]).toBe(0);
-      expect(unlocked[39]).toBe(39);
+      expect(unlocked).toContain(0);
+      expect(unlocked).toContain(64);
+      expect(unlocked).toContain(78);
     });
   });
 
@@ -154,13 +153,14 @@ describe('Item Pool Bitmask Utilities', () => {
       expect(locked).toEqual([50, 60]);
     });
 
-    it('should return items 40-79 for starter bitmask', () => {
+    it('should return all non-starter indices for starter bitmask', () => {
       const bitmask = createStarterBitmask();
       const locked = getLockedItems(bitmask);
 
-      expect(locked.length).toBe(40);
-      expect(locked[0]).toBe(40);
-      expect(locked[39]).toBe(79);
+      expect(locked.length).toBe(TOTAL_ITEMS - STARTER_ITEMS);
+      expect(locked).toContain(4);
+      expect(locked).toContain(79);
+      expect(locked).not.toContain(95);
     });
   });
 
@@ -193,12 +193,10 @@ describe('Item Pool Bitmask Utilities', () => {
   describe('isValidActivePool', () => {
     it('should return true when active pool is subset of unlocked', () => {
       const unlocked = createStarterBitmask();
-      const activePool = createEmptyBitmask();
-
-      // Active pool with only some starter items
-      for (let i = 0; i < 40; i++) {
-        setItemUnlocked(activePool, i);
-      }
+      const activePool = createStarterBitmask();
+      // Remove a couple of starter items: still a subset.
+      setItemLocked(activePool, 20);
+      setItemLocked(activePool, 64);
 
       expect(isValidActivePool(activePool, unlocked)).toBe(true);
     });
@@ -207,8 +205,8 @@ describe('Item Pool Bitmask Utilities', () => {
       const unlocked = createStarterBitmask();
       const activePool = createEmptyBitmask();
 
-      // Try to add item 50 which isn't unlocked
-      setItemUnlocked(activePool, 50);
+      // Try to add item 52 which isn't unlocked in the starter layout.
+      setItemUnlocked(activePool, 52);
 
       expect(isValidActivePool(activePool, unlocked)).toBe(false);
     });
@@ -232,8 +230,8 @@ describe('Item Pool Bitmask Utilities', () => {
   describe('calculateItemCollection', () => {
     it('should calculate correct collection stats', () => {
       const bitmask = createStarterBitmask();
-      setItemUnlocked(bitmask, 40);
-      setItemUnlocked(bitmask, 50);
+      setItemUnlocked(bitmask, 44);
+      setItemUnlocked(bitmask, 60);
 
       const collection = calculateItemCollection(bitmask);
 
@@ -254,6 +252,20 @@ describe('Item Pool Bitmask Utilities', () => {
     it('should return false when some items locked', () => {
       const bitmask = createStarterBitmask();
       expect(isCollectionComplete(bitmask)).toBe(false);
+    });
+  });
+
+  describe('gear pool mapping', () => {
+    it('maps base gear to expected pool indices', () => {
+      expect(getGearItemPoolIndex('I1')).toBe(0);
+      expect(getGearItemPoolIndex('I64')).toBe(63);
+    });
+
+    it('respects active pool bits for base gear', () => {
+      const pool = createEmptyBitmask();
+      setItemUnlocked(pool, 0); // I1
+      expect(isGearInActivePool('I1', pool)).toBe(true);
+      expect(isGearInActivePool('I2', pool)).toBe(false);
     });
   });
 });

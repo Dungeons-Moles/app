@@ -5,17 +5,21 @@
 
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useProfile } from '../contexts/ProfileContext';
-import type { ItemTag, ItemStats, GearId } from '../game/engine/types';
+import type { ItemTag, ItemStats } from '../game/engine/types';
+import { TOOL_DEFINITIONS } from '../game/entities/items';
+import { GEAR_DEFINITIONS } from '../data/gear';
 
-/** Total number of collectible items (80 gear items) */
+/** Total number of collectible items currently unlockable in bitmask slots (0..79). */
 export const TOTAL_ITEMS = 80;
+/** On-chain bitmask size in bytes (80 bits) */
+const ITEM_POOL_BYTES = 10;
 
 /** Item data for collection display */
 export interface CollectionItem {
-  /** Item index (0-79) */
+  /** Item index (0-92) */
   index: number;
-  /** Item ID (I1-I64 for gear) */
-  id: GearId;
+  /** Item ID (engine format, e.g. I1 or T16) */
+  id: string;
   /** Item name */
   name: string;
   /** Item emoji */
@@ -63,67 +67,53 @@ interface UseItemCollectionResult {
   refresh: () => void;
 }
 
-// Item definitions (simplified - real data would come from data files)
+// Item definitions derived from live gear/tool data
 const ITEM_DEFINITIONS: Omit<CollectionItem, 'isUnlocked'>[] = generateItemDefinitions();
 
 function generateItemDefinitions(): Omit<CollectionItem, 'isUnlocked'>[] {
-  const tags: ItemTag[] = ['STONE', 'SCOUT', 'GREED', 'BLAST', 'FROST', 'RUST', 'BLOOD', 'TEMPO'];
   const items: Omit<CollectionItem, 'isUnlocked'>[] = [];
 
   for (let i = 0; i < TOTAL_ITEMS; i++) {
-    const tagIndex = Math.floor(i / 10) % tags.length;
-    const tag = tags[tagIndex];
-    const gearIndex = (i % 64) + 1;
+    const id = indexToItemId(i);
+    if (!id) continue;
 
+    if (id.startsWith('I')) {
+      const gear = GEAR_DEFINITIONS[id as keyof typeof GEAR_DEFINITIONS];
+      if (!gear) continue;
+      items.push({
+        index: i,
+        id,
+        name: gear.name,
+        emoji: gear.emoji,
+        tag: gear.tags[0] ?? 'STONE',
+        stats: gear.stats,
+      });
+      continue;
+    }
+
+    const tool = TOOL_DEFINITIONS[id as keyof typeof TOOL_DEFINITIONS];
+    if (!tool) continue;
     items.push({
       index: i,
-      id: `I${gearIndex}` as GearId,
-      name: `${tag} Item ${(i % 10) + 1}`,
-      emoji: getTagEmoji(tag),
-      tag,
-      stats: generateStats(tag, i),
+      id,
+      name: tool.name,
+      emoji: tool.emoji,
+      tag: tool.tags[0] ?? 'STONE',
+      stats: tool.stats,
     });
   }
 
   return items;
 }
 
-function getTagEmoji(tag: ItemTag): string {
-  const emojis: Record<ItemTag, string> = {
-    STONE: '🪨',
-    SCOUT: '🔭',
-    GREED: '💰',
-    BLAST: '💥',
-    FROST: '❄️',
-    RUST: '🦠',
-    BLOOD: '🩸',
-    TEMPO: '⚡',
-  };
-  return emojis[tag] ?? '📦';
-}
-
-function generateStats(tag: ItemTag, index: number): ItemStats {
-  const base = (index % 5) + 1;
-  switch (tag) {
-    case 'STONE':
-      return { arm: base, hp: base * 2 };
-    case 'SCOUT':
-      return { spd: base, dig: Math.ceil(base / 2) };
-    case 'GREED':
-      return { atk: Math.ceil(base / 2) };
-    case 'BLAST':
-      return { atk: base + 1 };
-    case 'FROST':
-      return { arm: base, spd: -1 };
-    case 'RUST':
-      return { atk: base, arm: -1 };
-    case 'BLOOD':
-      return { atk: base + 2, hp: -base };
-    case 'TEMPO':
-      return { spd: base + 1 };
-    default:
-      return { atk: base };
+function indexToItemId(index: number): string | null {
+  if (index >= 0 && index <= 63) {
+    return `I${index + 1}`;
   }
+  if (index >= 64 && index <= 79) {
+    return `T${index - 63}`;
+  }
+  return null;
 }
 
 export function useItemCollection(): UseItemCollectionResult {
@@ -194,13 +184,13 @@ export function useItemCollection(): UseItemCollectionResult {
 
 /**
  * Parse item unlock bitmask from on-chain data
- * @param bitmask - 10-byte (80-bit) bitmask
+ * @param bitmask - 10-byte (80-bit) bitmask, with unlockable range 0..79
  * @returns Set of unlocked item indices
  */
 export function parseItemBitmask(bitmask: Uint8Array): Set<number> {
   const unlocked = new Set<number>();
 
-  for (let byteIndex = 0; byteIndex < bitmask.length && byteIndex < 10; byteIndex++) {
+  for (let byteIndex = 0; byteIndex < bitmask.length && byteIndex < ITEM_POOL_BYTES; byteIndex++) {
     const byte = bitmask[byteIndex];
     for (let bitIndex = 0; bitIndex < 8; bitIndex++) {
       const itemIndex = byteIndex * 8 + bitIndex;
@@ -221,7 +211,7 @@ export function parseItemBitmask(bitmask: Uint8Array): Set<number> {
  * @returns 10-byte bitmask
  */
 export function createItemBitmask(unlockedItems: Set<number>): Uint8Array {
-  const bitmask = new Uint8Array(10);
+  const bitmask = new Uint8Array(ITEM_POOL_BYTES);
 
   for (const itemIndex of unlockedItems) {
     if (itemIndex >= 0 && itemIndex < TOTAL_ITEMS) {

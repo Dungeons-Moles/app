@@ -400,6 +400,7 @@ export interface FrontendCombatLogEntry {
     armorLost?: number;
     statusApplied?: { type: string; stacks: number };
     effectName?: string;
+    goldStolen?: number;
   };
   rngValues: number[];
 }
@@ -588,6 +589,7 @@ export function convertBackendLogToFrontend(
           target,
           result: {
             effectName: `Stole ${entry.value} gold`,
+            goldStolen: entry.value,
           },
           rngValues: [],
         };

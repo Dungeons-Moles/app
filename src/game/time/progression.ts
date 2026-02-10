@@ -49,14 +49,50 @@ export function createWeekTimeState(week: 1 | 2 | 3, rng: SeededRNG): TimeState 
 }
 
 // ============================================================================
-// Boss Selection (T064)
+// Boss Selection (T064) - Deterministic, matches on-chain boss-system logic
 // ============================================================================
 
+const LEVELS_PER_ACT = 10;
+
 /**
- * Selects a boss for the given week from the appropriate pool.
- * Week 1: Random from 4 Gatekeepers
- * Week 2: Random from 2 Filters
- * Week 3: Always The Eldritch Mole
+ * Deterministic boss selection matching the on-chain boss-system crate.
+ * Boss is determined by campaign_level and week — no RNG involved.
+ *
+ * On-chain logic (crates/boss-system/src/selection.rs):
+ * - Week 1: boss_index = (stage_in_act - 1) % 5
+ * - Week 2: boss_index = ((stage_in_act - 1) + 2) % 5
+ * - Week 3: odd stages = index 0, even stages = index 1
+ * - Biome: even acts (0,2) = A, odd acts (1,3) = B
+ *
+ * @param campaignLevel - Campaign level (1-40)
+ * @param week - Week number (1, 2, or 3)
+ * @returns Selected BossId
+ */
+export function selectWeekBossForLevel(campaignLevel: number, week: 1 | 2 | 3): BossId {
+  const act = Math.floor((campaignLevel - 1) / LEVELS_PER_ACT);
+  const stageInAct = ((campaignLevel - 1) % LEVELS_PER_ACT) + 1;
+  const biome = act % 2 === 0 ? 'A' : 'B';
+
+  let bossIndex: number;
+  switch (week) {
+    case 1:
+      bossIndex = (stageInAct - 1) % 5;
+      break;
+    case 2:
+      bossIndex = ((stageInAct - 1) + 2) % 5;
+      break;
+    case 3:
+      bossIndex = stageInAct % 2 === 1 ? 0 : 1;
+      break;
+  }
+
+  // Boss IDs follow pattern: B-{biome}-W{week}-{index+1 padded}
+  const paddedIndex = String(bossIndex + 1).padStart(2, '0');
+  return `B-${biome}-W${week}-${paddedIndex}` as BossId;
+}
+
+/**
+ * Selects a boss for the given week using RNG (guest mode only).
  *
  * @param week - Week number (1, 2, or 3)
  * @param rng - Seeded RNG for deterministic selection

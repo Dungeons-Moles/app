@@ -211,7 +211,32 @@
       "accounts": [
         {
           "name": "map_enemies",
-          "writable": true
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  112,
+                  95,
+                  101,
+                  110,
+                  101,
+                  109,
+                  105,
+                  101,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "game_state.session",
+                "account": "GameState"
+              }
+            ]
+          }
         },
         {
           "name": "game_state",
@@ -933,6 +958,14 @@
           "address": "BYdGuEGf8NqtLnHpSRuZFrPGEgvdxMfGfTt71QVBxYHa"
         },
         {
+          "name": "map_pois",
+          "writable": true
+        },
+        {
+          "name": "poi_system_program",
+          "address": "6E27r1Cyo2CNPvtRsonn3uHUAdznS3cMXEBX4HRbfBQY"
+        },
+        {
           "name": "player",
           "writable": true,
           "signer": true
@@ -1073,7 +1106,7 @@
         "This instruction is intended for testing purposes to avoid",
         "doing hundreds of move transactions to reach a specific phase.",
         "",
-        "WARNING: This should only be used in test environments."
+        "Disabled in production builds."
       ],
       "discriminator": [
         19,
@@ -1100,7 +1133,7 @@
       ],
       "args": [
         {
-          "name": "phase",
+          "name": "_phase",
           "type": {
             "defined": {
               "name": "Phase"
@@ -1108,7 +1141,109 @@
           }
         },
         {
-          "name": "moves_remaining",
+          "name": "_moves_remaining",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "set_position_authorized",
+      "docs": [
+        "Sets the player's position, authorized by poi-system.",
+        "",
+        "This instruction can only be called via CPI from poi-system using",
+        "the poi_authority PDA as signer. Used for fast travel between",
+        "discovered Rail Waypoints."
+      ],
+      "discriminator": [
+        77,
+        16,
+        84,
+        231,
+        161,
+        42,
+        86,
+        84
+      ],
+      "accounts": [
+        {
+          "name": "game_state",
+          "writable": true
+        },
+        {
+          "name": "poi_authority",
+          "docs": [
+            "POI authority PDA from poi-system that must sign"
+          ],
+          "signer": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  105,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                77,
+                160,
+                63,
+                209,
+                182,
+                56,
+                149,
+                181,
+                2,
+                195,
+                173,
+                95,
+                65,
+                136,
+                88,
+                122,
+                235,
+                166,
+                235,
+                216,
+                241,
+                107,
+                2,
+                35,
+                185,
+                14,
+                177,
+                21,
+                150,
+                103,
+                215,
+                77
+              ]
+            }
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "target_x",
+          "type": "u8"
+        },
+        {
+          "name": "target_y",
           "type": "u8"
         }
       ]
@@ -1769,6 +1904,19 @@
         98,
         128
       ]
+    },
+    {
+      "name": "PositionSetAuthorized",
+      "discriminator": [
+        170,
+        110,
+        94,
+        175,
+        251,
+        145,
+        24,
+        252
+      ]
     }
   ],
   "errors": [
@@ -1876,6 +2024,11 @@
       "code": 6020,
       "name": "InvalidHpBonus",
       "msg": "Invalid HP bonus value"
+    },
+    {
+      "code": 6021,
+      "name": "TestOnlyInstructionDisabled",
+      "msg": "Test-only instruction is disabled in production builds"
     }
   ],
   "types": [
@@ -3082,6 +3235,37 @@
             "docs": [
               "Y position on map"
             ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PositionSetAuthorized",
+      "docs": [
+        "Emitted when position is updated via authorized CPI from poi-system."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "from_x",
+            "type": "u8"
+          },
+          {
+            "name": "from_y",
+            "type": "u8"
+          },
+          {
+            "name": "to_x",
+            "type": "u8"
+          },
+          {
+            "name": "to_y",
             "type": "u8"
           }
         ]

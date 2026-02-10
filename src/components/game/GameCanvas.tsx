@@ -18,6 +18,7 @@ interface GameCanvasProps {
   feedbackMessage?: string | null;
   width?: number;
   height?: number;
+  cameraFocusOverride?: Position;
 }
 
 export function GameCanvas({
@@ -32,6 +33,7 @@ export function GameCanvas({
   feedbackMessage,
   width,
   height,
+  cameraFocusOverride,
 }: GameCanvasProps) {
   return (
     <View style={styles.container}>
@@ -44,6 +46,7 @@ export function GameCanvas({
         overviewMode={overviewMode}
         onPanOverview={onPanOverview}
         onZoomOverview={onZoomOverview}
+        cameraFocusOverride={cameraFocusOverride}
         width={width}
         height={height}
       />

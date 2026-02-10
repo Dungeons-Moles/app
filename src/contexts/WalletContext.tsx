@@ -128,6 +128,26 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [devWebWallet] = useState<Keypair | null>(() => (IS_WEB ? loadDevWebWallet() : null));
 
+  // Auto-airdrop on local validator when using dev wallet
+  useEffect(() => {
+    if (!SOLANA_CONFIG.isLocalValidator || !devWebWallet || wallet.authToken !== 'dev-web-wallet') return;
+
+    const airdropIfNeeded = async () => {
+      try {
+        const connection = new Connection(SOLANA_CONFIG.rpcUrl, SOLANA_CONFIG.commitment);
+        const balance = await connection.getBalance(devWebWallet.publicKey);
+        if (balance < 1_000_000_000) {
+          await connection.requestAirdrop(devWebWallet.publicKey, 2_000_000_000);
+          console.log(`[Dev Wallet] Airdropped 2 SOL to ${devWebWallet.publicKey.toBase58()}`);
+        }
+      } catch (err) {
+        console.warn('[Dev Wallet] Airdrop failed:', err);
+      }
+    };
+
+    airdropIfNeeded();
+  }, [devWebWallet, wallet.authToken]);
+
   // Eagerly restore existing wallet connection on mount (web only)
   useEffect(() => {
     if (!IS_WEB || typeof window === 'undefined') return;

@@ -1,7 +1,6 @@
 /**
- * Item Entity Tests - Updated for GDD 80 items
+ * Item Entity Tests
  * Tests for item stat calculations, rarity multipliers, and tool/gear instances
- * @see docs/gdd.md Section 9: Item System
  */
 
 import {
@@ -30,12 +29,12 @@ describe('Items Entity', () => {
     });
 
     it('creates Rime Pike with FROST tag', () => {
-      const tool = createToolInstance('T9'); // Rime Pike: +2 ATK
+      const tool = createToolInstance('T9'); // Rime Pike: +1 ATK
 
       expect(tool.id).toBe('T9');
       expect(tool.name).toBe('Rime Pike');
       expect(tool.rarity).toBe('COMMON');
-      expect(tool.stats.atk).toBe(2);
+      expect(tool.stats.atk).toBe(1);
       expect(tool.tags).toContain('FROST');
     });
 
@@ -48,7 +47,7 @@ describe('Items Entity', () => {
       expect(tool.tags).toContain('SCOUT');
     });
 
-    it('creates all 16 tools with valid definitions', () => {
+    it('creates all non-starter tools with valid definitions', () => {
       const toolIds: ToolId[] = [
         'T1',
         'T2',
@@ -119,12 +118,12 @@ describe('Items Entity', () => {
       expect(gear.stats.dig).toBe(8);
     });
 
-    it('does not apply multiplier to Rare rarity items', () => {
-      const gear = createGearInstance('I34'); // Frostguard Buckler: RARE, +6 ARM
+    it('does not apply multiplier to Heroic rarity items', () => {
+      const gear = createGearInstance('I34'); // Frostguard Buckler: HEROIC, +8 ARM
 
-      expect(gear.baseRarity).toBe('RARE');
-      expect(gear.currentRarity).toBe('RARE');
-      expect(gear.stats.arm).toBe(6); // No multiplier for RARE
+      expect(gear.baseRarity).toBe('HEROIC');
+      expect(gear.currentRarity).toBe('HEROIC');
+      expect(gear.stats.arm).toBe(8); // No multiplier for HEROIC
     });
 
     it('creates all 64 gear items with valid definitions', () => {
@@ -177,14 +176,14 @@ describe('Items Entity', () => {
     });
 
     it('calculates combined stats from single gear item', () => {
-      // Use Frostguard Buckler (I34) which has base stats: { arm: 6 }
+      // Use Frostguard Buckler (I34) which has base stats: { arm: 8 }
       // Note: I2 (Work Vest) now has stats applied via BattleStart effects, not base stats
-      const gear = createGearInstance('I34'); // Frostguard Buckler: +6 ARM (base)
+      const gear = createGearInstance('I34'); // Frostguard Buckler: +8 ARM (base)
 
       const stats = calculateItemStats(null, [gear]);
 
       expect(stats.hp).toBe(0);
-      expect(stats.arm).toBe(6);
+      expect(stats.arm).toBe(8);
       expect(stats.atk).toBe(0);
     });
 
@@ -193,14 +192,14 @@ describe('Items Entity', () => {
       // stats applied via BattleStart effects, not base stats.
       // Use items with base stats for this test.
       const tool = createToolInstance('T2'); // Cragbreaker: +2 ATK, +3 ARM
-      const gear1 = createGearInstance('I34'); // Frostguard Buckler: +6 ARM (base)
+      const gear1 = createGearInstance('I34'); // Frostguard Buckler: +8 ARM (base)
       const gear2 = createGearInstance('I36'); // Ice Skates: +1 SPD (base)
       const gear3 = createGearInstance('I9'); // Miner Boots: +2 DIG (base)
 
       const stats = calculateItemStats(tool, [gear1, gear2, gear3]);
 
       expect(stats.atk).toBe(2); // T2(2)
-      expect(stats.arm).toBe(9); // T2(3) + I34(6)
+      expect(stats.arm).toBe(11); // T2(3) + I34(8)
       expect(stats.spd).toBe(1); // I36(1)
       expect(stats.dig).toBe(2); // I9(2)
       expect(stats.hp).toBe(0);
@@ -216,12 +215,12 @@ describe('Items Entity', () => {
     });
 
     it('handles empty gear array correctly', () => {
-      const tool = createToolInstance('T15'); // Quickpick: +1 ATK, +1 SPD
+      const tool = createToolInstance('T15'); // Quickpick: +1 ATK, +2 SPD
 
       const stats = calculateItemStats(tool, []);
 
       expect(stats.atk).toBe(1);
-      expect(stats.spd).toBe(1);
+      expect(stats.spd).toBe(2);
       expect(stats.arm).toBe(0);
     });
 
@@ -239,14 +238,14 @@ describe('Items Entity', () => {
       // Note: STONE items (I1, I2) now have stats applied via BattleStart effects.
       // Use items with base stats for testing stat summing.
       const gear1 = createGearInstance('I9'); // Miner Boots: +2 DIG (base)
-      const gear2 = createGearInstance('I34'); // Frostguard Buckler: +6 ARM (base)
+      const gear2 = createGearInstance('I34'); // Frostguard Buckler: +8 ARM (base)
       const gear3 = createGearInstance('I36'); // Ice Skates: +1 SPD (base)
       const gear4 = createGearInstance('I37'); // Rime Cloak: +3 ARM (base)
 
       const stats = calculateItemStats(null, [gear1, gear2, gear3, gear4]);
 
       expect(stats.atk).toBe(0);
-      expect(stats.arm).toBe(9); // I34(6) + I37(3)
+      expect(stats.arm).toBe(11); // I34(8) + I37(3)
       expect(stats.spd).toBe(1); // I36
       expect(stats.dig).toBe(2); // I9
       expect(stats.hp).toBe(0);
@@ -290,12 +289,12 @@ describe('Items Entity', () => {
       expect(def.baseRarity).toBe('COMMON');
     });
 
-    it('returns correct definition for I34 Frostguard Buckler (Rare)', () => {
+    it('returns correct definition for I34 Frostguard Buckler (Heroic)', () => {
       const def = getGearDefinition('I34');
 
       expect(def.id).toBe('I34');
       expect(def.name).toBe('Frostguard Buckler');
-      expect(def.baseRarity).toBe('RARE');
+      expect(def.baseRarity).toBe('HEROIC');
     });
 
     it('returns correct definition for I31 Time Charge (Heroic)', () => {

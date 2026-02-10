@@ -6,7 +6,7 @@
  * Uses burner wallet for signing all gameplay transactions.
  */
 
-import { Connection, PublicKey, Keypair, Transaction } from '@solana/web3.js';
+import { Connection, PublicKey, Keypair, ComputeBudgetProgram } from '@solana/web3.js';
 import { Program } from '@coral-xyz/anchor';
 import { sendBurnerTransaction } from './burnerWallet';
 import {
@@ -16,7 +16,6 @@ import {
   deriveInventoryAuthorityPda,
 } from './constants';
 import { SOLANA_CONFIG } from './config';
-import { createPlayerInventoryProgram } from './programs';
 import type { MapPoisData, PoiInstance, ShopState, ItemOffer } from './types/poi_system';
 import type { ToolOilModification } from './types/player_inventory';
 
@@ -144,7 +143,6 @@ export async function generateCacheOffer(
     .accounts({
       mapPois: mapPoisPda,
       gameState: gameStatePda,
-      gameStateWritable: gameStatePda,
       inventory: inventoryPda,
       inventoryAuthority: inventoryAuthorityPda,
       poiAuthority: poiAuthorityPda,
@@ -154,6 +152,9 @@ export async function generateCacheOffer(
       player: burnerKeypair.publicKey,
     })
     .transaction();
+
+  // GenerateCacheOffer can exceed the default 200K CU limit (e.g. Geode Vault filtering)
+  transaction.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }));
 
   return sendBurnerTransaction(connection, transaction, burnerKeypair);
 }
@@ -196,7 +197,6 @@ export async function interactPickItem(
     .accounts({
       mapPois: mapPoisPda,
       gameState: gameStatePda,
-      gameStateWritable: gameStatePda,
       inventory: inventoryPda,
       inventoryAuthority: inventoryAuthorityPda,
       poiAuthority: poiAuthorityPda,
@@ -216,12 +216,13 @@ export async function interactPickItem(
 
 /**
  * Apply a tool oil modification at a Tool Oil Rack (L4).
- * Each oil type can only be applied once per tool (RepeatablePerTool).
+ * Tool Oil Rack is one-time use per POI instance.
  *
  * @param connection - Solana connection
  * @param program - Anchor program instance for poi_system
  * @param mapPoisPda - MapPois PDA
  * @param gameStatePda - GameState PDA
+ * @param sessionPda - GameSession PDA (used to derive inventory)
  * @param burnerKeypair - Burner wallet keypair (signer)
  * @param poiIndex - Index of the POI in map_pois.pois
  * @param currentOilFlags - Current tool oil flags (bitmask)
@@ -233,16 +234,21 @@ export async function interactToolOil(
   program: Program,
   mapPoisPda: PublicKey,
   gameStatePda: PublicKey,
+  sessionPda: PublicKey,
   burnerKeypair: Keypair,
   poiIndex: number,
   currentOilFlags: number,
   modification: number
 ): Promise<string> {
+  const [inventoryPda] = deriveInventoryPda(sessionPda);
+
   const transaction = await program.methods
     .interactToolOil(poiIndex, currentOilFlags, modification)
     .accounts({
       mapPois: mapPoisPda,
       gameState: gameStatePda,
+      inventory: inventoryPda,
+      playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
       player: burnerKeypair.publicKey,
     })
     .transaction();
@@ -279,35 +285,18 @@ export async function interactToolOilCombined(
   modification: ToolOilModification,
   oilFlag: number
 ): Promise<string> {
-  // Build poi-system instruction (validates POI, marks as used)
-  const poiInstruction = await poiProgram.methods
-    .interactToolOil(poiIndex, 0, oilFlag)
-    .accounts({
-      mapPois: mapPoisPda,
-      gameState: gameStatePda,
-      player: burnerKeypair.publicKey,
-    })
-    .instruction();
-
-  // Build player-inventory instruction (applies oil to tool)
-  const [inventoryPda] = deriveInventoryPda(sessionPda);
-  const inventoryProgram = createPlayerInventoryProgram(connection);
-
-  // Convert ToolOilModification enum to Anchor format
-  const modificationArg = { [modification]: {} };
-
-  const inventoryInstruction = await inventoryProgram.methods
-    .applyToolOil(modificationArg)
-    .accounts({
-      inventory: inventoryPda,
-      player: burnerKeypair.publicKey,
-    })
-    .instruction();
-
-  // Combine both instructions into a single transaction
-  const transaction = new Transaction().add(poiInstruction, inventoryInstruction);
-
-  return sendBurnerTransaction(connection, transaction, burnerKeypair);
+  void modification;
+  return interactToolOil(
+    connection,
+    poiProgram,
+    mapPoisPda,
+    gameStatePda,
+    sessionPda,
+    burnerKeypair,
+    poiIndex,
+    0,
+    oilFlag
+  );
 }
 
 /**
@@ -319,6 +308,7 @@ export async function interactToolOilCombined(
  * @param program - Anchor program instance for poi_system
  * @param mapPoisPda - MapPois PDA
  * @param gameStatePda - GameState PDA
+ * @param sessionPda - GameSession PDA (used to derive inventory)
  * @param burnerKeypair - Burner wallet keypair (signer)
  * @param poiIndex - Index of the POI in map_pois.pois
  * @returns Transaction signature
@@ -328,14 +318,19 @@ export async function generateOilOffer(
   program: Program,
   mapPoisPda: PublicKey,
   gameStatePda: PublicKey,
+  sessionPda: PublicKey,
   burnerKeypair: Keypair,
   poiIndex: number
 ): Promise<string> {
+  const [inventoryPda] = deriveInventoryPda(sessionPda);
+
   const transaction = await program.methods
     .generateOilOffer(poiIndex)
     .accounts({
       mapPois: mapPoisPda,
       gameState: gameStatePda,
+      inventory: inventoryPda,
+      playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
       player: burnerKeypair.publicKey,
     })
     .transaction();
@@ -422,38 +417,6 @@ export async function interactSeismicScanner(
 // ============================================================================
 
 /**
- * Discover a Rail Waypoint (L8) on first visit.
- * Marks the waypoint as discovered for fast travel.
- *
- * @param connection - Solana connection
- * @param program - Anchor program instance for poi_system
- * @param mapPoisPda - MapPois PDA
- * @param gameStatePda - GameState PDA
- * @param burnerKeypair - Burner wallet keypair (signer)
- * @param poiIndex - Index of the POI in map_pois.pois
- * @returns Transaction signature
- */
-export async function discoverWaypoint(
-  connection: Connection,
-  program: Program,
-  mapPoisPda: PublicKey,
-  gameStatePda: PublicKey,
-  burnerKeypair: Keypair,
-  poiIndex: number
-): Promise<string> {
-  const transaction = await program.methods
-    .discoverWaypoint(poiIndex)
-    .accounts({
-      mapPois: mapPoisPda,
-      gameState: gameStatePda,
-      player: burnerKeypair.publicKey,
-    })
-    .transaction();
-
-  return sendBurnerTransaction(connection, transaction, burnerKeypair);
-}
-
-/**
  * Fast travel between two discovered Rail Waypoints (L8).
  *
  * @param connection - Solana connection
@@ -474,11 +437,15 @@ export async function fastTravel(
   fromPoiIndex: number,
   toPoiIndex: number
 ): Promise<string> {
+  const [poiAuthorityPda] = derivePoiAuthorityPda();
+
   const transaction = await program.methods
     .fastTravel(fromPoiIndex, toPoiIndex)
     .accounts({
       mapPois: mapPoisPda,
       gameState: gameStatePda,
+      poiAuthority: poiAuthorityPda,
+      gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
       player: burnerKeypair.publicKey,
     })
     .transaction();
@@ -611,6 +578,7 @@ export async function shopReroll(
  * @param connection - Solana connection
  * @param program - Anchor program instance for poi_system
  * @param mapPoisPda - MapPois PDA
+ * @param sessionPda - GameSession PDA
  * @param burnerKeypair - Burner wallet keypair (signer)
  * @returns Transaction signature
  */
@@ -618,12 +586,14 @@ export async function leaveShop(
   connection: Connection,
   program: Program,
   mapPoisPda: PublicKey,
+  sessionPda: PublicKey,
   burnerKeypair: Keypair
 ): Promise<string> {
   const transaction = await program.methods
     .leaveShop()
     .accounts({
       mapPois: mapPoisPda,
+      gameSession: sessionPda,
       player: burnerKeypair.publicKey,
     })
     .transaction();
@@ -637,13 +607,14 @@ export async function leaveShop(
 
 /**
  * Upgrade an item's tier at the Rusty Anvil (L10).
- * Tier I -> II costs 8 Gold, II -> III costs 16 Gold.
- * POI is one-time use. Gold is deducted atomically via CPI.
+ * Tier I -> II costs 10 Gold, II -> III costs 20 Gold.
+ * POI is repeatable. Gold is deducted atomically via CPI.
  *
  * @param connection - Solana connection
  * @param program - Anchor program instance for poi_system
  * @param mapPoisPda - MapPois PDA
  * @param gameStatePda - GameState PDA
+ * @param sessionPda - GameSession PDA (used to derive inventory)
  * @param burnerKeypair - Burner wallet keypair (signer)
  * @param poiIndex - Index of the POI in map_pois.pois
  * @param itemId - 8-byte item identifier
@@ -655,11 +626,13 @@ export async function interactRustyAnvil(
   program: Program,
   mapPoisPda: PublicKey,
   gameStatePda: PublicKey,
+  sessionPda: PublicKey,
   burnerKeypair: Keypair,
   poiIndex: number,
   itemId: Uint8Array,
   currentTier: number
 ): Promise<string> {
+  const [inventoryPda] = deriveInventoryPda(sessionPda);
   const [poiAuthorityPda] = derivePoiAuthorityPda();
 
   const transaction = await program.methods
@@ -667,8 +640,10 @@ export async function interactRustyAnvil(
     .accounts({
       mapPois: mapPoisPda,
       gameState: gameStatePda,
+      inventory: inventoryPda,
       poiAuthority: poiAuthorityPda,
       gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
+      playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
       player: burnerKeypair.publicKey,
     })
     .transaction();
@@ -688,6 +663,7 @@ export async function interactRustyAnvil(
  * @param program - Anchor program instance for poi_system
  * @param mapPoisPda - MapPois PDA
  * @param gameStatePda - GameState PDA
+ * @param sessionPda - GameSession PDA (used to derive inventory)
  * @param burnerKeypair - Burner wallet keypair (signer)
  * @param poiIndex - Index of the POI in map_pois.pois
  * @param item1Id - 8-byte identifier of the first item
@@ -701,6 +677,7 @@ export async function interactRuneKiln(
   program: Program,
   mapPoisPda: PublicKey,
   gameStatePda: PublicKey,
+  sessionPda: PublicKey,
   burnerKeypair: Keypair,
   poiIndex: number,
   item1Id: Uint8Array,
@@ -708,11 +685,15 @@ export async function interactRuneKiln(
   item2Id: Uint8Array,
   item2Tier: number
 ): Promise<string> {
+  const [inventoryPda] = deriveInventoryPda(sessionPda);
+
   const transaction = await program.methods
     .interactRuneKiln(poiIndex, Array.from(item1Id), item1Tier, Array.from(item2Id), item2Tier)
     .accounts({
       mapPois: mapPoisPda,
       gameState: gameStatePda,
+      inventory: inventoryPda,
+      playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
       player: burnerKeypair.publicKey,
     })
     .transaction();
@@ -726,13 +707,13 @@ export async function interactRuneKiln(
 
 /**
  * Scrap a gear item for gold at the Scrap Chute (L14).
- * Gold reward depends on act (8-12). POI is one-time use.
- * Gold is deducted atomically via CPI.
+ * Applies flat 4 gold cost + rarity refund and consumes one equipped gear item atomically.
  *
  * @param connection - Solana connection
  * @param program - Anchor program instance for poi_system
  * @param mapPoisPda - MapPois PDA
  * @param gameStatePda - GameState PDA
+ * @param sessionPda - GameSession PDA (for inventory derivation)
  * @param burnerKeypair - Burner wallet keypair (signer)
  * @param poiIndex - Index of the POI in map_pois.pois
  * @param itemId - 8-byte identifier of the item to scrap
@@ -743,10 +724,13 @@ export async function interactScrapChute(
   program: Program,
   mapPoisPda: PublicKey,
   gameStatePda: PublicKey,
+  sessionPda: PublicKey,
   burnerKeypair: Keypair,
   poiIndex: number,
   itemId: Uint8Array
 ): Promise<string> {
+  const [inventoryPda] = deriveInventoryPda(sessionPda);
+  const [inventoryAuthorityPda] = deriveInventoryAuthorityPda();
   const [poiAuthorityPda] = derivePoiAuthorityPda();
 
   const transaction = await program.methods
@@ -754,8 +738,11 @@ export async function interactScrapChute(
     .accounts({
       mapPois: mapPoisPda,
       gameState: gameStatePda,
+      inventory: inventoryPda,
+      inventoryAuthority: inventoryAuthorityPda,
       poiAuthority: poiAuthorityPda,
       gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
+      playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
       player: burnerKeypair.publicKey,
     })
     .transaction();

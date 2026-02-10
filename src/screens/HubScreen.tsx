@@ -26,7 +26,6 @@ import { SpeedControls } from '../components/combat';
 import { Skeleton } from '../components/common/Skeleton';
 import { Typography } from '../theme/typography';
 import { MAX_CAMPAIGN_LEVEL } from '../hooks/useMapGenerator';
-import type { CombatSpeed } from '../contexts/CombatContext';
 import {
   GEAR_DEFINITIONS,
   getAllGearDefinitions,
@@ -148,6 +147,17 @@ const TAG_DISPLAY_NAMES: Record<ItemTag, string> = {
   TEMPO: 'TEMPO',
 };
 
+const TAG_COLORS: Record<ItemTag, string> = {
+  STONE: '#8B7355',
+  SCOUT: '#4682B4',
+  GREED: '#DAA520',
+  FROST: '#5F9EA0',
+  BLAST: '#f97316',
+  RUST: '#a16207',
+  BLOOD: '#dc2626',
+  TEMPO: '#9333ea',
+};
+
 // All tags in order
 const ALL_TAGS: ItemTag[] = ['STONE', 'SCOUT', 'GREED', 'BLAST', 'FROST', 'RUST', 'BLOOD', 'TEMPO'];
 
@@ -186,6 +196,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
     refresh,
     mode,
     isItemUnlocked,
+    defaultCombatSpeed,
   } = useProfile();
   const isGuest = mode === 'guest';
   const { activeSessions } = useSession();
@@ -203,7 +214,6 @@ export function HubScreen({ navigation }: HubScreenProps) {
   const [showPvP, setShowPvP] = useState(false);
   const [isPurchasing, setIsPurchasing] = useState(false);
   const [purchaseError, setPurchaseError] = useState<string | null>(null);
-  const [combatSpeed, setCombatSpeed] = useState<CombatSpeed>('normal');
   const [refreshing, setRefreshing] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const hasPromptedResume = useRef(false);
@@ -603,11 +613,8 @@ export function HubScreen({ navigation }: HubScreenProps) {
                   <View style={styles.settingRow}>
                     <Text style={styles.settingLabel}>Combat speed</Text>
                     <SpeedControls
-                      currentSpeed={combatSpeed}
-                      onSpeedChange={(speed) => {
-                        setCombatSpeed(speed);
-                        updateDefaultCombatSpeed(speed);
-                      }}
+                      currentSpeed={defaultCombatSpeed}
+                      onSpeedChange={updateDefaultCombatSpeed}
                     />
                   </View>
 
@@ -914,7 +921,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
                           const tagItems = getItemsByTag(tag);
                           return (
                             <View key={tag} style={styles.tagSection}>
-                              <Text style={styles.tagHeader}>{TAG_DISPLAY_NAMES[tag]}</Text>
+                              <Text style={[styles.tagHeader, { color: TAG_COLORS[tag] }]}>{TAG_DISPLAY_NAMES[tag]}</Text>
                               <View style={styles.itemsGrid}>
                                 {tagItems.map((item) => {
                                   const unlocked = checkItemUnlocked(item.id);
@@ -999,45 +1006,47 @@ export function HubScreen({ navigation }: HubScreenProps) {
                               style={styles.itemDescriptionScroll}
                               showsVerticalScrollIndicator={false}
                             >
-                              <Text style={styles.itemDescription}>
-                                {selectedItem.effect?.description ||
-                                  ITEM_DESCRIPTIONS[selectedItem.name] ||
-                                  'No description available.'}
-                              </Text>
+                              {(selectedItem.effect?.description || ITEM_DESCRIPTIONS[selectedItem.name]) && (
+                                <Text style={styles.itemDescription}>
+                                  {selectedItem.effect?.description || ITEM_DESCRIPTIONS[selectedItem.name]}
+                                </Text>
+                              )}
 
-                              <View style={styles.statsContainer}>
-                                <Text style={styles.statsHeader}>Stats</Text>
-                                {selectedItem.stats.atk !== undefined && (
-                                  <View style={styles.statRow}>
-                                    <Text style={styles.statLabel}>ATK</Text>
-                                    <Text style={styles.statValue}>+{selectedItem.stats.atk}</Text>
-                                  </View>
-                                )}
-                                {selectedItem.stats.arm !== undefined && (
-                                  <View style={styles.statRow}>
-                                    <Text style={styles.statLabel}>ARM</Text>
-                                    <Text style={styles.statValue}>+{selectedItem.stats.arm}</Text>
-                                  </View>
-                                )}
-                                {selectedItem.stats.spd !== undefined && (
-                                  <View style={styles.statRow}>
-                                    <Text style={styles.statLabel}>SPD</Text>
-                                    <Text style={styles.statValue}>+{selectedItem.stats.spd}</Text>
-                                  </View>
-                                )}
-                                {selectedItem.stats.dig !== undefined && (
-                                  <View style={styles.statRow}>
-                                    <Text style={styles.statLabel}>DIG</Text>
-                                    <Text style={styles.statValue}>+{selectedItem.stats.dig}</Text>
-                                  </View>
-                                )}
-                                {selectedItem.stats.hp !== undefined && (
-                                  <View style={styles.statRow}>
-                                    <Text style={styles.statLabel}>HP</Text>
-                                    <Text style={styles.statValue}>+{selectedItem.stats.hp}</Text>
-                                  </View>
-                                )}
-                              </View>
+                              {(selectedItem.stats.atk !== undefined || selectedItem.stats.arm !== undefined || selectedItem.stats.spd !== undefined || selectedItem.stats.dig !== undefined || selectedItem.stats.hp !== undefined) && (
+                                <View style={styles.statsContainer}>
+                                  <Text style={styles.statsHeader}>Stats</Text>
+                                  {selectedItem.stats.atk !== undefined && (
+                                    <View style={styles.statRow}>
+                                      <Text style={styles.statLabel}>ATK</Text>
+                                      <Text style={styles.statValue}>+{selectedItem.stats.atk}</Text>
+                                    </View>
+                                  )}
+                                  {selectedItem.stats.arm !== undefined && (
+                                    <View style={styles.statRow}>
+                                      <Text style={styles.statLabel}>ARM</Text>
+                                      <Text style={styles.statValue}>+{selectedItem.stats.arm}</Text>
+                                    </View>
+                                  )}
+                                  {selectedItem.stats.spd !== undefined && (
+                                    <View style={styles.statRow}>
+                                      <Text style={styles.statLabel}>SPD</Text>
+                                      <Text style={styles.statValue}>+{selectedItem.stats.spd}</Text>
+                                    </View>
+                                  )}
+                                  {selectedItem.stats.dig !== undefined && (
+                                    <View style={styles.statRow}>
+                                      <Text style={styles.statLabel}>DIG</Text>
+                                      <Text style={styles.statValue}>+{selectedItem.stats.dig}</Text>
+                                    </View>
+                                  )}
+                                  {selectedItem.stats.hp !== undefined && (
+                                    <View style={styles.statRow}>
+                                      <Text style={styles.statLabel}>HP</Text>
+                                      <Text style={styles.statValue}>+{selectedItem.stats.hp}</Text>
+                                    </View>
+                                  )}
+                                </View>
+                              )}
                             </ScrollView>
                           </>
                         )}

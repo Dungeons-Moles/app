@@ -59,6 +59,7 @@ export interface CombatResolverInput {
 }
 
 interface CountdownItem {
+  bombId: GearId;
   remaining: number;
 }
 
@@ -98,6 +99,10 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
     input.hasShrapnelHarness || activeItemSets.includes('SHRAPNEL_HARNESS');
   const playerGear = input.playerGear ?? [];
   const playerTool = input.playerTool ?? null;
+  const pneumaticDrillGearAtkPenalty =
+    playerTool?.id === 'T4'
+      ? Math.ceil(playerGear.reduce((sum, gear) => sum + (gear.stats.atk ?? 0), 0) / 2)
+      : 0;
 
   const gearById = new Map<GearId, Gear[]>();
   for (const gear of playerGear) {
@@ -123,7 +128,7 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
   const stoneSigilCount = countGear('I8'); // G-ST-08: End of turn: if you have Armor, gain 1 Armor
 
   // SCOUT items
-  const drillServoCount = countGear('I14'); // G-SC-06: Wounded: gain +1 strikes
+  const drillServoBonuses = getGear('I14').map((gear) => (gear.currentRarity === 'DIAMOND' ? 2 : 1)); // G-SC-06: Wounded: gain +1/+1/+2 strikes
   const gearLinkMultiplier = countGear('I16') > 0 ? 2 : 1; // G-SC-08: On Hit effects trigger twice
 
   // GREED items
@@ -145,7 +150,11 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
 
   // FROST items
   const frostLanternChill = sumScaled('I33', 1); // G-FR-01: Battle Start: give enemy 1 Chill
-  const frostguardCount = countGear('I34'); // G-FR-02: Battle Start: if enemy has Chill, gain +2 Armor
+  const frostguardBonuses = getGear('I34').map((gear) => {
+    if (gear.currentRarity === 'DIAMOND') return 5;
+    if (gear.currentRarity === 'GILDED') return 4;
+    return 3;
+  }); // G-FR-02: Battle Start: if enemy has Chill, gain +3/+4/+5 Armor and apply 1 Chill
 
   // RUST items
   const rustSpikeCount = countGear('I42'); // G-RU-02: On Hit: apply 1 Rust
@@ -156,16 +165,21 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
 
   let remainingCanaryCharges = canaryCharges;
   const demolitionPermitActive = activeItemSets.includes('DEMOLITION_PERMIT');
-  const countdownStart = demolitionPermitActive ? 1 : 2;
+  const demolitionPermitSelfDamageReduction = demolitionPermitActive ? 2 : 0;
+  const smallChargeCountdownStart = demolitionPermitActive ? 1 : 2;
   let countdownItems: CountdownItem[] = Array.from({ length: smallChargeCount }, () => ({
-    remaining: countdownStart,
+    bombId: 'I25' as GearId,
+    remaining: smallChargeCountdownStart,
   }));
   let nextBombBonus = 0;
+  let nextBombSelfDamageReduction = 0;
+  let storedTimeChargeDamage = 0;
   let nonWeaponDamageCount = 0;
   let playerTurnsTaken = 0;
   let wasPlayerWounded = isWounded(state.player);
   let wasPlayerExposed = isExposed(state.player);
   let drillServoApplied = false;
+  let whiteoutFirstStrikeBonusPending = false;
 
   const bombPool: GearId[] = [];
   for (const gear of playerGear) {
@@ -322,7 +336,12 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
   const applyNonWeaponDamage = (
     target: 'player' | 'enemy',
     baseDamage: number,
-    options: { source?: string; isBomb?: boolean; countForDetonation?: boolean } = {}
+    options: {
+      source?: string;
+      isBomb?: boolean;
+      countForDetonation?: boolean;
+      selfDamageReduction?: number;
+    } = {}
   ) => {
     if (baseDamage <= 0) return;
     if (target === 'player' && options.isBomb && blastSuitActive) {
@@ -336,6 +355,11 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
       if (nextBombBonus > 0) {
         damage += nextBombBonus;
         nextBombBonus = 0;
+      }
+      if (target === 'player') {
+        const totalSelfDamageReduction =
+          (options.selfDamageReduction ?? 0) + demolitionPermitSelfDamageReduction;
+        damage = Math.max(0, damage - totalSelfDamageReduction);
       }
     }
 
@@ -392,12 +416,19 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
     const triggerCount = twinFuseMultiplier;
     const shouldCount = countForDetonation;
 
-    // I30: Kindling Charge - Battle Start: deal 1; your next bomb deals +3
+    // I30: Kindling Charge - Battle Start: deal 2; your next bomb deals +3 and self-damage -2
     if (bombId === 'I30') {
       nextBombBonus += 3;
+      nextBombSelfDamageReduction += 2;
     }
 
     for (let trigger = 0; trigger < triggerCount; trigger += 1) {
+      const consumesNextBombModifiers = bombId === 'I25';
+      const activeSelfReduction = consumesNextBombModifiers ? nextBombSelfDamageReduction : 0;
+      if (consumesNextBombModifiers) {
+        nextBombSelfDamageReduction = 0;
+      }
+
       // I25: Small Charge - Countdown(2): deal 8 to enemy and you
       if (bombId === 'I25') {
         applyNonWeaponDamage('enemy', 10, {
@@ -405,31 +436,67 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
           isBomb: true,
           countForDetonation: shouldCount,
         });
-        applyNonWeaponDamage('player', 10, {
+        applyNonWeaponDamage('player', 4, {
           source: 'Small Charge',
           isBomb: true,
           countForDetonation: shouldCount,
+          selfDamageReduction: activeSelfReduction,
         });
       }
 
       // I30: Kindling Charge
       if (bombId === 'I30') {
-        applyNonWeaponDamage('enemy', 1, {
+        applyNonWeaponDamage('enemy', 2, {
           source: 'Kindling Charge',
-          isBomb: true,
+          isBomb: false,
           countForDetonation: shouldCount,
         });
       }
 
       // I31: Time Charge
       if (bombId === 'I31') {
-        applyNonWeaponDamage('enemy', 1, {
-          source: 'Time Charge',
-          isBomb: true,
-          countForDetonation: shouldCount,
-        });
+        if (storedTimeChargeDamage > 0) {
+          applyNonWeaponDamage('enemy', storedTimeChargeDamage, {
+            source: 'Time Charge',
+            isBomb: true,
+            countForDetonation: shouldCount,
+          });
+          storedTimeChargeDamage = 0;
+        } else {
+          applyNonWeaponDamage('enemy', 1, {
+            source: 'Time Charge',
+            isBomb: true,
+            countForDetonation: shouldCount,
+          });
+        }
       }
     }
+  };
+
+  const releaseStoredTimeCharge = (reason: 'Exposed' | 'Turn 6+') => {
+    if (storedTimeChargeDamage <= 0) return;
+    applyNonWeaponDamage('enemy', storedTimeChargeDamage, {
+      source: `Time Charge (${reason})`,
+      isBomb: true,
+    });
+    storedTimeChargeDamage = 0;
+  };
+
+  const grantBattleStartGold = (amount: number, effectName: string) => {
+    if (amount <= 0) return;
+    state = {
+      ...state,
+      playerGold: state.playerGold + amount,
+    };
+    state = addLogEntry(state, {
+      turn: 0,
+      timing: CombatPhase.BattleStart,
+      actor: 'player',
+      action: 'TRIGGER_ITEMSET',
+      target: 'player',
+      result: { amount, effectName },
+      rngValues: [],
+    });
   };
 
   const triggerBombSatchel = (context: string, countForDetonation: boolean = true) => {
@@ -531,10 +598,14 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
       applyChill('enemy', frostLanternChill, 'Frost Lantern');
     }
 
-    // G-FR-02: Frostguard Buckler - Battle Start: if enemy has Chill, gain +2 Armor
+    // G-FR-02: Frostguard Buckler - Battle Start: if enemy has Chill, gain +3/+4/+5 Armor and apply 1 Chill
     // (NOTE: The armor bonus from stats is already included in player.arm)
-    if (frostguardCount > 0 && state.enemy.statusEffects.chill > 0) {
-      applyPlayerArmor(frostguardCount * 2, 'Frostguard Buckler');
+    if (frostguardBonuses.length > 0 && state.enemy.statusEffects.chill > 0) {
+      applyPlayerArmor(
+        frostguardBonuses.reduce((sum, bonus) => sum + bonus, 0),
+        'Frostguard Buckler'
+      );
+      applyChill('enemy', frostguardBonuses.length, 'Frostguard Buckler');
     }
 
     if (crystalCrownCount > 0) {
@@ -595,14 +666,15 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
       });
     }
 
-    // SWIFT_DIGGER_KIT: If DIG > enemy DIG, +2 strikes
+    // SWIFT_DIGGER_KIT: If DIG > enemy DIG, +1 strike and +2 ATK
     if (activeItemSets.includes('SWIFT_DIGGER_KIT')) {
       if (state.player.dig > state.enemy.dig) {
         state = {
           ...state,
           player: {
             ...state.player,
-            strikesPerTurn: state.player.strikesPerTurn + 2,
+            strikesPerTurn: state.player.strikesPerTurn + 1,
+            bonusAtk: state.player.bonusAtk + 2,
           },
         };
         state = addLogEntry(state, {
@@ -611,13 +683,13 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
           actor: 'player',
           action: 'TRIGGER_ITEMSET',
           target: 'player',
-          result: { effectName: 'Swift Digger Kit (+2 Strikes)' },
+          result: { effectName: 'Swift Digger Kit (+1 Strike, +2 ATK)' },
           rngValues: [],
         });
       }
     }
 
-    // WHITEOUT_INITIATIVE: +1 SPD; if first, +2 Chill
+    // WHITEOUT_INITIATIVE: +1 SPD; if first, +2 Chill and +3 first-strike damage
     if (activeItemSets.includes('WHITEOUT_INITIATIVE')) {
       state = {
         ...state,
@@ -639,7 +711,13 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
       // Apply Chill if player acts first (SPD >= Enemy SPD)
       if (state.player.spd >= state.enemy.spd) {
         applyChill('enemy', 2, 'Whiteout Initiative');
+        whiteoutFirstStrikeBonusPending = true;
       }
+    }
+
+    // ROYAL_EXTRACTION: gain +1 Gold at battle start
+    if (activeItemSets.includes('ROYAL_EXTRACTION')) {
+      grantBattleStartGold(1, 'Royal Extraction (+1 Gold)');
     }
 
     // BLOODRUSH_PROTOCOL: Turn 1 apply 2 Bleed
@@ -657,12 +735,14 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
         applyRustToEnemy(corrodedGreavesCount * 3, 'Corroded Greaves');
       }
 
-      if (drillServoCount > 0 && !drillServoApplied) {
+      if (drillServoBonuses.length > 0 && !drillServoApplied) {
         state = {
           ...state,
           player: {
             ...state.player,
-            strikesPerTurn: state.player.strikesPerTurn + 2 * drillServoCount,
+            strikesPerTurn:
+              state.player.strikesPerTurn +
+              drillServoBonuses.reduce((sum, bonus) => sum + bonus, 0),
           },
         };
         drillServoApplied = true;
@@ -672,11 +752,7 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
     }
 
     if (isExposedNow && !wasPlayerExposed) {
-      if (timeChargeCount > 0) {
-        for (let i = 0; i < timeChargeCount; i += 1) {
-          applyBombEffect('I31'); // I31: Time Charge
-        }
-      }
+      releaseStoredTimeCharge('Exposed');
 
       triggerBombSatchel('Exposed');
     }
@@ -687,7 +763,7 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
     if (royalBracerCount > 0) {
       let gold = state.playerGold;
       let armorGained = 0;
-      const conversionRate = activeItemSets.includes('ROYAL_EXTRACTION') ? 4 : 2;
+      const conversionRate = activeItemSets.includes('ROYAL_EXTRACTION') ? 4 : 3;
 
       for (let i = 0; i < royalBracerCount; i += 1) {
         if (gold <= 0) break;
@@ -707,8 +783,12 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
     if (timeChargeCount > 0) {
       for (let i = 0; i < timeChargeCount; i += 1) {
         // I31: Time Charge - Turn Start: gain stored damage
-        nextBombBonus += 1;
+        storedTimeChargeDamage += 1;
       }
+    }
+
+    if (state.turn >= 6) {
+      releaseStoredTimeCharge('Turn 6+');
     }
 
     // Shard Circuit: Shards trigger every turn
@@ -743,7 +823,7 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
     const defenderState = state[defenderKey];
 
     const effectiveAttacker =
-      tempAtkBonus > 0
+      tempAtkBonus !== 0
         ? { ...attackerState, bonusAtk: attackerState.bonusAtk + tempAtkBonus }
         : attackerState;
 
@@ -829,9 +909,9 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
       for (const item of countdownItems) {
         const nextRemaining = item.remaining - 1;
         if (nextRemaining <= 0) {
-          applyBombEffect('I25'); // I25: Small Charge
+          applyBombEffect(item.bombId);
         } else {
-          updatedCountdowns.push({ remaining: nextRemaining });
+          updatedCountdowns.push({ bombId: item.bombId, remaining: nextRemaining });
         }
       }
       countdownItems = updatedCountdowns;
@@ -970,7 +1050,31 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
         break;
       }
 
-      const { hpLost } = resolveWeaponStrike(nextAttacker, tempAtkBonus);
+      const strikeTempBonus =
+        nextAttacker === 'player' &&
+        playerTool?.id === 'T4' &&
+        strike >= 2 &&
+        pneumaticDrillGearAtkPenalty > 0
+          ? -pneumaticDrillGearAtkPenalty
+          : tempAtkBonus +
+            (nextAttacker === 'player' &&
+            activeItemSets.includes('WHITEOUT_INITIATIVE') &&
+            whiteoutFirstStrikeBonusPending &&
+            state.turn === 1 &&
+            strike === 0
+              ? 3
+              : 0);
+
+      const { hpLost } = resolveWeaponStrike(nextAttacker, strikeTempBonus);
+      if (
+        nextAttacker === 'player' &&
+        activeItemSets.includes('WHITEOUT_INITIATIVE') &&
+        whiteoutFirstStrikeBonusPending &&
+        state.turn === 1 &&
+        strike === 0
+      ) {
+        whiteoutFirstStrikeBonusPending = false;
+      }
       strikesLanded += 1;
 
       if (bossId === 'B-A-W3-01' && nextAttacker === 'player' && hpLost > 0) {
@@ -1007,6 +1111,9 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
       if (activeItemSets.includes('RUST_RITUAL')) {
         const totalRustStacks = strikesLanded * 1 * gearLinkMultiplier;
         applyRustToEnemy(totalRustStacks, 'Rust Ritual');
+        if (state.enemy.arm <= 0) {
+          applyNonWeaponDamage('enemy', Math.min(3, totalRustStacks), { source: 'Rust Ritual' });
+        }
       }
     }
 

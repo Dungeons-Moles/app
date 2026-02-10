@@ -1,7 +1,7 @@
 /**
  * Item Pool Bitmask Utilities
  *
- * Utilities for working with 80-bit item bitmasks stored as Uint8Array[10].
+ * Utilities for working with item bitmasks stored as Uint8Array.
  * Used for tracking unlocked items and active item pools in player profiles.
  *
  * @see data-model.md for PlayerProfile.unlockedItems and PlayerProfile.activeItemPool
@@ -11,8 +11,11 @@
 // Constants
 // ============================================================================
 
-/** Total number of items in the game */
+/** Total bit capacity in the on-chain pool bitmask (10 bytes * 8 bits) */
 export const TOTAL_ITEMS = 80;
+
+/** Currently unlockable item range (indices 0..79) */
+export const UNLOCKABLE_ITEMS = 80;
 
 /** Number of starter items (always unlocked) */
 export const STARTER_ITEMS = 40;
@@ -65,6 +68,14 @@ export const STARTER_ITEM_INDICES: Set<number> = new Set([
  */
 export function isStarterItem(index: number): boolean {
   return STARTER_ITEM_INDICES.has(index);
+}
+
+/**
+ * Check if an item index is currently in the unlockable range.
+ * All indices 0..79 are unlockable slots.
+ */
+export function isUnlockableItem(index: number): boolean {
+  return index >= 0 && index < UNLOCKABLE_ITEMS;
 }
 
 // ============================================================================
@@ -219,7 +230,7 @@ export function createStarterBitmask(): Uint8Array {
 }
 
 /**
- * Create a full bitmask (all 80 items unlocked).
+ * Create a full bitmask (all 80 bit slots enabled).
  *
  * @returns New 10-byte Uint8Array with all items unlocked
  */
@@ -311,24 +322,26 @@ export interface ItemCollection {
 export function calculateItemCollection(bitmask: Uint8Array): ItemCollection {
   const unlocked = getUnlockedItems(bitmask);
   const locked = getLockedItems(bitmask);
+  const unlockableUnlocked = unlocked.filter(isUnlockableItem);
+  const unlockableLocked = locked.filter(isUnlockableItem);
 
   return {
-    starterItems: unlocked.filter((i) => isStarterItem(i)),
-    unlockedItems: unlocked,
-    lockedItems: locked.filter((i) => !isStarterItem(i)),
-    totalUnlocked: unlocked.length,
-    percentComplete: Math.round((unlocked.length / TOTAL_ITEMS) * 100),
+    starterItems: unlockableUnlocked.filter((i) => isStarterItem(i)),
+    unlockedItems: unlockableUnlocked,
+    lockedItems: unlockableLocked.filter((i) => !isStarterItem(i)),
+    totalUnlocked: unlockableUnlocked.length,
+    percentComplete: Math.round((unlockableUnlocked.length / UNLOCKABLE_ITEMS) * 100),
   };
 }
 
 /**
- * Check if collection is complete (all 80 items unlocked).
+ * Check if collection is complete (all unlockable items unlocked).
  *
  * @param bitmask - Player's unlocked items bitmask
- * @returns true if all items are unlocked
+ * @returns true if all unlockable items are unlocked
  */
 export function isCollectionComplete(bitmask: Uint8Array): boolean {
-  return countUnlockedItems(bitmask) === TOTAL_ITEMS;
+  return getUnlockedItems(bitmask).filter(isUnlockableItem).length === UNLOCKABLE_ITEMS;
 }
 
 // ============================================================================
@@ -336,10 +349,10 @@ export function isCollectionComplete(bitmask: Uint8Array): boolean {
 // ============================================================================
 
 /**
- * Mapping from GearId (I1-I64) to item pool bitmask index (0-63).
+ * Mapping from GearId (I1-I64) to item pool bitmask index.
  *
  * Bitmask layout (matches Solana player-profile program):
- * - Gear (I1-I64): indices 0-63, formula: tag_code * 8 + (item_num_in_tag - 1)
+ * - Base gear (I1-I64): indices 0-63, formula: tag_code * 8 + (item_num_in_tag - 1)
  * - Tools (T1-T16): indices 64-79, formula: 64 + tag_code * 2 + (item_num_in_tag - 1)
  *
  * Tag codes: STONE=0, SCOUT=1, GREED=2, BLAST=3, FROST=4, RUST=5, BLOOD=6, TEMPO=7

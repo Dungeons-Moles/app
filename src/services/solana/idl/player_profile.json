@@ -247,8 +247,9 @@
         "This allows the burner wallet to trigger run result recording without user interaction.",
         "",
         "Authorization: The session account proves player ownership. We verify:",
-        "1. Session's player field matches the profile's owner",
-        "2. Burner wallet is a signer (owns the session for gameplay)"
+        "1. Session account is owned by the session-manager program",
+        "2. Session's player field matches the profile's owner",
+        "3. Burner wallet signer matches the session's stored burner_wallet"
       ],
       "discriminator": [
         9,
@@ -268,16 +269,15 @@
         {
           "name": "session",
           "docs": [
-            "The session account - used to verify player ownership.",
-            "We manually verify session.player == player_profile.owner.",
-            "Layout: 8 (discriminator) + 32 (player) + ..."
+            "1. Account owner == session-manager program ID",
+            "2. session.player == player_profile.owner",
+            "3. session.burner_wallet == burner_wallet signer"
           ]
         },
         {
           "name": "burner_wallet",
           "docs": [
-            "Burner wallet - must match session's burner_wallet field.",
-            "This proves the caller has authority over this session."
+            "Burner wallet signer - verified against session's stored burner_wallet field."
           ],
           "signer": true
         }
@@ -490,6 +490,16 @@
       "code": 6011,
       "name": "InvalidSession",
       "msg": "Invalid session account"
+    },
+    {
+      "code": 6012,
+      "name": "InvalidSessionOwner",
+      "msg": "Session account has invalid owner"
+    },
+    {
+      "code": 6013,
+      "name": "InvalidBurnerWallet",
+      "msg": "Burner wallet does not match session"
     }
   ],
   "types": [
@@ -583,7 +593,7 @@
             "name": "unlocked_items",
             "docs": [
               "Bitmask of unlocked items (80 bits = 10 bytes)",
-              "Bits 0-39 are starter items, bits 40-79 are unlockable items"
+              "Bits 0-39 are starter items, bits 40-92 are unlockable items"
             ],
             "type": {
               "array": [

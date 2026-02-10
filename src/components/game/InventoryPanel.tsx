@@ -8,6 +8,7 @@ import React, { useCallback, useMemo, useRef } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Image, ImageBackground } from 'react-native';
 import type { Tool, Gear, InventorySlot, ItemsetId, ToolOil } from '../../game/engine/types';
 import { getItemsetDefinition } from '../../game/entities/itemsets';
+import { getTierFromRarity, type ItemTier } from '../../data/gear';
 import { Typography } from '../../theme/typography';
 
 const SLOT_BG = require('../../../assets/ui/frames/square.png');
@@ -39,6 +40,17 @@ interface ItemSlotProps {
 
 const DEFAULT_RARITY_COLOR = '#4A4A4A';
 
+function getTierBorderColor(tier: ItemTier): string | null {
+  switch (tier) {
+    case 2:
+      return '#4A90D9';
+    case 3:
+      return '#FFD700';
+    default:
+      return null;
+  }
+}
+
 function ItemSlot({
   item,
   isEmpty = false,
@@ -68,13 +80,20 @@ function ItemSlot({
   }, [item, slotIndex, onLongPress]);
 
   const rarityColor = useMemo(() => (item ? getRarityColor(item) : DEFAULT_RARITY_COLOR), [item]);
+  const tierBorder = useMemo(() => {
+    if (!item || !isSidebar) return null;
+    const rarity = 'rarity' in item ? item.rarity : item.currentRarity;
+    const tier = getTierFromRarity(rarity);
+    return getTierBorderColor(tier);
+  }, [item, isSidebar]);
   const slotStyle = useMemo(
     () => [
       styles.itemSlot,
       { width: size, height: size },
       !isSidebar && { borderColor: rarityColor },
+      isSidebar && tierBorder && { borderWidth: 2, borderColor: tierBorder },
     ],
-    [rarityColor, isSidebar, size]
+    [rarityColor, isSidebar, size, tierBorder]
   );
 
   const indicatorStyle = useMemo(

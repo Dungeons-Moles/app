@@ -1,5 +1,5 @@
 /**
- * Gear item definitions (64 items: 8 per tag)
+ * Gear item definitions (64 items)
  * @see docs/gdd.md Section 9: Item System
  */
 
@@ -20,7 +20,7 @@ export interface GearDefinition {
 }
 
 /**
- * All gear item definitions (64 items: 8 per tag)
+ * All gear item definitions (64 items)
  * Organized by tag to match GDD structure
  */
 export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
@@ -83,7 +83,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['STONE'],
     effect: {
       timing: 'EXPOSED',
-      description: 'Exposed: gain 3 Armor',
+      description: 'First time you become Exposed in battle: gain 4 Armor',
     },
   },
   I6: {
@@ -96,7 +96,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['STONE'],
     effect: {
       timing: 'PASSIVE',
-      description: 'Whenever you gain Shrapnel (once/turn): gain 1 Armor',
+      description: 'First time you gain Shrapnel in battle: gain 2 Armor',
     },
   },
   I7: {
@@ -104,12 +104,12 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     name: 'Crystal Crown',
     emoji: '👑',
     image: require('../../assets/icons/items/stone/crystal_crown.png'),
-    baseRarity: 'HEROIC',
+    baseRarity: 'MYTHIC',
     stats: {},
     tags: ['STONE'],
     effect: {
       timing: 'BATTLE_START',
-      description: 'Battle Start: gain Max HP equal to your starting Armor (cap 12)',
+      description: 'Battle Start: gain Max HP equal to your starting Armor (cap 10)',
     },
   },
   I8: {
@@ -122,7 +122,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['STONE'],
     effect: {
       timing: 'TURN_END',
-      description: 'End of turn: if you have Armor, gain 1 Armor',
+      description: 'End of turn: if you have 3+ Armor, gain 1 Armor',
     },
   },
 
@@ -222,7 +222,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['SCOUT'],
     effect: {
       timing: 'ON_HIT',
-      description: 'Your On Hit effects trigger twice (once/turn)',
+      description: 'Your On Hit effects from SCOUT items trigger twice (once/turn)',
     },
   },
 
@@ -252,7 +252,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['GREED'],
     effect: {
       timing: 'VICTORY',
-      description: 'Victory: gain 2 Gold',
+      description: 'Victory: gain 2 Gold and heal 2 HP',
     },
   },
   I19: {
@@ -260,12 +260,12 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     name: 'Gilded Band',
     emoji: '💍',
     image: require('../../assets/icons/items/greed/gilded_band.png'),
-    baseRarity: 'RARE',
+    baseRarity: 'HEROIC',
     stats: {},
     tags: ['GREED'],
     effect: {
       timing: 'BATTLE_START',
-      description: 'Battle Start: gain Armor equal to floor(Gold/10) (cap 2)',
+      description: 'Battle Start: gain Armor equal to floor(Gold/8) (cap 4)',
     },
   },
   I20: {
@@ -273,12 +273,12 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     name: 'Royal Bracer',
     emoji: '👑',
     image: require('../../assets/icons/items/greed/royal_bracer.png'),
-    baseRarity: 'HEROIC',
+    baseRarity: 'MYTHIC',
     stats: {},
     tags: ['GREED'],
     effect: {
       timing: 'TURN_START',
-      description: 'Turn Start: convert 1 Gold -> 2 Armor',
+      description: 'Turn Start: convert 1 Gold -> 3 Armor; gold gains increased by 50% (round down)',
     },
   },
   I21: {
@@ -347,7 +347,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['BLAST'],
     effect: {
       timing: 'COUNTDOWN',
-      description: 'Countdown(2): deal 8 to enemy and you (non-weapon)',
+      description: 'Countdown(2): deal 10 to enemy and 4 to you (non-weapon)',
     },
   },
   I26: {
@@ -360,7 +360,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['BLAST'],
     effect: {
       timing: 'PASSIVE',
-      description: 'You ignore damage from your own BLAST items',
+      description: 'You ignore damage from your own BLAST items; Battle Start: gain 2 Armor',
     },
   },
   I27: {
@@ -412,7 +412,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['BLAST'],
     effect: {
       timing: 'BATTLE_START',
-      description: 'Battle Start: deal 1; your next bomb this battle deals +3',
+      description: 'Battle Start: deal 2 non-weapon damage; your next bomb this battle deals +3',
     },
   },
   I31: {
@@ -426,7 +426,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     effect: {
       timing: 'TURN_START',
       description:
-        'Turn Start: gain +1 stored damage (this battle); when Exposed: deal stored damage',
+        'Turn Start: gain +1 stored damage (this battle); when Exposed or at battle end: deal stored damage',
     },
   },
   I32: {
@@ -464,12 +464,12 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     name: 'Frostguard Buckler',
     emoji: '🛡️❄️',
     image: require('../../assets/icons/items/frost/frostguard_buckler.png'),
-    baseRarity: 'RARE',
-    stats: { arm: 6 },
+    baseRarity: 'HEROIC',
+    stats: { arm: 8 },
     tags: ['FROST'],
     effect: {
       timing: 'BATTLE_START',
-      description: 'Battle Start: if enemy has Chill, gain +2 Armor',
+      description: 'Battle Start: if enemy has Chill, gain +3 Armor and apply 1 Chill',
     },
   },
   I35: {
@@ -493,6 +493,10 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     baseRarity: 'RARE',
     stats: { spd: 1 },
     tags: ['FROST'],
+    effect: {
+      timing: 'BATTLE_START',
+      description: 'Battle Start: gain +1 DIG',
+    },
   },
   I37: {
     id: 'I37',
@@ -512,12 +516,12 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     name: 'Permafrost Core',
     emoji: '🧊',
     image: require('../../assets/icons/items/frost/permafrost_core.png'),
-    baseRarity: 'HEROIC',
+    baseRarity: 'MYTHIC',
     stats: {},
     tags: ['FROST'],
     effect: {
       timing: 'TURN_START',
-      description: 'Turn Start: if enemy has Chill, gain 1 Armor',
+      description: 'Turn Start: if enemy has Chill, gain 2 Armor and deal 2 non-weapon damage',
     },
   },
   I39: {
@@ -531,7 +535,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     effect: {
       timing: 'EVERY_OTHER_TURN',
       description:
-        'Every other turn: apply 1 Chill; if enemy already has Chill, gain +1 SPD this turn',
+        'Every other turn: apply 1 Chill and deal 1 non-weapon damage; if enemy already has Chill, gain +1 SPD this turn',
     },
   },
   I40: {
@@ -544,7 +548,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['FROST'],
     effect: {
       timing: 'WOUNDED',
-      description: 'Wounded: apply 2 Chill and reduce enemy SPD by 1 (this battle)',
+      description: 'Wounded: apply 2 Chill, reduce enemy SPD by 1 (this battle), and amplify non-weapon damage by 1',
     },
   },
   // ============================================================================
@@ -573,7 +577,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['RUST'],
     effect: {
       timing: 'ON_HIT',
-      description: 'On Hit (once/turn): apply 1 Rust',
+      description: 'On Hit (once/turn): apply 1 Rust; if enemy has Rust >= 3, deal 1 non-weapon damage',
     },
   },
   I43: {
@@ -625,7 +629,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['RUST'],
     effect: {
       timing: 'TURN_START',
-      description: 'Turn Start: if enemy has Rust, deal 1 non-weapon damage',
+      description: 'Turn Start: if enemy has Rust or no Armor, deal 1 non-weapon damage',
     },
   },
   I47: {
@@ -633,12 +637,12 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     name: 'Corrosion Loop',
     emoji: '🔄☣️',
     image: require('../../assets/icons/items/rust/corrosion_loop.png'),
-    baseRarity: 'HEROIC',
+    baseRarity: 'MYTHIC',
     stats: {},
     tags: ['RUST'],
     effect: {
       timing: 'ON_HIT',
-      description: 'On Hit (once/turn): if enemy has Armor, apply +1 additional Rust',
+      description: 'On Hit (once/turn): apply +2 additional Rust; if enemy has 0 Armor, deal 2 non-weapon damage',
     },
   },
   I48: {
@@ -651,7 +655,8 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['RUST'],
     effect: {
       timing: 'PASSIVE',
-      description: 'Whenever you apply Rust (once/turn): gain 1 Gold',
+      description:
+        'Whenever you apply Rust (once/turn): gain 1 Gold; if enemy has no Armor, apply 1 Rust at battle start',
     },
   },
 
@@ -759,7 +764,8 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['BLOOD'],
     effect: {
       timing: 'ON_HIT',
-      description: 'Your first hit each turn vs a Bleeding enemy heals 2 HP',
+      description:
+        'On Hit (once/turn): apply 1 Bleed; your first hit each turn vs a Bleeding enemy heals HP equal to Bleed (max 5)',
     },
   },
 
@@ -841,7 +847,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['TEMPO'],
     effect: {
       timing: 'FIRST_TURN',
-      description: 'If enemy acts first on Turn 1, your first strike deals +3 damage',
+      description: 'If enemy acts first on Turn 1, gain 4 Armor and your first strike deals +3 damage',
     },
   },
   I63: {
@@ -916,6 +922,20 @@ export const RARITY_MULTIPLIER: Record<ItemRarity, number> = {
  * Item tier for tier-scaled effects (I, II, III)
  */
 export type ItemTier = 1 | 2 | 3;
+
+/**
+ * Derive tier from rarity: COMMON→T1, GILDED→T2, DIAMOND→T3
+ */
+export function getTierFromRarity(rarity: ItemRarity): ItemTier {
+  switch (rarity) {
+    case 'GILDED':
+      return 2;
+    case 'DIAMOND':
+      return 3;
+    default:
+      return 1;
+  }
+}
 
 /**
  * Get scaled stat value based on item tier

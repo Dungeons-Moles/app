@@ -90,7 +90,7 @@ export const POI_DEFINITIONS: Record<POIId, POIDefinition> = {
     image: require('../../assets/world/pois/tool-oil-rack.png'),
     rarity: 'COMMON',
     interaction: 'TOOL_MODIFY',
-    description: 'Modify tool: +1 ATK/SPD/DIG/ARM (once per tool)',
+    description: 'Apply one oil (+1 ATK/SPD/DIG/ARM), then this rack is consumed',
   },
 
   // ============================================================================
@@ -156,7 +156,7 @@ export const POI_DEFINITIONS: Record<POIId, POIDefinition> = {
     image: require('../../assets/world/pois/smuggler-hatch.png'),
     rarity: 'UNCOMMON',
     interaction: 'SHOP',
-    description: 'Shop: 5 Rare + 1 Heroic items',
+    description: 'Shop: 5 Rare + 1 Heroic items (max 3 rerolls per visit)',
   },
 
   // ============================================================================
@@ -169,7 +169,7 @@ export const POI_DEFINITIONS: Record<POIId, POIDefinition> = {
     image: require('../../assets/world/pois/rusty-anvil.png'),
     rarity: 'UNCOMMON',
     interaction: 'UPGRADE',
-    description: 'Upgrade tool with forge mods (costs Gold)',
+    description: 'Upgrade tool tier (I→II: 10g, II→III: 20g), reusable',
   },
 
   // ============================================================================
@@ -214,7 +214,7 @@ export const POI_DEFINITIONS: Record<POIId, POIDefinition> = {
 
   // ============================================================================
   // L14 - Scrap Chute (Uncommon) - T084
-  // Destroy 1 Gear item (costs Gold by act)
+  // Destroy 1 Gear item (cost 4g, refunds by rarity)
   // ============================================================================
   L14: {
     id: 'L14',
@@ -223,7 +223,7 @@ export const POI_DEFINITIONS: Record<POIId, POIDefinition> = {
     image: require('../../assets/world/pois/scrap-chute.png'),
     rarity: 'UNCOMMON',
     interaction: 'DESTROY',
-    description: 'Destroy 1 Gear item (costs Gold)',
+    description: 'Destroy 1 Gear item (cost 4g, refund by rarity: 2/4/6/10)',
   },
 };
 

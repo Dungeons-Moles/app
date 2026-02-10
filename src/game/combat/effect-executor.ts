@@ -83,14 +83,20 @@ export function checkCondition(
   owner: CombatantState,
   enemy: CombatantState
 ): boolean {
+  const ownerStatus = owner.statusEffects;
+  const enemyStatus = enemy.statusEffects;
+
   switch (condition.type) {
     case 'None':
       return true;
 
     case 'EnemyHasStatus': {
-      const statusKey = condition.status.toLowerCase() as keyof typeof enemy.statusEffects;
-      return enemy.statusEffects[statusKey] > 0;
+      const statusKey = condition.status.toLowerCase() as keyof typeof enemyStatus;
+      return enemyStatus[statusKey] > 0;
     }
+
+    case 'EnemyHasNoArmor':
+      return enemy.arm <= 0;
 
     case 'EnemyHasArmor':
       return enemy.arm > 0;
@@ -112,6 +118,19 @@ export function checkCondition(
 
     case 'OwnerHasArmor':
       return owner.arm > 0;
+
+    case 'OwnerArmorAtLeast':
+      return owner.arm >= condition.value;
+
+    case 'OwnerHasStatus': {
+      const statusKey = condition.status.toLowerCase() as keyof typeof ownerStatus;
+      return ownerStatus[statusKey] > 0;
+    }
+
+    case 'EnemyHasStatusAtLeast': {
+      const statusKey = condition.status.toLowerCase() as keyof typeof enemyStatus;
+      return enemyStatus[statusKey] >= condition.minStacks;
+    }
 
     default:
       return true;
@@ -200,6 +219,12 @@ export function shouldTrigger(
 
     case 'FirstTimeWounded':
       return !context.wasWounded && context.isWounded === true;
+
+    case 'FirstTimeExposed':
+      return !context.wasExposed && context.isExposed === true;
+
+    case 'FirstTimeGainShrapnel':
+      return context.shrapnelGained === true;
 
     default:
       return false;
@@ -323,6 +348,19 @@ export function executeEffect(
     }
 
     case 'GainAtk': {
+      const updatedOwner = {
+        ...owner,
+        bonusAtk: owner.bonusAtk + value,
+      };
+      state = {
+        ...state,
+        [ctx.owner]: updatedOwner,
+      };
+      logs.push({ effectName, target: ctx.owner });
+      break;
+    }
+
+    case 'GainGearAtk': {
       const updatedOwner = {
         ...owner,
         bonusAtk: owner.bonusAtk + value,
@@ -544,6 +582,14 @@ export function executeEffect(
 
     case 'StoreDamage': {
       ctx.setStoredDamage(ctx.storedDamage + value);
+      logs.push({ effectName, target: 'none' });
+      break;
+    }
+
+    case 'EmpowerNextBombDamage':
+    case 'ReduceNextBombSelfDamage':
+    case 'HalfGearAtkAfterSecondStrike': {
+      // Resolver-specific behavior is handled in resolver.ts.
       logs.push({ effectName, target: 'none' });
       break;
     }

@@ -71,18 +71,18 @@ const caveBatTrait: EnemyTrait = {
 };
 
 /**
- * Spore Slime: Battle Start: Give player 2 Chill
+ * Spore Slime: Battle Start: Give player 1 Chill
  * STATUS EFFECT TRAIT
  */
 const sporeSlimeTrait: EnemyTrait = {
   id: 'SPORE_SLIME',
   name: 'Spore Cloud',
-  description: 'Battle Start: apply 2 Chill to you',
+  description: 'Battle Start: apply 1 Chill to you',
   timing: 'BATTLE_START',
   execute: (state: CombatState, source: 'player' | 'enemy'): CombatState => {
     if (source !== 'enemy') return state;
 
-    const updatedPlayer = applyStatus(state.player, 'chill', 2);
+    const updatedPlayer = applyStatus(state.player, 'chill', 1);
 
     const logEntry: CombatLogEntry = {
       turn: state.turn,
@@ -91,7 +91,7 @@ const sporeSlimeTrait: EnemyTrait = {
       action: 'APPLY_STATUS',
       target: 'player',
       result: {
-        statusApplied: { type: 'chill', stacks: 2 },
+        statusApplied: { type: 'chill', stacks: 1 },
         effectName: 'Spore Cloud',
       },
       rngValues: [],
@@ -141,19 +141,19 @@ const rustMiteSwarmTrait: EnemyTrait = {
 };
 
 /**
- * Collapsed Miner: Wounded: Gain +3 ATK
+ * Collapsed Miner: Wounded: Gain +2 ATK
  */
 const collapsedMinerTrait: EnemyTrait = {
   id: 'COLLAPSED_MINER',
   name: 'Rage',
-  description: 'Wounded: gain +3 ATK (this battle)',
+  description: 'Wounded: gain +2 ATK (this battle)',
   timing: 'WOUNDED',
   execute: (state: CombatState, source: 'player' | 'enemy'): CombatState => {
     if (source !== 'enemy') return state;
 
     const updatedEnemy = {
       ...state.enemy,
-      bonusAtk: state.enemy.bonusAtk + 3,
+      bonusAtk: state.enemy.bonusAtk + 2,
     };
 
     const logEntry: CombatLogEntry = {
@@ -163,7 +163,7 @@ const collapsedMinerTrait: EnemyTrait = {
       action: 'TRIGGER_TRAIT',
       target: 'enemy',
       result: {
-        effectName: 'Rage (+3 ATK)',
+        effectName: 'Rage (+2 ATK)',
       },
       rngValues: [],
     };
@@ -177,18 +177,18 @@ const collapsedMinerTrait: EnemyTrait = {
 };
 
 /**
- * Shard Beetle: Battle Start: Gain 6 Shrapnel
+ * Shard Beetle: Battle Start: Gain 3 Shrapnel
  * STATUS EFFECT TRAIT
  */
 const shardBeetleTrait: EnemyTrait = {
   id: 'SHARD_BEETLE',
   name: 'Shards',
-  description: 'Battle Start: gain 6 Shrapnel',
+  description: 'Battle Start: gain 3 Shrapnel',
   timing: 'BATTLE_START',
   execute: (state: CombatState, source: 'player' | 'enemy'): CombatState => {
     if (source !== 'enemy') return state;
 
-    const updatedEnemy = applyStatus(state.enemy, 'shrapnel', 6);
+    const updatedEnemy = applyStatus(state.enemy, 'shrapnel', 3);
 
     const logEntry: CombatLogEntry = {
       turn: state.turn,
@@ -197,7 +197,7 @@ const shardBeetleTrait: EnemyTrait = {
       action: 'APPLY_STATUS',
       target: 'enemy',
       result: {
-        statusApplied: { type: 'shrapnel', stacks: 6 },
+        statusApplied: { type: 'shrapnel', stacks: 3 },
         effectName: 'Shards',
       },
       rngValues: [],
@@ -212,12 +212,12 @@ const shardBeetleTrait: EnemyTrait = {
 };
 
 /**
- * Tunnel Warden: First strike each turn: remove 3 Armor before damage
+ * Tunnel Warden: First strike each turn: remove 2 Armor before damage
  */
 const tunnelWardenTrait: EnemyTrait = {
   id: 'TUNNEL_WARDEN',
   name: 'Armor Pierce',
-  description: 'First strike each turn: remove 3 Armor from you before damage',
+  description: 'First strike each turn: remove 2 Armor from you before damage',
   timing: 'FIRST_STRIKE',
   execute: (
     state: CombatState,
@@ -227,7 +227,7 @@ const tunnelWardenTrait: EnemyTrait = {
     if (source !== 'enemy') return state;
     if (!context?.isFirstStrike) return state;
 
-    const armorRemoved = Math.min(3, state.player.arm);
+    const armorRemoved = Math.min(2, state.player.arm);
     if (armorRemoved <= 0) return state;
 
     const updatedPlayer = {
@@ -257,17 +257,17 @@ const tunnelWardenTrait: EnemyTrait = {
 };
 
 /**
- * Burrow Ambusher: Battle Start: deal 3 damage ignoring Armor
+ * Burrow Ambusher: Battle Start: deal 2 damage ignoring Armor
  */
 const burrowAmbusherTrait: EnemyTrait = {
   id: 'BURROW_AMBUSHER',
   name: 'Ambush',
-  description: 'Battle Start: deal 3 damage ignoring Armor',
+  description: 'Battle Start: deal 2 damage ignoring Armor',
   timing: 'BATTLE_START',
   execute: (state: CombatState, source: 'player' | 'enemy'): CombatState => {
     if (source !== 'enemy') return state;
 
-    const damage = 3;
+    const damage = 2;
     const updatedPlayer = {
       ...state.player,
       hp: Math.max(0, state.player.hp - damage),
@@ -335,13 +335,13 @@ const frostWispTrait: EnemyTrait = {
 };
 
 /**
- * Powder Tick: Countdown(2): deal 6 damage to you and itself (non-weapon)
+ * Powder Tick: Countdown(3): deal 5 damage to you and itself (non-weapon)
  * Note: Countdown logic handled in combat resolver
  */
 const powderTickTrait: EnemyTrait = {
   id: 'POWDER_TICK',
   name: 'Explosive',
-  description: 'Countdown(2): deal 6 damage to you and itself (non-weapon)',
+  description: 'Countdown(3): deal 5 damage to you and itself (non-weapon)',
   timing: 'COUNTDOWN',
   execute: (
     state: CombatState,
@@ -352,7 +352,7 @@ const powderTickTrait: EnemyTrait = {
     // Only trigger when countdown reaches 0
     if (context?.countdownRemaining !== 0) return state;
 
-    const damage = 6;
+    const damage = 5;
     const updatedPlayer = {
       ...state.player,
       hp: Math.max(0, state.player.hp - damage),

@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import type { Tool, Gear, ItemStats, ItemTag } from '../../game/engine/types';
 import { getToolDefinition, TOOL_DEFINITIONS } from '../../game/entities/items';
-import { GEAR_DEFINITIONS } from '../../data/gear';
+import { GEAR_DEFINITIONS, getTierFromRarity } from '../../data/gear';
 import { getItemsetsForItem } from '../../game/entities/itemsets';
 
 const paperPanelSource = require('../../../assets/ui/panels/paper-panel.png');
@@ -93,6 +93,9 @@ function getOriginalRarityColor(rarity: string): string {
 function getRarityName(rarity: string): string {
   return rarity.charAt(0) + rarity.slice(1).toLowerCase();
 }
+
+const TIER_LABELS = ['I', 'II', 'III'] as const;
+const TIER_COLORS = ['#808080', '#4A90D9', '#FFD700'] as const;
 
 function getTagColor(tag: ItemTag): string {
   switch (tag) {
@@ -195,6 +198,7 @@ export function ItemTooltip({ item, visible, onClose }: ItemTooltipProps) {
   const baseRarity = isTool ? item.rarity : item.baseRarity;
   const rarityColor = getRarityColor(rarity);
   const borderColor = getOriginalRarityColor(rarity);
+  const tier = getTierFromRarity(rarity);
 
   // Get effect description from definitions
   let effectDescription: string | null = null;
@@ -251,10 +255,15 @@ export function ItemTooltip({ item, visible, onClose }: ItemTooltipProps) {
               </View>
               <View style={styles.headerText}>
                 <Text style={styles.name}>{item.name}</Text>
-                <Text style={[styles.rarity, { color: rarityColor }]}>
-                  {getRarityName(rarity)}
-                  {!isTool && baseRarity !== rarity && ` (${getRarityName(baseRarity)})`}
-                </Text>
+                <View style={styles.rarityRow}>
+                  <Text style={[styles.rarity, { color: rarityColor }]}>
+                    {getRarityName(rarity)}
+                    {!isTool && baseRarity !== rarity && ` (${getRarityName(baseRarity)})`}
+                  </Text>
+                  <Text style={[styles.tierLabel, { color: TIER_COLORS[tier - 1] }]}>
+                    Tier {TIER_LABELS[tier - 1]}
+                  </Text>
+                </View>
               </View>
             </View>
 
@@ -335,12 +344,22 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
   },
+  rarityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 2,
+  },
   rarity: {
     fontSize: 12,
     fontWeight: '600',
     textTransform: 'uppercase',
     letterSpacing: 1,
-    marginTop: 2,
+  },
+  tierLabel: {
+    fontSize: 11,
+    fontWeight: 'bold',
+    letterSpacing: 0.5,
   },
   statsSection: {
     flexDirection: 'row',

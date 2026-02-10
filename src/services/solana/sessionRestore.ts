@@ -30,7 +30,7 @@ import type { OnChainEnemyInstance } from './gameplayState';
 import type { GeneratedMapData, OnChainEnemySpawn } from './mapGeneratorClient';
 import type { MapPoisData } from './types/poi_system';
 import type { PlayerInventoryData, ItemInstance } from './types/player_inventory';
-import type { GameState } from '@/game/engine/types';
+import type { GameState, ItemRarity } from '@/game/engine/types';
 import {
   GamePhase,
   TimePhase,
@@ -52,12 +52,13 @@ import type {
 } from '@/game/engine/types';
 import type { GameMap, MapEnemy, MapPOI, EnemyId } from '@/game/map/types';
 import { TileType, FogState } from '@/game/map/types';
-import { getEnemyTierStats } from '@/game/entities/enemies';
-import { createToolInstance, createGearInstance } from '@/game/entities/items';
+import { getEnemyTierStats, ARCHETYPE_TO_ENEMY_ID } from '@/game/entities/enemies';
+import { createToolInstance, createGearInstance, getToolDefinition } from '@/game/entities/items';
+import { RARITY_MULTIPLIER } from '@/data/gear';
 import { refreshPlayerStats } from '@/game/entities/player';
-import { GAME_CONSTANTS, BOSS_POOLS } from '@/game/engine/constants';
-import { SeededRNG } from '@/game/engine/rng';
-import { updateFogOfWar } from '@/game/map/fog-of-war';
+import { GAME_CONSTANTS } from '@/game/engine/constants';
+import { selectWeekBossForLevel } from '@/game/time/progression';
+import { updateFogOfWar, applyInitialVisibility } from '@/game/map/fog-of-war';
 
 // ============================================================================
 // Constants
@@ -66,23 +67,7 @@ import { updateFogOfWar } from '@/game/map/fog-of-war';
 const FOG_STORAGE_PREFIX = 'fog_state_';
 const BROKEN_WALLS_STORAGE_PREFIX = 'broken_walls_';
 
-/**
- * Maps on-chain archetype IDs (0-11) to EnemyId strings.
- */
-const ARCHETYPE_TO_ENEMY_ID: EnemyId[] = [
-  'TUNNEL_RAT',
-  'CAVE_BAT',
-  'SPORE_SLIME',
-  'RUST_MITE_SWARM',
-  'COLLAPSED_MINER',
-  'SHARD_BEETLE',
-  'TUNNEL_WARDEN',
-  'BURROW_AMBUSHER',
-  'FROST_WISP',
-  'POWDER_TICK',
-  'COIN_SLUG',
-  'BLOOD_MOSQUITO',
-];
+// ARCHETYPE_TO_ENEMY_ID imported from @/game/entities/enemies
 
 /**
  * Maps on-chain POI type IDs (1-14) to POIId strings.
@@ -321,7 +306,7 @@ export async function fetchFullSessionState(
     generatedMapData.enemyCount
   );
   const pois = convertPois(generatedMapData.pois, generatedMapData.poiCount, mapPoisData);
-  const time = convertTimeState(gameStateData, seed);
+  const time = convertTimeState(gameStateData, gameStateData.campaignLevel);
   const player = buildPlayer(gameStateData, inventoryData);
   const playerPos = { x: gameStateData.positionX, y: gameStateData.positionY };
 
@@ -359,9 +344,8 @@ export async function fetchFullSessionState(
       return enemy;
     });
   } else {
-    // No saved fog: reveal around current player position
-    const isDay = time.phase === TimePhase.Day;
-    const updatedMap = updateFogOfWar(map, playerPos, isDay);
+    // No saved fog: new session, reveal with initial sight radius (6)
+    const updatedMap = applyInitialVisibility(map, playerPos);
     map.fog = updatedMap.fog;
     map.enemies = updatedMap.enemies;
   }
@@ -539,22 +523,18 @@ export function convertPois(
  * Converts on-chain phase/week/movesRemaining to game engine TimeState.
  *
  * @param gameState - On-chain GameState data
- * @param seed - Game seed for boss selection
+ * @param campaignLevel - Campaign level (1-40) for deterministic boss selection
  * @returns TimeState for the game engine
  */
 export function convertTimeState(
   gameState: { week: number; phase: Phase; movesRemaining: number; totalMoves: number },
-  seed: number
+  campaignLevel: number
 ): TimeState {
   const week = Math.max(1, Math.min(3, gameState.week)) as 1 | 2 | 3;
   const { phase, cycle } = convertPhase(gameState.phase);
 
-  // Select boss for this week deterministically
-  const rng = new SeededRNG(seed);
-  let weekBoss: BossId = BOSS_POOLS[1][0];
-  for (let w = 1; w <= week; w++) {
-    weekBoss = rng.pick(BOSS_POOLS[w as 1 | 2 | 3]);
-  }
+  // Select boss deterministically matching on-chain boss-system logic
+  const weekBoss = selectWeekBossForLevel(campaignLevel, week);
 
   return {
     week,
@@ -740,6 +720,21 @@ function convertToolInstance(item: ItemInstance): Tool | null {
 
   try {
     const tool = createToolInstance(id as ToolId);
+
+    // Apply tier upgrade (Tier II = GILDED, Tier III = DIAMOND)
+    const upgradedRarity = tierToRarity(item.tier);
+    if (upgradedRarity) {
+      tool.rarity = upgradedRarity;
+      // Recalculate stats with rarity multiplier
+      const def = getToolDefinition(id as ToolId);
+      const multiplier = RARITY_MULTIPLIER[upgradedRarity];
+      if (def.stats.atk !== undefined) tool.stats.atk = Math.floor(def.stats.atk * multiplier);
+      if (def.stats.arm !== undefined) tool.stats.arm = Math.floor(def.stats.arm * multiplier);
+      if (def.stats.spd !== undefined) tool.stats.spd = Math.floor(def.stats.spd * multiplier);
+      if (def.stats.dig !== undefined) tool.stats.dig = Math.floor(def.stats.dig * multiplier);
+      if (def.stats.hp !== undefined) tool.stats.hp = Math.floor(def.stats.hp * multiplier);
+    }
+
     // Apply tool oil modifications
     const oils: ToolOil[] = [];
     if (item.toolOilFlags & TOOL_OIL_FLAG_ATK) oils.push('ATK');
@@ -796,11 +791,15 @@ export function decodeItemId(itemId: Uint8Array | number[]): string | null {
  * Maps on-chain Tier enum to ItemRarity for gear.
  * Tier I = base rarity (COMMON), Tier II = GILDED, Tier III = DIAMOND
  */
-function tierToRarity(_tier: Tier): undefined {
-  // Return undefined to use the item's base rarity, since the rarity
-  // upgrade system is more nuanced than a simple tier->rarity mapping.
-  // The createGearInstance will use base rarity by default.
-  return undefined;
+function tierToRarity(tier: Tier): ItemRarity | undefined {
+  switch (tier) {
+    case Tier.II:
+      return 'GILDED';
+    case Tier.III:
+      return 'DIAMOND';
+    default:
+      return undefined; // Tier I uses the item's base rarity
+  }
 }
 
 // ============================================================================

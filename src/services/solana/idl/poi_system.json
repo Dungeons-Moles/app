@@ -136,22 +136,21 @@
       "args": []
     },
     {
-      "name": "discover_waypoint",
+      "name": "discover_visible_waypoints",
       "docs": [
-        "Discover a Rail Waypoint (L8).",
+        "Discover visible Rail Waypoints (L8) based on current player vision radius.",
         "",
-        "On first visit, marks the waypoint as discovered for fast travel.",
-        "Must be called when player first reaches a waypoint."
+        "This is called automatically on spawn and movement."
       ],
       "discriminator": [
-        133,
-        84,
-        181,
-        197,
-        13,
-        108,
-        43,
-        73
+        59,
+        38,
+        106,
+        0,
+        58,
+        177,
+        80,
+        252
       ],
       "accounts": [
         {
@@ -257,7 +256,7 @@
       ],
       "args": [
         {
-          "name": "poi_index",
+          "name": "visibility_radius",
           "type": "u8"
         }
       ]
@@ -400,8 +399,7 @@
       "docs": [
         "Fast travel between Rail Waypoints (L8).",
         "",
-        "Player must be at a discovered waypoint and select another discovered waypoint.",
-        "The caller is responsible for updating player position via CPI."
+        "Player must be at a discovered waypoint and select another discovered waypoint."
       ],
       "discriminator": [
         65,
@@ -444,6 +442,7 @@
           "docs": [
             "Player's GameState for position/time validation"
           ],
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -505,6 +504,41 @@
               ]
             }
           }
+        },
+        {
+          "name": "poi_authority",
+          "docs": [
+            "POI authority PDA for signing CPI calls"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  105,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "gameplay_state_program",
+          "docs": [
+            "Gameplay state program for CPI (set_position_authorized)"
+          ],
+          "address": "5VAaGSSoBP4UEt3RL2EXvDwpeDxAXMndsJn7QX96nc4n"
         },
         {
           "name": "player",
@@ -576,8 +610,9 @@
         {
           "name": "game_state",
           "docs": [
-            "Player's GameState for position/time validation (read-only)"
+            "Player's GameState for position/time validation and HP modification via CPI"
           ],
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -639,13 +674,6 @@
               ]
             }
           }
-        },
-        {
-          "name": "game_state_writable",
-          "docs": [
-            "Player's GameState for HP modification via CPI (writable)"
-          ],
-          "writable": true
         },
         {
           "name": "inventory",
@@ -964,11 +992,88 @@
           }
         },
         {
+          "name": "inventory",
+          "docs": [
+            "Player inventory where tool-oil mutations are applied"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  110,
+                  118,
+                  101,
+                  110,
+                  116,
+                  111,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois.session",
+                "account": "MapPois"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                62,
+                57,
+                43,
+                224,
+                11,
+                129,
+                112,
+                214,
+                10,
+                252,
+                5,
+                51,
+                143,
+                242,
+                213,
+                246,
+                99,
+                145,
+                248,
+                173,
+                61,
+                133,
+                58,
+                191,
+                234,
+                132,
+                254,
+                214,
+                152,
+                21,
+                230,
+                167
+              ]
+            }
+          }
+        },
+        {
+          "name": "player_inventory_program",
+          "docs": [
+            "Player inventory program for CPI (apply_tool_oil)"
+          ],
+          "address": "5BtqiWegvVAgEnTRUofB9oUoQvPztYqSkMPwRpYQacP8"
+        },
+        {
           "name": "player",
           "docs": [
             "Player initiating the interaction"
           ],
-          "signer": true
+          "signer": true,
+          "relations": [
+            "inventory"
+          ]
         }
       ],
       "args": [
@@ -1141,8 +1246,9 @@
         {
           "name": "game_state",
           "docs": [
-            "Player's GameState for position/time validation (read-only)"
+            "Player's GameState for position/time validation and HP modification via CPI"
           ],
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -1204,13 +1310,6 @@
               ]
             }
           }
-        },
-        {
-          "name": "game_state_writable",
-          "docs": [
-            "Player's GameState for HP modification via CPI (writable)"
-          ],
-          "writable": true
         },
         {
           "name": "inventory",
@@ -1840,11 +1939,88 @@
           }
         },
         {
+          "name": "inventory",
+          "docs": [
+            "Player inventory where gear fusion is applied"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  110,
+                  118,
+                  101,
+                  110,
+                  116,
+                  111,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois.session",
+                "account": "MapPois"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                62,
+                57,
+                43,
+                224,
+                11,
+                129,
+                112,
+                214,
+                10,
+                252,
+                5,
+                51,
+                143,
+                242,
+                213,
+                246,
+                99,
+                145,
+                248,
+                173,
+                61,
+                133,
+                58,
+                191,
+                234,
+                132,
+                254,
+                214,
+                152,
+                21,
+                230,
+                167
+              ]
+            }
+          }
+        },
+        {
+          "name": "player_inventory_program",
+          "docs": [
+            "Player inventory program for CPI (fuse_items)"
+          ],
+          "address": "5BtqiWegvVAgEnTRUofB9oUoQvPztYqSkMPwRpYQacP8"
+        },
+        {
           "name": "player",
           "docs": [
             "Player fusing"
           ],
-          "signer": true
+          "signer": true,
+          "relations": [
+            "inventory"
+          ]
         }
       ],
       "args": [
@@ -1885,7 +2061,7 @@
       "docs": [
         "Upgrade a tool at the Rusty Anvil (L10).",
         "",
-        "Tier I -> II costs 8 Gold, II -> III costs 16 Gold.",
+        "Tier I -> II costs 10 Gold, II -> III costs 20 Gold.",
         "POI is one-time use. Gold is deducted atomically via CPI."
       ],
       "discriminator": [
@@ -1994,6 +2170,73 @@
           }
         },
         {
+          "name": "inventory",
+          "docs": [
+            "Player inventory where tool tier is upgraded"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  110,
+                  118,
+                  101,
+                  110,
+                  116,
+                  111,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois.session",
+                "account": "MapPois"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                62,
+                57,
+                43,
+                224,
+                11,
+                129,
+                112,
+                214,
+                10,
+                252,
+                5,
+                51,
+                143,
+                242,
+                213,
+                246,
+                99,
+                145,
+                248,
+                173,
+                61,
+                133,
+                58,
+                191,
+                234,
+                132,
+                254,
+                214,
+                152,
+                21,
+                230,
+                167
+              ]
+            }
+          }
+        },
+        {
           "name": "poi_authority",
           "docs": [
             "POI authority PDA for signing CPI calls"
@@ -2029,11 +2272,21 @@
           "address": "5VAaGSSoBP4UEt3RL2EXvDwpeDxAXMndsJn7QX96nc4n"
         },
         {
+          "name": "player_inventory_program",
+          "docs": [
+            "Player inventory program for CPI (upgrade_tool_tier)"
+          ],
+          "address": "5BtqiWegvVAgEnTRUofB9oUoQvPztYqSkMPwRpYQacP8"
+        },
+        {
           "name": "player",
           "docs": [
             "Player upgrading"
           ],
-          "signer": true
+          "signer": true,
+          "relations": [
+            "inventory"
+          ]
         }
       ],
       "args": [
@@ -2061,9 +2314,8 @@
       "docs": [
         "Scrap a gear item at the Scrap Chute (L14).",
         "",
-        "Destroys one gear item for a gold cost (8-12 depending on act).",
-        "POI is one-time use. Gold is deducted atomically via CPI.",
-        "The caller is responsible for removing the item from inventory via CPI."
+        "Destroys one equipped gear item for a flat 4 gold cost and rarity refund.",
+        "POI is repeatable and item removal + gold change are atomic."
       ],
       "discriminator": [
         229,
@@ -2171,6 +2423,144 @@
           }
         },
         {
+          "name": "inventory",
+          "docs": [
+            "Player inventory must belong to the same session and player"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  110,
+                  118,
+                  101,
+                  110,
+                  116,
+                  111,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois.session",
+                "account": "MapPois"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                62,
+                57,
+                43,
+                224,
+                11,
+                129,
+                112,
+                214,
+                10,
+                252,
+                5,
+                51,
+                143,
+                242,
+                213,
+                246,
+                99,
+                145,
+                248,
+                173,
+                61,
+                133,
+                58,
+                191,
+                234,
+                132,
+                254,
+                214,
+                152,
+                21,
+                230,
+                167
+              ]
+            }
+          }
+        },
+        {
+          "name": "inventory_authority",
+          "docs": [
+            "Inventory authority PDA from player-inventory for CPI calls"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  110,
+                  118,
+                  101,
+                  110,
+                  116,
+                  111,
+                  114,
+                  121,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                62,
+                57,
+                43,
+                224,
+                11,
+                129,
+                112,
+                214,
+                10,
+                252,
+                5,
+                51,
+                143,
+                242,
+                213,
+                246,
+                99,
+                145,
+                248,
+                173,
+                61,
+                133,
+                58,
+                191,
+                234,
+                132,
+                254,
+                214,
+                152,
+                21,
+                230,
+                167
+              ]
+            }
+          }
+        },
+        {
           "name": "poi_authority",
           "docs": [
             "POI authority PDA for signing CPI calls"
@@ -2206,11 +2596,21 @@
           "address": "5VAaGSSoBP4UEt3RL2EXvDwpeDxAXMndsJn7QX96nc4n"
         },
         {
+          "name": "player_inventory_program",
+          "docs": [
+            "Player inventory program for CPI item removal"
+          ],
+          "address": "5BtqiWegvVAgEnTRUofB9oUoQvPztYqSkMPwRpYQacP8"
+        },
+        {
           "name": "player",
           "docs": [
             "Player scrapping"
           ],
-          "signer": true
+          "signer": true,
+          "relations": [
+            "inventory"
+          ]
         }
       ],
       "args": [
@@ -2608,11 +3008,88 @@
           }
         },
         {
+          "name": "inventory",
+          "docs": [
+            "Player inventory where tool-oil mutations are applied"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  110,
+                  118,
+                  101,
+                  110,
+                  116,
+                  111,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois.session",
+                "account": "MapPois"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                62,
+                57,
+                43,
+                224,
+                11,
+                129,
+                112,
+                214,
+                10,
+                252,
+                5,
+                51,
+                143,
+                242,
+                213,
+                246,
+                99,
+                145,
+                248,
+                173,
+                61,
+                133,
+                58,
+                191,
+                234,
+                132,
+                254,
+                214,
+                152,
+                21,
+                230,
+                167
+              ]
+            }
+          }
+        },
+        {
+          "name": "player_inventory_program",
+          "docs": [
+            "Player inventory program for CPI (apply_tool_oil)"
+          ],
+          "address": "5BtqiWegvVAgEnTRUofB9oUoQvPztYqSkMPwRpYQacP8"
+        },
+        {
           "name": "player",
           "docs": [
             "Player initiating the interaction"
           ],
-          "signer": true
+          "signer": true,
+          "relations": [
+            "inventory"
+          ]
         }
       ],
       "args": [
@@ -2671,6 +3148,9 @@
               }
             ]
           }
+        },
+        {
+          "name": "game_session"
         },
         {
           "name": "player",
@@ -2996,7 +3476,7 @@
       "docs": [
         "Reroll the shop offers for a gold cost.",
         "",
-        "Cost increases with each reroll: 4, 6, 8, 10, ...",
+        "Cost increases with each reroll: 4, 6, 8, ...",
         "Gold is deducted atomically via CPI to gameplay-state."
       ],
       "discriminator": [
@@ -3585,18 +4065,18 @@
     },
     {
       "code": 6022,
+      "name": "ShopRerollLimitReached",
+      "msg": "Shop reroll limit reached for this visit"
+    },
+    {
+      "code": 6023,
       "name": "InvalidInteraction",
       "msg": "Invalid interaction for this POI type"
     },
     {
-      "code": 6023,
+      "code": 6024,
       "name": "NoActiveInteraction",
       "msg": "No POI interaction is currently active"
-    },
-    {
-      "code": 6024,
-      "name": "NoActiveShop",
-      "msg": "No active shop to reroll"
     },
     {
       "code": 6025,
@@ -3642,6 +4122,16 @@
       "code": 6033,
       "name": "InvalidOilSelection",
       "msg": "Selected oil is not in the generated offer"
+    },
+    {
+      "code": 6034,
+      "name": "ItemNotInInventory",
+      "msg": "Item is not currently equipped in inventory"
+    },
+    {
+      "code": 6035,
+      "name": "InvalidVisionRadius",
+      "msg": "Invalid vision radius for current phase/state"
     }
   ],
   "types": [
@@ -4328,6 +4818,13 @@
             "name": "rarity",
             "docs": [
               "Item rarity (0=Common, 1=Rare, 2=Heroic, 3=Mythic)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "tier",
+            "docs": [
+              "Item tier (0=Tier I, 1=Tier II, 2=Tier III). Always 0 for fresh POI drops."
             ],
             "type": "u8"
           }

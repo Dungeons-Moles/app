@@ -40,7 +40,7 @@ export interface ToolDefinition {
 }
 
 /**
- * All tool definitions per GDD (16 tools: 2 per tag)
+ * All tool definitions per current balance data (17 tools including starter)
  * @see docs/gdd.md Section 9: Item System
  */
 export const TOOL_DEFINITIONS: Record<ToolId, ToolDefinition> = {
@@ -123,7 +123,7 @@ export const TOOL_DEFINITIONS: Record<ToolId, ToolDefinition> = {
     tags: ['GREED'],
     effect: {
       timing: 'ON_HIT',
-      description: 'On Hit (once/turn): gain 1 Gold',
+      description: 'On Hit (once/turn): gain 1 Gold; Victory: gain +2 Gold',
     },
   },
   T6: {
@@ -152,7 +152,7 @@ export const TOOL_DEFINITIONS: Record<ToolId, ToolDefinition> = {
     tags: ['BLAST'],
     effect: {
       timing: 'ON_HIT',
-      description: 'First hit each turn: deal 1 non-weapon damage',
+      description: 'First hit each turn: deal 1/2/2 non-weapon damage',
     },
   },
   T8: {
@@ -177,11 +177,11 @@ export const TOOL_DEFINITIONS: Record<ToolId, ToolDefinition> = {
     emoji: '❄️🗡️',
     image: require('../../../assets/icons/items/frost/rime_pike.png'),
     rarity: 'COMMON',
-    stats: { atk: 2 },
+    stats: { atk: 1 },
     tags: ['FROST'],
     effect: {
       timing: 'ON_HIT',
-      description: 'On Hit (once/turn): apply 1 Chill',
+      description: 'On Hit (once/turn): apply 1 Chill; if enemy has Chill, deal +1 bonus damage',
     },
   },
   T10: {
@@ -194,7 +194,8 @@ export const TOOL_DEFINITIONS: Record<ToolId, ToolDefinition> = {
     tags: ['FROST'],
     effect: {
       timing: 'ON_HIT',
-      description: 'On Hit (once/turn): apply 1 Chill; if enemy has Chill, gain +1 SPD this turn',
+      description:
+        'On Hit (once/turn): apply 1 Chill; if enemy has Chill, gain +1 SPD this turn and deal +1 bonus damage',
     },
   },
   // ============================================================================
@@ -218,12 +219,12 @@ export const TOOL_DEFINITIONS: Record<ToolId, ToolDefinition> = {
     name: 'Etched Burrowblade',
     emoji: '🗡️☣️',
     image: require('../../../assets/icons/items/rust/etched_burrowblade.png'),
-    rarity: 'RARE',
-    stats: { atk: 2, spd: 1 },
+    rarity: 'HEROIC',
+    stats: { atk: 2, spd: 2 },
     tags: ['RUST'],
     effect: {
       timing: 'ON_HIT',
-      description: 'If enemy has Rust, your strikes ignore 1 Armor',
+      description: 'If enemy has Rust, your strikes ignore 2 Armor (ignore all Armor at 4+ Rust)',
     },
   },
   // ============================================================================
@@ -264,7 +265,7 @@ export const TOOL_DEFINITIONS: Record<ToolId, ToolDefinition> = {
     emoji: '⚡⛏️',
     image: require('../../../assets/icons/items/tempo/quickpick.png'),
     rarity: 'COMMON',
-    stats: { atk: 1, spd: 1 },
+    stats: { atk: 1, spd: 2 },
     tags: ['TEMPO'],
   },
   T16: {
@@ -272,12 +273,12 @@ export const TOOL_DEFINITIONS: Record<ToolId, ToolDefinition> = {
     name: 'Chrono Rapier',
     emoji: '⏰🗡️',
     image: require('../../../assets/icons/items/tempo/chrono_rapier.png'),
-    rarity: 'HEROIC',
-    stats: { atk: 1, spd: 2 },
+    rarity: 'MYTHIC',
+    stats: { atk: 2, spd: 3 },
     tags: ['TEMPO'],
     effect: {
       timing: 'FIRST_TURN',
-      description: 'If you act first on Turn 1, gain +2 ATK (this battle)',
+      description: 'If you act first on Turn 1, gain +3 ATK (this battle)',
     },
   },
 };

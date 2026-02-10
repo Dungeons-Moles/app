@@ -27,7 +27,9 @@ export type TriggerType =
   | { type: 'OnApplyRust' }
   | { type: 'OnGainShrapnel' }
   | { type: 'DayStart' }
-  | { type: 'FirstTimeWounded' };
+  | { type: 'FirstTimeWounded' }
+  | { type: 'FirstTimeExposed' }
+  | { type: 'FirstTimeGainShrapnel' };
 
 // Helper constructors for triggers
 export const Trigger = {
@@ -51,6 +53,8 @@ export const Trigger = {
   OnGainShrapnel: (): TriggerType => ({ type: 'OnGainShrapnel' }),
   DayStart: (): TriggerType => ({ type: 'DayStart' }),
   FirstTimeWounded: (): TriggerType => ({ type: 'FirstTimeWounded' }),
+  FirstTimeExposed: (): TriggerType => ({ type: 'FirstTimeExposed' }),
+  FirstTimeGainShrapnel: (): TriggerType => ({ type: 'FirstTimeGainShrapnel' }),
 } as const;
 
 // ============================================================================
@@ -63,6 +67,7 @@ export type EffectType =
   | 'Heal'
   | 'GainArmor'
   | 'GainAtk'
+  | 'GainGearAtk'
   | 'GainSpd'
   | 'GainDig'
   | 'GainGold'
@@ -87,6 +92,9 @@ export type EffectType =
   | 'ReduceAllCountdowns'
   | 'AmplifyNonWeaponDamage'
   | 'StoreDamage'
+  | 'EmpowerNextBombDamage'
+  | 'ReduceNextBombSelfDamage'
+  | 'HalfGearAtkAfterSecondStrike'
   | 'BlastImmunity'
   | 'DoubleBombTrigger'
   | 'DoubleOnHitEffects'
@@ -105,18 +113,23 @@ export type StatusType = 'Chill' | 'Shrapnel' | 'Rust' | 'Bleed' | 'Reflection';
 export type Condition =
   | { type: 'None' }
   | { type: 'EnemyHasStatus'; status: StatusType }
+  | { type: 'EnemyHasNoArmor' }
   | { type: 'EnemyHasArmor' }
   | { type: 'DigGreaterThanEnemyDig' }
   | { type: 'SpdGreaterThanEnemySpd' }
   | { type: 'OwnerWounded' }
   | { type: 'OwnerExposed' }
   | { type: 'EnemyWounded' }
-  | { type: 'OwnerHasArmor' };
+  | { type: 'OwnerHasArmor' }
+  | { type: 'OwnerArmorAtLeast'; value: number }
+  | { type: 'OwnerHasStatus'; status: StatusType }
+  | { type: 'EnemyHasStatusAtLeast'; status: StatusType; minStacks: number };
 
 // Helper constructors for conditions
 export const Cond = {
   None: (): Condition => ({ type: 'None' }),
   EnemyHasStatus: (status: StatusType): Condition => ({ type: 'EnemyHasStatus', status }),
+  EnemyHasNoArmor: (): Condition => ({ type: 'EnemyHasNoArmor' }),
   EnemyHasArmor: (): Condition => ({ type: 'EnemyHasArmor' }),
   DigGreaterThanEnemyDig: (): Condition => ({ type: 'DigGreaterThanEnemyDig' }),
   SpdGreaterThanEnemySpd: (): Condition => ({ type: 'SpdGreaterThanEnemySpd' }),
@@ -124,6 +137,13 @@ export const Cond = {
   OwnerExposed: (): Condition => ({ type: 'OwnerExposed' }),
   EnemyWounded: (): Condition => ({ type: 'EnemyWounded' }),
   OwnerHasArmor: (): Condition => ({ type: 'OwnerHasArmor' }),
+  OwnerArmorAtLeast: (value: number): Condition => ({ type: 'OwnerArmorAtLeast', value }),
+  OwnerHasStatus: (status: StatusType): Condition => ({ type: 'OwnerHasStatus', status }),
+  EnemyHasStatusAtLeast: (status: StatusType, minStacks: number): Condition => ({
+    type: 'EnemyHasStatusAtLeast',
+    status,
+    minStacks,
+  }),
 } as const;
 
 // ============================================================================

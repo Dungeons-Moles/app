@@ -1,6 +1,6 @@
 /**
  * T015-T020: Item system validation tests
- * Tests for GDD item system with 80 items (16 Tools + 64 Gear)
+ * Tests for item system with core roster (17 tools + 64 gear)
  * @see specs/003-gdd-mechanics-update/tasks.md
  * @see docs/gdd.md Section 10: Items
  */
@@ -19,15 +19,15 @@ function getAllItems() {
 
 describe('Item System (US1)', () => {
   // ============================================================================
-  // T015: Validate exactly 80 items (16 Tools + 64 Gear)
+  // T015: Validate current item totals
   // ============================================================================
   describe('T015: Item count validation', () => {
-    it('should have exactly 17 tools (2 per tag + 1 starter)', () => {
+    it('should have exactly 17 tools (including starter)', () => {
       const tools = getAllToolDefinitions();
       expect(tools.length).toBe(17);
     });
 
-    it('should have exactly 64 gear items (8 per tag)', () => {
+    it('should have exactly 64 gear items', () => {
       const gear = getAllGearDefinitions();
       expect(gear.length).toBe(64);
     });

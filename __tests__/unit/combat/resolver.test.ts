@@ -253,4 +253,5 @@ describe('Combat Resolver Determinism', () => {
       expect(result.phase).toBe(CombatPhase.BattleEnd);
     });
   });
+
 });

@@ -61,8 +61,20 @@ export interface CombatParams {
   week?: 1 | 2 | 3;
   /** Whether this is a boss fight */
   isBossFight?: boolean;
+  /** Campaign level being played (1-40) */
+  campaignLevel?: number;
+  /** Cumulative total moves made in session */
+  totalMoves?: number;
+  /** Current phase number (on-chain Phase enum) */
+  phase?: number;
   /** Combat log entries from on-chain (skip local resolver if present) */
   combatLog?: BackendCombatLogEntry[];
+  /** Authoritative on-chain outcome (fallback when combat log is unavailable) */
+  onChainOutcome?: {
+    finalPlayerHp: number;
+    finalPlayerGold: number;
+    playerWon: boolean;
+  };
 }
 
 export type RootStackParamList = {
@@ -84,6 +96,7 @@ export type RootStackParamList = {
     level?: number;
     week?: number;
     phase?: string;
+    combatTurns?: number;
     killedBy?: string;
   };
   Victory: {

@@ -134,7 +134,7 @@ export interface ItemStats {
   hp?: number;
 }
 
-// 16 tools total: 2 per tag (STONE, SCOUT, GREED, BLAST, FROST, RUST, BLOOD, TEMPO)
+// 16 tools total: 2 per tag
 export type ToolId =
   | 'T0' // Rusty Pickaxe (Starting)
   | 'T1'
@@ -156,7 +156,7 @@ export type ToolId =
 
 export type ToolOil = 'ATK' | 'DIG' | 'SPD' | 'ARM';
 
-// 64 gear items total: 8 per tag (STONE, SCOUT, GREED, BLAST, FROST, RUST, BLOOD, TEMPO)
+// 64 gear items total: 8 per tag
 export type GearId =
   // STONE (8): I1-I8
   | 'I1'
@@ -399,6 +399,7 @@ export interface CombatActionResult {
   amount?: number;
   totalGold?: number;
   effectName?: string;
+  goldStolen?: number;
 }
 
 export interface CombatLogEntry {

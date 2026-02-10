@@ -14,6 +14,7 @@ import {
   deriveInventoryPda,
   deriveGeneratedMapPda,
   deriveGameplayAuthorityPda,
+  deriveMapPoisPda,
 } from './constants';
 
 import {
@@ -167,6 +168,7 @@ export async function movePlayer(
   const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
   const [inventoryPda] = deriveInventoryPda(sessionPda);
   const [gameplayAuthorityPda] = deriveGameplayAuthorityPda();
+  const [mapPoisPda] = deriveMapPoisPda(sessionPda);
 
   const transaction = await program.methods
     .movePlayer(params.targetX, params.targetY)
@@ -179,6 +181,8 @@ export async function movePlayer(
       gameplayAuthority: gameplayAuthorityPda,
       playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
       mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
+      mapPois: mapPoisPda,
+      poiSystemProgram: SOLANA_CONFIG.programs.poiSystem,
       player: burnerKeypair.publicKey,
     })
     .transaction();

@@ -64,13 +64,28 @@ export function FastTravelOverlay({
   }, []);
 
   const overview = overviewMode ?? DEFAULT_OVERVIEW_STATE;
-  const zoom = overview.active ? overview.zoom : 1;
+  // Match MapRenderer's dynamic zoom so markers align with map tiles
+  const dynamicZoom = dimensions.height / (7 * TILE_SIZE);
+  const zoom = overview.active ? overview.zoom : dynamicZoom;
+
+  const selectableWaypoints = useMemo(
+    () =>
+      waypoints.filter(
+        (poi) => poi.position.x !== currentPosition.x || poi.position.y !== currentPosition.y
+      ),
+    [waypoints, currentPosition.x, currentPosition.y]
+  );
+
+  const selectedWaypoint = selectableWaypoints[selectedIndex] ?? selectableWaypoints[0] ?? null;
+
+  // Center camera on selected waypoint (or player if none)
+  const focusPosition = selectedWaypoint?.position ?? currentPosition;
   const cameraCenter = useMemo(
     () => ({
-      x: currentPosition.x + (overview.active ? overview.offset.x : 0),
-      y: currentPosition.y + (overview.active ? overview.offset.y : 0),
+      x: focusPosition.x + (overview.active ? overview.offset.x : 0),
+      y: focusPosition.y + (overview.active ? overview.offset.y : 0),
     }),
-    [currentPosition.x, currentPosition.y, overview.active, overview.offset.x, overview.offset.y]
+    [focusPosition.x, focusPosition.y, overview.active, overview.offset.x, overview.offset.y]
   );
 
   const cameraOffset = useMemo(
@@ -82,16 +97,6 @@ export function FastTravelOverlay({
     () => [{ scale: zoom }, { translateX: cameraOffset.x }, { translateY: cameraOffset.y }],
     [zoom, cameraOffset.x, cameraOffset.y]
   );
-
-  const selectableWaypoints = useMemo(
-    () =>
-      waypoints.filter(
-        (poi) => poi.position.x !== currentPosition.x || poi.position.y !== currentPosition.y
-      ),
-    [waypoints, currentPosition.x, currentPosition.y]
-  );
-
-  const selectedWaypoint = selectableWaypoints[selectedIndex] ?? selectableWaypoints[0] ?? null;
 
   useEffect(() => {
     const animation = Animated.loop(
@@ -150,17 +155,12 @@ export function FastTravelOverlay({
 
   const instructionLabel =
     selectableWaypoints.length > 0
-      ? 'Tap to cycle - hold to travel'
+      ? '◀ ▶ cycle   A travel'
       : 'No other waypoints discovered';
 
   return (
-    <View style={styles.container} onLayout={handleLayout}>
-      <Pressable
-        style={styles.scrim}
-        onPress={handlePress}
-        onLongPress={handleLongPress}
-        delayLongPress={350}
-      />
+    <View style={styles.container} onLayout={handleLayout} pointerEvents="box-none">
+      <View style={styles.scrim} pointerEvents="none" />
 
       <View style={[styles.markerLayer, { transform: cameraTransform }]} pointerEvents="none">
         {waypoints.map((poi) => {
