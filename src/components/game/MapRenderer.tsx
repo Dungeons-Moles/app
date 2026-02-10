@@ -51,7 +51,7 @@ const rockV2Source = require('../../../assets/world/tiles/rock-v2.png');
 const rockV3Source = require('../../../assets/world/tiles/rock-v3.png');
 const rockV4Source = require('../../../assets/world/tiles/rock-v4.png');
 
-const SINGLE_USE_POIS = ['L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L11', 'L12', 'L13', 'L14'];
+const SINGLE_USE_POIS = ['L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L12', 'L13'];
 
 // ============================================================================
 // Types

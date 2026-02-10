@@ -1548,6 +1548,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
         !poiProgram ||
         !mapPoisPda ||
         !gameStatePda ||
+        !sessionPda ||
         deferredPoiIndex === null ||
         deferredPoiType === null
       ) {
