@@ -83,12 +83,15 @@ function FloatingNumber({ number, position }: FloatingNumberProps) {
         return '#22c55e'; // Green
       case 'armor':
         return '#a855f7'; // Purple
+      case 'gold':
+        return '#eab308'; // Gold/yellow
       default:
         return '#ffffff';
     }
   };
 
   const getText = () => {
+    if (number.type === 'gold') return `-${number.value} 💰`;
     const prefix = number.type === 'heal' ? '+' : '-';
     return `${prefix}${number.value}`;
   };

@@ -59,7 +59,7 @@ export const ITEMSET_DEFINITIONS: Record<ItemsetId, ItemsetDefinition> = {
     emoji: '🧾',
     requiredItems: ['I25', 'I26', 'I27'], // G-BL-01 to G-BL-03
     bonus: {
-      description: 'Countdown items trigger 1 turn sooner',
+      description: 'Countdown items trigger 1 turn sooner; your bomb self-damage is reduced by 2',
       passive: true,
     },
   },
@@ -87,8 +87,8 @@ export const ITEMSET_DEFINITIONS: Record<ItemsetId, ItemsetDefinition> = {
     emoji: '🛡️',
     requiredItems: ['I3', 'I6', 'T1'], // G-ST-03 + G-ST-06 + T-ST-01
     bonus: {
-      description: 'Keep up to 3 Shrapnel at end of turn',
-      timing: 'TURN_END',
+      description: 'Keep up to 2 Shrapnel at end of turn; when struck with Shrapnel, gain +1 Armor',
+      passive: true,
     },
   },
 
@@ -101,7 +101,7 @@ export const ITEMSET_DEFINITIONS: Record<ItemsetId, ItemsetDefinition> = {
     emoji: '☣️',
     requiredItems: ['T11', 'I42', 'I43'], // T-RU-01 + G-RU-02 + G-RU-03
     bonus: {
-      description: 'On Hit: apply +1 additional Rust',
+      description: 'On Hit: apply +1 Rust; if enemy has no Armor, Rust applications deal 1 non-weapon',
       timing: 'ON_HIT',
     },
   },
@@ -115,7 +115,7 @@ export const ITEMSET_DEFINITIONS: Record<ItemsetId, ItemsetDefinition> = {
     emoji: '⚡',
     requiredItems: ['T3', 'I9', 'I14'], // T-SC-01 + G-SC-01 + G-SC-06
     bonus: {
-      description: 'Battle Start: If DIG > enemy DIG, +2 strikes',
+      description: 'Battle Start: If DIG > enemy DIG, +1 strike and +2 ATK',
       timing: 'BATTLE_START',
     },
   },
@@ -129,7 +129,7 @@ export const ITEMSET_DEFINITIONS: Record<ItemsetId, ItemsetDefinition> = {
     emoji: '🏦',
     requiredItems: ['I17', 'I20', 'T6'], // G-GR-01 + G-GR-04 + T-GR-02
     bonus: {
-      description: 'Gold to Armor conversion becomes 1:4',
+      description: 'Gold to Armor conversion becomes 1:4; gain +1 Gold at battle start',
       passive: true,
     },
   },
@@ -144,7 +144,7 @@ export const ITEMSET_DEFINITIONS: Record<ItemsetId, ItemsetDefinition> = {
     emoji: '🧊',
     requiredItems: ['I36', 'I35', 'I61'],
     bonus: {
-      description: 'Battle Start: +1 SPD; if you act first Turn 1, apply +2 Chill',
+      description: 'Battle Start: +1 SPD; if you act first Turn 1, apply +2 Chill and +3 first-strike damage',
       timing: 'BATTLE_START',
     },
   },

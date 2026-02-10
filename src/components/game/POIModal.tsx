@@ -25,6 +25,7 @@ import type {
   ToolId,
 } from '@/game/engine/types';
 import { POI_DEFINITIONS, type POIDefinition } from '@/data/pois';
+import { getTierFromRarity } from '@/data/gear';
 
 const paperPanelSource = require('../../../assets/ui/panels/paper-panel.png');
 
@@ -43,13 +44,14 @@ interface POIModalProps {
   visible: boolean;
   onSelectOption: (optionIndex: number) => void;
   onClose: () => void;
-  kilnSelection?: { gearId: GearId | null; emoji: string; count: number };
+  kilnSelection?: { gearId: GearId | null; rarity: ItemRarity | null; emoji: string; count: number };
   kilnFuseOptionIndex?: number | null;
   onKilnSlotPress?: (slotIndex: number) => void;
   scrapSelection?: Gear | null;
   scrapOptionIndex?: number | null;
   onScrapSlotPress?: () => void;
   equippedTool?: Tool | null;
+  onFastTravel?: () => void;
 }
 
 // POI types that use the 3-choice card layout
@@ -125,6 +127,19 @@ function getRarityColor(item: Tool | Gear): string {
   }
 }
 
+function getTierBorderStyle(rarity: ItemRarity | null | undefined): { borderWidth: number; borderColor: string } | null {
+  if (!rarity) return null;
+  const tier = getTierFromRarity(rarity);
+  switch (tier) {
+    case 2:
+      return { borderWidth: 2, borderColor: '#4A90D9' };
+    case 3:
+      return { borderWidth: 2, borderColor: '#FFD700' };
+    default:
+      return null;
+  }
+}
+
 interface ListOptionButtonProps {
   option: POIOption;
   index: number;
@@ -191,6 +206,7 @@ export function POIModal({
   scrapOptionIndex,
   onScrapSlotPress,
   equippedTool,
+  onFastTravel,
 }: POIModalProps) {
   if (!interaction) {
     return null;
@@ -310,10 +326,21 @@ export function POIModal({
     <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
       <View style={styles.modalContainer}>
         <View style={styles.modalDarkArea}>{children}</View>
-        <View style={styles.modalSidebarArea} />
+        <View style={styles.modalSidebarArea} pointerEvents="none" />
       </View>
     </Modal>
   );
+
+  // Overlay wrapper for POIs that need sidebar interaction (Rune Kiln, Scrap Chute).
+  // Uses an absolutely-positioned View instead of <Modal> so the sidebar remains touchable.
+  const OverlayWrapper = ({ children }: { children: React.ReactNode }) => {
+    if (!visible) return null;
+    return (
+      <View style={styles.overlayContainer} pointerEvents="box-none">
+        <View style={styles.modalDarkArea}>{children}</View>
+      </View>
+    );
+  };
 
   if (isRuneKiln) {
     if (!visible) {
@@ -326,9 +353,10 @@ export function POIModal({
     const fuseDisabled = kilnFuseOptionIndex === null || kilnFuseOptionIndex === undefined;
     const canRemoveSlotOne = filledSlots >= 1 && !!onKilnSlotPress;
     const canRemoveSlotTwo = filledSlots >= 2 && !!onKilnSlotPress;
+    const kilnTierBorder = getTierBorderStyle(kilnSelection?.rarity);
 
     return (
-      <ModalWrapper>
+      <OverlayWrapper>
         <View style={styles.inlineModal} pointerEvents="auto">
           <Image
             source={paperPanelSource}
@@ -354,7 +382,7 @@ export function POIModal({
 
             <View style={styles.fuseRow}>
               <TouchableOpacity
-                style={[styles.fuseSlot, filledSlots < 1 && styles.fuseSlotEmpty]}
+                style={[styles.fuseSlot, filledSlots < 1 && styles.fuseSlotEmpty, filledSlots >= 1 && kilnTierBorder]}
                 onPress={() => onKilnSlotPress?.(0)}
                 activeOpacity={0.7}
                 disabled={!canRemoveSlotOne}
@@ -380,7 +408,7 @@ export function POIModal({
               </TouchableOpacity>
               <Text style={styles.fusePlus}>+</Text>
               <TouchableOpacity
-                style={[styles.fuseSlot, filledSlots < 2 && styles.fuseSlotEmpty]}
+                style={[styles.fuseSlot, filledSlots < 2 && styles.fuseSlotEmpty, filledSlots >= 2 && kilnTierBorder]}
                 onPress={() => onKilnSlotPress?.(1)}
                 activeOpacity={0.7}
                 disabled={!canRemoveSlotTwo}
@@ -416,7 +444,7 @@ export function POIModal({
             </TouchableOpacity>
           </View>
         </View>
-      </ModalWrapper>
+      </OverlayWrapper>
     );
   }
 
@@ -435,7 +463,7 @@ export function POIModal({
     const canAfford = !selectedOption?.disabled;
 
     return (
-      <ModalWrapper>
+      <OverlayWrapper>
         <View style={styles.inlineModal} pointerEvents="auto">
           <Image
             source={paperPanelSource}
@@ -460,7 +488,7 @@ export function POIModal({
             ) : null}
 
             <TouchableOpacity
-              style={styles.scrapSlot}
+              style={[styles.scrapSlot, hasSelection && getTierBorderStyle(item?.currentRarity)]}
               onPress={() => onScrapSlotPress?.()}
               activeOpacity={0.7}
               disabled={!hasSelection}
@@ -514,7 +542,7 @@ export function POIModal({
             </TouchableOpacity>
           </View>
         </View>
-      </ModalWrapper>
+      </OverlayWrapper>
     );
   }
 
@@ -623,7 +651,7 @@ export function POIModal({
             <Text style={styles.threeChoiceTitle}>{poiDef.name}</Text>
 
             {hasOtherWaypoints ? (
-              <TouchableOpacity style={styles.primaryButton} onPress={() => {}} activeOpacity={0.7}>
+              <TouchableOpacity style={styles.primaryButton} onPress={() => onFastTravel?.()} activeOpacity={0.7}>
                 <Text style={styles.primaryButtonText}>Fast travel?</Text>
               </TouchableOpacity>
             ) : (
@@ -984,6 +1012,14 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
   },
+  overlayContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    bottom: 0,
+    right: 230,
+    zIndex: 100,
+  },
   modalDarkArea: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
@@ -1173,8 +1209,9 @@ const styles = StyleSheet.create({
   shopCost: {
     fontFamily: Typography.number,
     fontSize: 12,
-    color: '#FFD700',
+    color: '#3d2b1f',
     marginTop: 4,
+    fontWeight: 'bold',
   },
   rerollButton: {
     backgroundColor: '#2a2a35',

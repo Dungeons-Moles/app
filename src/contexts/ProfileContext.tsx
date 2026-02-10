@@ -9,6 +9,7 @@ import React, {
   ReactNode,
 } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useWallet } from '@/contexts/WalletContext';
 import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
 import { usePlayerProfile } from '@/hooks/usePlayerProfile';
@@ -38,6 +39,7 @@ interface ProfileContextType {
   recordRunResult: (levelReached: number, victory: boolean) => Promise<TransactionResult>;
   updateName: (name: string) => Promise<TransactionResult>;
   clearProfile: () => Promise<void>;
+  defaultCombatSpeed: CombatSpeed;
   updateDefaultCombatSpeed: (speed: CombatSpeed) => Promise<void>;
   updateLastPlayed: () => Promise<void>;
   syncPendingResults: () => Promise<void>;
@@ -71,14 +73,18 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
   const [error, setError] = React.useState<string | null>(null);
   const [isPurchasing, setIsPurchasing] = useState(false);
   const [unlockedIndices, setUnlockedIndices] = useState<Set<number>>(new Set());
+  const [defaultCombatSpeed, setDefaultCombatSpeed] = useState<CombatSpeed>('normal');
   const hasFetchedRef = useRef(false);
   const fetchProfileRef = useRef(profileApi.fetchProfile);
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
 
-  // Initialize unlocked items from starter items
-  // NOTE: This logic is legacy. Real unlocking happens via profile sync.
+  // Load persisted combat speed on mount
   useEffect(() => {
-    // Legacy initialization removed
+    AsyncStorage.getItem('defaultCombatSpeed').then((stored) => {
+      if (stored === 'normal' || stored === 'fast') {
+        setDefaultCombatSpeed(stored);
+      }
+    });
   }, []);
 
   // Update unlocked items when profile loads from bitmask
@@ -185,8 +191,9 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     hasFetchedRef.current = false;
   }, [profileApi]);
 
-  const updateDefaultCombatSpeed = useCallback(async (_speed: CombatSpeed) => {
-    return;
+  const updateDefaultCombatSpeed = useCallback(async (speed: CombatSpeed) => {
+    setDefaultCombatSpeed(speed);
+    await AsyncStorage.setItem('defaultCombatSpeed', speed);
   }, []);
 
   const updateLastPlayed = useCallback(async () => {
@@ -196,6 +203,20 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
   const syncPendingResults = useCallback(async () => {
     await offlineSync.syncAll();
   }, [offlineSync]);
+
+  // Wrap createProfile so mode is set to 'online' on success.
+  // This prevents a race where detectConnectivity() hasn't resolved yet
+  // but the user already created a profile (proving connectivity).
+  const handleCreateProfile = useCallback(
+    async (name: string): Promise<TransactionResult> => {
+      const result = await profileApi.createProfile(name);
+      if (result.success) {
+        setMode('online');
+      }
+      return result;
+    },
+    [profileApi]
+  );
 
   const loginAsGuest = useCallback(() => {
     console.log('[ProfileContext] loginAsGuest called');
@@ -268,18 +289,26 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
 
     const isTool = id.startsWith('T');
     const num = parseInt(id.substring(1), 10);
+    if (Number.isNaN(num)) return -1;
 
     if (isTool) {
-      // T1-T16: 2 tools per tag
-      const tagIndex = Math.floor((num - 1) / 2);
-      const innerIndex = (num - 1) % 2;
-      return 64 + tagIndex * 2 + innerIndex;
-    } else {
+      if (num >= 1 && num <= 16) {
+        // T1-T16: 2 tools per tag
+        const tagIndex = Math.floor((num - 1) / 2);
+        const innerIndex = (num - 1) % 2;
+        return 64 + tagIndex * 2 + innerIndex;
+      }
+      return -1;
+    }
+
+    if (num >= 1 && num <= 64) {
       // I1-I64: 8 gear per tag
       const tagIndex = Math.floor((num - 1) / 8);
       const innerIndex = (num - 1) % 8;
       return tagIndex * 8 + innerIndex;
     }
+
+    return -1;
   }, []);
 
   /**
@@ -365,10 +394,11 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       pendingSyncCount: offlineSync.pendingCount,
       isSyncing: offlineSync.isSyncing,
       refresh,
-      createProfile: profileApi.createProfile,
+      createProfile: handleCreateProfile,
       recordRunResult: handleRecordRunResult,
       updateName: profileApi.updateName,
       clearProfile,
+      defaultCombatSpeed,
       updateDefaultCombatSpeed,
       updateLastPlayed,
       syncPendingResults,
@@ -384,7 +414,9 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     }),
     [
       clearProfile,
+      defaultCombatSpeed,
       error,
+      handleCreateProfile,
       handleRecordRunResult,
       loginAsGuest,
       mode,

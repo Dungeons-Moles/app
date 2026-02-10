@@ -85,3 +85,102 @@ export interface ItemInstanceData {
   tier: number;
   toolOilFlags: number;
 }
+
+// Status type enum for conditions
+export enum StatusType {
+  Chill = 'chill',
+  Shrapnel = 'shrapnel',
+  Rust = 'rust',
+  Bleed = 'bleed',
+  Reflection = 'reflection',
+}
+
+// Conditions that must be met for an effect to fire
+export type Condition =
+  | { none: Record<string, never> }
+  | { enemyHasStatus: { statusType: StatusType } }
+  | { enemyHasNoArmor: Record<string, never> }
+  | { enemyHasArmor: Record<string, never> }
+  | { digGreaterThanEnemyDig: Record<string, never> }
+  | { spdGreaterThanEnemySpd: Record<string, never> }
+  | { ownerWounded: Record<string, never> }
+  | { ownerExposed: Record<string, never> }
+  | { enemyWounded: Record<string, never> }
+  | { ownerHasArmor: Record<string, never> }
+  | { ownerArmorAtLeast: { value: number } }
+  | { ownerHasStatus: { statusType: StatusType } }
+  | { enemyHasStatusAtLeast: { statusType: StatusType; minStacks: number } };
+
+// Effect type enum
+export type EffectType =
+  | { dealDamage: Record<string, never> }
+  | { dealNonWeaponDamage: Record<string, never> }
+  | { heal: Record<string, never> }
+  | { gainArmor: Record<string, never> }
+  | { gainAtk: Record<string, never> }
+  | { gainGearAtk: Record<string, never> }
+  | { gainSpd: Record<string, never> }
+  | { gainDig: Record<string, never> }
+  | { gainGold: Record<string, never> }
+  | { applyBomb: Record<string, never> }
+  | { applyChill: Record<string, never> }
+  | { applyShrapnel: Record<string, never> }
+  | { applyRust: Record<string, never> }
+  | { applyBleed: Record<string, never> }
+  | { removeArmor: Record<string, never> }
+  | { gainStrikes: Record<string, never> }
+  | { stealGold: Record<string, never> }
+  | { goldToArmor: Record<string, never> }
+  | { applyReflection: Record<string, never> }
+  | { maxHp: Record<string, never> }
+  | { reduceEnemySpd: Record<string, never> }
+  | { dealSelfNonWeaponDamage: Record<string, never> }
+  | { goldToArmorScaled: Record<string, never> }
+  | { consumeGoldForArmor: Record<string, never> }
+  | { preventDeath: Record<string, never> }
+  | { setArmorPiercing: Record<string, never> }
+  | { armorToMaxHp: Record<string, never> }
+  | { reduceAllCountdowns: Record<string, never> }
+  | { amplifyNonWeaponDamage: Record<string, never> }
+  | { storeDamage: Record<string, never> }
+  | { empowerNextBombDamage: Record<string, never> }
+  | { reduceNextBombSelfDamage: Record<string, never> }
+  | { halfGearAtkAfterSecondStrike: Record<string, never> }
+  | { blastImmunity: Record<string, never> }
+  | { doubleBombTrigger: Record<string, never> }
+  | { doubleOnHitEffects: Record<string, never> }
+  | { triggerAllShards: Record<string, never> };
+
+// Trigger type enum
+export type TriggerType =
+  | { battleStart: Record<string, never> }
+  | { firstTurn: Record<string, never> }
+  | { firstTurnIfFaster: Record<string, never> }
+  | { firstTurnIfSlower: Record<string, never> }
+  | { turnStart: Record<string, never> }
+  | { everyOtherTurn: Record<string, never> }
+  | { onHit: Record<string, never> }
+  | { exposed: Record<string, never> }
+  | { wounded: Record<string, never> }
+  | { countdown: { turns: number } }
+  | { victory: Record<string, never> }
+  | { onStruck: Record<string, never> }
+  | { turnN: { turn: number } }
+  | { everyOtherTurnFirstHit: Record<string, never> }
+  | { turnEnd: Record<string, never> }
+  | { onEnemyBleedDamage: Record<string, never> }
+  | { onApplyRust: Record<string, never> }
+  | { onGainShrapnel: Record<string, never> }
+  | { dayStart: Record<string, never> }
+  | { firstTimeWounded: Record<string, never> }
+  | { firstTimeExposed: Record<string, never> }
+  | { firstTimeGainShrapnel: Record<string, never> };
+
+// Item effect (matches on-chain ItemEffect struct)
+export interface ItemEffect {
+  trigger: TriggerType;
+  oncePerTurn: boolean;
+  effectType: EffectType;
+  value: number;
+  condition: Condition;
+}

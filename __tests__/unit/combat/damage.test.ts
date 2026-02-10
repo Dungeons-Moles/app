@@ -49,12 +49,13 @@ describe('Damage Calculation', () => {
         expect(result.hpDamage).toBe(7); // 10 ATK - 3 ARM = 7 damage
       });
 
-      it('should not deal negative damage (minimum 0)', () => {
+      it('should let armor fully absorb damage (HP before HP)', () => {
         const attacker = createTestCombatant({ atk: 2 });
         const defender = createTestCombatant({ arm: 10 });
 
         const result = calculateDamage(attacker, defender);
 
+        // ARM is "HP before HP": armor absorbs all damage, 0 HP goes through.
         expect(result.armorDamage).toBe(2);
         expect(result.hpDamage).toBe(0);
       });
@@ -187,7 +188,7 @@ describe('Damage Calculation', () => {
         expect(result.shrapnelReflect).toBe(0);
       });
 
-      it('should still calculate Shrapnel reflect even if attack deals 0 damage', () => {
+      it('should still calculate Shrapnel reflect even when armor absorbs all damage', () => {
         const attacker = createTestCombatant({ atk: 2 });
         const defender = createTestCombatant({
           arm: 10,

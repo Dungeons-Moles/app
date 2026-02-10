@@ -109,7 +109,7 @@ export function getShrapnelDamage(combatant: CombatantState): number {
 
 /**
  * Process Shrapnel clearing at turn end
- * Clears all Shrapnel unless Shrapnel Harness is active (keeps up to 3)
+ * Clears all Shrapnel unless Shrapnel Harness is active (keeps up to 2)
  */
 export function processShrapnelClear(
   combatant: CombatantState,
@@ -120,7 +120,7 @@ export function processShrapnelClear(
   }
 
   const newShrapnel = hasShrapnelHarness
-    ? Math.min(combatant.statusEffects.shrapnel, 3)
+    ? Math.min(combatant.statusEffects.shrapnel, 2)
     : 0;
 
   return {

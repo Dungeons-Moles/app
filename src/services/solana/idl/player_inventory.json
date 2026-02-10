@@ -1210,6 +1210,79 @@
           "type": "u8"
         }
       ]
+    },
+    {
+      "name": "upgrade_tool_tier",
+      "docs": [
+        "Upgrades the equipped tool to the next tier while preserving Tool Oil flags.",
+        "",
+        "Used by poi-system Rusty Anvil interaction for atomic tier upgrades."
+      ],
+      "discriminator": [
+        66,
+        244,
+        18,
+        207,
+        178,
+        146,
+        37,
+        206
+      ],
+      "accounts": [
+        {
+          "name": "inventory",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  110,
+                  118,
+                  101,
+                  110,
+                  116,
+                  111,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "inventory.session",
+                "account": "PlayerInventory"
+              }
+            ]
+          }
+        },
+        {
+          "name": "player",
+          "signer": true,
+          "relations": [
+            "inventory"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "item_id",
+          "type": {
+            "array": [
+              "u8",
+              8
+            ]
+          }
+        },
+        {
+          "name": "current_tier",
+          "type": {
+            "defined": {
+              "name": "Tier"
+            }
+          }
+        }
+      ]
     }
   ],
   "accounts": [
@@ -1318,6 +1391,19 @@
         150,
         56
       ]
+    },
+    {
+      "name": "ToolTierUpgraded",
+      "discriminator": [
+        188,
+        172,
+        146,
+        133,
+        47,
+        123,
+        63,
+        140
+      ]
     }
   ],
   "errors": [
@@ -1379,6 +1465,84 @@
   ],
   "types": [
     {
+      "name": "Condition",
+      "docs": [
+        "Conditions that must be met for an effect to fire"
+      ],
+      "repr": {
+        "kind": "rust"
+      },
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "None"
+          },
+          {
+            "name": "EnemyHasStatus",
+            "fields": [
+              {
+                "defined": {
+                  "name": "StatusType"
+                }
+              }
+            ]
+          },
+          {
+            "name": "EnemyHasArmor"
+          },
+          {
+            "name": "EnemyHasNoArmor"
+          },
+          {
+            "name": "DigGreaterThanEnemyDig"
+          },
+          {
+            "name": "SpdGreaterThanEnemySpd"
+          },
+          {
+            "name": "OwnerWounded"
+          },
+          {
+            "name": "OwnerExposed"
+          },
+          {
+            "name": "EnemyWounded"
+          },
+          {
+            "name": "OwnerHasArmor"
+          },
+          {
+            "name": "OwnerArmorAtLeast",
+            "fields": [
+              "u8"
+            ]
+          },
+          {
+            "name": "OwnerHasStatus",
+            "fields": [
+              {
+                "defined": {
+                  "name": "StatusType"
+                }
+              }
+            ]
+          },
+          {
+            "name": "EnemyHasStatusAtLeast",
+            "fields": [
+              {
+                "defined": {
+                  "name": "StatusType"
+                }
+              },
+              "u8"
+            ]
+          }
+        ]
+      }
+    },
+    {
       "name": "EffectType",
       "type": {
         "kind": "enum",
@@ -1397,6 +1561,9 @@
           },
           {
             "name": "GainAtk"
+          },
+          {
+            "name": "GainGearAtk"
           },
           {
             "name": "GainSpd"
@@ -1436,6 +1603,60 @@
           },
           {
             "name": "ApplyReflection"
+          },
+          {
+            "name": "MaxHp"
+          },
+          {
+            "name": "ReduceEnemySpd"
+          },
+          {
+            "name": "DealSelfNonWeaponDamage"
+          },
+          {
+            "name": "GoldToArmorScaled"
+          },
+          {
+            "name": "ConsumeGoldForArmor"
+          },
+          {
+            "name": "PreventDeath"
+          },
+          {
+            "name": "SetArmorPiercing"
+          },
+          {
+            "name": "ArmorToMaxHp"
+          },
+          {
+            "name": "ReduceAllCountdowns"
+          },
+          {
+            "name": "AmplifyNonWeaponDamage"
+          },
+          {
+            "name": "StoreDamage"
+          },
+          {
+            "name": "EmpowerNextBombDamage"
+          },
+          {
+            "name": "ReduceNextBombSelfDamage"
+          },
+          {
+            "name": "HalfGearAtkAfterSecondStrike"
+          },
+          {
+            "name": "BlastImmunity"
+          },
+          {
+            "name": "DoubleBombTrigger"
+          },
+          {
+            "name": "DoubleOnHitEffects"
+          },
+          {
+            "name": "TriggerAllShards"
           }
         ]
       }
@@ -1516,6 +1737,17 @@
           {
             "name": "value",
             "type": "i16"
+          },
+          {
+            "name": "condition",
+            "docs": [
+              "Optional condition that must be met for the effect to fire"
+            ],
+            "type": {
+              "defined": {
+                "name": "Condition"
+              }
+            }
           }
         ]
       }
@@ -1832,6 +2064,35 @@
       }
     },
     {
+      "name": "StatusType",
+      "docs": [
+        "Status type enum for conditions"
+      ],
+      "repr": {
+        "kind": "rust"
+      },
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Chill"
+          },
+          {
+            "name": "Shrapnel"
+          },
+          {
+            "name": "Rust"
+          },
+          {
+            "name": "Bleed"
+          },
+          {
+            "name": "Reflection"
+          }
+        ]
+      }
+    },
+    {
       "name": "Tier",
       "docs": [
         "Item tier (upgrade level)"
@@ -1895,6 +2156,43 @@
       }
     },
     {
+      "name": "ToolTierUpgraded",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "item_id",
+            "type": {
+              "array": [
+                "u8",
+                8
+              ]
+            }
+          },
+          {
+            "name": "old_tier",
+            "type": {
+              "defined": {
+                "name": "Tier"
+              }
+            }
+          },
+          {
+            "name": "new_tier",
+            "type": {
+              "defined": {
+                "name": "Tier"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
       "name": "TriggerType",
       "type": {
         "kind": "enum",
@@ -1934,6 +2232,48 @@
                 "type": "u8"
               }
             ]
+          },
+          {
+            "name": "Victory"
+          },
+          {
+            "name": "OnStruck"
+          },
+          {
+            "name": "TurnN",
+            "fields": [
+              {
+                "name": "turn",
+                "type": "u8"
+              }
+            ]
+          },
+          {
+            "name": "EveryOtherTurnFirstHit"
+          },
+          {
+            "name": "TurnEnd"
+          },
+          {
+            "name": "OnEnemyBleedDamage"
+          },
+          {
+            "name": "OnApplyRust"
+          },
+          {
+            "name": "OnGainShrapnel"
+          },
+          {
+            "name": "DayStart"
+          },
+          {
+            "name": "FirstTimeWounded"
+          },
+          {
+            "name": "FirstTimeExposed"
+          },
+          {
+            "name": "FirstTimeGainShrapnel"
           }
         ]
       }

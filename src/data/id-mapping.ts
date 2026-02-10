@@ -38,7 +38,7 @@ export const TOOL_BACKEND_TO_FRONTEND: Record<string, ToolId> = Object.fromEntri
 );
 
 // ============================================================================
-// Gear ID Mapping (64 gear items: 8 per tag)
+// Gear ID Mapping (64 gear items)
 // ============================================================================
 
 export const GEAR_FRONTEND_TO_BACKEND: Record<GearId, string> = {

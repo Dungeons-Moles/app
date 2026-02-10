@@ -24,6 +24,9 @@ import type { CombatReplay } from '../services/solana/types/combat_events';
 
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.png');
 const SKULL_ICON = require('../../assets/icons/ui/skull.png');
+const PAPER_PANEL = require('../../assets/ui/panels/paper-panel.png');
+const SQUARE_FRAME = require('../../assets/ui/frames/square.png');
+const BUTTON_BG = require('../../assets/ui/buttons/button.png');
 
 type DeathScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Death'>;
@@ -31,7 +34,7 @@ type DeathScreenProps = {
 };
 
 export function DeathScreen({ navigation, route }: DeathScreenProps) {
-  const { replay, totalMoves, level, week, phase, killedBy } = route.params ?? {};
+  const { replay, totalMoves, level, week, phase, combatTurns, killedBy } = route.params ?? {};
   const { availableRuns } = useProfile();
   const { height } = useWindowDimensions();
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -73,7 +76,7 @@ export function DeathScreen({ navigation, route }: DeathScreenProps) {
     return 'Killed in combat';
   };
 
-  const turnsTaken = replay?.combatEnded?.turnsTaken ?? 0;
+  const turnsTaken = replay?.combatEnded?.turnsTaken ?? combatTurns ?? 0;
 
   // Shared components
   const DeathHeader = () => (
@@ -92,64 +95,49 @@ export function DeathScreen({ navigation, route }: DeathScreenProps) {
     </>
   );
 
+  const StatFrame = ({ label, value }: { label: string; value: string | number }) => (
+    <View style={styles.statItem}>
+      <Image source={SQUARE_FRAME} style={styles.statFrameBg} resizeMode="stretch" />
+      <Text style={styles.statFrameValue}>{value}</Text>
+      <Text style={styles.statFrameLabel}>{label}</Text>
+    </View>
+  );
+
   const RunSummary = () => (
     <View style={isVerticalLayout ? styles.summaryContainerVertical : styles.summaryContainer}>
+      <Image
+        source={PAPER_PANEL}
+        style={styles.summaryPanelBg}
+        resizeMode="stretch"
+      />
       <Text style={isVerticalLayout ? styles.summaryTitleVertical : styles.summaryTitle}>
         Run Summary
       </Text>
 
       {isVerticalLayout ? (
-        // Vertical layout: row-based stats
         <>
-          <View style={styles.statRow}>
-            <Text style={styles.statLabelVertical}>Level</Text>
-            <Text style={styles.statValueVertical}>{level ?? 1}</Text>
+          <View style={styles.statsRow}>
+            <StatFrame label="Level" value={level ?? 1} />
+            <StatFrame label="Week" value={week ?? 1} />
+            <StatFrame label="Phase" value={phase ?? 'Day 1'} />
           </View>
-          <View style={styles.statRow}>
-            <Text style={styles.statLabelVertical}>Week</Text>
-            <Text style={styles.statValueVertical}>{week ?? 1}</Text>
-          </View>
-          <View style={styles.statRow}>
-            <Text style={styles.statLabelVertical}>Phase</Text>
-            <Text style={styles.statValueVertical}>{phase ?? 'Day 1'}</Text>
-          </View>
-          <View style={styles.statRow}>
-            <Text style={styles.statLabelVertical}>Total Moves</Text>
-            <Text style={styles.statValueVertical}>{totalMoves ?? 0}</Text>
-          </View>
-          <View style={styles.statRow}>
-            <Text style={styles.statLabelVertical}>Combat Turns</Text>
-            <Text style={styles.statValueVertical}>{turnsTaken}</Text>
+          <View style={styles.statsRowCentered}>
+            <StatFrame label="Total Moves" value={totalMoves ?? 0} />
+            <StatFrame label="Combat Turns" value={turnsTaken} />
           </View>
         </>
       ) : (
-        // Horizontal layout: grid-based stats
         <>
           {/* First row: Level, Week, Phase */}
           <View style={styles.statsRow}>
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>{level ?? 1}</Text>
-              <Text style={styles.statLabel}>Level</Text>
-            </View>
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>{week ?? 1}</Text>
-              <Text style={styles.statLabel}>Week</Text>
-            </View>
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>{phase ?? 'Day 1'}</Text>
-              <Text style={styles.statLabel}>Phase</Text>
-            </View>
+            <StatFrame label="Level" value={level ?? 1} />
+            <StatFrame label="Week" value={week ?? 1} />
+            <StatFrame label="Phase" value={phase ?? 'Day 1'} />
           </View>
           {/* Second row: Moves, Turns (centered) */}
           <View style={styles.statsRowCentered}>
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>{totalMoves ?? 0}</Text>
-              <Text style={styles.statLabel}>Total Moves</Text>
-            </View>
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>{turnsTaken}</Text>
-              <Text style={styles.statLabel}>Combat Turns</Text>
-            </View>
+            <StatFrame label="Total Moves" value={totalMoves ?? 0} />
+            <StatFrame label="Combat Turns" value={turnsTaken} />
           </View>
         </>
       )}
@@ -176,14 +164,19 @@ export function DeathScreen({ navigation, route }: DeathScreenProps) {
     ) : null;
 
   const ReturnButton = () => (
-    <Pressable
-      style={isVerticalLayout ? styles.returnButtonVertical : styles.returnButton}
-      onPress={handleReturnToHub}
-    >
-      <Text style={isVerticalLayout ? styles.returnButtonTextVertical : styles.returnButtonText}>
-        Return to Hub
-      </Text>
-    </Pressable>
+    <View style={isVerticalLayout ? styles.buttonSlotVertical : styles.buttonSlot}>
+      <Pressable style={styles.buttonPressable} onPress={handleReturnToHub}>
+        <ImageBackground
+          source={BUTTON_BG}
+          style={styles.buttonImage}
+          resizeMode="contain"
+        >
+          <Text style={isVerticalLayout ? styles.returnButtonTextVertical : styles.returnButtonText}>
+            Return to Hub
+          </Text>
+        </ImageBackground>
+      </Pressable>
+    </View>
   );
 
   return (
@@ -297,19 +290,22 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   summaryContainer: {
-    backgroundColor: 'rgba(40, 40, 50, 0.9)',
-    borderRadius: 12,
     padding: 16,
     width: '100%',
     marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#444455',
+  },
+  summaryPanelBg: {
+    position: 'absolute',
+    width: '110%',
+    height: '120%',
+    top: '-10%',
+    left: '-5%',
   },
   summaryTitle: {
     fontFamily: Typography.header,
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#FFFFFF',
+    color: '#2A1A0A',
     marginBottom: 12,
     textAlign: 'center',
   },
@@ -326,24 +322,29 @@ const styles = StyleSheet.create({
   },
   statItem: {
     alignItems: 'center',
+    justifyContent: 'center',
     minWidth: 60,
     flex: 1,
-    paddingVertical: 8,
+    paddingVertical: 12,
     paddingHorizontal: 8,
-    backgroundColor: 'rgba(60, 60, 80, 0.5)',
-    borderRadius: 8,
   },
-  statLabel: {
+  statFrameBg: {
+    position: 'absolute',
+    width: '100%',
+    height: '100%',
+    resizeMode: 'stretch',
+  },
+  statFrameLabel: {
     fontFamily: Typography.body,
     fontSize: 11,
-    color: '#AAAAAA',
+    color: '#1A1A1A',
     marginTop: 2,
   },
-  statValue: {
+  statFrameValue: {
     fontFamily: Typography.number,
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#FFFFFF',
+    color: '#000000',
   },
   warningContainer: {
     backgroundColor: 'rgba(139, 0, 0, 0.3)',
@@ -376,19 +377,32 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
-  returnButton: {
-    backgroundColor: '#4a4a6a',
-    paddingVertical: 12,
-    paddingHorizontal: 32,
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: '#6a6a8a',
+  buttonSlot: {
+    width: '70%',
+    aspectRatio: 3.2,
+  },
+  buttonSlotVertical: {
+    width: '60%',
+    aspectRatio: 3.2,
+  },
+  buttonPressable: {
+    width: '100%',
+    height: '100%',
+  },
+  buttonImage: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   returnButtonText: {
     fontFamily: Typography.button,
     fontSize: 15,
     fontWeight: 'bold',
     color: '#FFFFFF',
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
   },
 
   // ==================== VERTICAL LAYOUT (Tall Screens / Portrait) ====================
@@ -431,39 +445,17 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   summaryContainerVertical: {
-    backgroundColor: 'rgba(40, 40, 50, 0.9)',
-    borderRadius: 12,
     padding: 20,
     width: '100%',
     marginBottom: 32,
-    borderWidth: 1,
-    borderColor: '#444455',
   },
   summaryTitleVertical: {
     fontFamily: Typography.header,
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#FFFFFF',
+    color: '#2A1A0A',
     marginBottom: 16,
     textAlign: 'center',
-  },
-  statRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#333344',
-  },
-  statLabelVertical: {
-    fontFamily: Typography.body,
-    fontSize: 16,
-    color: '#AAAAAA',
-  },
-  statValueVertical: {
-    fontFamily: Typography.number,
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
   },
   warningContainerVertical: {
     backgroundColor: 'rgba(139, 0, 0, 0.3)',
@@ -497,18 +489,13 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
-  returnButtonVertical: {
-    backgroundColor: '#4a4a6a',
-    paddingVertical: 16,
-    paddingHorizontal: 48,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: '#6a6a8a',
-  },
   returnButtonTextVertical: {
     fontFamily: Typography.button,
     fontSize: 18,
     fontWeight: 'bold',
     color: '#FFFFFF',
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
   },
 });

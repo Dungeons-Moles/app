@@ -37,7 +37,6 @@ import {
   interactToolOilCombined,
   interactSurveyBeacon,
   interactSeismicScanner,
-  discoverWaypoint,
   fastTravel,
   enterShop,
   shopPurchase,
@@ -51,6 +50,7 @@ import {
   generateOilOffer,
 } from '@/services/solana/poiSystem';
 import { decodeItemId } from '@/services/solana/sessionRestore';
+import { gearToBackend, toolToBackend } from '@/data/id-mapping';
 import { createGearInstance } from '@/game/entities/items';
 import { createToolInstance } from '@/game/entities/items';
 import type { Position, POIOption, GearId, ToolId, Tool, Gear, ToolOil } from '@/game/engine/types';
@@ -95,6 +95,11 @@ export interface UsePoiInteractionResult extends PoiInteractionHookState {
   exitShop: () => Promise<{ success: boolean }>;
   /** Fast travel to another waypoint */
   travelToWaypoint: (fromPoiIndex: number, toPoiIndex: number) => Promise<{ success: boolean }>;
+  /** Execute fast travel from current position to a destination position */
+  executeFastTravel: (
+    fromPos: Position,
+    toPos: Position
+  ) => Promise<{ success: boolean; newState?: any; error?: string }>;
   /** On-chain cache offers for pick-item POIs (overrides local options) */
   cacheOfferOptions: POIOption[] | null;
   /** Select a cache offer option (sends on-chain interactPickItem) */
@@ -136,12 +141,19 @@ const NIGHT_ONLY_POIS: Set<number> = new Set([POI_TYPES.MOLE_DEN, POI_TYPES.REST
 
 /** One-time use POI types */
 const ONE_TIME_POIS: Set<number> = new Set([
+  POI_TYPES.SUPPLY_CACHE,
+  POI_TYPES.TOOL_CRATE,
+  POI_TYPES.TOOL_OIL_RACK,
   POI_TYPES.REST_ALCOVE,
   POI_TYPES.SURVEY_BEACON,
   POI_TYPES.SEISMIC_SCANNER,
-  POI_TYPES.RUSTY_ANVIL,
-  POI_TYPES.SCRAP_CHUTE,
+  POI_TYPES.GEODE_VAULT,
+  POI_TYPES.COUNTER_CACHE,
 ]);
+
+function isOneTimePoiType(poiType: number | null | undefined): boolean {
+  return poiType !== null && poiType !== undefined && ONE_TIME_POIS.has(poiType);
+}
 
 /** Pick-item POI types that use two-step on-chain flow (generate → pick) */
 const PICK_ITEM_POIS: Set<number> = new Set([
@@ -157,7 +169,9 @@ const DEFERRED_SELECTION_POIS: Set<number> = new Set([
   POI_TYPES.REST_ALCOVE,
   POI_TYPES.TOOL_OIL_RACK,
   POI_TYPES.SEISMIC_SCANNER,
+  POI_TYPES.RAIL_WAYPOINT,
   POI_TYPES.SMUGGLER_HATCH,
+  POI_TYPES.RUSTY_ANVIL,
 ]);
 
 /** Tool oil flag constants (match on-chain OIL_FLAG_*) */
@@ -318,13 +332,20 @@ function convertShopOffersToOptions(
   }
 
   // Reroll option
+  const hasRerollsRemaining = rerollCount < 3;
   const rerollCost = 4 + rerollCount * 2;
-  const canReroll = playerGold >= rerollCost;
+  const canReroll = hasRerollsRemaining && playerGold >= rerollCost;
   options.push({
-    label: `Reroll shop (${rerollCost}g)`,
-    cost: rerollCost,
+    label: hasRerollsRemaining
+      ? `Reroll shop (${rerollCost}g)`
+      : 'Reroll shop (Limit reached)',
+    cost: hasRerollsRemaining ? rerollCost : undefined,
     disabled: !canReroll,
-    disabledReason: canReroll ? undefined : 'Not enough gold',
+    disabledReason: hasRerollsRemaining
+      ? canReroll
+        ? undefined
+        : 'Not enough gold'
+      : 'Maximum 3 rerolls per visit',
   });
 
   options.push({ label: 'Leave' });
@@ -363,6 +384,45 @@ function convertOilOfferToOptions(oils: number[]): POIOption[] {
 // Hook Implementation
 // ============================================================================
 
+/**
+ * Find the local POI at the given position and dispatch INTERACT_POI to show the modal.
+ * Falls back to SHOW_POI_MODAL with a synthetic POI if no local POI exists.
+ */
+function dispatchPoiModal(
+  dispatch: ReturnType<typeof useGame>['dispatch'],
+  localPois: Array<{ id: string; position: { x: number; y: number }; visited: boolean }> | undefined,
+  pos: { x: number; y: number },
+  definitionId: string,
+  interactionType: string
+) {
+  const localPoi = localPois?.find(
+    (p) => p.position.x === pos.x && p.position.y === pos.y && !p.visited
+  );
+  if (localPoi) {
+    dispatch({ type: 'INTERACT_POI', poiId: localPoi.id });
+  } else {
+    console.warn(
+      `[usePoiInteraction] ${definitionId}: no local POI found at`,
+      pos.x,
+      pos.y,
+      '| dispatching SHOW_POI_MODAL fallback'
+    );
+    dispatch({
+      type: 'SHOW_POI_MODAL',
+      interaction: {
+        poi: {
+          id: `onchain-${definitionId}-${pos.x}-${pos.y}`,
+          definitionId,
+          position: { x: pos.x, y: pos.y },
+          visited: false,
+          discovered: true,
+        },
+        type: interactionType as any,
+      },
+    });
+  }
+}
+
 export function usePoiInteraction(): UsePoiInteractionResult {
   const { state: gameState, dispatch } = useGame();
   const {
@@ -370,6 +430,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
     gameplayState: onChainState,
     getBurnerKeypair,
     currentLevel,
+    refreshGameplayState: refreshSessionState,
   } = useSession();
   const {
     pois,
@@ -532,6 +593,11 @@ export function usePoiInteraction(): UsePoiInteractionResult {
     }
 
     const poiType = currentPoi.poiType;
+
+    // Rail Waypoint (L8): Never auto-open; discovery is automatic, interaction is manual
+    if (poiType === POI_TYPES.RAIL_WAYPOINT) {
+      return false;
+    }
 
     // Tool Oil Rack (L4): Don't auto-open if player already has oil on weapon
     if (poiType === POI_TYPES.TOOL_OIL_RACK) {
@@ -752,12 +818,8 @@ export function usePoiInteraction(): UsePoiInteractionResult {
 
             // Dispatch INTERACT_POI to show the modal with options
             // The options are generated locally by pois.ts (generateMoleDenOptions / generateRestAlcoveOptions)
-            const localPoi = gameState?.map?.pois?.find(
-              (p) => p.position.x === currentPoi.x && p.position.y === currentPoi.y
-            );
-            if (localPoi) {
-              dispatch({ type: 'INTERACT_POI', poiId: localPoi.id });
-            }
+            const defId = poiType === POI_TYPES.MOLE_DEN ? 'L1' : 'L5';
+            dispatchPoiModal(dispatch, gameState?.map?.pois, currentPoi, defId, 'REST');
 
             setIsInteracting(false);
             setInteractionState('choosing');
@@ -821,19 +883,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             setCacheOfferParams({ poiIndex, rawOffer: mapPoisData.currentOffer, poiType });
 
             // Dispatch INTERACT_POI locally to transition to POIInteraction phase (shows modal)
-            const pickLocalPoiId = gameState?.map?.pois?.find(
-              (p) =>
-                p.position.x === playerPosition.x && p.position.y === playerPosition.y && !p.visited
-            )?.id;
-            if (pickLocalPoiId) {
-              console.log(
-                '[usePoiInteraction] Dispatching INTERACT_POI for modal | localPoiId:',
-                pickLocalPoiId
-              );
-              dispatch({ type: 'INTERACT_POI', poiId: pickLocalPoiId });
-            } else {
-              console.warn('[usePoiInteraction] No local POI found to dispatch INTERACT_POI');
-            }
+            dispatchPoiModal(dispatch, gameState?.map?.pois, currentPoi, `L${poiType}`, 'ITEM_SELECTION');
 
             // Stay in choosing state — don't mark consumed yet
             setInteractionState('choosing');
@@ -867,6 +917,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
                 poiProgram,
                 mapPoisPda,
                 gameStatePda,
+                sessionPda,
                 burnerKeypair,
                 poiIndex
               );
@@ -901,13 +952,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             setDeferredPoiIndex(poiIndex);
             setDeferredPoiType(POI_TYPES.TOOL_OIL_RACK);
 
-            const oilLocalPoiId = gameState?.map?.pois?.find(
-              (p) =>
-                p.position.x === playerPosition.x && p.position.y === playerPosition.y && !p.visited
-            )?.id;
-            if (oilLocalPoiId) {
-              dispatch({ type: 'INTERACT_POI', poiId: oilLocalPoiId });
-            }
+            dispatchPoiModal(dispatch, gameState?.map?.pois, currentPoi, 'L4', 'TOOL_MODIFY');
             setInteractionState('choosing');
             setIsInteracting(false);
             return { success: true, result: oilOptions };
@@ -929,43 +974,47 @@ export function usePoiInteraction(): UsePoiInteractionResult {
           case POI_TYPES.SEISMIC_SCANNER: {
             setDeferredPoiIndex(poiIndex);
             setDeferredPoiType(POI_TYPES.SEISMIC_SCANNER);
-            const scanLocalPoiId = gameState?.map?.pois?.find(
-              (p) =>
-                p.position.x === playerPosition.x && p.position.y === playerPosition.y && !p.visited
-            )?.id;
-            if (scanLocalPoiId) {
-              dispatch({ type: 'INTERACT_POI', poiId: scanLocalPoiId });
-            }
+            dispatchPoiModal(dispatch, gameState?.map?.pois, currentPoi, 'L7', 'LOCATE');
             setInteractionState('choosing');
             setIsInteracting(false);
             return { success: true };
           }
 
-          // Rail Waypoint (L8)
-          case POI_TYPES.RAIL_WAYPOINT:
-            await discoverWaypoint(
-              connection,
-              poiProgram,
-              mapPoisPda,
-              gameStatePda,
-              burnerKeypair,
-              poiIndex
-            );
-            break;
+          // Rail Waypoint (L8) — Deferred flow:
+          // Step 1 (here): show modal with fast-travel options
+          // Step 2 (confirmPoiSelection): call fastTravel on-chain when user picks a destination
+          case POI_TYPES.RAIL_WAYPOINT: {
+            console.log('[usePoiInteraction] Rail Waypoint | showing modal');
+
+            setDeferredPoiIndex(poiIndex);
+            setDeferredPoiType(POI_TYPES.RAIL_WAYPOINT);
+
+            dispatchPoiModal(dispatch, gameState?.map?.pois, currentPoi, 'L8', 'LOCATE');
+
+            setIsInteracting(false);
+            setInteractionState('choosing');
+            return { success: true };
+          }
 
           // Smuggler Hatch Shop (L9) — Enter shop on-chain, then show modal with on-chain offers
           case POI_TYPES.SMUGGLER_HATCH: {
-            await enterShop(
-              connection,
-              poiProgram,
-              mapPoisPda,
-              gameStatePda,
-              sessionPda,
-              burnerKeypair,
-              poiIndex
-            );
-            // Fetch shop state and convert to POI options for the modal
-            const shopData = await fetchMapPois(poiProgram, mapPoisPda);
+            // Check if shop is already active on-chain (e.g. reopening after closing modal)
+            let shopData = await fetchMapPois(poiProgram, mapPoisPda);
+            if (!shopData?.shopState?.active) {
+              await enterShop(
+                connection,
+                poiProgram,
+                mapPoisPda,
+                gameStatePda,
+                sessionPda,
+                burnerKeypair,
+                poiIndex
+              );
+              // Re-fetch after entering
+              shopData = await fetchMapPois(poiProgram, mapPoisPda);
+            } else {
+              console.log('[usePoiInteraction] Shop already active on-chain, skipping enterShop');
+            }
             if (shopData?.shopState?.active) {
               setShopOffers(shopData.shopState.offers);
               setShopRerollCount(shopData.shopState.rerollCount);
@@ -983,79 +1032,60 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             setDeferredPoiType(POI_TYPES.SMUGGLER_HATCH);
 
             // Dispatch INTERACT_POI to transition game phase and show modal
-            const shopLocalPoiId = gameState?.map?.pois?.find(
-              (p) =>
-                p.position.x === playerPosition.x && p.position.y === playerPosition.y && !p.visited
-            )?.id;
-            if (shopLocalPoiId) {
-              dispatch({ type: 'INTERACT_POI', poiId: shopLocalPoiId });
-            }
+            dispatchPoiModal(dispatch, gameState?.map?.pois, currentPoi, 'L9', 'SHOP');
 
             setInteractionState('choosing');
             setIsInteracting(false);
             return { success: true };
           }
 
-          // Rusty Anvil (L10)
-          case POI_TYPES.RUSTY_ANVIL:
-            if (!params?.itemId) {
-              setError('Item ID required for upgrade');
-              setIsInteracting(false);
-              setInteractionState('idle');
-              return { success: false };
-            }
-            await interactRustyAnvil(
-              connection,
-              poiProgram,
-              mapPoisPda,
-              gameStatePda,
-              burnerKeypair,
-              poiIndex,
-              params.itemId,
-              params.currentTier ?? 0
-            );
-            break;
+          // Rusty Anvil (L10) — Deferred flow:
+          // Step 1 (here): show modal with upgrade options
+          // Step 2 (confirmPoiSelection): call interactRustyAnvil on-chain when user confirms
+          case POI_TYPES.RUSTY_ANVIL: {
+            console.log('[usePoiInteraction] Rusty Anvil | showing modal');
 
-          // Rune Kiln (L11)
-          case POI_TYPES.RUNE_KILN:
-            if (!params?.itemId || !params?.item2Id) {
-              setError('Two item IDs required for fusion');
-              setIsInteracting(false);
-              setInteractionState('idle');
-              return { success: false };
-            }
-            await interactRuneKiln(
-              connection,
-              poiProgram,
-              mapPoisPda,
-              gameStatePda,
-              burnerKeypair,
-              poiIndex,
-              params.itemId,
-              params.currentTier ?? 0,
-              params.item2Id,
-              params.item2Tier ?? 0
-            );
-            break;
+            setDeferredPoiIndex(poiIndex);
+            setDeferredPoiType(POI_TYPES.RUSTY_ANVIL);
 
-          // Scrap Chute (L14)
-          case POI_TYPES.SCRAP_CHUTE:
-            if (!params?.itemId) {
-              setError('Item ID required for scrapping');
-              setIsInteracting(false);
-              setInteractionState('idle');
-              return { success: false };
-            }
-            await interactScrapChute(
-              connection,
-              poiProgram,
-              mapPoisPda,
-              gameStatePda,
-              burnerKeypair,
-              poiIndex,
-              params.itemId
-            );
-            break;
+            dispatchPoiModal(dispatch, gameState?.map?.pois, currentPoi, 'L10', 'UPGRADE');
+
+            setIsInteracting(false);
+            setInteractionState('choosing');
+            return { success: true };
+          }
+
+          // Rune Kiln (L11) — Deferred flow:
+          // Step 1 (here): show modal with fusion options
+          // Step 2 (confirmPoiSelection): call interactRuneKiln on-chain when user confirms
+          case POI_TYPES.RUNE_KILN: {
+            console.log('[usePoiInteraction] Rune Kiln | showing modal');
+
+            setDeferredPoiIndex(poiIndex);
+            setDeferredPoiType(POI_TYPES.RUNE_KILN);
+
+            dispatchPoiModal(dispatch, gameState?.map?.pois, currentPoi, 'L11', 'FUSE');
+
+            setIsInteracting(false);
+            setInteractionState('choosing');
+            return { success: true };
+          }
+
+          // Scrap Chute (L14) — Deferred flow:
+          // Step 1 (here): show modal with inventory gear options
+          // Step 2 (confirmPoiSelection): call interactScrapChute on-chain when user confirms
+          case POI_TYPES.SCRAP_CHUTE: {
+            console.log('[usePoiInteraction] Scrap Chute | showing modal');
+
+            setDeferredPoiIndex(poiIndex);
+            setDeferredPoiType(POI_TYPES.SCRAP_CHUTE);
+
+            dispatchPoiModal(dispatch, gameState?.map?.pois, currentPoi, 'L14', 'SCRAP');
+
+            setIsInteracting(false);
+            setInteractionState('choosing');
+            return { success: true };
+          }
 
           default:
             console.error(
@@ -1069,21 +1099,23 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             return { success: false };
         }
 
-        // Mark POI as consumed locally
-        console.log(
-          '[usePoiInteraction] On-chain interaction complete, marking POI consumed at',
-          currentPoi.x,
-          currentPoi.y
-        );
-        consumePoi(currentPoi.x, currentPoi.y);
+        if (isOneTimePoiType(currentPoi.poiType)) {
+          // Mark one-time POIs as consumed locally for immediate UI feedback.
+          console.log(
+            '[usePoiInteraction] On-chain interaction complete, marking POI consumed at',
+            currentPoi.x,
+            currentPoi.y
+          );
+          consumePoi(currentPoi.x, currentPoi.y);
 
-        // Also dispatch to local game state if applicable
-        const localPoiId = gameState?.map?.pois?.find(
-          (p) =>
-            p.position.x === playerPosition.x && p.position.y === playerPosition.y && !p.visited
-        )?.id;
-        if (localPoiId) {
-          dispatch({ type: 'INTERACT_POI', poiId: localPoiId });
+          // Also dispatch to local game state if applicable.
+          const localPoiId = gameState?.map?.pois?.find(
+            (p) =>
+              p.position.x === playerPosition.x && p.position.y === playerPosition.y && !p.visited
+          )?.id;
+          if (localPoiId) {
+            dispatch({ type: 'INTERACT_POI', poiId: localPoiId });
+          }
         }
 
         setInteractionState('complete');
@@ -1223,7 +1255,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
    */
   const exitShop = useCallback(async (): Promise<{ success: boolean }> => {
     const burnerKeypair = getBurnerKeypair();
-    if (!burnerKeypair || !poiProgram || !mapPoisPda) {
+    if (!burnerKeypair || !poiProgram || !mapPoisPda || !sessionPda) {
       setError('Session not ready');
       return { success: false };
     }
@@ -1232,7 +1264,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
     setError(null);
 
     try {
-      await leaveShop(connection, poiProgram, mapPoisPda, burnerKeypair);
+      await leaveShop(connection, poiProgram, mapPoisPda, sessionPda, burnerKeypair);
       setShopOffers([]);
       setShopRerollCount(0);
       setInteractionState('complete');
@@ -1243,7 +1275,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
     } finally {
       setIsInteracting(false);
     }
-  }, [getBurnerKeypair, poiProgram, mapPoisPda, connection]);
+  }, [getBurnerKeypair, poiProgram, mapPoisPda, sessionPda, connection]);
 
   /**
    * Fast travel between two discovered waypoints.
@@ -1278,6 +1310,66 @@ export function usePoiInteraction(): UsePoiInteractionResult {
       }
     },
     [getBurnerKeypair, poiProgram, mapPoisPda, gameStatePda, connection]
+  );
+
+  /**
+   * Execute fast travel from one position to another via on-chain instruction.
+   * Used by the FastTravelOverlay D-PAD confirm flow.
+   */
+  const executeFastTravel = useCallback(
+    async (
+      fromPos: Position,
+      toPos: Position
+    ): Promise<{ success: boolean; newState?: any; error?: string }> => {
+      const burnerKeypair = getBurnerKeypair();
+      if (!burnerKeypair || !poiProgram || !mapPoisPda || !gameStatePda) {
+        return { success: false, error: 'Session not ready' };
+      }
+
+      const fromPoiIndex = findPoiIndex(fromPos.x, fromPos.y);
+      const toPoiIndex = findPoiIndex(toPos.x, toPos.y);
+
+      if (fromPoiIndex === -1 || toPoiIndex === -1) {
+        return { success: false, error: 'Waypoint not found' };
+      }
+
+      setIsInteracting(true);
+      setError(null);
+
+      try {
+        await fastTravel(
+          connection,
+          poiProgram,
+          mapPoisPda,
+          gameStatePda,
+          burnerKeypair,
+          fromPoiIndex,
+          toPoiIndex
+        );
+
+        await refreshGameplayState();
+
+        const gameplayProgram = createGameplayStateProgram(connection);
+        const updatedState = await fetchGameState(gameplayProgram, gameStatePda);
+
+        return { success: true, newState: updatedState };
+      } catch (err) {
+        const errorMessage = getUserErrorMessage(err, 'poi_system');
+        setError(errorMessage);
+        return { success: false, error: errorMessage };
+      } finally {
+        setIsInteracting(false);
+      }
+    },
+    [
+      getBurnerKeypair,
+      poiProgram,
+      mapPoisPda,
+      gameStatePda,
+      connection,
+      findPoiIndex,
+      refreshGameplayState,
+    ]
   );
 
   /**
@@ -1418,8 +1510,8 @@ export function usePoiInteraction(): UsePoiInteractionResult {
     // If in shop, close on-chain (fire-and-forget)
     if (deferredPoiType === POI_TYPES.SMUGGLER_HATCH) {
       const burnerKeypair = getBurnerKeypair();
-      if (burnerKeypair && poiProgram && mapPoisPda) {
-        leaveShop(connection, poiProgram, mapPoisPda, burnerKeypair).catch((err) => {
+      if (burnerKeypair && poiProgram && mapPoisPda && sessionPda) {
+        leaveShop(connection, poiProgram, mapPoisPda, sessionPda, burnerKeypair).catch((err) => {
           console.error('[usePoiInteraction] leaveShop on close:', err);
         });
       }
@@ -1430,7 +1522,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
     setDeferredPoiType(null);
     // Reset interaction state to re-enable mismatch-detection after POI interaction completes
     setInteractionState('idle');
-  }, [deferredPoiType, getBurnerKeypair, poiProgram, mapPoisPda, connection]);
+  }, [deferredPoiType, getBurnerKeypair, poiProgram, mapPoisPda, sessionPda, connection]);
 
   /**
    * Confirm a deferred POI selection on-chain.
@@ -1456,6 +1548,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
         !poiProgram ||
         !mapPoisPda ||
         !gameStatePda ||
+        !sessionPda ||
         deferredPoiIndex === null ||
         deferredPoiType === null
       ) {
@@ -1510,10 +1603,12 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             );
             console.log('[usePoiInteraction] interactRest CONFIRMED');
 
-            // Refresh the gameplay state context FIRST to prevent mismatch-detection from reverting.
-            // The context must be updated before we dispatch to the reducer, otherwise the
-            // mismatch-detection useEffect in GameScreen will see stale context state and revert.
-            await refreshGameplayState();
+            // Refresh BOTH gameplay state contexts to prevent mismatch-detection from reverting
+            // and to allow boss fight detection (which reads SessionContext's onChainState).
+            // GameplayStateContext must be updated before we dispatch to the reducer.
+            // SessionContext must be updated so GameScreen's boss detection useEffect
+            // sees bossFightReady=true (e.g., after rest on Night 3).
+            await Promise.all([refreshGameplayState(), refreshSessionState()]);
 
             // Now fetch and sync to local reducer (healed HP, new phase)
             const gameplayProgram = createGameplayStateProgram(connection);
@@ -1528,17 +1623,19 @@ export function usePoiInteraction(): UsePoiInteractionResult {
               dispatch({ type: 'SYNC_MOVE', confirmedState: updatedState });
             }
 
-            // Mark POI as consumed in context
-            if (currentPoi) {
+            // Only consume one-time POIs.
+            if (currentPoi && isOneTimePoiType(deferredPoiType)) {
               consumePoi(currentPoi.x, currentPoi.y);
             }
 
-            // Mark POI as visited locally
-            const localRestPoi = gameState?.map?.pois?.find(
-              (p) => p.position.x === currentPoi?.x && p.position.y === currentPoi?.y
-            );
-            if (localRestPoi) {
-              dispatch({ type: 'MARK_POI_VISITED', poiId: localRestPoi.id });
+            // Mark one-time POIs as visited locally.
+            if (isOneTimePoiType(deferredPoiType)) {
+              const localRestPoi = gameState?.map?.pois?.find(
+                (p) => p.position.x === currentPoi?.x && p.position.y === currentPoi?.y
+              );
+              if (localRestPoi) {
+                dispatch({ type: 'MARK_POI_VISITED', poiId: localRestPoi.id });
+              }
             }
 
             // Close the POI modal
@@ -1642,6 +1739,67 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             break;
           }
 
+          case POI_TYPES.RAIL_WAYPOINT: {
+            const waypointOption = gameState?.activePOI?.options?.[optionIndex];
+            if (!waypointOption) {
+              setIsInteracting(false);
+              return { success: false, error: 'Invalid option' };
+            }
+
+            if (waypointOption.label === 'Leave' || !waypointOption.label.startsWith('Travel')) {
+              setDeferredPoiIndex(null);
+              setDeferredPoiType(null);
+              setInteractionState('idle');
+              setIsInteracting(false);
+              dispatch({ type: 'CLOSE_POI' });
+              return { success: true };
+            }
+
+            if (waypointOption.disabled) {
+              setIsInteracting(false);
+              return { success: false, error: waypointOption.disabledReason ?? 'Option is disabled' };
+            }
+
+            // Find the destination waypoint's POI index from the option
+            // The option label format is "Travel to (x, y)"
+            const coordMatch = waypointOption.label.match(/\((\d+),\s*(\d+)\)/);
+            if (coordMatch) {
+              const destX = parseInt(coordMatch[1], 10);
+              const destY = parseInt(coordMatch[2], 10);
+              const destPoiIndex = pois.findIndex((p) => p.x === destX && p.y === destY);
+
+              if (destPoiIndex !== -1) {
+                console.log(
+                  '[usePoiInteraction] Fast travel | from poiIndex:',
+                  deferredPoiIndex,
+                  '| to poiIndex:',
+                  destPoiIndex
+                );
+                await fastTravel(
+                  connection,
+                  poiProgram,
+                  mapPoisPda,
+                  gameStatePda,
+                  burnerKeypair,
+                  deferredPoiIndex,
+                  destPoiIndex
+                );
+                console.log('[usePoiInteraction] fastTravel CONFIRMED');
+
+                // Refresh gameplay state to sync position
+                await refreshGameplayState();
+
+                const gameplayProgram = createGameplayStateProgram(connection);
+                const updatedState = await fetchGameState(gameplayProgram, gameStatePda);
+                if (updatedState) {
+                  dispatch({ type: 'SYNC_MOVE', confirmedState: updatedState });
+                }
+              }
+            }
+
+            break;
+          }
+
           case POI_TYPES.SMUGGLER_HATCH: {
             const option = cacheOfferOptions?.[optionIndex];
             if (!option) {
@@ -1650,7 +1808,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             }
 
             if (option.label === 'Leave') {
-              await leaveShop(connection, poiProgram, mapPoisPda, burnerKeypair);
+              await leaveShop(connection, poiProgram, mapPoisPda, sessionPda!, burnerKeypair);
               setShopOffers([]);
               setShopRerollCount(0);
               break; // Will clean up deferred state and consume POI below
@@ -1711,23 +1869,237 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             return { success: true, keepOpen: true };
           }
 
+          case POI_TYPES.RUNE_KILN: {
+            const kilnOption = gameState?.activePOI?.options?.[optionIndex];
+            if (!kilnOption) {
+              setIsInteracting(false);
+              return { success: false, error: 'Invalid option' };
+            }
+
+            if (kilnOption.label === 'Leave') {
+              setDeferredPoiIndex(null);
+              setDeferredPoiType(null);
+              setInteractionState('idle');
+              setIsInteracting(false);
+              dispatch({ type: 'CLOSE_POI' });
+              return { success: true };
+            }
+
+            const kilnGear = kilnOption.item;
+            if (!kilnGear || !('id' in kilnGear) || !('currentRarity' in kilnGear)) {
+              setIsInteracting(false);
+              return { success: false, error: 'No gear selected' };
+            }
+
+            // Convert frontend gear ID to on-chain 8-byte format
+            const kilnBackendId = gearToBackend(kilnGear.id as GearId);
+            const kilnIdBytes = new Uint8Array(8);
+            for (let i = 0; i < Math.min(kilnBackendId.length, 8); i++) {
+              kilnIdBytes[i] = kilnBackendId.charCodeAt(i);
+            }
+
+            // Map rarity to on-chain tier: COMMON=1, GILDED=2
+            const kilnTier = kilnGear.currentRarity === 'GILDED' ? 2 : 1;
+
+            console.log(
+              '[usePoiInteraction] Sending interactRuneKiln on-chain | gear:',
+              kilnGear.id,
+              '| backendId:',
+              kilnBackendId,
+              '| tier:',
+              kilnTier
+            );
+            await interactRuneKiln(
+              connection,
+              poiProgram,
+              mapPoisPda,
+              gameStatePda,
+              sessionPda!,
+              burnerKeypair,
+              deferredPoiIndex,
+              kilnIdBytes,
+              kilnTier,
+              kilnIdBytes,
+              kilnTier
+            );
+            console.log('[usePoiInteraction] interactRuneKiln CONFIRMED');
+
+            // Refresh gameplay state to sync changes
+            await refreshGameplayState();
+
+            // Remove 2 copies of the fused gear from local inventory
+            dispatch({ type: 'DISCARD_GEAR_BY_ID', gearId: kilnGear.id as GearId });
+            dispatch({ type: 'DISCARD_GEAR_BY_ID', gearId: kilnGear.id as GearId });
+
+            break;
+          }
+
+          case POI_TYPES.RUSTY_ANVIL: {
+            const anvilOption = gameState?.activePOI?.options?.[optionIndex];
+            if (!anvilOption) {
+              setIsInteracting(false);
+              return { success: false, error: 'Invalid option' };
+            }
+
+            if (anvilOption.label === 'Leave') {
+              setDeferredPoiIndex(null);
+              setDeferredPoiType(null);
+              setInteractionState('idle');
+              setIsInteracting(false);
+              dispatch({ type: 'CLOSE_POI' });
+              return { success: true };
+            }
+
+            if (anvilOption.disabled) {
+              setIsInteracting(false);
+              return { success: false, error: anvilOption.disabledReason ?? 'Option is disabled' };
+            }
+
+            const tool = gameState?.player?.equippedTool;
+            if (!tool) {
+              setIsInteracting(false);
+              return { success: false, error: 'No tool equipped' };
+            }
+
+            // Convert frontend tool ID to on-chain 8-byte format
+            const anvilBackendId = toolToBackend(tool.id as ToolId);
+            const anvilIdBytes = new Uint8Array(8);
+            for (let i = 0; i < Math.min(anvilBackendId.length, 8); i++) {
+              anvilIdBytes[i] = anvilBackendId.charCodeAt(i);
+            }
+
+            // Map rarity to on-chain tier: COMMON=1, GILDED=2
+            const anvilTier = tool.rarity === 'GILDED' ? 2 : 1;
+
+            console.log(
+              '[usePoiInteraction] Sending interactRustyAnvil on-chain | tool:',
+              tool.id,
+              '| backendId:',
+              anvilBackendId,
+              '| tier:',
+              anvilTier
+            );
+            await interactRustyAnvil(
+              connection,
+              poiProgram,
+              mapPoisPda,
+              gameStatePda,
+              sessionPda!,
+              burnerKeypair,
+              deferredPoiIndex,
+              anvilIdBytes,
+              anvilTier
+            );
+            console.log('[usePoiInteraction] interactRustyAnvil CONFIRMED');
+
+            // Refresh gameplay state to sync gold changes
+            await refreshGameplayState();
+
+            const gameplayProgram = createGameplayStateProgram(connection);
+            const updatedAnvilState = await fetchGameState(gameplayProgram, gameStatePda);
+            if (updatedAnvilState) {
+              console.log(
+                '[usePoiInteraction] Syncing ANVIL result | gold:',
+                updatedAnvilState.gold
+              );
+              dispatch({ type: 'SYNC_MOVE', confirmedState: updatedAnvilState });
+            }
+
+            // Upgrade tool locally to reflect new tier
+            const nextRarity = tool.rarity === 'COMMON' ? 'GILDED' : 'DIAMOND';
+            dispatch({
+              type: 'EQUIP_TOOL',
+              tool: { ...tool, rarity: nextRarity as any },
+            });
+
+            break;
+          }
+
+          case POI_TYPES.SCRAP_CHUTE: {
+            const scrapOption = gameState?.activePOI?.options?.[optionIndex];
+            if (!scrapOption) {
+              setIsInteracting(false);
+              return { success: false, error: 'Invalid option' };
+            }
+
+            if (scrapOption.label === 'Leave') {
+              setDeferredPoiIndex(null);
+              setDeferredPoiType(null);
+              setInteractionState('idle');
+              setIsInteracting(false);
+              dispatch({ type: 'CLOSE_POI' });
+              return { success: true };
+            }
+
+            const scrapGear = scrapOption.item;
+            if (!scrapGear || !('id' in scrapGear)) {
+              setIsInteracting(false);
+              return { success: false, error: 'No gear selected' };
+            }
+
+            // Convert frontend gear ID to on-chain 8-byte format
+            const backendId = gearToBackend(scrapGear.id as any);
+            const idBytes = new Uint8Array(8);
+            for (let i = 0; i < Math.min(backendId.length, 8); i++) {
+              idBytes[i] = backendId.charCodeAt(i);
+            }
+
+            console.log(
+              '[usePoiInteraction] Sending interactScrapChute on-chain | gear:',
+              scrapGear.id,
+              '| backendId:',
+              backendId
+            );
+            await interactScrapChute(
+              connection,
+              poiProgram,
+              mapPoisPda,
+              gameStatePda,
+              sessionPda!,
+              burnerKeypair,
+              deferredPoiIndex,
+              idBytes
+            );
+            console.log('[usePoiInteraction] interactScrapChute CONFIRMED');
+
+            // Refresh gameplay state to sync gold changes
+            await refreshGameplayState();
+
+            const gameplayProgram = createGameplayStateProgram(connection);
+            const updatedScrapState = await fetchGameState(gameplayProgram, gameStatePda);
+            if (updatedScrapState) {
+              console.log(
+                '[usePoiInteraction] Syncing SCRAP result | gold:',
+                updatedScrapState.gold
+              );
+              dispatch({ type: 'SYNC_MOVE', confirmedState: updatedScrapState });
+            }
+
+            // Remove scrapped gear from local inventory
+            dispatch({ type: 'DISCARD_GEAR_BY_ID', gearId: scrapGear.id as any });
+
+            break;
+          }
+
           default:
             setError(`Unknown deferred POI type: ${deferredPoiType}`);
             setIsInteracting(false);
             return { success: false };
         }
 
-        // Mark POI as consumed locally (for Tool Oil, Scanner, Shop-Leave)
-        if (currentPoi) {
+        // Only consume one-time POIs.
+        if (currentPoi && isOneTimePoiType(deferredPoiType)) {
           consumePoi(currentPoi.x, currentPoi.y);
         }
 
-        // Mark POI as visited in local game state (for map rendering to show it as grey)
-        const localPoiForDeferred = gameState?.map?.pois?.find(
-          (p) => p.position.x === currentPoi?.x && p.position.y === currentPoi?.y
-        );
-        if (localPoiForDeferred) {
-          dispatch({ type: 'MARK_POI_VISITED', poiId: localPoiForDeferred.id });
+        // Mark one-time POIs as visited in local game state.
+        if (isOneTimePoiType(deferredPoiType)) {
+          const localPoiForDeferred = gameState?.map?.pois?.find(
+            (p) => p.position.x === currentPoi?.x && p.position.y === currentPoi?.y
+          );
+          if (localPoiForDeferred) {
+            dispatch({ type: 'MARK_POI_VISITED', poiId: localPoiForDeferred.id });
+          }
         }
 
         // Close the POI modal and return to exploration
@@ -1764,6 +2136,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
       cacheOfferOptions,
       refreshMapEntities,
       refreshGameplayState,
+      pois,
     ]
   );
 
@@ -1791,6 +2164,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
     rerollShop: rerollShopFn,
     exitShop,
     travelToWaypoint,
+    executeFastTravel,
     cacheOfferOptions,
     selectCacheOffer,
     clearCacheOffers,

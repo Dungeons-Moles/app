@@ -203,28 +203,147 @@ export async function parseGameplayEvents(
  * @param signature - Transaction signature to parse
  * @returns CombatLogEvent if found, null otherwise
  */
+// CombatLog event discriminator from the IDL: sha256("event:CombatLog")[..8]
+const COMBAT_LOG_DISCRIMINATOR = Buffer.from([84, 130, 187, 88, 94, 235, 48, 211]);
+
+// CombatStarted event discriminator from the IDL
+const COMBAT_STARTED_DISCRIMINATOR = Buffer.from([172, 94, 187, 254, 85, 115, 217, 37]);
+
+/**
+ * Manually decode a CombatLog event from raw binary data.
+ * Bypasses Anchor's BorshEventCoder which fails on Vec<struct-with-enum>.
+ *
+ * Binary layout (after 8-byte discriminator):
+ *   - player: Pubkey (32 bytes)
+ *   - entries length: u32 LE (4 bytes)
+ *   - entries[]: each 6 bytes: turn(u8) + is_player(bool/u8) + action(u8) + value(i16 LE) + extra(u8)
+ */
+function decodeCombatLogManually(data: Buffer): CombatLogEvent | null {
+  const PUBKEY_LEN = 32;
+  const ENTRY_SIZE = 6; // turn(1) + is_player(1) + action(1) + value(2) + extra(1)
+  const HEADER_SIZE = PUBKEY_LEN + 4; // pubkey + vec length
+
+  if (data.length < HEADER_SIZE) return null;
+
+  const player = new PublicKey(data.subarray(0, PUBKEY_LEN)).toString();
+  const entryCount = data.readUInt32LE(PUBKEY_LEN);
+  const expectedSize = HEADER_SIZE + entryCount * ENTRY_SIZE;
+
+  if (data.length < expectedSize) {
+    console.warn('[decodeCombatLogManually] Buffer too short:', data.length, 'expected:', expectedSize);
+    return null;
+  }
+
+  const entries: BackendCombatLogEntry[] = [];
+  for (let i = 0; i < entryCount; i++) {
+    const offset = HEADER_SIZE + i * ENTRY_SIZE;
+    entries.push({
+      turn: data.readUInt8(offset),
+      isPlayer: data.readUInt8(offset + 1) !== 0,
+      action: data.readUInt8(offset + 2) as LogAction,
+      value: data.readInt16LE(offset + 3),
+      extra: data.readUInt8(offset + 5),
+    });
+  }
+
+  return { player, entries };
+}
+
+/**
+ * Info extracted from the CombatStarted event (enemy archetype + HP for tier derivation).
+ */
+export interface CombatEnemyInfo {
+  /** On-chain archetype index (0-11), maps to EnemyId via ARCHETYPE_TO_ENEMY_ID */
+  archetype: number;
+  /** Enemy HP at combat start (used to derive tier) */
+  hp: number;
+}
+
+/**
+ * Combined result from parsing a combat transaction.
+ * Extracts both the CombatLog entries and enemy info from CombatStarted.
+ */
+export interface CombatTransactionInfo {
+  log: CombatLogEvent | null;
+  enemyInfo: CombatEnemyInfo | null;
+}
+
+/**
+ * Manually decode CombatStarted event to extract enemy archetype + HP.
+ * Binary layout (after 8-byte discriminator):
+ *   - player: Pubkey (32 bytes)
+ *   - player_hp: i16 LE (2 bytes)
+ *   - player_atk: i16 LE (2 bytes)
+ *   - enemy_archetype: u8 (1 byte)
+ *   - enemy_hp: i16 LE (2 bytes)
+ *   - enemy_atk: i16 LE (2 bytes)
+ */
+function decodeCombatStartedEnemyInfo(data: Buffer): CombatEnemyInfo | null {
+  const PUBKEY_LEN = 32;
+  // player(32) + player_hp(2) + player_atk(2) + enemy_archetype(1) + enemy_hp(2) + enemy_atk(2) = 41
+  if (data.length < PUBKEY_LEN + 2 + 2 + 1 + 2 + 2) return null;
+
+  const archetype = data.readUInt8(PUBKEY_LEN + 2 + 2); // offset 36
+  const hp = data.readInt16LE(PUBKEY_LEN + 2 + 2 + 1); // offset 37
+
+  return { archetype, hp };
+}
+
 export async function parseCombatLog(
   connection: Connection,
-  program: Program,
+  _program: Program,
   signature: string
-): Promise<CombatLogEvent | null> {
+): Promise<CombatTransactionInfo> {
   const tx = await connection.getTransaction(signature, {
     commitment: 'confirmed',
     maxSupportedTransactionVersion: 0,
   });
 
-  if (!tx?.meta?.logMessages) {
-    return null;
+  if (!tx) {
+    console.warn('[parseCombatLog] getTransaction returned null for', signature.slice(0, 12));
+    return { log: null, enemyInfo: null };
   }
 
-  const events = parseEventsFromLogs(program, tx.meta.logMessages);
-  const combatLog = events.find((e) => e.name === EVENT_NAMES.COMBAT_LOG);
-
-  if (!combatLog) {
-    return null;
+  if (!tx.meta?.logMessages) {
+    console.warn('[parseCombatLog] Transaction has no log messages');
+    return { log: null, enemyInfo: null };
   }
 
-  return combatLog.data as CombatLogEvent;
+  let log: CombatLogEvent | null = null;
+  let enemyInfo: CombatEnemyInfo | null = null;
+
+  // Scan all log lines for both CombatLog and CombatStarted events
+  for (const logLine of tx.meta.logMessages) {
+    if (!logLine.startsWith('Program data: ')) continue;
+    const base64Data = logLine.slice('Program data: '.length);
+    try {
+      const buf = Buffer.from(base64Data, 'base64');
+      if (buf.length >= 8) {
+        const disc = buf.subarray(0, 8);
+        if (!log && disc.equals(COMBAT_LOG_DISCRIMINATOR)) {
+          const result = decodeCombatLogManually(buf.subarray(8));
+          if (result && result.entries.length > 0) {
+            log = result;
+          }
+        } else if (!enemyInfo && disc.equals(COMBAT_STARTED_DISCRIMINATOR)) {
+          enemyInfo = decodeCombatStartedEnemyInfo(buf.subarray(8));
+          if (enemyInfo) {
+            console.log('[parseCombatLog] Extracted enemy info: archetype=', enemyInfo.archetype, 'hp=', enemyInfo.hp);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[parseCombatLog] Manual decode error:', err);
+    }
+    // Stop early if we found both
+    if (log && enemyInfo) break;
+  }
+
+  if (!log) {
+    console.warn('[parseCombatLog] No CombatLog event found in', tx.meta.logMessages.length, 'log lines');
+  }
+
+  return { log, enemyInfo };
 }
 
 // ============================================================================
@@ -281,8 +400,8 @@ function decodeAnchorEvent(program: Program, buffer: Buffer): ParsedEvent | null
         data: convertEventData(event.name, event.data),
       };
     }
-  } catch {
-    // Decoding failed
+  } catch (err) {
+    console.warn('[decodeAnchorEvent] Failed to decode event:', err);
   }
 
   return null;

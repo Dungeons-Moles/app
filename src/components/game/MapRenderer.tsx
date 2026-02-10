@@ -68,6 +68,7 @@ export interface MapRendererProps {
   overviewMode?: OverviewModeState;
   onPanOverview?: (delta: Position) => void;
   onZoomOverview?: (zoomDelta: number) => void;
+  cameraFocusOverride?: Position;
 }
 
 interface VisibleTileRange {
@@ -288,7 +289,7 @@ const SkiaEntity = memo(function SkiaEntity({
 // Component
 // ============================================================================
 
-export const MapRenderer = memo(function MapRenderer({
+export function MapRenderer({
   map,
   playerPosition,
   playerFacing = 'right',
@@ -299,6 +300,7 @@ export const MapRenderer = memo(function MapRenderer({
   overviewMode,
   onPanOverview,
   onZoomOverview,
+  cameraFocusOverride,
 }: MapRendererProps) {
   // Load tile images
   const floorV1 = useImage(floorV1Source);
@@ -341,12 +343,13 @@ export const MapRenderer = memo(function MapRenderer({
   const dynamicZoom = height / (targetVerticalTiles * TILE_SIZE);
   const zoom = overview.active ? overview.zoom : dynamicZoom;
 
+  const cameraFocus = cameraFocusOverride ?? playerPosition;
   const cameraCenter = useMemo(
     () => ({
-      x: playerPosition.x + (overview.active ? overview.offset.x : 0),
-      y: playerPosition.y + (overview.active ? overview.offset.y : 0),
+      x: cameraFocus.x + (overview.active ? overview.offset.x : 0),
+      y: cameraFocus.y + (overview.active ? overview.offset.y : 0),
     }),
-    [playerPosition.x, playerPosition.y, overview.active, overview.offset.x, overview.offset.y]
+    [cameraFocus.x, cameraFocus.y, overview.active, overview.offset.x, overview.offset.y]
   );
 
   const scaledWidth = width / zoom;
@@ -614,7 +617,7 @@ export const MapRenderer = memo(function MapRenderer({
       )}
     </View>
   );
-});
+}
 
 // ============================================================================
 // Styles

@@ -65,6 +65,15 @@ export type CombatAction =
       input: CombatResolverInput;
       backendLog: BackendCombatLogEntry[];
     }
+  | {
+      type: 'START_COMBAT_WITH_ONCHAIN_OUTCOME';
+      input: CombatResolverInput;
+      outcome: {
+        finalPlayerHp: number;
+        playerWon: boolean;
+        finalEnemyHp?: number;
+      };
+    }
   | { type: 'RESOLVE_COMBAT' }
   | { type: 'ADVANCE_LOG'; index: number }
   | { type: 'COMPLETE_ANIMATION' }
@@ -94,7 +103,7 @@ export interface CombatUIState {
 export interface DamageNumber {
   id: string;
   value: number;
-  type: 'damage' | 'heal' | 'armor';
+  type: 'damage' | 'heal' | 'armor' | 'gold';
   target: 'player' | 'enemy';
   timestamp: number;
 }
@@ -295,6 +304,14 @@ function combatReducer(state: CombatUIState, action: CombatAction): CombatUIStat
       const baseCombat = createCombatState(action.input);
       const resolvedCombat = resolveCombat(action.input);
 
+      console.log('[CombatContext] START_COMBAT:', {
+        logEntries: resolvedCombat.log.length,
+        result: resolvedCombat.result,
+        playerHp: action.input.player.hp,
+        enemyHp: action.input.enemy.hp,
+        bossId: action.input.bossId,
+      });
+
       return {
         ...state,
         combat: baseCombat,
@@ -311,11 +328,43 @@ function combatReducer(state: CombatUIState, action: CombatAction): CombatUIStat
       // Use backend log instead of local resolver
       // This ensures frontend animation matches on-chain combat exactly
       const baseCombat = createCombatState(action.input);
+
+      // On-chain combat starts with arm=0; gear ARM bonuses (e.g., Work Vest +1)
+      // are applied via BattleStart effects which are already in the backend log.
+      // Reset player ARM to avoid double-counting in getDisplayStates replay.
+      baseCombat.player = { ...baseCombat.player, arm: 0, bonusArm: 0 };
       const convertedLog = convertBackendLogToFrontend(action.backendLog);
       const typedLog = convertedLog as unknown as CombatLogEntry[];
 
+      // If backend log is too short to produce a meaningful animation (< 3 entries),
+      // fall back to the local resolver so the player sees turn-by-turn combat.
+      // This handles cases where the on-chain combat log was truncated or incomplete.
+      if (typedLog.length < 3) {
+        console.warn('[CombatContext] Backend log too short, falling back to local resolver:', {
+          backendEntries: action.backendLog.length,
+          convertedEntries: typedLog.length,
+          playerHp: action.input.player.hp,
+          bossId: action.input.bossId,
+        });
+        const localCombat = resolveCombat(action.input);
+        console.log('[CombatContext] Local resolver produced log with', localCombat.log.length, 'entries');
+        return {
+          ...state,
+          combat: createCombatState(action.input),
+          resolvedCombat: localCombat,
+          currentLogIndex: 0,
+          isAnimating: true,
+          isComplete: false,
+          damageNumbers: [],
+          effectNotifications: [],
+        };
+      }
+
       // Derive the combat result by replaying the log against initial HP
       const derivedResult = deriveCombatResultFromLog(baseCombat, typedLog);
+
+      // Derive the turn count from the log (max turn value across all entries)
+      const maxTurn = typedLog.reduce((max, entry) => Math.max(max, entry.turn), 0);
 
       // Create a resolved combat state with the backend log
       // We still need the combat state structure for the animation system
@@ -323,12 +372,49 @@ function combatReducer(state: CombatUIState, action: CombatAction): CombatUIStat
         ...baseCombat,
         log: typedLog,
         result: derivedResult,
+        turn: maxTurn,
       };
 
       console.log('[CombatContext] Using backend combat log:', {
         entryCount: action.backendLog.length,
         convertedCount: convertedLog.length,
         derivedResult,
+      });
+
+      return {
+        ...state,
+        combat: baseCombat,
+        resolvedCombat,
+        currentLogIndex: 0,
+        isAnimating: true,
+        isComplete: false,
+        damageNumbers: [],
+        effectNotifications: [],
+      };
+    }
+
+    case 'START_COMBAT_WITH_ONCHAIN_OUTCOME': {
+      // On-chain fallback path when CombatLog event is unavailable.
+      // Run local resolver for the combat animation log, but override
+      // the result with the authoritative on-chain outcome.
+      const baseCombat = createCombatState(action.input);
+      const localCombat = resolveCombat(action.input);
+      const onChainResult = action.outcome.playerWon
+        ? ('VICTORY' as const)
+        : ('DEFEAT' as const);
+
+      const resolvedCombat = {
+        ...localCombat,
+        result: onChainResult,
+      };
+
+      console.log('[CombatContext] START_COMBAT_WITH_ONCHAIN_OUTCOME:', {
+        logEntries: localCombat.log.length,
+        localResult: localCombat.result,
+        onChainResult,
+        playerHp: action.input.player.hp,
+        enemyHp: action.input.enemy.hp,
+        bossId: action.input.bossId,
       });
 
       return {
@@ -393,6 +479,16 @@ function combatReducer(state: CombatUIState, action: CombatAction): CombatUIStat
         });
       }
 
+      if (entry?.result.goldStolen && entry.result.goldStolen > 0) {
+        newDamageNumbers.push({
+          id: `gold-${newIndex}-${Date.now()}`,
+          value: entry.result.goldStolen,
+          type: 'gold',
+          target: 'player',
+          timestamp: Date.now(),
+        });
+      }
+
       // Extract effect notification for this log entry
       if (entry) {
         const notification = extractEffectNotification(entry, newIndex);
@@ -445,8 +541,17 @@ interface CombatContextType {
   startCombat: (input: CombatResolverInput) => void;
   /** Start combat using backend log (for on-chain mode) */
   startCombatWithLog: (input: CombatResolverInput, backendLog: BackendCombatLogEntry[]) => void;
-  /** Get current combatant states for display */
-  getDisplayStates: () => { player: CombatantState | null; enemy: CombatantState | null };
+  /** Start combat from authoritative on-chain result when log is unavailable */
+  startCombatWithOnchainOutcome: (
+    input: CombatResolverInput,
+    outcome: { finalPlayerHp: number; playerWon: boolean; finalEnemyHp?: number }
+  ) => void;
+  /** Get current combatant states for display (includes dynamic gold tracking) */
+  getDisplayStates: () => {
+    player: CombatantState | null;
+    enemy: CombatantState | null;
+    playerGold?: number;
+  };
   /** Get combat result */
   getResult: () => 'VICTORY' | 'DEFEAT' | null;
 }
@@ -494,6 +599,16 @@ export function CombatProvider({ children, initialSpeed, onSpeedChange }: Combat
     [dispatch]
   );
 
+  const startCombatWithOnchainOutcome = useCallback(
+    (
+      input: CombatResolverInput,
+      outcome: { finalPlayerHp: number; playerWon: boolean; finalEnemyHp?: number }
+    ) => {
+      dispatch({ type: 'START_COMBAT_WITH_ONCHAIN_OUTCOME', input, outcome });
+    },
+    [dispatch]
+  );
+
   const getDisplayStates = useCallback(() => {
     if (!state.resolvedCombat || !state.combat) {
       return { player: null, enemy: null };
@@ -508,6 +623,7 @@ export function CombatProvider({ children, initialSpeed, onSpeedChange }: Combat
 
     const player = normalizeCombatant(state.combat.player);
     const enemy = normalizeCombatant(state.combat.enemy);
+    let playerGold = state.combat.playerGold;
 
     const log = state.resolvedCombat.log;
     const maxIndex = Math.min(state.currentLogIndex, log.length - 1);
@@ -555,9 +671,13 @@ export function CombatProvider({ children, initialSpeed, onSpeedChange }: Combat
           [type]: Math.max(0, target.statusEffects[type] - stacks),
         };
       }
+
+      if (result.goldStolen && result.goldStolen > 0) {
+        playerGold = Math.max(0, playerGold - result.goldStolen);
+      }
     }
 
-    return { player, enemy };
+    return { player, enemy, playerGold };
   }, [state.resolvedCombat, state.combat, state.currentLogIndex]);
 
   const getResult = useCallback(() => {
@@ -569,6 +689,15 @@ export function CombatProvider({ children, initialSpeed, onSpeedChange }: Combat
 
     const logLength = state.resolvedCombat.log.length;
     if (state.currentLogIndex >= logLength - 1) {
+      if (logLength <= 2) {
+        console.warn('[CombatContext] Animation completing with very few log entries:', {
+          logLength,
+          currentLogIndex: state.currentLogIndex,
+          playerHp: state.combat?.player.hp,
+          enemyHp: state.combat?.enemy.hp,
+          result: state.resolvedCombat.result,
+        });
+      }
       dispatch({ type: 'COMPLETE_ANIMATION' });
       return;
     }
@@ -592,6 +721,7 @@ export function CombatProvider({ children, initialSpeed, onSpeedChange }: Combat
         setSpeed,
         startCombat,
         startCombatWithLog,
+        startCombatWithOnchainOutcome,
         getDisplayStates,
         getResult,
       }}

@@ -26,6 +26,7 @@ import { DebugOverlay } from '../components/game';
 import { ENEMY_TRAITS } from '../game/combat/traits';
 import { getEntityImageSource } from '../components/game/entityImages';
 import { Typography } from '../theme/typography';
+import { getPhaseLabel } from '../utils/phase-labels';
 
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.png');
 
@@ -41,11 +42,10 @@ const SAFE_AREA_EDGES = ['left', 'right'] as const;
  * Displays the combat arena, player/enemy panels, and combat log in landscape orientation
  */
 export function CombatScreen({ navigation, route }: CombatScreenProps) {
-  const { updateDefaultCombatSpeed } = useProfile();
-  const initialSpeed = 'normal';
+  const { defaultCombatSpeed, updateDefaultCombatSpeed } = useProfile();
 
   return (
-    <CombatProvider initialSpeed={initialSpeed} onSpeedChange={updateDefaultCombatSpeed}>
+    <CombatProvider initialSpeed={defaultCombatSpeed} onSpeedChange={updateDefaultCombatSpeed}>
       <CombatScreenContent navigation={navigation} route={route} />
     </CombatProvider>
   );
@@ -61,6 +61,7 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
     setSpeed,
     startCombat,
     startCombatWithLog,
+    startCombatWithOnchainOutcome,
     getDisplayStates,
     getResult,
   } = useCombat();
@@ -114,9 +115,21 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
           logEntries: combatInput.combatLog.length,
         });
         startCombatWithLog(resolverInput, combatInput.combatLog);
+      } else if (combatInput.onChainOutcome) {
+        // Authoritative fallback: avoid local simulation drift when log parsing is delayed/missing.
+        console.log('[CombatScreen] Starting combat with on-chain outcome fallback:', {
+          playerHp: combatInput.player.hp,
+          enemyName: combatInput.enemy.name,
+          finalPlayerHp: combatInput.onChainOutcome.finalPlayerHp,
+          playerWon: combatInput.onChainOutcome.playerWon,
+        });
+        startCombatWithOnchainOutcome(resolverInput, {
+          finalPlayerHp: combatInput.onChainOutcome.finalPlayerHp,
+          playerWon: combatInput.onChainOutcome.playerWon,
+        });
       } else {
-        // Fallback to local resolver if no backend log
-        console.log('[CombatScreen] Starting combat (on-chain mode, no backend log):', {
+        // Last-resort fallback for legacy callers that don't pass on-chain outcome.
+        console.log('[CombatScreen] Starting combat (on-chain mode, legacy local fallback):', {
           playerHp: combatInput.player.hp,
           playerAtk: combatInput.player.atk,
           enemyName: combatInput.enemy.name,
@@ -159,21 +172,41 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
     combatState.combat,
     startCombat,
     startCombatWithLog,
+    startCombatWithOnchainOutcome,
     gameState?.rngState,
   ]);
 
   // Handle combat completion - now uses deferred cleanup for instant navigation
   const handleCombatComplete = useCallback(async () => {
-    const result = getResult();
-    if (!result) return;
+    const localResult = getResult();
+    if (!localResult) return;
+
+    // On-chain outcome is authoritative — override local result if they disagree.
+    // This prevents getting stuck when the local resolver shows VICTORY but the
+    // player actually died on-chain (or vice-versa).
+    const onChainOutcome = combatInput?.onChainOutcome;
+    const result: 'VICTORY' | 'DEFEAT' = onChainOutcome
+      ? onChainOutcome.playerWon
+        ? 'VICTORY'
+        : 'DEFEAT'
+      : localResult;
+
+    if (onChainOutcome && result !== localResult) {
+      console.warn('[CombatScreen] On-chain outcome overrides local result:', {
+        localResult,
+        onChainResult: result,
+        onChainPlayerWon: onChainOutcome.playerWon,
+      });
+    }
 
     const isVictory = result === 'VICTORY';
-    const levelReached = profile?.currentLevel ?? 0;
+    const levelReached = combatInput?.campaignLevel ?? profile?.currentLevel ?? 1;
     const isFinalWeekBoss = isBossFight && currentWeek === 3;
     const isOnChainMode = mode !== 'guest' && combatInput !== undefined;
 
     console.log('[CombatScreen] Combat complete:', {
       result,
+      localResult,
       isVictory,
       isBossFight,
       currentWeek,
@@ -226,9 +259,11 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
       // Defeat: show death screen with combat replay info
       console.log('[CombatScreen] Navigating to DeathScreen (defeat)');
       navigation.replace('Death', {
-        totalMoves: gameState?.time.movesRemaining,
+        totalMoves: combatInput?.totalMoves ?? 0,
         level: levelReached,
         week: currentWeek,
+        phase: getPhaseLabel(combatInput?.phase ?? 0),
+        combatTurns: combatState.resolvedCombat?.turn ?? 0,
         killedBy: combatState.resolvedCombat?.enemy.name,
       });
     } else if (isFinalWeekBoss) {
@@ -236,7 +271,7 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
       console.log('[CombatScreen] Navigating to Victory screen (final week boss victory)');
       navigation.replace('Victory', {
         level: levelReached,
-        totalMoves: gameState?.time.movesRemaining,
+        totalMoves: combatInput?.totalMoves ?? 0,
       });
     } else {
       // Victory (regular enemy or non-final boss): return to map
@@ -259,7 +294,7 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
     combatState.resolvedCombat,
   ]);
 
-  const { player, enemy } = getDisplayStates();
+  const { player, enemy, playerGold } = getDisplayStates();
   const result = getResult();
   const speedControlsDisabled = !combatState.resolvedCombat || combatState.isComplete;
   const basePlayerArm = combatState.combat
@@ -381,7 +416,7 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
               maxArm={playerMaxArm}
               spd={player.spd}
               dig={gameState?.player.stats.dig ?? 0}
-              gold={gameState?.player.stats.gold}
+              gold={playerGold ?? combatInput?.playerGold ?? gameState?.player.stats.gold}
               statusEffects={player.statusEffects}
               equippedTool={playerEquipment.tool}
               equippedGear={playerEquipment.gear}

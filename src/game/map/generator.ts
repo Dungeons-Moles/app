@@ -89,9 +89,9 @@ const ENEMY_STATS: Record<EnemyId, Array<{ hp: number; atk: number; arm: number;
     { hp: 10, atk: 3, arm: 0, spd: 5 },
   ],
   SPORE_SLIME: [
-    { hp: 8, atk: 1, arm: 2, spd: 0 },
-    { hp: 11, atk: 2, arm: 3, spd: 0 },
-    { hp: 14, atk: 3, arm: 4, spd: 0 },
+    { hp: 7, atk: 1, arm: 2, spd: 0 },
+    { hp: 10, atk: 2, arm: 3, spd: 0 },
+    { hp: 13, atk: 3, arm: 4, spd: 0 },
   ],
   RUST_MITE_SWARM: [
     { hp: 6, atk: 1, arm: 0, spd: 3 },
@@ -99,24 +99,24 @@ const ENEMY_STATS: Record<EnemyId, Array<{ hp: number; atk: number; arm: number;
     { hp: 12, atk: 3, arm: 0, spd: 5 },
   ],
   COLLAPSED_MINER: [
-    { hp: 10, atk: 2, arm: 0, spd: 1 },
-    { hp: 14, atk: 3, arm: 0, spd: 2 },
-    { hp: 18, atk: 4, arm: 1, spd: 3 },
+    { hp: 7, atk: 1, arm: 0, spd: 1 },
+    { hp: 11, atk: 2, arm: 0, spd: 2 },
+    { hp: 15, atk: 3, arm: 1, spd: 3 },
   ],
   SHARD_BEETLE: [
-    { hp: 9, atk: 1, arm: 3, spd: 1 },
-    { hp: 12, atk: 2, arm: 4, spd: 1 },
-    { hp: 15, atk: 3, arm: 5, spd: 2 },
+    { hp: 8, atk: 1, arm: 2, spd: 1 },
+    { hp: 11, atk: 2, arm: 3, spd: 1 },
+    { hp: 14, atk: 3, arm: 4, spd: 2 },
   ],
   TUNNEL_WARDEN: [
-    { hp: 8, atk: 2, arm: 4, spd: 2 },
-    { hp: 11, atk: 3, arm: 6, spd: 3 },
-    { hp: 14, atk: 4, arm: 8, spd: 4 },
+    { hp: 8, atk: 2, arm: 2, spd: 2 },
+    { hp: 11, atk: 3, arm: 4, spd: 3 },
+    { hp: 14, atk: 4, arm: 6, spd: 4 },
   ],
   BURROW_AMBUSHER: [
-    { hp: 6, atk: 3, arm: 0, spd: 4 },
-    { hp: 9, atk: 4, arm: 0, spd: 5 },
-    { hp: 12, atk: 5, arm: 0, spd: 6 },
+    { hp: 6, atk: 2, arm: 0, spd: 4 },
+    { hp: 9, atk: 3, arm: 0, spd: 5 },
+    { hp: 12, atk: 4, arm: 0, spd: 6 },
   ],
   FROST_WISP: [
     { hp: 7, atk: 1, arm: 0, spd: 4 },
@@ -124,9 +124,9 @@ const ENEMY_STATS: Record<EnemyId, Array<{ hp: number; atk: number; arm: number;
     { hp: 13, atk: 3, arm: 0, spd: 6 },
   ],
   POWDER_TICK: [
-    { hp: 7, atk: 1, arm: 0, spd: 2 },
-    { hp: 10, atk: 2, arm: 0, spd: 3 },
-    { hp: 13, atk: 3, arm: 0, spd: 4 },
+    { hp: 6, atk: 1, arm: 0, spd: 2 },
+    { hp: 9, atk: 2, arm: 0, spd: 3 },
+    { hp: 12, atk: 3, arm: 0, spd: 4 },
   ],
   COIN_SLUG: [
     { hp: 7, atk: 1, arm: 2, spd: 1 },

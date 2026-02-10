@@ -209,7 +209,7 @@ function generatePOIOptions(poiId: POIId, state: GameState, rng: SeededRNG): POI
     case 'L8': // Rail Waypoint
       return generateRailWaypointOptions(state);
     case 'L9': // Smuggler Hatch
-      return generateSmugglerHatchOptions(state, rng);
+      return generateSmugglerHatchOptions(state, rng, 0);
     case 'L10': // Rusty Anvil
       return generateRustyAnvilOptions(state);
     case 'L11': // Rune Kiln
@@ -488,7 +488,7 @@ function filterGearByPool<T extends { id: string }>(
 // Shop: 5 Rare + 1 Heroic items (filtered by active item pool)
 // ============================================================================
 
-function generateSmugglerHatchOptions(state: GameState, rng: SeededRNG): POIOption[] {
+function generateSmugglerHatchOptions(state: GameState, rng: SeededRNG, rerollCount: number): POIOption[] {
   // T040: Filter gear by active item pool
   const allRareGear = getGearByRarity('RARE');
   const allHeroicGear = getGearByRarity('HEROIC');
@@ -526,14 +526,22 @@ function generateSmugglerHatchOptions(state: GameState, rng: SeededRNG): POIOpti
     });
   }
 
-  // Reroll option
-  const rerollCost = 5;
-  const canReroll = state.player.stats.gold >= rerollCost;
+  // Reroll option (max 3 per visit)
+  const rerollLimit = 3;
+  const canRerollByCount = rerollCount < rerollLimit;
+  const rerollCost = 4 + rerollCount * 2;
+  const canReroll = canRerollByCount && state.player.stats.gold >= rerollCost;
   options.push({
-    label: `Reroll shop (${rerollCost}g)`,
-    cost: rerollCost,
+    label: canRerollByCount
+      ? `Reroll shop (${rerollCost}g) [${rerollCount}/3]`
+      : 'Reroll shop (Limit reached)',
+    cost: canRerollByCount ? rerollCost : undefined,
     disabled: !canReroll,
-    disabledReason: canReroll ? undefined : 'Not enough gold',
+    disabledReason: canRerollByCount
+      ? canReroll
+        ? undefined
+        : 'Not enough gold'
+      : 'Maximum 3 rerolls per visit',
   });
 
   options.push({ label: 'Leave' });
@@ -578,7 +586,7 @@ function generateToolOilRackOptions(_state: GameState): POIOption[] {
 // ============================================================================
 // T096: Rusty Anvil (L10)
 // Upgrade tool tier (Common -> Gilded -> Diamond)
-// Cost: 8g (to Gilded), 16g (to Diamond)
+// Cost: 10g (to Gilded), 20g (to Diamond)
 // ============================================================================
 
 function generateRustyAnvilOptions(state: GameState): POIOption[] {
@@ -601,10 +609,10 @@ function generateRustyAnvilOptions(state: GameState): POIOption[] {
 
   if (rarity === 'COMMON') {
     nextRarity = 'GILDED';
-    cost = 8;
+    cost = 10;
   } else if (rarity === 'GILDED') {
     nextRarity = 'DIAMOND';
-    cost = 16;
+    cost = 20;
   }
 
   const options: POIOption[] = [];
@@ -688,16 +696,27 @@ function generateGeodeVaultOptions(state: GameState, rng: SeededRNG): POIOption[
   // T040: Filter heroic gear by active item pool
   const allHeroicGear = getGearByRarity('HEROIC');
   const heroicGear = filterGearByPool(allHeroicGear, state.activeItemPool);
+  const allMythicGear = getGearByRarity('MYTHIC');
+  const mythicGear = filterGearByPool(allMythicGear, state.activeItemPool);
   const weekBossId = state.time.weekBoss;
   const weaknessTags = getBossWeaknessTags(weekBossId);
   const options: POIOption[] = [];
 
-  if (heroicGear.length === 0) {
+  if (heroicGear.length === 0 && mythicGear.length === 0) {
     return [];
   }
 
-  // Generate 3 heroic items weighted by weakness
-  const pickedGear = pickUniqueWeighted(rng, heroicGear, 3, weaknessTags);
+  // Prefer Heroics, but backfill with Mythics so this POI still offers up to 3 choices.
+  const combinedPool =
+    heroicGear.length >= 3
+      ? heroicGear
+      : [
+          ...heroicGear,
+          ...mythicGear.filter(
+            (mythicDef) => !heroicGear.some((heroicDef) => heroicDef.id === mythicDef.id)
+          ),
+        ];
+  const pickedGear = pickUniqueWeighted(rng, combinedPool, 3, weaknessTags);
 
   for (const gearDef of pickedGear) {
     const gear = createGearInstance(gearDef.id);
@@ -748,17 +767,16 @@ function generateCounterCacheOptions(state: GameState, rng: SeededRNG): POIOptio
 
 // ============================================================================
 // T087: Scrap Chute (L14)
-// Destroy 1 Gear item (costs Gold by act)
+// Destroy 1 Gear item (costs 4 Gold, refunds by rarity)
 // ============================================================================
 
 function generateScrapChuteOptions(state: GameState): POIOption[] {
   const options: POIOption[] = [];
   const inventory = state.player.inventory;
 
-  // Cost based on Act (approximate via week/cycle)
-  // Act 1: 5g, Act 2: 10g, etc.
-  // Using simplified cost for now: 5 * Week
-  const scrapCost = 5 * state.time.week;
+  // Cost by act: 4 / 4 / 6 / 8
+  const act = Math.max(1, Math.min(4, state.time.week));
+  const scrapCost = [4, 4, 4, 4][act - 1];
 
   if (inventory.length === 0) {
     options.push({
@@ -1170,9 +1188,13 @@ function applySmugglerHatchEffect(
 
   // Check if reroll option
   if (option.label.includes('Reroll')) {
+    const rerollMatch = option.label.match(/\[(\d+)\/3\]/);
+    const currentRerolls = rerollMatch ? Number(rerollMatch[1]) : 0;
+    const nextRerolls = currentRerolls + 1;
+
     // Regenerate shop options with new RNG state
     const rng = new SeededRNG(state.rngState + 1);
-    const newOptions = generateSmugglerHatchOptions(newState, rng);
+    const newOptions = generateSmugglerHatchOptions(newState, rng, nextRerolls);
     return {
       ...newState,
       rngState: state.rngState + 1,
@@ -1225,7 +1247,7 @@ function applyRustyAnvilEffect(
   if (baseDef.stats.dig) newStats.dig = Math.floor(baseDef.stats.dig * multiplier);
   if (baseDef.stats.hp) newStats.hp = Math.floor(baseDef.stats.hp * multiplier);
 
-  return {
+  const newState: GameState = {
     ...state,
     player: refreshPlayerStats({
       ...state.player,
@@ -1240,6 +1262,17 @@ function applyRustyAnvilEffect(
       },
     }),
   };
+
+  // Regenerate options so the modal reflects the upgraded tool tier
+  if (newState.activePOI) {
+    const updatedOptions = generateRustyAnvilOptions(newState);
+    newState.activePOI = {
+      ...newState.activePOI,
+      options: updatedOptions,
+    };
+  }
+
+  return newState;
 }
 
 /**
@@ -1314,8 +1347,23 @@ function applyScrapChuteEffect(
     return state;
   }
 
-  const gearId = option.item.id;
+  const gearItem = 'currentRarity' in option.item ? option.item : null;
+  if (!gearItem) {
+    return state;
+  }
+
   const cost = option.cost ?? 0;
+  const baseRarity: ItemRarity = gearItem.baseRarity ?? gearItem.currentRarity;
+  const refundByRarity: Record<ItemRarity, number> = {
+    COMMON: 2,
+    RARE: 4,
+    HEROIC: 6,
+    MYTHIC: 10,
+    // Tier rarities are mapped to their nearest base-value fallback.
+    GILDED: 4,
+    DIAMOND: 6,
+  };
+  const refund = refundByRarity[baseRarity] ?? 3;
 
   if (state.player.stats.gold < cost) {
     return state;
@@ -1334,7 +1382,7 @@ function applyScrapChuteEffect(
   // If we assume `option.item` IS the object reference from inventory (which it is in `generateScrapChuteOptions`),
   // we can find the slot by object equality.
 
-  const slotIndex = state.player.inventory.findIndex((slot) => slot.item === option.item);
+  const slotIndex = state.player.inventory.findIndex((slot) => slot.item === gearItem);
 
   if (slotIndex === -1) {
     // Should not happen if object reference is preserved
@@ -1349,8 +1397,8 @@ function applyScrapChuteEffect(
     player: refreshPlayerStats({
       ...state.player,
       baseStats: {
-        ...state.player.baseStats,
-        gold: state.player.baseStats.gold - cost,
+      ...state.player.baseStats,
+      gold: state.player.baseStats.gold - cost + refund,
       },
       inventory: newInventory,
     }),
@@ -1411,7 +1459,11 @@ export function markPOIDiscovered(map: GameMap, poiId: string): GameMap {
  * Get all discovered Rail Waypoints from the map.
  */
 export function getDiscoveredWaypoints(map: GameMap): MapPOI[] {
-  return map.pois.filter((poi) => poi.definitionId === 'L8' && poi.discovered);
+  return map.pois.filter(
+    (poi) =>
+      poi.definitionId === 'L8' &&
+      (poi.discovered || map.fog[poi.position.y][poi.position.x] !== FogState.Hidden)
+  );
 }
 
 /**

@@ -2,7 +2,7 @@ import type { GameMap, MapPOI } from '../../src/game/map/types';
 import { FogState, TileType } from '../../src/game/map/types';
 import { canFastTravel, getDiscoveredWaypoints } from '../../src/game/entities/pois';
 
-function createMap(pois: MapPOI[]): GameMap {
+function createMap(pois: MapPOI[], fogOverrides?: { x: number; y: number; state: FogState }[]): GameMap {
   const width = 3;
   const height = 3;
   const tiles = Array.from({ length: height }, () =>
@@ -11,6 +11,9 @@ function createMap(pois: MapPOI[]): GameMap {
   const fog = Array.from({ length: height }, () =>
     Array.from({ length: width }, () => FogState.Visible)
   );
+  for (const o of fogOverrides ?? []) {
+    fog[o.y][o.x] = o.state;
+  }
 
   return {
     width,
@@ -56,7 +59,9 @@ describe('Fast Travel', () => {
       },
     ];
 
-    const discovered = getDiscoveredWaypoints(createMap(pois));
+    const discovered = getDiscoveredWaypoints(
+      createMap(pois, [{ x: 1, y: 1, state: FogState.Hidden }])
+    );
 
     expect(discovered.map((poi) => poi.id)).toEqual(['wp-1', 'wp-3']);
   });

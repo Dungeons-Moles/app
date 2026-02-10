@@ -6,7 +6,8 @@
 
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, Image, ImageBackground } from 'react-native';
-import type { StatusEffects, Tool, Gear } from '../../game/engine/types';
+import type { StatusEffects, Tool, Gear, ItemRarity } from '../../game/engine/types';
+import { getTierFromRarity } from '../../data/gear';
 import { Typography } from '../../theme/typography';
 
 const defaultMoleImageSource = require('../../../assets/entities/characters/default-mole.png');
@@ -54,15 +55,33 @@ function StatRow({ label, value, icon }: StatRowProps) {
 
 const SQUARE_BG = require('../../../assets/ui/frames/square.png');
 
+function getTierBorderColor(rarity: ItemRarity): string | null {
+  const tier = getTierFromRarity(rarity);
+  switch (tier) {
+    case 2:
+      return '#4A90D9';
+    case 3:
+      return '#FFD700';
+    default:
+      return null;
+  }
+}
+
 interface ItemBadgeProps {
   emoji: string;
   name: string;
   image?: any;
+  rarity?: ItemRarity;
 }
 
-function ItemBadge({ emoji, name, image }: ItemBadgeProps) {
+function ItemBadge({ emoji, name, image, rarity }: ItemBadgeProps) {
+  const borderColor = rarity ? getTierBorderColor(rarity) : null;
   return (
-    <ImageBackground source={SQUARE_BG} style={styles.itemBadge} resizeMode="stretch">
+    <ImageBackground
+      source={SQUARE_BG}
+      style={[styles.itemBadge, borderColor && { borderWidth: 2, borderColor }]}
+      resizeMode="stretch"
+    >
       {image ? (
         <Image source={image} style={styles.itemImage} resizeMode="contain" />
       ) : (
@@ -172,10 +191,17 @@ export function PlayerPanel({
                       emoji={equippedTool.emoji}
                       image={equippedTool.image}
                       name={equippedTool.name}
+                      rarity={equippedTool.rarity}
                     />
                   )}
                   {equippedGear.map((gear, index) => (
-                    <ItemBadge key={index} emoji={gear.emoji} image={gear.image} name={gear.name} />
+                    <ItemBadge
+                      key={index}
+                      emoji={gear.emoji}
+                      image={gear.image}
+                      name={gear.name}
+                      rarity={gear.currentRarity}
+                    />
                   ))}
                 </View>
               </ScrollView>

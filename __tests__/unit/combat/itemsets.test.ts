@@ -66,10 +66,10 @@ describe('Itemset Combat Bonuses', () => {
 
   // ============================================================================
   // Swift Digger Kit
-  // Battle Start: If DIG > enemy DIG, +2 strikes
+  // Battle Start: If DIG > enemy DIG, +1 strike and +2 ATK
   // ============================================================================
   describe('Swift Digger Kit', () => {
-    it('should grant +2 strikes if DIG > enemy DIG', () => {
+    it('should grant +1 strike if DIG > enemy DIG', () => {
       const player = createTestCombatant({
         dig: 5,
         strikesPerTurn: 1,
@@ -96,8 +96,8 @@ describe('Itemset Combat Bonuses', () => {
         (entry) => entry.turn === 1 && entry.action === 'ATTACK' && entry.actor === 'player'
       );
 
-      // With Swift Digger Kit (+2 strikes), player should have 3 attacks on turn 1
-      expect(turn1Attacks).toHaveLength(3);
+      // With Swift Digger Kit (+1 strike), player should have 2 attacks on turn 1
+      expect(turn1Attacks).toHaveLength(2);
     });
 
     it('should NOT grant strikes if DIG <= enemy DIG', () => {

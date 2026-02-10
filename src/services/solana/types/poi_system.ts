@@ -50,6 +50,7 @@ export interface ItemOffer {
 export interface OfferItem {
   itemId: number[]; // 8 bytes
   rarity: number;
+  tier: number; // Item tier (0=Tier I, 1=Tier II, 2=Tier III)
 }
 
 // Cache offer for pick-item POIs (matches on-chain CacheOffer struct)

@@ -16,6 +16,7 @@ import type {
   GearId,
   CombatState,
   Player,
+  POIInteraction,
 } from './types';
 import { GamePhase, CombatPhase, DEFAULT_STATUS_EFFECTS, TimePhase } from './types';
 // On-chain types inlined to avoid importing from services/solana which requires env vars.
@@ -75,6 +76,7 @@ import {
   advanceTimePhase,
   shouldTriggerBoss,
   advanceToNextWeek,
+  selectWeekBossForLevel,
   canAffordCostAcrossPhases,
   consumeMoveAcrossPhases,
 } from '../time/progression';
@@ -96,7 +98,7 @@ import { BOSSES } from '../../data/bosses';
 import { ENEMY_DEFINITIONS } from '../entities/enemies';
 
 /** Selection POIs that require on-chain interact() flow — not auto-triggered in handleSyncMove */
-const SELECTION_POIS = new Set(['L1', 'L2', 'L3', 'L4', 'L5', 'L7', 'L9', 'L12', 'L13']);
+const SELECTION_POIS = new Set(['L1', 'L2', 'L3', 'L4', 'L5', 'L7', 'L8', 'L9', 'L12', 'L13']);
 
 // ============================================================================
 // Game Actions
@@ -114,7 +116,7 @@ export type GameAction =
   | { type: 'BREAK_WALL' }
   | { type: 'CANCEL_WALL_HIGHLIGHT' }
   | { type: 'ACTIVATE_FAST_TRAVEL' }
-  | { type: 'CYCLE_FAST_TRAVEL' }
+  | { type: 'CYCLE_FAST_TRAVEL'; direction?: 1 | -1 }
   | { type: 'CONFIRM_FAST_TRAVEL' }
   | { type: 'CANCEL_FAST_TRAVEL' }
   | { type: 'ENTER_COMBAT'; enemyId: string }
@@ -144,7 +146,9 @@ export type GameAction =
   | {
       type: 'SYNC_ENEMY_POSITIONS';
       enemies: Array<{ x: number; y: number; archetypeId: number; tier: number }>;
-    };
+    }
+  // Fallback: show POI modal directly when local POI state is unavailable
+  | { type: 'SHOW_POI_MODAL'; interaction: POIInteraction };
 
 // ============================================================================
 // Action Type Guards
@@ -197,7 +201,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       return handleActivateFastTravel(state);
 
     case 'CYCLE_FAST_TRAVEL':
-      return handleCycleFastTravel(state);
+      return handleCycleFastTravel(state, action.direction);
 
     case 'CONFIRM_FAST_TRAVEL':
       return handleConfirmFastTravel(state);
@@ -213,6 +217,13 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
 
     case 'INTERACT_POI':
       return handleInteractPOI(state, action.poiId);
+
+    case 'SHOW_POI_MODAL':
+      return {
+        ...state,
+        phase: GamePhase.POIInteraction,
+        activePOI: action.interaction,
+      };
 
     case 'SELECT_POI_OPTION':
       return handleSelectPOIOption(state, action.optionIndex);
@@ -756,16 +767,29 @@ function handleActivateFastTravel(state: GameState): GameState {
     return state;
   }
 
+  // Select the nearest waypoint by Manhattan distance
+  const { x, y } = state.player.position;
+  let nearestIndex = 0;
+  let nearestDist = Infinity;
+  for (let i = 0; i < availableWaypoints.length; i++) {
+    const wp = availableWaypoints[i];
+    const dist = Math.abs(wp.position.x - x) + Math.abs(wp.position.y - y);
+    if (dist < nearestDist) {
+      nearestDist = dist;
+      nearestIndex = i;
+    }
+  }
+
   return {
     ...state,
     fastTravel: {
       active: true,
-      selectedIndex: 0,
+      selectedIndex: nearestIndex,
     },
   };
 }
 
-function handleCycleFastTravel(state: GameState): GameState {
+function handleCycleFastTravel(state: GameState, direction: 1 | -1 = 1): GameState {
   if (state.phase !== GamePhase.Exploration) {
     return state;
   }
@@ -782,7 +806,9 @@ function handleCycleFastTravel(state: GameState): GameState {
     };
   }
 
-  const nextIndex = (state.fastTravel.selectedIndex + 1) % availableWaypoints.length;
+  const nextIndex =
+    (state.fastTravel.selectedIndex + direction + availableWaypoints.length) %
+    availableWaypoints.length;
 
   return {
     ...state,
@@ -1525,12 +1551,17 @@ function handleSyncMove(state: GameState, confirmedState: OnChainGameState): Gam
   });
 
   // Sync time state from on-chain
+  const syncedWeek = confirmedState.week as 1 | 2 | 3;
   const updatedTime: TimeState = {
     ...state.time,
-    week: confirmedState.week as 1 | 2 | 3,
+    week: syncedWeek,
     phase: timePhase,
     cycle,
     movesRemaining: confirmedState.movesRemaining,
+    // Update weekBoss if the week changed (e.g., after boss victory advanced the week on-chain)
+    weekBoss: syncedWeek !== state.time.week
+      ? selectWeekBossForLevel(confirmedState.campaignLevel, syncedWeek)
+      : state.time.weekBoss,
   };
 
   // Check for wall break: if tile at target was a wall, convert it to floor
@@ -1602,19 +1633,10 @@ function handleSyncMove(state: GameState, confirmedState: OnChainGameState): Gam
     }
   }
 
-  // Handle player death
-  if (confirmedState.isDead) {
-    return {
-      ...state,
-      phase: GamePhase.Defeat,
-      player: updatedPlayer,
-      map: finalMap,
-      time: updatedTime,
-      wallHighlight: null,
-    };
-  }
-
-  // Handle boss fight ready
+  // Handle boss fight ready — takes priority over isDead because the boss fight
+  // animation must be shown to the player before navigating to the Death screen.
+  // When both flags are true (e.g., field combat death on the same move that
+  // triggered the boss phase), the boss useEffect will fire and show CombatScreen.
   if (confirmedState.bossFightReady) {
     return {
       ...state,
@@ -1624,6 +1646,18 @@ function handleSyncMove(state: GameState, confirmedState: OnChainGameState): Gam
         ...updatedTime,
         phase: TimePhase.Boss,
       },
+      wallHighlight: null,
+    };
+  }
+
+  // Handle player death (only when no boss fight pending)
+  if (confirmedState.isDead) {
+    return {
+      ...state,
+      phase: GamePhase.Defeat,
+      player: updatedPlayer,
+      map: finalMap,
+      time: updatedTime,
       wallHighlight: null,
     };
   }
@@ -1685,12 +1719,16 @@ function handleSyncCombatResult(
   // This ensures gear bonuses are applied correctly and HP is capped at maxHP.
   const updatedPlayer = refreshPlayerStats(syncedPlayer);
 
+  const syncedWeek2 = confirmedState.week as 1 | 2 | 3;
   const updatedTime: TimeState = {
     ...state.time,
-    week: confirmedState.week as 1 | 2 | 3,
+    week: syncedWeek2,
     phase: timePhase,
     cycle,
     movesRemaining: confirmedState.movesRemaining,
+    weekBoss: syncedWeek2 !== state.time.week
+      ? selectWeekBossForLevel(confirmedState.campaignLevel, syncedWeek2)
+      : state.time.weekBoss,
   };
 
   if (result === 'DEFEAT' || confirmedState.isDead) {
@@ -1972,7 +2010,9 @@ function handleSyncEnemyPositions(
   // Track which on-chain enemies have been matched
   const matchedOnChainKeys = new Set<string>();
 
-  const updatedEnemies = state.map.enemies.map((localEnemy) => {
+  const updatedEnemies: typeof state.map.enemies = [];
+
+  for (const localEnemy of state.map.enemies) {
     const localArchetype = getArchetypeIdFromDefinitionId(localEnemy.definitionId);
     // On-chain tier is 0-based (0=T1, 1=T2, 2=T3), local is 1-based (1, 2, 3)
     const localTierOnChain = localEnemy.tier - 1;
@@ -1981,7 +2021,8 @@ function handleSyncEnemyPositions(
     // First, check if enemy is still at same position on-chain
     if (onChainByPosition.has(localKey)) {
       matchedOnChainKeys.add(localKey);
-      return localEnemy; // No change needed
+      updatedEnemies.push(localEnemy); // No change needed
+      continue;
     }
 
     // Enemy not at same position - look for matching enemy that moved
@@ -2011,19 +2052,18 @@ function handleSyncEnemyPositions(
       console.log(
         `[SYNC_ENEMY_POSITIONS] Enemy ${localEnemy.definitionId} moved: (${localEnemy.position.x},${localEnemy.position.y}) -> (${bestMatch.enemy.x},${bestMatch.enemy.y})`
       );
-      return {
+      updatedEnemies.push({
         ...localEnemy,
         position: { x: bestMatch.enemy.x, y: bestMatch.enemy.y },
-      };
+      });
+      continue;
     }
 
-    // No match found - check if enemy was defeated (not in on-chain data at all)
-    // For now, keep the enemy (conservative approach to avoid accidental deletion)
+    // No match found — enemy was defeated on-chain and removed. Drop it from local state.
     console.log(
-      `[SYNC_ENEMY_POSITIONS] No match for ${localEnemy.definitionId} at (${localEnemy.position.x},${localEnemy.position.y}), keeping`
+      `[SYNC_ENEMY_POSITIONS] Enemy ${localEnemy.definitionId} at (${localEnemy.position.x},${localEnemy.position.y}) not found on-chain, removing (defeated)`
     );
-    return localEnemy;
-  });
+  }
 
   return {
     ...state,

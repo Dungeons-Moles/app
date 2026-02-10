@@ -81,24 +81,26 @@ export const GEAR_EFFECTS: Record<GearId, GearEffects> = {
     effects: [E(Trigger.EveryOtherTurn(), 'GainArmor', [1, 2, 3])],
   },
 
-  // G-ST-05: Rebar Carapace - Exposed: +3/5/7 ARM
+  // G-ST-05: Rebar Carapace - FirstTimeExposed: +4/6/8 ARM
   I5: {
-    effects: [E(Trigger.Exposed(), 'GainArmor', [3, 5, 7], { oncePerTurn: true })],
+    effects: [E(Trigger.FirstTimeExposed(), 'GainArmor', [4, 6, 8])],
   },
 
-  // G-ST-06: Shrapnel Talisman - OnGainShrapnel (once/turn): gain 1/2/3 Armor
+  // G-ST-06: Shrapnel Talisman - FirstTimeGainShrapnel: gain 2/3/4 Armor
   I6: {
-    effects: [E(Trigger.OnGainShrapnel(), 'GainArmor', [1, 2, 3], { oncePerTurn: true })],
+    effects: [E(Trigger.FirstTimeGainShrapnel(), 'GainArmor', [2, 3, 4])],
   },
 
-  // G-ST-07: Crystal Crown - Battle Start: ArmorToMaxHp (cap 12/18/24)
+  // G-ST-07: Crystal Crown - Battle Start: ArmorToMaxHp (cap 8/12/16)
   I7: {
-    effects: [E(Trigger.BattleStart(), 'ArmorToMaxHp', [12, 18, 24])],
+    effects: [E(Trigger.BattleStart(), 'ArmorToMaxHp', [10, 15, 20])],
   },
 
-  // G-ST-08: Stone Sigil - Turn End: if you have Armor, gain +1/2/3 Armor
+  // G-ST-08: Stone Sigil - Turn End: if you have >=3 Armor, gain +1/2/3 Armor
   I8: {
-    effects: [E(Trigger.TurnEnd(), 'GainArmor', [1, 2, 3], { condition: Cond.OwnerHasArmor() })],
+    effects: [
+      E(Trigger.TurnEnd(), 'GainArmor', [1, 2, 3], { condition: Cond.OwnerArmorAtLeast(3) }),
+    ],
   },
 
   // ===========================================================================
@@ -145,9 +147,9 @@ export const GEAR_EFFECTS: Record<GearId, GearEffects> = {
     ],
   },
 
-  // G-SC-06: Drill Servo - Wounded: gain +1/2/3 additional strikes
+  // G-SC-06: Drill Servo - Wounded: gain +1/1/2 additional strikes
   I14: {
-    effects: [E(Trigger.Wounded(), 'GainStrikes', [1, 2, 3], { oncePerTurn: true })],
+    effects: [E(Trigger.Wounded(), 'GainStrikes', [1, 1, 2], { oncePerTurn: true })],
   },
 
   // G-SC-07: Weak-Point Manual - SetArmorPiercing 1/2/3 (checked vs enemy ARM)
@@ -155,9 +157,11 @@ export const GEAR_EFFECTS: Record<GearId, GearEffects> = {
     effects: [E(Trigger.BattleStart(), 'SetArmorPiercing', [1, 2, 3])],
   },
 
-  // G-SC-08: Gear-Link Medallion - DoubleOnHitEffects
+  // G-SC-08: Gear-Link Medallion - DoubleOnHitEffects, +1/2/3 DIG
   I16: {
-    effects: [E(Trigger.BattleStart(), 'DoubleOnHitEffects', [1, 1, 1])],
+    effects: [
+      E(Trigger.BattleStart(), 'DoubleOnHitEffects', [1, 1, 1]),
+    ],
   },
 
   // ===========================================================================
@@ -169,19 +173,19 @@ export const GEAR_EFFECTS: Record<GearId, GearEffects> = {
     effects: [E(Trigger.DayStart(), 'GainGold', [3, 6, 9])],
   },
 
-  // G-GR-02: Lucky Coin - Victory: gain 2/4/6 Gold
+  // G-GR-02: Lucky Coin - Victory: gain 2/4/6 Gold and heal 2/3/4 HP
   I18: {
-    effects: [E(Trigger.Victory(), 'GainGold', [2, 4, 6])],
+    effects: [E(Trigger.Victory(), 'GainGold', [2, 4, 6]), E(Trigger.Victory(), 'Heal', [2, 3, 4])],
   },
 
   // G-GR-03: Gilded Band - Battle Start: GoldToArmorScaled (cap 2/3/4)
   I19: {
-    effects: [E(Trigger.BattleStart(), 'GoldToArmorScaled', [2, 3, 4])],
+    effects: [E(Trigger.BattleStart(), 'GoldToArmorScaled', [4, 5, 6])],
   },
 
   // G-GR-04: Royal Bracer - Turn Start: ConsumeGoldForArmor (1 Gold -> 2/3/4 Armor)
   I20: {
-    effects: [E(Trigger.TurnStart(), 'ConsumeGoldForArmor', [2, 3, 4])],
+    effects: [E(Trigger.TurnStart(), 'ConsumeGoldForArmor', [3, 4, 5])],
   },
 
   // G-GR-05: Emerald Shard - EveryOtherTurnFirstHit: heal 1/2/3 HP
@@ -210,17 +214,20 @@ export const GEAR_EFFECTS: Record<GearId, GearEffects> = {
   // BLAST (I25-I32)
   // ===========================================================================
 
-  // G-BL-01: Small Charge - Countdown(2): deal 8/10/12 to enemy AND self
+  // G-BL-01: Small Charge - Countdown(2): deal 10/12/14 to enemy, 4/5/6 to self
   I25: {
     effects: [
-      E(Trigger.Countdown(2), 'DealNonWeaponDamage', [8, 10, 12]),
-      E(Trigger.Countdown(2), 'DealSelfNonWeaponDamage', [8, 10, 12]),
+      E(Trigger.Countdown(2), 'DealNonWeaponDamage', [10, 12, 14]),
+      E(Trigger.Countdown(2), 'DealSelfNonWeaponDamage', [4, 5, 6]),
     ],
   },
 
-  // G-BL-02: Blast Suit - BlastImmunity
+  // G-BL-02: Blast Suit - BlastImmunity, +2/3/4 Armor
   I26: {
-    effects: [E(Trigger.BattleStart(), 'BlastImmunity', [1, 1, 1])],
+    effects: [
+      E(Trigger.BattleStart(), 'BlastImmunity', [1, 1, 1]),
+      E(Trigger.BattleStart(), 'GainArmor', [2, 3, 4]),
+    ],
   },
 
   // G-BL-03: Explosive Powder - AmplifyNonWeaponDamage +1/2/3
@@ -238,15 +245,16 @@ export const GEAR_EFFECTS: Record<GearId, GearEffects> = {
     effects: [E(Trigger.BattleStart(), 'ReduceAllCountdowns', [1, 1, 1])],
   },
 
-  // G-BL-06: Kindling Charge - Battle Start: deal 1/2/3; amplify next bomb +3/5/7
+  // G-BL-06: Kindling Charge - Battle Start: deal 2/3/4; next bomb +3/5/7, self-damage -2/3/4
   I30: {
     effects: [
-      E(Trigger.BattleStart(), 'DealNonWeaponDamage', [1, 2, 3]),
-      E(Trigger.BattleStart(), 'AmplifyNonWeaponDamage', [3, 5, 7]),
+      E(Trigger.BattleStart(), 'DealNonWeaponDamage', [2, 3, 4]),
+      E(Trigger.BattleStart(), 'EmpowerNextBombDamage', [3, 5, 7]),
+      E(Trigger.BattleStart(), 'ReduceNextBombSelfDamage', [2, 3, 4]),
     ],
   },
 
-  // G-BL-07: Time Charge - Turn Start: StoreDamage +1/2/3 (releases on Exposed)
+  // G-BL-07: Time Charge - Turn Start: StoreDamage +1/2/3 (releases on first expose or battle end)
   I31: {
     effects: [E(Trigger.TurnStart(), 'StoreDamage', [1, 2, 3])],
   },
@@ -265,11 +273,14 @@ export const GEAR_EFFECTS: Record<GearId, GearEffects> = {
     effects: [E(Trigger.BattleStart(), 'ApplyChill', [1, 2, 3])],
   },
 
-  // G-FR-02: Frostguard Buckler - +6/8/10 ARM; if enemy has Chill: +2/3/4 ARM
+  // G-FR-02: Frostguard Buckler - +8/10/12 ARM; if enemy has Chill: +3/4/5 ARM and apply 1 Chill
   I34: {
     effects: [
-      E(Trigger.BattleStart(), 'GainArmor', [6, 8, 10]),
-      E(Trigger.BattleStart(), 'GainArmor', [2, 3, 4], {
+      E(Trigger.BattleStart(), 'GainArmor', [8, 10, 12]),
+      E(Trigger.BattleStart(), 'GainArmor', [3, 4, 5], {
+        condition: Cond.EnemyHasStatus('Chill'),
+      }),
+      E(Trigger.BattleStart(), 'ApplyChill', [1, 1, 1], {
         condition: Cond.EnemyHasStatus('Chill'),
       }),
     ],
@@ -280,9 +291,9 @@ export const GEAR_EFFECTS: Record<GearId, GearEffects> = {
     effects: [E(Trigger.FirstTurnIfFaster(), 'ApplyChill', [2, 3, 4])],
   },
 
-  // G-FR-04: Ice Skates - +1/2/3 SPD
+  // G-FR-04: Ice Skates - +1/2/3 SPD, +1 DIG (exploration utility approximation)
   I36: {
-    effects: [E(Trigger.BattleStart(), 'GainSpd', [1, 2, 3])],
+    effects: [E(Trigger.BattleStart(), 'GainSpd', [1, 2, 3]), E(Trigger.BattleStart(), 'GainDig', [1, 1, 1])],
   },
 
   // G-FR-05: Rime Cloak - +3/5/7 ARM; OnStruck (once/turn): apply 1 Chill
@@ -293,30 +304,35 @@ export const GEAR_EFFECTS: Record<GearId, GearEffects> = {
     ],
   },
 
-  // G-FR-06: Permafrost Core - Turn Start: if enemy has Chill, gain 1/2/3 Armor
+  // G-FR-06: Permafrost Core - Turn Start: if enemy has Chill, gain 2/3/4 Armor and deal 2 non-weapon
   I38: {
     effects: [
-      E(Trigger.TurnStart(), 'GainArmor', [1, 2, 3], {
+      E(Trigger.TurnStart(), 'GainArmor', [2, 3, 4], {
+        condition: Cond.EnemyHasStatus('Chill'),
+      }),
+      E(Trigger.TurnStart(), 'DealNonWeaponDamage', [2, 2, 2], {
         condition: Cond.EnemyHasStatus('Chill'),
       }),
     ],
   },
 
-  // G-FR-07: Cold Front Idol - EveryOtherTurn: apply 1 Chill; if enemy has Chill: +1 SPD
+  // G-FR-07: Cold Front Idol - EveryOtherTurn: apply 1 Chill and deal 1 non-weapon; if enemy has Chill: +1 SPD
   I39: {
     effects: [
       E(Trigger.EveryOtherTurn(), 'ApplyChill', [1, 1, 1]),
+      E(Trigger.EveryOtherTurn(), 'DealNonWeaponDamage', [1, 1, 1]),
       E(Trigger.EveryOtherTurn(), 'GainSpd', [1, 1, 1], {
         condition: Cond.EnemyHasStatus('Chill'),
       }),
     ],
   },
 
-  // G-FR-08: Deep Freeze Charm - Wounded: apply 2/3/4 Chill; reduce enemy SPD by 1
+  // G-FR-08: Deep Freeze Charm - Wounded: apply 2/3/4 Chill; reduce enemy SPD by 1; amplify non-weapon damage
   I40: {
     effects: [
       E(Trigger.Wounded(), 'ApplyChill', [2, 3, 4], { oncePerTurn: true }),
       E(Trigger.Wounded(), 'ReduceEnemySpd', [1, 1, 1], { oncePerTurn: true }),
+      E(Trigger.Wounded(), 'AmplifyNonWeaponDamage', [1, 1, 1], { oncePerTurn: true }),
     ],
   },
 
@@ -332,9 +348,15 @@ export const GEAR_EFFECTS: Record<GearId, GearEffects> = {
     ],
   },
 
-  // G-RU-02: Rust Spike - OnHit (once/turn): apply 1 Rust
+  // G-RU-02: Rust Spike - OnHit: apply 1 Rust; if Rust >=3, deal 1/2/2 non-weapon
   I42: {
-    effects: [E(Trigger.OnHit(), 'ApplyRust', [1, 1, 1], { oncePerTurn: true })],
+    effects: [
+      E(Trigger.OnHit(), 'ApplyRust', [1, 1, 1], { oncePerTurn: true }),
+      E(Trigger.OnHit(), 'DealNonWeaponDamage', [1, 2, 2], {
+        oncePerTurn: true,
+        condition: Cond.EnemyHasStatusAtLeast('Rust', 3),
+      }),
+    ],
   },
 
   // G-RU-03: Corroded Greaves - +1/2/3 SPD; Wounded: apply 2/3/4 Rust
@@ -358,28 +380,34 @@ export const GEAR_EFFECTS: Record<GearId, GearEffects> = {
     ],
   },
 
-  // G-RU-06: Rust Engine - Turn Start: if enemy has Rust, deal 1/2/3 non-weapon
+  // G-RU-06: Rust Engine - Turn Start: if enemy has Rust OR no Armor, deal 1/2/3 non-weapon
   I46: {
     effects: [
       E(Trigger.TurnStart(), 'DealNonWeaponDamage', [1, 2, 3], {
-        condition: Cond.EnemyHasStatus('Rust'),
+        condition: Cond.Or(Cond.EnemyHasStatus('Rust'), Cond.EnemyHasNoArmor()),
       }),
     ],
   },
 
-  // G-RU-07: Corrosion Loop - OnHit (once/turn): if enemy has Armor, +1 Rust
+  // G-RU-07: Corrosion Loop - OnHit (once/turn): apply +2 Rust; if enemy has 0 Armor, deal 2 non-weapon
   I47: {
     effects: [
-      E(Trigger.OnHit(), 'ApplyRust', [1, 1, 1], {
+      E(Trigger.OnHit(), 'ApplyRust', [2, 2, 2], {
         oncePerTurn: true,
-        condition: Cond.EnemyHasArmor(),
+      }),
+      E(Trigger.OnHit(), 'DealNonWeaponDamage', [2, 2, 2], {
+        oncePerTurn: true,
+        condition: Cond.EnemyHasNoArmor(),
       }),
     ],
   },
 
-  // G-RU-08: Salvage Clamp - OnApplyRust (once/turn): gain 1 Gold
+  // G-RU-08: Salvage Clamp - OnApplyRust: gain 1 Gold; if no armor, apply rust at battle start
   I48: {
-    effects: [E(Trigger.OnApplyRust(), 'GainGold', [1, 1, 1], { oncePerTurn: true })],
+    effects: [
+      E(Trigger.OnApplyRust(), 'GainGold', [1, 1, 1], { oncePerTurn: true }),
+      E(Trigger.BattleStart(), 'ApplyRust', [1, 1, 1], { condition: Cond.EnemyHasNoArmor() }),
+    ],
   },
 
   // ===========================================================================
@@ -430,13 +458,14 @@ export const GEAR_EFFECTS: Record<GearId, GearEffects> = {
     effects: [E(Trigger.FirstTimeWounded(), 'GainArmor', [4, 6, 8])],
   },
 
-  // G-BO-08: Vampiric Tooth - OnHit (once/turn): if enemy has Bleed, heal 2 HP
+  // G-BO-08: Vampiric Tooth - OnHit: if enemy has Bleed, heal up to 5 HP; also applies bleed
   I56: {
     effects: [
-      E(Trigger.OnHit(), 'Heal', [2, 2, 2], {
+      E(Trigger.OnHit(), 'Heal', [5, 5, 5], {
         oncePerTurn: true,
         condition: Cond.EnemyHasStatus('Bleed'),
       }),
+      E(Trigger.OnHit(), 'ApplyBleed', [1, 1, 1], { oncePerTurn: true }),
     ],
   },
 
@@ -477,9 +506,12 @@ export const GEAR_EFFECTS: Record<GearId, GearEffects> = {
     ],
   },
 
-  // G-TE-06: Backstep Buckle - FirstTurnIfSlower: +3/5/7 damage (once)
+  // G-TE-06: Backstep Buckle - FirstTurnIfSlower: +4/6/8 armor and +3/5/7 damage
   I62: {
-    effects: [E(Trigger.FirstTurnIfSlower(), 'DealDamage', [3, 5, 7], { oncePerTurn: true })],
+    effects: [
+      E(Trigger.FirstTurnIfSlower(), 'GainArmor', [4, 6, 8]),
+      E(Trigger.FirstTurnIfSlower(), 'DealDamage', [3, 5, 7], { oncePerTurn: true }),
+    ],
   },
 
   // G-TE-07: Tempo Battery - EveryOtherTurn: +1/2/3 SPD
@@ -491,6 +523,7 @@ export const GEAR_EFFECTS: Record<GearId, GearEffects> = {
   I64: {
     effects: [E(Trigger.TurnN(5), 'Heal', [4, 6, 8]), E(Trigger.TurnN(5), 'GainSpd', [1, 1, 1])],
   },
+
 };
 
 // ============================================================================
