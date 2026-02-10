@@ -123,7 +123,8 @@ export type Condition =
   | { type: 'OwnerHasArmor' }
   | { type: 'OwnerArmorAtLeast'; value: number }
   | { type: 'OwnerHasStatus'; status: StatusType }
-  | { type: 'EnemyHasStatusAtLeast'; status: StatusType; minStacks: number };
+  | { type: 'EnemyHasStatusAtLeast'; status: StatusType; minStacks: number }
+  | { type: 'Or'; conditions: [Condition, Condition] };
 
 // Helper constructors for conditions
 export const Cond = {
@@ -144,6 +145,7 @@ export const Cond = {
     status,
     minStacks,
   }),
+  Or: (a: Condition, b: Condition): Condition => ({ type: 'Or', conditions: [a, b] }),
 } as const;
 
 // ============================================================================

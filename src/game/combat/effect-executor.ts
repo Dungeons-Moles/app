@@ -132,6 +132,12 @@ export function checkCondition(
       return enemyStatus[statusKey] >= condition.minStacks;
     }
 
+    case 'Or':
+      return (
+        checkCondition(condition.conditions[0], owner, enemy) ||
+        checkCondition(condition.conditions[1], owner, enemy)
+      );
+
     default:
       return true;
   }

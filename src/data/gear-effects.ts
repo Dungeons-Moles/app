@@ -384,10 +384,7 @@ export const GEAR_EFFECTS: Record<GearId, GearEffects> = {
   I46: {
     effects: [
       E(Trigger.TurnStart(), 'DealNonWeaponDamage', [1, 2, 3], {
-        condition: Cond.EnemyHasStatus('Rust'),
-      }),
-      E(Trigger.TurnStart(), 'DealNonWeaponDamage', [1, 2, 3], {
-        condition: Cond.EnemyHasNoArmor(),
+        condition: Cond.Or(Cond.EnemyHasStatus('Rust'), Cond.EnemyHasNoArmor()),
       }),
     ],
   },
