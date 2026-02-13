@@ -103,6 +103,8 @@ export const PDA_SEEDS = {
   MAP_CONFIG: 'map_config',
   /** Gameplay authority: ["gameplay_authority"] - for CPI calls from gameplay_state */
   GAMEPLAY_AUTHORITY: 'gameplay_authority',
+  /** Session manager authority: ["session_manager_authority"] - signer PDA for run mode configuration */
+  SESSION_MANAGER_AUTHORITY: 'session_manager_authority',
   /** Inventory authority: ["inventory_authority"] - for CPI calls from player_inventory */
   INVENTORY_AUTHORITY: 'inventory_authority',
 } as const;
@@ -249,6 +251,19 @@ export function deriveGameplayAuthorityPda(): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
     [Buffer.from(PDA_SEEDS.GAMEPLAY_AUTHORITY)],
     GAMEPLAY_STATE_PROGRAM_ID
+  );
+}
+
+/**
+ * Derive Session Manager Authority PDA (global, no session-specific seed).
+ * Used as signer for configure_run_mode CPI into gameplay_state.
+ *
+ * @returns [PDA, bump]
+ */
+export function deriveSessionManagerAuthorityPda(): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from(PDA_SEEDS.SESSION_MANAGER_AUTHORITY)],
+    SESSION_MANAGER_PROGRAM_ID
   );
 }
 

@@ -9,6 +9,7 @@ import { Keypair, PublicKey, SystemProgram, Connection } from '@solana/web3.js';
 import { Program } from '@coral-xyz/anchor';
 import { SOLANA_CONFIG } from './config';
 import { sendBurnerTransaction } from './burnerWallet';
+import { buildResolveGauntletWeekTransaction, parseGauntletCombatVisualEvent } from './gauntlet';
 import {
   deriveMapEnemiesPda,
   deriveInventoryPda,
@@ -20,6 +21,7 @@ import {
 import {
   GameState,
   Phase,
+  RunMode,
   StatType,
   GameStateInitParams,
   MovePlayerParams,
@@ -45,6 +47,9 @@ export const GAMEPLAY_ERROR_MESSAGES: Record<number, string> = {
   6007: 'Not authorized for this action',
   6008: 'Game session is not active',
   6009: 'Calculation overflow',
+  6033: 'Gauntlet mode is not active for this run.',
+  6034: 'Gauntlet run has already ended.',
+  6035: 'Invalid gauntlet week.',
 };
 
 /**
@@ -249,6 +254,7 @@ export async function triggerBossFight(
   burnerKeypair: Keypair
 ): Promise<string> {
   const [mapEnemiesPda] = deriveMapEnemiesPda(sessionPda);
+  const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
   const [inventoryPda] = deriveInventoryPda(sessionPda);
 
   const transaction = await program.methods
@@ -257,6 +263,7 @@ export async function triggerBossFight(
       gameState: gameStatePda,
       gameSession: sessionPda,
       mapEnemies: mapEnemiesPda,
+      generatedMap: generatedMapPda,
       inventory: inventoryPda,
       playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
       player: burnerKeypair.publicKey,
@@ -264,6 +271,30 @@ export async function triggerBossFight(
     .transaction();
 
   return sendBurnerTransaction(connection, transaction, burnerKeypair);
+}
+
+export async function resolveGauntletWeek(
+  connection: Connection,
+  program: Program,
+  gameStatePda: PublicKey,
+  sessionPda: PublicKey,
+  burnerKeypair: Keypair
+): Promise<{
+  signature: string;
+  combatVisual: Awaited<ReturnType<typeof parseGauntletCombatVisualEvent>>;
+}> {
+  const transaction = await buildResolveGauntletWeekTransaction(
+    connection,
+    program,
+    burnerKeypair.publicKey,
+    gameStatePda,
+    sessionPda
+  );
+
+  const signature = await sendBurnerTransaction(connection, transaction, burnerKeypair);
+  const combatVisual = await parseGauntletCombatVisualEvent(connection, signature);
+
+  return { signature, combatVisual };
 }
 
 /**
@@ -374,7 +405,21 @@ interface OnChainGameState {
   gold: number;
   campaignLevel: number;
   isDead: boolean;
+  runMode?: {
+    campaign?: object;
+    duel?: object;
+    gauntlet?: object;
+  };
+  maxWeeks?: number;
+  completed?: boolean;
   bump: number;
+}
+
+function parseRunMode(runMode: OnChainGameState['runMode']): RunMode {
+  if (!runMode) return RunMode.Campaign;
+  if ('duel' in runMode) return RunMode.Duel;
+  if ('gauntlet' in runMode) return RunMode.Gauntlet;
+  return RunMode.Campaign;
 }
 
 /**
@@ -415,6 +460,9 @@ function parseOnChainGameState(account: OnChainGameState): GameState {
     gold: account.gold ?? 0,
     campaignLevel: account.campaignLevel ?? 1,
     isDead: account.isDead ?? false,
+    runMode: parseRunMode(account.runMode),
+    maxWeeks: account.maxWeeks ?? 3,
+    completed: account.completed ?? false,
   };
 }
 

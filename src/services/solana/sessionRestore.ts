@@ -24,7 +24,7 @@ import { fetchGameState, fetchMapEnemies } from './gameplayState';
 import { fetchGeneratedMap } from './mapGeneratorClient';
 import { fetchMapPois } from './poiSystem';
 import { fetchInventory } from './playerInventory';
-import { Phase } from './types/gameplay_state';
+import { Phase, RunMode } from './types/gameplay_state';
 import { Tier } from './types/player_inventory';
 import type { OnChainEnemyInstance } from './gameplayState';
 import type { GeneratedMapData, OnChainEnemySpawn } from './mapGeneratorClient';
@@ -57,7 +57,7 @@ import { createToolInstance, createGearInstance, getToolDefinition } from '@/gam
 import { RARITY_MULTIPLIER } from '@/data/gear';
 import { refreshPlayerStats } from '@/game/entities/player';
 import { GAME_CONSTANTS } from '@/game/engine/constants';
-import { selectWeekBossForLevel } from '@/game/time/progression';
+import { selectDuelWeekBossForSeed, selectWeekBossForLevel } from '@/game/time/progression';
 import { updateFogOfWar, applyInitialVisibility } from '@/game/map/fog-of-war';
 
 // ============================================================================
@@ -219,7 +219,7 @@ const TOOL_OIL_FLAG_ARM = 0x08;
 export async function fetchFullSessionState(
   connection: Connection,
   sessionPda: PublicKey,
-  seed: number
+  seedOverride?: number
 ): Promise<GameState | null> {
   // Derive all PDAs
   const [gameStatePda] = deriveGameStatePda(sessionPda);
@@ -251,6 +251,26 @@ export async function fetchFullSessionState(
     });
     return null;
   }
+
+  const toSeedNumber = (raw: unknown): number => {
+    if (typeof raw === 'bigint') {
+      return Number(raw % BigInt(2147483647));
+    }
+    if (typeof raw === 'number') {
+      return raw % 2147483647;
+    }
+    if (typeof raw === 'string') {
+      const parsed = BigInt(raw);
+      return Number(parsed % BigInt(2147483647));
+    }
+    if (raw && typeof raw === 'object' && 'toString' in raw) {
+      const parsed = BigInt((raw as { toString: () => string }).toString());
+      return Number(parsed % BigInt(2147483647));
+    }
+    return 0;
+  };
+  const derivedSeed = toSeedNumber(generatedMapData.seed);
+  const seed = seedOverride ?? derivedSeed;
 
   // ============================================================
   // RAW ON-CHAIN GAMESTATE DEBUG
@@ -306,7 +326,11 @@ export async function fetchFullSessionState(
     generatedMapData.enemyCount
   );
   const pois = convertPois(generatedMapData.pois, generatedMapData.poiCount, mapPoisData);
-  const time = convertTimeState(gameStateData, gameStateData.campaignLevel);
+  const time = convertTimeState(
+    gameStateData,
+    gameStateData.campaignLevel,
+    generatedMapData.seed
+  );
   const player = buildPlayer(gameStateData, inventoryData);
   const playerPos = { x: gameStateData.positionX, y: gameStateData.positionY };
 
@@ -365,6 +389,7 @@ export async function fetchFullSessionState(
     wallHighlight: null,
     fastTravel: null,
     debug: DEFAULT_DEBUG_STATE,
+    totalMoves: gameStateData.totalMoves,
   };
 
   console.log('[sessionRestore] Full session state built:', {
@@ -527,14 +552,24 @@ export function convertPois(
  * @returns TimeState for the game engine
  */
 export function convertTimeState(
-  gameState: { week: number; phase: Phase; movesRemaining: number; totalMoves: number },
-  campaignLevel: number
+  gameState: {
+    week: number;
+    phase: Phase;
+    movesRemaining: number;
+    totalMoves: number;
+    runMode?: RunMode;
+  },
+  campaignLevel: number,
+  seed: bigint | number
 ): TimeState {
   const week = Math.max(1, Math.min(3, gameState.week)) as 1 | 2 | 3;
   const { phase, cycle } = convertPhase(gameState.phase);
 
-  // Select boss deterministically matching on-chain boss-system logic
-  const weekBoss = selectWeekBossForLevel(campaignLevel, week);
+  // Duels: week1/week2 boss is seed-based; week3 uses campaign selector but UI hides it as opponent.
+  const weekBoss =
+    gameState.runMode === RunMode.Duel && (week === 1 || week === 2)
+      ? selectDuelWeekBossForSeed(seed, week)
+      : selectWeekBossForLevel(campaignLevel, week);
 
   return {
     week,

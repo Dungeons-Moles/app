@@ -807,8 +807,12 @@ export function isBoss(id: string): id is BossId {
  * Returns the 2 weakness tags of the specified boss
  * Used by POI item generation to weight items toward boss counters
  */
-export function getBossWeaknessTags(bossId: BossId): [ItemTag, ItemTag] {
+export function getBossWeaknessTags(bossId: BossId | null | undefined): ItemTag[] {
+  if (!bossId) return [];
   const boss = BOSSES[bossId];
+  if (!boss || !Array.isArray(boss.weaknessTags)) {
+    return [];
+  }
   return boss.weaknessTags;
 }
 

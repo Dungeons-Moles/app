@@ -91,6 +91,37 @@ export function selectWeekBossForLevel(campaignLevel: number, week: 1 | 2 | 3): 
   return `B-${biome}-W${week}-${paddedIndex}` as BossId;
 }
 
+function splitmix64(seed: bigint): bigint {
+  let z = (seed + 0x9e3779b97f4a7c15n) & 0xffffffffffffffffn;
+  z = ((z ^ (z >> 30n)) * 0xbf58476d1ce4e5b9n) & 0xffffffffffffffffn;
+  z = ((z ^ (z >> 27n)) * 0x94d049bb133111ebn) & 0xffffffffffffffffn;
+  return (z ^ (z >> 31n)) & 0xffffffffffffffffn;
+}
+
+const DUEL_WEEK1_POOL: BossId[] = [
+  'B-A-W1-01',
+  'B-A-W1-02',
+  'B-A-W1-03',
+  'B-A-W1-04',
+  'B-A-W1-05',
+];
+
+const DUEL_WEEK2_POOL: BossId[] = [
+  'B-A-W2-01',
+  'B-A-W2-02',
+  'B-A-W2-03',
+  'B-A-W2-04',
+  'B-A-W2-05',
+];
+
+export function selectDuelWeekBossForSeed(seed: bigint | number, week: 1 | 2): BossId {
+  const seed64 = typeof seed === 'bigint' ? seed : BigInt(seed);
+  const combo = Number(splitmix64(seed64) % 25n);
+  const week1Index = Math.floor(combo / 5);
+  const week2Index = combo % 5;
+  return week === 1 ? DUEL_WEEK1_POOL[week1Index] : DUEL_WEEK2_POOL[week2Index];
+}
+
 /**
  * Selects a boss for the given week using RNG (guest mode only).
  *

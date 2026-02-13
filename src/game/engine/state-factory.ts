@@ -34,6 +34,7 @@ export function createInitialGameState(): GameState {
     wallHighlight: null,
     fastTravel: null,
     debug: DEFAULT_DEBUG_STATE,
+    totalMoves: 0,
   };
 }
 

@@ -1538,6 +1538,27 @@
               },
               "u8"
             ]
+          },
+          {
+            "name": "EnemyHasNoArmorAndStatusAtLeast",
+            "fields": [
+              {
+                "defined": {
+                  "name": "StatusType"
+                }
+              },
+              "u8"
+            ]
+          },
+          {
+            "name": "EnemyHasStatusOrNoArmor",
+            "fields": [
+              {
+                "defined": {
+                  "name": "StatusType"
+                }
+              }
+            ]
           }
         ]
       }
@@ -1635,6 +1656,9 @@
             "name": "AmplifyNonWeaponDamage"
           },
           {
+            "name": "EmpowerNextNonWeaponDamage"
+          },
+          {
             "name": "StoreDamage"
           },
           {
@@ -1657,6 +1681,12 @@
           },
           {
             "name": "TriggerAllShards"
+          },
+          {
+            "name": "ShardsEveryTurn"
+          },
+          {
+            "name": "PreserveShrapnel"
           }
         ]
       }
@@ -2005,7 +2035,7 @@
           {
             "name": "gear",
             "docs": [
-              "Equipped gear (0-8)"
+              "Equipped gear (0-12)"
             ],
             "type": {
               "array": [
@@ -2016,14 +2046,14 @@
                     }
                   }
                 },
-                8
+                12
               ]
             }
           },
           {
             "name": "gear_slot_capacity",
             "docs": [
-              "Current gear limit (4, 6, or 8)"
+              "Current gear limit (4, 6, 8, 10, or 12)"
             ],
             "type": "u8"
           },
@@ -2262,6 +2292,9 @@
           },
           {
             "name": "OnGainShrapnel"
+          },
+          {
+            "name": "OnGoldArmorConverted"
           },
           {
             "name": "DayStart"

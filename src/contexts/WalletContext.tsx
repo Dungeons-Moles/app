@@ -82,16 +82,23 @@ async function signAndSendWithDevWallet(
     });
   }
 
-  transaction.feePayer = keypair.publicKey;
-  const latestBlockhash = await connection.getLatestBlockhash(SOLANA_CONFIG.commitment);
-  transaction.recentBlockhash = latestBlockhash.blockhash;
-  transaction.sign(keypair);
+  if (!transaction.feePayer) {
+    transaction.feePayer = keypair.publicKey;
+  }
+  if (!transaction.recentBlockhash) {
+    const latestBlockhash = await connection.getLatestBlockhash(SOLANA_CONFIG.commitment);
+    transaction.recentBlockhash = latestBlockhash.blockhash;
+  }
+  // Preserve any existing partial signatures (e.g. burner wallet) and add only the dev wallet sig.
+  transaction.partialSign(keypair);
   return connection.sendRawTransaction(transaction.serialize(), {
     preflightCommitment: SOLANA_CONFIG.commitment,
   });
 }
 
-export type SupportedWallet = 'Jupiter' | 'Phantom';
+// TEMPORARY: 'DevKeypair' added to bypass Phantom issues during local development.
+// Remove 'DevKeypair' once Phantom popup behavior is resolved.
+export type SupportedWallet = 'Jupiter' | 'Phantom' | 'DevKeypair';
 
 type WebWalletProvider = {
   isPhantom?: boolean;
@@ -184,6 +191,26 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       setError(null);
 
       try {
+        // TEMPORARY: DevKeypair bypasses browser wallet detection for local dev.
+        // Remove this block when reverting to browser wallets only.
+        if (walletName === 'DevKeypair' && IS_WEB && devWebWallet) {
+          const address = devWebWallet.publicKey.toBase58();
+          const authResult: AuthorizationResult = {
+            address,
+            label: 'Dev Keypair',
+            authToken: 'dev-web-wallet',
+          };
+
+          setWallet({
+            isConnected: true,
+            address,
+            publicKey: devWebWallet.publicKey,
+            authToken: 'dev-web-wallet',
+          });
+
+          return authResult;
+        }
+
         const webWallet = getWebWalletProvider(walletName);
         if (webWallet) {
           const response = await webWallet.connect();
@@ -279,63 +306,89 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
   const signAndSendTransaction = useCallback(
     async (transaction: Transaction | VersionedTransaction) => {
-      const webWallet = getWebWalletProvider();
-      if (webWallet) {
-        const connection = new Connection(SOLANA_CONFIG.rpcUrl, 'confirmed');
-
-        // Only set blockhash if the transaction doesn't already have one.
-        // If the transaction has already been partially signed, changing the
-        // blockhash would invalidate those signatures.
-        if (transaction instanceof VersionedTransaction) {
-          if (!transaction.message.recentBlockhash) {
-            const latestBlockhash = await connection.getLatestBlockhash(SOLANA_CONFIG.commitment);
-            transaction.message.recentBlockhash = latestBlockhash.blockhash;
-          }
-        } else {
-          // Check if transaction already has partial signatures - if so, don't modify blockhash
-          const hasSignatures = transaction.signatures.some(
-            (sig) => sig.signature !== null && !sig.signature.every((b) => b === 0)
-          );
-          // Only set blockhash if missing AND no partial signatures exist
-          if (!hasSignatures && !transaction.recentBlockhash) {
-            const latestBlockhash = await connection.getLatestBlockhash(SOLANA_CONFIG.commitment);
-            transaction.recentBlockhash = latestBlockhash.blockhash;
-          }
-          // Only set feePayer if not already set
-          if (!transaction.feePayer) {
-            transaction.feePayer = webWallet.publicKey ?? wallet.publicKey ?? undefined;
-          }
+      try {
+        // TEMPORARY: Route DevKeypair directly to local signing, bypassing browser wallet detection.
+        // Remove this block when reverting to browser wallets only.
+        if (wallet.authToken === 'dev-web-wallet' && devWebWallet) {
+          const connection = new Connection(SOLANA_CONFIG.rpcUrl, 'confirmed');
+          return signAndSendWithDevWallet(connection, transaction, devWebWallet);
         }
 
-        const signed = await webWallet.signTransaction(transaction);
-        const serialized = signed.serialize();
-        return connection.sendRawTransaction(serialized, {
-          preflightCommitment: SOLANA_CONFIG.commitment,
+        const webWallet = getWebWalletProvider();
+        if (webWallet) {
+          const connection = new Connection(SOLANA_CONFIG.rpcUrl, 'confirmed');
+
+          // Only set blockhash if the transaction doesn't already have one.
+          // If the transaction has already been partially signed, changing the
+          // blockhash would invalidate those signatures.
+          if (transaction instanceof VersionedTransaction) {
+            if (!transaction.message.recentBlockhash) {
+              const latestBlockhash = await connection.getLatestBlockhash(SOLANA_CONFIG.commitment);
+              transaction.message.recentBlockhash = latestBlockhash.blockhash;
+            }
+          } else {
+            // Check if transaction already has partial signatures - if so, don't modify blockhash
+            const hasSignatures = transaction.signatures.some(
+              (sig) => sig.signature !== null && !sig.signature.every((b) => b === 0)
+            );
+            // Only set blockhash if missing AND no partial signatures exist
+            if (!hasSignatures && !transaction.recentBlockhash) {
+              const latestBlockhash = await connection.getLatestBlockhash(SOLANA_CONFIG.commitment);
+              transaction.recentBlockhash = latestBlockhash.blockhash;
+            }
+            // Only set feePayer if not already set
+            if (!transaction.feePayer) {
+              transaction.feePayer = webWallet.publicKey ?? wallet.publicKey ?? undefined;
+            }
+          }
+
+          const signed = await webWallet.signTransaction(transaction);
+          const serialized = signed.serialize();
+          return connection.sendRawTransaction(serialized, {
+            preflightCommitment: SOLANA_CONFIG.commitment,
+          });
+        }
+
+        if (IS_WEB && devWebWallet) {
+          const connection = new Connection(SOLANA_CONFIG.rpcUrl, 'confirmed');
+          return signAndSendWithDevWallet(connection, transaction, devWebWallet);
+        }
+
+        if (!wallet.authToken) {
+          throw new Error('Wallet not connected');
+        }
+
+        return transact(async (walletAdapter: Web3MobileWallet) => {
+          await walletAdapter.authorize({
+            chain: SOLANA_CONFIG.cluster,
+            identity: APP_IDENTITY,
+            auth_token: wallet.authToken ?? undefined,
+          });
+
+          const signatures = await walletAdapter.signAndSendTransactions({
+            transactions: [transaction],
+          });
+
+          return signatures[0];
         });
-      }
-
-      if (IS_WEB && devWebWallet) {
-        const connection = new Connection(SOLANA_CONFIG.rpcUrl, 'confirmed');
-        return signAndSendWithDevWallet(connection, transaction, devWebWallet);
-      }
-
-      if (!wallet.authToken) {
-        throw new Error('Wallet not connected');
-      }
-
-      return transact(async (walletAdapter: Web3MobileWallet) => {
-        await walletAdapter.authorize({
-          chain: SOLANA_CONFIG.cluster,
-          identity: APP_IDENTITY,
-          auth_token: wallet.authToken ?? undefined,
+      } catch (err) {
+        const e = err as
+          | Error
+          | {
+              message?: string;
+              logs?: string[];
+              transactionLogs?: string[];
+              cause?: unknown;
+            };
+        console.error('[WalletContext] signAndSendTransaction failed', {
+          message: e?.message ?? String(err),
+          logs: (e as { logs?: string[] }).logs ?? null,
+          transactionLogs: (e as { transactionLogs?: string[] }).transactionLogs ?? null,
+          cause: (e as { cause?: unknown }).cause ?? null,
+          raw: err,
         });
-
-        const signatures = await walletAdapter.signAndSendTransactions({
-          transactions: [transaction],
-        });
-
-        return signatures[0];
-      });
+        throw err;
+      }
     },
     [devWebWallet, wallet.authToken, wallet.publicKey]
   );

@@ -35,6 +35,8 @@ export interface PlayerPanelProps {
   statusEffects: StatusEffects;
   equippedTool?: Tool | null;
   equippedGear?: Gear[];
+  /** Optional subtitle (e.g., wallet address for Pit Draft) */
+  subtitle?: string;
 }
 
 interface StatRowProps {
@@ -105,6 +107,7 @@ export function PlayerPanel({
   statusEffects,
   equippedTool,
   equippedGear = [],
+  subtitle,
 }: PlayerPanelProps) {
   const hpPercent = useMemo(() => Math.max(0, (hp / maxHp) * 100), [hp, maxHp]);
   const armorPercent = useMemo(
@@ -140,6 +143,11 @@ export function PlayerPanel({
               resizeMode="contain"
             />
             <Text style={styles.name}>{name}</Text>
+            {subtitle && (
+              <Text style={styles.subtitle} numberOfLines={1}>
+                ({subtitle})
+              </Text>
+            )}
           </View>
 
           {/* HP Bar */}
@@ -244,6 +252,13 @@ const styles = StyleSheet.create({
     color: '#000000',
     textAlign: 'center',
     fontWeight: 'bold',
+  },
+  subtitle: {
+    fontFamily: Typography.body,
+    fontSize: 9,
+    color: '#666666',
+    textAlign: 'center',
+    marginTop: 2,
   },
 
   hpSection: {

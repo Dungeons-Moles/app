@@ -35,12 +35,12 @@ type DeathScreenProps = {
 
 export function DeathScreen({ navigation, route }: DeathScreenProps) {
   const { replay, totalMoves, level, week, phase, combatTurns, killedBy } = route.params ?? {};
-  const { availableRuns } = useProfile();
+  const { availableRuns, mode } = useProfile();
   const { height } = useWindowDimensions();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
 
-  const isOutOfRuns = availableRuns === 0;
+  const isOutOfRuns = mode !== 'guest' && availableRuns === 0;
   // Use vertical layout for taller screens (portrait or large tablets)
   const isVerticalLayout = height > 768;
 

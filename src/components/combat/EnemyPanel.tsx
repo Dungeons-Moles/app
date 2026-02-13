@@ -5,8 +5,17 @@
  */
 
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, Image, ImageBackground } from 'react-native';
-import type { StatusEffects } from '../../game/engine/types';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  Image,
+  ImageBackground,
+  type ImageSourcePropType,
+} from 'react-native';
+import type { StatusEffects, Tool, Gear, ItemRarity } from '../../game/engine/types';
+import { getTierFromRarity } from '../../data/gear';
 import { Typography } from '../../theme/typography';
 
 const ICONS = {
@@ -14,13 +23,51 @@ const ICONS = {
   SPD: require('../../../assets/icons/stats/speed.png'),
   DIG: require('../../../assets/icons/stats/DIG.png'),
 };
+const COIN_ICON = require('../../../assets/icons/ui/coin.png');
 
 const SIDEBAR_BG = require('../../../assets/ui/panels/sidebar.png');
+const SQUARE_BG = require('../../../assets/ui/frames/square.png');
+
+function getTierBorderColor(rarity: ItemRarity): string | null {
+  const tier = getTierFromRarity(rarity);
+  switch (tier) {
+    case 2:
+      return '#4A90D9';
+    case 3:
+      return '#FFD700';
+    default:
+      return null;
+  }
+}
+
+interface ItemBadgeProps {
+  emoji: string;
+  name: string;
+  image?: ImageSourcePropType;
+  rarity?: ItemRarity;
+}
+
+function ItemBadge({ emoji, image, rarity }: ItemBadgeProps) {
+  const borderColor = rarity ? getTierBorderColor(rarity) : null;
+  return (
+    <ImageBackground
+      source={SQUARE_BG}
+      style={[styles.itemBadge, borderColor && { borderWidth: 2, borderColor }]}
+      resizeMode="stretch"
+    >
+      {image ? (
+        <Image source={image} style={styles.itemImage} resizeMode="contain" />
+      ) : (
+        <Text style={styles.itemEmoji}>{emoji}</Text>
+      )}
+    </ImageBackground>
+  );
+}
 
 export interface EnemyPanelProps {
   name: string;
   emoji: string;
-  imageSource?: any;
+  imageSource?: ImageSourcePropType;
   hp: number;
   maxHp: number;
   atk: number;
@@ -33,12 +80,22 @@ export interface EnemyPanelProps {
     name: string;
     description: string;
   };
+  /** Optional subtitle (e.g., wallet address for Pit Draft) */
+  subtitle?: string;
+  /** Optional enemy gold (for PvP combat display) */
+  gold?: number;
+  /** Optional equipped tool (for Pit Draft PvP) */
+  equippedTool?: Tool | null;
+  /** Optional equipped gear (for Pit Draft PvP) */
+  equippedGear?: Gear[];
+  /** Optional vertical adjustment for portrait alignment */
+  imageOffsetY?: number;
 }
 
 interface StatRowProps {
   label: string;
   value: number;
-  icon: any;
+  icon: ImageSourcePropType;
 }
 
 function StatRow({ label, value, icon }: StatRowProps) {
@@ -53,7 +110,7 @@ function StatRow({ label, value, icon }: StatRowProps) {
 
 export function EnemyPanel({
   name,
-  emoji,
+  emoji: _emoji,
   hp,
   maxHp,
   atk,
@@ -61,9 +118,14 @@ export function EnemyPanel({
   maxArm,
   spd,
   dig,
-  statusEffects,
+  statusEffects: _statusEffects,
   trait,
   imageSource,
+  subtitle,
+  gold,
+  equippedTool,
+  equippedGear = [],
+  imageOffsetY = 0,
 }: EnemyPanelProps) {
   const hpPercent = useMemo(() => Math.max(0, (hp / maxHp) * 100), [hp, maxHp]);
   const armorPercent = useMemo(
@@ -81,14 +143,30 @@ export function EnemyPanel({
     <View style={styles.container}>
       <ImageBackground source={SIDEBAR_BG} style={styles.sidePanelBg} resizeMode="stretch">
         <View style={styles.content}>
+          {gold !== undefined && (
+            <View style={styles.goldContainer}>
+              <Image source={COIN_ICON} style={styles.coinIcon} resizeMode="contain" />
+              <Text style={styles.goldText}>{gold}</Text>
+            </View>
+          )}
+
           {/* Header */}
           <View style={styles.header}>
             {imageSource && (
-              <Image source={imageSource} style={styles.image} resizeMode="contain" />
+              <Image
+                source={imageSource}
+                style={[styles.image, imageOffsetY !== 0 && { marginTop: imageOffsetY }]}
+                resizeMode="contain"
+              />
             )}
             <Text style={styles.name} numberOfLines={2}>
               {name}
             </Text>
+            {subtitle && (
+              <Text style={styles.subtitle} numberOfLines={1}>
+                ({subtitle})
+              </Text>
+            )}
           </View>
 
           {/* HP Bar */}
@@ -133,6 +211,38 @@ export function EnemyPanel({
               </Text>
             </View>
           )}
+
+          {/* Equipment (Pit Draft PvP) */}
+          {(equippedTool || equippedGear.length > 0) && (
+            <View style={styles.itemsSection}>
+              <Text style={styles.sectionTitle}>Equipment</Text>
+              <ScrollView
+                style={styles.itemsScroll}
+                contentContainerStyle={styles.itemsScrollContent}
+                showsVerticalScrollIndicator={false}
+              >
+                <View style={styles.itemsGrid}>
+                  {equippedTool && (
+                    <ItemBadge
+                      emoji={equippedTool.emoji}
+                      image={equippedTool.image}
+                      name={equippedTool.name}
+                      rarity={equippedTool.rarity}
+                    />
+                  )}
+                  {equippedGear.map((gear, index) => (
+                    <ItemBadge
+                      key={index}
+                      emoji={gear.emoji}
+                      image={gear.image}
+                      name={gear.name}
+                      rarity={gear.currentRarity}
+                    />
+                  ))}
+                </View>
+              </ScrollView>
+            </View>
+          )}
         </View>
       </ImageBackground>
     </View>
@@ -154,6 +264,28 @@ const styles = StyleSheet.create({
     padding: 12,
     height: '100%',
   },
+  goldContainer: {
+    position: 'absolute',
+    top: 10,
+    left: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    zIndex: 10,
+  },
+  coinIcon: {
+    width: 24,
+    height: 24,
+  },
+  goldText: {
+    fontFamily: Typography.number,
+    fontSize: 18,
+    color: '#000000',
+    fontWeight: 'bold',
+  },
   header: {
     alignItems: 'center',
     marginBottom: 12,
@@ -166,9 +298,16 @@ const styles = StyleSheet.create({
   name: {
     fontFamily: Typography.header,
     fontSize: 18,
-    color: '#000000', // Black text
+    color: '#000000',
     textAlign: 'center',
     fontWeight: 'bold',
+  },
+  subtitle: {
+    fontFamily: Typography.body,
+    fontSize: 9,
+    color: '#666666',
+    textAlign: 'center',
+    marginTop: 2,
   },
   hpSection: {
     marginBottom: 6,
@@ -272,5 +411,42 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: '#333333',
     lineHeight: 14,
+  },
+  sectionTitle: {
+    fontFamily: Typography.header,
+    fontSize: 12,
+    color: '#333333',
+    marginBottom: 6,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    fontWeight: 'bold',
+  },
+  itemsSection: {
+    flex: 1,
+    minHeight: 0,
+  },
+  itemsScroll: {
+    flex: 1,
+  },
+  itemsScrollContent: {
+    paddingBottom: 8,
+  },
+  itemsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+  },
+  itemBadge: {
+    width: 32,
+    height: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  itemEmoji: {
+    fontSize: 16,
+  },
+  itemImage: {
+    width: 24,
+    height: 24,
   },
 });

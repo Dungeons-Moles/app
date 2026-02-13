@@ -21,7 +21,6 @@ import {
 import { oilFlagToModification } from '@/services/solana/types/player_inventory';
 import { useWallet } from '@/contexts/WalletContext';
 import { deriveMapPoisPda } from '@/services/solana/constants';
-import { deriveSessionPda } from '@/services/solana/constants';
 import { getGameStatePda, fetchGameState } from '@/services/solana/gameplayState';
 import { POI_TYPES } from '@/services/solana/types/poi_system';
 import type {
@@ -429,7 +428,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
     hasActiveSession,
     gameplayState: onChainState,
     getBurnerKeypair,
-    currentLevel,
+    sessionPda,
     refreshGameplayState: refreshSessionState,
   } = useSession();
   const {
@@ -478,13 +477,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
   // Get player position
   const playerPosition: Position | null = gameState?.player?.position ?? null;
 
-  // Derive key PDAs
-  const sessionPda = useMemo(() => {
-    if (!wallet.publicKey || currentLevel === null) return null;
-    const [pda] = deriveSessionPda(wallet.publicKey, currentLevel);
-    return pda;
-  }, [wallet.publicKey, currentLevel]);
-
+  // Derive dependent PDAs from the active session PDA (which correctly handles campaign/duel/gauntlet)
   const mapPoisPda = useMemo(() => {
     if (!sessionPda) return null;
     const [pda] = deriveMapPoisPda(sessionPda);
@@ -719,6 +712,24 @@ export function usePoiInteraction(): UsePoiInteractionResult {
           !!currentPoi
         );
         setError('Cannot interact with POI');
+        return { success: false };
+      }
+
+      // Guest mode: dispatch INTERACT_POI to the local reducer (no on-chain interaction)
+      if (!hasActiveSession) {
+        const localPoi = gameState?.map?.pois?.find(
+          (p) =>
+            p.position.x === currentPoi.x &&
+            p.position.y === currentPoi.y &&
+            !p.visited
+        );
+        if (localPoi) {
+          console.log('[usePoiInteraction] Guest mode: dispatching INTERACT_POI for', localPoi.id);
+          dispatch({ type: 'INTERACT_POI', poiId: localPoi.id });
+          return { success: true };
+        }
+        console.warn('[usePoiInteraction] Guest mode: no local POI found at', currentPoi.x, currentPoi.y);
+        setError('POI not found');
         return { success: false };
       }
 
@@ -1134,6 +1145,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
       canInteract,
       playerPosition,
       currentPoi,
+      hasActiveSession,
       getBurnerKeypair,
       poiProgram,
       mapPoisPda,

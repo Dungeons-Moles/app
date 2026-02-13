@@ -1,11 +1,11 @@
 /**
  * Tests for enemy pathfinding during Night phase
+ * Uses greedy step algorithm matching on-chain select_enemy_step.
  * @see T132, T133
  */
 
 import { TileType, FogState, type GameMap, type MapEnemy } from '../../../src/game/map/types';
 import {
-  findPath,
   getNextEnemyMove,
   moveEnemiesNight,
   isAdjacent,
@@ -61,118 +61,11 @@ function createEnemy(id: string, position: Position): MapEnemy {
 }
 
 // ============================================================================
-// findPath Tests
-// ============================================================================
-
-describe('findPath', () => {
-  it('finds direct path in open corridor', () => {
-    const map = createTestMap([
-      '#####',
-      '#...#',
-      '#####',
-    ]);
-
-    const path = findPath(map, { x: 1, y: 1 }, { x: 3, y: 1 }, []);
-
-    expect(path).toHaveLength(2);
-    expect(path[0]).toEqual({ x: 2, y: 1 });
-    expect(path[1]).toEqual({ x: 3, y: 1 });
-  });
-
-  it('returns empty array when start equals goal', () => {
-    const map = createTestMap([
-      '#####',
-      '#...#',
-      '#####',
-    ]);
-
-    const path = findPath(map, { x: 1, y: 1 }, { x: 1, y: 1 }, []);
-
-    expect(path).toHaveLength(0);
-  });
-
-  it('finds path around obstacles', () => {
-    const map = createTestMap([
-      '#####',
-      '#.#.#',
-      '#...#',
-      '#####',
-    ]);
-
-    const path = findPath(map, { x: 1, y: 1 }, { x: 3, y: 1 }, []);
-
-    // Should go down, right, right, up
-    expect(path.length).toBeGreaterThan(0);
-    expect(path[path.length - 1]).toEqual({ x: 3, y: 1 });
-  });
-
-  it('returns empty array when no path exists', () => {
-    const map = createTestMap([
-      '#####',
-      '#.#.#',
-      '#####',
-    ]);
-
-    const path = findPath(map, { x: 1, y: 1 }, { x: 3, y: 1 }, []);
-
-    expect(path).toHaveLength(0);
-  });
-
-  it('avoids tiles occupied by other enemies', () => {
-    const map = createTestMap([
-      '#####',
-      '#...#',
-      '#####',
-    ]);
-    const enemies = [
-      createEnemy('enemy1', { x: 2, y: 1 }),
-    ];
-
-    const path = findPath(map, { x: 1, y: 1 }, { x: 3, y: 1 }, enemies);
-
-    // Should not be able to pass through occupied tile
-    // In a single-row corridor, no path exists
-    expect(path).toHaveLength(0);
-  });
-
-  it('allows path to goal even if occupied (player position)', () => {
-    const map = createTestMap([
-      '#####',
-      '#...#',
-      '#####',
-    ]);
-    // Enemy at middle position
-    const enemies = [createEnemy('enemy1', { x: 1, y: 1 })];
-
-    // Path from enemy position to player (at goal)
-    const path = findPath(map, { x: 1, y: 1 }, { x: 3, y: 1 }, enemies);
-
-    expect(path).toHaveLength(2);
-    expect(path[path.length - 1]).toEqual({ x: 3, y: 1 });
-  });
-
-  it('is deterministic across runs', () => {
-    const map = createTestMap([
-      '#######',
-      '#.....#',
-      '#.###.#',
-      '#.....#',
-      '#######',
-    ]);
-
-    const path1 = findPath(map, { x: 1, y: 1 }, { x: 5, y: 3 }, []);
-    const path2 = findPath(map, { x: 1, y: 1 }, { x: 5, y: 3 }, []);
-
-    expect(path1).toEqual(path2);
-  });
-});
-
-// ============================================================================
-// getNextEnemyMove Tests
+// getNextEnemyMove Tests (greedy step algorithm)
 // ============================================================================
 
 describe('getNextEnemyMove', () => {
-  it('returns next step toward player', () => {
+  it('returns next step toward player (x-axis priority)', () => {
     const map = createTestMap([
       '#####',
       '#...#',
@@ -186,7 +79,7 @@ describe('getNextEnemyMove', () => {
     expect(nextMove).toEqual({ x: 2, y: 1 });
   });
 
-  it('returns null when no path exists', () => {
+  it('returns null when wall blocks and no alternative axis', () => {
     const map = createTestMap([
       '#####',
       '#.#.#',
@@ -197,6 +90,7 @@ describe('getNextEnemyMove', () => {
 
     const nextMove = getNextEnemyMove(map, enemy, playerPosition, []);
 
+    // dx=2, dy=0. Only xStep=(2,1) which is wall. yStep=null. No valid move.
     expect(nextMove).toBeNull();
   });
 
@@ -213,6 +107,57 @@ describe('getNextEnemyMove', () => {
 
     expect(nextMove).toEqual({ x: 3, y: 1 });
   });
+
+  it('falls back to secondary axis when primary is blocked', () => {
+    const map = createTestMap([
+      '#####',
+      '#.#.#',
+      '#...#',
+      '#####',
+    ]);
+    const enemy = createEnemy('enemy1', { x: 1, y: 1 });
+    const playerPosition = { x: 3, y: 2 };
+
+    const nextMove = getNextEnemyMove(map, enemy, playerPosition, []);
+
+    // dx=2, dy=1. |dx|>=|dy| so xStep=(2,1) tried first = wall.
+    // Falls back to yStep=(1,2) = floor. Returns (1,2).
+    expect(nextMove).toEqual({ x: 1, y: 2 });
+  });
+
+  it('prioritizes y-axis when dy > dx', () => {
+    const map = createTestMap([
+      '#####',
+      '#...#',
+      '#...#',
+      '#...#',
+      '#####',
+    ]);
+    const enemy = createEnemy('enemy1', { x: 1, y: 1 });
+    const playerPosition = { x: 2, y: 3 };
+
+    const nextMove = getNextEnemyMove(map, enemy, playerPosition, []);
+
+    // dx=1, dy=2. |dy|>|dx| so yStep=(1,2) tried first = floor.
+    expect(nextMove).toEqual({ x: 1, y: 2 });
+  });
+
+  it('avoids tiles occupied by other enemies', () => {
+    const map = createTestMap([
+      '#####',
+      '#...#',
+      '#...#',
+      '#####',
+    ]);
+    const enemy = createEnemy('enemy1', { x: 1, y: 1 });
+    const otherEnemy = createEnemy('enemy2', { x: 2, y: 1 });
+    const playerPosition = { x: 3, y: 1 };
+
+    const nextMove = getNextEnemyMove(map, enemy, playerPosition, [enemy, otherEnemy]);
+
+    // dx=2, dy=0. xStep=(2,1) is occupied by enemy2. yStep=null (dy=0). No valid move.
+    expect(nextMove).toBeNull();
+  });
 });
 
 // ============================================================================
@@ -220,19 +165,36 @@ describe('getNextEnemyMove', () => {
 // ============================================================================
 
 describe('moveEnemiesNight', () => {
-  it('moves enemies toward player', () => {
+  it('moves enemies within Chebyshev distance 1-3 toward player', () => {
     const map = createTestMap([
-      '#####',
-      '#...#',
-      '#####',
+      '#######',
+      '#.....#',
+      '#######',
     ]);
-    map.enemies = [createEnemy('enemy1', { x: 1, y: 1 })];
-    const playerPosition = { x: 3, y: 1 };
+    map.enemies = [createEnemy('enemy1', { x: 3, y: 1 })];
+    const playerPosition = { x: 5, y: 1 };
 
+    // Chebyshev distance = max(|3-5|,|1-1|) = 2, within range 1-3
     const result = moveEnemiesNight(map, playerPosition);
 
     expect(result.updatedEnemies).toHaveLength(1);
-    expect(result.updatedEnemies[0].position).toEqual({ x: 2, y: 1 });
+    expect(result.updatedEnemies[0].position).toEqual({ x: 4, y: 1 });
+    expect(result.combatTriggered).toBeNull();
+  });
+
+  it('does not move enemies outside Chebyshev distance 3', () => {
+    const map = createTestMap([
+      '#########',
+      '#.......#',
+      '#########',
+    ]);
+    map.enemies = [createEnemy('enemy1', { x: 1, y: 1 })];
+    const playerPosition = { x: 7, y: 1 };
+
+    // Chebyshev distance = max(|1-7|,|1-1|) = 6, out of range
+    const result = moveEnemiesNight(map, playerPosition);
+
+    expect(result.updatedEnemies[0].position).toEqual({ x: 1, y: 1 });
     expect(result.combatTriggered).toBeNull();
   });
 
@@ -251,7 +213,31 @@ describe('moveEnemiesNight', () => {
     expect(result.updatedEnemies[0].position).toEqual({ x: 3, y: 1 });
   });
 
-  it('processes enemies in deterministic order', () => {
+  it('only first enemy can reach player tile (playerTileBlocked)', () => {
+    const map = createTestMap([
+      '#######',
+      '#.....#',
+      '#######',
+    ]);
+    map.enemies = [
+      createEnemy('enemy1', { x: 4, y: 1 }),
+      createEnemy('enemy2', { x: 3, y: 1 }),
+    ];
+    const playerPosition = { x: 5, y: 1 };
+
+    // Sorted by id: enemy1 first (x=4), then enemy2 (x=3)
+    // enemy1: Chebyshev=1, steps to (5,1) = player. playerTileBlocked = true.
+    // enemy2: Chebyshev=2, xStep=(4,1) which enemy1 vacated. Moves to (4,1).
+    const result = moveEnemiesNight(map, playerPosition);
+
+    expect(result.combatTriggered).toBe('enemy1');
+    const enemy1 = result.updatedEnemies.find((e) => e.id === 'enemy1');
+    const enemy2 = result.updatedEnemies.find((e) => e.id === 'enemy2');
+    expect(enemy1!.position).toEqual({ x: 5, y: 1 });
+    expect(enemy2!.position).toEqual({ x: 4, y: 1 });
+  });
+
+  it('processes enemies in deterministic order (sorted by id)', () => {
     const map = createTestMap([
       '#######',
       '#.....#',
@@ -259,26 +245,28 @@ describe('moveEnemiesNight', () => {
       '#######',
     ]);
     map.enemies = [
-      createEnemy('enemy2', { x: 1, y: 1 }),
-      createEnemy('enemy1', { x: 1, y: 2 }),
+      createEnemy('enemy2', { x: 3, y: 1 }),
+      createEnemy('enemy1', { x: 3, y: 2 }),
     ];
     const playerPosition = { x: 5, y: 1 };
 
-    // Reset enemies for second run
-    const map2 = { ...map, enemies: [
-      createEnemy('enemy2', { x: 1, y: 1 }),
-      createEnemy('enemy1', { x: 1, y: 2 }),
-    ]};
+    const map2 = {
+      ...map,
+      enemies: [
+        createEnemy('enemy2', { x: 3, y: 1 }),
+        createEnemy('enemy1', { x: 3, y: 2 }),
+      ],
+    };
 
     const result1 = moveEnemiesNight(map, playerPosition);
     const result2 = moveEnemiesNight(map2, playerPosition);
 
-    // Results should be identical
-    expect(result1.updatedEnemies.map(e => ({ id: e.id, pos: e.position })))
-      .toEqual(result2.updatedEnemies.map(e => ({ id: e.id, pos: e.position })));
+    expect(
+      result1.updatedEnemies.map((e) => ({ id: e.id, pos: e.position }))
+    ).toEqual(result2.updatedEnemies.map((e) => ({ id: e.id, pos: e.position })));
   });
 
-  it('keeps enemy in place when blocked', () => {
+  it('keeps enemy in place when blocked by wall', () => {
     const map = createTestMap([
       '#####',
       '#.#.#',
@@ -287,6 +275,7 @@ describe('moveEnemiesNight', () => {
     map.enemies = [createEnemy('enemy1', { x: 1, y: 1 })];
     const playerPosition = { x: 3, y: 1 };
 
+    // Chebyshev = 2, in range. But wall at (2,1) and dy=0, so no valid move.
     const result = moveEnemiesNight(map, playerPosition);
 
     expect(result.updatedEnemies[0].position).toEqual({ x: 1, y: 1 });
@@ -300,20 +289,41 @@ describe('moveEnemiesNight', () => {
       '#######',
     ]);
     map.enemies = [
-      createEnemy('enemy1', { x: 1, y: 1 }),
-      createEnemy('enemy2', { x: 2, y: 1 }),
+      createEnemy('enemy1', { x: 3, y: 1 }),
+      createEnemy('enemy2', { x: 4, y: 1 }),
     ];
     const playerPosition = { x: 5, y: 1 };
 
+    // enemy1: Chebyshev=2, enemy2: Chebyshev=1. Both in range.
     const result = moveEnemiesNight(map, playerPosition);
 
-    // Both enemies should move toward player
-    const positions = result.updatedEnemies.map(e => e.position);
-    const positionStrings = positions.map(p => `${p.x},${p.y}`);
+    const positions = result.updatedEnemies.map((e) => e.position);
+    const positionStrings = positions.map((p) => `${p.x},${p.y}`);
 
     // No duplicate positions
     const uniquePositions = new Set(positionStrings);
     expect(uniquePositions.size).toBe(positions.length);
+  });
+
+  it('updates occupied grid as enemies move', () => {
+    const map = createTestMap([
+      '#######',
+      '#.....#',
+      '#######',
+    ]);
+    map.enemies = [
+      createEnemy('enemy1', { x: 4, y: 1 }),
+      createEnemy('enemy2', { x: 3, y: 1 }),
+    ];
+    const playerPosition = { x: 5, y: 1 };
+
+    // Sorted by id: enemy1 (x=4) first, enemy2 (x=3) second.
+    // enemy1 moves to (5,1) player tile. Vacates (4,1).
+    // enemy2 can now move to (4,1) since enemy1 left.
+    const result = moveEnemiesNight(map, playerPosition);
+
+    const enemy2 = result.updatedEnemies.find((e) => e.id === 'enemy2');
+    expect(enemy2!.position).toEqual({ x: 4, y: 1 });
   });
 });
 

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -39,6 +39,13 @@ import {
   ToolDefinition,
 } from '../game/entities/items';
 import { ItemTag, ItemStats, ItemRarity } from '../game/engine/types';
+import {
+  BITMASK_SIZE,
+  MIN_ACTIVE_POOL,
+  isItemUnlocked as isPoolBitSet,
+  setItemUnlocked as setPoolBit,
+  getItemPoolIndex,
+} from '../services/solana/types/item_pool';
 
 const defaultMoleImageSource = require('../../assets/entities/characters/default-mole.png');
 const backgroundImageSource = require('../../assets/ui/backgrounds/hub-background.png');
@@ -160,6 +167,7 @@ const TAG_COLORS: Record<ItemTag, string> = {
 
 // All tags in order
 const ALL_TAGS: ItemTag[] = ['STONE', 'SCOUT', 'GREED', 'BLAST', 'FROST', 'RUST', 'BLOOD', 'TEMPO'];
+const ITEM_POOL_MIN_SIZE = MIN_ACTIVE_POOL;
 
 // Unified display item type for tools and gear
 type DisplayItem = {
@@ -197,11 +205,13 @@ export function HubScreen({ navigation }: HubScreenProps) {
     mode,
     isItemUnlocked,
     defaultCombatSpeed,
+    purchaseRuns,
+    availableRuns,
+    updateActiveItemPool,
   } = useProfile();
   const isGuest = mode === 'guest';
   const { activeSessions } = useSession();
   const { state: gameState, dispatch } = useGame();
-  const { purchaseRuns, availableRuns } = useProfile();
   const [showSettings, setShowSettings] = useState(false);
   const [showResumePrompt, setShowResumePrompt] = useState(false);
   const [showMarketplace, setShowMarketplace] = useState(false);
@@ -210,6 +220,8 @@ export function HubScreen({ navigation }: HubScreenProps) {
   const [showRanks, setShowRanks] = useState(false);
   const [showItems, setShowItems] = useState(false);
   const [selectedItem, setSelectedItem] = useState<DisplayItem | null>(null);
+  const [draftPoolIndices, setDraftPoolIndices] = useState<Set<number>>(new Set());
+  const [isSavingItemPool, setIsSavingItemPool] = useState(false);
   const [showQuests, setShowQuests] = useState(false);
   const [showPvP, setShowPvP] = useState(false);
   const [isPurchasing, setIsPurchasing] = useState(false);
@@ -256,8 +268,9 @@ export function HubScreen({ navigation }: HubScreenProps) {
       // Guest mode: Start game directly with random seed
       const seed = Math.floor(Math.random() * 2147483647);
 
-      if (gameState?.phase === GamePhase.Defeat || gameState?.phase === GamePhase.Victory) {
-        dispatch({ type: 'RETURN_TO_MENU' });
+      // Reset any existing game state before starting a new one
+      if (gameState) {
+        dispatch({ type: 'RESET_GAME' });
       }
 
       dispatch({ type: 'START_GAME', seed });
@@ -273,15 +286,18 @@ export function HubScreen({ navigation }: HubScreenProps) {
   };
 
   const handleGauntlet = () => {
-    Alert.alert('Coming Soon', 'Gauntlet mode is under development!');
+    setShowPvP(false);
+    navigation.navigate('Gauntlet');
   };
 
   const handleDuels = () => {
-    Alert.alert('Coming Soon', 'Duels mode is under development!');
+    setShowPvP(false);
+    navigation.navigate('Duels');
   };
 
   const handlePitDraft = () => {
-    Alert.alert('Coming Soon', 'Pit Draft mode is under development!');
+    setShowPvP(false);
+    navigation.navigate('PitDraft');
   };
 
   const handleMarketplace = () => {
@@ -319,10 +335,27 @@ export function HubScreen({ navigation }: HubScreenProps) {
     setShowSkins(true);
   };
 
-  // Helper to check if item is unlocked (works with string IDs)
-  const checkItemUnlocked = (id: string): boolean => {
-    return isItemUnlocked(id);
-  };
+  const checkItemUnlocked = useCallback(
+    (id: string): boolean => {
+      return isItemUnlocked(id);
+    },
+    [isItemUnlocked]
+  );
+
+  const activePoolBitmask = useMemo(
+    () => profile?.activeItemPool ?? new Uint8Array(BITMASK_SIZE),
+    [profile?.activeItemPool]
+  );
+
+  const loadDraftPoolFromProfile = useCallback(() => {
+    const next = new Set<number>();
+    for (let i = 0; i < 80; i++) {
+      if (isPoolBitSet(activePoolBitmask, i)) {
+        next.add(i);
+      }
+    }
+    setDraftPoolIndices(next);
+  }, [activePoolBitmask]);
 
   // Helper to convert tool/gear to DisplayItem
   const convertToDisplayItem = (
@@ -358,11 +391,87 @@ export function HubScreen({ navigation }: HubScreenProps) {
 
   const handleItems = () => {
     setShowItems(true);
+    loadDraftPoolFromProfile();
     // Select first unlocked item or first item
     const allItems = getAllItems();
     const firstUnlocked = allItems.find((item) => checkItemUnlocked(item.id));
     setSelectedItem(firstUnlocked || allItems[0] || null);
   };
+
+  const togglePoolItem = useCallback(
+    (item: DisplayItem) => {
+      if (!checkItemUnlocked(item.id)) {
+        return;
+      }
+
+      const poolIndex = getItemPoolIndex(item.id);
+      if (poolIndex < 0) {
+        return;
+      }
+
+      setDraftPoolIndices((prev) => {
+        const next = new Set(prev);
+        if (next.has(poolIndex)) {
+          if (next.size <= ITEM_POOL_MIN_SIZE) {
+            Alert.alert(
+              'Minimum Pool Size',
+              `Your item pool must keep at least ${ITEM_POOL_MIN_SIZE} items.`
+            );
+            return prev;
+          }
+          next.delete(poolIndex);
+          return next;
+        }
+
+        next.add(poolIndex);
+        return next;
+      });
+    },
+    [checkItemUnlocked]
+  );
+
+  const hasPoolChanges = useMemo(() => {
+    for (let i = 0; i < 80; i++) {
+      const onChain = isPoolBitSet(activePoolBitmask, i);
+      const draft = draftPoolIndices.has(i);
+      if (onChain !== draft) {
+        return true;
+      }
+    }
+    return false;
+  }, [activePoolBitmask, draftPoolIndices]);
+
+  const handleSaveItemPool = useCallback(async () => {
+    if (draftPoolIndices.size < ITEM_POOL_MIN_SIZE) {
+      Alert.alert(
+        'Invalid Pool Size',
+        `Select at least ${ITEM_POOL_MIN_SIZE} items before saving.`
+      );
+      return;
+    }
+
+    const nextBitmask = new Uint8Array(BITMASK_SIZE);
+    for (const index of draftPoolIndices) {
+      setPoolBit(nextBitmask, index);
+    }
+
+    setIsSavingItemPool(true);
+    try {
+      const result = await updateActiveItemPool(nextBitmask);
+      if (!result.success) {
+        Alert.alert('Failed to Save', result.error ?? 'Could not update active item pool.');
+        return;
+      }
+      Alert.alert('Saved', 'Your item pool has been updated.');
+    } finally {
+      setIsSavingItemPool(false);
+    }
+  }, [draftPoolIndices, updateActiveItemPool]);
+
+  const selectedItemPoolIndex = selectedItem ? getItemPoolIndex(selectedItem.id) : -1;
+  const selectedItemInPool =
+    selectedItemPoolIndex >= 0 && draftPoolIndices.has(selectedItemPoolIndex);
+  const canRemoveSelectedItem = !selectedItemInPool || draftPoolIndices.size > ITEM_POOL_MIN_SIZE;
 
   return (
     <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
@@ -899,15 +1008,46 @@ export function HubScreen({ navigation }: HubScreenProps) {
                   resizeMode="stretch"
                 >
                   <View style={styles.itemsModalInner}>
-                    <View style={styles.modalHeader}>
-                      <Text style={[styles.modalTitle, { fontSize: 28 }]}>Items</Text>
-                      <TouchableOpacity
-                        onPress={() => setShowItems(false)}
-                        style={styles.closeButton}
-                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                      >
-                        <Text style={styles.closeButtonText}>✕</Text>
-                      </TouchableOpacity>
+                    <View style={styles.itemsModalHeaderRow}>
+                      <View style={styles.itemsModalHeaderLeft}>
+                        <TouchableOpacity
+                          style={[
+                            styles.itemsModalSaveButton,
+                            (isSavingItemPool ||
+                              !hasPoolChanges ||
+                              draftPoolIndices.size < ITEM_POOL_MIN_SIZE) &&
+                              styles.poolSaveButtonDisabled,
+                          ]}
+                          disabled={
+                            isSavingItemPool ||
+                            !hasPoolChanges ||
+                            draftPoolIndices.size < ITEM_POOL_MIN_SIZE
+                          }
+                          onPress={handleSaveItemPool}
+                          activeOpacity={0.8}
+                        >
+                          {isSavingItemPool ? (
+                            <ActivityIndicator size="small" color="#ffffff" />
+                          ) : (
+                            <Text style={styles.poolSaveButtonText}>Save</Text>
+                          )}
+                        </TouchableOpacity>
+                        <Text style={styles.poolCountHeaderText}>
+                          Pool: {draftPoolIndices.size} (min {ITEM_POOL_MIN_SIZE})
+                        </Text>
+                      </View>
+                      <View style={styles.itemsModalHeaderCenter}>
+                        <Text style={[styles.modalTitle, { fontSize: 28 }]}>Items</Text>
+                      </View>
+                      <View style={styles.itemsModalHeaderRight}>
+                        <TouchableOpacity
+                          onPress={() => setShowItems(false)}
+                          style={styles.itemsModalCloseButton}
+                          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                        >
+                          <Text style={styles.closeButtonText}>✕</Text>
+                        </TouchableOpacity>
+                      </View>
                     </View>
 
                     {/* Two-column layout */}
@@ -921,16 +1061,22 @@ export function HubScreen({ navigation }: HubScreenProps) {
                           const tagItems = getItemsByTag(tag);
                           return (
                             <View key={tag} style={styles.tagSection}>
-                              <Text style={[styles.tagHeader, { color: TAG_COLORS[tag] }]}>{TAG_DISPLAY_NAMES[tag]}</Text>
+                              <Text style={[styles.tagHeader, { color: TAG_COLORS[tag] }]}>
+                                {TAG_DISPLAY_NAMES[tag]}
+                              </Text>
                               <View style={styles.itemsGrid}>
                                 {tagItems.map((item) => {
                                   const unlocked = checkItemUnlocked(item.id);
                                   const isSelected = selectedItem?.id === item.id;
+                                  const poolIndex = getItemPoolIndex(item.id);
+                                  const isInPool =
+                                    poolIndex >= 0 && draftPoolIndices.has(poolIndex);
                                   return (
                                     <TouchableOpacity
                                       key={item.id}
                                       style={[
                                         styles.itemGridCell,
+                                        isInPool && styles.itemGridCellInPool,
                                         isSelected && styles.itemGridCellSelected,
                                       ]}
                                       onPress={() => setSelectedItem(item)}
@@ -1000,43 +1146,87 @@ export function HubScreen({ navigation }: HubScreenProps) {
                                   {selectedItem.rarity.toUpperCase()}
                                 </Text>
                               </View>
+                              {checkItemUnlocked(selectedItem.id) && selectedItemPoolIndex >= 0 && (
+                                <>
+                                  <Text
+                                    style={[
+                                      styles.poolMembershipText,
+                                      selectedItemInPool
+                                        ? styles.poolMembershipTextIn
+                                        : styles.poolMembershipTextOut,
+                                    ]}
+                                  >
+                                    {selectedItemInPool ? 'IN POOL' : 'NOT IN POOL'}
+                                  </Text>
+                                  <TouchableOpacity
+                                    onPress={() => togglePoolItem(selectedItem)}
+                                    style={[
+                                      styles.poolToggleButton,
+                                      selectedItemInPool
+                                        ? styles.poolToggleButtonRemove
+                                        : styles.poolToggleButtonAdd,
+                                      !canRemoveSelectedItem && styles.poolToggleButtonDisabled,
+                                    ]}
+                                    disabled={!canRemoveSelectedItem}
+                                    activeOpacity={0.8}
+                                  >
+                                    <Text style={styles.poolToggleButtonText}>
+                                      {selectedItemInPool ? 'Remove from Pool' : 'Add to Pool'}
+                                    </Text>
+                                  </TouchableOpacity>
+                                </>
+                              )}
                             </View>
 
                             <ScrollView
                               style={styles.itemDescriptionScroll}
                               showsVerticalScrollIndicator={false}
                             >
-                              {(selectedItem.effect?.description || ITEM_DESCRIPTIONS[selectedItem.name]) && (
+                              {(selectedItem.effect?.description ||
+                                ITEM_DESCRIPTIONS[selectedItem.name]) && (
                                 <Text style={styles.itemDescription}>
-                                  {selectedItem.effect?.description || ITEM_DESCRIPTIONS[selectedItem.name]}
+                                  {selectedItem.effect?.description ||
+                                    ITEM_DESCRIPTIONS[selectedItem.name]}
                                 </Text>
                               )}
 
-                              {(selectedItem.stats.atk !== undefined || selectedItem.stats.arm !== undefined || selectedItem.stats.spd !== undefined || selectedItem.stats.dig !== undefined || selectedItem.stats.hp !== undefined) && (
+                              {(selectedItem.stats.atk !== undefined ||
+                                selectedItem.stats.arm !== undefined ||
+                                selectedItem.stats.spd !== undefined ||
+                                selectedItem.stats.dig !== undefined ||
+                                selectedItem.stats.hp !== undefined) && (
                                 <View style={styles.statsContainer}>
                                   <Text style={styles.statsHeader}>Stats</Text>
                                   {selectedItem.stats.atk !== undefined && (
                                     <View style={styles.statRow}>
                                       <Text style={styles.statLabel}>ATK</Text>
-                                      <Text style={styles.statValue}>+{selectedItem.stats.atk}</Text>
+                                      <Text style={styles.statValue}>
+                                        +{selectedItem.stats.atk}
+                                      </Text>
                                     </View>
                                   )}
                                   {selectedItem.stats.arm !== undefined && (
                                     <View style={styles.statRow}>
                                       <Text style={styles.statLabel}>ARM</Text>
-                                      <Text style={styles.statValue}>+{selectedItem.stats.arm}</Text>
+                                      <Text style={styles.statValue}>
+                                        +{selectedItem.stats.arm}
+                                      </Text>
                                     </View>
                                   )}
                                   {selectedItem.stats.spd !== undefined && (
                                     <View style={styles.statRow}>
                                       <Text style={styles.statLabel}>SPD</Text>
-                                      <Text style={styles.statValue}>+{selectedItem.stats.spd}</Text>
+                                      <Text style={styles.statValue}>
+                                        +{selectedItem.stats.spd}
+                                      </Text>
                                     </View>
                                   )}
                                   {selectedItem.stats.dig !== undefined && (
                                     <View style={styles.statRow}>
                                       <Text style={styles.statLabel}>DIG</Text>
-                                      <Text style={styles.statValue}>+{selectedItem.stats.dig}</Text>
+                                      <Text style={styles.statValue}>
+                                        +{selectedItem.stats.dig}
+                                      </Text>
                                     </View>
                                   )}
                                   {selectedItem.stats.hp !== undefined && (
@@ -1667,12 +1857,48 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'flex-start',
   },
+  itemsModalHeaderRow: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  itemsModalHeaderLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  itemsModalHeaderCenter: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  itemsModalHeaderRight: {
+    flex: 1,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+  },
+  itemsModalCloseButton: {
+    width: 30,
+    height: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  itemsModalSaveButton: {
+    minWidth: 70,
+    height: 30,
+    borderRadius: 6,
+    backgroundColor: '#16a34a',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   itemsModalContent: {
     flex: 1,
     flexDirection: 'row',
     width: '100%',
     gap: 16,
-    marginTop: -10, // Pull content up slightly
+    marginTop: 4,
   },
   itemsListColumn: {
     flex: 2,
@@ -1697,11 +1923,15 @@ const styles = StyleSheet.create({
   itemGridCell: {
     width: 50,
     height: 50,
+    borderWidth: 2,
+    borderColor: 'transparent',
+    borderRadius: 6,
+  },
+  itemGridCellInPool: {
+    borderColor: '#16a34a',
   },
   itemGridCellSelected: {
-    borderWidth: 2,
-    borderColor: '#FABC0F',
-    borderRadius: 4,
+    backgroundColor: 'rgba(250,188,15,0.14)',
   },
   itemFrame: {
     width: 50,
@@ -1739,6 +1969,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     position: 'relative', // Enable absolute positioning for children
   },
+  poolCountHeaderText: {
+    fontFamily: Typography.header,
+    fontSize: 11,
+    color: '#3d2b1f',
+    textAlign: 'left',
+  },
+  poolSaveButtonDisabled: {
+    backgroundColor: '#9ca3af',
+  },
+  poolSaveButtonText: {
+    fontFamily: Typography.button,
+    fontSize: 11,
+    color: '#ffffff',
+    letterSpacing: 0.5,
+  },
   selectedItemHeader: {
     alignItems: 'center',
     marginBottom: 6, // Reduced margin
@@ -1766,6 +2011,40 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: '#ffffff',
     letterSpacing: 0.5,
+  },
+  poolMembershipText: {
+    marginTop: 6,
+    fontFamily: Typography.button,
+    fontSize: 10,
+    letterSpacing: 0.6,
+  },
+  poolMembershipTextIn: {
+    color: '#166534',
+  },
+  poolMembershipTextOut: {
+    color: '#7f1d1d',
+  },
+  poolToggleButton: {
+    marginTop: 6,
+    paddingHorizontal: 12,
+    height: 28,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  poolToggleButtonAdd: {
+    backgroundColor: '#15803d',
+  },
+  poolToggleButtonRemove: {
+    backgroundColor: '#b91c1c',
+  },
+  poolToggleButtonDisabled: {
+    backgroundColor: '#9ca3af',
+  },
+  poolToggleButtonText: {
+    fontFamily: Typography.button,
+    fontSize: 11,
+    color: '#ffffff',
   },
   lockedBanner: {
     position: 'absolute',

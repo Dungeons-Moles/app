@@ -17,7 +17,7 @@ import {
   Image,
   useImage,
 } from '@shopify/react-native-skia';
-import { StyleSheet, View, useWindowDimensions, Image as RNImage } from 'react-native';
+import { StyleSheet, View, useWindowDimensions, Image as RNImage, Text } from 'react-native';
 import type { CombatantState, StatusEffects } from '../../game/engine/types';
 import { DamageNumbers } from './DamageNumbers';
 import { EffectNotifications } from './EffectNotifications';
@@ -25,6 +25,7 @@ import type { DamageNumber, EffectNotification } from '../../contexts/CombatCont
 import { useSkiaEntityImages } from '../../hooks/useEntityImages';
 
 const BATTLEGROUND_BG = require('../../../assets/ui/backgrounds/combat-background.png');
+const DEFAULT_MOLE = require('../../../assets/entities/characters/default-mole.png');
 
 interface CombatArenaProps {
   player: CombatantState | null;
@@ -32,6 +33,7 @@ interface CombatArenaProps {
   damageNumbers: DamageNumber[];
   effectNotifications: EffectNotification[];
   isAnimating: boolean;
+  currentTurn?: number;
   activeActor?: 'player' | 'enemy' | null;
   playerMaxArm?: number;
   enemyMaxArm?: number;
@@ -47,6 +49,7 @@ export function CombatArena({
   damageNumbers,
   effectNotifications,
   isAnimating,
+  currentTurn = 1,
   activeActor = null,
   playerMaxArm = 0,
   enemyMaxArm = 0,
@@ -56,6 +59,7 @@ export function CombatArena({
   const arenaHeight = 300;
   const entityImages = useSkiaEntityImages();
   const bgImage = useImage(BATTLEGROUND_BG);
+  const moleImage = useImage(DEFAULT_MOLE);
 
   if (!player || !enemy) {
     return (
@@ -71,6 +75,15 @@ export function CombatArena({
   const enemyX = arenaWidth * 0.25;
   const playerX = arenaWidth * 0.75;
   const combatantY = arenaHeight * 0.4;
+
+  // Resolve enemy Skia image.
+  // PvP: use moleImage from useImage() — a separate SkImage instance from the player's.
+  // On web (CanvasKit), reusing the same SkImage object in two <Image> nodes can fail.
+  // PvE: use entityImages lookup (each enemy type has its own unique image).
+  const enemySkiaImage =
+    enemy.definitionId === 'pvpOpponent'
+      ? (moleImage ?? entityImages.player ?? null)
+      : (entityImages[enemy.definitionId ?? ''] ?? moleImage ?? entityImages.player ?? null);
 
   // HP bar dimensions
   const hpBarWidth = 60;
@@ -96,6 +109,9 @@ export function CombatArena({
 
   return (
     <View style={[styles.container, { width: arenaWidth, height: arenaHeight }]}>
+      <View style={styles.turnBadge}>
+        <Text style={styles.turnBadgeText}>Turn {currentTurn}</Text>
+      </View>
       <Canvas style={{ width: arenaWidth, height: arenaHeight }}>
         {/* Background */}
         {bgImage ? (
@@ -128,9 +144,9 @@ export function CombatArena({
           ) : null}
 
           {/* Enemy Image */}
-          {enemy.definitionId && entityImages[enemy.definitionId] && (
+          {enemySkiaImage && (
             <Image
-              image={entityImages[enemy.definitionId]}
+              image={enemySkiaImage}
               x={enemyX - combatantRadius}
               y={combatantY - combatantRadius}
               width={combatantRadius * 2}
@@ -270,7 +286,6 @@ interface StatusEffectsRowProps {
 }
 
 function StatusEffectsRow({ statusEffects, x, y }: StatusEffectsRowProps) {
-  const { Text } = require('react-native');
   const effects: { type: 'chill' | 'shrapnel' | 'rust'; stacks: number }[] = [];
 
   if (statusEffects.chill > 0) {
@@ -324,6 +339,22 @@ const styles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
     pointerEvents: 'none',
+  },
+  turnBadge: {
+    position: 'absolute',
+    top: 18,
+    alignSelf: 'center',
+    zIndex: 3,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  turnBadgeText: {
+    color: '#f8e4b5',
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.3,
   },
   statusRow: {
     position: 'absolute',

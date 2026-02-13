@@ -23,9 +23,11 @@ import {
   getGameplayErrorMessage,
   calculateMoveCost,
   triggerBossFight,
+  resolveGauntletWeek,
 } from '@/services/solana/gameplayState';
 import {
   GameState,
+  RunMode,
   StatType,
   GameStateInitParams,
   MovePlayerParams,
@@ -34,6 +36,7 @@ import {
 import { parseCombatLog } from '@/services/solana/eventParser';
 import type { CombatEnemyInfo } from '@/services/solana/eventParser';
 import type { BackendCombatLogEntry } from '@/services/solana/types/combat_events';
+import type { GauntletCombatVisualEvent } from '@/services/solana/gauntlet';
 
 // ============================================================================
 // Types
@@ -93,6 +96,7 @@ export interface UseGameplayStateReturn {
     previousState?: GameState;
     isDead?: boolean;
     combatLog?: BackendCombatLogEntry[];
+    gauntletVisual?: GauntletCombatVisualEvent | null;
     signature?: string;
   }>;
   /** Calculate move cost for a tile */
@@ -435,6 +439,7 @@ export function useGameplayState(): UseGameplayStateReturn {
       previousState?: GameState;
       isDead?: boolean;
       combatLog?: BackendCombatLogEntry[];
+      gauntletVisual?: GauntletCombatVisualEvent | null;
       signature?: string;
     }> => {
       if (!program || !gameStatePda || !gameState) {
@@ -451,13 +456,28 @@ export function useGameplayState(): UseGameplayStateReturn {
 
       try {
         const sessionPda = gameState.session;
-        const signature = await triggerBossFight(
-          connection,
-          program,
-          gameStatePda,
-          sessionPda,
-          burnerKeypair
-        );
+        let signature: string;
+        let gauntletVisual: GauntletCombatVisualEvent | null = null;
+
+        if (gameState.runMode === RunMode.Gauntlet) {
+          const gauntletResult = await resolveGauntletWeek(
+            connection,
+            program,
+            gameStatePda,
+            sessionPda,
+            burnerKeypair
+          );
+          signature = gauntletResult.signature;
+          gauntletVisual = gauntletResult.combatVisual ?? null;
+        } else {
+          signature = await triggerBossFight(
+            connection,
+            program,
+            gameStatePda,
+            sessionPda,
+            burnerKeypair
+          );
+        }
 
         // Fetch confirmed state after on-chain confirmation
         const confirmedState = await fetchGameState(program, gameStatePda);
@@ -476,7 +496,9 @@ export function useGameplayState(): UseGameplayStateReturn {
 
         // Parse combat log from transaction
         let combatLog: BackendCombatLogEntry[] | undefined;
-        if (signature) {
+        if (gauntletVisual?.combatLog?.length) {
+          combatLog = gauntletVisual.combatLog;
+        } else if (signature) {
           const parsed = await parseCombatLogWithRetry(connection, program, signature, 'boss');
           combatLog = parsed.combatLog;
         }
@@ -487,6 +509,7 @@ export function useGameplayState(): UseGameplayStateReturn {
           previousState,
           isDead: confirmedState?.isDead ?? false,
           combatLog,
+          gauntletVisual,
           signature,
         };
       } catch (err) {

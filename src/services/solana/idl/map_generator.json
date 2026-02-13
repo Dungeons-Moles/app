@@ -185,6 +185,111 @@
       ]
     },
     {
+      "name": "generate_map_with_seed",
+      "docs": [
+        "Generates a map for a game session using an explicit seed.",
+        "Used by Duels so seed selection is decoupled from campaign progression."
+      ],
+      "discriminator": [
+        9,
+        1,
+        246,
+        156,
+        141,
+        192,
+        212,
+        106
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "docs": [
+            "Payer for rent"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "session",
+          "docs": [
+            "Game session PDA reference (validated externally)"
+          ]
+        },
+        {
+          "name": "map_config",
+          "docs": [
+            "Map configuration with seeds"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  112,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "generated_map",
+          "docs": [
+            "Generated map output"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  101,
+                  110,
+                  101,
+                  114,
+                  97,
+                  116,
+                  101,
+                  100,
+                  95,
+                  109,
+                  97,
+                  112
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "session"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "campaign_level",
+          "type": "u8"
+        },
+        {
+          "name": "seed",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "initialize_map_config",
       "docs": [
         "Initializes the map configuration with default seed mappings.",

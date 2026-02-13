@@ -51,6 +51,7 @@ interface OnChainGameState {
   bossFightReady: boolean;
   isDead: boolean;
   campaignLevel: number;
+  runMode?: number;
 }
 import { Direction, DIRECTION_DELTA } from '../input/types';
 import { isValidTransition } from './state-machine';
@@ -76,6 +77,7 @@ import {
   advanceTimePhase,
   shouldTriggerBoss,
   advanceToNextWeek,
+  selectDuelWeekBossForSeed,
   selectWeekBossForLevel,
   canAffordCostAcrossPhases,
   consumeMoveAcrossPhases,
@@ -93,7 +95,7 @@ import {
 } from '../entities/pois';
 import { moveEnemiesNight, isWithinSightRange } from '../map/pathfinding';
 import { SIGHT_RADIUS } from './constants';
-import { RARITY_MULTIPLIER } from '../../data/gear';
+import { getTierFromRarity } from '../../data/gear';
 import { BOSSES } from '../../data/bosses';
 import { ENEMY_DEFINITIONS } from '../entities/enemies';
 
@@ -147,6 +149,8 @@ export type GameAction =
       type: 'SYNC_ENEMY_POSITIONS';
       enemies: Array<{ x: number; y: number; archetypeId: number; tier: number }>;
     }
+  // Guest mode fast travel: teleport player to a waypoint position
+  | { type: 'FAST_TRAVEL_TO'; destination: Position }
   // Fallback: show POI modal directly when local POI state is unavailable
   | { type: 'SHOW_POI_MODAL'; interaction: POIInteraction };
 
@@ -282,6 +286,13 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     // Enemy position sync (for night movement from on-chain)
     case 'SYNC_ENEMY_POSITIONS':
       return handleSyncEnemyPositions(state, action.enemies);
+
+    // Guest mode fast travel
+    case 'FAST_TRAVEL_TO':
+      return {
+        ...state,
+        player: movePlayer(state.player, action.destination),
+      };
 
     default: {
       // Exhaustive check - TypeScript will error if we miss a case
@@ -437,6 +448,7 @@ function handleMove(state: GameState, direction: Direction): GameState {
   let newState = {
     ...clearedState,
     player: movePlayer(clearedState.player, targetPos),
+    totalMoves: (clearedState.totalMoves ?? 0) + 1,
   };
 
   // Update fog of war
@@ -454,11 +466,12 @@ function handleMove(state: GameState, direction: Direction): GameState {
   const isDayStart =
     newState.time.phase === TimePhase.Night && advancedTime.phase === TimePhase.Day;
   if (isDayStart) {
-    const nuggetSlots = updatedPlayer.inventory.filter((slot) => slot.item.id === 'I8');
-    const goldGain = nuggetSlots.reduce(
-      (sum, slot) => sum + Math.floor(3 * RARITY_MULTIPLIER[slot.item.currentRarity]),
-      0
-    );
+    const nuggetSlots = updatedPlayer.inventory.filter((slot) => slot.item.id === 'I17');
+    const nuggetGoldByTier = [3, 6, 9]; // from gear-effects.ts I17 GainGold values
+    const goldGain = nuggetSlots.reduce((sum, slot) => {
+      const tier = getTierFromRarity(slot.item.currentRarity);
+      return sum + nuggetGoldByTier[tier - 1];
+    }, 0);
     if (goldGain > 0) {
       updatedPlayer = addGold(updatedPlayer, goldGain);
     }
@@ -656,11 +669,12 @@ function handleBreakWall(state: GameState): GameState {
   let updatedPlayer: Player = movePlayer(state.player, targetPosition);
   const isDayStart = state.time.phase === TimePhase.Night && advancedTime.phase === TimePhase.Day;
   if (isDayStart) {
-    const nuggetSlots = updatedPlayer.inventory.filter((slot) => slot.item.id === 'I8');
-    const goldGain = nuggetSlots.reduce(
-      (sum, slot) => sum + Math.floor(3 * RARITY_MULTIPLIER[slot.item.currentRarity]),
-      0
-    );
+    const nuggetSlots = updatedPlayer.inventory.filter((slot) => slot.item.id === 'I17');
+    const nuggetGoldByTier = [3, 6, 9]; // from gear-effects.ts I17 GainGold values
+    const goldGain = nuggetSlots.reduce((sum, slot) => {
+      const tier = getTierFromRarity(slot.item.currentRarity);
+      return sum + nuggetGoldByTier[tier - 1];
+    }, 0);
     if (goldGain > 0) {
       updatedPlayer = addGold(updatedPlayer, goldGain);
     }
@@ -1207,6 +1221,11 @@ function handleSelectPOIOption(state: GameState, optionIndex: number): GameState
   // Apply the POI option effects
   let newState = applyPOIOption(state, optionIndex);
 
+  // If the effect wasn't applied (e.g. inventory full), don't mark POI as visited
+  if (newState === state) {
+    return state;
+  }
+
   // Update the selected option
   newState = {
     ...newState,
@@ -1239,18 +1258,27 @@ function handleSelectPOIOption(state: GameState, optionIndex: number): GameState
 
 /**
  * Handles CLOSE_POI action.
- * Returns from POI interaction to exploration.
+ * Returns from POI interaction to exploration, or triggers boss fight
+ * if a time-skip POI (Mole Den, Rest Alcove) advanced past Night 3.
  */
 function handleClosePOI(state: GameState): GameState {
   if (!isValidTransition(state.phase, GamePhase.Exploration)) {
     return state;
   }
 
-  return {
+  const closedState: GameState = {
     ...state,
     phase: GamePhase.Exploration,
     activePOI: null,
   };
+
+  // If the POI effect advanced time to Boss phase (e.g. Mole Den/Rest Alcove on Night 3),
+  // trigger the boss fight instead of returning to exploration
+  if (closedState.time.phase === TimePhase.Boss) {
+    return handleTriggerBoss(closedState);
+  }
+
+  return closedState;
 }
 
 /**
@@ -1552,6 +1580,12 @@ function handleSyncMove(state: GameState, confirmedState: OnChainGameState): Gam
 
   // Sync time state from on-chain
   const syncedWeek = confirmedState.week as 1 | 2 | 3;
+  const syncedWeekBoss =
+    syncedWeek !== state.time.week
+      ? confirmedState.runMode === 1 && (syncedWeek === 1 || syncedWeek === 2)
+        ? selectDuelWeekBossForSeed(state.seed, syncedWeek)
+        : selectWeekBossForLevel(confirmedState.campaignLevel, syncedWeek)
+      : state.time.weekBoss;
   const updatedTime: TimeState = {
     ...state.time,
     week: syncedWeek,
@@ -1559,9 +1593,7 @@ function handleSyncMove(state: GameState, confirmedState: OnChainGameState): Gam
     cycle,
     movesRemaining: confirmedState.movesRemaining,
     // Update weekBoss if the week changed (e.g., after boss victory advanced the week on-chain)
-    weekBoss: syncedWeek !== state.time.week
-      ? selectWeekBossForLevel(confirmedState.campaignLevel, syncedWeek)
-      : state.time.weekBoss,
+    weekBoss: syncedWeekBoss,
   };
 
   // Check for wall break: if tile at target was a wall, convert it to floor
@@ -1720,15 +1752,19 @@ function handleSyncCombatResult(
   const updatedPlayer = refreshPlayerStats(syncedPlayer);
 
   const syncedWeek2 = confirmedState.week as 1 | 2 | 3;
+  const syncedWeekBoss2 =
+    syncedWeek2 !== state.time.week
+      ? confirmedState.runMode === 1 && (syncedWeek2 === 1 || syncedWeek2 === 2)
+        ? selectDuelWeekBossForSeed(state.seed, syncedWeek2)
+        : selectWeekBossForLevel(confirmedState.campaignLevel, syncedWeek2)
+      : state.time.weekBoss;
   const updatedTime: TimeState = {
     ...state.time,
     week: syncedWeek2,
     phase: timePhase,
     cycle,
     movesRemaining: confirmedState.movesRemaining,
-    weekBoss: syncedWeek2 !== state.time.week
-      ? selectWeekBossForLevel(confirmedState.campaignLevel, syncedWeek2)
-      : state.time.weekBoss,
+    weekBoss: syncedWeekBoss2,
   };
 
   if (result === 'DEFEAT' || confirmedState.isDead) {

@@ -80,6 +80,22 @@ export interface SessionRecoveryState {
 // ============================================================================
 
 /**
+ * Persists a burner keypair to secure storage.
+ */
+export async function storeBurnerWallet(
+  mainWalletAddress: string,
+  keypair: Keypair,
+  createdAt: number = Date.now()
+): Promise<void> {
+  const stored: StoredBurner = {
+    secretKey: bs58.encode(keypair.secretKey),
+    mainWalletAddress,
+    createdAt,
+  };
+  await SecureStorage.setItemAsync(BURNER_STORAGE_KEY, JSON.stringify(stored));
+}
+
+/**
  * Creates a new ephemeral keypair and stores it securely.
  * Overwrites any existing stored burner.
  *
@@ -89,14 +105,7 @@ export interface SessionRecoveryState {
 export async function createBurnerWallet(mainWalletAddress: string): Promise<Keypair> {
   console.log('[burnerWallet] createBurnerWallet called - creating NEW burner for:', mainWalletAddress);
   const keypair = Keypair.generate();
-
-  const stored: StoredBurner = {
-    secretKey: bs58.encode(keypair.secretKey),
-    mainWalletAddress,
-    createdAt: Date.now(),
-  };
-
-  await SecureStorage.setItemAsync(BURNER_STORAGE_KEY, JSON.stringify(stored));
+  await storeBurnerWallet(mainWalletAddress, keypair);
   console.log('[burnerWallet] NEW burner created and stored:', keypair.publicKey.toBase58());
 
   return keypair;

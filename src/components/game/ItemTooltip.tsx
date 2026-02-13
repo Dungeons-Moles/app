@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import type { Tool, Gear, ItemStats, ItemTag } from '../../game/engine/types';
 import { getToolDefinition, TOOL_DEFINITIONS } from '../../game/entities/items';
-import { GEAR_DEFINITIONS, getTierFromRarity } from '../../data/gear';
+import { GEAR_DEFINITIONS, getTierFromRarity, getScaledEffectDescription } from '../../data/gear';
 import { getItemsetsForItem } from '../../game/entities/itemsets';
 
 const paperPanelSource = require('../../../assets/ui/panels/paper-panel.png');
@@ -200,7 +200,7 @@ export function ItemTooltip({ item, visible, onClose }: ItemTooltipProps) {
   const borderColor = getOriginalRarityColor(rarity);
   const tier = getTierFromRarity(rarity);
 
-  // Get effect description from definitions
+  // Get effect description from definitions (scaled to current tier for gear)
   let effectDescription: string | null = null;
   if (isTool) {
     const def = TOOL_DEFINITIONS[item.id];
@@ -208,10 +208,7 @@ export function ItemTooltip({ item, visible, onClose }: ItemTooltipProps) {
       effectDescription = def.effect.description;
     }
   } else {
-    const def = GEAR_DEFINITIONS[item.id];
-    if (def?.effect) {
-      effectDescription = def.effect.description;
-    }
+    effectDescription = getScaledEffectDescription(item.id, rarity);
   }
 
   const effectText = effectDescription ?? 'No effect.';

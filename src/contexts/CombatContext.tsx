@@ -293,6 +293,48 @@ function deriveCombatResultFromLog(combat: CombatState, log: CombatLogEntry[]): 
   return enemyHp <= 0 ? 'VICTORY' : playerHp <= 0 ? 'DEFEAT' : 'VICTORY';
 }
 
+/**
+ * Find the first log index where either combatant reaches 0 HP.
+ * Returns null if no lethal entry is found.
+ */
+function deriveTerminalLogIndex(combat: CombatState, log: CombatLogEntry[]): number | null {
+  const player = {
+    hp: combat.player.hp,
+    maxHp: combat.player.maxHp,
+  };
+  const enemy = {
+    hp: combat.enemy.hp,
+    maxHp: combat.enemy.maxHp,
+  };
+
+  for (let index = 0; index < log.length; index += 1) {
+    const entry = log[index];
+    if (!entry || entry.target === 'none') continue;
+
+    const target = entry.target === 'player' ? player : enemy;
+    const { result } = entry;
+
+    if (result.damage && result.damage > 0) {
+      target.hp = Math.max(0, target.hp - result.damage);
+    }
+
+    if (result.healing && result.healing > 0) {
+      if (result.effectName === 'Crystal Crown') {
+        target.maxHp += result.healing;
+        target.hp += result.healing;
+      } else {
+        target.hp = Math.min(target.maxHp, target.hp + result.healing);
+      }
+    }
+
+    if (player.hp <= 0 || enemy.hp <= 0) {
+      return index;
+    }
+  }
+
+  return null;
+}
+
 // ============================================================================
 // Reducer
 // ============================================================================
@@ -329,10 +371,11 @@ function combatReducer(state: CombatUIState, action: CombatAction): CombatUIStat
       // This ensures frontend animation matches on-chain combat exactly
       const baseCombat = createCombatState(action.input);
 
-      // On-chain combat starts with arm=0; gear ARM bonuses (e.g., Work Vest +1)
-      // are applied via BattleStart effects which are already in the backend log.
-      // Reset player ARM to avoid double-counting in getDisplayStates replay.
-      baseCombat.player = { ...baseCombat.player, arm: 0, bonusArm: 0 };
+      // PvE on-chain combat historically replays armor from BattleStart effects.
+      // Pit Draft starts from drafted stats directly, so preserve incoming ARM there.
+      if (action.input.enemy.definitionId !== 'pvpOpponent') {
+        baseCombat.player = { ...baseCombat.player, arm: 0, bonusArm: 0 };
+      }
       const convertedLog = convertBackendLogToFrontend(action.backendLog);
       const typedLog = convertedLog as unknown as CombatLogEntry[];
 
@@ -484,7 +527,7 @@ function combatReducer(state: CombatUIState, action: CombatAction): CombatUIStat
           id: `gold-${newIndex}-${Date.now()}`,
           value: entry.result.goldStolen,
           type: 'gold',
-          target: 'player',
+          target: entry.target === 'none' ? 'player' : entry.target,
           timestamp: Date.now(),
         });
       }
@@ -551,6 +594,7 @@ interface CombatContextType {
     player: CombatantState | null;
     enemy: CombatantState | null;
     playerGold?: number;
+    enemyGold?: number;
   };
   /** Get combat result */
   getResult: () => 'VICTORY' | 'DEFEAT' | null;
@@ -624,6 +668,7 @@ export function CombatProvider({ children, initialSpeed, onSpeedChange }: Combat
     const player = normalizeCombatant(state.combat.player);
     const enemy = normalizeCombatant(state.combat.enemy);
     let playerGold = state.combat.playerGold;
+    let enemyGold = state.combat.enemyGold;
 
     const log = state.resolvedCombat.log;
     const maxIndex = Math.min(state.currentLogIndex, log.length - 1);
@@ -673,22 +718,40 @@ export function CombatProvider({ children, initialSpeed, onSpeedChange }: Combat
       }
 
       if (result.goldStolen && result.goldStolen > 0) {
-        playerGold = Math.max(0, playerGold - result.goldStolen);
+        if (entry.actor === 'player') {
+          enemyGold = Math.max(0, enemyGold - result.goldStolen);
+          playerGold = playerGold + result.goldStolen;
+        } else if (entry.actor === 'enemy') {
+          playerGold = Math.max(0, playerGold - result.goldStolen);
+          enemyGold = enemyGold + result.goldStolen;
+        } else if (entry.target === 'player') {
+          playerGold = Math.max(0, playerGold - result.goldStolen);
+          enemyGold = enemyGold + result.goldStolen;
+        } else if (entry.target === 'enemy') {
+          enemyGold = Math.max(0, enemyGold - result.goldStolen);
+          playerGold = playerGold + result.goldStolen;
+        }
       }
     }
 
-    return { player, enemy, playerGold };
+    return { player, enemy, playerGold, enemyGold };
   }, [state.resolvedCombat, state.combat, state.currentLogIndex]);
 
   const getResult = useCallback(() => {
     return state.resolvedCombat?.result ?? null;
   }, [state.resolvedCombat]);
 
+  const terminalLogIndex = useCallback(() => {
+    if (!state.resolvedCombat || !state.combat) return null;
+    return deriveTerminalLogIndex(state.combat, state.resolvedCombat.log);
+  }, [state.resolvedCombat, state.combat]);
+
   useEffect(() => {
     if (!state.resolvedCombat || state.isComplete) return;
 
     const logLength = state.resolvedCombat.log.length;
-    if (state.currentLogIndex >= logLength - 1) {
+    const stopAtIndex = terminalLogIndex() ?? (logLength - 1);
+    if (state.currentLogIndex >= stopAtIndex) {
       if (logLength <= 2) {
         console.warn('[CombatContext] Animation completing with very few log entries:', {
           logLength,
@@ -706,11 +769,14 @@ export function CombatProvider({ children, initialSpeed, onSpeedChange }: Combat
     if (intervalMs === null) return;
 
     const timer = setTimeout(() => {
-      dispatch({ type: 'ADVANCE_LOG', index: state.currentLogIndex + 1 });
+      dispatch({
+        type: 'ADVANCE_LOG',
+        index: Math.min(state.currentLogIndex + 1, stopAtIndex),
+      });
     }, intervalMs);
 
     return () => clearTimeout(timer);
-  }, [state.currentLogIndex, state.resolvedCombat, state.isComplete, speed, dispatch]);
+  }, [state.currentLogIndex, state.resolvedCombat, state.isComplete, speed, dispatch, terminalLogIndex]);
 
   return (
     <CombatContext.Provider

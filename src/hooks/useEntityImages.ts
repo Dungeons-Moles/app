@@ -86,6 +86,7 @@ export function useSkiaEntityImages(): Record<string, SkImage | null> {
         ...BOSS_IMAGES,
         ...POI_IMAGES,
         player: playerImage,
+        pvpOpponent: playerImage,
         unknownEnemy: unknownEnemyImage,
       };
 

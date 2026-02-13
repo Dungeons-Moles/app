@@ -13,12 +13,16 @@ import { Typography } from '../../theme/typography';
 
 const SLOT_BG = require('../../../assets/ui/frames/square.png');
 const LOCK_ICON = require('../../../assets/icons/ui/lock.png');
-const SLOT_SIZE = 52;
+const DEFAULT_TOOL_SLOT_SIZE = 52;
+const SIDEBAR_TOOL_SLOT_SIZE = 42;
+const SIDEBAR_GEAR_SLOT_SIZE = 28;
 
 interface InventoryPanelProps {
   equippedTool: Tool | null;
   inventory: InventorySlot[];
   inventoryCapacity: number;
+  maxGearSlots?: number;
+  isGauntletLayout?: boolean;
   activeItemsets: ItemsetId[];
   onItemPress?: (item: Tool | Gear, slotIndex: number) => void;
   onToolPress?: (tool: Tool) => void;
@@ -264,6 +268,8 @@ export function InventoryPanel({
   equippedTool,
   inventory,
   inventoryCapacity,
+  maxGearSlots = 8,
+  isGauntletLayout = false,
   activeItemsets,
   onItemPress,
   onToolPress,
@@ -271,8 +277,8 @@ export function InventoryPanel({
   onToolInspect,
   isSidebar,
 }: InventoryPanelProps) {
-  // Create inventory grid with 4 items per row (4 starting + 4 locked = 8 slots)
-  const maxSlots = 8;
+  // Create inventory grid with 4 items per row.
+  const maxSlots = Math.max(4, maxGearSlots);
   const slots: (InventorySlot | null)[] = [];
 
   // Fill slots up to capacity - items unlock left-to-right
@@ -310,11 +316,14 @@ export function InventoryPanel({
   );
 
   const textColor = isSidebar ? '#000000' : '#FFFFFF';
+  const useGauntletSidebarSizing = !!isSidebar && isGauntletLayout;
+  const gearSlotSize = useGauntletSidebarSizing ? SIDEBAR_GEAR_SLOT_SIZE : 32;
+  const toolSlotSize = useGauntletSidebarSizing ? SIDEBAR_TOOL_SLOT_SIZE : DEFAULT_TOOL_SLOT_SIZE;
 
   return (
-    <View style={[styles.container, isSidebar && styles.sidebarContainer]}>
+    <View style={[styles.container, isSidebar && styles.sidebarContainer, useGauntletSidebarSizing && styles.gauntletSidebarContainer]}>
       {/* Gear Section - Top */}
-      <View style={styles.gearSection}>
+      <View style={[styles.gearSection, useGauntletSidebarSizing && styles.sidebarGearSection]}>
         <Text style={[styles.sectionTitle, { color: textColor }]}>
           GEAR ({inventory.length}/{inventoryCapacity})
         </Text>
@@ -334,7 +343,7 @@ export function InventoryPanel({
                     onPress={onItemPress}
                     onLongPress={onItemInspect}
                     isSidebar={isSidebar}
-                    size={32}
+                    size={gearSlotSize}
                   />
                 );
               })}
@@ -344,16 +353,16 @@ export function InventoryPanel({
       </View>
 
       {/* Tool Section - Center */}
-      <View style={styles.toolSection}>
+      <View style={[styles.toolSection, useGauntletSidebarSizing && styles.sidebarToolSection]}>
         <View style={styles.toolHeaderRow}>
-          <View style={[styles.toolHeaderCell, { width: SLOT_SIZE }]}>
+          <View style={[styles.toolHeaderCell, { width: toolSlotSize }]}>
             <Text style={[styles.sectionTitle, { color: textColor, marginBottom: 0 }]}>WEAPON</Text>
           </View>
-          <View style={[styles.toolHeaderCell, { width: SLOT_SIZE }]}>
+          <View style={[styles.toolHeaderCell, { width: toolSlotSize }]}>
             <Text style={[styles.sectionTitle, { color: textColor, marginBottom: 0 }]}>OIL</Text>
           </View>
         </View>
-        <View style={styles.toolRow}>
+        <View style={[styles.toolRow, useGauntletSidebarSizing && styles.sidebarToolRow]}>
           <ItemSlot
             item={equippedTool}
             isEmpty={!equippedTool}
@@ -361,9 +370,9 @@ export function InventoryPanel({
             onPress={handleToolPress}
             onLongPress={handleToolInspect}
             isSidebar={isSidebar}
-            size={SLOT_SIZE}
+            size={toolSlotSize}
           />
-          <OilSlot oil={equippedTool?.oil ?? null} isSidebar={isSidebar} size={SLOT_SIZE} />
+          <OilSlot oil={equippedTool?.oil ?? null} isSidebar={isSidebar} size={toolSlotSize} />
         </View>
       </View>
 
@@ -384,14 +393,23 @@ const styles = StyleSheet.create({
   sidebarContainer: {
     backgroundColor: 'transparent',
   },
+  gauntletSidebarContainer: {
+    gap: 4,
+  },
   gearSection: {
     // Top section - compact
+  },
+  sidebarGearSection: {
+    marginTop: -2,
   },
   toolSection: {
     alignItems: 'stretch',
     paddingVertical: 10,
     borderTopWidth: 1,
     borderTopColor: 'rgba(0, 0, 0, 0.1)',
+  },
+  sidebarToolSection: {
+    paddingVertical: 4,
   },
   toolHeaderRow: {
     flexDirection: 'row',
@@ -405,6 +423,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: '100%',
     gap: 24,
+  },
+  sidebarToolRow: {
+    gap: 16,
   },
   toolHeaderCell: {
     alignItems: 'center',
@@ -421,7 +442,7 @@ const styles = StyleSheet.create({
   },
   gearGrid: {
     gap: 6,
-    marginVertical: 4,
+    marginVertical: 2,
   },
   gearRow: {
     flexDirection: 'row',
@@ -474,7 +495,7 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     justifyContent: 'center',
     gap: 4,
-    paddingTop: 10,
+    paddingTop: 6,
     borderTopWidth: 1,
     borderTopColor: 'rgba(0, 0, 0, 0.1)',
   },

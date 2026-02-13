@@ -19,6 +19,7 @@ interface CombatArenaProps {
   damageNumbers: DamageNumber[];
   effectNotifications: EffectNotification[];
   isAnimating: boolean;
+  currentTurn?: number;
   activeActor?: 'player' | 'enemy' | null;
   playerMaxArm?: number;
   enemyMaxArm?: number;
@@ -29,6 +30,7 @@ export function CombatArena({
   enemy,
   damageNumbers,
   effectNotifications,
+  currentTurn = 1,
   activeActor = null,
   playerMaxArm = 0,
   enemyMaxArm = 0,
@@ -69,9 +71,18 @@ export function CombatArena({
 
   // Status effects position (below the floor line)
   const statusEffectsY = arenaHeight * 0.75;
+  const enemyImageSource =
+    enemy.definitionId === 'pvpOpponent'
+      ? defaultMoleImageSource
+      : enemy.definitionId
+        ? (getEntityImageSource(enemy.definitionId) ?? defaultMoleImageSource)
+        : defaultMoleImageSource;
 
   return (
     <View style={[styles.container, { width: arenaWidth, height: arenaHeight }]}>
+      <View style={styles.turnBadge}>
+        <Text style={styles.turnBadgeText}>Turn {currentTurn}</Text>
+      </View>
       <ImageBackground source={BATTLEGROUND_BG} style={styles.background} resizeMode="contain">
         {/* Enemy combatant (LEFT) */}
         {activeActor === 'enemy' ? (
@@ -91,13 +102,7 @@ export function CombatArena({
 
         {/* Enemy Image */}
         <View style={[styles.imageContainer, { left: enemyX - 40, top: combatantY - 40 }]}>
-          {enemy.definitionId ? (
-            <Image
-              source={getEntityImageSource(enemy.definitionId)}
-              style={styles.combatantImage}
-              resizeMode="contain"
-            />
-          ) : null}
+          <Image source={enemyImageSource} style={styles.combatantImage} resizeMode="contain" />
         </View>
 
         {/* Enemy HP bar */}
@@ -315,6 +320,22 @@ const styles = StyleSheet.create({
   background: {
     width: '100%',
     height: '100%',
+  },
+  turnBadge: {
+    position: 'absolute',
+    top: 18,
+    alignSelf: 'center',
+    zIndex: 3,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  turnBadgeText: {
+    color: '#f8e4b5',
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.3,
   },
   placeholder: {
     ...StyleSheet.absoluteFillObject,
