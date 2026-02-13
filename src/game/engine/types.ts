@@ -321,6 +321,7 @@ export interface CombatState {
   log: CombatLogEntry[];
   rngState: number;
   playerGold: number;
+  enemyGold: number;
   goldReward: number;
   enemyDefinitionId: EnemyId;
   enemyTier: 1 | 2 | 3;
@@ -488,4 +489,6 @@ export interface GameState {
   debug: DebugState;
   /** Active item pool bitmask (80 bits = 10 bytes), filters available shop items */
   activeItemPool?: Uint8Array;
+  /** Total moves made this run (incremented on each successful move) */
+  totalMoves: number;
 }

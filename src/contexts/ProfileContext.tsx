@@ -38,6 +38,7 @@ interface ProfileContextType {
   createProfile: (name: string) => Promise<TransactionResult>;
   recordRunResult: (levelReached: number, victory: boolean) => Promise<TransactionResult>;
   updateName: (name: string) => Promise<TransactionResult>;
+  updateActiveItemPool: (activeItemPool: Uint8Array) => Promise<TransactionResult>;
   clearProfile: () => Promise<void>;
   defaultCombatSpeed: CombatSpeed;
   updateDefaultCombatSpeed: (speed: CombatSpeed) => Promise<void>;
@@ -383,6 +384,21 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     [mode, offlineSync, profileApi]
   );
 
+  const handleUpdateActiveItemPool = useCallback(
+    async (activeItemPool: Uint8Array): Promise<TransactionResult> => {
+      if (mode === 'guest') {
+        return { success: false, error: 'Cannot update item pool in guest mode' };
+      }
+
+      if (mode === 'cached') {
+        return { success: false, error: 'Item pool updates require an online connection' };
+      }
+
+      return profileApi.updateActiveItemPool(activeItemPool);
+    },
+    [mode, profileApi]
+  );
+
   const value = useMemo(
     () => ({
       profile: profileApi.profile,
@@ -397,6 +413,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       createProfile: handleCreateProfile,
       recordRunResult: handleRecordRunResult,
       updateName: profileApi.updateName,
+      updateActiveItemPool: handleUpdateActiveItemPool,
       clearProfile,
       defaultCombatSpeed,
       updateDefaultCombatSpeed,
@@ -418,6 +435,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       error,
       handleCreateProfile,
       handleRecordRunResult,
+      handleUpdateActiveItemPool,
       loginAsGuest,
       mode,
       offlineSync.pendingCount,

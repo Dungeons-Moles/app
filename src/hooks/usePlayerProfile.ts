@@ -189,8 +189,7 @@ export function usePlayerProfile() {
             };
           }
         ).playerProfile.fetch(profilePda);
-        const createHighestLevel =
-          account.highestLevelUnlocked ?? account.currentLevel ?? 1;
+        const createHighestLevel = account.highestLevelUnlocked ?? account.currentLevel ?? 1;
         // On-chain is 1-indexed (level 1 = first level), frontend is 0-indexed
         const profileData: OnChainPlayerProfile = {
           owner: account.owner,
@@ -371,6 +370,60 @@ export function usePlayerProfile() {
   );
 
   /**
+   * Updates the active item pool bitmask on-chain.
+   *
+   * @param activeItemPool - 10-byte bitmask where enabled bits represent active items
+   */
+  const updateActiveItemPool = useCallback(
+    async (activeItemPool: Uint8Array): Promise<TransactionResult> => {
+      if (!wallet.publicKey || !wallet.address || !writeProgram) {
+        return { success: false, error: 'Wallet not connected' };
+      }
+
+      if (activeItemPool.length !== 10) {
+        return { success: false, error: 'Invalid item pool bitmask length' };
+      }
+
+      if (isMountedRef.current) {
+        setIsLoading(true);
+        setError(null);
+      }
+
+      try {
+        const [profilePda] = derivePlayerProfilePda(wallet.publicKey);
+        const transaction = await writeProgram.methods
+          .updateActiveItemPool(Array.from(activeItemPool))
+          .accounts({
+            playerProfile: profilePda,
+            owner: wallet.publicKey,
+          })
+          .transaction();
+
+        const signature = await signAndSendTransaction(transaction);
+        await connection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
+
+        await fetchProfile();
+
+        return { success: true, signature };
+      } catch (txError) {
+        const message = getUserErrorMessage(txError, 'player_profile');
+        if (isMountedRef.current) setError(message);
+        return { success: false, error: message };
+      } finally {
+        if (isMountedRef.current) setIsLoading(false);
+      }
+    },
+    [
+      connection,
+      fetchProfile,
+      signAndSendTransaction,
+      wallet.address,
+      wallet.publicKey,
+      writeProgram,
+    ]
+  );
+
+  /**
    * Purchases 20 additional runs by paying 0.001 SOL to the treasury.
    */
   const purchaseRuns = useCallback(async (): Promise<TransactionResult> => {
@@ -428,6 +481,7 @@ export function usePlayerProfile() {
     createProfile,
     recordRunResult,
     updateName,
+    updateActiveItemPool,
     purchaseRuns,
     clearCache,
     resetProfile,

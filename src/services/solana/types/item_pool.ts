@@ -443,13 +443,38 @@ const GEAR_TO_POOL_INDEX: Record<string, number> = {
 };
 
 /**
+ * Get the item pool index for an item ID.
+ *
+ * @param itemId - Item ID (I1-I64, T1-T16)
+ * @returns Item pool index (0-79), or -1 if not mapped
+ */
+export function getItemPoolIndex(itemId: string): number {
+  if (itemId.startsWith('I')) {
+    return GEAR_TO_POOL_INDEX[itemId] ?? -1;
+  }
+
+  if (!itemId.startsWith('T')) {
+    return -1;
+  }
+
+  const toolNum = Number.parseInt(itemId.slice(1), 10);
+  if (!Number.isInteger(toolNum) || toolNum < 1 || toolNum > 16) {
+    return -1;
+  }
+
+  const tagIndex = Math.floor((toolNum - 1) / 2);
+  const innerIndex = (toolNum - 1) % 2;
+  return 64 + tagIndex * 2 + innerIndex;
+}
+
+/**
  * Get the item pool index for a gear ID.
  *
  * @param gearId - Gear ID (e.g., 'I1', 'I32', etc.)
  * @returns Item pool index (0-79), or -1 if not mapped
  */
 export function getGearItemPoolIndex(gearId: string): number {
-  return GEAR_TO_POOL_INDEX[gearId] ?? -1;
+  return getItemPoolIndex(gearId);
 }
 
 /**

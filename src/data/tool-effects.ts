@@ -133,11 +133,11 @@ export const TOOL_EFFECTS: Record<ToolId, ToolEffects> = {
   // BLAST (T7, T8)
   // ===========================================================================
 
-  // T-BL-01: Fuse Pick - +1/2/3 ATK, OnHit (once/turn): deal 1/2/2 non-weapon
+  // T-BL-01: Fuse Pick - +1/2/3 ATK, OnHit (once/turn): deal 1/2/3 non-weapon
   T7: {
     effects: [
       E(Trigger.BattleStart(), 'GainAtk', [1, 2, 3]),
-      E(Trigger.OnHit(), 'DealNonWeaponDamage', [1, 2, 2], { oncePerTurn: true }),
+      E(Trigger.OnHit(), 'DealNonWeaponDamage', [1, 2, 3], { oncePerTurn: true }),
     ],
   },
 

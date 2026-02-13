@@ -56,6 +56,8 @@ export interface CombatResolverInput {
   playerTool?: Tool | null;
   /** Player gold for combat effects */
   playerGold?: number;
+  /** Enemy gold for PvP combat effects/display */
+  enemyGold?: number;
 }
 
 interface CountdownItem {
@@ -80,6 +82,7 @@ export function createCombatState(input: CombatResolverInput): CombatState {
     log: [],
     rngState: input.seed,
     playerGold: input.playerGold ?? 0,
+    enemyGold: input.enemyGold ?? 0,
     goldReward,
     enemyDefinitionId,
     enemyTier,

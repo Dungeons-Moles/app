@@ -13,6 +13,13 @@ import { VictoryScreen } from '../screens/VictoryScreen';
 import { RunPurchaseScreen } from '../screens/RunPurchaseScreen';
 import { SessionListScreen } from '../screens/SessionListScreen';
 import { ItemCollectionScreen } from '../screens/ItemCollectionScreen';
+import { PitDraftScreen } from '../screens/PitDraftScreen';
+import { PitDraftHistoryScreen } from '../screens/PitDraftHistoryScreen';
+import { DuelsScreen } from '../screens/DuelsScreen';
+import { DuelsHistoryScreen } from '../screens/DuelsHistoryScreen';
+import { GauntletScreen } from '../screens/GauntletScreen';
+import { GauntletHistoryScreen } from '../screens/GauntletHistoryScreen';
+import { GauntletRankingScreen } from '../screens/GauntletRankingScreen';
 import type { CombatReplay, BackendCombatLogEntry } from '../services/solana/types/combat_events';
 import type {
   ItemStats,
@@ -57,6 +64,8 @@ export interface CombatParams {
   playerTool?: Tool | null;
   /** Player gold */
   playerGold?: number;
+  /** Enemy gold (for PvP combat display/effects) */
+  enemyGold?: number;
   /** Current week (for final boss detection) */
   week?: 1 | 2 | 3;
   /** Whether this is a boss fight */
@@ -73,8 +82,11 @@ export interface CombatParams {
   onChainOutcome?: {
     finalPlayerHp: number;
     finalPlayerGold: number;
+    finalEnemyGold?: number;
     playerWon: boolean;
   };
+  /** True when this combat is a post-run duel replay */
+  duelReplay?: boolean;
 }
 
 export type RootStackParamList = {
@@ -109,6 +121,13 @@ export type RootStackParamList = {
   RunPurchase: undefined;
   SessionList: undefined;
   ItemCollection: undefined;
+  PitDraft: undefined;
+  PitDraftHistory: undefined;
+  Duels: undefined;
+  DuelsHistory: undefined;
+  Gauntlet: undefined;
+  GauntletHistory: undefined;
+  GauntletRanking: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -136,6 +155,13 @@ export function AppNavigator() {
         <Stack.Screen name="RunPurchase" component={RunPurchaseScreen} />
         <Stack.Screen name="SessionList" component={SessionListScreen} />
         <Stack.Screen name="ItemCollection" component={ItemCollectionScreen} />
+        <Stack.Screen name="PitDraft" component={PitDraftScreen} />
+        <Stack.Screen name="PitDraftHistory" component={PitDraftHistoryScreen} />
+        <Stack.Screen name="Duels" component={DuelsScreen} />
+        <Stack.Screen name="DuelsHistory" component={DuelsHistoryScreen} />
+        <Stack.Screen name="Gauntlet" component={GauntletScreen} />
+        <Stack.Screen name="GauntletHistory" component={GauntletHistoryScreen} />
+        <Stack.Screen name="GauntletRanking" component={GauntletRankingScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

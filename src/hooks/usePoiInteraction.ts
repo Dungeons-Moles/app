@@ -722,6 +722,24 @@ export function usePoiInteraction(): UsePoiInteractionResult {
         return { success: false };
       }
 
+      // Guest mode: dispatch INTERACT_POI to the local reducer (no on-chain interaction)
+      if (!hasActiveSession) {
+        const localPoi = gameState?.map?.pois?.find(
+          (p) =>
+            p.position.x === currentPoi.x &&
+            p.position.y === currentPoi.y &&
+            !p.visited
+        );
+        if (localPoi) {
+          console.log('[usePoiInteraction] Guest mode: dispatching INTERACT_POI for', localPoi.id);
+          dispatch({ type: 'INTERACT_POI', poiId: localPoi.id });
+          return { success: true };
+        }
+        console.warn('[usePoiInteraction] Guest mode: no local POI found at', currentPoi.x, currentPoi.y);
+        setError('POI not found');
+        return { success: false };
+      }
+
       const burnerKeypair = getBurnerKeypair();
       if (!burnerKeypair || !poiProgram || !mapPoisPda || !gameStatePda || !sessionPda) {
         console.warn(
@@ -1134,6 +1152,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
       canInteract,
       playerPosition,
       currentPoi,
+      hasActiveSession,
       getBurnerKeypair,
       poiProgram,
       mapPoisPda,

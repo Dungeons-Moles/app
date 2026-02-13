@@ -31,6 +31,12 @@ export enum StatType {
   Dig = 5,
 }
 
+export enum RunMode {
+  Campaign = 0,
+  Duel = 1,
+  Gauntlet = 2,
+}
+
 /**
  * Move allowance per phase.
  */
@@ -90,6 +96,12 @@ export interface GameState {
   campaignLevel: number;
   /** Player death flag */
   isDead: boolean;
+  /** Session mode */
+  runMode: RunMode;
+  /** Max weeks for current mode */
+  maxWeeks: number;
+  /** Completion flag */
+  completed: boolean;
 }
 
 /**

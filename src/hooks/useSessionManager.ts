@@ -6,7 +6,7 @@ import {
   ComputeBudgetProgram,
   Keypair,
 } from '@solana/web3.js';
-import { AnchorProvider } from '@coral-xyz/anchor';
+import { AnchorProvider, BN } from '@coral-xyz/anchor';
 import { useWallet } from '@/contexts/WalletContext';
 import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
 import {
@@ -31,10 +31,23 @@ import { MAX_CAMPAIGN_LEVEL } from './useMapGenerator';
 import type { TransactionResult } from '@/types/solana';
 import type { OnChainGameSession } from '@/services/solana/types/session_manager';
 
+interface RawGameSessionAccount {
+  player: PublicKey;
+  sessionId: { toString(): string };
+  campaignLevel: number;
+  startedAt: number | bigint | { toString(): string };
+  lastActivity: number | bigint | { toString(): string };
+  isDelegated: boolean;
+  bump: number;
+  activeItemPool?: ArrayLike<number>;
+  burnerWallet?: PublicKey;
+  stateHash: ArrayLike<number>;
+}
+
 export function useSessionManager() {
   const { wallet, signAndSendTransaction } = useWallet();
   const { connection } = useSolanaConnection();
-  const readOnlyProgram = useMemo(() => createSessionManagerProgram(connection), [connection]);
+const readOnlyProgram = useMemo(() => createSessionManagerProgram(connection), [connection]);
   const [session, setSession] = useState<OnChainGameSession | null>(null);
   const [hasActiveSession, setHasActiveSession] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -72,6 +85,10 @@ export function useSessionManager() {
     return createSessionManagerProgramWithProvider(provider);
   }, [provider]);
 
+  const setActiveOnChainLevel = useCallback((onChainLevel: number) => {
+    activeOnChainLevelRef.current = onChainLevel;
+  }, []);
+
   const fetchSession = useCallback(async () => {
     if (!wallet.publicKey) {
       if (isMountedRef.current) setError('Wallet not connected');
@@ -88,7 +105,7 @@ export function useSessionManager() {
       const account = await (
         readOnlyProgram.account as {
           gameSession: {
-            fetchNullable: (address: PublicKey) => Promise<any>;
+            fetchNullable: (address: PublicKey) => Promise<RawGameSessionAccount | null>;
           };
         }
       ).gameSession.fetchNullable(sessionPda);
@@ -110,7 +127,7 @@ export function useSessionManager() {
         isDelegated: account.isDelegated,
         bump: account.bump,
         activeItemPool: Array.from(account.activeItemPool ?? []),
-        burnerWallet: account.burnerWallet,
+        burnerWallet: account.burnerWallet ?? wallet.publicKey,
         stateHash: Array.from(account.stateHash),
       };
 
@@ -219,6 +236,149 @@ export function useSessionManager() {
       }
     },
     [connection, fetchSession, signAndSendTransaction, wallet.publicKey, writeProgram]
+  );
+
+  const buildStartDuelSessionTransaction = useCallback(
+    async (
+      burnerPublicKey: PublicKey
+    ): Promise<{ transaction: Transaction; sessionPda: PublicKey } | null> => {
+      if (!wallet.publicKey || !writeProgram) {
+        return null;
+      }
+
+      const DUEL_ONCHAIN_LEVEL = 20;
+      activeOnChainLevelRef.current = DUEL_ONCHAIN_LEVEL;
+
+      const [sessionPda] = deriveSessionPda(wallet.publicKey, DUEL_ONCHAIN_LEVEL);
+      const [counterPda] = deriveSessionCounterPda();
+      const [profilePda] = derivePlayerProfilePda(wallet.publicKey);
+      const [gameStatePda] = deriveGameStatePda(sessionPda);
+      const [enemiesPda] = deriveMapEnemiesPda(sessionPda);
+      const [poisPda] = deriveMapPoisPda(sessionPda);
+      const [inventoryPda] = deriveInventoryPda(sessionPda);
+      const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
+      const [mapConfigPda] = deriveMapConfigPda();
+      const forcedSeedBn = new BN(0);
+
+      const transaction = await (
+        writeProgram.methods as unknown as {
+          startDuelSession: (forcedSeed: BN) => {
+            accounts: (accounts: {
+              gameSession: PublicKey;
+              sessionCounter: PublicKey;
+              playerProfile: PublicKey;
+              player: PublicKey;
+              burnerWallet: PublicKey;
+              mapConfig: PublicKey;
+              generatedMap: PublicKey;
+              gameState: PublicKey;
+              mapEnemies: PublicKey;
+              mapPois: PublicKey;
+              inventory: PublicKey;
+              mapGeneratorProgram: PublicKey;
+              gameplayStateProgram: PublicKey;
+              poiSystemProgram: PublicKey;
+              playerInventoryProgram: PublicKey;
+              systemProgram: PublicKey;
+            }) => { transaction: () => Promise<Transaction> };
+          };
+        }
+      )
+        .startDuelSession(forcedSeedBn)
+        .accounts({
+          gameSession: sessionPda,
+          sessionCounter: counterPda,
+          playerProfile: profilePda,
+          player: wallet.publicKey,
+          burnerWallet: burnerPublicKey,
+          mapConfig: mapConfigPda,
+          generatedMap: generatedMapPda,
+          gameState: gameStatePda,
+          mapEnemies: enemiesPda,
+          mapPois: poisPda,
+          inventory: inventoryPda,
+          mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
+          gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
+          poiSystemProgram: SOLANA_CONFIG.programs.poiSystem,
+          playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
+          systemProgram: SystemProgram.programId,
+        })
+        .transaction();
+
+      return { transaction, sessionPda };
+    },
+    [wallet.publicKey, writeProgram]
+  );
+
+  const buildStartGauntletSessionTransaction = useCallback(
+    async (
+      burnerPublicKey: PublicKey
+    ): Promise<{ transaction: Transaction; sessionPda: PublicKey } | null> => {
+      if (!wallet.publicKey || !writeProgram) {
+        return null;
+      }
+
+      const GAUNTLET_ONCHAIN_LEVEL = 19;
+      activeOnChainLevelRef.current = GAUNTLET_ONCHAIN_LEVEL;
+
+      const [sessionPda] = deriveSessionPda(wallet.publicKey, GAUNTLET_ONCHAIN_LEVEL);
+      const [counterPda] = deriveSessionCounterPda();
+      const [profilePda] = derivePlayerProfilePda(wallet.publicKey);
+      const [gameStatePda] = deriveGameStatePda(sessionPda);
+      const [enemiesPda] = deriveMapEnemiesPda(sessionPda);
+      const [poisPda] = deriveMapPoisPda(sessionPda);
+      const [inventoryPda] = deriveInventoryPda(sessionPda);
+      const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
+      const [mapConfigPda] = deriveMapConfigPda();
+
+      const transaction = await (
+        writeProgram.methods as unknown as {
+          startGauntletSession: () => {
+            accounts: (accounts: {
+              gameSession: PublicKey;
+              sessionCounter: PublicKey;
+              playerProfile: PublicKey;
+              player: PublicKey;
+              burnerWallet: PublicKey;
+              mapConfig: PublicKey;
+              generatedMap: PublicKey;
+              gameState: PublicKey;
+              mapEnemies: PublicKey;
+              mapPois: PublicKey;
+              inventory: PublicKey;
+              mapGeneratorProgram: PublicKey;
+              gameplayStateProgram: PublicKey;
+              poiSystemProgram: PublicKey;
+              playerInventoryProgram: PublicKey;
+              systemProgram: PublicKey;
+            }) => { transaction: () => Promise<Transaction> };
+          };
+        }
+      )
+        .startGauntletSession()
+        .accounts({
+          gameSession: sessionPda,
+          sessionCounter: counterPda,
+          playerProfile: profilePda,
+          player: wallet.publicKey,
+          burnerWallet: burnerPublicKey,
+          mapConfig: mapConfigPda,
+          generatedMap: generatedMapPda,
+          gameState: gameStatePda,
+          mapEnemies: enemiesPda,
+          mapPois: poisPda,
+          inventory: inventoryPda,
+          mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
+          gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
+          poiSystemProgram: SOLANA_CONFIG.programs.poiSystem,
+          playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
+          systemProgram: SystemProgram.programId,
+        })
+        .transaction();
+
+      return { transaction, sessionPda };
+    },
+    [wallet.publicKey, writeProgram]
   );
 
   /**
@@ -483,7 +643,10 @@ export function useSessionManager() {
     error,
     fetchSession,
     startSession,
+    buildStartDuelSessionTransaction,
+    buildStartGauntletSessionTransaction,
     buildStartSessionTransaction,
+    setActiveOnChainLevel,
     delegateSession,
     commitSession,
     endSession,

@@ -4,6 +4,7 @@
  */
 
 import type { GearId, ItemRarity, ItemTag, ItemStats, EffectTiming } from '../game/engine/types';
+import { GEAR_EFFECTS } from './gear-effects';
 
 export interface GearDefinition {
   id: GearId;
@@ -935,6 +936,33 @@ export function getTierFromRarity(rarity: ItemRarity): ItemTier {
     default:
       return 1;
   }
+}
+
+/**
+ * Get the effect description scaled to the item's current tier.
+ * Replaces tier-1 values in the base description with the current tier's values
+ * using the gear-effects data.
+ */
+export function getScaledEffectDescription(gearId: GearId, rarity: ItemRarity): string | null {
+  const def = GEAR_DEFINITIONS[gearId];
+  if (!def.effect) return null;
+
+  const tier = getTierFromRarity(rarity);
+  if (tier === 1) return def.effect.description;
+
+  const gearEffects = GEAR_EFFECTS[gearId];
+  if (!gearEffects || gearEffects.effects.length === 0) return def.effect.description;
+
+  let description = def.effect.description;
+  for (const effect of gearEffects.effects) {
+    const baseValue = effect.values[0];
+    const scaledValue = effect.values[tier - 1];
+    if (baseValue !== scaledValue) {
+      description = description.replace(String(baseValue), String(scaledValue));
+    }
+  }
+
+  return description;
 }
 
 /**

@@ -31,6 +31,7 @@ import { addGearToInventory, equipTool, refreshPlayerStats } from './player';
 import {
   createGearInstance,
   getGearByRarity,
+  getScaledEffectDescription,
   GEAR_DEFINITIONS,
   RARITY_MULTIPLIER,
 } from '../../data/gear';
@@ -132,8 +133,9 @@ function formatItemStats(stats: {
 function getGearDescription(gear: Gear): string {
   const gearDef = GEAR_DEFINITIONS[gear.id];
   const statsDesc = formatItemStats(gear.stats);
-  if (gearDef.effect) {
-    return `${statsDesc}\n${gearDef.effect.description}`;
+  const effectDesc = getScaledEffectDescription(gear.id, gear.currentRarity);
+  if (effectDesc) {
+    return `${statsDesc}\n${effectDesc}`;
   }
   return statsDesc;
 }
@@ -164,8 +166,15 @@ export function createPOIInteraction(poi: MapPOI, state: GameState): POIInteract
     return null;
   }
 
-  // Create RNG for generating options
-  const rng = new SeededRNG(state.rngState);
+  // Create RNG with a per-POI seed so each POI generates unique options
+  // Hash the POI's unique ID and position into a numeric offset
+  let poiHash = 0;
+  for (let i = 0; i < poi.id.length; i++) {
+    poiHash = (poiHash * 31 + poi.id.charCodeAt(i)) | 0;
+  }
+  poiHash = (poiHash * 31 + poi.position.x) | 0;
+  poiHash = (poiHash * 31 + poi.position.y) | 0;
+  const rng = new SeededRNG(state.rngState ^ Math.abs(poiHash));
 
   // Generate options based on POI type
   const options = generatePOIOptions(poi.definitionId, state, rng);
@@ -199,7 +208,7 @@ function generatePOIOptions(poiId: POIId, state: GameState, rng: SeededRNG): POI
     case 'L3': // Tool Crate
       return generateToolCrateOptions(state, rng);
     case 'L4': // Tool Oil Rack
-      return generateToolOilRackOptions(state);
+      return generateToolOilRackOptions(state, rng);
     case 'L5': // Rest Alcove
       return generateRestAlcoveOptions(state);
     case 'L6': // Survey Beacon
@@ -227,7 +236,7 @@ function generatePOIOptions(poiId: POIId, state: GameState, rng: SeededRNG): POI
 
 // ============================================================================
 // T087: Supply Cache (L2)
-// Pick 1 of 3 Common items (with chance of Gilded/Diamond variants)
+// Pick 1 of 3 Common items
 // ============================================================================
 
 function generateSupplyCacheOptions(state: GameState, rng: SeededRNG): POIOption[] {
@@ -241,15 +250,7 @@ function generateSupplyCacheOptions(state: GameState, rng: SeededRNG): POIOption
   // Generate 3 unique random items (weighted by boss weakness)
   const pickedGear = pickUniqueWeighted(rng, commonGear, 3, weaknessTags);
   for (const gearDef of pickedGear) {
-    // Small chance for rarity upgrade
-    const roll = rng.next();
-    let rarity: ItemRarity = 'COMMON';
-    if (roll < 0.05) {
-      rarity = 'DIAMOND'; // 5% chance
-    } else if (roll < 0.15) {
-      rarity = 'GILDED'; // 10% chance
-    }
-    const gear = createGearInstance(gearDef.id, rarity);
+    const gear = createGearInstance(gearDef.id);
     options.push({
       label: gear.name,
       description: getGearDescription(gear),
@@ -262,40 +263,17 @@ function generateSupplyCacheOptions(state: GameState, rng: SeededRNG): POIOption
 
 // ============================================================================
 // T088: Tool Crate (L3)
-// Pick 1 of 3 Tools (Common/Rare distribution)
+// Pick 1 of 3 Common Tools
 // ============================================================================
 
 function generateToolCrateOptions(state: GameState, rng: SeededRNG): POIOption[] {
-  const commonTools = getToolsByRarity('COMMON').filter((tool) => tool.id !== 'T9');
-  const rareTools = getToolsByRarity('RARE');
+  const commonTools = getToolsByRarity('COMMON').filter((tool) => tool.id !== 'T0' && tool.id !== 'T9');
   const options: POIOption[] = [];
   const weekBossId = state.time.weekBoss;
   const weaknessTags = getBossWeaknessTags(weekBossId);
 
-  const selectedIds = new Set<string>();
-  let attempts = 0;
-
-  while (options.length < 3 && attempts < 1000) {
-    attempts += 1;
-    const roll = rng.next();
-    let toolDef;
-
-    // Rarity roll logic (kept from before)
-    if (roll < 0.25 && rareTools.length > 0) {
-      // Pick weighted from rare
-      const picked = pickUniqueWeighted(rng, rareTools, 1, weaknessTags, selectedIds);
-      if (picked.length > 0) toolDef = picked[0];
-    } else {
-      // Pick weighted from common
-      const picked = pickUniqueWeighted(rng, commonTools, 1, weaknessTags, selectedIds);
-      if (picked.length > 0) toolDef = picked[0];
-    }
-
-    if (!toolDef) {
-      continue;
-    }
-
-    selectedIds.add(toolDef.id);
+  const pickedTools = pickUniqueWeighted(rng, commonTools, 3, weaknessTags);
+  for (const toolDef of pickedTools) {
     const tool = createToolInstance(toolDef.id);
     options.push({
       label: tool.name,
@@ -577,10 +555,41 @@ function calculateItemCost(item: Gear | Tool): number {
 // Options are generated on-chain (3 of 4 oils) and fetched by usePoiInteraction.
 // ============================================================================
 
-function generateToolOilRackOptions(_state: GameState): POIOption[] {
-  // Return empty array - options come from on-chain via generate_oil_offer instruction
-  // The usePoiInteraction hook will fetch the generated offers from MapPois.current_oil_offer
-  return [];
+function generateToolOilRackOptions(state: GameState, rng: SeededRNG): POIOption[] {
+  const tool = state.player.equippedTool;
+
+  if (!tool) {
+    return [
+      {
+        label: 'No tool equipped',
+        disabled: true,
+        disabledReason: 'Equip a tool first',
+      },
+    ];
+  }
+
+  if (tool.oil) {
+    return [
+      {
+        label: 'Oil already applied',
+        disabled: true,
+        disabledReason: 'Oil cannot be replaced',
+      },
+    ];
+  }
+
+  const allOils: { label: string; description: string }[] = [
+    { label: '+1 ATK', description: 'Increase Attack. Deal more damage in combat.' },
+    { label: '+1 SPD', description: 'Increase Speed. Act earlier in combat.' },
+    { label: '+1 DIG', description: 'Increase Dig. Break walls more efficiently.' },
+    { label: '+1 ARM', description: 'Increase Armor. Take less damage in combat.' },
+  ];
+
+  // Remove one oil at random to offer 3 of 4
+  const removeIndex = Math.floor(rng.next() * allOils.length);
+  allOils.splice(removeIndex, 1);
+
+  return allOils;
 }
 
 // ============================================================================
@@ -689,34 +698,21 @@ function generateRuneKilnOptions(state: GameState): POIOption[] {
 
 // ============================================================================
 // T098: Geode Vault (L12)
-// Pick 1 of 3 Heroic items
+// Pick 1 of 3 Common items (weighted by boss weakness)
 // ============================================================================
 
 function generateGeodeVaultOptions(state: GameState, rng: SeededRNG): POIOption[] {
-  // T040: Filter heroic gear by active item pool
-  const allHeroicGear = getGearByRarity('HEROIC');
-  const heroicGear = filterGearByPool(allHeroicGear, state.activeItemPool);
-  const allMythicGear = getGearByRarity('MYTHIC');
-  const mythicGear = filterGearByPool(allMythicGear, state.activeItemPool);
+  // No pool filter — Geode Vault is a premium reward POI with access to all HEROIC items
+  const heroicGear = getGearByRarity('HEROIC');
   const weekBossId = state.time.weekBoss;
   const weaknessTags = getBossWeaknessTags(weekBossId);
   const options: POIOption[] = [];
 
-  if (heroicGear.length === 0 && mythicGear.length === 0) {
+  if (heroicGear.length === 0) {
     return [];
   }
 
-  // Prefer Heroics, but backfill with Mythics so this POI still offers up to 3 choices.
-  const combinedPool =
-    heroicGear.length >= 3
-      ? heroicGear
-      : [
-          ...heroicGear,
-          ...mythicGear.filter(
-            (mythicDef) => !heroicGear.some((heroicDef) => heroicDef.id === mythicDef.id)
-          ),
-        ];
-  const pickedGear = pickUniqueWeighted(rng, combinedPool, 3, weaknessTags);
+  const pickedGear = pickUniqueWeighted(rng, heroicGear, 3, weaknessTags);
 
   for (const gearDef of pickedGear) {
     const gear = createGearInstance(gearDef.id);
@@ -740,12 +736,10 @@ function generateCounterCacheOptions(state: GameState, rng: SeededRNG): POIOptio
   const weaknessTags = getBossWeaknessTags(weekBossId);
   const options: POIOption[] = [];
 
-  // T040: Filter gear by weakness tags AND active item pool
-  const allValidGear = Object.values(GEAR_DEFINITIONS).filter((def) => {
-    // Check if gear has one of the weakness tags
+  // Filter gear by weakness tags (no pool or rarity filter — counter items should always be available)
+  const validGear = Object.values(GEAR_DEFINITIONS).filter((def) => {
     return def.tags.some((tag) => weaknessTags.includes(tag));
   });
-  const validGear = filterGearByPool(allValidGear, state.activeItemPool);
 
   if (validGear.length === 0) {
     return [];
@@ -974,6 +968,8 @@ function applyToolOilRackEffect(state: GameState, optionIndex: number): GameStat
     oil = 'DIG';
   } else if (selectedOption.label.includes('+1 SPD')) {
     oil = 'SPD';
+  } else if (selectedOption.label.includes('+1 ARM')) {
+    oil = 'ARM';
   }
 
   if (!oil) {

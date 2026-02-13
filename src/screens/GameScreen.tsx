@@ -12,7 +12,11 @@ import { useSession } from '../contexts/SessionContext';
 import { useProfile } from '../contexts/ProfileContext';
 import { useGameplayStateContext } from '../contexts/GameplayStateContext';
 import { useWallet } from '../contexts/WalletContext';
+import { useSolanaConnection } from '../contexts/SolanaConnectionContext';
 import { deriveSessionPda } from '../services/solana/constants';
+import { RunMode } from '../services/solana/types/gameplay_state';
+import { convertItemInstanceToGear, convertItemInstanceToTool } from '../services/solana/pitDraft';
+import { fetchFullSessionState } from '../services/solana/sessionRestore';
 import { useNightMovement } from '../hooks/useNightMovement';
 import { usePoiInteraction } from '../hooks/usePoiInteraction';
 import { useFogPersistence } from '../hooks/useFogPersistence';
@@ -32,7 +36,7 @@ import { useLandscapeLock } from '../hooks/useOrientationLock';
 import { Direction, DIRECTION_DELTA } from '../game/input/types';
 import { TileType, MapEnemy, MapPOI } from '../game/map/types';
 import { getDiscoveredWaypoints } from '../game/entities/pois';
-import { canAffordCostAcrossPhases } from '../game/time/progression';
+import { canAffordCostAcrossPhases, selectDuelWeekBossForSeed } from '../game/time/progression';
 import { Typography } from '../theme/typography';
 import { promptTransactionRetry } from '../utils/transaction-alerts';
 import { getPhaseLabel } from '../utils/phase-labels';
@@ -45,6 +49,8 @@ import type {
   Position,
 } from '../game/engine/types';
 import type { BackendCombatLogEntry } from '../services/solana/types/combat_events';
+import { calculateItemStats } from '@/game/entities/items';
+import type { GauntletCombatVisualEvent } from '@/services/solana/gauntlet';
 import {
   ENEMY_DEFINITIONS,
   calculateGoldReward,
@@ -199,6 +205,51 @@ function createBossCombatParams(
   };
 }
 
+function createGauntletCombatParams(
+  visual: GauntletCombatVisualEvent,
+  playerStats: PlayerStats,
+  playerGear: Gear[],
+  playerTool: Tool | null,
+  activeItemsets: string[],
+  seed: number,
+  week: number,
+  playerGold: number
+): CombatParams {
+  const echoTool = visual.echoTool ? convertItemInstanceToTool(visual.echoTool) : null;
+  const echoGear = visual.echoGear
+    .filter((g): g is NonNullable<typeof g> => g !== null)
+    .map((g) => convertItemInstanceToGear(g))
+    .filter((g): g is Gear => g !== null);
+
+  const echoStats = calculateItemStats(echoTool, echoGear);
+  const echoMaxHp = 10 + (echoStats.hp ?? 0);
+
+  return {
+    player: buildPlayerCombatant(playerStats),
+    enemy: buildEnemyCombatant('Echo', '🪞', 'gauntlet_echo', {
+      hp: echoMaxHp,
+      atk: echoStats.atk ?? 1,
+      arm: echoStats.arm ?? 0,
+      spd: echoStats.spd ?? 0,
+      dig: echoStats.dig ?? 0,
+    }),
+    seed,
+    goldReward: 0,
+    activeItemSets: activeItemsets as any[],
+    playerGear,
+    playerTool,
+    playerGold,
+    week: (Math.min(Math.max(week, 1), 3) as 1 | 2 | 3),
+    isBossFight: false,
+    combatLog: visual.combatLog,
+    onChainOutcome: {
+      finalPlayerHp: visual.finalPlayerHp,
+      finalPlayerGold: playerGold,
+      playerWon: visual.playerWon,
+    },
+  };
+}
+
 /**
  * Navigate to CombatScreen with combat params and on-chain metadata.
  */
@@ -292,10 +343,12 @@ export function GameScreen({ navigation }: GameScreenProps) {
     burnerBalance,
     isBurnerLowBalance,
     topUpBurner,
+    mapSeed,
     currentLevel,
     forceAbandonCurrentSession,
   } = useSession();
   const { wallet } = useWallet();
+  const { connection } = useSolanaConnection();
   const { refreshMapEntities, pois: onChainPois } = useGameplayStateContext();
   const nightMovement = useNightMovement();
   const poiInteraction = usePoiInteraction();
@@ -399,6 +452,36 @@ export function GameScreen({ navigation }: GameScreenProps) {
   // This handles all cases: direct (no field combat on last move) and deferred
   // (returning from field enemy CombatScreen after the same move set bossFightReady).
   const isTriggeringBossRef = useRef(false);
+  const isRestoringSessionRef = useRef(false);
+
+  useEffect(() => {
+    if (!isFocused || state || !hasActiveSession || !sessionPda || isRestoringSessionRef.current) {
+      return;
+    }
+
+    isRestoringSessionRef.current = true;
+    console.log('[GameScreen] Auto-restoring active session from chain...', {
+      sessionPda: sessionPda.toBase58(),
+      currentLevel,
+    });
+
+    fetchFullSessionState(connection, sessionPda)
+      .then((restored) => {
+        if (!restored) {
+          console.warn('[GameScreen] Auto-restore failed: fetchFullSessionState returned null');
+          return;
+        }
+        dispatch({ type: 'RESTORE_GAME', state: restored });
+        console.log('[GameScreen] Auto-restore completed');
+      })
+      .catch((err) => {
+        console.error('[GameScreen] Auto-restore failed with error:', err);
+      })
+      .finally(() => {
+        isRestoringSessionRef.current = false;
+      });
+  }, [isFocused, state, hasActiveSession, sessionPda, currentLevel, connection, dispatch]);
+
   useEffect(() => {
     if (
       !isFocused ||
@@ -411,15 +494,21 @@ export function GameScreen({ navigation }: GameScreenProps) {
       return;
     }
 
-    const weekBoss = state.time.weekBoss;
-    if (!weekBoss) {
+    const isGauntletRun = onChainState.runMode === RunMode.Gauntlet;
+    const resolvedWeekBoss: BossId | null =
+      onChainState.runMode === RunMode.Duel && (state.time.week === 1 || state.time.week === 2) && mapSeed != null
+        ? selectDuelWeekBossForSeed(mapSeed, state.time.week)
+        : (state.time.weekBoss ?? null);
+    if (!isGauntletRun && !resolvedWeekBoss) {
       console.warn('[GameScreen] bossFightReady but no weekBoss defined');
       return;
     }
 
     isTriggeringBossRef.current = true;
-    console.log('[GameScreen] Boss fight detected via on-chain state, triggering:', {
-      weekBoss,
+    console.log('[GameScreen] Weekly fight detected via on-chain state, triggering:', {
+      weekBoss: resolvedWeekBoss ?? null,
+      resolvedWeekBoss: resolvedWeekBoss ?? null,
+      runMode: onChainState.runMode,
       week: state.time.week,
       playerHp: onChainState.hp,
     });
@@ -442,38 +531,51 @@ export function GameScreen({ navigation }: GameScreenProps) {
       };
 
       try {
-        // Trigger boss fight on-chain (resolves combat, sets is_dead/completed)
+        // Trigger weekly combat on-chain (boss in campaign/duel, echo in gauntlet)
         const bossResult = await triggerBoss();
         if (!bossResult.success) {
-          console.error('[GameScreen] triggerBoss on-chain failed');
+          console.error('[GameScreen] triggerBoss on-chain weekly resolver failed');
         }
 
-        const bossCombatParams = createBossCombatParams(
-          weekBoss,
-          playerStats,
-          state.player.inventory.map((slot) => slot.item),
-          state.player.equippedTool,
-          state.player.activeItemsets ?? [],
-          state.rngState,
-          state.time.week,
-          bossResult.combatLog,
-          bossResult.success && bossResult.newState
-            ? {
-                finalPlayerHp: bossResult.newState.hp,
-                finalPlayerGold: bossResult.newState.gold,
-                playerWon: !bossResult.isDead,
-              }
-            : undefined
-        );
+        const bossCombatParams = isGauntletRun
+          ? createGauntletCombatParams(
+              bossResult.gauntletVisual!,
+              playerStats,
+              state.player.inventory.map((slot) => slot.item),
+              state.player.equippedTool,
+              state.player.activeItemsets ?? [],
+              state.rngState,
+              state.time.week,
+              bossResult.newState?.gold ?? onChainState.gold
+            )
+          : createBossCombatParams(
+              resolvedWeekBoss!,
+              playerStats,
+              state.player.inventory.map((slot) => slot.item),
+              state.player.equippedTool,
+              state.player.activeItemsets ?? [],
+              state.rngState,
+              state.time.week,
+              bossResult.combatLog,
+              bossResult.success && bossResult.newState
+                ? {
+                    finalPlayerHp: bossResult.newState.hp,
+                    finalPlayerGold: bossResult.newState.gold,
+                    playerWon: !bossResult.isDead,
+                  }
+                : undefined
+            );
 
-        console.log('[GameScreen] Navigating to CombatScreen for boss fight:', {
-          bossId: weekBoss,
-          bossName: bossCombatParams.enemy.name,
+        console.log('[GameScreen] Navigating to CombatScreen for weekly fight:', {
+          isGauntletRun,
+          bossId: resolvedWeekBoss ?? null,
+          resolvedWeekBoss: resolvedWeekBoss ?? null,
+          enemyName: bossCombatParams.enemy.name,
           playerHp: playerStats.hp,
           week: state.time.week,
           hasOnChainOutcome: bossResult.success,
-          hasCombatLog: !!bossResult.combatLog,
-          combatLogEntries: bossResult.combatLog?.length ?? 0,
+          hasCombatLog: !!bossResult.combatLog || !!bossResult.gauntletVisual?.combatLog,
+          combatLogEntries: bossResult.combatLog?.length ?? bossResult.gauntletVisual?.combatLog?.length ?? 0,
         });
 
         navigateToCombat(navigation, bossCombatParams, {
@@ -486,8 +588,12 @@ export function GameScreen({ navigation }: GameScreenProps) {
         // CRITICAL: Always show CombatScreen for boss fights — never silently fail.
         // Fall back to local combat resolver so the player sees the boss fight animation.
         try {
+          if (!resolvedWeekBoss) {
+            throw new Error('No week boss available for local fallback');
+          }
+
           const bossCombatParams = createBossCombatParams(
-            weekBoss,
+            resolvedWeekBoss,
             playerStats,
             state.player.inventory.map((slot) => slot.item),
             state.player.equippedTool,
@@ -497,7 +603,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
           );
 
           console.warn('[GameScreen] Boss fight on-chain failed, falling back to local resolver:', {
-            bossId: weekBoss,
+            bossId: resolvedWeekBoss,
             playerHp: playerStats.hp,
           });
 
@@ -509,7 +615,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
         } catch (fallbackErr) {
           // Boss definition missing — navigate to Death as last resort so the user isn't stuck.
           console.error('[GameScreen] Boss combat params failed, navigating to Death:', fallbackErr);
-          const bossName = BOSSES[weekBoss]?.name ?? weekBoss;
+          const bossName = BOSSES[resolvedWeekBoss]?.name ?? resolvedWeekBoss;
           navigateToDeath(navigation, onChainState, bossName);
         }
       } finally {
@@ -524,9 +630,11 @@ export function GameScreen({ navigation }: GameScreenProps) {
     onChainState?.campaignLevel,
     onChainState?.totalMoves,
     onChainState?.phase,
+    onChainState?.runMode,
     state,
     mode,
     isMovePending,
+    mapSeed,
     triggerBoss,
     navigation,
   ]);
@@ -1027,6 +1135,16 @@ export function GameScreen({ navigation }: GameScreenProps) {
       return;
     }
 
+    // Guest mode: teleport player locally
+    if (mode === 'guest' || !hasActiveSession) {
+      console.log('[GameScreen] Guest mode fast travel to', dest.x, dest.y);
+      lastAutoTriggeredPosRef.current = { x: dest.x, y: dest.y };
+      dispatch({ type: 'FAST_TRAVEL_TO', destination: dest });
+      setIsFastTravelMode(false);
+      setFastTravelDestinations([]);
+      return;
+    }
+
     // Skip mismatch detection during fast travel to prevent stale on-chain state from reverting position
     skipMismatchDetectionRef.current = true;
     if (skipMismatchTimeoutRef.current) {
@@ -1061,6 +1179,8 @@ export function GameScreen({ navigation }: GameScreenProps) {
     isFastTravelActive,
     fastTravelDestinations,
     fastTravelSelectedIndex,
+    mode,
+    hasActiveSession,
     poiInteraction,
     dispatch,
     sessionPda,
@@ -1443,6 +1563,9 @@ export function GameScreen({ navigation }: GameScreenProps) {
     );
   }
 
+  const maxGearSlots = onChainState?.runMode === RunMode.Gauntlet ? 12 : 8;
+  const isGauntletLayout = onChainState?.runMode === RunMode.Gauntlet;
+
   return (
     <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
       <ImageBackground source={BACKGROUND_IMAGE} style={styles.backgroundImage} resizeMode="cover">
@@ -1477,6 +1600,8 @@ export function GameScreen({ navigation }: GameScreenProps) {
                   stats={state.player.stats}
                   inventory={state.player.inventory}
                   inventoryCapacity={state.player.inventoryCapacity}
+                  maxGearSlots={maxGearSlots}
+                  isGauntletLayout={isGauntletLayout}
                   equippedTool={state.player.equippedTool}
                   activeItemsets={state.player.activeItemsets}
                   onlyBoss={true}
@@ -1582,6 +1707,8 @@ export function GameScreen({ navigation }: GameScreenProps) {
                   stats={state.player.stats}
                   inventory={state.player.inventory}
                   inventoryCapacity={state.player.inventoryCapacity}
+                  maxGearSlots={maxGearSlots}
+                  isGauntletLayout={isGauntletLayout}
                   equippedTool={state.player.equippedTool}
                   activeItemsets={state.player.activeItemsets}
                   onItemInspect={handleInspectItem}

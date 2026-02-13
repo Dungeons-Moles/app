@@ -17,23 +17,27 @@ import { useSessionManager } from '@/hooks/useSessionManager';
 import { useMapGenerator } from '@/hooks/useMapGenerator';
 import { useBurnerWallet } from '@/hooks/useBurnerWallet';
 import { useGameplayState } from '@/hooks/useGameplayState';
-import { getGameStatePda, triggerBossFight } from '@/services/solana/gameplayState';
-import { deriveSessionPda } from '@/services/solana/constants';
+import { getGameStatePda } from '@/services/solana/gameplayState';
+import { deriveGeneratedMapPda, deriveSessionPda } from '@/services/solana/constants';
 import { SOLANA_CONFIG } from '@/services/solana/config';
+import {
+  createMapGeneratorProgram,
+  createSessionManagerProgram,
+  createGameplayStateProgram,
+} from '@/services/solana/programs';
+import { fetchGeneratedMap } from '@/services/solana/mapGeneratorClient';
 import {
   queueCleanup,
   getPendingCleanups,
   removeCleanup,
   updateCleanup,
   incrementRetryCount,
-  type PendingCleanup,
 } from '@/services/solana/deferredCleanup';
 import {
   fetchSessionList,
   checkSessionExists,
   getSessionForLevel,
   type ActiveSession,
-  type SessionData,
 } from '@/services/solana/sessionList';
 import { abandonSession as abandonSessionTx } from '@/services/solana/sessionBundle';
 import { clearFogState, clearBrokenWalls } from '@/services/solana/sessionRestore';
@@ -47,6 +51,7 @@ import type { TransactionResult } from '@/types/solana';
 import type { BurnerState } from '@/services/solana/burnerWallet';
 import type { BackendCombatLogEntry } from '@/services/solana/types/combat_events';
 import type { CombatEnemyInfo } from '@/services/solana/eventParser';
+import type { GauntletCombatVisualEvent } from '@/services/solana/gauntlet';
 
 /** Commit interval in milliseconds (30 seconds) */
 const COMMIT_INTERVAL_MS = 30_000;
@@ -91,6 +96,10 @@ export interface SessionState {
 interface SessionContextType extends SessionState {
   /** Start a new game session for a campaign level */
   startGame: (campaignLevel: number) => Promise<TransactionResult>;
+  /** Start a new duel session */
+  startDuelGame: () => Promise<TransactionResult>;
+  /** Start a new gauntlet session */
+  startGauntletGame: () => Promise<TransactionResult>;
   /** End the current session (after game over or victory) */
   endGame: () => Promise<TransactionResult>;
   /** End session immediately with burner wallet (called after combat death/victory) */
@@ -136,6 +145,7 @@ interface SessionContextType extends SessionState {
     previousState?: GameState;
     isDead?: boolean;
     combatLog?: BackendCombatLogEntry[];
+    gauntletVisual?: GauntletCombatVisualEvent | null;
     signature?: string;
   }>;
   /** Modify player stat on-chain (via burner wallet) */
@@ -232,6 +242,131 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       isMounted = false;
     };
   }, [getMapSeed, sessionManager.session?.campaignLevel]);
+
+  const fetchSessionGeneratedSeed = useCallback(
+    async (sessionPda: PublicKey): Promise<bigint | null> => {
+      try {
+        const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
+        const mapProgram = createMapGeneratorProgram(connection);
+        const generatedMap = await fetchGeneratedMap(mapProgram, generatedMapPda);
+        return generatedMap?.seed ?? null;
+      } catch (err) {
+        console.warn('[SessionContext] Failed to fetch generated map seed:', err);
+        return null;
+      }
+    },
+    [connection]
+  );
+
+  const confirmSignatureWithTimeout = useCallback(
+    async (signature: string, timeoutMs = 15000): Promise<void> => {
+      console.log('[SessionContext] confirmSignatureWithTimeout:start', {
+        signature,
+        timeoutMs,
+        commitment: SOLANA_CONFIG.commitment,
+      });
+      try {
+        await connection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
+        console.log('[SessionContext] confirmSignatureWithTimeout:confirmTransaction:ok', {
+          signature,
+        });
+        return;
+      } catch {
+        console.warn('[SessionContext] confirmSignatureWithTimeout:falling_back_to_poll', {
+          signature,
+        });
+        // fall through to status polling
+      }
+
+      const start = Date.now();
+      while (Date.now() - start < timeoutMs) {
+        const statuses = await connection.getSignatureStatuses([signature]);
+        const status = statuses.value[0];
+        console.log('[SessionContext] confirmSignatureWithTimeout:poll', {
+          signature,
+          confirmationStatus: status?.confirmationStatus ?? null,
+          hasErr: !!status?.err,
+          elapsedMs: Date.now() - start,
+        });
+        if (status?.err) {
+          throw new Error(`Transaction failed: ${JSON.stringify(status.err)}`);
+        }
+        if (
+          status &&
+          (status.confirmationStatus === 'processed' ||
+            status.confirmationStatus === 'confirmed' ||
+            status.confirmationStatus === 'finalized')
+        ) {
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+      throw new Error('Timed out waiting for transaction confirmation');
+    },
+    [connection]
+  );
+
+  const logTxDebugError = useCallback((label: string, err: unknown) => {
+    const e = err as
+      | Error
+      | {
+          message?: string;
+          logs?: string[];
+          transactionLogs?: string[];
+          cause?: unknown;
+        };
+    const directLogs = Array.isArray((e as { logs?: string[] }).logs)
+      ? (e as { logs: string[] }).logs
+      : null;
+    const txLogs = Array.isArray((e as { transactionLogs?: string[] }).transactionLogs)
+      ? (e as { transactionLogs: string[] }).transactionLogs
+      : null;
+    const causeLogs =
+      typeof (e as { cause?: unknown }).cause === 'object' &&
+      (e as { cause?: { logs?: string[] } }).cause &&
+      Array.isArray(((e as { cause?: { logs?: string[] } }).cause as { logs?: string[] }).logs)
+        ? (((e as { cause?: { logs?: string[] } }).cause as { logs?: string[] }).logs ?? null)
+        : null;
+
+    console.error(`[SessionContext] ${label}:error`, {
+      message: e?.message ?? String(err),
+      logs: directLogs,
+      transactionLogs: txLogs,
+      causeLogs,
+      raw: err,
+    });
+  }, []);
+
+  const debugSimulateTransaction = useCallback(
+    async (label: string, transaction: Transaction): Promise<void> => {
+      try {
+        const sim = await connection.simulateTransaction(transaction);
+        if (sim.value.err) {
+          console.warn(`[SessionContext] ${label}:simulate:err`, {
+            err: sim.value.err,
+            logs: sim.value.logs ?? [],
+            unitsConsumed: sim.value.unitsConsumed ?? null,
+          });
+        } else {
+          console.log(`[SessionContext] ${label}:simulate:ok`, {
+            unitsConsumed: sim.value.unitsConsumed ?? null,
+          });
+        }
+      } catch (simErr) {
+        console.warn(`[SessionContext] ${label}:simulate:failed`, simErr);
+      }
+    },
+    [connection]
+  );
+
+  const isAccountNotInitializedError = useCallback((err: unknown): boolean => {
+    const message = err instanceof Error ? err.message : String(err);
+    return (
+      message.includes('AccountNotInitialized') ||
+      message.includes('custom program error: 0xbc4') ||
+      message.includes('custom program error: 0xBC4')
+    );
+  }, []);
 
   const startGame = useCallback(
     async (campaignLevel: number): Promise<TransactionResult> => {
@@ -343,7 +478,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       combinedTransaction.add(...sessionInstructions);
 
       // Set recent blockhash and fee payer before signing
-      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+      const { blockhash } = await connection.getLatestBlockhash('confirmed');
       combinedTransaction.recentBlockhash = blockhash;
       combinedTransaction.feePayer = wallet.publicKey ?? undefined;
 
@@ -355,10 +490,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       console.log(
         '[SessionContext] Step 5: Requesting main wallet signature for combined transaction...'
       );
+      await debugSimulateTransaction('startGame:combined_tx', combinedTransaction);
       try {
         const signature = await signAndSendTransaction(combinedTransaction);
         console.log('[SessionContext] Combined transaction sent:', signature);
-        await connection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
+        await confirmSignatureWithTimeout(signature);
         console.log('[SessionContext] Combined transaction confirmed');
 
         // Mark burner as active now that funding is confirmed
@@ -379,7 +515,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         // This is common on devnet/testnet if the program hasn't been initialized by an admin
         const error = txError as { message?: string; logs?: string[] };
         const isCounterUninitialized =
-          error?.message?.includes('AccountNotInitialized') ||
+          isAccountNotInitializedError(txError) ||
           (Array.isArray(error?.logs) &&
             error.logs.some(
               (log: string) =>
@@ -391,7 +527,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             '[SessionContext] Session counter not initialized on-chain. Falling back to offline mode.'
           );
         } else {
-          console.error('[SessionContext] Combined transaction failed:', txError);
+          logTxDebugError('startGame:combined_tx', txError);
         }
 
         await burnerWallet.clear();
@@ -434,7 +570,187 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       profile,
       sessionManager,
       signAndSendTransaction,
+      confirmSignatureWithTimeout,
+      debugSimulateTransaction,
+      isAccountNotInitializedError,
+      logTxDebugError,
       wallet.publicKey,
+    ]
+  );
+
+  const startDuelGame = useCallback(
+    async (): Promise<TransactionResult> => {
+      console.log('[SessionContext] startDuelGame called');
+
+      const burnerResult = await burnerWallet.createWithoutFunding();
+      if (!burnerResult) {
+        return { success: false, error: 'Failed to create burner wallet' };
+      }
+
+      const { keypair: newBurnerKeypair, fundTransaction } = burnerResult;
+
+      const sessionResult = await sessionManager.buildStartDuelSessionTransaction(
+        newBurnerKeypair.publicKey
+      );
+
+      if (!sessionResult) {
+        return { success: false, error: 'Failed to build duel session transaction' };
+      }
+
+      const { transaction: sessionTransaction, sessionPda } = sessionResult;
+      const combinedTransaction = new Transaction();
+      combinedTransaction.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }));
+      combinedTransaction.add(...fundTransaction.instructions);
+
+      const COMPUTE_BUDGET_PROGRAM_ID = 'ComputeBudget111111111111111111111111111111';
+      const sessionInstructions = sessionTransaction.instructions.filter(
+        (ix) => ix.programId.toBase58() !== COMPUTE_BUDGET_PROGRAM_ID
+      );
+      combinedTransaction.add(...sessionInstructions);
+
+      const { blockhash } = await connection.getLatestBlockhash('confirmed');
+      combinedTransaction.recentBlockhash = blockhash;
+      combinedTransaction.feePayer = wallet.publicKey ?? undefined;
+      combinedTransaction.partialSign(newBurnerKeypair);
+
+      await debugSimulateTransaction('startDuelGame:combined_tx', combinedTransaction);
+      try {
+        const signature = await signAndSendTransaction(combinedTransaction);
+        console.log('[SessionContext] startDuelGame:combined_tx_sent', { signature });
+        await confirmSignatureWithTimeout(signature);
+        console.log('[SessionContext] startDuelGame:combined_tx_confirmed', { signature });
+        await burnerWallet.markAsActive(newBurnerKeypair);
+        console.log('[SessionContext] startDuelGame:burner_marked_active');
+        await sessionManager.fetchSession();
+        console.log('[SessionContext] startDuelGame:session_fetched');
+      } catch (txError: unknown) {
+        logTxDebugError('startDuelGame:combined_tx', txError);
+        if (isAccountNotInitializedError(txError)) {
+          return {
+            success: false,
+            error:
+              'Session manager is not initialized on this validator (AccountNotInitialized / 0xbc4). Run init first.',
+          };
+        }
+        return {
+          success: false,
+          error: txError instanceof Error ? txError.message : 'Duel session transaction failed',
+        };
+      }
+
+      const generatedSeed = await fetchSessionGeneratedSeed(sessionPda);
+      console.log('[SessionContext] startDuelGame:generated_seed', {
+        generatedSeed: generatedSeed?.toString() ?? null,
+      });
+      setMapSeed(generatedSeed);
+
+      if (wallet.publicKey) {
+        const [gameStatePda] = getGameStatePda(sessionPda);
+        gameplayState.setGameStatePda(gameStatePda);
+      }
+
+      return { success: true, mapSeed: generatedSeed };
+    },
+    [
+      burnerWallet,
+      connection,
+      gameplayState,
+      sessionManager,
+      signAndSendTransaction,
+      wallet.publicKey,
+      fetchSessionGeneratedSeed,
+      confirmSignatureWithTimeout,
+      debugSimulateTransaction,
+      isAccountNotInitializedError,
+      logTxDebugError,
+    ]
+  );
+
+  const startGauntletGame = useCallback(
+    async (): Promise<TransactionResult> => {
+      console.log('[SessionContext] startGauntletGame called');
+
+      const burnerResult = await burnerWallet.createWithoutFunding();
+      if (!burnerResult) {
+        return { success: false, error: 'Failed to create burner wallet' };
+      }
+
+      const { keypair: newBurnerKeypair, fundTransaction } = burnerResult;
+
+      const sessionResult = await sessionManager.buildStartGauntletSessionTransaction(
+        newBurnerKeypair.publicKey
+      );
+
+      if (!sessionResult) {
+        return { success: false, error: 'Failed to build gauntlet session transaction' };
+      }
+
+      const { transaction: sessionTransaction, sessionPda } = sessionResult;
+      const combinedTransaction = new Transaction();
+      combinedTransaction.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }));
+      combinedTransaction.add(...fundTransaction.instructions);
+
+      const COMPUTE_BUDGET_PROGRAM_ID = 'ComputeBudget111111111111111111111111111111';
+      const sessionInstructions = sessionTransaction.instructions.filter(
+        (ix) => ix.programId.toBase58() !== COMPUTE_BUDGET_PROGRAM_ID
+      );
+      combinedTransaction.add(...sessionInstructions);
+
+      const { blockhash } = await connection.getLatestBlockhash('confirmed');
+      combinedTransaction.recentBlockhash = blockhash;
+      combinedTransaction.feePayer = wallet.publicKey ?? undefined;
+      combinedTransaction.partialSign(newBurnerKeypair);
+
+      await debugSimulateTransaction('startGauntletGame:combined_tx', combinedTransaction);
+      try {
+        const signature = await signAndSendTransaction(combinedTransaction);
+        console.log('[SessionContext] startGauntletGame:combined_tx_sent', { signature });
+        await confirmSignatureWithTimeout(signature);
+        console.log('[SessionContext] startGauntletGame:combined_tx_confirmed', { signature });
+        await burnerWallet.markAsActive(newBurnerKeypair);
+        console.log('[SessionContext] startGauntletGame:burner_marked_active');
+        await sessionManager.fetchSession();
+        console.log('[SessionContext] startGauntletGame:session_fetched');
+      } catch (txError: unknown) {
+        logTxDebugError('startGauntletGame:combined_tx', txError);
+        if (isAccountNotInitializedError(txError)) {
+          return {
+            success: false,
+            error:
+              'Session manager is not initialized on this validator (AccountNotInitialized / 0xbc4). Run init first.',
+          };
+        }
+        return {
+          success: false,
+          error: txError instanceof Error ? txError.message : 'Gauntlet session transaction failed',
+        };
+      }
+
+      const generatedSeed = await fetchSessionGeneratedSeed(sessionPda);
+      console.log('[SessionContext] startGauntletGame:generated_seed', {
+        generatedSeed: generatedSeed?.toString() ?? null,
+      });
+      setMapSeed(generatedSeed);
+
+      if (wallet.publicKey) {
+        const [gameStatePda] = getGameStatePda(sessionPda);
+        gameplayState.setGameStatePda(gameStatePda);
+      }
+
+      return { success: true, mapSeed: generatedSeed };
+    },
+    [
+      burnerWallet,
+      connection,
+      gameplayState,
+      sessionManager,
+      signAndSendTransaction,
+      wallet.publicKey,
+      fetchSessionGeneratedSeed,
+      confirmSignatureWithTimeout,
+      debugSimulateTransaction,
+      isAccountNotInitializedError,
+      logTxDebugError,
     ]
   );
 
@@ -639,6 +955,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     previousState?: GameState;
     isDead?: boolean;
     combatLog?: BackendCombatLogEntry[];
+    gauntletVisual?: GauntletCombatVisualEvent | null;
     signature?: string;
   }> => {
     if (!burnerWallet.keypair) {
@@ -694,10 +1011,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     try {
       // For now, use direct account fetching since we may not have all programs
       // The sessionList service handles this
+      const sessionProgram = createSessionManagerProgram(connection);
+      const gameplayProgram = createGameplayStateProgram(connection);
       const sessions = await fetchSessionList(
         connection,
-        null as any, // Program will be created internally if needed
-        null as any, // Program will be created internally if needed
+        sessionProgram,
+        gameplayProgram,
         wallet.publicKey
       ).catch(() => []);
       setActiveSessions(sessions);
@@ -756,11 +1075,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
       try {
         const sessionPubkey = new PublicKey(sessionPda);
-
-        // Find the session in our active sessions list
-        const session = activeSessions.find((s) => s.sessionPda === sessionPda);
-        if (!session) {
-          return { success: false, error: 'Session not found' };
+        // Infer on-chain level from PDA so SessionManager fetch targets the right session.
+        let onChainLevel: number | null = null;
+        for (let level = 1; level <= 40; level++) {
+          const [candidate] = deriveSessionPda(wallet.publicKey, level);
+          if (candidate.equals(sessionPubkey)) {
+            onChainLevel = level;
+            break;
+          }
+        }
+        if (onChainLevel !== null) {
+          sessionManager.setActiveOnChainLevel(onChainLevel);
         }
 
         // If burner wallet doesn't exist, we need to recover or fail
@@ -778,8 +1103,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         const [gameStatePda] = getGameStatePda(sessionPubkey);
         gameplayState.setGameStatePda(gameStatePda);
 
-        // Fetch map seed for this level
-        const seed = await mapGenerator.getMapSeed(session.level);
+        // Fetch map seed directly from this session's generated map account.
+        const seed = await fetchSessionGeneratedSeed(sessionPubkey);
         setMapSeed(seed);
 
         // Refresh the session manager to point to this session
@@ -788,7 +1113,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         // Refresh session list to update last played time
         await refreshSessionList();
 
-        console.log('[SessionContext] Switched to session:', sessionPda, 'level:', session.level);
+        console.log('[SessionContext] Switched to session:', sessionPda, 'onChainLevel:', onChainLevel);
         return { success: true };
       } catch (error) {
         console.error('[SessionContext] Failed to switch session:', error);
@@ -799,11 +1124,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
     },
     [
-      activeSessions,
       burnerWallet,
       connection,
+      fetchSessionGeneratedSeed,
       gameplayState,
-      mapGenerator,
       sessionManager,
       wallet.publicKey,
       refreshSessionList,
@@ -1107,6 +1431,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     currentLevel,
     sessionKey,
     startGame,
+    startDuelGame,
+    startGauntletGame,
     endGame,
     endSessionWithBurner,
     queueEndGame,

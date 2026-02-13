@@ -202,6 +202,30 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
                         />
                       </TouchableOpacity>
                     ))}
+                    {/* TEMPORARY: Dev Keypair option for local development. Remove when Phantom issues are resolved. */}
+                    <TouchableOpacity
+                      style={[
+                        styles.walletOption,
+                        'DevKeypair' === selectedWallet && styles.walletOptionSelected,
+                      ]}
+                      onPress={() => setSelectedWallet('DevKeypair')}
+                      activeOpacity={0.7}
+                      disabled={showLoading}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 10,
+                          fontWeight: 'bold',
+                          color:
+                            'DevKeypair' === selectedWallet
+                              ? styles.walletIconActive.color
+                              : styles.walletIconInactive.color,
+                          textAlign: 'center',
+                        }}
+                      >
+                        DEV{'\n'}KEY
+                      </Text>
+                    </TouchableOpacity>
                   </View>
                   <Text style={styles.walletHint}>Select a wallet to sign in</Text>
                 </>

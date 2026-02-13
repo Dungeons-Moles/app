@@ -2,14 +2,30 @@
  * Sidebar Component - Combines BossPanel, StatsPanel, and InventoryPanel
  */
 
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { View, StyleSheet, ImageBackground, Text, Image, Pressable } from 'react-native';
+import { PublicKey } from '@solana/web3.js';
 import { StatsPanel } from './StatsPanel';
 import { InventoryPanel } from './InventoryPanel';
-import { BossTooltipModal } from './BossTooltipModal';
+import { BossTooltipModal, type PvpDetails } from './BossTooltipModal';
 import { getBoss } from '../../data/bosses';
 import { getEntityImageSource } from './entityImages';
 import { Typography } from '../../theme/typography';
+import { useGameplayStateContext } from '../../contexts/GameplayStateContext';
+import { useWallet } from '../../contexts/WalletContext';
+import { useSolanaConnection } from '../../contexts/SolanaConnectionContext';
+import { useSession } from '../../contexts/SessionContext';
+import { createGameplayStateProgram, createPlayerProfileProgram } from '../../services/solana/programs';
+import {
+  derivePlayerProfilePda,
+  deriveSessionPda,
+  GAMEPLAY_STATE_PROGRAM_ID,
+} from '../../services/solana/constants';
+import { RunMode } from '../../services/solana/types/gameplay_state';
+import { fetchGauntletWeekEchoPreview } from '../../services/solana/gauntlet';
+import { calculateItemStats } from '../../game/entities/items';
+import { convertItemInstanceToGear, convertItemInstanceToTool } from '../../services/solana/pitDraft';
+import { selectDuelWeekBossForSeed } from '../../game/time/progression';
 import type {
   TimeState,
   PlayerStats,
@@ -17,17 +33,19 @@ import type {
   InventorySlot,
   ItemsetId,
   Gear,
-  GearId,
 } from '../../game/engine/types';
 
 const SIDEBAR_BG = require('../../../assets/ui/panels/sidebar.png');
 const BOSS_PANEL_BG = require('../../../assets/ui/panels/boss-panel.png');
+const DEFAULT_MOLE_IMAGE_SOURCE = require('../../../assets/entities/characters/default-mole.png');
 
 interface SidebarProps {
   time: TimeState;
   stats: PlayerStats;
   inventory: InventorySlot[];
   inventoryCapacity: number;
+  maxGearSlots?: number;
+  isGauntletLayout?: boolean;
   equippedTool: Tool | null;
   activeItemsets: ItemsetId[];
   onItemPress?: (item: Tool | Gear, slotIndex: number) => void;
@@ -41,26 +59,256 @@ interface SidebarProps {
 
 export function BossPanel({ time }: { time: TimeState }) {
   const [modalVisible, setModalVisible] = useState(false);
+  const [pvpDetails, setPvpDetails] = useState<PvpDetails | null>(null);
+  const [pvpLoading, setPvpLoading] = useState(false);
+  const { gameState } = useGameplayStateContext();
+  const { session, mapSeed } = useSession();
+  const { wallet } = useWallet();
+  const { connection } = useSolanaConnection();
   const boss = getBoss(time.weekBoss);
+  const sessionCampaignLevel = session?.campaignLevel;
+  const resolvedWeek = gameState?.week ?? time.week;
+  const isGauntletRun =
+    gameState?.runMode === RunMode.Gauntlet ||
+    gameState?.maxWeeks === 5 ||
+    gameState?.campaignLevel === 19 ||
+    sessionCampaignLevel === 19;
+  const isDuelRun =
+    gameState?.runMode === RunMode.Duel ||
+    (!isGauntletRun && sessionCampaignLevel === 20);
+  const isDuelFinalWeek = isDuelRun && resolvedWeek === 3;
+  const duelWeekBoss = useCallback(() => {
+    if (!isDuelRun || (resolvedWeek !== 1 && resolvedWeek !== 2)) return null;
+    if (mapSeed == null) return null;
+    const derivedBossId = selectDuelWeekBossForSeed(mapSeed, resolvedWeek);
+    return getBoss(derivedBossId);
+  }, [isDuelRun, mapSeed, resolvedWeek])();
+  const displayedBoss = isDuelFinalWeek ? null : (isDuelRun ? duelWeekBoss : boss);
+  const shouldShowGauntletEcho = !displayedBoss && isGauntletRun;
+  const shouldShowDuelOpponent = !displayedBoss && isDuelFinalWeek;
+
+  const fetchProfileNameByWallet = useCallback(
+    async (walletKey: string): Promise<string | null> => {
+      try {
+        const profileProgram = createPlayerProfileProgram(connection);
+        const [profilePda] = derivePlayerProfilePda(
+          new PublicKey(walletKey)
+        );
+        const profile = await (
+          profileProgram.account as {
+            playerProfile: {
+              fetchNullable: (address: unknown) => Promise<{ name?: unknown } | null>;
+            };
+          }
+        ).playerProfile.fetchNullable(profilePda);
+        if (!profile || typeof profile.name !== 'string') return null;
+        const trimmed = profile.name.trim();
+        return trimmed.length > 0 ? trimmed : null;
+      } catch {
+        return null;
+      }
+    },
+    [connection]
+  );
+
+  const loadPvpDetails = useCallback(async () => {
+    if (!wallet.publicKey || displayedBoss || !isGauntletRun) {
+      setPvpDetails({
+        name: 'Mole Echo',
+        sourceLabel: 'PvP Echo',
+        tool: null,
+        gear: [],
+        stats: { hp: 10, atk: 1, arm: 0, spd: 0, dig: 0, gold: 0 },
+        week: gameState?.week ?? 1,
+      });
+      return;
+    }
+
+    setPvpLoading(true);
+    try {
+      const gameplayProgram = createGameplayStateProgram(connection);
+      let runMode = gameState?.runMode;
+      let week = gameState?.week;
+      let totalMoves = gameState?.totalMoves;
+      let session = gameState?.session;
+      let maxWeeks: number | undefined = gameState?.maxWeeks;
+
+      // Web can lag context hydration; fetch directly from on-chain gauntlet session when needed.
+      if (
+        (runMode !== RunMode.Gauntlet && maxWeeks !== 5) ||
+        week === undefined ||
+        totalMoves === undefined ||
+        !session
+      ) {
+        const [gauntletSessionPda] = deriveSessionPda(wallet.publicKey, 19);
+        const [gauntletGameStatePda] = PublicKey.findProgramAddressSync(
+          [Buffer.from('game_state'), gauntletSessionPda.toBuffer()],
+          GAMEPLAY_STATE_PROGRAM_ID
+        );
+        const fetched = await (
+          gameplayProgram.account as {
+            gameState: {
+              fetch: (address: PublicKey) => Promise<{
+                runMode?: { gauntlet?: object };
+                week: number;
+                totalMoves: number;
+                session: PublicKey;
+                maxWeeks?: number;
+              }>;
+            };
+          }
+        ).gameState.fetch(gauntletGameStatePda);
+        runMode = fetched?.runMode && 'gauntlet' in fetched.runMode ? RunMode.Gauntlet : runMode;
+        week = fetched.week;
+        totalMoves = fetched.totalMoves;
+        session = fetched.session;
+        maxWeeks = fetched.maxWeeks;
+      }
+
+      if ((runMode !== RunMode.Gauntlet && maxWeeks !== 5) || week === undefined || totalMoves === undefined || !session) {
+        setPvpDetails({
+          name: 'Mole Echo',
+          sourceLabel: 'PvP Echo',
+          tool: null,
+          gear: [],
+          stats: { hp: 10, atk: 1, arm: 0, spd: 0, dig: 0, gold: 0 },
+          week: week ?? 1,
+        });
+        return;
+      }
+
+      const preview = await fetchGauntletWeekEchoPreview(gameplayProgram, {
+        week,
+        session,
+        player: wallet.publicKey,
+      });
+
+      if (!preview) {
+        setPvpDetails({
+          name: 'Mole Echo',
+          sourceLabel: 'PvP Echo',
+          tool: null,
+          gear: [],
+          stats: { hp: 10, atk: 1, arm: 0, spd: 0, dig: 0, gold: 0 },
+          week,
+        });
+        return;
+      }
+
+      const tool = preview.tool ? convertItemInstanceToTool(preview.tool) : null;
+      const gear = preview.gear
+        .filter((g): g is NonNullable<typeof g> => g !== null)
+        .map((g) => convertItemInstanceToGear(g))
+        .filter((g): g is Gear => g !== null);
+      const itemStats = calculateItemStats(tool, gear);
+
+      console.log('[BossPanel] Gauntlet echo preview decoded', {
+        week,
+        isBootstrap: preview.isBootstrap,
+        sourcePlayer: preview.sourcePlayer?.toBase58?.() ?? null,
+        toolDecoded: !!tool,
+        gearDecodedCount: gear.length,
+        goldAtBattleStart: preview.goldAtBattleStart,
+      });
+
+      let name = 'Mole Echo';
+      let sourceLabel = 'Mole Echo';
+      if (!preview.isBootstrap && preview.sourcePlayer) {
+        const sourceWallet = preview.sourcePlayer.toBase58();
+        const profileName = await fetchProfileNameByWallet(sourceWallet);
+        name = profileName ?? sourceWallet.slice(0, 8);
+        sourceLabel = 'Player Echo';
+      }
+
+      setPvpDetails({
+        name,
+        sourceLabel,
+        tool,
+        gear,
+        stats: {
+          hp: 10 + (itemStats.hp ?? 0),
+          atk: 1 + (itemStats.atk ?? 0),
+          arm: itemStats.arm ?? 0,
+          spd: itemStats.spd ?? 0,
+          dig: itemStats.dig ?? 0,
+          gold: preview.goldAtBattleStart,
+        },
+        week,
+      });
+    } catch {
+      setPvpDetails({
+        name: 'Mole Echo',
+        sourceLabel: 'PvP Echo',
+        tool: null,
+        gear: [],
+        stats: { hp: 10, atk: 1, arm: 0, spd: 0, dig: 0, gold: 0 },
+        week: gameState?.week ?? 1,
+      });
+    } finally {
+      setPvpLoading(false);
+    }
+  }, [displayedBoss, connection, fetchProfileNameByWallet, gameState, wallet.publicKey, isGauntletRun]);
+
+  const handleBossPress = useCallback(() => {
+    if (!displayedBoss && !shouldShowGauntletEcho) {
+      return;
+    }
+    setModalVisible(true);
+    if (!displayedBoss && shouldShowGauntletEcho) {
+      void loadPvpDetails();
+    }
+  }, [displayedBoss, shouldShowGauntletEcho, loadPvpDetails]);
+
+  const panelTitle = displayedBoss
+    ? displayedBoss.name
+    : shouldShowDuelOpponent
+      ? 'Your Opponent'
+    : shouldShowGauntletEcho || sessionCampaignLevel === 19
+      ? (pvpDetails?.name ?? 'Mole Echo')
+      : 'No Weekly Boss';
+  const panelSubtitle = displayedBoss || shouldShowGauntletEcho
+    ? 'Tap for details'
+    : shouldShowDuelOpponent
+      ? 'Build is hidden until duel resolves'
+      : 'Duel final is at week end';
+
+  console.log('[BossPanel] render_mode', {
+    hasBoss: !!displayedBoss,
+    originalTimeWeekBoss: time.weekBoss ?? null,
+    hasDuelWeekBoss: !!duelWeekBoss,
+    gameRunMode: gameState?.runMode ?? null,
+    gameMaxWeeks: gameState?.maxWeeks ?? null,
+    gameCampaignLevel: gameState?.campaignLevel ?? null,
+    sessionCampaignLevel: sessionCampaignLevel ?? null,
+    isGauntletRun,
+    isDuelFinalWeek,
+    panelTitle,
+  });
 
   return (
     <>
       <View style={styles.bossContainer}>
         <ImageBackground source={BOSS_PANEL_BG} style={styles.bossPanel} resizeMode="stretch">
-          <Pressable style={styles.bossContent} onPress={() => setModalVisible(true)}>
+          <Pressable style={styles.bossContent} onPress={handleBossPress}>
             <Image
-              source={getEntityImageSource(boss.id)}
+              source={displayedBoss ? getEntityImageSource(displayedBoss.id) : DEFAULT_MOLE_IMAGE_SOURCE}
               style={styles.bossIcon}
-              resizeMode="contain"
+              resizeMode={displayedBoss ? 'contain' : 'cover'}
             />
             <View>
-              <Text style={styles.bossName}>{boss.name}</Text>
-              <Text style={styles.bossDetailsText}>Tap for details</Text>
+              <Text style={styles.bossName}>{panelTitle}</Text>
+              <Text style={styles.bossDetailsText}>{panelSubtitle}</Text>
             </View>
           </Pressable>
         </ImageBackground>
       </View>
-      <BossTooltipModal visible={modalVisible} boss={boss} onClose={() => setModalVisible(false)} />
+      <BossTooltipModal
+        visible={modalVisible}
+        boss={displayedBoss ?? null}
+        pvpDetails={pvpDetails}
+        pvpLoading={pvpLoading}
+        onClose={() => setModalVisible(false)}
+      />
     </>
   );
 }
@@ -83,6 +331,8 @@ export function Sidebar(props: SidebarProps) {
           inventory={props.inventory}
           equippedTool={props.equippedTool}
           inventoryCapacity={props.inventoryCapacity}
+          maxGearSlots={props.maxGearSlots ?? 8}
+          isGauntletLayout={props.isGauntletLayout}
           activeItemsets={props.activeItemsets}
           onItemPress={props.isRuneKilnActive ? props.handleInventoryItemPress : undefined}
           onItemInspect={props.onItemInspect}

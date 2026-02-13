@@ -152,7 +152,7 @@ export const TOOL_DEFINITIONS: Record<ToolId, ToolDefinition> = {
     tags: ['BLAST'],
     effect: {
       timing: 'ON_HIT',
-      description: 'First hit each turn: deal 1/2/2 non-weapon damage',
+      description: 'First hit each turn: deal 1/2/3 non-weapon damage',
     },
   },
   T8: {

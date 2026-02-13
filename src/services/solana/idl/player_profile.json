@@ -118,7 +118,7 @@
     {
       "name": "purchase_runs",
       "docs": [
-        "Purchase additional runs by paying SOL to the treasury.",
+        "Purchase additional runs and split payment between treasury and gauntlet pool.",
         "Each purchase adds 20 runs and costs 0.001 SOL."
       ],
       "discriminator": [
@@ -169,6 +169,10 @@
             "The treasury account to receive payment.",
             "Validated to be the expected treasury pubkey."
           ],
+          "writable": true
+        },
+        {
+          "name": "gauntlet_pool",
           "writable": true
         },
         {
@@ -290,6 +294,66 @@
         {
           "name": "victory",
           "type": "bool"
+        }
+      ]
+    },
+    {
+      "name": "update_active_item_pool",
+      "docs": [
+        "Updates the active item pool bitmask.",
+        "The pool must be a subset of unlocked items and contain at least 40 entries."
+      ],
+      "discriminator": [
+        39,
+        206,
+        212,
+        174,
+        10,
+        184,
+        19,
+        143
+      ],
+      "accounts": [
+        {
+          "name": "player_profile",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  108,
+                  97,
+                  121,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "owner",
+          "signer": true,
+          "relations": [
+            "player_profile"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "active_item_pool",
+          "type": {
+            "array": [
+              "u8",
+              10
+            ]
+          }
         }
       ]
     },
