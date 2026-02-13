@@ -371,9 +371,10 @@ function combatReducer(state: CombatUIState, action: CombatAction): CombatUIStat
       // This ensures frontend animation matches on-chain combat exactly
       const baseCombat = createCombatState(action.input);
 
-      // PvE on-chain combat historically replays armor from BattleStart effects.
-      // Pit Draft starts from drafted stats directly, so preserve incoming ARM there.
-      if (action.input.enemy.definitionId !== 'pvpOpponent') {
+      // On-chain combat logs replay armor via BattleStart gear effects, so the
+      // frontend must start at ARM=0 to avoid double-counting.  PvP modes that
+      // pass pre-computed stats (e.g. Pit Draft) set preserveArmor to skip this.
+      if (!action.input.preserveArmor) {
         baseCombat.player = { ...baseCombat.player, arm: 0, bonusArm: 0 };
       }
       const convertedLog = convertBackendLogToFrontend(action.backendLog);

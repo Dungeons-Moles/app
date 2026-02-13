@@ -18,7 +18,7 @@ import { useSession } from '../../contexts/SessionContext';
 import { createGameplayStateProgram, createPlayerProfileProgram } from '../../services/solana/programs';
 import {
   derivePlayerProfilePda,
-  deriveSessionPda,
+  deriveGauntletSessionPda,
   GAMEPLAY_STATE_PROGRAM_ID,
 } from '../../services/solana/constants';
 import { RunMode } from '../../services/solana/types/gameplay_state';
@@ -62,20 +62,16 @@ export function BossPanel({ time }: { time: TimeState }) {
   const [pvpDetails, setPvpDetails] = useState<PvpDetails | null>(null);
   const [pvpLoading, setPvpLoading] = useState(false);
   const { gameState } = useGameplayStateContext();
-  const { session, mapSeed } = useSession();
+  const { mapSeed } = useSession();
   const { wallet } = useWallet();
   const { connection } = useSolanaConnection();
   const boss = getBoss(time.weekBoss);
-  const sessionCampaignLevel = session?.campaignLevel;
   const resolvedWeek = gameState?.week ?? time.week;
   const isGauntletRun =
     gameState?.runMode === RunMode.Gauntlet ||
-    gameState?.maxWeeks === 5 ||
-    gameState?.campaignLevel === 19 ||
-    sessionCampaignLevel === 19;
+    gameState?.maxWeeks === 5;
   const isDuelRun =
-    gameState?.runMode === RunMode.Duel ||
-    (!isGauntletRun && sessionCampaignLevel === 20);
+    gameState?.runMode === RunMode.Duel;
   const isDuelFinalWeek = isDuelRun && resolvedWeek === 3;
   const duelWeekBoss = useCallback(() => {
     if (!isDuelRun || (resolvedWeek !== 1 && resolvedWeek !== 2)) return null;
@@ -140,7 +136,7 @@ export function BossPanel({ time }: { time: TimeState }) {
         totalMoves === undefined ||
         !session
       ) {
-        const [gauntletSessionPda] = deriveSessionPda(wallet.publicKey, 19);
+        const [gauntletSessionPda] = deriveGauntletSessionPda(wallet.publicKey);
         const [gauntletGameStatePda] = PublicKey.findProgramAddressSync(
           [Buffer.from('game_state'), gauntletSessionPda.toBuffer()],
           GAMEPLAY_STATE_PROGRAM_ID
@@ -263,7 +259,7 @@ export function BossPanel({ time }: { time: TimeState }) {
     ? displayedBoss.name
     : shouldShowDuelOpponent
       ? 'Your Opponent'
-    : shouldShowGauntletEcho || sessionCampaignLevel === 19
+    : shouldShowGauntletEcho
       ? (pvpDetails?.name ?? 'Mole Echo')
       : 'No Weekly Boss';
   const panelSubtitle = displayedBoss || shouldShowGauntletEcho
@@ -279,7 +275,6 @@ export function BossPanel({ time }: { time: TimeState }) {
     gameRunMode: gameState?.runMode ?? null,
     gameMaxWeeks: gameState?.maxWeeks ?? null,
     gameCampaignLevel: gameState?.campaignLevel ?? null,
-    sessionCampaignLevel: sessionCampaignLevel ?? null,
     isGauntletRun,
     isDuelFinalWeek,
     panelTitle,

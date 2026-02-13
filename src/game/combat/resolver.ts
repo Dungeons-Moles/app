@@ -58,6 +58,8 @@ export interface CombatResolverInput {
   playerGold?: number;
   /** Enemy gold for PvP combat effects/display */
   enemyGold?: number;
+  /** When true, skip zeroing ARM before log replay (drafted stats already include it) */
+  preserveArmor?: boolean;
 }
 
 interface CountdownItem {

@@ -22,11 +22,11 @@ import type { OnChainItemInstance } from './pitDraft';
 export const DUEL_ENTRY_LAMPORTS = 100_000_000; // 0.1 SOL
 
 export const COMPANY_TREASURY = new PublicKey('5LvEA4tH5H5DtWCxa3FcauokxAycvafX9ruvcT2mEXt8');
-export const GAUNTLET_SINK = new PublicKey('1nc1nerator11111111111111111111111111111111');
 
 const DUEL_QUEUE_SEED = 'duel_queue';
 const DUEL_VAULT_SEED = 'duel_vault';
 const DUEL_OPEN_QUEUE_SEED = 'duel_open_queue';
+const GAUNTLET_POOL_VAULT_SEED = 'gauntlet_pool_vault';
 const DUEL_CU_LIMIT = 500_000;
 const DUEL_CU_PRICE_MICROLAMPORTS = 1_000;
 
@@ -46,6 +46,12 @@ export function deriveDuelVaultPda(programId: PublicKey = GAMEPLAY_STATE_PROGRAM
 
 export function deriveDuelOpenQueuePda(programId: PublicKey = GAMEPLAY_STATE_PROGRAM_ID): [PublicKey, number] {
   return PublicKey.findProgramAddressSync([Buffer.from(DUEL_OPEN_QUEUE_SEED)], programId);
+}
+
+export function deriveGauntletPoolVaultPda(
+  programId: PublicKey = GAMEPLAY_STATE_PROGRAM_ID
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync([Buffer.from(GAUNTLET_POOL_VAULT_SEED)], programId);
 }
 
 export interface DuelParticipantState {
@@ -166,6 +172,7 @@ export async function buildEnterDuelTransaction(
 ): Promise<Transaction> {
   const [duelOpenQueuePda] = deriveDuelOpenQueuePda();
   const [duelVaultPda] = deriveDuelVaultPda();
+  const [gauntletPoolVaultPda] = deriveGauntletPoolVaultPda();
   const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
   const [duelEntryPda] = PublicKey.findProgramAddressSync(
     [Buffer.from('duel_entry'), sessionPda.toBuffer()],
@@ -183,7 +190,7 @@ export async function buildEnterDuelTransaction(
           gameState: PublicKey;
           generatedMap: PublicKey;
           companyTreasury: PublicKey;
-          gauntletSink: PublicKey;
+          gauntletPoolVault: PublicKey;
           systemProgram: PublicKey;
         }) => { transaction: () => Promise<Transaction> };
       };
@@ -198,7 +205,7 @@ export async function buildEnterDuelTransaction(
       gameState: gameStatePda,
       generatedMap: generatedMapPda,
       companyTreasury: COMPANY_TREASURY,
-      gauntletSink: GAUNTLET_SINK,
+      gauntletPoolVault: gauntletPoolVaultPda,
       systemProgram: SystemProgram.programId,
     })
     .transaction();
@@ -302,6 +309,7 @@ export async function buildFinalizeDuelRunTransaction(
 ): Promise<Transaction> {
   const [duelOpenQueuePda] = deriveDuelOpenQueuePda();
   const [duelVaultPda] = deriveDuelVaultPda();
+  const [gauntletPoolVaultPda] = deriveGauntletPoolVaultPda();
   const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
   const [inventoryPda] = deriveInventoryPda(sessionPda);
   const [duelEntryPda] = PublicKey.findProgramAddressSync(
@@ -322,7 +330,7 @@ export async function buildFinalizeDuelRunTransaction(
           generatedMap: PublicKey;
           creatorWallet?: PublicKey | null;
           companyTreasury: PublicKey;
-          gauntletSink: PublicKey;
+          gauntletPoolVault: PublicKey;
         }) => { transaction: () => Promise<Transaction> };
       };
     }
@@ -338,7 +346,7 @@ export async function buildFinalizeDuelRunTransaction(
       generatedMap: generatedMapPda,
       creatorWallet: creatorWallet ?? null,
       companyTreasury: COMPANY_TREASURY,
-      gauntletSink: GAUNTLET_SINK,
+      gauntletPoolVault: gauntletPoolVaultPda,
     })
     .transaction();
 

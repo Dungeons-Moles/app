@@ -119,7 +119,7 @@
       "name": "purchase_runs",
       "docs": [
         "Purchase additional runs and split payment between treasury and gauntlet pool.",
-        "Each purchase adds 20 runs and costs 0.001 SOL."
+        "Each purchase adds 20 runs and costs 0.005 SOL."
       ],
       "discriminator": [
         60,
@@ -173,6 +173,9 @@
         },
         {
           "name": "gauntlet_pool",
+          "docs": [
+            "gauntlet pool vault PDA and owned by gameplay-state program."
+          ],
           "writable": true
         },
         {
@@ -552,16 +555,21 @@
     },
     {
       "code": 6011,
+      "name": "InvalidGauntletPool",
+      "msg": "Invalid gauntlet pool account"
+    },
+    {
+      "code": 6012,
       "name": "InvalidSession",
       "msg": "Invalid session account"
     },
     {
-      "code": 6012,
+      "code": 6013,
       "name": "InvalidSessionOwner",
       "msg": "Session account has invalid owner"
     },
     {
-      "code": 6013,
+      "code": 6014,
       "name": "InvalidBurnerWallet",
       "msg": "Burner wallet does not match session"
     }

@@ -87,6 +87,8 @@ export interface CombatParams {
   };
   /** True when this combat is a post-run duel replay */
   duelReplay?: boolean;
+  /** When true, skip zeroing ARM before log replay (drafted stats already include it) */
+  preserveArmor?: boolean;
 }
 
 export type RootStackParamList = {

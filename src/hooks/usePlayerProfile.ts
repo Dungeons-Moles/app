@@ -11,7 +11,7 @@ import {
 import { derivePlayerProfilePda } from '@/services/solana/types';
 import { getCachedProfile, setCachedProfile, clearCachedProfile } from '@/services/solana/cache';
 import { getUserErrorMessage } from '@/services/solana/errors';
-import { TREASURY_PUBKEY } from '@/services/solana/constants';
+import { GAUNTLET_POOL_PUBKEY, TREASURY_PUBKEY } from '@/services/solana/constants';
 import { SOLANA_CONFIG } from '@/services/solana/config';
 import { MAX_CAMPAIGN_LEVEL } from './useMapGenerator';
 import type { CachedProfileData, OnChainPlayerProfile, TransactionResult } from '@/types/solana';
@@ -444,6 +444,7 @@ export function usePlayerProfile() {
           playerProfile: profilePda,
           owner: wallet.publicKey,
           treasury: TREASURY_PUBKEY,
+          gauntletPool: GAUNTLET_POOL_PUBKEY,
           systemProgram: SystemProgram.programId,
         })
         .transaction();

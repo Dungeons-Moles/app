@@ -319,10 +319,13 @@ export function useBurnerWallet(): UseBurnerWalletReturn {
       }
 
       try {
-        // Generate burner in-memory only. Persist after the combined tx succeeds.
+        // Generate burner and persist immediately as "pending" so the keypair
+        // survives an app crash between tx confirmation and markAsActive.
+        // If the tx never lands, checkPendingSession cleans up the orphan.
         const newBurner = Keypair.generate();
+        await storeBurnerWallet(walletAddress, newBurner, Date.now(), true);
         console.log(
-          '[useBurnerWallet] Burner created (not funded yet):',
+          '[useBurnerWallet] Burner created and persisted (pending):',
           newBurner.publicKey.toBase58()
         );
 

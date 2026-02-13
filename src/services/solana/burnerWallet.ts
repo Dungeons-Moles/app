@@ -48,6 +48,8 @@ export interface StoredBurner {
   mainWalletAddress: string;
   /** Creation timestamp (Unix ms) */
   createdAt: number;
+  /** True when persisted before the funding tx confirms (pre-commit safety net) */
+  pending?: boolean;
 }
 
 /**
@@ -81,16 +83,22 @@ export interface SessionRecoveryState {
 
 /**
  * Persists a burner keypair to secure storage.
+ *
+ * @param pending - When true the keypair is stored before the funding tx
+ *   confirms, acting as a crash-recovery safety net. `markAsActive` later
+ *   overwrites with `pending: false`.
  */
 export async function storeBurnerWallet(
   mainWalletAddress: string,
   keypair: Keypair,
-  createdAt: number = Date.now()
+  createdAt: number = Date.now(),
+  pending: boolean = false
 ): Promise<void> {
   const stored: StoredBurner = {
     secretKey: bs58.encode(keypair.secretKey),
     mainWalletAddress,
     createdAt,
+    ...(pending ? { pending: true } : {}),
   };
   await SecureStorage.setItemAsync(BURNER_STORAGE_KEY, JSON.stringify(stored));
 }
@@ -112,6 +120,26 @@ export async function createBurnerWallet(mainWalletAddress: string): Promise<Key
 }
 
 /**
+ * Reads the raw stored burner data from SecureStore.
+ * Returns null if nothing is stored or if the main wallet doesn't match.
+ */
+export async function loadStoredBurner(
+  mainWalletAddress: string
+): Promise<StoredBurner | null> {
+  try {
+    const data = await SecureStorage.getItemAsync(BURNER_STORAGE_KEY);
+    if (!data) return null;
+
+    const stored: StoredBurner = JSON.parse(data);
+    if (stored.mainWalletAddress !== mainWalletAddress) return null;
+
+    return stored;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Loads an existing burner wallet from secure storage.
  * Returns null if no stored burner or if mainWalletAddress doesn't match.
  *
@@ -121,27 +149,17 @@ export async function createBurnerWallet(mainWalletAddress: string): Promise<Key
 export async function loadBurnerWallet(mainWalletAddress: string): Promise<Keypair | null> {
   console.log('[burnerWallet] loadBurnerWallet called with address:', mainWalletAddress);
   try {
-    const data = await SecureStorage.getItemAsync(BURNER_STORAGE_KEY);
-    if (!data) {
-      console.log('[burnerWallet] No stored burner found in SecureStorage');
+    const stored = await loadStoredBurner(mainWalletAddress);
+    if (!stored) {
+      console.log('[burnerWallet] No stored burner found for this wallet');
       return null;
     }
 
-    const stored: StoredBurner = JSON.parse(data);
     console.log('[burnerWallet] Found stored burner:', {
-      storedMainWallet: stored.mainWalletAddress,
-      requestedMainWallet: mainWalletAddress,
-      match: stored.mainWalletAddress === mainWalletAddress,
+      pending: !!stored.pending,
       createdAt: new Date(stored.createdAt).toISOString(),
     });
 
-    // Validate main wallet address matches
-    if (stored.mainWalletAddress !== mainWalletAddress) {
-      console.warn('[burnerWallet] Main wallet address mismatch - returning null');
-      return null;
-    }
-
-    // Decode and reconstruct keypair
     const secretKey = bs58.decode(stored.secretKey);
     const keypair = Keypair.fromSecretKey(secretKey);
     console.log('[burnerWallet] Successfully loaded burner keypair:', keypair.publicKey.toBase58());
@@ -334,9 +352,8 @@ export async function checkForPendingSession(
   mainWalletAddress: string,
   connection: Connection
 ): Promise<SessionRecoveryState> {
-  const burner = await loadBurnerWallet(mainWalletAddress);
-
-  if (!burner) {
+  const stored = await loadStoredBurner(mainWalletAddress);
+  if (!stored) {
     return {
       hasPendingSession: false,
       burnerBalance: 0,
@@ -344,9 +361,21 @@ export async function checkForPendingSession(
     };
   }
 
+  const secretKey = bs58.decode(stored.secretKey);
+  const burner = Keypair.fromSecretKey(secretKey);
   const balance = await connection.getBalance(burner.publicKey);
 
   if (balance > 0) {
+    // Burner has funds on-chain. If it was still marked pending (crash between
+    // tx confirm and markAsActive), promote it to non-pending so future
+    // launches skip this branch.
+    if (stored.pending) {
+      console.log(
+        '[burnerWallet] Recovering pending burner with on-chain balance:',
+        burner.publicKey.toBase58()
+      );
+      await storeBurnerWallet(mainWalletAddress, burner, stored.createdAt);
+    }
     return {
       hasPendingSession: true,
       burnerBalance: balance,
@@ -354,10 +383,26 @@ export async function checkForPendingSession(
     };
   }
 
-  // Burner exists but empty - Keep it! It might be needed for an active session.
-  // We can top it up later if needed.
+  // Burner has zero balance.
+  if (stored.pending) {
+    // Still marked pending AND zero balance → the funding tx never landed.
+    // Clean up the orphaned entry.
+    console.log(
+      '[burnerWallet] Cleaning up orphaned pending burner:',
+      burner.publicKey.toBase58()
+    );
+    await clearBurnerWallet();
+    return {
+      hasPendingSession: false,
+      burnerBalance: 0,
+      burnerPublicKey: null,
+    };
+  }
+
+  // Non-pending, zero balance → active session whose burner was drained.
+  // Keep it so the session can be resumed or topped up.
   return {
-    hasPendingSession: true, // Treat as pending so it loads
+    hasPendingSession: true,
     burnerBalance: 0,
     burnerPublicKey: burner.publicKey,
   };

@@ -5,7 +5,7 @@ import { useSession } from '@/contexts/SessionContext';
 import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
 import { createGameplayStateProgram, createMapGeneratorProgram, createPlayerProfileProgram } from '@/services/solana/programs';
 import { derivePlayerProfilePda } from '@/services/solana/types';
-import { GAMEPLAY_STATE_PROGRAM_ID, deriveGeneratedMapPda, deriveSessionPda } from '@/services/solana/constants';
+import { GAMEPLAY_STATE_PROGRAM_ID, deriveDuelSessionPda, deriveGeneratedMapPda } from '@/services/solana/constants';
 import { fetchGeneratedMap } from '@/services/solana/mapGeneratorClient';
 import { SOLANA_CONFIG } from '@/services/solana/config';
 import { RunMode } from '@/services/solana/types/gameplay_state';
@@ -32,8 +32,6 @@ export interface DuelHistoryItem {
   resolution: DuelResolvedEvent['resolution'];
   turnsTaken: number | null;
 }
-
-const DUEL_ONCHAIN_LEVEL = 20;
 
 export function useDuels() {
   const { wallet, signAndSendTransaction, checkBalance } = useWallet();
@@ -124,7 +122,7 @@ export function useDuels() {
       }
 
       let duelSeed = mapSeed;
-      const [duelSessionPda] = deriveSessionPda(wallet.publicKey, DUEL_ONCHAIN_LEVEL);
+      const [duelSessionPda] = deriveDuelSessionPda(wallet.publicKey);
       const existingDuelSessionInfo = await connection.getAccountInfo(
         duelSessionPda,
         SOLANA_CONFIG.commitment
@@ -160,7 +158,7 @@ export function useDuels() {
       console.log('[useDuels] enterCurrentSessionDuel:resolved_seed', { duelSeed: duelSeed.toString() });
 
       const program = createGameplayStateProgram(connection);
-      const [sessionPda] = deriveSessionPda(wallet.publicKey, DUEL_ONCHAIN_LEVEL);
+      const [sessionPda] = deriveDuelSessionPda(wallet.publicKey);
       const [gameStatePda] = PublicKey.findProgramAddressSync(
         [Buffer.from('game_state'), sessionPda.toBuffer()],
         GAMEPLAY_STATE_PROGRAM_ID

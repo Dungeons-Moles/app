@@ -4,7 +4,7 @@ import { useWallet } from '@/contexts/WalletContext';
 import { useSession } from '@/contexts/SessionContext';
 import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
 import { createGameplayStateProgram } from '@/services/solana/programs';
-import { deriveSessionPda, GAMEPLAY_STATE_PROGRAM_ID } from '@/services/solana/constants';
+import { deriveGauntletSessionPda, GAMEPLAY_STATE_PROGRAM_ID } from '@/services/solana/constants';
 import { SOLANA_CONFIG } from '@/services/solana/config';
 import {
   GAUNTLET_ENTRY_LAMPORTS,
@@ -15,7 +15,7 @@ import {
 } from '@/services/solana/gauntlet';
 
 export type GauntletPhase = 'confirm' | 'queued' | 'error';
-const GAUNTLET_ONCHAIN_LEVEL = 19;
+const GAUNTLET_ONCHAIN_LEVEL = 20;
 
 function isGauntletRunMode(runMode: unknown): boolean {
   if (!runMode || typeof runMode !== 'object') return false;
@@ -150,7 +150,7 @@ export function useGauntlet() {
 
       let seed = mapSeed;
 
-      const [gauntletSessionPda] = deriveSessionPda(wallet.publicKey, GAUNTLET_ONCHAIN_LEVEL);
+      const [gauntletSessionPda] = deriveGauntletSessionPda(wallet.publicKey);
       console.log('[useGauntlet] enterGauntlet:checking_existing_session', {
         gauntletSessionPda: gauntletSessionPda.toBase58(),
       });
@@ -185,8 +185,7 @@ export function useGauntlet() {
         seed = startResult.mapSeed ?? seed;
       }
 
-      const onChainLevel = GAUNTLET_ONCHAIN_LEVEL;
-      const [sessionPda] = deriveSessionPda(wallet.publicKey, onChainLevel);
+      const [sessionPda] = deriveGauntletSessionPda(wallet.publicKey);
       const [gameStatePda] = PublicKey.findProgramAddressSync(
         [Buffer.from('game_state'), sessionPda.toBuffer()],
         GAMEPLAY_STATE_PROGRAM_ID
