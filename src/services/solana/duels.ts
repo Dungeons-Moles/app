@@ -221,11 +221,13 @@ export async function buildInitializeDuelsTransaction(
   admin: PublicKey
 ): Promise<Transaction> {
   const [duelVaultPda] = deriveDuelVaultPda();
+  const [duelOpenQueuePda] = deriveDuelOpenQueuePda();
   const tx = await (
     program.methods as unknown as {
       initializeDuels: () => {
         accounts: (accounts: {
           duelVault: PublicKey;
+          duelOpenQueue: PublicKey;
           admin: PublicKey;
           systemProgram: PublicKey;
         }) => { transaction: () => Promise<Transaction> };
@@ -235,6 +237,7 @@ export async function buildInitializeDuelsTransaction(
     .initializeDuels()
     .accounts({
       duelVault: duelVaultPda,
+      duelOpenQueue: duelOpenQueuePda,
       admin,
       systemProgram: SystemProgram.programId,
     })

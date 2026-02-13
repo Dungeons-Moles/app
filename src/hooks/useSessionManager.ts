@@ -24,6 +24,7 @@ import {
   deriveInventoryPda,
   deriveGeneratedMapPda,
   deriveMapConfigPda,
+  deriveSessionManagerAuthorityPda,
 } from '@/services/solana/constants';
 import { SOLANA_CONFIG } from '@/services/solana/config';
 import { getUserErrorMessage } from '@/services/solana/errors';
@@ -258,6 +259,7 @@ const readOnlyProgram = useMemo(() => createSessionManagerProgram(connection), [
       const [inventoryPda] = deriveInventoryPda(sessionPda);
       const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
       const [mapConfigPda] = deriveMapConfigPda();
+      const [sessionManagerAuthorityPda] = deriveSessionManagerAuthorityPda();
       const forcedSeedBn = new BN(0);
 
       const transaction = await (
@@ -269,6 +271,7 @@ const readOnlyProgram = useMemo(() => createSessionManagerProgram(connection), [
               playerProfile: PublicKey;
               player: PublicKey;
               burnerWallet: PublicKey;
+              sessionManagerAuthority: PublicKey;
               mapConfig: PublicKey;
               generatedMap: PublicKey;
               gameState: PublicKey;
@@ -291,6 +294,7 @@ const readOnlyProgram = useMemo(() => createSessionManagerProgram(connection), [
           playerProfile: profilePda,
           player: wallet.publicKey,
           burnerWallet: burnerPublicKey,
+          sessionManagerAuthority: sessionManagerAuthorityPda,
           mapConfig: mapConfigPda,
           generatedMap: generatedMapPda,
           gameState: gameStatePda,
@@ -330,6 +334,7 @@ const readOnlyProgram = useMemo(() => createSessionManagerProgram(connection), [
       const [inventoryPda] = deriveInventoryPda(sessionPda);
       const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
       const [mapConfigPda] = deriveMapConfigPda();
+      const [sessionManagerAuthorityPda] = deriveSessionManagerAuthorityPda();
 
       const transaction = await (
         writeProgram.methods as unknown as {
@@ -340,6 +345,7 @@ const readOnlyProgram = useMemo(() => createSessionManagerProgram(connection), [
               playerProfile: PublicKey;
               player: PublicKey;
               burnerWallet: PublicKey;
+              sessionManagerAuthority: PublicKey;
               mapConfig: PublicKey;
               generatedMap: PublicKey;
               gameState: PublicKey;
@@ -362,6 +368,7 @@ const readOnlyProgram = useMemo(() => createSessionManagerProgram(connection), [
           playerProfile: profilePda,
           player: wallet.publicKey,
           burnerWallet: burnerPublicKey,
+          sessionManagerAuthority: sessionManagerAuthorityPda,
           mapConfig: mapConfigPda,
           generatedMap: generatedMapPda,
           gameState: gameStatePda,
