@@ -21,7 +21,6 @@ import {
 import { oilFlagToModification } from '@/services/solana/types/player_inventory';
 import { useWallet } from '@/contexts/WalletContext';
 import { deriveMapPoisPda } from '@/services/solana/constants';
-import { deriveSessionPda } from '@/services/solana/constants';
 import { getGameStatePda, fetchGameState } from '@/services/solana/gameplayState';
 import { POI_TYPES } from '@/services/solana/types/poi_system';
 import type {
@@ -429,7 +428,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
     hasActiveSession,
     gameplayState: onChainState,
     getBurnerKeypair,
-    currentLevel,
+    sessionPda,
     refreshGameplayState: refreshSessionState,
   } = useSession();
   const {
@@ -478,13 +477,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
   // Get player position
   const playerPosition: Position | null = gameState?.player?.position ?? null;
 
-  // Derive key PDAs
-  const sessionPda = useMemo(() => {
-    if (!wallet.publicKey || currentLevel === null) return null;
-    const [pda] = deriveSessionPda(wallet.publicKey, currentLevel);
-    return pda;
-  }, [wallet.publicKey, currentLevel]);
-
+  // Derive dependent PDAs from the active session PDA (which correctly handles campaign/duel/gauntlet)
   const mapPoisPda = useMemo(() => {
     if (!sessionPda) return null;
     const [pda] = deriveMapPoisPda(sessionPda);

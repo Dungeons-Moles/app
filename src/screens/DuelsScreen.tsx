@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -16,7 +16,7 @@ import { useWallet } from '@/contexts/WalletContext';
 import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
 import { Typography } from '@/theme/typography';
 import { DUEL_ENTRY_LAMPORTS } from '@/services/solana/duels';
-import { checkSessionExists } from '@/services/solana/sessionList';
+import { deriveDuelSessionPda } from '@/services/solana/constants';
 
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.png');
 const buttonV1Source = require('../../assets/ui/buttons/button-v1.png');
@@ -33,8 +33,16 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
   const { wallet } = useWallet();
   const { connection } = useSolanaConnection();
   const [hasExistingDuelSessionOnChain, setHasExistingDuelSessionOnChain] = useState(false);
+
+  // Derive the duel PDA base58 string for matching against session list entries
+  const duelPdaBase58 = useMemo(() => {
+    if (!wallet.publicKey) return null;
+    const [pda] = deriveDuelSessionPda(wallet.publicKey);
+    return pda.toBase58();
+  }, [wallet.publicKey]);
+
   const hasExistingDuelSessionInList = activeSessions.some(
-    (session) => session.level === 19
+    (session) => session.sessionPda === duelPdaBase58
   );
   const hasExistingDuelSession = hasExistingDuelSessionOnChain || hasExistingDuelSessionInList;
 
@@ -54,8 +62,9 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
         return;
       }
       try {
-        const exists = await checkSessionExists(connection, wallet.publicKey, 19);
-        if (!cancelled) setHasExistingDuelSessionOnChain(exists);
+        const [duelPda] = deriveDuelSessionPda(wallet.publicKey);
+        const account = await connection.getAccountInfo(duelPda);
+        if (!cancelled) setHasExistingDuelSessionOnChain(account !== null);
       } catch {
         if (!cancelled) setHasExistingDuelSessionOnChain(false);
       }

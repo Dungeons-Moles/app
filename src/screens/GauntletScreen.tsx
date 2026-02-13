@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -15,7 +15,7 @@ import { useGauntlet } from '@/hooks/useGauntlet';
 import { useSession } from '@/contexts/SessionContext';
 import { useWallet } from '@/contexts/WalletContext';
 import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
-import { checkSessionExists } from '@/services/solana/sessionList';
+import { deriveGauntletSessionPda } from '@/services/solana/constants';
 import { GAUNTLET_ENTRY_LAMPORTS } from '@/services/solana/gauntlet';
 
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.png');
@@ -33,8 +33,16 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
   const { connection } = useSolanaConnection();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const [hasExistingGauntletSessionOnChain, setHasExistingGauntletSessionOnChain] = useState(false);
+
+  // Derive the gauntlet PDA base58 string for matching against session list entries
+  const gauntletPdaBase58 = useMemo(() => {
+    if (!wallet.publicKey) return null;
+    const [pda] = deriveGauntletSessionPda(wallet.publicKey);
+    return pda.toBase58();
+  }, [wallet.publicKey]);
+
   const hasExistingGauntletSessionInList = activeSessions.some(
-    (session) => session.level === 18
+    (session) => session.sessionPda === gauntletPdaBase58
   );
   const hasExistingGauntletSession =
     hasExistingGauntletSessionOnChain || hasExistingGauntletSessionInList;
@@ -55,8 +63,9 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
         return;
       }
       try {
-        const exists = await checkSessionExists(connection, wallet.publicKey, 18);
-        if (!cancelled) setHasExistingGauntletSessionOnChain(exists);
+        const [gauntletPda] = deriveGauntletSessionPda(wallet.publicKey);
+        const account = await connection.getAccountInfo(gauntletPda);
+        if (!cancelled) setHasExistingGauntletSessionOnChain(account !== null);
       } catch {
         if (!cancelled) setHasExistingGauntletSessionOnChain(false);
       }

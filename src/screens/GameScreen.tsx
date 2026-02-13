@@ -13,7 +13,6 @@ import { useProfile } from '../contexts/ProfileContext';
 import { useGameplayStateContext } from '../contexts/GameplayStateContext';
 import { useWallet } from '../contexts/WalletContext';
 import { useSolanaConnection } from '../contexts/SolanaConnectionContext';
-import { deriveSessionPda } from '../services/solana/constants';
 import { RunMode } from '../services/solana/types/gameplay_state';
 import { convertItemInstanceToGear, convertItemInstanceToTool } from '../services/solana/pitDraft';
 import { fetchFullSessionState } from '../services/solana/sessionRestore';
@@ -340,6 +339,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
     gameplayState: onChainState,
     gameplaySyncStatus,
     sessionKey,
+    sessionPda,
     burnerBalance,
     isBurnerLowBalance,
     topUpBurner,
@@ -353,13 +353,6 @@ export function GameScreen({ navigation }: GameScreenProps) {
   const nightMovement = useNightMovement();
   const poiInteraction = usePoiInteraction();
   const isFocused = useIsFocused();
-
-  // Derive session PDA for refreshing map entities after moves
-  const sessionPda = useMemo(() => {
-    if (!wallet.publicKey || currentLevel === null) return null;
-    const [pda] = deriveSessionPda(wallet.publicKey, currentLevel);
-    return pda;
-  }, [wallet.publicKey, currentLevel]);
 
   // Persist fog of war state to AsyncStorage for session restore
   useFogPersistence({

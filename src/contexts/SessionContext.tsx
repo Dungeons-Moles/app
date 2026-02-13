@@ -18,7 +18,12 @@ import { useMapGenerator } from '@/hooks/useMapGenerator';
 import { useBurnerWallet } from '@/hooks/useBurnerWallet';
 import { useGameplayState } from '@/hooks/useGameplayState';
 import { getGameStatePda } from '@/services/solana/gameplayState';
-import { deriveGeneratedMapPda, deriveSessionPda } from '@/services/solana/constants';
+import {
+  deriveDuelSessionPda,
+  deriveGauntletSessionPda,
+  deriveGeneratedMapPda,
+  deriveSessionPda,
+} from '@/services/solana/constants';
 import { SOLANA_CONFIG } from '@/services/solana/config';
 import {
   createMapGeneratorProgram,
@@ -91,6 +96,8 @@ export interface SessionState {
   currentLevel: number | null;
   /** Session PDA as base58 string (for persistence keys) */
   sessionKey: string | null;
+  /** Active session PDA (campaign, duel, or gauntlet) */
+  sessionPda: PublicKey | null;
 }
 
 interface SessionContextType extends SessionState {
@@ -1084,6 +1091,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             break;
           }
         }
+        if (onChainLevel === null) {
+          const [duelSessionPda] = deriveDuelSessionPda(wallet.publicKey);
+          const [gauntletSessionPda] = deriveGauntletSessionPda(wallet.publicKey);
+          if (duelSessionPda.equals(sessionPubkey) || gauntletSessionPda.equals(sessionPubkey)) {
+            onChainLevel = 20;
+          }
+        }
+        sessionManager.setActiveSessionPda(sessionPubkey);
         if (onChainLevel !== null) {
           sessionManager.setActiveOnChainLevel(onChainLevel);
         }
@@ -1137,14 +1152,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   // Derive current level from session
   const currentLevel = sessionManager.session?.campaignLevel ?? null;
 
+  // Use the active session PDA from session manager (handles campaign/duel/gauntlet correctly)
+  const activeSessionPda = sessionManager.activeSessionPda ?? null;
+
   // Compute session key (base58 string) for persistence
   const sessionKey = useMemo(() => {
-    if (!wallet.publicKey || !sessionManager.session?.campaignLevel) {
-      return null;
-    }
-    const [sessionPda] = deriveSessionPda(wallet.publicKey, sessionManager.session.campaignLevel);
-    return sessionPda.toBase58();
-  }, [wallet.publicKey, sessionManager.session?.campaignLevel]);
+    return activeSessionPda?.toBase58() ?? null;
+  }, [activeSessionPda]);
 
   /**
    * Queue session cleanup for deferred processing.
@@ -1430,6 +1444,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     isSessionListLoading,
     currentLevel,
     sessionKey,
+    sessionPda: activeSessionPda,
     startGame,
     startDuelGame,
     startGauntletGame,
