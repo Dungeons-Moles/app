@@ -62,16 +62,20 @@ export function BossPanel({ time }: { time: TimeState }) {
   const [pvpDetails, setPvpDetails] = useState<PvpDetails | null>(null);
   const [pvpLoading, setPvpLoading] = useState(false);
   const { gameState } = useGameplayStateContext();
-  const { mapSeed } = useSession();
+  const { mapSeed, gameplayState: sessionGameState } = useSession();
   const { wallet } = useWallet();
   const { connection } = useSolanaConnection();
   const boss = getBoss(time.weekBoss);
-  const resolvedWeek = gameState?.week ?? time.week;
+  // Use either context's gameState — SessionContext's instance is populated
+  // earlier (during session start) while GameplayStateContext's may still be loading.
+  const resolvedRunMode = gameState?.runMode ?? sessionGameState?.runMode;
+  const resolvedWeek = gameState?.week ?? sessionGameState?.week ?? time.week;
   const isGauntletRun =
-    gameState?.runMode === RunMode.Gauntlet ||
-    gameState?.maxWeeks === 5;
+    resolvedRunMode === RunMode.Gauntlet ||
+    gameState?.maxWeeks === 5 ||
+    sessionGameState?.maxWeeks === 5;
   const isDuelRun =
-    gameState?.runMode === RunMode.Duel;
+    resolvedRunMode === RunMode.Duel;
   const isDuelFinalWeek = isDuelRun && resolvedWeek === 3;
   const duelWeekBoss = useCallback(() => {
     if (!isDuelRun || (resolvedWeek !== 1 && resolvedWeek !== 2)) return null;

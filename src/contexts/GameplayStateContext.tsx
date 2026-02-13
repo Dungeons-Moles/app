@@ -12,6 +12,8 @@ import React, { createContext, useContext, useState, useCallback, useMemo, useEf
 import { Keypair, PublicKey } from '@solana/web3.js';
 import { useGameplayState, SyncStatus } from '@/hooks/useGameplayState';
 import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
+import { useSession } from '@/contexts/SessionContext';
+import { getGameStatePda } from '@/services/solana/gameplayState';
 import {
   GameState,
   Phase,
@@ -149,6 +151,20 @@ const GameplayStateContext = createContext<GameplayStateContextType | undefined>
 export function GameplayStateProvider({ children }: { children: ReactNode }) {
   const gameplay = useGameplayState();
   const { connection } = useSolanaConnection();
+  const { sessionPda } = useSession();
+
+  // Sync gameStatePda from SessionContext so this context's gameState stays populated.
+  // SessionContext sets the PDA on its own useGameplayState instance; this effect
+  // mirrors that onto GameplayStateProvider's instance so consumers (e.g. BossPanel)
+  // reading from useGameplayStateContext() see the correct on-chain state.
+  useEffect(() => {
+    if (sessionPda) {
+      const [derived] = getGameStatePda(sessionPda);
+      gameplay.setGameStatePda(derived);
+    } else {
+      gameplay.setGameStatePda(null);
+    }
+  }, [sessionPda]);
 
   // Map entities state
   const [enemies, setEnemies] = useState<EnemyData[]>([]);

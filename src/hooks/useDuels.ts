@@ -12,6 +12,7 @@ import { RunMode } from '@/services/solana/types/gameplay_state';
 import {
   buildEnterDuelTransaction,
   fetchDuelQueue,
+  fetchDuelEntry,
   parseDuelEvents,
   getDuelsErrorMessage,
   DUEL_ENTRY_LAMPORTS,
@@ -159,6 +160,16 @@ export function useDuels() {
 
       const program = createGameplayStateProgram(connection);
       const [sessionPda] = deriveDuelSessionPda(wallet.publicKey);
+
+      // If already queued in duels for this seed, skip the enterDuel tx
+      const existingEntry = await fetchDuelEntry(program, sessionPda);
+      if (existingEntry) {
+        console.log('[useDuels] Already queued, skipping enterDuel tx');
+        setQueuedSeed(existingEntry.seed);
+        setPhase('queued');
+        return true;
+      }
+
       const [gameStatePda] = PublicKey.findProgramAddressSync(
         [Buffer.from('game_state'), sessionPda.toBuffer()],
         GAMEPLAY_STATE_PROGRAM_ID
