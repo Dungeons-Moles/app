@@ -1,135 +1,162 @@
-# Dungeons & Moles
+# Dungeons & Moles App
 
-A mobile-first Solana auto-battler dungeon crawler inspired by "He is Coming". Built with React Native, Expo, and the Solana Mobile Stack.
+React Native + Expo frontend for Dungeons & Moles.
 
-## Current Status
+This client connects to the on-chain programs in `../solana-programs` and supports PvE runs plus PvP modes (Pit Draft, Duels, Gauntlet), including combat replay visualization and mode-specific history/ranking screens.
 
-This is the initial scaffold with two functional screens:
+## Features
 
-### Implemented
-
-- **Account Screen**: Wallet connection via Mobile Wallet Adapter (MWA), local profile creation
-- **Hub Screen**: Main menu with game mode buttons (stubbed) and rules display
-- **Wallet Integration**: Solana Mobile Wallet Adapter for devnet
-- **Profile Persistence**: Local player profiles stored securely via expo-secure-store
-- **Game Canvas**: Placeholder Skia canvas ready for future game rendering
-
-### Not Yet Implemented
-
-- Dungeon map generation
-- Combat system
-- Inventory/items/enemies/bosses
-- Onchain transactions
-- Backend services
+- Wallet connection and burner-wallet session flow
+- On-chain session lifecycle (start, resume, switch, abandon, cleanup)
+- PvE campaign gameplay with map exploration, POIs, enemies, and boss fights
+- Pit Draft PvP mode (queue, match, instant combat replay)
+- Duels PvP mode (async queue + seed-matched run flow)
+- Gauntlet PvP mode (5-week async mode with echo fights, history, ranking)
+- Combat replay UI with deterministic log playback
+- Mobile and web support through Expo
 
 ## Tech Stack
 
-- **React Native + Expo** (SDK 54)
-- **Solana Mobile Stack** (Mobile Wallet Adapter)
-- **React Native Skia** for game rendering
-- **React Navigation** for screen navigation
-- **TypeScript** throughout
+- React Native 0.81 + Expo SDK 54
+- TypeScript
+- @coral-xyz/anchor + @solana/web3.js
+- React Navigation
+- React Native Skia (combat/game rendering)
 
-## Getting Started
-
-### Prerequisites
+## Prerequisites
 
 - Node.js 18+
-- Android Studio with an emulator or physical Android device
-- A Solana wallet app installed on your device (e.g., Phantom, Solflare)
+- npm
+- Running Solana programs from `../solana-programs`
 
-### Installation
+Optional for mobile wallet flow:
+
+- Android/iOS device or emulator
+- Solana wallet app compatible with Mobile Wallet Adapter
+
+## Environment Variables
+
+Set these in your shell (or `.env`) before running the app:
 
 ```bash
-# Install dependencies
+EXPO_PUBLIC_SOLANA_CLUSTER=devnet
+EXPO_PUBLIC_SOLANA_RPC_URL=http://127.0.0.1:8899
+
+EXPO_PUBLIC_PLAYER_PROFILE_PROGRAM_ID=<pubkey>
+EXPO_PUBLIC_SESSION_MANAGER_PROGRAM_ID=<pubkey>
+EXPO_PUBLIC_MAP_GENERATOR_PROGRAM_ID=<pubkey>
+EXPO_PUBLIC_GAMEPLAY_STATE_PROGRAM_ID=<pubkey>
+EXPO_PUBLIC_PLAYER_INVENTORY_PROGRAM_ID=<pubkey>
+EXPO_PUBLIC_POI_SYSTEM_PROGRAM_ID=<pubkey>
+EXPO_PUBLIC_FIELD_ENEMIES_PROGRAM_ID=<pubkey>
+
+EXPO_PUBLIC_TREASURY_PUBKEY=<pubkey>
+```
+
+Notes:
+
+- Program IDs must match your deployed programs from `../solana-programs`.
+- For local development, point `EXPO_PUBLIC_SOLANA_RPC_URL` to your local validator.
+
+## Backend Initialization Dependency
+
+Before using PvP/PvE flows in the app, initialize accounts in `../solana-programs`:
+
+```bash
+cd ../solana-programs
+anchor run init
+```
+
+If this is not done, some instructions fail with `AccountNotInitialized` errors.
+
+## Install and Run
+
+```bash
 npm install
-
-# Start the development server
 npm start
 ```
 
-### Running on Android
+### Android
 
-**Option 1: Using Expo Go (limited - MWA won't work)**
 ```bash
-npm start
-# Scan QR code with Expo Go app
-```
-
-**Option 2: Development build (recommended for wallet testing)**
-```bash
-# Build and run on connected device/emulator
 npm run android
 ```
 
-For wallet connection to work, you need:
-1. A development build (not Expo Go)
-2. A Solana wallet app installed on the same device
-3. The wallet app must support Mobile Wallet Adapter
-
-### Running on iOS
+### iOS
 
 ```bash
 npm run ios
 ```
-Note: Requires macOS with Xcode. Wallet connection requires a physical device.
+
+### Web
+
+```bash
+npm run web
+```
+
+## Scripts
+
+```bash
+npm run typecheck
+npm run lint
+npm run lint:fix
+npm run format
+npm test
+npm run test:watch
+npm run test:coverage
+npm run test:ci
+```
 
 ## Project Structure
 
-```
-app/
-├── src/
-│   ├── components/     # Shared UI components
-│   ├── contexts/       # React contexts (Wallet, Profile)
-│   ├── game/           # Game logic and Skia canvas
-│   ├── navigation/     # React Navigation setup
-│   ├── screens/        # Account and Hub screens
-│   ├── types/          # TypeScript type definitions
-│   ├── utils/          # Utility functions (storage, etc.)
-│   └── polyfills.ts    # Required polyfills for web3.js
-├── App.tsx             # Main app entry
-├── app.json            # Expo configuration
-└── package.json
-```
-
-## Game Rules (Preview)
-
-- **Week Structure**: day → night → day → night → day → night → boss
-- **Day Phase**: 50 moves
-- **Night Phase**: 30 moves
-- **Cycles per Week**: 3
-
-## Development
-
-```bash
-# Type checking
-npm run typecheck
-
-# Linting
-npm run lint
-npm run lint:fix
-
-# Format code
-npm run format
+```text
+src/
+  components/
+    combat/
+    game/
+  contexts/
+    WalletContext.tsx
+    SessionContext.tsx
+    CombatContext.tsx
+    ProfileContext.tsx
+  hooks/
+    usePitDraft.ts
+    useDuels.ts
+    useGauntlet.ts
+    useGameplayState.ts
+    useSessionManager.ts
+  screens/
+    HubScreen.tsx
+    GameScreen.tsx
+    CombatScreen.tsx
+    PitDraftScreen.tsx
+    PitDraftHistoryScreen.tsx
+    DuelsScreen.tsx
+    DuelsHistoryScreen.tsx
+    GauntletScreen.tsx
+    GauntletHistoryScreen.tsx
+    GauntletRankingScreen.tsx
+  services/solana/
+    gameplayState.ts
+    pitDraft.ts
+    duels.ts
+    gauntlet.ts
+    idl/
 ```
 
 ## Troubleshooting
 
-### Wallet connection fails
-- Ensure you have a Solana wallet app installed
-- Make sure you're using a development build, not Expo Go
-- Check that the wallet supports Mobile Wallet Adapter
+- `AccountNotInitialized` / `0xbc4`:
+Run `anchor run init` in `../solana-programs` and verify program IDs in env vars.
 
-### Metro bundler issues
+- Program account missing / `has no data`:
+Confirm you deployed the latest programs and copied fresh program IDs into app env vars.
+
+- Wallet/burner issues:
+Reconnect wallet and ensure the active burner session is recoverable in-app.
+
+- Metro cache issues:
+
 ```bash
-# Clear cache and restart
 npx expo start --clear
 ```
-
-### Skia rendering issues
-- Ensure you're running on a device/emulator, not web
-- Check that the new architecture is enabled in app.json
-
-## License
-
-MIT
