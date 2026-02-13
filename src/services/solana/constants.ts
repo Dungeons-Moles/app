@@ -76,6 +76,12 @@ export const TREASURY_PUBKEY = treasuryPubkeyStr
   ? new PublicKey(treasuryPubkeyStr)
   : PublicKey.default;
 
+/** Gauntlet pool pubkey for run purchases (set in environment or defaults to gauntlet pool vault PDA) */
+const gauntletPoolPubkeyStr = process.env.EXPO_PUBLIC_GAUNTLET_POOL_PUBKEY;
+export const GAUNTLET_POOL_PUBKEY = gauntletPoolPubkeyStr
+  ? new PublicKey(gauntletPoolPubkeyStr)
+  : PublicKey.findProgramAddressSync([Buffer.from('gauntlet_pool_vault')], GAMEPLAY_STATE_PROGRAM_ID)[0];
+
 // ============================================================================
 // PDA Seeds
 // ============================================================================
@@ -85,6 +91,10 @@ export const PDA_SEEDS = {
   PLAYER: 'player',
   /** Game session: ["session", player, campaign_level] */
   SESSION: 'session',
+  /** Duel session: ["duel_session", player] */
+  DUEL_SESSION: 'duel_session',
+  /** Gauntlet session: ["gauntlet_session", player] */
+  GAUNTLET_SESSION: 'gauntlet_session',
   /** Session counter: ["session_counter"] */
   SESSION_COUNTER: 'session_counter',
   /** Game state: ["game_state", session_pda] */
@@ -136,6 +146,32 @@ export function derivePlayerProfilePda(owner: PublicKey): [PublicKey, number] {
 export function deriveSessionPda(player: PublicKey, campaignLevel: number): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
     [Buffer.from(PDA_SEEDS.SESSION), player.toBuffer(), Buffer.from([campaignLevel])],
+    SESSION_MANAGER_PROGRAM_ID
+  );
+}
+
+/**
+ * Derive Duel GameSession PDA.
+ *
+ * @param player - Player's main wallet public key
+ * @returns [PDA, bump]
+ */
+export function deriveDuelSessionPda(player: PublicKey): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from(PDA_SEEDS.DUEL_SESSION), player.toBuffer()],
+    SESSION_MANAGER_PROGRAM_ID
+  );
+}
+
+/**
+ * Derive Gauntlet GameSession PDA.
+ *
+ * @param player - Player's main wallet public key
+ * @returns [PDA, bump]
+ */
+export function deriveGauntletSessionPda(player: PublicKey): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from(PDA_SEEDS.GAUNTLET_SESSION), player.toBuffer()],
     SESSION_MANAGER_PROGRAM_ID
   );
 }

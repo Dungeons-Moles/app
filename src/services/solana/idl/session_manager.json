@@ -488,8 +488,7 @@
         "",
         "This path is intentionally decoupled from campaign unlock progression:",
         "- Uses a fixed campaign level (DUEL_CAMPAIGN_LEVEL) for balance.",
-        "- Derives duel seed on-chain by default.",
-        "- If `forced_seed != 0`, uses the provided seed (for async duel opponent matching).",
+        "- Derives duel seed on-chain.",
         "- Does not consume campaign runs."
       ],
       "discriminator": [
@@ -605,6 +604,43 @@
           "signer": true
         },
         {
+          "name": "session_manager_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  95,
+                  109,
+                  97,
+                  110,
+                  97,
+                  103,
+                  101,
+                  114,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
           "name": "map_config"
         },
         {
@@ -648,12 +684,7 @@
           "address": "11111111111111111111111111111111"
         }
       ],
-      "args": [
-        {
-          "name": "forced_seed",
-          "type": "u64"
-        }
-      ]
+      "args": []
     },
     {
       "name": "start_gauntlet_session",
@@ -771,6 +802,43 @@
           "name": "burner_wallet",
           "writable": true,
           "signer": true
+        },
+        {
+          "name": "session_manager_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  95,
+                  109,
+                  97,
+                  110,
+                  97,
+                  103,
+                  101,
+                  114,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
         },
         {
           "name": "map_config"

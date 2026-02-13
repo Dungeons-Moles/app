@@ -344,6 +344,7 @@ function CombatPhaseContent({ pitDraft }: CombatPhaseContentProps) {
       seed: 0, // Not used when replaying from log
       playerGold: pitDraft.matchData.playerGold,
       enemyGold: pitDraft.matchData.enemyGold,
+      preserveArmor: true,
     };
 
     startCombatWithLog(resolverInput, combatLog);

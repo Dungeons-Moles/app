@@ -958,7 +958,10 @@ export function getScaledEffectDescription(gearId: GearId, rarity: ItemRarity): 
     const baseValue = effect.values[0];
     const scaledValue = effect.values[tier - 1];
     if (baseValue !== scaledValue) {
-      description = description.replace(String(baseValue), String(scaledValue));
+      description = description.replace(
+        new RegExp(`\\b${baseValue}\\b`),
+        String(scaledValue)
+      );
     }
   }
 

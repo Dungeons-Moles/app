@@ -26,10 +26,10 @@ import { getAllGearDefinitions, RARITY_MULTIPLIER } from '@/data/gear';
 export const PIT_DRAFT_ENTRY_LAMPORTS = 100_000_000; // 0.1 SOL
 
 export const COMPANY_TREASURY = new PublicKey('5LvEA4tH5H5DtWCxa3FcauokxAycvafX9ruvcT2mEXt8');
-export const GAUNTLET_SINK = new PublicKey('1nc1nerator11111111111111111111111111111111');
 
 const PIT_DRAFT_QUEUE_SEED = 'pit_draft_queue';
 const PIT_DRAFT_VAULT_SEED = 'pit_draft_vault';
+const GAUNTLET_POOL_VAULT_SEED = 'gauntlet_pool_vault';
 const PIT_DRAFT_CU_LIMIT = 500_000;
 const PIT_DRAFT_CU_PRICE_MICROLAMPORTS = 1_000;
 const TOOL_OIL_FLAG_ATK = 0x01;
@@ -53,6 +53,12 @@ export function derivePitDraftVaultPda(
   programId: PublicKey = GAMEPLAY_STATE_PROGRAM_ID
 ): [PublicKey, number] {
   return PublicKey.findProgramAddressSync([Buffer.from(PIT_DRAFT_VAULT_SEED)], programId);
+}
+
+export function deriveGauntletPoolVaultPda(
+  programId: PublicKey = GAMEPLAY_STATE_PROGRAM_ID
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync([Buffer.from(GAUNTLET_POOL_VAULT_SEED)], programId);
 }
 
 // ============================================================================
@@ -102,6 +108,7 @@ export async function buildEnterPitDraftTransaction(
 ): Promise<Transaction> {
   const [queuePda] = derivePitDraftQueuePda();
   const [vaultPda] = derivePitDraftVaultPda();
+  const [gauntletPoolVaultPda] = deriveGauntletPoolVaultPda();
   const [playerProfilePda] = derivePlayerProfilePda(playerPublicKey);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -113,7 +120,7 @@ export async function buildEnterPitDraftTransaction(
     waitingProfile: waitingProfile ?? null,
     waitingPlayerWallet: waitingPlayerWallet ?? null,
     companyTreasury: COMPANY_TREASURY,
-    gauntletSink: GAUNTLET_SINK,
+    gauntletPoolVault: gauntletPoolVaultPda,
     systemProgram: SystemProgram.programId,
   };
 

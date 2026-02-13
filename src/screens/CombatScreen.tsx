@@ -156,6 +156,7 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
         playerTool: combatInput.playerTool,
         playerGold: combatInput.playerGold,
         enemyGold: combatInput.enemyGold,
+        preserveArmor: combatInput.preserveArmor,
       };
 
       // Use backend log if available (ensures frontend matches on-chain)
@@ -365,6 +366,7 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
           playerWon: isWinner,
         },
         duelReplay: true,
+        preserveArmor: true,
       };
     };
 
