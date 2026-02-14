@@ -4,7 +4,7 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  Modal,
+  // Modal replaced by InlineModal for simulator containment
   Alert,
   Image,
   ImageBackground,
@@ -22,6 +22,7 @@ import { useSession } from '../contexts/SessionContext';
 import { useGame, GamePhase } from '../contexts/GameContext';
 import { shortenAddress } from '../utils/storage';
 import { RootStackParamList } from '../navigation';
+import { InlineModal } from '../components/InlineModal';
 import { SpeedControls } from '../components/combat';
 import { Skeleton } from '../components/common/Skeleton';
 import { Typography } from '../theme/typography';
@@ -53,10 +54,13 @@ const backgroundImageCompact = require('../../assets/ui/backgrounds/hub-backgrou
 const backgroundImageWide = require('../../assets/ui/backgrounds/hub-background-wide.png');
 const buttonV1Source = require('../../assets/ui/buttons/button-v1.png');
 const buttonV2Source = require('../../assets/ui/buttons/button-v2.png');
-const buttonV3Source = require('../../assets/ui/buttons/button-v3.png');
 const buttonV4Source = require('../../assets/ui/buttons/button-v4.png');
 const paperPanelSource = require('../../assets/ui/panels/paper-panel.png');
 const yellowBrushSource = require('../../assets/ui/illustrations/yellow-brush.png');
+const pvpPanelSource = require('../../assets/ui/panels/pvp-panel.png');
+const gauntletPaperSource = require('../../assets/ui/illustrations/gauntlet-paper.png');
+const duelsPaperSource = require('../../assets/ui/illustrations/duels-paper.png');
+const pitDraftPaperSource = require('../../assets/ui/illustrations/pit-draft-paper.png');
 const engineImageSource = require('../../assets/ui/illustrations/engine.png');
 const walletImageSource = require('../../assets/ui/illustrations/wallet.png');
 const lockIconSource = require('../../assets/icons/ui/lock.png');
@@ -208,8 +212,6 @@ export function HubScreen({ navigation }: HubScreenProps) {
     mode,
     isItemUnlocked,
     defaultCombatSpeed,
-    purchaseRuns,
-    availableRuns,
     updateActiveItemPool,
   } = useProfile();
   const isGuest = mode === 'guest';
@@ -219,8 +221,6 @@ export function HubScreen({ navigation }: HubScreenProps) {
   const { state: gameState, dispatch } = useGame();
   const [showSettings, setShowSettings] = useState(false);
   const [showResumePrompt, setShowResumePrompt] = useState(false);
-  const [showMarketplace, setShowMarketplace] = useState(false);
-  const [marketplaceTab, setMarketplaceTab] = useState<'skins' | 'items' | 'pve'>('pve');
   const [showSkins, setShowSkins] = useState(false);
   const [showRanks, setShowRanks] = useState(false);
   const [showItems, setShowItems] = useState(false);
@@ -229,8 +229,6 @@ export function HubScreen({ navigation }: HubScreenProps) {
   const [isSavingItemPool, setIsSavingItemPool] = useState(false);
   const [showQuests, setShowQuests] = useState(false);
   const [showPvP, setShowPvP] = useState(false);
-  const [isPurchasing, setIsPurchasing] = useState(false);
-  const [purchaseError, setPurchaseError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const hasPromptedResume = useRef(false);
@@ -306,26 +304,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
   };
 
   const handleMarketplace = () => {
-    setShowMarketplace(true);
-    setMarketplaceTab('pve');
-    setPurchaseError(null);
-  };
-
-  const handlePurchaseSessions = async () => {
-    setIsPurchasing(true);
-    setPurchaseError(null);
-    try {
-      const result = await purchaseRuns();
-      if (result?.success) {
-        setShowMarketplace(false);
-      } else {
-        setPurchaseError(result?.error ?? 'Purchase failed');
-      }
-    } catch (e) {
-      setPurchaseError(e instanceof Error ? e.message : 'Purchase failed');
-    } finally {
-      setIsPurchasing(false);
-    }
+    navigation.navigate('Marketplace');
   };
 
   const handleLeaderboard = () => {
@@ -807,7 +786,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
       </ScrollView>
 
       {/* Settings Modal */}
-      <Modal
+      <InlineModal
         visible={showSettings}
         transparent
         animationType="fade"
@@ -861,9 +840,9 @@ export function HubScreen({ navigation }: HubScreenProps) {
             </TouchableWithoutFeedback>
           </View>
         </TouchableWithoutFeedback>
-      </Modal>
+      </InlineModal>
 
-      <Modal
+      <InlineModal
         visible={showResumePrompt}
         transparent
         animationType="fade"
@@ -922,115 +901,10 @@ export function HubScreen({ navigation }: HubScreenProps) {
             </TouchableWithoutFeedback>
           </View>
         </TouchableWithoutFeedback>
-      </Modal>
-
-      {/* Marketplace Modal */}
-      <Modal
-        visible={showMarketplace}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowMarketplace(false)}
-      >
-        <TouchableWithoutFeedback onPress={() => setShowMarketplace(false)}>
-          <View style={styles.modalOverlay}>
-            <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
-              <View style={styles.marketplaceModal}>
-                <ImageBackground
-                  source={paperPanelSource}
-                  style={styles.marketplaceBg}
-                  resizeMode="stretch"
-                />
-                <View style={styles.marketplaceInner}>
-                  <View style={styles.modalHeader}>
-                    <Text style={styles.modalTitle}>Marketplace</Text>
-                    <TouchableOpacity
-                      onPress={() => setShowMarketplace(false)}
-                      style={styles.closeButton}
-                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                    >
-                      <Text style={styles.closeButtonText}>✕</Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  {/* Tabs */}
-                  <View style={styles.marketplaceTabs}>
-                    {(['skins', 'items', 'pve'] as const).map((tab) => (
-                      <TouchableOpacity
-                        key={tab}
-                        style={[
-                          styles.marketplaceTab,
-                          marketplaceTab === tab && styles.marketplaceTabActive,
-                        ]}
-                        onPress={() => setMarketplaceTab(tab)}
-                        activeOpacity={0.7}
-                      >
-                        <Text
-                          style={[
-                            styles.marketplaceTabText,
-                            marketplaceTab === tab && styles.marketplaceTabTextActive,
-                          ]}
-                        >
-                          {tab === 'pve' ? 'PvE' : tab.charAt(0).toUpperCase() + tab.slice(1)}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-
-                  {/* Tab Content */}
-                  <View style={styles.marketplaceContent}>
-                    {marketplaceTab === 'skins' && (
-                      <Text style={styles.comingSoonText}>Coming Soon</Text>
-                    )}
-                    {marketplaceTab === 'items' && (
-                      <Text style={styles.comingSoonText}>Coming Soon</Text>
-                    )}
-                    {marketplaceTab === 'pve' && (
-                      <View style={styles.pveContent}>
-                        <View style={styles.sessionBundle}>
-                          <Text style={styles.bundleAmount}>20</Text>
-                          <Text style={styles.bundleLabel}>Sessions</Text>
-                        </View>
-
-                        <View style={styles.bundlePriceRow}>
-                          <Text style={styles.bundlePriceLabel}>Price</Text>
-                          <Text style={styles.bundlePriceValue}>0.005 SOL</Text>
-                        </View>
-
-                        <Text style={styles.bundleCurrent}>Current: {availableRuns} sessions</Text>
-
-                        {purchaseError && (
-                          <Text style={styles.purchaseErrorText}>{purchaseError}</Text>
-                        )}
-
-                        <TouchableOpacity
-                          onPress={handlePurchaseSessions}
-                          activeOpacity={0.7}
-                          disabled={isPurchasing}
-                        >
-                          <ImageBackground
-                            source={buttonV4Source}
-                            style={[styles.purchaseBtn, isPurchasing && { opacity: 0.6 }]}
-                            resizeMode="stretch"
-                          >
-                            {isPurchasing ? (
-                              <ActivityIndicator color="#1a1a1a" size="small" />
-                            ) : (
-                              <Text style={styles.purchaseBtnText}>Purchase</Text>
-                            )}
-                          </ImageBackground>
-                        </TouchableOpacity>
-                      </View>
-                    )}
-                  </View>
-                </View>
-              </View>
-            </TouchableWithoutFeedback>
-          </View>
-        </TouchableWithoutFeedback>
-      </Modal>
+      </InlineModal>
 
       {/* Skins Modal */}
-      <Modal
+      <InlineModal
         visible={showSkins}
         transparent
         animationType="fade"
@@ -1039,36 +913,36 @@ export function HubScreen({ navigation }: HubScreenProps) {
         <TouchableWithoutFeedback onPress={() => setShowSkins(false)}>
           <View style={styles.modalOverlay}>
             <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
-              <View style={styles.marketplaceModal}>
+              <View style={[styles.marketplaceModal, isCompact && compactStyles.marketplaceModal]}>
                 <ImageBackground
                   source={paperPanelSource}
-                  style={styles.marketplaceBg}
+                  style={[styles.marketplaceBg, isCompact && compactStyles.marketplaceBg]}
                   resizeMode="stretch"
                 />
-                <View style={styles.marketplaceInner}>
+                <View style={[styles.marketplaceInner, isCompact && compactStyles.marketplaceInner]}>
                   <View style={styles.modalHeader}>
-                    <Text style={styles.modalTitle}>Skins</Text>
+                    <Text style={[styles.modalTitle, isCompact && compactStyles.modalTitle]}>Skins</Text>
                     <TouchableOpacity
                       onPress={() => setShowSkins(false)}
                       style={styles.closeButton}
                       hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                     >
-                      <Text style={styles.closeButtonText}>✕</Text>
+                      <Text style={[styles.closeButtonText, isCompact && compactStyles.closeButtonText]}>✕</Text>
                     </TouchableOpacity>
                   </View>
 
                   <View style={styles.marketplaceContent}>
-                    <Text style={styles.comingSoonText}>Coming Soon</Text>
+                    <Text style={[styles.comingSoonText, isCompact && compactStyles.comingSoonText]}>Coming Soon</Text>
                   </View>
                 </View>
               </View>
             </TouchableWithoutFeedback>
           </View>
         </TouchableWithoutFeedback>
-      </Modal>
+      </InlineModal>
 
       {/* Ranks Modal */}
-      <Modal
+      <InlineModal
         visible={showRanks}
         transparent
         animationType="fade"
@@ -1077,36 +951,36 @@ export function HubScreen({ navigation }: HubScreenProps) {
         <TouchableWithoutFeedback onPress={() => setShowRanks(false)}>
           <View style={styles.modalOverlay}>
             <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
-              <View style={styles.marketplaceModal}>
+              <View style={[styles.marketplaceModal, isCompact && compactStyles.marketplaceModal]}>
                 <ImageBackground
                   source={paperPanelSource}
-                  style={styles.marketplaceBg}
+                  style={[styles.marketplaceBg, isCompact && compactStyles.marketplaceBg]}
                   resizeMode="stretch"
                 />
-                <View style={styles.marketplaceInner}>
+                <View style={[styles.marketplaceInner, isCompact && compactStyles.marketplaceInner]}>
                   <View style={styles.modalHeader}>
-                    <Text style={styles.modalTitle}>PvP Ranks</Text>
+                    <Text style={[styles.modalTitle, isCompact && compactStyles.modalTitle]}>PvP Ranks</Text>
                     <TouchableOpacity
                       onPress={() => setShowRanks(false)}
                       style={styles.closeButton}
                       hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                     >
-                      <Text style={styles.closeButtonText}>✕</Text>
+                      <Text style={[styles.closeButtonText, isCompact && compactStyles.closeButtonText]}>✕</Text>
                     </TouchableOpacity>
                   </View>
 
                   <View style={styles.marketplaceContent}>
-                    <Text style={styles.comingSoonText}>Coming Soon</Text>
+                    <Text style={[styles.comingSoonText, isCompact && compactStyles.comingSoonText]}>Coming Soon</Text>
                   </View>
                 </View>
               </View>
             </TouchableWithoutFeedback>
           </View>
         </TouchableWithoutFeedback>
-      </Modal>
+      </InlineModal>
 
       {/* Items Modal */}
-      <Modal
+      <InlineModal
         visible={showItems}
         transparent
         animationType="fade"
@@ -1362,10 +1236,10 @@ export function HubScreen({ navigation }: HubScreenProps) {
             </TouchableWithoutFeedback>
           </View>
         </TouchableWithoutFeedback>
-      </Modal>
+      </InlineModal>
 
       {/* Quests Modal */}
-      <Modal
+      <InlineModal
         visible={showQuests}
         transparent
         animationType="fade"
@@ -1374,36 +1248,36 @@ export function HubScreen({ navigation }: HubScreenProps) {
         <TouchableWithoutFeedback onPress={() => setShowQuests(false)}>
           <View style={styles.modalOverlay}>
             <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
-              <View style={styles.marketplaceModal}>
+              <View style={[styles.marketplaceModal, isCompact && compactStyles.marketplaceModal]}>
                 <ImageBackground
                   source={paperPanelSource}
-                  style={styles.marketplaceBg}
+                  style={[styles.marketplaceBg, isCompact && compactStyles.marketplaceBg]}
                   resizeMode="stretch"
                 />
-                <View style={styles.marketplaceInner}>
+                <View style={[styles.marketplaceInner, isCompact && compactStyles.marketplaceInner]}>
                   <View style={styles.modalHeader}>
-                    <Text style={styles.modalTitle}>Quests</Text>
+                    <Text style={[styles.modalTitle, isCompact && compactStyles.modalTitle]}>Quests</Text>
                     <TouchableOpacity
                       onPress={() => setShowQuests(false)}
                       style={styles.closeButton}
                       hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                     >
-                      <Text style={styles.closeButtonText}>✕</Text>
+                      <Text style={[styles.closeButtonText, isCompact && compactStyles.closeButtonText]}>✕</Text>
                     </TouchableOpacity>
                   </View>
 
                   <View style={styles.marketplaceContent}>
-                    <Text style={styles.comingSoonText}>Coming Soon</Text>
+                    <Text style={[styles.comingSoonText, isCompact && compactStyles.comingSoonText]}>Coming Soon</Text>
                   </View>
                 </View>
               </View>
             </TouchableWithoutFeedback>
           </View>
         </TouchableWithoutFeedback>
-      </Modal>
+      </InlineModal>
 
       {/* PvP Modal */}
-      <Modal
+      <InlineModal
         visible={showPvP}
         transparent
         animationType="fade"
@@ -1413,57 +1287,59 @@ export function HubScreen({ navigation }: HubScreenProps) {
           <View style={styles.modalOverlay}>
             <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
               <ImageBackground
-                source={paperPanelSource}
-                style={styles.pvpModalContent}
+                source={pvpPanelSource}
+                style={[styles.pvpModalContent, isCompact && compactStyles.pvpModalContent]}
                 resizeMode="stretch"
               >
-                <View style={styles.modalHeader}>
-                  <Text style={styles.modalTitle}>PvP</Text>
+                <TouchableOpacity
+                  onPress={() => setShowPvP(false)}
+                  style={[styles.pvpCloseButton, isCompact && compactStyles.pvpCloseButton]}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  <Text style={[styles.pvpCloseButtonText, isCompact && compactStyles.pvpCloseButtonText]}>✕</Text>
+                </TouchableOpacity>
+                <View style={[styles.pvpPapersStack, isCompact && compactStyles.pvpPapersStack]}>
                   <TouchableOpacity
-                    onPress={() => setShowPvP(false)}
-                    style={styles.closeButton}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    onPress={handleGauntlet}
+                    activeOpacity={0.7}
+                    style={[styles.pvpPaperGauntletWrap, isCompact && compactStyles.pvpPaperGauntletWrap]}
                   >
-                    <Text style={styles.closeButtonText}>✕</Text>
-                  </TouchableOpacity>
-                </View>
-
-                <View style={{ gap: 12 }}>
-                  <TouchableOpacity onPress={handleGauntlet} activeOpacity={0.7}>
-                    <ImageBackground
-                      source={buttonV2Source}
-                      style={styles.pvpModeButton}
-                      resizeMode="stretch"
-                    >
-                      <Text style={styles.pvpModeButtonText}>Gauntlet</Text>
-                    </ImageBackground>
+                    <Image
+                      source={gauntletPaperSource}
+                      style={[styles.pvpPaperGauntlet, isCompact && compactStyles.pvpPaperGauntlet]}
+                      resizeMode="contain"
+                    />
                   </TouchableOpacity>
 
-                  <TouchableOpacity onPress={handleDuels} activeOpacity={0.7}>
-                    <ImageBackground
-                      source={buttonV2Source}
-                      style={styles.pvpModeButton}
-                      resizeMode="stretch"
-                    >
-                      <Text style={styles.pvpModeButtonText}>Duels</Text>
-                    </ImageBackground>
+                  <TouchableOpacity
+                    onPress={handleDuels}
+                    activeOpacity={0.7}
+                    style={[styles.pvpPaperDuelsWrap, isCompact && compactStyles.pvpPaperDuelsWrap]}
+                  >
+                    <Image
+                      source={duelsPaperSource}
+                      style={[styles.pvpPaperDuels, isCompact && compactStyles.pvpPaperDuels]}
+                      resizeMode="contain"
+                    />
                   </TouchableOpacity>
 
-                  <TouchableOpacity onPress={handlePitDraft} activeOpacity={0.7}>
-                    <ImageBackground
-                      source={buttonV2Source}
-                      style={styles.pvpModeButton}
-                      resizeMode="stretch"
-                    >
-                      <Text style={styles.pvpModeButtonText}>Pit Draft</Text>
-                    </ImageBackground>
+                  <TouchableOpacity
+                    onPress={handlePitDraft}
+                    activeOpacity={0.7}
+                    style={[styles.pvpPaperPitDraftWrap, isCompact && compactStyles.pvpPaperPitDraftWrap]}
+                  >
+                    <Image
+                      source={pitDraftPaperSource}
+                      style={[styles.pvpPaperPitDraft, isCompact && compactStyles.pvpPaperPitDraft]}
+                      resizeMode="contain"
+                    />
                   </TouchableOpacity>
                 </View>
               </ImageBackground>
             </TouchableWithoutFeedback>
           </View>
         </TouchableWithoutFeedback>
-      </Modal>
+      </InlineModal>
     </Animated.View>
   );
 }
@@ -1829,7 +1705,7 @@ const styles = StyleSheet.create({
     color: '#a33a3a',
   },
 
-  // MARKETPLACE MODAL
+  // SHARED MODAL STYLES (used by Skins, Ranks, Quests modals)
   marketplaceModal: {
     width: 431,
     height: 380,
@@ -1851,29 +1727,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'flex-start',
   },
-  marketplaceTabs: {
-    flexDirection: 'row',
-    gap: 6,
-    marginBottom: 16,
-  },
-  marketplaceTab: {
-    paddingVertical: 6,
-    paddingHorizontal: 16,
-    borderRadius: 4,
-    borderBottomWidth: 2,
-    borderBottomColor: 'transparent',
-  },
-  marketplaceTabActive: {
-    borderBottomColor: '#3d2b1f',
-  },
-  marketplaceTabText: {
-    fontFamily: Typography.button,
-    fontSize: 14,
-    color: '#8a7a6a',
-  },
-  marketplaceTabTextActive: {
-    color: '#3d2b1f',
-  },
   marketplaceContent: {
     flex: 1,
     width: '100%',
@@ -1884,70 +1737,6 @@ const styles = StyleSheet.create({
     fontFamily: Typography.header,
     fontSize: 22,
     color: '#8a7a6a',
-  },
-  pveContent: {
-    width: '100%',
-    alignItems: 'center',
-    gap: 10,
-  },
-  sessionBundle: {
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  bundleAmount: {
-    fontFamily: Typography.number,
-    fontSize: 48,
-    fontWeight: 'bold',
-    color: '#3d2b1f',
-  },
-  bundleLabel: {
-    fontFamily: Typography.body,
-    fontSize: 16,
-    color: '#5c4033',
-    marginTop: -4,
-  },
-  bundlePriceRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    width: '80%',
-    paddingVertical: 6,
-    borderTopWidth: 1,
-    borderTopColor: '#c4a882',
-  },
-  bundlePriceLabel: {
-    fontFamily: Typography.body,
-    fontSize: 15,
-    color: '#8a7a6a',
-  },
-  bundlePriceValue: {
-    fontFamily: Typography.number,
-    fontSize: 15,
-    fontWeight: 'bold',
-    color: '#3d2b1f',
-  },
-  bundleCurrent: {
-    fontFamily: Typography.body,
-    fontSize: 13,
-    color: '#8a7a6a',
-  },
-  purchaseErrorText: {
-    fontFamily: Typography.body,
-    fontSize: 12,
-    color: '#a33a3a',
-    textAlign: 'center',
-  },
-  purchaseBtn: {
-    width: 140,
-    height: 48,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  purchaseBtnText: {
-    fontFamily: Typography.button,
-    fontSize: 16,
-    color: '#1a1a1a',
-    marginBottom: 4,
   },
 
   // ITEMS MODAL STYLES
@@ -2226,24 +2015,57 @@ const styles = StyleSheet.create({
   },
 
   // PVP MODAL STYLES
-  pvpModalContent: {
-    width: 340,
-    height: 340,
-    padding: 40,
-    alignItems: 'center',
-    justifyContent: 'flex-start',
+  pvpCloseButton: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    zIndex: 10,
+    padding: 10,
   },
-  pvpModeButton: {
-    width: 135,
-    height: 68,
+  pvpCloseButtonText: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#5c4033',
+  },
+  pvpModalContent: {
+    width: 300,
+    height: 359,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingTop: 36,
+    paddingBottom: 15,
   },
-  pvpModeButtonText: {
-    fontFamily: Typography.button,
-    fontSize: 18,
-    color: '#a33a3a',
-    marginBottom: 6,
+  pvpPapersStack: {
+    width: '100%',
+    paddingHorizontal: 16,
+  },
+  pvpPaperGauntletWrap: {
+    alignSelf: 'flex-start',
+    zIndex: 3,
+  },
+  pvpPaperGauntlet: {
+    width: 155,
+    height: 105,
+  },
+  pvpPaperDuelsWrap: {
+    marginTop: -52,
+    alignSelf: 'flex-end',
+    zIndex: 2,
+    transform: [{ rotate: '14deg' }],
+  },
+  pvpPaperDuels: {
+    width: 150,
+    height: 102,
+  },
+  pvpPaperPitDraftWrap: {
+    marginTop: -47,
+    alignSelf: 'flex-start',
+    zIndex: 1,
+    transform: [{ rotate: '-7deg' }],
+  },
+  pvpPaperPitDraft: {
+    width: 149,
+    height: 85,
   },
 });
 
@@ -2348,5 +2170,76 @@ const compactStyles = StyleSheet.create({
   gauntletButtonText: {
     fontSize: 44,
     marginBottom: 10,
+  },
+  // Shared modals (Skins, Ranks, Quests) — scaled up for compact
+  marketplaceModal: {
+    width: 860,
+    height: 760,
+  },
+  marketplaceBg: {
+    top: (760 - 906) / 2,
+    left: (860 - 760) / 2,
+    width: 760,
+    height: 906,
+  },
+  marketplaceInner: {
+    padding: 60,
+    paddingTop: 40,
+  },
+  modalTitle: {
+    fontSize: 48,
+    marginTop: 12,
+  },
+  closeButtonText: {
+    fontSize: 40,
+  },
+  comingSoonText: {
+    fontSize: 40,
+  },
+  // PVP modal — bigger panel and papers with left/right alternation
+  pvpCloseButton: {
+    top: 36,
+    right: 40,
+  },
+  pvpCloseButtonText: {
+    fontSize: 40,
+  },
+  pvpModalContent: {
+    width: 783,
+    height: 937,
+    paddingTop: 95,
+    paddingBottom: 40,
+  },
+  pvpPapersStack: {
+    width: '100%',
+    paddingHorizontal: 40,
+  },
+  pvpPaperGauntletWrap: {
+    alignSelf: 'flex-start',
+    zIndex: 3,
+  },
+  pvpPaperGauntlet: {
+    width: 405,
+    height: 275,
+  },
+  pvpPaperDuelsWrap: {
+    marginTop: -135,
+    alignSelf: 'flex-end',
+    zIndex: 2,
+    transform: [{ rotate: '14deg' }],
+  },
+  pvpPaperDuels: {
+    width: 392,
+    height: 266,
+  },
+  pvpPaperPitDraftWrap: {
+    marginTop: -122,
+    alignSelf: 'flex-start',
+    zIndex: 1,
+    transform: [{ rotate: '-7deg' }],
+  },
+  pvpPaperPitDraft: {
+    width: 389,
+    height: 221,
   },
 });

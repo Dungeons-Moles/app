@@ -20,6 +20,7 @@ import { DuelsHistoryScreen } from '../screens/DuelsHistoryScreen';
 import { GauntletScreen } from '../screens/GauntletScreen';
 import { GauntletHistoryScreen } from '../screens/GauntletHistoryScreen';
 import { GauntletRankingScreen } from '../screens/GauntletRankingScreen';
+import { MarketplaceScreen } from '../screens/MarketplaceScreen';
 import type { CombatReplay, BackendCombatLogEntry } from '../services/solana/types/combat_events';
 import type {
   ItemStats,
@@ -130,6 +131,7 @@ export type RootStackParamList = {
   Gauntlet: undefined;
   GauntletHistory: undefined;
   GauntletRanking: undefined;
+  Marketplace: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -164,6 +166,7 @@ export function AppNavigator() {
         <Stack.Screen name="Gauntlet" component={GauntletScreen} />
         <Stack.Screen name="GauntletHistory" component={GauntletHistoryScreen} />
         <Stack.Screen name="GauntletRanking" component={GauntletRankingScreen} />
+        <Stack.Screen name="Marketplace" component={MarketplaceScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );
