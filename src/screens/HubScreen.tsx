@@ -25,6 +25,7 @@ import { RootStackParamList } from '../navigation';
 import { SpeedControls } from '../components/combat';
 import { Skeleton } from '../components/common/Skeleton';
 import { Typography } from '../theme/typography';
+import { useScreenVariant } from '../contexts/ScreenVariantContext';
 import { MAX_CAMPAIGN_LEVEL } from '../hooks/useMapGenerator';
 import {
   GEAR_DEFINITIONS,
@@ -48,12 +49,14 @@ import {
 } from '../services/solana/types/item_pool';
 
 const defaultMoleImageSource = require('../../assets/entities/characters/default-mole.png');
-const backgroundImageSource = require('../../assets/ui/backgrounds/hub-background.png');
+const backgroundImageCompact = require('../../assets/ui/backgrounds/hub-background-compact.png');
+const backgroundImageWide = require('../../assets/ui/backgrounds/hub-background-wide.png');
 const buttonV1Source = require('../../assets/ui/buttons/button-v1.png');
 const buttonV2Source = require('../../assets/ui/buttons/button-v2.png');
 const buttonV3Source = require('../../assets/ui/buttons/button-v3.png');
 const buttonV4Source = require('../../assets/ui/buttons/button-v4.png');
 const paperPanelSource = require('../../assets/ui/panels/paper-panel.png');
+const yellowBrushSource = require('../../assets/ui/illustrations/yellow-brush.png');
 const engineImageSource = require('../../assets/ui/illustrations/engine.png');
 const walletImageSource = require('../../assets/ui/illustrations/wallet.png');
 const lockIconSource = require('../../assets/icons/ui/lock.png');
@@ -210,6 +213,8 @@ export function HubScreen({ navigation }: HubScreenProps) {
     updateActiveItemPool,
   } = useProfile();
   const isGuest = mode === 'guest';
+  const screenVariant = useScreenVariant();
+  const isCompact = screenVariant === 'compact';
   const { activeSessions } = useSession();
   const { state: gameState, dispatch } = useGame();
   const [showSettings, setShowSettings] = useState(false);
@@ -475,7 +480,11 @@ export function HubScreen({ navigation }: HubScreenProps) {
 
   return (
     <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
-      <Image source={backgroundImageSource} style={styles.backgroundImage} resizeMode="stretch" />
+      <Image
+        source={isCompact ? backgroundImageCompact : backgroundImageWide}
+        style={styles.backgroundImage}
+        resizeMode="stretch"
+      />
       <ScrollView
         contentContainerStyle={{ flex: 1 }}
         refreshControl={
@@ -483,22 +492,22 @@ export function HubScreen({ navigation }: HubScreenProps) {
         }
       >
         <View style={styles.hubLayout}>
-          {/* TOP LEFT - Player Info */}
-          <View style={styles.topLeft}>
+          {/* TOP LEFT - Player Info (compact: full left column) */}
+          <View style={[styles.topLeft, isCompact && compactStyles.leftColumn]}>
             <TouchableOpacity
               onPress={() => navigation.navigate('ProfileSettings')}
               activeOpacity={0.8}
             >
               <ImageBackground
                 source={walletImageSource}
-                style={styles.playerPanel}
+                style={[styles.playerPanel, isCompact && compactStyles.playerPanel]}
                 resizeMode="stretch"
               >
                 {/* Avatar Square */}
-                <View style={styles.avatarContainer}>
+                <View style={[styles.avatarContainer, isCompact && compactStyles.avatarContainer]}>
                   <Image
                     source={defaultMoleImageSource}
-                    style={styles.avatarImage}
+                    style={[styles.avatarImage, isCompact && compactStyles.avatarImage]}
                     resizeMode="cover"
                   />
                 </View>
@@ -512,13 +521,18 @@ export function HubScreen({ navigation }: HubScreenProps) {
                     </View>
                   ) : (
                     <>
-                      <Text style={styles.playerName} numberOfLines={1}>
+                      <Text
+                        style={[styles.playerName, isCompact && compactStyles.playerName]}
+                        numberOfLines={1}
+                      >
                         {profile?.name ?? 'Adventurer'}
                       </Text>
                       {isGuest ? (
-                        <Text style={styles.walletAddress}>(GUEST)</Text>
+                        <Text style={[styles.walletAddress, isCompact && compactStyles.walletAddress]}>
+                          (GUEST)
+                        </Text>
                       ) : profile?.owner ? (
-                        <Text style={styles.walletAddress}>
+                        <Text style={[styles.walletAddress, isCompact && compactStyles.walletAddress]}>
                           {shortenAddress(profile.owner.toBase58())}
                         </Text>
                       ) : null}
@@ -528,8 +542,8 @@ export function HubScreen({ navigation }: HubScreenProps) {
               </ImageBackground>
             </TouchableOpacity>
 
-            {/* Items Button - Below Profile */}
-            {!isGuest && (
+            {/* Wide: Items button directly below profile */}
+            {!isCompact && !isGuest && (
               <TouchableOpacity onPress={handleItems} activeOpacity={0.7} style={{ marginTop: 8 }}>
                 <ImageBackground
                   source={buttonV1Source}
@@ -540,43 +554,121 @@ export function HubScreen({ navigation }: HubScreenProps) {
                 </ImageBackground>
               </TouchableOpacity>
             )}
-          </View>
 
-          {/* TOP CENTER - Points */}
-          <View style={styles.topCenter}>
-            {!isGuest && (
-              <ImageBackground
-                source={buttonV3Source}
-                style={styles.pointsPanel}
-                resizeMode="stretch"
-              >
-                <Text style={styles.pointsLabel}>GAUNTLET POINTS</Text>
-                <Text style={[styles.pointsValue, { color: '#FABC0F' }]}>0</Text>
-              </ImageBackground>
+            {/* Compact: all nav buttons centered vertically below profile */}
+            {isCompact && !isGuest && (
+              <View style={compactStyles.leftButtonsCenter}>
+                <TouchableOpacity onPress={handleItems} activeOpacity={0.7}>
+                  <ImageBackground
+                    source={buttonV1Source}
+                    style={[styles.navButton, compactStyles.navButton]}
+                    resizeMode="stretch"
+                  >
+                    <Text style={[styles.navButtonText, compactStyles.navButtonText]}>Items</Text>
+                  </ImageBackground>
+                </TouchableOpacity>
+
+                <TouchableOpacity onPress={handleQuests} activeOpacity={0.7}>
+                  <ImageBackground
+                    source={buttonV1Source}
+                    style={[styles.navButton, compactStyles.navButton]}
+                    resizeMode="stretch"
+                  >
+                    <Text style={[styles.navButtonText, compactStyles.navButtonText]}>Quests</Text>
+                  </ImageBackground>
+                </TouchableOpacity>
+
+                <TouchableOpacity onPress={handleSkins} activeOpacity={0.7}>
+                  <ImageBackground
+                    source={buttonV1Source}
+                    style={[styles.navButton, compactStyles.navButton]}
+                    resizeMode="stretch"
+                  >
+                    <Text style={[styles.navButtonText, compactStyles.navButtonText]}>Skins</Text>
+                  </ImageBackground>
+                </TouchableOpacity>
+
+                <TouchableOpacity onPress={handleMarketplace} activeOpacity={0.7}>
+                  <ImageBackground
+                    source={buttonV1Source}
+                    style={[styles.navButton, compactStyles.navButton]}
+                    resizeMode="stretch"
+                  >
+                    <Text style={[styles.navButtonText, compactStyles.navButtonText]}>
+                      Marketplace
+                    </Text>
+                  </ImageBackground>
+                </TouchableOpacity>
+
+                <TouchableOpacity onPress={handleLeaderboard} activeOpacity={0.7}>
+                  <ImageBackground
+                    source={buttonV1Source}
+                    style={[styles.navButton, compactStyles.navButton]}
+                    resizeMode="stretch"
+                  >
+                    <Text style={[styles.navButtonText, compactStyles.navButtonText]}>PvP Ranks</Text>
+                  </ImageBackground>
+                </TouchableOpacity>
+              </View>
             )}
           </View>
 
-          {/* TOP RIGHT - Settings */}
+          {/* TOP CENTER - Points (wide only) */}
+          {!isCompact && (
+            <View style={styles.topCenter}>
+              {!isGuest && (
+                <ImageBackground
+                  source={yellowBrushSource}
+                  style={styles.pointsPanel}
+                  resizeMode="stretch"
+                >
+                  <Text style={styles.pointsLabel}>GAUNTLET POINTS</Text>
+                  <Text style={[styles.pointsValue, { color: '#1a1a1a' }]}>0</Text>
+                </ImageBackground>
+              )}
+            </View>
+          )}
+
+          {/* TOP RIGHT - Settings (wide) / Gauntlet Points (compact) */}
           <View style={styles.topRight}>
-            <TouchableOpacity onPress={() => setShowSettings(true)} activeOpacity={0.7}>
-              <ImageBackground
-                source={buttonV1Source}
-                style={styles.settingsBtn}
-                resizeMode="stretch"
-              >
-                <Image
-                  source={engineImageSource}
-                  style={styles.settingsIconImage}
-                  resizeMode="contain"
-                />
-              </ImageBackground>
-            </TouchableOpacity>
+            {isCompact ? (
+              !isGuest && (
+                <ImageBackground
+                  source={yellowBrushSource}
+                  style={[styles.pointsPanel, compactStyles.pointsPanel]}
+                  resizeMode="stretch"
+                >
+                  <Text style={[styles.pointsLabel, compactStyles.pointsLabel]}>
+                    GAUNTLET POINTS
+                  </Text>
+                  <Text
+                    style={[styles.pointsValue, { color: '#1a1a1a' }, compactStyles.pointsValue]}
+                  >
+                    0
+                  </Text>
+                </ImageBackground>
+              )
+            ) : (
+              <TouchableOpacity onPress={() => setShowSettings(true)} activeOpacity={0.7}>
+                <ImageBackground
+                  source={buttonV1Source}
+                  style={styles.settingsBtn}
+                  resizeMode="stretch"
+                >
+                  <Image
+                    source={engineImageSource}
+                    style={styles.settingsIconImage}
+                    resizeMode="contain"
+                  />
+                </ImageBackground>
+              </TouchableOpacity>
+            )}
           </View>
 
           {/* CENTER - Character */}
-          <View style={styles.center}>
+          <View style={[styles.center, isCompact && compactStyles.center]}>
             <View style={styles.characterContainer}>
-              <View style={styles.characterShadow}>
+              <View style={[styles.characterShadow, isCompact && compactStyles.characterShadow]}>
                 <Svg height="100%" width="100%">
                   <Defs>
                     <Pattern
@@ -589,60 +681,68 @@ export function HubScreen({ navigation }: HubScreenProps) {
                       <Line x1="0" y1="0" x2="0" y2="4" stroke="black" strokeWidth="2" />
                     </Pattern>
                   </Defs>
-                  <Ellipse cx="50" cy="11" rx="50" ry="11" fill="url(#diagonalLines)" />
+                  <Ellipse
+                    cx={isCompact ? '100' : '50'}
+                    cy={isCompact ? '30' : '11'}
+                    rx={isCompact ? '95' : '50'}
+                    ry={isCompact ? '22' : '11'}
+                    fill="url(#diagonalLines)"
+                  />
                 </Svg>
               </View>
               <Image
                 source={defaultMoleImageSource}
-                style={styles.characterImage}
+                style={[styles.characterImage, isCompact && compactStyles.characterImage]}
                 resizeMode="contain"
               />
             </View>
           </View>
 
-          {/* BOTTOM LEFT - Secondary Navigation */}
-          <View style={styles.bottomLeft}>
-            {!isGuest && (
-              <TouchableOpacity onPress={handleQuests} activeOpacity={0.7}>
-                <ImageBackground
-                  source={buttonV1Source}
-                  style={styles.navButton}
-                  resizeMode="stretch"
-                >
-                  <Text style={styles.navButtonText}>Quests</Text>
-                </ImageBackground>
-              </TouchableOpacity>
-            )}
-
-            {!isGuest && (
-              <View style={styles.sideBySideRow}>
-                <TouchableOpacity onPress={handleSkins} activeOpacity={0.7}>
+          {/* BOTTOM LEFT - Secondary Navigation (wide only) */}
+          {!isCompact && (
+            <View style={styles.bottomLeft}>
+              {!isGuest && (
+                <TouchableOpacity onPress={handleQuests} activeOpacity={0.7}>
                   <ImageBackground
                     source={buttonV1Source}
                     style={styles.navButton}
                     resizeMode="stretch"
                   >
-                    <Text style={styles.navButtonText}>Skins</Text>
+                    <Text style={styles.navButtonText}>Quests</Text>
                   </ImageBackground>
                 </TouchableOpacity>
+              )}
 
-                <TouchableOpacity onPress={handleMarketplace} activeOpacity={0.7}>
-                  <ImageBackground
-                    source={buttonV1Source}
-                    style={styles.navButton}
-                    resizeMode="stretch"
-                  >
-                    <Text style={styles.navButtonText}>Marketplace</Text>
-                  </ImageBackground>
-                </TouchableOpacity>
-              </View>
-            )}
-          </View>
+              {!isGuest && (
+                <View style={styles.sideBySideRow}>
+                  <TouchableOpacity onPress={handleSkins} activeOpacity={0.7}>
+                    <ImageBackground
+                      source={buttonV1Source}
+                      style={styles.navButton}
+                      resizeMode="stretch"
+                    >
+                      <Text style={styles.navButtonText}>Skins</Text>
+                    </ImageBackground>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity onPress={handleMarketplace} activeOpacity={0.7}>
+                    <ImageBackground
+                      source={buttonV1Source}
+                      style={styles.navButton}
+                      resizeMode="stretch"
+                    >
+                      <Text style={styles.navButtonText}>Marketplace</Text>
+                    </ImageBackground>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+          )}
 
           {/* BOTTOM RIGHT - Primary Actions */}
-          <View style={styles.bottomRight}>
-            {/* PvP Ranks above play buttons - hidden for guests */}
-            {!isGuest && (
+          <View style={[styles.bottomRight, isCompact && compactStyles.bottomRight]}>
+            {/* PvP Ranks above play buttons - wide only (in compact, it's in left column) */}
+            {!isCompact && !isGuest && (
               <TouchableOpacity onPress={handleLeaderboard} activeOpacity={0.7}>
                 <ImageBackground
                   source={buttonV1Source}
@@ -654,20 +754,27 @@ export function HubScreen({ navigation }: HubScreenProps) {
               </TouchableOpacity>
             )}
 
-            {/* Campaign/Play and PVP side by side */}
-            <View style={styles.playButtonsRow}>
+            {/* Campaign/Play and PVP — side by side (wide) / stacked (compact) */}
+            <View style={[styles.playButtonsRow, isCompact && compactStyles.playButtonsColumn]}>
               <TouchableOpacity onPress={handlePlayPvE} activeOpacity={0.7}>
                 <ImageBackground
                   source={buttonV4Source}
-                  style={styles.campaignButton}
+                  style={[styles.campaignButton, isCompact && compactStyles.campaignButton]}
                   resizeMode="stretch"
                 >
-                  <Text style={styles.campaignButtonText}>{isGuest ? 'Play' : 'Campaign'}</Text>
+                  <Text
+                    style={[
+                      styles.campaignButtonText,
+                      isCompact && compactStyles.campaignButtonText,
+                    ]}
+                  >
+                    {isGuest ? 'Play' : 'Campaign'}
+                  </Text>
                   {isLoading ? (
                     <Skeleton width={50} height={12} style={{ marginTop: 4, marginBottom: 2 }} />
                   ) : (
                     !isGuest && (
-                      <Text style={styles.buttonSub}>
+                      <Text style={[styles.buttonSub, isCompact && compactStyles.buttonSub]}>
                         {`${(profile?.currentLevel ?? 0) + 1} / ${MAX_CAMPAIGN_LEVEL + 1}`}
                       </Text>
                     )
@@ -680,10 +787,17 @@ export function HubScreen({ navigation }: HubScreenProps) {
                 <TouchableOpacity onPress={handlePlayPvP} activeOpacity={0.7}>
                   <ImageBackground
                     source={buttonV2Source}
-                    style={styles.gauntletButton}
+                    style={[styles.gauntletButton, isCompact && compactStyles.gauntletButton]}
                     resizeMode="stretch"
                   >
-                    <Text style={styles.gauntletButtonText}>PVP</Text>
+                    <Text
+                      style={[
+                        styles.gauntletButtonText,
+                        isCompact && compactStyles.gauntletButtonText,
+                      ]}
+                    >
+                      PVP
+                    </Text>
                   </ImageBackground>
                 </TouchableOpacity>
               )}
@@ -2130,5 +2244,109 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: '#a33a3a',
     marginBottom: 6,
+  },
+});
+
+const compactStyles = StyleSheet.create({
+  // Left column spans full height in compact mode
+  leftColumn: {
+    top: 28,
+    left: 28,
+    bottom: 28,
+    justifyContent: 'flex-start',
+  },
+  // Centered button group below profile
+  leftButtonsCenter: {
+    flex: 1,
+    justifyContent: 'center',
+    gap: 14,
+  },
+  playerPanel: {
+    width: 440,
+    height: 140,
+    paddingLeft: 10,
+  },
+  avatarContainer: {
+    width: 112,
+    height: 102,
+    marginLeft: 10,
+    marginRight: 18,
+  },
+  avatarImage: {
+    width: 180,
+    height: 170,
+    left: -38,
+  },
+  playerName: {
+    fontSize: 34,
+    lineHeight: 38,
+  },
+  walletAddress: {
+    fontSize: 24,
+    lineHeight: 26,
+  },
+  navButton: {
+    width: 300,
+    height: 96,
+  },
+  navButtonText: {
+    fontSize: 30,
+    marginBottom: 8,
+  },
+  // Gauntlet points in top right for compact
+  pointsPanel: {
+    width: 360,
+    height: 110,
+  },
+  pointsLabel: {
+    fontSize: 20,
+    letterSpacing: 1,
+  },
+  pointsValue: {
+    fontSize: 40,
+  },
+  // Character shifts right and down to accommodate left column
+  center: {
+    marginLeft: 370,
+    marginTop: 160,
+  },
+  characterImage: {
+    width: 330,
+    height: 330,
+  },
+  characterShadow: {
+    left: 40,
+    bottom: -10,
+    width: 240,
+    height: 60,
+    overflow: 'visible',
+  },
+  // Bottom right — stacked vertically
+  bottomRight: {
+    bottom: 28,
+    right: 28,
+  },
+  playButtonsColumn: {
+    flexDirection: 'column',
+    alignItems: 'flex-end',
+  },
+  campaignButton: {
+    width: 280,
+    height: 130,
+  },
+  campaignButtonText: {
+    fontSize: 34,
+  },
+  buttonSub: {
+    fontSize: 18,
+    marginTop: 4,
+  },
+  gauntletButton: {
+    width: 280,
+    height: 130,
+  },
+  gauntletButtonText: {
+    fontSize: 44,
+    marginBottom: 10,
   },
 });

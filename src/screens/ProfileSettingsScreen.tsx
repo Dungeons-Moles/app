@@ -16,7 +16,7 @@ import { useProfile } from '../contexts/ProfileContext';
 import { RootStackParamList } from '../navigation';
 import { Typography } from '../theme/typography';
 
-const backgroundImageSource = require('../../assets/ui/backgrounds/hub-background.png');
+const backgroundImageSource = require('../../assets/ui/backgrounds/hub-background-wide.png');
 const buttonV1Source = require('../../assets/ui/buttons/button-v1.png');
 const paperPanelSource = require('../../assets/ui/panels/paper-panel.png');
 

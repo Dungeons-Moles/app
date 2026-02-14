@@ -751,9 +751,14 @@
   },
   "ui": {
     "backgrounds": {
-      "account-background.png": {
+      "account-background-compact.png": {
+        "height": 1920,
+        "path": "assets/ui/backgrounds/account-background-compact.png",
+        "width": 2208
+      },
+      "account-background-wide.png": {
         "height": 1536,
-        "path": "assets/ui/backgrounds/account-background.png",
+        "path": "assets/ui/backgrounds/account-background-wide.png",
         "width": 2752
       },
       "campaign-background.png": {
@@ -766,9 +771,14 @@
         "path": "assets/ui/backgrounds/combat-background.png",
         "width": 1198
       },
-      "hub-background.png": {
+      "hub-background-compact.png": {
+        "height": 3712,
+        "path": "assets/ui/backgrounds/hub-background-compact.png",
+        "width": 4262
+      },
+      "hub-background-wide.png": {
         "height": 1342,
-        "path": "assets/ui/backgrounds/hub-background.png",
+        "path": "assets/ui/backgrounds/hub-background-wide.png",
         "width": 2386
       },
       "loading-background.png": {
