@@ -2307,7 +2307,7 @@ const compactStyles = StyleSheet.create({
   },
   // Character shifts right and down to accommodate left column
   center: {
-    marginLeft: 370,
+    marginLeft: 320,
     marginTop: 160,
   },
   characterImage: {

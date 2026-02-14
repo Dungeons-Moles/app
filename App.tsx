@@ -22,6 +22,7 @@ import { GameProvider } from './src/contexts/GameContext';
 import { GameplayStateProvider } from './src/contexts/GameplayStateContext';
 import { CombatReplayProvider } from './src/contexts/CombatReplayContext';
 import { AppNavigator } from './src/navigation';
+import { Psg1Wrapper } from './src/components/Psg1Wrapper';
 
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
@@ -55,23 +56,25 @@ export default function App() {
   }
 
   return (
-    <SafeAreaProvider>
-      <WalletProvider>
-        <SolanaConnectionProvider>
-          <ProfileProvider>
-            <SessionProvider>
-              <GameplayStateProvider>
-                <GameProvider>
-                  <CombatReplayProvider>
-                  <StatusBar style="light" hidden />
-                  <AppNavigator />
-                  </CombatReplayProvider>
-                </GameProvider>
-              </GameplayStateProvider>
-            </SessionProvider>
-          </ProfileProvider>
-        </SolanaConnectionProvider>
-      </WalletProvider>
-    </SafeAreaProvider>
+    <Psg1Wrapper>
+      <SafeAreaProvider>
+        <WalletProvider>
+          <SolanaConnectionProvider>
+            <ProfileProvider>
+              <SessionProvider>
+                <GameplayStateProvider>
+                  <GameProvider>
+                    <CombatReplayProvider>
+                    <StatusBar style="light" hidden />
+                    <AppNavigator />
+                    </CombatReplayProvider>
+                  </GameProvider>
+                </GameplayStateProvider>
+              </SessionProvider>
+            </ProfileProvider>
+          </SolanaConnectionProvider>
+        </WalletProvider>
+      </SafeAreaProvider>
+    </Psg1Wrapper>
   );
 }

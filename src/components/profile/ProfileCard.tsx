@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, ImageBackground } from 'react-native';
 import type { OnChainPlayerProfile } from '@/types/solana';
 import { Typography } from '@/theme/typography';
+import { useScreenVariant } from '@/contexts/ScreenVariantContext';
 
 const rectangleSource = require('../../../assets/ui/frames/rectangle.png');
 
@@ -10,16 +11,24 @@ interface ProfileCardProps {
 }
 
 export function ProfileCard({ profile }: ProfileCardProps) {
+  const isCompact = useScreenVariant() === 'compact';
+
   return (
-    <ImageBackground source={rectangleSource} style={styles.card} resizeMode="stretch">
-      <View style={styles.content}>
+    <ImageBackground
+      source={rectangleSource}
+      style={[styles.card, isCompact && compactStyles.card]}
+      resizeMode="stretch"
+    >
+      <View style={[styles.content, isCompact && compactStyles.content]}>
         <View style={styles.row}>
-          <Text style={styles.label}>Sessions Played:</Text>
-          <Text style={styles.value}>{profile.totalRuns}</Text>
+          <Text style={[styles.label, isCompact && compactStyles.label]}>Sessions Played:</Text>
+          <Text style={[styles.value, isCompact && compactStyles.value]}>{profile.totalRuns}</Text>
         </View>
         <View style={styles.row}>
-          <Text style={styles.label}>Sessions Remaining:</Text>
-          <Text style={styles.value}>{profile.availableRuns}</Text>
+          <Text style={[styles.label, isCompact && compactStyles.label]}>Sessions Remaining:</Text>
+          <Text style={[styles.value, isCompact && compactStyles.value]}>
+            {profile.availableRuns}
+          </Text>
         </View>
       </View>
     </ImageBackground>
@@ -52,5 +61,23 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: '#000000',
+  },
+});
+
+const compactStyles = StyleSheet.create({
+  card: {
+    width: 320,
+    height: 90,
+  },
+  content: {
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    gap: 6,
+  },
+  label: {
+    fontSize: 20,
+  },
+  value: {
+    fontSize: 20,
   },
 });

@@ -4,6 +4,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation';
 import { useWallet } from '../contexts/WalletContext';
 import { useProfile } from '../contexts/ProfileContext';
+import { useScreenVariant } from '../contexts/ScreenVariantContext';
 
 type LoadingScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Loading'>;
@@ -12,6 +13,7 @@ type LoadingScreenProps = {
 export function LoadingScreen({ navigation }: LoadingScreenProps) {
   const { wallet } = useWallet();
   const { profile, isLoading: isProfileLoading } = useProfile();
+  const isCompact = useScreenVariant() === 'compact';
   const pulseAnim = useRef(new Animated.Value(0.6)).current;
   const progressAnim = useRef(new Animated.Value(0)).current;
   const [hasNavigated, setHasNavigated] = useState(false);
@@ -93,7 +95,7 @@ export function LoadingScreen({ navigation }: LoadingScreenProps) {
     <View style={styles.container}>
       <Image source={backgroundImage} style={styles.backgroundImage} resizeMode="stretch" />
       <View style={styles.content}>
-        <Animated.View style={[styles.logoContainer, { opacity: pulseAnim }]}>
+        <Animated.View style={[styles.logoContainer, isCompact && { width: '80%', maxWidth: 600 }, { opacity: pulseAnim }]}>
           <Image
             source={require('../../assets/branding/logo.png')}
             style={styles.logo}
@@ -101,8 +103,8 @@ export function LoadingScreen({ navigation }: LoadingScreenProps) {
           />
         </Animated.View>
 
-        <Animated.View style={[styles.loadingBarContainer, { opacity: pulseAnim }]}>
-          <View style={styles.loadingBarBackground}>
+        <Animated.View style={[styles.loadingBarContainer, isCompact && { width: '65%', maxWidth: 450 }, { opacity: pulseAnim }]}>
+          <View style={[styles.loadingBarBackground, isCompact && { height: 12 }]}>
             <Animated.View style={[styles.loadingBarFill, { width: progressWidth }]} />
           </View>
         </Animated.View>

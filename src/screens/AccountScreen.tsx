@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useProfile } from '../contexts/ProfileContext';
+import { useScreenVariant } from '../contexts/ScreenVariantContext';
 import { useWallet, type SupportedWallet } from '../contexts/WalletContext';
 import { RootStackParamList } from '../navigation';
 import { JupiterIcon } from '../components/wallet/JupiterIcon';
@@ -31,6 +32,8 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
     mode,
   } = useProfile();
   const { wallet, connect, isConnecting, error: walletError } = useWallet();
+  const screenVariant = useScreenVariant();
+  const isCompact = screenVariant === 'compact';
   const [selectedWallet, setSelectedWallet] = useState<SupportedWallet>('Jupiter');
   const [profileName, setProfileName] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
@@ -143,7 +146,11 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
   return (
     <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
       <Image
-        source={require('../../assets/ui/backgrounds/account-background.png')}
+        source={
+          screenVariant === 'compact'
+            ? require('../../assets/ui/backgrounds/account-background-compact.png')
+            : require('../../assets/ui/backgrounds/account-background-wide.png')
+        }
         style={styles.backgroundImage}
         resizeMode="stretch"
       />
@@ -171,10 +178,10 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
             ]}
             resizeMode="contain"
           >
-            <View style={styles.topSlot}>
+            <View style={[styles.topSlot, isCompact && { top: '19%' }]}>
               {!isConnected ? (
                 <>
-                  <Text style={styles.profileLabel}>SUPPORTED WALLETS</Text>
+                  <Text style={[styles.profileLabel, isCompact && { fontSize: 22 }]}>SUPPORTED WALLETS</Text>
                   <View style={styles.walletOptions}>
                     {(
                       [
@@ -186,6 +193,7 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
                         key={id}
                         style={[
                           styles.walletOption,
+                          isCompact && { width: 96, height: 96 },
                           id === selectedWallet && styles.walletOptionSelected,
                         ]}
                         onPress={() => setSelectedWallet(id)}
@@ -198,7 +206,7 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
                               ? styles.walletIconActive.color
                               : styles.walletIconInactive.color
                           }
-                          size={36}
+                          size={isCompact ? 64 : 36}
                         />
                       </TouchableOpacity>
                     ))}
@@ -206,6 +214,7 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
                     <TouchableOpacity
                       style={[
                         styles.walletOption,
+                        isCompact && { width: 96, height: 96 },
                         'DevKeypair' === selectedWallet && styles.walletOptionSelected,
                       ]}
                       onPress={() => setSelectedWallet('DevKeypair')}
@@ -214,7 +223,7 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
                     >
                       <Text
                         style={{
-                          fontSize: 10,
+                          fontSize: isCompact ? 18 : 10,
                           fontWeight: 'bold',
                           color:
                             'DevKeypair' === selectedWallet
@@ -227,13 +236,13 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
                       </Text>
                     </TouchableOpacity>
                   </View>
-                  <Text style={styles.walletHint}>Select a wallet to sign in</Text>
+                  <Text style={[styles.walletHint, isCompact && { fontSize: 20 }]}>Select a wallet to sign in</Text>
                 </>
               ) : (
                 <>
-                  <Text style={styles.profileLabel}>CREATE PROFILE</Text>
+                  <Text style={[styles.profileLabel, isCompact && { fontSize: 22, marginBottom: 20 }]}>CREATE PROFILE</Text>
                   <TextInput
-                    style={styles.profileInput}
+                    style={[styles.profileInput, isCompact && { fontSize: 20, paddingVertical: 14, width: '85%' }]}
                     placeholder="Adventurer name"
                     placeholderTextColor="#999999"
                     value={profileName}
@@ -246,7 +255,7 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
               )}
             </View>
 
-            <View style={styles.buttonSlot}>
+            <View style={[styles.buttonSlot, isCompact && { width: '60%', aspectRatio: 3.0 }]}>
               <TouchableOpacity
                 style={styles.primaryButton}
                 onPress={!isConnected ? handleSignIn : handleCreateProfile}
@@ -260,11 +269,11 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
                 >
                   {showLoading ? (
                     <View style={styles.loadingRow}>
-                      <ActivityIndicator size="small" color="#ffffff" />
-                      <Text style={[styles.primaryButtonText, { marginLeft: 8 }]}>Loading...</Text>
+                      <ActivityIndicator size={isCompact ? 'large' : 'small'} color="#ffffff" />
+                      <Text style={[styles.primaryButtonText, isCompact && { fontSize: 32 }, { marginLeft: 8 }]}>Loading...</Text>
                     </View>
                   ) : (
-                    <Text style={styles.primaryButtonText}>
+                    <Text style={[styles.primaryButtonText, isCompact && { fontSize: 32 }]}>
                       {!isConnected ? 'Sign In' : 'Create Profile'}
                     </Text>
                   )}
@@ -274,15 +283,15 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
 
             {/* Guest Mode Link - only show when not connected (T002) */}
             {!isConnected && (
-              <View style={styles.guestSlot}>
+              <View style={[styles.guestSlot, isCompact && { bottom: '13%' }]}>
                 <TouchableOpacity onPress={handlePlayAsGuest} disabled={showLoading}>
-                  <Text style={styles.guestText}>or play as guest</Text>
+                  <Text style={[styles.guestText, isCompact && { fontSize: 22 }]}>or play as guest</Text>
                 </TouchableOpacity>
               </View>
             )}
 
-            <View style={styles.errorSlot}>
-              {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
+            <View style={[styles.errorSlot, isCompact && { bottom: '14%' }]}>
+              {errorMessage ? <Text style={[styles.errorText, isCompact && { fontSize: 16 }]}>{errorMessage}</Text> : null}
             </View>
           </ImageBackground>
         </View>

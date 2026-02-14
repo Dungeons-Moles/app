@@ -22,6 +22,7 @@ import { useSolanaConnection } from '../contexts/SolanaConnectionContext';
 import { useMapGenerator, MAX_CAMPAIGN_LEVEL } from '../hooks/useMapGenerator';
 import { RootStackParamList } from '../navigation';
 import { Typography } from '../theme/typography';
+import { useScreenVariant } from '../contexts/ScreenVariantContext';
 import { Skeleton } from '../components/common/Skeleton';
 import { ProfileCard } from '../components/profile/ProfileCard';
 import { createGameplayStateProgram } from '../services/solana/programs';
@@ -33,7 +34,8 @@ import { useWallet } from '../contexts/WalletContext';
 import type { CampaignLevel } from '../types/solana';
 import type { GameState as OnChainGameState } from '../services/solana/types/gameplay_state';
 
-const backgroundImageSource = require('../../assets/ui/backgrounds/campaign-background.png');
+const backgroundImageCompact = require('../../assets/ui/backgrounds/campaign-background-compact.png');
+const backgroundImageWide = require('../../assets/ui/backgrounds/campaign-background-wide.png');
 const buttonV1Source = require('../../assets/ui/buttons/button-v1.png');
 const buttonV4Source = require('../../assets/ui/buttons/button-v4.png');
 const squareSource = require('../../assets/ui/frames/square.png');
@@ -87,6 +89,8 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
     }).start();
   }, []);
 
+  const screenVariant = useScreenVariant();
+  const isCompact = screenVariant === 'compact';
   const isGuestMode = mode === 'guest';
   const isCachedMode = mode === 'cached';
 
@@ -479,7 +483,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
 
       return (
         <TouchableOpacity
-          style={styles.levelCell}
+          style={[styles.levelCell, isCompact && compactStyles.levelCell]}
           onPress={() => handleLevelSelect(item)}
           disabled={!item.isUnlocked || isStartingGame}
           activeOpacity={item.isUnlocked ? 0.7 : 1}
@@ -496,7 +500,9 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
             {item.isCompleted && <View style={styles.completedOverlay} />}
 
             {/* Current level border highlight */}
-            {isCurrentLevel && <View style={styles.currentLevelBorder} />}
+            {isCurrentLevel && (
+              <View style={[styles.currentLevelBorder, isCompact && compactStyles.currentLevelBorder]} />
+            )}
 
             {/* Selected state overlay */}
             {isSelected && <View style={styles.selectedOverlay} />}
@@ -505,6 +511,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
             <Text
               style={[
                 styles.levelNumber,
+                isCompact && compactStyles.levelNumber,
                 item.isUnlocked ? styles.levelNumberUnlocked : styles.levelNumberLocked,
                 item.isCompleted && styles.levelNumberCompleted,
                 isCurrentLevel && styles.levelNumberCurrent,
@@ -514,17 +521,23 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
             </Text>
 
             {/* Completed checkmark */}
-            {item.isCompleted && <Text style={styles.checkmark}>&#10003;</Text>}
+            {item.isCompleted && (
+              <Text style={[styles.checkmark, isCompact && compactStyles.checkmark]}>&#10003;</Text>
+            )}
 
             {/* Lock icon for locked levels */}
             {!item.isUnlocked && (
-              <Image source={lockSource} style={styles.lockIcon} resizeMode="contain" />
+              <Image
+                source={lockSource}
+                style={[styles.lockIcon, isCompact && compactStyles.lockIcon]}
+                resizeMode="contain"
+              />
             )}
 
             {/* Loading indicator */}
             {isSelected && isStartingGame && (
               <View style={styles.loadingOverlay}>
-                <ActivityIndicator size="small" color="#ffffff" />
+                <ActivityIndicator size={isCompact ? 'large' : 'small'} color="#ffffff" />
               </View>
             )}
           </ImageBackground>
@@ -540,20 +553,34 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
 
   return (
     <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
-      <Image source={backgroundImageSource} style={styles.backgroundImage} resizeMode="stretch" />
+      <Image
+        source={isCompact ? backgroundImageCompact : backgroundImageWide}
+        style={styles.backgroundImage}
+        resizeMode="stretch"
+      />
 
-      <View style={styles.content}>
+      <View style={[styles.content, isCompact && compactStyles.content]}>
         {/* Header */}
-        <View style={styles.header}>
+        <View style={[styles.header, isCompact && compactStyles.header]}>
           <TouchableOpacity onPress={handleBack} activeOpacity={0.7}>
-            <ImageBackground source={buttonV1Source} style={styles.backButton} resizeMode="stretch">
-              <Text style={styles.backButtonText}>Back</Text>
+            <ImageBackground
+              source={buttonV1Source}
+              style={[styles.backButton, isCompact && compactStyles.backButton]}
+              resizeMode="stretch"
+            >
+              <Text style={[styles.backButtonText, isCompact && compactStyles.backButtonText]}>
+                Back
+              </Text>
             </ImageBackground>
           </TouchableOpacity>
 
-          <ImageBackground source={buttonV4Source} style={styles.titlePanel} resizeMode="stretch">
-            <Text style={styles.title}>Campaign</Text>
-            <Text style={styles.subtitle}>
+          <ImageBackground
+            source={buttonV4Source}
+            style={[styles.titlePanel, isCompact && compactStyles.titlePanel]}
+            resizeMode="stretch"
+          >
+            <Text style={[styles.title, isCompact && compactStyles.title]}>Campaign</Text>
+            <Text style={[styles.subtitle, isCompact && compactStyles.subtitle]}>
               {isGuestMode
                 ? 'Guest Mode (1-10)'
                 : isCachedMode
@@ -564,31 +591,42 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
 
           {/* Mode indicator */}
           {(isGuestMode || isCachedMode) && (
-            <View style={styles.modeIndicator}>
-              <Text style={styles.modeIndicatorText}>{isGuestMode ? 'GUEST' : 'OFFLINE'}</Text>
+            <View style={[styles.modeIndicator, isCompact && compactStyles.modeIndicator]}>
+              <Text style={[styles.modeIndicatorText, isCompact && compactStyles.modeIndicatorText]}>
+                {isGuestMode ? 'GUEST' : 'OFFLINE'}
+              </Text>
             </View>
           )}
 
-          {!isGuestMode && !isCachedMode && <View style={styles.headerSpacer} />}
+          {!isGuestMode && !isCachedMode && (
+            <View style={[styles.headerSpacer, isCompact && compactStyles.headerSpacer]} />
+          )}
         </View>
 
         {/* Level Grid */}
         {isLoading ? (
           <View style={styles.gridContent}>
-            <View style={styles.loadingGrid}>
+            <View style={[styles.loadingGrid, isCompact && compactStyles.loadingGrid]}>
               {Array.from({ length: 15 }).map((_, index) => (
-                <View key={`skeleton-${index}`} style={styles.levelCellSkeleton}>
+                <View
+                  key={`skeleton-${index}`}
+                  style={[styles.levelCellSkeleton, isCompact && compactStyles.levelCellSkeleton]}
+                >
                   <Skeleton width="100%" height="100%" borderRadius={8} />
                 </View>
               ))}
             </View>
-            <Text style={styles.loadingText}>Loading levels...</Text>
+            <Text style={[styles.loadingText, isCompact && compactStyles.loadingText]}>
+              Loading levels...
+            </Text>
           </View>
         ) : mapError ? (
           <View style={styles.errorContainer}>
-            <Text style={styles.errorText}>{mapError}</Text>
+            <Text style={[styles.errorText, isCompact && compactStyles.errorText]}>{mapError}</Text>
             <TouchableOpacity onPress={handleBack} style={styles.errorButton}>
-              <Text style={styles.errorButtonText}>Go Back</Text>
+              <Text style={[styles.errorButtonText, isCompact && compactStyles.errorButtonText]}>
+                Go Back
+              </Text>
             </TouchableOpacity>
           </View>
         ) : (
@@ -607,7 +645,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
       </View>
 
       {profile && (
-        <View style={styles.statsContainer}>
+        <View style={[styles.statsContainer, isCompact && compactStyles.statsContainer]}>
           <ProfileCard profile={profile} />
         </View>
       )}
@@ -979,5 +1017,91 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#c8c8c8',
     textAlign: 'center',
+  },
+});
+
+const compactStyles = StyleSheet.create({
+  content: {
+    paddingTop: 36,
+    paddingHorizontal: 28,
+  },
+  header: {
+    marginBottom: 32,
+  },
+  backButton: {
+    width: 140,
+    height: 76,
+  },
+  backButtonText: {
+    fontSize: 28,
+    marginBottom: 6,
+  },
+  titlePanel: {
+    width: 280,
+    height: 100,
+    paddingVertical: 12,
+    paddingHorizontal: 32,
+  },
+  title: {
+    fontSize: 36,
+  },
+  subtitle: {
+    fontSize: 20,
+    marginBottom: 6,
+  },
+  headerSpacer: {
+    width: 140,
+  },
+  modeIndicator: {
+    paddingVertical: 8,
+    paddingHorizontal: 20,
+    borderRadius: 6,
+  },
+  modeIndicatorText: {
+    fontSize: 20,
+  },
+  levelCell: {
+    width: 88,
+    height: 88,
+    margin: 8,
+  },
+  levelNumber: {
+    fontSize: 30,
+  },
+  currentLevelBorder: {
+    borderWidth: 4,
+    borderRadius: 6,
+  },
+  checkmark: {
+    top: 3,
+    right: 5,
+    fontSize: 18,
+  },
+  lockIcon: {
+    bottom: 5,
+    right: 5,
+    width: 22,
+    height: 22,
+  },
+  loadingGrid: {
+    width: (88 + 16) * 5,
+  },
+  levelCellSkeleton: {
+    width: 88,
+    height: 88,
+    margin: 8,
+  },
+  loadingText: {
+    fontSize: 26,
+  },
+  errorText: {
+    fontSize: 22,
+  },
+  errorButtonText: {
+    fontSize: 26,
+  },
+  statsContainer: {
+    bottom: 28,
+    right: 28,
   },
 });

@@ -761,9 +761,14 @@
         "path": "assets/ui/backgrounds/account-background-wide.png",
         "width": 2752
       },
-      "campaign-background.png": {
+      "campaign-background-compact.png": {
+        "height": 3712,
+        "path": "assets/ui/backgrounds/campaign-background-compact.png",
+        "width": 4262
+      },
+      "campaign-background-wide.png": {
         "height": 1536,
-        "path": "assets/ui/backgrounds/campaign-background.png",
+        "path": "assets/ui/backgrounds/campaign-background-wide.png",
         "width": 2731
       },
       "combat-background.png": {
