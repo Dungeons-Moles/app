@@ -8,6 +8,7 @@ import React from 'react';
 import { View, Text, StyleSheet, Image } from 'react-native';
 import type { PlayerStats } from '../../game/engine/types';
 import { Typography } from '../../theme/typography';
+import { useScreenVariant } from '../../contexts/ScreenVariantContext';
 
 const ICONS = {
   HP: require('../../../assets/icons/stats/HP.png'),
@@ -29,26 +30,33 @@ interface StatRowProps {
   maxValue?: number;
   color?: string;
   isSidebar?: boolean;
+  isCompact?: boolean;
 }
 
-function StatRow({ icon, label, value, maxValue, color = '#E0E0E0', isSidebar }: StatRowProps) {
+function StatRow({ icon, label, value, maxValue, color = '#E0E0E0', isSidebar, isCompact }: StatRowProps) {
   const displayValue = maxValue !== undefined ? `${value}/${maxValue}` : `${value}`;
   const textColor = isSidebar ? '#000000' : color;
+  const iconSize = isCompact ? 28 : 18;
+  const fontSize = isCompact ? 16 : 14;
+  const labelWidth = isCompact ? 52 : 40;
 
   return (
     <View style={styles.statRow}>
       <Image
         source={icon}
-        style={[styles.icon, isSidebar && { tintColor: '#000000' }]}
+        style={[{ width: iconSize, height: iconSize }, isSidebar && { tintColor: '#000000' }]}
         resizeMode="contain"
       />
-      <Text style={[styles.label, { color: textColor }]}>{label}</Text>
-      <Text style={[styles.value, { color: textColor }]}>{displayValue}</Text>
+      <Text style={[styles.label, { color: textColor, fontSize, width: labelWidth }]}>{label}</Text>
+      <Text style={[styles.value, { color: textColor, fontSize }]}>{displayValue}</Text>
     </View>
   );
 }
 
 export function StatsPanel({ stats, isSidebar }: StatsPanelProps) {
+  const variant = useScreenVariant();
+  const isCompact = !!isSidebar && variant === 'compact';
+
   if (isSidebar) {
     return (
       <View style={[styles.container, styles.sidebarContainer]}>
@@ -61,6 +69,7 @@ export function StatsPanel({ stats, isSidebar }: StatsPanelProps) {
               maxValue={stats.maxHp}
               color="#FF6B6B"
               isSidebar={true}
+              isCompact={isCompact}
             />
             <StatRow
               icon={ICONS.ATK}
@@ -68,6 +77,7 @@ export function StatsPanel({ stats, isSidebar }: StatsPanelProps) {
               value={stats.atk}
               color="#FFB347"
               isSidebar={true}
+              isCompact={isCompact}
             />
             <StatRow
               icon={ICONS.ARM}
@@ -75,6 +85,7 @@ export function StatsPanel({ stats, isSidebar }: StatsPanelProps) {
               value={stats.arm}
               color="#87CEEB"
               isSidebar={true}
+              isCompact={isCompact}
             />
           </View>
           <View style={styles.column}>
@@ -84,6 +95,7 @@ export function StatsPanel({ stats, isSidebar }: StatsPanelProps) {
               value={stats.spd}
               color="#98FB98"
               isSidebar={true}
+              isCompact={isCompact}
             />
             <StatRow
               icon={ICONS.DIG}
@@ -91,6 +103,7 @@ export function StatsPanel({ stats, isSidebar }: StatsPanelProps) {
               value={stats.dig}
               color="#DEB887"
               isSidebar={true}
+              isCompact={isCompact}
             />
           </View>
         </View>

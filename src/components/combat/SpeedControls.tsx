@@ -24,12 +24,15 @@ export interface SpeedControlsProps {
   currentSpeed: CombatSpeed;
   onSpeedChange: (speed: CombatSpeed) => void;
   disabled?: boolean;
+  /** Scale factor for compact/mobile views (default 1) */
+  scale?: number;
 }
 
 export function SpeedControls({
   currentSpeed,
   onSpeedChange,
   disabled = false,
+  scale = 1,
 }: SpeedControlsProps) {
   const renderButton = (speed: CombatSpeed, iconSource: ImageSourcePropType) => {
     const isActive = currentSpeed === speed;
@@ -37,7 +40,10 @@ export function SpeedControls({
     return (
       <TouchableOpacity
         key={speed}
-        style={[styles.buttonWrapper, disabled && styles.buttonDisabled]}
+        style={[
+          { width: 60 * scale, height: 48 * scale },
+          disabled && styles.buttonDisabled,
+        ]}
         onPress={() => onSpeedChange(speed)}
         disabled={disabled}
         activeOpacity={0.7}
@@ -49,7 +55,11 @@ export function SpeedControls({
         >
           <Image
             source={iconSource}
-            style={[styles.icon, isActive && styles.iconActive]}
+            style={[
+              { width: 20 * scale, height: 20 * scale, marginBottom: 5 * scale },
+              styles.icon,
+              isActive && styles.iconActive,
+            ]}
             resizeMode="contain"
           />
         </ImageBackground>
@@ -58,7 +68,7 @@ export function SpeedControls({
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { gap: 8 * scale }]}>
       {renderButton('paused', stopIconSource)}
       {renderButton('normal', normalIconSource)}
       {renderButton('fast', fastIconSource)}
@@ -70,11 +80,6 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-  },
-  buttonWrapper: {
-    width: 60,
-    height: 48,
   },
   buttonBg: {
     width: '100%',
@@ -86,10 +91,7 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   icon: {
-    width: 20,
-    height: 20,
-    marginBottom: 5,
-    tintColor: '#5c4033', // Dark wood color by default
+    tintColor: '#5c4033',
   },
   iconActive: {
     tintColor: '#FABC0F',

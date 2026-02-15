@@ -38,6 +38,7 @@ import { extractStatBonuses, formatStatBonuses } from '@/utils/stat-display';
 import { SimplifiedItemOption } from '@/components/poi/SimplifiedItemOption';
 import { ItemTooltip as PoiItemTooltip } from '@/components/poi/ItemTooltip';
 import { Typography } from '@/theme/typography';
+import { useScreenVariant } from '../../contexts/ScreenVariantContext';
 
 interface POIModalProps {
   interaction: POIInteraction | null;
@@ -322,19 +323,46 @@ export function POIModal({
     onSelectOption(kilnFuseOptionIndex);
   }, [kilnFuseOptionIndex, onSelectOption]);
 
-  const ModalWrapper = ({ children }: { children: React.ReactNode }) => (
-    <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
-      <View style={styles.modalContainer}>
-        <View style={styles.modalDarkArea}>{children}</View>
-        <View style={styles.modalSidebarArea} pointerEvents="none" />
-      </View>
-    </Modal>
-  );
+  const variant = useScreenVariant();
+  const isCompact = variant === 'compact';
+
+  const ModalWrapper = ({ children, alignLeft }: { children: React.ReactNode; alignLeft?: boolean }) => {
+    // In compact mode, use a View-based overlay so the floating sidebar (zIndex 150)
+    // can render above the overlay (zIndex 100). Modal creates a separate layer that
+    // blocks everything behind it regardless of zIndex.
+    if (isCompact) {
+      if (!visible) return null;
+      return (
+        <View style={[styles.compactModalOverlay, alignLeft && styles.compactModalOverlayLeft]}>
+          <View style={[styles.compactModalScale, alignLeft && styles.compactModalScaleLeft]}>
+            {children}
+          </View>
+        </View>
+      );
+    }
+    return (
+      <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
+        <View style={styles.modalContainer}>
+          <View style={styles.modalDarkArea}>{children}</View>
+          <View style={styles.modalSidebarArea} pointerEvents="none" />
+        </View>
+      </Modal>
+    );
+  };
 
   // Overlay wrapper for POIs that need sidebar interaction (Rune Kiln, Scrap Chute).
   // Uses an absolutely-positioned View instead of <Modal> so the sidebar remains touchable.
   const OverlayWrapper = ({ children }: { children: React.ReactNode }) => {
     if (!visible) return null;
+    if (isCompact) {
+      return (
+        <View style={styles.compactModalOverlay}>
+          <View style={styles.compactModalScale}>
+            {children}
+          </View>
+        </View>
+      );
+    }
     return (
       <View style={styles.overlayContainer} pointerEvents="box-none">
         <View style={styles.modalDarkArea}>{children}</View>
@@ -552,7 +580,7 @@ export function POIModal({
     }
 
     return (
-      <ModalWrapper>
+      <ModalWrapper alignLeft={poiId !== 'L4'}>
         <View style={styles.threeChoiceModal} pointerEvents="auto">
           <Image
             source={paperPanelSource}
@@ -1019,6 +1047,26 @@ const styles = StyleSheet.create({
     bottom: 0,
     right: 230,
     zIndex: 100,
+  },
+  overlayContainerCompact: {
+    right: 0,
+  },
+  compactModalOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 100,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+  },
+  compactModalOverlayLeft: {
+    alignItems: 'flex-start',
+    paddingLeft: 48,
+  },
+  compactModalScale: {
+    transform: [{ scale: 1.4 }],
+  },
+  compactModalScaleLeft: {
+    transformOrigin: 'left center',
   },
   modalDarkArea: {
     flex: 1,

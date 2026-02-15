@@ -32,6 +32,7 @@ import { Sidebar } from '../components/game/Sidebar';
 import { BurnerBalanceIndicator } from '../components/common/BurnerBalanceIndicator';
 import { useDirectionInput } from '../hooks/useInput';
 import { useLandscapeLock } from '../hooks/useOrientationLock';
+import { useScreenVariant } from '../contexts/ScreenVariantContext';
 import { Direction, DIRECTION_DELTA } from '../game/input/types';
 import { TileType, MapEnemy, MapPOI } from '../game/map/types';
 import { getDiscoveredWaypoints } from '../game/entities/pois';
@@ -63,8 +64,10 @@ import Svg, { Path } from 'react-native-svg';
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.png');
 const COIN_ICON = require('../../assets/icons/ui/coin.png');
 const MAP_ICON = require('../../assets/icons/ui/map.png');
+const SIDEBAR_BG = require('../../assets/ui/panels/sidebar.png');
 
 const SIDEBAR_WIDTH = 230;
+const COMPACT_SIDEBAR_WIDTH = 280;
 const NAVBAR_HEIGHT = 60;
 
 type PlayerStats = {
@@ -238,7 +241,7 @@ function createGauntletCombatParams(
     playerGear,
     playerTool,
     playerGold,
-    week: (Math.min(Math.max(week, 1), 3) as 1 | 2 | 3),
+    week: Math.min(Math.max(week, 1), 3) as 1 | 2 | 3,
     isBossFight: false,
     combatLog: visual.combatLog,
     onChainOutcome: {
@@ -303,15 +306,17 @@ function ThinSeparator({ horizontal = true }: { horizontal?: boolean }) {
   );
 }
 
-function CrossingLines() {
+function CrossingLines({ navbarHeight, isCompact }: { navbarHeight: number; isCompact: boolean }) {
   return (
     <View style={styles.linesOverlay} pointerEvents="none">
-      <View style={styles.hLineContainer}>
+      <View style={[styles.hLineContainer, { top: navbarHeight - 3 }]}>
         <ThinSeparator horizontal={true} />
       </View>
-      <View style={styles.vLineContainer}>
-        <ThinSeparator horizontal={false} />
-      </View>
+      {!isCompact && (
+        <View style={styles.vLineContainer}>
+          <ThinSeparator horizontal={false} />
+        </View>
+      )}
     </View>
   );
 }
@@ -329,8 +334,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
     panOverview,
     zoomOverview,
     resetOverviewCamera,
-  } =
-    useGame();
+  } = useGame();
   const { mode } = useProfile();
   const {
     hasActiveSession,
@@ -350,6 +354,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
   const { wallet } = useWallet();
   const { connection } = useSolanaConnection();
   const { refreshMapEntities, pois: onChainPois } = useGameplayStateContext();
+  const variant = useScreenVariant();
   const nightMovement = useNightMovement();
   const poiInteraction = usePoiInteraction();
   const isFocused = useIsFocused();
@@ -489,7 +494,9 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
     const isGauntletRun = onChainState.runMode === RunMode.Gauntlet;
     const resolvedWeekBoss: BossId | null =
-      onChainState.runMode === RunMode.Duel && (state.time.week === 1 || state.time.week === 2) && mapSeed != null
+      onChainState.runMode === RunMode.Duel &&
+      (state.time.week === 1 || state.time.week === 2) &&
+      mapSeed != null
         ? selectDuelWeekBossForSeed(mapSeed, state.time.week)
         : (state.time.weekBoss ?? null);
     if (!isGauntletRun && !resolvedWeekBoss) {
@@ -511,8 +518,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
       // Captured outside try so it's available in the catch fallback.
       // When on-chain HP is 0 (boss fight already resolved inline or field death),
       // use local stats as fallback so the local resolver produces a multi-turn combat.
-      const fallbackHp =
-        onChainState.hp > 0 ? onChainState.hp : Math.max(state.player.stats.hp, 1);
+      const fallbackHp = onChainState.hp > 0 ? onChainState.hp : Math.max(state.player.stats.hp, 1);
       const playerStats = {
         hp: fallbackHp,
         maxHp: state.player.stats.maxHp,
@@ -568,7 +574,8 @@ export function GameScreen({ navigation }: GameScreenProps) {
           week: state.time.week,
           hasOnChainOutcome: bossResult.success,
           hasCombatLog: !!bossResult.combatLog || !!bossResult.gauntletVisual?.combatLog,
-          combatLogEntries: bossResult.combatLog?.length ?? bossResult.gauntletVisual?.combatLog?.length ?? 0,
+          combatLogEntries:
+            bossResult.combatLog?.length ?? bossResult.gauntletVisual?.combatLog?.length ?? 0,
         });
 
         navigateToCombat(navigation, bossCombatParams, {
@@ -592,7 +599,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
             state.player.equippedTool,
             state.player.activeItemsets ?? [],
             state.rngState,
-            state.time.week,
+            state.time.week
           );
 
           console.warn('[GameScreen] Boss fight on-chain failed, falling back to local resolver:', {
@@ -607,7 +614,10 @@ export function GameScreen({ navigation }: GameScreenProps) {
           });
         } catch (fallbackErr) {
           // Boss definition missing — navigate to Death as last resort so the user isn't stuck.
-          console.error('[GameScreen] Boss combat params failed, navigating to Death:', fallbackErr);
+          console.error(
+            '[GameScreen] Boss combat params failed, navigating to Death:',
+            fallbackErr
+          );
           const bossName = BOSSES[resolvedWeekBoss]?.name ?? resolvedWeekBoss;
           navigateToDeath(navigation, onChainState, bossName);
         }
@@ -730,7 +740,11 @@ export function GameScreen({ navigation }: GameScreenProps) {
   // Compute the camera focus position during fast travel
   const fastTravelFocus = useMemo(() => {
     if (!isFastTravelActive) return undefined;
-    return fastTravelCameraTarget ?? fastTravelDestinations[fastTravelSelectedIndex] ?? fastTravelDestinations[0];
+    return (
+      fastTravelCameraTarget ??
+      fastTravelDestinations[fastTravelSelectedIndex] ??
+      fastTravelDestinations[0]
+    );
   }, [isFastTravelActive, fastTravelCameraTarget, fastTravelSelectedIndex, fastTravelDestinations]);
 
   const fastTravelOverlayWaypoints = useMemo<MapPOI[]>(() => {
@@ -760,15 +774,13 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
   const handleDirection = useCallback(
     (direction: Direction) => {
-        if (isFastTravelActive) {
+      if (isFastTravelActive) {
         if (direction === Direction.Left) {
           setFastTravelSelectedIndex(
             (prev) => (prev - 1 + fastTravelDestinations.length) % fastTravelDestinations.length
           );
         } else if (direction === Direction.Right) {
-          setFastTravelSelectedIndex(
-            (prev) => (prev + 1) % fastTravelDestinations.length
-          );
+          setFastTravelSelectedIndex((prev) => (prev + 1) % fastTravelDestinations.length);
         }
         return;
       }
@@ -1248,7 +1260,14 @@ export function GameScreen({ navigation }: GameScreenProps) {
     if (lastAutoPos && (lastAutoPos.x !== currentPos.x || lastAutoPos.y !== currentPos.y)) {
       lastAutoTriggeredPosRef.current = null;
     }
-  }, [state?.player?.position, state?.phase, shouldAutoOpen, isInteracting, poiInteract, isFocused]);
+  }, [
+    state?.player?.position,
+    state?.phase,
+    shouldAutoOpen,
+    isInteracting,
+    poiInteract,
+    isFocused,
+  ]);
 
   const handleFastTravel = useCallback(() => {
     if (!state?.player?.position) {
@@ -1261,9 +1280,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
     const destinations = discoveredWaypoints
       .map((wp) => wp.position)
       .filter((pos) => pos.x !== state.player.position.x || pos.y !== state.player.position.y)
-      .filter(
-        (pos, index, arr) => arr.findIndex((p) => p.x === pos.x && p.y === pos.y) === index
-      );
+      .filter((pos, index, arr) => arr.findIndex((p) => p.x === pos.x && p.y === pos.y) === index);
 
     if (destinations.length === 0) {
       showWallBreakFeedback('No other waypoints discovered');
@@ -1535,8 +1552,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
   const isItemSelectPoiActive =
     state?.phase === GamePhase.POIInteraction &&
-    (state.activePOI?.poi.definitionId === 'L11' ||
-      state.activePOI?.poi.definitionId === 'L14');
+    (state.activePOI?.poi.definitionId === 'L11' || state.activePOI?.poi.definitionId === 'L14');
 
   if (!state) {
     return (
@@ -1558,6 +1574,9 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
   const maxGearSlots = onChainState?.runMode === RunMode.Gauntlet ? 12 : 8;
   const isGauntletLayout = onChainState?.runMode === RunMode.Gauntlet;
+  const isCompact = variant === 'compact';
+  const navScale = isCompact ? 2 : 1;
+  const navbarHeight = NAVBAR_HEIGHT * navScale;
 
   return (
     <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
@@ -1565,46 +1584,65 @@ export function GameScreen({ navigation }: GameScreenProps) {
         <View style={styles.darkOverlay}>
           <View style={styles.fullLayout}>
             {/* Top Area */}
-            <View style={styles.topRow}>
-              <View style={styles.navbarArea}>
-                <View style={styles.navbarLeft}>
+            <View style={[styles.topRow, { height: navbarHeight }]}>
+              <View style={[styles.navbarArea, { paddingHorizontal: 15 * navScale }]}>
+                <View style={[styles.navbarLeft, { width: 100 * navScale }]}>
                   <Pressable
-                    style={styles.mapToggleButton}
+                    style={{
+                      width: 36 * navScale,
+                      height: 36 * navScale,
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                    }}
                     onPress={toggleOverviewMode}
                     disabled={isFastTravelActive}
                   >
-                    <Image source={MAP_ICON} style={styles.mapIcon} resizeMode="contain" />
+                    <Image
+                      source={MAP_ICON}
+                      style={{ width: 32 * navScale, height: 32 * navScale }}
+                      resizeMode="contain"
+                    />
                   </Pressable>
                 </View>
                 <View style={styles.navbarCenter}>
-                  <Text style={styles.weekText}>Week {state.time.week}</Text>
-                  <TopBar time={state.time} />
+                  <Text style={[styles.weekText, { fontSize: 12 * navScale }]}>
+                    Week {state.time.week}
+                  </Text>
+                  <TopBar time={state.time} scale={navScale} />
                 </View>
-                <View style={styles.navbarRight}>
-                  <View style={styles.goldDisplay}>
-                    <Image source={COIN_ICON} style={styles.coinIcon} resizeMode="contain" />
-                    <Text style={styles.goldValue}>{state.player.stats.gold}</Text>
+                <View style={[styles.navbarRight, { width: 80 * navScale }]}>
+                  <View style={[styles.goldDisplay, { gap: 6 * navScale }]}>
+                    <Image
+                      source={COIN_ICON}
+                      style={{ width: 28 * navScale, height: 28 * navScale }}
+                      resizeMode="contain"
+                    />
+                    <Text style={[styles.goldValue, { fontSize: 24 * navScale }]}>
+                      {state.player.stats.gold}
+                    </Text>
                   </View>
                 </View>
               </View>
-              <View style={styles.bossTopContainer}>
-                <Sidebar
-                  time={state.time}
-                  stats={state.player.stats}
-                  inventory={state.player.inventory}
-                  inventoryCapacity={state.player.inventoryCapacity}
-                  maxGearSlots={maxGearSlots}
-                  isGauntletLayout={isGauntletLayout}
-                  equippedTool={state.player.equippedTool}
-                  activeItemsets={state.player.activeItemsets}
-                  onlyBoss={true}
-                />
-              </View>
+              {!isCompact && (
+                <View style={styles.bossTopContainer}>
+                  <Sidebar
+                    time={state.time}
+                    stats={state.player.stats}
+                    inventory={state.player.inventory}
+                    inventoryCapacity={state.player.inventoryCapacity}
+                    maxGearSlots={maxGearSlots}
+                    isGauntletLayout={isGauntletLayout}
+                    equippedTool={state.player.equippedTool}
+                    activeItemsets={state.player.activeItemsets}
+                    onlyBoss={true}
+                  />
+                </View>
+              )}
             </View>
 
             {/* Bottom Area */}
             <View style={styles.bottomRow}>
-              <View style={styles.mapAreaContainer}>
+              <View style={[styles.mapAreaContainer, isCompact && { flex: 1 }]}>
                 <GameCanvas
                   map={state.map}
                   playerPosition={state.player.position}
@@ -1694,27 +1732,29 @@ export function GameScreen({ navigation }: GameScreenProps) {
                   />
                 </View>
               </View>
-              <View style={styles.sidebarBottomContainer}>
-                <Sidebar
-                  time={state.time}
-                  stats={state.player.stats}
-                  inventory={state.player.inventory}
-                  inventoryCapacity={state.player.inventoryCapacity}
-                  maxGearSlots={maxGearSlots}
-                  isGauntletLayout={isGauntletLayout}
-                  equippedTool={state.player.equippedTool}
-                  activeItemsets={state.player.activeItemsets}
-                  onItemInspect={handleInspectItem}
-                  onToolInspect={handleInspectTool}
-                  isRuneKilnActive={isItemSelectPoiActive}
-                  handleInventoryItemPress={handleInventoryItemPress}
-                  onlyContent={true}
-                />
-              </View>
+              {!isCompact && (
+                <View style={styles.sidebarBottomContainer}>
+                  <Sidebar
+                    time={state.time}
+                    stats={state.player.stats}
+                    inventory={state.player.inventory}
+                    inventoryCapacity={state.player.inventoryCapacity}
+                    maxGearSlots={maxGearSlots}
+                    isGauntletLayout={isGauntletLayout}
+                    equippedTool={state.player.equippedTool}
+                    activeItemsets={state.player.activeItemsets}
+                    onItemInspect={handleInspectItem}
+                    onToolInspect={handleInspectTool}
+                    isRuneKilnActive={isItemSelectPoiActive}
+                    handleInventoryItemPress={handleInventoryItemPress}
+                    onlyContent={true}
+                  />
+                </View>
+              )}
             </View>
 
             {/* Crossing Separators */}
-            <CrossingLines />
+            <CrossingLines navbarHeight={navbarHeight} isCompact={isCompact} />
 
             <POIModal
               visible={state.phase === GamePhase.POIInteraction}
@@ -1731,6 +1771,56 @@ export function GameScreen({ navigation }: GameScreenProps) {
               onFastTravel={handleFastTravel}
             />
           </View>
+
+          {isCompact && (
+            <View
+              style={[styles.floatingSidebarWrapper, { top: navbarHeight }]}
+              pointerEvents="box-none"
+            >
+              <ImageBackground
+                source={SIDEBAR_BG}
+                style={styles.floatingBossPanel}
+                imageStyle={{ height: '100%' }}
+                resizeMode="stretch"
+              >
+                <Sidebar
+                  time={state.time}
+                  stats={state.player.stats}
+                  inventory={state.player.inventory}
+                  inventoryCapacity={state.player.inventoryCapacity}
+                  maxGearSlots={maxGearSlots}
+                  isGauntletLayout={isGauntletLayout}
+                  equippedTool={state.player.equippedTool}
+                  activeItemsets={state.player.activeItemsets}
+                  onlyBoss={true}
+                  inlineBoss={true}
+                />
+              </ImageBackground>
+              <ImageBackground
+                source={SIDEBAR_BG}
+                style={styles.floatingSidebarPanel}
+                imageStyle={{ height: '100%' }}
+                resizeMode="stretch"
+              >
+                <Sidebar
+                  time={state.time}
+                  stats={state.player.stats}
+                  inventory={state.player.inventory}
+                  inventoryCapacity={state.player.inventoryCapacity}
+                  maxGearSlots={maxGearSlots}
+                  isGauntletLayout={isGauntletLayout}
+                  equippedTool={state.player.equippedTool}
+                  activeItemsets={state.player.activeItemsets}
+                  onItemInspect={handleInspectItem}
+                  onToolInspect={handleInspectTool}
+                  isRuneKilnActive={isItemSelectPoiActive}
+                  handleInventoryItemPress={handleInventoryItemPress}
+                  onlyContent={true}
+                  floatingCompact={true}
+                />
+              </ImageBackground>
+            </View>
+          )}
 
           <ItemTooltip
             item={inspectedItem}
@@ -1761,6 +1851,13 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   bossTopContainer: { width: SIDEBAR_WIDTH },
+  bossTopContainerCompact: { width: SIDEBAR_WIDTH, justifyContent: 'center', alignItems: 'center' },
+  navbarDivider: {
+    width: 2,
+    height: '60%',
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    alignSelf: 'center',
+  },
   bottomRow: { flex: 1, flexDirection: 'row' },
   mapAreaContainer: {
     flex: 1,
@@ -1790,6 +1887,29 @@ const styles = StyleSheet.create({
   goldValue: { fontFamily: Typography.number, fontSize: 24, fontWeight: 'bold', color: '#000000' },
   mapToggleButton: { width: 36, height: 36, justifyContent: 'center', alignItems: 'center' },
   mapIcon: { width: 32, height: 32 },
+
+  // Floating sidebar (compact mode)
+  floatingSidebarWrapper: {
+    position: 'absolute',
+    right: 6,
+    top: NAVBAR_HEIGHT,
+    bottom: 0,
+    justifyContent: 'center',
+    gap: 24,
+    zIndex: 150,
+  },
+  floatingBossPanel: {
+    width: COMPACT_SIDEBAR_WIDTH,
+    padding: 10,
+    flexGrow: 0,
+    overflow: 'hidden',
+  },
+  floatingSidebarPanel: {
+    width: COMPACT_SIDEBAR_WIDTH,
+    maxHeight: '60%',
+    flexGrow: 0,
+    overflow: 'hidden',
+  },
 
   // Crossing Line Styles
   linesOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 20 },

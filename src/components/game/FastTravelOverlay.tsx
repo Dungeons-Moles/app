@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import type { OverviewModeState } from '../../contexts/GameContext';
 import { DEFAULT_OVERVIEW_STATE } from '../../contexts/GameContext';
+import { useScreenVariant } from '../../contexts/ScreenVariantContext';
 import type { Position } from '../../game/engine/types';
 import type { MapPOI } from '../../game/map/types';
 
@@ -65,7 +66,9 @@ export function FastTravelOverlay({
 
   const overview = overviewMode ?? DEFAULT_OVERVIEW_STATE;
   // Match MapRenderer's dynamic zoom so markers align with map tiles
-  const dynamicZoom = dimensions.height / (7 * TILE_SIZE);
+  const variant = useScreenVariant();
+  const targetVerticalTiles = variant === 'compact' ? 9 : 7;
+  const dynamicZoom = dimensions.height / (targetVerticalTiles * TILE_SIZE);
   const zoom = overview.active ? overview.zoom : dynamicZoom;
 
   const selectableWaypoints = useMemo(

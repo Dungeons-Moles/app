@@ -18,6 +18,7 @@ import { useSession } from '../contexts/SessionContext';
 import { useWallet } from '../contexts/WalletContext';
 import { useSolanaConnection } from '../contexts/SolanaConnectionContext';
 import { useLandscapeLock } from '../hooks/useOrientationLock';
+import { useScreenVariant } from '../contexts/ScreenVariantContext';
 import {
   CombatArena,
   VictoryDefeatDisplay,
@@ -117,6 +118,9 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
     getDisplayStates,
     getResult,
   } = useCombat();
+  const variant = useScreenVariant();
+  const isCompact = variant === 'compact';
+  const scale = isCompact ? 2 : 1;
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   // Get combat input from route params (on-chain mode) or null (guest mode)
@@ -535,7 +539,9 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
         >
           <View style={styles.darkOverlay}>
             <View style={styles.loadingContainer}>
-              <Text style={styles.loadingText}>Preparing combat...</Text>
+              <Text style={[styles.loadingText, { fontSize: 20 * scale }]}>
+                Preparing combat...
+              </Text>
             </View>
           </View>
         </ImageBackground>
@@ -565,10 +571,11 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
               gold={enemyGold ?? combatInput?.enemyGold}
               statusEffects={enemy.statusEffects}
               trait={enemyTrait}
+              scale={scale}
             />
 
             {/* Combat Arena (CENTER) */}
-            <View style={styles.arenaArea}>
+            <View style={[styles.arenaArea, { padding: 16 * scale }]}>
               <CombatArena
                 player={player}
                 enemy={enemy}
@@ -579,13 +586,15 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
                 activeActor={activeActor}
                 playerMaxArm={playerMaxArm}
                 enemyMaxArm={enemyMaxArm}
+                scale={scale}
               />
 
-              <View style={styles.controlsArea}>
+              <View style={[styles.controlsArea, { marginTop: 12 * scale }]}>
                 <SpeedControls
                   currentSpeed={speed}
                   onSpeedChange={setSpeed}
                   disabled={speedControlsDisabled}
+                  scale={scale}
                 />
               </View>
 
@@ -615,6 +624,7 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
               statusEffects={player.statusEffects}
               equippedTool={playerEquipment.tool}
               equippedGear={playerEquipment.gear}
+              scale={scale}
             />
           </View>
 
@@ -625,6 +635,7 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
               goldReward={result === 'VICTORY' ? combatState.resolvedCombat?.goldReward : undefined}
               isFinalVictory={result === 'VICTORY' && isBossFight && currentWeek === 3}
               onComplete={handleCombatComplete}
+              scale={scale}
             />
           )}
         </View>
@@ -656,16 +667,12 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     fontFamily: Typography.header,
-    fontSize: 20,
     color: '#333',
   },
   arenaArea: {
     flex: 2,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 16,
   },
-  controlsArea: {
-    marginTop: 12,
-  },
+  controlsArea: {},
 });

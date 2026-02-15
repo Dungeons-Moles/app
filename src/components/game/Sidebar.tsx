@@ -15,7 +15,10 @@ import { useGameplayStateContext } from '../../contexts/GameplayStateContext';
 import { useWallet } from '../../contexts/WalletContext';
 import { useSolanaConnection } from '../../contexts/SolanaConnectionContext';
 import { useSession } from '../../contexts/SessionContext';
-import { createGameplayStateProgram, createPlayerProfileProgram } from '../../services/solana/programs';
+import {
+  createGameplayStateProgram,
+  createPlayerProfileProgram,
+} from '../../services/solana/programs';
 import {
   derivePlayerProfilePda,
   deriveGauntletSessionPda,
@@ -24,7 +27,10 @@ import {
 import { RunMode } from '../../services/solana/types/gameplay_state';
 import { fetchGauntletWeekEchoPreview } from '../../services/solana/gauntlet';
 import { calculateItemStats } from '../../game/entities/items';
-import { convertItemInstanceToGear, convertItemInstanceToTool } from '../../services/solana/pitDraft';
+import {
+  convertItemInstanceToGear,
+  convertItemInstanceToTool,
+} from '../../services/solana/pitDraft';
 import { selectDuelWeekBossForSeed } from '../../game/time/progression';
 import type {
   TimeState,
@@ -38,6 +44,11 @@ import type {
 const SIDEBAR_BG = require('../../../assets/ui/panels/sidebar.png');
 const BOSS_PANEL_BG = require('../../../assets/ui/panels/boss-panel.png');
 const DEFAULT_MOLE_IMAGE_SOURCE = require('../../../assets/entities/characters/default-mole.png');
+const HP_ICON = require('../../../assets/icons/stats/HP.png');
+const ATK_ICON = require('../../../assets/icons/stats/ATK.png');
+const ARM_ICON = require('../../../assets/icons/stats/ARM.png');
+const SPD_ICON = require('../../../assets/icons/stats/speed.png');
+const DIG_ICON = require('../../../assets/icons/stats/DIG.png');
 
 interface SidebarProps {
   time: TimeState;
@@ -55,9 +66,23 @@ interface SidebarProps {
   handleInventoryItemPress?: (item: Tool | Gear, slotIndex: number) => void;
   onlyBoss?: boolean;
   onlyContent?: boolean;
+  scale?: number;
+  floatingCompact?: boolean;
+  compactBoss?: boolean;
+  inlineBoss?: boolean;
 }
 
-export function BossPanel({ time }: { time: TimeState }) {
+export function BossPanel({
+  time,
+  scale = 1,
+  compact = false,
+  inline = false,
+}: {
+  time: TimeState;
+  scale?: number;
+  compact?: boolean;
+  inline?: boolean;
+}) {
   const [modalVisible, setModalVisible] = useState(false);
   const [pvpDetails, setPvpDetails] = useState<PvpDetails | null>(null);
   const [pvpLoading, setPvpLoading] = useState(false);
@@ -74,8 +99,7 @@ export function BossPanel({ time }: { time: TimeState }) {
     resolvedRunMode === RunMode.Gauntlet ||
     gameState?.maxWeeks === 5 ||
     sessionGameState?.maxWeeks === 5;
-  const isDuelRun =
-    resolvedRunMode === RunMode.Duel;
+  const isDuelRun = resolvedRunMode === RunMode.Duel;
   const isDuelFinalWeek = isDuelRun && resolvedWeek === 3;
   const duelWeekBoss = useCallback(() => {
     if (!isDuelRun || (resolvedWeek !== 1 && resolvedWeek !== 2)) return null;
@@ -83,7 +107,7 @@ export function BossPanel({ time }: { time: TimeState }) {
     const derivedBossId = selectDuelWeekBossForSeed(mapSeed, resolvedWeek);
     return getBoss(derivedBossId);
   }, [isDuelRun, mapSeed, resolvedWeek])();
-  const displayedBoss = isDuelFinalWeek ? null : (isDuelRun ? duelWeekBoss : boss);
+  const displayedBoss = isDuelFinalWeek ? null : isDuelRun ? duelWeekBoss : boss;
   const shouldShowGauntletEcho = !displayedBoss && isGauntletRun;
   const shouldShowDuelOpponent = !displayedBoss && isDuelFinalWeek;
 
@@ -91,9 +115,7 @@ export function BossPanel({ time }: { time: TimeState }) {
     async (walletKey: string): Promise<string | null> => {
       try {
         const profileProgram = createPlayerProfileProgram(connection);
-        const [profilePda] = derivePlayerProfilePda(
-          new PublicKey(walletKey)
-        );
+        const [profilePda] = derivePlayerProfilePda(new PublicKey(walletKey));
         const profile = await (
           profileProgram.account as {
             playerProfile: {
@@ -165,7 +187,12 @@ export function BossPanel({ time }: { time: TimeState }) {
         maxWeeks = fetched.maxWeeks;
       }
 
-      if ((runMode !== RunMode.Gauntlet && maxWeeks !== 5) || week === undefined || totalMoves === undefined || !session) {
+      if (
+        (runMode !== RunMode.Gauntlet && maxWeeks !== 5) ||
+        week === undefined ||
+        totalMoves === undefined ||
+        !session
+      ) {
         setPvpDetails({
           name: 'Mole Echo',
           sourceLabel: 'PvP Echo',
@@ -247,7 +274,14 @@ export function BossPanel({ time }: { time: TimeState }) {
     } finally {
       setPvpLoading(false);
     }
-  }, [displayedBoss, connection, fetchProfileNameByWallet, gameState, wallet.publicKey, isGauntletRun]);
+  }, [
+    displayedBoss,
+    connection,
+    fetchProfileNameByWallet,
+    gameState,
+    wallet.publicKey,
+    isGauntletRun,
+  ]);
 
   const handleBossPress = useCallback(() => {
     if (!displayedBoss && !shouldShowGauntletEcho) {
@@ -263,14 +297,15 @@ export function BossPanel({ time }: { time: TimeState }) {
     ? displayedBoss.name
     : shouldShowDuelOpponent
       ? 'Your Opponent'
-    : shouldShowGauntletEcho
-      ? (pvpDetails?.name ?? 'Mole Echo')
-      : 'No Weekly Boss';
-  const panelSubtitle = displayedBoss || shouldShowGauntletEcho
-    ? 'Tap for details'
-    : shouldShowDuelOpponent
-      ? 'Build is hidden until duel resolves'
-      : 'Duel final is at week end';
+      : shouldShowGauntletEcho
+        ? (pvpDetails?.name ?? 'Mole Echo')
+        : 'No Weekly Boss';
+  const panelSubtitle =
+    displayedBoss || shouldShowGauntletEcho
+      ? 'Tap for details'
+      : shouldShowDuelOpponent
+        ? 'Build is hidden until duel resolves'
+        : 'Duel final is at week end';
 
   console.log('[BossPanel] render_mode', {
     hasBoss: !!displayedBoss,
@@ -284,23 +319,91 @@ export function BossPanel({ time }: { time: TimeState }) {
     panelTitle,
   });
 
+  if (inline) {
+    const bossStats = displayedBoss?.stats;
+    return (
+      <View style={styles.inlineBossContainer}>
+        <View style={styles.inlineBossHeader}>
+          <Image
+            source={
+              displayedBoss ? getEntityImageSource(displayedBoss.id) : DEFAULT_MOLE_IMAGE_SOURCE
+            }
+            style={styles.inlineBossImage}
+            resizeMode={displayedBoss ? 'contain' : 'cover'}
+          />
+          <Text style={styles.inlineBossName} numberOfLines={1}>
+            {panelTitle}
+          </Text>
+        </View>
+        {bossStats && (
+          <>
+            <View style={styles.inlineStatsRow}>
+              <View style={styles.inlineStatsColumn}>
+                <InlineStatRow icon={HP_ICON} label="HP" value={bossStats.hp} />
+                <InlineStatRow icon={ATK_ICON} label="ATK" value={bossStats.atk} />
+                <InlineStatRow icon={ARM_ICON} label="ARM" value={bossStats.arm} />
+              </View>
+              <View style={styles.inlineStatsColumn}>
+                <InlineStatRow icon={SPD_ICON} label="SPD" value={bossStats.spd} />
+                <InlineStatRow icon={DIG_ICON} label="DIG" value={bossStats.dig ?? 0} />
+              </View>
+            </View>
+            {displayedBoss?.abilities && displayedBoss.abilities.length > 0 && (
+              <View style={styles.inlineAbilities}>
+                {displayedBoss.abilities.map((ability, index) => (
+                  <View key={index} style={styles.inlineAbilityItem}>
+                    <Text style={styles.inlineAbilityName}>{ability.name}</Text>
+                    <Text style={styles.inlineAbilityDesc}>{ability.description}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+          </>
+        )}
+      </View>
+    );
+  }
+
   return (
     <>
-      <View style={styles.bossContainer}>
-        <ImageBackground source={BOSS_PANEL_BG} style={styles.bossPanel} resizeMode="stretch">
-          <Pressable style={styles.bossContent} onPress={handleBossPress}>
-            <Image
-              source={displayedBoss ? getEntityImageSource(displayedBoss.id) : DEFAULT_MOLE_IMAGE_SOURCE}
-              style={styles.bossIcon}
-              resizeMode={displayedBoss ? 'contain' : 'cover'}
-            />
-            <View>
-              <Text style={styles.bossName}>{panelTitle}</Text>
-              <Text style={styles.bossDetailsText}>{panelSubtitle}</Text>
-            </View>
-          </Pressable>
-        </ImageBackground>
-      </View>
+      {compact ? (
+        <Pressable style={styles.bossCompactContainer} onPress={handleBossPress}>
+          <Image
+            source={
+              displayedBoss ? getEntityImageSource(displayedBoss.id) : DEFAULT_MOLE_IMAGE_SOURCE
+            }
+            style={styles.bossCompactIcon}
+            resizeMode={displayedBoss ? 'contain' : 'cover'}
+          />
+          <Text style={styles.bossCompactName} numberOfLines={1}>
+            {panelTitle}
+          </Text>
+        </Pressable>
+      ) : (
+        <View style={[styles.bossContainer, { paddingHorizontal: 6 * scale }]}>
+          <ImageBackground
+            source={BOSS_PANEL_BG}
+            style={[styles.bossPanel, { height: 50 * scale, paddingHorizontal: 10 * scale }]}
+            resizeMode="stretch"
+          >
+            <Pressable style={[styles.bossContent, { gap: 8 * scale }]} onPress={handleBossPress}>
+              <Image
+                source={
+                  displayedBoss ? getEntityImageSource(displayedBoss.id) : DEFAULT_MOLE_IMAGE_SOURCE
+                }
+                style={{ width: 42 * scale, height: 42 * scale }}
+                resizeMode={displayedBoss ? 'contain' : 'cover'}
+              />
+              <View>
+                <Text style={[styles.bossName, { fontSize: 16 * scale }]}>{panelTitle}</Text>
+                <Text style={[styles.bossDetailsText, { fontSize: 10 * scale }]}>
+                  {panelSubtitle}
+                </Text>
+              </View>
+            </Pressable>
+          </ImageBackground>
+        </View>
+      )}
       <BossTooltipModal
         visible={modalVisible}
         boss={displayedBoss ?? null}
@@ -314,18 +417,24 @@ export function BossPanel({ time }: { time: TimeState }) {
 
 export function Sidebar(props: SidebarProps) {
   if (props.onlyBoss) {
-    return <BossPanel time={props.time} />;
+    return <BossPanel time={props.time} scale={props.scale} compact={props.compactBoss} inline={props.inlineBoss} />;
   }
 
+  const isFloating = props.floatingCompact;
   const content = (
-    <View style={styles.innerContainer}>
+    <View
+      style={[
+        styles.innerContainer,
+        isFloating && { flex: 0, flexGrow: 0, padding: 14, paddingTop: 16, gap: 16 },
+      ]}
+    >
       {!props.onlyContent && <BossPanel time={props.time} />}
 
       <View style={styles.statsWrapper}>
         <StatsPanel stats={props.stats} isSidebar={true} />
       </View>
 
-      <View style={styles.inventoryWrapper}>
+      <View style={[styles.inventoryWrapper, isFloating && { flex: 0, flexGrow: 0 }]}>
         <InventoryPanel
           inventory={props.inventory}
           equippedTool={props.equippedTool}
@@ -342,6 +451,10 @@ export function Sidebar(props: SidebarProps) {
     </View>
   );
 
+  if (props.floatingCompact) {
+    return content;
+  }
+
   if (props.onlyContent) {
     return (
       <ImageBackground source={SIDEBAR_BG} style={styles.container} resizeMode="stretch">
@@ -355,6 +468,16 @@ export function Sidebar(props: SidebarProps) {
       <ImageBackground source={SIDEBAR_BG} style={styles.sidebarBg} resizeMode="stretch">
         {content}
       </ImageBackground>
+    </View>
+  );
+}
+
+function InlineStatRow({ icon, label, value }: { icon: any; label: string; value: number }) {
+  return (
+    <View style={styles.inlineStatRow}>
+      <Image source={icon} style={styles.inlineStatIcon} resizeMode="contain" />
+      <Text style={styles.inlineStatLabel}>{label}</Text>
+      <Text style={styles.inlineStatValue}>{value}</Text>
     </View>
   );
 }
@@ -407,10 +530,108 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: '#333333',
   },
+  bossCompactContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 2,
+  },
+  bossCompactIcon: {
+    width: 72,
+    height: 72,
+  },
+  bossCompactName: {
+    fontFamily: Typography.header,
+    fontSize: 18,
+    color: '#000000',
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  bossCompactSubtitle: {
+    fontFamily: Typography.body,
+    fontSize: 9,
+    color: '#333333',
+    textAlign: 'center',
+  },
   statsWrapper: {
     flexShrink: 0,
   },
   inventoryWrapper: {
     flex: 1,
+  },
+
+  // Inline boss details (compact floating)
+  inlineBossContainer: {
+    padding: 14,
+    paddingTop: 16,
+    gap: 16,
+  },
+  inlineBossHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  inlineBossImage: {
+    width: 64,
+    height: 64,
+  },
+  inlineBossName: {
+    flex: 1,
+    fontFamily: Typography.header,
+    fontSize: 22,
+    color: '#000000',
+    fontWeight: 'bold',
+  },
+  inlineStatsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+    paddingHorizontal: 10,
+  },
+  inlineStatsColumn: {
+    flex: 1,
+    gap: 6,
+  },
+  inlineStatRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginVertical: 2,
+  },
+  inlineStatIcon: {
+    width: 28,
+    height: 28,
+    tintColor: '#000000',
+  },
+  inlineStatLabel: {
+    fontFamily: Typography.header,
+    fontSize: 16,
+    color: '#000000',
+    width: 52,
+    fontWeight: 'bold',
+  },
+  inlineStatValue: {
+    fontFamily: Typography.number,
+    fontSize: 16,
+    color: '#000000',
+    fontWeight: 'bold',
+  },
+  inlineAbilities: {
+    gap: 6,
+  },
+  inlineAbilityItem: {
+    gap: 2,
+  },
+  inlineAbilityName: {
+    fontFamily: Typography.header,
+    fontSize: 18,
+    color: '#000000',
+    fontWeight: 'bold',
+  },
+  inlineAbilityDesc: {
+    fontFamily: Typography.body,
+    fontSize: 16,
+    color: '#333333',
+    lineHeight: 22,
   },
 });

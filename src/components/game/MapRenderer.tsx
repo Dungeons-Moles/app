@@ -13,6 +13,7 @@ import type { GameMap, MapEnemy } from '../../game/map/types';
 import { TileType, FogState } from '../../game/map/types';
 import { getPOIDefinition } from '../../data/pois';
 import type { OverviewModeState } from '../../contexts/GameContext';
+import { useScreenVariant } from '../../contexts/ScreenVariantContext';
 import { DEFAULT_OVERVIEW_STATE } from '../../contexts/GameContext';
 import { WallHighlight } from './WallHighlight';
 import { useSkiaEntityImages } from '../../hooks/useEntityImages';
@@ -338,10 +339,12 @@ export function MapRenderer({
 
   const overview = overviewMode ?? DEFAULT_OVERVIEW_STATE;
 
-  // T142: Calculate dynamic zoom to show 3 tiles above/below (7 tiles total height)
-  const targetVerticalTiles = 7;
+  // T142: Calculate dynamic zoom to show tiles above/below player
+  const variant = useScreenVariant();
+  const targetVerticalTiles = variant === 'compact' ? 9 : 7;
   const dynamicZoom = height / (targetVerticalTiles * TILE_SIZE);
-  const zoom = overview.active ? overview.zoom : dynamicZoom;
+  const overviewZoom = variant === 'compact' ? overview.zoom * 2 : overview.zoom;
+  const zoom = overview.active ? overviewZoom : dynamicZoom;
 
   const cameraFocus = cameraFocusOverride ?? playerPosition;
   const cameraCenter = useMemo(

@@ -21,14 +21,15 @@ const MOVES_PER_TICK = 5;
 
 interface TopBarProps {
   time: TimeState;
+  scale?: number;
 }
 
-export function TopBar({ time }: TopBarProps) {
+export function TopBar({ time, scale = 1 }: TopBarProps) {
   const progress = getWeekProgress(time);
 
   return (
     <View style={styles.container}>
-      <WeekProgressTimeline time={time} progress={progress} />
+      <WeekProgressTimeline time={time} progress={progress} scale={scale} />
     </View>
   );
 }
@@ -36,9 +37,10 @@ export function TopBar({ time }: TopBarProps) {
 interface WeekProgressTimelineProps {
   time: TimeState;
   progress: number;
+  scale: number;
 }
 
-function WeekProgressTimeline({ time }: WeekProgressTimelineProps) {
+function WeekProgressTimeline({ time, scale }: WeekProgressTimelineProps) {
   const currentTickPosition = useMemo(() => {
     const ticksPerCycle = DAY_TICKS + NIGHT_TICKS;
 
@@ -80,31 +82,37 @@ function WeekProgressTimeline({ time }: WeekProgressTimelineProps) {
     return segments;
   }, []);
 
+  const iconSize = 16 * scale;
+  const tickW = 2;
+  const tickH = 10 * scale;
+  const barH = 12 * scale;
+  const wrapperH = 20 * scale;
+
   return (
-    <View style={styles.tickBarContainer}>
+    <View style={[styles.tickBarContainer, { maxWidth: 500 * scale }]}>
       {/* Icons Row */}
-      <View style={styles.iconsRow}>
+      <View style={[styles.iconsRow, { marginBottom: 4 * scale }]}>
         {timelineSegments.map((segment, index) => (
           <View
             key={`icon-${index}`}
-            style={[styles.iconContainer, { flex: segment.ticks }]} // Proportionally size containers
+            style={[styles.iconContainer, { flex: segment.ticks }]}
           >
             {segment.type === 'day' ? (
-              <Image source={SUN_ICON} style={styles.phaseIcon} resizeMode="contain" />
+              <Image source={SUN_ICON} style={{ width: iconSize, height: iconSize, marginLeft: -7 * scale }} resizeMode="contain" />
             ) : (
-              <Image source={MOON_ICON} style={styles.phaseIcon} resizeMode="contain" />
+              <Image source={MOON_ICON} style={{ width: iconSize, height: iconSize, marginLeft: -7 * scale }} resizeMode="contain" />
             )}
           </View>
         ))}
         {/* Skull icon at the end */}
-        <View style={styles.skullContainer}>
-          <Image source={SKULL_ICON} style={styles.skullIcon} resizeMode="contain" />
+        <View style={[styles.skullContainer, { right: -8 * scale }]}>
+          <Image source={SKULL_ICON} style={{ width: iconSize, height: iconSize }} resizeMode="contain" />
         </View>
       </View>
 
       {/* Tick Bar Row */}
-      <View style={styles.tickBarWrapper}>
-        <View style={styles.tickBarBackground}>
+      <View style={[styles.tickBarWrapper, { height: wrapperH }]}>
+        <View style={[styles.tickBarBackground, { height: barH }]}>
           {timelineSegments
             .map((segment) =>
               Array.from({ length: segment.ticks }).map((_, tickIdx) => {
@@ -113,7 +121,7 @@ function WeekProgressTimeline({ time }: WeekProgressTimelineProps) {
                 return (
                   <View
                     key={globalTick}
-                    style={[styles.tick, isConsumed ? styles.tickConsumed : styles.tickPending]}
+                    style={[{ width: tickW, height: tickH }, isConsumed ? styles.tickConsumed : styles.tickPending]}
                   />
                 );
               })
@@ -121,14 +129,14 @@ function WeekProgressTimeline({ time }: WeekProgressTimelineProps) {
             .flat()}
         </View>
 
-        <View style={styles.markerRow}>
+        <View style={[styles.markerRow, { height: wrapperH }]}>
           <View
             style={[
               styles.positionMarker,
-              { left: `${(currentTickPosition / (TOTAL_TICKS - 1)) * 100}%` },
+              { left: `${(currentTickPosition / (TOTAL_TICKS - 1)) * 100}%`, top: -2 * scale, marginLeft: -2 * scale },
             ]}
           >
-            <Text style={styles.markerLine}>|</Text>
+            <Text style={[styles.markerLine, { fontSize: 18 * scale }]}>|</Text>
           </View>
         </View>
       </View>

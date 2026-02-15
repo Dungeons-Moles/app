@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { Animated, StyleSheet, Text, View } from 'react-native';
 import type { Position } from '../../game/engine/types';
+import { useScreenVariant } from '../../contexts/ScreenVariantContext';
 
 interface WallHighlightProps {
   position: Position;
@@ -10,6 +11,8 @@ interface WallHighlightProps {
 }
 
 export function WallHighlight({ position, cost, tileSize, cameraOffset }: WallHighlightProps) {
+  const variant = useScreenVariant();
+  const isCompact = variant === 'compact';
   const pulse = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -64,8 +67,8 @@ export function WallHighlight({ position, cost, tileSize, cameraOffset }: WallHi
         },
       ]}
     >
-      <View style={styles.badge}>
-        <Text style={styles.badgeText}>
+      <View style={[styles.badge, isCompact && styles.badgeCompact]}>
+        <Text style={[styles.badgeText, isCompact && styles.badgeTextCompact]}>
           {cost} move{cost === 1 ? '' : 's'}
         </Text>
       </View>
@@ -97,5 +100,16 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '600',
     color: '#1f2937',
+  },
+  badgeCompact: {
+    top: -14,
+    right: -14,
+    borderRadius: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  badgeTextCompact: {
+    fontSize: 18,
+    fontWeight: '700',
   },
 });

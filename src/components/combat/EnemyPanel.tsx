@@ -45,20 +45,28 @@ interface ItemBadgeProps {
   name: string;
   image?: ImageSourcePropType;
   rarity?: ItemRarity;
+  scale?: number;
 }
 
-function ItemBadge({ emoji, image, rarity }: ItemBadgeProps) {
+function ItemBadge({ emoji, image, rarity, scale = 1 }: ItemBadgeProps) {
   const borderColor = rarity ? getTierBorderColor(rarity) : null;
   return (
     <ImageBackground
       source={SQUARE_BG}
-      style={[styles.itemBadge, borderColor && { borderWidth: 2, borderColor }]}
+      style={[
+        { width: 32 * scale, height: 32 * scale, justifyContent: 'center', alignItems: 'center' },
+        borderColor && { borderWidth: 2, borderColor },
+      ]}
       resizeMode="stretch"
     >
       {image ? (
-        <Image source={image} style={styles.itemImage} resizeMode="contain" />
+        <Image
+          source={image}
+          style={{ width: 24 * scale, height: 24 * scale }}
+          resizeMode="contain"
+        />
       ) : (
-        <Text style={styles.itemEmoji}>{emoji}</Text>
+        <Text style={{ fontSize: 16 * scale }}>{emoji}</Text>
       )}
     </ImageBackground>
   );
@@ -90,20 +98,27 @@ export interface EnemyPanelProps {
   equippedGear?: Gear[];
   /** Optional vertical adjustment for portrait alignment */
   imageOffsetY?: number;
+  /** Scale factor for compact/mobile views (default 1) */
+  scale?: number;
 }
 
 interface StatRowProps {
   label: string;
   value: number;
   icon: ImageSourcePropType;
+  scale?: number;
 }
 
-function StatRow({ label, value, icon }: StatRowProps) {
+function StatRow({ label, value, icon, scale = 1 }: StatRowProps) {
   return (
     <View style={styles.statRow}>
-      <Image source={icon} style={styles.statIcon} resizeMode="contain" />
-      <Text style={styles.statLabel}>{label}</Text>
-      <Text style={styles.statValue}>{value}</Text>
+      <Image
+        source={icon}
+        style={{ width: 18 * scale, height: 18 * scale, marginRight: 8 * scale }}
+        resizeMode="contain"
+      />
+      <Text style={[styles.statLabel, { fontSize: 12 * scale }]}>{label}</Text>
+      <Text style={[styles.statValue, { fontSize: 16 * scale }]}>{value}</Text>
     </View>
   );
 }
@@ -126,6 +141,7 @@ export function EnemyPanel({
   equippedTool,
   equippedGear = [],
   imageOffsetY = 0,
+  scale = 1,
 }: EnemyPanelProps) {
   const hpPercent = useMemo(() => Math.max(0, (hp / maxHp) * 100), [hp, maxHp]);
   const armorPercent = useMemo(
@@ -139,74 +155,122 @@ export function EnemyPanel({
     return '#dc2626';
   }, [hpPercent]);
 
+  const isCompact = scale > 1;
+
   return (
-    <View style={styles.container}>
+    <View
+      style={[
+        styles.container,
+        isCompact && { height: '50%', alignSelf: 'center' },
+      ]}
+    >
       <ImageBackground source={SIDEBAR_BG} style={styles.sidePanelBg} resizeMode="stretch">
-        <View style={styles.content}>
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ padding: 12 * scale }}
+          showsVerticalScrollIndicator={false}
+        >
           {gold !== undefined && (
-            <View style={styles.goldContainer}>
-              <Image source={COIN_ICON} style={styles.coinIcon} resizeMode="contain" />
-              <Text style={styles.goldText}>{gold}</Text>
+            <View
+              style={[
+                styles.goldContainer,
+                { top: 10 * scale, paddingHorizontal: 12 * scale, paddingVertical: 6 * scale },
+              ]}
+            >
+              <Image
+                source={COIN_ICON}
+                style={{ width: 24 * scale, height: 24 * scale }}
+                resizeMode="contain"
+              />
+              <Text style={[styles.goldText, { fontSize: 18 * scale }]}>{gold}</Text>
             </View>
           )}
 
           {/* Header */}
-          <View style={styles.header}>
+          <View style={[styles.header, { marginBottom: 12 * scale }]}>
             {imageSource && (
               <Image
                 source={imageSource}
-                style={[styles.image, imageOffsetY !== 0 && { marginTop: imageOffsetY }]}
+                style={[
+                  { width: 60 * scale, height: 60 * scale, marginBottom: 4 * scale },
+                  imageOffsetY !== 0 && { marginTop: imageOffsetY * scale },
+                ]}
                 resizeMode="contain"
               />
             )}
-            <Text style={styles.name} numberOfLines={2}>
+            <Text style={[styles.name, { fontSize: 18 * scale }]} numberOfLines={2}>
               {name}
             </Text>
             {subtitle && (
-              <Text style={styles.subtitle} numberOfLines={1}>
+              <Text
+                style={[styles.subtitle, { fontSize: 9 * scale, marginTop: 2 * scale }]}
+                numberOfLines={1}
+              >
                 ({subtitle})
               </Text>
             )}
           </View>
 
           {/* HP Bar */}
-          <View style={styles.hpSection}>
-            <View style={styles.hpBarBackground}>
+          <View style={[styles.hpSection, { marginBottom: 6 * scale }]}>
+            <View style={[styles.hpBarBackground, { height: 14 * scale }]}>
               <View
                 style={[styles.hpBarFill, { width: `${hpPercent}%`, backgroundColor: hpBarColor }]}
               />
             </View>
-            <Text style={styles.hpText}>
+            <Text style={[styles.hpText, { fontSize: 12 * scale, marginTop: 4 * scale }]}>
               {hp}/{maxHp}
             </Text>
           </View>
 
           {/* Armor Bar */}
-          <View style={styles.armorSection}>
-            <View style={styles.armorBarBackground}>
+          <View style={[styles.armorSection, { marginBottom: 12 * scale }]}>
+            <View style={[styles.armorBarBackground, { height: 10 * scale }]}>
               <View style={[styles.armorBarFill, { width: `${armorPercent}%` }]} />
             </View>
-            <Text style={styles.armorText}>
+            <Text style={[styles.armorText, { fontSize: 11 * scale, marginTop: 3 * scale }]}>
               {arm}/{maxArm}
             </Text>
           </View>
 
           {/* Stats */}
-          <View style={styles.statsSection}>
-            <View style={styles.statsRow}>
-              <StatRow label="ATK" value={atk} icon={ICONS.ATK} />
-              <StatRow label="DIG" value={dig} icon={ICONS.DIG} />
+          <View
+            style={[
+              styles.statsSection,
+              { marginBottom: 12 * scale, paddingBottom: 12 * scale },
+            ]}
+          >
+            <View style={[styles.statsRow, { marginBottom: 8 * scale }]}>
+              <StatRow label="ATK" value={atk} icon={ICONS.ATK} scale={scale} />
+              <StatRow label="DIG" value={dig} icon={ICONS.DIG} scale={scale} />
             </View>
-            <View style={styles.statsRow}>
-              <StatRow label="SPD" value={spd} icon={ICONS.SPD} />
+            <View style={[styles.statsRow, { marginBottom: 8 * scale }]}>
+              <StatRow label="SPD" value={spd} icon={ICONS.SPD} scale={scale} />
             </View>
           </View>
 
           {/* Trait */}
           {trait && (
-            <View style={styles.traitSection}>
-              <Text style={styles.traitName}>{trait.name}</Text>
-              <Text style={styles.traitDescription} numberOfLines={3}>
+            <View
+              style={[
+                styles.traitSection,
+                {
+                  padding: 8 * scale,
+                  marginBottom: 12 * scale,
+                  marginHorizontal: 5 * scale,
+                },
+              ]}
+            >
+              <Text style={[styles.traitName, { fontSize: 13 * scale, marginBottom: 4 * scale }]}>
+                {trait.name}
+              </Text>
+              <Text
+                style={[
+                  styles.traitDescription,
+                  { fontSize: 10 * scale, lineHeight: 14 * scale },
+                ]}
+                numberOfLines={3}
+              >
                 {trait.description}
               </Text>
             </View>
@@ -214,36 +278,34 @@ export function EnemyPanel({
 
           {/* Equipment (Pit Draft PvP) */}
           {(equippedTool || equippedGear.length > 0) && (
-            <View style={styles.itemsSection}>
-              <Text style={styles.sectionTitle}>Equipment</Text>
-              <ScrollView
-                style={styles.itemsScroll}
-                contentContainerStyle={styles.itemsScrollContent}
-                showsVerticalScrollIndicator={false}
-              >
-                <View style={styles.itemsGrid}>
-                  {equippedTool && (
-                    <ItemBadge
-                      emoji={equippedTool.emoji}
-                      image={equippedTool.image}
-                      name={equippedTool.name}
-                      rarity={equippedTool.rarity}
-                    />
-                  )}
-                  {equippedGear.map((gear, index) => (
-                    <ItemBadge
-                      key={index}
-                      emoji={gear.emoji}
-                      image={gear.image}
-                      name={gear.name}
-                      rarity={gear.currentRarity}
-                    />
-                  ))}
-                </View>
-              </ScrollView>
+            <View>
+              <Text style={[styles.sectionTitle, { fontSize: 12 * scale, marginBottom: 6 * scale }]}>
+                Equipment
+              </Text>
+              <View style={[styles.itemsGrid, { gap: 4 * scale }]}>
+                {equippedTool && (
+                  <ItemBadge
+                    emoji={equippedTool.emoji}
+                    image={equippedTool.image}
+                    name={equippedTool.name}
+                    rarity={equippedTool.rarity}
+                    scale={scale}
+                  />
+                )}
+                {equippedGear.map((gear, index) => (
+                  <ItemBadge
+                    key={index}
+                    emoji={gear.emoji}
+                    image={gear.image}
+                    name={gear.name}
+                    rarity={gear.currentRarity}
+                    scale={scale}
+                  />
+                ))}
+              </View>
             </View>
           )}
-        </View>
+        </ScrollView>
       </ImageBackground>
     </View>
   );
@@ -260,140 +322,96 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  content: {
-    padding: 12,
-    height: '100%',
-  },
   goldContainer: {
     position: 'absolute',
-    top: 10,
     left: 0,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
     borderRadius: 12,
     zIndex: 10,
   },
-  coinIcon: {
-    width: 24,
-    height: 24,
-  },
   goldText: {
     fontFamily: Typography.number,
-    fontSize: 18,
     color: '#000000',
     fontWeight: 'bold',
   },
   header: {
     alignItems: 'center',
-    marginBottom: 12,
-  },
-  image: {
-    width: 60,
-    height: 60,
-    marginBottom: 4,
   },
   name: {
     fontFamily: Typography.header,
-    fontSize: 18,
     color: '#000000',
     textAlign: 'center',
     fontWeight: 'bold',
   },
   subtitle: {
     fontFamily: Typography.body,
-    fontSize: 9,
     color: '#666666',
     textAlign: 'center',
-    marginTop: 2,
   },
-  hpSection: {
-    marginBottom: 6,
-  },
+  hpSection: {},
   hpBarBackground: {
-    height: 14,
     backgroundColor: '#2a2a3a',
-    borderRadius: 0, // Rectangle
+    borderRadius: 0,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: '#000',
   },
   hpBarFill: {
     height: '100%',
-    borderRadius: 0, // Rectangle
+    borderRadius: 0,
   },
   hpText: {
     fontFamily: Typography.number,
-    fontSize: 12,
     color: '#000000',
     textAlign: 'center',
-    marginTop: 4,
     fontWeight: 'bold',
   },
-  armorSection: {
-    marginBottom: 12,
-  },
+  armorSection: {},
   armorBarBackground: {
-    height: 10,
     backgroundColor: '#2a2a3a',
-    borderRadius: 0, // Rectangle
+    borderRadius: 0,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: '#000',
   },
   armorBarFill: {
     height: '100%',
-    borderRadius: 0, // Rectangle
+    borderRadius: 0,
     backgroundColor: '#a855f7',
   },
   armorText: {
     fontFamily: Typography.number,
-    fontSize: 11,
     color: '#000000',
     textAlign: 'center',
-    marginTop: 3,
     fontWeight: 'bold',
   },
   statsSection: {
-    marginBottom: 12,
-    paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(0,0,0,0.2)',
   },
   statsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 8,
   },
   statRow: {
     flexDirection: 'row',
     alignItems: 'center',
     width: '48%',
   },
-  statIcon: {
-    width: 18,
-    height: 18,
-    marginRight: 8,
-  },
   statLabel: {
     fontFamily: Typography.header,
-    fontSize: 12,
     color: '#000000',
     flex: 1,
     fontWeight: 'bold',
   },
   statValue: {
     fontFamily: Typography.number,
-    fontSize: 16,
     color: '#000000',
     fontWeight: 'bold',
   },
   traitSection: {
-    padding: 8,
-    marginBottom: 12,
-    marginHorizontal: 5,
     borderWidth: 2,
     borderColor: '#8B4513',
     backgroundColor: 'rgba(139, 69, 19, 0.1)',
@@ -401,52 +419,22 @@ const styles = StyleSheet.create({
   },
   traitName: {
     fontFamily: Typography.header,
-    fontSize: 13,
     color: '#000000',
-    marginBottom: 4,
     fontWeight: 'bold',
   },
   traitDescription: {
     fontFamily: Typography.body,
-    fontSize: 10,
     color: '#333333',
-    lineHeight: 14,
   },
   sectionTitle: {
     fontFamily: Typography.header,
-    fontSize: 12,
     color: '#333333',
-    marginBottom: 6,
     textTransform: 'uppercase',
     letterSpacing: 1,
     fontWeight: 'bold',
   },
-  itemsSection: {
-    flex: 1,
-    minHeight: 0,
-  },
-  itemsScroll: {
-    flex: 1,
-  },
-  itemsScrollContent: {
-    paddingBottom: 8,
-  },
   itemsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 4,
-  },
-  itemBadge: {
-    width: 32,
-    height: 32,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  itemEmoji: {
-    fontSize: 16,
-  },
-  itemImage: {
-    width: 24,
-    height: 24,
   },
 });

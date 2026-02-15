@@ -37,6 +37,8 @@ interface CombatArenaProps {
   activeActor?: 'player' | 'enemy' | null;
   playerMaxArm?: number;
   enemyMaxArm?: number;
+  /** Scale factor for compact/mobile views (default 1) */
+  scale?: number;
 }
 
 /**
@@ -53,10 +55,13 @@ export function CombatArena({
   activeActor = null,
   playerMaxArm = 0,
   enemyMaxArm = 0,
+  scale = 1,
 }: CombatArenaProps) {
-  const { width: screenWidth } = useWindowDimensions();
-  const arenaWidth = Math.min(screenWidth * 0.5, 400);
-  const arenaHeight = 300;
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const arenaWidth = scale > 1
+    ? Math.min(screenWidth * 0.5, 700)
+    : Math.min(screenWidth * 0.5, 400);
+  const arenaHeight = scale > 1 ? Math.min(screenHeight * 0.7, 500) : 300;
   const entityImages = useSkiaEntityImages();
   const bgImage = useImage(BATTLEGROUND_BG);
   const moleImage = useImage(DEFAULT_MOLE);
@@ -71,7 +76,7 @@ export function CombatArena({
     );
   }
 
-  const combatantRadius = 40;
+  const combatantRadius = 40 * scale;
   const enemyX = arenaWidth * 0.25;
   const playerX = arenaWidth * 0.75;
   const combatantY = arenaHeight * 0.4;
@@ -86,13 +91,13 @@ export function CombatArena({
       : (entityImages[enemy.definitionId ?? ''] ?? moleImage ?? entityImages.player ?? null);
 
   // HP bar dimensions
-  const hpBarWidth = 60;
-  const hpBarHeight = 8;
-  const hpBarY = combatantY + combatantRadius + 20;
+  const hpBarWidth = 60 * scale;
+  const hpBarHeight = 8 * scale;
+  const hpBarY = combatantY + combatantRadius + 20 * scale;
 
   // Armor bar dimensions
-  const armBarHeight = 6;
-  const armBarY = hpBarY + hpBarHeight + 4;
+  const armBarHeight = 6 * scale;
+  const armBarY = hpBarY + hpBarHeight + 4 * scale;
 
   // Calculate HP percentages
   const playerHpPercent = Math.max(0, player.hp / player.maxHp);
@@ -109,8 +114,17 @@ export function CombatArena({
 
   return (
     <View style={[styles.container, { width: arenaWidth, height: arenaHeight }]}>
-      <View style={styles.turnBadge}>
-        <Text style={styles.turnBadgeText}>Turn {currentTurn}</Text>
+      <View
+        style={[
+          styles.turnBadge,
+          {
+            top: 18 * scale,
+            paddingHorizontal: 10 * scale,
+            paddingVertical: 4 * scale,
+          },
+        ]}
+      >
+        <Text style={[styles.turnBadgeText, { fontSize: 13 * scale }]}>Turn {currentTurn}</Text>
       </View>
       <Canvas style={{ width: arenaWidth, height: arenaHeight }}>
         {/* Background */}
@@ -270,10 +284,10 @@ export function CombatArena({
       </View>
 
       {/* Status effects for enemy (below floor line) */}
-      <StatusEffectsRow statusEffects={enemy.statusEffects} x={enemyX} y={statusEffectsY} />
+      <StatusEffectsRow statusEffects={enemy.statusEffects} x={enemyX} y={statusEffectsY} scale={scale} />
 
       {/* Status effects for player (below floor line) */}
-      <StatusEffectsRow statusEffects={player.statusEffects} x={playerX} y={statusEffectsY} />
+      <StatusEffectsRow statusEffects={player.statusEffects} x={playerX} y={statusEffectsY} scale={scale} />
     </View>
   );
 }
@@ -283,9 +297,10 @@ interface StatusEffectsRowProps {
   statusEffects: StatusEffects;
   x: number;
   y: number;
+  scale?: number;
 }
 
-function StatusEffectsRow({ statusEffects, x, y }: StatusEffectsRowProps) {
+function StatusEffectsRow({ statusEffects, x, y, scale = 1 }: StatusEffectsRowProps) {
   const effects: { type: 'chill' | 'shrapnel' | 'rust'; stacks: number }[] = [];
 
   if (statusEffects.chill > 0) {
@@ -308,18 +323,30 @@ function StatusEffectsRow({ statusEffects, x, y }: StatusEffectsRowProps) {
     rust: { emoji: '🦠', color: '#a16207' },
   };
 
-  const badgeWidth = 28;
-  const totalWidth = effects.length * badgeWidth + (effects.length - 1) * 4;
+  const badgeWidth = 28 * scale;
+  const totalWidth = effects.length * badgeWidth + (effects.length - 1) * 4 * scale;
   const startX = x - totalWidth / 2;
 
   return (
-    <View style={[styles.statusRow, { left: startX, top: y }]}>
+    <View style={[styles.statusRow, { left: startX, top: y, gap: 4 * scale }]}>
       {effects.map((effect, index) => {
         const { emoji, color } = config[effect.type];
         return (
-          <View key={effect.type} style={[styles.statusBadge, { borderColor: color }]}>
-            <Text style={styles.statusEmoji}>{emoji}</Text>
-            <Text style={[styles.statusStacks, { color }]}>{effect.stacks}</Text>
+          <View
+            key={effect.type}
+            style={[
+              styles.statusBadge,
+              {
+                borderColor: color,
+                paddingHorizontal: 4 * scale,
+                paddingVertical: 2 * scale,
+              },
+            ]}
+          >
+            <Text style={{ fontSize: 10 * scale }}>{emoji}</Text>
+            <Text style={{ fontSize: 9 * scale, fontWeight: 'bold', marginLeft: 2 * scale, color }}>
+              {effect.stacks}
+            </Text>
           </View>
         );
       })}
@@ -342,40 +369,25 @@ const styles = StyleSheet.create({
   },
   turnBadge: {
     position: 'absolute',
-    top: 18,
     alignSelf: 'center',
     zIndex: 3,
     backgroundColor: 'rgba(0, 0, 0, 0.45)',
     borderRadius: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
   },
   turnBadgeText: {
     color: '#f8e4b5',
-    fontSize: 13,
     fontWeight: '700',
     letterSpacing: 0.3,
   },
   statusRow: {
     position: 'absolute',
     flexDirection: 'row',
-    gap: 4,
   },
   statusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 4,
-    paddingVertical: 2,
     borderRadius: 4,
     borderWidth: 1,
     backgroundColor: '#1a1a2e',
-  },
-  statusEmoji: {
-    fontSize: 10,
-  },
-  statusStacks: {
-    fontSize: 9,
-    fontWeight: 'bold',
-    marginLeft: 2,
   },
 });

@@ -10,12 +10,15 @@ import type { Tool, Gear, InventorySlot, ItemsetId, ToolOil } from '../../game/e
 import { getItemsetDefinition } from '../../game/entities/itemsets';
 import { getTierFromRarity, type ItemTier } from '../../data/gear';
 import { Typography } from '../../theme/typography';
+import { useScreenVariant } from '../../contexts/ScreenVariantContext';
 
 const SLOT_BG = require('../../../assets/ui/frames/square.png');
 const LOCK_ICON = require('../../../assets/icons/ui/lock.png');
 const DEFAULT_TOOL_SLOT_SIZE = 52;
 const SIDEBAR_TOOL_SLOT_SIZE = 42;
 const SIDEBAR_GEAR_SLOT_SIZE = 28;
+const COMPACT_TOOL_SLOT_SIZE = 68;
+const COMPACT_GEAR_SLOT_SIZE = 48;
 
 interface InventoryPanelProps {
   equippedTool: Tool | null;
@@ -315,16 +318,24 @@ export function InventoryPanel({
     [onToolInspect]
   );
 
+  const variant = useScreenVariant();
+  const isCompactSidebar = !!isSidebar && variant === 'compact';
   const textColor = isSidebar ? '#000000' : '#FFFFFF';
   const useGauntletSidebarSizing = !!isSidebar && isGauntletLayout;
-  const gearSlotSize = useGauntletSidebarSizing ? SIDEBAR_GEAR_SLOT_SIZE : 32;
-  const toolSlotSize = useGauntletSidebarSizing ? SIDEBAR_TOOL_SLOT_SIZE : DEFAULT_TOOL_SLOT_SIZE;
+  const gearSlotSize = isCompactSidebar ? COMPACT_GEAR_SLOT_SIZE : useGauntletSidebarSizing ? SIDEBAR_GEAR_SLOT_SIZE : 32;
+  const toolSlotSize = isCompactSidebar ? COMPACT_TOOL_SLOT_SIZE : useGauntletSidebarSizing ? SIDEBAR_TOOL_SLOT_SIZE : DEFAULT_TOOL_SLOT_SIZE;
 
   return (
-    <View style={[styles.container, isSidebar && styles.sidebarContainer, useGauntletSidebarSizing && styles.gauntletSidebarContainer]}>
+    <View
+      style={[
+        styles.container,
+        isSidebar && styles.sidebarContainer,
+        useGauntletSidebarSizing && styles.gauntletSidebarContainer,
+      ]}
+    >
       {/* Gear Section - Top */}
-      <View style={[styles.gearSection, useGauntletSidebarSizing && styles.sidebarGearSection]}>
-        <Text style={[styles.sectionTitle, { color: textColor }]}>
+      <View style={[styles.gearSection, (useGauntletSidebarSizing || isCompactSidebar) && styles.sidebarGearSection]}>
+        <Text style={[styles.sectionTitle, isCompactSidebar && styles.sidebarSectionTitle, { color: textColor }]}>
           GEAR ({inventory.length}/{inventoryCapacity})
         </Text>
         <View style={styles.gearGrid}>
@@ -353,16 +364,16 @@ export function InventoryPanel({
       </View>
 
       {/* Tool Section - Center */}
-      <View style={[styles.toolSection, useGauntletSidebarSizing && styles.sidebarToolSection]}>
+      <View style={[styles.toolSection, (useGauntletSidebarSizing || isCompactSidebar) && styles.sidebarToolSection]}>
         <View style={styles.toolHeaderRow}>
           <View style={[styles.toolHeaderCell, { width: toolSlotSize }]}>
-            <Text style={[styles.sectionTitle, { color: textColor, marginBottom: 0 }]}>WEAPON</Text>
+            <Text style={[styles.sectionTitle, isCompactSidebar && styles.sidebarSectionTitle, { color: textColor, marginBottom: 0 }]}>WEAPON</Text>
           </View>
           <View style={[styles.toolHeaderCell, { width: toolSlotSize }]}>
-            <Text style={[styles.sectionTitle, { color: textColor, marginBottom: 0 }]}>OIL</Text>
+            <Text style={[styles.sectionTitle, isCompactSidebar && styles.sidebarSectionTitle, { color: textColor, marginBottom: 0 }]}>OIL</Text>
           </View>
         </View>
-        <View style={[styles.toolRow, useGauntletSidebarSizing && styles.sidebarToolRow]}>
+        <View style={[styles.toolRow, (useGauntletSidebarSizing || isCompactSidebar) && styles.sidebarToolRow]}>
           <ItemSlot
             item={equippedTool}
             isEmpty={!equippedTool}
@@ -439,6 +450,9 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     textAlign: 'center',
+  },
+  sidebarSectionTitle: {
+    fontSize: 18,
   },
   gearGrid: {
     gap: 6,

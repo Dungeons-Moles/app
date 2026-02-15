@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { Typography } from '../../theme/typography';
 import { getEntityImageSource } from './entityImages';
+import { useScreenVariant } from '../../contexts/ScreenVariantContext';
 import type { BossDefinition } from '../../data/bosses';
 import type { Tool, Gear } from '../../game/engine/types';
 import { ItemTooltip } from './ItemTooltip';
@@ -67,6 +68,8 @@ export function BossTooltipModal({
 }: BossTooltipModalProps) {
   const [inspectedItem, setInspectedItem] = useState<Tool | Gear | null>(null);
   const [tooltipVisible, setTooltipVisible] = useState(false);
+  const variant = useScreenVariant();
+  const isCompact = variant === 'compact';
 
   const handleInspectItem = (item: Tool | Gear | null) => {
     if (!item) return;
@@ -85,23 +88,23 @@ export function BossTooltipModal({
   return (
     <Modal visible={visible} transparent={true} animationType="fade" onRequestClose={onClose}>
       <Pressable style={styles.modalBackdrop} onPress={onClose}>
-        <View style={styles.modalContentWrapper}>
-          <ImageBackground source={SIDEBAR_BG} style={styles.modalContent} resizeMode="stretch">
+        <View style={[styles.modalContentWrapper, isCompact && styles.modalContentWrapperCompact]}>
+          <ImageBackground source={SIDEBAR_BG} style={[styles.modalContent, isCompact && styles.modalContentCompact]} resizeMode="stretch">
             <ScrollView
               style={styles.contentScroll}
-              contentContainerStyle={styles.innerContent}
+              contentContainerStyle={[styles.innerContent, isCompact && styles.innerContentCompact]}
               showsVerticalScrollIndicator={false}
             >
               {/* Header */}
               <View style={styles.header}>
                 <Image
                   source={boss ? getEntityImageSource(boss.id) : DEFAULT_MOLE_IMAGE_SOURCE}
-                  style={styles.bossImage}
+                  style={[styles.bossImage, isCompact && styles.bossImageCompact]}
                   resizeMode="contain"
                 />
                 <View style={styles.headerText}>
-                  <Text style={styles.bossName}>{boss ? boss.name : (pvpDetails?.name ?? 'Mole Echo')}</Text>
-                  {!boss && <Text style={styles.subName}>{pvpDetails?.sourceLabel ?? 'PvP Echo'}</Text>}
+                  <Text style={[styles.bossName, isCompact && styles.bossNameCompact]}>{boss ? boss.name : (pvpDetails?.name ?? 'Mole Echo')}</Text>
+                  {!boss && <Text style={[styles.subName, isCompact && styles.subNameCompact]}>{pvpDetails?.sourceLabel ?? 'PvP Echo'}</Text>}
                 </View>
                 {!boss && (
                   <View style={styles.goldInline}>
@@ -114,13 +117,13 @@ export function BossTooltipModal({
               {/* Stats Grid */}
               <View style={styles.pvpStats}>
                 <View style={styles.pvpStatsColumn}>
-                  <PvpStatRow icon={HP_ICON} label="HP" value={boss ? boss.stats.hp : (pvpDetails?.stats.hp ?? 0)} />
-                  <PvpStatRow icon={ATK_ICON} label="ATK" value={boss ? boss.stats.atk : (pvpDetails?.stats.atk ?? 0)} />
-                  <PvpStatRow icon={ARM_ICON} label="ARM" value={boss ? boss.stats.arm : (pvpDetails?.stats.arm ?? 0)} />
+                  <PvpStatRow icon={HP_ICON} label="HP" value={boss ? boss.stats.hp : (pvpDetails?.stats.hp ?? 0)} isCompact={isCompact} />
+                  <PvpStatRow icon={ATK_ICON} label="ATK" value={boss ? boss.stats.atk : (pvpDetails?.stats.atk ?? 0)} isCompact={isCompact} />
+                  <PvpStatRow icon={ARM_ICON} label="ARM" value={boss ? boss.stats.arm : (pvpDetails?.stats.arm ?? 0)} isCompact={isCompact} />
                 </View>
                 <View style={styles.pvpStatsColumn}>
-                  <PvpStatRow icon={SPD_ICON} label="SPD" value={boss ? boss.stats.spd : (pvpDetails?.stats.spd ?? 0)} />
-                  <PvpStatRow icon={DIG_ICON} label="DIG" value={boss ? (boss.stats.dig ?? 0) : (pvpDetails?.stats.dig ?? 0)} />
+                  <PvpStatRow icon={SPD_ICON} label="SPD" value={boss ? boss.stats.spd : (pvpDetails?.stats.spd ?? 0)} isCompact={isCompact} />
+                  <PvpStatRow icon={DIG_ICON} label="DIG" value={boss ? (boss.stats.dig ?? 0) : (pvpDetails?.stats.dig ?? 0)} isCompact={isCompact} />
                 </View>
               </View>
 
@@ -130,8 +133,8 @@ export function BossTooltipModal({
                   <ScrollView style={styles.abilitiesScroll}>
                     {boss.abilities.map((ability, index) => (
                       <View key={index} style={styles.abilityItem}>
-                        <Text style={styles.abilityName}>{ability.name}</Text>
-                        <Text style={styles.abilityDescription}>{ability.description}</Text>
+                        <Text style={[styles.abilityName, isCompact && styles.abilityNameCompact]}>{ability.name}</Text>
+                        <Text style={[styles.abilityDescription, isCompact && styles.abilityDescriptionCompact]}>{ability.description}</Text>
                       </View>
                     ))}
                   </ScrollView>
@@ -230,12 +233,12 @@ function OilSlot({ oil }: { oil: Tool['oil'] | null | undefined }) {
   );
 }
 
-function PvpStatRow({ icon, label, value }: { icon: any; label: string; value: number }) {
+function PvpStatRow({ icon, label, value, isCompact }: { icon: any; label: string; value: number; isCompact?: boolean }) {
   return (
     <View style={styles.pvpStatRow}>
-      <Image source={icon} style={styles.pvpStatIcon} resizeMode="contain" />
-      <Text style={styles.pvpStatLabel}>{label}</Text>
-      <Text style={styles.pvpStatValue}>{value}</Text>
+      <Image source={icon} style={[styles.pvpStatIcon, isCompact && styles.pvpStatIconCompact]} resizeMode="contain" />
+      <Text style={[styles.pvpStatLabel, isCompact && styles.pvpStatLabelCompact]}>{label}</Text>
+      <Text style={[styles.pvpStatValue, isCompact && styles.pvpStatValueCompact]}>{value}</Text>
     </View>
   );
 }
@@ -406,5 +409,49 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#666666',
     marginTop: 8,
+  },
+
+  // Compact overrides
+  modalContentWrapperCompact: {
+    height: undefined,
+    maxWidth: 500,
+    width: '70%',
+  },
+  modalContentCompact: {
+    flex: undefined,
+  },
+  innerContentCompact: {
+    gap: 16,
+    paddingTop: 28,
+    paddingHorizontal: 28,
+    paddingBottom: 32,
+  },
+  bossImageCompact: {
+    width: 72,
+    height: 72,
+  },
+  bossNameCompact: {
+    fontSize: 32,
+  },
+  subNameCompact: {
+    fontSize: 16,
+  },
+  pvpStatIconCompact: {
+    width: 24,
+    height: 24,
+  },
+  pvpStatLabelCompact: {
+    fontSize: 20,
+    width: 50,
+  },
+  pvpStatValueCompact: {
+    fontSize: 20,
+  },
+  abilityNameCompact: {
+    fontSize: 22,
+  },
+  abilityDescriptionCompact: {
+    fontSize: 18,
+    lineHeight: 26,
   },
 });

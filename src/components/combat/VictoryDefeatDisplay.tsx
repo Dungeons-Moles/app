@@ -19,6 +19,8 @@ export interface VictoryDefeatDisplayProps {
   /** Whether this is the final boss victory (week 3 boss) */
   isFinalVictory?: boolean;
   onComplete: () => void;
+  /** Scale factor for compact/mobile views (default 1) */
+  scale?: number;
 }
 
 /**
@@ -31,6 +33,7 @@ export function VictoryDefeatDisplay({
   goldReward,
   isFinalVictory = false,
   onComplete,
+  scale = 1,
 }: VictoryDefeatDisplayProps) {
   const [countdown, setCountdown] = useState(3);
   const [displayedGold, setDisplayedGold] = useState(0);
@@ -148,19 +151,33 @@ export function VictoryDefeatDisplay({
           {
             transform: [{ scale: scaleAnim }],
             opacity: opacityAnim,
+            padding: 40 * scale,
+            borderRadius: 20 * scale,
           },
         ]}
       >
         {/* Result emoji */}
-        <Text style={styles.emoji}>{isVictory ? (isFinalVictory ? '👑' : '🏆') : '💀'}</Text>
+        <Text style={[styles.emoji, { fontSize: 64 * scale, marginBottom: 16 * scale }]}>
+          {isVictory ? (isFinalVictory ? '👑' : '🏆') : '💀'}
+        </Text>
 
         {/* Result text */}
-        <Text style={[styles.resultText, { color: isVictory ? '#22c55e' : '#dc2626' }]}>
+        <Text
+          style={[
+            styles.resultText,
+            {
+              color: isVictory ? '#22c55e' : '#dc2626',
+              fontSize: 48 * scale,
+              letterSpacing: 4 * scale,
+              marginBottom: 8 * scale,
+            },
+          ]}
+        >
           {isFinalVictory ? 'YOU WIN!' : result}
         </Text>
 
         {/* Subtext */}
-        <Text style={styles.subtext}>
+        <Text style={[styles.subtext, { fontSize: 18 * scale, marginBottom: 16 * scale }]}>
           {isVictory
             ? isFinalVictory
               ? 'Level Complete!'
@@ -176,16 +193,26 @@ export function VictoryDefeatDisplay({
               {
                 opacity: goldOpacityAnim,
                 transform: [{ scale: goldScaleAnim }],
+                paddingHorizontal: 20 * scale,
+                paddingVertical: 10 * scale,
+                borderRadius: 12 * scale,
+                marginBottom: 16 * scale,
               },
             ]}
           >
-            <Text style={styles.goldIcon}>💰</Text>
-            <Text style={styles.goldAmount}>+{displayedGold} Gold</Text>
+            <Text style={[styles.goldIcon, { fontSize: 24 * scale, marginRight: 8 * scale }]}>
+              💰
+            </Text>
+            <Text style={[styles.goldAmount, { fontSize: 24 * scale }]}>
+              +{displayedGold} Gold
+            </Text>
           </Animated.View>
         )}
 
         {/* Countdown */}
-        <Text style={styles.countdown}>Returning in {countdown}...</Text>
+        <Text style={[styles.countdown, { fontSize: 14 * scale }]}>
+          Returning in {countdown}...
+        </Text>
       </Animated.View>
 
       {/* Background overlay */}
@@ -212,54 +239,35 @@ const styles = StyleSheet.create({
   },
   content: {
     alignItems: 'center',
-    padding: 40,
-    borderRadius: 20,
     backgroundColor: 'rgba(0, 0, 0, 0.85)',
     borderWidth: 2,
     borderColor: 'rgba(255, 255, 255, 0.1)',
   },
-  emoji: {
-    fontSize: 64,
-    marginBottom: 16,
-  },
+  emoji: {},
   resultText: {
     fontFamily: Typography.header,
-    fontSize: 48,
-    letterSpacing: 4,
-    marginBottom: 8,
   },
   subtext: {
     fontFamily: Typography.body,
-    fontSize: 18,
     color: '#888888',
-    marginBottom: 16,
   },
   // T075/T076: Gold reward styles
   goldRewardContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'rgba(234, 179, 8, 0.15)',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 12,
     borderWidth: 1,
     borderColor: 'rgba(234, 179, 8, 0.3)',
-    marginBottom: 16,
   },
-  goldIcon: {
-    fontSize: 24,
-    marginRight: 8,
-  },
+  goldIcon: {},
   goldAmount: {
     fontFamily: Typography.number,
-    fontSize: 24,
     fontWeight: 'bold',
-    color: '#eab308', // Gold/yellow color
+    color: '#eab308',
     letterSpacing: 1,
   },
   countdown: {
     fontFamily: Typography.number,
-    fontSize: 14,
     color: '#666666',
   },
 });
