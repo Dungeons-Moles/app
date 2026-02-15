@@ -20,13 +20,14 @@ import { RouteProp } from '@react-navigation/native';
 import { RootStackParamList } from '../navigation';
 import { useProfile } from '../contexts/ProfileContext';
 import { Typography } from '../theme/typography';
-import type { CombatReplay } from '../services/solana/types/combat_events';
 
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.png');
-const SKULL_ICON = require('../../assets/icons/ui/skull.png');
+const STAINS_BACKGROUND = require('../../assets/ui/backgrounds/stains-background.png');
 const PAPER_PANEL = require('../../assets/ui/panels/paper-panel.png');
 const SQUARE_FRAME = require('../../assets/ui/frames/square.png');
+const SKULL_ICON = require('../../assets/icons/ui/skull.png');
 const BUTTON_BG = require('../../assets/ui/buttons/button.png');
+const DEFEAT_IMAGE = require('../../assets/ui/text/defeat.png');
 
 type DeathScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Death'>;
@@ -88,7 +89,11 @@ export function DeathScreen({ navigation, route }: DeathScreenProps) {
           resizeMode="contain"
         />
       </View>
-      <Text style={isVerticalLayout ? styles.titleVertical : styles.title}>You Died</Text>
+      <Image
+        source={DEFEAT_IMAGE}
+        style={isVerticalLayout ? styles.defeatImageVertical : styles.defeatImage}
+        resizeMode="contain"
+      />
       <Text style={isVerticalLayout ? styles.deathCauseVertical : styles.deathCause}>
         {getDeathCause()}
       </Text>
@@ -96,10 +101,14 @@ export function DeathScreen({ navigation, route }: DeathScreenProps) {
   );
 
   const StatFrame = ({ label, value }: { label: string; value: string | number }) => (
-    <View style={styles.statItem}>
+    <View style={isVerticalLayout ? styles.statItemVertical : styles.statItem}>
       <Image source={SQUARE_FRAME} style={styles.statFrameBg} resizeMode="stretch" />
-      <Text style={styles.statFrameValue}>{value}</Text>
-      <Text style={styles.statFrameLabel}>{label}</Text>
+      <Text style={isVerticalLayout ? styles.statFrameValueVertical : styles.statFrameValue}>
+        {value}
+      </Text>
+      <Text style={isVerticalLayout ? styles.statFrameLabelVertical : styles.statFrameLabel}>
+        {label}
+      </Text>
     </View>
   );
 
@@ -150,16 +159,6 @@ export function DeathScreen({ navigation, route }: DeathScreenProps) {
         <Text style={isVerticalLayout ? styles.warningTextVertical : styles.warningText}>
           {isVerticalLayout ? 'You have no sessions remaining!' : 'No sessions remaining!'}
         </Text>
-        <Pressable
-          style={isVerticalLayout ? styles.purchaseButtonVertical : styles.purchaseButton}
-          onPress={() => navigation.navigate('RunPurchase')}
-        >
-          <Text
-            style={isVerticalLayout ? styles.purchaseButtonTextVertical : styles.purchaseButtonText}
-          >
-            Purchase Sessions
-          </Text>
-        </Pressable>
       </View>
     ) : null;
 
@@ -179,10 +178,12 @@ export function DeathScreen({ navigation, route }: DeathScreenProps) {
     </View>
   );
 
+
   return (
     <View style={styles.container}>
       <ImageBackground source={BACKGROUND_IMAGE} style={styles.backgroundImage} resizeMode="cover">
-        <View style={styles.darkOverlay}>
+        <Image source={STAINS_BACKGROUND} style={styles.stainsOverlay} resizeMode="cover" />
+        <View style={styles.mainContent}>
           <Animated.View
             style={[
               isVerticalLayout ? styles.contentVertical : styles.content,
@@ -229,7 +230,12 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  darkOverlay: {
+  stainsOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    width: '100%',
+    height: '100%',
+  },
+  mainContent: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
     justifyContent: 'center',
@@ -272,15 +278,11 @@ const styles = StyleSheet.create({
     height: 36,
     tintColor: '#FF4444',
   },
-  title: {
-    fontFamily: Typography.header,
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#FF4444',
+  defeatImage: {
+    width: 180,
+    height: 80,
     marginBottom: 4,
-    textShadowColor: 'rgba(0, 0, 0, 0.8)',
-    textShadowOffset: { width: 2, height: 2 },
-    textShadowRadius: 4,
+    tintColor: '#CC4444',
   },
   deathCause: {
     fontFamily: Typography.body,
@@ -382,7 +384,7 @@ const styles = StyleSheet.create({
     aspectRatio: 3.2,
   },
   buttonSlotVertical: {
-    width: '60%',
+    width: '75%',
     aspectRatio: 3.2,
   },
   buttonPressable: {
@@ -409,7 +411,8 @@ const styles = StyleSheet.create({
   contentVertical: {
     alignItems: 'center',
     padding: 32,
-    maxWidth: 400,
+    maxWidth: 520,
+    width: '100%',
   },
   iconContainerVertical: {
     width: 80,
@@ -427,19 +430,15 @@ const styles = StyleSheet.create({
     height: 48,
     tintColor: '#FF4444',
   },
-  titleVertical: {
-    fontFamily: Typography.header,
-    fontSize: 42,
-    fontWeight: 'bold',
-    color: '#FF4444',
+  defeatImageVertical: {
+    width: 240,
+    height: 100,
     marginBottom: 8,
-    textShadowColor: 'rgba(0, 0, 0, 0.8)',
-    textShadowOffset: { width: 2, height: 2 },
-    textShadowRadius: 4,
+    tintColor: '#CC4444',
   },
   deathCauseVertical: {
     fontFamily: Typography.body,
-    fontSize: 18,
+    fontSize: 22,
     color: '#CCCCCC',
     marginBottom: 32,
     textAlign: 'center',
@@ -451,11 +450,31 @@ const styles = StyleSheet.create({
   },
   summaryTitleVertical: {
     fontFamily: Typography.header,
-    fontSize: 18,
+    fontSize: 22,
     fontWeight: 'bold',
     color: '#2A1A0A',
     marginBottom: 16,
     textAlign: 'center',
+  },
+  statItemVertical: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 70,
+    flex: 1,
+    paddingVertical: 14,
+    paddingHorizontal: 10,
+  },
+  statFrameValueVertical: {
+    fontFamily: Typography.number,
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#000000',
+  },
+  statFrameLabelVertical: {
+    fontFamily: Typography.body,
+    fontSize: 14,
+    color: '#1A1A1A',
+    marginTop: 2,
   },
   warningContainerVertical: {
     backgroundColor: 'rgba(139, 0, 0, 0.3)',
@@ -469,7 +488,7 @@ const styles = StyleSheet.create({
   },
   warningTextVertical: {
     fontFamily: Typography.body,
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: 'bold',
     color: '#FF6666',
     marginBottom: 12,
@@ -485,13 +504,13 @@ const styles = StyleSheet.create({
   },
   purchaseButtonTextVertical: {
     fontFamily: Typography.button,
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
   returnButtonTextVertical: {
     fontFamily: Typography.button,
-    fontSize: 18,
+    fontSize: 32,
     fontWeight: 'bold',
     color: '#FFFFFF',
     textShadowColor: 'rgba(0, 0, 0, 0.5)',

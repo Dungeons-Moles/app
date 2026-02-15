@@ -13,6 +13,7 @@
 import React, { useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   View,
+  Image,
   Text,
   TouchableOpacity,
   StyleSheet,
@@ -24,6 +25,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation';
 import { CombatProvider, useCombat } from '../contexts/CombatContext';
 import { useProfile } from '../contexts/ProfileContext';
+import { useScreenVariant } from '../contexts/ScreenVariantContext';
 import { usePitDraft } from '../hooks/usePitDraft';
 import { useLandscapeLock } from '../hooks/useOrientationLock';
 import {
@@ -37,18 +39,32 @@ import { Typography } from '../theme/typography';
 import { PIT_DRAFT_ENTRY_LAMPORTS } from '../services/solana/pitDraft';
 
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.png');
+const STAINS_BACKGROUND = require('../../assets/ui/backgrounds/stains-background.png');
+const PIT_DRAFT_TITLE = require('../../assets/ui/text/pit-draft.png');
+const PVP_MODES_PANEL = require('../../assets/ui/panels/pvp-modes-panel.png');
 const buttonV1Source = require('../../assets/ui/buttons/button-v1.png');
 const buttonV4Source = require('../../assets/ui/buttons/button-v4.png');
 const defaultMoleImageSource = require('../../assets/entities/characters/default-mole.png');
-
+const SOL_PILE = require('../../assets/ui/illustrations/sol-pile.png');
+const CHEST = require('../../assets/ui/illustrations/chest.png');
+const ITEMS = require('../../assets/ui/illustrations/items.png');
+const VICTORY_TEXT = require('../../assets/ui/text/victory.png');
+const DEFEAT_TEXT = require('../../assets/ui/text/defeat.png');
+const VICTORY_IMAGE = require('../../assets/ui/illustrations/victory-image.png');
+const DEFEAT_IMAGE_ILLUST = require('../../assets/ui/illustrations/defeat-image.png');
+const SQUARE_FRAME = require('../../assets/ui/frames/square.png');
+const BUTTON_BG = require('../../assets/ui/buttons/button.png');
+const BUTTON_GREEN = require('../../assets/ui/buttons/button-green.png');
 
 type PitDraftScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'PitDraft'>;
+  route: import('@react-navigation/native').RouteProp<RootStackParamList, 'PitDraft'>;
 };
 
-export function PitDraftScreen({ navigation }: PitDraftScreenProps) {
+export function PitDraftScreen({ navigation, route }: PitDraftScreenProps) {
   const { defaultCombatSpeed, updateDefaultCombatSpeed } = useProfile();
   const pitDraft = usePitDraft();
+  const debugResult = route.params?.debugResult;
 
   // Lock to landscape orientation
   useLandscapeLock();
@@ -62,7 +78,7 @@ export function PitDraftScreen({ navigation }: PitDraftScreenProps) {
     );
   }
 
-  return <PitDraftContent navigation={navigation} pitDraft={pitDraft} />;
+  return <PitDraftContent navigation={navigation} pitDraft={pitDraft} debugResult={debugResult} />;
 }
 
 // ============================================================================
@@ -72,11 +88,13 @@ export function PitDraftScreen({ navigation }: PitDraftScreenProps) {
 interface PitDraftContentProps {
   navigation: NativeStackNavigationProp<RootStackParamList, 'PitDraft'>;
   pitDraft: ReturnType<typeof usePitDraft>;
+  debugResult?: 'victory' | 'defeat';
 }
 
-function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
+function PitDraftContent({ navigation, pitDraft, debugResult }: PitDraftContentProps) {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  const isCompact = useScreenVariant() === 'compact';
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -125,76 +143,271 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
 
   const entryFeeSOL = PIT_DRAFT_ENTRY_LAMPORTS / 1_000_000_000;
 
+  // DEBUG: Show mock result phase when debugResult param is passed
+  if (debugResult) {
+    const isWinner = debugResult === 'victory';
+    return (
+      <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
+        <ImageBackground source={BACKGROUND_IMAGE} style={styles.backgroundImage} resizeMode="cover">
+          <Image source={STAINS_BACKGROUND} style={styles.stainsOverlay} resizeMode="cover" />
+          <View style={styles.resultOverlay}>
+            <View style={styles.centerContent}>
+              {isCompact ? (
+                // Compact (non-mobile): vertical layout, everything ~2x bigger
+                <View style={styles.resultContainerCompact}>
+                  {/* Pit Draft Title */}
+                  <Image
+                    source={PIT_DRAFT_TITLE}
+                    style={styles.resultTitleImageCompact}
+                    resizeMode="contain"
+                  />
+
+                  {/* Victory or Defeat stamp + illustration */}
+                  {isWinner ? (
+                    <>
+                      <Image
+                        source={VICTORY_TEXT}
+                        style={styles.resultStampImageCompact}
+                        resizeMode="contain"
+                        // @ts-ignore – RN supports tintColor on Image
+                        tintColor="#44BB44"
+                      />
+                      <Image
+                        source={VICTORY_IMAGE}
+                        style={styles.resultIllustrationCompact}
+                        resizeMode="contain"
+                      />
+                      <Text style={styles.payoutTextCompact}>+0.002 SOL</Text>
+                    </>
+                  ) : (
+                    <>
+                      <Image
+                        source={DEFEAT_TEXT}
+                        style={styles.resultStampImageCompact}
+                        resizeMode="contain"
+                        // @ts-ignore – RN supports tintColor on Image
+                        tintColor="#CC4444"
+                      />
+                      <Image
+                        source={DEFEAT_IMAGE_ILLUST}
+                        style={styles.resultIllustrationCompact}
+                        resizeMode="contain"
+                      />
+                    </>
+                  )}
+
+                  {/* Turns stat in frame */}
+                  <View style={styles.resultStatFrameCompact}>
+                    <Image source={SQUARE_FRAME} style={styles.resultStatFrameBg} resizeMode="stretch" />
+                    <Text style={styles.resultStatValueCompact}>8</Text>
+                    <Text style={styles.resultStatLabelCompact}>Turns</Text>
+                  </View>
+
+                  {/* Button */}
+                  <View style={styles.resultButtonSlotCompact}>
+                    <TouchableOpacity onPress={handleBack} activeOpacity={0.7} style={styles.resultButtonPressable}>
+                      <ImageBackground
+                        source={isWinner ? BUTTON_GREEN : BUTTON_BG}
+                        style={styles.resultButtonImage}
+                        resizeMode="contain"
+                      >
+                        <Text style={styles.resultButtonTextCompact}>Back to Hub</Text>
+                      </ImageBackground>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : (
+                // Mobile: horizontal flex layout
+                <View style={styles.resultRow}>
+                  {/* Left column: title, stamp, illustration */}
+                  <View style={styles.resultLeftColumn}>
+                    <Image
+                      source={PIT_DRAFT_TITLE}
+                      style={styles.resultTitleImage}
+                      resizeMode="contain"
+                    />
+                    {isWinner ? (
+                      <>
+                        <Image
+                          source={VICTORY_TEXT}
+                          style={styles.resultStampImage}
+                          resizeMode="contain"
+                          // @ts-ignore – RN supports tintColor on Image
+                          tintColor="#44BB44"
+                        />
+                        <Image
+                          source={VICTORY_IMAGE}
+                          style={styles.resultIllustration}
+                          resizeMode="contain"
+                        />
+                      </>
+                    ) : (
+                      <>
+                        <Image
+                          source={DEFEAT_TEXT}
+                          style={styles.resultStampImage}
+                          resizeMode="contain"
+                          // @ts-ignore – RN supports tintColor on Image
+                          tintColor="#CC4444"
+                        />
+                        <Image
+                          source={DEFEAT_IMAGE_ILLUST}
+                          style={styles.resultIllustration}
+                          resizeMode="contain"
+                        />
+                      </>
+                    )}
+                  </View>
+
+                  {/* Right column: payout, turns, button */}
+                  <View style={styles.resultRightColumn}>
+                    {isWinner && (
+                      <Text style={styles.payoutText}>+0.002 SOL</Text>
+                    )}
+
+                    <View style={styles.resultStatFrame}>
+                      <Image source={SQUARE_FRAME} style={styles.resultStatFrameBg} resizeMode="stretch" />
+                      <Text style={styles.resultStatValue}>8</Text>
+                      <Text style={styles.resultStatLabel}>Turns</Text>
+                    </View>
+
+                    <View style={styles.resultButtonSlot}>
+                      <TouchableOpacity onPress={handleBack} activeOpacity={0.7} style={styles.resultButtonPressable}>
+                        <ImageBackground
+                          source={isWinner ? BUTTON_GREEN : BUTTON_BG}
+                          style={styles.resultButtonImage}
+                          resizeMode="contain"
+                        >
+                          <Text style={styles.resultButtonText}>Back to Hub</Text>
+                        </ImageBackground>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </View>
+              )}
+            </View>
+          </View>
+        </ImageBackground>
+      </Animated.View>
+    );
+  }
+
+  // Confirm phase uses the new Gauntlet-style layout
+  if (pitDraft.phase === 'confirm') {
+    return (
+      <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
+        <ImageBackground source={BACKGROUND_IMAGE} style={styles.backgroundImage} resizeMode="cover">
+          <Image source={STAINS_BACKGROUND} style={styles.stainsOverlay} resizeMode="cover" />
+          <View style={styles.confirmContent}>
+            {/* Header */}
+            <View style={[styles.confirmHeader, isCompact && compactStyles.confirmHeader]}>
+              <TouchableOpacity onPress={handleBack} activeOpacity={0.7}>
+                <ImageBackground
+                  source={buttonV1Source}
+                  style={[styles.headerButton, isCompact && compactStyles.headerButton]}
+                  resizeMode="stretch"
+                >
+                  <Text
+                    style={[styles.headerButtonText, isCompact && compactStyles.headerButtonText]}
+                  >
+                    Back
+                  </Text>
+                </ImageBackground>
+              </TouchableOpacity>
+
+              <View style={styles.headerSpacer} />
+            </View>
+
+            {/* Title */}
+            <View style={styles.titleRow}>
+              <Image
+                source={PIT_DRAFT_TITLE}
+                style={[styles.titleImage, isCompact && compactStyles.titleImage]}
+                resizeMode="contain"
+              />
+            </View>
+
+            {/* Panel with all content overlaid */}
+            <View style={styles.confirmCenterContent}>
+              <View style={[styles.panelWrapper, isCompact && compactStyles.panelWrapper]}>
+                <Image
+                  source={PVP_MODES_PANEL}
+                  style={styles.pvpModesPanel}
+                  resizeMode="contain"
+                />
+                <View
+                  style={[styles.panelOverlay, isCompact && compactStyles.panelOverlay]}
+                >
+                  <View style={[styles.panelRow, styles.panelRowFee, isCompact && compactStyles.panelRowFee]}>
+                    <Text style={[styles.panelTextFee, isCompact && compactStyles.panelText]}>
+                      Entry fee: {entryFeeSOL} SOL
+                    </Text>
+                    <Image source={SOL_PILE} style={[styles.panelIcon, isCompact && compactStyles.panelIcon]} resizeMode="contain" />
+                  </View>
+                  <View style={[styles.panelRow, styles.panelRowPot, isCompact && compactStyles.panelRowPot]}>
+                    <Text style={[styles.panelTextBody, isCompact && compactStyles.panelText]}>
+                      Winner takes{'\n'}it all
+                    </Text>
+                    <Image source={CHEST} style={[styles.panelIcon, isCompact && compactStyles.panelIcon]} resizeMode="contain" />
+                  </View>
+                  <View style={[styles.panelRow, styles.panelRowItems, isCompact && compactStyles.panelRowItems]}>
+                    <Text style={[styles.panelTextBody, isCompact && compactStyles.panelText]}>
+                      Items drafted from{'\n'}your unlocked pool
+                    </Text>
+                    <Image source={ITEMS} style={[styles.panelIcon, isCompact && compactStyles.panelIcon]} resizeMode="contain" />
+                  </View>
+
+                  <View
+                    style={[styles.panelButtons, isCompact && compactStyles.panelButtons]}
+                  >
+                    <TouchableOpacity
+                      onPress={() => navigation.navigate('PitDraftHistory')}
+                      activeOpacity={0.7}
+                    >
+                      <Text
+                        style={[
+                          styles.panelButtonText,
+                          isCompact && compactStyles.panelButtonText,
+                        ]}
+                      >
+                        History
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      onPress={pitDraft.enterPitDraft}
+                      activeOpacity={0.7}
+                      disabled={pitDraft.isLoading}
+                    >
+                      {pitDraft.isLoading ? (
+                        <ActivityIndicator color="#3d2b1f" size="small" />
+                      ) : (
+                        <Text
+                          style={[
+                            styles.panelButtonText,
+                            isCompact && compactStyles.panelButtonText,
+                          ]}
+                        >
+                          Enter Pit Draft
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+            </View>
+          </View>
+        </ImageBackground>
+      </Animated.View>
+    );
+  }
+
+  // Other phases use the original dark overlay layout
   return (
     <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
       <ImageBackground source={BACKGROUND_IMAGE} style={styles.backgroundImage} resizeMode="cover">
         <View style={styles.darkOverlay}>
           <View style={styles.centerContent}>
-            {/* Confirm Phase */}
-            {pitDraft.phase === 'confirm' && (
-              <View style={styles.phaseContainer}>
-                <Text style={styles.title}>PIT DRAFT</Text>
-                <Text style={styles.subtitle}>PvP Auto-Battle</Text>
-
-                <View style={styles.infoPanel}>
-                  <Text style={styles.infoText}>
-                    Entry fee: {entryFeeSOL} SOL
-                  </Text>
-                  <Text style={styles.infoTextSmall}>
-                    Winner takes 95% of the pot (0.19 SOL)
-                  </Text>
-                  <Text style={styles.infoTextSmall}>
-                    Items drafted randomly from your unlocked pool
-                  </Text>
-                </View>
-
-                <View style={styles.buttonRow}>
-                  <TouchableOpacity onPress={handleBack} activeOpacity={0.7}>
-                    <ImageBackground
-                      source={buttonV1Source}
-                      style={styles.actionButton}
-                      resizeMode="stretch"
-                    >
-                      <Text style={styles.buttonText}>Back</Text>
-                    </ImageBackground>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    onPress={pitDraft.enterPitDraft}
-                    activeOpacity={0.7}
-                    disabled={pitDraft.isLoading}
-                  >
-                    <ImageBackground
-                      source={buttonV4Source}
-                      style={[styles.actionButton, pitDraft.isLoading && { opacity: 0.6 }]}
-                      resizeMode="stretch"
-                    >
-                      {pitDraft.isLoading ? (
-                        <ActivityIndicator color="#1a1a1a" size="small" />
-                      ) : (
-                        <Text style={styles.buttonTextPrimary}>Enter Pit Draft</Text>
-                      )}
-                    </ImageBackground>
-                  </TouchableOpacity>
-                </View>
-
-                <TouchableOpacity
-                  onPress={() => navigation.navigate('PitDraftHistory')}
-                  activeOpacity={0.7}
-                >
-                  <ImageBackground
-                    source={buttonV1Source}
-                    style={styles.actionButton}
-                    resizeMode="stretch"
-                  >
-                    <Text style={styles.buttonText}>
-                      View Match History
-                    </Text>
-                  </ImageBackground>
-                </TouchableOpacity>
-              </View>
-            )}
-
             {/* Queuing Phase */}
             {pitDraft.phase === 'queuing' && (
               <View style={styles.phaseContainer}>
@@ -508,35 +721,269 @@ function CombatPhaseContent({ pitDraft }: CombatPhaseContentProps) {
 // ============================================================================
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  backgroundImage: {
-    flex: 1,
+  container: { flex: 1 },
+  backgroundImage: { flex: 1, width: '100%', height: '100%' },
+  darkOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.3)' },
+  centerContent: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
+  combatContent: { flex: 1, flexDirection: 'row' },
+
+  // Confirm phase (Gauntlet-style layout)
+  stainsOverlay: {
+    ...StyleSheet.absoluteFillObject,
     width: '100%',
     height: '100%',
   },
-  darkOverlay: {
+  confirmContent: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    padding: 16,
   },
-  centerContent: {
+  confirmHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+  headerSpacer: { flex: 1 },
+  headerButton: {
+    width: 90,
+    height: 45,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerButtonText: {
+    fontFamily: Typography.button,
+    fontSize: 14,
+    color: '#3d2b1f',
+    marginBottom: 4,
+  },
+  titleRow: {
+    alignItems: 'center',
+  },
+  titleImage: {
+    width: 280,
+    height: 70,
+  },
+  confirmCenterContent: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 24,
   },
-  combatContent: {
-    flex: 1,
+  panelWrapper: {
+    width: '75%',
+    maxWidth: 300,
+    aspectRatio: 1.2,
+  },
+  pvpModesPanel: {
+    width: '100%',
+    height: '100%',
+  },
+  panelOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    padding: 16,
+  },
+  panelRow: {
     flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  panelRowFee: {
+    alignSelf: 'flex-start',
+    marginLeft: 30,
+    marginTop: 9,
+  },
+  panelRowPot: {
+    alignSelf: 'flex-end',
+    marginRight: 42,
+    marginTop: 8,
+  },
+  panelRowItems: {
+    alignSelf: 'flex-start',
+    marginLeft: 34,
+    marginTop: 9,
+  },
+  panelTextFee: {
+    fontFamily: Typography.number,
+    fontSize: 14,
+    color: '#3d2b1f',
+    fontWeight: 'bold',
+  },
+  panelTextBody: {
+    fontFamily: Typography.body,
+    fontSize: 14,
+    color: '#3d2b1f',
+  },
+  panelIcon: {
+    width: 40,
+    height: 40,
+  },
+  panelButtons: {
+    flexDirection: 'row',
+    gap: 62,
+    marginTop: 53,
+    marginLeft: 32,
+  },
+  panelButtonText: {
+    fontFamily: Typography.button,
+    fontWeight: 'bold',
+    fontSize: 18,
+    color: '#3d2b1f',
   },
 
-  // Phase containers
-  phaseContainer: {
-    alignItems: 'center',
-    gap: 16,
-    maxWidth: 400,
+  // Debug result phase — shared
+  resultOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
   },
+  resultStatFrameBg: {
+    position: 'absolute' as const,
+    width: '100%',
+    height: '100%',
+  },
+  resultButtonPressable: {
+    width: '100%',
+    height: '100%',
+  },
+  resultButtonImage: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  // Debug result — mobile (landscape row layout)
+  resultRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    maxWidth: 700,
+    gap: 0,
+  },
+  resultLeftColumn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    flex: 1,
+    maxWidth: 280,
+    gap: 8,
+  },
+  resultRightColumn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    flex: 1,
+    maxWidth: 240,
+    gap: 16,
+  },
+  resultTitleImage: {
+    width: 200,
+    height: 50,
+    marginBottom: 4,
+  },
+  resultStampImage: {
+    width: 180,
+    height: 80,
+  },
+  resultIllustration: {
+    width: 120,
+    height: 120,
+  },
+  resultStatFrame: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 80,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+  },
+  resultStatValue: {
+    fontFamily: Typography.number,
+    fontSize: 22,
+    fontWeight: 'bold' as const,
+    color: '#000000',
+  },
+  resultStatLabel: {
+    fontFamily: Typography.body,
+    fontSize: 12,
+    color: '#1A1A1A',
+    marginTop: 2,
+  },
+  resultButtonSlot: {
+    width: 200,
+    aspectRatio: 3.2,
+    marginTop: 8,
+  },
+  resultButtonText: {
+    fontFamily: Typography.button,
+    fontSize: 15,
+    fontWeight: 'bold' as const,
+    color: '#FFFFFF',
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
+  },
+
+  // Debug result — compact (non-mobile, ~2x bigger)
+  resultContainerCompact: {
+    alignItems: 'center',
+    gap: 20,
+    maxWidth: 800,
+  },
+  resultTitleImageCompact: {
+    width: 400,
+    height: 100,
+    marginBottom: 8,
+  },
+  resultStampImageCompact: {
+    width: 360,
+    height: 160,
+  },
+  resultIllustrationCompact: {
+    width: 320,
+    height: 320,
+    marginTop: -40,
+    marginBottom: -40,
+  },
+  payoutTextCompact: {
+    fontFamily: Typography.number,
+    fontSize: 48,
+    color: '#FABC0F',
+    textAlign: 'center' as const,
+    fontWeight: 'bold' as const,
+  },
+  resultStatFrameCompact: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 160,
+    paddingVertical: 24,
+    paddingHorizontal: 16,
+  },
+  resultStatValueCompact: {
+    fontFamily: Typography.number,
+    fontSize: 44,
+    fontWeight: 'bold' as const,
+    color: '#000000',
+  },
+  resultStatLabelCompact: {
+    fontFamily: Typography.body,
+    fontSize: 24,
+    color: '#1A1A1A',
+    marginTop: 4,
+  },
+  resultButtonSlotCompact: {
+    width: 400,
+    aspectRatio: 3.2,
+    marginTop: 16,
+  },
+  resultButtonTextCompact: {
+    fontFamily: Typography.button,
+    fontSize: 32,
+    fontWeight: 'bold' as const,
+    color: '#FFFFFF',
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
+  },
+
+  // Other phases
+  phaseContainer: { alignItems: 'center', gap: 16, maxWidth: 400 },
   title: {
     fontFamily: Typography.header,
     fontSize: 32,
@@ -546,28 +993,6 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 1, height: 1 },
     textShadowRadius: 4,
   },
-  subtitle: {
-    fontFamily: Typography.body,
-    fontSize: 16,
-    color: '#c8c8c8',
-    textAlign: 'center',
-  },
-
-  // Info panel
-  infoPanel: {
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    borderRadius: 8,
-    padding: 16,
-    gap: 8,
-    width: '100%',
-  },
-  infoText: {
-    fontFamily: Typography.number,
-    fontSize: 18,
-    color: '#ffffff',
-    textAlign: 'center',
-    fontWeight: 'bold',
-  },
   infoTextSmall: {
     fontFamily: Typography.body,
     fontSize: 13,
@@ -575,38 +1000,11 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 18,
   },
-
-  // Buttons
-  buttonRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 8,
-  },
-  actionButton: {
-    width: 140,
-    height: 52,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  buttonText: {
-    fontFamily: Typography.button,
-    fontSize: 14,
-    color: '#3d2b1f',
-    marginBottom: 4,
-  },
-  buttonTextPrimary: {
-    fontFamily: Typography.button,
-    fontSize: 14,
-    color: '#1a1a1a',
-    marginBottom: 4,
-  },
-  // Queuing
-  waitingText: {
-    fontFamily: Typography.header,
-    fontSize: 22,
-    color: '#FABC0F',
-    textAlign: 'center',
-  },
+  buttonRow: { flexDirection: 'row', gap: 12, marginTop: 8 },
+  actionButton: { width: 140, height: 52, justifyContent: 'center', alignItems: 'center' },
+  buttonText: { fontFamily: Typography.button, fontSize: 14, color: '#3d2b1f', marginBottom: 4 },
+  buttonTextPrimary: { fontFamily: Typography.button, fontSize: 14, color: '#1a1a1a', marginBottom: 4 },
+  waitingText: { fontFamily: Typography.header, fontSize: 22, color: '#FABC0F', textAlign: 'center' },
   noteText: {
     fontFamily: Typography.body,
     fontSize: 11,
@@ -615,8 +1013,6 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontStyle: 'italic',
   },
-
-  // Result
   victoryText: {
     fontFamily: Typography.header,
     fontSize: 36,
@@ -648,53 +1044,70 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 16,
   },
-  detailText: {
-    fontFamily: Typography.body,
-    fontSize: 14,
-    color: '#c8c8c8',
-    textAlign: 'center',
-  },
-
-  // Error
-  errorText: {
-    fontFamily: Typography.body,
-    fontSize: 14,
-    color: '#F44336',
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-
-  // Loading
-  loadingText: {
-    fontFamily: Typography.header,
-    fontSize: 20,
-    color: '#c8c8c8',
-  },
+  detailText: { fontFamily: Typography.body, fontSize: 14, color: '#c8c8c8', textAlign: 'center' },
+  errorText: { fontFamily: Typography.body, fontSize: 14, color: '#F44336', textAlign: 'center', lineHeight: 20 },
+  loadingText: { fontFamily: Typography.header, fontSize: 20, color: '#c8c8c8' },
 
   // Combat layout
-  arenaArea: {
-    flex: 2,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 16,
-  },
-  controlsArea: {
+  arenaArea: { flex: 2, justifyContent: 'center', alignItems: 'center', padding: 16 },
+  controlsArea: { marginTop: 12 },
+  pvpLabel: { position: 'absolute', top: 12, left: 0, right: 0, alignItems: 'center', zIndex: 10 },
+  pvpLabelText: { fontFamily: Typography.header, fontSize: 14, color: '#FABC0F', letterSpacing: 2 },
+});
+
+const compactStyles = StyleSheet.create({
+  confirmHeader: {
     marginTop: 12,
   },
-
-  // PvP label
-  pvpLabel: {
-    position: 'absolute',
-    top: 12,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    zIndex: 10,
+  headerButton: {
+    width: 140,
+    height: 76,
   },
-  pvpLabelText: {
-    fontFamily: Typography.header,
-    fontSize: 14,
-    color: '#FABC0F',
-    letterSpacing: 2,
+  headerButtonText: {
+    fontSize: 28,
+    marginBottom: 6,
+  },
+  titleImage: {
+    width: 520,
+    height: 130,
+    marginBottom: 20,
+  },
+  panelWrapper: {
+    width: '95%',
+    maxWidth: 900,
+    aspectRatio: 1.2,
+  },
+  panelOverlay: {
+    padding: 0,
+  },
+  panelRowFee: {
+    marginTop: 52,
+    marginLeft: 140,
+    gap: 12,
+  },
+  panelRowPot: {
+    marginTop: -20,
+    marginRight: 112,
+    gap: 72,
+  },
+  panelRowItems: {
+    marginTop: -18,
+    marginLeft: 150,
+    gap: 72,
+  },
+  panelText: {
+    fontSize: 36,
+  },
+  panelIcon: {
+    width: 162,
+    height: 162,
+  },
+  panelButtons: {
+    marginTop: 150,
+    marginLeft: 146,
+    gap: 190,
+  },
+  panelButtonText: {
+    fontSize: 52,
   },
 });

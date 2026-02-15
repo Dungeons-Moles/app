@@ -671,15 +671,6 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
               >
                 <Text style={styles.modalButtonTextSecondary}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.modalButtonPrimary}
-                onPress={() => {
-                  setShowNoRunsModal(false);
-                  navigation.navigate('RunPurchase');
-                }}
-              >
-                <Text style={styles.modalButtonTextPrimary}>Purchase Sessions</Text>
-              </TouchableOpacity>
             </View>
           </View>
         </View>

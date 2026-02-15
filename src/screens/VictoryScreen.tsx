@@ -18,10 +18,14 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
 import { RootStackParamList } from '../navigation';
 import { Typography } from '../theme/typography';
-import type { CombatReplay } from '../services/solana/types/combat_events';
 
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.png');
-const COIN_ICON = require('../../assets/icons/ui/coin.png');
+const STAINS_BACKGROUND = require('../../assets/ui/backgrounds/stains-background.png');
+const PAPER_PANEL = require('../../assets/ui/panels/paper-panel.png');
+const SQUARE_FRAME = require('../../assets/ui/frames/square.png');
+const BUTTON_GREEN = require('../../assets/ui/buttons/button-green.png');
+const VICTORY_IMAGE = require('../../assets/ui/text/victory.png');
+const TROPHY_ICON = require('../../assets/icons/ui/trophy.png');
 
 type VictoryScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Victory'>;
@@ -84,73 +88,49 @@ export function VictoryScreen({ navigation, route }: VictoryScreenProps) {
     });
   };
 
-  const goldEarned = replay?.combatEnded?.goldEarned ?? 0;
   const turnsTaken = replay?.combatEnded?.turnsTaken ?? 0;
 
   // Shared components
   const VictoryHeader = () => (
     <>
       <View style={isVerticalLayout ? styles.iconContainerVertical : styles.iconContainer}>
-        <Text style={isVerticalLayout ? styles.victoryEmojiVertical : styles.victoryEmoji}>🏆</Text>
+        <Image
+          source={TROPHY_ICON}
+          style={isVerticalLayout ? styles.trophyIconVertical : styles.trophyIcon}
+          resizeMode="contain"
+        />
       </View>
-      <Text style={isVerticalLayout ? styles.titleVertical : styles.title}>Victory!</Text>
+      <Image
+        source={VICTORY_IMAGE}
+        style={isVerticalLayout ? styles.victoryImageVertical : styles.victoryImage}
+        resizeMode="contain"
+      />
       <Text style={isVerticalLayout ? styles.subtitleVertical : styles.subtitle}>
         Level {level ?? 1} Complete
       </Text>
     </>
   );
 
+  const StatFrame = ({ label, value }: { label: string; value: string | number }) => (
+    <View style={isVerticalLayout ? styles.statItemVertical : styles.statItem}>
+      <Image source={SQUARE_FRAME} style={styles.statFrameBg} resizeMode="stretch" />
+      <Text style={isVerticalLayout ? styles.statValueVertical : styles.statValue}>{value}</Text>
+      <Text style={isVerticalLayout ? styles.statLabelVertical : styles.statLabel}>{label}</Text>
+    </View>
+  );
+
   const RunSummary = () => (
     <View style={isVerticalLayout ? styles.summaryContainerVertical : styles.summaryContainer}>
+      <Image source={PAPER_PANEL} style={styles.summaryPanelBg} resizeMode="stretch" />
       <Text style={isVerticalLayout ? styles.summaryTitleVertical : styles.summaryTitle}>
         Run Summary
       </Text>
 
-      {isVerticalLayout ? (
-        // Vertical layout: row-based stats
-        <>
-          <View style={styles.statRowVertical}>
-            <Text style={styles.statLabelVertical}>Level Completed</Text>
-            <Text style={styles.statValueVertical}>{level ?? 1}</Text>
-          </View>
-          <View style={styles.statRowVertical}>
-            <Text style={styles.statLabelVertical}>Total Moves</Text>
-            <Text style={styles.statValueVertical}>{totalMoves ?? 0}</Text>
-          </View>
-          <View style={styles.statRowVertical}>
-            <Text style={styles.statLabelVertical}>Final Combat Turns</Text>
-            <Text style={styles.statValueVertical}>{turnsTaken}</Text>
-          </View>
-          <View style={styles.goldRowVertical}>
-            <Image source={COIN_ICON} style={styles.coinIconVertical} resizeMode="contain" />
-            <Text style={styles.goldValueVertical}>{goldEarned} gold earned</Text>
-          </View>
-        </>
-      ) : (
-        // Horizontal layout: grid-based stats
-        <>
-          {/* First row: Level, Moves, Turns */}
-          <View style={styles.statsRow}>
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>{level ?? 1}</Text>
-              <Text style={styles.statLabel}>Level</Text>
-            </View>
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>{totalMoves ?? 0}</Text>
-              <Text style={styles.statLabel}>Moves</Text>
-            </View>
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>{turnsTaken}</Text>
-              <Text style={styles.statLabel}>Turns</Text>
-            </View>
-          </View>
-          {/* Gold row */}
-          <View style={styles.goldRow}>
-            <Image source={COIN_ICON} style={styles.coinIcon} resizeMode="contain" />
-            <Text style={styles.goldValue}>{goldEarned} gold</Text>
-          </View>
-        </>
-      )}
+      <View style={styles.statsRow}>
+        <StatFrame label="Level" value={level ?? 1} />
+        <StatFrame label="Total Moves" value={totalMoves ?? 0} />
+        <StatFrame label="Combat Turns" value={turnsTaken} />
+      </View>
     </View>
   );
 
@@ -219,20 +199,29 @@ export function VictoryScreen({ navigation, route }: VictoryScreenProps) {
   );
 
   const ReturnButton = () => (
-    <Pressable
-      style={isVerticalLayout ? styles.returnButtonVertical : styles.returnButton}
-      onPress={handleReturnToHub}
-    >
-      <Text style={isVerticalLayout ? styles.returnButtonTextVertical : styles.returnButtonText}>
-        Return to Hub
-      </Text>
-    </Pressable>
+    <View style={isVerticalLayout ? styles.buttonSlotVertical : styles.buttonSlot}>
+      <Pressable style={styles.buttonPressable} onPress={handleReturnToHub}>
+        <ImageBackground
+          source={BUTTON_GREEN}
+          style={styles.buttonImage}
+          resizeMode="contain"
+        >
+          <Text
+            style={isVerticalLayout ? styles.returnButtonTextVertical : styles.returnButtonText}
+          >
+            Return to Hub
+          </Text>
+        </ImageBackground>
+      </Pressable>
+    </View>
   );
+
 
   return (
     <View style={styles.container}>
       <ImageBackground source={BACKGROUND_IMAGE} style={styles.backgroundImage} resizeMode="cover">
-        <View style={styles.darkOverlay}>
+        <Image source={STAINS_BACKGROUND} style={styles.stainsOverlay} resizeMode="cover" />
+        <View style={styles.mainContent}>
           <Animated.View
             style={[
               isVerticalLayout ? styles.contentVertical : styles.content,
@@ -279,7 +268,12 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  darkOverlay: {
+  stainsOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    width: '100%',
+    height: '100%',
+  },
+  mainContent: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.6)',
     justifyContent: 'center',
@@ -317,18 +311,16 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#FFD700',
   },
-  victoryEmoji: {
-    fontSize: 32,
+  trophyIcon: {
+    width: 36,
+    height: 36,
+    tintColor: '#FFD700',
   },
-  title: {
-    fontFamily: Typography.header,
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#FFD700',
+  victoryImage: {
+    width: 180,
+    height: 80,
     marginBottom: 4,
-    textShadowColor: 'rgba(0, 0, 0, 0.8)',
-    textShadowOffset: { width: 2, height: 2 },
-    textShadowRadius: 4,
+    tintColor: '#44BB44',
   },
   subtitle: {
     fontFamily: Typography.body,
@@ -338,19 +330,22 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   summaryContainer: {
-    backgroundColor: 'rgba(40, 40, 50, 0.9)',
-    borderRadius: 12,
     padding: 16,
     width: '100%',
     marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#444455',
+  },
+  summaryPanelBg: {
+    position: 'absolute',
+    width: '110%',
+    height: '120%',
+    top: '-10%',
+    left: '-5%',
   },
   summaryTitle: {
     fontFamily: Typography.header,
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#FFFFFF',
+    color: '#2A1A0A',
     marginBottom: 12,
     textAlign: 'center',
   },
@@ -362,47 +357,36 @@ const styles = StyleSheet.create({
   },
   statItem: {
     alignItems: 'center',
+    justifyContent: 'center',
     minWidth: 60,
     flex: 1,
-    paddingVertical: 8,
+    paddingVertical: 12,
     paddingHorizontal: 8,
-    backgroundColor: 'rgba(60, 60, 80, 0.5)',
-    borderRadius: 8,
+  },
+  statFrameBg: {
+    position: 'absolute',
+    width: '100%',
+    height: '100%',
+    resizeMode: 'stretch',
   },
   statLabel: {
     fontFamily: Typography.body,
     fontSize: 11,
-    color: '#AAAAAA',
+    color: '#1A1A1A',
     marginTop: 2,
   },
   statValue: {
     fontFamily: Typography.number,
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#FFFFFF',
-  },
-  goldRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingTop: 8,
-    gap: 6,
-  },
-  coinIcon: {
-    width: 20,
-    height: 20,
-  },
-  goldValue: {
-    fontFamily: Typography.number,
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#FFD700',
+    color: '#000000',
   },
   unlockContainer: {
     backgroundColor: 'rgba(50, 100, 50, 0.9)',
     borderRadius: 10,
     padding: 12,
     width: '100%',
+    marginTop: 12,
     marginBottom: 8,
     borderWidth: 2,
     borderColor: '#44AA44',
@@ -442,6 +426,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 12,
     width: '100%',
+    marginTop: 12,
     marginBottom: 8,
     borderWidth: 2,
     borderColor: '#8866AA',
@@ -477,26 +462,36 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     borderRadius: 4,
   },
-  returnButton: {
-    backgroundColor: '#4a6a4a',
-    paddingVertical: 12,
-    paddingHorizontal: 32,
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: '#6a8a6a',
+  buttonSlot: {
+    width: '70%',
+    aspectRatio: 3.2,
+  },
+  buttonPressable: {
+    width: '100%',
+    height: '100%',
+  },
+  buttonImage: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   returnButtonText: {
     fontFamily: Typography.button,
     fontSize: 15,
     fontWeight: 'bold',
     color: '#FFFFFF',
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
   },
 
   // ==================== VERTICAL LAYOUT (Tall Screens / Portrait) ====================
   contentVertical: {
     alignItems: 'center',
     padding: 32,
-    maxWidth: 400,
+    maxWidth: 520,
+    width: '100%',
   },
   iconContainerVertical: {
     width: 80,
@@ -509,82 +504,62 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#FFD700',
   },
-  victoryEmojiVertical: {
-    fontSize: 42,
+  trophyIconVertical: {
+    width: 48,
+    height: 48,
+    tintColor: '#FFD700',
   },
-  titleVertical: {
-    fontFamily: Typography.header,
-    fontSize: 42,
-    fontWeight: 'bold',
-    color: '#FFD700',
-    marginBottom: 4,
-    textShadowColor: 'rgba(0, 0, 0, 0.8)',
-    textShadowOffset: { width: 2, height: 2 },
-    textShadowRadius: 4,
+  victoryImageVertical: {
+    width: 240,
+    height: 100,
+    marginBottom: 8,
+    tintColor: '#44BB44',
   },
   subtitleVertical: {
     fontFamily: Typography.body,
-    fontSize: 20,
+    fontSize: 22,
     color: '#CCCCCC',
     marginBottom: 24,
   },
   summaryContainerVertical: {
-    backgroundColor: 'rgba(40, 40, 50, 0.9)',
-    borderRadius: 12,
     padding: 20,
     width: '100%',
     marginBottom: 24,
-    borderWidth: 1,
-    borderColor: '#444455',
   },
   summaryTitleVertical: {
     fontFamily: Typography.header,
-    fontSize: 18,
+    fontSize: 22,
     fontWeight: 'bold',
-    color: '#FFFFFF',
+    color: '#2A1A0A',
     marginBottom: 16,
     textAlign: 'center',
   },
-  statRowVertical: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#333344',
-  },
-  statLabelVertical: {
-    fontFamily: Typography.body,
-    fontSize: 16,
-    color: '#AAAAAA',
+  statItemVertical: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 70,
+    flex: 1,
+    paddingVertical: 14,
+    paddingHorizontal: 10,
   },
   statValueVertical: {
     fontFamily: Typography.number,
-    fontSize: 16,
+    fontSize: 24,
     fontWeight: 'bold',
-    color: '#FFFFFF',
+    color: '#000000',
   },
-  goldRowVertical: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingTop: 16,
-    gap: 8,
-  },
-  coinIconVertical: {
-    width: 24,
-    height: 24,
-  },
-  goldValueVertical: {
-    fontFamily: Typography.number,
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#FFD700',
+  statLabelVertical: {
+    fontFamily: Typography.body,
+    fontSize: 14,
+    color: '#1A1A1A',
+    marginTop: 2,
   },
   unlockContainerVertical: {
     backgroundColor: 'rgba(50, 100, 50, 0.9)',
     borderRadius: 12,
     padding: 20,
     width: '100%',
+    marginTop: 16,
     marginBottom: 16,
     borderWidth: 2,
     borderColor: '#44AA44',
@@ -592,7 +567,7 @@ const styles = StyleSheet.create({
   },
   unlockTitleVertical: {
     fontFamily: Typography.header,
-    fontSize: 18,
+    fontSize: 22,
     fontWeight: 'bold',
     color: '#44FF44',
     marginBottom: 12,
@@ -616,7 +591,7 @@ const styles = StyleSheet.create({
   },
   unlockTextVertical: {
     fontFamily: Typography.body,
-    fontSize: 14,
+    fontSize: 16,
     color: '#AAFFAA',
   },
   itemUnlockContainerVertical: {
@@ -624,6 +599,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 20,
     width: '100%',
+    marginTop: 16,
     marginBottom: 16,
     borderWidth: 2,
     borderColor: '#8866AA',
@@ -639,23 +615,22 @@ const styles = StyleSheet.create({
   },
   itemNameVertical: {
     fontFamily: Typography.header,
-    fontSize: 18,
+    fontSize: 22,
     fontWeight: 'bold',
     color: '#FFFFFF',
     marginBottom: 8,
   },
-  returnButtonVertical: {
-    backgroundColor: '#4a6a4a',
-    paddingVertical: 16,
-    paddingHorizontal: 48,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: '#6a8a6a',
+  buttonSlotVertical: {
+    width: '75%',
+    aspectRatio: 3.2,
   },
   returnButtonTextVertical: {
     fontFamily: Typography.button,
-    fontSize: 18,
+    fontSize: 32,
     fontWeight: 'bold',
     color: '#FFFFFF',
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
   },
 });

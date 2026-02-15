@@ -5,14 +5,10 @@ import { LoadingScreen } from '../screens/LoadingScreen';
 import { AccountScreen } from '../screens/AccountScreen';
 import { HubScreen } from '../screens/HubScreen';
 import { CampaignSelectScreen } from '../screens/CampaignSelectScreen';
-import { ProfileSettingsScreen } from '../screens/ProfileSettingsScreen';
 import { GameScreen } from '../screens/GameScreen';
 import { CombatScreen } from '../screens/CombatScreen';
 import { DeathScreen } from '../screens/DeathScreen';
 import { VictoryScreen } from '../screens/VictoryScreen';
-import { RunPurchaseScreen } from '../screens/RunPurchaseScreen';
-import { SessionListScreen } from '../screens/SessionListScreen';
-import { ItemCollectionScreen } from '../screens/ItemCollectionScreen';
 import { PitDraftScreen } from '../screens/PitDraftScreen';
 import { PitDraftHistoryScreen } from '../screens/PitDraftHistoryScreen';
 import { DuelsScreen } from '../screens/DuelsScreen';
@@ -21,6 +17,7 @@ import { GauntletScreen } from '../screens/GauntletScreen';
 import { GauntletHistoryScreen } from '../screens/GauntletHistoryScreen';
 import { GauntletRankingScreen } from '../screens/GauntletRankingScreen';
 import { MarketplaceScreen } from '../screens/MarketplaceScreen';
+import { ItemsScreen } from '../screens/ItemsScreen';
 import type { CombatReplay, BackendCombatLogEntry } from '../services/solana/types/combat_events';
 import type {
   ItemStats,
@@ -97,7 +94,6 @@ export type RootStackParamList = {
   Account: undefined;
   Hub: undefined;
   CampaignSelect: undefined;
-  ProfileSettings: undefined;
   Game: undefined;
   Combat:
     | {
@@ -121,10 +117,7 @@ export type RootStackParamList = {
     levelUnlocked?: number;
     itemUnlocked?: UnlockedItem;
   };
-  RunPurchase: undefined;
-  SessionList: undefined;
-  ItemCollection: undefined;
-  PitDraft: undefined;
+  PitDraft: { debugResult?: 'victory' | 'defeat' } | undefined;
   PitDraftHistory: undefined;
   Duels: undefined;
   DuelsHistory: undefined;
@@ -132,6 +125,7 @@ export type RootStackParamList = {
   GauntletHistory: undefined;
   GauntletRanking: undefined;
   Marketplace: undefined;
+  Items: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -151,14 +145,10 @@ export function AppNavigator() {
         <Stack.Screen name="Account" component={AccountScreen} />
         <Stack.Screen name="Hub" component={HubScreen} />
         <Stack.Screen name="CampaignSelect" component={CampaignSelectScreen} />
-        <Stack.Screen name="ProfileSettings" component={ProfileSettingsScreen} />
         <Stack.Screen name="Game" component={GameScreen} />
         <Stack.Screen name="Combat" component={CombatScreen} />
         <Stack.Screen name="Death" component={DeathScreen} />
         <Stack.Screen name="Victory" component={VictoryScreen} />
-        <Stack.Screen name="RunPurchase" component={RunPurchaseScreen} />
-        <Stack.Screen name="SessionList" component={SessionListScreen} />
-        <Stack.Screen name="ItemCollection" component={ItemCollectionScreen} />
         <Stack.Screen name="PitDraft" component={PitDraftScreen} />
         <Stack.Screen name="PitDraftHistory" component={PitDraftHistoryScreen} />
         <Stack.Screen name="Duels" component={DuelsScreen} />
@@ -167,6 +157,7 @@ export function AppNavigator() {
         <Stack.Screen name="GauntletHistory" component={GauntletHistoryScreen} />
         <Stack.Screen name="GauntletRanking" component={GauntletRankingScreen} />
         <Stack.Screen name="Marketplace" component={MarketplaceScreen} />
+        <Stack.Screen name="Items" component={ItemsScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

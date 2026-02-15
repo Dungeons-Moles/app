@@ -1,11 +1,9 @@
-import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
-  // Modal replaced by InlineModal for simulator containment
-  Alert,
   Image,
   ImageBackground,
   Platform,
@@ -13,6 +11,7 @@ import {
   ScrollView,
   RefreshControl,
   Animated,
+  TextInput,
   ActivityIndicator,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -28,32 +27,13 @@ import { Skeleton } from '../components/common/Skeleton';
 import { Typography } from '../theme/typography';
 import { useScreenVariant } from '../contexts/ScreenVariantContext';
 import { MAX_CAMPAIGN_LEVEL } from '../hooks/useMapGenerator';
-import {
-  GEAR_DEFINITIONS,
-  getAllGearDefinitions,
-  getGearByTag,
-  GearDefinition,
-} from '../data/gear';
-import {
-  TOOL_DEFINITIONS,
-  getAllToolDefinitions,
-  getToolsByTag,
-  ToolDefinition,
-} from '../game/entities/items';
-import { ItemTag, ItemStats, ItemRarity } from '../game/engine/types';
-import {
-  BITMASK_SIZE,
-  MIN_ACTIVE_POOL,
-  isItemUnlocked as isPoolBitSet,
-  setItemUnlocked as setPoolBit,
-  getItemPoolIndex,
-} from '../services/solana/types/item_pool';
 
 const defaultMoleImageSource = require('../../assets/entities/characters/default-mole.png');
 const backgroundImageCompact = require('../../assets/ui/backgrounds/hub-background-compact.png');
 const backgroundImageWide = require('../../assets/ui/backgrounds/hub-background-wide.png');
 const buttonV1Source = require('../../assets/ui/buttons/button-v1.png');
 const buttonV2Source = require('../../assets/ui/buttons/button-v2.png');
+const buttonV3Source = require('../../assets/ui/buttons/button-v3.png');
 const buttonV4Source = require('../../assets/ui/buttons/button-v4.png');
 const paperPanelSource = require('../../assets/ui/panels/paper-panel.png');
 const yellowBrushSource = require('../../assets/ui/illustrations/yellow-brush.png');
@@ -63,140 +43,6 @@ const duelsPaperSource = require('../../assets/ui/illustrations/duels-paper.png'
 const pitDraftPaperSource = require('../../assets/ui/illustrations/pit-draft-paper.png');
 const engineImageSource = require('../../assets/ui/illustrations/engine.png');
 const walletImageSource = require('../../assets/ui/illustrations/wallet.png');
-const lockIconSource = require('../../assets/icons/ui/lock.png');
-
-// Item descriptions mapping (enhanced from GDD)
-const ITEM_DESCRIPTIONS: Record<string, string> = {
-  'Basic Pickaxe': 'A sturdy pickaxe for digging through tough terrain. Essential for any miner.',
-  'Miner Helmet': 'Protective headgear that provides basic defense against falling debris.',
-  'Mining Gloves': 'Reinforced gloves that improve grip and digging efficiency.',
-  Headlamp: 'Bright light source that helps you move faster through dark tunnels.',
-  'Reinforced Boots': 'Sturdy boots with reinforced soles for better protection and digging.',
-  'Canary Cage': 'A caged canary that warns of danger, increasing your maximum health.',
-  'Mining Cart': 'A wheeled cart that allows you to move quickly through the mines.',
-  'Dynamite Bundle': 'Explosive power for both combat and excavation.',
-  'Iron Sword': 'A basic but reliable weapon for combat.',
-  'Wooden Shield': 'Simple wooden protection against enemy attacks.',
-  Chainmail: 'Interlocking metal rings providing solid armor.',
-  'Battle Axe': 'A heavy axe that deals significant damage.',
-  'War Hammer': 'A balanced weapon offering both offense and defense.',
-  'Knight Helm': 'Heavy helmet providing excellent protection.',
-  'Battle Standard': 'Inspiring banner that boosts attack and vitality.',
-  'Champion Blade': 'A masterwork weapon for skilled warriors.',
-  'Leather Boots': 'Light footwear that increases movement speed.',
-  'Short Bow': 'A compact ranged weapon for quick attacks.',
-  Dagger: 'A swift blade for fast strikes.',
-  Cloak: 'A concealing garment that provides speed and protection.',
-  'Grappling Hook': 'Tool for quick traversal and movement.',
-  Spyglass: 'Enhances perception, improving both speed and digging.',
-  'Swift Quiver': 'Holds arrows for rapid fire combat.',
-  'Shadow Step': 'Mastery of stealth and speed.',
-  'Heavy Shield': 'Massive protection that significantly reduces damage.',
-  'Plate Armor': 'Full body protection with added vitality.',
-  'Tower Shield': 'An enormous shield for maximum defense.',
-  'Iron Bracers': 'Arm guards providing solid protection.',
-  'Fortified Helm': 'Reinforced headgear with life-preserving properties.',
-  'Barrier Charm': 'Magical protection that enhances life force.',
-  Aegis: 'Legendary shield offering supreme defense.',
-  'Fortress Gauntlets': 'Heavy gauntlets that combine offense and defense.',
-  'Rage Ring': 'A ring that channels anger into attack power.',
-  'Blood Axe': 'A brutal weapon fueled by fury.',
-  'Fury Helm': 'Channels rage into power while protecting the wearer.',
-  'Berserk Talisman': 'Amplifies combat prowess through raw emotion.',
-  'Wrath Gauntlets': 'Gauntlets that enhance destructive power.',
-  'Chaos Blade': 'An unpredictable weapon of great speed and power.',
-  'Rampage Armor': 'Armor that grows stronger as the battle rages.',
-  Destroyer: 'The ultimate weapon of annihilation.',
-  'Frost Shard': 'A fragment of eternal ice that chills enemies.',
-  'Ice Armor': 'Frozen protection that freezes attackers.',
-  'Frozen Heart': 'A heart of ice that preserves life.',
-  'Blizzard Cloak': 'A garment woven from winter winds.',
-  'Glacial Blade': 'A sword forged from ancient ice.',
-  'Icicle Crown': 'A crown of eternal winter.',
-  'Permafrost Shield': 'A shield that never thaws.',
-  "Winter's End": 'The ultimate frost weapon.',
-  'Ember Stone': 'A stone burning with eternal flame.',
-  'Flame Guard': 'Protection wreathed in fire.',
-  'Inferno Ring': 'A ring of burning power.',
-  'Phoenix Feather': 'A feather of rebirth and speed.',
-  'Blazing Sword': 'A blade of pure fire.',
-  'Molten Armor': 'Armor forged in volcanic heat.',
-  'Dragonfire Amulet': 'An amulet of legendary flame.',
-  'Sunforged Blade': 'A weapon born of solar fire.',
-  'Venom Fang': 'A tooth dripping with poison.',
-  'Toxic Cloak': 'A garment of deadly fumes.',
-  'Plague Mask': 'A mask that spreads disease.',
-  'Serpent Ring': 'A ring of serpentine power.',
-  'Acid Blade': 'A blade that corrodes armor.',
-  'Corrosive Shield': 'A shield that melts attacks.',
-  'Basilisk Eye': 'An eye that petrifies foes.',
-  "Death's Embrace": 'The ultimate poison weapon.',
-  'Shadow Dagger': 'A blade of pure darkness.',
-  'Darkness Cloak': 'A garment of absolute shadow.',
-  'Phantom Mask': 'A mask of ghostly protection.',
-  'Void Ring': 'A ring of emptiness and power.',
-  'Nightmare Blade': 'A sword of dark dreams.',
-  'Eclipse Armor': 'Armor of the darkened sun.',
-  'Abyssal Crown': 'A crown of infinite darkness.',
-  'Soul Reaper': 'The ultimate shadow weapon.',
-  'Holy Symbol': 'A symbol of divine protection.',
-  'Angel Wings': 'Wings of celestial speed.',
-  'Blessed Armor': 'Armor sanctified by light.',
-  'Sacred Ring': 'A ring of holy power.',
-  'Seraph Blade': 'A blade of angelic fire.',
-  'Radiant Shield': 'A shield of pure light.',
-  'Halo of Light': 'A crown of divine radiance.',
-  Godslayer: 'The ultimate divine weapon.',
-};
-
-// Tag display names
-const TAG_DISPLAY_NAMES: Record<ItemTag, string> = {
-  STONE: 'STONE',
-  SCOUT: 'SCOUT',
-  GREED: 'GREED',
-  BLAST: 'BLAST',
-  FROST: 'FROST',
-  RUST: 'RUST',
-  BLOOD: 'BLOOD',
-  TEMPO: 'TEMPO',
-};
-
-const TAG_COLORS: Record<ItemTag, string> = {
-  STONE: '#8B7355',
-  SCOUT: '#4682B4',
-  GREED: '#DAA520',
-  FROST: '#5F9EA0',
-  BLAST: '#f97316',
-  RUST: '#a16207',
-  BLOOD: '#dc2626',
-  TEMPO: '#9333ea',
-};
-
-// All tags in order
-const ALL_TAGS: ItemTag[] = ['STONE', 'SCOUT', 'GREED', 'BLAST', 'FROST', 'RUST', 'BLOOD', 'TEMPO'];
-const ITEM_POOL_MIN_SIZE = MIN_ACTIVE_POOL;
-
-// Unified display item type for tools and gear
-type DisplayItem = {
-  id: string;
-  name: string;
-  image: any;
-  rarity: ItemRarity;
-  stats: ItemStats;
-  effect?: { description: string };
-  isTool: boolean;
-  tag: ItemTag;
-};
-
-// Rarity colors for UI
-const RARITY_COLORS: Record<ItemRarity, string> = {
-  COMMON: '#9CA3AF',
-  GILDED: '#22C55E',
-  DIAMOND: '#3B82F6',
-  RARE: '#A855F7',
-  HEROIC: '#F97316',
-  MYTHIC: '#FFD700',
-};
 
 type HubScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Hub'>;
@@ -207,12 +53,11 @@ export function HubScreen({ navigation }: HubScreenProps) {
     profile,
     isLoading,
     clearProfile,
+    updateName,
     updateDefaultCombatSpeed,
     refresh,
     mode,
-    isItemUnlocked,
     defaultCombatSpeed,
-    updateActiveItemPool,
   } = useProfile();
   const isGuest = mode === 'guest';
   const screenVariant = useScreenVariant();
@@ -223,12 +68,13 @@ export function HubScreen({ navigation }: HubScreenProps) {
   const [showResumePrompt, setShowResumePrompt] = useState(false);
   const [showSkins, setShowSkins] = useState(false);
   const [showRanks, setShowRanks] = useState(false);
-  const [showItems, setShowItems] = useState(false);
-  const [selectedItem, setSelectedItem] = useState<DisplayItem | null>(null);
-  const [draftPoolIndices, setDraftPoolIndices] = useState<Set<number>>(new Set());
-  const [isSavingItemPool, setIsSavingItemPool] = useState(false);
   const [showQuests, setShowQuests] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
   const [showPvP, setShowPvP] = useState(false);
+  const [profileName, setProfileName] = useState(profile?.name ?? '');
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileValidationError, setProfileValidationError] = useState<string | null>(null);
+  const [profileSuccessMessage, setProfileSuccessMessage] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const hasPromptedResume = useRef(false);
@@ -319,143 +165,64 @@ export function HubScreen({ navigation }: HubScreenProps) {
     setShowSkins(true);
   };
 
-  const checkItemUnlocked = useCallback(
-    (id: string): boolean => {
-      return isItemUnlocked(id);
-    },
-    [isItemUnlocked]
-  );
-
-  const activePoolBitmask = useMemo(
-    () => profile?.activeItemPool ?? new Uint8Array(BITMASK_SIZE),
-    [profile?.activeItemPool]
-  );
-
-  const loadDraftPoolFromProfile = useCallback(() => {
-    const next = new Set<number>();
-    for (let i = 0; i < 80; i++) {
-      if (isPoolBitSet(activePoolBitmask, i)) {
-        next.add(i);
-      }
-    }
-    setDraftPoolIndices(next);
-  }, [activePoolBitmask]);
-
-  // Helper to convert tool/gear to DisplayItem
-  const convertToDisplayItem = (
-    def: ToolDefinition | GearDefinition,
-    isTool: boolean,
-    tag: ItemTag
-  ): DisplayItem => ({
-    id: def.id,
-    name: def.name,
-    image: def.image,
-    rarity: isTool ? (def as ToolDefinition).rarity : (def as GearDefinition).baseRarity,
-    stats: def.stats,
-    effect: def.effect,
-    isTool,
-    tag,
-  });
-
-  // Get all items by tag
-  const getItemsByTag = (tag: ItemTag): DisplayItem[] => {
-    const tools = getToolsByTag(tag).map((t) => convertToDisplayItem(t, true, tag));
-    const gear = getGearByTag(tag).map((g) => convertToDisplayItem(g, false, tag));
-    return [...tools, ...gear];
-  };
-
-  // Get all items
-  const getAllItems = (): DisplayItem[] => {
-    const allItems: DisplayItem[] = [];
-    ALL_TAGS.forEach((tag) => {
-      allItems.push(...getItemsByTag(tag));
-    });
-    return allItems;
-  };
-
   const handleItems = () => {
-    setShowItems(true);
-    loadDraftPoolFromProfile();
-    // Select first unlocked item or first item
-    const allItems = getAllItems();
-    const firstUnlocked = allItems.find((item) => checkItemUnlocked(item.id));
-    setSelectedItem(firstUnlocked || allItems[0] || null);
+    navigation.navigate('Items');
   };
 
-  const togglePoolItem = useCallback(
-    (item: DisplayItem) => {
-      if (!checkItemUnlocked(item.id)) {
-        return;
-      }
+  const handleProfileSettings = () => {
+    setProfileName(profile?.name ?? '');
+    setProfileValidationError(null);
+    setProfileSuccessMessage(null);
+    setShowProfile(true);
+  };
 
-      const poolIndex = getItemPoolIndex(item.id);
-      if (poolIndex < 0) {
-        return;
-      }
+  const NAME_MAX_LENGTH = 32;
 
-      setDraftPoolIndices((prev) => {
-        const next = new Set(prev);
-        if (next.has(poolIndex)) {
-          if (next.size <= ITEM_POOL_MIN_SIZE) {
-            Alert.alert(
-              'Minimum Pool Size',
-              `Your item pool must keep at least ${ITEM_POOL_MIN_SIZE} items.`
-            );
-            return prev;
-          }
-          next.delete(poolIndex);
-          return next;
-        }
-
-        next.add(poolIndex);
-        return next;
-      });
-    },
-    [checkItemUnlocked]
-  );
-
-  const hasPoolChanges = useMemo(() => {
-    for (let i = 0; i < 80; i++) {
-      const onChain = isPoolBitSet(activePoolBitmask, i);
-      const draft = draftPoolIndices.has(i);
-      if (onChain !== draft) {
-        return true;
-      }
+  const handleProfileNameChange = useCallback((value: string) => {
+    setProfileName(value);
+    setProfileSuccessMessage(null);
+    if (!value.trim()) {
+      setProfileValidationError('Name is required');
+    } else if (value.length > NAME_MAX_LENGTH) {
+      setProfileValidationError(`Name must be ${NAME_MAX_LENGTH} characters or less`);
+    } else {
+      setProfileValidationError(null);
     }
-    return false;
-  }, [activePoolBitmask, draftPoolIndices]);
+  }, []);
 
-  const handleSaveItemPool = useCallback(async () => {
-    if (draftPoolIndices.size < ITEM_POOL_MIN_SIZE) {
-      Alert.alert(
-        'Invalid Pool Size',
-        `Select at least ${ITEM_POOL_MIN_SIZE} items before saving.`
-      );
+  const handleProfileSave = useCallback(async () => {
+    if (!profileName.trim()) {
+      setProfileValidationError('Name is required');
       return;
     }
-
-    const nextBitmask = new Uint8Array(BITMASK_SIZE);
-    for (const index of draftPoolIndices) {
-      setPoolBit(nextBitmask, index);
+    if (profileName === profile?.name) {
+      setProfileSuccessMessage('Name unchanged');
+      return;
     }
-
-    setIsSavingItemPool(true);
+    setProfileSaving(true);
+    setProfileSuccessMessage(null);
     try {
-      const result = await updateActiveItemPool(nextBitmask);
-      if (!result.success) {
-        Alert.alert('Failed to Save', result.error ?? 'Could not update active item pool.');
-        return;
+      const result = await updateName(profileName);
+      if (result.success) {
+        setProfileSuccessMessage('Name updated!');
+      } else {
+        setProfileValidationError(result.error ?? 'Failed to update name');
       }
-      Alert.alert('Saved', 'Your item pool has been updated.');
     } finally {
-      setIsSavingItemPool(false);
+      setProfileSaving(false);
     }
-  }, [draftPoolIndices, updateActiveItemPool]);
+  }, [profileName, profile?.name, updateName]);
 
-  const selectedItemPoolIndex = selectedItem ? getItemPoolIndex(selectedItem.id) : -1;
-  const selectedItemInPool =
-    selectedItemPoolIndex >= 0 && draftPoolIndices.has(selectedItemPoolIndex);
-  const canRemoveSelectedItem = !selectedItemInPool || draftPoolIndices.size > ITEM_POOL_MIN_SIZE;
+  const formatDate = (timestamp: number): string => {
+    const date = new Date(timestamp * 1000);
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+  };
+
+  const isProfileSaveDisabled = profileSaving || isLoading || !!profileValidationError || profileName === profile?.name;
 
   return (
     <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
@@ -474,7 +241,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
           {/* TOP LEFT - Player Info (compact: full left column) */}
           <View style={[styles.topLeft, isCompact && compactStyles.leftColumn]}>
             <TouchableOpacity
-              onPress={() => navigation.navigate('ProfileSettings')}
+              onPress={handleProfileSettings}
               activeOpacity={0.8}
             >
               <ImageBackground
@@ -588,6 +355,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
                     <Text style={[styles.navButtonText, compactStyles.navButtonText]}>PvP Ranks</Text>
                   </ImageBackground>
                 </TouchableOpacity>
+
               </View>
             )}
           </View>
@@ -715,6 +483,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
                   </TouchableOpacity>
                 </View>
               )}
+
             </View>
           )}
 
@@ -876,26 +645,6 @@ export function HubScreen({ navigation }: HubScreenProps) {
                       <Text style={styles.resumeModalButtonText}>Later</Text>
                     </ImageBackground>
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.resumeModalButton}
-                    onPress={() => {
-                      setShowResumePrompt(false);
-                      navigation.navigate('SessionList');
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <ImageBackground
-                      source={buttonV4Source}
-                      style={styles.resumeModalButtonImage}
-                      resizeMode="stretch"
-                    >
-                      <Text
-                        style={[styles.resumeModalButtonText, styles.resumeModalButtonTextPrimary]}
-                      >
-                        View Sessions
-                      </Text>
-                    </ImageBackground>
-                  </TouchableOpacity>
                 </View>
               </ImageBackground>
             </TouchableWithoutFeedback>
@@ -979,265 +728,6 @@ export function HubScreen({ navigation }: HubScreenProps) {
         </TouchableWithoutFeedback>
       </InlineModal>
 
-      {/* Items Modal */}
-      <InlineModal
-        visible={showItems}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowItems(false)}
-      >
-        <TouchableWithoutFeedback onPress={() => setShowItems(false)}>
-          <View style={styles.modalOverlay}>
-            <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
-              <View style={styles.itemsModalContainer}>
-                <ImageBackground
-                  source={paperPanelSource}
-                  style={styles.itemsModalBg}
-                  resizeMode="stretch"
-                >
-                  <View style={styles.itemsModalInner}>
-                    <View style={styles.itemsModalHeaderRow}>
-                      <View style={styles.itemsModalHeaderLeft}>
-                        <TouchableOpacity
-                          style={[
-                            styles.itemsModalSaveButton,
-                            (isSavingItemPool ||
-                              !hasPoolChanges ||
-                              draftPoolIndices.size < ITEM_POOL_MIN_SIZE) &&
-                              styles.poolSaveButtonDisabled,
-                          ]}
-                          disabled={
-                            isSavingItemPool ||
-                            !hasPoolChanges ||
-                            draftPoolIndices.size < ITEM_POOL_MIN_SIZE
-                          }
-                          onPress={handleSaveItemPool}
-                          activeOpacity={0.8}
-                        >
-                          {isSavingItemPool ? (
-                            <ActivityIndicator size="small" color="#ffffff" />
-                          ) : (
-                            <Text style={styles.poolSaveButtonText}>Save</Text>
-                          )}
-                        </TouchableOpacity>
-                        <Text style={styles.poolCountHeaderText}>
-                          Pool: {draftPoolIndices.size} (min {ITEM_POOL_MIN_SIZE})
-                        </Text>
-                      </View>
-                      <View style={styles.itemsModalHeaderCenter}>
-                        <Text style={[styles.modalTitle, { fontSize: 28 }]}>Items</Text>
-                      </View>
-                      <View style={styles.itemsModalHeaderRight}>
-                        <TouchableOpacity
-                          onPress={() => setShowItems(false)}
-                          style={styles.itemsModalCloseButton}
-                          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                        >
-                          <Text style={styles.closeButtonText}>✕</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-
-                    {/* Two-column layout */}
-                    <View style={styles.itemsModalContent}>
-                      {/* Left column - Item grid by tag */}
-                      <ScrollView
-                        style={styles.itemsListColumn}
-                        showsVerticalScrollIndicator={false}
-                      >
-                        {ALL_TAGS.map((tag) => {
-                          const tagItems = getItemsByTag(tag);
-                          return (
-                            <View key={tag} style={styles.tagSection}>
-                              <Text style={[styles.tagHeader, { color: TAG_COLORS[tag] }]}>
-                                {TAG_DISPLAY_NAMES[tag]}
-                              </Text>
-                              <View style={styles.itemsGrid}>
-                                {tagItems.map((item) => {
-                                  const unlocked = checkItemUnlocked(item.id);
-                                  const isSelected = selectedItem?.id === item.id;
-                                  const poolIndex = getItemPoolIndex(item.id);
-                                  const isInPool =
-                                    poolIndex >= 0 && draftPoolIndices.has(poolIndex);
-                                  return (
-                                    <TouchableOpacity
-                                      key={item.id}
-                                      style={[
-                                        styles.itemGridCell,
-                                        isInPool && styles.itemGridCellInPool,
-                                        isSelected && styles.itemGridCellSelected,
-                                      ]}
-                                      onPress={() => setSelectedItem(item)}
-                                      activeOpacity={0.7}
-                                    >
-                                      <ImageBackground
-                                        source={require('../../assets/ui/frames/square.png')}
-                                        style={styles.itemFrame}
-                                        resizeMode="stretch"
-                                      >
-                                        <Image
-                                          source={item.image}
-                                          style={[
-                                            styles.itemImage,
-                                            !unlocked && styles.itemImageLocked,
-                                          ]}
-                                          resizeMode="contain"
-                                        />
-                                        {!unlocked && (
-                                          <View style={styles.itemLockOverlay}>
-                                            <Image
-                                              source={lockIconSource}
-                                              style={styles.gridLockIcon}
-                                              resizeMode="contain"
-                                            />
-                                          </View>
-                                        )}
-                                      </ImageBackground>
-                                    </TouchableOpacity>
-                                  );
-                                })}
-                              </View>
-                            </View>
-                          );
-                        })}
-                      </ScrollView>
-
-                      {/* Right column - Item details sidebar */}
-                      <View style={styles.itemDetailsColumn}>
-                        {selectedItem && (
-                          <>
-                            {!checkItemUnlocked(selectedItem.id) && (
-                              <View style={styles.lockedBanner}>
-                                <Image
-                                  source={lockIconSource}
-                                  style={styles.lockedBannerIcon}
-                                  resizeMode="contain"
-                                />
-                                <Text style={styles.lockedBannerText}>LOCKED</Text>
-                              </View>
-                            )}
-
-                            <View style={styles.selectedItemHeader}>
-                              <Image
-                                source={selectedItem.image}
-                                style={styles.selectedItemImage}
-                                resizeMode="contain"
-                              />
-                              <Text style={styles.selectedItemName}>{selectedItem.name}</Text>
-                              <View
-                                style={[
-                                  styles.rarityBadge,
-                                  { backgroundColor: RARITY_COLORS[selectedItem.rarity] },
-                                ]}
-                              >
-                                <Text style={styles.rarityText}>
-                                  {selectedItem.rarity.toUpperCase()}
-                                </Text>
-                              </View>
-                              {checkItemUnlocked(selectedItem.id) && selectedItemPoolIndex >= 0 && (
-                                <>
-                                  <Text
-                                    style={[
-                                      styles.poolMembershipText,
-                                      selectedItemInPool
-                                        ? styles.poolMembershipTextIn
-                                        : styles.poolMembershipTextOut,
-                                    ]}
-                                  >
-                                    {selectedItemInPool ? 'IN POOL' : 'NOT IN POOL'}
-                                  </Text>
-                                  <TouchableOpacity
-                                    onPress={() => togglePoolItem(selectedItem)}
-                                    style={[
-                                      styles.poolToggleButton,
-                                      selectedItemInPool
-                                        ? styles.poolToggleButtonRemove
-                                        : styles.poolToggleButtonAdd,
-                                      !canRemoveSelectedItem && styles.poolToggleButtonDisabled,
-                                    ]}
-                                    disabled={!canRemoveSelectedItem}
-                                    activeOpacity={0.8}
-                                  >
-                                    <Text style={styles.poolToggleButtonText}>
-                                      {selectedItemInPool ? 'Remove from Pool' : 'Add to Pool'}
-                                    </Text>
-                                  </TouchableOpacity>
-                                </>
-                              )}
-                            </View>
-
-                            <ScrollView
-                              style={styles.itemDescriptionScroll}
-                              showsVerticalScrollIndicator={false}
-                            >
-                              {(selectedItem.effect?.description ||
-                                ITEM_DESCRIPTIONS[selectedItem.name]) && (
-                                <Text style={styles.itemDescription}>
-                                  {selectedItem.effect?.description ||
-                                    ITEM_DESCRIPTIONS[selectedItem.name]}
-                                </Text>
-                              )}
-
-                              {(selectedItem.stats.atk !== undefined ||
-                                selectedItem.stats.arm !== undefined ||
-                                selectedItem.stats.spd !== undefined ||
-                                selectedItem.stats.dig !== undefined ||
-                                selectedItem.stats.hp !== undefined) && (
-                                <View style={styles.statsContainer}>
-                                  <Text style={styles.statsHeader}>Stats</Text>
-                                  {selectedItem.stats.atk !== undefined && (
-                                    <View style={styles.statRow}>
-                                      <Text style={styles.statLabel}>ATK</Text>
-                                      <Text style={styles.statValue}>
-                                        +{selectedItem.stats.atk}
-                                      </Text>
-                                    </View>
-                                  )}
-                                  {selectedItem.stats.arm !== undefined && (
-                                    <View style={styles.statRow}>
-                                      <Text style={styles.statLabel}>ARM</Text>
-                                      <Text style={styles.statValue}>
-                                        +{selectedItem.stats.arm}
-                                      </Text>
-                                    </View>
-                                  )}
-                                  {selectedItem.stats.spd !== undefined && (
-                                    <View style={styles.statRow}>
-                                      <Text style={styles.statLabel}>SPD</Text>
-                                      <Text style={styles.statValue}>
-                                        +{selectedItem.stats.spd}
-                                      </Text>
-                                    </View>
-                                  )}
-                                  {selectedItem.stats.dig !== undefined && (
-                                    <View style={styles.statRow}>
-                                      <Text style={styles.statLabel}>DIG</Text>
-                                      <Text style={styles.statValue}>
-                                        +{selectedItem.stats.dig}
-                                      </Text>
-                                    </View>
-                                  )}
-                                  {selectedItem.stats.hp !== undefined && (
-                                    <View style={styles.statRow}>
-                                      <Text style={styles.statLabel}>HP</Text>
-                                      <Text style={styles.statValue}>+{selectedItem.stats.hp}</Text>
-                                    </View>
-                                  )}
-                                </View>
-                              )}
-                            </ScrollView>
-                          </>
-                        )}
-                      </View>
-                    </View>
-                  </View>
-                </ImageBackground>
-              </View>
-            </TouchableWithoutFeedback>
-          </View>
-        </TouchableWithoutFeedback>
-      </InlineModal>
-
       {/* Quests Modal */}
       <InlineModal
         visible={showQuests}
@@ -1269,6 +759,106 @@ export function HubScreen({ navigation }: HubScreenProps) {
                   <View style={styles.marketplaceContent}>
                     <Text style={[styles.comingSoonText, isCompact && compactStyles.comingSoonText]}>Coming Soon</Text>
                   </View>
+                </View>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </InlineModal>
+
+      {/* Profile Modal */}
+      <InlineModal
+        visible={showProfile}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowProfile(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setShowProfile(false)}>
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
+              <View style={[styles.marketplaceModal, isCompact && compactStyles.marketplaceModal]}>
+                <ImageBackground
+                  source={paperPanelSource}
+                  style={[styles.marketplaceBg, isCompact && compactStyles.marketplaceBg]}
+                  resizeMode="stretch"
+                />
+                <View style={[styles.marketplaceInner, isCompact && compactStyles.marketplaceInner]}>
+                  <View style={styles.modalHeader}>
+                    <Text style={[styles.modalTitle, isCompact && compactStyles.modalTitle]}>Profile</Text>
+                    <TouchableOpacity
+                      onPress={() => setShowProfile(false)}
+                      style={styles.closeButton}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    >
+                      <Text style={[styles.closeButtonText, isCompact && compactStyles.closeButtonText]}>✕</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <ScrollView style={{ flex: 1, width: '100%' }} contentContainerStyle={{ gap: 16 }}>
+                    {/* Name Edit */}
+                    <View style={styles.profileSection}>
+                      <Text style={[styles.profileSectionTitle, isCompact && compactStyles.profileSectionTitle]}>Display Name</Text>
+                      <View style={styles.profileInputContainer}>
+                        <TextInput
+                          style={[styles.profileInput, isCompact && compactStyles.profileInput, profileValidationError && styles.profileInputError]}
+                          value={profileName}
+                          onChangeText={handleProfileNameChange}
+                          placeholder="Enter your name"
+                          placeholderTextColor="#888888"
+                          maxLength={NAME_MAX_LENGTH}
+                          editable={!profileSaving}
+                        />
+                        <Text style={[styles.profileCharCount, isCompact && compactStyles.profileCharCount]}>
+                          {profileName.length}/{NAME_MAX_LENGTH}
+                        </Text>
+                      </View>
+                      {profileValidationError && <Text style={[styles.profileErrorText, isCompact && compactStyles.profileFeedbackText]}>{profileValidationError}</Text>}
+                      {profileSuccessMessage && <Text style={[styles.profileSuccessText, isCompact && compactStyles.profileFeedbackText]}>{profileSuccessMessage}</Text>}
+                      <TouchableOpacity
+                        onPress={handleProfileSave}
+                        disabled={isProfileSaveDisabled}
+                        activeOpacity={0.7}
+                        style={{ alignItems: 'center', marginTop: 4 }}
+                      >
+                        <ImageBackground
+                          source={buttonV3Source}
+                          style={[styles.profileSaveButton, isCompact && compactStyles.profileSaveButton, isProfileSaveDisabled && { opacity: 0.5 }]}
+                          resizeMode="stretch"
+                        >
+                          {profileSaving ? (
+                            <ActivityIndicator size="small" color="#3d2b1f" />
+                          ) : (
+                            <Text style={[styles.profileSaveButtonText, isCompact && compactStyles.profileSaveButtonText]}>Save</Text>
+                          )}
+                        </ImageBackground>
+                      </TouchableOpacity>
+                    </View>
+
+                    {/* Statistics */}
+                    <View style={styles.profileSection}>
+                      <Text style={[styles.profileSectionTitle, isCompact && compactStyles.profileSectionTitle]}>Statistics</Text>
+                      <View style={styles.profileStatsGrid}>
+                        <View style={styles.profileStatRow}>
+                          <Text style={[styles.profileStatLabel, isCompact && compactStyles.profileStatText]}>Sessions Played</Text>
+                          <Text style={[styles.profileStatValue, isCompact && compactStyles.profileStatText]}>{profile?.totalRuns ?? 0}</Text>
+                        </View>
+                        <View style={styles.profileStatRow}>
+                          <Text style={[styles.profileStatLabel, isCompact && compactStyles.profileStatText]}>Current Level</Text>
+                          <Text style={[styles.profileStatValue, isCompact && compactStyles.profileStatText]}>{(profile?.currentLevel ?? 0) + 1} / 81</Text>
+                        </View>
+                        <View style={styles.profileStatRow}>
+                          <Text style={[styles.profileStatLabel, isCompact && compactStyles.profileStatText]}>Available Sessions</Text>
+                          <Text style={[styles.profileStatValue, isCompact && compactStyles.profileStatText]}>{profile?.availableRuns ?? 0}</Text>
+                        </View>
+                        <View style={styles.profileStatRow}>
+                          <Text style={[styles.profileStatLabel, isCompact && compactStyles.profileStatText]}>Member Since</Text>
+                          <Text style={[styles.profileStatValue, isCompact && compactStyles.profileStatText]}>
+                            {profile?.createdAt ? formatDate(profile.createdAt) : 'N/A'}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                  </ScrollView>
                 </View>
               </View>
             </TouchableWithoutFeedback>
@@ -1739,279 +1329,81 @@ const styles = StyleSheet.create({
     color: '#8a7a6a',
   },
 
-  // ITEMS MODAL STYLES
-  itemsModalContainer: {
-    width: '80%',
-    maxWidth: 850,
-    height: '90%',
-    maxHeight: 600,
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  itemsModalBg: {
-    flex: 1,
-    width: '100%',
-    height: '100%',
-  },
-  itemsModalInner: {
-    flex: 1,
-    padding: 24,
-    paddingTop: 16,
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-  },
-  itemsModalHeaderRow: {
-    width: '100%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  itemsModalHeaderLeft: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  itemsModalHeaderCenter: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  itemsModalHeaderRight: {
-    flex: 1,
-    alignItems: 'flex-end',
-    justifyContent: 'center',
-  },
-  itemsModalCloseButton: {
-    width: 30,
-    height: 30,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  itemsModalSaveButton: {
-    minWidth: 70,
-    height: 30,
-    borderRadius: 6,
-    backgroundColor: '#16a34a',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  itemsModalContent: {
-    flex: 1,
-    flexDirection: 'row',
-    width: '100%',
-    gap: 16,
-    marginTop: 4,
-  },
-  itemsListColumn: {
-    flex: 2,
-    paddingRight: 8,
-  },
-  tagSection: {
-    marginBottom: 16,
-  },
-  tagHeader: {
-    fontFamily: Typography.header,
-    fontSize: 14,
-    color: '#3d2b1f',
-    marginBottom: 8,
-    letterSpacing: 1,
-  },
-  itemsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+  // PROFILE MODAL STYLES
+  profileSection: {
     gap: 8,
-    width: 290, // 5 items * 50px + 4 gaps * 8px = 250 + 32 = 282px
   },
-  itemGridCell: {
-    width: 50,
-    height: 50,
-    borderWidth: 2,
-    borderColor: 'transparent',
-    borderRadius: 6,
+  profileSectionTitle: {
+    fontFamily: Typography.header,
+    fontSize: 18,
+    color: '#3d2b1f',
+    textAlign: 'center',
   },
-  itemGridCellInPool: {
-    borderColor: '#16a34a',
+  profileInputContainer: {
+    marginBottom: 4,
   },
-  itemGridCellSelected: {
-    backgroundColor: 'rgba(250,188,15,0.14)',
-  },
-  itemFrame: {
-    width: 50,
-    height: 50,
-    justifyContent: 'center',
-    alignItems: 'center',
-    position: 'relative',
-  },
-  itemImage: {
-    width: 40,
-    height: 40,
-  },
-  itemImageLocked: {
-    opacity: 0.4,
-  },
-  itemLockOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.3)',
-  },
-  gridLockIcon: {
-    width: 20,
-    height: 20,
-  },
-  itemDetailsColumn: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.05)',
+  profileInput: {
+    backgroundColor: 'rgba(255, 255, 255, 0.8)',
     borderRadius: 8,
-    padding: 8, // Reduced padding
-    alignItems: 'center',
-    position: 'relative', // Enable absolute positioning for children
-  },
-  poolCountHeaderText: {
-    fontFamily: Typography.header,
-    fontSize: 11,
-    color: '#3d2b1f',
-    textAlign: 'left',
-  },
-  poolSaveButtonDisabled: {
-    backgroundColor: '#9ca3af',
-  },
-  poolSaveButtonText: {
-    fontFamily: Typography.button,
-    fontSize: 11,
-    color: '#ffffff',
-    letterSpacing: 0.5,
-  },
-  selectedItemHeader: {
-    alignItems: 'center',
-    marginBottom: 6, // Reduced margin
-    marginTop: 12, // Add some top margin since locked banner is moved
-  },
-  selectedItemImage: {
-    width: 60, // Reduced from 80
-    height: 60, // Reduced from 80
-    marginBottom: 4, // Reduced margin
-  },
-  selectedItemName: {
-    fontFamily: Typography.header,
-    fontSize: 14, // Reduced from 16
-    color: '#3d2b1f',
-    textAlign: 'center',
-    marginBottom: 4, // Reduced margin
-  },
-  rarityBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  rarityText: {
-    fontFamily: Typography.button,
-    fontSize: 10,
-    color: '#ffffff',
-    letterSpacing: 0.5,
-  },
-  poolMembershipText: {
-    marginTop: 6,
-    fontFamily: Typography.button,
-    fontSize: 10,
-    letterSpacing: 0.6,
-  },
-  poolMembershipTextIn: {
-    color: '#166534',
-  },
-  poolMembershipTextOut: {
-    color: '#7f1d1d',
-  },
-  poolToggleButton: {
-    marginTop: 6,
-    paddingHorizontal: 12,
-    height: 28,
-    borderRadius: 6,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  poolToggleButtonAdd: {
-    backgroundColor: '#15803d',
-  },
-  poolToggleButtonRemove: {
-    backgroundColor: '#b91c1c',
-  },
-  poolToggleButtonDisabled: {
-    backgroundColor: '#9ca3af',
-  },
-  poolToggleButtonText: {
-    fontFamily: Typography.button,
-    fontSize: 11,
-    color: '#ffffff',
-  },
-  lockedBanner: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(163, 58, 58, 0.15)',
-    paddingHorizontal: 6,
-    paddingVertical: 4,
-    borderRadius: 4,
-    gap: 4,
-    zIndex: 10,
-  },
-  lockedBannerIcon: {
-    width: 10,
-    height: 10,
-  },
-  lockedBannerText: {
+    borderWidth: 2,
+    borderColor: '#5c4033',
+    padding: 10,
+    fontSize: 14,
     fontFamily: Typography.body,
-    fontSize: 10,
-    color: '#a33a3a',
-    fontWeight: 'bold',
-  },
-  itemDescriptionScroll: {
-    flex: 1,
-    width: '100%',
-  },
-  itemDescription: {
-    fontFamily: Typography.body,
-    fontSize: 11, // Reduced from 12
-    color: '#5c4033',
-    lineHeight: 14, // Reduced from 16
-    textAlign: 'center',
-    marginBottom: 8, // Reduced from 12
-  },
-  statsContainer: {
-    width: '100%',
-    backgroundColor: 'rgba(0,0,0,0.03)',
-    borderRadius: 6,
-    padding: 8, // Reduced from 10
-  },
-  statsHeader: {
-    fontFamily: Typography.header,
-    fontSize: 11, // Reduced from 12
     color: '#3d2b1f',
-    marginBottom: 4, // Reduced from 8
-    textAlign: 'center',
   },
-  statRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 2, // Reduced from 3
+  profileInputError: {
+    borderColor: '#a33a3a',
   },
-  statLabel: {
-    fontFamily: Typography.body,
-    fontSize: 11,
-    color: '#8a7a6a',
-  },
-  statValue: {
+  profileCharCount: {
     fontFamily: Typography.number,
     fontSize: 11,
+    color: '#5c4033',
+    textAlign: 'right',
+    marginTop: 2,
+  },
+  profileErrorText: {
+    fontFamily: Typography.body,
+    fontSize: 12,
+    color: '#a33a3a',
+  },
+  profileSuccessText: {
+    fontFamily: Typography.body,
+    fontSize: 12,
+    color: '#228B22',
+  },
+  profileSaveButton: {
+    width: 100,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  profileSaveButtonText: {
+    fontFamily: Typography.button,
+    fontSize: 16,
     color: '#3d2b1f',
-    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  profileStatsGrid: {
+    gap: 8,
+  },
+  profileStatRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(92, 64, 51, 0.3)',
+  },
+  profileStatLabel: {
+    fontFamily: Typography.body,
+    fontSize: 14,
+    color: '#5c4033',
+  },
+  profileStatValue: {
+    fontFamily: Typography.stat,
+    fontSize: 14,
+    color: '#3d2b1f',
   },
 
   // PVP MODAL STYLES
@@ -2196,6 +1588,33 @@ const compactStyles = StyleSheet.create({
   comingSoonText: {
     fontSize: 40,
   },
+  // Profile modal — scaled up for compact
+  profileSectionTitle: {
+    fontSize: 32,
+  },
+  profileInput: {
+    padding: 16,
+    fontSize: 28,
+    borderRadius: 12,
+  },
+  profileCharCount: {
+    fontSize: 20,
+  },
+  profileFeedbackText: {
+    fontSize: 22,
+  },
+  profileSaveButton: {
+    width: 180,
+    height: 76,
+  },
+  profileSaveButtonText: {
+    fontSize: 30,
+    marginBottom: 6,
+  },
+  profileStatText: {
+    fontSize: 26,
+  },
+
   // PVP modal — bigger panel and papers with left/right alternation
   pvpCloseButton: {
     top: 36,
