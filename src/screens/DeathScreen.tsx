@@ -4,7 +4,7 @@
  * T051: Show "Purchase Runs" prompt if player has 0 runs after death
  */
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -20,6 +20,9 @@ import { RouteProp } from '@react-navigation/native';
 import { RootStackParamList } from '../navigation';
 import { useProfile } from '../contexts/ProfileContext';
 import { Typography } from '../theme/typography';
+import { useInputMode } from '../hooks/useInputMode';
+import { useControllerAction } from '../hooks/useControllerAction';
+import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHints';
 
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.png');
 const STAINS_BACKGROUND = require('../../assets/ui/backgrounds/stains-background.png');
@@ -61,12 +64,22 @@ export function DeathScreen({ navigation, route }: DeathScreenProps) {
     ]).start();
   }, [fadeAnim, slideAnim]);
 
-  const handleReturnToHub = () => {
+  const handleReturnToHub = useCallback(() => {
     navigation.reset({
       index: 0,
       routes: [{ name: 'Hub' }],
     });
-  };
+  }, [navigation]);
+
+  // --- Controller navigation ---
+  const inputMode = useInputMode();
+  const isController = inputMode === 'controller';
+
+  useControllerAction({ onA: handleReturnToHub }, isController);
+
+  const controllerHints: ButtonHint[] = [
+    { button: 'A', label: 'Return to Hub' },
+  ];
 
   // Determine death cause description
   const getDeathCause = (): string => {
@@ -217,6 +230,7 @@ export function DeathScreen({ navigation, route }: DeathScreenProps) {
           </Animated.View>
         </View>
       </ImageBackground>
+      <ControllerHints hints={controllerHints} horizontal />
     </View>
   );
 }

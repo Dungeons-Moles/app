@@ -13,12 +13,17 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation';
 import { Typography } from '@/theme/typography';
 import { useDuels } from '@/hooks/useDuels';
+import { useIsFocused } from '@react-navigation/native';
 import { useScreenVariant } from '@/contexts/ScreenVariantContext';
 import { useSession } from '@/contexts/SessionContext';
 import { useWallet } from '@/contexts/WalletContext';
 import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
 import { deriveDuelSessionPda } from '@/services/solana/constants';
 import { DUEL_ENTRY_LAMPORTS } from '@/services/solana/duels';
+import { useControllerAction } from '../hooks/useControllerAction';
+import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHints';
+import { useInputMode } from '../hooks/useInputMode';
+import { FocusGlow } from '../components/ui/FocusGlow';
 
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.png');
 const STAINS_BACKGROUND = require('../../assets/ui/backgrounds/stains-background.png');
@@ -40,6 +45,7 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
   const { wallet } = useWallet();
   const { connection } = useSolanaConnection();
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const isFocused = useIsFocused();
   const isCompact = useScreenVariant() === 'compact';
   const [hasExistingDuelSessionOnChain, setHasExistingDuelSessionOnChain] = useState(false);
 
@@ -103,6 +109,31 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
 
   const entryFeeSol = DUEL_ENTRY_LAMPORTS / 1_000_000_000;
 
+  // --- Controller navigation ---
+  const inputMode = useInputMode();
+  const isController = inputMode === 'controller';
+  const [panelFocus, setPanelFocus] = useState(1); // 0 = History, 1 = Enter
+
+  const handleHistory = useCallback(() => {
+    navigation.navigate('DuelsHistory');
+  }, [navigation]);
+
+  useControllerAction(
+    {
+      onB: handleBack,
+      onA: panelFocus === 0 ? handleHistory : !duels.isLoading ? handleEnter : undefined,
+      onDPadLeft: () => setPanelFocus(0),
+      onDPadRight: () => setPanelFocus(1),
+    },
+    isController && isFocused && duels.phase !== 'error'
+  );
+
+  const controllerHints: ButtonHint[] = [
+    { button: 'DPadLeftRight', label: 'Switch' },
+    { button: 'A', label: 'Select' },
+    { button: 'B', label: 'Back' },
+  ];
+
   if (duels.phase === 'error') {
     return (
       <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
@@ -150,19 +181,23 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
         <View style={styles.content}>
           {/* Header */}
           <View style={[styles.header, isCompact && compactStyles.header]}>
-            <TouchableOpacity onPress={handleBack} activeOpacity={0.7}>
-              <ImageBackground
-                source={buttonV1Source}
-                style={[styles.headerButton, isCompact && compactStyles.headerButton]}
-                resizeMode="stretch"
-              >
-                <Text
-                  style={[styles.headerButtonText, isCompact && compactStyles.headerButtonText]}
+            {isController ? (
+              <View style={[styles.headerButton, isCompact && compactStyles.headerButton]} />
+            ) : (
+              <TouchableOpacity onPress={handleBack} activeOpacity={0.7}>
+                <ImageBackground
+                  source={buttonV1Source}
+                  style={[styles.headerButton, isCompact && compactStyles.headerButton]}
+                  resizeMode="stretch"
                 >
-                  Back
-                </Text>
-              </ImageBackground>
-            </TouchableOpacity>
+                  <Text
+                    style={[styles.headerButtonText, isCompact && compactStyles.headerButtonText]}
+                  >
+                    Back
+                  </Text>
+                </ImageBackground>
+              </TouchableOpacity>
+            )}
 
             <View style={styles.headerSpacer} />
           </View>
@@ -239,44 +274,55 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
                 <View
                   style={[styles.panelButtons, isCompact && compactStyles.panelButtons]}
                 >
-                  <TouchableOpacity
-                    onPress={() => navigation.navigate('DuelsHistory')}
-                    activeOpacity={0.7}
-                  >
-                    <Text
-                      style={[
-                        styles.panelButtonText,
-                        isCompact && compactStyles.panelButtonText,
-                      ]}
+                  <FocusGlow active={isController && panelFocus === 0}>
+                    <TouchableOpacity
+                      onPress={() => navigation.navigate('DuelsHistory')}
+                      activeOpacity={0.7}
                     >
-                      History
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    onPress={handleEnter}
-                    activeOpacity={0.7}
-                    disabled={duels.isLoading}
-                  >
-                    {duels.isLoading ? (
-                      <ActivityIndicator color="#3d2b1f" size="small" />
-                    ) : (
                       <Text
                         style={[
                           styles.panelButtonText,
                           isCompact && compactStyles.panelButtonText,
                         ]}
                       >
-                        {hasExistingDuelSession ? 'Resume Session' : 'Enter Duels'}
+                        History
                       </Text>
-                    )}
-                  </TouchableOpacity>
+                    </TouchableOpacity>
+                  </FocusGlow>
+
+                  <FocusGlow active={isController && panelFocus === 1}>
+                    <TouchableOpacity
+                      onPress={handleEnter}
+                      activeOpacity={0.7}
+                      disabled={duels.isLoading}
+                    >
+                      <View>
+                        <Text
+                          style={[
+                            styles.panelButtonText,
+                            isCompact && compactStyles.panelButtonText,
+                            duels.isLoading && { opacity: 0 },
+                          ]}
+                        >
+                          {hasExistingDuelSession ? 'Resume Session' : 'Enter Duels'}
+                        </Text>
+                        {duels.isLoading && (
+                          <ActivityIndicator
+                            color="#3d2b1f"
+                            size={isCompact ? 'large' : 'small'}
+                            style={StyleSheet.absoluteFill}
+                          />
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                  </FocusGlow>
                 </View>
               </View>
             </View>
           </View>
         </View>
       </ImageBackground>
+      <ControllerHints hints={controllerHints} />
     </Animated.View>
   );
 }

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   ImageBackground,
   Image,
   TouchableOpacity,
+  ActivityIndicator,
   FlatList,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -13,6 +14,9 @@ import { RootStackParamList } from '../navigation';
 import { useDuels } from '@/hooks/useDuels';
 import { useScreenVariant } from '@/contexts/ScreenVariantContext';
 import { Typography } from '@/theme/typography';
+import { useControllerAction } from '../hooks/useControllerAction';
+import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHints';
+import { useInputMode } from '../hooks/useInputMode';
 
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.png');
 const STAINS_BACKGROUND = require('../../assets/ui/backgrounds/stains-background.png');
@@ -23,7 +27,7 @@ const RECTANGLE_FRAME = require('../../assets/ui/frames/rectangle.png');
 const GREEN_BRUSH = require('../../assets/ui/illustrations/green-brush.png');
 const RED_BRUSH = require('../../assets/ui/illustrations/red-brush.png');
 const buttonV1Source = require('../../assets/ui/buttons/button-v1.png');
-const buttonV4Source = require('../../assets/ui/buttons/button-v4.png');
+
 
 type DuelsHistoryScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'DuelsHistory'>;
@@ -40,6 +44,27 @@ export function DuelsHistoryScreen({ navigation }: DuelsHistoryScreenProps) {
   const historyData = duels.history;
   const hasData = useMemo(() => historyData.length > 0, [historyData.length]);
 
+  // --- Controller navigation ---
+  const inputMode = useInputMode();
+  const isController = inputMode === 'controller';
+
+  const handleBack = useCallback(() => {
+    navigation.goBack();
+  }, [navigation]);
+
+  useControllerAction(
+    {
+      onB: handleBack,
+      onA: () => void duels.loadHistory(),
+    },
+    isController,
+  );
+
+  const controllerHints: ButtonHint[] = [
+    { button: 'A', label: 'Refresh' },
+    { button: 'B', label: 'Back' },
+  ];
+
   const formatDate = (unixTs: number | null) => {
     if (!unixTs) return '—';
     return new Date(unixTs * 1000).toLocaleString();
@@ -54,19 +79,23 @@ export function DuelsHistoryScreen({ navigation }: DuelsHistoryScreenProps) {
         <View style={styles.content}>
           {/* Header */}
           <View style={[styles.header, isCompact && compactStyles.header]}>
-            <TouchableOpacity onPress={() => navigation.goBack()} activeOpacity={0.7}>
-              <ImageBackground
-                source={buttonV1Source}
-                style={[styles.headerButton, isCompact && compactStyles.headerButton]}
-                resizeMode="stretch"
-              >
-                <Text
-                  style={[styles.headerButtonText, isCompact && compactStyles.headerButtonText]}
+            {isController ? (
+              <View style={[styles.headerButton, isCompact && compactStyles.headerButton]} />
+            ) : (
+              <TouchableOpacity onPress={() => navigation.goBack()} activeOpacity={0.7}>
+                <ImageBackground
+                  source={buttonV1Source}
+                  style={[styles.headerButton, isCompact && compactStyles.headerButton]}
+                  resizeMode="stretch"
                 >
-                  Back
-                </Text>
-              </ImageBackground>
-            </TouchableOpacity>
+                  <Text
+                    style={[styles.headerButtonText, isCompact && compactStyles.headerButtonText]}
+                  >
+                    Back
+                  </Text>
+                </ImageBackground>
+              </TouchableOpacity>
+            )}
             {!isCompact && (
               <View style={styles.titleRow}>
                 <Image
@@ -110,7 +139,13 @@ export function DuelsHistoryScreen({ navigation }: DuelsHistoryScreenProps) {
                 resizeMode="stretch"
               />
               <View style={[styles.scrollOverlay, isCompact && compactStyles.scrollOverlay]}>
-                {!hasData ? (
+                {duels.isHistoryLoading ? (
+                  <View style={styles.loadingContainer}>
+                    <ActivityIndicator color="#000000" size="large" />
+                  </View>
+                ) : duels.historyError ? (
+                  <Text style={styles.errorText}>{duels.historyError}</Text>
+                ) : !hasData ? (
                   <View style={styles.emptyWrapper}>
                     <Text style={[styles.emptyText, isCompact && compactStyles.emptyText]}>No Duels matches found yet.</Text>
                   </View>
@@ -168,24 +203,9 @@ export function DuelsHistoryScreen({ navigation }: DuelsHistoryScreenProps) {
             </View>
           </View>
 
-          {/* Refresh button centered below scroll */}
-          <View style={styles.refreshRow}>
-            <TouchableOpacity onPress={() => void duels.loadHistory()} activeOpacity={0.7}>
-              <ImageBackground
-                source={buttonV4Source}
-                style={[styles.refreshButton, isCompact && compactStyles.refreshButton]}
-                resizeMode="stretch"
-              >
-                <Text
-                  style={[styles.refreshButtonText, isCompact && compactStyles.refreshButtonText]}
-                >
-                  Refresh
-                </Text>
-              </ImageBackground>
-            </TouchableOpacity>
-          </View>
         </View>
       </ImageBackground>
+      <ControllerHints hints={controllerHints} horizontal />
     </View>
   );
 }
@@ -317,6 +337,11 @@ const styles = StyleSheet.create({
     color: '#000000',
     fontSize: 11,
   },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   emptyWrapper: {
     flex: 1,
     justifyContent: 'center',
@@ -328,22 +353,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
   },
-  refreshRow: {
-    alignItems: 'center',
-    marginTop: 6,
-    marginBottom: 12,
-  },
-  refreshButton: {
-    width: 140,
-    height: 52,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  refreshButtonText: {
-    fontFamily: Typography.button,
+  errorText: {
+    fontFamily: Typography.body,
+    color: '#c0392b',
     fontSize: 14,
-    color: '#1a1a1a',
-    marginBottom: 4,
+    textAlign: 'center',
+    marginTop: 20,
   },
 });
 
@@ -405,13 +420,5 @@ const compactStyles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 28,
-  },
-  refreshButton: {
-    width: 200,
-    height: 76,
-  },
-  refreshButtonText: {
-    fontSize: 24,
-    marginBottom: 6,
   },
 });

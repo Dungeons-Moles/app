@@ -16,6 +16,10 @@ import { useProfile } from '../contexts/ProfileContext';
 import { RootStackParamList } from '../navigation';
 import { Typography } from '../theme/typography';
 import { useScreenVariant } from '../contexts/ScreenVariantContext';
+import { useControllerAction } from '../hooks/useControllerAction';
+import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHints';
+import { useInputMode } from '../hooks/useInputMode';
+import { FocusGlow } from '../components/ui/FocusGlow';
 import {
   getGearByTag,
   GearDefinition,
@@ -339,6 +343,54 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
     selectedItemPoolIndex >= 0 && draftPoolIndices.has(selectedItemPoolIndex);
   const canRemoveSelectedItem = !selectedItemInPool || draftPoolIndices.size > ITEM_POOL_MIN_SIZE;
 
+  // --- Controller navigation ---
+  const inputMode = useInputMode();
+  const isController = inputMode === 'controller';
+  const allItems = useMemo(() => getAllItems(), []);
+  const itemsPerRow = isCompact ? 5 : 5;
+
+  const [cursorIdx, setCursorIdx] = useState(0);
+
+  // Sync cursor → selected item + auto-scroll into view
+  useEffect(() => {
+    if (isController && allItems[cursorIdx]) {
+      setSelectedItem(allItems[cursorIdx]);
+      // Scroll the focused item into view on web
+      requestAnimationFrame(() => {
+        const el = (cursorRef.current as unknown) as HTMLElement;
+        if (el?.scrollIntoView) {
+          el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+      });
+    }
+  }, [cursorIdx, isController]);
+
+  const scrollViewRef = useRef<ScrollView>(null);
+  const cursorRef = useRef<View>(null);
+
+  useControllerAction(
+    {
+      onB: handleBack,
+      onA: () => {
+        const item = allItems[cursorIdx];
+        if (item && checkItemUnlocked(item.id)) togglePoolItem(item);
+      },
+      onX: hasPoolChanges ? handleSaveItemPool : undefined,
+      onDPadLeft: () => setCursorIdx((p) => Math.max(0, p - 1)),
+      onDPadRight: () => setCursorIdx((p) => Math.min(allItems.length - 1, p + 1)),
+      onDPadUp: () => setCursorIdx((p) => Math.max(0, p - itemsPerRow)),
+      onDPadDown: () => setCursorIdx((p) => Math.min(allItems.length - 1, p + itemsPerRow)),
+    },
+    isController
+  );
+
+  const controllerHints: ButtonHint[] = [
+    { button: 'DPad', label: 'Navigate' },
+    { button: 'A', label: selectedItemInPool ? 'Remove' : 'Add to Pool' },
+    ...(hasPoolChanges ? [{ button: 'X' as const, label: 'Save' }] : []),
+    { button: 'B', label: 'Back' },
+  ];
+
   return (
     <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
       <Image source={backgroundImage} style={styles.backgroundImage} resizeMode="stretch" />
@@ -347,17 +399,19 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
       <View style={[styles.content, isCompact && compactStyles.content]}>
         {/* Header */}
         <View style={[styles.header, isCompact && compactStyles.header]}>
-          <TouchableOpacity onPress={handleBack} activeOpacity={0.7}>
-            <ImageBackground
-              source={buttonV1Source}
-              style={[styles.backButton, isCompact && compactStyles.backButton]}
-              resizeMode="stretch"
-            >
-              <Text style={[styles.backButtonText, isCompact && compactStyles.backButtonText]}>
-                Back
-              </Text>
-            </ImageBackground>
-          </TouchableOpacity>
+          {!isController && (
+            <TouchableOpacity onPress={handleBack} activeOpacity={0.7}>
+              <ImageBackground
+                source={buttonV1Source}
+                style={[styles.backButton, isCompact && compactStyles.backButton]}
+                resizeMode="stretch"
+              >
+                <Text style={[styles.backButtonText, isCompact && compactStyles.backButtonText]}>
+                  Back
+                </Text>
+              </ImageBackground>
+            </TouchableOpacity>
+          )}
 
           <View style={styles.titleGroup}>
             <ImageBackground
@@ -404,8 +458,8 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
         {/* Two-column layout */}
         <View style={styles.columnsContainer}>
           {/* Left column - Item grid by tag */}
-          <ScrollView style={styles.itemsListColumn} showsVerticalScrollIndicator={false}>
-            {ALL_TAGS.map((tag) => {
+          <ScrollView ref={scrollViewRef} style={styles.itemsListColumn} showsVerticalScrollIndicator={false}>
+            {(() => { let flatIdx = 0; return ALL_TAGS.map((tag) => {
               const tagItems = getItemsByTag(tag);
               return (
                 <View key={tag} style={styles.tagSection}>
@@ -420,11 +474,13 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                   </Text>
                   <View style={[styles.itemsGrid, isCompact && compactStyles.itemsGrid]}>
                     {tagItems.map((item) => {
+                      const idx = flatIdx++;
                       const unlocked = checkItemUnlocked(item.id);
                       const isSelected = selectedItem?.id === item.id;
                       const poolIndex = getItemPoolIndex(item.id);
                       const isInPool = poolIndex >= 0 && draftPoolIndices.has(poolIndex);
-                      return (
+                      const isCursorItem = isController && idx === cursorIdx;
+                      const cell = (
                         <TouchableOpacity
                           key={item.id}
                           style={[
@@ -465,11 +521,16 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                           </ImageBackground>
                         </TouchableOpacity>
                       );
+                      return isCursorItem ? (
+                        <View key={item.id} ref={cursorRef}>
+                          <FocusGlow active>{cell}</FocusGlow>
+                        </View>
+                      ) : cell;
                     })}
                   </View>
                 </View>
               );
-            })}
+            }); })()}
           </ScrollView>
 
           {/* Right column - Item details sidebar */}
@@ -621,6 +682,7 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
           </View>
         </View>
       </View>
+      <ControllerHints hints={controllerHints} horizontal />
     </Animated.View>
   );
 }

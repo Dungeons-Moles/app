@@ -3,7 +3,7 @@
  * T053: Create VictoryScreen in src/screens/VictoryScreen.tsx (level unlock, item unlock, return to hub)
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -18,6 +18,9 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
 import { RootStackParamList } from '../navigation';
 import { Typography } from '../theme/typography';
+import { useInputMode } from '../hooks/useInputMode';
+import { useControllerAction } from '../hooks/useControllerAction';
+import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHints';
 
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.png');
 const STAINS_BACKGROUND = require('../../assets/ui/backgrounds/stains-background.png');
@@ -81,12 +84,22 @@ export function VictoryScreen({ navigation, route }: VictoryScreenProps) {
     });
   }, [fadeAnim, slideAnim, glowAnim, levelUnlocked, itemUnlocked]);
 
-  const handleReturnToHub = () => {
+  const handleReturnToHub = useCallback(() => {
     navigation.reset({
       index: 0,
       routes: [{ name: 'Hub' }],
     });
-  };
+  }, [navigation]);
+
+  // --- Controller navigation ---
+  const inputMode = useInputMode();
+  const isController = inputMode === 'controller';
+
+  useControllerAction({ onA: handleReturnToHub }, isController);
+
+  const controllerHints: ButtonHint[] = [
+    { button: 'A', label: 'Return to Hub' },
+  ];
 
   const turnsTaken = replay?.combatEnded?.turnsTaken ?? 0;
 
@@ -255,6 +268,7 @@ export function VictoryScreen({ navigation, route }: VictoryScreenProps) {
           </Animated.View>
         </View>
       </ImageBackground>
+      <ControllerHints hints={controllerHints} horizontal />
     </View>
   );
 }

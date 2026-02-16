@@ -12,8 +12,6 @@ import {
   Text as SkiaText,
   useFont,
   Rect,
-  Line,
-  vec,
   Image,
   useImage,
 } from '@shopify/react-native-skia';
@@ -59,9 +57,9 @@ export function CombatArena({
 }: CombatArenaProps) {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const arenaWidth = scale > 1
-    ? Math.min(screenWidth * 0.5, 700)
+    ? Math.min(screenWidth * 0.5, 900)
     : Math.min(screenWidth * 0.5, 400);
-  const arenaHeight = scale > 1 ? Math.min(screenHeight * 0.7, 500) : 300;
+  const arenaHeight = scale > 1 ? Math.min(screenHeight * 0.85, 800) : 300;
   const entityImages = useSkiaEntityImages();
   const bgImage = useImage(BATTLEGROUND_BG);
   const moleImage = useImage(DEFAULT_MOLE);
@@ -90,22 +88,6 @@ export function CombatArena({
       ? (moleImage ?? entityImages.player ?? null)
       : (entityImages[enemy.definitionId ?? ''] ?? moleImage ?? entityImages.player ?? null);
 
-  // HP bar dimensions
-  const hpBarWidth = 60 * scale;
-  const hpBarHeight = 8 * scale;
-  const hpBarY = combatantY + combatantRadius + 20 * scale;
-
-  // Armor bar dimensions
-  const armBarHeight = 6 * scale;
-  const armBarY = hpBarY + hpBarHeight + 4 * scale;
-
-  // Calculate HP percentages
-  const playerHpPercent = Math.max(0, player.hp / player.maxHp);
-  const enemyHpPercent = Math.max(0, enemy.hp / enemy.maxHp);
-
-  // Calculate Armor percentages
-  const playerArmPercent = playerMaxArm > 0 ? Math.max(0, player.arm / playerMaxArm) : 0;
-  const enemyArmPercent = enemyMaxArm > 0 ? Math.max(0, enemy.arm / enemyMaxArm) : 0;
   const ringColor = '#333355';
   const ringStrokeWidth = 4;
 
@@ -169,39 +151,6 @@ export function CombatArena({
             />
           )}
 
-          {/* Enemy HP bar background */}
-          <Rect
-            x={enemyX - hpBarWidth / 2}
-            y={hpBarY}
-            width={hpBarWidth}
-            height={hpBarHeight}
-            color="#2a2a3a"
-          />
-          {/* Enemy HP bar fill */}
-          <Rect
-            x={enemyX - hpBarWidth / 2}
-            y={hpBarY}
-            width={hpBarWidth * enemyHpPercent}
-            height={hpBarHeight}
-            color={enemyHpPercent > 0.5 ? '#22c55e' : enemyHpPercent > 0.25 ? '#eab308' : '#dc2626'}
-          />
-
-          {/* Enemy Armor bar background */}
-          <Rect
-            x={enemyX - hpBarWidth / 2}
-            y={armBarY}
-            width={hpBarWidth}
-            height={armBarHeight}
-            color="#2a2a3a"
-          />
-          {/* Enemy Armor bar fill */}
-          <Rect
-            x={enemyX - hpBarWidth / 2}
-            y={armBarY}
-            width={hpBarWidth * enemyArmPercent}
-            height={armBarHeight}
-            color="#a855f7"
-          />
         </Group>
 
         {/* Player combatant (RIGHT) */}
@@ -231,41 +180,6 @@ export function CombatArena({
             </Group>
           )}
 
-          {/* Player HP bar background */}
-          <Rect
-            x={playerX - hpBarWidth / 2}
-            y={hpBarY}
-            width={hpBarWidth}
-            height={hpBarHeight}
-            color="#2a2a3a"
-          />
-          {/* Player HP bar fill */}
-          <Rect
-            x={playerX - hpBarWidth / 2}
-            y={hpBarY}
-            width={hpBarWidth * playerHpPercent}
-            height={hpBarHeight}
-            color={
-              playerHpPercent > 0.5 ? '#22c55e' : playerHpPercent > 0.25 ? '#eab308' : '#dc2626'
-            }
-          />
-
-          {/* Player Armor bar background */}
-          <Rect
-            x={playerX - hpBarWidth / 2}
-            y={armBarY}
-            width={hpBarWidth}
-            height={armBarHeight}
-            color="#2a2a3a"
-          />
-          {/* Player Armor bar fill */}
-          <Rect
-            x={playerX - hpBarWidth / 2}
-            y={armBarY}
-            width={hpBarWidth * playerArmPercent}
-            height={armBarHeight}
-            color="#a855f7"
-          />
         </Group>
       </Canvas>
 

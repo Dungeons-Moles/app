@@ -10,7 +10,7 @@
  * - error: Error state
  */
 
-import React, { useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { useEffect, useCallback, useRef, useState } from 'react';
 import {
   View,
   Image,
@@ -25,18 +25,17 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation';
 import { CombatProvider, useCombat } from '../contexts/CombatContext';
 import { useProfile } from '../contexts/ProfileContext';
+import { useIsFocused } from '@react-navigation/native';
 import { useScreenVariant } from '../contexts/ScreenVariantContext';
 import { usePitDraft } from '../hooks/usePitDraft';
 import { useLandscapeLock } from '../hooks/useOrientationLock';
-import {
-  CombatArena,
-  VictoryDefeatDisplay,
-  EnemyPanel,
-  PlayerPanel,
-  SpeedControls,
-} from '../components/combat';
+import { CombatLayout } from '../components/combat';
 import { Typography } from '../theme/typography';
 import { PIT_DRAFT_ENTRY_LAMPORTS } from '../services/solana/pitDraft';
+import { useControllerAction } from '../hooks/useControllerAction';
+import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHints';
+import { useInputMode } from '../hooks/useInputMode';
+import { FocusGlow } from '../components/ui/FocusGlow';
 
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.png');
 const STAINS_BACKGROUND = require('../../assets/ui/backgrounds/stains-background.png');
@@ -58,13 +57,11 @@ const BUTTON_GREEN = require('../../assets/ui/buttons/button-green.png');
 
 type PitDraftScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'PitDraft'>;
-  route: import('@react-navigation/native').RouteProp<RootStackParamList, 'PitDraft'>;
 };
 
-export function PitDraftScreen({ navigation, route }: PitDraftScreenProps) {
+export function PitDraftScreen({ navigation }: PitDraftScreenProps) {
   const { defaultCombatSpeed, updateDefaultCombatSpeed } = useProfile();
   const pitDraft = usePitDraft();
-  const debugResult = route.params?.debugResult;
 
   // Lock to landscape orientation
   useLandscapeLock();
@@ -78,7 +75,7 @@ export function PitDraftScreen({ navigation, route }: PitDraftScreenProps) {
     );
   }
 
-  return <PitDraftContent navigation={navigation} pitDraft={pitDraft} debugResult={debugResult} />;
+  return <PitDraftContent navigation={navigation} pitDraft={pitDraft} />;
 }
 
 // ============================================================================
@@ -88,12 +85,12 @@ export function PitDraftScreen({ navigation, route }: PitDraftScreenProps) {
 interface PitDraftContentProps {
   navigation: NativeStackNavigationProp<RootStackParamList, 'PitDraft'>;
   pitDraft: ReturnType<typeof usePitDraft>;
-  debugResult?: 'victory' | 'defeat';
 }
 
-function PitDraftContent({ navigation, pitDraft, debugResult }: PitDraftContentProps) {
+function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  const isFocused = useIsFocused();
   const isCompact = useScreenVariant() === 'compact';
 
   useEffect(() => {
@@ -141,11 +138,52 @@ function PitDraftContent({ navigation, pitDraft, debugResult }: PitDraftContentP
     navigation.goBack();
   }, [navigation, pitDraft]);
 
+  // --- Controller navigation ---
+  const inputMode = useInputMode();
+  const isController = inputMode === 'controller';
+  const [panelFocus, setPanelFocus] = useState(1); // 0 = History, 1 = Enter
+
+  const handleHistory = useCallback(() => {
+    navigation.navigate('PitDraftHistory');
+  }, [navigation]);
+
+  useControllerAction(
+    {
+      onB: handleBack,
+      onA: panelFocus === 0 ? handleHistory : !pitDraft.isLoading ? pitDraft.enterPitDraft : undefined,
+      onDPadLeft: () => setPanelFocus(0),
+      onDPadRight: () => setPanelFocus(1),
+    },
+    isController && isFocused && (pitDraft.phase === 'confirm' || pitDraft.phase === 'queuing')
+  );
+
+  // Controller for result/error phases
+  useControllerAction(
+    {
+      onA: pitDraft.phase === 'result' ? handleBack : pitDraft.phase === 'error' ? pitDraft.reset : undefined,
+      onB: pitDraft.phase === 'error' ? handleBack : undefined,
+    },
+    isController && isFocused && (pitDraft.phase === 'result' || pitDraft.phase === 'error'),
+  );
+
+  const resultHints: ButtonHint[] = pitDraft.phase === 'error'
+    ? [{ button: 'A', label: 'Try Again' }, { button: 'B', label: 'Back' }]
+    : [{ button: 'A', label: 'Back to Hub' }];
+
+  const controllerHints: ButtonHint[] = [
+    { button: 'DPadLeftRight', label: 'Switch' },
+    { button: 'A', label: 'Select' },
+    { button: 'B', label: 'Back' },
+  ];
+
   const entryFeeSOL = PIT_DRAFT_ENTRY_LAMPORTS / 1_000_000_000;
 
-  // DEBUG: Show mock result phase when debugResult param is passed
-  if (debugResult) {
-    const isWinner = debugResult === 'victory';
+  // Result phase — illustrated layout with stains background
+  if (pitDraft.phase === 'result' && pitDraft.matchData) {
+    const isWinner = pitDraft.matchData.isWinner;
+    const payoutSOL = (pitDraft.matchData.resolved.winnerPayout / 1_000_000_000).toFixed(3);
+    const turns = pitDraft.matchData.resolved.turnsTaken;
+
     return (
       <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
         <ImageBackground source={BACKGROUND_IMAGE} style={styles.backgroundImage} resizeMode="cover">
@@ -153,16 +191,13 @@ function PitDraftContent({ navigation, pitDraft, debugResult }: PitDraftContentP
           <View style={styles.resultOverlay}>
             <View style={styles.centerContent}>
               {isCompact ? (
-                // Compact (non-mobile): vertical layout, everything ~2x bigger
                 <View style={styles.resultContainerCompact}>
-                  {/* Pit Draft Title */}
                   <Image
                     source={PIT_DRAFT_TITLE}
                     style={styles.resultTitleImageCompact}
                     resizeMode="contain"
                   />
 
-                  {/* Victory or Defeat stamp + illustration */}
                   {isWinner ? (
                     <>
                       <Image
@@ -177,7 +212,7 @@ function PitDraftContent({ navigation, pitDraft, debugResult }: PitDraftContentP
                         style={styles.resultIllustrationCompact}
                         resizeMode="contain"
                       />
-                      <Text style={styles.payoutTextCompact}>+0.002 SOL</Text>
+                      <Text style={styles.payoutTextCompact}>+{payoutSOL} SOL</Text>
                     </>
                   ) : (
                     <>
@@ -196,14 +231,12 @@ function PitDraftContent({ navigation, pitDraft, debugResult }: PitDraftContentP
                     </>
                   )}
 
-                  {/* Turns stat in frame */}
                   <View style={styles.resultStatFrameCompact}>
                     <Image source={SQUARE_FRAME} style={styles.resultStatFrameBg} resizeMode="stretch" />
-                    <Text style={styles.resultStatValueCompact}>8</Text>
+                    <Text style={styles.resultStatValueCompact}>{turns}</Text>
                     <Text style={styles.resultStatLabelCompact}>Turns</Text>
                   </View>
 
-                  {/* Button */}
                   <View style={styles.resultButtonSlotCompact}>
                     <TouchableOpacity onPress={handleBack} activeOpacity={0.7} style={styles.resultButtonPressable}>
                       <ImageBackground
@@ -217,9 +250,7 @@ function PitDraftContent({ navigation, pitDraft, debugResult }: PitDraftContentP
                   </View>
                 </View>
               ) : (
-                // Mobile: horizontal flex layout
                 <View style={styles.resultRow}>
-                  {/* Left column: title, stamp, illustration */}
                   <View style={styles.resultLeftColumn}>
                     <Image
                       source={PIT_DRAFT_TITLE}
@@ -259,15 +290,14 @@ function PitDraftContent({ navigation, pitDraft, debugResult }: PitDraftContentP
                     )}
                   </View>
 
-                  {/* Right column: payout, turns, button */}
                   <View style={styles.resultRightColumn}>
                     {isWinner && (
-                      <Text style={styles.payoutText}>+0.002 SOL</Text>
+                      <Text style={styles.payoutText}>+{payoutSOL} SOL</Text>
                     )}
 
                     <View style={styles.resultStatFrame}>
                       <Image source={SQUARE_FRAME} style={styles.resultStatFrameBg} resizeMode="stretch" />
-                      <Text style={styles.resultStatValue}>8</Text>
+                      <Text style={styles.resultStatValue}>{turns}</Text>
                       <Text style={styles.resultStatLabel}>Turns</Text>
                     </View>
 
@@ -288,6 +318,7 @@ function PitDraftContent({ navigation, pitDraft, debugResult }: PitDraftContentP
             </View>
           </View>
         </ImageBackground>
+        <ControllerHints hints={resultHints} horizontal />
       </Animated.View>
     );
   }
@@ -301,19 +332,23 @@ function PitDraftContent({ navigation, pitDraft, debugResult }: PitDraftContentP
           <View style={styles.confirmContent}>
             {/* Header */}
             <View style={[styles.confirmHeader, isCompact && compactStyles.confirmHeader]}>
-              <TouchableOpacity onPress={handleBack} activeOpacity={0.7}>
-                <ImageBackground
-                  source={buttonV1Source}
-                  style={[styles.headerButton, isCompact && compactStyles.headerButton]}
-                  resizeMode="stretch"
-                >
-                  <Text
-                    style={[styles.headerButtonText, isCompact && compactStyles.headerButtonText]}
+              {isController ? (
+                <View style={[styles.headerButton, isCompact && compactStyles.headerButton]} />
+              ) : (
+                <TouchableOpacity onPress={handleBack} activeOpacity={0.7}>
+                  <ImageBackground
+                    source={buttonV1Source}
+                    style={[styles.headerButton, isCompact && compactStyles.headerButton]}
+                    resizeMode="stretch"
                   >
-                    Back
-                  </Text>
-                </ImageBackground>
-              </TouchableOpacity>
+                    <Text
+                      style={[styles.headerButtonText, isCompact && compactStyles.headerButtonText]}
+                    >
+                      Back
+                    </Text>
+                  </ImageBackground>
+                </TouchableOpacity>
+              )}
 
               <View style={styles.headerSpacer} />
             </View>
@@ -360,44 +395,119 @@ function PitDraftContent({ navigation, pitDraft, debugResult }: PitDraftContentP
                   <View
                     style={[styles.panelButtons, isCompact && compactStyles.panelButtons]}
                   >
-                    <TouchableOpacity
-                      onPress={() => navigation.navigate('PitDraftHistory')}
-                      activeOpacity={0.7}
-                    >
-                      <Text
-                        style={[
-                          styles.panelButtonText,
-                          isCompact && compactStyles.panelButtonText,
-                        ]}
+                    <FocusGlow active={isController && panelFocus === 0}>
+                      <TouchableOpacity
+                        onPress={() => navigation.navigate('PitDraftHistory')}
+                        activeOpacity={0.7}
                       >
-                        History
-                      </Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      onPress={pitDraft.enterPitDraft}
-                      activeOpacity={0.7}
-                      disabled={pitDraft.isLoading}
-                    >
-                      {pitDraft.isLoading ? (
-                        <ActivityIndicator color="#3d2b1f" size="small" />
-                      ) : (
                         <Text
                           style={[
                             styles.panelButtonText,
                             isCompact && compactStyles.panelButtonText,
                           ]}
                         >
-                          Enter Pit Draft
+                          History
                         </Text>
-                      )}
-                    </TouchableOpacity>
+                      </TouchableOpacity>
+                    </FocusGlow>
+
+                    <FocusGlow active={isController && panelFocus === 1}>
+                      <TouchableOpacity
+                        onPress={pitDraft.enterPitDraft}
+                        activeOpacity={0.7}
+                        disabled={pitDraft.isLoading}
+                      >
+                        <View>
+                          <Text
+                            style={[
+                              styles.panelButtonText,
+                              isCompact && compactStyles.panelButtonText,
+                              pitDraft.isLoading && { opacity: 0 },
+                            ]}
+                          >
+                            Enter Pit Draft
+                          </Text>
+                          {pitDraft.isLoading && (
+                            <ActivityIndicator
+                              color="#3d2b1f"
+                              size={isCompact ? 'large' : 'small'}
+                              style={StyleSheet.absoluteFill}
+                            />
+                          )}
+                        </View>
+                      </TouchableOpacity>
+                    </FocusGlow>
                   </View>
                 </View>
               </View>
             </View>
           </View>
         </ImageBackground>
+        <ControllerHints hints={controllerHints} />
+      </Animated.View>
+    );
+  }
+
+  // Queuing phase — matches the confirm phase visual style
+  if (pitDraft.phase === 'queuing') {
+    const queuingHints: ButtonHint[] = [{ button: 'B', label: 'Back' }];
+
+    return (
+      <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
+        <ImageBackground source={BACKGROUND_IMAGE} style={styles.backgroundImage} resizeMode="cover">
+          <Image source={STAINS_BACKGROUND} style={styles.stainsOverlay} resizeMode="cover" />
+          <View style={styles.confirmContent}>
+            {/* Header */}
+            <View style={[styles.confirmHeader, isCompact && compactStyles.confirmHeader]}>
+              {isController ? (
+                <View style={[styles.headerButton, isCompact && compactStyles.headerButton]} />
+              ) : (
+                <TouchableOpacity onPress={handleBack} activeOpacity={0.7}>
+                  <ImageBackground
+                    source={buttonV1Source}
+                    style={[styles.headerButton, isCompact && compactStyles.headerButton]}
+                    resizeMode="stretch"
+                  >
+                    <Text
+                      style={[styles.headerButtonText, isCompact && compactStyles.headerButtonText]}
+                    >
+                      Back
+                    </Text>
+                  </ImageBackground>
+                </TouchableOpacity>
+              )}
+              <View style={styles.headerSpacer} />
+            </View>
+
+            {/* Title */}
+            <View style={styles.titleRow}>
+              <Image
+                source={PIT_DRAFT_TITLE}
+                style={[styles.titleImage, isCompact && compactStyles.titleImage]}
+                resizeMode="contain"
+              />
+            </View>
+
+            {/* Waiting content */}
+            <View style={styles.confirmCenterContent}>
+              <Animated.View style={[styles.queuingContent, { opacity: pulseAnim }]}>
+                <Text style={[styles.queuingText, isCompact && compactStyles.queuingText]}>
+                  Waiting for opponent...
+                </Text>
+              </Animated.View>
+
+              <Text style={[styles.queuingInfo, isCompact && compactStyles.queuingInfo]}>
+                Your entry has been recorded on-chain.
+                {'\n'}The match will resolve when another player joins.
+              </Text>
+
+              <Text style={[styles.queuingNote, isCompact && compactStyles.queuingNote]}>
+                The match will still happen if you leave this screen.
+              </Text>
+            </View>
+          </View>
+        </ImageBackground>
+        <ControllerHints hints={queuingHints} horizontal />
       </Animated.View>
     );
   }
@@ -408,75 +518,11 @@ function PitDraftContent({ navigation, pitDraft, debugResult }: PitDraftContentP
       <ImageBackground source={BACKGROUND_IMAGE} style={styles.backgroundImage} resizeMode="cover">
         <View style={styles.darkOverlay}>
           <View style={styles.centerContent}>
-            {/* Queuing Phase */}
-            {pitDraft.phase === 'queuing' && (
-              <View style={styles.phaseContainer}>
-                <Text style={styles.title}>PIT DRAFT</Text>
-
-                <Animated.View style={{ opacity: pulseAnim }}>
-                  <Text style={styles.waitingText}>Waiting for opponent...</Text>
-                </Animated.View>
-
-                <Text style={styles.infoTextSmall}>
-                  Your entry has been recorded on-chain.
-                  {'\n'}The match will resolve when another player joins.
-                </Text>
-
-                <TouchableOpacity onPress={handleBack} activeOpacity={0.7} style={{ marginTop: 24 }}>
-                  <ImageBackground
-                    source={buttonV1Source}
-                    style={styles.actionButton}
-                    resizeMode="stretch"
-                  >
-                    <Text style={styles.buttonText}>Back to Hub</Text>
-                  </ImageBackground>
-                </TouchableOpacity>
-
-                <Text style={styles.noteText}>
-                  The match will still happen if you leave this screen.
-                </Text>
-              </View>
-            )}
-
             {/* Matched Phase (brief transition) */}
             {pitDraft.phase === 'matched' && (
               <View style={styles.phaseContainer}>
                 <Text style={styles.title}>MATCH FOUND</Text>
                 <ActivityIndicator color="#FABC0F" size="large" />
-              </View>
-            )}
-
-            {/* Result Phase */}
-            {pitDraft.phase === 'result' && pitDraft.matchData && (
-              <View style={styles.phaseContainer}>
-                <Text style={styles.title}>PIT DRAFT</Text>
-
-                {pitDraft.matchData.isWinner ? (
-                  <>
-                    <Text style={styles.victoryText}>VICTORY</Text>
-                    <Text style={styles.payoutText}>
-                      +{(pitDraft.matchData.resolved.winnerPayout / 1_000_000_000).toFixed(3)} SOL
-                    </Text>
-                  </>
-                ) : (
-                  <Text style={styles.defeatText}>DEFEAT</Text>
-                )}
-
-                <View style={styles.matchDetails}>
-                  <Text style={styles.detailText}>
-                    Turns: {pitDraft.matchData.resolved.turnsTaken}
-                  </Text>
-                </View>
-
-                <TouchableOpacity onPress={handleBack} activeOpacity={0.7} style={{ marginTop: 24 }}>
-                  <ImageBackground
-                    source={buttonV4Source}
-                    style={styles.actionButton}
-                    resizeMode="stretch"
-                  >
-                    <Text style={styles.buttonTextPrimary}>Back to Hub</Text>
-                  </ImageBackground>
-                </TouchableOpacity>
               </View>
             )}
 
@@ -512,6 +558,9 @@ function PitDraftContent({ navigation, pitDraft, debugResult }: PitDraftContentP
           </View>
         </View>
       </ImageBackground>
+      {pitDraft.phase === 'error' && (
+        <ControllerHints hints={resultHints} horizontal />
+      )}
     </Animated.View>
   );
 }
@@ -526,24 +575,7 @@ interface CombatPhaseContentProps {
 }
 
 function CombatPhaseContent({ pitDraft }: CombatPhaseContentProps) {
-  const {
-    state: combatState,
-    speed,
-    setSpeed,
-    startCombatWithLog,
-    getDisplayStates,
-    getResult,
-  } = useCombat();
-
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 800,
-      useNativeDriver: true,
-    }).start();
-  }, []);
+  const { state: combatState, startCombatWithLog } = useCombat();
 
   // Start combat replay when component mounts
   useEffect(() => {
@@ -568,151 +600,28 @@ function CombatPhaseContent({ pitDraft }: CombatPhaseContentProps) {
     pitDraft.showResult();
   }, [pitDraft]);
 
-  const { player, enemy, playerGold, enemyGold } = getDisplayStates();
-  const result = getResult();
-  const speedControlsDisabled = !combatState.resolvedCombat || combatState.isComplete;
-  const combatRef = useRef(combatState.combat);
-  const playerPeakArmRef = useRef(0);
-  const enemyPeakArmRef = useRef(0);
-
-  if (combatRef.current !== combatState.combat) {
-    combatRef.current = combatState.combat;
-    playerPeakArmRef.current = combatState.combat
-      ? combatState.combat.player.arm + combatState.combat.player.bonusArm
-      : 0;
-    enemyPeakArmRef.current = combatState.combat
-      ? combatState.combat.enemy.arm + combatState.combat.enemy.bonusArm
-      : 0;
-  }
-
-  if (player) {
-    playerPeakArmRef.current = Math.max(playerPeakArmRef.current, player.arm);
-  }
-  if (enemy) {
-    enemyPeakArmRef.current = Math.max(enemyPeakArmRef.current, enemy.arm);
-  }
-
-  const basePlayerArm = combatState.combat
-    ? combatState.combat.player.arm + combatState.combat.player.bonusArm
-    : (player?.arm ?? 0);
-  const baseEnemyArm = combatState.combat
-    ? combatState.combat.enemy.arm + combatState.combat.enemy.bonusArm
-    : (enemy?.arm ?? 0);
-  const playerMaxArm = player
-    ? Math.max(basePlayerArm, playerPeakArmRef.current, player.arm)
-    : 0;
-  const enemyMaxArm = enemy
-    ? Math.max(baseEnemyArm, enemyPeakArmRef.current, enemy.arm)
-    : 0;
-
-  const activeActor = useMemo(() => {
-    const entry = combatState.resolvedCombat?.log[combatState.currentLogIndex];
-    if (entry?.actor === 'player' || entry?.actor === 'enemy') {
-      return entry.actor;
-    }
-    return null;
-  }, [combatState.currentLogIndex, combatState.resolvedCombat]);
-
-  const currentTurn = useMemo(() => {
-    const entry = combatState.resolvedCombat?.log[combatState.currentLogIndex];
-    return Math.max(1, entry?.turn ?? 1);
-  }, [combatState.currentLogIndex, combatState.resolvedCombat]);
-
-  if (!player || !enemy) {
-    return (
-      <View style={styles.container}>
-        <ImageBackground source={BACKGROUND_IMAGE} style={styles.backgroundImage} resizeMode="cover">
-          <View style={styles.darkOverlay}>
-            <View style={styles.centerContent}>
-              <Text style={styles.loadingText}>Preparing combat...</Text>
-            </View>
-          </View>
-        </ImageBackground>
-      </View>
-    );
-  }
-
   return (
-    <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
-      <ImageBackground source={BACKGROUND_IMAGE} style={styles.backgroundImage} resizeMode="cover">
-        <View style={styles.darkOverlay}>
-          {/* PvP Label */}
-          <View style={styles.pvpLabel}>
-            <Text style={styles.pvpLabelText}>PIT DRAFT</Text>
-          </View>
-
-          <View style={styles.combatContent}>
-            {/* Enemy (Opponent) Panel - LEFT */}
-            <EnemyPanel
-              name="Opponent"
-              emoji=""
-              imageSource={defaultMoleImageSource}
-              hp={enemy.hp}
-              maxHp={enemy.maxHp}
-              atk={enemy.atk}
-              arm={enemy.arm}
-              maxArm={enemyMaxArm}
-              spd={enemy.spd}
-              dig={enemy.dig}
-              gold={enemyGold}
-              statusEffects={enemy.statusEffects}
-              subtitle={pitDraft.matchData?.opponentProfileName}
-              equippedTool={pitDraft.matchData?.enemyTool}
-              equippedGear={pitDraft.matchData?.enemyGear}
-            />
-
-            {/* Combat Arena - CENTER */}
-            <View style={styles.arenaArea}>
-              <CombatArena
-                player={player}
-                enemy={enemy}
-                damageNumbers={combatState.damageNumbers}
-                effectNotifications={combatState.effectNotifications}
-                isAnimating={combatState.isAnimating}
-                currentTurn={currentTurn}
-                activeActor={activeActor}
-                playerMaxArm={playerMaxArm}
-                enemyMaxArm={enemyMaxArm}
-              />
-
-              <View style={styles.controlsArea}>
-                <SpeedControls
-                  currentSpeed={speed}
-                  onSpeedChange={setSpeed}
-                  disabled={speedControlsDisabled}
-                />
-              </View>
-            </View>
-
-            {/* Player Panel - RIGHT */}
-            <PlayerPanel
-              name="You"
-              emoji=""
-              hp={player.hp}
-              maxHp={player.maxHp}
-              atk={player.atk}
-              arm={player.arm}
-              maxArm={playerMaxArm}
-              spd={player.spd}
-              dig={player.dig}
-              gold={playerGold}
-              statusEffects={player.statusEffects}
-              subtitle={pitDraft.matchData?.playerProfileName}
-              equippedTool={pitDraft.matchData?.playerTool}
-              equippedGear={pitDraft.matchData?.playerGear}
-            />
-          </View>
-
-          {/* Victory/Defeat Overlay */}
-          {combatState.isComplete && result && (
-            <VictoryDefeatDisplay
-              result={result}
-              onComplete={handleCombatComplete}
-            />
-          )}
-        </View>
-      </ImageBackground>
-    </Animated.View>
+    <CombatLayout
+      label="PIT DRAFT"
+      enemyPanel={{
+        name: 'Opponent',
+        emoji: '',
+        imageSource: defaultMoleImageSource,
+        dig: pitDraft.matchData?.enemy.dig ?? 0,
+        subtitle: pitDraft.matchData?.opponentProfileName,
+        equippedTool: pitDraft.matchData?.enemyTool,
+        equippedGear: pitDraft.matchData?.enemyGear,
+      }}
+      playerPanel={{
+        name: 'You',
+        emoji: '',
+        dig: pitDraft.matchData?.player.dig ?? 0,
+        subtitle: pitDraft.matchData?.playerProfileName,
+        equippedTool: pitDraft.matchData?.playerTool,
+        equippedGear: pitDraft.matchData?.playerGear,
+      }}
+      onCombatComplete={handleCombatComplete}
+    />
   );
 }
 
@@ -725,7 +634,6 @@ const styles = StyleSheet.create({
   backgroundImage: { flex: 1, width: '100%', height: '100%' },
   darkOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.3)' },
   centerContent: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
-  combatContent: { flex: 1, flexDirection: 'row' },
 
   // Confirm phase (Gauntlet-style layout)
   stainsOverlay: {
@@ -829,10 +737,36 @@ const styles = StyleSheet.create({
     color: '#3d2b1f',
   },
 
-  // Debug result phase — shared
+  // Queuing phase
+  queuingContent: {
+    alignItems: 'center',
+  },
+  queuingText: {
+    fontFamily: Typography.header,
+    fontSize: 22,
+    color: '#3d2b1f',
+    textAlign: 'center',
+  },
+  queuingInfo: {
+    fontFamily: Typography.body,
+    fontSize: 13,
+    color: '#5c4033',
+    textAlign: 'center',
+    lineHeight: 18,
+    marginTop: 16,
+  },
+  queuingNote: {
+    fontFamily: Typography.body,
+    fontSize: 11,
+    color: '#8a7a6a',
+    textAlign: 'center',
+    marginTop: 12,
+    fontStyle: 'italic',
+  },
+
+  // Result phase — shared
   resultOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
   },
   resultStatFrameBg: {
     position: 'absolute' as const,
@@ -850,7 +784,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 
-  // Debug result — mobile (landscape row layout)
+  // Result — mobile (landscape row layout)
   resultRow: {
     flexDirection: 'row' as const,
     alignItems: 'center',
@@ -920,7 +854,7 @@ const styles = StyleSheet.create({
     textShadowRadius: 2,
   },
 
-  // Debug result — compact (non-mobile, ~2x bigger)
+  // Result — compact (non-mobile, ~2x bigger)
   resultContainerCompact: {
     alignItems: 'center',
     gap: 20,
@@ -993,44 +927,10 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 1, height: 1 },
     textShadowRadius: 4,
   },
-  infoTextSmall: {
-    fontFamily: Typography.body,
-    fontSize: 13,
-    color: '#999999',
-    textAlign: 'center',
-    lineHeight: 18,
-  },
   buttonRow: { flexDirection: 'row', gap: 12, marginTop: 8 },
   actionButton: { width: 140, height: 52, justifyContent: 'center', alignItems: 'center' },
   buttonText: { fontFamily: Typography.button, fontSize: 14, color: '#3d2b1f', marginBottom: 4 },
   buttonTextPrimary: { fontFamily: Typography.button, fontSize: 14, color: '#1a1a1a', marginBottom: 4 },
-  waitingText: { fontFamily: Typography.header, fontSize: 22, color: '#FABC0F', textAlign: 'center' },
-  noteText: {
-    fontFamily: Typography.body,
-    fontSize: 11,
-    color: '#666666',
-    textAlign: 'center',
-    marginTop: 8,
-    fontStyle: 'italic',
-  },
-  victoryText: {
-    fontFamily: Typography.header,
-    fontSize: 36,
-    color: '#4CAF50',
-    textAlign: 'center',
-    textShadowColor: 'rgba(0, 0, 0, 0.8)',
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 4,
-  },
-  defeatText: {
-    fontFamily: Typography.header,
-    fontSize: 36,
-    color: '#F44336',
-    textAlign: 'center',
-    textShadowColor: 'rgba(0, 0, 0, 0.8)',
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 4,
-  },
   payoutText: {
     fontFamily: Typography.number,
     fontSize: 24,
@@ -1038,21 +938,8 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontWeight: 'bold',
   },
-  matchDetails: {
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
-    borderRadius: 6,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-  },
-  detailText: { fontFamily: Typography.body, fontSize: 14, color: '#c8c8c8', textAlign: 'center' },
   errorText: { fontFamily: Typography.body, fontSize: 14, color: '#F44336', textAlign: 'center', lineHeight: 20 },
-  loadingText: { fontFamily: Typography.header, fontSize: 20, color: '#c8c8c8' },
 
-  // Combat layout
-  arenaArea: { flex: 2, justifyContent: 'center', alignItems: 'center', padding: 16 },
-  controlsArea: { marginTop: 12 },
-  pvpLabel: { position: 'absolute', top: 12, left: 0, right: 0, alignItems: 'center', zIndex: 10 },
-  pvpLabelText: { fontFamily: Typography.header, fontSize: 14, color: '#FABC0F', letterSpacing: 2 },
 });
 
 const compactStyles = StyleSheet.create({
@@ -1109,5 +996,17 @@ const compactStyles = StyleSheet.create({
   },
   panelButtonText: {
     fontSize: 52,
+  },
+  queuingText: {
+    fontSize: 44,
+  },
+  queuingInfo: {
+    fontSize: 26,
+    lineHeight: 36,
+    marginTop: 32,
+  },
+  queuingNote: {
+    fontSize: 20,
+    marginTop: 24,
   },
 });

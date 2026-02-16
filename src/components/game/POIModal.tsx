@@ -39,6 +39,9 @@ import { SimplifiedItemOption } from '@/components/poi/SimplifiedItemOption';
 import { ItemTooltip as PoiItemTooltip } from '@/components/poi/ItemTooltip';
 import { Typography } from '@/theme/typography';
 import { useScreenVariant } from '../../contexts/ScreenVariantContext';
+import { useInputMode } from '../../hooks/useInputMode';
+import { useControllerAction } from '../../hooks/useControllerAction';
+import { FocusGlow } from '../ui/FocusGlow';
 
 interface POIModalProps {
   interaction: POIInteraction | null;
@@ -53,6 +56,10 @@ interface POIModalProps {
   onScrapSlotPress?: () => void;
   equippedTool?: Tool | null;
   onFastTravel?: () => void;
+  /** Gear items for controller-mode inventory cycling (Rune Kiln / Scrap Chute). */
+  selectableGear?: Gear[];
+  /** Called when controller selects a gear item from the inline inventory. */
+  onGearSelect?: (gear: Gear) => void;
 }
 
 // POI types that use the 3-choice card layout
@@ -195,6 +202,63 @@ function getGearImage(gearId: GearId): any {
   return GEAR_DEFINITIONS[gearId]?.image;
 }
 
+// ============================================================================
+// Stable wrapper components (defined outside POIModal to avoid re-mount flicker)
+// ============================================================================
+
+interface ModalWrapperProps {
+  children: React.ReactNode;
+  alignLeft?: boolean;
+  visible: boolean;
+  isCompact: boolean;
+  onClose: () => void;
+}
+
+function ModalWrapper({ children, alignLeft, visible, isCompact, onClose }: ModalWrapperProps) {
+  if (isCompact) {
+    if (!visible) return null;
+    return (
+      <View style={[styles.compactModalOverlay, alignLeft && styles.compactModalOverlayLeft]}>
+        <View style={[styles.compactModalScale, alignLeft && styles.compactModalScaleLeft]}>
+          {children}
+        </View>
+      </View>
+    );
+  }
+  return (
+    <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
+      <View style={styles.modalContainer}>
+        <View style={styles.modalDarkArea}>{children}</View>
+        <View style={styles.modalSidebarArea} pointerEvents="none" />
+      </View>
+    </Modal>
+  );
+}
+
+interface OverlayWrapperProps {
+  children: React.ReactNode;
+  visible: boolean;
+  isCompact: boolean;
+}
+
+function OverlayWrapper({ children, visible, isCompact }: OverlayWrapperProps) {
+  if (!visible) return null;
+  if (isCompact) {
+    return (
+      <View style={styles.compactModalOverlay}>
+        <View style={styles.compactModalScale}>
+          {children}
+        </View>
+      </View>
+    );
+  }
+  return (
+    <View style={styles.overlayContainer} pointerEvents="box-none">
+      <View style={styles.modalDarkArea}>{children}</View>
+    </View>
+  );
+}
+
 export function POIModal({
   interaction,
   visible,
@@ -208,6 +272,8 @@ export function POIModal({
   onScrapSlotPress,
   equippedTool,
   onFastTravel,
+  selectableGear,
+  onGearSelect,
 }: POIModalProps) {
   if (!interaction) {
     return null;
@@ -241,16 +307,138 @@ export function POIModal({
   const isSeismicScanner = poiId === 'L7';
   const isScrapChute = poiId === 'L14';
 
+  // --- Controller support ---
+  const inputMode = useInputMode();
+  const isController = inputMode === 'controller';
+  const [focusedIndex, setFocusedIndex] = useState(0);
+  const [inventoryFocusIndex, setInventoryFocusIndex] = useState(0);
+  const gearCount = selectableGear?.length ?? 0;
+  const needsInventoryCycle = (isRuneKiln || isScrapChute) && gearCount > 0;
+
+  // Determine the count of selectable items for the current POI type
+  const selectableCount = useMemo(() => {
+    if (isThreeChoicePOI && hasValidOptions) return Math.min(options.length, 3);
+    if (isSmugglerHatch) {
+      const shopItems = displayOptions.filter(({ option }) => option.item);
+      const rerollOption = indexedOptions.find(({ option }) => option.label.includes('Reroll'));
+      return shopItems.length + (rerollOption ? 1 : 0);
+    }
+    if (isSeismicScanner) {
+      return displayOptions.filter(({ option }) => !option.disabled).length;
+    }
+    return displayOptions.length;
+  }, [isThreeChoicePOI, hasValidOptions, options.length, isSmugglerHatch, isSeismicScanner, displayOptions, indexedOptions]);
+
   useEffect(() => {
     if (!visible) {
       setTooltip(null);
       setAnvilModIndex(null);
+      setFocusedIndex(0);
+      setInventoryFocusIndex(0);
     }
   }, [visible]);
 
   useEffect(() => {
     setTooltip(null);
+    setFocusedIndex(0);
+    setInventoryFocusIndex(0);
   }, [poiId]);
+
+  // Controller: D-pad to cycle, A to select, B to close
+  useControllerAction(
+    {
+      onDPadLeft: () => {
+        if (needsInventoryCycle) {
+          setInventoryFocusIndex((prev) => (prev - 1 + gearCount) % gearCount);
+        } else {
+          setFocusedIndex((prev) => (prev - 1 + selectableCount) % selectableCount);
+        }
+      },
+      onDPadRight: () => {
+        if (needsInventoryCycle) {
+          setInventoryFocusIndex((prev) => (prev + 1) % gearCount);
+        } else {
+          setFocusedIndex((prev) => (prev + 1) % selectableCount);
+        }
+      },
+      onDPadUp: () => {
+        if (needsInventoryCycle) {
+          // Grid navigation: 3 columns
+          setInventoryFocusIndex((prev) => (prev >= 3 ? prev - 3 : prev));
+        } else if (isSmugglerHatch) {
+          setFocusedIndex((prev) => {
+            const cols = 3;
+            return prev >= cols ? prev - cols : prev;
+          });
+        } else {
+          setFocusedIndex((prev) => (prev - 1 + selectableCount) % selectableCount);
+        }
+      },
+      onDPadDown: () => {
+        if (needsInventoryCycle) {
+          setInventoryFocusIndex((prev) => (prev + 3 < gearCount ? prev + 3 : prev));
+        } else if (isSmugglerHatch) {
+          setFocusedIndex((prev) => {
+            const cols = 3;
+            return prev + cols < selectableCount ? prev + cols : prev;
+          });
+        } else {
+          setFocusedIndex((prev) => (prev + 1) % selectableCount);
+        }
+      },
+      onA: () => {
+        if (needsInventoryCycle) {
+          // Select the focused inventory item
+          const gear = selectableGear?.[inventoryFocusIndex];
+          if (gear) onGearSelect?.(gear);
+        } else if (isRuneKiln) {
+          // No inventory items — fuse action
+          if (kilnFuseOptionIndex !== null && kilnFuseOptionIndex !== undefined) {
+            onSelectOption(kilnFuseOptionIndex);
+          }
+        } else if (isScrapChute) {
+          // No inventory items — scrap action
+          if (scrapOptionIndex !== null && scrapOptionIndex !== undefined) {
+            const selectedOption = options[scrapOptionIndex];
+            if (selectedOption && !selectedOption.disabled) onSelectOption(scrapOptionIndex);
+          }
+        } else if (isThreeChoicePOI && hasValidOptions) {
+          const opt = options[focusedIndex];
+          if (opt && !opt.disabled) handleOptionSelect(focusedIndex);
+        } else if (isSmugglerHatch) {
+          const shopItems = displayOptions.filter(({ option }) => option.item);
+          const rerollOption = indexedOptions.find(({ option }) => option.label.includes('Reroll'));
+          if (focusedIndex < shopItems.length) {
+            const { option, index } = shopItems[focusedIndex];
+            if (!option.disabled) onSelectOption(index);
+          } else if (rerollOption && !rerollOption.option.disabled) {
+            onSelectOption(rerollOption.index);
+          }
+        } else if (isSeismicScanner) {
+          const active = displayOptions.filter(({ option }) => !option.disabled);
+          if (focusedIndex < active.length) {
+            onSelectOption(active[focusedIndex].index);
+          }
+        } else if (isRailWaypoint) {
+          onFastTravel?.();
+        } else if (isRestAlcove) {
+          const restOption = displayOptions[0];
+          if (restOption && !restOption.option.disabled) onSelectOption(restOption.index);
+        } else if (isRustyAnvil) {
+          const upgradeOption = displayOptions[0];
+          if (upgradeOption && !upgradeOption.option.disabled) onSelectOption(upgradeOption.index);
+        } else {
+          // Generic list POIs
+          if (focusedIndex < displayOptions.length) {
+            const { option, index } = displayOptions[focusedIndex];
+            if (!option.disabled) onSelectOption(index);
+          }
+        }
+      },
+      onB: onClose,
+    },
+    isController && visible,
+  );
 
   const getOptionRarity = useCallback((option: POIOption): ItemRarity => {
     if (option.item) {
@@ -326,50 +514,6 @@ export function POIModal({
   const variant = useScreenVariant();
   const isCompact = variant === 'compact';
 
-  const ModalWrapper = ({ children, alignLeft }: { children: React.ReactNode; alignLeft?: boolean }) => {
-    // In compact mode, use a View-based overlay so the floating sidebar (zIndex 150)
-    // can render above the overlay (zIndex 100). Modal creates a separate layer that
-    // blocks everything behind it regardless of zIndex.
-    if (isCompact) {
-      if (!visible) return null;
-      return (
-        <View style={[styles.compactModalOverlay, alignLeft && styles.compactModalOverlayLeft]}>
-          <View style={[styles.compactModalScale, alignLeft && styles.compactModalScaleLeft]}>
-            {children}
-          </View>
-        </View>
-      );
-    }
-    return (
-      <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
-        <View style={styles.modalContainer}>
-          <View style={styles.modalDarkArea}>{children}</View>
-          <View style={styles.modalSidebarArea} pointerEvents="none" />
-        </View>
-      </Modal>
-    );
-  };
-
-  // Overlay wrapper for POIs that need sidebar interaction (Rune Kiln, Scrap Chute).
-  // Uses an absolutely-positioned View instead of <Modal> so the sidebar remains touchable.
-  const OverlayWrapper = ({ children }: { children: React.ReactNode }) => {
-    if (!visible) return null;
-    if (isCompact) {
-      return (
-        <View style={styles.compactModalOverlay}>
-          <View style={styles.compactModalScale}>
-            {children}
-          </View>
-        </View>
-      );
-    }
-    return (
-      <View style={styles.overlayContainer} pointerEvents="box-none">
-        <View style={styles.modalDarkArea}>{children}</View>
-      </View>
-    );
-  };
-
   if (isRuneKiln) {
     if (!visible) {
       return null;
@@ -384,7 +528,7 @@ export function POIModal({
     const kilnTierBorder = getTierBorderStyle(kilnSelection?.rarity);
 
     return (
-      <OverlayWrapper>
+      <OverlayWrapper visible={visible} isCompact={isCompact}>
         <View style={styles.inlineModal} pointerEvents="auto">
           <Image
             source={paperPanelSource}
@@ -399,9 +543,11 @@ export function POIModal({
             resizeMode="stretch"
           />
           <View style={{ padding: 16, paddingTop: 24 }}>
-            <TouchableOpacity style={styles.closeButtonTop} onPress={onClose} activeOpacity={0.7}>
-              <Text style={styles.closeButtonTopText}>X</Text>
-            </TouchableOpacity>
+            {!isController && (
+              <TouchableOpacity style={styles.closeButtonTop} onPress={onClose} activeOpacity={0.7}>
+                <Text style={styles.closeButtonTopText}>X</Text>
+              </TouchableOpacity>
+            )}
 
             <Text style={styles.threeChoiceTitle}>{poiDef.name}</Text>
             {poiDef.description ? (
@@ -462,14 +608,39 @@ export function POIModal({
               </TouchableOpacity>
             </View>
 
-            <TouchableOpacity
-              style={[styles.fuseButton, fuseDisabled && styles.fuseButtonDisabled]}
-              onPress={handleKilnFuse}
-              activeOpacity={0.7}
-              disabled={fuseDisabled}
-            >
-              <Text style={styles.fuseButtonText}>Fuse</Text>
-            </TouchableOpacity>
+            {isController && selectableGear && selectableGear.length > 0 && (
+              <View style={styles.inlineInventoryGrid}>
+                {selectableGear.map((gear, idx) => (
+                  <FocusGlow key={`inv-${gear.id}-${idx}`} active={inventoryFocusIndex === idx}>
+                    <Pressable
+                      style={styles.inlineInventoryCell}
+                      onPress={() => onGearSelect?.(gear)}
+                    >
+                      <Image
+                        source={squareSource}
+                        style={styles.inlineInventoryCellBg}
+                      />
+                      {gear.image ? (
+                        <Image source={gear.image} style={styles.inlineInventoryImage} resizeMode="contain" />
+                      ) : (
+                        <Text style={styles.inlineInventoryEmoji}>{gear.emoji}</Text>
+                      )}
+                    </Pressable>
+                  </FocusGlow>
+                ))}
+              </View>
+            )}
+
+            <FocusGlow active={isController && !fuseDisabled && !needsInventoryCycle}>
+              <TouchableOpacity
+                style={[styles.fuseButton, fuseDisabled && styles.fuseButtonDisabled]}
+                onPress={handleKilnFuse}
+                activeOpacity={0.7}
+                disabled={fuseDisabled}
+              >
+                <Text style={styles.fuseButtonText}>Fuse</Text>
+              </TouchableOpacity>
+            </FocusGlow>
           </View>
         </View>
       </OverlayWrapper>
@@ -491,7 +662,7 @@ export function POIModal({
     const canAfford = !selectedOption?.disabled;
 
     return (
-      <OverlayWrapper>
+      <OverlayWrapper visible={visible} isCompact={isCompact}>
         <View style={styles.inlineModal} pointerEvents="auto">
           <Image
             source={paperPanelSource}
@@ -506,9 +677,11 @@ export function POIModal({
             resizeMode="stretch"
           />
           <View style={{ padding: 16, paddingTop: 24 }}>
-            <TouchableOpacity style={styles.closeButtonTop} onPress={onClose} activeOpacity={0.7}>
-              <Text style={styles.closeButtonTopText}>X</Text>
-            </TouchableOpacity>
+            {!isController && (
+              <TouchableOpacity style={styles.closeButtonTop} onPress={onClose} activeOpacity={0.7}>
+                <Text style={styles.closeButtonTopText}>X</Text>
+              </TouchableOpacity>
+            )}
 
             <Text style={styles.threeChoiceTitle}>{poiDef.name}</Text>
             {poiDef.description ? (
@@ -550,24 +723,51 @@ export function POIModal({
                 ? `Selected: ${item?.name}`
                 : options.length <= 1
                   ? 'No gear to scrap'
-                  : 'Select gear from inventory'}
+                  : isController
+                    ? 'Use D-pad to select gear'
+                    : 'Select gear from inventory'}
             </Text>
 
-            <TouchableOpacity
-              style={[
-                styles.scrapButton,
-                (!hasSelection || !canAfford) && styles.scrapButtonDisabled,
-              ]}
-              onPress={() =>
-                scrapOptionIndex !== null &&
-                scrapOptionIndex !== undefined &&
-                onSelectOption(scrapOptionIndex)
-              }
-              activeOpacity={0.7}
-              disabled={!hasSelection || !canAfford}
-            >
-              <Text style={styles.scrapButtonText}>{cost ? `Scrap (-${cost}g)` : 'Scrap'}</Text>
-            </TouchableOpacity>
+            {isController && selectableGear && selectableGear.length > 0 && (
+              <View style={styles.inlineInventoryGrid}>
+                {selectableGear.map((gear, idx) => (
+                  <FocusGlow key={`inv-${gear.id}-${idx}`} active={inventoryFocusIndex === idx}>
+                    <Pressable
+                      style={styles.inlineInventoryCell}
+                      onPress={() => onGearSelect?.(gear)}
+                    >
+                      <Image
+                        source={squareSource}
+                        style={styles.inlineInventoryCellBg}
+                      />
+                      {gear.image ? (
+                        <Image source={gear.image} style={styles.inlineInventoryImage} resizeMode="contain" />
+                      ) : (
+                        <Text style={styles.inlineInventoryEmoji}>{gear.emoji}</Text>
+                      )}
+                    </Pressable>
+                  </FocusGlow>
+                ))}
+              </View>
+            )}
+
+            <FocusGlow active={isController && hasSelection && !!canAfford && !needsInventoryCycle}>
+              <TouchableOpacity
+                style={[
+                  styles.scrapButton,
+                  (!hasSelection || !canAfford) && styles.scrapButtonDisabled,
+                ]}
+                onPress={() =>
+                  scrapOptionIndex !== null &&
+                  scrapOptionIndex !== undefined &&
+                  onSelectOption(scrapOptionIndex)
+                }
+                activeOpacity={0.7}
+                disabled={!hasSelection || !canAfford}
+              >
+                <Text style={styles.scrapButtonText}>{cost ? `Scrap (-${cost}g)` : 'Scrap'}</Text>
+              </TouchableOpacity>
+            </FocusGlow>
           </View>
         </View>
       </OverlayWrapper>
@@ -580,7 +780,7 @@ export function POIModal({
     }
 
     return (
-      <ModalWrapper alignLeft={poiId !== 'L4'}>
+      <ModalWrapper visible={visible} isCompact={isCompact} onClose={onClose} alignLeft={poiId !== 'L4'}>
         <View style={styles.threeChoiceModal} pointerEvents="auto">
           <Image
             source={paperPanelSource}
@@ -596,9 +796,11 @@ export function POIModal({
           />
 
           <View style={{ padding: 24, paddingTop: 32 }}>
-            <TouchableOpacity style={styles.closeButtonTop} onPress={onClose} activeOpacity={0.7}>
-              <Text style={styles.closeButtonTopText}>X</Text>
-            </TouchableOpacity>
+            {!isController && (
+              <TouchableOpacity style={styles.closeButtonTop} onPress={onClose} activeOpacity={0.7}>
+                <Text style={styles.closeButtonTopText}>X</Text>
+              </TouchableOpacity>
+            )}
 
             <Text style={styles.threeChoiceTitle}>{poiDef.name}</Text>
             {poiDef.description ? (
@@ -618,18 +820,19 @@ export function POIModal({
                 const itemName = option.item?.name ?? statMapping?.name ?? option.label;
                 const effectDescription = getItemEffectDescription(option.item);
                 return (
-                  <SimplifiedItemOption
-                    key={index}
-                    emoji={emoji}
-                    image={image}
-                    statDisplay={statDisplay}
-                    effectDescription={effectDescription}
-                    rarity={rarity}
-                    itemName={itemName}
-                    disabled={option.disabled}
-                    onSelect={() => handleOptionSelect(index)}
-                    onLongPress={(event) => handleOptionLongPress(option, event)}
-                  />
+                  <FocusGlow key={index} active={isController && focusedIndex === index} style={{ flex: 1 }}>
+                    <SimplifiedItemOption
+                      emoji={emoji}
+                      image={image}
+                      statDisplay={statDisplay}
+                      effectDescription={effectDescription}
+                      rarity={rarity}
+                      itemName={itemName}
+                      disabled={option.disabled}
+                      onSelect={() => handleOptionSelect(index)}
+                      onLongPress={(event) => handleOptionLongPress(option, event)}
+                    />
+                  </FocusGlow>
                 );
               })}
             </View>
@@ -657,7 +860,7 @@ export function POIModal({
       ({ option }) => !option.disabled && option.label.startsWith('Travel')
     );
     return (
-      <ModalWrapper>
+      <ModalWrapper visible={visible} isCompact={isCompact} onClose={onClose}>
         <View style={styles.standardModal} pointerEvents="auto">
           <Image
             source={paperPanelSource}
@@ -672,16 +875,20 @@ export function POIModal({
             resizeMode="stretch"
           />
           <View style={{ padding: 16, paddingTop: 24 }}>
-            <TouchableOpacity style={styles.closeButtonTop} onPress={onClose} activeOpacity={0.7}>
-              <Text style={styles.closeButtonTopText}>X</Text>
-            </TouchableOpacity>
+            {!isController && (
+              <TouchableOpacity style={styles.closeButtonTop} onPress={onClose} activeOpacity={0.7}>
+                <Text style={styles.closeButtonTopText}>X</Text>
+              </TouchableOpacity>
+            )}
 
             <Text style={styles.threeChoiceTitle}>{poiDef.name}</Text>
 
             {hasOtherWaypoints ? (
-              <TouchableOpacity style={styles.primaryButton} onPress={() => onFastTravel?.()} activeOpacity={0.7}>
-                <Text style={styles.primaryButtonText}>Fast travel?</Text>
-              </TouchableOpacity>
+              <FocusGlow active={isController}>
+                <TouchableOpacity style={styles.primaryButton} onPress={() => onFastTravel?.()} activeOpacity={0.7}>
+                  <Text style={styles.primaryButtonText}>Fast travel?</Text>
+                </TouchableOpacity>
+              </FocusGlow>
             ) : (
               <Text style={styles.helperText}>No other waypoints discovered</Text>
             )}
@@ -702,7 +909,7 @@ export function POIModal({
     const gridItems = shopItems.slice(0, 6);
 
     return (
-      <ModalWrapper>
+      <ModalWrapper visible={visible} isCompact={isCompact} onClose={onClose}>
         <View style={styles.standardModal} pointerEvents="auto">
           <Image
             source={paperPanelSource}
@@ -717,9 +924,11 @@ export function POIModal({
             resizeMode="stretch"
           />
           <View style={{ padding: 16, paddingTop: 24 }}>
-            <TouchableOpacity style={styles.closeButtonTop} onPress={onClose} activeOpacity={0.7}>
-              <Text style={styles.closeButtonTopText}>X</Text>
-            </TouchableOpacity>
+            {!isController && (
+              <TouchableOpacity style={styles.closeButtonTop} onPress={onClose} activeOpacity={0.7}>
+                <Text style={styles.closeButtonTopText}>X</Text>
+              </TouchableOpacity>
+            )}
 
             <Text style={styles.threeChoiceTitle}>{poiDef.name}</Text>
             {poiDef.description ? (
@@ -728,53 +937,56 @@ export function POIModal({
 
             <View style={styles.gridWrapper}>
               <View style={styles.shopGrid}>
-                {gridItems.map(({ option, index: optionIndex }) => {
+                {gridItems.map(({ option, index: optionIndex }, gridIdx) => {
                   const disabled = option.disabled;
                   return (
-                    <TouchableOpacity
-                      key={`shop-${optionIndex}`}
-                      style={[styles.shopCell, disabled && styles.shopCellDisabled]}
-                      onPress={() => onSelectOption(optionIndex)}
-                      activeOpacity={0.7}
-                      disabled={disabled}
-                    >
-                      <Image
-                        source={squareSource}
-                        style={{
-                          position: 'absolute',
-                          width: '100%',
-                          height: '100%',
-                          resizeMode: 'stretch',
-                        }}
-                      />
-                      {option.item?.image ? (
+                    <FocusGlow key={`shop-${optionIndex}`} active={isController && focusedIndex === gridIdx}>
+                      <TouchableOpacity
+                        style={[styles.shopCell, disabled && styles.shopCellDisabled]}
+                        onPress={() => onSelectOption(optionIndex)}
+                        activeOpacity={0.7}
+                        disabled={disabled}
+                      >
                         <Image
-                          source={option.item.image}
-                          style={styles.shopImage}
-                          resizeMode="contain"
+                          source={squareSource}
+                          style={{
+                            position: 'absolute',
+                            width: '100%',
+                            height: '100%',
+                            resizeMode: 'stretch',
+                          }}
                         />
-                      ) : (
-                        <Text style={styles.shopEmoji}>{option.item?.emoji}</Text>
-                      )}
-                      {option.cost !== undefined && (
-                        <Text style={styles.shopCost}>{option.cost}g</Text>
-                      )}
-                    </TouchableOpacity>
+                        {option.item?.image ? (
+                          <Image
+                            source={option.item.image}
+                            style={styles.shopImage}
+                            resizeMode="contain"
+                          />
+                        ) : (
+                          <Text style={styles.shopEmoji}>{option.item?.emoji}</Text>
+                        )}
+                        {option.cost !== undefined && (
+                          <Text style={styles.shopCost}>{option.cost}g</Text>
+                        )}
+                      </TouchableOpacity>
+                    </FocusGlow>
                   );
                 })}
               </View>
             </View>
 
-            <TouchableOpacity
-              style={[styles.rerollButton, rerollDisabled && styles.rerollButtonDisabled]}
-              onPress={() => rerollOption && onSelectOption(rerollOption.index)}
-              activeOpacity={0.7}
-              disabled={rerollDisabled}
-            >
-              <Text style={styles.rerollButtonText}>
-                {rerollOption?.option.label ?? 'Reroll shop'}
-              </Text>
-            </TouchableOpacity>
+            <FocusGlow active={isController && focusedIndex === gridItems.length}>
+              <TouchableOpacity
+                style={[styles.rerollButton, rerollDisabled && styles.rerollButtonDisabled]}
+                onPress={() => rerollOption && onSelectOption(rerollOption.index)}
+                activeOpacity={0.7}
+                disabled={rerollDisabled}
+              >
+                <Text style={styles.rerollButtonText}>
+                  {rerollOption?.option.label ?? 'Reroll shop'}
+                </Text>
+              </TouchableOpacity>
+            </FocusGlow>
           </View>
         </View>
       </ModalWrapper>
@@ -793,7 +1005,7 @@ export function POIModal({
     const canAfford = upgradeOption && !upgradeOption.disabled;
 
     return (
-      <ModalWrapper>
+      <ModalWrapper visible={visible} isCompact={isCompact} onClose={onClose}>
         <View style={[styles.standardModal, styles.compactModal]} pointerEvents="auto">
           <Image
             source={paperPanelSource}
@@ -808,9 +1020,11 @@ export function POIModal({
             resizeMode="stretch"
           />
           <View style={{ padding: 16, paddingTop: 24 }}>
-            <TouchableOpacity style={styles.closeButtonTop} onPress={onClose} activeOpacity={0.7}>
-              <Text style={styles.closeButtonTopText}>X</Text>
-            </TouchableOpacity>
+            {!isController && (
+              <TouchableOpacity style={styles.closeButtonTop} onPress={onClose} activeOpacity={0.7}>
+                <Text style={styles.closeButtonTopText}>X</Text>
+              </TouchableOpacity>
+            )}
 
             <Text style={styles.threeChoiceTitle}>{poiDef.name}</Text>
             {poiDef.description ? (
@@ -836,21 +1050,23 @@ export function POIModal({
               )}
             </View>
 
-            <TouchableOpacity
-              style={[
-                styles.primaryButton,
-                { marginTop: 16 },
-                (!upgradeOption || !canAfford) && styles.primaryButtonDisabled,
-              ]}
-              onPress={() => upgradeOption && onSelectOption(displayOptions[0].index)}
-              disabled={!upgradeOption || !canAfford}
-            >
-              <Text style={styles.primaryButtonText}>
-                {upgradeOption?.cost
-                  ? `Upgrade (${upgradeOption.cost}g)`
-                  : upgradeOption?.label || 'Upgrade'}
-              </Text>
-            </TouchableOpacity>
+            <FocusGlow active={isController}>
+              <TouchableOpacity
+                style={[
+                  styles.primaryButton,
+                  { marginTop: 16 },
+                  (!upgradeOption || !canAfford) && styles.primaryButtonDisabled,
+                ]}
+                onPress={() => upgradeOption && onSelectOption(displayOptions[0].index)}
+                disabled={!upgradeOption || !canAfford}
+              >
+                <Text style={styles.primaryButtonText}>
+                  {upgradeOption?.cost
+                    ? `Upgrade (${upgradeOption.cost}g)`
+                    : upgradeOption?.label || 'Upgrade'}
+                </Text>
+              </TouchableOpacity>
+            </FocusGlow>
           </View>
         </View>
       </ModalWrapper>
@@ -863,7 +1079,7 @@ export function POIModal({
     }
     const restOption = displayOptions[0];
     return (
-      <ModalWrapper>
+      <ModalWrapper visible={visible} isCompact={isCompact} onClose={onClose}>
         <View style={styles.standardModal} pointerEvents="auto">
           <Image
             source={paperPanelSource}
@@ -878,9 +1094,11 @@ export function POIModal({
             resizeMode="stretch"
           />
           <View style={{ padding: 16, paddingTop: 24 }}>
-            <TouchableOpacity style={styles.closeButtonTop} onPress={onClose} activeOpacity={0.7}>
-              <Text style={styles.closeButtonTopText}>X</Text>
-            </TouchableOpacity>
+            {!isController && (
+              <TouchableOpacity style={styles.closeButtonTop} onPress={onClose} activeOpacity={0.7}>
+                <Text style={styles.closeButtonTopText}>X</Text>
+              </TouchableOpacity>
+            )}
 
             <Text style={styles.threeChoiceTitle}>{poiDef.name}</Text>
             {poiDef.description ? (
@@ -888,17 +1106,19 @@ export function POIModal({
             ) : null}
 
             {restOption && (
-              <TouchableOpacity
-                style={[
-                  styles.primaryButton,
-                  restOption.option.disabled && styles.primaryButtonDisabled,
-                ]}
-                onPress={() => onSelectOption(restOption.index)}
-                activeOpacity={0.7}
-                disabled={restOption.option.disabled}
-              >
-                <Text style={styles.primaryButtonText}>{restOption.option.label}</Text>
-              </TouchableOpacity>
+              <FocusGlow active={isController}>
+                <TouchableOpacity
+                  style={[
+                    styles.primaryButton,
+                    restOption.option.disabled && styles.primaryButtonDisabled,
+                  ]}
+                  onPress={() => onSelectOption(restOption.index)}
+                  activeOpacity={0.7}
+                  disabled={restOption.option.disabled}
+                >
+                  <Text style={styles.primaryButtonText}>{restOption.option.label}</Text>
+                </TouchableOpacity>
+              </FocusGlow>
             )}
           </View>
         </View>
@@ -915,7 +1135,7 @@ export function POIModal({
     const emptyOption = displayOptions.find(({ option }) => option.disabled);
 
     return (
-      <ModalWrapper>
+      <ModalWrapper visible={visible} isCompact={isCompact} onClose={onClose}>
         <View style={styles.standardModal} pointerEvents="auto">
           <Image
             source={paperPanelSource}
@@ -930,9 +1150,11 @@ export function POIModal({
             resizeMode="stretch"
           />
           <View style={{ padding: 16, paddingTop: 24 }}>
-            <TouchableOpacity style={styles.closeButtonTop} onPress={onClose} activeOpacity={0.7}>
-              <Text style={styles.closeButtonTopText}>X</Text>
-            </TouchableOpacity>
+            {!isController && (
+              <TouchableOpacity style={styles.closeButtonTop} onPress={onClose} activeOpacity={0.7}>
+                <Text style={styles.closeButtonTopText}>X</Text>
+              </TouchableOpacity>
+            )}
 
             <Text style={styles.threeChoiceTitle}>{poiDef.name}</Text>
             {poiDef.description ? (
@@ -942,38 +1164,39 @@ export function POIModal({
             {activeScannerOptions.length > 0 ? (
               <View style={styles.gridWrapper}>
                 <View style={styles.scannerGrid}>
-                  {activeScannerOptions.map(({ option, index }) => {
+                  {activeScannerOptions.map(({ option, index }, scanIdx) => {
                     const emoji = option.label.split(' ')[0];
                     // Find the POI definition corresponding to this option
-                    const poiDef = Object.values(POI_DEFINITIONS).find((def) =>
+                    const scanPoiDef = Object.values(POI_DEFINITIONS).find((def) =>
                       option.label.includes(def.name)
                     );
                     return (
-                      <TouchableOpacity
-                        key={`scan-${index}`}
-                        style={styles.scannerCell}
-                        onPress={() => onSelectOption(index)}
-                        activeOpacity={0.7}
-                      >
-                        <Image
-                          source={squareSource}
-                          style={{
-                            position: 'absolute',
-                            width: '100%',
-                            height: '100%',
-                            resizeMode: 'stretch',
-                          }}
-                        />
-                        {poiDef?.image ? (
+                      <FocusGlow key={`scan-${index}`} active={isController && focusedIndex === scanIdx}>
+                        <TouchableOpacity
+                          style={styles.scannerCell}
+                          onPress={() => onSelectOption(index)}
+                          activeOpacity={0.7}
+                        >
                           <Image
-                            source={poiDef.image}
-                            style={styles.scannerImage}
-                            resizeMode="contain"
+                            source={squareSource}
+                            style={{
+                              position: 'absolute',
+                              width: '100%',
+                              height: '100%',
+                              resizeMode: 'stretch',
+                            }}
                           />
-                        ) : (
-                          <Text style={styles.scannerEmoji}>{emoji}</Text>
-                        )}
-                      </TouchableOpacity>
+                          {scanPoiDef?.image ? (
+                            <Image
+                              source={scanPoiDef.image}
+                              style={styles.scannerImage}
+                              resizeMode="contain"
+                            />
+                          ) : (
+                            <Text style={styles.scannerEmoji}>{emoji}</Text>
+                          )}
+                        </TouchableOpacity>
+                      </FocusGlow>
                     );
                   })}
                 </View>
@@ -994,7 +1217,7 @@ export function POIModal({
   }
 
   return (
-    <ModalWrapper>
+    <ModalWrapper visible={visible} isCompact={isCompact} onClose={onClose}>
       <View style={styles.standardModal} pointerEvents="auto">
         <Image
           source={paperPanelSource}
@@ -1009,21 +1232,24 @@ export function POIModal({
           resizeMode="stretch"
         />
         <View style={{ padding: 16, paddingTop: 24 }}>
-          <TouchableOpacity style={styles.closeButtonTop} onPress={onClose} activeOpacity={0.7}>
-            <Text style={styles.closeButtonTopText}>X</Text>
-          </TouchableOpacity>
+          {!isController && (
+            <TouchableOpacity style={styles.closeButtonTop} onPress={onClose} activeOpacity={0.7}>
+              <Text style={styles.closeButtonTopText}>X</Text>
+            </TouchableOpacity>
+          )}
 
           <Text style={styles.threeChoiceTitle}>{poiDef.name}</Text>
           {poiDef.description ? <Text style={styles.description}>{poiDef.description}</Text> : null}
 
           <View style={styles.optionsContent}>
-            {displayOptions.map(({ option, index }) => (
-              <ListOptionButton
-                key={index}
-                option={option}
-                index={index}
-                onPress={onSelectOption}
-              />
+            {displayOptions.map(({ option, index }, listIdx) => (
+              <FocusGlow key={index} active={isController && focusedIndex === listIdx}>
+                <ListOptionButton
+                  option={option}
+                  index={index}
+                  onPress={onSelectOption}
+                />
+              </FocusGlow>
             ))}
           </View>
         </View>
@@ -1421,6 +1647,36 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     alignSelf: 'center',
     marginBottom: 20,
+  },
+
+  // ============================================================================
+  // Inline inventory grid (controller mode for Rune Kiln / Scrap Chute)
+  // ============================================================================
+  inlineInventoryGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 6,
+    marginVertical: 12,
+  },
+  inlineInventoryCell: {
+    width: 48,
+    height: 48,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  inlineInventoryCellBg: {
+    position: 'absolute',
+    width: '100%',
+    height: '100%',
+    resizeMode: 'stretch',
+  },
+  inlineInventoryImage: {
+    width: 32,
+    height: 32,
+  },
+  inlineInventoryEmoji: {
+    fontSize: 20,
   },
 });
 

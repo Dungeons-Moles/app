@@ -15,6 +15,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useIsFocused } from '@react-navigation/native';
 import Svg, { Ellipse, Defs, Pattern, Line } from 'react-native-svg';
 import { useProfile } from '../contexts/ProfileContext';
 import { useSession } from '../contexts/SessionContext';
@@ -25,9 +26,18 @@ import { InlineModal } from '../components/InlineModal';
 import { SpeedControls } from '../components/combat';
 import { Skeleton } from '../components/common/Skeleton';
 import { Typography } from '../theme/typography';
+import type { CombatSpeed } from '../types';
 import { useScreenVariant } from '../contexts/ScreenVariantContext';
 import { MAX_CAMPAIGN_LEVEL } from '../hooks/useMapGenerator';
+import { useControllerAction } from '../hooks/useControllerAction';
+import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHints';
+import { useInputMode } from '../hooks/useInputMode';
+import { FocusGlow } from '../components/ui/FocusGlow';
+import { ControllerKeyboard } from '../components/ui/ControllerKeyboard';
 
+const iconASource = require('../../assets/ui/control-buttons/a.png');
+const iconBSource = require('../../assets/ui/control-buttons/b.png');
+const iconDirSource = require('../../assets/ui/control-buttons/direction.png');
 const defaultMoleImageSource = require('../../assets/entities/characters/default-mole.png');
 const backgroundImageCompact = require('../../assets/ui/backgrounds/hub-background-compact.png');
 const backgroundImageWide = require('../../assets/ui/backgrounds/hub-background-wide.png');
@@ -60,8 +70,10 @@ export function HubScreen({ navigation }: HubScreenProps) {
     defaultCombatSpeed,
   } = useProfile();
   const isGuest = mode === 'guest';
+  const isScreenFocused = useIsFocused();
   const screenVariant = useScreenVariant();
   const isCompact = screenVariant === 'compact';
+  const inputMode = useInputMode();
   const { activeSessions } = useSession();
   const { state: gameState, dispatch } = useGame();
   const [showSettings, setShowSettings] = useState(false);
@@ -71,11 +83,19 @@ export function HubScreen({ navigation }: HubScreenProps) {
   const [showQuests, setShowQuests] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [showPvP, setShowPvP] = useState(false);
+  const [pvpFocus, setPvpFocus] = useState(0);
   const [profileName, setProfileName] = useState(profile?.name ?? '');
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileValidationError, setProfileValidationError] = useState<string | null>(null);
   const [profileSuccessMessage, setProfileSuccessMessage] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [focus, setFocus] = useState<{ group: 'left' | 'right'; index: number }>({
+    group: 'right',
+    index: 0,
+  });
+  const [settingsFocus, setSettingsFocus] = useState(0); // 0 = speed, 1 = reset
+  const [profileFocus, setProfileFocus] = useState(0); // 0 = name, 1 = save
+  const [showProfileKeyboard, setShowProfileKeyboard] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const hasPromptedResume = useRef(false);
 
@@ -131,6 +151,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
   }, [navigation, isGuest, dispatch, gameState?.phase]);
 
   const handlePlayPvP = () => {
+    setPvpFocus(0);
     setShowPvP(true);
   };
 
@@ -224,6 +245,138 @@ export function HubScreen({ navigation }: HubScreenProps) {
 
   const isProfileSaveDisabled = profileSaving || isLoading || !!profileValidationError || profileName === profile?.name;
 
+  // --- Controller navigation ---
+  const anyModalOpen =
+    showSettings || showProfile || showSkins || showRanks || showQuests || showPvP || showResumePrompt;
+  const isController = inputMode === 'controller';
+
+  const controllerCloseHint = isController ? (
+    <View style={[styles.controllerCloseHint, isCompact && compactStyles.controllerCloseHint]}>
+      <Image
+        source={iconBSource}
+        style={{ width: isCompact ? 40 : 18, height: isCompact ? 40 : 18 }}
+        resizeMode="contain"
+      />
+      <Text style={[styles.controllerCloseHintText, isCompact && compactStyles.controllerCloseHintText]}>
+        Close
+      </Text>
+    </View>
+  ) : null;
+
+  const isFocused = (group: 'left' | 'right', index: number) =>
+    inputMode === 'controller' && !anyModalOpen && focus.group === group && focus.index === index;
+
+  const leftCount = isGuest ? 0 : 5;
+  const rightCount = isGuest ? 1 : 2;
+
+  const handleControllerA = () => {
+    if (focus.group === 'left') {
+      [handleItems, handleQuests, handleSkins, handleMarketplace, handleLeaderboard][focus.index]?.();
+    } else {
+      [handlePlayPvE, handlePlayPvP][focus.index]?.();
+    }
+  };
+
+  const closeAnyModal = () => {
+    if (showPvP) setShowPvP(false);
+    else if (showSettings) setShowSettings(false);
+    else if (showProfile) setShowProfile(false);
+    else if (showSkins) setShowSkins(false);
+    else if (showRanks) setShowRanks(false);
+    else if (showQuests) setShowQuests(false);
+    else if (showResumePrompt) setShowResumePrompt(false);
+  };
+
+  // Settings modal: cycle combat speed with Left/Right
+  const SPEED_ORDER: CombatSpeed[] = ['paused', 'normal', 'fast'];
+  const cycleSpeed = (dir: -1 | 1) => {
+    const idx = SPEED_ORDER.indexOf(defaultCombatSpeed);
+    const next = SPEED_ORDER[Math.max(0, Math.min(SPEED_ORDER.length - 1, idx + dir))];
+    if (next) updateDefaultCombatSpeed(next);
+  };
+
+  // Build controller actions based on which modal is open
+  const settingsActions = showSettings
+    ? {
+        onA: settingsFocus === 1 ? handleResetProfile : undefined,
+        onB: closeAnyModal,
+        onDPadUp: () => setSettingsFocus((p) => Math.max(0, p - 1)),
+        onDPadDown: () => setSettingsFocus((p) => Math.min(1, p + 1)),
+        onDPadLeft: settingsFocus === 0 ? () => cycleSpeed(-1) : undefined,
+        onDPadRight: settingsFocus === 0 ? () => cycleSpeed(1) : undefined,
+      }
+    : null;
+
+  const profileActions = showProfile && !showProfileKeyboard
+    ? {
+        onA:
+          profileFocus === 0
+            ? () => setShowProfileKeyboard(true)
+            : !isProfileSaveDisabled
+              ? handleProfileSave
+              : undefined,
+        onB: closeAnyModal,
+        onDPadUp: () => setProfileFocus((p) => Math.max(0, p - 1)),
+        onDPadDown: () => setProfileFocus((p) => Math.min(1, p + 1)),
+      }
+    : null;
+
+  const pvpActions = showPvP
+    ? {
+        onA: () => [handleGauntlet, handleDuels, handlePitDraft][pvpFocus]?.(),
+        onB: () => setShowPvP(false),
+        onDPadUp: () => setPvpFocus((p) => Math.max(0, p - 1)),
+        onDPadDown: () => setPvpFocus((p) => Math.min(2, p + 1)),
+      }
+    : null;
+
+  const otherModalOpen = anyModalOpen && !showSettings && !showProfile && !showPvP;
+
+  useControllerAction(
+    settingsActions ?? profileActions ?? pvpActions ?? {
+      onA: otherModalOpen ? undefined : handleControllerA,
+      onB: otherModalOpen ? closeAnyModal : undefined,
+      onDPadUp: otherModalOpen
+        ? undefined
+        : () => setFocus((p) => (p.index > 0 ? { ...p, index: p.index - 1 } : p)),
+      onDPadDown: otherModalOpen
+        ? undefined
+        : () =>
+            setFocus((p) => {
+              const max = (p.group === 'left' ? leftCount : rightCount) - 1;
+              return p.index < max ? { ...p, index: p.index + 1 } : p;
+            }),
+      onDPadLeft: otherModalOpen
+        ? undefined
+        : () =>
+            setFocus((p) =>
+              p.group === 'right' && leftCount > 0
+                ? { group: 'left', index: Math.min(p.index, leftCount - 1) }
+                : p
+            ),
+      onDPadRight: otherModalOpen
+        ? undefined
+        : () =>
+            setFocus((p) =>
+              p.group === 'left'
+                ? { group: 'right', index: Math.min(p.index, rightCount - 1) }
+                : p
+            ),
+      onStart: otherModalOpen ? undefined : () => { setSettingsFocus(0); setShowSettings(true); },
+      onSelect: otherModalOpen ? undefined : () => { setProfileFocus(0); handleProfileSettings(); },
+    },
+    !showProfileKeyboard && isScreenFocused
+  );
+
+  const controllerHints: ButtonHint[] = anyModalOpen
+    ? []
+    : [
+        { button: 'A', label: 'Select' },
+        { button: 'Start', label: 'Settings' },
+        { button: 'Select', label: 'Profile' },
+        { button: 'DPad', label: 'Navigate' },
+      ];
+
   return (
     <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
       <Image
@@ -304,57 +457,67 @@ export function HubScreen({ navigation }: HubScreenProps) {
             {/* Compact: all nav buttons centered vertically below profile */}
             {isCompact && !isGuest && (
               <View style={compactStyles.leftButtonsCenter}>
-                <TouchableOpacity onPress={handleItems} activeOpacity={0.7}>
-                  <ImageBackground
-                    source={buttonV1Source}
-                    style={[styles.navButton, compactStyles.navButton]}
-                    resizeMode="stretch"
-                  >
-                    <Text style={[styles.navButtonText, compactStyles.navButtonText]}>Items</Text>
-                  </ImageBackground>
-                </TouchableOpacity>
+                <FocusGlow active={isFocused('left', 0)}>
+                  <TouchableOpacity onPress={handleItems} activeOpacity={0.7}>
+                    <ImageBackground
+                      source={buttonV1Source}
+                      style={[styles.navButton, compactStyles.navButton]}
+                      resizeMode="stretch"
+                    >
+                      <Text style={[styles.navButtonText, compactStyles.navButtonText]}>Items</Text>
+                    </ImageBackground>
+                  </TouchableOpacity>
+                </FocusGlow>
 
-                <TouchableOpacity onPress={handleQuests} activeOpacity={0.7}>
-                  <ImageBackground
-                    source={buttonV1Source}
-                    style={[styles.navButton, compactStyles.navButton]}
-                    resizeMode="stretch"
-                  >
-                    <Text style={[styles.navButtonText, compactStyles.navButtonText]}>Quests</Text>
-                  </ImageBackground>
-                </TouchableOpacity>
+                <FocusGlow active={isFocused('left', 1)}>
+                  <TouchableOpacity onPress={handleQuests} activeOpacity={0.7}>
+                    <ImageBackground
+                      source={buttonV1Source}
+                      style={[styles.navButton, compactStyles.navButton]}
+                      resizeMode="stretch"
+                    >
+                      <Text style={[styles.navButtonText, compactStyles.navButtonText]}>Quests</Text>
+                    </ImageBackground>
+                  </TouchableOpacity>
+                </FocusGlow>
 
-                <TouchableOpacity onPress={handleSkins} activeOpacity={0.7}>
-                  <ImageBackground
-                    source={buttonV1Source}
-                    style={[styles.navButton, compactStyles.navButton]}
-                    resizeMode="stretch"
-                  >
-                    <Text style={[styles.navButtonText, compactStyles.navButtonText]}>Skins</Text>
-                  </ImageBackground>
-                </TouchableOpacity>
+                <FocusGlow active={isFocused('left', 2)}>
+                  <TouchableOpacity onPress={handleSkins} activeOpacity={0.7}>
+                    <ImageBackground
+                      source={buttonV1Source}
+                      style={[styles.navButton, compactStyles.navButton]}
+                      resizeMode="stretch"
+                    >
+                      <Text style={[styles.navButtonText, compactStyles.navButtonText]}>Skins</Text>
+                    </ImageBackground>
+                  </TouchableOpacity>
+                </FocusGlow>
 
-                <TouchableOpacity onPress={handleMarketplace} activeOpacity={0.7}>
-                  <ImageBackground
-                    source={buttonV1Source}
-                    style={[styles.navButton, compactStyles.navButton]}
-                    resizeMode="stretch"
-                  >
-                    <Text style={[styles.navButtonText, compactStyles.navButtonText]}>
-                      Marketplace
-                    </Text>
-                  </ImageBackground>
-                </TouchableOpacity>
+                <FocusGlow active={isFocused('left', 3)}>
+                  <TouchableOpacity onPress={handleMarketplace} activeOpacity={0.7}>
+                    <ImageBackground
+                      source={buttonV1Source}
+                      style={[styles.navButton, compactStyles.navButton]}
+                      resizeMode="stretch"
+                    >
+                      <Text style={[styles.navButtonText, compactStyles.navButtonText]}>
+                        Marketplace
+                      </Text>
+                    </ImageBackground>
+                  </TouchableOpacity>
+                </FocusGlow>
 
-                <TouchableOpacity onPress={handleLeaderboard} activeOpacity={0.7}>
-                  <ImageBackground
-                    source={buttonV1Source}
-                    style={[styles.navButton, compactStyles.navButton]}
-                    resizeMode="stretch"
-                  >
-                    <Text style={[styles.navButtonText, compactStyles.navButtonText]}>PvP Ranks</Text>
-                  </ImageBackground>
-                </TouchableOpacity>
+                <FocusGlow active={isFocused('left', 4)}>
+                  <TouchableOpacity onPress={handleLeaderboard} activeOpacity={0.7}>
+                    <ImageBackground
+                      source={buttonV1Source}
+                      style={[styles.navButton, compactStyles.navButton]}
+                      resizeMode="stretch"
+                    >
+                      <Text style={[styles.navButtonText, compactStyles.navButtonText]}>PvP Ranks</Text>
+                    </ImageBackground>
+                  </TouchableOpacity>
+                </FocusGlow>
 
               </View>
             )}
@@ -504,50 +667,54 @@ export function HubScreen({ navigation }: HubScreenProps) {
 
             {/* Campaign/Play and PVP — side by side (wide) / stacked (compact) */}
             <View style={[styles.playButtonsRow, isCompact && compactStyles.playButtonsColumn]}>
-              <TouchableOpacity onPress={handlePlayPvE} activeOpacity={0.7}>
-                <ImageBackground
-                  source={buttonV4Source}
-                  style={[styles.campaignButton, isCompact && compactStyles.campaignButton]}
-                  resizeMode="stretch"
-                >
-                  <Text
-                    style={[
-                      styles.campaignButtonText,
-                      isCompact && compactStyles.campaignButtonText,
-                    ]}
-                  >
-                    {isGuest ? 'Play' : 'Campaign'}
-                  </Text>
-                  {isLoading ? (
-                    <Skeleton width={50} height={12} style={{ marginTop: 4, marginBottom: 2 }} />
-                  ) : (
-                    !isGuest && (
-                      <Text style={[styles.buttonSub, isCompact && compactStyles.buttonSub]}>
-                        {`${(profile?.currentLevel ?? 0) + 1} / ${MAX_CAMPAIGN_LEVEL + 1}`}
-                      </Text>
-                    )
-                  )}
-                </ImageBackground>
-              </TouchableOpacity>
-
-              {/* PVP button - hidden for guests */}
-              {!isGuest && (
-                <TouchableOpacity onPress={handlePlayPvP} activeOpacity={0.7}>
+              <FocusGlow active={isFocused('right', 0)}>
+                <TouchableOpacity onPress={handlePlayPvE} activeOpacity={0.7}>
                   <ImageBackground
-                    source={buttonV2Source}
-                    style={[styles.gauntletButton, isCompact && compactStyles.gauntletButton]}
+                    source={buttonV4Source}
+                    style={[styles.campaignButton, isCompact && compactStyles.campaignButton]}
                     resizeMode="stretch"
                   >
                     <Text
                       style={[
-                        styles.gauntletButtonText,
-                        isCompact && compactStyles.gauntletButtonText,
+                        styles.campaignButtonText,
+                        isCompact && compactStyles.campaignButtonText,
                       ]}
                     >
-                      PVP
+                      {isGuest ? 'Play' : 'Campaign'}
                     </Text>
+                    {isLoading ? (
+                      <Skeleton width={50} height={12} style={{ marginTop: 4, marginBottom: 2 }} />
+                    ) : (
+                      !isGuest && (
+                        <Text style={[styles.buttonSub, isCompact && compactStyles.buttonSub]}>
+                          {`${(profile?.currentLevel ?? 0) + 1} / ${MAX_CAMPAIGN_LEVEL + 1}`}
+                        </Text>
+                      )
+                    )}
                   </ImageBackground>
                 </TouchableOpacity>
+              </FocusGlow>
+
+              {/* PVP button - hidden for guests */}
+              {!isGuest && (
+                <FocusGlow active={isFocused('right', 1)}>
+                  <TouchableOpacity onPress={handlePlayPvP} activeOpacity={0.7}>
+                    <ImageBackground
+                      source={buttonV2Source}
+                      style={[styles.gauntletButton, isCompact && compactStyles.gauntletButton]}
+                      resizeMode="stretch"
+                    >
+                      <Text
+                        style={[
+                          styles.gauntletButtonText,
+                          isCompact && compactStyles.gauntletButtonText,
+                        ]}
+                      >
+                        PVP
+                      </Text>
+                    </ImageBackground>
+                  </TouchableOpacity>
+                </FocusGlow>
               )}
             </View>
           </View>
@@ -566,45 +733,72 @@ export function HubScreen({ navigation }: HubScreenProps) {
             <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
               <ImageBackground
                 source={paperPanelSource}
-                style={styles.modalContent}
+                style={[styles.modalContent, isCompact && compactStyles.settingsModalContent]}
                 resizeMode="stretch"
               >
                 <View style={styles.modalHeader}>
-                  <Text style={styles.modalTitle}>Settings</Text>
-                  <TouchableOpacity
-                    onPress={() => setShowSettings(false)}
-                    style={styles.closeButton}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                  >
-                    <Text style={styles.closeButtonText}>✕</Text>
-                  </TouchableOpacity>
-                </View>
-
-                <View style={styles.modalBody}>
-                  <View style={styles.settingRow}>
-                    <Text style={styles.settingLabel}>Combat speed</Text>
-                    <SpeedControls
-                      currentSpeed={defaultCombatSpeed}
-                      onSpeedChange={updateDefaultCombatSpeed}
-                    />
-                  </View>
-
-                  <TouchableOpacity
-                    style={styles.resetButton}
-                    onPress={handleResetProfile}
-                    activeOpacity={0.7}
-                  >
-                    <ImageBackground
-                      source={buttonV1Source}
-                      style={styles.buttonImage}
-                      resizeMode="stretch"
+                  <Text style={[styles.modalTitle, isCompact && compactStyles.modalTitle]}>Settings</Text>
+                  {!isController && (
+                    <TouchableOpacity
+                      onPress={() => setShowSettings(false)}
+                      style={styles.closeButton}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                     >
-                      <Text style={styles.disconnectText}>
-                        {isGuest ? 'Disconnect' : 'Reset Profile'}
-                      </Text>
-                    </ImageBackground>
-                  </TouchableOpacity>
+                      <Text style={[styles.closeButtonText, isCompact && compactStyles.closeButtonText]}>✕</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
+
+                <View style={[styles.modalBody, isCompact && compactStyles.settingsModalBody]}>
+                  <FocusGlow active={isController && showSettings && settingsFocus === 0}>
+                    <View style={styles.settingRow}>
+                      <Text style={[styles.settingLabel, isCompact && compactStyles.settingLabel]}>Combat speed</Text>
+                      <SpeedControls
+                        currentSpeed={defaultCombatSpeed}
+                        onSpeedChange={updateDefaultCombatSpeed}
+                        scale={isCompact ? 2 : 1}
+                      />
+                    </View>
+                  </FocusGlow>
+
+                  <FocusGlow active={isController && showSettings && settingsFocus === 1}>
+                    <TouchableOpacity
+                      style={[styles.resetButton, isCompact && compactStyles.resetButton]}
+                      onPress={handleResetProfile}
+                      activeOpacity={0.7}
+                    >
+                      <ImageBackground
+                        source={buttonV1Source}
+                        style={styles.buttonImage}
+                        resizeMode="stretch"
+                      >
+                        <Text style={[styles.disconnectText, isCompact && compactStyles.disconnectText]}>
+                          {isGuest ? 'Disconnect' : 'Reset Profile'}
+                        </Text>
+                      </ImageBackground>
+                    </TouchableOpacity>
+                  </FocusGlow>
+                </View>
+                {isController && (
+                  <View style={[styles.settingsHints, isCompact && compactStyles.settingsHints]}>
+                    {settingsFocus === 0 ? (
+                      <View style={styles.settingsHintRow}>
+                        <Image source={iconDirSource} style={[styles.settingsHintIcon, isCompact && compactStyles.settingsHintIcon, { transform: [{ rotate: '-90deg' }] }]} resizeMode="contain" />
+                        <Image source={iconDirSource} style={[styles.settingsHintIcon, isCompact && compactStyles.settingsHintIcon, { transform: [{ rotate: '90deg' }] }]} resizeMode="contain" />
+                        <Text style={[styles.settingsHintText, isCompact && compactStyles.settingsHintText]}>Change speed</Text>
+                      </View>
+                    ) : (
+                      <View style={styles.settingsHintRow}>
+                        <Image source={iconASource} style={[styles.settingsHintIcon, isCompact && compactStyles.settingsHintIcon]} resizeMode="contain" />
+                        <Text style={[styles.settingsHintText, isCompact && compactStyles.settingsHintText]}>Confirm</Text>
+                      </View>
+                    )}
+                    <View style={styles.settingsHintRow}>
+                      <Image source={iconBSource} style={[styles.settingsHintIcon, isCompact && compactStyles.settingsHintIcon]} resizeMode="contain" />
+                      <Text style={[styles.settingsHintText, isCompact && compactStyles.settingsHintText]}>Close</Text>
+                    </View>
+                  </View>
+                )}
               </ImageBackground>
             </TouchableWithoutFeedback>
           </View>
@@ -646,6 +840,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
                     </ImageBackground>
                   </TouchableOpacity>
                 </View>
+                {controllerCloseHint}
               </ImageBackground>
             </TouchableWithoutFeedback>
           </View>
@@ -671,18 +866,21 @@ export function HubScreen({ navigation }: HubScreenProps) {
                 <View style={[styles.marketplaceInner, isCompact && compactStyles.marketplaceInner]}>
                   <View style={styles.modalHeader}>
                     <Text style={[styles.modalTitle, isCompact && compactStyles.modalTitle]}>Skins</Text>
-                    <TouchableOpacity
-                      onPress={() => setShowSkins(false)}
-                      style={styles.closeButton}
-                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                    >
-                      <Text style={[styles.closeButtonText, isCompact && compactStyles.closeButtonText]}>✕</Text>
-                    </TouchableOpacity>
+                    {!isController && (
+                      <TouchableOpacity
+                        onPress={() => setShowSkins(false)}
+                        style={styles.closeButton}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      >
+                        <Text style={[styles.closeButtonText, isCompact && compactStyles.closeButtonText]}>✕</Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
 
                   <View style={styles.marketplaceContent}>
                     <Text style={[styles.comingSoonText, isCompact && compactStyles.comingSoonText]}>Coming Soon</Text>
                   </View>
+                  {controllerCloseHint}
                 </View>
               </View>
             </TouchableWithoutFeedback>
@@ -709,18 +907,21 @@ export function HubScreen({ navigation }: HubScreenProps) {
                 <View style={[styles.marketplaceInner, isCompact && compactStyles.marketplaceInner]}>
                   <View style={styles.modalHeader}>
                     <Text style={[styles.modalTitle, isCompact && compactStyles.modalTitle]}>PvP Ranks</Text>
-                    <TouchableOpacity
-                      onPress={() => setShowRanks(false)}
-                      style={styles.closeButton}
-                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                    >
-                      <Text style={[styles.closeButtonText, isCompact && compactStyles.closeButtonText]}>✕</Text>
-                    </TouchableOpacity>
+                    {!isController && (
+                      <TouchableOpacity
+                        onPress={() => setShowRanks(false)}
+                        style={styles.closeButton}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      >
+                        <Text style={[styles.closeButtonText, isCompact && compactStyles.closeButtonText]}>✕</Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
 
                   <View style={styles.marketplaceContent}>
                     <Text style={[styles.comingSoonText, isCompact && compactStyles.comingSoonText]}>Coming Soon</Text>
                   </View>
+                  {controllerCloseHint}
                 </View>
               </View>
             </TouchableWithoutFeedback>
@@ -747,18 +948,21 @@ export function HubScreen({ navigation }: HubScreenProps) {
                 <View style={[styles.marketplaceInner, isCompact && compactStyles.marketplaceInner]}>
                   <View style={styles.modalHeader}>
                     <Text style={[styles.modalTitle, isCompact && compactStyles.modalTitle]}>Quests</Text>
-                    <TouchableOpacity
-                      onPress={() => setShowQuests(false)}
-                      style={styles.closeButton}
-                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                    >
-                      <Text style={[styles.closeButtonText, isCompact && compactStyles.closeButtonText]}>✕</Text>
-                    </TouchableOpacity>
+                    {!isController && (
+                      <TouchableOpacity
+                        onPress={() => setShowQuests(false)}
+                        style={styles.closeButton}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      >
+                        <Text style={[styles.closeButtonText, isCompact && compactStyles.closeButtonText]}>✕</Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
 
                   <View style={styles.marketplaceContent}>
                     <Text style={[styles.comingSoonText, isCompact && compactStyles.comingSoonText]}>Coming Soon</Text>
                   </View>
+                  {controllerCloseHint}
                 </View>
               </View>
             </TouchableWithoutFeedback>
@@ -785,53 +989,59 @@ export function HubScreen({ navigation }: HubScreenProps) {
                 <View style={[styles.marketplaceInner, isCompact && compactStyles.marketplaceInner]}>
                   <View style={styles.modalHeader}>
                     <Text style={[styles.modalTitle, isCompact && compactStyles.modalTitle]}>Profile</Text>
-                    <TouchableOpacity
-                      onPress={() => setShowProfile(false)}
-                      style={styles.closeButton}
-                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                    >
-                      <Text style={[styles.closeButtonText, isCompact && compactStyles.closeButtonText]}>✕</Text>
-                    </TouchableOpacity>
+                    {!isController && (
+                      <TouchableOpacity
+                        onPress={() => setShowProfile(false)}
+                        style={styles.closeButton}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      >
+                        <Text style={[styles.closeButtonText, isCompact && compactStyles.closeButtonText]}>✕</Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
 
                   <ScrollView style={{ flex: 1, width: '100%' }} contentContainerStyle={{ gap: 16 }}>
                     {/* Name Edit */}
                     <View style={styles.profileSection}>
                       <Text style={[styles.profileSectionTitle, isCompact && compactStyles.profileSectionTitle]}>Display Name</Text>
-                      <View style={styles.profileInputContainer}>
-                        <TextInput
-                          style={[styles.profileInput, isCompact && compactStyles.profileInput, profileValidationError && styles.profileInputError]}
-                          value={profileName}
-                          onChangeText={handleProfileNameChange}
-                          placeholder="Enter your name"
-                          placeholderTextColor="#888888"
-                          maxLength={NAME_MAX_LENGTH}
-                          editable={!profileSaving}
-                        />
-                        <Text style={[styles.profileCharCount, isCompact && compactStyles.profileCharCount]}>
-                          {profileName.length}/{NAME_MAX_LENGTH}
-                        </Text>
-                      </View>
+                      <FocusGlow active={isController && showProfile && profileFocus === 0}>
+                        <View style={styles.profileInputContainer}>
+                          <TextInput
+                            style={[styles.profileInput, isCompact && compactStyles.profileInput, profileValidationError && styles.profileInputError]}
+                            value={profileName}
+                            onChangeText={handleProfileNameChange}
+                            placeholder="Enter your name"
+                            placeholderTextColor="#888888"
+                            maxLength={NAME_MAX_LENGTH}
+                            editable={!isController && !profileSaving}
+                          />
+                          <Text style={[styles.profileCharCount, isCompact && compactStyles.profileCharCount]}>
+                            {profileName.length}/{NAME_MAX_LENGTH}
+                          </Text>
+                        </View>
+                      </FocusGlow>
                       {profileValidationError && <Text style={[styles.profileErrorText, isCompact && compactStyles.profileFeedbackText]}>{profileValidationError}</Text>}
                       {profileSuccessMessage && <Text style={[styles.profileSuccessText, isCompact && compactStyles.profileFeedbackText]}>{profileSuccessMessage}</Text>}
-                      <TouchableOpacity
-                        onPress={handleProfileSave}
-                        disabled={isProfileSaveDisabled}
-                        activeOpacity={0.7}
-                        style={{ alignItems: 'center', marginTop: 4 }}
-                      >
-                        <ImageBackground
-                          source={buttonV3Source}
-                          style={[styles.profileSaveButton, isCompact && compactStyles.profileSaveButton, isProfileSaveDisabled && { opacity: 0.5 }]}
-                          resizeMode="stretch"
+                      <FocusGlow active={isController && showProfile && profileFocus === 1}>
+                        <TouchableOpacity
+                          onPress={handleProfileSave}
+                          disabled={isProfileSaveDisabled}
+                          activeOpacity={0.7}
+                          style={{ alignItems: 'center', marginTop: 4 }}
                         >
-                          {profileSaving ? (
-                            <ActivityIndicator size="small" color="#3d2b1f" />
-                          ) : (
-                            <Text style={[styles.profileSaveButtonText, isCompact && compactStyles.profileSaveButtonText]}>Save</Text>
-                          )}
-                        </ImageBackground>
-                      </TouchableOpacity>
+                          <ImageBackground
+                            source={buttonV3Source}
+                            style={[styles.profileSaveButton, isCompact && compactStyles.profileSaveButton, isProfileSaveDisabled && { opacity: 0.5 }]}
+                            resizeMode="stretch"
+                          >
+                            {profileSaving ? (
+                              <ActivityIndicator size="small" color="#3d2b1f" />
+                            ) : (
+                              <Text style={[styles.profileSaveButtonText, isCompact && compactStyles.profileSaveButtonText]}>Save</Text>
+                            )}
+                          </ImageBackground>
+                        </TouchableOpacity>
+                      </FocusGlow>
                     </View>
 
                     {/* Statistics */}
@@ -859,12 +1069,39 @@ export function HubScreen({ navigation }: HubScreenProps) {
                       </View>
                     </View>
                   </ScrollView>
+                  {isController && (
+                    <View style={[styles.settingsHints, isCompact && compactStyles.settingsHints]}>
+                      <View style={styles.settingsHintRow}>
+                        <Image source={iconASource} style={[styles.settingsHintIcon, isCompact && compactStyles.settingsHintIcon]} resizeMode="contain" />
+                        <Text style={[styles.settingsHintText, isCompact && compactStyles.settingsHintText]}>
+                          {profileFocus === 0 ? 'Edit Name' : 'Save'}
+                        </Text>
+                      </View>
+                      <View style={styles.settingsHintRow}>
+                        <Image source={iconBSource} style={[styles.settingsHintIcon, isCompact && compactStyles.settingsHintIcon]} resizeMode="contain" />
+                        <Text style={[styles.settingsHintText, isCompact && compactStyles.settingsHintText]}>Close</Text>
+                      </View>
+                    </View>
+                  )}
                 </View>
               </View>
             </TouchableWithoutFeedback>
           </View>
         </TouchableWithoutFeedback>
       </InlineModal>
+
+      {/* Profile Controller Keyboard */}
+      <ControllerKeyboard
+        visible={showProfileKeyboard}
+        value={profileName}
+        maxLength={NAME_MAX_LENGTH}
+        placeholder="Enter your name"
+        onSubmit={(text) => {
+          handleProfileNameChange(text);
+          setShowProfileKeyboard(false);
+        }}
+        onCancel={() => setShowProfileKeyboard(false)}
+      />
 
       {/* PvP Modal */}
       <InlineModal
@@ -881,55 +1118,84 @@ export function HubScreen({ navigation }: HubScreenProps) {
                 style={[styles.pvpModalContent, isCompact && compactStyles.pvpModalContent]}
                 resizeMode="stretch"
               >
-                <TouchableOpacity
-                  onPress={() => setShowPvP(false)}
-                  style={[styles.pvpCloseButton, isCompact && compactStyles.pvpCloseButton]}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                >
-                  <Text style={[styles.pvpCloseButtonText, isCompact && compactStyles.pvpCloseButtonText]}>✕</Text>
-                </TouchableOpacity>
+                {!isController && (
+                  <TouchableOpacity
+                    onPress={() => setShowPvP(false)}
+                    style={[styles.pvpCloseButton, isCompact && compactStyles.pvpCloseButton]}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    <Text style={[styles.pvpCloseButtonText, isCompact && compactStyles.pvpCloseButtonText]}>✕</Text>
+                  </TouchableOpacity>
+                )}
+                {isController && (
+                  <View style={[styles.modalHintBar, isCompact && compactStyles.modalHintBar]}>
+                    <View style={styles.settingsHintRow}>
+                      <Image source={iconASource} style={[styles.settingsHintIcon, isCompact && compactStyles.settingsHintIcon]} resizeMode="contain" />
+                      <Text style={[styles.settingsHintText, isCompact && compactStyles.settingsHintText]}>Select</Text>
+                    </View>
+                    <View style={styles.settingsHintRow}>
+                      <Image source={iconBSource} style={[styles.settingsHintIcon, isCompact && compactStyles.settingsHintIcon]} resizeMode="contain" />
+                      <Text style={[styles.settingsHintText, isCompact && compactStyles.settingsHintText]}>Close</Text>
+                    </View>
+                  </View>
+                )}
                 <View style={[styles.pvpPapersStack, isCompact && compactStyles.pvpPapersStack]}>
-                  <TouchableOpacity
-                    onPress={handleGauntlet}
-                    activeOpacity={0.7}
-                    style={[styles.pvpPaperGauntletWrap, isCompact && compactStyles.pvpPaperGauntletWrap]}
-                  >
-                    <Image
-                      source={gauntletPaperSource}
-                      style={[styles.pvpPaperGauntlet, isCompact && compactStyles.pvpPaperGauntlet]}
-                      resizeMode="contain"
-                    />
-                  </TouchableOpacity>
+                  <View style={[
+                    styles.pvpPaperGauntletWrap,
+                    isCompact && compactStyles.pvpPaperGauntletWrap,
+                    isController && { zIndex: pvpFocus === 0 ? 10 : 1 },
+                  ]}>
+                    <FocusGlow active={isController && pvpFocus === 0}>
+                      <TouchableOpacity onPress={handleGauntlet} activeOpacity={0.7}>
+                        <Image
+                          source={gauntletPaperSource}
+                          style={[styles.pvpPaperGauntlet, isCompact && compactStyles.pvpPaperGauntlet]}
+                          resizeMode="contain"
+                        />
+                      </TouchableOpacity>
+                    </FocusGlow>
+                  </View>
 
-                  <TouchableOpacity
-                    onPress={handleDuels}
-                    activeOpacity={0.7}
-                    style={[styles.pvpPaperDuelsWrap, isCompact && compactStyles.pvpPaperDuelsWrap]}
-                  >
-                    <Image
-                      source={duelsPaperSource}
-                      style={[styles.pvpPaperDuels, isCompact && compactStyles.pvpPaperDuels]}
-                      resizeMode="contain"
-                    />
-                  </TouchableOpacity>
+                  <View style={[
+                    styles.pvpPaperDuelsWrap,
+                    isCompact && compactStyles.pvpPaperDuelsWrap,
+                    isController && { zIndex: pvpFocus === 1 ? 10 : 1 },
+                  ]}>
+                    <FocusGlow active={isController && pvpFocus === 1}>
+                      <TouchableOpacity onPress={handleDuels} activeOpacity={0.7}>
+                        <Image
+                          source={duelsPaperSource}
+                          style={[styles.pvpPaperDuels, isCompact && compactStyles.pvpPaperDuels]}
+                          resizeMode="contain"
+                        />
+                      </TouchableOpacity>
+                    </FocusGlow>
+                  </View>
 
-                  <TouchableOpacity
-                    onPress={handlePitDraft}
-                    activeOpacity={0.7}
-                    style={[styles.pvpPaperPitDraftWrap, isCompact && compactStyles.pvpPaperPitDraftWrap]}
-                  >
-                    <Image
-                      source={pitDraftPaperSource}
-                      style={[styles.pvpPaperPitDraft, isCompact && compactStyles.pvpPaperPitDraft]}
-                      resizeMode="contain"
-                    />
-                  </TouchableOpacity>
+                  <View style={[
+                    styles.pvpPaperPitDraftWrap,
+                    isCompact && compactStyles.pvpPaperPitDraftWrap,
+                    isController && { zIndex: pvpFocus === 2 ? 10 : 1 },
+                  ]}>
+                    <FocusGlow active={isController && pvpFocus === 2}>
+                      <TouchableOpacity onPress={handlePitDraft} activeOpacity={0.7}>
+                        <Image
+                          source={pitDraftPaperSource}
+                          style={[styles.pvpPaperPitDraft, isCompact && compactStyles.pvpPaperPitDraft]}
+                          resizeMode="contain"
+                        />
+                      </TouchableOpacity>
+                    </FocusGlow>
+                  </View>
                 </View>
               </ImageBackground>
             </TouchableWithoutFeedback>
           </View>
         </TouchableWithoutFeedback>
       </InlineModal>
+
+      {/* Controller button hints */}
+      <ControllerHints hints={controllerHints} />
     </Animated.View>
   );
 }
@@ -1176,6 +1442,71 @@ const styles = StyleSheet.create({
     fontSize: 22,
     color: '#a33a3a',
     marginBottom: 6,
+  },
+
+  // CONTROLLER CLOSE HINT (inside modals)
+  controllerCloseHint: {
+    position: 'absolute',
+    bottom: 12,
+    left: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#EFE9D6',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#c8b99a',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+  },
+  controllerCloseHintText: {
+    fontFamily: Typography.body,
+    fontSize: 11,
+    color: '#5c4033',
+  },
+  // SHARED MODAL HINT BAR (used by PvP and others with multiple hints)
+  modalHintBar: {
+    position: 'absolute',
+    bottom: 12,
+    left: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    backgroundColor: '#EFE9D6',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#c8b99a',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+  },
+  // SETTINGS MODAL HINTS
+  settingsHints: {
+    position: 'absolute',
+    bottom: 12,
+    left: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    backgroundColor: '#EFE9D6',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#c8b99a',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+  },
+  settingsHintRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  settingsHintIcon: {
+    width: 18,
+    height: 18,
+  },
+  settingsHintText: {
+    fontFamily: Typography.body,
+    fontSize: 11,
+    color: '#5c4033',
   },
 
   // MODAL
@@ -1660,5 +1991,67 @@ const compactStyles = StyleSheet.create({
   pvpPaperPitDraft: {
     width: 389,
     height: 221,
+  },
+
+  // Settings modal — scaled up for compact
+  settingsModalContent: {
+    width: 680,
+    height: 680,
+    padding: 80,
+  },
+  settingsModalBody: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  settingLabel: {
+    fontSize: 36,
+  },
+  resetButton: {
+    width: 360,
+    height: 96,
+  },
+  disconnectText: {
+    fontSize: 32,
+  },
+
+  // Controller close hint — scaled up for compact
+  controllerCloseHint: {
+    bottom: 32,
+    left: 32,
+    gap: 12,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+  },
+  controllerCloseHintText: {
+    fontSize: 26,
+  },
+  // Modal hint bar — scaled up for compact
+  modalHintBar: {
+    bottom: 32,
+    left: 32,
+    gap: 24,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+  },
+  // Settings modal hints — scaled up for compact
+  settingsHints: {
+    bottom: 32,
+    left: 32,
+    gap: 24,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+  },
+  settingsHintIcon: {
+    width: 36,
+    height: 36,
+  },
+  settingsHintText: {
+    fontSize: 22,
   },
 });

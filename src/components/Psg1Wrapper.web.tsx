@@ -23,7 +23,7 @@ export function Psg1Wrapper({ children }: { children: ReactNode }) {
 
   return (
     <ScreenVariantProvider variant={isCompact ? 'compact' : 'wide'}>
-      <Psg1Simulator>
+      <Psg1Simulator enabledRealGamepad>
         <div
           style={{
             display: 'flex',

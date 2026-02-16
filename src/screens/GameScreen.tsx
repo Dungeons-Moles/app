@@ -33,6 +33,9 @@ import { BurnerBalanceIndicator } from '../components/common/BurnerBalanceIndica
 import { useDirectionInput } from '../hooks/useInput';
 import { useLandscapeLock } from '../hooks/useOrientationLock';
 import { useScreenVariant } from '../contexts/ScreenVariantContext';
+import { useInputMode } from '../hooks/useInputMode';
+import { useControllerAction } from '../hooks/useControllerAction';
+import { usePsg1Input } from 'psg1-sim';
 import { Direction, DIRECTION_DELTA } from '../game/input/types';
 import { TileType, MapEnemy, MapPOI } from '../game/map/types';
 import { getDiscoveredWaypoints } from '../game/entities/pois';
@@ -65,6 +68,7 @@ const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background
 const COIN_ICON = require('../../assets/icons/ui/coin.png');
 const MAP_ICON = require('../../assets/icons/ui/map.png');
 const SIDEBAR_BG = require('../../assets/ui/panels/sidebar.png');
+const ICON_Y = require('../../assets/ui/control-buttons/y.png');
 
 const SIDEBAR_WIDTH = 230;
 const COMPACT_SIDEBAR_WIDTH = 280;
@@ -358,6 +362,9 @@ export function GameScreen({ navigation }: GameScreenProps) {
   const nightMovement = useNightMovement();
   const poiInteraction = usePoiInteraction();
   const isFocused = useIsFocused();
+  const inputMode = useInputMode();
+  const isController = inputMode === 'controller';
+  const psg1Input = usePsg1Input();
 
   // Persist fog of war state to AsyncStorage for session restore
   useFogPersistence({
@@ -1194,9 +1201,95 @@ export function GameScreen({ navigation }: GameScreenProps) {
   ]);
 
   useDirectionInput(handleDirection, {
-    enabled: state?.phase === GamePhase.Exploration,
+    enabled: state?.phase === GamePhase.Exploration && !isController,
     blocked: overviewMode.active && !isFastTravelActive,
   });
+
+  // --- Controller: D-PAD for movement, Y for map, A for POI/fast-travel confirm ---
+  const isPOIModalOpen = state?.phase === GamePhase.POIInteraction;
+  const controllerEnabled = isController && isFocused && !!state && !isPOIModalOpen;
+  useControllerAction(
+    {
+      onDPadUp: () => handleDirection(Direction.Up),
+      onDPadDown: () => handleDirection(Direction.Down),
+      onDPadLeft: () => handleDirection(Direction.Left),
+      onDPadRight: () => handleDirection(Direction.Right),
+      onY: () => {
+        if (!isFastTravelActive) toggleOverviewMode();
+      },
+      onA: () => {
+        if (isFastTravelActive) {
+          handleFastTravelConfirm();
+        } else if (
+          poiInteraction.canInteract &&
+          state?.phase === GamePhase.Exploration
+        ) {
+          poiInteraction.interact();
+        }
+      },
+      onB: () => {
+        if (isFastTravelActive) {
+          setIsFastTravelMode(false);
+          setFastTravelDestinations([]);
+        } else if (overviewMode.active) {
+          toggleOverviewMode();
+        }
+      },
+    },
+    controllerEnabled,
+  );
+
+  // --- Controller: L3 joystick for panning the overview map ---
+  const panIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => {
+    if (!isController || !overviewMode.active || isFastTravelActive) {
+      if (panIntervalRef.current) {
+        clearInterval(panIntervalRef.current);
+        panIntervalRef.current = null;
+      }
+      return;
+    }
+
+    const { x, y } = psg1Input.leftStick;
+    const DEAD_ZONE = 0.15;
+    const isIdle = Math.abs(x) < DEAD_ZONE && Math.abs(y) < DEAD_ZONE;
+
+    if (isIdle) {
+      if (panIntervalRef.current) {
+        clearInterval(panIntervalRef.current);
+        panIntervalRef.current = null;
+      }
+      return;
+    }
+
+    // Start continuous panning at 60fps-ish interval
+    if (panIntervalRef.current) clearInterval(panIntervalRef.current);
+    const PAN_SPEED = 8;
+    panIntervalRef.current = setInterval(() => {
+      const sx = psg1Input.leftStick.x;
+      const sy = psg1Input.leftStick.y;
+      if (Math.abs(sx) >= DEAD_ZONE || Math.abs(sy) >= DEAD_ZONE) {
+        panOverview({
+          x: Math.round(sx * PAN_SPEED),
+          y: Math.round(sy * PAN_SPEED),
+        });
+      }
+    }, 50);
+
+    return () => {
+      if (panIntervalRef.current) {
+        clearInterval(panIntervalRef.current);
+        panIntervalRef.current = null;
+      }
+    };
+  }, [
+    isController,
+    overviewMode.active,
+    isFastTravelActive,
+    psg1Input.leftStick.x,
+    psg1Input.leftStick.y,
+    panOverview,
+  ]);
 
   const disabledDirections = useMemo(() => {
     if (!state) return [];
@@ -1537,6 +1630,14 @@ export function GameScreen({ navigation }: GameScreenProps) {
     );
   }, [state, scrapSelection]);
 
+  const handleControllerGearSelect = useCallback(
+    (gear: Gear) => {
+      if (!state || state.phase !== GamePhase.POIInteraction) return;
+      handleInventoryItemPress(gear);
+    },
+    [state, handleInventoryItemPress]
+  );
+
   const handleKilnSlotPress = useCallback(() => {
     setKilnSelection((prev) => {
       if (!prev.gearId || prev.count === 0) return prev;
@@ -1553,6 +1654,22 @@ export function GameScreen({ navigation }: GameScreenProps) {
   const isItemSelectPoiActive =
     state?.phase === GamePhase.POIInteraction &&
     (state.activePOI?.poi.definitionId === 'L11' || state.activePOI?.poi.definitionId === 'L14');
+
+  // Filtered gear for controller-mode inventory cycling in Rune Kiln / Scrap Chute
+  const selectableGear = useMemo(() => {
+    if (!state || !isItemSelectPoiActive) return [];
+    const poiDefId = state.activePOI?.poi.definitionId;
+    return state.player.inventory
+      .map((slot) => slot.item)
+      .filter((item): item is Gear => {
+        if (!('currentRarity' in item)) return false;
+        // Rune Kiln: only COMMON or GILDED gear
+        if (poiDefId === 'L11') {
+          return item.currentRarity === 'COMMON' || item.currentRarity === 'GILDED';
+        }
+        return true; // Scrap Chute: any gear
+      });
+  }, [state, isItemSelectPoiActive]);
 
   if (!state) {
     return (
@@ -1587,22 +1704,31 @@ export function GameScreen({ navigation }: GameScreenProps) {
             <View style={[styles.topRow, { height: navbarHeight }]}>
               <View style={[styles.navbarArea, { paddingHorizontal: 15 * navScale }]}>
                 <View style={[styles.navbarLeft, { width: 100 * navScale }]}>
-                  <Pressable
-                    style={{
-                      width: 36 * navScale,
-                      height: 36 * navScale,
-                      justifyContent: 'center',
-                      alignItems: 'center',
-                    }}
-                    onPress={toggleOverviewMode}
-                    disabled={isFastTravelActive}
-                  >
-                    <Image
-                      source={MAP_ICON}
-                      style={{ width: 32 * navScale, height: 32 * navScale }}
-                      resizeMode="contain"
-                    />
-                  </Pressable>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 * navScale }}>
+                    <Pressable
+                      style={{
+                        width: 36 * navScale,
+                        height: 36 * navScale,
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                      }}
+                      onPress={toggleOverviewMode}
+                      disabled={isFastTravelActive}
+                    >
+                      <Image
+                        source={MAP_ICON}
+                        style={{ width: 32 * navScale, height: 32 * navScale }}
+                        resizeMode="contain"
+                      />
+                    </Pressable>
+                    {isController && (
+                      <Image
+                        source={ICON_Y}
+                        style={{ width: 14 * navScale, height: 14 * navScale }}
+                        resizeMode="contain"
+                      />
+                    )}
+                  </View>
                 </View>
                 <View style={styles.navbarCenter}>
                   <Text style={[styles.weekText, { fontSize: 12 * navScale }]}>
@@ -1701,36 +1827,38 @@ export function GameScreen({ navigation }: GameScreenProps) {
                   />
                 )}
 
-                <View
-                  style={styles.dpadOverlay}
-                  pointerEvents={overviewMode.active && !isFastTravelActive ? 'none' : 'auto'}
-                >
-                  <DPadControls
-                    onDirection={handleDirection}
-                    size={120}
-                    disabledDirections={disabledDirections}
-                    onCenterPress={
-                      isFastTravelActive
-                        ? handleFastTravelConfirm
-                        : poiInteraction.canInteract && state.phase === GamePhase.Exploration
-                          ? () => {
-                              console.log(
-                                '[GameScreen] A button pressed | currentPoi:',
-                                poiInteraction.currentPoi
-                                  ? {
-                                      x: poiInteraction.currentPoi.x,
-                                      y: poiInteraction.currentPoi.y,
-                                      poiType: poiInteraction.currentPoi.poiType,
-                                    }
-                                  : null
-                              );
-                              poiInteraction.interact();
-                            }
-                          : undefined
-                    }
-                    centerDisabled={poiInteraction.isInteracting}
-                  />
-                </View>
+                {!isController && (
+                  <View
+                    style={styles.dpadOverlay}
+                    pointerEvents={overviewMode.active && !isFastTravelActive ? 'none' : 'auto'}
+                  >
+                    <DPadControls
+                      onDirection={handleDirection}
+                      size={120}
+                      disabledDirections={disabledDirections}
+                      onCenterPress={
+                        isFastTravelActive
+                          ? handleFastTravelConfirm
+                          : poiInteraction.canInteract && state.phase === GamePhase.Exploration
+                            ? () => {
+                                console.log(
+                                  '[GameScreen] A button pressed | currentPoi:',
+                                  poiInteraction.currentPoi
+                                    ? {
+                                        x: poiInteraction.currentPoi.x,
+                                        y: poiInteraction.currentPoi.y,
+                                        poiType: poiInteraction.currentPoi.poiType,
+                                      }
+                                    : null
+                                );
+                                poiInteraction.interact();
+                              }
+                            : undefined
+                      }
+                      centerDisabled={poiInteraction.isInteracting}
+                    />
+                  </View>
+                )}
               </View>
               {!isCompact && (
                 <View style={styles.sidebarBottomContainer}>
@@ -1769,6 +1897,8 @@ export function GameScreen({ navigation }: GameScreenProps) {
               onScrapSlotPress={handleScrapSlotPress}
               equippedTool={state.player.equippedTool}
               onFastTravel={handleFastTravel}
+              selectableGear={selectableGear}
+              onGearSelect={handleControllerGearSelect}
             />
           </View>
 

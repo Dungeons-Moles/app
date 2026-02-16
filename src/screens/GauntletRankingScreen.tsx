@@ -18,6 +18,10 @@ import { createGameplayStateProgram, createPlayerProfileProgram } from '@/servic
 import { deriveGauntletConfigPda } from '@/services/solana/gauntlet';
 import { derivePlayerProfilePda } from '@/services/solana/types';
 import { Typography } from '@/theme/typography';
+import { useControllerAction } from '../hooks/useControllerAction';
+import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHints';
+import { useInputMode } from '../hooks/useInputMode';
+import { FocusGlow } from '../components/ui/FocusGlow';
 
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.png');
 const STAINS_BACKGROUND = require('../../assets/ui/backgrounds/stains-background.png');
@@ -180,6 +184,35 @@ export function GauntletRankingScreen({ navigation }: GauntletRankingScreenProps
   const rightItems = useMemo(() => pageItems.slice(HALF_PAGE), [pageItems]);
   const hasData = useMemo(() => items.length > 0, [items.length]);
 
+  // --- Controller navigation ---
+  const inputMode = useInputMode();
+  const isController = inputMode === 'controller';
+  const [actionFocus, setActionFocus] = useState(0); // 0 = Refresh, 1 = Prev, 2 = Next
+
+  const handleBack = useCallback(() => {
+    navigation.goBack();
+  }, [navigation]);
+
+  useControllerAction(
+    {
+      onB: handleBack,
+      onA: () => {
+        if (actionFocus === 0) void loadRanking();
+        else if (actionFocus === 1) setPage((p) => Math.max(0, p - 1));
+        else if (actionFocus === 2) setPage((p) => Math.min(totalPages - 1, p + 1));
+      },
+      onDPadLeft: () => setActionFocus((f) => Math.max(0, f - 1)),
+      onDPadRight: () => setActionFocus((f) => Math.min(totalPages > 1 ? 2 : 0, f + 1)),
+    },
+    isController,
+  );
+
+  const controllerHints: ButtonHint[] = [
+    { button: 'DPadLeftRight', label: 'Switch' },
+    { button: 'A', label: 'Select' },
+    { button: 'B', label: 'Back' },
+  ];
+
   const renderRow = (item: RankingItem) => (
     <View key={`${item.wallet}-${item.rank}`} style={[styles.row, item.isYou && styles.rowYou, isCompact && compactStyles.row]}>
       <Text style={[styles.rankText, isCompact && compactStyles.rankText]}>#{item.rank}</Text>
@@ -205,17 +238,21 @@ export function GauntletRankingScreen({ navigation }: GauntletRankingScreenProps
       <View style={[styles.content, isCompact && compactStyles.content]}>
         {/* Header */}
         <View style={[styles.header, isCompact && compactStyles.header]}>
-          <TouchableOpacity onPress={() => navigation.goBack()} activeOpacity={0.7}>
-            <ImageBackground
-              source={buttonV1Source}
-              style={[styles.headerButton, isCompact && compactStyles.headerButton]}
-              resizeMode="stretch"
-            >
-              <Text style={[styles.headerButtonText, isCompact && compactStyles.headerButtonText]}>
-                Back
-              </Text>
-            </ImageBackground>
-          </TouchableOpacity>
+          {isController ? (
+            <View style={[styles.headerButton, isCompact && compactStyles.headerButton]} />
+          ) : (
+            <TouchableOpacity onPress={() => navigation.goBack()} activeOpacity={0.7}>
+              <ImageBackground
+                source={buttonV1Source}
+                style={[styles.headerButton, isCompact && compactStyles.headerButton]}
+                resizeMode="stretch"
+              >
+                <Text style={[styles.headerButtonText, isCompact && compactStyles.headerButtonText]}>
+                  Back
+                </Text>
+              </ImageBackground>
+            </TouchableOpacity>
+          )}
 
           <View style={[styles.titleRow, isCompact && compactStyles.titleRow]}>
             <Image
@@ -259,21 +296,23 @@ export function GauntletRankingScreen({ navigation }: GauntletRankingScreenProps
             <View style={styles.column}>
               {leftItems.map(renderRow)}
               <View style={styles.columnFooter}>
-                <TouchableOpacity
-                  onPress={() => void loadRanking()}
-                  activeOpacity={0.7}
-                  disabled={isLoading}
-                >
-                  <ImageBackground
-                    source={buttonV4Source}
-                    style={[styles.actionButton, isCompact && compactStyles.actionButton]}
-                    resizeMode="stretch"
+                <FocusGlow active={isController && actionFocus === 0}>
+                  <TouchableOpacity
+                    onPress={() => void loadRanking()}
+                    activeOpacity={0.7}
+                    disabled={isLoading}
                   >
-                    <Text style={[styles.buttonTextPrimary, isCompact && compactStyles.buttonTextPrimary]}>
-                      Refresh
-                    </Text>
-                  </ImageBackground>
-                </TouchableOpacity>
+                    <ImageBackground
+                      source={buttonV4Source}
+                      style={[styles.actionButton, isCompact && compactStyles.actionButton]}
+                      resizeMode="stretch"
+                    >
+                      <Text style={[styles.buttonTextPrimary, isCompact && compactStyles.buttonTextPrimary]}>
+                        Refresh
+                      </Text>
+                    </ImageBackground>
+                  </TouchableOpacity>
+                </FocusGlow>
               </View>
             </View>
 
@@ -283,51 +322,55 @@ export function GauntletRankingScreen({ navigation }: GauntletRankingScreenProps
               {totalPages > 1 && (
                 <View style={styles.columnFooter}>
                   <View style={styles.paginationRow}>
-                    <TouchableOpacity
-                      onPress={() => setPage((p) => Math.max(0, p - 1))}
-                      activeOpacity={0.7}
-                      disabled={page === 0}
-                    >
-                      <ImageBackground
-                        source={buttonV1Source}
-                        style={[styles.pageButton, isCompact && compactStyles.pageButton]}
-                        resizeMode="stretch"
+                    <FocusGlow active={isController && actionFocus === 1}>
+                      <TouchableOpacity
+                        onPress={() => setPage((p) => Math.max(0, p - 1))}
+                        activeOpacity={0.7}
+                        disabled={page === 0}
                       >
-                        <Text
-                          style={[
-                            styles.buttonText,
-                            isCompact && compactStyles.buttonText,
-                            page === 0 && styles.buttonTextDisabled,
-                          ]}
+                        <ImageBackground
+                          source={buttonV1Source}
+                          style={[styles.pageButton, isCompact && compactStyles.pageButton]}
+                          resizeMode="stretch"
                         >
-                          Prev
-                        </Text>
-                      </ImageBackground>
-                    </TouchableOpacity>
+                          <Text
+                            style={[
+                              styles.buttonText,
+                              isCompact && compactStyles.buttonText,
+                              page === 0 && styles.buttonTextDisabled,
+                            ]}
+                          >
+                            Prev
+                          </Text>
+                        </ImageBackground>
+                      </TouchableOpacity>
+                    </FocusGlow>
                     <Text style={[styles.pageIndicator, isCompact && compactStyles.pageIndicator]}>
                       {page + 1} / {totalPages}
                     </Text>
-                    <TouchableOpacity
-                      onPress={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-                      activeOpacity={0.7}
-                      disabled={page === totalPages - 1}
-                    >
-                      <ImageBackground
-                        source={buttonV1Source}
-                        style={[styles.pageButton, isCompact && compactStyles.pageButton]}
-                        resizeMode="stretch"
+                    <FocusGlow active={isController && actionFocus === 2}>
+                      <TouchableOpacity
+                        onPress={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                        activeOpacity={0.7}
+                        disabled={page === totalPages - 1}
                       >
-                        <Text
-                          style={[
-                            styles.buttonText,
-                            isCompact && compactStyles.buttonText,
-                            page === totalPages - 1 && styles.buttonTextDisabled,
-                          ]}
+                        <ImageBackground
+                          source={buttonV1Source}
+                          style={[styles.pageButton, isCompact && compactStyles.pageButton]}
+                          resizeMode="stretch"
                         >
-                          Next
-                        </Text>
-                      </ImageBackground>
-                    </TouchableOpacity>
+                          <Text
+                            style={[
+                              styles.buttonText,
+                              isCompact && compactStyles.buttonText,
+                              page === totalPages - 1 && styles.buttonTextDisabled,
+                            ]}
+                          >
+                            Next
+                          </Text>
+                        </ImageBackground>
+                      </TouchableOpacity>
+                    </FocusGlow>
                   </View>
                 </View>
               )}
@@ -335,6 +378,7 @@ export function GauntletRankingScreen({ navigation }: GauntletRankingScreenProps
           </View>
         )}
       </View>
+      <ControllerHints hints={controllerHints} horizontal />
     </View>
   );
 }

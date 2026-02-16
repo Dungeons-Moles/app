@@ -6,7 +6,6 @@
  */
 
 import React, { useEffect, useCallback, useMemo, useRef } from 'react';
-import { View, Text, StyleSheet, ImageBackground, Animated } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
 import { PublicKey } from '@solana/web3.js';
@@ -18,18 +17,10 @@ import { useSession } from '../contexts/SessionContext';
 import { useWallet } from '../contexts/WalletContext';
 import { useSolanaConnection } from '../contexts/SolanaConnectionContext';
 import { useLandscapeLock } from '../hooks/useOrientationLock';
-import { useScreenVariant } from '../contexts/ScreenVariantContext';
-import {
-  CombatArena,
-  VictoryDefeatDisplay,
-  EnemyPanel,
-  PlayerPanel,
-  SpeedControls,
-} from '../components/combat';
+import { CombatLayout } from '../components/combat';
 import { DebugOverlay } from '../components/game';
 import { ENEMY_TRAITS } from '../game/combat/traits';
 import { getEntityImageSource } from '../components/game/entityImages';
-import { Typography } from '../theme/typography';
 import { getPhaseLabel } from '../utils/phase-labels';
 import { createGameplayStateProgram } from '@/services/solana/programs';
 import {
@@ -42,14 +33,11 @@ import type { BackendCombatLogEntry } from '@/services/solana/types/combat_event
 import type { CombatantState, Gear, Tool } from '@/game/engine/types';
 import { calculateItemStats } from '@/game/entities/items';
 
-const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.png');
-
 type CombatScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Combat'>;
   route: RouteProp<RootStackParamList, 'Combat'>;
 };
 
-const SAFE_AREA_EDGES = ['left', 'right'] as const;
 const DUEL_BASE_HP = 10;
 const DUEL_BASE_ATK = 1;
 const DUEL_BASE_ARM = 0;
@@ -110,31 +98,17 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
   const isResolvingDuelRef = useRef(false);
   const {
     state: combatState,
-    speed,
-    setSpeed,
     startCombat,
     startCombatWithLog,
     startCombatWithOnchainOutcome,
     getDisplayStates,
     getResult,
   } = useCombat();
-  const variant = useScreenVariant();
-  const isCompact = variant === 'compact';
-  const scale = isCompact ? 2 : 1;
-  const fadeAnim = useRef(new Animated.Value(0)).current;
 
   // Get combat input from route params (on-chain mode) or null (guest mode)
   const combatInput = route?.params?.combatInput;
   const isBossFight = combatInput?.isBossFight ?? gameState?.phase === GamePhase.BossFight;
   const currentWeek = combatInput?.week ?? gameState?.time.week ?? 1;
-
-  useEffect(() => {
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 800,
-      useNativeDriver: true,
-    }).start();
-  }, []);
 
   // Lock to landscape orientation (FR-044)
   useLandscapeLock();
@@ -461,43 +435,6 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
     signAndSendTransaction,
   ]);
 
-  const { player, enemy, playerGold, enemyGold } = getDisplayStates();
-  const result = getResult();
-  const speedControlsDisabled = !combatState.resolvedCombat || combatState.isComplete;
-  const combatRef = useRef(combatState.combat);
-  const playerPeakArmRef = useRef(0);
-  const enemyPeakArmRef = useRef(0);
-
-  if (combatRef.current !== combatState.combat) {
-    combatRef.current = combatState.combat;
-    playerPeakArmRef.current = combatState.combat
-      ? combatState.combat.player.arm + combatState.combat.player.bonusArm
-      : 0;
-    enemyPeakArmRef.current = combatState.combat
-      ? combatState.combat.enemy.arm + combatState.combat.enemy.bonusArm
-      : 0;
-  }
-
-  if (player) {
-    playerPeakArmRef.current = Math.max(playerPeakArmRef.current, player.arm);
-  }
-  if (enemy) {
-    enemyPeakArmRef.current = Math.max(enemyPeakArmRef.current, enemy.arm);
-  }
-
-  const basePlayerArm = combatState.combat
-    ? combatState.combat.player.arm + combatState.combat.player.bonusArm
-    : (player?.arm ?? 0);
-  const baseEnemyArm = combatState.combat
-    ? combatState.combat.enemy.arm + combatState.combat.enemy.bonusArm
-    : (enemy?.arm ?? 0);
-  const playerMaxArm = player
-    ? Math.max(basePlayerArm, playerPeakArmRef.current, player.arm)
-    : 0;
-  const enemyMaxArm = enemy
-    ? Math.max(baseEnemyArm, enemyPeakArmRef.current, enemy.arm)
-    : 0;
-
   // Look up enemy trait from the combat state's enemy definition ID
   const enemyTrait = useMemo(() => {
     const enemyId = combatState.combat?.enemyDefinitionId;
@@ -515,164 +452,43 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
     };
   }, [gameState?.player]);
 
-  const activeActor = useMemo(() => {
-    const entry = combatState.resolvedCombat?.log[combatState.currentLogIndex];
-    if (entry?.actor === 'player' || entry?.actor === 'enemy') {
-      return entry.actor;
-    }
-    return null;
-  }, [combatState.currentLogIndex, combatState.resolvedCombat]);
-
-  const currentTurn = useMemo(() => {
-    const entry = combatState.resolvedCombat?.log[combatState.currentLogIndex];
-    return Math.max(1, entry?.turn ?? 1);
-  }, [combatState.currentLogIndex, combatState.resolvedCombat]);
-
-  // Show loading if no combat state
-  if (!player || !enemy) {
-    return (
-      <View style={styles.container}>
-        <ImageBackground
-          source={BACKGROUND_IMAGE}
-          style={styles.backgroundImage}
-          resizeMode="cover"
-        >
-          <View style={styles.darkOverlay}>
-            <View style={styles.loadingContainer}>
-              <Text style={[styles.loadingText, { fontSize: 20 * scale }]}>
-                Preparing combat...
-              </Text>
-            </View>
-          </View>
-        </ImageBackground>
-      </View>
-    );
-  }
+  // Get display states for gold fallback
+  const { playerGold, enemyGold } = getDisplayStates();
 
   return (
-    <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
-      <ImageBackground source={BACKGROUND_IMAGE} style={styles.backgroundImage} resizeMode="cover">
-        <View style={styles.darkOverlay}>
-          <View style={styles.content}>
-            {/* Enemy Panel (LEFT) - FR-048 */}
-            <EnemyPanel
-              name={enemy.name}
-              emoji={enemy.emoji}
-              imageSource={
-                enemy.definitionId ? getEntityImageSource(enemy.definitionId) : undefined
-              }
-              hp={enemy.hp}
-              maxHp={enemy.maxHp}
-              atk={enemy.atk}
-              arm={enemy.arm}
-              maxArm={enemyMaxArm}
-              spd={enemy.spd}
-              dig={0}
-              gold={enemyGold ?? combatInput?.enemyGold}
-              statusEffects={enemy.statusEffects}
-              trait={enemyTrait}
-              scale={scale}
-            />
-
-            {/* Combat Arena (CENTER) */}
-            <View style={[styles.arenaArea, { padding: 16 * scale }]}>
-              <CombatArena
-                player={player}
-                enemy={enemy}
-                damageNumbers={combatState.damageNumbers}
-                effectNotifications={combatState.effectNotifications}
-                isAnimating={combatState.isAnimating}
-                currentTurn={currentTurn}
-                activeActor={activeActor}
-                playerMaxArm={playerMaxArm}
-                enemyMaxArm={enemyMaxArm}
-                scale={scale}
-              />
-
-              <View style={[styles.controlsArea, { marginTop: 12 * scale }]}>
-                <SpeedControls
-                  currentSpeed={speed}
-                  onSpeedChange={setSpeed}
-                  disabled={speedControlsDisabled}
-                  scale={scale}
-                />
-              </View>
-
-              {/* Debug Overlay - P15: Debug Tooling Isolation */}
-              {gameState && (
-                <DebugOverlay
-                  debug={gameState.debug}
-                  seed={gameState.seed}
-                  phase={gameState.phase}
-                  time={gameState.time}
-                />
-              )}
-            </View>
-
-            {/* Player Panel (RIGHT) - FR-049 */}
-            <PlayerPanel
-              name={player.name}
-              emoji={player.emoji}
-              hp={player.hp}
-              maxHp={player.maxHp}
-              atk={player.atk}
-              arm={player.arm}
-              maxArm={playerMaxArm}
-              spd={player.spd}
-              dig={gameState?.player.stats.dig ?? 0}
-              gold={playerGold ?? combatInput?.playerGold ?? gameState?.player.stats.gold}
-              statusEffects={player.statusEffects}
-              equippedTool={playerEquipment.tool}
-              equippedGear={playerEquipment.gear}
-              scale={scale}
-            />
-          </View>
-
-          {/* Victory/Defeat Overlay - T075: Pass goldReward for display */}
-          {combatState.isComplete && result && (
-            <VictoryDefeatDisplay
-              result={result}
-              goldReward={result === 'VICTORY' ? combatState.resolvedCombat?.goldReward : undefined}
-              isFinalVictory={result === 'VICTORY' && isBossFight && currentWeek === 3}
-              onComplete={handleCombatComplete}
-              scale={scale}
-            />
-          )}
-        </View>
-      </ImageBackground>
-    </Animated.View>
+    <CombatLayout
+      enemyPanel={{
+        name: combatState.combat?.enemy.name ?? 'Enemy',
+        emoji: combatState.combat?.enemy.emoji ?? '',
+        imageSource: combatState.combat?.enemyDefinitionId
+          ? getEntityImageSource(combatState.combat.enemyDefinitionId)
+          : undefined,
+        dig: 0,
+        gold: enemyGold ?? combatInput?.enemyGold,
+        trait: enemyTrait,
+      }}
+      playerPanel={{
+        name: combatState.combat?.player.name ?? 'Player',
+        emoji: combatState.combat?.player.emoji ?? '',
+        dig: gameState?.player.stats.dig ?? 0,
+        gold: playerGold ?? combatInput?.playerGold ?? gameState?.player.stats.gold,
+        equippedTool: playerEquipment.tool,
+        equippedGear: playerEquipment.gear,
+      }}
+      goldReward={combatState.resolvedCombat?.goldReward}
+      isFinalVictory={isBossFight && currentWeek === 3}
+      onCombatComplete={handleCombatComplete}
+      arenaChildren={
+        gameState ? (
+          <DebugOverlay
+            debug={gameState.debug}
+            seed={gameState.seed}
+            phase={gameState.phase}
+            time={gameState.time}
+          />
+        ) : undefined
+      }
+    />
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  backgroundImage: {
-    flex: 1,
-    width: '100%',
-    height: '100%',
-  },
-  darkOverlay: {
-    flex: 1,
-  },
-  content: {
-    flex: 1,
-    flexDirection: 'row',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    fontFamily: Typography.header,
-    color: '#333',
-  },
-  arenaArea: {
-    flex: 2,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  controlsArea: {},
-});

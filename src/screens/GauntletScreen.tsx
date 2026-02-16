@@ -13,12 +13,17 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation';
 import { Typography } from '@/theme/typography';
 import { useGauntlet } from '@/hooks/useGauntlet';
+import { useIsFocused } from '@react-navigation/native';
 import { useScreenVariant } from '@/contexts/ScreenVariantContext';
 import { useSession } from '@/contexts/SessionContext';
 import { useWallet } from '@/contexts/WalletContext';
 import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
 import { deriveGauntletSessionPda } from '@/services/solana/constants';
 import { GAUNTLET_ENTRY_LAMPORTS } from '@/services/solana/gauntlet';
+import { useControllerAction } from '../hooks/useControllerAction';
+import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHints';
+import { useInputMode } from '../hooks/useInputMode';
+import { FocusGlow } from '../components/ui/FocusGlow';
 
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.png');
 const STAINS_BACKGROUND = require('../../assets/ui/backgrounds/stains-background.png');
@@ -40,6 +45,7 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
   const { wallet } = useWallet();
   const { connection } = useSolanaConnection();
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const isFocused = useIsFocused();
   const isCompact = useScreenVariant() === 'compact';
   const [hasExistingGauntletSessionOnChain, setHasExistingGauntletSessionOnChain] = useState(false);
 
@@ -98,6 +104,37 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
 
   const entryFeeSol = GAUNTLET_ENTRY_LAMPORTS / 1_000_000_000;
 
+  // --- Controller navigation ---
+  const inputMode = useInputMode();
+  const isController = inputMode === 'controller';
+  const [panelFocus, setPanelFocus] = useState(1); // 0 = History, 1 = Enter
+
+  const handleHistory = useCallback(() => {
+    navigation.navigate('GauntletHistory');
+  }, [navigation]);
+
+  const handleRanking = useCallback(() => {
+    navigation.navigate('GauntletRanking');
+  }, [navigation]);
+
+  useControllerAction(
+    {
+      onB: handleBack,
+      onA: panelFocus === 0 ? handleHistory : !gauntlet.isLoading ? handleEnter : undefined,
+      onDPadLeft: () => setPanelFocus(0),
+      onDPadRight: () => setPanelFocus(1),
+      onY: handleRanking,
+    },
+    isController && isFocused
+  );
+
+  const controllerHints: ButtonHint[] = [
+    { button: 'DPadLeftRight', label: 'Switch' },
+    { button: 'A', label: 'Select' },
+    { button: 'Y', label: 'Ranking' },
+    { button: 'B', label: 'Back' },
+  ];
+
   return (
     <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
       <ImageBackground source={BACKGROUND_IMAGE} style={styles.backgroundImage} resizeMode="cover">
@@ -105,38 +142,46 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
         <View style={styles.content}>
           {/* Header */}
           <View style={[styles.header, isCompact && compactStyles.header]}>
-            <TouchableOpacity onPress={handleBack} activeOpacity={0.7}>
-              <ImageBackground
-                source={buttonV1Source}
-                style={[styles.headerButton, isCompact && compactStyles.headerButton]}
-                resizeMode="stretch"
-              >
-                <Text
-                  style={[styles.headerButtonText, isCompact && compactStyles.headerButtonText]}
+            {isController ? (
+              <View style={[styles.headerButton, isCompact && compactStyles.headerButton]} />
+            ) : (
+              <TouchableOpacity onPress={handleBack} activeOpacity={0.7}>
+                <ImageBackground
+                  source={buttonV1Source}
+                  style={[styles.headerButton, isCompact && compactStyles.headerButton]}
+                  resizeMode="stretch"
                 >
-                  Back
-                </Text>
-              </ImageBackground>
-            </TouchableOpacity>
+                  <Text
+                    style={[styles.headerButtonText, isCompact && compactStyles.headerButtonText]}
+                  >
+                    Back
+                  </Text>
+                </ImageBackground>
+              </TouchableOpacity>
+            )}
 
             <View style={styles.headerSpacer} />
 
-            <TouchableOpacity
-              onPress={() => navigation.navigate('GauntletRanking')}
-              activeOpacity={0.7}
-            >
-              <ImageBackground
-                source={buttonV2Source}
-                style={[styles.headerButton, isCompact && compactStyles.headerButton]}
-                resizeMode="stretch"
+            {isController ? (
+              <View style={[styles.headerButton, isCompact && compactStyles.headerButton]} />
+            ) : (
+              <TouchableOpacity
+                onPress={() => navigation.navigate('GauntletRanking')}
+                activeOpacity={0.7}
               >
-                <Text
-                  style={[styles.headerButtonText, isCompact && compactStyles.headerButtonText]}
+                <ImageBackground
+                  source={buttonV2Source}
+                  style={[styles.headerButton, isCompact && compactStyles.headerButton]}
+                  resizeMode="stretch"
                 >
-                  Ranking
-                </Text>
-              </ImageBackground>
-            </TouchableOpacity>
+                  <Text
+                    style={[styles.headerButtonText, isCompact && compactStyles.headerButtonText]}
+                  >
+                    Ranking
+                  </Text>
+                </ImageBackground>
+              </TouchableOpacity>
+            )}
           </View>
 
           {/* Title */}
@@ -181,44 +226,55 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
                 <View
                   style={[styles.panelButtons, isCompact && compactStyles.panelButtons]}
                 >
-                  <TouchableOpacity
-                    onPress={() => navigation.navigate('GauntletHistory')}
-                    activeOpacity={0.7}
-                  >
-                    <Text
-                      style={[
-                        styles.panelButtonText,
-                        isCompact && compactStyles.panelButtonText,
-                      ]}
+                  <FocusGlow active={isController && panelFocus === 0}>
+                    <TouchableOpacity
+                      onPress={() => navigation.navigate('GauntletHistory')}
+                      activeOpacity={0.7}
                     >
-                      History
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    onPress={handleEnter}
-                    activeOpacity={0.7}
-                    disabled={gauntlet.isLoading}
-                  >
-                    {gauntlet.isLoading ? (
-                      <ActivityIndicator color="#3d2b1f" size="small" />
-                    ) : (
                       <Text
                         style={[
                           styles.panelButtonText,
                           isCompact && compactStyles.panelButtonText,
                         ]}
                       >
-                        {hasExistingGauntletSession ? 'Resume Session' : 'Enter Gauntlet'}
+                        History
                       </Text>
-                    )}
-                  </TouchableOpacity>
+                    </TouchableOpacity>
+                  </FocusGlow>
+
+                  <FocusGlow active={isController && panelFocus === 1}>
+                    <TouchableOpacity
+                      onPress={handleEnter}
+                      activeOpacity={0.7}
+                      disabled={gauntlet.isLoading}
+                    >
+                      <View>
+                        <Text
+                          style={[
+                            styles.panelButtonText,
+                            isCompact && compactStyles.panelButtonText,
+                            gauntlet.isLoading && { opacity: 0 },
+                          ]}
+                        >
+                          {hasExistingGauntletSession ? 'Resume Session' : 'Enter Gauntlet'}
+                        </Text>
+                        {gauntlet.isLoading && (
+                          <ActivityIndicator
+                            color="#3d2b1f"
+                            size={isCompact ? 'large' : 'small'}
+                            style={StyleSheet.absoluteFill}
+                          />
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                  </FocusGlow>
                 </View>
               </View>
             </View>
           </View>
         </View>
       </ImageBackground>
+      <ControllerHints hints={controllerHints} />
     </Animated.View>
   );
 }

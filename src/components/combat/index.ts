@@ -4,7 +4,6 @@
  * Components for displaying combat animations and results.
  */
 
-export { CombatOverlay } from './CombatOverlay';
 export { TurnDisplay } from './TurnDisplay';
 export { BossIntro } from './BossIntro';
 export { CombatArena } from './CombatArena';
@@ -17,3 +16,5 @@ export { CombatResult } from './CombatResult';
 export { DamageNumbers } from './DamageNumbers';
 export { EffectNotifications } from './EffectNotifications';
 export { StatusEffectIcons } from './StatusEffectIcons';
+export { CombatLayout } from './CombatLayout';
+export type { CombatLayoutProps } from './CombatLayout';

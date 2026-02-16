@@ -10,9 +10,9 @@ import {
   ActivityIndicator,
   RefreshControl,
   Animated,
-  Modal,
   Alert,
 } from 'react-native';
+import { InlineModal } from '../components/InlineModal';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { PublicKey } from '@solana/web3.js';
 import { useProfile } from '../contexts/ProfileContext';
@@ -23,6 +23,11 @@ import { useMapGenerator, MAX_CAMPAIGN_LEVEL } from '../hooks/useMapGenerator';
 import { RootStackParamList } from '../navigation';
 import { Typography } from '../theme/typography';
 import { useScreenVariant } from '../contexts/ScreenVariantContext';
+import { useIsFocused } from '@react-navigation/native';
+import { useControllerAction } from '../hooks/useControllerAction';
+import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHints';
+import { useInputMode } from '../hooks/useInputMode';
+import { FocusGlow } from '../components/ui/FocusGlow';
 import { Skeleton } from '../components/common/Skeleton';
 import { ProfileCard } from '../components/profile/ProfileCard';
 import { createGameplayStateProgram } from '../services/solana/programs';
@@ -40,6 +45,8 @@ const buttonV1Source = require('../../assets/ui/buttons/button-v1.png');
 const buttonV4Source = require('../../assets/ui/buttons/button-v4.png');
 const squareSource = require('../../assets/ui/frames/square.png');
 const lockSource = require('../../assets/icons/ui/lock.png');
+const iconASource = require('../../assets/ui/control-buttons/a.png');
+const iconBSource = require('../../assets/ui/control-buttons/b.png');
 
 type CampaignSelectScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'CampaignSelect'>;
@@ -468,6 +475,89 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
     navigation.goBack();
   }, [navigation]);
 
+  // --- Controller navigation ---
+  const inputMode = useInputMode();
+  const isController = inputMode === 'controller';
+  const isScreenFocused = useIsFocused();
+  const [cursorIdx, setCursorIdx] = useState(0);
+  const flatListRef = useRef<FlatList>(null);
+
+  const anyModalOpen = showNoRunsModal || showLockedModal || showSessionExistsModal;
+
+  // Auto-scroll FlatList to keep cursor visible
+  const onScrollToIndexFailed = useCallback(
+    (info: { index: number; averageItemLength: number }) => {
+      flatListRef.current?.scrollToOffset({
+        offset: info.averageItemLength * info.index,
+        animated: true,
+      });
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (isController && flatListRef.current && levels.length > 0 && cursorIdx < levels.length) {
+      try {
+        flatListRef.current.scrollToIndex({
+          index: cursorIdx,
+          animated: true,
+          viewOffset: 50,
+        });
+      } catch {
+        // Fallback: estimate offset from row height
+        const rowHeight = isCompact ? 88 + 16 : 56 + 12;
+        const row = Math.floor(cursorIdx / NUM_COLUMNS);
+        flatListRef.current.scrollToOffset({ offset: row * rowHeight, animated: true });
+      }
+    }
+  }, [cursorIdx, isController, levels.length, isCompact]);
+
+  const modalActions = anyModalOpen
+    ? {
+        onA: showSessionExistsModal
+          ? () => {
+              if (pendingLevelWithSession) {
+                setShowSessionExistsModal(false);
+                resumeSession(pendingLevelWithSession);
+              }
+            }
+          : () => {
+              setShowNoRunsModal(false);
+              setShowLockedModal(false);
+            },
+        onB: () => {
+          setShowNoRunsModal(false);
+          setShowLockedModal(false);
+          setShowSessionExistsModal(false);
+        },
+      }
+    : undefined;
+
+  useControllerAction(
+    modalActions ?? {
+      onB: handleBack,
+      onA: () => {
+        if (levels[cursorIdx]) handleLevelSelect(levels[cursorIdx]);
+      },
+      onDPadLeft: () => setCursorIdx((p) => Math.max(0, p - 1)),
+      onDPadRight: () => setCursorIdx((p) => Math.min(levels.length - 1, p + 1)),
+      onDPadUp: () => setCursorIdx((p) => Math.max(0, p - NUM_COLUMNS)),
+      onDPadDown: () => setCursorIdx((p) => Math.min(levels.length - 1, p + NUM_COLUMNS)),
+    },
+    isController && isScreenFocused
+  );
+
+  const controllerHints: ButtonHint[] = anyModalOpen
+    ? [
+        { button: 'A', label: showSessionExistsModal ? 'Resume' : 'OK' },
+        { button: 'B', label: 'Cancel' },
+      ]
+    : [
+        { button: 'DPad', label: 'Navigate' },
+        { button: 'A', label: 'Select Level' },
+        { button: 'B', label: 'Back' },
+      ];
+
   const handleResumeExistingSession = useCallback(async () => {
     if (!pendingLevelWithSession) {
       return;
@@ -477,11 +567,12 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
   }, [pendingLevelWithSession, resumeSession]);
 
   const renderLevelItem = useCallback(
-    ({ item }: { item: CampaignLevel }) => {
+    ({ item, index }: { item: CampaignLevel; index: number }) => {
       const isSelected = selectedLevel === item.level;
       const isCurrentLevel = item.level === (profile?.currentLevel ?? 0);
+      const isCursorItem = isController && index === cursorIdx;
 
-      return (
+      const cell = (
         <TouchableOpacity
           style={[styles.levelCell, isCompact && compactStyles.levelCell]}
           onPress={() => handleLevelSelect(item)}
@@ -543,8 +634,10 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
           </ImageBackground>
         </TouchableOpacity>
       );
+
+      return isCursorItem ? <FocusGlow active>{cell}</FocusGlow> : cell;
     },
-    [handleLevelSelect, isStartingGame, selectedLevel, profile?.currentLevel]
+    [handleLevelSelect, isStartingGame, selectedLevel, profile?.currentLevel, isController, cursorIdx]
   );
 
   const keyExtractor = useCallback((item: CampaignLevel) => `level-${item.level}`, []);
@@ -562,17 +655,21 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
       <View style={[styles.content, isCompact && compactStyles.content]}>
         {/* Header */}
         <View style={[styles.header, isCompact && compactStyles.header]}>
-          <TouchableOpacity onPress={handleBack} activeOpacity={0.7}>
-            <ImageBackground
-              source={buttonV1Source}
-              style={[styles.backButton, isCompact && compactStyles.backButton]}
-              resizeMode="stretch"
-            >
-              <Text style={[styles.backButtonText, isCompact && compactStyles.backButtonText]}>
-                Back
-              </Text>
-            </ImageBackground>
-          </TouchableOpacity>
+          {isController ? (
+            <View style={[styles.backButton, isCompact && compactStyles.backButton]} />
+          ) : (
+            <TouchableOpacity onPress={handleBack} activeOpacity={0.7}>
+              <ImageBackground
+                source={buttonV1Source}
+                style={[styles.backButton, isCompact && compactStyles.backButton]}
+                resizeMode="stretch"
+              >
+                <Text style={[styles.backButtonText, isCompact && compactStyles.backButtonText]}>
+                  Back
+                </Text>
+              </ImageBackground>
+            </TouchableOpacity>
+          )}
 
           <ImageBackground
             source={buttonV4Source}
@@ -631,11 +728,13 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
           </View>
         ) : (
           <FlatList
+            ref={flatListRef}
             data={levels}
             renderItem={renderLevelItem}
             keyExtractor={keyExtractor}
             numColumns={NUM_COLUMNS}
             contentContainerStyle={styles.gridContent}
+            onScrollToIndexFailed={onScrollToIndexFailed}
             showsVerticalScrollIndicator={false}
             refreshControl={
               <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#FABC0F" />
@@ -651,86 +750,124 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
       )}
 
       {/* T020: No Runs Available Modal */}
-      <Modal
+      <InlineModal
         visible={showNoRunsModal}
         transparent
         animationType="fade"
         onRequestClose={() => setShowNoRunsModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>No Sessions Available</Text>
-            <Text style={styles.modalText}>
+          <View style={[styles.modalContent, isCompact && compactStyles.modalContent]}>
+            <Text style={[styles.modalTitle, isCompact && compactStyles.modalTitle]}>
+              No Sessions Available
+            </Text>
+            <Text style={[styles.modalText, isCompact && compactStyles.modalText]}>
               You need at least 1 session to start a new game.{'\n'}
               Purchase more sessions to continue playing.
             </Text>
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={styles.modalButtonSecondary}
-                onPress={() => setShowNoRunsModal(false)}
-              >
-                <Text style={styles.modalButtonTextSecondary}>Cancel</Text>
-              </TouchableOpacity>
-            </View>
+            {isCompact ? (
+              <View style={compactStyles.modalHintRow}>
+                <View style={compactStyles.modalHintItem}>
+                  <Image source={iconASource} style={compactStyles.modalHintIcon} resizeMode="contain" />
+                  <Text style={compactStyles.modalHintLabel}>OK</Text>
+                </View>
+              </View>
+            ) : (
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={styles.modalButtonSecondary}
+                  onPress={() => setShowNoRunsModal(false)}
+                >
+                  <Text style={styles.modalButtonTextSecondary}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
         </View>
-      </Modal>
+      </InlineModal>
 
       {/* T065: Session Already Exists Modal */}
-      <Modal
+      <InlineModal
         visible={showSessionExistsModal}
         transparent
         animationType="fade"
         onRequestClose={() => setShowSessionExistsModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Session Already Exists</Text>
-            <Text style={styles.modalText}>
+          <View style={[styles.modalContent, isCompact && compactStyles.modalContent]}>
+            <Text style={[styles.modalTitle, isCompact && compactStyles.modalTitle]}>
+              Session Already Exists
+            </Text>
+            <Text style={[styles.modalText, isCompact && compactStyles.modalText]}>
               You already have an active session for level{' '}
               {(pendingLevelWithSession?.level ?? 0) + 1}. Resume it to continue your run.
             </Text>
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={styles.modalButtonSecondary}
-                onPress={() => setShowSessionExistsModal(false)}
-              >
-                <Text style={styles.modalButtonTextSecondary}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.modalButtonPrimary}
-                onPress={handleResumeExistingSession}
-              >
-                <Text style={styles.modalButtonTextPrimary}>Resume</Text>
-              </TouchableOpacity>
-            </View>
+            {isCompact ? (
+              <View style={compactStyles.modalHintRow}>
+                <View style={compactStyles.modalHintItem}>
+                  <Image source={iconBSource} style={compactStyles.modalHintIcon} resizeMode="contain" />
+                  <Text style={compactStyles.modalHintLabel}>Cancel</Text>
+                </View>
+                <View style={compactStyles.modalHintItem}>
+                  <Image source={iconASource} style={compactStyles.modalHintIcon} resizeMode="contain" />
+                  <Text style={compactStyles.modalHintLabel}>Resume</Text>
+                </View>
+              </View>
+            ) : (
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={styles.modalButtonSecondary}
+                  onPress={() => setShowSessionExistsModal(false)}
+                >
+                  <Text style={styles.modalButtonTextSecondary}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.modalButtonPrimary}
+                  onPress={handleResumeExistingSession}
+                >
+                  <Text style={styles.modalButtonTextPrimary}>Resume</Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
         </View>
-      </Modal>
+      </InlineModal>
 
       {/* T021: Level Locked Modal */}
-      <Modal
+      <InlineModal
         visible={showLockedModal}
         transparent
         animationType="fade"
         onRequestClose={() => setShowLockedModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Level Locked</Text>
-            <Text style={styles.modalText}>
+          <View style={[styles.modalContent, isCompact && compactStyles.modalContent]}>
+            <Text style={[styles.modalTitle, isCompact && compactStyles.modalTitle]}>
+              Level Locked
+            </Text>
+            <Text style={[styles.modalText, isCompact && compactStyles.modalText]}>
               Level {(attemptedLevel ?? 0) + 1} is not yet unlocked.{'\n'}
               Complete level {highestLevelUnlocked} to progress.
             </Text>
-            <TouchableOpacity
-              style={styles.modalButtonPrimary}
-              onPress={() => setShowLockedModal(false)}
-            >
-              <Text style={styles.modalButtonTextPrimary}>OK</Text>
-            </TouchableOpacity>
+            {isCompact ? (
+              <View style={compactStyles.modalHintRow}>
+                <View style={compactStyles.modalHintItem}>
+                  <Image source={iconASource} style={compactStyles.modalHintIcon} resizeMode="contain" />
+                  <Text style={compactStyles.modalHintLabel}>OK</Text>
+                </View>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={styles.modalButtonPrimary}
+                onPress={() => setShowLockedModal(false)}
+              >
+                <Text style={styles.modalButtonTextPrimary}>OK</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
-      </Modal>
+      </InlineModal>
+      <ControllerHints hints={controllerHints} horizontal />
     </Animated.View>
   );
 }
@@ -1094,5 +1231,39 @@ const compactStyles = StyleSheet.create({
   statsContainer: {
     bottom: 28,
     right: 28,
+  },
+  modalContent: {
+    maxWidth: 560,
+    padding: 40,
+    borderRadius: 16,
+    borderWidth: 3,
+  },
+  modalTitle: {
+    fontSize: 36,
+    marginBottom: 20,
+  },
+  modalText: {
+    fontSize: 24,
+    lineHeight: 34,
+    marginBottom: 28,
+  },
+  modalHintRow: {
+    flexDirection: 'row',
+    gap: 32,
+    alignItems: 'center',
+  },
+  modalHintItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  modalHintIcon: {
+    width: 32,
+    height: 32,
+  },
+  modalHintLabel: {
+    fontFamily: Typography.button,
+    fontSize: 24,
+    color: '#c8c8c8',
   },
 });

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -17,10 +17,15 @@ import { useWallet, type SupportedWallet } from '../contexts/WalletContext';
 import { RootStackParamList } from '../navigation';
 import { JupiterIcon } from '../components/wallet/JupiterIcon';
 import { PhantomIcon } from '../components/wallet/PhantomIcon';
+import { useControllerAction } from '../hooks/useControllerAction';
+import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHints';
+import { ControllerKeyboard } from '../components/ui/ControllerKeyboard';
 
 type AccountScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Account'>;
 };
+
+const WALLET_IDS: SupportedWallet[] = ['Jupiter', 'Phantom', 'DevKeypair'];
 
 export function AccountScreen({ navigation }: AccountScreenProps) {
   const {
@@ -40,61 +45,35 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
   const [isActionLoading, setIsActionLoading] = useState(false);
   const hasInitialized = useRef(false);
   const [guestModeActivated, setGuestModeActivated] = useState(false);
+  const [showKeyboard, setShowKeyboard] = useState(false);
   const [panelDimensions, setPanelDimensions] = useState<{ width: number; height: number } | null>(
     null
   );
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  useEffect(() => {
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 600,
-      useNativeDriver: true,
-    }).start();
-  }, []);
-
-  // Track when initial load completes to prevent flickering
-  useEffect(() => {
-    if (!isProfileLoading && !hasInitialized.current) {
-      hasInitialized.current = true;
-    }
-  }, [isProfileLoading]);
-
-  // Only show loading for user-initiated actions OR initial load
+  // Derived state
   const showLoading =
     isActionLoading || isConnecting || (!hasInitialized.current && isProfileLoading);
   const isConnected = wallet.isConnected;
   const errorMessage = localError ?? walletError ?? profileError;
 
-  // Navigate to Hub if profile exists
-  useEffect(() => {
-    if (isConnected && profile && !isProfileLoading) {
-      navigation.replace('Hub');
-    }
-  }, [isConnected, profile, isProfileLoading, navigation]);
+  // --- Handlers ---
 
-  // Navigate to Hub if guest mode is explicitly activated (T007)
-  useEffect(() => {
-    if (guestModeActivated && mode === 'guest' && !isConnected) {
-      navigation.replace('Hub');
-    }
-  }, [guestModeActivated, mode, isConnected, navigation]);
-
-  const handleSignIn = async () => {
+  const handleSignIn = useCallback(async () => {
     setLocalError(null);
     const result = await connect(selectedWallet);
     if (!result) {
       return;
     }
-  };
+  }, [connect, selectedWallet]);
 
-  const handlePlayAsGuest = () => {
+  const handlePlayAsGuest = useCallback(() => {
     setLocalError(null);
     setGuestModeActivated(true);
     loginAsGuest();
-  };
+  }, [loginAsGuest]);
 
-  const handleCreateProfile = async () => {
+  const handleCreateProfile = useCallback(async () => {
     if (!profileName.trim()) {
       setLocalError('Enter a display name to continue');
       return;
@@ -110,7 +89,6 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
     try {
       const result = await createProfile(profileName.trim());
       if (result.success) {
-        // Navigate to Hub after successful profile creation
         navigation.replace('Hub');
       } else {
         setLocalError(result.error ?? 'Failed to create profile');
@@ -118,11 +96,98 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
     } finally {
       setIsActionLoading(false);
     }
-  };
+  }, [profileName, createProfile, navigation]);
+
+  const handleDPadLeft = useCallback(() => {
+    setSelectedWallet((prev) => {
+      const idx = WALLET_IDS.indexOf(prev);
+      return WALLET_IDS[(idx - 1 + WALLET_IDS.length) % WALLET_IDS.length];
+    });
+  }, []);
+
+  const handleDPadRight = useCallback(() => {
+    setSelectedWallet((prev) => {
+      const idx = WALLET_IDS.indexOf(prev);
+      return WALLET_IDS[(idx + 1) % WALLET_IDS.length];
+    });
+  }, []);
+
+  // --- Controller integration ---
+
+  const hasName = profileName.trim().length > 0;
+
+  const handleOpenKeyboard = useCallback(() => {
+    setShowKeyboard(true);
+  }, []);
+
+  const handleKeyboardSubmit = useCallback((name: string) => {
+    setProfileName(name);
+    setShowKeyboard(false);
+  }, []);
+
+  const handleKeyboardCancel = useCallback(() => {
+    setShowKeyboard(false);
+  }, []);
+
+  const handleClearName = useCallback(() => {
+    setProfileName('');
+  }, []);
+
+  useControllerAction(
+    {
+      onA: !isConnected ? handleSignIn : hasName ? handleCreateProfile : handleOpenKeyboard,
+      onB: isConnected && hasName ? handleClearName : undefined,
+      onDPadLeft: !isConnected ? handleDPadLeft : undefined,
+      onDPadRight: !isConnected ? handleDPadRight : undefined,
+      onSelect: !isConnected ? handlePlayAsGuest : undefined,
+    },
+    !showLoading && !showKeyboard
+  );
+
+  const controllerHints: ButtonHint[] = !isConnected
+    ? [
+        { button: 'DPadLeftRight', label: 'Select Wallet' },
+        { button: 'A', label: 'Sign In' },
+        { button: 'Select', label: 'Play as Guest' },
+      ]
+    : hasName
+      ? [
+          { button: 'A', label: 'Create Profile' },
+          { button: 'B', label: 'Clear Name' },
+        ]
+      : [{ button: 'A', label: 'Enter Name' }];
+
+  // --- Effects ---
+
+  useEffect(() => {
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 600,
+      useNativeDriver: true,
+    }).start();
+  }, []);
+
+  useEffect(() => {
+    if (!isProfileLoading && !hasInitialized.current) {
+      hasInitialized.current = true;
+    }
+  }, [isProfileLoading]);
+
+  useEffect(() => {
+    if (isConnected && profile && !isProfileLoading) {
+      navigation.replace('Hub');
+    }
+  }, [isConnected, profile, isProfileLoading, navigation]);
+
+  useEffect(() => {
+    if (guestModeActivated && mode === 'guest' && !isConnected) {
+      navigation.replace('Hub');
+    }
+  }, [guestModeActivated, mode, isConnected, navigation]);
 
   const handlePanelLayout = (event: any) => {
     const { width, height } = event.nativeEvent.layout;
-    const availableWidth = width - 64; // paddingHorizontal: 32 * 2
+    const availableWidth = width - 64;
     const availableHeight = height;
     const ratio = 0.85;
 
@@ -296,6 +361,19 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
           </ImageBackground>
         </View>
       </View>
+
+      {/* On-screen keyboard for controller mode */}
+      <ControllerKeyboard
+        visible={showKeyboard}
+        value={profileName}
+        maxLength={32}
+        placeholder="Adventurer name"
+        onSubmit={handleKeyboardSubmit}
+        onCancel={handleKeyboardCancel}
+      />
+
+      {/* Controller button hints */}
+      <ControllerHints hints={controllerHints} />
     </Animated.View>
   );
 }

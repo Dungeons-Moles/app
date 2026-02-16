@@ -117,7 +117,7 @@ export type RootStackParamList = {
     levelUnlocked?: number;
     itemUnlocked?: UnlockedItem;
   };
-  PitDraft: { debugResult?: 'victory' | 'defeat' } | undefined;
+  PitDraft: undefined;
   PitDraftHistory: undefined;
   Duels: undefined;
   DuelsHistory: undefined;

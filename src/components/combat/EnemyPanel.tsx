@@ -161,7 +161,7 @@ export function EnemyPanel({
     <View
       style={[
         styles.container,
-        isCompact && { height: '50%', alignSelf: 'center' },
+        isCompact && { height: '80%', alignSelf: 'center' },
       ]}
     >
       <ImageBackground source={SIDEBAR_BG} style={styles.sidePanelBg} resizeMode="stretch">

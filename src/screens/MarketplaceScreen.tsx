@@ -14,6 +14,10 @@ import { useProfile } from '../contexts/ProfileContext';
 import { RootStackParamList } from '../navigation';
 import { Typography } from '../theme/typography';
 import { useScreenVariant } from '../contexts/ScreenVariantContext';
+import { useControllerAction } from '../hooks/useControllerAction';
+import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHints';
+import { useInputMode } from '../hooks/useInputMode';
+import { FocusGlow } from '../components/ui/FocusGlow';
 
 const backgroundImage = require('../../assets/ui/backgrounds/loading-background.png');
 const buttonV1Source = require('../../assets/ui/buttons/button-v1.png');
@@ -64,6 +68,40 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
     }
   }, [purchaseRuns]);
 
+  // --- Controller navigation ---
+  const inputMode = useInputMode();
+  const isController = inputMode === 'controller';
+  const TABS: Tab[] = ['skins', 'items', 'pve'];
+
+  const cycleTab = useCallback(
+    (dir: -1 | 1) => {
+      setActiveTab((prev) => {
+        const idx = TABS.indexOf(prev);
+        const next = idx + dir;
+        if (next < 0 || next >= TABS.length) return prev;
+        setPurchaseError(null);
+        return TABS[next];
+      });
+    },
+    []
+  );
+
+  useControllerAction(
+    {
+      onB: handleBack,
+      onA: activeTab === 'pve' && !isPurchasing ? handlePurchase : undefined,
+      onDPadLeft: () => cycleTab(-1),
+      onDPadRight: () => cycleTab(1),
+    },
+    isController
+  );
+
+  const controllerHints: ButtonHint[] = [
+    { button: 'DPadLeftRight', label: 'Switch Tab' },
+    ...(activeTab === 'pve' ? [{ button: 'A' as const, label: 'Purchase' }] : []),
+    { button: 'B', label: 'Back' },
+  ];
+
   return (
     <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
       <Image
@@ -75,17 +113,21 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
       <View style={[styles.content, isCompact && compactStyles.content]}>
         {/* Header */}
         <View style={[styles.header, isCompact && compactStyles.header]}>
-          <TouchableOpacity onPress={handleBack} activeOpacity={0.7}>
-            <ImageBackground
-              source={buttonV1Source}
-              style={[styles.backButton, isCompact && compactStyles.backButton]}
-              resizeMode="stretch"
-            >
-              <Text style={[styles.backButtonText, isCompact && compactStyles.backButtonText]}>
-                Back
-              </Text>
-            </ImageBackground>
-          </TouchableOpacity>
+          {isController ? (
+            <View style={[styles.backButton, isCompact && compactStyles.backButton]} />
+          ) : (
+            <TouchableOpacity onPress={handleBack} activeOpacity={0.7}>
+              <ImageBackground
+                source={buttonV1Source}
+                style={[styles.backButton, isCompact && compactStyles.backButton]}
+                resizeMode="stretch"
+              >
+                <Text style={[styles.backButtonText, isCompact && compactStyles.backButtonText]}>
+                  Back
+                </Text>
+              </ImageBackground>
+            </TouchableOpacity>
+          )}
 
           <ImageBackground
             source={buttonV4Source}
@@ -100,27 +142,32 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
 
         {/* Tabs */}
         <View style={[styles.tabs, isCompact && compactStyles.tabs]}>
-          {(['skins', 'items', 'pve'] as const).map((tab) => (
-            <TouchableOpacity
-              key={tab}
-              style={[styles.tab, activeTab === tab && styles.tabActive]}
-              onPress={() => {
-                setActiveTab(tab);
-                setPurchaseError(null);
-              }}
-              activeOpacity={0.7}
-            >
-              <Text
-                style={[
-                  styles.tabText,
-                  isCompact && compactStyles.tabText,
-                  activeTab === tab && styles.tabTextActive,
-                ]}
+          {(['skins', 'items', 'pve'] as const).map((tab) => {
+            const tabEl = (
+              <TouchableOpacity
+                key={tab}
+                style={[styles.tab, activeTab === tab && styles.tabActive]}
+                onPress={() => {
+                  setActiveTab(tab);
+                  setPurchaseError(null);
+                }}
+                activeOpacity={0.7}
               >
-                {tab === 'pve' ? 'PvE' : tab.charAt(0).toUpperCase() + tab.slice(1)}
-              </Text>
-            </TouchableOpacity>
-          ))}
+                <Text
+                  style={[
+                    styles.tabText,
+                    isCompact && compactStyles.tabText,
+                    activeTab === tab && styles.tabTextActive,
+                  ]}
+                >
+                  {tab === 'pve' ? 'PvE' : tab.charAt(0).toUpperCase() + tab.slice(1)}
+                </Text>
+              </TouchableOpacity>
+            );
+            return isController && activeTab === tab ? (
+              <FocusGlow key={tab} active>{tabEl}</FocusGlow>
+            ) : tabEl;
+          })}
         </View>
 
         {/* Tab Content */}
@@ -200,6 +247,7 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
           </ImageBackground>
         </View>
       )}
+      <ControllerHints hints={controllerHints} horizontal />
     </Animated.View>
   );
 }
