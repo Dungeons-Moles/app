@@ -13,6 +13,8 @@ This client connects to the on-chain programs in `../solana-programs` and suppor
 - Duels PvP mode (async queue + seed-matched run flow)
 - Gauntlet PvP mode (5-week async mode with echo fights, history, ranking)
 - Combat replay UI with deterministic log playback
+- Controller/gamepad navigation across all screens (via psg1-sim)
+- Responsive compact and wide screen variants
 - Mobile and web support through Expo
 
 ## Tech Stack
@@ -22,6 +24,7 @@ This client connects to the on-chain programs in `../solana-programs` and suppor
 - @coral-xyz/anchor + @solana/web3.js
 - React Navigation
 - React Native Skia (combat/game rendering)
+- psg1-sim (console simulator with gamepad support)
 
 ## Prerequisites
 

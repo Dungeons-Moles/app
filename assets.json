@@ -746,6 +746,11 @@
         "height": 1176,
         "path": "assets/icons/ui/sun.png",
         "width": 1176
+      },
+      "trophy.png": {
+        "height": 301,
+        "path": "assets/icons/ui/trophy.png",
+        "width": 301
       }
     }
   },
@@ -790,6 +795,21 @@
         "height": 1342,
         "path": "assets/ui/backgrounds/loading-background.png",
         "width": 2386
+      },
+      "book-compact.png": {
+        "height": 3014,
+        "path": "assets/ui/backgrounds/book-compact.png",
+        "width": 3400
+      },
+      "book-wide.png": {
+        "height": 768,
+        "path": "assets/ui/backgrounds/book-wide.png",
+        "width": 1344
+      },
+      "stains-background.png": {
+        "height": 1342,
+        "path": "assets/ui/backgrounds/stains-background.png",
+        "width": 2386
       }
     },
     "buttons": {
@@ -817,6 +837,78 @@
         "height": 761,
         "path": "assets/ui/buttons/button.png",
         "width": 2150
+      },
+      "button-gray.png": {
+        "height": 761,
+        "path": "assets/ui/buttons/button-gray.png",
+        "width": 2150
+      },
+      "button-green.png": {
+        "height": 761,
+        "path": "assets/ui/buttons/button-green.png",
+        "width": 2150
+      }
+    },
+    "control-buttons": {
+      "a.png": {
+        "height": 192,
+        "path": "assets/ui/control-buttons/a.png",
+        "width": 192
+      },
+      "b.png": {
+        "height": 192,
+        "path": "assets/ui/control-buttons/b.png",
+        "width": 192
+      },
+      "d-pad.png": {
+        "height": 300,
+        "path": "assets/ui/control-buttons/d-pad.png",
+        "width": 300
+      },
+      "direction.png": {
+        "height": 192,
+        "path": "assets/ui/control-buttons/direction.png",
+        "width": 192
+      },
+      "l1-circular.png": {
+        "height": 192,
+        "path": "assets/ui/control-buttons/l1-circular.png",
+        "width": 192
+      },
+      "l1.png": {
+        "height": 105,
+        "path": "assets/ui/control-buttons/l1.png",
+        "width": 191
+      },
+      "r1-circular.png": {
+        "height": 192,
+        "path": "assets/ui/control-buttons/r1-circular.png",
+        "width": 192
+      },
+      "r1.png": {
+        "height": 105,
+        "path": "assets/ui/control-buttons/r1.png",
+        "width": 191
+      },
+      "select.png": {
+        "height": 114,
+        "path": "assets/ui/control-buttons/select.png",
+        "width": 262
+      },
+      "start.png": {
+        "height": 114,
+        "path": "assets/ui/control-buttons/start.png",
+        "width": 262
+      },
+      "x.png": {
+        "height": 192,
+        "path": "assets/ui/control-buttons/x.png",
+        "width": 192
+      },
+      "y.png": {
+        "height": 192,
+        "path": "assets/ui/control-buttons/y.png",
+        "width": 192
       }
     },
     "frames": {
@@ -841,6 +933,76 @@
         "height": 783,
         "path": "assets/ui/illustrations/wallet.png",
         "width": 2329
+      },
+      "chest.png": {
+        "height": 250,
+        "path": "assets/ui/illustrations/chest.png",
+        "width": 250
+      },
+      "defeat-image.png": {
+        "height": 292,
+        "path": "assets/ui/illustrations/defeat-image.png",
+        "width": 533
+      },
+      "duels-paper.png": {
+        "height": 233,
+        "path": "assets/ui/illustrations/duels-paper.png",
+        "width": 343
+      },
+      "echo-fight.png": {
+        "height": 250,
+        "path": "assets/ui/illustrations/echo-fight.png",
+        "width": 355
+      },
+      "gauntlet-paper.png": {
+        "height": 240,
+        "path": "assets/ui/illustrations/gauntlet-paper.png",
+        "width": 354
+      },
+      "green-brush.png": {
+        "height": 322,
+        "path": "assets/ui/illustrations/green-brush.png",
+        "width": 567
+      },
+      "history-scroll.png": {
+        "height": 555,
+        "path": "assets/ui/illustrations/history-scroll.png",
+        "width": 1002
+      },
+      "items.png": {
+        "height": 250,
+        "path": "assets/ui/illustrations/items.png",
+        "width": 250
+      },
+      "pit-draft-paper.png": {
+        "height": 194,
+        "path": "assets/ui/illustrations/pit-draft-paper.png",
+        "width": 339
+      },
+      "red-brush.png": {
+        "height": 322,
+        "path": "assets/ui/illustrations/red-brush.png",
+        "width": 567
+      },
+      "session-papers.png": {
+        "height": 335,
+        "path": "assets/ui/illustrations/session-papers.png",
+        "width": 524
+      },
+      "sol-pile.png": {
+        "height": 250,
+        "path": "assets/ui/illustrations/sol-pile.png",
+        "width": 250
+      },
+      "victory-image.png": {
+        "height": 292,
+        "path": "assets/ui/illustrations/victory-image.png",
+        "width": 533
+      },
+      "yellow-brush.png": {
+        "height": 322,
+        "path": "assets/ui/illustrations/yellow-brush.png",
+        "width": 567
       }
     },
     "panels": {
@@ -863,6 +1025,53 @@
         "height": 1481,
         "path": "assets/ui/panels/wooden-panel.png",
         "width": 1307
+      },
+      "pvp-modes-panel.png": {
+        "height": 553,
+        "path": "assets/ui/panels/pvp-modes-panel.png",
+        "width": 676
+      },
+      "pvp-panel.png": {
+        "height": 605,
+        "path": "assets/ui/panels/pvp-panel.png",
+        "width": 506
+      }
+    },
+    "text": {
+      "defeat.png": {
+        "height": 239,
+        "path": "assets/ui/text/defeat.png",
+        "width": 556
+      },
+      "duels.png": {
+        "height": 115,
+        "path": "assets/ui/text/duels.png",
+        "width": 329
+      },
+      "gauntlet.png": {
+        "height": 115,
+        "path": "assets/ui/text/gauntlet.png",
+        "width": 519
+      },
+      "history.png": {
+        "height": 144,
+        "path": "assets/ui/text/history.png",
+        "width": 447
+      },
+      "pit-draft.png": {
+        "height": 115,
+        "path": "assets/ui/text/pit-draft.png",
+        "width": 543
+      },
+      "ranking.png": {
+        "height": 147,
+        "path": "assets/ui/text/ranking.png",
+        "width": 481
+      },
+      "victory.png": {
+        "height": 239,
+        "path": "assets/ui/text/victory.png",
+        "width": 556
       }
     }
   },
