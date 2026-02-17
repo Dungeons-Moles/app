@@ -438,18 +438,24 @@ export function convertBackendLogToFrontend(
   backendLog: BackendCombatLogEntry[]
 ): FrontendCombatLogEntry[] {
   return backendLog.map((entry): FrontendCombatLogEntry => {
-    const actor = entry.isPlayer ? 'player' : 'enemy';
-    // Target is opposite of actor for attacks, same for self-effects
-    const target = entry.isPlayer ? 'enemy' : 'player';
+    // On-chain semantics: for Attack, is_player = !is_target_player (attacker).
+    // For most other actions, is_player = is_target_player (who is affected).
+    // We derive actor/target per action type accordingly.
+    const actorAsAttacker = entry.isPlayer ? 'player' : 'enemy';
+    const targetOfAttacker = entry.isPlayer ? 'enemy' : 'player';
+    // For target-semantics actions: is_player identifies who is affected
+    const affected: 'player' | 'enemy' = entry.isPlayer ? 'player' : 'enemy';
+    const affectedOpposite: 'player' | 'enemy' = entry.isPlayer ? 'enemy' : 'player';
 
     switch (entry.action) {
       case LogAction.Attack:
+        // is_player = !is_target_player → isPlayer = attacker
         return {
           turn: entry.turn,
           timing: 'ON_HIT',
-          actor,
+          actor: actorAsAttacker,
           action: 'ATTACK',
-          target,
+          target: targetOfAttacker,
           result: {
             damage: entry.value,
           },
@@ -457,12 +463,13 @@ export function convertBackendLogToFrontend(
         };
 
       case LogAction.Heal:
+        // is_player = is_target_player → isPlayer = who is healed
         return {
           turn: entry.turn,
           timing: 'TURN_START',
-          actor,
+          actor: affected,
           action: 'HEAL',
-          target: actor, // Heal self
+          target: affected, // Heal self
           result: {
             healing: entry.value,
           },
@@ -470,12 +477,13 @@ export function convertBackendLogToFrontend(
         };
 
       case LogAction.ApplyStatus:
+        // is_player = is_target_player → isPlayer = who receives the status
         return {
           turn: entry.turn,
           timing: 'ON_HIT',
-          actor,
+          actor: affectedOpposite, // The OTHER combatant applied the status
           action: 'APPLY_STATUS',
-          target,
+          target: affected, // isPlayer identifies the target
           result: {
             statusApplied: {
               type: getStatusName(entry.extra as StatusId),
@@ -486,12 +494,13 @@ export function convertBackendLogToFrontend(
         };
 
       case LogAction.StatusDamage:
+        // is_player = who takes the status damage (target semantics)
         return {
           turn: entry.turn,
           timing: 'TURN_START',
           actor: 'system',
           action: 'ATTACK',
-          target: actor, // Status damages the actor
+          target: affected, // isPlayer = who takes the damage
           result: {
             damage: entry.value,
             effectName: `${getStatusName(entry.extra as StatusId)} damage`,
@@ -500,13 +509,14 @@ export function convertBackendLogToFrontend(
         };
 
       case LogAction.ArmorChange:
+        // is_player = is_target_player (who gains/loses armor)
         if (entry.value > 0) {
           return {
             turn: entry.turn,
             timing: 'TURN_START',
-            actor,
+            actor: affected,
             action: 'GAIN_ARMOR',
-            target: actor, // Armor change is self
+            target: affected,
             result: {
               armorGained: entry.value,
             },
@@ -516,9 +526,9 @@ export function convertBackendLogToFrontend(
           return {
             turn: entry.turn,
             timing: 'ON_HIT',
-            actor: entry.isPlayer ? 'enemy' : 'player', // Opposite actor caused the loss
+            actor: affectedOpposite,
             action: 'LOSE_ARMOR',
-            target: actor, // Target lost armor
+            target: affected,
             result: {
               armorLost: Math.abs(entry.value),
             },
@@ -527,12 +537,13 @@ export function convertBackendLogToFrontend(
         }
 
       case LogAction.AtkChange:
+        // is_player = is_target_player (who gains/loses ATK)
         return {
           turn: entry.turn,
           timing: 'TURN_START',
-          actor,
+          actor: affected,
           action: 'TRIGGER_ITEM',
-          target: actor,
+          target: affected,
           result: {
             effectName: entry.value > 0 ? `+${entry.value} ATK` : `${entry.value} ATK`,
           },
@@ -540,12 +551,13 @@ export function convertBackendLogToFrontend(
         };
 
       case LogAction.SpdChange:
+        // is_player = is_target_player (who gains/loses SPD)
         return {
           turn: entry.turn,
           timing: 'TURN_START',
-          actor,
+          actor: affected,
           action: 'TRIGGER_ITEM',
-          target: actor,
+          target: affected,
           result: {
             effectName: entry.value > 0 ? `+${entry.value} SPD` : `${entry.value} SPD`,
           },
@@ -553,12 +565,13 @@ export function convertBackendLogToFrontend(
         };
 
       case LogAction.NonWeaponDamage:
+        // is_player = is_target_player → isPlayer = who TAKES the damage
         return {
           turn: entry.turn,
           timing: 'TURN_START',
-          actor,
+          actor: affectedOpposite,
           action: 'TRIGGER_ITEM',
-          target,
+          target: affected, // isPlayer identifies who receives damage
           result: {
             damage: entry.value,
             effectName: 'Item damage',
@@ -567,12 +580,13 @@ export function convertBackendLogToFrontend(
         };
 
       case LogAction.ShrapnelRetaliation:
+        // is_player = is_player_attacking → the attacker takes shrapnel damage
         return {
           turn: entry.turn,
           timing: 'ON_STRUCK',
-          actor: entry.isPlayer ? 'enemy' : 'player', // Shrapnel damages attacker
+          actor: entry.isPlayer ? 'enemy' : 'player', // Defender's shrapnel triggers
           action: 'TRIGGER_ITEMSET',
-          target: entry.isPlayer ? 'player' : 'enemy', // Shrapnel on the one who attacked
+          target: entry.isPlayer ? 'player' : 'enemy', // Attacker takes the damage
           result: {
             damage: entry.value,
             effectName: 'Shrapnel Harness',
@@ -581,15 +595,17 @@ export function convertBackendLogToFrontend(
         };
 
       case LogAction.GoldStolen:
+        // On-chain: is_player=true means player gained gold, is_player=false means player lost
+        // value is positive when player gains, negative when player loses
         return {
           turn: entry.turn,
           timing: 'ON_HIT',
-          actor,
+          actor: entry.isPlayer ? 'player' : 'enemy',
           action: 'TRIGGER_TRAIT',
-          target,
+          target: entry.isPlayer ? 'enemy' : 'player',
           result: {
-            effectName: `Stole ${entry.value} gold`,
-            goldStolen: entry.value,
+            effectName: `Stole ${Math.abs(entry.value)} gold`,
+            goldStolen: Math.abs(entry.value),
           },
           rngValues: [],
         };
@@ -599,9 +615,9 @@ export function convertBackendLogToFrontend(
         return {
           turn: entry.turn,
           timing: 'TURN_START',
-          actor,
+          actor: actorAsAttacker,
           action: 'ATTACK',
-          target,
+          target: targetOfAttacker,
           result: {
             damage: entry.value,
           },

@@ -204,6 +204,20 @@ export function CombatLayout({
 
             {/* Combat Arena (CENTER) */}
             <View style={[styles.arenaArea, { padding: 16 * scale }]}>
+              <View
+                style={[
+                  styles.turnBadge,
+                  {
+                    paddingHorizontal: 10 * scale,
+                    paddingVertical: 4 * scale,
+                    marginBottom: 6 * scale,
+                  },
+                ]}
+              >
+                <Text style={[styles.turnBadgeText, { fontSize: 13 * scale }]}>
+                  Turn {currentTurn}
+                </Text>
+              </View>
               <CombatArena
                 player={player}
                 enemy={enemy}
@@ -215,7 +229,7 @@ export function CombatLayout({
                 scale={scale}
               />
 
-              <View style={[styles.controlsArea, { marginTop: 12 * scale }]}>
+              <View style={[styles.controlsArea, { marginTop: isCompact ? 24 : -4 }]}>
                 <SpeedControls
                   currentSpeed={speed}
                   onSpeedChange={setSpeed}
@@ -290,6 +304,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   controlsArea: {},
+  turnBadge: {
+    alignSelf: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    borderRadius: 6,
+  },
+  turnBadgeText: {
+    color: '#f8e4b5',
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
   topLabel: {
     position: 'absolute',
     top: 12,

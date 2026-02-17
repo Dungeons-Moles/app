@@ -74,7 +74,7 @@ export function CombatArena({
     );
   }
 
-  const combatantRadius = 40 * scale;
+  const combatantRadius = 50 * scale;
   const enemyX = arenaWidth * 0.25;
   const playerX = arenaWidth * 0.75;
   const combatantY = arenaHeight * 0.4;
@@ -96,18 +96,6 @@ export function CombatArena({
 
   return (
     <View style={[styles.container, { width: arenaWidth, height: arenaHeight }]}>
-      <View
-        style={[
-          styles.turnBadge,
-          {
-            top: 18 * scale,
-            paddingHorizontal: 10 * scale,
-            paddingVertical: 4 * scale,
-          },
-        ]}
-      >
-        <Text style={[styles.turnBadgeText, { fontSize: 13 * scale }]}>Turn {currentTurn}</Text>
-      </View>
       <Canvas style={{ width: arenaWidth, height: arenaHeight }}>
         {/* Background */}
         {bgImage ? (
@@ -280,18 +268,6 @@ const styles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
     pointerEvents: 'none',
-  },
-  turnBadge: {
-    position: 'absolute',
-    alignSelf: 'center',
-    zIndex: 3,
-    backgroundColor: 'rgba(0, 0, 0, 0.45)',
-    borderRadius: 6,
-  },
-  turnBadgeText: {
-    color: '#f8e4b5',
-    fontWeight: '700',
-    letterSpacing: 0.3,
   },
   statusRow: {
     position: 'absolute',

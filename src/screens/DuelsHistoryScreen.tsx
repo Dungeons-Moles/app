@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -6,17 +6,27 @@ import {
   ImageBackground,
   Image,
   TouchableOpacity,
+  Pressable,
   ActivityIndicator,
   FlatList,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation';
-import { useDuels } from '@/hooks/useDuels';
+import { useDuels, type DuelHistoryItem } from '@/hooks/useDuels';
+import { useWallet } from '@/contexts/WalletContext';
+import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
 import { useScreenVariant } from '@/contexts/ScreenVariantContext';
 import { Typography } from '@/theme/typography';
 import { useControllerAction } from '../hooks/useControllerAction';
 import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHints';
 import { useInputMode } from '../hooks/useInputMode';
+import { FocusGlow } from '../components/ui/FocusGlow';
+import { createGameplayStateProgram } from '@/services/solana/programs';
+import { parseDuelEvents } from '@/services/solana/duels';
+import { convertItemInstanceToTool, convertItemInstanceToGear } from '@/services/solana/pitDraft';
+import { calculateItemStats } from '@/game/entities/items';
+import type { CombatantState, Gear, Tool } from '@/game/engine/types';
+import type { BackendCombatLogEntry } from '@/services/solana/types/combat_events';
 
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.png');
 const STAINS_BACKGROUND = require('../../assets/ui/backgrounds/stains-background.png');
@@ -28,6 +38,41 @@ const GREEN_BRUSH = require('../../assets/ui/illustrations/green-brush.png');
 const RED_BRUSH = require('../../assets/ui/illustrations/red-brush.png');
 const buttonV1Source = require('../../assets/ui/buttons/button-v1.png');
 
+// On-chain base values (ATK/ARM/SPD start at 0; bonuses come from BattleStart log entries)
+const PVP_BASE_HP = 10;
+const PVP_BASE_ATK = 0;
+const PVP_BASE_ARM = 0;
+const PVP_BASE_SPD = 0;
+const PVP_BASE_DIG = 0;
+
+function buildPvpCombatant(
+  name: string,
+  isPlayer: boolean,
+  definitionId: string,
+  tool: Tool | null,
+  gear: Gear[],
+): CombatantState {
+  const itemStats = calculateItemStats(tool, gear);
+  const maxHp = PVP_BASE_HP + (itemStats.hp ?? 0);
+  return {
+    name,
+    emoji: '',
+    definitionId,
+    isPlayer,
+    maxHp,
+    hp: maxHp,
+    atk: PVP_BASE_ATK,
+    arm: PVP_BASE_ARM,
+    spd: PVP_BASE_SPD,
+    dig: PVP_BASE_DIG + (itemStats.dig ?? 0),
+    bonusAtk: 0,
+    bonusArm: 0,
+    bonusSpd: 0,
+    statusEffects: { chill: 0, shrapnel: 0, rust: 0, bleed: 0 },
+    strikesPerTurn: 1,
+    ignoresArmor: false,
+  };
+}
 
 type DuelsHistoryScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'DuelsHistory'>;
@@ -35,7 +80,12 @@ type DuelsHistoryScreenProps = {
 
 export function DuelsHistoryScreen({ navigation }: DuelsHistoryScreenProps) {
   const duels = useDuels();
+  const { wallet } = useWallet();
+  const { connection } = useSolanaConnection();
   const isCompact = useScreenVariant() === 'compact';
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [isLoadingReplay, setIsLoadingReplay] = useState(false);
+  const flatListRef = useRef<FlatList<DuelHistoryItem>>(null);
 
   useEffect(() => {
     void duels.loadHistory();
@@ -43,6 +93,85 @@ export function DuelsHistoryScreen({ navigation }: DuelsHistoryScreenProps) {
 
   const historyData = duels.history;
   const hasData = useMemo(() => historyData.length > 0, [historyData.length]);
+
+  // --- Replay handler ---
+  const handleReplay = useCallback(
+    async (item: DuelHistoryItem) => {
+      if (isLoadingReplay || !wallet.publicKey) return;
+      setIsLoadingReplay(true);
+      try {
+        const gameplayProgram = createGameplayStateProgram(connection);
+        const events = await parseDuelEvents(connection, gameplayProgram, item.signature);
+        if (!events.combatVisual) {
+          setIsLoadingReplay(false);
+          return;
+        }
+
+        const visual = events.combatVisual;
+        const ourKey = wallet.publicKey.toBase58();
+        const isPlayerA = visual.playerA.toBase58() === ourKey;
+
+        const ourToolInst = isPlayerA ? visual.playerATool : visual.playerBTool;
+        const ourGearInsts = isPlayerA ? visual.playerAGear : visual.playerBGear;
+        const oppToolInst = isPlayerA ? visual.playerBTool : visual.playerATool;
+        const oppGearInsts = isPlayerA ? visual.playerBGear : visual.playerAGear;
+
+        const playerTool = ourToolInst ? convertItemInstanceToTool(ourToolInst) : null;
+        const playerGear = ourGearInsts
+          .filter((g): g is NonNullable<typeof g> => g !== null)
+          .map((g) => convertItemInstanceToGear(g))
+          .filter((g): g is Gear => g !== null);
+
+        const enemyTool = oppToolInst ? convertItemInstanceToTool(oppToolInst) : null;
+        const enemyGear = oppGearInsts
+          .filter((g): g is NonNullable<typeof g> => g !== null)
+          .map((g) => convertItemInstanceToGear(g))
+          .filter((g): g is Gear => g !== null);
+
+        const player = buildPvpCombatant('You', true, 'player', playerTool, playerGear);
+        const enemy = buildPvpCombatant(
+          item.opponentProfileName,
+          false,
+          'pvpOpponent',
+          enemyTool,
+          enemyGear,
+        );
+
+        const combatLog: BackendCombatLogEntry[] = visual.combatLog.map((entry) => ({
+          ...entry,
+          isPlayer: isPlayerA ? entry.isPlayer : !entry.isPlayer,
+        }));
+
+        navigation.navigate('Combat', {
+          combatInput: {
+            player,
+            enemy,
+            seed: 0,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            enemyDefinitionId: 'pvpOpponent' as any, // PvP uses a non-EnemyId definitionId
+            combatLog,
+            onChainOutcome: {
+              finalPlayerHp: isPlayerA ? visual.finalPlayerAHp : visual.finalPlayerBHp,
+              finalPlayerGold: 0,
+              playerWon: item.isWinner,
+            },
+            playerTool: playerTool,
+            playerGear: playerGear,
+            enemyTool: enemyTool,
+            enemyGear: enemyGear,
+            duelReplay: true,
+            historyReplay: true,
+            preserveArmor: true,
+          },
+        });
+      } catch (err) {
+        console.error('[DuelsHistory] Failed to load replay:', err);
+      } finally {
+        setIsLoadingReplay(false);
+      }
+    },
+    [isLoadingReplay, wallet.publicKey, connection, navigation],
+  );
 
   // --- Controller navigation ---
   const inputMode = useInputMode();
@@ -52,16 +181,47 @@ export function DuelsHistoryScreen({ navigation }: DuelsHistoryScreenProps) {
     navigation.goBack();
   }, [navigation]);
 
+  const handleDPadUp = useCallback(() => {
+    setSelectedIndex((prev) => Math.max(0, prev - 1));
+  }, []);
+
+  const handleDPadDown = useCallback(() => {
+    setSelectedIndex((prev) => Math.min(historyData.length - 1, prev + 1));
+  }, [historyData.length]);
+
+  useEffect(() => {
+    if (historyData.length > 0 && selectedIndex >= 0) {
+      flatListRef.current?.scrollToIndex({
+        index: selectedIndex,
+        animated: true,
+        viewPosition: 0.5,
+      });
+    }
+  }, [selectedIndex, historyData.length]);
+
   useControllerAction(
     {
       onB: handleBack,
-      onA: () => void duels.loadHistory(),
+      onA: () => {
+        if (
+          historyData.length > 0 &&
+          selectedIndex >= 0 &&
+          selectedIndex < historyData.length
+        ) {
+          void handleReplay(historyData[selectedIndex]);
+        } else {
+          void duels.loadHistory();
+        }
+      },
+      onDPadUp: handleDPadUp,
+      onDPadDown: handleDPadDown,
     },
     isController,
   );
 
   const controllerHints: ButtonHint[] = [
-    { button: 'A', label: 'Refresh' },
+    { button: 'DPadUpDown', label: 'Navigate' },
+    { button: 'A', label: historyData.length > 0 ? 'Watch' : 'Refresh' },
     { button: 'B', label: 'Back' },
   ];
 
@@ -151,6 +311,7 @@ export function DuelsHistoryScreen({ navigation }: DuelsHistoryScreenProps) {
                   </View>
                 ) : (
                   <FlatList
+                    ref={flatListRef}
                     data={historyData}
                     keyExtractor={(item) => item.signature}
                     showsVerticalScrollIndicator={false}
@@ -158,44 +319,72 @@ export function DuelsHistoryScreen({ navigation }: DuelsHistoryScreenProps) {
                       styles.listContent,
                       isCompact && compactStyles.listContent,
                     ]}
-                    renderItem={({ item }) => (
-                      <View style={styles.rowOuter}>
-                        <Image
-                          source={RECTANGLE_FRAME}
-                          style={styles.rowFrame}
-                          resizeMode="stretch"
-                        />
-                        <View style={[styles.rowInner, isCompact && compactStyles.rowInner]}>
-                          <View style={styles.resultRow}>
-                            <View style={styles.brushWrapper}>
-                              <Image
-                                source={item.isWinner ? GREEN_BRUSH : RED_BRUSH}
-                                style={styles.brushImage}
-                                resizeMode="stretch"
-                              />
-                              <Text
-                                style={[
-                                  styles.resultLabel,
-                                  isCompact && compactStyles.resultLabel,
-                                ]}
-                              >
-                                {item.isWinner ? 'WIN' : 'LOSS'}
-                              </Text>
+                    onScrollToIndexFailed={(info) => {
+                      flatListRef.current?.scrollToOffset({
+                        offset: info.averageItemLength * info.index,
+                        animated: true,
+                      });
+                    }}
+                    renderItem={({ item, index }) => (
+                      <FocusGlow active={isController && selectedIndex === index}>
+                        <Pressable
+                          onPress={() => {
+                            setSelectedIndex(index);
+                            void handleReplay(item);
+                          }}
+                        >
+                          <View style={styles.rowOuter}>
+                            <Image
+                              source={RECTANGLE_FRAME}
+                              style={styles.rowFrame}
+                              resizeMode="stretch"
+                            />
+                            <View style={[styles.rowInner, isCompact && compactStyles.rowInner]}>
+                              <View style={styles.resultRow}>
+                                <View style={styles.brushWrapper}>
+                                  <Image
+                                    source={item.isWinner ? GREEN_BRUSH : RED_BRUSH}
+                                    style={styles.brushImage}
+                                    resizeMode="stretch"
+                                  />
+                                  <Text
+                                    style={[
+                                      styles.resultLabel,
+                                      isCompact && compactStyles.resultLabel,
+                                    ]}
+                                  >
+                                    {item.isWinner ? 'WIN' : 'LOSS'}
+                                  </Text>
+                                </View>
+                                <Text
+                                  style={[
+                                    styles.resultText,
+                                    isCompact && compactStyles.resultText,
+                                  ]}
+                                >
+                                  vs {item.opponentProfileName}
+                                </Text>
+                              </View>
+                              <View style={styles.metaRow}>
+                                <Text
+                                  style={[styles.metaText, isCompact && compactStyles.metaText]}
+                                >
+                                  Payout:{' '}
+                                  {item.isWinner
+                                    ? formatSol(item.winnerPayoutLamports)
+                                    : '0.000'}{' '}
+                                  SOL
+                                </Text>
+                                <Text
+                                  style={[styles.metaText, isCompact && compactStyles.metaText]}
+                                >
+                                  {formatDate(item.playedAtUnix)}
+                                </Text>
+                              </View>
                             </View>
-                            <Text style={[styles.resultText, isCompact && compactStyles.resultText]}>
-                              vs {item.opponentProfileName}
-                            </Text>
                           </View>
-                          <View style={styles.metaRow}>
-                            <Text style={[styles.metaText, isCompact && compactStyles.metaText]}>
-                              Payout: {item.isWinner ? formatSol(item.winnerPayoutLamports) : '0.000'} SOL
-                            </Text>
-                            <Text style={[styles.metaText, isCompact && compactStyles.metaText]}>
-                              {formatDate(item.playedAtUnix)}
-                            </Text>
-                          </View>
-                        </View>
-                      </View>
+                        </Pressable>
+                      </FocusGlow>
                     )}
                   />
                 )}
@@ -203,6 +392,11 @@ export function DuelsHistoryScreen({ navigation }: DuelsHistoryScreenProps) {
             </View>
           </View>
 
+          {isLoadingReplay && (
+            <View style={styles.replayOverlay}>
+              <ActivityIndicator color="#000000" size="large" />
+            </View>
+          )}
         </View>
       </ImageBackground>
       <ControllerHints hints={controllerHints} horizontal />
@@ -359,6 +553,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
     marginTop: 20,
+  },
+  replayOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
 

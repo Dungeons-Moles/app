@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   ImageBackground,
   Image,
   TouchableOpacity,
+  Pressable,
   ActivityIndicator,
   FlatList,
 } from 'react-native';
@@ -15,11 +16,16 @@ import { useWallet } from '@/contexts/WalletContext';
 import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
 import { useScreenVariant } from '@/contexts/ScreenVariantContext';
 import { parseGauntletEvents } from '@/services/solana/gauntlet';
+import { convertItemInstanceToTool, convertItemInstanceToGear } from '@/services/solana/pitDraft';
 import { GAMEPLAY_STATE_PROGRAM_ID } from '@/services/solana/constants';
 import { Typography } from '@/theme/typography';
 import { useControllerAction } from '../hooks/useControllerAction';
 import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHints';
 import { useInputMode } from '../hooks/useInputMode';
+import { FocusGlow } from '../components/ui/FocusGlow';
+import { calculateItemStats } from '@/game/entities/items';
+import type { CombatantState, Gear, Tool } from '@/game/engine/types';
+import type { BackendCombatLogEntry } from '@/services/solana/types/combat_events';
 
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.png');
 const STAINS_BACKGROUND = require('../../assets/ui/backgrounds/stains-background.png');
@@ -31,6 +37,41 @@ const GREEN_BRUSH = require('../../assets/ui/illustrations/green-brush.png');
 const RED_BRUSH = require('../../assets/ui/illustrations/red-brush.png');
 const buttonV1Source = require('../../assets/ui/buttons/button-v1.png');
 
+// On-chain base values (ATK/ARM/SPD start at 0; bonuses come from BattleStart log entries)
+const PVP_BASE_HP = 10;
+const PVP_BASE_ATK = 0;
+const PVP_BASE_ARM = 0;
+const PVP_BASE_SPD = 0;
+const PVP_BASE_DIG = 0;
+
+function buildPvpCombatant(
+  name: string,
+  isPlayer: boolean,
+  definitionId: string,
+  tool: Tool | null,
+  gear: Gear[],
+): CombatantState {
+  const itemStats = calculateItemStats(tool, gear);
+  const maxHp = PVP_BASE_HP + (itemStats.hp ?? 0);
+  return {
+    name,
+    emoji: '',
+    definitionId,
+    isPlayer,
+    maxHp,
+    hp: maxHp,
+    atk: PVP_BASE_ATK,
+    arm: PVP_BASE_ARM,
+    spd: PVP_BASE_SPD,
+    dig: PVP_BASE_DIG + (itemStats.dig ?? 0),
+    bonusAtk: 0,
+    bonusArm: 0,
+    bonusSpd: 0,
+    statusEffects: { chill: 0, shrapnel: 0, rust: 0, bleed: 0 },
+    strikesPerTurn: 1,
+    ignoresArmor: false,
+  };
+}
 
 const PAGE_SIZE = 60;
 const MAX_PAGES = 8;
@@ -61,6 +102,9 @@ export function GauntletHistoryScreen({ navigation }: GauntletHistoryScreenProps
   const [items, setItems] = useState<GauntletHistoryItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [isLoadingReplay, setIsLoadingReplay] = useState(false);
+  const flatListRef = useRef<FlatList<GauntletHistoryItem>>(null);
 
   const formatDate = useCallback((unixTs: number | null) => {
     if (!unixTs) return '—';
@@ -139,6 +183,78 @@ export function GauntletHistoryScreen({ navigation }: GauntletHistoryScreenProps
 
   const hasData = useMemo(() => items.length > 0, [items.length]);
 
+  // --- Replay handler ---
+  const handleReplay = useCallback(
+    async (item: GauntletHistoryItem) => {
+      if (isLoadingReplay) return;
+      setIsLoadingReplay(true);
+      try {
+        const events = await parseGauntletEvents(connection, item.signature);
+        if (!events.combatVisual) {
+          setIsLoadingReplay(false);
+          return;
+        }
+
+        const visual = events.combatVisual;
+
+        const playerTool = visual.playerTool
+          ? convertItemInstanceToTool(visual.playerTool)
+          : null;
+        const playerGear = visual.playerGear
+          .filter((g): g is NonNullable<typeof g> => g !== null)
+          .map((g) => convertItemInstanceToGear(g))
+          .filter((g): g is Gear => g !== null);
+
+        const echoTool = visual.echoTool
+          ? convertItemInstanceToTool(visual.echoTool)
+          : null;
+        const echoGear = visual.echoGear
+          .filter((g): g is NonNullable<typeof g> => g !== null)
+          .map((g) => convertItemInstanceToGear(g))
+          .filter((g): g is Gear => g !== null);
+
+        const player = buildPvpCombatant('You', true, 'player', playerTool, playerGear);
+        const enemy = buildPvpCombatant(
+          item.sourceLabel.replace('Echo: ', 'Echo '),
+          false,
+          'pvpOpponent',
+          echoTool,
+          echoGear,
+        );
+
+        const combatLog: BackendCombatLogEntry[] = visual.combatLog;
+
+        navigation.navigate('Combat', {
+          combatInput: {
+            player,
+            enemy,
+            seed: 0,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            enemyDefinitionId: 'pvpOpponent' as any, // PvP uses a non-EnemyId definitionId
+            combatLog,
+            onChainOutcome: {
+              finalPlayerHp: visual.finalPlayerHp,
+              finalPlayerGold: 0,
+              playerWon: visual.playerWon,
+            },
+            playerTool: playerTool,
+            playerGear: playerGear,
+            enemyTool: echoTool,
+            enemyGear: echoGear,
+            duelReplay: true,
+            historyReplay: true,
+            preserveArmor: true,
+          },
+        });
+      } catch (err) {
+        console.error('[GauntletHistory] Failed to load replay:', err);
+      } finally {
+        setIsLoadingReplay(false);
+      }
+    },
+    [isLoadingReplay, connection, navigation],
+  );
+
   // --- Controller navigation ---
   const inputMode = useInputMode();
   const isController = inputMode === 'controller';
@@ -147,16 +263,43 @@ export function GauntletHistoryScreen({ navigation }: GauntletHistoryScreenProps
     navigation.goBack();
   }, [navigation]);
 
+  const handleDPadUp = useCallback(() => {
+    setSelectedIndex((prev) => Math.max(0, prev - 1));
+  }, []);
+
+  const handleDPadDown = useCallback(() => {
+    setSelectedIndex((prev) => Math.min(items.length - 1, prev + 1));
+  }, [items.length]);
+
+  useEffect(() => {
+    if (items.length > 0 && selectedIndex >= 0) {
+      flatListRef.current?.scrollToIndex({
+        index: selectedIndex,
+        animated: true,
+        viewPosition: 0.5,
+      });
+    }
+  }, [selectedIndex, items.length]);
+
   useControllerAction(
     {
       onB: handleBack,
-      onA: () => void loadHistory(),
+      onA: () => {
+        if (items.length > 0 && selectedIndex >= 0 && selectedIndex < items.length) {
+          void handleReplay(items[selectedIndex]);
+        } else {
+          void loadHistory();
+        }
+      },
+      onDPadUp: handleDPadUp,
+      onDPadDown: handleDPadDown,
     },
     isController,
   );
 
   const controllerHints: ButtonHint[] = [
-    { button: 'A', label: 'Refresh' },
+    { button: 'DPadUpDown', label: 'Navigate' },
+    { button: 'A', label: items.length > 0 ? 'Watch' : 'Refresh' },
     { button: 'B', label: 'Back' },
   ];
 
@@ -239,6 +382,7 @@ export function GauntletHistoryScreen({ navigation }: GauntletHistoryScreenProps
                   </View>
                 ) : (
                   <FlatList
+                    ref={flatListRef}
                     data={items}
                     keyExtractor={(item) => item.signature}
                     showsVerticalScrollIndicator={false}
@@ -246,47 +390,73 @@ export function GauntletHistoryScreen({ navigation }: GauntletHistoryScreenProps
                       styles.listContent,
                       isCompact && compactStyles.listContent,
                     ]}
-                    renderItem={({ item }) => (
-                      <View style={styles.rowOuter}>
-                        <Image
-                          source={RECTANGLE_FRAME}
-                          style={styles.rowFrame}
-                          resizeMode="stretch"
-                        />
-                        <View style={[styles.rowInner, isCompact && compactStyles.rowInner]}>
-                          <View style={styles.resultRow}>
-                            <View style={styles.brushWrapper}>
-                              <Image
-                                source={item.result === 'WIN' ? GREEN_BRUSH : RED_BRUSH}
-                                style={styles.brushImage}
-                                resizeMode="stretch"
-                              />
-                              <Text
-                                style={[
-                                  styles.resultLabel,
-                                  isCompact && compactStyles.resultLabel,
-                                ]}
-                              >
-                                {item.result}
-                              </Text>
+                    onScrollToIndexFailed={(info) => {
+                      flatListRef.current?.scrollToOffset({
+                        offset: info.averageItemLength * info.index,
+                        animated: true,
+                      });
+                    }}
+                    renderItem={({ item, index }) => (
+                      <FocusGlow active={isController && selectedIndex === index}>
+                        <Pressable
+                          onPress={() => {
+                            setSelectedIndex(index);
+                            void handleReplay(item);
+                          }}
+                        >
+                          <View style={styles.rowOuter}>
+                            <Image
+                              source={RECTANGLE_FRAME}
+                              style={styles.rowFrame}
+                              resizeMode="stretch"
+                            />
+                            <View style={[styles.rowInner, isCompact && compactStyles.rowInner]}>
+                              <View style={styles.resultRow}>
+                                <View style={styles.brushWrapper}>
+                                  <Image
+                                    source={item.result === 'WIN' ? GREEN_BRUSH : RED_BRUSH}
+                                    style={styles.brushImage}
+                                    resizeMode="stretch"
+                                  />
+                                  <Text
+                                    style={[
+                                      styles.resultLabel,
+                                      isCompact && compactStyles.resultLabel,
+                                    ]}
+                                  >
+                                    {item.result}
+                                  </Text>
+                                </View>
+                                <Text
+                                  style={[
+                                    styles.resultText,
+                                    isCompact && compactStyles.resultText,
+                                  ]}
+                                >
+                                  - Week {item.week}
+                                </Text>
+                              </View>
+                              <View style={styles.metaRow}>
+                                <Text
+                                  style={[styles.metaText, isCompact && compactStyles.metaText]}
+                                >
+                                  Points: {item.turnsTaken}
+                                </Text>
+                                <Text
+                                  style={[styles.metaText, isCompact && compactStyles.metaText]}
+                                >
+                                  Echo: {item.sourceLabel.replace('Echo: ', '')}
+                                </Text>
+                                <Text
+                                  style={[styles.metaText, isCompact && compactStyles.metaText]}
+                                >
+                                  {formatDate(item.playedAtUnix)}
+                                </Text>
+                              </View>
                             </View>
-                            <Text style={[styles.resultText, isCompact && compactStyles.resultText]}>
-                              - Week {item.week}
-                            </Text>
                           </View>
-                          <View style={styles.metaRow}>
-                            <Text style={[styles.metaText, isCompact && compactStyles.metaText]}>
-                              Points: {item.turnsTaken}
-                            </Text>
-                            <Text style={[styles.metaText, isCompact && compactStyles.metaText]}>
-                              Echo: {item.sourceLabel.replace('Echo: ', '')}
-                            </Text>
-                            <Text style={[styles.metaText, isCompact && compactStyles.metaText]}>
-                              {formatDate(item.playedAtUnix)}
-                            </Text>
-                          </View>
-                        </View>
-                      </View>
+                        </Pressable>
+                      </FocusGlow>
                     )}
                   />
                 )}
@@ -294,6 +464,11 @@ export function GauntletHistoryScreen({ navigation }: GauntletHistoryScreenProps
             </View>
           </View>
 
+          {isLoadingReplay && (
+            <View style={styles.replayOverlay}>
+              <ActivityIndicator color="#000000" size="large" />
+            </View>
+          )}
         </View>
       </ImageBackground>
       <ControllerHints hints={controllerHints} horizontal />
@@ -450,6 +625,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
     marginTop: 20,
+  },
+  replayOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
 

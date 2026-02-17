@@ -352,6 +352,11 @@ function decodeGauntletCombatVisual(data: Buffer): GauntletCombatVisualEvent | n
       offset += ENTRY_SIZE;
     }
 
+    // combat_log_truncated: bool (1 byte)
+    offset += 1;
+    // combat_log_total_entries: u16 (2 bytes)
+    offset += 2;
+
     const playerWon = data.readUInt8(offset) !== 0;
     offset += 1;
     const finalPlayerHp = data.readInt16LE(offset);

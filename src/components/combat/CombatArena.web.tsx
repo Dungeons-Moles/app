@@ -70,9 +70,6 @@ export function CombatArena({
 
   return (
     <View style={[styles.container, { width: arenaWidth, height: arenaHeight }]}>
-      <View style={[styles.turnBadge, { top: 18 * scale, paddingHorizontal: 10 * scale, paddingVertical: 4 * scale }]}>
-        <Text style={[styles.turnBadgeText, { fontSize: 13 * scale }]}>Turn {currentTurn}</Text>
-      </View>
       <ImageBackground source={BATTLEGROUND_BG} style={styles.background} resizeMode="contain">
         {/* Enemy combatant (LEFT) */}
         {activeActor === 'enemy' ? (
@@ -211,18 +208,6 @@ const styles = StyleSheet.create({
   background: {
     width: '100%',
     height: '100%',
-  },
-  turnBadge: {
-    position: 'absolute',
-    alignSelf: 'center',
-    zIndex: 3,
-    backgroundColor: 'rgba(0, 0, 0, 0.45)',
-    borderRadius: 6,
-  },
-  turnBadgeText: {
-    color: '#f8e4b5',
-    fontWeight: '700',
-    letterSpacing: 0.3,
   },
   placeholder: {
     ...StyleSheet.absoluteFillObject,

@@ -64,6 +64,8 @@ export type CombatAction =
       type: 'START_COMBAT_WITH_LOG';
       input: CombatResolverInput;
       backendLog: BackendCombatLogEntry[];
+      /** Authoritative on-chain result to override log-derived result */
+      onChainResult?: 'VICTORY' | 'DEFEAT';
     }
   | {
       type: 'START_COMBAT_WITH_ONCHAIN_OUTCOME';
@@ -406,6 +408,8 @@ function combatReducer(state: CombatUIState, action: CombatAction): CombatUIStat
 
       // Derive the combat result by replaying the log against initial HP
       const derivedResult = deriveCombatResultFromLog(baseCombat, typedLog);
+      // Use authoritative on-chain result when available, fall back to derived
+      const finalResult = action.onChainResult ?? derivedResult;
 
       // Derive the turn count from the log (max turn value across all entries)
       const maxTurn = typedLog.reduce((max, entry) => Math.max(max, entry.turn), 0);
@@ -415,7 +419,7 @@ function combatReducer(state: CombatUIState, action: CombatAction): CombatUIStat
       const resolvedCombat = {
         ...baseCombat,
         log: typedLog,
-        result: derivedResult,
+        result: finalResult,
         turn: maxTurn,
       };
 
@@ -423,6 +427,8 @@ function combatReducer(state: CombatUIState, action: CombatAction): CombatUIStat
         entryCount: action.backendLog.length,
         convertedCount: convertedLog.length,
         derivedResult,
+        onChainResult: action.onChainResult,
+        finalResult,
       });
 
       return {
@@ -584,7 +590,11 @@ interface CombatContextType {
   /** Start a new combat */
   startCombat: (input: CombatResolverInput) => void;
   /** Start combat using backend log (for on-chain mode) */
-  startCombatWithLog: (input: CombatResolverInput, backendLog: BackendCombatLogEntry[]) => void;
+  startCombatWithLog: (
+    input: CombatResolverInput,
+    backendLog: BackendCombatLogEntry[],
+    onChainResult?: 'VICTORY' | 'DEFEAT'
+  ) => void;
   /** Start combat from authoritative on-chain result when log is unavailable */
   startCombatWithOnchainOutcome: (
     input: CombatResolverInput,
@@ -638,8 +648,12 @@ export function CombatProvider({ children, initialSpeed, onSpeedChange }: Combat
   );
 
   const startCombatWithLog = useCallback(
-    (input: CombatResolverInput, backendLog: BackendCombatLogEntry[]) => {
-      dispatch({ type: 'START_COMBAT_WITH_LOG', input, backendLog });
+    (
+      input: CombatResolverInput,
+      backendLog: BackendCombatLogEntry[],
+      onChainResult?: 'VICTORY' | 'DEFEAT'
+    ) => {
+      dispatch({ type: 'START_COMBAT_WITH_LOG', input, backendLog, onChainResult });
     },
     [dispatch]
   );

@@ -21,6 +21,8 @@ import { CombatLayout } from '../components/combat';
 import { DebugOverlay } from '../components/game';
 import { ENEMY_TRAITS } from '../game/combat/traits';
 import { getEntityImageSource } from '../components/game/entityImages';
+
+const defaultMoleImageSource = require('../../assets/entities/characters/default-mole.png');
 import { getPhaseLabel } from '../utils/phase-labels';
 import { createGameplayStateProgram } from '@/services/solana/programs';
 import {
@@ -38,8 +40,9 @@ type CombatScreenProps = {
   route: RouteProp<RootStackParamList, 'Combat'>;
 };
 
+// On-chain base values (ATK/ARM/SPD start at 0; bonuses come from BattleStart log entries)
 const DUEL_BASE_HP = 10;
-const DUEL_BASE_ATK = 1;
+const DUEL_BASE_ATK = 0;
 const DUEL_BASE_ARM = 0;
 const DUEL_BASE_SPD = 0;
 const DUEL_BASE_DIG = 0;
@@ -61,9 +64,9 @@ function buildDuelCombatant(
     isPlayer,
     maxHp,
     hp: maxHp,
-    atk: DUEL_BASE_ATK + (itemStats.atk ?? 0),
-    arm: DUEL_BASE_ARM + (itemStats.arm ?? 0),
-    spd: DUEL_BASE_SPD + (itemStats.spd ?? 0),
+    atk: DUEL_BASE_ATK,
+    arm: DUEL_BASE_ARM,
+    spd: DUEL_BASE_SPD,
     dig: DUEL_BASE_DIG + (itemStats.dig ?? 0),
     bonusAtk: 0,
     bonusArm: 0,
@@ -146,7 +149,12 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
           enemyHp: combatInput.enemy.hp,
           logEntries: combatInput.combatLog.length,
         });
-        startCombatWithLog(resolverInput, combatInput.combatLog);
+        const onChainResult = combatInput.onChainOutcome
+          ? combatInput.onChainOutcome.playerWon
+            ? ('VICTORY' as const)
+            : ('DEFEAT' as const)
+          : undefined;
+        startCombatWithLog(resolverInput, combatInput.combatLog, onChainResult);
       } else if (combatInput.onChainOutcome) {
         // Authoritative fallback: avoid local simulation drift when log parsing is delayed/missing.
         console.log('[CombatScreen] Starting combat with on-chain outcome fallback:', {
@@ -218,7 +226,11 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
       if (!localResult) return;
 
       if (combatInput?.duelReplay) {
-        navigation.replace('Hub');
+        if (combatInput.historyReplay) {
+          navigation.goBack();
+        } else {
+          navigation.replace('Hub');
+        }
         return;
       }
 
@@ -445,12 +457,21 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
 
   // Extract player equipment for display
   const playerEquipment = useMemo(() => {
-    if (!gameState?.player) return { tool: null, gear: [] };
-    return {
-      tool: gameState.player.equippedTool,
-      gear: gameState.player.inventory.map((slot) => slot.item),
-    };
-  }, [gameState?.player]);
+    if (gameState?.player) {
+      return {
+        tool: gameState.player.equippedTool,
+        gear: gameState.player.inventory.map((slot) => slot.item),
+      };
+    }
+    // Fallback to combatInput for replay mode
+    if (combatInput) {
+      return {
+        tool: combatInput.playerTool ?? null,
+        gear: combatInput.playerGear ?? [],
+      };
+    }
+    return { tool: null, gear: [] };
+  }, [gameState?.player, combatInput]);
 
   // Get display states for gold fallback
   const { playerGold, enemyGold } = getDisplayStates();
@@ -460,12 +481,17 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
       enemyPanel={{
         name: combatState.combat?.enemy.name ?? 'Enemy',
         emoji: combatState.combat?.enemy.emoji ?? '',
-        imageSource: combatState.combat?.enemyDefinitionId
-          ? getEntityImageSource(combatState.combat.enemyDefinitionId)
-          : undefined,
+        imageSource:
+          (combatState.combat?.enemyDefinitionId as string) === 'pvpOpponent'
+            ? defaultMoleImageSource
+            : combatState.combat?.enemyDefinitionId
+              ? getEntityImageSource(combatState.combat.enemyDefinitionId)
+              : undefined,
         dig: 0,
         gold: enemyGold ?? combatInput?.enemyGold,
         trait: enemyTrait,
+        equippedTool: combatInput?.enemyTool,
+        equippedGear: combatInput?.enemyGear ?? [],
       }}
       playerPanel={{
         name: combatState.combat?.player.name ?? 'Player',

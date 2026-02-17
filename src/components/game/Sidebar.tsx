@@ -2,7 +2,7 @@
  * Sidebar Component - Combines BossPanel, StatsPanel, and InventoryPanel
  */
 
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, StyleSheet, ImageBackground, Text, Image, Pressable } from 'react-native';
 import { PublicKey } from '@solana/web3.js';
 import { StatsPanel } from './StatsPanel';
@@ -36,19 +36,33 @@ import type {
   TimeState,
   PlayerStats,
   Tool,
+  ToolOil,
   InventorySlot,
   ItemsetId,
   Gear,
 } from '../../game/engine/types';
+import { getTierFromRarity } from '../../data/gear';
 
 const SIDEBAR_BG = require('../../../assets/ui/panels/sidebar.png');
 const BOSS_PANEL_BG = require('../../../assets/ui/panels/boss-panel.png');
 const DEFAULT_MOLE_IMAGE_SOURCE = require('../../../assets/entities/characters/default-mole.png');
+const SLOT_BG = require('../../../assets/ui/frames/square.png');
 const HP_ICON = require('../../../assets/icons/stats/HP.png');
 const ATK_ICON = require('../../../assets/icons/stats/ATK.png');
 const ARM_ICON = require('../../../assets/icons/stats/ARM.png');
 const SPD_ICON = require('../../../assets/icons/stats/speed.png');
 const DIG_ICON = require('../../../assets/icons/stats/DIG.png');
+const OIL_IMAGES: Record<ToolOil, any> = {
+  ATK: require('../../../assets/icons/oils/ATK.png'),
+  DIG: require('../../../assets/icons/oils/DIG.png'),
+  SPD: require('../../../assets/icons/oils/SPD.png'),
+  ARM: require('../../../assets/icons/oils/ARM.png'),
+};
+
+/** Gauntlet gear capacity per week (starts at 4, gains 4 each week) */
+function gauntletGearCapacity(week: number): number {
+  return Math.min(4 + (week - 1) * 4, 12);
+}
 
 interface SidebarProps {
   time: TimeState;
@@ -70,6 +84,128 @@ interface SidebarProps {
   floatingCompact?: boolean;
   compactBoss?: boolean;
   inlineBoss?: boolean;
+}
+
+const GEAR_SLOT_SIZE = 28;
+const TOOL_SLOT_SIZE = 42;
+
+function EchoGearSlot({ item, size = GEAR_SLOT_SIZE }: { item: Gear | null; size?: number }) {
+  const tierBorder = item
+    ? (() => {
+        const tier = getTierFromRarity(item.currentRarity);
+        if (tier === 2) return '#4A90D9';
+        if (tier === 3) return '#FFD700';
+        return null;
+      })()
+    : null;
+  return (
+    <ImageBackground
+      source={SLOT_BG}
+      style={[
+        styles.echoSlot,
+        { width: size, height: size },
+        tierBorder && { borderWidth: 2, borderColor: tierBorder },
+      ]}
+      resizeMode="stretch"
+    >
+      {item &&
+        (item.image ? (
+          <Image source={item.image} style={{ width: size * 0.8, height: size * 0.8 }} resizeMode="contain" />
+        ) : (
+          <Text style={{ fontSize: size * 0.5 }}>{item.emoji}</Text>
+        ))}
+    </ImageBackground>
+  );
+}
+
+function EchoToolSlot({ tool, size = TOOL_SLOT_SIZE }: { tool: Tool | null; size?: number }) {
+  const tierBorder = tool
+    ? (() => {
+        const tier = getTierFromRarity(tool.rarity);
+        if (tier === 2) return '#4A90D9';
+        if (tier === 3) return '#FFD700';
+        return null;
+      })()
+    : null;
+  return (
+    <ImageBackground
+      source={SLOT_BG}
+      style={[
+        styles.echoSlot,
+        { width: size, height: size },
+        tierBorder && { borderWidth: 2, borderColor: tierBorder },
+      ]}
+      resizeMode="stretch"
+    >
+      {tool &&
+        (tool.image ? (
+          <Image source={tool.image} style={{ width: size * 0.8, height: size * 0.8 }} resizeMode="contain" />
+        ) : (
+          <Text style={{ fontSize: size * 0.5 }}>{tool.emoji}</Text>
+        ))}
+    </ImageBackground>
+  );
+}
+
+function EchoOilSlot({ oil, size = TOOL_SLOT_SIZE }: { oil: ToolOil | null; size?: number }) {
+  return (
+    <ImageBackground
+      source={SLOT_BG}
+      style={[styles.echoSlot, { width: size, height: size }]}
+      resizeMode="stretch"
+    >
+      {oil && (
+        <Image source={OIL_IMAGES[oil]} style={{ width: size * 0.8, height: size * 0.8 }} resizeMode="contain" />
+      )}
+    </ImageBackground>
+  );
+}
+
+function EchoEquipmentGrid({ tool, gear, week }: { tool: Tool | null; gear: Gear[]; week: number }) {
+  const maxSlots = gauntletGearCapacity(week);
+  // Build rows of 4
+  const rows: (Gear | null)[][] = [];
+  for (let i = 0; i < maxSlots; i += 4) {
+    const row: (Gear | null)[] = [];
+    for (let j = 0; j < 4; j++) {
+      row.push(gear[i + j] ?? null);
+    }
+    rows.push(row);
+  }
+
+  return (
+    <View style={styles.echoEquipContainer}>
+      {/* Gear grid */}
+      <Text style={styles.echoSectionTitle}>
+        GEAR ({Math.min(gear.length, maxSlots)}/{maxSlots})
+      </Text>
+      <View style={styles.echoGearGrid}>
+        {rows.map((row, ri) => (
+          <View key={ri} style={styles.echoGearRow}>
+            {row.map((g, ci) => (
+              <EchoGearSlot key={ci} item={g} />
+            ))}
+          </View>
+        ))}
+      </View>
+
+      {/* Weapon + Oil */}
+      <View style={styles.echoToolSection}>
+        <View style={styles.echoToolHeaderRow}>
+          <View style={[styles.echoToolHeaderCell, { width: TOOL_SLOT_SIZE }]}>
+            <Text style={styles.echoSectionTitle}>WEAPON</Text>
+          </View>
+          <View style={[styles.echoToolHeaderCell, { width: TOOL_SLOT_SIZE }]}>
+            <Text style={styles.echoSectionTitle}>OIL</Text>
+          </View>
+        </View>
+        <View style={styles.echoToolRow}>
+          <EchoToolSlot tool={tool} />
+          <EchoOilSlot oil={tool?.oil ?? null} />
+        </View>
+      </View>
+    </View>
+  );
 }
 
 export function BossPanel({
@@ -293,6 +429,15 @@ export function BossPanel({
     }
   }, [displayedBoss, shouldShowGauntletEcho, loadPvpDetails]);
 
+  // Auto-load echo details for inline gauntlet view so stats render immediately
+  const inlineLoadedWeekRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (inline && shouldShowGauntletEcho && !pvpLoading && inlineLoadedWeekRef.current !== resolvedWeek) {
+      inlineLoadedWeekRef.current = resolvedWeek;
+      void loadPvpDetails();
+    }
+  }, [inline, shouldShowGauntletEcho, pvpLoading, resolvedWeek, loadPvpDetails]);
+
   const panelTitle = displayedBoss
     ? displayedBoss.name
     : shouldShowDuelOpponent
@@ -321,6 +466,8 @@ export function BossPanel({
 
   if (inline) {
     const bossStats = displayedBoss?.stats;
+    const echoStats = shouldShowGauntletEcho ? pvpDetails?.stats : null;
+    const inlineStats = bossStats ?? echoStats;
     return (
       <View style={styles.inlineBossContainer}>
         <View style={styles.inlineBossHeader}>
@@ -335,17 +482,17 @@ export function BossPanel({
             {panelTitle}
           </Text>
         </View>
-        {bossStats && (
+        {inlineStats && (
           <>
             <View style={styles.inlineStatsRow}>
               <View style={styles.inlineStatsColumn}>
-                <InlineStatRow icon={HP_ICON} label="HP" value={bossStats.hp} />
-                <InlineStatRow icon={ATK_ICON} label="ATK" value={bossStats.atk} />
-                <InlineStatRow icon={ARM_ICON} label="ARM" value={bossStats.arm} />
+                <InlineStatRow icon={HP_ICON} label="HP" value={inlineStats.hp} />
+                <InlineStatRow icon={ATK_ICON} label="ATK" value={inlineStats.atk} />
+                <InlineStatRow icon={ARM_ICON} label="ARM" value={inlineStats.arm} />
               </View>
               <View style={styles.inlineStatsColumn}>
-                <InlineStatRow icon={SPD_ICON} label="SPD" value={bossStats.spd} />
-                <InlineStatRow icon={DIG_ICON} label="DIG" value={bossStats.dig ?? 0} />
+                <InlineStatRow icon={SPD_ICON} label="SPD" value={inlineStats.spd} />
+                <InlineStatRow icon={DIG_ICON} label="DIG" value={inlineStats.dig ?? 0} />
               </View>
             </View>
             {displayedBoss?.abilities && displayedBoss.abilities.length > 0 && (
@@ -357,6 +504,14 @@ export function BossPanel({
                   </View>
                 ))}
               </View>
+            )}
+            {/* Echo equipment grid (gauntlet mode) — mirrors InventoryPanel layout */}
+            {echoStats && pvpDetails && (
+              <EchoEquipmentGrid
+                tool={pvpDetails.tool}
+                gear={pvpDetails.gear}
+                week={pvpDetails.week ?? resolvedWeek}
+              />
             )}
           </>
         )}
@@ -633,5 +788,54 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#333333',
     lineHeight: 22,
+  },
+  echoEquipContainer: {
+    gap: 4,
+  },
+  echoSectionTitle: {
+    fontFamily: Typography.header,
+    fontSize: 14,
+    color: '#000000',
+    fontWeight: 'bold',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  echoGearGrid: {
+    gap: 6,
+    marginVertical: 2,
+  },
+  echoGearRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  echoSlot: {
+    borderRadius: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
+  echoToolSection: {
+    alignItems: 'stretch',
+    paddingVertical: 4,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,0,0,0.1)',
+    marginTop: 4,
+  },
+  echoToolHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 16,
+    marginBottom: 4,
+  },
+  echoToolHeaderCell: {
+    alignItems: 'center',
+  },
+  echoToolRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 16,
   },
 });

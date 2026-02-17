@@ -35,6 +35,7 @@ import { useLandscapeLock } from '../hooks/useOrientationLock';
 import { useScreenVariant } from '../contexts/ScreenVariantContext';
 import { useInputMode } from '../hooks/useInputMode';
 import { useControllerAction } from '../hooks/useControllerAction';
+import { useNativeGamepadMotion } from '../hooks/useNativeGamepadMotion';
 import { usePsg1Input } from 'psg1-sim';
 import { Direction, DIRECTION_DELTA } from '../game/input/types';
 import { TileType, MapEnemy, MapPOI } from '../game/map/types';
@@ -232,7 +233,7 @@ function createGauntletCombatParams(
 
   return {
     player: buildPlayerCombatant(playerStats),
-    enemy: buildEnemyCombatant('Echo', '🪞', 'gauntlet_echo', {
+    enemy: buildEnemyCombatant('Echo', '🪞', 'pvpOpponent', {
       hp: echoMaxHp,
       atk: echoStats.atk ?? 1,
       arm: echoStats.arm ?? 0,
@@ -240,11 +241,14 @@ function createGauntletCombatParams(
       dig: echoStats.dig ?? 0,
     }),
     seed,
+    enemyDefinitionId: 'pvpOpponent' as any,
     goldReward: 0,
     activeItemSets: activeItemsets as any[],
     playerGear,
     playerTool,
     playerGold,
+    enemyTool: echoTool,
+    enemyGear: echoGear,
     week: Math.min(Math.max(week, 1), 3) as 1 | 2 | 3,
     isBossFight: false,
     combatLog: visual.combatLog,
@@ -365,6 +369,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
   const inputMode = useInputMode();
   const isController = inputMode === 'controller';
   const psg1Input = usePsg1Input();
+  const nativeMotion = useNativeGamepadMotion();
 
   // Persist fog of war state to AsyncStorage for session restore
   useFogPersistence({
@@ -1250,7 +1255,10 @@ export function GameScreen({ navigation }: GameScreenProps) {
       return;
     }
 
-    const { x, y } = psg1Input.leftStick;
+    const usePsg1Stick =
+      Math.abs(psg1Input.leftStick.x) > 0.01 || Math.abs(psg1Input.leftStick.y) > 0.01;
+    const x = usePsg1Stick ? psg1Input.leftStick.x : nativeMotion.leftStick.x;
+    const y = usePsg1Stick ? psg1Input.leftStick.y : nativeMotion.leftStick.y;
     const DEAD_ZONE = 0.15;
     const isIdle = Math.abs(x) < DEAD_ZONE && Math.abs(y) < DEAD_ZONE;
 
@@ -1266,8 +1274,10 @@ export function GameScreen({ navigation }: GameScreenProps) {
     if (panIntervalRef.current) clearInterval(panIntervalRef.current);
     const PAN_SPEED = 8;
     panIntervalRef.current = setInterval(() => {
-      const sx = psg1Input.leftStick.x;
-      const sy = psg1Input.leftStick.y;
+      const useLivePsg1Stick =
+        Math.abs(psg1Input.leftStick.x) > 0.01 || Math.abs(psg1Input.leftStick.y) > 0.01;
+      const sx = useLivePsg1Stick ? psg1Input.leftStick.x : nativeMotion.leftStick.x;
+      const sy = useLivePsg1Stick ? psg1Input.leftStick.y : nativeMotion.leftStick.y;
       if (Math.abs(sx) >= DEAD_ZONE || Math.abs(sy) >= DEAD_ZONE) {
         panOverview({
           x: Math.round(sx * PAN_SPEED),
@@ -1288,6 +1298,8 @@ export function GameScreen({ navigation }: GameScreenProps) {
     isFastTravelActive,
     psg1Input.leftStick.x,
     psg1Input.leftStick.y,
+    nativeMotion.leftStick.x,
+    nativeMotion.leftStick.y,
     panOverview,
   ]);
 

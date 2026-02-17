@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   ImageBackground,
   Image,
   TouchableOpacity,
+  Pressable,
   ActivityIndicator,
   FlatList,
 } from 'react-native';
@@ -19,12 +20,18 @@ import { derivePlayerProfilePda } from '@/services/solana/types';
 import {
   derivePitDraftQueuePda,
   parsePitDraftEvents,
+  convertItemInstanceToTool,
+  convertItemInstanceToGear,
 } from '@/services/solana/pitDraft';
 import { Typography } from '@/theme/typography';
 import { PublicKey } from '@solana/web3.js';
 import { useControllerAction } from '../hooks/useControllerAction';
 import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHints';
 import { useInputMode } from '../hooks/useInputMode';
+import { FocusGlow } from '../components/ui/FocusGlow';
+import { calculateItemStats } from '@/game/entities/items';
+import type { CombatantState, Gear, Tool } from '@/game/engine/types';
+import type { BackendCombatLogEntry } from '@/services/solana/types/combat_events';
 
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.png');
 const STAINS_BACKGROUND = require('../../assets/ui/backgrounds/stains-background.png');
@@ -36,6 +43,44 @@ const GREEN_BRUSH = require('../../assets/ui/illustrations/green-brush.png');
 const RED_BRUSH = require('../../assets/ui/illustrations/red-brush.png');
 const buttonV1Source = require('../../assets/ui/buttons/button-v1.png');
 
+// On-chain base values (ATK/ARM/SPD start at 0; bonuses come from BattleStart log entries)
+const PVP_BASE_HP = 10;
+const PVP_BASE_ATK = 0;
+const PVP_BASE_ARM = 0;
+const PVP_BASE_SPD = 0;
+const PVP_BASE_DIG = 0;
+
+function buildPvpCombatant(
+  name: string,
+  isPlayer: boolean,
+  definitionId: string,
+  tool: Tool | null,
+  gear: Gear[],
+): CombatantState {
+  // Only HP is pre-calculated on-chain (via calculate_stats).
+  // ATK/ARM/SPD bonuses are applied during combat's BattleStart phase
+  // and appear as AtkChange/ArmorChange/SpdChange log entries.
+  const itemStats = calculateItemStats(tool, gear);
+  const maxHp = PVP_BASE_HP + (itemStats.hp ?? 0);
+  return {
+    name,
+    emoji: '',
+    definitionId,
+    isPlayer,
+    maxHp,
+    hp: maxHp,
+    atk: PVP_BASE_ATK,
+    arm: PVP_BASE_ARM,
+    spd: PVP_BASE_SPD,
+    dig: PVP_BASE_DIG + (itemStats.dig ?? 0),
+    bonusAtk: 0,
+    bonusArm: 0,
+    bonusSpd: 0,
+    statusEffects: { chill: 0, shrapnel: 0, rust: 0, bleed: 0 },
+    strikesPerTurn: 1,
+    ignoresArmor: false,
+  };
+}
 
 const PAGE_SIZE = 50;
 const MAX_PAGES = 10;
@@ -62,6 +107,9 @@ export function PitDraftHistoryScreen({ navigation }: PitDraftHistoryScreenProps
   const [items, setItems] = useState<PitDraftHistoryItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [isLoadingReplay, setIsLoadingReplay] = useState(false);
+  const flatListRef = useRef<FlatList<PitDraftHistoryItem>>(null);
 
   const formatDate = useCallback((unixTs: number | null) => {
     if (!unixTs) return '—';
@@ -176,6 +224,87 @@ export function PitDraftHistoryScreen({ navigation }: PitDraftHistoryScreenProps
 
   const hasData = useMemo(() => items.length > 0, [items.length]);
 
+  // --- Replay handler ---
+  const handleReplay = useCallback(
+    async (item: PitDraftHistoryItem) => {
+      if (isLoadingReplay || !wallet.publicKey) return;
+      setIsLoadingReplay(true);
+      try {
+        const gameplayProgram = createGameplayStateProgram(connection);
+        const events = await parsePitDraftEvents(connection, gameplayProgram, item.signature);
+        if (!events.combatVisual) {
+          setIsLoadingReplay(false);
+          return;
+        }
+
+        const visual = events.combatVisual;
+        const ourKey = wallet.publicKey.toBase58();
+        const isPlayerA = visual.playerA.toBase58() === ourKey;
+
+        const ourToolInst = isPlayerA ? visual.playerATool : visual.playerBTool;
+        const ourGearInsts = isPlayerA ? visual.playerAGear : visual.playerBGear;
+        const oppToolInst = isPlayerA ? visual.playerBTool : visual.playerATool;
+        const oppGearInsts = isPlayerA ? visual.playerBGear : visual.playerAGear;
+
+        const playerTool = ourToolInst ? convertItemInstanceToTool(ourToolInst) : null;
+        const playerGear = ourGearInsts
+          .filter((g): g is NonNullable<typeof g> => g !== null)
+          .map((g) => convertItemInstanceToGear(g))
+          .filter((g): g is Gear => g !== null);
+
+        const enemyTool = oppToolInst ? convertItemInstanceToTool(oppToolInst) : null;
+        const enemyGear = oppGearInsts
+          .filter((g): g is NonNullable<typeof g> => g !== null)
+          .map((g) => convertItemInstanceToGear(g))
+          .filter((g): g is Gear => g !== null);
+
+        const player = buildPvpCombatant('You', true, 'player', playerTool, playerGear);
+        const enemy = buildPvpCombatant(
+          item.opponentName,
+          false,
+          'pvpOpponent',
+          enemyTool,
+          enemyGear,
+        );
+
+        const combatLog: BackendCombatLogEntry[] = visual.combatLog.map((entry) => ({
+          ...entry,
+          isPlayer: isPlayerA ? entry.isPlayer : !entry.isPlayer,
+        }));
+
+        navigation.navigate('Combat', {
+          combatInput: {
+            player,
+            enemy,
+            seed: 0,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            enemyDefinitionId: 'pvpOpponent' as any, // PvP uses a non-EnemyId definitionId
+            combatLog,
+            onChainOutcome: {
+              finalPlayerHp: isPlayerA ? visual.finalPlayerAHp : visual.finalPlayerBHp,
+              finalPlayerGold: 0,
+              playerWon: item.isWinner,
+            },
+            playerTool: playerTool,
+            playerGear: playerGear,
+            playerGold: isPlayerA ? visual.playerAGold : visual.playerBGold,
+            enemyTool: enemyTool,
+            enemyGear: enemyGear,
+            enemyGold: isPlayerA ? visual.playerBGold : visual.playerAGold,
+            duelReplay: true,
+            historyReplay: true,
+            preserveArmor: true,
+          },
+        });
+      } catch (err) {
+        console.error('[PitDraftHistory] Failed to load replay:', err);
+      } finally {
+        setIsLoadingReplay(false);
+      }
+    },
+    [isLoadingReplay, wallet.publicKey, connection, navigation],
+  );
+
   // --- Controller navigation ---
   const inputMode = useInputMode();
   const isController = inputMode === 'controller';
@@ -184,16 +313,43 @@ export function PitDraftHistoryScreen({ navigation }: PitDraftHistoryScreenProps
     navigation.goBack();
   }, [navigation]);
 
+  const handleDPadUp = useCallback(() => {
+    setSelectedIndex((prev) => Math.max(0, prev - 1));
+  }, []);
+
+  const handleDPadDown = useCallback(() => {
+    setSelectedIndex((prev) => Math.min(items.length - 1, prev + 1));
+  }, [items.length]);
+
+  useEffect(() => {
+    if (items.length > 0 && selectedIndex >= 0) {
+      flatListRef.current?.scrollToIndex({
+        index: selectedIndex,
+        animated: true,
+        viewPosition: 0.5,
+      });
+    }
+  }, [selectedIndex, items.length]);
+
   useControllerAction(
     {
       onB: handleBack,
-      onA: () => void loadHistory(),
+      onA: () => {
+        if (items.length > 0 && selectedIndex >= 0 && selectedIndex < items.length) {
+          void handleReplay(items[selectedIndex]);
+        } else {
+          void loadHistory();
+        }
+      },
+      onDPadUp: handleDPadUp,
+      onDPadDown: handleDPadDown,
     },
     isController,
   );
 
   const controllerHints: ButtonHint[] = [
-    { button: 'A', label: 'Refresh' },
+    { button: 'DPadUpDown', label: 'Navigate' },
+    { button: 'A', label: items.length > 0 ? 'Watch' : 'Refresh' },
     { button: 'B', label: 'Back' },
   ];
 
@@ -276,6 +432,7 @@ export function PitDraftHistoryScreen({ navigation }: PitDraftHistoryScreenProps
                   </View>
                 ) : (
                   <FlatList
+                    ref={flatListRef}
                     data={items}
                     keyExtractor={(item) => item.signature}
                     showsVerticalScrollIndicator={false}
@@ -283,47 +440,77 @@ export function PitDraftHistoryScreen({ navigation }: PitDraftHistoryScreenProps
                       styles.listContent,
                       isCompact && compactStyles.listContent,
                     ]}
-                    renderItem={({ item }) => (
-                      <View style={styles.rowOuter}>
-                        <Image
-                          source={RECTANGLE_FRAME}
-                          style={styles.rowFrame}
-                          resizeMode="stretch"
-                        />
-                        <View style={[styles.rowInner, isCompact && compactStyles.rowInner]}>
-                          <View style={styles.resultRow}>
-                            <View style={styles.brushWrapper}>
-                              <Image
-                                source={item.isWinner ? GREEN_BRUSH : RED_BRUSH}
-                                style={styles.brushImage}
-                                resizeMode="stretch"
-                              />
-                              <Text
-                                style={[
-                                  styles.resultLabel,
-                                  isCompact && compactStyles.resultLabel,
-                                ]}
-                              >
-                                {item.isWinner ? 'WIN' : 'LOSS'}
-                              </Text>
+                    onScrollToIndexFailed={(info) => {
+                      flatListRef.current?.scrollToOffset({
+                        offset: info.averageItemLength * info.index,
+                        animated: true,
+                      });
+                    }}
+                    renderItem={({ item, index }) => (
+                      <FocusGlow active={isController && selectedIndex === index}>
+                        <Pressable
+                          onPress={() => {
+                            setSelectedIndex(index);
+                            void handleReplay(item);
+                          }}
+                        >
+                          <View style={styles.rowOuter}>
+                            <Image
+                              source={RECTANGLE_FRAME}
+                              style={styles.rowFrame}
+                              resizeMode="stretch"
+                            />
+                            <View style={[styles.rowInner, isCompact && compactStyles.rowInner]}>
+                              <View style={styles.resultRow}>
+                                <View style={styles.brushWrapper}>
+                                  <Image
+                                    source={item.isWinner ? GREEN_BRUSH : RED_BRUSH}
+                                    style={styles.brushImage}
+                                    resizeMode="stretch"
+                                  />
+                                  <Text
+                                    style={[
+                                      styles.resultLabel,
+                                      isCompact && compactStyles.resultLabel,
+                                    ]}
+                                  >
+                                    {item.isWinner ? 'WIN' : 'LOSS'}
+                                  </Text>
+                                </View>
+                                <Text
+                                  style={[
+                                    styles.resultText,
+                                    isCompact && compactStyles.resultText,
+                                  ]}
+                                >
+                                  vs {item.opponentName}
+                                </Text>
+                              </View>
+                              <View style={styles.metaRow}>
+                                <Text
+                                  style={[styles.metaText, isCompact && compactStyles.metaText]}
+                                >
+                                  Turns: {item.turnsTaken}
+                                </Text>
+                                <Text
+                                  style={[styles.metaText, isCompact && compactStyles.metaText]}
+                                >
+                                  Payout:{' '}
+                                  {item.isWinner
+                                    ? formatSol(item.winnerPayoutLamports)
+                                    : '0.000'}{' '}
+                                  SOL
+                                </Text>
+                                <Text
+                                  style={[styles.metaText, isCompact && compactStyles.metaText]}
+                                >
+                                  {formatDate(item.playedAtUnix)}
+                                </Text>
+                              </View>
                             </View>
-                            <Text style={[styles.resultText, isCompact && compactStyles.resultText]}>
-                              vs {item.opponentName}
-                            </Text>
                           </View>
-                          <View style={styles.metaRow}>
-                            <Text style={[styles.metaText, isCompact && compactStyles.metaText]}>
-                              Turns: {item.turnsTaken}
-                            </Text>
-                            <Text style={[styles.metaText, isCompact && compactStyles.metaText]}>
-                              Payout: {item.isWinner ? formatSol(item.winnerPayoutLamports) : '0.000'} SOL
-                            </Text>
-                            <Text style={[styles.metaText, isCompact && compactStyles.metaText]}>
-                              {formatDate(item.playedAtUnix)}
-                            </Text>
-                          </View>
-                        </View>
-                      </View>
+                        </Pressable>
+                      </FocusGlow>
                     )}
                   />
                 )}
@@ -331,6 +518,11 @@ export function PitDraftHistoryScreen({ navigation }: PitDraftHistoryScreenProps
             </View>
           </View>
 
+          {isLoadingReplay && (
+            <View style={styles.replayOverlay}>
+              <ActivityIndicator color="#000000" size="large" />
+            </View>
+          )}
         </View>
       </ImageBackground>
       <ControllerHints hints={controllerHints} horizontal />
@@ -487,6 +679,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
     marginTop: 20,
+  },
+  replayOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
 

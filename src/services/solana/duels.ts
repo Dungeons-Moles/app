@@ -572,7 +572,7 @@ function decodeDuelCombatVisual(data: Buffer): DuelCombatVisualEvent | null {
     offset += aTool.bytesRead;
 
     const aGear: (OnChainItemInstance | null)[] = [];
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 12; i++) {
       const entry = decodeOptionItemInstance(data, offset);
       aGear.push(entry.value);
       offset += entry.bytesRead;
@@ -582,7 +582,7 @@ function decodeDuelCombatVisual(data: Buffer): DuelCombatVisualEvent | null {
     offset += bTool.bytesRead;
 
     const bGear: (OnChainItemInstance | null)[] = [];
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 12; i++) {
       const entry = decodeOptionItemInstance(data, offset);
       bGear.push(entry.value);
       offset += entry.bytesRead;
@@ -602,6 +602,11 @@ function decodeDuelCombatVisual(data: Buffer): DuelCombatVisualEvent | null {
       });
       offset += 6;
     }
+
+    // combat_log_truncated: bool (1 byte)
+    offset += 1;
+    // combat_log_total_entries: u16 (2 bytes)
+    offset += 2;
 
     const playerAWon = data.readUInt8(offset) !== 0;
     offset += 1;

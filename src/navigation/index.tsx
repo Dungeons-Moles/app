@@ -85,8 +85,14 @@ export interface CombatParams {
   };
   /** True when this combat is a post-run duel replay */
   duelReplay?: boolean;
+  /** True when replaying from a history screen (goBack on complete instead of Hub) */
+  historyReplay?: boolean;
   /** When true, skip zeroing ARM before log replay (drafted stats already include it) */
   preserveArmor?: boolean;
+  /** Enemy gear (for PvP replay panel display) */
+  enemyGear?: Gear[];
+  /** Enemy tool (for PvP replay panel display) */
+  enemyTool?: Tool | null;
 }
 
 export type RootStackParamList = {

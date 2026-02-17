@@ -114,11 +114,11 @@ function StatRow({ label, value, icon, scale = 1 }: StatRowProps) {
     <View style={styles.statRow}>
       <Image
         source={icon}
-        style={{ width: 18 * scale, height: 18 * scale, marginRight: 8 * scale }}
+        style={{ width: 18 * scale, height: 18 * scale, marginRight: 2 * scale }}
         resizeMode="contain"
       />
-      <Text style={[styles.statLabel, { fontSize: 12 * scale }]}>{label}</Text>
-      <Text style={[styles.statValue, { fontSize: 16 * scale }]}>{value}</Text>
+      <Text style={[styles.statLabel, { fontSize: 10 * scale }]}>{label}</Text>
+      <Text style={[styles.statValue, { fontSize: 13 * scale }]}>{value}</Text>
     </View>
   );
 }
@@ -179,10 +179,10 @@ export function EnemyPanel({
             >
               <Image
                 source={COIN_ICON}
-                style={{ width: 24 * scale, height: 24 * scale }}
+                style={{ width: 18 * scale, height: 18 * scale }}
                 resizeMode="contain"
               />
-              <Text style={[styles.goldText, { fontSize: 18 * scale }]}>{gold}</Text>
+              <Text style={[styles.goldText, { fontSize: 14 * scale }]}>{gold}</Text>
             </View>
           )}
 

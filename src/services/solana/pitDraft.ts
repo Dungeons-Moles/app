@@ -404,6 +404,8 @@ function decodeOptionItemInstance(
  *   player_b_tool: Option<ItemInstance>
  *   player_b_gear: [Option<ItemInstance>; 12]
  *   combat_log: Vec<CombatLogEntry>
+ *   combat_log_truncated: bool (1)
+ *   combat_log_total_entries: u16 (2)
  *   player_a_won: bool (1)
  *   final_player_a_hp: i16 (2)
  *   final_player_b_hp: i16 (2)
@@ -463,6 +465,14 @@ function decodePitDraftCombatVisual(data: Buffer): PitDraftCombatVisualEvent | n
       });
       offset += ENTRY_SIZE;
     }
+
+    // combat_log_truncated: bool (1 byte)
+    // const combatLogTruncated = data.readUInt8(offset) !== 0;
+    offset += 1;
+
+    // combat_log_total_entries: u16 (2 bytes)
+    // const combatLogTotalEntries = data.readUInt16LE(offset);
+    offset += 2;
 
     // player_a_won: bool (1 byte)
     const playerAWon = data.readUInt8(offset) !== 0;
