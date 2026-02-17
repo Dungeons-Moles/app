@@ -1352,6 +1352,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     if (!session) {
       return { success: false, error: 'No active session' };
     }
+    const sessionOwner = session.player;
+    if (!wallet.publicKey.equals(sessionOwner)) {
+      return {
+        success: false,
+        error: `Connected wallet does not own this session. Switch to ${sessionOwner.toBase58()}`,
+      };
+    }
 
     const burnerKeypair = burnerWallet.keypair;
     if (!burnerKeypair) {
@@ -1361,10 +1368,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     try {
       console.log('[SessionContext] Force abandoning session...', {
         level: session.campaignLevel,
+        sessionOwner: sessionOwner.toBase58(),
+        wallet: wallet.publicKey.toBase58(),
       });
 
-      // Derive the session PDA
-      const [sessionPda] = deriveSessionPda(wallet.publicKey, session.campaignLevel);
+      // Use the exact active session PDA (works for campaign/duel/gauntlet).
+      const sessionPda = sessionManager.activeSessionPda;
+      if (!sessionPda) {
+        return { success: false, error: 'Active session PDA not available' };
+      }
 
       // Derive inventory PDA
       const [inventoryPda] = PublicKey.findProgramAddressSync(
@@ -1382,7 +1394,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         program,
         sessionPda,
         inventoryPda,
-        wallet.publicKey,
+        sessionOwner,
         burnerKeypair.publicKey,
         session.campaignLevel
       );
@@ -1423,6 +1435,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     signAndSendTransaction,
     connection,
     sessionManager.session,
+    sessionManager.activeSessionPda,
     sessionManager.resetSession,
     burnerWallet.keypair,
     refreshSessionList,

@@ -2,10 +2,6 @@ import { Connection, PublicKey, Keypair } from '@solana/web3.js';
 import type { Program } from '@coral-xyz/anchor';
 import type { PlayerInventoryData, ItemInstance } from './types/player_inventory';
 import { Tier, ToolOilModification } from './types/player_inventory';
-import { sendBurnerTransaction } from './burnerWallet';
-import { deriveInventoryPda, deriveInventoryAuthorityPda } from './constants';
-import { deriveGameStatePda } from './types/gameplay_state';
-import { SOLANA_CONFIG } from './config';
 
 interface OnChainItemInstance {
   itemId: number[] | Uint8Array;
@@ -66,18 +62,11 @@ export async function fetchInventory(
   }
 }
 
-/**
- * Converts Tier enum to the Anchor IDL format expected by the program.
- */
-function tierToAnchor(tier: Tier): { i: object } | { ii: object } | { iii: object } {
-  switch (tier) {
-    case Tier.II:
-      return { ii: {} };
-    case Tier.III:
-      return { iii: {} };
-    default:
-      return { i: {} };
-  }
+function directMutationDisabled(methodName: string): never {
+  throw new Error(
+    `player-inventory::${methodName} direct mutation is disabled on-chain. ` +
+      'Use authorized POI/session/gameplay flows (poi-system instructions) instead.'
+  );
 }
 
 /**
@@ -93,27 +82,17 @@ function tierToAnchor(tier: Tier): { i: object } | { ii: object } | { iii: objec
  * @param burnerKeypair - Burner wallet keypair (signer)
  * @param itemId - 8-byte item identifier
  * @param tier - Item tier
- * @returns Transaction signature
+ * @returns Never. Throws because direct mutation is disabled on-chain.
  */
 export async function equipGear(
-  connection: Connection,
-  program: Program,
-  sessionPda: PublicKey,
-  burnerKeypair: Keypair,
-  itemId: Uint8Array | number[],
-  tier: Tier
+  _connection: Connection,
+  _program: Program,
+  _sessionPda: PublicKey,
+  _burnerKeypair: Keypair,
+  _itemId: Uint8Array | number[],
+  _tier: Tier
 ): Promise<string> {
-  const [inventoryPda] = deriveInventoryPda(sessionPda);
-
-  const transaction = await program.methods
-    .equipGear(Array.from(itemId), tierToAnchor(tier))
-    .accounts({
-      inventory: inventoryPda,
-      player: burnerKeypair.publicKey,
-    })
-    .transaction();
-
-  return sendBurnerTransaction(connection, transaction, burnerKeypair);
+  return directMutationDisabled('equip_gear');
 }
 
 /**
@@ -129,45 +108,17 @@ export async function equipGear(
  * @param burnerKeypair - Burner wallet keypair (signer)
  * @param itemId - 8-byte item identifier
  * @param tier - Item tier
- * @returns Transaction signature
+ * @returns Never. Throws because direct mutation is disabled on-chain.
  */
 export async function equipTool(
-  connection: Connection,
-  program: Program,
-  sessionPda: PublicKey,
-  burnerKeypair: Keypair,
-  itemId: Uint8Array | number[],
-  tier: Tier
+  _connection: Connection,
+  _program: Program,
+  _sessionPda: PublicKey,
+  _burnerKeypair: Keypair,
+  _itemId: Uint8Array | number[],
+  _tier: Tier
 ): Promise<string> {
-  const [inventoryPda] = deriveInventoryPda(sessionPda);
-
-  const transaction = await program.methods
-    .equipTool(Array.from(itemId), tierToAnchor(tier))
-    .accounts({
-      inventory: inventoryPda,
-      player: burnerKeypair.publicKey,
-    })
-    .transaction();
-
-  return sendBurnerTransaction(connection, transaction, burnerKeypair);
-}
-
-/**
- * Converts ToolOilModification enum to the Anchor IDL format expected by the program.
- */
-function toolOilModificationToAnchor(
-  mod: ToolOilModification
-): { plusAtk: object } | { plusSpd: object } | { plusDig: object } | { plusArm: object } {
-  switch (mod) {
-    case ToolOilModification.PlusAtk:
-      return { plusAtk: {} };
-    case ToolOilModification.PlusSpd:
-      return { plusSpd: {} };
-    case ToolOilModification.PlusDig:
-      return { plusDig: {} };
-    case ToolOilModification.PlusArm:
-      return { plusArm: {} };
-  }
+  return directMutationDisabled('equip_tool');
 }
 
 /**
@@ -179,26 +130,16 @@ function toolOilModificationToAnchor(
  * @param sessionPda - Session PDA (used to derive inventory)
  * @param burnerKeypair - Burner wallet keypair (signer)
  * @param modification - The oil modification to apply
- * @returns Transaction signature
+ * @returns Never. Throws because direct mutation is disabled on-chain.
  */
 export async function applyToolOil(
-  connection: Connection,
-  program: Program,
-  sessionPda: PublicKey,
-  burnerKeypair: Keypair,
-  modification: ToolOilModification
+  _connection: Connection,
+  _program: Program,
+  _sessionPda: PublicKey,
+  _burnerKeypair: Keypair,
+  _modification: ToolOilModification
 ): Promise<string> {
-  const [inventoryPda] = deriveInventoryPda(sessionPda);
-
-  const transaction = await program.methods
-    .applyToolOil(toolOilModificationToAnchor(modification))
-    .accounts({
-      inventory: inventoryPda,
-      player: burnerKeypair.publicKey,
-    })
-    .transaction();
-
-  return sendBurnerTransaction(connection, transaction, burnerKeypair);
+  return directMutationDisabled('apply_tool_oil');
 }
 
 /**
@@ -210,29 +151,14 @@ export async function applyToolOil(
  * @param sessionPda - Session PDA (used to derive inventory and game_state)
  * @param burnerKeypair - Burner wallet keypair (signer)
  * @param slotIndex - Index of the gear slot to unequip (0-7)
- * @returns Transaction signature
+ * @returns Never. Throws because direct mutation is disabled on-chain.
  */
 export async function unequipGear(
-  connection: Connection,
-  program: Program,
-  sessionPda: PublicKey,
-  burnerKeypair: Keypair,
-  slotIndex: number
+  _connection: Connection,
+  _program: Program,
+  _sessionPda: PublicKey,
+  _burnerKeypair: Keypair,
+  _slotIndex: number
 ): Promise<string> {
-  const [inventoryPda] = deriveInventoryPda(sessionPda);
-  const [gameStatePda] = deriveGameStatePda(sessionPda, SOLANA_CONFIG.programs.gameplayState);
-  const [inventoryAuthorityPda] = deriveInventoryAuthorityPda();
-
-  const transaction = await program.methods
-    .unequipGear(slotIndex)
-    .accounts({
-      inventory: inventoryPda,
-      gameState: gameStatePda,
-      inventoryAuthority: inventoryAuthorityPda,
-      gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
-      player: burnerKeypair.publicKey,
-    })
-    .transaction();
-
-  return sendBurnerTransaction(connection, transaction, burnerKeypair);
+  return directMutationDisabled('unequip_gear');
 }

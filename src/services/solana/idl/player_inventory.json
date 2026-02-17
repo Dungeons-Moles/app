@@ -71,6 +71,124 @@
       ]
     },
     {
+      "name": "apply_tool_oil_authorized",
+      "docs": [
+        "Applies tool oil, authorized by poi-system via CPI (Tool Oil Rack)."
+      ],
+      "discriminator": [
+        1,
+        207,
+        39,
+        27,
+        206,
+        224,
+        236,
+        166
+      ],
+      "accounts": [
+        {
+          "name": "inventory",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  110,
+                  118,
+                  101,
+                  110,
+                  116,
+                  111,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "inventory.session",
+                "account": "PlayerInventory"
+              }
+            ]
+          }
+        },
+        {
+          "name": "poi_authority",
+          "signer": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  105,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                77,
+                160,
+                63,
+                209,
+                182,
+                56,
+                149,
+                181,
+                2,
+                195,
+                173,
+                95,
+                65,
+                136,
+                88,
+                122,
+                235,
+                166,
+                235,
+                216,
+                241,
+                107,
+                2,
+                35,
+                185,
+                14,
+                177,
+                21,
+                150,
+                103,
+                215,
+                77
+              ]
+            }
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "modification",
+          "type": {
+            "defined": {
+              "name": "ToolOilModification"
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "close_inventory",
       "docs": [
         "Closes the PlayerInventory account, returning rent to the player.",
@@ -904,6 +1022,124 @@
       ]
     },
     {
+      "name": "fuse_items_authorized",
+      "docs": [
+        "Fuses two gear items, authorized by poi-system via CPI (Rune Kiln)."
+      ],
+      "discriminator": [
+        171,
+        69,
+        32,
+        249,
+        56,
+        233,
+        61,
+        211
+      ],
+      "accounts": [
+        {
+          "name": "inventory",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  110,
+                  118,
+                  101,
+                  110,
+                  116,
+                  111,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "inventory.session",
+                "account": "PlayerInventory"
+              }
+            ]
+          }
+        },
+        {
+          "name": "poi_authority",
+          "signer": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  105,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                77,
+                160,
+                63,
+                209,
+                182,
+                56,
+                149,
+                181,
+                2,
+                195,
+                173,
+                95,
+                65,
+                136,
+                88,
+                122,
+                235,
+                166,
+                235,
+                216,
+                241,
+                107,
+                2,
+                35,
+                185,
+                14,
+                177,
+                21,
+                150,
+                103,
+                215,
+                77
+              ]
+            }
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "slot_a",
+          "type": "u8"
+        },
+        {
+          "name": "slot_b",
+          "type": "u8"
+        }
+      ]
+    },
+    {
       "name": "generate_offer",
       "docs": [
         "Generates a weighted item offer based on POI type, act, and boss weaknesses.",
@@ -1212,6 +1448,172 @@
       ]
     },
     {
+      "name": "unequip_gear_authorized",
+      "docs": [
+        "Removes a gear item from a specific slot, authorized by poi-system via CPI.",
+        "Used by Scrap Chute to atomically remove gear and adjust HP bonuses."
+      ],
+      "discriminator": [
+        59,
+        15,
+        202,
+        116,
+        172,
+        34,
+        88,
+        114
+      ],
+      "accounts": [
+        {
+          "name": "inventory",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  110,
+                  118,
+                  101,
+                  110,
+                  116,
+                  111,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "inventory.session",
+                "account": "PlayerInventory"
+              }
+            ]
+          }
+        },
+        {
+          "name": "game_state",
+          "docs": [
+            "Game state for HP bonus removal"
+          ],
+          "writable": true
+        },
+        {
+          "name": "inventory_authority",
+          "docs": [
+            "Inventory authority PDA for signing CPI calls to gameplay-state"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  110,
+                  118,
+                  101,
+                  110,
+                  116,
+                  111,
+                  114,
+                  121,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "poi_authority",
+          "docs": [
+            "POI authority PDA from poi-system that must sign"
+          ],
+          "signer": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  105,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                77,
+                160,
+                63,
+                209,
+                182,
+                56,
+                149,
+                181,
+                2,
+                195,
+                173,
+                95,
+                65,
+                136,
+                88,
+                122,
+                235,
+                166,
+                235,
+                216,
+                241,
+                107,
+                2,
+                35,
+                185,
+                14,
+                177,
+                21,
+                150,
+                103,
+                215,
+                77
+              ]
+            }
+          }
+        },
+        {
+          "name": "gameplay_state_program",
+          "docs": [
+            "Gameplay state program for HP modification CPI"
+          ],
+          "address": "5VAaGSSoBP4UEt3RL2EXvDwpeDxAXMndsJn7QX96nc4n"
+        }
+      ],
+      "args": [
+        {
+          "name": "slot_index",
+          "type": "u8"
+        }
+      ]
+    },
+    {
       "name": "upgrade_tool_tier",
       "docs": [
         "Upgrades the equipped tool to the next tier while preserving Tool Oil flags.",
@@ -1262,6 +1664,133 @@
           "relations": [
             "inventory"
           ]
+        }
+      ],
+      "args": [
+        {
+          "name": "item_id",
+          "type": {
+            "array": [
+              "u8",
+              8
+            ]
+          }
+        },
+        {
+          "name": "current_tier",
+          "type": {
+            "defined": {
+              "name": "Tier"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "upgrade_tool_tier_authorized",
+      "docs": [
+        "Upgrades tool tier, authorized by poi-system via CPI (Rusty Anvil)."
+      ],
+      "discriminator": [
+        98,
+        172,
+        72,
+        198,
+        68,
+        45,
+        22,
+        80
+      ],
+      "accounts": [
+        {
+          "name": "inventory",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  110,
+                  118,
+                  101,
+                  110,
+                  116,
+                  111,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "inventory.session",
+                "account": "PlayerInventory"
+              }
+            ]
+          }
+        },
+        {
+          "name": "poi_authority",
+          "signer": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  105,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                77,
+                160,
+                63,
+                209,
+                182,
+                56,
+                149,
+                181,
+                2,
+                195,
+                173,
+                95,
+                65,
+                136,
+                88,
+                122,
+                235,
+                166,
+                235,
+                216,
+                241,
+                107,
+                2,
+                35,
+                185,
+                14,
+                177,
+                21,
+                150,
+                103,
+                215,
+                77
+              ]
+            }
+          }
         }
       ],
       "args": [
@@ -1461,6 +1990,11 @@
       "code": 6010,
       "name": "AlreadyMaxSlots",
       "msg": "Gear slots already at maximum capacity"
+    },
+    {
+      "code": 6011,
+      "name": "DirectMutationDisabled",
+      "msg": "Direct inventory mutation is disabled; use authorized CPI flow"
     }
   ],
   "types": [

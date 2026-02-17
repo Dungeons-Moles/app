@@ -504,7 +504,32 @@
       "accounts": [
         {
           "name": "game_session",
-          "writable": true
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  117,
+                  101,
+                  108,
+                  95,
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "player"
+              }
+            ]
+          }
         },
         {
           "name": "session_counter",
@@ -704,7 +729,36 @@
       "accounts": [
         {
           "name": "game_session",
-          "writable": true
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  117,
+                  110,
+                  116,
+                  108,
+                  101,
+                  116,
+                  95,
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "player"
+              }
+            ]
+          }
         },
         {
           "name": "session_counter",
@@ -1257,8 +1311,8 @@
       "name": "GameSession",
       "docs": [
         "Represents an active game session for a player.",
-        "PDA Seeds: [b\"session\", player.key(), &[campaign_level]]",
-        "Changed from single session per player to one session per (player, level) pair."
+        "Campaign PDA seeds: [b\"session\", player.key(), &[campaign_level]]",
+        "Duel/Gauntlet use dedicated prefixes to avoid collisions with campaign levels."
       ],
       "type": {
         "kind": "struct",

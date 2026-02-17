@@ -29,6 +29,8 @@ import {
   ItemTooltip,
 } from '../components/game';
 import { Sidebar } from '../components/game/Sidebar';
+import { PauseMenuModal } from '../components/ui/PauseMenuModal';
+import { ControllerHints } from '../components/ui/ControllerHints';
 import { BurnerBalanceIndicator } from '../components/common/BurnerBalanceIndicator';
 import { useDirectionInput } from '../hooks/useInput';
 import { useLandscapeLock } from '../hooks/useOrientationLock';
@@ -381,6 +383,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
   const [wallBreakFeedback, setWallBreakFeedback] = useState<string | null>(null);
   const [isMovePending, setIsMovePending] = useState(false);
   const [isExitingSession, setIsExitingSession] = useState(false);
+  const [showPauseMenu, setShowPauseMenu] = useState(false);
   const [isFastTravelMode, setIsFastTravelMode] = useState(false);
   const [fastTravelCameraTarget, setFastTravelCameraTarget] = useState<Position | null>(null);
   const [fastTravelDestinations, setFastTravelDestinations] = useState<Position[]>([]);
@@ -1212,7 +1215,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
   // --- Controller: D-PAD for movement, Y for map, A for POI/fast-travel confirm ---
   const isPOIModalOpen = state?.phase === GamePhase.POIInteraction;
-  const controllerEnabled = isController && isFocused && !!state && !isPOIModalOpen;
+  const controllerEnabled = isController && isFocused && !!state && !isPOIModalOpen && !showPauseMenu;
   useControllerAction(
     {
       onDPadUp: () => handleDirection(Direction.Up),
@@ -1240,6 +1243,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
           toggleOverviewMode();
         }
       },
+      onStart: () => setShowPauseMenu(true),
     },
     controllerEnabled,
   );
@@ -1794,22 +1798,13 @@ export function GameScreen({ navigation }: GameScreenProps) {
                   cameraFocusOverride={fastTravelFocus}
                 />
                 {mode !== 'guest' && hasActiveSession && (
-                  <>
-                    <Pressable style={styles.burnerOverlay} onPress={() => topUpBurner()}>
-                      <BurnerBalanceIndicator
-                        balance={burnerBalance}
-                        isLowBalance={isBurnerLowBalance}
-                        compact
-                      />
-                    </Pressable>
-                    <Pressable
-                      style={styles.exitSessionOverlay}
-                      onPress={handleDebugExitSession}
-                      disabled={isExitingSession}
-                    >
-                      <Text style={styles.debugExitText}>{isExitingSession ? '...' : 'X'}</Text>
-                    </Pressable>
-                  </>
+                  <Pressable style={styles.burnerOverlay} onPress={() => topUpBurner()}>
+                    <BurnerBalanceIndicator
+                      balance={burnerBalance}
+                      isLowBalance={isBurnerLowBalance}
+                      compact
+                    />
+                  </Pressable>
                 )}
                 <DebugOverlay
                   debug={state.debug}
@@ -1871,6 +1866,10 @@ export function GameScreen({ navigation }: GameScreenProps) {
                     />
                   </View>
                 )}
+                <ControllerHints
+                  hints={[{ button: 'Start', label: 'Menu' }]}
+                  align="right"
+                />
               </View>
               {!isCompact && (
                 <View style={styles.sidebarBottomContainer}>
@@ -1911,6 +1910,16 @@ export function GameScreen({ navigation }: GameScreenProps) {
               onFastTravel={handleFastTravel}
               selectableGear={selectableGear}
               onGearSelect={handleControllerGearSelect}
+            />
+            <PauseMenuModal
+              visible={showPauseMenu}
+              onClose={() => setShowPauseMenu(false)}
+              onReturnToHub={() => {
+                setShowPauseMenu(false);
+                navigation.replace('Hub');
+              }}
+              onAbandonSession={handleDebugExitSession}
+              isAbandoning={isExitingSession}
             />
           </View>
 
@@ -2012,18 +2021,6 @@ const styles = StyleSheet.create({
   loadingText: { fontFamily: Typography.header, fontSize: 20, color: '#666666' },
   dpadOverlay: { position: 'absolute', bottom: 24, left: 24 },
   burnerOverlay: { position: 'absolute', top: 8, left: 8, zIndex: 10 },
-  exitSessionOverlay: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#dc3545',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 10,
-  },
   goldDisplay: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   coinIcon: { width: 28, height: 28 },
   goldValue: { fontFamily: Typography.number, fontSize: 24, fontWeight: 'bold', color: '#000000' },
@@ -2072,10 +2069,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 100,
-  },
-  debugExitText: {
-    color: '#ffffff',
-    fontSize: 12,
-    fontWeight: 'bold',
   },
 });

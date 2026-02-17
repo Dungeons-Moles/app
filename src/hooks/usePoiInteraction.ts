@@ -1478,7 +1478,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
         // Close the POI modal and return to exploration.
         // IMPORTANT: Use CLOSE_POI instead of SELECT_POI_OPTION because:
         // - SELECT_POI_OPTION calls applyPOIOption which adds LOCAL items to inventory
-        // - We already equipped the correct on-chain item via equipGear/equipTool above
+        // - The selected item is already equipped on-chain via interactPickItem CPI flow
         // - Using SELECT_POI_OPTION would duplicate the item (one from on-chain, one from local)
         dispatch({ type: 'CLOSE_POI' });
 

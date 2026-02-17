@@ -346,6 +346,9 @@
           "relations": [
             "player_profile"
           ]
+        },
+        {
+          "name": "pit_draft_queue"
         }
       ],
       "args": [
@@ -572,6 +575,16 @@
       "code": 6014,
       "name": "InvalidBurnerWallet",
       "msg": "Burner wallet does not match session"
+    },
+    {
+      "code": 6015,
+      "name": "InvalidPitDraftQueue",
+      "msg": "Invalid pit draft queue account"
+    },
+    {
+      "code": 6016,
+      "name": "PitDraftQueueLocked",
+      "msg": "Cannot update active item pool while queued in pit draft"
     }
   ],
   "types": [
