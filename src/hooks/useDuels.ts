@@ -37,7 +37,7 @@ export interface DuelHistoryItem {
 export function useDuels() {
   const { wallet, signAndSendTransaction, checkBalance } = useWallet();
   const { session, mapSeed, startDuelGame, switchToSession } = useSession();
-  const { connection, gameplayConnection } = useSolanaConnection();
+  const { connection, gameplayConnection, erConnection } = useSolanaConnection();
 
   const [phase, setPhase] = useState<DuelsPhase>('confirm');
   const [error, setError] = useState<string | null>(null);
@@ -117,16 +117,19 @@ export function useDuels() {
 
   const resolveSessionGeneratedSeed = useCallback(
     async (sessionPda: PublicKey): Promise<bigint | null> => {
-      const mapProgram = createMapGeneratorProgram(connection);
+      const connectionsToTry = [gameplayConnection, erConnection, connection];
       for (let attempt = 1; attempt <= MAX_SEED_FETCH_RETRIES; attempt++) {
-        try {
-          const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
-          const generatedMap = await fetchGeneratedMap(mapProgram, generatedMapPda);
-          if (generatedMap?.seed !== undefined && generatedMap.seed !== null) {
-            return generatedMap.seed;
+        for (const conn of connectionsToTry) {
+          try {
+            const mapProgram = createMapGeneratorProgram(conn);
+            const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
+            const generatedMap = await fetchGeneratedMap(mapProgram, generatedMapPda);
+            if (generatedMap?.seed !== undefined && generatedMap.seed !== null) {
+              return generatedMap.seed;
+            }
+          } catch {
+            // Try next connection / retry while generated map settles after start tx.
           }
-        } catch {
-          // Retry while generated map account settles after start tx.
         }
         if (attempt < MAX_SEED_FETCH_RETRIES) {
           await new Promise((resolve) => setTimeout(resolve, SEED_FETCH_RETRY_DELAY_MS));
@@ -134,7 +137,7 @@ export function useDuels() {
       }
       return null;
     },
-    [connection]
+    [connection, erConnection, gameplayConnection]
   );
 
   const switchToDuelSessionOrTolerateDelegation = useCallback(
@@ -192,6 +195,12 @@ export function useDuels() {
       );
 
       if (existingDuelSessionInfo) {
+        const switchResult = await switchToDuelSessionOrTolerateDelegation(duelSessionPda);
+        if (!switchResult.success) {
+          setError(switchResult.error ?? 'Failed to resume duel session');
+          setPhase('error');
+          return false;
+        }
         duelSeed = await resolveSessionGeneratedSeed(duelSessionPda);
       } else {
         const startResult = await startDuelGame();
