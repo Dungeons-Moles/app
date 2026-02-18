@@ -27,18 +27,20 @@ export function SolanaConnectionProvider({ children }: { children: ReactNode }) 
     setUseErForGameplayState(enabled);
   }, []);
   const gameplayConnection = useErForGameplay ? erConnection : baseConnection;
+  const contextValue = useMemo(
+    () => ({
+      connection: baseConnection,
+      baseConnection,
+      erConnection,
+      gameplayConnection,
+      useErForGameplay,
+      setUseErForGameplay,
+    }),
+    [baseConnection, erConnection, gameplayConnection, useErForGameplay, setUseErForGameplay]
+  );
 
   return (
-    <SolanaConnectionContext.Provider
-      value={{
-        connection: baseConnection,
-        baseConnection,
-        erConnection,
-        gameplayConnection,
-        useErForGameplay,
-        setUseErForGameplay,
-      }}
-    >
+    <SolanaConnectionContext.Provider value={contextValue}>
       {children}
     </SolanaConnectionContext.Provider>
   );

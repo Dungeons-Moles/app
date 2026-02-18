@@ -3,7 +3,6 @@ import {
   SystemProgram,
   PublicKey,
   Transaction,
-  TransactionInstruction,
   ComputeBudgetProgram,
   Keypair,
 } from '@solana/web3.js';
@@ -756,16 +755,19 @@ export function useSessionManager() {
         } as any)
         .instruction();
 
-      const sendSingleInstruction = async (ix: TransactionInstruction): Promise<string> => {
-        const tx = new Transaction().add(ix);
-        return sendSessionSignerTransaction(baseConnection, tx, sessionSignerKeypair);
-      };
-
-      await sendSingleInstruction(delegateGameplayIx);
-      await sendSingleInstruction(delegateGeneratedMapIx);
-      await sendSingleInstruction(delegateInventoryIx);
-      await sendSingleInstruction(delegateMapPoisIx);
-      const signature = await sendSingleInstruction(delegateSessionIx);
+      const delegationTx = new Transaction().add(
+        ComputeBudgetProgram.setComputeUnitLimit({ units: 1_000_000 }),
+        delegateGameplayIx,
+        delegateGeneratedMapIx,
+        delegateInventoryIx,
+        delegateMapPoisIx,
+        delegateSessionIx
+      );
+      const signature = await sendSessionSignerTransaction(
+        baseConnection,
+        delegationTx,
+        sessionSignerKeypair
+      );
 
       // Refresh session state
       await fetchSession();

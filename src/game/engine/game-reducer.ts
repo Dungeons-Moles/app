@@ -1543,7 +1543,7 @@ function handleSyncMove(state: GameState, confirmedState: OnChainGameState): Gam
   // Store a derived base value so refreshPlayerStats reproduces the same effective HP.
   const gearItems = state.player.inventory.map((slot) => slot.item);
   const gearHpBonus = gearItems.reduce((total, gear) => total + (gear.stats.hp ?? 0), 0);
-  const baseHp = confirmedState.hp - gearHpBonus;
+  const baseHp = Math.max(0, confirmedState.hp - gearHpBonus);
 
   const syncedPlayer: Player = {
     ...state.player,
@@ -1564,7 +1564,7 @@ function handleSyncMove(state: GameState, confirmedState: OnChainGameState): Gam
   // Recalculate derived stats, then force effective HP to exactly match on-chain.
   // This prevents local recalculation from drifting when HP is below gear bonus.
   const updatedPlayer = refreshPlayerStats(syncedPlayer);
-  updatedPlayer.stats.hp = Math.min(confirmedState.hp, updatedPlayer.stats.maxHp);
+  updatedPlayer.stats.hp = Math.max(0, Math.min(confirmedState.hp, updatedPlayer.stats.maxHp));
 
   // Debug: Log final HP after recalculation
   console.log('[handleSyncMove] HP after refresh:', {
@@ -1723,7 +1723,7 @@ function handleSyncCombatResult(
   // On-chain HP is effective HP (includes gear effects).
   const gearItems = state.player.inventory.map((slot) => slot.item);
   const gearHpBonus = gearItems.reduce((total, gear) => total + (gear.stats.hp ?? 0), 0);
-  const baseHp = confirmedState.hp - gearHpBonus;
+  const baseHp = Math.max(0, confirmedState.hp - gearHpBonus);
 
   const syncedPlayer: Player = {
     ...state.player,
@@ -1741,7 +1741,7 @@ function handleSyncCombatResult(
 
   // Recalculate derived stats, then force effective HP to exactly match on-chain.
   const updatedPlayer = refreshPlayerStats(syncedPlayer);
-  updatedPlayer.stats.hp = Math.min(confirmedState.hp, updatedPlayer.stats.maxHp);
+  updatedPlayer.stats.hp = Math.max(0, Math.min(confirmedState.hp, updatedPlayer.stats.maxHp));
 
   const syncedWeek2 = confirmedState.week as 1 | 2 | 3;
   const syncedWeekBoss2 =

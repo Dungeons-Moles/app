@@ -216,7 +216,7 @@ export async function fetchSessionList(
     const decodedLevel = i + 1; // deterministic from PDA seed, avoids coder decode edge-cases
 
     try {
-      const gameState = gameplayProgram.coder.accounts.decode('gameState', gameStateAccount.data);
+      const gameState = gameplayProgram.coder.accounts.decode('GameState', gameStateAccount.data);
       sessions.push({
         sessionPda: pubkey.toBase58(),
         level: decodedLevel - 1, // Convert 1-indexed on-chain to 0-indexed frontend
@@ -336,15 +336,9 @@ export async function switchToSession(
   }
 
   try {
-    const session = sessionProgram.coder.accounts.decode(
-      'gameSession',
-      sessionAccount.data
-    ) as SessionAccount;
+    const session = sessionProgram.coder.accounts.decode('GameSession', sessionAccount.data) as SessionAccount;
 
-    const gameState = gameplayProgram.coder.accounts.decode(
-      'gameState',
-      gameStateAccount.data
-    ) as GameStateAccount;
+    const gameState = gameplayProgram.coder.accounts.decode('GameState', gameStateAccount.data) as GameStateAccount;
 
     // Enemies and POIs might not exist yet
     const enemies: MapEnemiesAccount = enemiesAccount

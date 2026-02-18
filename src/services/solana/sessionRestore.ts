@@ -730,8 +730,8 @@ function buildPlayer(
   } else {
     // Player has taken damage or on-chain HP was already synced.
     // On-chain HP includes gear bonus, so subtract it to get base HP.
-    const hp = Math.min(onChainHp, computedMaxHp);
-    const trueBaseHp = hp - gearHpBonus;
+    const hp = Math.max(0, Math.min(onChainHp, computedMaxHp));
+    const trueBaseHp = Math.max(0, hp - gearHpBonus);
     console.log('[sessionRestore] buildPlayer: Using on-chain HP value:', {
       onChainHp,
       cappedHp: hp,

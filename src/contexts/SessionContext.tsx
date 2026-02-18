@@ -439,9 +439,21 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       sessionSignerKeypair?: Keypair;
     }
   ): Promise<TransactionResult> => {
+    const targetSessionPda = options?.sessionPda ?? sessionManager.activeSessionPda ?? null;
     if (sessionManager.session?.isDelegated) {
-      setUseErForGameplay(true);
-      return { success: true };
+      if (!targetSessionPda) {
+        setUseErForGameplay(true);
+        return { success: true };
+      }
+      const delegatedOnBase = await isGameStateDelegatedOnBase(targetSessionPda);
+      if (delegatedOnBase) {
+        setUseErForGameplay(true);
+        return { success: true };
+      }
+      console.warn(
+        '[SessionContext] ensureDelegatedToRollup: stale isDelegated flag detected; retrying delegation',
+        { sessionPda: targetSessionPda.toBase58() }
+      );
     }
 
     const sessionSignerKeypair = options?.sessionSignerKeypair ?? sessionSigner.keypair;
@@ -451,7 +463,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
     const delegateWithOverrides = () =>
       sessionManager.delegateSession(sessionSignerKeypair, {
-        sessionPda: options?.sessionPda ?? sessionManager.activeSessionPda ?? undefined,
+        sessionPda: targetSessionPda ?? undefined,
         onChainLevel: options?.onChainLevel ?? sessionManager.session?.campaignLevel ?? undefined,
       });
 
@@ -477,6 +489,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     return result;
   }, [
     sessionManager,
+    isGameStateDelegatedOnBase,
     sessionManager.activeSessionPda,
     sessionManager.session?.campaignLevel,
     sessionSigner.keypair,
@@ -782,6 +795,18 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       if (wallet.publicKey) {
         const [gameStatePda] = getGameStatePda(sessionPda);
         gameplayState.setGameStatePda(gameStatePda);
+      }
+
+      const delegateResult = await ensureDelegatedToRollup({
+        sessionPda,
+        onChainLevel: 20,
+        sessionSignerKeypair: newSessionSignerKeypair,
+      });
+      if (!delegateResult.success) {
+        return {
+          success: false,
+          error: delegateResult.error ?? 'Failed to delegate duel session to rollup',
+        };
       }
 
       return { success: true, mapSeed: generatedSeed };
