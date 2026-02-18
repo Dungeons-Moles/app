@@ -1035,7 +1035,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
                         </View>
                         <View style={styles.profileStatRow}>
                           <Text style={[styles.profileStatLabel, isCompact && compactStyles.profileStatText]}>Current Level</Text>
-                          <Text style={[styles.profileStatValue, isCompact && compactStyles.profileStatText]}>{(profile?.currentLevel ?? 0) + 1} / 81</Text>
+                          <Text style={[styles.profileStatValue, isCompact && compactStyles.profileStatText]}>{(profile?.currentLevel ?? 0) + 1} / 40</Text>
                         </View>
                         <View style={styles.profileStatRow}>
                           <Text style={[styles.profileStatLabel, isCompact && compactStyles.profileStatText]}>Available Sessions</Text>
