@@ -24,6 +24,7 @@ import { useControllerAction } from '../hooks/useControllerAction';
 import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHints';
 import { useInputMode } from '../hooks/useInputMode';
 import { FocusGlow } from '../components/ui/FocusGlow';
+import { useGame } from '@/contexts/GameContext';
 
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.png');
 const STAINS_BACKGROUND = require('../../assets/ui/backgrounds/stains-background.png');
@@ -42,6 +43,7 @@ type GauntletScreenProps = {
 export function GauntletScreen({ navigation }: GauntletScreenProps) {
   const gauntlet = useGauntlet();
   const { activeSessions } = useSession();
+  const { dispatch } = useGame();
   const { wallet } = useWallet();
   const { connection } = useSolanaConnection();
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -98,9 +100,10 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
   const handleEnter = useCallback(async () => {
     const ok = await gauntlet.enterGauntlet();
     if (ok) {
+      dispatch({ type: 'RESET_GAME' });
       navigation.navigate('Game');
     }
-  }, [gauntlet, navigation]);
+  }, [dispatch, gauntlet, navigation]);
 
   const entryFeeSol = GAUNTLET_ENTRY_LAMPORTS / 1_000_000_000;
 

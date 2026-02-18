@@ -11,6 +11,14 @@ import { useWallet } from '@/contexts/WalletContext';
 import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
 import {
   createAnchorProvider,
+  createGameplayStateProgram,
+  createGameplayStateProgramWithProvider,
+  createMapGeneratorProgram,
+  createMapGeneratorProgramWithProvider,
+  createPlayerInventoryProgram,
+  createPlayerInventoryProgramWithProvider,
+  createPoiSystemProgram,
+  createPoiSystemProgramWithProvider,
   createSessionManagerProgram,
   createSessionManagerProgramWithProvider,
 } from '@/services/solana/programs';
@@ -30,6 +38,7 @@ import {
 } from '@/services/solana/constants';
 import { SOLANA_CONFIG } from '@/services/solana/config';
 import { getUserErrorMessage } from '@/services/solana/errors';
+import { sendSessionSignerTransaction } from '@/services/solana/sessionSigner';
 import { MAX_CAMPAIGN_LEVEL } from './useMapGenerator';
 import type { TransactionResult } from '@/types/solana';
 import type { OnChainGameSession } from '@/services/solana/types/session_manager';
@@ -43,14 +52,30 @@ interface RawGameSessionAccount {
   isDelegated: boolean;
   bump: number;
   activeItemPool?: ArrayLike<number>;
-  burnerWallet?: PublicKey;
+  sessionSigner?: PublicKey;
   stateHash: ArrayLike<number>;
+}
+
+const DELEGATION_PROGRAM_ID = new PublicKey('DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh');
+
+function deriveDelegatePdas(target: PublicKey, ownerProgram: PublicKey) {
+  const [buffer] = PublicKey.findProgramAddressSync([Buffer.from('buffer'), target.toBuffer()], ownerProgram);
+  const [delegationRecord] = PublicKey.findProgramAddressSync(
+    [Buffer.from('delegation'), target.toBuffer()],
+    DELEGATION_PROGRAM_ID
+  );
+  const [delegationMetadata] = PublicKey.findProgramAddressSync(
+    [Buffer.from('delegation-metadata'), target.toBuffer()],
+    DELEGATION_PROGRAM_ID
+  );
+  return { buffer, delegationRecord, delegationMetadata };
 }
 
 export function useSessionManager() {
   const { wallet, signAndSendTransaction } = useWallet();
-  const { connection } = useSolanaConnection();
-const readOnlyProgram = useMemo(() => createSessionManagerProgram(connection), [connection]);
+  const { baseConnection, erConnection } = useSolanaConnection();
+
+  const readOnlyProgram = useMemo(() => createSessionManagerProgram(baseConnection), [baseConnection]);
   const [session, setSession] = useState<OnChainGameSession | null>(null);
   const [hasActiveSession, setHasActiveSession] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -82,15 +107,64 @@ const readOnlyProgram = useMemo(() => createSessionManagerProgram(connection), [
       signAllTransactions: async (transactions) => transactions,
     } as AnchorProvider['wallet'];
 
-    return createAnchorProvider(connection, walletAdapter);
-  }, [connection, wallet.publicKey]);
+    return createAnchorProvider(baseConnection, walletAdapter);
+  }, [baseConnection, wallet.publicKey]);
 
-  const writeProgram = useMemo(() => {
+  const baseWriteProgram = useMemo(() => {
     if (!provider) {
       return null;
     }
     return createSessionManagerProgramWithProvider(provider);
   }, [provider]);
+
+  const gameplayStateWriteProgram = useMemo(() => {
+    if (!provider) {
+      return null;
+    }
+    return createGameplayStateProgramWithProvider(provider);
+  }, [provider]);
+
+  const mapGeneratorWriteProgram = useMemo(() => {
+    if (!provider) {
+      return null;
+    }
+    return createMapGeneratorProgramWithProvider(provider);
+  }, [provider]);
+
+  const playerInventoryWriteProgram = useMemo(() => {
+    if (!provider) {
+      return null;
+    }
+    return createPlayerInventoryProgramWithProvider(provider);
+  }, [provider]);
+
+  const poiSystemWriteProgram = useMemo(() => {
+    if (!provider) {
+      return null;
+    }
+    return createPoiSystemProgramWithProvider(provider);
+  }, [provider]);
+
+  const erProvider = useMemo(() => {
+    if (!wallet.publicKey) {
+      return null;
+    }
+
+    const walletAdapter: AnchorProvider['wallet'] = {
+      publicKey: wallet.publicKey,
+      signTransaction: async (transaction) => transaction,
+      signAllTransactions: async (transactions) => transactions,
+    } as AnchorProvider['wallet'];
+
+    return createAnchorProvider(erConnection, walletAdapter);
+  }, [erConnection, wallet.publicKey]);
+
+  const erWriteProgram = useMemo(() => {
+    if (!erProvider) {
+      return null;
+    }
+    return createSessionManagerProgramWithProvider(erProvider);
+  }, [erProvider]);
 
   const setActiveOnChainLevel = useCallback((onChainLevel: number) => {
     activeOnChainLevelRef.current = onChainLevel;
@@ -118,13 +192,41 @@ const readOnlyProgram = useMemo(() => createSessionManagerProgram(connection), [
         activeOnChainLevelRef.current
       );
       const sessionPda = activeSessionPdaRef.current ?? fallbackSessionPda;
-      const account = await (
-        readOnlyProgram.account as {
-          gameSession: {
-            fetchNullable: (address: PublicKey) => Promise<RawGameSessionAccount | null>;
-          };
+      const decodeRawGameSession = async (): Promise<RawGameSessionAccount | null> => {
+        const accountInfo = await baseConnection.getAccountInfo(sessionPda, SOLANA_CONFIG.commitment);
+        if (!accountInfo?.data) {
+          return null;
         }
-      ).gameSession.fetchNullable(sessionPda);
+        return readOnlyProgram.coder.accounts.decode(
+          'GameSession',
+          accountInfo.data
+        ) as RawGameSessionAccount;
+      };
+      let account: RawGameSessionAccount | null = null;
+
+      try {
+        account = await (
+          readOnlyProgram.account as {
+            gameSession: {
+              fetchNullable: (address: PublicKey) => Promise<RawGameSessionAccount | null>;
+            };
+          }
+        ).gameSession.fetchNullable(sessionPda);
+
+        // For delegated accounts, Anchor fetchNullable may return null instead of throwing
+        // due owner mismatch. Try raw decode before considering session absent.
+        if (!account) {
+          account = await decodeRawGameSession();
+        }
+      } catch (anchorFetchError) {
+        // Delegated session accounts are owned by MagicBlock delegation program.
+        // Anchor account fetch enforces owner, so it can fail while delegated.
+        try {
+          account = await decodeRawGameSession();
+        } catch (decodeError) {
+          throw anchorFetchError;
+        }
+      }
 
       if (!isMountedRef.current) return;
 
@@ -148,7 +250,7 @@ const readOnlyProgram = useMemo(() => createSessionManagerProgram(connection), [
         isDelegated: account.isDelegated,
         bump: account.bump,
         activeItemPool: Array.from(account.activeItemPool ?? []),
-        burnerWallet: account.burnerWallet ?? wallet.publicKey,
+        sessionSigner: account.sessionSigner ?? wallet.publicKey,
         stateHash: Array.from(account.stateHash),
       };
 
@@ -170,10 +272,10 @@ const readOnlyProgram = useMemo(() => createSessionManagerProgram(connection), [
       console.log('[useSessionManager] startSession called', {
         campaignLevel,
         walletPublicKey: wallet.publicKey?.toBase58(),
-        hasWriteProgram: !!writeProgram,
+        hasWriteProgram: !!baseWriteProgram,
       });
 
-      if (!wallet.publicKey || !writeProgram) {
+      if (!wallet.publicKey || !baseWriteProgram) {
         console.log('[useSessionManager] No wallet or write program');
         return { success: false, error: 'Wallet not connected' };
       }
@@ -211,14 +313,14 @@ const readOnlyProgram = useMemo(() => createSessionManagerProgram(connection), [
           counterPda: counterPda.toBase58(),
         });
         console.log('[useSessionManager] Building transaction...');
-        const transaction = await writeProgram.methods
+        const transaction = await baseWriteProgram.methods
           .startSession(onChainLevel)
           .accounts({
             gameSession: sessionPda,
             sessionCounter: counterPda,
             playerProfile: profilePda,
             player: wallet.publicKey,
-            burnerWallet: wallet.publicKey, // Will be overridden by caller
+            sessionSigner: wallet.publicKey, // Will be overridden by caller
             mapConfig: mapConfigPda,
             generatedMap: generatedMapPda,
             gameState: gameStatePda,
@@ -240,9 +342,11 @@ const readOnlyProgram = useMemo(() => createSessionManagerProgram(connection), [
         );
 
         console.log('[useSessionManager] Requesting wallet signature...');
-        const signature = await signAndSendTransaction(transaction);
+        const signature = await signAndSendTransaction(transaction, {
+          connection: baseConnection,
+        });
         console.log('[useSessionManager] Transaction sent:', signature);
-        await connection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
+        await baseConnection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
         console.log('[useSessionManager] Transaction confirmed');
 
         // Fetch the created session
@@ -258,16 +362,27 @@ const readOnlyProgram = useMemo(() => createSessionManagerProgram(connection), [
         if (isMountedRef.current) setIsLoading(false);
       }
     },
-    [connection, fetchSession, signAndSendTransaction, wallet.publicKey, writeProgram]
+    [baseConnection, fetchSession, signAndSendTransaction, wallet.publicKey, baseWriteProgram]
   );
 
   const buildStartDuelSessionTransaction = useCallback(
     async (
-      burnerPublicKey: PublicKey
+      sessionSignerPublicKey: PublicKey
     ): Promise<{ transaction: Transaction; sessionPda: PublicKey } | null> => {
-      if (!wallet.publicKey || !writeProgram) {
+      if (
+        !wallet.publicKey ||
+        !baseWriteProgram ||
+        !gameplayStateWriteProgram ||
+        !mapGeneratorWriteProgram ||
+        !playerInventoryWriteProgram ||
+        !poiSystemWriteProgram
+      ) {
         return null;
       }
+      const gameplayProgram = gameplayStateWriteProgram;
+      const mapProgram = mapGeneratorWriteProgram;
+      const inventoryProgram = playerInventoryWriteProgram;
+      const poiProgram = poiSystemWriteProgram;
 
       const DUEL_ONCHAIN_LEVEL = 20;
       activeOnChainLevelRef.current = DUEL_ONCHAIN_LEVEL;
@@ -286,14 +401,14 @@ const readOnlyProgram = useMemo(() => createSessionManagerProgram(connection), [
       const [sessionManagerAuthorityPda] = deriveSessionManagerAuthorityPda();
 
       const transaction = await (
-        writeProgram.methods as unknown as {
+        baseWriteProgram.methods as unknown as {
           startDuelSession: () => {
             accounts: (accounts: {
               gameSession: PublicKey;
               sessionCounter: PublicKey;
               playerProfile: PublicKey;
               player: PublicKey;
-              burnerWallet: PublicKey;
+              sessionSigner: PublicKey;
               sessionManagerAuthority: PublicKey;
               mapConfig: PublicKey;
               generatedMap: PublicKey;
@@ -316,7 +431,7 @@ const readOnlyProgram = useMemo(() => createSessionManagerProgram(connection), [
           sessionCounter: counterPda,
           playerProfile: profilePda,
           player: wallet.publicKey,
-          burnerWallet: burnerPublicKey,
+          sessionSigner: sessionSignerPublicKey,
           sessionManagerAuthority: sessionManagerAuthorityPda,
           mapConfig: mapConfigPda,
           generatedMap: generatedMapPda,
@@ -334,14 +449,14 @@ const readOnlyProgram = useMemo(() => createSessionManagerProgram(connection), [
 
       return { transaction, sessionPda };
     },
-    [wallet.publicKey, writeProgram]
+    [wallet.publicKey, baseWriteProgram]
   );
 
   const buildStartGauntletSessionTransaction = useCallback(
     async (
-      burnerPublicKey: PublicKey
+      sessionSignerPublicKey: PublicKey
     ): Promise<{ transaction: Transaction; sessionPda: PublicKey } | null> => {
-      if (!wallet.publicKey || !writeProgram) {
+      if (!wallet.publicKey || !baseWriteProgram) {
         return null;
       }
 
@@ -362,14 +477,14 @@ const readOnlyProgram = useMemo(() => createSessionManagerProgram(connection), [
       const [sessionManagerAuthorityPda] = deriveSessionManagerAuthorityPda();
 
       const transaction = await (
-        writeProgram.methods as unknown as {
+        baseWriteProgram.methods as unknown as {
           startGauntletSession: () => {
             accounts: (accounts: {
               gameSession: PublicKey;
               sessionCounter: PublicKey;
               playerProfile: PublicKey;
               player: PublicKey;
-              burnerWallet: PublicKey;
+              sessionSigner: PublicKey;
               sessionManagerAuthority: PublicKey;
               mapConfig: PublicKey;
               generatedMap: PublicKey;
@@ -392,7 +507,7 @@ const readOnlyProgram = useMemo(() => createSessionManagerProgram(connection), [
           sessionCounter: counterPda,
           playerProfile: profilePda,
           player: wallet.publicKey,
-          burnerWallet: burnerPublicKey,
+          sessionSigner: sessionSignerPublicKey,
           sessionManagerAuthority: sessionManagerAuthorityPda,
           mapConfig: mapConfigPda,
           generatedMap: generatedMapPda,
@@ -410,7 +525,7 @@ const readOnlyProgram = useMemo(() => createSessionManagerProgram(connection), [
 
       return { transaction, sessionPda };
     },
-    [wallet.publicKey, writeProgram]
+    [wallet.publicKey, baseWriteProgram]
   );
 
   /**
@@ -420,9 +535,9 @@ const readOnlyProgram = useMemo(() => createSessionManagerProgram(connection), [
   const buildStartSessionTransaction = useCallback(
     async (
       campaignLevel: number,
-      burnerPublicKey: PublicKey
+      sessionSignerPublicKey: PublicKey
     ): Promise<{ transaction: Transaction; sessionPda: PublicKey } | null> => {
-      if (!wallet.publicKey || !writeProgram) {
+      if (!wallet.publicKey || !baseWriteProgram) {
         return null;
       }
 
@@ -445,14 +560,14 @@ const readOnlyProgram = useMemo(() => createSessionManagerProgram(connection), [
       const [inventoryPda] = deriveInventoryPda(sessionPda);
       const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
       const [mapConfigPda] = deriveMapConfigPda();
-      const transaction = await writeProgram.methods
+      const transaction = await baseWriteProgram.methods
         .startSession(onChainLevel)
         .accounts({
           gameSession: sessionPda,
           sessionCounter: counterPda,
           playerProfile: profilePda,
           player: wallet.publicKey,
-          burnerWallet: burnerPublicKey,
+          sessionSigner: sessionSignerPublicKey,
           mapConfig: mapConfigPda,
           generatedMap: generatedMapPda,
           gameState: gameStatePda,
@@ -469,15 +584,71 @@ const readOnlyProgram = useMemo(() => createSessionManagerProgram(connection), [
 
       return { transaction, sessionPda };
     },
-    [wallet.publicKey, writeProgram]
+    [wallet.publicKey, baseWriteProgram]
   );
 
-  const delegateSession = useCallback(async (): Promise<TransactionResult> => {
-    if (!wallet.publicKey || !writeProgram) {
+  /**
+   * Builds a delegate session transaction without sending it.
+   * Intended to be bundled atomically with start_session in a single wallet signature.
+   */
+  const buildDelegateSessionTransaction = useCallback(
+    async (
+      campaignLevel: number,
+      sessionSignerPublicKey: PublicKey,
+      sessionPdaOverride?: PublicKey
+    ): Promise<Transaction | null> => {
+      if (
+        !wallet.publicKey ||
+        !baseWriteProgram
+      ) {
+        return null;
+      }
+
+      if (campaignLevel < 0 || campaignLevel > MAX_CAMPAIGN_LEVEL) {
+        return null;
+      }
+
+      const onChainLevel = campaignLevel + 1;
+      const [fallbackSessionPda] = deriveSessionPda(wallet.publicKey, onChainLevel);
+      const sessionPda = sessionPdaOverride ?? activeSessionPdaRef.current ?? fallbackSessionPda;
+      const sessionDelegate = deriveDelegatePdas(sessionPda, SOLANA_CONFIG.programs.sessionManager);
+
+      const delegateSessionIx = await baseWriteProgram.methods
+        .delegateSession(onChainLevel)
+        .accountsStrict({
+          bufferGameSession: sessionDelegate.buffer,
+          delegationRecordGameSession: sessionDelegate.delegationRecord,
+          delegationMetadataGameSession: sessionDelegate.delegationMetadata,
+          gameSession: sessionPda,
+          player: wallet.publicKey,
+          sessionSigner: sessionSignerPublicKey,
+          ownerProgram: SOLANA_CONFIG.programs.sessionManager,
+          delegationProgram: DELEGATION_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        } as any)
+        .instruction();
+
+      return new Transaction().add(delegateSessionIx);
+    },
+    [wallet.publicKey, baseWriteProgram]
+  );
+
+  const delegateSession = useCallback(async (
+    sessionSignerKeypair: Keypair,
+    options?: {
+      sessionPda?: PublicKey;
+      onChainLevel?: number;
+    }
+  ): Promise<TransactionResult> => {
+    if (!wallet.publicKey || !baseWriteProgram) {
       return { success: false, error: 'Wallet not connected' };
     }
+    if (!gameplayStateWriteProgram || !mapGeneratorWriteProgram || !playerInventoryWriteProgram || !poiSystemWriteProgram) {
+      return { success: false, error: 'Required delegate programs not available' };
+    }
 
-    if (!hasActiveSession) {
+    const hasSessionOverride = Boolean(options?.sessionPda);
+    if (!hasActiveSession && !hasSessionOverride) {
       return { success: false, error: 'No active session to delegate' };
     }
 
@@ -487,44 +658,140 @@ const readOnlyProgram = useMemo(() => createSessionManagerProgram(connection), [
     }
 
     try {
-      const onChainLevel = session?.campaignLevel ?? activeOnChainLevelRef.current;
+      const onChainLevel =
+        options?.onChainLevel ?? session?.campaignLevel ?? activeOnChainLevelRef.current;
       const [fallbackSessionPda] = deriveSessionPda(wallet.publicKey, onChainLevel);
-      const sessionPda = activeSessionPdaRef.current ?? fallbackSessionPda;
+      const sessionPda = options?.sessionPda ?? activeSessionPdaRef.current ?? fallbackSessionPda;
+      const [gameStatePda] = deriveGameStatePda(sessionPda);
+      const [mapEnemiesPda] = deriveMapEnemiesPda(sessionPda);
+      const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
+      const [inventoryPda] = deriveInventoryPda(sessionPda);
+      const [mapPoisPda] = deriveMapPoisPda(sessionPda);
+      const gameplayGameStateDelegate = deriveDelegatePdas(gameStatePda, SOLANA_CONFIG.programs.gameplayState);
+      const gameplayMapEnemiesDelegate = deriveDelegatePdas(mapEnemiesPda, SOLANA_CONFIG.programs.gameplayState);
+      const generatedMapDelegate = deriveDelegatePdas(generatedMapPda, SOLANA_CONFIG.programs.mapGenerator);
+      const inventoryDelegate = deriveDelegatePdas(inventoryPda, SOLANA_CONFIG.programs.playerInventory);
+      const mapPoisDelegate = deriveDelegatePdas(mapPoisPda, SOLANA_CONFIG.programs.poiSystem);
 
-      const transaction = await writeProgram.methods
+      const delegateGameplayIx = await gameplayStateWriteProgram.methods
+        .delegateGameplayAccounts()
+        .accountsStrict({
+          gameState: gameStatePda,
+          mapEnemies: mapEnemiesPda,
+          gameSession: sessionPda,
+          player: sessionSignerKeypair.publicKey,
+          bufferGameState: gameplayGameStateDelegate.buffer,
+          delegationRecordGameState: gameplayGameStateDelegate.delegationRecord,
+          delegationMetadataGameState: gameplayGameStateDelegate.delegationMetadata,
+          bufferMapEnemies: gameplayMapEnemiesDelegate.buffer,
+          delegationRecordMapEnemies: gameplayMapEnemiesDelegate.delegationRecord,
+          delegationMetadataMapEnemies: gameplayMapEnemiesDelegate.delegationMetadata,
+          ownerProgram: SOLANA_CONFIG.programs.gameplayState,
+          delegationProgram: DELEGATION_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        } as any)
+        .instruction();
+      const delegateGeneratedMapIx = await mapGeneratorWriteProgram.methods
+        .delegateGeneratedMap()
+        .accountsStrict({
+          generatedMap: generatedMapPda,
+          session: sessionPda,
+          player: sessionSignerKeypair.publicKey,
+          bufferGeneratedMap: generatedMapDelegate.buffer,
+          delegationRecordGeneratedMap: generatedMapDelegate.delegationRecord,
+          delegationMetadataGeneratedMap: generatedMapDelegate.delegationMetadata,
+          ownerProgram: SOLANA_CONFIG.programs.mapGenerator,
+          delegationProgram: DELEGATION_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        } as any)
+        .instruction();
+      const delegateInventoryIx = await playerInventoryWriteProgram.methods
+        .delegateInventory()
+        .accountsStrict({
+          inventory: inventoryPda,
+          session: sessionPda,
+          player: sessionSignerKeypair.publicKey,
+          bufferInventory: inventoryDelegate.buffer,
+          delegationRecordInventory: inventoryDelegate.delegationRecord,
+          delegationMetadataInventory: inventoryDelegate.delegationMetadata,
+          ownerProgram: SOLANA_CONFIG.programs.playerInventory,
+          delegationProgram: DELEGATION_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        } as any)
+        .instruction();
+      const delegateMapPoisIx = await poiSystemWriteProgram.methods
+        .delegateMapPois()
+        .accountsStrict({
+          mapPois: mapPoisPda,
+          gameSession: sessionPda,
+          player: sessionSignerKeypair.publicKey,
+          bufferMapPois: mapPoisDelegate.buffer,
+          delegationRecordMapPois: mapPoisDelegate.delegationRecord,
+          delegationMetadataMapPois: mapPoisDelegate.delegationMetadata,
+          ownerProgram: SOLANA_CONFIG.programs.poiSystem,
+          delegationProgram: DELEGATION_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        } as any)
+        .instruction();
+      const delegateSessionIx = await baseWriteProgram.methods
         .delegateSession(onChainLevel)
-        .accounts({
+        .accountsStrict({
+          bufferGameSession: deriveDelegatePdas(sessionPda, SOLANA_CONFIG.programs.sessionManager)
+            .buffer,
+          delegationRecordGameSession: deriveDelegatePdas(
+            sessionPda,
+            SOLANA_CONFIG.programs.sessionManager
+          ).delegationRecord,
+          delegationMetadataGameSession: deriveDelegatePdas(
+            sessionPda,
+            SOLANA_CONFIG.programs.sessionManager
+          ).delegationMetadata,
           gameSession: sessionPda,
           player: wallet.publicKey,
-        })
-        .transaction();
+          sessionSigner: sessionSignerKeypair.publicKey,
+          ownerProgram: SOLANA_CONFIG.programs.sessionManager,
+          delegationProgram: DELEGATION_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        } as any)
+        .instruction();
 
-      const signature = await signAndSendTransaction(transaction);
-      await connection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
+      const delegationTx = new Transaction().add(
+        ComputeBudgetProgram.setComputeUnitLimit({ units: 1_000_000 }),
+        delegateGameplayIx,
+        delegateGeneratedMapIx,
+        delegateInventoryIx,
+        delegateMapPoisIx,
+        delegateSessionIx
+      );
+      const signature = await sendSessionSignerTransaction(
+        baseConnection,
+        delegationTx,
+        sessionSignerKeypair
+      );
 
       // Refresh session state
       await fetchSession();
 
       return { success: true, signature };
     } catch (txError) {
-      const message = getUserErrorMessage(txError);
+      const message = getUserErrorMessage(txError, 'session_manager');
       if (isMountedRef.current) setError(message);
       return { success: false, error: message };
     } finally {
       if (isMountedRef.current) setIsLoading(false);
     }
   }, [
-    connection,
+    baseConnection,
     fetchSession,
     hasActiveSession,
-    signAndSendTransaction,
+    session,
     wallet.publicKey,
-    writeProgram,
+    baseWriteProgram,
   ]);
 
   const commitSession = useCallback(
     async (stateHash: number[]): Promise<TransactionResult> => {
-      if (!wallet.publicKey || !writeProgram) {
+      if (!wallet.publicKey || !erWriteProgram) {
         return { success: false, error: 'Wallet not connected' };
       }
 
@@ -545,24 +812,50 @@ const readOnlyProgram = useMemo(() => createSessionManagerProgram(connection), [
         const onChainLevel = session?.campaignLevel ?? activeOnChainLevelRef.current;
         const [fallbackSessionPda] = deriveSessionPda(wallet.publicKey, onChainLevel);
         const sessionPda = activeSessionPdaRef.current ?? fallbackSessionPda;
+        const [gameStatePda] = deriveGameStatePda(sessionPda);
+        const [mapEnemiesPda] = deriveMapEnemiesPda(sessionPda);
+        const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
+        const [inventoryPda] = deriveInventoryPda(sessionPda);
+        const [mapPoisPda] = deriveMapPoisPda(sessionPda);
 
-        const transaction = await writeProgram.methods
+        const magicProgramId = SOLANA_CONFIG.magic?.programId;
+        const magicContextId = SOLANA_CONFIG.magic?.contextId;
+
+        if (!magicProgramId || !magicContextId) {
+          return {
+            success: false,
+            error:
+              'Missing MagicBlock config. Set EXPO_PUBLIC_MAGIC_PROGRAM_ID and EXPO_PUBLIC_MAGIC_CONTEXT_ID.',
+          };
+        }
+
+        const transaction = await erWriteProgram.methods
           .commitSession(onChainLevel, stateHash)
           .accounts({
             gameSession: sessionPda,
+            gameState: gameStatePda,
+            mapEnemies: mapEnemiesPda,
+            generatedMap: generatedMapPda,
+            inventory: inventoryPda,
+            mapPois: mapPoisPda,
             player: wallet.publicKey,
+            magicProgram: magicProgramId,
+            magicContext: magicContextId,
           })
           .transaction();
 
-        const signature = await signAndSendTransaction(transaction);
-        await connection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
+        const signature = await signAndSendTransaction(transaction, {
+          connection: erConnection,
+          skipPreflight: true,
+        });
+        await erConnection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
 
         // Refresh session state
         await fetchSession();
 
         return { success: true, signature };
       } catch (txError) {
-        const message = getUserErrorMessage(txError);
+        const message = getUserErrorMessage(txError, 'session_manager');
         if (isMountedRef.current) setError(message);
         return { success: false, error: message };
       } finally {
@@ -570,22 +863,240 @@ const readOnlyProgram = useMemo(() => createSessionManagerProgram(connection), [
       }
     },
     [
-      connection,
+      erConnection,
       fetchSession,
       hasActiveSession,
       signAndSendTransaction,
       wallet.publicKey,
-      writeProgram,
+      erWriteProgram,
+    ]
+  );
+
+  const undelegateSession = useCallback(
+    async (stateHash: number[], sessionSignerKeypair: Keypair): Promise<TransactionResult> => {
+      if (!wallet.publicKey || !erWriteProgram) {
+        return { success: false, error: 'Wallet not connected' };
+      }
+
+      if (!hasActiveSession) {
+        return { success: false, error: 'No active session to undelegate' };
+      }
+
+      if (stateHash.length !== 32) {
+        return { success: false, error: 'State hash must be 32 bytes' };
+      }
+
+      if (isMountedRef.current) {
+        setIsLoading(true);
+        setError(null);
+      }
+
+      try {
+        const onChainLevel = session?.campaignLevel ?? activeOnChainLevelRef.current;
+        const [fallbackSessionPda] = deriveSessionPda(wallet.publicKey, onChainLevel);
+        const sessionPda = activeSessionPdaRef.current ?? fallbackSessionPda;
+        const [gameStatePda] = deriveGameStatePda(sessionPda);
+        const [mapEnemiesPda] = deriveMapEnemiesPda(sessionPda);
+        const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
+        const [inventoryPda] = deriveInventoryPda(sessionPda);
+        const [mapPoisPda] = deriveMapPoisPda(sessionPda);
+
+        // Frontend state can be stale (e.g., after interrupted cleanup). Check every account,
+        // not only session PDA, because mixed ownership causes InvalidWritableAccount on move.
+        const [
+          baseSessionInfo,
+          baseGameStateInfo,
+          baseMapEnemiesInfo,
+          baseGeneratedMapInfo,
+          baseInventoryInfo,
+          baseMapPoisInfo,
+        ] = await Promise.all([
+          baseConnection.getAccountInfo(sessionPda, 'processed'),
+          baseConnection.getAccountInfo(gameStatePda, 'processed'),
+          baseConnection.getAccountInfo(mapEnemiesPda, 'processed'),
+          baseConnection.getAccountInfo(generatedMapPda, 'processed'),
+          baseConnection.getAccountInfo(inventoryPda, 'processed'),
+          baseConnection.getAccountInfo(mapPoisPda, 'processed'),
+        ]);
+        if (!baseSessionInfo) {
+          return { success: false, error: 'Session account not found' };
+        }
+        const delegatedSession = !!baseSessionInfo.owner.equals(DELEGATION_PROGRAM_ID);
+        const delegatedGameplay =
+          !!baseGameStateInfo?.owner.equals(DELEGATION_PROGRAM_ID) ||
+          !!baseMapEnemiesInfo?.owner.equals(DELEGATION_PROGRAM_ID);
+        const delegatedMap = !!baseGeneratedMapInfo?.owner.equals(DELEGATION_PROGRAM_ID);
+        const delegatedInventory = !!baseInventoryInfo?.owner.equals(DELEGATION_PROGRAM_ID);
+        const delegatedPois = !!baseMapPoisInfo?.owner.equals(DELEGATION_PROGRAM_ID);
+        const hasAnyDelegated =
+          delegatedSession ||
+          delegatedGameplay ||
+          delegatedMap ||
+          delegatedInventory ||
+          delegatedPois;
+        if (!hasAnyDelegated) {
+          console.warn(
+            '[useSessionManager] undelegateSession skipped: no delegated accounts detected'
+          );
+          await fetchSession();
+          return { success: true, signature: 'undelegate_skipped_not_delegated' };
+        }
+
+        const magicProgramId = SOLANA_CONFIG.magic?.programId;
+        const magicContextId = SOLANA_CONFIG.magic?.contextId;
+
+        if (!magicProgramId || !magicContextId) {
+          return {
+            success: false,
+            error:
+              'Missing MagicBlock config. Set EXPO_PUBLIC_MAGIC_PROGRAM_ID and EXPO_PUBLIC_MAGIC_CONTEXT_ID.',
+          };
+        }
+
+        const gameplayProgramEr = createGameplayStateProgram(erConnection);
+        const mapGeneratorProgramEr = createMapGeneratorProgram(erConnection);
+        const playerInventoryProgramEr = createPlayerInventoryProgram(erConnection);
+        const poiSystemProgramEr = createPoiSystemProgram(erConnection);
+        const waitForBaseOwner = async (
+          account: PublicKey,
+          expectedOwner: PublicKey,
+          label: string
+        ): Promise<void> => {
+          for (let i = 0; i < 30; i += 1) {
+            const info = await baseConnection.getAccountInfo(account, 'processed');
+            if (info?.owner.equals(expectedOwner)) {
+              return;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 250));
+          }
+          throw new Error(`Owner not restored for ${label}`);
+        };
+
+        if (delegatedGameplay) {
+          const undelegateGameplayTx = await gameplayProgramEr.methods
+            .undelegateGameplayAccounts()
+            .accounts({
+              gameState: gameStatePda,
+              mapEnemies: mapEnemiesPda,
+              gameSession: sessionPda,
+              sessionSigner: sessionSignerKeypair.publicKey,
+              magicProgram: magicProgramId,
+              magicContext: magicContextId,
+            })
+            .transaction();
+          await sendSessionSignerTransaction(erConnection, undelegateGameplayTx, sessionSignerKeypair);
+          await waitForBaseOwner(
+            gameStatePda,
+            SOLANA_CONFIG.programs.gameplayState,
+            'game_state'
+          );
+          await waitForBaseOwner(
+            mapEnemiesPda,
+            SOLANA_CONFIG.programs.gameplayState,
+            'map_enemies'
+          );
+        }
+
+        if (delegatedMap) {
+          const undelegateMapTx = await mapGeneratorProgramEr.methods
+            .undelegateGeneratedMap()
+            .accounts({
+              generatedMap: generatedMapPda,
+              session: sessionPda,
+              sessionSigner: sessionSignerKeypair.publicKey,
+              magicProgram: magicProgramId,
+              magicContext: magicContextId,
+            })
+            .transaction();
+          await sendSessionSignerTransaction(erConnection, undelegateMapTx, sessionSignerKeypair);
+          await waitForBaseOwner(generatedMapPda, SOLANA_CONFIG.programs.mapGenerator, 'generated_map');
+        }
+
+        if (delegatedInventory) {
+          const undelegateInventoryTx = await playerInventoryProgramEr.methods
+            .undelegateInventory()
+            .accounts({
+              inventory: inventoryPda,
+              session: sessionPda,
+              sessionSigner: sessionSignerKeypair.publicKey,
+              magicProgram: magicProgramId,
+              magicContext: magicContextId,
+            })
+            .transaction();
+          await sendSessionSignerTransaction(erConnection, undelegateInventoryTx, sessionSignerKeypair);
+          await waitForBaseOwner(
+            inventoryPda,
+            SOLANA_CONFIG.programs.playerInventory,
+            'inventory'
+          );
+        }
+
+        if (delegatedPois) {
+          const undelegatePoisTx = await poiSystemProgramEr.methods
+            .undelegateMapPois()
+            .accounts({
+              mapPois: mapPoisPda,
+              gameSession: sessionPda,
+              sessionSigner: sessionSignerKeypair.publicKey,
+              magicProgram: magicProgramId,
+              magicContext: magicContextId,
+            })
+            .transaction();
+          await sendSessionSignerTransaction(erConnection, undelegatePoisTx, sessionSignerKeypair);
+          await waitForBaseOwner(mapPoisPda, SOLANA_CONFIG.programs.poiSystem, 'map_pois');
+        }
+
+        let signature = 'undelegate_partial';
+        if (delegatedSession) {
+          const transaction = await erWriteProgram.methods
+            .undelegateSession(onChainLevel, stateHash)
+            .accounts({
+              gameSession: sessionPda,
+              player: wallet.publicKey,
+              sessionSigner: sessionSignerKeypair.publicKey,
+              magicProgram: magicProgramId,
+              magicContext: magicContextId,
+            })
+            .transaction();
+
+          signature = await sendSessionSignerTransaction(
+            erConnection,
+            transaction,
+            sessionSignerKeypair
+          );
+          await erConnection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
+          await waitForBaseOwner(sessionPda, SOLANA_CONFIG.programs.sessionManager, 'game_session');
+        }
+
+        await fetchSession();
+
+        return { success: true, signature };
+      } catch (txError) {
+        const message = getUserErrorMessage(txError, 'session_manager');
+        if (isMountedRef.current) setError(message);
+        return { success: false, error: message };
+      } finally {
+        if (isMountedRef.current) setIsLoading(false);
+      }
+    },
+    [
+      baseConnection,
+      erConnection,
+      erWriteProgram,
+      fetchSession,
+      hasActiveSession,
+      session?.campaignLevel,
+      wallet.publicKey,
     ]
   );
 
   /**
    * End session after death or level completion.
-   * Only requires burner wallet - no user interaction needed.
+   * Only requires session signer - no user interaction needed.
    * Victory/defeat is determined on-chain from game_state.
    */
   const endSession = useCallback(
-    async (burnerKeypair: Keypair): Promise<TransactionResult> => {
+    async (sessionSignerKeypair: Keypair): Promise<TransactionResult> => {
       if (!wallet.publicKey) {
         return { success: false, error: 'Wallet not connected' };
       }
@@ -609,8 +1120,8 @@ const readOnlyProgram = useMemo(() => createSessionManagerProgram(connection), [
         const [mapPoisPda] = deriveMapPoisPda(sessionPda);
         const [playerProfilePda] = derivePlayerProfilePda(wallet.publicKey);
 
-        // Build transaction manually since we're only using burner wallet
-        const program = createSessionManagerProgram(connection);
+        // Build transaction manually since we're only using the session signer
+        const program = createSessionManagerProgram(baseConnection);
         const transaction = await program.methods
           .endSession(session.campaignLevel)
           .accounts({
@@ -621,7 +1132,8 @@ const readOnlyProgram = useMemo(() => createSessionManagerProgram(connection), [
             mapPois: mapPoisPda,
             playerProfile: playerProfilePda,
             player: wallet.publicKey,
-            burnerWallet: burnerKeypair.publicKey,
+            sessionSigner: sessionSignerKeypair.publicKey,
+            sessionManagerAuthority: deriveSessionManagerAuthorityPda()[0],
             inventory: inventoryPda,
             playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
             gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
@@ -631,20 +1143,20 @@ const readOnlyProgram = useMemo(() => createSessionManagerProgram(connection), [
           })
           .transaction();
 
-        // Set blockhash and fee payer (burner wallet pays)
-        const { blockhash } = await connection.getLatestBlockhash('confirmed');
+        // Set blockhash and fee payer (session signer pays)
+        const { blockhash } = await baseConnection.getLatestBlockhash('confirmed');
         transaction.recentBlockhash = blockhash;
-        transaction.feePayer = burnerKeypair.publicKey;
+        transaction.feePayer = sessionSignerKeypair.publicKey;
 
-        // Sign with burner wallet only
-        transaction.sign(burnerKeypair);
+        // Sign with session signer only
+        transaction.sign(sessionSignerKeypair);
 
         // Send raw transaction (no user signature needed)
-        const signature = await connection.sendRawTransaction(transaction.serialize(), {
+        const signature = await baseConnection.sendRawTransaction(transaction.serialize(), {
           skipPreflight: false,
           preflightCommitment: SOLANA_CONFIG.commitment,
         });
-        await connection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
+        await baseConnection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
 
         console.log('[useSessionManager] Session ended successfully:', signature);
 
@@ -666,7 +1178,7 @@ const readOnlyProgram = useMemo(() => createSessionManagerProgram(connection), [
         if (isMountedRef.current) setIsLoading(false);
       }
     },
-    [connection, hasActiveSession, session, wallet.publicKey]
+    [baseConnection, hasActiveSession, session, wallet.publicKey]
   );
 
   const resetSession = useCallback(() => {
@@ -689,10 +1201,12 @@ const readOnlyProgram = useMemo(() => createSessionManagerProgram(connection), [
     buildStartDuelSessionTransaction,
     buildStartGauntletSessionTransaction,
     buildStartSessionTransaction,
+    buildDelegateSessionTransaction,
     setActiveOnChainLevel,
     setActiveSessionPda,
     delegateSession,
     commitSession,
+    undelegateSession,
     endSession,
     resetSession,
   };

@@ -19,6 +19,32 @@ import {
   deriveInventoryPda,
 } from './constants';
 
+const DELEGATION_PROGRAM_ID = new PublicKey('DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh');
+
+function isSupportedOwner(owner: PublicKey, primaryProgramId: PublicKey): boolean {
+  return owner.equals(primaryProgramId) || owner.equals(DELEGATION_PROGRAM_ID);
+}
+
+async function hasCompatibleSessionRuntime(
+  connection: Connection,
+  playerPubkey: PublicKey,
+  onChainLevel: number
+): Promise<boolean> {
+  const [sessionPda] = deriveSessionPda(playerPubkey, onChainLevel);
+  const [gameStatePda] = deriveGameStatePda(sessionPda);
+  const [sessionInfo, gameStateInfo] = await connection.getMultipleAccountsInfo([sessionPda, gameStatePda]);
+  if (!sessionInfo || !gameStateInfo) {
+    return false;
+  }
+  if (!isSupportedOwner(sessionInfo.owner, SESSION_MANAGER_PROGRAM_ID)) {
+    return false;
+  }
+  if (!isSupportedOwner(gameStateInfo.owner, GAMEPLAY_STATE_PROGRAM_ID)) {
+    return false;
+  }
+  return true;
+}
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -66,7 +92,7 @@ export interface SessionAccount {
   player: PublicKey;
   sessionId: bigint;
   campaignLevel: number;
-  burnerWallet: PublicKey;
+  sessionSigner: PublicKey;
   activeItemPool: Uint8Array;
   stateHash: Uint8Array;
   createdAt: bigint;
@@ -132,9 +158,6 @@ export interface InventoryItem {
   equipped: boolean;
 }
 
-// Account size for session (8-byte discriminator + data)
-const GAME_SESSION_SIZE = 8 + 32 + 8 + 1 + 32 + 10 + 32 + 8; // ~131 bytes
-
 // ============================================================================
 // Session List Functions
 // ============================================================================
@@ -154,45 +177,73 @@ export async function fetchSessionList(
   gameplayProgram: Program,
   playerPubkey: PublicKey
 ): Promise<ActiveSession[]> {
-  // Fetch all GameSession accounts for this player
-  const accounts = await connection.getProgramAccounts(SESSION_MANAGER_PROGRAM_ID, {
-    filters: [
-      { dataSize: GAME_SESSION_SIZE },
-      // Player field is at offset 8 (after discriminator)
-      { memcmp: { offset: 8, bytes: playerPubkey.toBase58() } },
-    ],
-  });
-
   const sessions: ActiveSession[] = [];
+  const candidatePdas: PublicKey[] = [];
+  for (let onChainLevel = 1; onChainLevel <= 40; onChainLevel += 1) {
+    const [sessionPda] = deriveSessionPda(playerPubkey, onChainLevel);
+    candidatePdas.push(sessionPda);
+  }
 
-  for (const { pubkey, account } of accounts) {
+  // NOTE: cannot rely on getProgramAccounts(session-manager) because delegated sessions
+  // are owned by the delegation program while active.
+  const candidateAccounts = await connection.getMultipleAccountsInfo(candidatePdas);
+
+  for (let i = 0; i < candidateAccounts.length; i += 1) {
+    const account = candidateAccounts[i];
+    const pubkey = candidatePdas[i];
+    if (!account) {
+      continue;
+    }
+    // Derive GameState PDA for this session
+    const [gameStatePda] = deriveGameStatePda(pubkey);
+    const gameStateAccount = await connection.getAccountInfo(gameStatePda);
+    if (!gameStateAccount) {
+      // Session exists but no game state (shouldn't happen normally)
+      continue;
+    }
+    if (
+      !isSupportedOwner(account.owner, SESSION_MANAGER_PROGRAM_ID) ||
+      !isSupportedOwner(gameStateAccount.owner, GAMEPLAY_STATE_PROGRAM_ID)
+    ) {
+      console.warn('[sessionList] Skipping incompatible legacy session account', {
+        sessionPda: pubkey.toBase58(),
+        sessionOwner: account.owner.toBase58(),
+        gameStateOwner: gameStateAccount.owner.toBase58(),
+      });
+      continue;
+    }
+
+    const decodedLevel = i + 1; // deterministic from PDA seed, avoids coder decode edge-cases
+
     try {
-      const session = sessionProgram.coder.accounts.decode('GameSession', account.data);
-
-      // Derive GameState PDA for this session
-      const [gameStatePda] = deriveGameStatePda(pubkey);
-
-      const gameStateAccount = await connection.getAccountInfo(gameStatePda);
-      if (!gameStateAccount) {
-        // Session exists but no game state (shouldn't happen normally)
-        continue;
-      }
-
       const gameState = gameplayProgram.coder.accounts.decode('GameState', gameStateAccount.data);
-
       sessions.push({
         sessionPda: pubkey.toBase58(),
-        level: session.campaignLevel - 1, // Convert 1-indexed on-chain to 0-indexed frontend
+        level: decodedLevel - 1, // Convert 1-indexed on-chain to 0-indexed frontend
         week: gameState.week,
         phase: gameState.phase,
         positionX: gameState.positionX,
         positionY: gameState.positionY,
         movesRemaining: gameState.movesRemaining,
-        lastPlayedAt: Date.now(), // Could track in local storage
+        lastPlayedAt: Date.now(),
       });
     } catch (error) {
-      console.warn('[sessionList] Failed to decode session:', pubkey.toBase58(), error);
-      continue;
+      // Keep session visible/resumable even if game_state decode fails transiently.
+      sessions.push({
+        sessionPda: pubkey.toBase58(),
+        level: decodedLevel - 1,
+        week: 1,
+        phase: 0,
+        positionX: 0,
+        positionY: 0,
+        movesRemaining: 0,
+        lastPlayedAt: Date.now(),
+      });
+      console.warn('[sessionList] Failed to decode game_state, using fallback metadata', {
+        sessionPda: pubkey.toBase58(),
+        gameStatePda: gameStatePda.toBase58(),
+        error,
+      });
     }
   }
 
@@ -214,9 +265,7 @@ export async function checkSessionExists(
   level: number
 ): Promise<boolean> {
   const onChainLevel = level + 1; // Convert 0-indexed frontend to 1-indexed on-chain
-  const [sessionPda] = deriveSessionPda(playerPubkey, onChainLevel);
-  const account = await connection.getAccountInfo(sessionPda);
-  return account !== null;
+  return hasCompatibleSessionRuntime(connection, playerPubkey, onChainLevel);
 }
 
 /**
@@ -233,9 +282,12 @@ export async function getSessionForLevel(
   level: number
 ): Promise<PublicKey | null> {
   const onChainLevel = level + 1; // Convert 0-indexed frontend to 1-indexed on-chain
+  const isCompatible = await hasCompatibleSessionRuntime(connection, playerPubkey, onChainLevel);
+  if (!isCompatible) {
+    return null;
+  }
   const [sessionPda] = deriveSessionPda(playerPubkey, onChainLevel);
-  const account = await connection.getAccountInfo(sessionPda);
-  return account ? sessionPda : null;
+  return sessionPda;
 }
 
 // ============================================================================
@@ -284,15 +336,9 @@ export async function switchToSession(
   }
 
   try {
-    const session = sessionProgram.coder.accounts.decode(
-      'GameSession',
-      sessionAccount.data
-    ) as SessionAccount;
+    const session = sessionProgram.coder.accounts.decode('GameSession', sessionAccount.data) as SessionAccount;
 
-    const gameState = gameplayProgram.coder.accounts.decode(
-      'GameState',
-      gameStateAccount.data
-    ) as GameStateAccount;
+    const gameState = gameplayProgram.coder.accounts.decode('GameState', gameStateAccount.data) as GameStateAccount;
 
     // Enemies and POIs might not exist yet
     const enemies: MapEnemiesAccount = enemiesAccount
@@ -381,15 +427,13 @@ export async function getSessionCount(
   connection: Connection,
   playerPubkey: PublicKey
 ): Promise<number> {
-  const accounts = await connection.getProgramAccounts(SESSION_MANAGER_PROGRAM_ID, {
-    filters: [
-      { dataSize: GAME_SESSION_SIZE },
-      { memcmp: { offset: 8, bytes: playerPubkey.toBase58() } },
-    ],
-    dataSlice: { offset: 0, length: 0 }, // Just count, don't fetch data
-  });
-
-  return accounts.length;
+  const checks: PublicKey[] = [];
+  for (let onChainLevel = 1; onChainLevel <= 40; onChainLevel += 1) {
+    const [sessionPda] = deriveSessionPda(playerPubkey, onChainLevel);
+    checks.push(sessionPda);
+  }
+  const infos = await connection.getMultipleAccountsInfo(checks);
+  return infos.filter((a) => a !== null).length;
 }
 
 /**
@@ -403,14 +447,13 @@ export async function getActiveLevels(
   connection: Connection,
   playerPubkey: PublicKey
 ): Promise<number[]> {
-  const accounts = await connection.getProgramAccounts(SESSION_MANAGER_PROGRAM_ID, {
-    filters: [
-      { dataSize: GAME_SESSION_SIZE },
-      { memcmp: { offset: 8, bytes: playerPubkey.toBase58() } },
-    ],
-    // Fetch just the campaign level field (at offset 8+32+8 = 48)
-    dataSlice: { offset: 48, length: 1 },
-  });
-
-  return accounts.map((a) => a.account.data[0]).sort((a, b) => a - b);
+  const active: number[] = [];
+  for (let onChainLevel = 1; onChainLevel <= 40; onChainLevel += 1) {
+    const [sessionPda] = deriveSessionPda(playerPubkey, onChainLevel);
+    const account = await connection.getAccountInfo(sessionPda, 'processed');
+    if (account) {
+      active.push(onChainLevel);
+    }
+  }
+  return active;
 }

@@ -24,6 +24,7 @@ import { useControllerAction } from '../hooks/useControllerAction';
 import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHints';
 import { useInputMode } from '../hooks/useInputMode';
 import { FocusGlow } from '../components/ui/FocusGlow';
+import { useGame } from '@/contexts/GameContext';
 
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.png');
 const STAINS_BACKGROUND = require('../../assets/ui/backgrounds/stains-background.png');
@@ -42,6 +43,7 @@ type DuelsScreenProps = {
 export function DuelsScreen({ navigation }: DuelsScreenProps) {
   const duels = useDuels();
   const { activeSessions } = useSession();
+  const { dispatch } = useGame();
   const { wallet } = useWallet();
   const { connection } = useSolanaConnection();
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -91,9 +93,10 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
 
   useEffect(() => {
     if (duels.phase === 'queued') {
+      dispatch({ type: 'RESET_GAME' });
       navigation.replace('Game');
     }
-  }, [duels.phase, navigation]);
+  }, [dispatch, duels.phase, navigation]);
 
   const handleBack = useCallback(() => {
     duels.reset();
@@ -103,9 +106,10 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
   const handleEnter = useCallback(async () => {
     const ok = await duels.enterCurrentSessionDuel();
     if (ok) {
+      dispatch({ type: 'RESET_GAME' });
       navigation.navigate('Game');
     }
-  }, [duels, navigation]);
+  }, [dispatch, duels, navigation]);
 
   const entryFeeSol = DUEL_ENTRY_LAMPORTS / 1_000_000_000;
 
@@ -128,9 +132,21 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
     isController && isFocused && duels.phase !== 'error'
   );
 
+  useControllerAction(
+    {
+      onA: duels.reset,
+      onB: handleBack,
+    },
+    isController && isFocused && duels.phase === 'error'
+  );
+
   const controllerHints: ButtonHint[] = [
     { button: 'DPadLeftRight', label: 'Switch' },
     { button: 'A', label: 'Select' },
+    { button: 'B', label: 'Back' },
+  ];
+  const errorHints: ButtonHint[] = [
+    { button: 'A', label: 'Try Again' },
     { button: 'B', label: 'Back' },
   ];
 
@@ -144,32 +160,42 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
         >
           <View style={styles.errorOverlay}>
             <View style={styles.errorContent}>
-              <Text style={styles.errorTitle}>DUELS</Text>
-              <Text style={styles.errorText}>{duels.error}</Text>
+              <Text style={[styles.errorTitle, isCompact && compactStyles.errorTitle]}>DUELS</Text>
+              <Text style={[styles.errorText, isCompact && compactStyles.errorText]}>{duels.error}</Text>
               <View style={styles.errorButtonRow}>
                 <TouchableOpacity onPress={handleBack} activeOpacity={0.7}>
                   <ImageBackground
                     source={buttonV1Source}
-                    style={styles.errorButton}
+                    style={[styles.errorButton, isCompact && compactStyles.errorButton]}
                     resizeMode="stretch"
                   >
-                    <Text style={styles.errorButtonText}>Back</Text>
+                    <Text style={[styles.errorButtonText, isCompact && compactStyles.errorButtonText]}>
+                      Back
+                    </Text>
                   </ImageBackground>
                 </TouchableOpacity>
 
                 <TouchableOpacity onPress={duels.reset} activeOpacity={0.7}>
                   <ImageBackground
                     source={buttonV4Source}
-                    style={styles.errorButton}
+                    style={[styles.errorButton, isCompact && compactStyles.errorButton]}
                     resizeMode="stretch"
                   >
-                    <Text style={styles.errorButtonTextPrimary}>Try Again</Text>
+                    <Text
+                      style={[
+                        styles.errorButtonTextPrimary,
+                        isCompact && compactStyles.errorButtonTextPrimary,
+                      ]}
+                    >
+                      Try Again
+                    </Text>
                   </ImageBackground>
                 </TouchableOpacity>
               </View>
             </View>
           </View>
         </ImageBackground>
+        <ControllerHints hints={errorHints} horizontal />
       </Animated.View>
     );
   }
@@ -533,5 +559,24 @@ const compactStyles = StyleSheet.create({
   },
   panelButtonText: {
     fontSize: 52,
+  },
+  errorTitle: {
+    fontSize: 64,
+  },
+  errorText: {
+    fontSize: 32,
+    maxWidth: 900,
+  },
+  errorButton: {
+    width: 280,
+    height: 90,
+  },
+  errorButtonText: {
+    fontSize: 30,
+    marginBottom: 6,
+  },
+  errorButtonTextPrimary: {
+    fontSize: 30,
+    marginBottom: 6,
   },
 });

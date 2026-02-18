@@ -17,6 +17,7 @@ import { useWallet, type SupportedWallet } from '../contexts/WalletContext';
 import { RootStackParamList } from '../navigation';
 import { JupiterIcon } from '../components/wallet/JupiterIcon';
 import { PhantomIcon } from '../components/wallet/PhantomIcon';
+import { BackpackIcon } from '../components/wallet/BackpackIcon';
 import { useControllerAction } from '../hooks/useControllerAction';
 import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHints';
 import { ControllerKeyboard } from '../components/ui/ControllerKeyboard';
@@ -25,7 +26,7 @@ type AccountScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Account'>;
 };
 
-const WALLET_IDS: SupportedWallet[] = ['Jupiter', 'Phantom', 'DevKeypair'];
+const WALLET_IDS: SupportedWallet[] = ['Jupiter', 'Phantom', 'Backpack', 'DevKeypair'];
 
 export function AccountScreen({ navigation }: AccountScreenProps) {
   const {
@@ -252,6 +253,7 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
                       [
                         { id: 'Jupiter' as const, Icon: JupiterIcon },
                         { id: 'Phantom' as const, Icon: PhantomIcon },
+                        { id: 'Backpack' as const, Icon: BackpackIcon },
                       ] as const
                     ).map(({ id, Icon }) => (
                       <TouchableOpacity

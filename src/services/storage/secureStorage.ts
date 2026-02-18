@@ -2,7 +2,7 @@
  * Platform-aware Secure Storage
  *
  * Uses expo-secure-store on native (iOS/Android) and localStorage on web.
- * This allows the burner wallet to work across all platforms.
+ * This allows the sessionSigner wallet to work across all platforms.
  *
  * Note: localStorage is NOT secure - this is acceptable for development/testing
  * but in production, web users should use a different authentication flow.

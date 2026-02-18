@@ -70,9 +70,9 @@
           ]
         },
         {
-          "name": "burner_wallet",
+          "name": "session_signer",
           "docs": [
-            "Burner wallet - must sign to close sub-accounts (owns the inventory)"
+            "Session key signer - must sign to close sub-accounts (owns the inventory)"
           ],
           "writable": true,
           "signer": true,
@@ -115,7 +115,7 @@
       "name": "commit_session",
       "docs": [
         "Commits the current game state from the ephemeral rollup.",
-        "Updates the state hash and last activity timestamp."
+        "This must be sent to the ephemeral rollup connection."
       ],
       "discriminator": [
         75,
@@ -133,16 +133,42 @@
           "writable": true
         },
         {
+          "name": "game_state",
+          "writable": true
+        },
+        {
+          "name": "map_enemies",
+          "writable": true
+        },
+        {
+          "name": "generated_map",
+          "writable": true
+        },
+        {
+          "name": "inventory",
+          "writable": true
+        },
+        {
+          "name": "map_pois",
+          "writable": true
+        },
+        {
           "name": "player",
-          "signer": true,
-          "relations": [
-            "game_session"
-          ]
+          "signer": true
+        },
+        {
+          "name": "magic_program",
+          "address": "Magic11111111111111111111111111111111111111"
+        },
+        {
+          "name": "magic_context",
+          "writable": true,
+          "address": "MagicContext1111111111111111111111111111111"
         }
       ],
       "args": [
         {
-          "name": "_campaign_level",
+          "name": "campaign_level",
           "type": "u8"
         },
         {
@@ -157,11 +183,884 @@
       ]
     },
     {
+      "name": "delegate_game_state",
+      "docs": [
+        "Delegates gameplay-state account to the MagicBlock delegation program."
+      ],
+      "discriminator": [
+        141,
+        170,
+        25,
+        207,
+        208,
+        36,
+        185,
+        211
+      ],
+      "accounts": [
+        {
+          "name": "buffer_game_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "game_state"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                217,
+                18,
+                17,
+                128,
+                79,
+                140,
+                152,
+                73,
+                103,
+                95,
+                134,
+                179,
+                31,
+                109,
+                34,
+                82,
+                250,
+                167,
+                91,
+                67,
+                186,
+                23,
+                209,
+                2,
+                80,
+                255,
+                118,
+                192,
+                175,
+                242,
+                222,
+                183
+              ]
+            }
+          }
+        },
+        {
+          "name": "delegation_record_game_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "game_state"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "delegation_metadata_game_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "game_state"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "game_state",
+          "writable": true
+        },
+        {
+          "name": "player",
+          "signer": true
+        },
+        {
+          "name": "owner_program",
+          "address": "FcMT7MzBLVQGaMATEMws3fjsL2Q77QSHmoEPdowTMxJa"
+        },
+        {
+          "name": "delegation_program",
+          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "campaign_level",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "delegate_generated_map",
+      "docs": [
+        "Delegates generated-map account to the MagicBlock delegation program."
+      ],
+      "discriminator": [
+        181,
+        173,
+        211,
+        251,
+        234,
+        146,
+        30,
+        0
+      ],
+      "accounts": [
+        {
+          "name": "buffer_generated_map",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "generated_map"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                217,
+                18,
+                17,
+                128,
+                79,
+                140,
+                152,
+                73,
+                103,
+                95,
+                134,
+                179,
+                31,
+                109,
+                34,
+                82,
+                250,
+                167,
+                91,
+                67,
+                186,
+                23,
+                209,
+                2,
+                80,
+                255,
+                118,
+                192,
+                175,
+                242,
+                222,
+                183
+              ]
+            }
+          }
+        },
+        {
+          "name": "delegation_record_generated_map",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "generated_map"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "delegation_metadata_generated_map",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "generated_map"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "generated_map",
+          "writable": true
+        },
+        {
+          "name": "player",
+          "signer": true
+        },
+        {
+          "name": "owner_program",
+          "address": "FcMT7MzBLVQGaMATEMws3fjsL2Q77QSHmoEPdowTMxJa"
+        },
+        {
+          "name": "delegation_program",
+          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "campaign_level",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "delegate_inventory",
+      "docs": [
+        "Delegates inventory account to the MagicBlock delegation program."
+      ],
+      "discriminator": [
+        185,
+        222,
+        138,
+        162,
+        115,
+        247,
+        74,
+        17
+      ],
+      "accounts": [
+        {
+          "name": "buffer_inventory",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "inventory"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                217,
+                18,
+                17,
+                128,
+                79,
+                140,
+                152,
+                73,
+                103,
+                95,
+                134,
+                179,
+                31,
+                109,
+                34,
+                82,
+                250,
+                167,
+                91,
+                67,
+                186,
+                23,
+                209,
+                2,
+                80,
+                255,
+                118,
+                192,
+                175,
+                242,
+                222,
+                183
+              ]
+            }
+          }
+        },
+        {
+          "name": "delegation_record_inventory",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "inventory"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "delegation_metadata_inventory",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "inventory"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "inventory",
+          "writable": true
+        },
+        {
+          "name": "player",
+          "signer": true
+        },
+        {
+          "name": "owner_program",
+          "address": "FcMT7MzBLVQGaMATEMws3fjsL2Q77QSHmoEPdowTMxJa"
+        },
+        {
+          "name": "delegation_program",
+          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "campaign_level",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "delegate_map_enemies",
+      "docs": [
+        "Delegates map-enemies account to the MagicBlock delegation program."
+      ],
+      "discriminator": [
+        8,
+        213,
+        179,
+        172,
+        143,
+        234,
+        76,
+        122
+      ],
+      "accounts": [
+        {
+          "name": "buffer_map_enemies",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_enemies"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                217,
+                18,
+                17,
+                128,
+                79,
+                140,
+                152,
+                73,
+                103,
+                95,
+                134,
+                179,
+                31,
+                109,
+                34,
+                82,
+                250,
+                167,
+                91,
+                67,
+                186,
+                23,
+                209,
+                2,
+                80,
+                255,
+                118,
+                192,
+                175,
+                242,
+                222,
+                183
+              ]
+            }
+          }
+        },
+        {
+          "name": "delegation_record_map_enemies",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_enemies"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "delegation_metadata_map_enemies",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_enemies"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "map_enemies",
+          "writable": true
+        },
+        {
+          "name": "player",
+          "signer": true
+        },
+        {
+          "name": "owner_program",
+          "address": "FcMT7MzBLVQGaMATEMws3fjsL2Q77QSHmoEPdowTMxJa"
+        },
+        {
+          "name": "delegation_program",
+          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "campaign_level",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "delegate_map_pois",
+      "docs": [
+        "Delegates map-pois account to the MagicBlock delegation program."
+      ],
+      "discriminator": [
+        81,
+        86,
+        87,
+        247,
+        183,
+        254,
+        247,
+        113
+      ],
+      "accounts": [
+        {
+          "name": "buffer_map_pois",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                217,
+                18,
+                17,
+                128,
+                79,
+                140,
+                152,
+                73,
+                103,
+                95,
+                134,
+                179,
+                31,
+                109,
+                34,
+                82,
+                250,
+                167,
+                91,
+                67,
+                186,
+                23,
+                209,
+                2,
+                80,
+                255,
+                118,
+                192,
+                175,
+                242,
+                222,
+                183
+              ]
+            }
+          }
+        },
+        {
+          "name": "delegation_record_map_pois",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "delegation_metadata_map_pois",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "map_pois",
+          "writable": true
+        },
+        {
+          "name": "player",
+          "signer": true
+        },
+        {
+          "name": "owner_program",
+          "address": "FcMT7MzBLVQGaMATEMws3fjsL2Q77QSHmoEPdowTMxJa"
+        },
+        {
+          "name": "delegation_program",
+          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "campaign_level",
+          "type": "u8"
+        }
+      ]
+    },
+    {
       "name": "delegate_session",
       "docs": [
-        "Delegates the session to the MagicBlock ephemeral rollup.",
-        "NOTE: MagicBlock SDK is blocked due to Rust edition 2024 requirement.",
-        "This is a stub that just sets the is_delegated flag."
+        "Marks the session delegated and delegates the session account itself."
       ],
       "discriminator": [
         82,
@@ -175,20 +1074,163 @@
       ],
       "accounts": [
         {
+          "name": "buffer_game_session",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "game_session"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                217,
+                18,
+                17,
+                128,
+                79,
+                140,
+                152,
+                73,
+                103,
+                95,
+                134,
+                179,
+                31,
+                109,
+                34,
+                82,
+                250,
+                167,
+                91,
+                67,
+                186,
+                23,
+                209,
+                2,
+                80,
+                255,
+                118,
+                192,
+                175,
+                242,
+                222,
+                183
+              ]
+            }
+          }
+        },
+        {
+          "name": "delegation_record_game_session",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "game_session"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "delegation_metadata_game_session",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "game_session"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
           "name": "game_session",
           "writable": true
         },
         {
-          "name": "player",
-          "signer": true,
-          "relations": [
-            "game_session"
-          ]
+          "name": "player"
+        },
+        {
+          "name": "session_signer",
+          "signer": true
+        },
+        {
+          "name": "owner_program",
+          "address": "FcMT7MzBLVQGaMATEMws3fjsL2Q77QSHmoEPdowTMxJa"
+        },
+        {
+          "name": "delegation_program",
+          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
         }
       ],
       "args": [
         {
-          "name": "_campaign_level",
+          "name": "campaign_level",
           "type": "u8"
         }
       ]
@@ -197,11 +1239,11 @@
       "name": "end_session",
       "docs": [
         "Ends the session after death or level completion.",
-        "Only callable by burner wallet when player is dead OR has completed the level.",
+        "Only callable by session key signer when player is dead OR has completed the level.",
         "Also closes the player's inventory via CPI to ensure fresh inventory for next session.",
         "",
         "This is designed to be called automatically by the frontend after combat,",
-        "signed only by the burner wallet (no user interaction required)."
+        "signed only by the session key signer (no user interaction required)."
       ],
       "discriminator": [
         11,
@@ -380,15 +1422,52 @@
           ]
         },
         {
-          "name": "burner_wallet",
+          "name": "session_signer",
           "docs": [
-            "Burner wallet - must sign to authorize session end and close inventory"
+            "Session key signer - must sign to authorize session end and close inventory"
           ],
           "writable": true,
           "signer": true,
           "relations": [
             "game_session"
           ]
+        },
+        {
+          "name": "session_manager_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  95,
+                  109,
+                  97,
+                  110,
+                  97,
+                  103,
+                  101,
+                  114,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
         },
         {
           "name": "inventory",
@@ -480,6 +1559,43 @@
         }
       ],
       "args": []
+    },
+    {
+      "name": "process_undelegation",
+      "discriminator": [
+        196,
+        28,
+        41,
+        206,
+        48,
+        37,
+        51,
+        167
+      ],
+      "accounts": [
+        {
+          "name": "base_account",
+          "writable": true
+        },
+        {
+          "name": "buffer"
+        },
+        {
+          "name": "payer",
+          "writable": true
+        },
+        {
+          "name": "system_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "account_seeds",
+          "type": {
+            "vec": "bytes"
+          }
+        }
+      ]
     },
     {
       "name": "start_duel_session",
@@ -624,7 +1740,7 @@
           "signer": true
         },
         {
-          "name": "burner_wallet",
+          "name": "session_signer",
           "writable": true,
           "signer": true
         },
@@ -853,7 +1969,7 @@
           "signer": true
         },
         {
-          "name": "burner_wallet",
+          "name": "session_signer",
           "writable": true,
           "signer": true
         },
@@ -1069,9 +2185,9 @@
           "signer": true
         },
         {
-          "name": "burner_wallet",
+          "name": "session_signer",
           "docs": [
-            "Burner wallet that will own all session-specific accounts (inventory, etc.)",
+            "Session key signer that will own all session-specific accounts (inventory, etc.)",
             "Must be a signer so it can be set as the inventory owner for gameplay transactions."
           ],
           "writable": true,
@@ -1132,6 +2248,60 @@
         {
           "name": "campaign_level",
           "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "undelegate_session",
+      "docs": [
+        "Commits and undelegates the session account from the ephemeral rollup.",
+        "This must be sent to the ephemeral rollup connection."
+      ],
+      "discriminator": [
+        110,
+        234,
+        80,
+        245,
+        77,
+        79,
+        58,
+        116
+      ],
+      "accounts": [
+        {
+          "name": "game_session",
+          "writable": true
+        },
+        {
+          "name": "player"
+        },
+        {
+          "name": "session_signer",
+          "signer": true
+        },
+        {
+          "name": "magic_program",
+          "address": "Magic11111111111111111111111111111111111111"
+        },
+        {
+          "name": "magic_context",
+          "writable": true,
+          "address": "MagicContext1111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "campaign_level",
+          "type": "u8"
+        },
+        {
+          "name": "state_hash",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
         }
       ]
     }
@@ -1304,6 +2474,11 @@
       "code": 6011,
       "name": "SessionNotEndable",
       "msg": "Session can only be ended after death or level completion"
+    },
+    {
+      "code": 6012,
+      "name": "SessionStillDelegated",
+      "msg": "Session must be undelegated before closing"
     }
   ],
   "types": [
@@ -1380,9 +2555,9 @@
             }
           },
           {
-            "name": "burner_wallet",
+            "name": "session_signer",
             "docs": [
-              "Burner wallet pubkey for gameplay transactions",
+              "Session key signer pubkey for gameplay transactions",
               "SOL is transferred to this wallet at session start"
             ],
             "type": "pubkey"
@@ -1421,9 +2596,9 @@
             "type": "pubkey"
           },
           {
-            "name": "burner_wallet",
+            "name": "session_signer",
             "docs": [
-              "Burner wallet authorized for gameplay transactions (move, boss fight)"
+              "Session key signer authorized for gameplay transactions (move, boss fight)"
             ],
             "type": "pubkey"
           },
@@ -1827,7 +3002,7 @@
             "type": "u8"
           },
           {
-            "name": "burner_wallet",
+            "name": "session_signer",
             "type": "pubkey"
           },
           {

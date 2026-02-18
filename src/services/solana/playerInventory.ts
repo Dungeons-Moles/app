@@ -79,7 +79,7 @@ function directMutationDisabled(methodName: string): never {
  * @param connection - Solana connection
  * @param program - Anchor program instance for player_inventory
  * @param sessionPda - Session PDA (used to derive inventory)
- * @param burnerKeypair - Burner wallet keypair (signer)
+ * @param sessionSignerKeypair - SessionSigner wallet keypair (signer)
  * @param itemId - 8-byte item identifier
  * @param tier - Item tier
  * @returns Never. Throws because direct mutation is disabled on-chain.
@@ -88,7 +88,7 @@ export async function equipGear(
   _connection: Connection,
   _program: Program,
   _sessionPda: PublicKey,
-  _burnerKeypair: Keypair,
+  _sessionSignerKeypair: Keypair,
   _itemId: Uint8Array | number[],
   _tier: Tier
 ): Promise<string> {
@@ -105,7 +105,7 @@ export async function equipGear(
  * @param connection - Solana connection
  * @param program - Anchor program instance for player_inventory
  * @param sessionPda - Session PDA (used to derive inventory)
- * @param burnerKeypair - Burner wallet keypair (signer)
+ * @param sessionSignerKeypair - SessionSigner wallet keypair (signer)
  * @param itemId - 8-byte item identifier
  * @param tier - Item tier
  * @returns Never. Throws because direct mutation is disabled on-chain.
@@ -114,7 +114,7 @@ export async function equipTool(
   _connection: Connection,
   _program: Program,
   _sessionPda: PublicKey,
-  _burnerKeypair: Keypair,
+  _sessionSignerKeypair: Keypair,
   _itemId: Uint8Array | number[],
   _tier: Tier
 ): Promise<string> {
@@ -128,7 +128,7 @@ export async function equipTool(
  * @param connection - Solana connection
  * @param program - Anchor program instance for player_inventory
  * @param sessionPda - Session PDA (used to derive inventory)
- * @param burnerKeypair - Burner wallet keypair (signer)
+ * @param sessionSignerKeypair - SessionSigner wallet keypair (signer)
  * @param modification - The oil modification to apply
  * @returns Never. Throws because direct mutation is disabled on-chain.
  */
@@ -136,7 +136,7 @@ export async function applyToolOil(
   _connection: Connection,
   _program: Program,
   _sessionPda: PublicKey,
-  _burnerKeypair: Keypair,
+  _sessionSignerKeypair: Keypair,
   _modification: ToolOilModification
 ): Promise<string> {
   return directMutationDisabled('apply_tool_oil');
@@ -149,7 +149,7 @@ export async function applyToolOil(
  * @param connection - Solana connection
  * @param program - Anchor program instance for player_inventory
  * @param sessionPda - Session PDA (used to derive inventory and game_state)
- * @param burnerKeypair - Burner wallet keypair (signer)
+ * @param sessionSignerKeypair - SessionSigner wallet keypair (signer)
  * @param slotIndex - Index of the gear slot to unequip (0-7)
  * @returns Never. Throws because direct mutation is disabled on-chain.
  */
@@ -157,7 +157,7 @@ export async function unequipGear(
   _connection: Connection,
   _program: Program,
   _sessionPda: PublicKey,
-  _burnerKeypair: Keypair,
+  _sessionSignerKeypair: Keypair,
   _slotIndex: number
 ): Promise<string> {
   return directMutationDisabled('unequip_gear');

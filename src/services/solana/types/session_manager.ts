@@ -273,7 +273,7 @@ export interface OnChainGameSession {
   isDelegated: boolean;
   bump: number;
   activeItemPool: number[];
-  burnerWallet: import('@solana/web3.js').PublicKey;
+  sessionSigner: import('@solana/web3.js').PublicKey;
   stateHash: number[];
 }
 

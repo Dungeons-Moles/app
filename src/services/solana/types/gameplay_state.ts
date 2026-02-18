@@ -147,7 +147,7 @@ export interface MovePlayerAccounts {
   inventory: PublicKey;
   /** Player Inventory program ID */
   playerInventoryProgram: PublicKey;
-  /** Player signer (burner wallet) */
+  /** Player signer (session signer key) */
   player: PublicKey;
   /** System program */
   systemProgram: PublicKey;

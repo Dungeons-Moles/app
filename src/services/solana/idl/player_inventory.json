@@ -245,6 +245,179 @@
       "args": []
     },
     {
+      "name": "delegate_inventory",
+      "docs": [
+        "Delegates inventory PDA to MagicBlock from player-inventory (its owner program)."
+      ],
+      "discriminator": [
+        185,
+        222,
+        138,
+        162,
+        115,
+        247,
+        74,
+        17
+      ],
+      "accounts": [
+        {
+          "name": "buffer_inventory",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "inventory"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                62,
+                57,
+                43,
+                224,
+                11,
+                129,
+                112,
+                214,
+                10,
+                252,
+                5,
+                51,
+                143,
+                242,
+                213,
+                246,
+                99,
+                145,
+                248,
+                173,
+                61,
+                133,
+                58,
+                191,
+                234,
+                132,
+                254,
+                214,
+                152,
+                21,
+                230,
+                167
+              ]
+            }
+          }
+        },
+        {
+          "name": "delegation_record_inventory",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "inventory"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "delegation_metadata_inventory",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "inventory"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "inventory",
+          "writable": true
+        },
+        {
+          "name": "session"
+        },
+        {
+          "name": "player",
+          "signer": true
+        },
+        {
+          "name": "owner_program",
+          "address": "5BtqiWegvVAgEnTRUofB9oUoQvPztYqSkMPwRpYQacP8"
+        },
+        {
+          "name": "delegation_program",
+          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "equip_gear",
       "docs": [
         "DEPRECATED: Use poi-system interactions (interact_pick_item, shop_purchase) instead.",
@@ -1332,6 +1505,82 @@
         {
           "name": "system_program",
           "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "process_undelegation",
+      "discriminator": [
+        196,
+        28,
+        41,
+        206,
+        48,
+        37,
+        51,
+        167
+      ],
+      "accounts": [
+        {
+          "name": "base_account",
+          "writable": true
+        },
+        {
+          "name": "buffer"
+        },
+        {
+          "name": "payer",
+          "writable": true
+        },
+        {
+          "name": "system_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "account_seeds",
+          "type": {
+            "vec": "bytes"
+          }
+        }
+      ]
+    },
+    {
+      "name": "undelegate_inventory",
+      "docs": [
+        "Commits and undelegates inventory PDA from ER back to base layer."
+      ],
+      "discriminator": [
+        159,
+        116,
+        170,
+        215,
+        200,
+        221,
+        22,
+        213
+      ],
+      "accounts": [
+        {
+          "name": "inventory",
+          "writable": true
+        },
+        {
+          "name": "session"
+        },
+        {
+          "name": "session_signer",
+          "signer": true
+        },
+        {
+          "name": "magic_program",
+          "address": "Magic11111111111111111111111111111111111111"
+        },
+        {
+          "name": "magic_context",
+          "writable": true,
+          "address": "MagicContext1111111111111111111111111111111"
         }
       ],
       "args": []

@@ -6,7 +6,7 @@ This client connects to the on-chain programs in `../solana-programs` and suppor
 
 ## Features
 
-- Wallet connection and burner-wallet session flow
+- Wallet connection and sessionSigner-wallet session flow
 - On-chain session lifecycle (start, resume, switch, abandon, cleanup)
 - PvE campaign gameplay with map exploration, POIs, enemies, and boss fights
 - Pit Draft PvP mode (queue, match, instant combat replay)
@@ -155,8 +155,8 @@ Run `anchor run init` in `../solana-programs` and verify program IDs in env vars
 - Program account missing / `has no data`:
 Confirm you deployed the latest programs and copied fresh program IDs into app env vars.
 
-- Wallet/burner issues:
-Reconnect wallet and ensure the active burner session is recoverable in-app.
+- Wallet/sessionSigner issues:
+Reconnect wallet and ensure the active sessionSigner session is recoverable in-app.
 
 - Metro cache issues:
 

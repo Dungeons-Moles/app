@@ -24,7 +24,8 @@ import {
   derivePlayerProfilePda,
   deriveGeneratedMapPda,
   deriveMapConfigPda,
-  DEFAULT_BURNER_FUNDING,
+  deriveSessionManagerAuthorityPda,
+  DEFAULT_SESSION_SIGNER_FUNDING,
 } from './constants';
 import { SOLANA_CONFIG } from './config';
 
@@ -67,7 +68,7 @@ export async function createSessionBundle(
   connection: Connection,
   programs: SessionPrograms,
   mainWallet: PublicKey,
-  burnerWallet: PublicKey,
+  sessionSigner: PublicKey,
   campaignLevel: number
 ): Promise<SessionBundleResult> {
   // Derive all PDAs
@@ -88,7 +89,7 @@ export async function createSessionBundle(
       sessionCounter: sessionCounterPda,
       playerProfile: profilePda,
       player: mainWallet,
-      burnerWallet: burnerWallet,
+      sessionSigner: sessionSigner,
       mapConfig: mapConfigPda,
       generatedMap: generatedMapPda,
       gameState: gameStatePda,
@@ -128,7 +129,7 @@ export async function createSessionBundle(
 
 /**
  * End a session after death or level completion.
- * Only requires burner wallet signature - no user interaction needed.
+ * Only requires session signer signature - no user interaction needed.
  * Victory/defeat is determined on-chain from game_state.is_dead and game_state.completed.
  *
  * @param connection - Solana connection
@@ -137,7 +138,7 @@ export async function createSessionBundle(
  * @param gameStatePda - Game state PDA (for validating death/completion)
  * @param inventoryPda - Inventory PDA (closed as part of cleanup)
  * @param playerPubkey - Player wallet (receives rent refund, does NOT sign)
- * @param burnerPubkey - Burner wallet (must sign)
+ * @param sessionSignerPubkey - Session signer (must sign)
  * @param campaignLevel - Campaign level for PDA derivation
  */
 export async function endSession(
@@ -147,7 +148,7 @@ export async function endSession(
   gameStatePda: PublicKey,
   inventoryPda: PublicKey,
   playerPubkey: PublicKey,
-  burnerPubkey: PublicKey,
+  sessionSignerPubkey: PublicKey,
   campaignLevel: number
 ): Promise<Transaction> {
   // Derive additional PDAs
@@ -166,7 +167,8 @@ export async function endSession(
       mapPois: mapPoisPda,
       playerProfile: playerProfilePda,
       player: playerPubkey,
-      burnerWallet: burnerPubkey,
+      sessionSigner: sessionSignerPubkey,
+      sessionManagerAuthority: deriveSessionManagerAuthorityPda()[0],
       inventory: inventoryPda,
       playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
       gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
@@ -181,8 +183,8 @@ export async function endSession(
 
   const { blockhash } = await connection.getLatestBlockhash();
   transaction.recentBlockhash = blockhash;
-  // Burner wallet pays and signs - no user interaction needed
-  transaction.feePayer = burnerPubkey;
+  // Session signer pays and signs - no user interaction needed
+  transaction.feePayer = sessionSignerPubkey;
 
   return transaction;
 }
@@ -199,7 +201,7 @@ export async function abandonSession(
   sessionPda: PublicKey,
   inventoryPda: PublicKey,
   playerPubkey: PublicKey,
-  burnerPubkey: PublicKey,
+  sessionSignerPubkey: PublicKey,
   campaignLevel: number
 ): Promise<Transaction> {
   // Derive all PDAs that need to be closed
@@ -217,7 +219,7 @@ export async function abandonSession(
       generatedMap: generatedMapPda,
       mapPois: mapPoisPda,
       player: playerPubkey,
-      burnerWallet: burnerPubkey,
+      sessionSigner: sessionSignerPubkey,
       inventory: inventoryPda,
       playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
       gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
@@ -265,7 +267,7 @@ export async function validateSessionCreation(
   }
 
   const balance = await connection.getBalance(mainWallet);
-  const requiredBalance = DEFAULT_BURNER_FUNDING + 10_000_000;
+  const requiredBalance = DEFAULT_SESSION_SIGNER_FUNDING + 10_000_000;
   if (balance < requiredBalance) {
     return {
       valid: false,

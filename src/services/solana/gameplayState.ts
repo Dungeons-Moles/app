@@ -2,13 +2,13 @@
  * Gameplay State Program Client
  *
  * TypeScript client interface for interacting with the gameplay-state Solana program.
- * Uses burner wallet for signing all gameplay transactions.
+ * Uses sessionSigner wallet for signing all gameplay transactions.
  */
 
 import { Keypair, PublicKey, SystemProgram, Connection } from '@solana/web3.js';
 import { Program } from '@coral-xyz/anchor';
 import { SOLANA_CONFIG } from './config';
-import { sendBurnerTransaction } from './burnerWallet';
+import { sendSessionSignerTransaction } from './sessionSigner';
 import { buildResolveGauntletWeekTransaction, parseGauntletCombatVisualEvent } from './gauntlet';
 import {
   deriveMapEnemiesPda,
@@ -69,7 +69,7 @@ export function getGameplayErrorMessage(error: unknown): string {
 
     // Check for insufficient funds
     if (error.message.includes('insufficient funds')) {
-      return 'Burner wallet needs more SOL. Please top up.';
+      return 'SessionSigner wallet needs more SOL. Please top up.';
     }
   }
 
@@ -101,7 +101,7 @@ export function getGameStatePda(
  *
  * @param program - Anchor program instance
  * @param sessionPda - Active GameSession PDA
- * @param burnerKeypair - Burner wallet keypair (signer)
+ * @param sessionSignerKeypair - SessionSigner wallet keypair (signer)
  * @param params - Initialization parameters (mapWidth, mapHeight, startX, startY)
  * @returns Transaction signature and GameState PDA
  */
@@ -109,7 +109,7 @@ export async function initializeGameState(
   connection: Connection,
   program: Program,
   sessionPda: PublicKey,
-  burnerKeypair: Keypair,
+  sessionSignerKeypair: Keypair,
   params: GameStateInitParams
 ): Promise<{ signature: string; gameStatePda: PublicKey }> {
   const [gameStatePda] = getGameStatePda(sessionPda);
@@ -139,12 +139,12 @@ export async function initializeGameState(
     .accounts({
       gameState: gameStatePda,
       gameSession: sessionPda,
-      player: burnerKeypair.publicKey,
+      player: sessionSignerKeypair.publicKey,
       systemProgram: SystemProgram.programId,
     })
     .transaction();
 
-  const signature = await sendBurnerTransaction(connection, transaction, burnerKeypair);
+  const signature = await sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair);
 
   return { signature, gameStatePda };
 }
@@ -157,7 +157,7 @@ export async function initializeGameState(
  * @param program - Anchor program instance
  * @param gameStatePda - GameState PDA
  * @param sessionPda - GameSession PDA
- * @param burnerKeypair - Burner wallet keypair (signer)
+ * @param sessionSignerKeypair - SessionSigner wallet keypair (signer)
  * @param params - Move parameters (targetX, targetY)
  * @returns Transaction signature
  */
@@ -166,7 +166,7 @@ export async function movePlayer(
   program: Program,
   gameStatePda: PublicKey,
   sessionPda: PublicKey,
-  burnerKeypair: Keypair,
+  sessionSignerKeypair: Keypair,
   params: MovePlayerParams
 ): Promise<string> {
   const [mapEnemiesPda] = deriveMapEnemiesPda(sessionPda);
@@ -188,12 +188,12 @@ export async function movePlayer(
       mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
       mapPois: mapPoisPda,
       poiSystemProgram: SOLANA_CONFIG.programs.poiSystem,
-      player: burnerKeypair.publicKey,
+      player: sessionSignerKeypair.publicKey,
     })
     .transaction();
 
   // Await confirmation — on-chain-first principle requires confirmed state before UI update
-  const signature = await sendBurnerTransaction(connection, transaction, burnerKeypair);
+  const signature = await sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair);
 
   return signature;
 }
@@ -204,7 +204,7 @@ export async function movePlayer(
  * @param connection - Solana connection
  * @param program - Anchor program instance
  * @param gameStatePda - GameState PDA
- * @param burnerKeypair - Burner wallet keypair (signer)
+ * @param sessionSignerKeypair - SessionSigner wallet keypair (signer)
  * @param params - Modify stat parameters (stat, delta)
  * @returns Transaction signature
  */
@@ -212,7 +212,7 @@ export async function modifyStat(
   connection: Connection,
   program: Program,
   gameStatePda: PublicKey,
-  burnerKeypair: Keypair,
+  sessionSignerKeypair: Keypair,
   params: ModifyStatParams
 ): Promise<string> {
   // Convert StatType enum to Anchor-compatible format
@@ -235,11 +235,11 @@ export async function modifyStat(
     .modifyStat(statTypeArg, params.delta)
     .accounts({
       gameState: gameStatePda,
-      player: burnerKeypair.publicKey,
+      player: sessionSignerKeypair.publicKey,
     })
     .transaction();
 
-  return sendBurnerTransaction(connection, transaction, burnerKeypair);
+  return sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair);
 }
 
 /**
@@ -251,7 +251,7 @@ export async function triggerBossFight(
   program: Program,
   gameStatePda: PublicKey,
   sessionPda: PublicKey,
-  burnerKeypair: Keypair
+  sessionSignerKeypair: Keypair
 ): Promise<string> {
   const [mapEnemiesPda] = deriveMapEnemiesPda(sessionPda);
   const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
@@ -266,11 +266,11 @@ export async function triggerBossFight(
       generatedMap: generatedMapPda,
       inventory: inventoryPda,
       playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
-      player: burnerKeypair.publicKey,
+      player: sessionSignerKeypair.publicKey,
     })
     .transaction();
 
-  return sendBurnerTransaction(connection, transaction, burnerKeypair);
+  return sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair);
 }
 
 export async function resolveGauntletWeek(
@@ -278,7 +278,7 @@ export async function resolveGauntletWeek(
   program: Program,
   gameStatePda: PublicKey,
   sessionPda: PublicKey,
-  burnerKeypair: Keypair
+  sessionSignerKeypair: Keypair
 ): Promise<{
   signature: string;
   combatVisual: Awaited<ReturnType<typeof parseGauntletCombatVisualEvent>>;
@@ -286,12 +286,12 @@ export async function resolveGauntletWeek(
   const transaction = await buildResolveGauntletWeekTransaction(
     connection,
     program,
-    burnerKeypair.publicKey,
+    sessionSignerKeypair.publicKey,
     gameStatePda,
     sessionPda
   );
 
-  const signature = await sendBurnerTransaction(connection, transaction, burnerKeypair);
+  const signature = await sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair);
   const combatVisual = await parseGauntletCombatVisualEvent(connection, signature);
 
   return { signature, combatVisual };
@@ -303,14 +303,14 @@ export async function resolveGauntletWeek(
  * @param connection - Solana connection
  * @param program - Anchor program instance
  * @param gameStatePda - GameState PDA
- * @param burnerKeypair - Burner wallet keypair (signer)
+ * @param sessionSignerKeypair - SessionSigner wallet keypair (signer)
  * @returns Transaction signature
  */
 export async function closeGameState(
   connection: Connection,
   program: Program,
   gameStatePda: PublicKey,
-  burnerKeypair: Keypair
+  sessionSignerKeypair: Keypair
 ): Promise<string> {
   const transaction = await (
     program.methods as unknown as {
@@ -326,11 +326,11 @@ export async function closeGameState(
     .closeGameState()
     .accounts({
       gameState: gameStatePda,
-      player: burnerKeypair.publicKey,
+      player: sessionSignerKeypair.publicKey,
     })
     .transaction();
 
-  return sendBurnerTransaction(connection, transaction, burnerKeypair);
+  return sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair);
 }
 
 /**
@@ -376,7 +376,7 @@ export async function fetchGameState(
  */
 interface OnChainGameState {
   player: PublicKey;
-  burnerWallet?: PublicKey;
+  sessionSignerWallet?: PublicKey;
   session: PublicKey;
   positionX: number;
   positionY: number;

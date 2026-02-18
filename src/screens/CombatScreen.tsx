@@ -96,7 +96,7 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
   const { profile, mode } = useProfile();
   const { wallet, signAndSendTransaction } = useWallet();
   const { connection } = useSolanaConnection();
-  const { endSessionWithBurner, stopAutoCommit, hasActiveSession, session, mapSeed, gameplayState } =
+  const { endSessionWithSessionSigner, queueEndGame, stopAutoCommit, hasActiveSession, session, mapSeed, gameplayState } =
     useSession();
   const isResolvingDuelRef = useRef(false);
   const {
@@ -367,11 +367,22 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
           console.warn('[CombatScreen] Duel finalization skipped/failed:', duelFinalizeError);
         }
 
-        console.log('[CombatScreen] Ending session (shouldEndSession:', shouldEndSession, ')');
-        const endResult = await endSessionWithBurner();
-        if (!endResult.success) {
-          console.warn('[CombatScreen] Failed to end session:', endResult.error);
-        }
+        console.log('[CombatScreen] Ending session in background (non-blocking UI)');
+        void (async () => {
+          const endResult = await endSessionWithSessionSigner();
+          if (!endResult.success) {
+            console.warn('[CombatScreen] Failed to end session:', endResult.error);
+            try {
+              await queueEndGame(levelReached, isVictory);
+              console.log('[CombatScreen] Immediate end failed; deferred cleanup queued');
+            } catch (queueError) {
+              console.error(
+                '[CombatScreen] Failed to queue deferred cleanup after end failure:',
+                queueError
+              );
+            }
+          }
+        })();
       }
 
       if (duelReplayCombatInput) {
@@ -437,7 +448,8 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
     combatInput,
     stopAutoCommit,
     hasActiveSession,
-    endSessionWithBurner,
+    endSessionWithSessionSigner,
+    queueEndGame,
     combatState.resolvedCombat,
     wallet.publicKey,
     session,
@@ -517,4 +529,3 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
     />
   );
 }
-

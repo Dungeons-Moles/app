@@ -36,6 +36,7 @@ import { fetchFullSessionState } from '../services/solana/sessionRestore';
 import { deriveSessionPda } from '../services/solana/constants';
 import { promptTransactionRetry } from '../utils/transaction-alerts';
 import { useWallet } from '../contexts/WalletContext';
+import { getVrfSeed } from '../services/solana/vrf';
 import type { CampaignLevel } from '../types/solana';
 import type { GameState as OnChainGameState } from '../services/solana/types/gameplay_state';
 
@@ -57,11 +58,12 @@ const NUM_COLUMNS = 5;
 export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) {
   const { profile, mode, availableRuns, highestLevelUnlocked } = useProfile();
   const { wallet } = useWallet();
-  const { connection } = useSolanaConnection();
+  const { connection, gameplayConnection } = useSolanaConnection();
   const {
     startGame: startSessionOnChain,
     hasSessionForLevel,
     activeSessions,
+    processPendingCleanups,
     getMapSeedForLevel,
     switchToSession,
     getSessionPdaForLevel,
@@ -151,17 +153,22 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
               return;
             }
 
-            // Use switchToSession to set up gameStatePda, recover burner wallet,
+            // Use switchToSession to set up gameStatePda, recover sessionSigner wallet,
             // and fetch map seed — without creating a new session.
-            // This avoids the "Burner wallet missing" error that startGame hits
-            // when the burner hasn't been loaded from SecureStore yet.
+            // This avoids the "SessionSigner wallet missing" error that startGame hits
+            // when the sessionSigner hasn't been loaded from SecureStore yet.
             const sessionPda = await getSessionPdaForLevel(level.level);
             if (sessionPda) {
               console.log('[CampaignSelect] Switching to existing session...');
               const switchResult = await switchToSession(sessionPda);
               if (!switchResult.success) {
                 console.warn('[CampaignSelect] switchToSession failed:', switchResult.error);
-                // Fall through to try startSessionOnChain as fallback
+                const message = switchResult.error ?? 'Failed to resume session.';
+                shouldRetry = await promptTransactionRetry({
+                  title: 'Resume Failed',
+                  message,
+                });
+                continue;
               }
             }
 
@@ -191,16 +198,12 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
             } else if (level.seed !== null) {
               seed = Number(level.seed % BigInt(2147483647));
             } else {
-              seed = Math.floor(Math.random() * 2147483647);
+              seed = await getVrfSeed();
             }
 
             // Full on-chain restore: fetch all accounts and build complete GameState
             console.log('[CampaignSelect] Restoring session from on-chain data...');
-            const restoredState = await fetchFullSessionState(
-              connection,
-              sessionPdaKey,
-              seed
-            );
+            const restoredState = await fetchFullSessionState(gameplayConnection, sessionPdaKey, seed);
 
             if (restoredState) {
               console.log('[CampaignSelect] Full session restore successful');
@@ -214,7 +217,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
 
             // Fallback: partial restore from GameState only
             console.warn('[CampaignSelect] Full restore failed, falling back to partial restore');
-            const program = createGameplayStateProgram(connection);
+            const program = createGameplayStateProgram(gameplayConnection);
             const [gameStatePdaFallback] = getGameStatePda(sessionPdaKey);
             setGameStatePda(gameStatePdaFallback);
             const stateToRestore = await fetchGameState(program, gameStatePdaFallback);
@@ -350,10 +353,10 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
         let seed: number;
         let result;
 
-        // In guest mode, skip on-chain session and use random seed
+        // In guest mode, skip on-chain session and use secure/VRF-backed seed
         if (isGuestMode) {
-          console.log('[CampaignSelect] Guest mode - using random seed');
-          seed = Math.floor(Math.random() * 2147483647);
+          console.log('[CampaignSelect] Guest mode - using secure/VRF-backed seed');
+          seed = await getVrfSeed();
         } else {
           console.log('[CampaignSelect] Online mode - calling startSessionOnChain...');
           // Start on-chain session for this level
@@ -397,9 +400,9 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
             seed = Number(level.seed % BigInt(2147483647));
             console.log('[CampaignSelect] Using level seed:', seed);
           } else {
-            // Fallback to random seed if on-chain session fails
-            seed = Math.floor(Math.random() * 2147483647);
-            console.log('[CampaignSelect] Fallback to random seed:', seed);
+            // Fallback to secure/VRF-backed seed if on-chain session fails
+            seed = await getVrfSeed();
+            console.log('[CampaignSelect] Fallback to secure seed:', seed);
             if (result && !result.success && result.error) {
               if (result.error === 'Session counter not initialized') {
                 console.log(
@@ -422,7 +425,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
           console.log('[CampaignSelect] On-chain session active, fetching full state from chain...');
           const onChainLevel = level.level + 1; // Convert 0-indexed frontend to 1-indexed on-chain
           const [sessionPda] = deriveSessionPda(wallet.publicKey, onChainLevel);
-          const restoredState = await fetchFullSessionState(connection, sessionPda, seed);
+          const restoredState = await fetchFullSessionState(gameplayConnection, sessionPda, seed);
 
           if (restoredState) {
             console.log('[CampaignSelect] Full on-chain state fetch successful');
@@ -456,6 +459,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
       activeSessions,
       availableRuns,
       connection,
+      gameplayConnection,
       dispatch,
       navigation,
       gameState?.phase,
@@ -481,8 +485,24 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
   const isScreenFocused = useIsFocused();
   const [cursorIdx, setCursorIdx] = useState(0);
   const flatListRef = useRef<FlatList>(null);
+  const didRunCleanupThisFocusRef = useRef(false);
 
   const anyModalOpen = showNoRunsModal || showLockedModal || showSessionExistsModal;
+
+  useEffect(() => {
+    if (!isScreenFocused) {
+      didRunCleanupThisFocusRef.current = false;
+      return;
+    }
+    if (didRunCleanupThisFocusRef.current) {
+      return;
+    }
+    didRunCleanupThisFocusRef.current = true;
+    console.log('[CampaignSelect] Screen focused -> triggering processPendingCleanups');
+    processPendingCleanups().catch((err) => {
+      console.warn('[CampaignSelect] Failed to run pending cleanup processing:', err);
+    });
+  }, [isScreenFocused, processPendingCleanups]);
 
   // Auto-scroll FlatList to keep cursor visible
   const onScrollToIndexFailed = useCallback(

@@ -20,6 +20,7 @@ import Svg, { Ellipse, Defs, Pattern, Line } from 'react-native-svg';
 import { useProfile } from '../contexts/ProfileContext';
 import { useSession } from '../contexts/SessionContext';
 import { useGame, GamePhase } from '../contexts/GameContext';
+import { useWallet } from '../contexts/WalletContext';
 import { shortenAddress } from '../utils/storage';
 import { RootStackParamList } from '../navigation';
 import { InlineModal } from '../components/InlineModal';
@@ -34,6 +35,7 @@ import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHin
 import { useInputMode } from '../hooks/useInputMode';
 import { FocusGlow } from '../components/ui/FocusGlow';
 import { ControllerKeyboard } from '../components/ui/ControllerKeyboard';
+import { getVrfSeed } from '../services/solana/vrf';
 
 const iconASource = require('../../assets/ui/control-buttons/a.png');
 const iconBSource = require('../../assets/ui/control-buttons/b.png');
@@ -74,10 +76,9 @@ export function HubScreen({ navigation }: HubScreenProps) {
   const screenVariant = useScreenVariant();
   const isCompact = screenVariant === 'compact';
   const inputMode = useInputMode();
-  const { activeSessions } = useSession();
   const { state: gameState, dispatch } = useGame();
+  const { wallet, getBalance } = useWallet();
   const [showSettings, setShowSettings] = useState(false);
-  const [showResumePrompt, setShowResumePrompt] = useState(false);
   const [showSkins, setShowSkins] = useState(false);
   const [showRanks, setShowRanks] = useState(false);
   const [showQuests, setShowQuests] = useState(false);
@@ -89,6 +90,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
   const [profileValidationError, setProfileValidationError] = useState<string | null>(null);
   const [profileSuccessMessage, setProfileSuccessMessage] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [walletBalanceLamports, setWalletBalanceLamports] = useState<bigint | null>(null);
   const [focus, setFocus] = useState<{ group: 'left' | 'right'; index: number }>({
     group: 'right',
     index: 0,
@@ -97,7 +99,6 @@ export function HubScreen({ navigation }: HubScreenProps) {
   const [profileFocus, setProfileFocus] = useState(0); // 0 = name, 1 = save
   const [showProfileKeyboard, setShowProfileKeyboard] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const hasPromptedResume = useRef(false);
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -108,15 +109,29 @@ export function HubScreen({ navigation }: HubScreenProps) {
   }, []);
 
   useEffect(() => {
-    if (isGuest || hasPromptedResume.current) {
-      return;
+    let cancelled = false;
+
+    const refreshWalletBalance = async () => {
+      if (isGuest || !wallet.publicKey) {
+        if (!cancelled) setWalletBalanceLamports(null);
+        return;
+      }
+      try {
+        const lamports = await getBalance();
+        if (!cancelled) setWalletBalanceLamports(lamports);
+      } catch {
+        if (!cancelled) setWalletBalanceLamports(null);
+      }
+    };
+
+    if (isScreenFocused) {
+      refreshWalletBalance();
     }
 
-    if (activeSessions.length > 0) {
-      hasPromptedResume.current = true;
-      setShowResumePrompt(true);
-    }
-  }, [activeSessions.length, isGuest]);
+    return () => {
+      cancelled = true;
+    };
+  }, [getBalance, isGuest, isScreenFocused, wallet.publicKey]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -134,8 +149,8 @@ export function HubScreen({ navigation }: HubScreenProps) {
 
   const handlePlayPvE = useCallback(async () => {
     if (isGuest) {
-      // Guest mode: Start game directly with random seed
-      const seed = Math.floor(Math.random() * 2147483647);
+      // Guest mode: Start game directly with secure/VRF-backed seed
+      const seed = await getVrfSeed();
 
       // Reset any existing game state before starting a new one
       if (gameState) {
@@ -244,10 +259,12 @@ export function HubScreen({ navigation }: HubScreenProps) {
   };
 
   const isProfileSaveDisabled = profileSaving || isLoading || !!profileValidationError || profileName === profile?.name;
+  const walletBalanceSol =
+    walletBalanceLamports !== null ? (Number(walletBalanceLamports) / 1_000_000_000).toFixed(4) : null;
 
   // --- Controller navigation ---
   const anyModalOpen =
-    showSettings || showProfile || showSkins || showRanks || showQuests || showPvP || showResumePrompt;
+    showSettings || showProfile || showSkins || showRanks || showQuests || showPvP;
   const isController = inputMode === 'controller';
 
   const controllerCloseHint = isController ? (
@@ -284,7 +301,6 @@ export function HubScreen({ navigation }: HubScreenProps) {
     else if (showSkins) setShowSkins(false);
     else if (showRanks) setShowRanks(false);
     else if (showQuests) setShowQuests(false);
-    else if (showResumePrompt) setShowResumePrompt(false);
   };
 
   // Settings modal: cycle combat speed with Left/Right
@@ -431,9 +447,16 @@ export function HubScreen({ navigation }: HubScreenProps) {
                           (GUEST)
                         </Text>
                       ) : profile?.owner ? (
-                        <Text style={[styles.walletAddress, isCompact && compactStyles.walletAddress]}>
-                          {shortenAddress(profile.owner.toBase58())}
-                        </Text>
+                        <>
+                          <Text style={[styles.walletAddress, isCompact && compactStyles.walletAddress]}>
+                            {shortenAddress(profile.owner.toBase58())}
+                          </Text>
+                          {walletBalanceSol !== null && (
+                            <Text style={[styles.walletBalance, isCompact && compactStyles.walletBalance]}>
+                              {walletBalanceSol} SOL
+                            </Text>
+                          )}
+                        </>
                       ) : null}
                     </>
                   )}
@@ -799,48 +822,6 @@ export function HubScreen({ navigation }: HubScreenProps) {
                     </View>
                   </View>
                 )}
-              </ImageBackground>
-            </TouchableWithoutFeedback>
-          </View>
-        </TouchableWithoutFeedback>
-      </InlineModal>
-
-      <InlineModal
-        visible={showResumePrompt}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowResumePrompt(false)}
-      >
-        <TouchableWithoutFeedback onPress={() => setShowResumePrompt(false)}>
-          <View style={styles.modalOverlay}>
-            <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
-              <ImageBackground
-                source={paperPanelSource}
-                style={styles.resumeModalContent}
-                resizeMode="stretch"
-              >
-                <Text style={styles.resumeModalTitle}>Resume Session</Text>
-                <Text style={styles.resumeModalText}>
-                  You have {activeSessions.length} active session
-                  {activeSessions.length === 1 ? '' : 's'} waiting. Jump back in or manage them from
-                  your list.
-                </Text>
-                <View style={styles.resumeModalButtons}>
-                  <TouchableOpacity
-                    style={styles.resumeModalButton}
-                    onPress={() => setShowResumePrompt(false)}
-                    activeOpacity={0.7}
-                  >
-                    <ImageBackground
-                      source={buttonV1Source}
-                      style={styles.resumeModalButtonImage}
-                      resizeMode="stretch"
-                    >
-                      <Text style={styles.resumeModalButtonText}>Later</Text>
-                    </ImageBackground>
-                  </TouchableOpacity>
-                </View>
-                {controllerCloseHint}
               </ImageBackground>
             </TouchableWithoutFeedback>
           </View>
@@ -1265,15 +1246,23 @@ const styles = StyleSheet.create({
   playerName: {
     fontFamily: Typography.header,
     fontSize: 14,
-    color: '#888888',
+    color: '#000000',
     lineHeight: 16,
   },
   walletAddress: {
     fontFamily: Typography.number,
     fontSize: 11,
-    color: '#888888',
+    color: '#000000',
     fontWeight: 'bold',
     lineHeight: 12,
+  },
+  walletBalance: {
+    fontFamily: Typography.number,
+    fontSize: 10,
+    color: '#888888',
+    fontWeight: 'bold',
+    lineHeight: 11,
+    marginTop: 3,
   },
 
   // TOP CENTER - Points
@@ -1829,6 +1818,10 @@ const compactStyles = StyleSheet.create({
   walletAddress: {
     fontSize: 24,
     lineHeight: 26,
+  },
+  walletBalance: {
+    fontSize: 20,
+    lineHeight: 22,
   },
   navButton: {
     width: 300,

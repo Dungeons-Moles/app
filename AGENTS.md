@@ -64,7 +64,7 @@ The on-chain Solana programs live in the sibling repository at `../solana-progra
 | Program          | Path                         | Purpose                                                           |
 | ---------------- | ---------------------------- | ----------------------------------------------------------------- |
 | gameplay-state   | `programs/gameplay-state/`   | Core game state: movement, combat, phase transitions, boss fights |
-| session-manager  | `programs/session-manager/`  | Session lifecycle: start/end session, burner wallet management    |
+| session-manager  | `programs/session-manager/`  | Session lifecycle: start/end session, sessionSigner wallet management    |
 | poi-system       | `programs/poi-system/`       | POI interactions: rest, shop, forge, chest, etc.                  |
 | map-generator    | `programs/map-generator/`    | Seeded map generation and tile data                               |
 | player-inventory | `programs/player-inventory/` | Player items, gear, and inventory management                      |
@@ -166,7 +166,7 @@ The core loop integration feature (specs/007-core-loop-integration/) adds:
 ### Services
 
 - `src/services/solana/sessionList.ts` - Session list fetching and switching
-- `src/services/solana/sessionBundle.ts` - Session creation with burner wallet
+- `src/services/solana/sessionBundle.ts` - Session creation with sessionSigner wallet
 - `src/services/solana/eventParser.ts` - Combat event parsing from transaction logs
 
 ### Navigation Routes
@@ -201,4 +201,4 @@ All screens support gamepad navigation via `psg1-sim`. Key patterns:
 
 - TypeScript 5.9.2 (React Native / Expo 54.0) + @solana/web3.js 1.98.4, @coral-xyz/anchor 0.32.1, React Native 0.81.5, Shopify React Native Skia
 - psg1-sim (console simulator shell with gamepad input)
-- AsyncStorage (profile cache), Expo SecureStore (burner wallet keys)
+- AsyncStorage (profile cache), Expo SecureStore (sessionSigner wallet keys)

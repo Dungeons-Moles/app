@@ -37,7 +37,7 @@ export interface DuelHistoryItem {
 export function useDuels() {
   const { wallet, signAndSendTransaction, checkBalance } = useWallet();
   const { session, mapSeed, startDuelGame, switchToSession } = useSession();
-  const { connection } = useSolanaConnection();
+  const { connection, gameplayConnection, erConnection } = useSolanaConnection();
 
   const [phase, setPhase] = useState<DuelsPhase>('confirm');
   const [error, setError] = useState<string | null>(null);
@@ -49,6 +49,9 @@ export function useDuels() {
   const [historyError, setHistoryError] = useState<string | null>(null);
 
   const isMountedRef = useRef(true);
+  const ENTER_DUEL_MAX_SEND_ATTEMPTS = 2;
+  const MAX_SEED_FETCH_RETRIES = 8;
+  const SEED_FETCH_RETRY_DELAY_MS = 250;
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -82,7 +85,7 @@ export function useDuels() {
 
   const refreshQueueStatus = useCallback(async () => {
     if (!wallet.publicKey || mapSeed === null) return;
-    const program = createGameplayStateProgram(connection);
+    const program = createGameplayStateProgram(gameplayConnection);
     const queue = await fetchDuelQueue(program, mapSeed);
     if (!queue) return;
 
@@ -94,11 +97,73 @@ export function useDuels() {
         setPhase('queued');
       }
     }
-  }, [wallet.publicKey, mapSeed, connection]);
+  }, [wallet.publicKey, mapSeed, gameplayConnection]);
 
   useEffect(() => {
     void refreshQueueStatus();
   }, [refreshQueueStatus]);
+
+  const isRecoverableDuelStartError = useCallback((errorMessage: string | undefined): boolean => {
+    const message = (errorMessage ?? '').toLowerCase();
+    return (
+      message.includes('session key signer not available for delegation') ||
+      message.includes('failed to delegate session to rollup') ||
+      message.includes('no active session to delegate') ||
+      message.includes('delegatesession') ||
+      message.includes('access violation') ||
+      message.includes('failed to complete')
+    );
+  }, []);
+
+  const resolveSessionGeneratedSeed = useCallback(
+    async (sessionPda: PublicKey): Promise<bigint | null> => {
+      const connectionsToTry = [gameplayConnection, erConnection, connection];
+      for (let attempt = 1; attempt <= MAX_SEED_FETCH_RETRIES; attempt++) {
+        for (const conn of connectionsToTry) {
+          try {
+            const mapProgram = createMapGeneratorProgram(conn);
+            const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
+            const generatedMap = await fetchGeneratedMap(mapProgram, generatedMapPda);
+            if (generatedMap?.seed !== undefined && generatedMap.seed !== null) {
+              return generatedMap.seed;
+            }
+          } catch {
+            // Try next connection / retry while generated map settles after start tx.
+          }
+        }
+        if (attempt < MAX_SEED_FETCH_RETRIES) {
+          await new Promise((resolve) => setTimeout(resolve, SEED_FETCH_RETRY_DELAY_MS));
+        }
+      }
+      return null;
+    },
+    [connection, erConnection, gameplayConnection]
+  );
+
+  const switchToDuelSessionOrTolerateDelegation = useCallback(
+    async (duelSessionPda: PublicKey): Promise<{ success: boolean; error?: string }> => {
+      const switchResult = await switchToSession(duelSessionPda.toBase58());
+      if (switchResult.success) {
+        return { success: true };
+      }
+      const message = (switchResult.error ?? '').toLowerCase();
+      const nonBlocking =
+        message.includes('session key signer not available for delegation') ||
+        message.includes('failed to delegate session to rollup') ||
+        message.includes('delegatesession') ||
+        message.includes('access violation') ||
+        message.includes('failed to complete');
+      if (nonBlocking) {
+        console.warn(
+          '[useDuels] enterCurrentSessionDuel:continuing_despite_switch_delegation_error',
+          switchResult.error
+        );
+        return { success: true };
+      }
+      return { success: false, error: switchResult.error ?? 'Failed to resume duel session' };
+    },
+    [switchToSession]
+  );
 
   const enterCurrentSessionDuel = useCallback(async (): Promise<boolean> => {
     if (!wallet.publicKey) {
@@ -122,7 +187,7 @@ export function useDuels() {
         return false;
       }
 
-      let duelSeed = mapSeed;
+      let duelSeed: bigint | null = null;
       const [duelSessionPda] = deriveDuelSessionPda(wallet.publicKey);
       const existingDuelSessionInfo = await connection.getAccountInfo(
         duelSessionPda,
@@ -130,25 +195,36 @@ export function useDuels() {
       );
 
       if (existingDuelSessionInfo) {
-        const switchResult = await switchToSession(duelSessionPda.toBase58());
+        const switchResult = await switchToDuelSessionOrTolerateDelegation(duelSessionPda);
         if (!switchResult.success) {
           setError(switchResult.error ?? 'Failed to resume duel session');
           setPhase('error');
           return false;
         }
-
-        const [generatedMapPda] = deriveGeneratedMapPda(duelSessionPda);
-        const mapProgram = createMapGeneratorProgram(connection);
-        const generatedMap = await fetchGeneratedMap(mapProgram, generatedMapPda);
-        duelSeed = generatedMap?.seed ?? duelSeed;
+        duelSeed = await resolveSessionGeneratedSeed(duelSessionPda);
       } else {
         const startResult = await startDuelGame();
         if (!startResult.success) {
-          setError(startResult.error ?? 'Failed to start duel session');
-          setPhase('error');
-          return false;
+          const canRecoverViaResume = isRecoverableDuelStartError(startResult.error);
+          if (!canRecoverViaResume) {
+            setError(startResult.error ?? 'Failed to start duel session');
+            setPhase('error');
+            return false;
+          }
+
+          const postStartSessionInfo = await connection.getAccountInfo(
+            duelSessionPda,
+            SOLANA_CONFIG.commitment
+          );
+          if (!postStartSessionInfo) {
+            setError(startResult.error ?? 'Failed to start duel session');
+            setPhase('error');
+            return false;
+          }
+          duelSeed = await resolveSessionGeneratedSeed(duelSessionPda);
+        } else {
+          duelSeed = startResult.mapSeed ?? (await resolveSessionGeneratedSeed(duelSessionPda));
         }
-        duelSeed = startResult.mapSeed ?? duelSeed;
       }
 
       if (duelSeed === null) {
@@ -158,13 +234,19 @@ export function useDuels() {
       }
       console.log('[useDuels] enterCurrentSessionDuel:resolved_seed', { duelSeed: duelSeed.toString() });
 
-      const program = createGameplayStateProgram(connection);
+      const program = createGameplayStateProgram(gameplayConnection);
       const [sessionPda] = deriveDuelSessionPda(wallet.publicKey);
 
       // If already queued in duels for this seed, skip the enterDuel tx
       const existingEntry = await fetchDuelEntry(program, sessionPda);
       if (existingEntry) {
         console.log('[useDuels] Already queued, skipping enterDuel tx');
+        const switchResult = await switchToDuelSessionOrTolerateDelegation(duelSessionPda);
+        if (!switchResult.success) {
+          setError(switchResult.error ?? 'Failed to resume duel session');
+          setPhase('error');
+          return false;
+        }
         setQueuedSeed(existingEntry.seed);
         setPhase('queued');
         return true;
@@ -185,21 +267,40 @@ export function useDuels() {
         return false;
       }
 
-      const tx = await buildEnterDuelTransaction(
-        connection,
-        program,
-        wallet.publicKey,
-        gameStatePda,
-        sessionPda,
-        duelSeed
-      );
+      let signature: string | null = null;
+      for (let attempt = 1; attempt <= ENTER_DUEL_MAX_SEND_ATTEMPTS; attempt++) {
+        try {
+          const tx = await buildEnterDuelTransaction(
+            gameplayConnection,
+            program,
+            wallet.publicKey,
+            gameStatePda,
+            sessionPda,
+            duelSeed
+          );
 
-      const signature = await signAndSendTransaction(tx);
-      console.log('[useDuels] enterCurrentSessionDuel:enter_tx_sent', { signature });
-      await connection.confirmTransaction(signature, 'confirmed');
-      console.log('[useDuels] enterCurrentSessionDuel:enter_tx_confirmed', { signature });
+          signature = await signAndSendTransaction(tx);
+          console.log('[useDuels] enterCurrentSessionDuel:enter_tx_sent', { signature, attempt });
+          await gameplayConnection.confirmTransaction(signature, 'confirmed');
+          console.log('[useDuels] enterCurrentSessionDuel:enter_tx_confirmed', {
+            signature,
+            attempt,
+          });
+          break;
+        } catch (sendErr) {
+          const message = sendErr instanceof Error ? sendErr.message.toLowerCase() : String(sendErr).toLowerCase();
+          const isBlockhashError = message.includes('blockhash not found');
+          if (attempt < ENTER_DUEL_MAX_SEND_ATTEMPTS && isBlockhashError) {
+            continue;
+          }
+          throw sendErr;
+        }
+      }
+      if (!signature) {
+        throw new Error('Failed to send duel entry transaction');
+      }
 
-      const events = await parseDuelEvents(connection, program, signature);
+      const events = await parseDuelEvents(gameplayConnection, program, signature);
       if (!events.queued) {
         setError('Transaction succeeded but DuelQueued event was not found.');
         setPhase('error');
@@ -208,6 +309,10 @@ export function useDuels() {
 
       setQueuedSeed(events.queued.seed);
       setQueuedSlot(events.queued.slot);
+      const switchResult = await switchToDuelSessionOrTolerateDelegation(duelSessionPda);
+      if (!switchResult.success) {
+        console.warn('[useDuels] enterCurrentSessionDuel:post_queue_switch_failed', switchResult.error);
+      }
       setPhase('queued');
       return true;
     } catch (err) {
@@ -225,10 +330,13 @@ export function useDuels() {
     session,
     mapSeed,
     startDuelGame,
-    switchToSession,
+    switchToDuelSessionOrTolerateDelegation,
     checkBalance,
     connection,
+    gameplayConnection,
     signAndSendTransaction,
+    resolveSessionGeneratedSeed,
+    isRecoverableDuelStartError,
   ]);
 
   const loadHistory = useCallback(
