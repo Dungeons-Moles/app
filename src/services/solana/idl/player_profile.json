@@ -237,11 +237,11 @@
       ],
       "args": [
         {
-          "name": "level_completed",
+          "name": "_level_completed",
           "type": "u8"
         },
         {
-          "name": "victory",
+          "name": "_victory",
           "type": "bool"
         }
       ]
@@ -251,12 +251,12 @@
       "docs": [
         "Records the result of a completed dungeon run via CPI from session-manager.",
         "Uses session account for authorization instead of requiring player signature.",
-        "This allows the burner wallet to trigger run result recording without user interaction.",
+        "This allows the session key signer to trigger run result recording without user interaction.",
         "",
         "Authorization: The session account proves player ownership. We verify:",
         "1. Session account is owned by the session-manager program",
         "2. Session's player field matches the profile's owner",
-        "3. Burner wallet signer matches the session's stored burner_wallet"
+        "3. Session key signer signer matches the session's stored session_signer"
       ],
       "discriminator": [
         9,
@@ -278,14 +278,19 @@
           "docs": [
             "1. Account owner == session-manager program ID",
             "2. session.player == player_profile.owner",
-            "3. session.burner_wallet == burner_wallet signer"
+            "3. session.campaign_level == level_completed input",
+            "4. session.session_signer == session_signer signer"
           ]
         },
         {
-          "name": "burner_wallet",
+          "name": "session_signer",
           "docs": [
-            "Burner wallet signer - verified against session's stored burner_wallet field."
+            "Session key signer signer - verified against session's stored session_signer field."
           ],
+          "signer": true
+        },
+        {
+          "name": "session_manager_authority",
           "signer": true
         }
       ],
@@ -573,16 +578,26 @@
     },
     {
       "code": 6014,
-      "name": "InvalidBurnerWallet",
-      "msg": "Burner wallet does not match session"
+      "name": "InvalidSessionSigner",
+      "msg": "Session key signer does not match session"
     },
     {
       "code": 6015,
+      "name": "DirectMutationDisabled",
+      "msg": "Direct mutation disabled"
+    },
+    {
+      "code": 6016,
+      "name": "InvalidSessionManagerAuthority",
+      "msg": "Invalid session-manager authority"
+    },
+    {
+      "code": 6017,
       "name": "InvalidPitDraftQueue",
       "msg": "Invalid pit draft queue account"
     },
     {
-      "code": 6016,
+      "code": 6018,
       "name": "PitDraftQueueLocked",
       "msg": "Cannot update active item pool while queued in pit draft"
     }

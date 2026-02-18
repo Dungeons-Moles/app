@@ -343,11 +343,11 @@ export const RUN_PRICE_LAMPORTS = 5_000_000;
 /** Number of runs received per purchase */
 export const RUNS_PER_PURCHASE = 20;
 
-/** Minimum lamports to keep in burner wallet */
-export const MIN_BURNER_BALANCE = 5_000;
+/** Minimum lamports to keep in sessionSigner wallet */
+export const MIN_SESSION_SIGNER_BALANCE = 5_000;
 
-/** Default burner wallet funding amount (0.05 SOL) */
-export const DEFAULT_BURNER_FUNDING = 50_000_000;
+/** Default sessionSigner wallet funding amount (0.05 SOL) */
+export const DEFAULT_SESSION_SIGNER_FUNDING = 50_000_000;
 
 // ============================================================================
 // Game Constants

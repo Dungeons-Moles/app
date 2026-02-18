@@ -31,7 +31,7 @@ import {
 import { Sidebar } from '../components/game/Sidebar';
 import { PauseMenuModal } from '../components/ui/PauseMenuModal';
 import { ControllerHints } from '../components/ui/ControllerHints';
-import { BurnerBalanceIndicator } from '../components/common/BurnerBalanceIndicator';
+import { SessionSignerBalanceIndicator } from '../components/common/SessionSignerBalanceIndicator';
 import { useDirectionInput } from '../hooks/useInput';
 import { useLandscapeLock } from '../hooks/useOrientationLock';
 import { useScreenVariant } from '../contexts/ScreenVariantContext';
@@ -354,15 +354,15 @@ export function GameScreen({ navigation }: GameScreenProps) {
     gameplaySyncStatus,
     sessionKey,
     sessionPda,
-    burnerBalance,
-    isBurnerLowBalance,
-    topUpBurner,
+    sessionSignerBalance,
+    isSessionSignerLowBalance,
+    topUpSessionSigner,
     mapSeed,
     currentLevel,
     forceAbandonCurrentSession,
   } = useSession();
   const { wallet } = useWallet();
-  const { connection } = useSolanaConnection();
+  const { gameplayConnection } = useSolanaConnection();
   const { refreshMapEntities, pois: onChainPois } = useGameplayStateContext();
   const variant = useScreenVariant();
   const nightMovement = useNightMovement();
@@ -430,20 +430,18 @@ export function GameScreen({ navigation }: GameScreenProps) {
       return;
     }
 
-    // Compare baseStats.hp (not stats.hp) because on-chain stores base HP only,
-    // while stats.hp includes gear bonuses (e.g., Work Vest +4 HP).
-    // Using stats.hp would cause constant mismatch when +HP gear is equipped.
+    // On-chain HP is the authoritative effective HP for gameplay-state.
+    // Compare against local effective HP (stats.hp), not baseStats.hp.
     const hasMismatch =
       state.player.position.x !== onChainState.positionX ||
       state.player.position.y !== onChainState.positionY ||
-      // Compare stats.hp (includes gear bonuses) with on-chain HP (also includes gear bonuses)
-      // Don't compare baseStats.hp which is the raw base HP without gear
       state.player.stats.hp !== onChainState.hp ||
       state.time.movesRemaining !== onChainState.movesRemaining;
 
     if (hasMismatch) {
       console.log('[GameScreen] Mismatch detected, syncing:', {
-        localHp: state.player.stats.hp,
+        localBaseHp: state.player.baseStats.hp,
+        localStatsHp: state.player.stats.hp,
         onChainHp: onChainState.hp,
         localPos: state.player.position,
         onChainPos: { x: onChainState.positionX, y: onChainState.positionY },
@@ -478,7 +476,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
       currentLevel,
     });
 
-    fetchFullSessionState(connection, sessionPda)
+    fetchFullSessionState(gameplayConnection, sessionPda)
       .then((restored) => {
         if (!restored) {
           console.warn('[GameScreen] Auto-restore failed: fetchFullSessionState returned null');
@@ -493,7 +491,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
       .finally(() => {
         isRestoringSessionRef.current = false;
       });
-  }, [isFocused, state, hasActiveSession, sessionPda, currentLevel, connection, dispatch]);
+  }, [isFocused, state, hasActiveSession, sessionPda, currentLevel, gameplayConnection, dispatch]);
 
   useEffect(() => {
     if (
@@ -1798,10 +1796,10 @@ export function GameScreen({ navigation }: GameScreenProps) {
                   cameraFocusOverride={fastTravelFocus}
                 />
                 {mode !== 'guest' && hasActiveSession && (
-                  <Pressable style={styles.burnerOverlay} onPress={() => topUpBurner()}>
-                    <BurnerBalanceIndicator
-                      balance={burnerBalance}
-                      isLowBalance={isBurnerLowBalance}
+                  <Pressable style={styles.sessionSignerOverlay} onPress={() => topUpSessionSigner()}>
+                    <SessionSignerBalanceIndicator
+                      balance={sessionSignerBalance}
+                      isLowBalance={isSessionSignerLowBalance}
                       compact
                     />
                   </Pressable>
@@ -2020,7 +2018,7 @@ const styles = StyleSheet.create({
   loading: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   loadingText: { fontFamily: Typography.header, fontSize: 20, color: '#666666' },
   dpadOverlay: { position: 'absolute', bottom: 24, left: 24 },
-  burnerOverlay: { position: 'absolute', top: 8, left: 8, zIndex: 10 },
+  sessionSignerOverlay: { position: 'absolute', top: 8, left: 8, zIndex: 10 },
   goldDisplay: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   coinIcon: { width: 28, height: 28 },
   goldValue: { fontFamily: Typography.number, fontSize: 24, fontWeight: 'bold', color: '#000000' },

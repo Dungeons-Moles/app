@@ -2,7 +2,7 @@
  * useGameplayState Hook
  *
  * React hook for managing gameplay state interactions with the on-chain program.
- * Integrates with burner wallet for automatic transaction signing.
+ * Integrates with sessionSigner wallet for automatic transaction signing.
  */
 
 import { useCallback, useState, useRef, useEffect, useMemo } from 'react';
@@ -56,12 +56,12 @@ export interface UseGameplayStateReturn {
   /** Initialize a new game state for a session */
   initialize: (
     sessionPda: PublicKey,
-    burnerKeypair: Keypair,
+    sessionSignerKeypair: Keypair,
     params: GameStateInitParams
   ) => Promise<boolean>;
   /** Move player to adjacent tile (on-chain-first, awaits confirmation) */
   move: (
-    burnerKeypair: Keypair,
+    sessionSignerKeypair: Keypair,
     params: MovePlayerParams
   ) => Promise<{
     success: boolean;
@@ -78,11 +78,11 @@ export interface UseGameplayStateReturn {
   }>;
   /** Modify a player stat */
   updateStat: (
-    burnerKeypair: Keypair,
+    sessionSignerKeypair: Keypair,
     params: ModifyStatParams
   ) => Promise<{ success: boolean; newValue?: number }>;
   /** Close the game state */
-  close: (burnerKeypair: Keypair) => Promise<boolean>;
+  close: (sessionSignerKeypair: Keypair) => Promise<boolean>;
   /** Refresh game state from chain */
   refresh: () => Promise<GameState | null>;
   /** Current sync status */
@@ -90,7 +90,7 @@ export interface UseGameplayStateReturn {
   /** Last sync timestamp */
   lastSyncAt: number | null;
   /** Trigger boss fight on-chain */
-  triggerBoss: (burnerKeypair: Keypair) => Promise<{
+  triggerBoss: (sessionSignerKeypair: Keypair) => Promise<{
     success: boolean;
     newState?: GameState;
     previousState?: GameState;
@@ -110,7 +110,7 @@ export interface UseGameplayStateReturn {
 // ============================================================================
 
 export function useGameplayState(): UseGameplayStateReturn {
-  const { connection } = useSolanaConnection();
+  const { gameplayConnection } = useSolanaConnection();
   const { wallet } = useWallet();
 
   const [gameState, setGameState] = useState<GameState | null>(null);
@@ -121,6 +121,7 @@ export function useGameplayState(): UseGameplayStateReturn {
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(null);
 
   const isMountedRef = useRef(true);
+  const refreshInFlightRef = useRef<Promise<GameState | null> | null>(null);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -141,8 +142,8 @@ export function useGameplayState(): UseGameplayStateReturn {
       signAllTransactions: async (transactions) => transactions,
     } as AnchorProvider['wallet'];
 
-    return createAnchorProvider(connection, walletAdapter);
-  }, [connection, wallet.publicKey]);
+    return createAnchorProvider(gameplayConnection, walletAdapter);
+  }, [gameplayConnection, wallet.publicKey]);
 
   const program = useMemo(() => {
     if (!provider) {
@@ -159,28 +160,39 @@ export function useGameplayState(): UseGameplayStateReturn {
       return null;
     }
 
+    if (refreshInFlightRef.current) {
+      return refreshInFlightRef.current;
+    }
+
     if (isMountedRef.current) {
       setSyncStatus('syncing');
     }
 
-    try {
-      const state = await fetchGameState(program, gameStatePda);
+    const refreshPromise = (async (): Promise<GameState | null> => {
+      try {
+        const state = await fetchGameState(program, gameStatePda);
 
-      if (isMountedRef.current) {
-        setGameState(state);
-        setSyncStatus('synced');
-        setLastSyncAt(Date.now());
-        setError(null);
+        if (isMountedRef.current) {
+          setGameState(state);
+          setSyncStatus('synced');
+          setLastSyncAt(Date.now());
+          setError(null);
+        }
+        return state;
+      } catch (err) {
+        console.error('Failed to refresh game state:', err);
+        if (isMountedRef.current) {
+          setSyncStatus('error');
+          setError(getGameplayErrorMessage(err));
+        }
+        return null;
+      } finally {
+        refreshInFlightRef.current = null;
       }
-      return state;
-    } catch (err) {
-      console.error('Failed to refresh game state:', err);
-      if (isMountedRef.current) {
-        setSyncStatus('error');
-        setError(getGameplayErrorMessage(err));
-      }
-      return null;
-    }
+    })();
+
+    refreshInFlightRef.current = refreshPromise;
+    return refreshPromise;
   }, [gameStatePda, program]);
 
   /**
@@ -189,7 +201,7 @@ export function useGameplayState(): UseGameplayStateReturn {
   const initialize = useCallback(
     async (
       sessionPda: PublicKey,
-      burnerKeypair: Keypair,
+      sessionSignerKeypair: Keypair,
       params: GameStateInitParams
     ): Promise<boolean> => {
       if (!program) {
@@ -206,10 +218,10 @@ export function useGameplayState(): UseGameplayStateReturn {
 
       try {
         const { gameStatePda: pda } = await initializeGameState(
-          connection,
+          gameplayConnection,
           program,
           sessionPda,
-          burnerKeypair,
+          sessionSignerKeypair,
           params
         );
 
@@ -237,7 +249,7 @@ export function useGameplayState(): UseGameplayStateReturn {
         return false;
       }
     },
-    [connection, program]
+    [gameplayConnection, program]
   );
 
   /**
@@ -247,7 +259,7 @@ export function useGameplayState(): UseGameplayStateReturn {
    */
   const move = useCallback(
     async (
-      burnerKeypair: Keypair,
+      sessionSignerKeypair: Keypair,
       params: MovePlayerParams
     ): Promise<{
       success: boolean;
@@ -266,7 +278,9 @@ export function useGameplayState(): UseGameplayStateReturn {
         ', gameStatePda:',
         gameStatePda?.toBase58() ?? 'null',
         ', gameState:',
-        gameState ? 'set' : 'null'
+        gameState ? 'set' : 'null',
+        ', endpoint:',
+        gameplayConnection.rpcEndpoint
       );
 
       if (!program) {
@@ -312,11 +326,11 @@ export function useGameplayState(): UseGameplayStateReturn {
       try {
         const sessionPda = currentGameState.session;
         const signature = await movePlayer(
-          connection,
+          gameplayConnection,
           program,
           gameStatePda,
           sessionPda,
-          burnerKeypair,
+          sessionSignerKeypair,
           params
         );
 
@@ -348,7 +362,12 @@ export function useGameplayState(): UseGameplayStateReturn {
         let combatLog: BackendCombatLogEntry[] | undefined;
         let combatEnemyInfo: CombatEnemyInfo | undefined;
         if (combatOccurred && signature) {
-          const parsed = await parseCombatLogWithRetry(connection, program, signature, 'move');
+          const parsed = await parseCombatLogWithRetry(
+            gameplayConnection,
+            program,
+            signature,
+            'move'
+          );
           combatLog = parsed.combatLog;
           combatEnemyInfo = parsed.combatEnemyInfo;
         }
@@ -375,7 +394,7 @@ export function useGameplayState(): UseGameplayStateReturn {
         return { success: false };
       }
     },
-    [connection, gameState, gameStatePda, program]
+    [gameplayConnection, gameState, gameStatePda, program]
   );
 
   /**
@@ -383,7 +402,7 @@ export function useGameplayState(): UseGameplayStateReturn {
    */
   const updateStat = useCallback(
     async (
-      burnerKeypair: Keypair,
+      sessionSignerKeypair: Keypair,
       params: ModifyStatParams
     ): Promise<{ success: boolean; newValue?: number }> => {
       if (!program || !gameStatePda || !gameState) {
@@ -397,7 +416,7 @@ export function useGameplayState(): UseGameplayStateReturn {
       }
 
       try {
-        await modifyStat(connection, program, gameStatePda, burnerKeypair, params);
+        await modifyStat(gameplayConnection, program, gameStatePda, sessionSignerKeypair, params);
 
         // Fetch confirmed state
         const confirmedState = await fetchGameState(program, gameStatePda);
@@ -423,7 +442,7 @@ export function useGameplayState(): UseGameplayStateReturn {
         return { success: false };
       }
     },
-    [connection, gameState, gameStatePda, program]
+    [gameplayConnection, gameState, gameStatePda, program]
   );
 
   /**
@@ -432,7 +451,7 @@ export function useGameplayState(): UseGameplayStateReturn {
    */
   const triggerBoss = useCallback(
     async (
-      burnerKeypair: Keypair
+      sessionSignerKeypair: Keypair
     ): Promise<{
       success: boolean;
       newState?: GameState;
@@ -461,21 +480,21 @@ export function useGameplayState(): UseGameplayStateReturn {
 
         if (gameState.runMode === RunMode.Gauntlet) {
           const gauntletResult = await resolveGauntletWeek(
-            connection,
+            gameplayConnection,
             program,
             gameStatePda,
             sessionPda,
-            burnerKeypair
+            sessionSignerKeypair
           );
           signature = gauntletResult.signature;
           gauntletVisual = gauntletResult.combatVisual ?? null;
         } else {
           signature = await triggerBossFight(
-            connection,
+            gameplayConnection,
             program,
             gameStatePda,
             sessionPda,
-            burnerKeypair
+            sessionSignerKeypair
           );
         }
 
@@ -499,7 +518,12 @@ export function useGameplayState(): UseGameplayStateReturn {
         if (gauntletVisual?.combatLog?.length) {
           combatLog = gauntletVisual.combatLog;
         } else if (signature) {
-          const parsed = await parseCombatLogWithRetry(connection, program, signature, 'boss');
+          const parsed = await parseCombatLogWithRetry(
+            gameplayConnection,
+            program,
+            signature,
+            'boss'
+          );
           combatLog = parsed.combatLog;
         }
 
@@ -523,14 +547,14 @@ export function useGameplayState(): UseGameplayStateReturn {
         return { success: false };
       }
     },
-    [connection, gameState, gameStatePda, program]
+    [gameplayConnection, gameState, gameStatePda, program]
   );
 
   /**
    * Close the game state.
    */
   const close = useCallback(
-    async (burnerKeypair: Keypair): Promise<boolean> => {
+    async (sessionSignerKeypair: Keypair): Promise<boolean> => {
       if (!program || !gameStatePda) {
         setError('Game state not initialized');
         return false;
@@ -542,7 +566,7 @@ export function useGameplayState(): UseGameplayStateReturn {
       }
 
       try {
-        await closeGameState(connection, program, gameStatePda, burnerKeypair);
+        await closeGameState(gameplayConnection, program, gameStatePda, sessionSignerKeypair);
 
         if (isMountedRef.current) {
           setGameState(null);
@@ -563,7 +587,7 @@ export function useGameplayState(): UseGameplayStateReturn {
         return false;
       }
     },
-    [connection, gameStatePda, program]
+    [gameplayConnection, gameStatePda, program]
   );
 
   /**

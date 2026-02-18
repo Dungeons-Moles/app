@@ -18,6 +18,13 @@ export function createSolanaConnection() {
   return new Connection(SOLANA_CONFIG.rpcUrl, SOLANA_CONFIG.commitment);
 }
 
+export function createErConnection() {
+  return new Connection(SOLANA_CONFIG.erRpcUrl, {
+    commitment: SOLANA_CONFIG.erCommitment,
+    wsEndpoint: SOLANA_CONFIG.erWsUrl,
+  });
+}
+
 export function createAnchorProvider(
   connection: Connection,
   wallet: AnchorWalletAdapter

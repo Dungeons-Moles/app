@@ -41,12 +41,12 @@ export interface UseSessionBundleResult {
   /** Create and send a full session bundle */
   createAndSendBundle: (
     campaignLevel: number,
-    burnerKeypair: Keypair
+    sessionSignerKeypair: Keypair
   ) => Promise<TransactionResult & { sessionPda?: string }>;
   /** Create and send a simplified bundle (session + game state only) */
   createAndSendSimplifiedBundle: (
     campaignLevel: number,
-    burnerKeypair: Keypair
+    sessionSignerKeypair: Keypair
   ) => Promise<TransactionResult & { sessionPda?: string }>;
   /** Validate if session can be created */
   validateSession: (
@@ -133,7 +133,7 @@ export function useSessionBundle(): UseSessionBundleResult {
   const createAndSendBundle = useCallback(
     async (
       campaignLevel: number,
-      burnerKeypair: Keypair
+      sessionSignerKeypair: Keypair
     ): Promise<TransactionResult & { sessionPda?: string }> => {
       if (!wallet.publicKey || !connection) {
         return { success: false, error: 'Wallet not connected' };
@@ -160,7 +160,7 @@ export function useSessionBundle(): UseSessionBundleResult {
           connection,
           programs,
           wallet.publicKey,
-          burnerKeypair.publicKey,
+          sessionSignerKeypair.publicKey,
           campaignLevel
         );
 
@@ -196,7 +196,7 @@ export function useSessionBundle(): UseSessionBundleResult {
   const createAndSendSimplifiedBundle = useCallback(
     async (
       campaignLevel: number,
-      burnerKeypair: Keypair
+      sessionSignerKeypair: Keypair
     ): Promise<TransactionResult & { sessionPda?: string }> => {
       if (!wallet.publicKey || !connection) {
         return { success: false, error: 'Wallet not connected' };

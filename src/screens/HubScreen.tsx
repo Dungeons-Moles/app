@@ -34,6 +34,7 @@ import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHin
 import { useInputMode } from '../hooks/useInputMode';
 import { FocusGlow } from '../components/ui/FocusGlow';
 import { ControllerKeyboard } from '../components/ui/ControllerKeyboard';
+import { getVrfSeed } from '../services/solana/vrf';
 
 const iconASource = require('../../assets/ui/control-buttons/a.png');
 const iconBSource = require('../../assets/ui/control-buttons/b.png');
@@ -74,10 +75,8 @@ export function HubScreen({ navigation }: HubScreenProps) {
   const screenVariant = useScreenVariant();
   const isCompact = screenVariant === 'compact';
   const inputMode = useInputMode();
-  const { activeSessions } = useSession();
   const { state: gameState, dispatch } = useGame();
   const [showSettings, setShowSettings] = useState(false);
-  const [showResumePrompt, setShowResumePrompt] = useState(false);
   const [showSkins, setShowSkins] = useState(false);
   const [showRanks, setShowRanks] = useState(false);
   const [showQuests, setShowQuests] = useState(false);
@@ -97,7 +96,6 @@ export function HubScreen({ navigation }: HubScreenProps) {
   const [profileFocus, setProfileFocus] = useState(0); // 0 = name, 1 = save
   const [showProfileKeyboard, setShowProfileKeyboard] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const hasPromptedResume = useRef(false);
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -106,17 +104,6 @@ export function HubScreen({ navigation }: HubScreenProps) {
       useNativeDriver: true,
     }).start();
   }, []);
-
-  useEffect(() => {
-    if (isGuest || hasPromptedResume.current) {
-      return;
-    }
-
-    if (activeSessions.length > 0) {
-      hasPromptedResume.current = true;
-      setShowResumePrompt(true);
-    }
-  }, [activeSessions.length, isGuest]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -134,8 +121,8 @@ export function HubScreen({ navigation }: HubScreenProps) {
 
   const handlePlayPvE = useCallback(async () => {
     if (isGuest) {
-      // Guest mode: Start game directly with random seed
-      const seed = Math.floor(Math.random() * 2147483647);
+      // Guest mode: Start game directly with secure/VRF-backed seed
+      const seed = await getVrfSeed();
 
       // Reset any existing game state before starting a new one
       if (gameState) {
@@ -247,7 +234,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
 
   // --- Controller navigation ---
   const anyModalOpen =
-    showSettings || showProfile || showSkins || showRanks || showQuests || showPvP || showResumePrompt;
+    showSettings || showProfile || showSkins || showRanks || showQuests || showPvP;
   const isController = inputMode === 'controller';
 
   const controllerCloseHint = isController ? (
@@ -284,7 +271,6 @@ export function HubScreen({ navigation }: HubScreenProps) {
     else if (showSkins) setShowSkins(false);
     else if (showRanks) setShowRanks(false);
     else if (showQuests) setShowQuests(false);
-    else if (showResumePrompt) setShowResumePrompt(false);
   };
 
   // Settings modal: cycle combat speed with Left/Right
@@ -799,48 +785,6 @@ export function HubScreen({ navigation }: HubScreenProps) {
                     </View>
                   </View>
                 )}
-              </ImageBackground>
-            </TouchableWithoutFeedback>
-          </View>
-        </TouchableWithoutFeedback>
-      </InlineModal>
-
-      <InlineModal
-        visible={showResumePrompt}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowResumePrompt(false)}
-      >
-        <TouchableWithoutFeedback onPress={() => setShowResumePrompt(false)}>
-          <View style={styles.modalOverlay}>
-            <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
-              <ImageBackground
-                source={paperPanelSource}
-                style={styles.resumeModalContent}
-                resizeMode="stretch"
-              >
-                <Text style={styles.resumeModalTitle}>Resume Session</Text>
-                <Text style={styles.resumeModalText}>
-                  You have {activeSessions.length} active session
-                  {activeSessions.length === 1 ? '' : 's'} waiting. Jump back in or manage them from
-                  your list.
-                </Text>
-                <View style={styles.resumeModalButtons}>
-                  <TouchableOpacity
-                    style={styles.resumeModalButton}
-                    onPress={() => setShowResumePrompt(false)}
-                    activeOpacity={0.7}
-                  >
-                    <ImageBackground
-                      source={buttonV1Source}
-                      style={styles.resumeModalButtonImage}
-                      resizeMode="stretch"
-                    >
-                      <Text style={styles.resumeModalButtonText}>Later</Text>
-                    </ImageBackground>
-                  </TouchableOpacity>
-                </View>
-                {controllerCloseHint}
               </ImageBackground>
             </TouchableWithoutFeedback>
           </View>

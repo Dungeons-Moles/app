@@ -84,12 +84,12 @@ interface GameplayStateContextType {
   /** Initialize a new game state for a session */
   initialize: (
     sessionPda: PublicKey,
-    burnerKeypair: Keypair,
+    sessionSignerKeypair: Keypair,
     params: GameStateInitParams
   ) => Promise<boolean>;
   /** Move player to adjacent tile (on-chain-first, awaits confirmation) */
   move: (
-    burnerKeypair: Keypair,
+    sessionSignerKeypair: Keypair,
     params: MovePlayerParams
   ) => Promise<{
     success: boolean;
@@ -102,11 +102,11 @@ interface GameplayStateContextType {
   }>;
   /** Modify a player stat */
   modifyStat: (
-    burnerKeypair: Keypair,
+    sessionSignerKeypair: Keypair,
     params: ModifyStatParams
   ) => Promise<{ success: boolean; newValue?: number }>;
   /** Close the game state */
-  close: (burnerKeypair: Keypair) => Promise<boolean>;
+  close: (sessionSignerKeypair: Keypair) => Promise<boolean>;
   /** Refresh game state from chain */
   refresh: () => Promise<void>;
   /** Calculate move cost for a tile */
@@ -150,7 +150,7 @@ const GameplayStateContext = createContext<GameplayStateContextType | undefined>
 
 export function GameplayStateProvider({ children }: { children: ReactNode }) {
   const gameplay = useGameplayState();
-  const { connection } = useSolanaConnection();
+  const { gameplayConnection } = useSolanaConnection();
   const { sessionPda } = useSession();
 
   // Sync gameStatePda from SessionContext so this context's gameState stays populated.
@@ -178,7 +178,7 @@ export function GameplayStateProvider({ children }: { children: ReactNode }) {
    */
   const refreshMapEntities = useCallback(
     async (sessionPda: PublicKey): Promise<{ enemies: Array<{ x: number; y: number; archetypeId: number; tier: number }> } | null> => {
-      if (!connection) {
+      if (!gameplayConnection) {
         return null;
       }
 
@@ -193,11 +193,11 @@ export function GameplayStateProvider({ children }: { children: ReactNode }) {
         const [poisPda] = deriveMapPoisPda(sessionPda);
 
         // Create program instances for decoding
-        const poiProgram = createPoiSystemProgram(connection);
-        const gameplayProgram = createGameplayStateProgram(connection);
+        const poiProgram = createPoiSystemProgram(gameplayConnection);
+        const gameplayProgram = createGameplayStateProgram(gameplayConnection);
 
         // Fetch accounts in parallel
-        const [enemiesAccountInfo, poisAccountInfo] = await connection.getMultipleAccountsInfo([
+        const [enemiesAccountInfo, poisAccountInfo] = await gameplayConnection.getMultipleAccountsInfo([
           enemiesPda,
           poisPda,
         ]);
@@ -274,7 +274,7 @@ export function GameplayStateProvider({ children }: { children: ReactNode }) {
 
       return { enemies: rawEnemyData };
     },
-    [connection]
+    [gameplayConnection]
   );
 
   /**
@@ -346,7 +346,7 @@ export function GameplayStateProvider({ children }: { children: ReactNode }) {
    */
   useEffect(() => {
     const sessionPda = gameplay.gameState?.session;
-    if (!sessionPda || !connection) {
+    if (!sessionPda || !gameplayConnection) {
       return;
     }
 
@@ -357,7 +357,7 @@ export function GameplayStateProvider({ children }: { children: ReactNode }) {
 
     console.log('[GameplayStateContext] Auto-refreshing map entities for session:', sessionPda.toBase58());
     refreshMapEntities(sessionPda);
-  }, [gameplay.gameState?.session, connection, sessionPdaForEntities, refreshMapEntities]);
+  }, [gameplay.gameState?.session, gameplayConnection, sessionPdaForEntities, refreshMapEntities]);
 
   // Compute derived values for UI convenience
   const position: [number, number] | null = gameplay.gameState

@@ -27,6 +27,8 @@ const PROGRAM_ERRORS: Record<string, Record<number, string>> = {
     6008: 'Level is not unlocked',
     6009: 'No available sessions remaining',
     6010: 'Session already exists for this level',
+    6011: 'Session can only be ended after death or level completion',
+    6012: 'Session must be undelegated before closing',
   },
   map_generator: {
     6000: 'Invalid campaign level',
@@ -147,6 +149,21 @@ export function getUserErrorMessage(error: unknown, programName?: string): strin
   }
 
   if (error instanceof Error) {
+    const customMatch = error.message.match(/"Custom"\s*:\s*(\d+)/);
+    if (customMatch) {
+      const errorCode = Number.parseInt(customMatch[1], 10);
+
+      if (programName && PROGRAM_ERRORS[programName]) {
+        const message = PROGRAM_ERRORS[programName][errorCode];
+        if (message) return message;
+      }
+
+      const fallback = FALLBACK_ERRORS[errorCode];
+      if (fallback) return fallback;
+
+      return `Transaction failed (error ${errorCode})`;
+    }
+
     // Extract error code from raw error message
     const match = error.message.match(/custom program error: 0x([0-9a-fA-F]+)/);
     if (match) {

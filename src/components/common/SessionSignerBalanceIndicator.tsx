@@ -1,7 +1,7 @@
 /**
- * BurnerBalanceIndicator Component
+ * SessionSignerBalanceIndicator Component
  *
- * Displays the current burner wallet SOL balance with low balance warning.
+ * Displays the current sessionSigner wallet SOL balance with low balance warning.
  */
 
 import React from 'react';
@@ -12,7 +12,7 @@ import { LAMPORTS_PER_SOL } from '@solana/web3.js';
 // Types
 // ============================================================================
 
-interface BurnerBalanceIndicatorProps {
+interface SessionSignerBalanceIndicatorProps {
   /** Balance in lamports */
   balance: number;
   /** Whether balance is below low threshold */
@@ -27,12 +27,12 @@ interface BurnerBalanceIndicatorProps {
 // Component
 // ============================================================================
 
-export function BurnerBalanceIndicator({
+export function SessionSignerBalanceIndicator({
   balance,
   isLowBalance,
   style,
   compact = false,
-}: BurnerBalanceIndicatorProps): React.JSX.Element {
+}: SessionSignerBalanceIndicatorProps): React.JSX.Element {
   const solBalance = balance / LAMPORTS_PER_SOL;
   const formattedBalance = solBalance.toFixed(compact ? 3 : 6);
   const textColor = isLowBalance ? '#f59e0b' : '#22c55e';
@@ -85,4 +85,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default BurnerBalanceIndicator;
+export default SessionSignerBalanceIndicator;

@@ -1539,18 +1539,11 @@ function handleSyncMove(state: GameState, confirmedState: OnChainGameState): Gam
   const newFacing: 'left' | 'right' = dx < 0 ? 'left' : dx > 0 ? 'right' : state.player.facing;
 
   // Sync player state from on-chain.
-  // On-chain HP already includes gear bonuses (e.g., Work Vest +4 HP).
-  // We must subtract the gear HP bonus before storing as baseStats.hp to avoid
-  // double-counting when refreshPlayerStats recalculates derived stats.
-  //
-  // The gear HP bonus is calculated from equipped gear stats (hp property).
-  // This matches how calculateItemStats computes HP from gear.
+  // On-chain HP is effective HP (includes gear effects).
+  // Store a derived base value so refreshPlayerStats reproduces the same effective HP.
   const gearItems = state.player.inventory.map((slot) => slot.item);
   const gearHpBonus = gearItems.reduce((total, gear) => total + (gear.stats.hp ?? 0), 0);
-
-  // baseHp = onChainHp - gearBonus (but never below 0)
-  // When refreshPlayerStats runs, it will add gearBonus back, giving us onChainHp
-  const baseHp = Math.max(0, confirmedState.hp - gearHpBonus);
+  const baseHp = confirmedState.hp - gearHpBonus;
 
   const syncedPlayer: Player = {
     ...state.player,
@@ -1568,9 +1561,10 @@ function handleSyncMove(state: GameState, confirmedState: OnChainGameState): Gam
     },
   };
 
-  // Recalculate derived stats (HP, ATK, ARM, SPD, DIG) from inventory
-  // This ensures gear bonuses like +HP from Work Vest are applied correctly
+  // Recalculate derived stats, then force effective HP to exactly match on-chain.
+  // This prevents local recalculation from drifting when HP is below gear bonus.
   const updatedPlayer = refreshPlayerStats(syncedPlayer);
+  updatedPlayer.stats.hp = Math.min(confirmedState.hp, updatedPlayer.stats.maxHp);
 
   // Debug: Log final HP after recalculation
   console.log('[handleSyncMove] HP after refresh:', {
@@ -1726,12 +1720,10 @@ function handleSyncCombatResult(
   );
 
   // Sync player state from on-chain, then recalculate derived stats.
-  // On-chain HP already includes gear bonuses (e.g., Work Vest +4 HP).
-  // We must subtract the gear HP bonus before storing as baseStats.hp to avoid
-  // double-counting when refreshPlayerStats recalculates derived stats.
+  // On-chain HP is effective HP (includes gear effects).
   const gearItems = state.player.inventory.map((slot) => slot.item);
   const gearHpBonus = gearItems.reduce((total, gear) => total + (gear.stats.hp ?? 0), 0);
-  const baseHp = Math.max(0, confirmedState.hp - gearHpBonus);
+  const baseHp = confirmedState.hp - gearHpBonus;
 
   const syncedPlayer: Player = {
     ...state.player,
@@ -1747,9 +1739,9 @@ function handleSyncCombatResult(
     },
   };
 
-  // Recalculate derived stats (HP, ATK, ARM, SPD, DIG) from inventory.
-  // This ensures gear bonuses are applied correctly and HP is capped at maxHP.
+  // Recalculate derived stats, then force effective HP to exactly match on-chain.
   const updatedPlayer = refreshPlayerStats(syncedPlayer);
+  updatedPlayer.stats.hp = Math.min(confirmedState.hp, updatedPlayer.stats.maxHp);
 
   const syncedWeek2 = confirmedState.week as 1 | 2 | 3;
   const syncedWeekBoss2 =

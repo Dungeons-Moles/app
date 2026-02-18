@@ -297,21 +297,21 @@
       "args": []
     },
     {
-      "name": "close_game_state_via_burner",
+      "name": "close_game_state_via_session_signer",
       "docs": [
-        "Closes the GameState account via burner wallet authorization.",
+        "Closes the GameState account via session key signer authorization.",
         "Used by session-manager CPI during end_session to clean up game state.",
         "Rent is returned to the player wallet."
       ],
       "discriminator": [
-        71,
-        137,
-        243,
-        70,
-        95,
-        193,
-        114,
-        51
+        199,
+        166,
+        186,
+        238,
+        90,
+        16,
+        234,
+        79
       ],
       "accounts": [
         {
@@ -326,9 +326,9 @@
           "writable": true
         },
         {
-          "name": "burner_wallet",
+          "name": "session_signer",
           "docs": [
-            "Burner wallet must sign to authorize closure"
+            "Session key signer must sign to authorize closure"
           ],
           "signer": true,
           "relations": [
@@ -341,7 +341,7 @@
     {
       "name": "close_map_enemies",
       "docs": [
-        "Closes the MapEnemies account via burner wallet authorization.",
+        "Closes the MapEnemies account via session key signer authorization.",
         "Used by session-manager CPI during end_session to clean up.",
         "Rent is returned to the player wallet."
       ],
@@ -388,7 +388,7 @@
         {
           "name": "game_state",
           "docs": [
-            "GameState to verify burner_wallet authorization"
+            "GameState to verify session_signer authorization"
           ]
         },
         {
@@ -399,9 +399,9 @@
           "writable": true
         },
         {
-          "name": "burner_wallet",
+          "name": "session_signer",
           "docs": [
-            "Burner wallet must sign to authorize closure"
+            "Session key signer must sign to authorize closure"
           ],
           "signer": true,
           "relations": [
@@ -524,6 +524,314 @@
           "type": "u8"
         }
       ]
+    },
+    {
+      "name": "delegate_gameplay_accounts",
+      "docs": [
+        "Delegates GameState and MapEnemies PDAs to MagicBlock from gameplay-state."
+      ],
+      "discriminator": [
+        68,
+        77,
+        123,
+        110,
+        197,
+        183,
+        30,
+        209
+      ],
+      "accounts": [
+        {
+          "name": "buffer_game_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "game_state"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                66,
+                165,
+                213,
+                208,
+                125,
+                103,
+                44,
+                88,
+                115,
+                217,
+                192,
+                197,
+                1,
+                117,
+                7,
+                170,
+                78,
+                32,
+                208,
+                143,
+                119,
+                94,
+                47,
+                124,
+                229,
+                196,
+                47,
+                149,
+                235,
+                227,
+                237,
+                31
+              ]
+            }
+          }
+        },
+        {
+          "name": "delegation_record_game_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "game_state"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "delegation_metadata_game_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "game_state"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "game_state",
+          "writable": true
+        },
+        {
+          "name": "buffer_map_enemies",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_enemies"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                66,
+                165,
+                213,
+                208,
+                125,
+                103,
+                44,
+                88,
+                115,
+                217,
+                192,
+                197,
+                1,
+                117,
+                7,
+                170,
+                78,
+                32,
+                208,
+                143,
+                119,
+                94,
+                47,
+                124,
+                229,
+                196,
+                47,
+                149,
+                235,
+                227,
+                237,
+                31
+              ]
+            }
+          }
+        },
+        {
+          "name": "delegation_record_map_enemies",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_enemies"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "delegation_metadata_map_enemies",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_enemies"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "map_enemies",
+          "writable": true
+        },
+        {
+          "name": "game_session"
+        },
+        {
+          "name": "player",
+          "signer": true
+        },
+        {
+          "name": "owner_program",
+          "address": "5VAaGSSoBP4UEt3RL2EXvDwpeDxAXMndsJn7QX96nc4n"
+        },
+        {
+          "name": "delegation_program",
+          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
     },
     {
       "name": "enter_duel",
@@ -1860,7 +2168,7 @@
           "signer": true
         },
         {
-          "name": "burner_wallet",
+          "name": "session_signer",
           "docs": [
             "for authorizing gameplay transactions (move, boss fight)."
           ]
@@ -2213,8 +2521,7 @@
           "writable": true
         },
         {
-          "name": "game_session",
-          "writable": true
+          "name": "game_session"
         },
         {
           "name": "map_enemies",
@@ -2434,7 +2741,6 @@
         },
         {
           "name": "player",
-          "writable": true,
           "signer": true
         }
       ],
@@ -2446,6 +2752,43 @@
         {
           "name": "target_y",
           "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "process_undelegation",
+      "discriminator": [
+        196,
+        28,
+        41,
+        206,
+        48,
+        37,
+        51,
+        167
+      ],
+      "accounts": [
+        {
+          "name": "base_account",
+          "writable": true
+        },
+        {
+          "name": "buffer"
+        },
+        {
+          "name": "payer",
+          "writable": true
+        },
+        {
+          "name": "system_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "account_seeds",
+          "type": {
+            "vec": "bytes"
+          }
         }
       ]
     },
@@ -2855,7 +3198,7 @@
           "writable": true
         },
         {
-          "name": "burner_wallet",
+          "name": "session_signer",
           "signer": true,
           "relations": [
             "game_state"
@@ -3489,6 +3832,49 @@
         {
           "name": "player",
           "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "undelegate_gameplay_accounts",
+      "docs": [
+        "Commits and undelegates gameplay runtime accounts from ER back to base layer."
+      ],
+      "discriminator": [
+        229,
+        67,
+        36,
+        98,
+        69,
+        241,
+        21,
+        188
+      ],
+      "accounts": [
+        {
+          "name": "game_state",
+          "writable": true
+        },
+        {
+          "name": "map_enemies",
+          "writable": true
+        },
+        {
+          "name": "game_session"
+        },
+        {
+          "name": "session_signer",
+          "signer": true
+        },
+        {
+          "name": "magic_program",
+          "address": "Magic11111111111111111111111111111111111111"
+        },
+        {
+          "name": "magic_context",
+          "writable": true,
+          "address": "MagicContext1111111111111111111111111111111"
         }
       ],
       "args": []
@@ -5329,9 +5715,9 @@
             "type": "pubkey"
           },
           {
-            "name": "burner_wallet",
+            "name": "session_signer",
             "docs": [
-              "Burner wallet authorized for gameplay transactions (move, boss fight)"
+              "Session key signer authorized for gameplay transactions (move, boss fight)"
             ],
             "type": "pubkey"
           },

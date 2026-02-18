@@ -193,7 +193,7 @@ describe('Session Bundle Constants', () => {
   it('should have correct default values', async () => {
     // Import constants directly
     const {
-      DEFAULT_BURNER_FUNDING,
+      DEFAULT_SESSION_SIGNER_FUNDING,
       MAP_WIDTH,
       MAP_HEIGHT,
       MAX_SESSIONS,
@@ -203,7 +203,7 @@ describe('Session Bundle Constants', () => {
       RUNS_PER_PURCHASE,
     } = await import('@/services/solana/constants');
 
-    expect(DEFAULT_BURNER_FUNDING).toBe(50_000_000); // 0.05 SOL
+    expect(DEFAULT_SESSION_SIGNER_FUNDING).toBe(50_000_000); // 0.05 SOL
     expect(MAP_WIDTH).toBe(9);
     expect(MAP_HEIGHT).toBe(9);
     expect(MAX_SESSIONS).toBe(40);

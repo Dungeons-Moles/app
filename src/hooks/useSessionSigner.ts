@@ -1,7 +1,7 @@
 /**
- * useBurnerWallet Hook
+ * useSessionSigner Hook
  *
- * React hook for managing burner wallet lifecycle.
+ * React hook for managing sessionSigner wallet lifecycle.
  * Implements a 5-state machine: idle, funding, active, draining, failed.
  */
 
@@ -10,28 +10,28 @@ import { Keypair, Transaction } from '@solana/web3.js';
 import { useWallet } from '@/contexts/WalletContext';
 import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
 import {
-  createBurnerWallet,
-  loadBurnerWallet,
-  storeBurnerWallet,
-  clearBurnerWallet,
-  createFundBurnerTransaction,
-  drainBurnerToMain,
-  checkBurnerBalance,
+  createSessionSignerWallet,
+  loadSessionSignerWallet,
+  storeSessionSignerWallet,
+  clearSessionSignerWallet,
+  createFundSessionSignerTransaction,
+  drainSessionSignerToMain,
+  checkSessionSignerBalance,
   checkForPendingSession,
   DEFAULT_FUND_AMOUNT,
   LOW_BALANCE_THRESHOLD,
-  type BurnerState,
-} from '@/services/solana/burnerWallet';
+  type SessionSignerState,
+} from '@/services/solana/sessionSigner';
 import { SOLANA_CONFIG } from '@/services/solana/config';
 
 // ============================================================================
 // Types
 // ============================================================================
 
-export interface UseBurnerWalletReturn {
-  /** Current burner wallet state */
-  state: BurnerState;
-  /** Burner keypair (null if not active) */
+export interface UseSessionSignerReturn {
+  /** Current sessionSigner wallet state */
+  state: SessionSignerState;
+  /** SessionSigner keypair (null if not active) */
   keypair: Keypair | null;
   /** Current balance in lamports */
   balance: number;
@@ -39,19 +39,19 @@ export interface UseBurnerWalletReturn {
   isLowBalance: boolean;
   /** Error message if in failed state */
   error: string | null;
-  /** Create a new burner and fund it from main wallet */
+  /** Create a new sessionSigner and fund it from main wallet */
   createAndFund: (amount?: number) => Promise<boolean>;
-  /** Create a burner without funding (returns fund transaction for combining) */
+  /** Create a sessionSigner without funding (returns fund transaction for combining) */
   createWithoutFunding: (
     amount?: number
   ) => Promise<{ keypair: Keypair; fundTransaction: Transaction } | null>;
-  /** Mark burner as active after external funding transaction confirms */
-  markAsActive: (burnerKeypair: Keypair) => Promise<void>;
-  /** Top up the burner with additional SOL */
+  /** Mark sessionSigner as active after external funding transaction confirms */
+  markAsActive: (sessionSignerKeypair: Keypair) => Promise<void>;
+  /** Top up the sessionSigner with additional SOL */
   topUp: (amount?: number) => Promise<boolean>;
   /** Drain all remaining SOL back to main wallet */
   drain: () => Promise<boolean>;
-  /** Clear the burner wallet from storage */
+  /** Clear the sessionSigner wallet from storage */
   clear: () => Promise<void>;
   /** Check for pending session from previous app launch */
   checkPendingSession: () => Promise<boolean>;
@@ -63,12 +63,12 @@ export interface UseBurnerWalletReturn {
 // Hook Implementation
 // ============================================================================
 
-export function useBurnerWallet(): UseBurnerWalletReturn {
+export function useSessionSigner(): UseSessionSignerReturn {
   const { wallet, signAndSendTransaction } = useWallet();
   const { connection } = useSolanaConnection();
   const walletAddress = wallet.address ?? wallet.publicKey?.toBase58() ?? null;
 
-  const [state, setState] = useState<BurnerState>('idle');
+  const [state, setState] = useState<SessionSignerState>('idle');
   const [keypair, setKeypair] = useState<Keypair | null>(null);
   const [balance, setBalance] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -83,7 +83,7 @@ export function useBurnerWallet(): UseBurnerWalletReturn {
   }, []);
 
   /**
-   * Refresh the current burner balance.
+   * Refresh the current sessionSigner balance.
    */
   const refreshBalance = useCallback(async () => {
     if (!keypair) {
@@ -91,12 +91,12 @@ export function useBurnerWallet(): UseBurnerWalletReturn {
     }
 
     try {
-      const { balance: newBalance } = await checkBurnerBalance(connection, keypair.publicKey);
+      const { balance: newBalance } = await checkSessionSignerBalance(connection, keypair.publicKey);
       if (isMountedRef.current) {
         setBalance(newBalance);
       }
     } catch (err) {
-      console.error('Failed to refresh burner balance:', err);
+      console.error('Failed to refresh sessionSigner balance:', err);
     }
   }, [connection, keypair]);
 
@@ -105,55 +105,55 @@ export function useBurnerWallet(): UseBurnerWalletReturn {
    * Returns true if a pending session was found and loaded.
    */
   const checkPendingSession = useCallback(async (): Promise<boolean> => {
-    console.log('[useBurnerWallet] checkPendingSession called | wallet.address:', walletAddress);
+    console.log('[useSessionSigner] checkPendingSession called | wallet.address:', walletAddress);
     if (!walletAddress) {
-      console.log('[useBurnerWallet] checkPendingSession: no wallet address, returning false');
+      console.log('[useSessionSigner] checkPendingSession: no wallet address, returning false');
       return false;
     }
 
     try {
       const recovery = await checkForPendingSession(walletAddress, connection);
-      console.log('[useBurnerWallet] checkPendingSession recovery result:', {
+      console.log('[useSessionSigner] checkPendingSession recovery result:', {
         hasPendingSession: recovery.hasPendingSession,
-        burnerBalance: recovery.burnerBalance,
-        burnerPublicKey: recovery.burnerPublicKey?.toBase58() ?? null,
+        sessionSignerBalance: recovery.sessionSignerBalance,
+        sessionSignerPublicKey: recovery.sessionSignerPublicKey?.toBase58() ?? null,
       });
 
-      if (recovery.hasPendingSession && recovery.burnerPublicKey) {
-        // Load the existing burner
-        const existingBurner = await loadBurnerWallet(walletAddress);
-        console.log('[useBurnerWallet] checkPendingSession: existingBurner loaded?', !!existingBurner);
-        if (existingBurner && isMountedRef.current) {
-          setKeypair(existingBurner);
-          setBalance(recovery.burnerBalance);
+      if (recovery.hasPendingSession && recovery.sessionSignerPublicKey) {
+        // Load the existing sessionSigner
+        const existingSessionSigner = await loadSessionSignerWallet(walletAddress);
+        console.log('[useSessionSigner] checkPendingSession: existingSessionSigner loaded?', !!existingSessionSigner);
+        if (existingSessionSigner && isMountedRef.current) {
+          setKeypair(existingSessionSigner);
+          setBalance(recovery.sessionSignerBalance);
           setState('active');
-          console.log('[useBurnerWallet] checkPendingSession: burner restored successfully');
+          console.log('[useSessionSigner] checkPendingSession: sessionSigner restored successfully');
           return true;
         }
       }
 
-      console.log('[useBurnerWallet] checkPendingSession: no pending session to restore');
+      console.log('[useSessionSigner] checkPendingSession: no pending session to restore');
       return false;
     } catch (err) {
-      console.error('[useBurnerWallet] Failed to check for pending session:', err);
+      console.error('[useSessionSigner] Failed to check for pending session:', err);
       return false;
     }
   }, [connection, walletAddress]);
 
   /**
-   * Creates a new burner wallet and funds it from the main wallet.
+   * Creates a new sessionSigner wallet and funds it from the main wallet.
    * Requires a signature from the main wallet.
    */
   const createAndFund = useCallback(
     async (amount: number = DEFAULT_FUND_AMOUNT): Promise<boolean> => {
-      console.log('[useBurnerWallet] createAndFund called', {
+      console.log('[useSessionSigner] createAndFund called', {
         walletAddress: wallet.address,
         walletPublicKey: wallet.publicKey?.toBase58(),
         amount,
       });
 
       if (!walletAddress || !wallet.publicKey) {
-        console.log('[useBurnerWallet] No wallet connected');
+        console.log('[useSessionSigner] No wallet connected');
         if (isMountedRef.current) {
           setError('Wallet not connected');
           setState('failed');
@@ -167,37 +167,37 @@ export function useBurnerWallet(): UseBurnerWalletReturn {
       }
 
       try {
-        // Create a new burner wallet
-        console.log('[useBurnerWallet] Creating new burner wallet...');
-        const newBurner = await createBurnerWallet(walletAddress);
-        console.log('[useBurnerWallet] Burner created:', newBurner.publicKey.toBase58());
+        // Create a new sessionSigner wallet
+        console.log('[useSessionSigner] Creating new sessionSigner wallet...');
+        const newSessionSigner = await createSessionSignerWallet(walletAddress);
+        console.log('[useSessionSigner] SessionSigner created:', newSessionSigner.publicKey.toBase58());
 
         // Create fund transaction
-        console.log('[useBurnerWallet] Creating fund transaction...');
-        const fundTx = createFundBurnerTransaction(wallet.publicKey, newBurner.publicKey, amount);
+        console.log('[useSessionSigner] Creating fund transaction...');
+        const fundTx = createFundSessionSignerTransaction(wallet.publicKey, newSessionSigner.publicKey, amount);
 
         // Sign and send via main wallet (requires user signature)
-        console.log('[useBurnerWallet] Requesting wallet signature for funding...');
+        console.log('[useSessionSigner] Requesting wallet signature for funding...');
         const signature = await signAndSendTransaction(fundTx);
-        console.log('[useBurnerWallet] Transaction signed and sent:', signature);
+        console.log('[useSessionSigner] Transaction signed and sent:', signature);
         await connection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
-        console.log('[useBurnerWallet] Transaction confirmed');
+        console.log('[useSessionSigner] Transaction confirmed');
 
         // Verify balance
-        const { balance: newBalance } = await checkBurnerBalance(connection, newBurner.publicKey);
-        console.log('[useBurnerWallet] Burner balance verified:', newBalance);
+        const { balance: newBalance } = await checkSessionSignerBalance(connection, newSessionSigner.publicKey);
+        console.log('[useSessionSigner] SessionSigner balance verified:', newBalance);
 
         if (isMountedRef.current) {
-          setKeypair(newBurner);
+          setKeypair(newSessionSigner);
           setBalance(newBalance);
           setState('active');
         }
 
         return true;
       } catch (err) {
-        console.error('[useBurnerWallet] Failed to create and fund burner:', err);
+        console.error('[useSessionSigner] Failed to create and fund sessionSigner:', err);
         if (isMountedRef.current) {
-          setError(err instanceof Error ? err.message : 'Failed to fund burner wallet');
+          setError(err instanceof Error ? err.message : 'Failed to fund sessionSigner wallet');
           setState('failed');
         }
         return false;
@@ -207,28 +207,28 @@ export function useBurnerWallet(): UseBurnerWalletReturn {
   );
 
   /**
-   * Top up the burner with additional SOL.
+   * Top up the sessionSigner with additional SOL.
    * Requires a signature from the main wallet.
    */
   const topUp = useCallback(
     async (amount: number = DEFAULT_FUND_AMOUNT): Promise<boolean> => {
       if (!wallet.publicKey || !keypair) {
         if (isMountedRef.current) {
-          setError('Wallet or burner not available');
+          setError('Wallet or sessionSigner not available');
         }
         return false;
       }
 
       try {
         // Create fund transaction
-        const fundTx = createFundBurnerTransaction(wallet.publicKey, keypair.publicKey, amount);
+        const fundTx = createFundSessionSignerTransaction(wallet.publicKey, keypair.publicKey, amount);
 
         // Sign and send via main wallet
         const signature = await signAndSendTransaction(fundTx);
         await connection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
 
         // Refresh balance
-        const { balance: newBalance } = await checkBurnerBalance(connection, keypair.publicKey);
+        const { balance: newBalance } = await checkSessionSignerBalance(connection, keypair.publicKey);
 
         if (isMountedRef.current) {
           setBalance(newBalance);
@@ -236,9 +236,9 @@ export function useBurnerWallet(): UseBurnerWalletReturn {
 
         return true;
       } catch (err) {
-        console.error('Failed to top up burner:', err);
+        console.error('Failed to top up sessionSigner:', err);
         if (isMountedRef.current) {
-          setError(err instanceof Error ? err.message : 'Failed to top up burner');
+          setError(err instanceof Error ? err.message : 'Failed to top up sessionSigner');
         }
         return false;
       }
@@ -248,12 +248,12 @@ export function useBurnerWallet(): UseBurnerWalletReturn {
 
   /**
    * Drain all remaining SOL back to main wallet.
-   * Signed automatically by burner (no user interaction).
+   * Signed automatically by sessionSigner (no user interaction).
    */
   const drain = useCallback(async (): Promise<boolean> => {
     if (!wallet.publicKey || !keypair) {
       if (isMountedRef.current) {
-        setError('Wallet or burner not available');
+        setError('Wallet or sessionSigner not available');
       }
       return false;
     }
@@ -264,7 +264,7 @@ export function useBurnerWallet(): UseBurnerWalletReturn {
     }
 
     try {
-      await drainBurnerToMain(connection, keypair, wallet.publicKey);
+      await drainSessionSignerToMain(connection, keypair, wallet.publicKey);
 
       if (isMountedRef.current) {
         setBalance(0);
@@ -273,14 +273,18 @@ export function useBurnerWallet(): UseBurnerWalletReturn {
 
       return true;
     } catch (err) {
-      console.error('Failed to drain burner:', err);
+      console.error('Failed to drain sessionSigner:', err);
       if (isMountedRef.current) {
         // If drain fails due to insufficient balance, that's okay - just proceed
-        if (err instanceof Error && err.message.includes('Insufficient balance')) {
+        if (
+          err instanceof Error &&
+          (err.message.includes('Insufficient balance') ||
+            err.message.toLowerCase().includes('insufficient lamports'))
+        ) {
           setState('idle');
           return true;
         }
-        setError(err instanceof Error ? err.message : 'Failed to drain burner');
+        setError(err instanceof Error ? err.message : 'Failed to drain sessionSigner');
         setState('failed');
       }
       return false;
@@ -288,11 +292,11 @@ export function useBurnerWallet(): UseBurnerWalletReturn {
   }, [connection, keypair, wallet.publicKey]);
 
   /**
-   * Clear the burner wallet from storage.
+   * Clear the sessionSigner wallet from storage.
    * Should be called after drain.
    */
   const clear = useCallback(async (): Promise<void> => {
-    await clearBurnerWallet();
+    await clearSessionSignerWallet();
     if (isMountedRef.current) {
       setKeypair(null);
       setBalance(0);
@@ -302,7 +306,7 @@ export function useBurnerWallet(): UseBurnerWalletReturn {
   }, []);
 
   /**
-   * Create a burner wallet without funding it.
+   * Create a sessionSigner wallet without funding it.
    * Used when combining with other instructions in a single transaction.
    * Returns the keypair and the fund transaction instruction.
    */
@@ -311,38 +315,38 @@ export function useBurnerWallet(): UseBurnerWalletReturn {
       amount: number = DEFAULT_FUND_AMOUNT
     ): Promise<{
       keypair: Keypair;
-      fundTransaction: ReturnType<typeof createFundBurnerTransaction>;
+      fundTransaction: ReturnType<typeof createFundSessionSignerTransaction>;
     } | null> => {
       if (!walletAddress || !wallet.publicKey) {
-        console.log('[useBurnerWallet] createWithoutFunding: No wallet connected');
+        console.log('[useSessionSigner] createWithoutFunding: No wallet connected');
         return null;
       }
 
       try {
-        // Generate burner and persist immediately as "pending" so the keypair
+        // Generate sessionSigner and persist immediately as "pending" so the keypair
         // survives an app crash between tx confirmation and markAsActive.
         // If the tx never lands, checkPendingSession cleans up the orphan.
-        const newBurner = Keypair.generate();
-        await storeBurnerWallet(walletAddress, newBurner, Date.now(), true);
+        const newSessionSigner = Keypair.generate();
+        await storeSessionSignerWallet(walletAddress, newSessionSigner, Date.now(), true);
         console.log(
-          '[useBurnerWallet] Burner created and persisted (pending):',
-          newBurner.publicKey.toBase58()
+          '[useSessionSigner] SessionSigner created and persisted (pending):',
+          newSessionSigner.publicKey.toBase58()
         );
 
         // Create fund transaction (but don't send it)
-        const fundTx = createFundBurnerTransaction(wallet.publicKey, newBurner.publicKey, amount);
+        const fundTx = createFundSessionSignerTransaction(wallet.publicKey, newSessionSigner.publicKey, amount);
 
         // Update state
         if (isMountedRef.current) {
-          setKeypair(newBurner);
+          setKeypair(newSessionSigner);
           setState('funding');
         }
 
-        return { keypair: newBurner, fundTransaction: fundTx };
+        return { keypair: newSessionSigner, fundTransaction: fundTx };
       } catch (err) {
-        console.error('[useBurnerWallet] Failed to create burner:', err);
+        console.error('[useSessionSigner] Failed to create sessionSigner:', err);
         if (isMountedRef.current) {
-          setError(err instanceof Error ? err.message : 'Failed to create burner wallet');
+          setError(err instanceof Error ? err.message : 'Failed to create sessionSigner wallet');
           setState('failed');
         }
         return null;
@@ -352,20 +356,20 @@ export function useBurnerWallet(): UseBurnerWalletReturn {
   );
 
   /**
-   * Mark burner as active after external funding transaction confirms.
+   * Mark sessionSigner as active after external funding transaction confirms.
    * Called after a combined transaction that includes the fund instruction.
    */
   const markAsActive = useCallback(
-    async (burnerKeypair: Keypair): Promise<void> => {
+    async (sessionSignerKeypair: Keypair): Promise<void> => {
       if (!walletAddress) {
         throw new Error('Wallet not connected');
       }
-      await storeBurnerWallet(walletAddress, burnerKeypair);
+      await storeSessionSignerWallet(walletAddress, sessionSignerKeypair);
       if (isMountedRef.current) {
-        setKeypair(burnerKeypair);
-        const { balance: newBalance } = await checkBurnerBalance(
+        setKeypair(sessionSignerKeypair);
+        const { balance: newBalance } = await checkSessionSignerBalance(
           connection,
-          burnerKeypair.publicKey
+          sessionSignerKeypair.publicKey
         );
         setBalance(newBalance);
         setState('active');
@@ -374,7 +378,7 @@ export function useBurnerWallet(): UseBurnerWalletReturn {
     [connection, walletAddress]
   );
 
-  // Auto-load existing burner when wallet connects
+  // Auto-load existing sessionSigner when wallet connects
   useEffect(() => {
     if (walletAddress && state === 'idle') {
       checkPendingSession();

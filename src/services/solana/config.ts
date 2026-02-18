@@ -2,6 +2,11 @@ import { PublicKey, Commitment } from '@solana/web3.js';
 
 const cluster = (process.env.EXPO_PUBLIC_SOLANA_CLUSTER ?? 'devnet') as 'devnet' | 'mainnet-beta';
 const rpcUrl = process.env.EXPO_PUBLIC_SOLANA_RPC_URL ?? 'https://api.devnet.solana.com';
+const erRpcUrl = process.env.EXPO_PUBLIC_EPHEMERAL_PROVIDER_ENDPOINT ?? 'https://devnet.magicblock.app/';
+const erWsUrl = process.env.EXPO_PUBLIC_EPHEMERAL_WS_ENDPOINT ?? 'wss://devnet.magicblock.app/';
+const vrfEndpoint = process.env.EXPO_PUBLIC_MAGICBLOCK_VRF_ENDPOINT;
+const magicProgramId = process.env.EXPO_PUBLIC_MAGIC_PROGRAM_ID;
+const magicContextId = process.env.EXPO_PUBLIC_MAGIC_CONTEXT_ID;
 
 /**
  * Detect if we're running against a local validator (localhost/127.0.0.1).
@@ -10,11 +15,18 @@ const rpcUrl = process.env.EXPO_PUBLIC_SOLANA_RPC_URL ?? 'https://api.devnet.sol
 const isLocalValidator = rpcUrl.includes('localhost') || rpcUrl.includes('127.0.0.1');
 
 /**
- * Commitment level for transaction confirmation.
- * - Local: 'processed' for fast confirmation
- * - Remote: 'confirmed' for safety
+ * Base-layer commitment:
+ * - Local validator: processed (fast iteration)
+ * - Remote clusters: confirmed (safer settlement)
  */
-const commitment: Commitment = isLocalValidator ? 'processed' : 'confirmed';
+const baseCommitment: Commitment = isLocalValidator ? 'processed' : 'confirmed';
+
+/**
+ * ER commitment:
+ * - Default to processed to prioritize realtime responsiveness for delegated gameplay.
+ * - Can be overridden via env for debugging/tuning.
+ */
+const erCommitment = (process.env.EXPO_PUBLIC_ER_COMMITMENT as Commitment | undefined) ?? 'processed';
 
 const playerProfileProgramId = process.env.EXPO_PUBLIC_PLAYER_PROFILE_PROGRAM_ID;
 const sessionManagerProgramId = process.env.EXPO_PUBLIC_SESSION_MANAGER_PROGRAM_ID;
@@ -37,7 +49,12 @@ if (
 export const SOLANA_CONFIG = {
   cluster,
   rpcUrl,
-  commitment,
+  erRpcUrl,
+  erWsUrl,
+  vrfEndpoint,
+  commitment: baseCommitment,
+  baseCommitment,
+  erCommitment,
   isLocalValidator,
   programs: {
     playerProfile: new PublicKey(playerProfileProgramId),
@@ -47,4 +64,11 @@ export const SOLANA_CONFIG = {
     playerInventory: new PublicKey(playerInventoryProgramId),
     poiSystem: new PublicKey(poiSystemProgramId),
   },
+  magic:
+    magicProgramId && magicContextId
+      ? {
+          programId: new PublicKey(magicProgramId),
+          contextId: new PublicKey(magicContextId),
+        }
+      : null,
 };

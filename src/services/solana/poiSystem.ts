@@ -3,12 +3,12 @@
  *
  * TypeScript client interface for interacting with the poi-system Solana program.
  * Handles all POI interactions: rest, item picking, shops, crafting, and travel.
- * Uses burner wallet for signing all gameplay transactions.
+ * Uses sessionSigner wallet for signing all gameplay transactions.
  */
 
 import { Connection, PublicKey, Keypair, ComputeBudgetProgram } from '@solana/web3.js';
 import { Program } from '@coral-xyz/anchor';
-import { sendBurnerTransaction } from './burnerWallet';
+import { sendSessionSignerTransaction } from './sessionSigner';
 import {
   deriveInventoryPda,
   derivePoiAuthorityPda,
@@ -72,7 +72,7 @@ export async function fetchMapPois(
  * @param mapPoisPda - MapPois PDA
  * @param gameStatePda - GameState PDA
  * @param sessionPda - GameSession PDA (used to derive inventory)
- * @param burnerKeypair - Burner wallet keypair (signer)
+ * @param sessionSignerKeypair - SessionSigner wallet keypair (signer)
  * @param poiIndex - Index of the POI in map_pois.pois
  * @returns Transaction signature
  */
@@ -82,7 +82,7 @@ export async function interactRest(
   mapPoisPda: PublicKey,
   gameStatePda: PublicKey,
   sessionPda: PublicKey,
-  burnerKeypair: Keypair,
+  sessionSignerKeypair: Keypair,
   poiIndex: number
 ): Promise<string> {
   const [inventoryPda] = deriveInventoryPda(sessionPda);
@@ -99,11 +99,11 @@ export async function interactRest(
       gameplayAuthority: gameplayAuthorityPda,
       gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
       playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
-      player: burnerKeypair.publicKey,
+      player: sessionSignerKeypair.publicKey,
     })
     .transaction();
 
-  return sendBurnerTransaction(connection, transaction, burnerKeypair);
+  return sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair);
 }
 
 // ============================================================================
@@ -121,7 +121,7 @@ export async function interactRest(
  * @param mapPoisPda - MapPois PDA
  * @param gameStatePda - GameState PDA
  * @param sessionPda - GameSession PDA (for active_item_pool filtering)
- * @param burnerKeypair - Burner wallet keypair (signer)
+ * @param sessionSignerKeypair - SessionSigner wallet keypair (signer)
  * @param poiIndex - Index of the POI in map_pois.pois
  * @returns Transaction signature
  */
@@ -131,7 +131,7 @@ export async function generateCacheOffer(
   mapPoisPda: PublicKey,
   gameStatePda: PublicKey,
   sessionPda: PublicKey,
-  burnerKeypair: Keypair,
+  sessionSignerKeypair: Keypair,
   poiIndex: number
 ): Promise<string> {
   const [inventoryPda] = deriveInventoryPda(sessionPda);
@@ -149,14 +149,14 @@ export async function generateCacheOffer(
       playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
       gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
       gameSession: sessionPda,
-      player: burnerKeypair.publicKey,
+      player: sessionSignerKeypair.publicKey,
     })
     .transaction();
 
   // GenerateCacheOffer can exceed the default 200K CU limit (e.g. Geode Vault filtering)
   transaction.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }));
 
-  return sendBurnerTransaction(connection, transaction, burnerKeypair);
+  return sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair);
 }
 
 /**
@@ -173,7 +173,7 @@ export async function generateCacheOffer(
  * @param mapPoisPda - MapPois PDA
  * @param gameStatePda - GameState PDA
  * @param sessionPda - GameSession PDA (for active_item_pool update)
- * @param burnerKeypair - Burner wallet keypair (signer)
+ * @param sessionSignerKeypair - SessionSigner wallet keypair (signer)
  * @param poiIndex - Index of the POI in map_pois.pois
  * @param choiceIndex - Which of the 3 offers to pick (0-2)
  * @returns Transaction signature
@@ -184,7 +184,7 @@ export async function interactPickItem(
   mapPoisPda: PublicKey,
   gameStatePda: PublicKey,
   sessionPda: PublicKey,
-  burnerKeypair: Keypair,
+  sessionSignerKeypair: Keypair,
   poiIndex: number,
   choiceIndex: number
 ): Promise<string> {
@@ -203,11 +203,11 @@ export async function interactPickItem(
       playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
       gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
       gameSession: sessionPda,
-      player: burnerKeypair.publicKey,
+      player: sessionSignerKeypair.publicKey,
     })
     .transaction();
 
-  return sendBurnerTransaction(connection, transaction, burnerKeypair);
+  return sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair);
 }
 
 // ============================================================================
@@ -223,7 +223,7 @@ export async function interactPickItem(
  * @param mapPoisPda - MapPois PDA
  * @param gameStatePda - GameState PDA
  * @param sessionPda - GameSession PDA (used to derive inventory)
- * @param burnerKeypair - Burner wallet keypair (signer)
+ * @param sessionSignerKeypair - SessionSigner wallet keypair (signer)
  * @param poiIndex - Index of the POI in map_pois.pois
  * @param currentOilFlags - Current tool oil flags (bitmask)
  * @param modification - Oil type to apply (1=ATK, 2=SPD, 4=DIG)
@@ -235,7 +235,7 @@ export async function interactToolOil(
   mapPoisPda: PublicKey,
   gameStatePda: PublicKey,
   sessionPda: PublicKey,
-  burnerKeypair: Keypair,
+  sessionSignerKeypair: Keypair,
   poiIndex: number,
   currentOilFlags: number,
   modification: number
@@ -249,11 +249,11 @@ export async function interactToolOil(
       gameState: gameStatePda,
       inventory: inventoryPda,
       playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
-      player: burnerKeypair.publicKey,
+      player: sessionSignerKeypair.publicKey,
     })
     .transaction();
 
-  return sendBurnerTransaction(connection, transaction, burnerKeypair);
+  return sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair);
 }
 
 /**
@@ -268,7 +268,7 @@ export async function interactToolOil(
  * @param mapPoisPda - MapPois PDA
  * @param gameStatePda - GameState PDA
  * @param sessionPda - GameSession PDA (used to derive inventory)
- * @param burnerKeypair - Burner wallet keypair (signer)
+ * @param sessionSignerKeypair - SessionSigner wallet keypair (signer)
  * @param poiIndex - Index of the POI in map_pois.pois
  * @param modification - Oil modification to apply (ToolOilModification enum value)
  * @param oilFlag - Oil flag for poi-system (1=ATK, 2=SPD, 4=DIG)
@@ -280,7 +280,7 @@ export async function interactToolOilCombined(
   mapPoisPda: PublicKey,
   gameStatePda: PublicKey,
   sessionPda: PublicKey,
-  burnerKeypair: Keypair,
+  sessionSignerKeypair: Keypair,
   poiIndex: number,
   modification: ToolOilModification,
   oilFlag: number
@@ -292,7 +292,7 @@ export async function interactToolOilCombined(
     mapPoisPda,
     gameStatePda,
     sessionPda,
-    burnerKeypair,
+    sessionSignerKeypair,
     poiIndex,
     0,
     oilFlag
@@ -309,7 +309,7 @@ export async function interactToolOilCombined(
  * @param mapPoisPda - MapPois PDA
  * @param gameStatePda - GameState PDA
  * @param sessionPda - GameSession PDA (used to derive inventory)
- * @param burnerKeypair - Burner wallet keypair (signer)
+ * @param sessionSignerKeypair - SessionSigner wallet keypair (signer)
  * @param poiIndex - Index of the POI in map_pois.pois
  * @returns Transaction signature
  */
@@ -319,7 +319,7 @@ export async function generateOilOffer(
   mapPoisPda: PublicKey,
   gameStatePda: PublicKey,
   sessionPda: PublicKey,
-  burnerKeypair: Keypair,
+  sessionSignerKeypair: Keypair,
   poiIndex: number
 ): Promise<string> {
   const [inventoryPda] = deriveInventoryPda(sessionPda);
@@ -331,11 +331,11 @@ export async function generateOilOffer(
       gameState: gameStatePda,
       inventory: inventoryPda,
       playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
-      player: burnerKeypair.publicKey,
+      player: sessionSignerKeypair.publicKey,
     })
     .transaction();
 
-  return sendBurnerTransaction(connection, transaction, burnerKeypair);
+  return sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair);
 }
 
 // ============================================================================
@@ -350,7 +350,7 @@ export async function generateOilOffer(
  * @param program - Anchor program instance for poi_system
  * @param mapPoisPda - MapPois PDA
  * @param gameStatePda - GameState PDA
- * @param burnerKeypair - Burner wallet keypair (signer)
+ * @param sessionSignerKeypair - SessionSigner wallet keypair (signer)
  * @param poiIndex - Index of the POI in map_pois.pois
  * @returns Transaction signature
  */
@@ -359,7 +359,7 @@ export async function interactSurveyBeacon(
   program: Program,
   mapPoisPda: PublicKey,
   gameStatePda: PublicKey,
-  burnerKeypair: Keypair,
+  sessionSignerKeypair: Keypair,
   poiIndex: number
 ): Promise<string> {
   const transaction = await program.methods
@@ -367,11 +367,11 @@ export async function interactSurveyBeacon(
     .accounts({
       mapPois: mapPoisPda,
       gameState: gameStatePda,
-      player: burnerKeypair.publicKey,
+      player: sessionSignerKeypair.publicKey,
     })
     .transaction();
 
-  return sendBurnerTransaction(connection, transaction, burnerKeypair);
+  return sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair);
 }
 
 // ============================================================================
@@ -386,7 +386,7 @@ export async function interactSurveyBeacon(
  * @param program - Anchor program instance for poi_system
  * @param mapPoisPda - MapPois PDA
  * @param gameStatePda - GameState PDA
- * @param burnerKeypair - Burner wallet keypair (signer)
+ * @param sessionSignerKeypair - SessionSigner wallet keypair (signer)
  * @param poiIndex - Index of the POI in map_pois.pois
  * @param category - POI category to scan for
  * @returns Transaction signature
@@ -396,7 +396,7 @@ export async function interactSeismicScanner(
   program: Program,
   mapPoisPda: PublicKey,
   gameStatePda: PublicKey,
-  burnerKeypair: Keypair,
+  sessionSignerKeypair: Keypair,
   poiIndex: number,
   category: number
 ): Promise<string> {
@@ -405,11 +405,11 @@ export async function interactSeismicScanner(
     .accounts({
       mapPois: mapPoisPda,
       gameState: gameStatePda,
-      player: burnerKeypair.publicKey,
+      player: sessionSignerKeypair.publicKey,
     })
     .transaction();
 
-  return sendBurnerTransaction(connection, transaction, burnerKeypair);
+  return sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair);
 }
 
 // ============================================================================
@@ -423,7 +423,7 @@ export async function interactSeismicScanner(
  * @param program - Anchor program instance for poi_system
  * @param mapPoisPda - MapPois PDA
  * @param gameStatePda - GameState PDA
- * @param burnerKeypair - Burner wallet keypair (signer)
+ * @param sessionSignerKeypair - SessionSigner wallet keypair (signer)
  * @param fromPoiIndex - Index of the origin waypoint
  * @param toPoiIndex - Index of the destination waypoint
  * @returns Transaction signature
@@ -433,7 +433,7 @@ export async function fastTravel(
   program: Program,
   mapPoisPda: PublicKey,
   gameStatePda: PublicKey,
-  burnerKeypair: Keypair,
+  sessionSignerKeypair: Keypair,
   fromPoiIndex: number,
   toPoiIndex: number
 ): Promise<string> {
@@ -446,11 +446,11 @@ export async function fastTravel(
       gameState: gameStatePda,
       poiAuthority: poiAuthorityPda,
       gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
-      player: burnerKeypair.publicKey,
+      player: sessionSignerKeypair.publicKey,
     })
     .transaction();
 
-  return sendBurnerTransaction(connection, transaction, burnerKeypair);
+  return sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair);
 }
 
 // ============================================================================
@@ -466,7 +466,7 @@ export async function fastTravel(
  * @param mapPoisPda - MapPois PDA
  * @param gameStatePda - GameState PDA
  * @param sessionPda - GameSession PDA (for active_item_pool filtering)
- * @param burnerKeypair - Burner wallet keypair (signer)
+ * @param sessionSignerKeypair - SessionSigner wallet keypair (signer)
  * @param poiIndex - Index of the POI in map_pois.pois
  * @returns Transaction signature
  */
@@ -476,7 +476,7 @@ export async function enterShop(
   mapPoisPda: PublicKey,
   gameStatePda: PublicKey,
   sessionPda: PublicKey,
-  burnerKeypair: Keypair,
+  sessionSignerKeypair: Keypair,
   poiIndex: number
 ): Promise<string> {
   const transaction = await program.methods
@@ -485,11 +485,11 @@ export async function enterShop(
       mapPois: mapPoisPda,
       gameState: gameStatePda,
       gameSession: sessionPda,
-      player: burnerKeypair.publicKey,
+      player: sessionSignerKeypair.publicKey,
     })
     .transaction();
 
-  return sendBurnerTransaction(connection, transaction, burnerKeypair);
+  return sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair);
 }
 
 /**
@@ -500,7 +500,7 @@ export async function enterShop(
  * @param program - Anchor program instance for poi_system
  * @param mapPoisPda - MapPois PDA
  * @param gameStatePda - GameState PDA
- * @param burnerKeypair - Burner wallet keypair (signer)
+ * @param sessionSignerKeypair - SessionSigner wallet keypair (signer)
  * @param offerIndex - Index of the offer to purchase
  * @returns Transaction signature
  */
@@ -510,7 +510,7 @@ export async function shopPurchase(
   mapPoisPda: PublicKey,
   gameStatePda: PublicKey,
   sessionPda: PublicKey,
-  burnerKeypair: Keypair,
+  sessionSignerKeypair: Keypair,
   offerIndex: number
 ): Promise<string> {
   const [poiAuthorityPda] = derivePoiAuthorityPda();
@@ -527,11 +527,11 @@ export async function shopPurchase(
       poiAuthority: poiAuthorityPda,
       playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
       gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
-      player: burnerKeypair.publicKey,
+      player: sessionSignerKeypair.publicKey,
     })
     .transaction();
 
-  return sendBurnerTransaction(connection, transaction, burnerKeypair);
+  return sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair);
 }
 
 /**
@@ -544,7 +544,7 @@ export async function shopPurchase(
  * @param mapPoisPda - MapPois PDA
  * @param gameStatePda - GameState PDA
  * @param sessionPda - GameSession PDA (for active_item_pool filtering)
- * @param burnerKeypair - Burner wallet keypair (signer)
+ * @param sessionSignerKeypair - SessionSigner wallet keypair (signer)
  * @returns Transaction signature
  */
 export async function shopReroll(
@@ -553,7 +553,7 @@ export async function shopReroll(
   mapPoisPda: PublicKey,
   gameStatePda: PublicKey,
   sessionPda: PublicKey,
-  burnerKeypair: Keypair
+  sessionSignerKeypair: Keypair
 ): Promise<string> {
   const [poiAuthorityPda] = derivePoiAuthorityPda();
 
@@ -565,11 +565,11 @@ export async function shopReroll(
       gameSession: sessionPda,
       poiAuthority: poiAuthorityPda,
       gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
-      player: burnerKeypair.publicKey,
+      player: sessionSignerKeypair.publicKey,
     })
     .transaction();
 
-  return sendBurnerTransaction(connection, transaction, burnerKeypair);
+  return sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair);
 }
 
 /**
@@ -579,7 +579,7 @@ export async function shopReroll(
  * @param program - Anchor program instance for poi_system
  * @param mapPoisPda - MapPois PDA
  * @param sessionPda - GameSession PDA
- * @param burnerKeypair - Burner wallet keypair (signer)
+ * @param sessionSignerKeypair - SessionSigner wallet keypair (signer)
  * @returns Transaction signature
  */
 export async function leaveShop(
@@ -587,18 +587,18 @@ export async function leaveShop(
   program: Program,
   mapPoisPda: PublicKey,
   sessionPda: PublicKey,
-  burnerKeypair: Keypair
+  sessionSignerKeypair: Keypair
 ): Promise<string> {
   const transaction = await program.methods
     .leaveShop()
     .accounts({
       mapPois: mapPoisPda,
       gameSession: sessionPda,
-      player: burnerKeypair.publicKey,
+      player: sessionSignerKeypair.publicKey,
     })
     .transaction();
 
-  return sendBurnerTransaction(connection, transaction, burnerKeypair);
+  return sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair);
 }
 
 // ============================================================================
@@ -615,7 +615,7 @@ export async function leaveShop(
  * @param mapPoisPda - MapPois PDA
  * @param gameStatePda - GameState PDA
  * @param sessionPda - GameSession PDA (used to derive inventory)
- * @param burnerKeypair - Burner wallet keypair (signer)
+ * @param sessionSignerKeypair - SessionSigner wallet keypair (signer)
  * @param poiIndex - Index of the POI in map_pois.pois
  * @param itemId - 8-byte item identifier
  * @param currentTier - Current tier of the item
@@ -627,7 +627,7 @@ export async function interactRustyAnvil(
   mapPoisPda: PublicKey,
   gameStatePda: PublicKey,
   sessionPda: PublicKey,
-  burnerKeypair: Keypair,
+  sessionSignerKeypair: Keypair,
   poiIndex: number,
   itemId: Uint8Array,
   currentTier: number
@@ -644,11 +644,11 @@ export async function interactRustyAnvil(
       poiAuthority: poiAuthorityPda,
       gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
       playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
-      player: burnerKeypair.publicKey,
+      player: sessionSignerKeypair.publicKey,
     })
     .transaction();
 
-  return sendBurnerTransaction(connection, transaction, burnerKeypair);
+  return sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair);
 }
 
 // ============================================================================
@@ -664,7 +664,7 @@ export async function interactRustyAnvil(
  * @param mapPoisPda - MapPois PDA
  * @param gameStatePda - GameState PDA
  * @param sessionPda - GameSession PDA (used to derive inventory)
- * @param burnerKeypair - Burner wallet keypair (signer)
+ * @param sessionSignerKeypair - SessionSigner wallet keypair (signer)
  * @param poiIndex - Index of the POI in map_pois.pois
  * @param item1Id - 8-byte identifier of the first item
  * @param item1Tier - Tier of the first item
@@ -678,7 +678,7 @@ export async function interactRuneKiln(
   mapPoisPda: PublicKey,
   gameStatePda: PublicKey,
   sessionPda: PublicKey,
-  burnerKeypair: Keypair,
+  sessionSignerKeypair: Keypair,
   poiIndex: number,
   item1Id: Uint8Array,
   item1Tier: number,
@@ -694,11 +694,11 @@ export async function interactRuneKiln(
       gameState: gameStatePda,
       inventory: inventoryPda,
       playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
-      player: burnerKeypair.publicKey,
+      player: sessionSignerKeypair.publicKey,
     })
     .transaction();
 
-  return sendBurnerTransaction(connection, transaction, burnerKeypair);
+  return sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair);
 }
 
 // ============================================================================
@@ -714,7 +714,7 @@ export async function interactRuneKiln(
  * @param mapPoisPda - MapPois PDA
  * @param gameStatePda - GameState PDA
  * @param sessionPda - GameSession PDA (for inventory derivation)
- * @param burnerKeypair - Burner wallet keypair (signer)
+ * @param sessionSignerKeypair - SessionSigner wallet keypair (signer)
  * @param poiIndex - Index of the POI in map_pois.pois
  * @param itemId - 8-byte identifier of the item to scrap
  * @returns Transaction signature
@@ -725,7 +725,7 @@ export async function interactScrapChute(
   mapPoisPda: PublicKey,
   gameStatePda: PublicKey,
   sessionPda: PublicKey,
-  burnerKeypair: Keypair,
+  sessionSignerKeypair: Keypair,
   poiIndex: number,
   itemId: Uint8Array
 ): Promise<string> {
@@ -743,9 +743,9 @@ export async function interactScrapChute(
       poiAuthority: poiAuthorityPda,
       gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
       playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
-      player: burnerKeypair.publicKey,
+      player: sessionSignerKeypair.publicKey,
     })
     .transaction();
 
-  return sendBurnerTransaction(connection, transaction, burnerKeypair);
+  return sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair);
 }
