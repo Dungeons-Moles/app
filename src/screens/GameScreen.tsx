@@ -31,7 +31,6 @@ import {
 import { Sidebar } from '../components/game/Sidebar';
 import { PauseMenuModal } from '../components/ui/PauseMenuModal';
 import { ControllerHints } from '../components/ui/ControllerHints';
-import { SessionSignerBalanceIndicator } from '../components/common/SessionSignerBalanceIndicator';
 import { useDirectionInput } from '../hooks/useInput';
 import { useLandscapeLock } from '../hooks/useOrientationLock';
 import { useScreenVariant } from '../contexts/ScreenVariantContext';
@@ -354,9 +353,6 @@ export function GameScreen({ navigation }: GameScreenProps) {
     gameplaySyncStatus,
     sessionKey,
     sessionPda,
-    sessionSignerBalance,
-    isSessionSignerLowBalance,
-    topUpSessionSigner,
     mapSeed,
     currentLevel,
     forceAbandonCurrentSession,
@@ -1795,15 +1791,6 @@ export function GameScreen({ navigation }: GameScreenProps) {
                   feedbackMessage={wallBreakFeedback}
                   cameraFocusOverride={fastTravelFocus}
                 />
-                {mode !== 'guest' && hasActiveSession && (
-                  <Pressable style={styles.sessionSignerOverlay} onPress={() => topUpSessionSigner()}>
-                    <SessionSignerBalanceIndicator
-                      balance={sessionSignerBalance}
-                      isLowBalance={isSessionSignerLowBalance}
-                      compact
-                    />
-                  </Pressable>
-                )}
                 <DebugOverlay
                   debug={state.debug}
                   seed={state.seed}
@@ -2018,7 +2005,6 @@ const styles = StyleSheet.create({
   loading: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   loadingText: { fontFamily: Typography.header, fontSize: 20, color: '#666666' },
   dpadOverlay: { position: 'absolute', bottom: 24, left: 24 },
-  sessionSignerOverlay: { position: 'absolute', top: 8, left: 8, zIndex: 10 },
   goldDisplay: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   coinIcon: { width: 28, height: 28 },
   goldValue: { fontFamily: Typography.number, fontSize: 24, fontWeight: 'bold', color: '#000000' },

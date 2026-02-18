@@ -20,6 +20,7 @@ import Svg, { Ellipse, Defs, Pattern, Line } from 'react-native-svg';
 import { useProfile } from '../contexts/ProfileContext';
 import { useSession } from '../contexts/SessionContext';
 import { useGame, GamePhase } from '../contexts/GameContext';
+import { useWallet } from '../contexts/WalletContext';
 import { shortenAddress } from '../utils/storage';
 import { RootStackParamList } from '../navigation';
 import { InlineModal } from '../components/InlineModal';
@@ -76,6 +77,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
   const isCompact = screenVariant === 'compact';
   const inputMode = useInputMode();
   const { state: gameState, dispatch } = useGame();
+  const { wallet, getBalance } = useWallet();
   const [showSettings, setShowSettings] = useState(false);
   const [showSkins, setShowSkins] = useState(false);
   const [showRanks, setShowRanks] = useState(false);
@@ -88,6 +90,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
   const [profileValidationError, setProfileValidationError] = useState<string | null>(null);
   const [profileSuccessMessage, setProfileSuccessMessage] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [walletBalanceLamports, setWalletBalanceLamports] = useState<bigint | null>(null);
   const [focus, setFocus] = useState<{ group: 'left' | 'right'; index: number }>({
     group: 'right',
     index: 0,
@@ -104,6 +107,31 @@ export function HubScreen({ navigation }: HubScreenProps) {
       useNativeDriver: true,
     }).start();
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const refreshWalletBalance = async () => {
+      if (isGuest || !wallet.publicKey) {
+        if (!cancelled) setWalletBalanceLamports(null);
+        return;
+      }
+      try {
+        const lamports = await getBalance();
+        if (!cancelled) setWalletBalanceLamports(lamports);
+      } catch {
+        if (!cancelled) setWalletBalanceLamports(null);
+      }
+    };
+
+    if (isScreenFocused) {
+      refreshWalletBalance();
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [getBalance, isGuest, isScreenFocused, wallet.publicKey]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -231,6 +259,8 @@ export function HubScreen({ navigation }: HubScreenProps) {
   };
 
   const isProfileSaveDisabled = profileSaving || isLoading || !!profileValidationError || profileName === profile?.name;
+  const walletBalanceSol =
+    walletBalanceLamports !== null ? (Number(walletBalanceLamports) / 1_000_000_000).toFixed(4) : null;
 
   // --- Controller navigation ---
   const anyModalOpen =
@@ -417,9 +447,16 @@ export function HubScreen({ navigation }: HubScreenProps) {
                           (GUEST)
                         </Text>
                       ) : profile?.owner ? (
-                        <Text style={[styles.walletAddress, isCompact && compactStyles.walletAddress]}>
-                          {shortenAddress(profile.owner.toBase58())}
-                        </Text>
+                        <>
+                          <Text style={[styles.walletAddress, isCompact && compactStyles.walletAddress]}>
+                            {shortenAddress(profile.owner.toBase58())}
+                          </Text>
+                          {walletBalanceSol !== null && (
+                            <Text style={[styles.walletBalance, isCompact && compactStyles.walletBalance]}>
+                              {walletBalanceSol} SOL
+                            </Text>
+                          )}
+                        </>
                       ) : null}
                     </>
                   )}
@@ -1209,15 +1246,23 @@ const styles = StyleSheet.create({
   playerName: {
     fontFamily: Typography.header,
     fontSize: 14,
-    color: '#888888',
+    color: '#000000',
     lineHeight: 16,
   },
   walletAddress: {
     fontFamily: Typography.number,
     fontSize: 11,
-    color: '#888888',
+    color: '#000000',
     fontWeight: 'bold',
     lineHeight: 12,
+  },
+  walletBalance: {
+    fontFamily: Typography.number,
+    fontSize: 10,
+    color: '#888888',
+    fontWeight: 'bold',
+    lineHeight: 11,
+    marginTop: 3,
   },
 
   // TOP CENTER - Points
@@ -1773,6 +1818,10 @@ const compactStyles = StyleSheet.create({
   walletAddress: {
     fontSize: 24,
     lineHeight: 26,
+  },
+  walletBalance: {
+    fontSize: 20,
+    lineHeight: 22,
   },
   navButton: {
     width: 300,

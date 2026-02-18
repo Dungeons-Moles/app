@@ -3,23 +3,45 @@ import { PublicKey } from '@solana/web3.js';
 import { useWallet } from '@/contexts/WalletContext';
 import { useSession } from '@/contexts/SessionContext';
 import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
-import { createGameplayStateProgram } from '@/services/solana/programs';
-import { deriveGauntletSessionPda, GAMEPLAY_STATE_PROGRAM_ID } from '@/services/solana/constants';
+import { createGameplayStateProgram, createMapGeneratorProgram } from '@/services/solana/programs';
+import {
+  deriveGauntletSessionPda,
+  deriveGeneratedMapPda,
+} from '@/services/solana/constants';
 import { SOLANA_CONFIG } from '@/services/solana/config';
 import {
   GAUNTLET_ENTRY_LAMPORTS,
   buildInitializeGauntletTransaction,
-  buildEnterGauntletTransaction,
   deriveGauntletConfigPda,
   getGauntletErrorMessage,
 } from '@/services/solana/gauntlet';
+import { fetchGeneratedMap } from '@/services/solana/mapGeneratorClient';
 
 export type GauntletPhase = 'confirm' | 'queued' | 'error';
-const GAUNTLET_ONCHAIN_LEVEL = 20;
+const MAX_SEED_FETCH_RETRIES = 8;
+const SEED_FETCH_RETRY_DELAY_MS = 250;
+const MAX_SWITCH_RETRIES = 3;
+const SWITCH_RETRY_DELAY_MS = 250;
 
-function isGauntletRunMode(runMode: unknown): boolean {
-  if (!runMode || typeof runMode !== 'object') return false;
-  return 'gauntlet' in (runMode as Record<string, unknown>);
+function isNonBlockingDelegationError(errorMessage: string | undefined): boolean {
+  const message = (errorMessage ?? '').toLowerCase();
+  return (
+    message.includes('failed to delegate session to rollup') ||
+    message.includes('delegategameplayaccounts') ||
+    message.includes('access violation') ||
+    message.includes('failed to complete')
+  );
+}
+
+function isRecoverableStartError(errorMessage: string | undefined): boolean {
+  const message = (errorMessage ?? '').toLowerCase();
+  return (
+    message.includes('failed to delegate session to rollup') ||
+    message.includes('no active session to delegate') ||
+    message.includes('delegategameplayaccounts') ||
+    message.includes('access violation') ||
+    message.includes('failed to complete')
+  );
 }
 
 export function useGauntlet() {
@@ -123,6 +145,54 @@ export function useGauntlet() {
     console.log('[useGauntlet] ensureGauntletInitialized:init_confirmed', { signature: initSig });
   }, [wallet.publicKey, connection, signAndSendTransaction, confirmWithTimeout]);
 
+  const resolveSessionGeneratedSeed = useCallback(
+    async (sessionPda: PublicKey): Promise<bigint | null> => {
+      const mapProgram = createMapGeneratorProgram(connection);
+      for (let attempt = 1; attempt <= MAX_SEED_FETCH_RETRIES; attempt++) {
+        try {
+          const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
+          const generatedMap = await fetchGeneratedMap(mapProgram, generatedMapPda);
+          if (generatedMap?.seed !== undefined && generatedMap.seed !== null) {
+            return generatedMap.seed;
+          }
+        } catch {
+          // Retry while generated map account settles after start tx.
+        }
+        if (attempt < MAX_SEED_FETCH_RETRIES) {
+          await new Promise((resolve) => setTimeout(resolve, SEED_FETCH_RETRY_DELAY_MS));
+        }
+      }
+      return null;
+    },
+    [connection]
+  );
+
+  const switchToGauntletSessionWithRetry = useCallback(
+    async (gauntletSessionPda: PublicKey): Promise<{ success: boolean; error?: string }> => {
+      let lastError: string | undefined;
+      for (let attempt = 1; attempt <= MAX_SWITCH_RETRIES; attempt++) {
+        const switchResult = await switchToSession(gauntletSessionPda.toBase58());
+        console.log('[useGauntlet] enterGauntlet:switch_result', { ...switchResult, attempt });
+        if (switchResult.success) {
+          return { success: true };
+        }
+        if (isNonBlockingDelegationError(switchResult.error)) {
+          console.warn(
+            '[useGauntlet] enterGauntlet:continuing_despite_delegation_failure',
+            switchResult.error
+          );
+          return { success: true };
+        }
+        lastError = switchResult.error ?? 'Failed to resume gauntlet session';
+        if (attempt < MAX_SWITCH_RETRIES) {
+          await new Promise((resolve) => setTimeout(resolve, SWITCH_RETRY_DELAY_MS));
+        }
+      }
+      return { success: false, error: lastError ?? 'Failed to resume gauntlet session' };
+    },
+    [switchToSession]
+  );
+
   const enterGauntlet = useCallback(async (): Promise<boolean> => {
     if (!wallet.publicKey) {
       setError('Wallet not connected');
@@ -148,7 +218,7 @@ export function useGauntlet() {
 
       await ensureGauntletInitialized();
 
-      let seed = mapSeed;
+      let seed: bigint | null = null;
 
       const [gauntletSessionPda] = deriveGauntletSessionPda(wallet.publicKey);
       console.log('[useGauntlet] enterGauntlet:checking_existing_session', {
@@ -162,68 +232,76 @@ export function useGauntlet() {
         exists: !!existingGauntletSessionInfo,
       });
 
-      let alreadyEnteredGauntlet = false;
+      let shouldSkipEnterTx = !!existingGauntletSessionInfo;
 
       if (existingGauntletSessionInfo) {
         console.log('[useGauntlet] enterGauntlet:resuming_existing_session');
-        const switchResult = await switchToSession(gauntletSessionPda.toBase58());
-        console.log('[useGauntlet] enterGauntlet:switch_result', switchResult);
+        const switchResult = await switchToGauntletSessionWithRetry(gauntletSessionPda);
         if (!switchResult.success) {
           setError(switchResult.error ?? 'Failed to resume gauntlet session');
           setPhase('error');
           return false;
         }
+        seed = await resolveSessionGeneratedSeed(gauntletSessionPda);
       } else {
         console.log('[useGauntlet] enterGauntlet:starting_new_gauntlet_session');
         const startResult = await startGauntletGame();
         console.log('[useGauntlet] enterGauntlet:startGauntletGame_result', startResult);
         if (!startResult.success) {
-          setError(startResult.error ?? 'Failed to start gauntlet session');
-          setPhase('error');
-          return false;
+          const canRecoverViaResume = isRecoverableStartError(startResult.error);
+          if (!canRecoverViaResume) {
+            setError(startResult.error ?? 'Failed to start gauntlet session');
+            setPhase('error');
+            return false;
+          }
+
+          // Recovery path: session creation can succeed while delegate/setup reports a transient failure.
+          // If the gauntlet session account now exists, continue as resume.
+          const postStartSessionInfo = await connection.getAccountInfo(
+            gauntletSessionPda,
+            SOLANA_CONFIG.commitment
+          );
+          if (!postStartSessionInfo) {
+            setError(startResult.error ?? 'Failed to start gauntlet session');
+            setPhase('error');
+            return false;
+          }
+
+          console.warn(
+            '[useGauntlet] enterGauntlet:recovering_after_start_failure_via_resume',
+            startResult.error
+          );
+          shouldSkipEnterTx = true;
+          const switchResult = await switchToGauntletSessionWithRetry(gauntletSessionPda);
+          if (!switchResult.success) {
+            setError(switchResult.error ?? 'Failed to resume gauntlet session');
+            setPhase('error');
+            return false;
+          }
+          seed = await resolveSessionGeneratedSeed(gauntletSessionPda);
+        } else {
+          // Run the same switch path as resume so first entry gets identical finalized setup.
+          const switchResult = await switchToGauntletSessionWithRetry(gauntletSessionPda);
+          if (!switchResult.success) {
+            setError(switchResult.error ?? 'Failed to finalize gauntlet session setup');
+            setPhase('error');
+            return false;
+          }
+          seed = startResult.mapSeed ?? (await resolveSessionGeneratedSeed(gauntletSessionPda));
         }
-        seed = startResult.mapSeed ?? seed;
       }
 
-      const [sessionPda] = deriveGauntletSessionPda(wallet.publicKey);
-      const [gameStatePda] = PublicKey.findProgramAddressSync(
-        [Buffer.from('game_state'), sessionPda.toBuffer()],
-        GAMEPLAY_STATE_PROGRAM_ID
-      );
-
-      const gameplayProgram = createGameplayStateProgram(connection);
-      const gameStateAccount = await (
-        gameplayProgram.account as {
-          gameState: { fetch: (address: PublicKey) => Promise<{ runMode?: unknown }> };
-        }
-      ).gameState.fetch(gameStatePda);
-      alreadyEnteredGauntlet = isGauntletRunMode(gameStateAccount.runMode);
-      console.log('[useGauntlet] enterGauntlet:run_mode_checked', {
-        gameStatePda: gameStatePda.toBase58(),
-        alreadyEnteredGauntlet,
-      });
-
-      if (alreadyEnteredGauntlet) {
-        console.log('[useGauntlet] enterGauntlet:already_entered_skip_payment_tx');
-        setActiveSeed(seed);
-        setPhase('queued');
-        return true;
+      if (seed === null) {
+        console.warn(
+          '[useGauntlet] enterGauntlet:seed_unavailable_continuing_with_onchain_restore_only'
+        );
       }
 
-      const tx = await buildEnterGauntletTransaction(
-        connection,
-        gameplayProgram,
-        wallet.publicKey,
-        gameStatePda
-      );
-      console.log('[useGauntlet] enterGauntlet:enter_tx_built', {
-        gameStatePda: gameStatePda.toBase58(),
-      });
-
-      const signature = await signAndSendTransaction(tx);
-      console.log('[useGauntlet] enterGauntlet:enter_tx_sent', { signature });
-      await confirmWithTimeout(signature);
-      console.log('[useGauntlet] enterGauntlet:enter_tx_confirmed', { signature });
+      if (shouldSkipEnterTx) {
+        console.log('[useGauntlet] enterGauntlet:resume_existing_session_skip_enter_tx');
+      } else {
+        console.log('[useGauntlet] enterGauntlet:new_session_ready_skip_extra_enter_tx');
+      }
 
       setActiveSeed(seed);
       setPhase('queued');
@@ -244,10 +322,8 @@ export function useGauntlet() {
     ensureGauntletInitialized,
     mapSeed,
     startGauntletGame,
-    switchToSession,
+    switchToGauntletSessionWithRetry,
     connection,
-    signAndSendTransaction,
-    confirmWithTimeout,
   ]);
 
   const reset = useCallback(() => {

@@ -256,24 +256,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setUseErForGameplay,
   ]);
 
-  // Fetch map seed when session changes
-  const getMapSeed = mapGenerator.getMapSeed;
-  useEffect(() => {
-    let isMounted = true;
-    if (sessionManager.session) {
-      getMapSeed(sessionManager.session.campaignLevel).then((seed) => {
-        if (isMounted) {
-          setMapSeed(seed);
-        }
-      });
-    } else {
-      setMapSeed(null);
-    }
-    return () => {
-      isMounted = false;
-    };
-  }, [getMapSeed, sessionManager.session?.campaignLevel]);
-
   const fetchSessionGeneratedSeed = useCallback(
     async (sessionPda: PublicKey): Promise<bigint | null> => {
       try {
@@ -288,6 +270,47 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     },
     [connection]
   );
+
+  const isGameStateDelegatedOnBase = useCallback(
+    async (sessionPda: PublicKey): Promise<boolean> => {
+      try {
+        const [gameStatePda] = getGameStatePda(sessionPda);
+        const info = await connection.getAccountInfo(gameStatePda, 'processed');
+        return Boolean(info?.owner.equals(DELEGATION_PROGRAM_ID));
+      } catch {
+        return false;
+      }
+    },
+    [connection]
+  );
+
+  // Always sync map seed from the active session's generated map account.
+  // This avoids overwriting PvP sessions with campaign-level map config seeds.
+  useEffect(() => {
+    let isMounted = true;
+
+    const syncMapSeedFromActiveSession = async () => {
+      if (!sessionManager.session) {
+        setMapSeed(null);
+        return;
+      }
+
+      if (!sessionManager.activeSessionPda) {
+        return;
+      }
+
+      const generatedSeed = await fetchSessionGeneratedSeed(sessionManager.activeSessionPda);
+      if (isMounted) {
+        setMapSeed(generatedSeed);
+      }
+    };
+
+    void syncMapSeedFromActiveSession();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [fetchSessionGeneratedSeed, sessionManager.activeSessionPda, sessionManager.session?.sessionId]);
 
   const confirmSignatureWithTimeout = useCallback(
     async (signature: string, timeoutMs = 15000): Promise<void> => {
@@ -409,18 +432,37 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     return new Array<number>(32).fill(0);
   }, [sessionManager.session?.stateHash]);
 
-  const ensureDelegatedToRollup = useCallback(async (): Promise<TransactionResult> => {
+  const ensureDelegatedToRollup = useCallback(async (
+    options?: {
+      sessionPda?: PublicKey;
+      onChainLevel?: number;
+      sessionSignerKeypair?: Keypair;
+    }
+  ): Promise<TransactionResult> => {
     if (sessionManager.session?.isDelegated) {
       setUseErForGameplay(true);
       return { success: true };
     }
 
-    const sessionSignerKeypair = sessionSigner.keypair;
+    const sessionSignerKeypair = options?.sessionSignerKeypair ?? sessionSigner.keypair;
     if (!sessionSignerKeypair) {
       return { success: false, error: 'Session key signer not available for delegation' };
     }
 
-    const result = await sessionManager.delegateSession(sessionSignerKeypair);
+    const delegateWithOverrides = () =>
+      sessionManager.delegateSession(sessionSignerKeypair, {
+        sessionPda: options?.sessionPda ?? sessionManager.activeSessionPda ?? undefined,
+        onChainLevel: options?.onChainLevel ?? sessionManager.session?.campaignLevel ?? undefined,
+      });
+
+    let result = await delegateWithOverrides();
+    const initialMessage = result.error?.toLowerCase() ?? '';
+    if (!result.success && initialMessage.includes('no active session to delegate')) {
+      // Newly-created sessions can hit a short state propagation race; refresh once and retry.
+      await sessionManager.fetchSession();
+      result = await delegateWithOverrides();
+    }
+
     if (result.success) {
       setUseErForGameplay(true);
       return result;
@@ -433,7 +475,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
 
     return result;
-  }, [sessionManager, sessionSigner.keypair, setUseErForGameplay]);
+  }, [
+    sessionManager,
+    sessionManager.activeSessionPda,
+    sessionManager.session?.campaignLevel,
+    sessionSigner.keypair,
+    setUseErForGameplay,
+  ]);
 
   const startGame = useCallback(
     async (campaignLevel: number): Promise<TransactionResult> => {
@@ -736,14 +784,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         gameplayState.setGameStatePda(gameStatePda);
       }
 
-      const delegateResult = await ensureDelegatedToRollup();
-      if (!delegateResult.success) {
-        return {
-          success: false,
-          error: delegateResult.error ?? 'Failed to delegate session to rollup',
-        };
-      }
-
       return { success: true, mapSeed: generatedSeed };
     },
     [
@@ -833,7 +873,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         gameplayState.setGameStatePda(gameStatePda);
       }
 
-      const delegateResult = await ensureDelegatedToRollup();
+      const delegateResult = await ensureDelegatedToRollup({
+        sessionPda,
+        onChainLevel: 20,
+        sessionSignerKeypair: newSessionSignerKeypair,
+      });
       if (!delegateResult.success) {
         return {
           success: false,
@@ -1286,12 +1330,24 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         // Refresh the session manager to point to this session
         await sessionManager.fetchSession();
 
-        const delegateResult = await ensureDelegatedToRollup();
+        const delegateResult = await ensureDelegatedToRollup({
+          sessionPda: sessionPubkey,
+          onChainLevel: onChainLevel ?? undefined,
+        });
         if (!delegateResult.success) {
-          return {
-            success: false,
-            error: delegateResult.error ?? 'Failed to delegate session to rollup',
-          };
+          const delegatedOnBase = await isGameStateDelegatedOnBase(sessionPubkey);
+          if (delegatedOnBase) {
+            setUseErForGameplay(true);
+            console.warn(
+              '[SessionContext] switchToSession: delegation tx failed but game_state is delegated; continuing in ER mode',
+              delegateResult.error
+            );
+          } else {
+            return {
+              success: false,
+              error: delegateResult.error ?? 'Failed to delegate session to rollup',
+            };
+          }
         }
 
         // Refresh session list to update last played time
@@ -1314,8 +1370,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       gameplayState,
       sessionManager,
       ensureDelegatedToRollup,
+      isGameStateDelegatedOnBase,
       wallet.publicKey,
       refreshSessionList,
+      setUseErForGameplay,
     ]
   );
 
@@ -1906,6 +1964,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       await clearFogState(sessionKey);
       await clearBrokenWalls(sessionKey);
       sessionManager.resetSession();
+      await sessionSigner.clear();
       setUseErForGameplay(false);
 
       // Refresh session list
