@@ -1270,6 +1270,11 @@
       "code": 6016,
       "name": "SkinCurrentlyEquipped",
       "msg": "Cannot list a skin that is currently equipped"
+    },
+    {
+      "code": 6017,
+      "name": "InvalidGauntletPool",
+      "msg": "Invalid gauntlet pool account"
     }
   ],
   "types": [
