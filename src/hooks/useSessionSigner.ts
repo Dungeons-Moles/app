@@ -13,6 +13,8 @@ import {
   createSessionSignerWallet,
   loadSessionSignerWallet,
   storeSessionSignerWallet,
+  storeSessionSignerForSession,
+  loadSessionSignerForSession,
   clearSessionSignerWallet,
   createFundSessionSignerTransaction,
   drainSessionSignerToMain,
@@ -55,6 +57,10 @@ export interface UseSessionSignerReturn {
   clear: () => Promise<void>;
   /** Check for pending session from previous app launch */
   checkPendingSession: () => Promise<boolean>;
+  /** Associate current keypair with a specific session PDA for later recovery */
+  associateWithSession: (keypair: Keypair, sessionPda: string) => Promise<void>;
+  /** Load the keypair associated with a specific session PDA */
+  loadForSession: (sessionPda: string) => Promise<boolean>;
   /** Refresh balance */
   refreshBalance: () => Promise<void>;
 }
@@ -378,6 +384,40 @@ export function useSessionSigner(): UseSessionSignerReturn {
     [connection, walletAddress]
   );
 
+  /**
+   * Associate a keypair with a specific session PDA so it can be recovered
+   * later when switching between concurrent sessions.
+   */
+  const associateWithSession = useCallback(
+    async (sessionKeypair: Keypair, sessionPda: string): Promise<void> => {
+      if (!walletAddress) return;
+      await storeSessionSignerForSession(walletAddress, sessionKeypair, sessionPda);
+    },
+    [walletAddress]
+  );
+
+  /**
+   * Load the keypair stored for a specific session PDA.
+   * Returns true if found and set, false otherwise.
+   */
+  const loadForSession = useCallback(
+    async (sessionPda: string): Promise<boolean> => {
+      if (!walletAddress) return false;
+      try {
+        const loaded = await loadSessionSignerForSession(walletAddress, sessionPda);
+        if (loaded && isMountedRef.current) {
+          setKeypair(loaded);
+          setState('active');
+          return true;
+        }
+        return false;
+      } catch {
+        return false;
+      }
+    },
+    [walletAddress]
+  );
+
   // Auto-load existing sessionSigner when wallet connects
   useEffect(() => {
     if (walletAddress && state === 'idle') {
@@ -408,6 +448,8 @@ export function useSessionSigner(): UseSessionSignerReturn {
     drain,
     clear,
     checkPendingSession,
+    associateWithSession,
+    loadForSession,
     refreshBalance,
   };
 }

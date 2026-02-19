@@ -74,6 +74,8 @@ export interface PitDraftMatchData {
   playerProfileName: string;
   /** Opponent profile name (fallback: "Opponent") */
   opponentProfileName: string;
+  /** Opponent's equipped skin pubkey (null if none equipped) */
+  opponentSkinPubkey: PublicKey | null;
 }
 
 export interface PitDraftHistoryItem {
@@ -199,25 +201,28 @@ export function usePitDraft() {
   /**
    * Build match data from parsed events.
    */
-  const fetchProfileNameByWallet = useCallback(
-    async (walletKey: PublicKey): Promise<string | null> => {
+  const fetchProfileByWallet = useCallback(
+    async (walletKey: PublicKey): Promise<{ name: string | null; equippedSkin: PublicKey | null }> => {
       try {
         const program = createPlayerProfileProgram(connection);
         const [profilePda] = derivePlayerProfilePda(walletKey);
         const account = await (
           program.account as {
             playerProfile: {
-              fetchNullable: (address: PublicKey) => Promise<{ name?: unknown } | null>;
+              fetchNullable: (address: PublicKey) => Promise<{ name?: unknown; equippedSkin?: unknown } | null>;
             };
           }
         ).playerProfile.fetchNullable(profilePda);
 
-        if (!account || typeof account.name !== 'string') return null;
-        const trimmed = account.name.trim();
-        return trimmed.length > 0 ? trimmed : null;
+        if (!account) return { name: null, equippedSkin: null };
+        const name = typeof account.name === 'string' ? account.name.trim() || null : null;
+        const equippedSkin = account.equippedSkin instanceof PublicKey && !PublicKey.default.equals(account.equippedSkin)
+          ? account.equippedSkin
+          : null;
+        return { name, equippedSkin };
       } catch (err) {
-        console.warn('[usePitDraft] Failed to fetch profile name:', err);
-        return null;
+        console.warn('[usePitDraft] Failed to fetch profile:', err);
+        return { name: null, equippedSkin: null };
       }
     },
     [connection]
@@ -282,7 +287,8 @@ export function usePitDraft() {
 
       const localProfileName = profile?.name?.trim();
       const playerProfileName = localProfileName && localProfileName.length > 0 ? localProfileName : 'You';
-      const opponentProfileName = (await fetchProfileNameByWallet(opponentWalletKey)) ?? 'Opponent';
+      const opponentProfile = await fetchProfileByWallet(opponentWalletKey);
+      const opponentProfileName = opponentProfile.name ?? 'Opponent';
 
       return {
         combatVisual,
@@ -302,9 +308,10 @@ export function usePitDraft() {
         opponentWallet,
         playerProfileName,
         opponentProfileName,
+        opponentSkinPubkey: opponentProfile.equippedSkin,
       };
     },
-    [wallet.publicKey, profile?.name, fetchProfileNameByWallet]
+    [wallet.publicKey, profile?.name, fetchProfileByWallet]
   );
 
   const tryResolveMatchFromQueueTransactions = useCallback(async (): Promise<boolean> => {
@@ -573,8 +580,8 @@ export function usePitDraft() {
           const opponentWallet = playerA === ourKey ? playerB : playerA;
           let opponentProfileName = profileNameCache.get(opponentWallet);
           if (!opponentProfileName) {
-            const fetched = await fetchProfileNameByWallet(new PublicKey(opponentWallet));
-            opponentProfileName = fetched ?? opponentWallet.slice(0, 4) + '..' + opponentWallet.slice(-4);
+            const fetched = await fetchProfileByWallet(new PublicKey(opponentWallet));
+            opponentProfileName = fetched.name ?? opponentWallet.slice(0, 4) + '..' + opponentWallet.slice(-4);
             profileNameCache.set(opponentWallet, opponentProfileName);
           }
 
@@ -609,7 +616,7 @@ export function usePitDraft() {
         setIsHistoryLoading(false);
       }
     }
-  }, [wallet.publicKey, connection, fetchProfileNameByWallet]);
+  }, [wallet.publicKey, connection, fetchProfileByWallet]);
 
   /**
    * Reset to initial state.

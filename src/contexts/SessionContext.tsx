@@ -54,6 +54,7 @@ import {
   type ActiveSession,
 } from '@/services/solana/sessionList';
 import { abandonSession as abandonSessionTx } from '@/services/solana/sessionBundle';
+import { buildEnterDuelTransaction, parseDuelEvents } from '@/services/solana/duels';
 import { clearFogState, clearBrokenWalls } from '@/services/solana/sessionRestore';
 import type { OnChainGameSession } from '@/services/solana/types/session_manager';
 import type {
@@ -197,7 +198,7 @@ const SessionContext = createContext<SessionContextType | undefined>(undefined);
 
 export function SessionProvider({ children }: { children: ReactNode }) {
   const { wallet, signAndSendTransaction, signAndSendTransactions } = useWallet();
-  const { connection, gameplayConnection, setUseErForGameplay } = useSolanaConnection();
+  const { connection, gameplayConnection, erConnection, setUseErForGameplay } = useSolanaConnection();
   const { profile } = useProfile();
   const sessionManager = useSessionManager();
   const mapGenerator = useMapGenerator();
@@ -260,15 +261,22 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     async (sessionPda: PublicKey): Promise<bigint | null> => {
       try {
         const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
+        // Try base chain first
         const mapProgram = createMapGeneratorProgram(connection);
         const generatedMap = await fetchGeneratedMap(mapProgram, generatedMapPda);
-        return generatedMap?.seed ?? null;
+        if (generatedMap?.seed != null) {
+          return generatedMap.seed;
+        }
+        // Account may be delegated to ER — try ER connection
+        const erMapProgram = createMapGeneratorProgram(erConnection);
+        const erGeneratedMap = await fetchGeneratedMap(erMapProgram, generatedMapPda);
+        return erGeneratedMap?.seed ?? null;
       } catch (err) {
         console.warn('[SessionContext] Failed to fetch generated map seed:', err);
         return null;
       }
     },
-    [connection]
+    [connection, erConnection]
   );
 
   const isGameStateDelegatedOnBase = useCallback(
@@ -519,12 +527,26 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         const seed = await mapGenerator.getMapSeed(campaignLevel);
         setMapSeed(seed);
 
-        // If sessionSigner wallet doesn't exist locally but we're reusing session,
-        // we CANNOT just create a new one because it won't match the on-chain owner.
-        // We must attempt to load it again or fail.
-        if (!sessionSigner.keypair) {
-          console.warn('[SessionContext] Session key signer missing for active session!');
-          // Try one last check
+        // Load the correct session signer keypair for this session.
+        if (sessionManager.session && wallet.publicKey) {
+          const [resumeSessionPda] = deriveSessionPda(
+            wallet.publicKey,
+            sessionManager.session.campaignLevel
+          );
+          const loadedForSession = await sessionSigner.loadForSession(
+            resumeSessionPda.toBase58()
+          );
+          if (!loadedForSession && !sessionSigner.keypair) {
+            console.warn('[SessionContext] Session key signer missing for active session!');
+            const recovered = await sessionSigner.checkPendingSession();
+            if (!recovered) {
+              return {
+                success: false,
+                error: 'Session credentials lost. Please reset or abandon run.',
+              };
+            }
+          }
+        } else if (!sessionSigner.keypair) {
           const recovered = await sessionSigner.checkPendingSession();
           if (!recovered) {
             return {
@@ -635,6 +657,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           newSessionSignerKeypair.publicKey.toBase58()
         );
         await sessionSigner.markAsActive(newSessionSignerKeypair);
+        await sessionSigner.associateWithSession(newSessionSignerKeypair, sessionPda.toBase58());
         console.log(
           '[SessionContext] SessionSigner after markAsActive:',
           sessionSigner.keypair?.publicKey.toBase58() ?? 'null (state may not have updated yet)'
@@ -687,6 +710,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           error: delegateResult.error ?? 'Delegation transaction failed after session creation',
         };
       }
+
+      // Delegation succeeded — switch gameplay to ER before hooks auto-refresh.
+      setUseErForGameplay(true);
 
       // Step 7: Fetch the map seed for this level
       // Note: start_session now atomically creates GameState, MapEnemies,
@@ -768,6 +794,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         await confirmSignatureWithTimeout(signature);
         console.log('[SessionContext] startDuelGame:combined_tx_confirmed', { signature });
         await sessionSigner.markAsActive(newSessionSignerKeypair);
+        await sessionSigner.associateWithSession(newSessionSignerKeypair, sessionPda.toBase58());
         console.log('[SessionContext] startDuelGame:sessionSigner_marked_active');
         await sessionManager.fetchSession();
         console.log('[SessionContext] startDuelGame:session_fetched');
@@ -797,6 +824,40 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         gameplayState.setGameStatePda(gameStatePda);
       }
 
+      // Call enter_duel on base chain BEFORE delegation.
+      // After delegation, game_state is owned by the Delegation Program on base
+      // chain so enter_duel (which reads game_state) would fail.
+      let duelQueued: { seed: bigint; slot: number } | undefined;
+      if (generatedSeed !== null && wallet.publicKey) {
+        const [gameStatePdaForDuel] = getGameStatePda(sessionPda);
+        const gameplayProgram = createGameplayStateProgram(connection);
+        try {
+          const enterDuelTx = await buildEnterDuelTransaction(
+            connection,
+            gameplayProgram,
+            wallet.publicKey,
+            gameStatePdaForDuel,
+            sessionPda,
+            generatedSeed
+          );
+          const enterDuelSig = await signAndSendTransaction(enterDuelTx);
+          console.log('[SessionContext] startDuelGame:enter_duel_tx_sent', { signature: enterDuelSig });
+          await confirmSignatureWithTimeout(enterDuelSig);
+          console.log('[SessionContext] startDuelGame:enter_duel_tx_confirmed');
+
+          const events = await parseDuelEvents(connection, gameplayProgram, enterDuelSig);
+          if (events.queued) {
+            duelQueued = { seed: events.queued.seed, slot: events.queued.slot };
+          }
+        } catch (enterDuelError: unknown) {
+          logTxDebugError('startDuelGame:enter_duel_tx', enterDuelError);
+          return {
+            success: false,
+            error: enterDuelError instanceof Error ? enterDuelError.message : 'Failed to enter duel queue',
+          };
+        }
+      }
+
       const delegateResult = await ensureDelegatedToRollup({
         sessionPda,
         onChainLevel: 20,
@@ -809,7 +870,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         };
       }
 
-      return { success: true, mapSeed: generatedSeed };
+      return { success: true, mapSeed: generatedSeed, duelQueued };
     },
     [
       sessionSigner,
@@ -869,6 +930,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         await confirmSignatureWithTimeout(signature);
         console.log('[SessionContext] startGauntletGame:combined_tx_confirmed', { signature });
         await sessionSigner.markAsActive(newSessionSignerKeypair);
+        await sessionSigner.associateWithSession(newSessionSignerKeypair, sessionPda.toBase58());
         console.log('[SessionContext] startGauntletGame:sessionSigner_marked_active');
         await sessionManager.fetchSession();
         console.log('[SessionContext] startGauntletGame:session_fetched');
@@ -1333,14 +1395,19 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           sessionManager.setActiveOnChainLevel(onChainLevel);
         }
 
-        // If sessionSigner wallet doesn't exist, we need to recover or fail
-        if (!sessionSigner.keypair) {
-          const recovered = await sessionSigner.checkPendingSession();
-          if (!recovered) {
-            return {
-              success: false,
-              error: 'Session key signer not available. Please reconnect your wallet.',
-            };
+        // Load the session signer keypair for the target session.
+        // Each session has its own keypair — using the wrong one causes Unauthorized (6009).
+        const loadedForSession = await sessionSigner.loadForSession(sessionPda);
+        if (!loadedForSession) {
+          // Fall back to global keypair (pre-migration sessions)
+          if (!sessionSigner.keypair) {
+            const recovered = await sessionSigner.checkPendingSession();
+            if (!recovered) {
+              return {
+                success: false,
+                error: 'Session key signer not available. Please reconnect your wallet.',
+              };
+            }
           }
         }
 

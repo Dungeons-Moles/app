@@ -9,11 +9,12 @@ import {
   View,
   Text,
   TouchableOpacity,
-  Modal,
   StyleSheet,
   Image,
   ImageBackground,
 } from 'react-native';
+import { InlineModal } from '../InlineModal';
+import { useScreenVariant } from '../../contexts/ScreenVariantContext';
 import type { Tool, Gear, ItemStats, ItemTag } from '../../game/engine/types';
 import { getToolDefinition, TOOL_DEFINITIONS } from '../../game/entities/items';
 import { GEAR_DEFINITIONS, getTierFromRarity, getScaledEffectDescription } from '../../data/gear';
@@ -120,7 +121,7 @@ function getTagColor(tag: ItemTag): string {
   }
 }
 
-function StatDisplay({ stats }: { stats: ItemStats }) {
+function StatDisplay({ stats, scale = 1 }: { stats: ItemStats; scale?: number }) {
   const statEntries: { label: string; icon: any; value: number }[] = [];
 
   if (stats.hp) statEntries.push({ label: 'HP', icon: STAT_ICONS.HP, value: stats.hp });
@@ -137,16 +138,16 @@ function StatDisplay({ stats }: { stats: ItemStats }) {
     <View style={styles.statsSection}>
       {statEntries.map((stat) => (
         <View key={stat.label} style={styles.statItem}>
-          <Image source={stat.icon} style={styles.statIcon} resizeMode="contain" />
-          <Text style={styles.statValue}>+{stat.value}</Text>
-          <Text style={styles.statLabel}>{stat.label}</Text>
+          <Image source={stat.icon} style={{ width: 16 * scale, height: 16 * scale }} resizeMode="contain" />
+          <Text style={[styles.statValue, { fontSize: 14 * scale }]}>+{stat.value}</Text>
+          <Text style={[styles.statLabel, { fontSize: 12 * scale }]}>{stat.label}</Text>
         </View>
       ))}
     </View>
   );
 }
 
-function TagsDisplay({ tags }: { tags: ItemTag[] }) {
+function TagsDisplay({ tags, scale = 1 }: { tags: ItemTag[]; scale?: number }) {
   if (tags.length === 0) {
     return null;
   }
@@ -155,14 +156,14 @@ function TagsDisplay({ tags }: { tags: ItemTag[] }) {
     <View style={styles.tagsSection}>
       {tags.map((tag) => (
         <View key={tag} style={styles.tagContainer}>
-          <Text style={[styles.tagText, { color: getTagColor(tag) }]}>{tag}</Text>
+          <Text style={[styles.tagText, { color: getTagColor(tag), fontSize: 10 * scale }]}>{tag}</Text>
         </View>
       ))}
     </View>
   );
 }
 
-function ItemsetsDisplay({ itemId }: { itemId: string }) {
+function ItemsetsDisplay({ itemId, scale = 1 }: { itemId: string; scale?: number }) {
   const itemsets = getItemsetsForItem(itemId as any);
 
   if (itemsets.length === 0) {
@@ -171,15 +172,15 @@ function ItemsetsDisplay({ itemId }: { itemId: string }) {
 
   return (
     <View style={styles.itemsetsSection}>
-      <Text style={styles.itemsetsSectionTitle}>Part of:</Text>
+      <Text style={[styles.itemsetsSectionTitle, { fontSize: 10 * scale }]}>Part of:</Text>
       {itemsets.map((itemset) => (
         <View key={itemset.id} style={styles.itemsetRow}>
           <Image
             source={ITEMSET_ICONS[itemset.id as keyof typeof ITEMSET_ICONS]}
-            style={styles.itemsetIcon}
+            style={{ width: 20 * scale, height: 20 * scale }}
             resizeMode="contain"
           />
-          <Text style={styles.itemsetName}>{itemset.name}</Text>
+          <Text style={[styles.itemsetName, { fontSize: 12 * scale }]}>{itemset.name}</Text>
         </View>
       ))}
     </View>
@@ -188,6 +189,8 @@ function ItemsetsDisplay({ itemId }: { itemId: string }) {
 
 export function ItemTooltip({ item, visible, onClose }: ItemTooltipProps) {
   const [layout, setLayout] = useState({ width: 0, height: 0 });
+  const isCompact = useScreenVariant() === 'compact';
+  const s = isCompact ? 1.5 : 1;
 
   if (!item) {
     return null;
@@ -214,10 +217,10 @@ export function ItemTooltip({ item, visible, onClose }: ItemTooltipProps) {
   const effectText = effectDescription ?? 'No effect.';
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <InlineModal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onClose}>
         <View
-          style={styles.tooltipContainer}
+          style={[styles.tooltipContainer, { minWidth: 380 * s, maxWidth: 440 * s }]}
           onLayout={(event) => setLayout(event.nativeEvent.layout)}
         >
           {layout.width > 0 && (
@@ -235,10 +238,10 @@ export function ItemTooltip({ item, visible, onClose }: ItemTooltipProps) {
             />
           )}
 
-          <TouchableOpacity activeOpacity={1} style={styles.contentContainer}>
+          <TouchableOpacity activeOpacity={1} style={[styles.contentContainer, { padding: 48 * s }]}>
             {/* Header */}
             <View style={[styles.header, { borderBottomColor: borderColor }]}>
-              <View style={styles.iconContainer}>
+              <View style={[styles.iconContainer, { width: 64 * s, height: 64 * s }]}>
                 <Image
                   source={squareSource}
                   style={{ position: 'absolute', width: '100%', height: '100%' }}
@@ -247,17 +250,17 @@ export function ItemTooltip({ item, visible, onClose }: ItemTooltipProps) {
                 {item.image ? (
                   <Image source={item.image} style={styles.image} resizeMode="contain" />
                 ) : (
-                  <Text style={styles.emoji}>{item.emoji}</Text>
+                  <Text style={[styles.emoji, { fontSize: 36 * s }]}>{item.emoji}</Text>
                 )}
               </View>
               <View style={styles.headerText}>
-                <Text style={styles.name}>{item.name}</Text>
+                <Text style={[styles.name, { fontSize: 18 * s }]}>{item.name}</Text>
                 <View style={styles.rarityRow}>
-                  <Text style={[styles.rarity, { color: rarityColor }]}>
+                  <Text style={[styles.rarity, { color: rarityColor, fontSize: 12 * s }]}>
                     {getRarityName(rarity)}
                     {!isTool && baseRarity !== rarity && ` (${getRarityName(baseRarity)})`}
                   </Text>
-                  <Text style={[styles.tierLabel, { color: TIER_COLORS[tier - 1] }]}>
+                  <Text style={[styles.tierLabel, { color: TIER_COLORS[tier - 1], fontSize: 11 * s }]}>
                     Tier {TIER_LABELS[tier - 1]}
                   </Text>
                 </View>
@@ -265,7 +268,7 @@ export function ItemTooltip({ item, visible, onClose }: ItemTooltipProps) {
             </View>
 
             {/* Stats */}
-            <StatDisplay stats={item.stats} />
+            <StatDisplay stats={item.stats} scale={s} />
 
             {/* Effect */}
             <View style={styles.effectSection}>
@@ -274,23 +277,23 @@ export function ItemTooltip({ item, visible, onClose }: ItemTooltipProps) {
                 style={{ position: 'absolute', width: '100%', height: '100%' }}
                 resizeMode="stretch"
               />
-              <Text style={styles.effectText}>{effectText}</Text>
+              <Text style={[styles.effectText, { fontSize: 12 * s, lineHeight: 16 * s }]}>{effectText}</Text>
             </View>
 
             {/* Tags */}
-            <TagsDisplay tags={item.tags} />
+            <TagsDisplay tags={item.tags} scale={s} />
 
             {/* Itemsets */}
-            <ItemsetsDisplay itemId={item.id} />
+            <ItemsetsDisplay itemId={item.id} scale={s} />
 
             {/* Type indicator */}
             <View style={styles.typeIndicator}>
-              <Text style={styles.typeText}>{isTool ? 'Tool' : 'Gear'}</Text>
+              <Text style={[styles.typeText, { fontSize: 10 * s }]}>{isTool ? 'Tool' : 'Gear'}</Text>
             </View>
           </TouchableOpacity>
         </View>
       </TouchableOpacity>
-    </Modal>
+    </InlineModal>
   );
 }
 

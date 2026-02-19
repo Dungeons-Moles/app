@@ -23,6 +23,7 @@ import { ENEMY_TRAITS } from '../game/combat/traits';
 import { getEntityImageSource } from '../components/game/entityImages';
 
 const defaultMoleImageSource = require('../../assets/entities/characters/default-mole.png');
+import { useEquippedSkinImage } from '../hooks/useEquippedSkinImage';
 import { getPhaseLabel } from '../utils/phase-labels';
 import { createGameplayStateProgram } from '@/services/solana/programs';
 import {
@@ -94,6 +95,7 @@ export function CombatScreen({ navigation, route }: CombatScreenProps) {
 function CombatScreenContent({ navigation, route }: CombatScreenProps) {
   const { state: gameState, dispatch: gameDispatch } = useGame();
   const { profile, mode } = useProfile();
+  const playerSkinSource = useEquippedSkinImage(profile?.equippedSkin);
   const { wallet, signAndSendTransaction } = useWallet();
   const { connection } = useSolanaConnection();
   const { endSessionWithSessionSigner, queueEndGame, stopAutoCommit, hasActiveSession, session, mapSeed, gameplayState } =
@@ -490,6 +492,7 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
 
   return (
     <CombatLayout
+      playerSkinSource={playerSkinSource}
       enemyPanel={{
         name: combatState.combat?.enemy.name ?? 'Enemy',
         emoji: combatState.combat?.enemy.emoji ?? '',
@@ -508,6 +511,7 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
       playerPanel={{
         name: combatState.combat?.player.name ?? 'Player',
         emoji: combatState.combat?.player.emoji ?? '',
+        imageSource: playerSkinSource,
         dig: gameState?.player.stats.dig ?? 0,
         gold: playerGold ?? combatInput?.playerGold ?? gameState?.player.stats.gold,
         equippedTool: playerEquipment.tool,

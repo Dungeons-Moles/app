@@ -36,11 +36,17 @@ import { useInputMode } from '../hooks/useInputMode';
 import { FocusGlow } from '../components/ui/FocusGlow';
 import { ControllerKeyboard } from '../components/ui/ControllerKeyboard';
 import { getVrfSeed } from '../services/solana/vrf';
+import { useNftMarketplace } from '../hooks/useNftMarketplace';
+import { useQuests } from '../hooks/useQuests';
+import { useEquipSkin } from '../hooks/useEquipSkin';
+import { NftCard } from '../components/marketplace/NftCard';
+import { QuestCard } from '../components/quests/QuestCard';
+import { getSkinImage } from '../data/skinImages';
+import { useEquippedSkinImage } from '../hooks/useEquippedSkinImage';
 
 const iconASource = require('../../assets/ui/control-buttons/a.png');
 const iconBSource = require('../../assets/ui/control-buttons/b.png');
 const iconDirSource = require('../../assets/ui/control-buttons/direction.png');
-const defaultMoleImageSource = require('../../assets/entities/characters/default-mole.png');
 const backgroundImageCompact = require('../../assets/ui/backgrounds/hub-background-compact.png');
 const backgroundImageWide = require('../../assets/ui/backgrounds/hub-background-wide.png');
 const buttonV1Source = require('../../assets/ui/buttons/button-v1.png');
@@ -80,7 +86,6 @@ export function HubScreen({ navigation }: HubScreenProps) {
   const { wallet, getBalance } = useWallet();
   const [showSettings, setShowSettings] = useState(false);
   const [showSkins, setShowSkins] = useState(false);
-  const [showRanks, setShowRanks] = useState(false);
   const [showQuests, setShowQuests] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [showPvP, setShowPvP] = useState(false);
@@ -97,7 +102,26 @@ export function HubScreen({ navigation }: HubScreenProps) {
   });
   const [settingsFocus, setSettingsFocus] = useState(0); // 0 = speed, 1 = reset
   const [profileFocus, setProfileFocus] = useState(0); // 0 = name, 1 = save
+  const [skinsFocus, setSkinsFocus] = useState(0);
+  const [questsFocus, setQuestsFocus] = useState(0);
   const [showProfileKeyboard, setShowProfileKeyboard] = useState(false);
+  const {
+    userSkins,
+    isLoading: skinsLoading,
+    fetchUserAssets,
+  } = useNftMarketplace();
+  const {
+    quests,
+    isLoading: questsLoading,
+    fetchQuests,
+    acceptQuest,
+    claimReward,
+  } = useQuests();
+  const { equipSkin, unequipSkin, isLoading: equipLoading } = useEquipSkin();
+
+  // Resolve equipped skin image for center character + avatar (single getAccountInfo, no heavy getProgramAccounts)
+  const characterImage = useEquippedSkinImage(profile?.equippedSkin);
+
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -132,6 +156,14 @@ export function HubScreen({ navigation }: HubScreenProps) {
       cancelled = true;
     };
   }, [getBalance, isGuest, isScreenFocused, wallet.publicKey]);
+
+  useEffect(() => {
+    if (showSkins) fetchUserAssets();
+  }, [showSkins]);
+
+  useEffect(() => {
+    if (showQuests) fetchQuests();
+  }, [showQuests]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -190,14 +222,16 @@ export function HubScreen({ navigation }: HubScreenProps) {
   };
 
   const handleLeaderboard = () => {
-    setShowRanks(true);
+    navigation.navigate('GauntletRanking', { returnTo: 'Hub' });
   };
 
   const handleQuests = () => {
+    setQuestsFocus(0);
     setShowQuests(true);
   };
 
   const handleSkins = () => {
+    setSkinsFocus(0);
     setShowSkins(true);
   };
 
@@ -264,7 +298,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
 
   // --- Controller navigation ---
   const anyModalOpen =
-    showSettings || showProfile || showSkins || showRanks || showQuests || showPvP;
+    showSettings || showProfile || showSkins || showQuests || showPvP;
   const isController = inputMode === 'controller';
 
   const controllerCloseHint = isController ? (
@@ -299,7 +333,6 @@ export function HubScreen({ navigation }: HubScreenProps) {
     else if (showSettings) setShowSettings(false);
     else if (showProfile) setShowProfile(false);
     else if (showSkins) setShowSkins(false);
-    else if (showRanks) setShowRanks(false);
     else if (showQuests) setShowQuests(false);
   };
 
@@ -346,10 +379,51 @@ export function HubScreen({ navigation }: HubScreenProps) {
       }
     : null;
 
-  const otherModalOpen = anyModalOpen && !showSettings && !showProfile && !showPvP;
+  const skinsActions = showSkins && userSkins.length > 0
+    ? {
+        onA: () => {
+          const skin = userSkins[skinsFocus];
+          if (!skin || equipLoading) return;
+          const isEquipped = profile?.equippedSkin?.equals(skin.address) ?? false;
+          if (isEquipped) {
+            unequipSkin().then(() => { refresh(); fetchUserAssets(); });
+          } else {
+            equipSkin(skin.address).then(() => { refresh(); fetchUserAssets(); });
+          }
+        },
+        onB: closeAnyModal,
+        onDPadUp: () => setSkinsFocus((p) => Math.max(0, p - 1)),
+        onDPadDown: () => setSkinsFocus((p) => Math.min(userSkins.length - 1, p + 1)),
+      }
+    : showSkins
+      ? { onB: closeAnyModal }
+      : null;
+
+  // Flatten quests into a single list for focus tracking
+  const flatQuests = quests;
+  const questsActions = showQuests && flatQuests.length > 0
+    ? {
+        onA: () => {
+          const quest = flatQuests[questsFocus];
+          if (!quest || questsLoading) return;
+          if (quest.progress?.completed && !quest.progress?.claimed) {
+            claimReward(quest.definition.questId);
+          } else if (!quest.progress) {
+            acceptQuest(quest.definition.questId);
+          }
+        },
+        onB: closeAnyModal,
+        onDPadUp: () => setQuestsFocus((p) => Math.max(0, p - 1)),
+        onDPadDown: () => setQuestsFocus((p) => Math.min(flatQuests.length - 1, p + 1)),
+      }
+    : showQuests
+      ? { onB: closeAnyModal }
+      : null;
+
+  const otherModalOpen = anyModalOpen && !showSettings && !showProfile && !showPvP && !showSkins && !showQuests;
 
   useControllerAction(
-    settingsActions ?? profileActions ?? pvpActions ?? {
+    settingsActions ?? profileActions ?? pvpActions ?? skinsActions ?? questsActions ?? {
       onA: otherModalOpen ? undefined : handleControllerA,
       onB: otherModalOpen ? closeAnyModal : undefined,
       onDPadUp: otherModalOpen
@@ -421,7 +495,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
                 {/* Avatar Square */}
                 <View style={[styles.avatarContainer, isCompact && compactStyles.avatarContainer]}>
                   <Image
-                    source={defaultMoleImageSource}
+                    source={characterImage}
                     style={[styles.avatarImage, isCompact && compactStyles.avatarImage]}
                     resizeMode="cover"
                   />
@@ -624,7 +698,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
                 </Svg>
               </View>
               <Image
-                source={defaultMoleImageSource}
+                source={characterImage}
                 style={[styles.characterImage, isCompact && compactStyles.characterImage]}
                 resizeMode="contain"
               />
@@ -858,51 +932,59 @@ export function HubScreen({ navigation }: HubScreenProps) {
                     )}
                   </View>
 
-                  <View style={styles.marketplaceContent}>
-                    <Text style={[styles.comingSoonText, isCompact && compactStyles.comingSoonText]}>Coming Soon</Text>
-                  </View>
-                  {controllerCloseHint}
-                </View>
-              </View>
-            </TouchableWithoutFeedback>
-          </View>
-        </TouchableWithoutFeedback>
-      </InlineModal>
-
-      {/* Ranks Modal */}
-      <InlineModal
-        visible={showRanks}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowRanks(false)}
-      >
-        <TouchableWithoutFeedback onPress={() => setShowRanks(false)}>
-          <View style={styles.modalOverlay}>
-            <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
-              <View style={[styles.marketplaceModal, isCompact && compactStyles.marketplaceModal]}>
-                <ImageBackground
-                  source={paperPanelSource}
-                  style={[styles.marketplaceBg, isCompact && compactStyles.marketplaceBg]}
-                  resizeMode="stretch"
-                />
-                <View style={[styles.marketplaceInner, isCompact && compactStyles.marketplaceInner]}>
-                  <View style={styles.modalHeader}>
-                    <Text style={[styles.modalTitle, isCompact && compactStyles.modalTitle]}>PvP Ranks</Text>
-                    {!isController && (
-                      <TouchableOpacity
-                        onPress={() => setShowRanks(false)}
-                        style={styles.closeButton}
-                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                      >
-                        <Text style={[styles.closeButtonText, isCompact && compactStyles.closeButtonText]}>✕</Text>
-                      </TouchableOpacity>
+                  <ScrollView style={{ flex: 1, width: '100%' }} contentContainerStyle={{ alignItems: 'center', gap: 8, paddingBottom: 8 }}>
+                    {skinsLoading ? (
+                      <ActivityIndicator color="#3d2b1f" size={isCompact ? 'large' : 'small'} style={{ marginTop: 20 }} />
+                    ) : userSkins.length === 0 ? (
+                      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                        <Text style={[styles.comingSoonText, isCompact && compactStyles.comingSoonText]}>
+                          No skins yet
+                        </Text>
+                        <Text style={[styles.emptySubtext, isCompact && compactStyles.emptySubtext]}>
+                          Visit the Marketplace to browse skins
+                        </Text>
+                      </View>
+                    ) : (
+                      <View style={styles.skinGrid}>
+                        {userSkins.map((skin, idx) => {
+                          const isEquipped = profile?.equippedSkin?.equals(skin.address) ?? false;
+                          return (
+                            <FocusGlow key={skin.address.toBase58()} active={isController && skinsFocus === idx}>
+                              <NftCard
+                                name={skin.name}
+                                image={getSkinImage(skin.name)}
+                                isOwned
+                                isEquipped={isEquipped}
+                                actionLabel={isEquipped ? 'Unequip' : 'Equip'}
+                                onAction={isEquipped
+                                  ? async () => { await unequipSkin(); refresh(); fetchUserAssets(); }
+                                  : async () => { await equipSkin(skin.address); refresh(); fetchUserAssets(); }
+                                }
+                                disabled={equipLoading}
+                                isCompact={isCompact}
+                              />
+                            </FocusGlow>
+                          );
+                        })}
+                      </View>
                     )}
-                  </View>
-
-                  <View style={styles.marketplaceContent}>
-                    <Text style={[styles.comingSoonText, isCompact && compactStyles.comingSoonText]}>Coming Soon</Text>
-                  </View>
-                  {controllerCloseHint}
+                  </ScrollView>
+                  {isController && (
+                    <View style={[styles.controllerCloseHint, isCompact && compactStyles.controllerCloseHint]}>
+                      {userSkins.length > 0 && (
+                        <>
+                          <Image source={iconDirSource} style={{ width: isCompact ? 40 : 18, height: isCompact ? 40 : 18 }} resizeMode="contain" />
+                          <Text style={[styles.controllerCloseHintText, isCompact && compactStyles.controllerCloseHintText]}>Navigate</Text>
+                          <Image source={iconASource} style={{ width: isCompact ? 40 : 18, height: isCompact ? 40 : 18, marginLeft: 8 }} resizeMode="contain" />
+                          <Text style={[styles.controllerCloseHintText, isCompact && compactStyles.controllerCloseHintText]}>
+                            {userSkins[skinsFocus] && (profile?.equippedSkin?.equals(userSkins[skinsFocus].address) ?? false) ? 'Unequip' : 'Equip'}
+                          </Text>
+                        </>
+                      )}
+                      <Image source={iconBSource} style={{ width: isCompact ? 40 : 18, height: isCompact ? 40 : 18, marginLeft: 8 }} resizeMode="contain" />
+                      <Text style={[styles.controllerCloseHintText, isCompact && compactStyles.controllerCloseHintText]}>Close</Text>
+                    </View>
+                  )}
                 </View>
               </View>
             </TouchableWithoutFeedback>
@@ -940,10 +1022,61 @@ export function HubScreen({ navigation }: HubScreenProps) {
                     )}
                   </View>
 
-                  <View style={styles.marketplaceContent}>
-                    <Text style={[styles.comingSoonText, isCompact && compactStyles.comingSoonText]}>Coming Soon</Text>
-                  </View>
-                  {controllerCloseHint}
+                  <ScrollView style={{ flex: 1, width: '100%' }} contentContainerStyle={{ alignItems: 'center', gap: 8, paddingBottom: 8 }}>
+                    {questsLoading ? (
+                      <ActivityIndicator color="#3d2b1f" size={isCompact ? 'large' : 'small'} style={{ marginTop: 20 }} />
+                    ) : quests.length === 0 ? (
+                      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                        <Text style={[styles.comingSoonText, isCompact && compactStyles.comingSoonText]}>
+                          No active quests
+                        </Text>
+                      </View>
+                    ) : (
+                      <>
+                        {quests.map((quest, idx) => {
+                          const objectiveLabel = getObjectiveLabel(quest.definition);
+                          const rewardLabel = getRewardLabel(quest.definition);
+                          const qt = quest.definition.questType;
+                          const type = 'daily' in qt ? 'Daily' : 'weekly' in qt ? 'Weekly' : 'Seasonal';
+                          return (
+                            <FocusGlow key={quest.definition.questId} active={isController && questsFocus === idx}>
+                              <QuestCard
+                                objectiveText={objectiveLabel}
+                                questType={type}
+                                progress={quest.progress?.progress ?? 0}
+                                target={quest.definition.objectiveCount}
+                                rewardText={rewardLabel}
+                                isCompleted={quest.progress?.completed ?? false}
+                                isClaimed={quest.progress?.claimed ?? false}
+                                isAccepted={quest.progress !== null}
+                                onAccept={async () => { await acceptQuest(quest.definition.questId); }}
+                                onClaim={async () => { await claimReward(quest.definition.questId); }}
+                                disabled={questsLoading}
+                                isCompact={isCompact}
+                              />
+                            </FocusGlow>
+                          );
+                        })}
+                      </>
+                    )}
+                  </ScrollView>
+                  {isController && (
+                    <View style={[styles.controllerCloseHint, isCompact && compactStyles.controllerCloseHint]}>
+                      {quests.length > 0 && (
+                        <>
+                          <Image source={iconDirSource} style={{ width: isCompact ? 40 : 18, height: isCompact ? 40 : 18 }} resizeMode="contain" />
+                          <Text style={[styles.controllerCloseHintText, isCompact && compactStyles.controllerCloseHintText]}>Navigate</Text>
+                          <Image source={iconASource} style={{ width: isCompact ? 40 : 18, height: isCompact ? 40 : 18, marginLeft: 8 }} resizeMode="contain" />
+                          <Text style={[styles.controllerCloseHintText, isCompact && compactStyles.controllerCloseHintText]}>
+                            {quests[questsFocus] && !quests[questsFocus].progress ? 'Accept' :
+                             quests[questsFocus]?.progress?.completed && !quests[questsFocus]?.progress?.claimed ? 'Claim' : 'Select'}
+                          </Text>
+                        </>
+                      )}
+                      <Image source={iconBSource} style={{ width: isCompact ? 40 : 18, height: isCompact ? 40 : 18, marginLeft: 8 }} resizeMode="contain" />
+                      <Text style={[styles.controllerCloseHintText, isCompact && compactStyles.controllerCloseHintText]}>Close</Text>
+                    </View>
+                  )}
                 </View>
               </View>
             </TouchableWithoutFeedback>
@@ -1179,6 +1312,25 @@ export function HubScreen({ navigation }: HubScreenProps) {
       <ControllerHints hints={controllerHints} />
     </Animated.View>
   );
+}
+
+function getObjectiveLabel(def: any): string {
+  const ot = def.objectiveType;
+  const count = def.objectiveCount;
+  if ('winBattles' in ot) return `Win ${count} battles`;
+  if ('completeLevels' in ot) return `Complete ${count} levels`;
+  if ('playPvpMatches' in ot) return `Play ${count} PvP matches`;
+  if ('defeatBosses' in ot) return `Defeat ${count} bosses`;
+  if ('collectGold' in ot) return `Collect ${count} gold`;
+  return `Complete objective (${count})`;
+}
+
+function getRewardLabel(def: any): string {
+  const rt = def.rewardType;
+  if ('gauntletBooster' in rt) return 'Gauntlet Booster';
+  if ('skin' in rt) return 'Skin NFT';
+  if ('nftItem' in rt) return 'NFT Item';
+  return 'Reward';
 }
 
 const styles = StyleSheet.create({
@@ -1648,6 +1800,19 @@ const styles = StyleSheet.create({
     fontSize: 22,
     color: '#8a7a6a',
   },
+  skinGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    justifyContent: 'center',
+  },
+  emptySubtext: {
+    fontFamily: Typography.body,
+    fontSize: 12,
+    color: '#8a7a6a',
+    marginTop: 4,
+    textAlign: 'center',
+  },
 
   // PROFILE MODAL STYLES
   profileSection: {
@@ -1911,6 +2076,9 @@ const compactStyles = StyleSheet.create({
   },
   comingSoonText: {
     fontSize: 40,
+  },
+  emptySubtext: {
+    fontSize: 22,
   },
   // Profile modal — scaled up for compact
   profileSectionTitle: {

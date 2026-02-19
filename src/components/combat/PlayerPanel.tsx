@@ -5,7 +5,15 @@
  */
 
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, ImageBackground } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  Image,
+  ImageBackground,
+  type ImageSourcePropType,
+} from 'react-native';
 import type { StatusEffects, Tool, Gear, ItemRarity } from '../../game/engine/types';
 import { getTierFromRarity } from '../../data/gear';
 import { Typography } from '../../theme/typography';
@@ -24,6 +32,8 @@ const SIDEBAR_BG = require('../../../assets/ui/panels/sidebar.png');
 export interface PlayerPanelProps {
   name: string;
   emoji: string;
+  /** Optional character image (skin). Falls back to default mole if not provided. */
+  imageSource?: ImageSourcePropType;
   hp: number;
   maxHp: number;
   atk: number;
@@ -111,6 +121,7 @@ function ItemBadge({ emoji, name, image, rarity, scale = 1 }: ItemBadgeProps) {
 export function PlayerPanel({
   name,
   emoji,
+  imageSource,
   hp,
   maxHp,
   atk,
@@ -173,7 +184,7 @@ export function PlayerPanel({
           {/* Header */}
           <View style={[styles.header, { marginBottom: 12 * scale }]}>
             <Image
-              source={defaultMoleImageSource}
+              source={imageSource ?? defaultMoleImageSource}
               style={{
                 width: 60 * scale,
                 height: 60 * scale,

@@ -7,7 +7,7 @@
  */
 
 import React, { useCallback, useMemo, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, ImageBackground, Animated } from 'react-native';
+import { View, Text, StyleSheet, ImageBackground, Animated, type ImageSourcePropType } from 'react-native';
 import { useCombat } from '../../contexts/CombatContext';
 import type { CombatSpeed } from '../../contexts/CombatContext';
 import { useScreenVariant } from '../../contexts/ScreenVariantContext';
@@ -33,6 +33,10 @@ export interface CombatLayoutProps {
   playerPanel: Omit<PlayerPanelProps, CombatStateFields>;
   /** Optional label shown at top center (e.g., "PIT DRAFT") */
   label?: string;
+  /** Player skin image source for the combat arena sprites */
+  playerSkinSource?: ImageSourcePropType;
+  /** PvP opponent skin image source for the combat arena sprites */
+  pvpOpponentSkinSource?: ImageSourcePropType;
   /** Gold reward shown on VictoryDefeatDisplay (PvE only) */
   goldReward?: number;
   /** Whether this is the final boss victory (PvE only) */
@@ -47,6 +51,8 @@ export function CombatLayout({
   enemyPanel,
   playerPanel,
   label,
+  playerSkinSource,
+  pvpOpponentSkinSource,
   goldReward,
   isFinalVictory,
   onCombatComplete,
@@ -226,6 +232,8 @@ export function CombatLayout({
                 isAnimating={combatState.isAnimating}
                 currentTurn={currentTurn}
                 activeActor={activeActor}
+                playerSkinSource={playerSkinSource}
+                pvpOpponentSkinSource={pvpOpponentSkinSource}
                 scale={scale}
               />
 

@@ -11,6 +11,8 @@ export interface OnChainPlayerProfile {
   createdAt: number;
   unlockedItems: Uint8Array;
   activeItemPool: Uint8Array;
+  equippedSkin: PublicKey | null;
+  gauntletBoosters: number;
 }
 
 export interface CachedProfileData {
@@ -29,6 +31,7 @@ export interface TransactionResult {
   gameState?: GameState | null;
   mapSeed?: bigint | null;
   isResumed?: boolean;
+  duelQueued?: { seed: bigint; slot: number };
 }
 
 /**
@@ -43,4 +46,50 @@ export interface CampaignLevel {
   isCompleted: boolean;
   /** Seed for map generation (if unlocked) */
   seed: bigint | null;
+}
+
+export interface MetaplexCoreAsset {
+  address: PublicKey;
+  owner: PublicKey;
+  name: string;
+  uri: string;
+  collection: PublicKey | null;
+}
+
+export interface ListingData {
+  seller: PublicKey;
+  asset: PublicKey;
+  collection: PublicKey;
+  priceLamports: bigint;
+  createdAt: number;
+}
+
+export interface ListingWithAsset {
+  listing: ListingData;
+  asset: MetaplexCoreAsset;
+}
+
+export interface QuestDefinitionData {
+  questId: number;
+  questType: { daily: {} } | { weekly: {} } | { seasonal: {} };
+  objectiveType: { winBattles: {} } | { completeLevels: {} } | { playPvpMatches: {} } | { defeatBosses: {} } | { collectGold: {} };
+  objectiveCount: number;
+  rewardType: { gauntletBooster: {} } | { skin: {} } | { nftItem: {} };
+  rewardData: Uint8Array;
+  season: number;
+  active: boolean;
+}
+
+export interface QuestProgressData {
+  player: PublicKey;
+  questId: number;
+  progress: number;
+  completed: boolean;
+  claimed: boolean;
+  lastReset: number;
+}
+
+export interface QuestWithProgress {
+  definition: QuestDefinitionData;
+  progress: QuestProgressData | null;
 }

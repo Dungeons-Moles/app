@@ -36,6 +36,7 @@ import { useControllerAction } from '../hooks/useControllerAction';
 import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHints';
 import { useInputMode } from '../hooks/useInputMode';
 import { FocusGlow } from '../components/ui/FocusGlow';
+import { useEquippedSkinImage } from '../hooks/useEquippedSkinImage';
 
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.png');
 const STAINS_BACKGROUND = require('../../assets/ui/backgrounds/stains-background.png');
@@ -575,6 +576,9 @@ interface CombatPhaseContentProps {
 }
 
 function CombatPhaseContent({ pitDraft }: CombatPhaseContentProps) {
+  const { profile } = useProfile();
+  const playerSkinSource = useEquippedSkinImage(profile?.equippedSkin);
+  const opponentSkinSource = useEquippedSkinImage(pitDraft.matchData?.opponentSkinPubkey ?? null);
   const { state: combatState, startCombatWithLog } = useCombat();
 
   // Start combat replay when component mounts
@@ -603,10 +607,12 @@ function CombatPhaseContent({ pitDraft }: CombatPhaseContentProps) {
   return (
     <CombatLayout
       label="PIT DRAFT"
+      playerSkinSource={playerSkinSource}
+      pvpOpponentSkinSource={opponentSkinSource}
       enemyPanel={{
         name: 'Opponent',
         emoji: '',
-        imageSource: defaultMoleImageSource,
+        imageSource: opponentSkinSource,
         dig: pitDraft.matchData?.enemy.dig ?? 0,
         subtitle: pitDraft.matchData?.opponentProfileName,
         equippedTool: pitDraft.matchData?.enemyTool,
@@ -615,6 +621,7 @@ function CombatPhaseContent({ pitDraft }: CombatPhaseContentProps) {
       playerPanel={{
         name: 'You',
         emoji: '',
+        imageSource: playerSkinSource,
         dig: pitDraft.matchData?.player.dig ?? 0,
         subtitle: pitDraft.matchData?.playerProfileName,
         equippedTool: pitDraft.matchData?.playerTool,

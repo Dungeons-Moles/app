@@ -8,7 +8,7 @@
  * @see data-model.md for MapEnemies and MapPois structure
  */
 
-import React, { createContext, useContext, useState, useCallback, useMemo, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo, useEffect, useRef, ReactNode } from 'react';
 import { Keypair, PublicKey } from '@solana/web3.js';
 import { useGameplayState, SyncStatus } from '@/hooks/useGameplayState';
 import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
@@ -170,7 +170,10 @@ export function GameplayStateProvider({ children }: { children: ReactNode }) {
   const [enemies, setEnemies] = useState<EnemyData[]>([]);
   const [pois, setPois] = useState<PoiData[]>([]);
   const [isMapEntitiesLoading, setIsMapEntitiesLoading] = useState(false);
-  const [sessionPdaForEntities, setSessionPdaForEntities] = useState<PublicKey | null>(null);
+  // Tracks the last session+connection pair used for entity fetch to avoid
+  // redundant fetches while still re-fetching when the connection switches
+  // (e.g. base chain → ER after delegation).
+  const lastEntityFetchKeyRef = useRef<string>('');
 
   /**
    * Refresh map entities (enemies and POIs) from on-chain state.
@@ -183,7 +186,6 @@ export function GameplayStateProvider({ children }: { children: ReactNode }) {
       }
 
       setIsMapEntitiesLoading(true);
-      setSessionPdaForEntities(sessionPda);
 
       let rawEnemyData: Array<{ x: number; y: number; archetypeId: number; tier: number }> = [];
 
@@ -341,8 +343,9 @@ export function GameplayStateProvider({ children }: { children: ReactNode }) {
   );
 
   /**
-   * Automatically refresh map entities when the game state's session changes.
-   * This ensures POIs and enemies are loaded when a session starts or is resumed.
+   * Automatically refresh map entities when the game state's session changes
+   * OR when the connection switches (e.g. base chain → ER after delegation).
+   * This ensures POIs and enemies are loaded from the correct source.
    */
   useEffect(() => {
     const sessionPda = gameplay.gameState?.session;
@@ -350,14 +353,15 @@ export function GameplayStateProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    // Only refresh if this is a different session than we already have loaded
-    if (sessionPdaForEntities?.equals(sessionPda)) {
+    const fetchKey = `${sessionPda.toBase58()}:${gameplayConnection.rpcEndpoint}`;
+    if (lastEntityFetchKeyRef.current === fetchKey) {
       return;
     }
+    lastEntityFetchKeyRef.current = fetchKey;
 
     console.log('[GameplayStateContext] Auto-refreshing map entities for session:', sessionPda.toBase58());
     refreshMapEntities(sessionPda);
-  }, [gameplay.gameState?.session, gameplayConnection, sessionPdaForEntities, refreshMapEntities]);
+  }, [gameplay.gameState?.session, gameplayConnection, refreshMapEntities]);
 
   // Compute derived values for UI convenience
   const position: [number, number] | null = gameplay.gameState

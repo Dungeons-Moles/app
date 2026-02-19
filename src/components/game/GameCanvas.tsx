@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View, type ImageSourcePropType } from 'react-native';
 import type { OverviewModeState } from '../../contexts/GameContext';
 import type { Position, WallHighlightState } from '../../game/engine/types';
 import { TimePhase } from '../../game/engine/types';
@@ -19,6 +19,7 @@ interface GameCanvasProps {
   width?: number;
   height?: number;
   cameraFocusOverride?: Position;
+  playerSkinSource?: ImageSourcePropType;
 }
 
 export function GameCanvas({
@@ -34,6 +35,7 @@ export function GameCanvas({
   width,
   height,
   cameraFocusOverride,
+  playerSkinSource,
 }: GameCanvasProps) {
   return (
     <View style={styles.container}>
@@ -49,6 +51,7 @@ export function GameCanvas({
         cameraFocusOverride={cameraFocusOverride}
         width={width}
         height={height}
+        playerSkinSource={playerSkinSource}
       />
       {feedbackMessage && (
         <View style={styles.feedbackOverlay} pointerEvents="none">

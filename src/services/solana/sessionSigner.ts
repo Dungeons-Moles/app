@@ -242,6 +242,61 @@ export async function clearSessionSignerWallet(): Promise<void> {
   await SecureStorage.deleteItemAsync(SESSION_SIGNER_STORAGE_KEY);
 }
 
+// ============================================================================
+// Per-Session Keypair Storage
+// ============================================================================
+
+/** Returns the SecureStorage key for a specific session's signer keypair. */
+function sessionSignerKeyForSession(sessionPda: string): string {
+  return `${SESSION_SIGNER_STORAGE_KEY}:${sessionPda}`;
+}
+
+/**
+ * Associates a session signer keypair with a specific session PDA.
+ * This allows restoring the correct keypair when switching between sessions.
+ */
+export async function storeSessionSignerForSession(
+  mainWalletAddress: string,
+  keypair: Keypair,
+  sessionPda: string
+): Promise<void> {
+  const stored: StoredSessionSigner = {
+    secretKey: bs58.encode(keypair.secretKey),
+    mainWalletAddress,
+    createdAt: Date.now(),
+  };
+  await SecureStorage.setItemAsync(
+    sessionSignerKeyForSession(sessionPda),
+    JSON.stringify(stored)
+  );
+}
+
+/**
+ * Loads the session signer keypair associated with a specific session PDA.
+ * Returns null if no keypair is stored for this session or if the wallet doesn't match.
+ */
+export async function loadSessionSignerForSession(
+  mainWalletAddress: string,
+  sessionPda: string
+): Promise<Keypair | null> {
+  try {
+    const data = await SecureStorage.getItemAsync(sessionSignerKeyForSession(sessionPda));
+    if (!data) return null;
+    const stored: StoredSessionSigner = JSON.parse(data);
+    if (stored.mainWalletAddress !== mainWalletAddress) return null;
+    return Keypair.fromSecretKey(bs58.decode(stored.secretKey));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Removes the session-specific signer keypair from storage.
+ */
+export async function clearSessionSignerForSession(sessionPda: string): Promise<void> {
+  await SecureStorage.deleteItemAsync(sessionSignerKeyForSession(sessionPda));
+}
+
 /**
  * Gets information about the current sessionSigner wallet.
  *
