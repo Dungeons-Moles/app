@@ -3,7 +3,7 @@
  */
 
 import React, { useMemo } from 'react';
-import { StyleSheet, View, useWindowDimensions, Text, Image, ImageBackground } from 'react-native';
+import { StyleSheet, View, useWindowDimensions, Text, Image, ImageBackground, type ImageSourcePropType } from 'react-native';
 import type { CombatantState, StatusEffects } from '../../game/engine/types';
 import { DamageNumbers } from './DamageNumbers';
 import { EffectNotifications } from './EffectNotifications';
@@ -23,6 +23,10 @@ interface CombatArenaProps {
   activeActor?: 'player' | 'enemy' | null;
   playerMaxArm?: number;
   enemyMaxArm?: number;
+  /** Player skin image source (equipped skin or default mole) */
+  playerSkinSource?: ImageSourcePropType;
+  /** PvP opponent skin image source (their equipped skin or default mole) */
+  pvpOpponentSkinSource?: ImageSourcePropType;
   scale?: number;
 }
 
@@ -35,6 +39,8 @@ export function CombatArena({
   activeActor = null,
   playerMaxArm = 0,
   enemyMaxArm = 0,
+  playerSkinSource,
+  pvpOpponentSkinSource,
   scale = 1,
 }: CombatArenaProps) {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
@@ -63,7 +69,7 @@ export function CombatArena({
   const statusEffectsY = arenaHeight * 0.75;
   const enemyImageSource =
     enemy.definitionId === 'pvpOpponent'
-      ? defaultMoleImageSource
+      ? (pvpOpponentSkinSource ?? defaultMoleImageSource)
       : enemy.definitionId
         ? (getEntityImageSource(enemy.definitionId) ?? defaultMoleImageSource)
         : defaultMoleImageSource;
@@ -116,7 +122,7 @@ export function CombatArena({
           ]}
         >
           <Image
-            source={defaultMoleImageSource}
+            source={playerSkinSource ?? defaultMoleImageSource}
             style={{ width: 120 * scale, height: 120 * scale }}
             resizeMode="contain"
           />

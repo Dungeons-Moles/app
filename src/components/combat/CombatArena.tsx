@@ -15,7 +15,7 @@ import {
   Image,
   useImage,
 } from '@shopify/react-native-skia';
-import { StyleSheet, View, useWindowDimensions, Image as RNImage, Text } from 'react-native';
+import { StyleSheet, View, useWindowDimensions, Image as RNImage, Text, type ImageSourcePropType } from 'react-native';
 import type { CombatantState, StatusEffects } from '../../game/engine/types';
 import { DamageNumbers } from './DamageNumbers';
 import { EffectNotifications } from './EffectNotifications';
@@ -35,6 +35,10 @@ interface CombatArenaProps {
   activeActor?: 'player' | 'enemy' | null;
   playerMaxArm?: number;
   enemyMaxArm?: number;
+  /** Player skin image source (equipped skin or default mole) */
+  playerSkinSource?: ImageSourcePropType;
+  /** PvP opponent skin image source (their equipped skin or default mole) */
+  pvpOpponentSkinSource?: ImageSourcePropType;
   /** Scale factor for compact/mobile views (default 1) */
   scale?: number;
 }
@@ -53,6 +57,8 @@ export function CombatArena({
   activeActor = null,
   playerMaxArm = 0,
   enemyMaxArm = 0,
+  playerSkinSource,
+  pvpOpponentSkinSource,
   scale = 1,
 }: CombatArenaProps) {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
@@ -60,7 +66,7 @@ export function CombatArena({
     ? Math.min(screenWidth * 0.5, 900)
     : Math.min(screenWidth * 0.5, 400);
   const arenaHeight = scale > 1 ? Math.min(screenHeight * 0.85, 800) : 300;
-  const entityImages = useSkiaEntityImages();
+  const entityImages = useSkiaEntityImages(playerSkinSource, pvpOpponentSkinSource);
   const bgImage = useImage(BATTLEGROUND_BG);
   const moleImage = useImage(DEFAULT_MOLE);
 
@@ -80,12 +86,11 @@ export function CombatArena({
   const combatantY = arenaHeight * 0.4;
 
   // Resolve enemy Skia image.
-  // PvP: use moleImage from useImage() — a separate SkImage instance from the player's.
-  // On web (CanvasKit), reusing the same SkImage object in two <Image> nodes can fail.
+  // PvP: use pvpOpponent from useSkiaEntityImages (their equipped skin, or default mole).
   // PvE: use entityImages lookup (each enemy type has its own unique image).
   const enemySkiaImage =
     enemy.definitionId === 'pvpOpponent'
-      ? (moleImage ?? entityImages.player ?? null)
+      ? (entityImages.pvpOpponent ?? moleImage ?? null)
       : (entityImages[enemy.definitionId ?? ''] ?? moleImage ?? entityImages.player ?? null);
 
   const ringColor = '#333355';

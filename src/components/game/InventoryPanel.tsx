@@ -6,6 +6,7 @@
 
 import React, { useCallback, useMemo, useRef } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Image, ImageBackground } from 'react-native';
+import { FocusGlow } from '../ui/FocusGlow';
 import type { Tool, Gear, InventorySlot, ItemsetId, ToolOil } from '../../game/engine/types';
 import { getItemsetDefinition } from '../../game/entities/itemsets';
 import { getTierFromRarity, type ItemTier } from '../../data/gear';
@@ -32,6 +33,7 @@ interface InventoryPanelProps {
   onItemInspect?: (item: Tool | Gear, slotIndex: number) => void;
   onToolInspect?: (tool: Tool) => void;
   isSidebar?: boolean;
+  controllerFocusIndex?: number | null;
 }
 
 interface ItemSlotProps {
@@ -279,6 +281,7 @@ export function InventoryPanel({
   onItemInspect,
   onToolInspect,
   isSidebar,
+  controllerFocusIndex,
 }: InventoryPanelProps) {
   // Create inventory grid with 4 items per row.
   const maxSlots = Math.max(4, maxGearSlots);
@@ -345,17 +348,18 @@ export function InventoryPanel({
                 const slotIndex = rowIndex * 4 + colIndex;
                 const isLocked = slotIndex >= inventoryCapacity;
                 return (
-                  <ItemSlot
-                    key={slotIndex}
-                    item={slot?.item ?? null}
-                    isEmpty={!slot && !isLocked}
-                    isLocked={isLocked}
-                    slotIndex={slot?.index}
-                    onPress={onItemPress}
-                    onLongPress={onItemInspect}
-                    isSidebar={isSidebar}
-                    size={gearSlotSize}
-                  />
+                  <FocusGlow key={slotIndex} active={controllerFocusIndex === slotIndex}>
+                    <ItemSlot
+                      item={slot?.item ?? null}
+                      isEmpty={!slot && !isLocked}
+                      isLocked={isLocked}
+                      slotIndex={slot?.index}
+                      onPress={onItemPress}
+                      onLongPress={onItemInspect}
+                      isSidebar={isSidebar}
+                      size={gearSlotSize}
+                    />
+                  </FocusGlow>
                 );
               })}
             </View>
@@ -374,15 +378,17 @@ export function InventoryPanel({
           </View>
         </View>
         <View style={[styles.toolRow, (useGauntletSidebarSizing || isCompactSidebar) && styles.sidebarToolRow]}>
-          <ItemSlot
-            item={equippedTool}
-            isEmpty={!equippedTool}
-            slotIndex={-1}
-            onPress={handleToolPress}
-            onLongPress={handleToolInspect}
-            isSidebar={isSidebar}
-            size={toolSlotSize}
-          />
+          <FocusGlow active={controllerFocusIndex === maxSlots}>
+            <ItemSlot
+              item={equippedTool}
+              isEmpty={!equippedTool}
+              slotIndex={-1}
+              onPress={handleToolPress}
+              onLongPress={handleToolInspect}
+              isSidebar={isSidebar}
+              size={toolSlotSize}
+            />
+          </FocusGlow>
           <OilSlot oil={equippedTool?.oil ?? null} isSidebar={isSidebar} size={toolSlotSize} />
         </View>
       </View>

@@ -66,6 +66,13 @@ export const INVENTORY_PROGRAM_ID = inventoryProgramId
   ? new PublicKey(inventoryProgramId)
   : PublicKey.default;
 
+const nftMarketplaceProgramId = process.env.EXPO_PUBLIC_NFT_MARKETPLACE_PROGRAM_ID;
+export const NFT_MARKETPLACE_PROGRAM_ID = nftMarketplaceProgramId
+  ? new PublicKey(nftMarketplaceProgramId)
+  : PublicKey.default;
+
+export const MPL_CORE_PROGRAM_ID = new PublicKey('CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d');
+
 // ============================================================================
 // Treasury
 // ============================================================================
@@ -117,6 +124,16 @@ export const PDA_SEEDS = {
   SESSION_MANAGER_AUTHORITY: 'session_manager_authority',
   /** Inventory authority: ["inventory_authority"] - for CPI calls from player_inventory */
   INVENTORY_AUTHORITY: 'inventory_authority',
+  /** Marketplace config: ["marketplace_config"] */
+  MARKETPLACE_CONFIG: 'marketplace_config',
+  /** Listing: ["listing", asset] */
+  LISTING: 'listing',
+  /** Mint authority: ["mint_authority"] */
+  MINT_AUTHORITY: 'mint_authority',
+  /** Quest definition: ["quest_def", quest_id(u16 LE)] */
+  QUEST_DEF: 'quest_def',
+  /** Quest progress: ["quest_progress", player, quest_id(u16 LE)] */
+  QUEST_PROGRESS: 'quest_progress',
 } as const;
 
 // ============================================================================
@@ -313,6 +330,74 @@ export function deriveInventoryAuthorityPda(): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
     [Buffer.from(PDA_SEEDS.INVENTORY_AUTHORITY)],
     INVENTORY_PROGRAM_ID
+  );
+}
+
+/**
+ * Derive MarketplaceConfig PDA (global).
+ *
+ * @returns [PDA, bump]
+ */
+export function deriveMarketplaceConfigPda(): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from(PDA_SEEDS.MARKETPLACE_CONFIG)],
+    NFT_MARKETPLACE_PROGRAM_ID
+  );
+}
+
+/**
+ * Derive Listing PDA for a Metaplex Core asset.
+ *
+ * @param asset - Asset public key
+ * @returns [PDA, bump]
+ */
+export function deriveListingPda(asset: PublicKey): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from(PDA_SEEDS.LISTING), asset.toBuffer()],
+    NFT_MARKETPLACE_PROGRAM_ID
+  );
+}
+
+/**
+ * Derive MintAuthority PDA (global).
+ *
+ * @returns [PDA, bump]
+ */
+export function deriveMintAuthorityPda(): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from(PDA_SEEDS.MINT_AUTHORITY)],
+    NFT_MARKETPLACE_PROGRAM_ID
+  );
+}
+
+/**
+ * Derive QuestDefinition PDA.
+ *
+ * @param questId - Quest ID (u16)
+ * @returns [PDA, bump]
+ */
+export function deriveQuestDefPda(questId: number): [PublicKey, number] {
+  const buf = Buffer.alloc(2);
+  buf.writeUInt16LE(questId);
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from(PDA_SEEDS.QUEST_DEF), buf],
+    NFT_MARKETPLACE_PROGRAM_ID
+  );
+}
+
+/**
+ * Derive QuestProgress PDA for a player.
+ *
+ * @param player - Player's public key
+ * @param questId - Quest ID (u16)
+ * @returns [PDA, bump]
+ */
+export function deriveQuestProgressPda(player: PublicKey, questId: number): [PublicKey, number] {
+  const buf = Buffer.alloc(2);
+  buf.writeUInt16LE(questId);
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from(PDA_SEEDS.QUEST_PROGRESS), player.toBuffer(), buf],
+    NFT_MARKETPLACE_PROGRAM_ID
   );
 }
 

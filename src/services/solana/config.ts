@@ -5,8 +5,6 @@ const rpcUrl = process.env.EXPO_PUBLIC_SOLANA_RPC_URL ?? 'https://api.devnet.sol
 const erRpcUrl = process.env.EXPO_PUBLIC_EPHEMERAL_PROVIDER_ENDPOINT ?? 'https://devnet.magicblock.app/';
 const erWsUrl = process.env.EXPO_PUBLIC_EPHEMERAL_WS_ENDPOINT ?? 'wss://devnet.magicblock.app/';
 const vrfEndpoint = process.env.EXPO_PUBLIC_MAGICBLOCK_VRF_ENDPOINT;
-const magicProgramId = process.env.EXPO_PUBLIC_MAGIC_PROGRAM_ID;
-const magicContextId = process.env.EXPO_PUBLIC_MAGIC_CONTEXT_ID;
 
 /**
  * Detect if we're running against a local validator (localhost/127.0.0.1).
@@ -34,6 +32,7 @@ const mapGeneratorProgramId = process.env.EXPO_PUBLIC_MAP_GENERATOR_PROGRAM_ID;
 const gameplayStateProgramId = process.env.EXPO_PUBLIC_GAMEPLAY_STATE_PROGRAM_ID;
 const playerInventoryProgramId = process.env.EXPO_PUBLIC_PLAYER_INVENTORY_PROGRAM_ID;
 const poiSystemProgramId = process.env.EXPO_PUBLIC_POI_SYSTEM_PROGRAM_ID;
+const nftMarketplaceProgramId = process.env.EXPO_PUBLIC_NFT_MARKETPLACE_PROGRAM_ID;
 
 if (
   !playerProfileProgramId ||
@@ -41,7 +40,8 @@ if (
   !mapGeneratorProgramId ||
   !gameplayStateProgramId ||
   !playerInventoryProgramId ||
-  !poiSystemProgramId
+  !poiSystemProgramId ||
+  !nftMarketplaceProgramId
 ) {
   throw new Error('Missing required Solana program IDs in environment variables');
 }
@@ -63,12 +63,10 @@ export const SOLANA_CONFIG = {
     gameplayState: new PublicKey(gameplayStateProgramId),
     playerInventory: new PublicKey(playerInventoryProgramId),
     poiSystem: new PublicKey(poiSystemProgramId),
+    nftMarketplace: new PublicKey(nftMarketplaceProgramId),
   },
-  magic:
-    magicProgramId && magicContextId
-      ? {
-          programId: new PublicKey(magicProgramId),
-          contextId: new PublicKey(magicContextId),
-        }
-      : null,
+  magic: {
+    programId: new PublicKey('Magic11111111111111111111111111111111111111'),
+    contextId: new PublicKey('MagicContext1111111111111111111111111111111'),
+  },
 };

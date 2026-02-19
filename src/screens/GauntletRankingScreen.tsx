@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { PublicKey } from '@solana/web3.js';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RouteProp } from '@react-navigation/native';
 import { RootStackParamList } from '../navigation';
 import { useWallet } from '@/contexts/WalletContext';
 import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
@@ -37,6 +38,7 @@ const HALF_PAGE = 5;
 
 type GauntletRankingScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'GauntletRanking'>;
+  route: RouteProp<RootStackParamList, 'GauntletRanking'>;
 };
 
 interface RankingItem {
@@ -58,7 +60,8 @@ function isMissingAccountError(err: unknown): boolean {
 }
 
 
-export function GauntletRankingScreen({ navigation }: GauntletRankingScreenProps) {
+export function GauntletRankingScreen({ navigation, route }: GauntletRankingScreenProps) {
+  const returnTo = route.params?.returnTo;
   const { wallet } = useWallet();
   const { connection } = useSolanaConnection();
   const isCompact = useScreenVariant() === 'compact';
@@ -190,8 +193,12 @@ export function GauntletRankingScreen({ navigation }: GauntletRankingScreenProps
   const [actionFocus, setActionFocus] = useState(0); // 0 = Refresh, 1 = Prev, 2 = Next
 
   const handleBack = useCallback(() => {
-    navigation.goBack();
-  }, [navigation]);
+    if (returnTo) {
+      navigation.navigate(returnTo);
+    } else {
+      navigation.goBack();
+    }
+  }, [navigation, returnTo]);
 
   useControllerAction(
     {

@@ -58,7 +58,7 @@ const NUM_COLUMNS = 5;
 export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) {
   const { profile, mode, availableRuns, highestLevelUnlocked } = useProfile();
   const { wallet } = useWallet();
-  const { connection, gameplayConnection } = useSolanaConnection();
+  const { connection, gameplayConnection, erConnection } = useSolanaConnection();
   const {
     startGame: startSessionOnChain,
     hasSessionForLevel,
@@ -201,9 +201,11 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
               seed = await getVrfSeed();
             }
 
-            // Full on-chain restore: fetch all accounts and build complete GameState
+            // Full on-chain restore: fetch all accounts and build complete GameState.
+            // Use erConnection directly because delegated accounts live on the ER,
+            // and the gameplayConnection closure may still point to base chain.
             console.log('[CampaignSelect] Restoring session from on-chain data...');
-            const restoredState = await fetchFullSessionState(gameplayConnection, sessionPdaKey, seed);
+            const restoredState = await fetchFullSessionState(erConnection, sessionPdaKey, seed);
 
             if (restoredState) {
               console.log('[CampaignSelect] Full session restore successful');
@@ -217,7 +219,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
 
             // Fallback: partial restore from GameState only
             console.warn('[CampaignSelect] Full restore failed, falling back to partial restore');
-            const program = createGameplayStateProgram(gameplayConnection);
+            const program = createGameplayStateProgram(erConnection);
             const [gameStatePdaFallback] = getGameStatePda(sessionPdaKey);
             setGameStatePda(gameStatePdaFallback);
             const stateToRestore = await fetchGameState(program, gameStatePdaFallback);
@@ -247,6 +249,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
     },
     [
       connection,
+      erConnection,
       createRestorePayload,
       dispatch,
       getMapSeedForLevel,
@@ -420,12 +423,17 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
           dispatch({ type: 'RETURN_TO_MENU' });
         }
 
-        // For on-chain sessions (resumed or new), always fetch full state from chain
+        // For on-chain sessions (resumed or new), always fetch full state from chain.
+        // Use erConnection directly: delegated accounts are on the ER, and
+        // gameplayConnection may still be stale (base chain) in this closure.
+        // Fall back to base connection if ER hasn't received the accounts yet.
         if (!isGuestMode && result?.success && connection && wallet.publicKey) {
           console.log('[CampaignSelect] On-chain session active, fetching full state from chain...');
           const onChainLevel = level.level + 1; // Convert 0-indexed frontend to 1-indexed on-chain
           const [sessionPda] = deriveSessionPda(wallet.publicKey, onChainLevel);
-          const restoredState = await fetchFullSessionState(gameplayConnection, sessionPda, seed);
+          const restoredState =
+            (await fetchFullSessionState(erConnection, sessionPda, seed)) ??
+            (await fetchFullSessionState(connection, sessionPda, seed));
 
           if (restoredState) {
             console.log('[CampaignSelect] Full on-chain state fetch successful');
@@ -459,6 +467,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
       activeSessions,
       availableRuns,
       connection,
+      erConnection,
       gameplayConnection,
       dispatch,
       navigation,

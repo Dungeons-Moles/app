@@ -7,6 +7,7 @@ import mapGeneratorIdl from './idl/map_generator.json';
 import gameplayStateIdl from './idl/gameplay_state.json';
 import playerInventoryIdl from './idl/player_inventory.json';
 import poiSystemIdl from './idl/poi_system.json';
+import nftMarketplaceIdl from './idl/nft_marketplace.json';
 
 export type AnchorWalletAdapter = {
   publicKey: AnchorProvider['wallet']['publicKey'];
@@ -98,4 +99,15 @@ export function createPoiSystemProgram(connection: Connection) {
 
 export function createPoiSystemProgramWithProvider(provider: AnchorProvider) {
   return new Program(poiSystemIdl as Idl, provider);
+}
+
+export function createNftMarketplaceProgram(connection: Connection) {
+  return new Program(nftMarketplaceIdl as Idl, {
+    connection,
+    publicKey: SOLANA_CONFIG.programs.nftMarketplace,
+  });
+}
+
+export function createNftMarketplaceProgramWithProvider(provider: AnchorProvider) {
+  return new Program(nftMarketplaceIdl as Idl, provider);
 }

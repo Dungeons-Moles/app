@@ -70,6 +70,7 @@ export interface MapRendererProps {
   onPanOverview?: (delta: Position) => void;
   onZoomOverview?: (zoomDelta: number) => void;
   cameraFocusOverride?: Position;
+  playerSkinSource?: import('react-native').ImageSourcePropType;
 }
 
 interface VisibleTileRange {
@@ -302,6 +303,7 @@ export function MapRenderer({
   onPanOverview,
   onZoomOverview,
   cameraFocusOverride,
+  playerSkinSource,
 }: MapRendererProps) {
   // Load tile images
   const floorV1 = useImage(floorV1Source);
@@ -323,7 +325,7 @@ export function MapRenderer({
     [rockV1, rockV2, rockV3, rockV4]
   );
 
-  const entityImages = useSkiaEntityImages();
+  const entityImages = useSkiaEntityImages(playerSkinSource);
 
   const [dimensions, setDimensions] = React.useState({
     width: propWidth || 300,

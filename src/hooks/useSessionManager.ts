@@ -755,17 +755,28 @@ export function useSessionManager() {
         } as any)
         .instruction();
 
-      const delegationTx = new Transaction().add(
-        ComputeBudgetProgram.setComputeUnitLimit({ units: 1_000_000 }),
+      // Split delegation into 2 transactions to stay under the 1232-byte tx size limit.
+      // Tx1: gameplay (gameState + mapEnemies) + session
+      // Tx2: generatedMap + inventory + mapPois
+      const delegationTx1 = new Transaction().add(
+        ComputeBudgetProgram.setComputeUnitLimit({ units: 600_000 }),
         delegateGameplayIx,
+        delegateSessionIx
+      );
+      const delegationTx2 = new Transaction().add(
+        ComputeBudgetProgram.setComputeUnitLimit({ units: 600_000 }),
         delegateGeneratedMapIx,
         delegateInventoryIx,
-        delegateMapPoisIx,
-        delegateSessionIx
+        delegateMapPoisIx
+      );
+      await sendSessionSignerTransaction(
+        baseConnection,
+        delegationTx1,
+        sessionSignerKeypair
       );
       const signature = await sendSessionSignerTransaction(
         baseConnection,
-        delegationTx,
+        delegationTx2,
         sessionSignerKeypair
       );
 
@@ -818,16 +829,7 @@ export function useSessionManager() {
         const [inventoryPda] = deriveInventoryPda(sessionPda);
         const [mapPoisPda] = deriveMapPoisPda(sessionPda);
 
-        const magicProgramId = SOLANA_CONFIG.magic?.programId;
-        const magicContextId = SOLANA_CONFIG.magic?.contextId;
-
-        if (!magicProgramId || !magicContextId) {
-          return {
-            success: false,
-            error:
-              'Missing MagicBlock config. Set EXPO_PUBLIC_MAGIC_PROGRAM_ID and EXPO_PUBLIC_MAGIC_CONTEXT_ID.',
-          };
-        }
+        const { programId: magicProgramId, contextId: magicContextId } = SOLANA_CONFIG.magic;
 
         const transaction = await erWriteProgram.methods
           .commitSession(onChainLevel, stateHash)
@@ -942,16 +944,7 @@ export function useSessionManager() {
           return { success: true, signature: 'undelegate_skipped_not_delegated' };
         }
 
-        const magicProgramId = SOLANA_CONFIG.magic?.programId;
-        const magicContextId = SOLANA_CONFIG.magic?.contextId;
-
-        if (!magicProgramId || !magicContextId) {
-          return {
-            success: false,
-            error:
-              'Missing MagicBlock config. Set EXPO_PUBLIC_MAGIC_PROGRAM_ID and EXPO_PUBLIC_MAGIC_CONTEXT_ID.',
-          };
-        }
+        const { programId: magicProgramId, contextId: magicContextId } = SOLANA_CONFIG.magic;
 
         const gameplayProgramEr = createGameplayStateProgram(erConnection);
         const mapGeneratorProgramEr = createMapGeneratorProgram(erConnection);

@@ -601,14 +601,27 @@ export function useGameplayState(): UseGameplayStateReturn {
     [gameState?.dig]
   );
 
-  // Auto-refresh when gameStatePda changes
+  // Auto-refresh when gameStatePda changes.
+  // Includes a retry for ER propagation: after delegation, the ER may take a
+  // moment to receive the account, so a single fetch can return null.
   useEffect(() => {
-    if (gameStatePda && program) {
-      console.log('[useGameplayState] Auto-refresh triggered for PDA:', gameStatePda.toBase58());
-      refresh().then((state) => {
-        console.log('[useGameplayState] Auto-refresh complete, gameState:', state ? 'set' : 'null');
-      });
-    }
+    if (!gameStatePda || !program) return;
+    let cancelled = false;
+    console.log('[useGameplayState] Auto-refresh triggered for PDA:', gameStatePda.toBase58());
+    (async () => {
+      const state = await refresh();
+      console.log('[useGameplayState] Auto-refresh complete, gameState:', state ? 'set' : 'null');
+      if (state || cancelled) return;
+      // ER propagation delay — retry up to 3 times with 800ms gaps
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        await new Promise((r) => setTimeout(r, 800));
+        if (cancelled) return;
+        const retryState = await refresh();
+        console.log(`[useGameplayState] Auto-refresh retry #${attempt}, gameState:`, retryState ? 'set' : 'null');
+        if (retryState || cancelled) return;
+      }
+    })();
+    return () => { cancelled = true; };
   }, [gameStatePda, program, refresh]);
 
   return {

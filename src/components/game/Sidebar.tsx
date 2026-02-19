@@ -7,6 +7,7 @@ import { View, StyleSheet, ImageBackground, Text, Image, Pressable } from 'react
 import { PublicKey } from '@solana/web3.js';
 import { StatsPanel } from './StatsPanel';
 import { InventoryPanel } from './InventoryPanel';
+import { FocusGlow } from '../ui/FocusGlow';
 import { BossTooltipModal, type PvpDetails } from './BossTooltipModal';
 import { getBoss } from '../../data/bosses';
 import { getEntityImageSource } from './entityImages';
@@ -84,6 +85,9 @@ interface SidebarProps {
   floatingCompact?: boolean;
   compactBoss?: boolean;
   inlineBoss?: boolean;
+  controllerFocusIndex?: number | null;
+  echoFocusIndex?: number | null;
+  onEchoEquipmentLoaded?: (gear: Gear[], tool: Tool | null, slotCount: number) => void;
 }
 
 const GEAR_SLOT_SIZE = 28;
@@ -161,7 +165,7 @@ function EchoOilSlot({ oil, size = TOOL_SLOT_SIZE }: { oil: ToolOil | null; size
   );
 }
 
-function EchoEquipmentGrid({ tool, gear, week }: { tool: Tool | null; gear: Gear[]; week: number }) {
+function EchoEquipmentGrid({ tool, gear, week, focusIndex }: { tool: Tool | null; gear: Gear[]; week: number; focusIndex?: number | null }) {
   const maxSlots = gauntletGearCapacity(week);
   // Build rows of 4
   const rows: (Gear | null)[][] = [];
@@ -182,9 +186,14 @@ function EchoEquipmentGrid({ tool, gear, week }: { tool: Tool | null; gear: Gear
       <View style={styles.echoGearGrid}>
         {rows.map((row, ri) => (
           <View key={ri} style={styles.echoGearRow}>
-            {row.map((g, ci) => (
-              <EchoGearSlot key={ci} item={g} />
-            ))}
+            {row.map((g, ci) => {
+              const slotIndex = ri * 4 + ci;
+              return (
+                <FocusGlow key={ci} active={focusIndex === slotIndex}>
+                  <EchoGearSlot item={g} />
+                </FocusGlow>
+              );
+            })}
           </View>
         ))}
       </View>
@@ -200,7 +209,9 @@ function EchoEquipmentGrid({ tool, gear, week }: { tool: Tool | null; gear: Gear
           </View>
         </View>
         <View style={styles.echoToolRow}>
-          <EchoToolSlot tool={tool} />
+          <FocusGlow active={focusIndex === maxSlots}>
+            <EchoToolSlot tool={tool} />
+          </FocusGlow>
           <EchoOilSlot oil={tool?.oil ?? null} />
         </View>
       </View>
@@ -213,11 +224,15 @@ export function BossPanel({
   scale = 1,
   compact = false,
   inline = false,
+  echoFocusIndex,
+  onEchoEquipmentLoaded,
 }: {
   time: TimeState;
   scale?: number;
   compact?: boolean;
   inline?: boolean;
+  echoFocusIndex?: number | null;
+  onEchoEquipmentLoaded?: (gear: Gear[], tool: Tool | null, slotCount: number) => void;
 }) {
   const [modalVisible, setModalVisible] = useState(false);
   const [pvpDetails, setPvpDetails] = useState<PvpDetails | null>(null);
@@ -438,6 +453,14 @@ export function BossPanel({
     }
   }, [inline, shouldShowGauntletEcho, pvpLoading, resolvedWeek, loadPvpDetails]);
 
+  // Lift echo equipment data to parent for controller A-button inspection
+  useEffect(() => {
+    if (inline && pvpDetails && onEchoEquipmentLoaded) {
+      const gearCapacity = gauntletGearCapacity(pvpDetails.week ?? resolvedWeek);
+      onEchoEquipmentLoaded(pvpDetails.gear, pvpDetails.tool, gearCapacity + 1);
+    }
+  }, [inline, pvpDetails, onEchoEquipmentLoaded, resolvedWeek]);
+
   const panelTitle = displayedBoss
     ? displayedBoss.name
     : shouldShowDuelOpponent
@@ -511,6 +534,7 @@ export function BossPanel({
                 tool={pvpDetails.tool}
                 gear={pvpDetails.gear}
                 week={pvpDetails.week ?? resolvedWeek}
+                focusIndex={echoFocusIndex}
               />
             )}
           </>
@@ -572,7 +596,16 @@ export function BossPanel({
 
 export function Sidebar(props: SidebarProps) {
   if (props.onlyBoss) {
-    return <BossPanel time={props.time} scale={props.scale} compact={props.compactBoss} inline={props.inlineBoss} />;
+    return (
+      <BossPanel
+        time={props.time}
+        scale={props.scale}
+        compact={props.compactBoss}
+        inline={props.inlineBoss}
+        echoFocusIndex={props.echoFocusIndex}
+        onEchoEquipmentLoaded={props.onEchoEquipmentLoaded}
+      />
+    );
   }
 
   const isFloating = props.floatingCompact;
@@ -601,6 +634,7 @@ export function Sidebar(props: SidebarProps) {
           onItemInspect={props.onItemInspect}
           onToolInspect={props.onToolInspect}
           isSidebar={true}
+          controllerFocusIndex={props.controllerFocusIndex}
         />
       </View>
     </View>

@@ -30,7 +30,6 @@ import {
 } from '../components/game';
 import { Sidebar } from '../components/game/Sidebar';
 import { PauseMenuModal } from '../components/ui/PauseMenuModal';
-import { ControllerHints } from '../components/ui/ControllerHints';
 import { useDirectionInput } from '../hooks/useInput';
 import { useLandscapeLock } from '../hooks/useOrientationLock';
 import { useScreenVariant } from '../contexts/ScreenVariantContext';
@@ -43,6 +42,7 @@ import { TileType, MapEnemy, MapPOI } from '../game/map/types';
 import { getDiscoveredWaypoints } from '../game/entities/pois';
 import { canAffordCostAcrossPhases, selectDuelWeekBossForSeed } from '../game/time/progression';
 import { Typography } from '../theme/typography';
+import { useEquippedSkinImage } from '../hooks/useEquippedSkinImage';
 import { promptTransactionRetry } from '../utils/transaction-alerts';
 import { getPhaseLabel } from '../utils/phase-labels';
 import type {
@@ -85,6 +85,8 @@ type PlayerStats = {
   dig: number;
   gold: number;
 };
+
+type InventoryFocusTarget = 'none' | 'player' | 'enemy';
 
 function buildPlayerCombatant(stats: PlayerStats): CombatantState {
   return {
@@ -344,7 +346,8 @@ export function GameScreen({ navigation }: GameScreenProps) {
     zoomOverview,
     resetOverviewCamera,
   } = useGame();
-  const { mode } = useProfile();
+  const { mode, profile } = useProfile();
+  const playerSkinSource = useEquippedSkinImage(profile?.equippedSkin);
   const {
     hasActiveSession,
     movePlayer,
@@ -390,6 +393,10 @@ export function GameScreen({ navigation }: GameScreenProps) {
   // Ref to skip mismatch-detection after POI interactions (updated synchronously)
   const skipMismatchDetectionRef = useRef(false);
   const skipMismatchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [inventoryFocus, setInventoryFocus] = useState<InventoryFocusTarget>('none');
+  const [focusedSlotIndex, setFocusedSlotIndex] = useState(0);
+  const [totalEchoSlots, setTotalEchoSlots] = useState(0);
+  const echoEquipmentRef = useRef<{ gear: Gear[]; tool: Tool | null }>({ gear: [], tool: null });
 
   useEffect(() => {
     Animated.timing(fadeAnim, { toValue: 1, duration: 800, useNativeDriver: true }).start();
@@ -1202,24 +1209,117 @@ export function GameScreen({ navigation }: GameScreenProps) {
     showWallBreakFeedback,
   ]);
 
+  const maxGearSlots = onChainState?.runMode === RunMode.Gauntlet ? 12 : 8;
+  const isGauntletLayout = onChainState?.runMode === RunMode.Gauntlet;
+  const totalPlayerSlots = maxGearSlots + 1; // gear slots + weapon slot
+
+  const getPlayerItemAtSlot = useCallback((index: number): Tool | Gear | null => {
+    if (!state) return null;
+    if (index === maxGearSlots) return state.player.equippedTool;
+    const slot = state.player.inventory.find(s => s.index === index);
+    return slot?.item ?? null;
+  }, [state, maxGearSlots]);
+
+  const getEchoItemAtSlot = useCallback((index: number): Tool | Gear | null => {
+    if (totalEchoSlots === 0) return null;
+    const weaponIndex = totalEchoSlots - 1;
+    if (index === weaponIndex) return echoEquipmentRef.current.tool;
+    return echoEquipmentRef.current.gear[index] ?? null;
+  }, [totalEchoSlots]);
+
+  const handleEchoEquipmentLoaded = useCallback((gear: Gear[], tool: Tool | null, slotCount: number) => {
+    echoEquipmentRef.current = { gear, tool };
+    setTotalEchoSlots(slotCount);
+  }, []);
+
   useDirectionInput(handleDirection, {
     enabled: state?.phase === GamePhase.Exploration && !isController,
     blocked: overviewMode.active && !isFastTravelActive,
   });
 
   // --- Controller: D-PAD for movement, Y for map, A for POI/fast-travel confirm ---
+  // When inventoryFocus is active, D-PAD navigates the 4-column inventory grid,
+  // A inspects items, and B/R1/L1 exits focus mode.
   const isPOIModalOpen = state?.phase === GamePhase.POIInteraction;
   const controllerEnabled = isController && isFocused && !!state && !isPOIModalOpen && !showPauseMenu;
   useControllerAction(
     {
-      onDPadUp: () => handleDirection(Direction.Up),
-      onDPadDown: () => handleDirection(Direction.Down),
-      onDPadLeft: () => handleDirection(Direction.Left),
-      onDPadRight: () => handleDirection(Direction.Right),
+      onDPadUp: () => {
+        if (inventoryFocus !== 'none') {
+          setFocusedSlotIndex(prev => {
+            const max = inventoryFocus === 'player' ? totalPlayerSlots : totalEchoSlots;
+            const gearMax = max - 1; // weapon is last index
+            if (prev === gearMax) {
+              // Weapon → last gear row (column 0)
+              const lastRowStart = Math.max(0, gearMax - (gearMax % 4 || 4));
+              return Math.min(lastRowStart, gearMax - 1);
+            }
+            if (prev >= 4) return prev - 4; // move up a row
+            return prev; // already at top
+          });
+          return;
+        }
+        handleDirection(Direction.Up);
+      },
+      onDPadDown: () => {
+        if (inventoryFocus !== 'none') {
+          setFocusedSlotIndex(prev => {
+            const max = inventoryFocus === 'player' ? totalPlayerSlots : totalEchoSlots;
+            const gearMax = max - 1; // weapon is last index
+            if (prev >= gearMax) return prev; // already at weapon or beyond
+            const nextRow = prev + 4;
+            if (nextRow >= gearMax) return gearMax; // jump to weapon
+            return nextRow;
+          });
+          return;
+        }
+        handleDirection(Direction.Down);
+      },
+      onDPadLeft: () => {
+        if (inventoryFocus !== 'none') {
+          setFocusedSlotIndex(prev => {
+            const max = inventoryFocus === 'player' ? totalPlayerSlots : totalEchoSlots;
+            const gearMax = max - 1;
+            if (prev === gearMax) return prev; // weapon slot, no left/right
+            if (prev % 4 === 0) return prev; // left edge
+            return prev - 1;
+          });
+          return;
+        }
+        handleDirection(Direction.Left);
+      },
+      onDPadRight: () => {
+        if (inventoryFocus !== 'none') {
+          setFocusedSlotIndex(prev => {
+            const max = inventoryFocus === 'player' ? totalPlayerSlots : totalEchoSlots;
+            const gearMax = max - 1;
+            if (prev === gearMax) return prev; // weapon slot, no left/right
+            if (prev % 4 === 3) return prev; // right edge
+            if (prev + 1 >= gearMax) return prev; // don't overflow into weapon
+            return prev + 1;
+          });
+          return;
+        }
+        handleDirection(Direction.Right);
+      },
       onY: () => {
         if (!isFastTravelActive) toggleOverviewMode();
       },
       onA: () => {
+        if (inventoryFocus === 'player') {
+          if (focusedSlotIndex === maxGearSlots) {
+            if (state?.player?.equippedTool) handleInspectTool(state.player.equippedTool);
+          } else {
+            const item = getPlayerItemAtSlot(focusedSlotIndex);
+            if (item) handleInspectItem(item);
+          }
+          return;
+        }
+        if (inventoryFocus === 'enemy') {
+          const item = getEchoItemAtSlot(focusedSlotIndex);
+          if (item) handleInspectItem(item);
+          return;
+        }
         if (isFastTravelActive) {
           handleFastTravelConfirm();
         } else if (
@@ -1230,6 +1330,14 @@ export function GameScreen({ navigation }: GameScreenProps) {
         }
       },
       onB: () => {
+        if (isTooltipVisible) {
+          handleCloseTooltip();
+          return;
+        }
+        if (inventoryFocus !== 'none') {
+          setInventoryFocus('none');
+          return;
+        }
         if (isFastTravelActive) {
           setIsFastTravelMode(false);
           setFastTravelDestinations([]);
@@ -1237,10 +1345,34 @@ export function GameScreen({ navigation }: GameScreenProps) {
           toggleOverviewMode();
         }
       },
+      onR1: () => {
+        if (inventoryFocus === 'player') {
+          setInventoryFocus('none');
+        } else {
+          setInventoryFocus('player');
+          setFocusedSlotIndex(0);
+        }
+      },
+      onL1: () => {
+        if (!isGauntletLayout) return;
+        if (inventoryFocus === 'enemy') {
+          setInventoryFocus('none');
+        } else {
+          setInventoryFocus('enemy');
+          setFocusedSlotIndex(0);
+        }
+      },
       onStart: () => setShowPauseMenu(true),
     },
     controllerEnabled,
   );
+
+  // Reset inventory focus when leaving exploration phase
+  useEffect(() => {
+    if (state?.phase !== GamePhase.Exploration) {
+      setInventoryFocus('none');
+    }
+  }, [state?.phase]);
 
   // --- Controller: L3 joystick for panning the overview map ---
   const panIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -1699,8 +1831,6 @@ export function GameScreen({ navigation }: GameScreenProps) {
     );
   }
 
-  const maxGearSlots = onChainState?.runMode === RunMode.Gauntlet ? 12 : 8;
-  const isGauntletLayout = onChainState?.runMode === RunMode.Gauntlet;
   const isCompact = variant === 'compact';
   const navScale = isCompact ? 2 : 1;
   const navbarHeight = NAVBAR_HEIGHT * navScale;
@@ -1790,6 +1920,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
                   onZoomOverview={zoomOverview}
                   feedbackMessage={wallBreakFeedback}
                   cameraFocusOverride={fastTravelFocus}
+                  playerSkinSource={playerSkinSource}
                 />
                 <DebugOverlay
                   debug={state.debug}
@@ -1851,10 +1982,6 @@ export function GameScreen({ navigation }: GameScreenProps) {
                     />
                   </View>
                 )}
-                <ControllerHints
-                  hints={[{ button: 'Start', label: 'Menu' }]}
-                  align="right"
-                />
               </View>
               {!isCompact && (
                 <View style={styles.sidebarBottomContainer}>
@@ -1872,6 +1999,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
                     isRuneKilnActive={isItemSelectPoiActive}
                     handleInventoryItemPress={handleInventoryItemPress}
                     onlyContent={true}
+                    controllerFocusIndex={inventoryFocus === 'player' ? focusedSlotIndex : null}
                   />
                 </View>
               )}
@@ -1930,6 +2058,8 @@ export function GameScreen({ navigation }: GameScreenProps) {
                   activeItemsets={state.player.activeItemsets}
                   onlyBoss={true}
                   inlineBoss={true}
+                  echoFocusIndex={inventoryFocus === 'enemy' ? focusedSlotIndex : null}
+                  onEchoEquipmentLoaded={handleEchoEquipmentLoaded}
                 />
               </ImageBackground>
               <ImageBackground
@@ -1953,6 +2083,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
                   handleInventoryItemPress={handleInventoryItemPress}
                   onlyContent={true}
                   floatingCompact={true}
+                  controllerFocusIndex={inventoryFocus === 'player' ? focusedSlotIndex : null}
                 />
               </ImageBackground>
             </View>

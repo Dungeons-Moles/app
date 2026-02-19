@@ -129,7 +129,7 @@ export type RootStackParamList = {
   DuelsHistory: undefined;
   Gauntlet: undefined;
   GauntletHistory: undefined;
-  GauntletRanking: undefined;
+  GauntletRanking: { returnTo?: 'Hub' | 'Gauntlet' } | undefined;
   Marketplace: undefined;
   Items: undefined;
 };

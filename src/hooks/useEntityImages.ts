@@ -4,8 +4,8 @@
  * @see specs/003-gdd-mechanics-update/plan.md
  */
 
-import { useEffect, useState } from 'react';
-import { Image } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Image, type ImageSourcePropType } from 'react-native';
 import { Skia, type SkImage } from '@shopify/react-native-skia';
 import { ENEMY_IMAGES, BOSS_IMAGES, POI_IMAGES } from '../components/game/entityImages';
 
@@ -72,47 +72,98 @@ export function useEntityImages(): EntityImagesState {
   };
 }
 
-/**
- * Hook to load entity images for Skia
- */
-export function useSkiaEntityImages(): Record<string, SkImage | null> {
-  const [images, setImages] = useState<Record<string, SkImage | null>>({});
+/** Helper: load a single image source into a Skia SkImage */
+async function loadSkiaImage(source: any): Promise<SkImage | null> {
+  try {
+    const resolved = Image.resolveAssetSource(source);
+    if (resolved && resolved.uri) {
+      const data = await Skia.Data.fromURI(resolved.uri);
+      return Skia.Image.MakeImageFromEncoded(data);
+    }
+  } catch (e) {
+    console.warn('Failed to load Skia image', e);
+  }
+  return null;
+}
 
+/**
+ * Hook to load entity images for Skia.
+ * Pass playerSkinSource to override the default mole with an equipped skin.
+ * Static images (enemies, bosses, POIs) load once. Only the player image
+ * reloads when the skin changes.
+ */
+export function useSkiaEntityImages(
+  playerSkinSource?: ImageSourcePropType,
+  pvpOpponentSkinSource?: ImageSourcePropType,
+): Record<string, SkImage | null> {
+  const [baseImages, setBaseImages] = useState<Record<string, SkImage | null>>({});
+  const [playerSkiaImage, setPlayerSkiaImage] = useState<SkImage | null>(null);
+  const [opponentSkiaImage, setOpponentSkiaImage] = useState<SkImage | null>(null);
+
+  // Stabilize the skin source — only reload when the resolved URI actually changes
+  const resolvedPlayerImage = playerSkinSource ?? playerImage;
+  const playerUri = Image.resolveAssetSource(resolvedPlayerImage)?.uri ?? '';
+  const prevPlayerUri = useRef(playerUri);
+
+  const resolvedOpponentImage = pvpOpponentSkinSource ?? playerImage;
+  const opponentUri = Image.resolveAssetSource(resolvedOpponentImage)?.uri ?? '';
+  const prevOpponentUri = useRef(opponentUri);
+
+  // Load all static images once
   useEffect(() => {
-    const loadSkiaImages = async () => {
+    let cancelled = false;
+    const loadStatic = async () => {
       const loaded: Record<string, SkImage | null> = {};
       const resources = {
         ...ENEMY_IMAGES,
         ...BOSS_IMAGES,
         ...POI_IMAGES,
-        player: playerImage,
-        pvpOpponent: playerImage,
         unknownEnemy: unknownEnemyImage,
       };
 
       const promises = Object.entries(resources).map(async ([id, source]) => {
-        try {
-          const resolved = Image.resolveAssetSource(source);
-          if (resolved && resolved.uri) {
-            const data = await Skia.Data.fromURI(resolved.uri);
-            const image = Skia.Image.MakeImageFromEncoded(data);
-            if (image) {
-              loaded[id] = image;
-            }
-          }
-        } catch (e) {
-          console.warn(`Failed to load Skia image for ${id}`, e);
-        }
+        const img = await loadSkiaImage(source);
+        if (img) loaded[id] = img;
       });
 
       await Promise.all(promises);
-      setImages(loaded);
+      if (!cancelled) setBaseImages(loaded);
     };
-
-    loadSkiaImages();
+    loadStatic();
+    return () => { cancelled = true; };
   }, []);
 
-  return images;
+  // Load player image separately — only reloads when the skin URI changes
+  useEffect(() => {
+    if (playerUri === prevPlayerUri.current && playerSkiaImage !== null) return;
+    prevPlayerUri.current = playerUri;
+
+    let cancelled = false;
+    (async () => {
+      const img = await loadSkiaImage(resolvedPlayerImage);
+      if (!cancelled) setPlayerSkiaImage(img);
+    })();
+    return () => { cancelled = true; };
+  }, [playerUri]);
+
+  // Load PvP opponent image — only reloads when the opponent skin URI changes
+  useEffect(() => {
+    if (opponentUri === prevOpponentUri.current && opponentSkiaImage !== null) return;
+    prevOpponentUri.current = opponentUri;
+
+    let cancelled = false;
+    (async () => {
+      const img = await loadSkiaImage(resolvedOpponentImage);
+      if (!cancelled) setOpponentSkiaImage(img);
+    })();
+    return () => { cancelled = true; };
+  }, [opponentUri]);
+
+  return useMemo(() => ({
+    ...baseImages,
+    player: playerSkiaImage,
+    pvpOpponent: opponentSkiaImage,
+  }), [baseImages, playerSkiaImage, opponentSkiaImage]);
 }
 
 /**

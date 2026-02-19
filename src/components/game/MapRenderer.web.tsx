@@ -65,6 +65,7 @@ export interface MapRendererProps {
   onPanOverview?: (delta: Position) => void;
   onZoomOverview?: (zoomDelta: number) => void;
   cameraFocusOverride?: Position;
+  playerSkinSource?: import('react-native').ImageSourcePropType;
 }
 
 interface VisibleTileRange {
@@ -275,6 +276,7 @@ export const MapRenderer = memo(function MapRenderer({
   onPanOverview,
   onZoomOverview,
   cameraFocusOverride,
+  playerSkinSource,
 }: MapRendererProps) {
   const [dimensions, setDimensions] = React.useState({
     width: propWidth || 300,
@@ -556,7 +558,7 @@ export const MapRenderer = memo(function MapRenderer({
           <EntityView
             x={playerPosition.x}
             y={playerPosition.y}
-            image={defaultMoleImageSource}
+            image={playerSkinSource ?? defaultMoleImageSource}
             offsetX={cameraOffset.x}
             offsetY={cameraOffset.y}
             zoom={zoom}

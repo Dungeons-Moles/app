@@ -110,6 +110,8 @@ export function usePlayerProfile() {
         activeItemPool: account.activeItemPool
           ? new Uint8Array(account.activeItemPool)
           : new Uint8Array(10),
+        equippedSkin: account.equippedSkin ?? null,
+        gauntletBoosters: account.gauntletBoosters ?? 0,
       };
 
       updateState(profileData, true);
@@ -136,6 +138,8 @@ export function usePlayerProfile() {
             createdAt: cached.createdAt,
             unlockedItems: new Uint8Array(10),
             activeItemPool: new Uint8Array(10),
+            equippedSkin: null,
+            gauntletBoosters: 0,
           },
           true,
           true
@@ -205,6 +209,8 @@ export function usePlayerProfile() {
           activeItemPool: account.activeItemPool
             ? new Uint8Array(account.activeItemPool)
             : new Uint8Array(10),
+          equippedSkin: account.equippedSkin ?? null,
+          gauntletBoosters: account.gauntletBoosters ?? 0,
         };
 
         updateState(profileData, true);
