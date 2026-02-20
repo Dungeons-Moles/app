@@ -3,10 +3,9 @@ import { PublicKey } from '@solana/web3.js';
 import { useWallet } from '@/contexts/WalletContext';
 import { useSession } from '@/contexts/SessionContext';
 import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
-import { createGameplayStateProgram, createMapGeneratorProgram, createPlayerProfileProgram } from '@/services/solana/programs';
+import { createGameplayStateProgram, createPlayerProfileProgram } from '@/services/solana/programs';
 import { derivePlayerProfilePda } from '@/services/solana/types';
-import { GAMEPLAY_STATE_PROGRAM_ID, deriveDuelSessionPda, deriveGeneratedMapPda } from '@/services/solana/constants';
-import { fetchGeneratedMap } from '@/services/solana/mapGeneratorClient';
+import { GAMEPLAY_STATE_PROGRAM_ID, deriveDuelSessionPda } from '@/services/solana/constants';
 import { SOLANA_CONFIG } from '@/services/solana/config';
 import {
   buildEnterDuelTransaction,
@@ -17,6 +16,7 @@ import {
   DUEL_ENTRY_LAMPORTS,
   type DuelResolvedEvent,
 } from '@/services/solana/duels';
+
 
 export type DuelsPhase = 'confirm' | 'queued' | 'error';
 
@@ -36,7 +36,7 @@ export interface DuelHistoryItem {
 export function useDuels() {
   const { wallet, signAndSendTransaction, checkBalance } = useWallet();
   const { mapSeed, startDuelGame, switchToSession } = useSession();
-  const { connection, gameplayConnection, erConnection } = useSolanaConnection();
+  const { connection } = useSolanaConnection();
 
   const [phase, setPhase] = useState<DuelsPhase>('confirm');
   const [error, setError] = useState<string | null>(null);
@@ -49,8 +49,6 @@ export function useDuels() {
 
   const isMountedRef = useRef(true);
   const ENTER_DUEL_MAX_SEND_ATTEMPTS = 2;
-  const MAX_SEED_FETCH_RETRIES = 8;
-  const SEED_FETCH_RETRY_DELAY_MS = 250;
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -114,31 +112,6 @@ export function useDuels() {
       message.includes('failed to complete')
     );
   }, []);
-
-  const resolveSessionGeneratedSeed = useCallback(
-    async (sessionPda: PublicKey): Promise<bigint | null> => {
-      const connectionsToTry = [gameplayConnection, erConnection, connection];
-      for (let attempt = 1; attempt <= MAX_SEED_FETCH_RETRIES; attempt++) {
-        for (const conn of connectionsToTry) {
-          try {
-            const mapProgram = createMapGeneratorProgram(conn);
-            const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
-            const generatedMap = await fetchGeneratedMap(mapProgram, generatedMapPda);
-            if (generatedMap?.seed !== undefined && generatedMap.seed !== null) {
-              return generatedMap.seed;
-            }
-          } catch {
-            // Try next connection / retry while generated map settles after start tx.
-          }
-        }
-        if (attempt < MAX_SEED_FETCH_RETRIES) {
-          await new Promise((resolve) => setTimeout(resolve, SEED_FETCH_RETRY_DELAY_MS));
-        }
-      }
-      return null;
-    },
-    [connection, erConnection, gameplayConnection]
-  );
 
   const switchToDuelSessionOrTolerateDelegation = useCallback(
     async (duelSessionPda: PublicKey): Promise<{ success: boolean; error?: string }> => {
@@ -261,15 +234,7 @@ export function useDuels() {
       }
 
       // game_state is still on base chain — safe to call enter_duel
-      const duelSeed = await resolveSessionGeneratedSeed(duelSessionPda);
-      if (duelSeed === null) {
-        setError('Failed to resolve duel seed from session.');
-        setPhase('error');
-        return false;
-      }
-      console.log('[useDuels] enterCurrentSessionDuel:calling_enter_duel_on_base', {
-        duelSeed: duelSeed.toString(),
-      });
+      console.log('[useDuels] enterCurrentSessionDuel:calling_enter_duel_on_base');
 
       let signature: string | null = null;
       for (let attempt = 1; attempt <= ENTER_DUEL_MAX_SEND_ATTEMPTS; attempt++) {
@@ -279,8 +244,7 @@ export function useDuels() {
             baseProgram,
             wallet.publicKey,
             gameStatePda,
-            duelSessionPda,
-            duelSeed
+            duelSessionPda
           );
           signature = await signAndSendTransaction(tx);
           console.log('[useDuels] enterCurrentSessionDuel:enter_tx_sent', { signature, attempt });
@@ -333,7 +297,6 @@ export function useDuels() {
     checkBalance,
     connection,
     signAndSendTransaction,
-    resolveSessionGeneratedSeed,
     isRecoverableDuelStartError,
   ]);
 

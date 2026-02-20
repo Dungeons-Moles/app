@@ -28,6 +28,8 @@ import {
   DEFAULT_SESSION_SIGNER_FUNDING,
 } from './constants';
 import { SOLANA_CONFIG } from './config';
+import { buildResetDuelEntryInstruction, deriveDuelEntryPda } from './duels';
+import { createGameplayStateProgram } from './programs';
 
 // ============================================================================
 // Types
@@ -194,6 +196,9 @@ export async function endSession(
  * Requires main wallet signature.
  * Used when player wants to quit a session early.
  * Closes all session-related accounts to allow starting a new session on the same level.
+ *
+ * For duel sessions, prepends a reset_duel_entry instruction to refund staked SOL
+ * and clean up duel state before closing the session.
  */
 export async function abandonSession(
   connection: Connection,
@@ -202,13 +207,33 @@ export async function abandonSession(
   inventoryPda: PublicKey,
   playerPubkey: PublicKey,
   sessionSignerPubkey: PublicKey,
-  campaignLevel: number
+  campaignLevel: number,
+  isDuelSession = false
 ): Promise<Transaction> {
   // Derive all PDAs that need to be closed
   const [gameStatePda] = deriveGameStatePda(sessionPda);
   const [mapEnemiesPda] = deriveMapEnemiesPda(sessionPda);
   const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
   const [mapPoisPda] = deriveMapPoisPda(sessionPda);
+
+  const transaction = new Transaction();
+
+  // For duel sessions, prepend reset_duel_entry to refund and clean up before closing
+  if (isDuelSession) {
+    const [duelEntryPda] = deriveDuelEntryPda(sessionPda);
+    const duelEntryInfo = await connection.getAccountInfo(duelEntryPda);
+    if (duelEntryInfo) {
+      const gameplayProgram = createGameplayStateProgram(connection);
+      const resetIx = await buildResetDuelEntryInstruction(
+        gameplayProgram,
+        sessionPda,
+        gameStatePda,
+        playerPubkey,
+        sessionSignerPubkey
+      );
+      transaction.add(resetIx);
+    }
+  }
 
   const abandonSessionIx = await program.methods
     .abandonSession(campaignLevel)
@@ -227,8 +252,6 @@ export async function abandonSession(
       poiSystemProgram: SOLANA_CONFIG.programs.poiSystem,
     })
     .instruction();
-
-  const transaction = new Transaction();
   transaction.add(abandonSessionIx);
 
   const { blockhash } = await connection.getLatestBlockhash();

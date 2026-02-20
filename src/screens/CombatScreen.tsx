@@ -98,7 +98,7 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
   const playerSkinSource = useEquippedSkinImage(profile?.equippedSkin);
   const { wallet, signAndSendTransaction } = useWallet();
   const { connection } = useSolanaConnection();
-  const { endSessionWithSessionSigner, queueEndGame, stopAutoCommit, hasActiveSession, session, mapSeed, gameplayState } =
+  const { endSessionWithSessionSigner, undelegateCurrentSession, queueEndGame, stopAutoCommit, hasActiveSession, session, mapSeed, gameplayState } =
     useSession();
   const isResolvingDuelRef = useRef(false);
   const {
@@ -285,6 +285,15 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
     const tryFinalizeDuelAndBuildReplay = async () => {
       if (!wallet.publicKey || !session || !gameplayState || mapSeed === null) return;
 
+      // Undelegate session from ER before sending finalize_duel_run to base chain.
+      // Without this, game_state is still owned by the delegation program and the
+      // base chain instruction fails with AccountOwnedByWrongProgram.
+      const undelegateResult = await undelegateCurrentSession();
+      if (!undelegateResult.success) {
+        console.warn('[CombatScreen] Failed to undelegate before duel finalization:', undelegateResult.error);
+        return;
+      }
+
       const duelProgram = createGameplayStateProgram(connection);
 
       const ourKey = wallet.publicKey.toBase58();
@@ -302,7 +311,6 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
         wallet.publicKey,
         gameStatePda,
         gameplayState.session,
-        mapSeed,
         duelEntry.matchedCreatorPlayer
       );
 
@@ -369,22 +377,36 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
           console.warn('[CombatScreen] Duel finalization skipped/failed:', duelFinalizeError);
         }
 
-        console.log('[CombatScreen] Ending session in background (non-blocking UI)');
-        void (async () => {
-          const endResult = await endSessionWithSessionSigner();
-          if (!endResult.success) {
-            console.warn('[CombatScreen] Failed to end session:', endResult.error);
-            try {
-              await queueEndGame(levelReached, isVictory);
-              console.log('[CombatScreen] Immediate end failed; deferred cleanup queued');
-            } catch (queueError) {
-              console.error(
-                '[CombatScreen] Failed to queue deferred cleanup after end failure:',
-                queueError
-              );
+        if (isVictory) {
+          // Victory: end session in background (state changes are fine since
+          // we navigate to VictoryScreen/Hub which handle them naturally).
+          console.log('[CombatScreen] Ending session in background (victory)');
+          void (async () => {
+            const endResult = await endSessionWithSessionSigner();
+            if (!endResult.success) {
+              console.warn('[CombatScreen] Failed to end session:', endResult.error);
+              try {
+                await queueEndGame(levelReached, isVictory);
+                console.log('[CombatScreen] Immediate end failed; deferred cleanup queued');
+              } catch (queueError) {
+                console.error(
+                  '[CombatScreen] Failed to queue deferred cleanup after end failure:',
+                  queueError
+                );
+              }
             }
-          }
-        })();
+          })();
+        } else {
+          // Defeat: queue deferred cleanup instead of ending session immediately.
+          // endSessionWithSessionSigner modifies React state across multiple context
+          // providers, which causes cascading re-renders that visibly blink the
+          // DeathScreen on web. The queued cleanup runs via processPendingCleanups
+          // when the user returns to HubScreen or CampaignSelectScreen.
+          console.log('[CombatScreen] Queueing deferred session cleanup (defeat)');
+          void queueEndGame(levelReached, false).catch((err) => {
+            console.error('[CombatScreen] Failed to queue deferred cleanup:', err);
+          });
+        }
       }
 
       if (duelReplayCombatInput) {
@@ -418,13 +440,23 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
         : 0;
       if (result === 'DEFEAT') {
         console.log('[CombatScreen] Navigating to DeathScreen (defeat)');
-        navigation.replace('Death', {
-          totalMoves: resolvedTotalMoves,
-          level: levelReached,
-          week: currentWeek,
-          phase: getPhaseLabel(combatInput?.phase ?? localPhaseNumber),
-          combatTurns: combatState.resolvedCombat?.turn ?? 0,
-          killedBy: combatState.resolvedCombat?.enemy.name,
+        // Use reset to remove GameScreen from the stack. On web, hidden
+        // screens behind the current one still live in the DOM; when session
+        // state changes trigger re-renders in GameScreen, the layout churn
+        // causes visible flickering on the DeathScreen.
+        navigation.reset({
+          index: 0,
+          routes: [{
+            name: 'Death',
+            params: {
+              totalMoves: resolvedTotalMoves,
+              level: levelReached,
+              week: currentWeek,
+              phase: getPhaseLabel(combatInput?.phase ?? localPhaseNumber),
+              combatTurns: combatState.resolvedCombat?.turn ?? 0,
+              killedBy: combatState.resolvedCombat?.enemy.name,
+            },
+          }],
         });
       } else if (isFinalWeekBoss) {
         console.log('[CombatScreen] Navigating to Victory screen (final week boss victory)');
@@ -451,6 +483,7 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
     stopAutoCommit,
     hasActiveSession,
     endSessionWithSessionSigner,
+    undelegateCurrentSession,
     queueEndGame,
     combatState.resolvedCombat,
     wallet.publicKey,

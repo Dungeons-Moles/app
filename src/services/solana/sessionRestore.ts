@@ -304,9 +304,10 @@ export async function fetchFullSessionState(
     generatedMapData.height
   );
 
-  // Apply broken walls from AsyncStorage (walls dug during gameplay are not stored on-chain)
+  // Apply broken walls from AsyncStorage (walls dug during gameplay are not stored on-chain).
+  // Skip for fresh sessions to prevent stale data from a previous session on the same PDA.
   const sessionKey = sessionPda.toBase58();
-  const brokenWalls = await loadBrokenWalls(sessionKey);
+  const brokenWalls = gameStateData.totalMoves === 0 ? null : await loadBrokenWalls(sessionKey);
   if (brokenWalls) {
     for (const wall of brokenWalls) {
       if (
@@ -348,12 +349,14 @@ export async function fetchFullSessionState(
     },
   };
 
-  // Restore fog from AsyncStorage or build from player position
-  const restoredFog = await loadFogState(
-    sessionKey,
-    generatedMapData.width,
-    generatedMapData.height
-  );
+  // Restore fog from AsyncStorage or build from player position.
+  // Skip loading cached fog/walls for fresh sessions (totalMoves === 0) to prevent
+  // stale data from a previous session on the same deterministic PDA from bleeding through
+  // (e.g., after a validator reset where the same PDA is reused for a new session).
+  const isFreshSession = gameStateData.totalMoves === 0;
+  const restoredFog = isFreshSession
+    ? null
+    : await loadFogState(sessionKey, generatedMapData.width, generatedMapData.height);
   if (restoredFog) {
     map.fog = restoredFog;
     // Mark enemies as discovered if they're on revealed/visible tiles
@@ -368,10 +371,16 @@ export async function fetchFullSessionState(
       return enemy;
     });
   } else {
-    // No saved fog: new session, reveal with initial sight radius (6)
+    // No saved fog or fresh session: reveal with initial sight radius (6)
     const updatedMap = applyInitialVisibility(map, playerPos);
     map.fog = updatedMap.fog;
     map.enemies = updatedMap.enemies;
+  }
+
+  // Clear stale caches for fresh sessions
+  if (isFreshSession) {
+    await clearFogState(sessionKey).catch(() => {});
+    await clearBrokenWalls(sessionKey).catch(() => {});
   }
 
   // Build RNG state: seed + totalMoves for deterministic resumption

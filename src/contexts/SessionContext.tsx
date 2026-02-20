@@ -54,7 +54,7 @@ import {
   type ActiveSession,
 } from '@/services/solana/sessionList';
 import { abandonSession as abandonSessionTx } from '@/services/solana/sessionBundle';
-import { buildEnterDuelTransaction, parseDuelEvents } from '@/services/solana/duels';
+import { buildEnterDuelInstruction, parseDuelEvents } from '@/services/solana/duels';
 import { clearFogState, clearBrokenWalls } from '@/services/solana/sessionRestore';
 import type { OnChainGameSession } from '@/services/solana/types/session_manager';
 import type {
@@ -122,6 +122,8 @@ interface SessionContextType extends SessionState {
   endGame: () => Promise<TransactionResult>;
   /** End session immediately with session key signer (called after combat death/victory) */
   endSessionWithSessionSigner: () => Promise<TransactionResult>;
+  /** Undelegate current session from rollup back to base chain */
+  undelegateCurrentSession: () => Promise<TransactionResult>;
   /** Queue session cleanup for later processing (immediate return, no signature needed) */
   queueEndGame: (levelReached: number, isVictory: boolean) => Promise<void>;
   /** Process any pending cleanup tasks */
@@ -616,6 +618,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
       const { transaction: sessionTransaction, sessionPda } = sessionResult;
 
+      // Clear stale fog/walls from a previous session on the same deterministic PDA
+      await clearFogState(sessionPda.toBase58()).catch(() => {});
+      await clearBrokenWalls(sessionPda.toBase58()).catch(() => {});
+
       // Step 3: Build/start transaction only (fund + start), then delegate in a second tx.
       const COMPUTE_BUDGET_PROGRAM_ID = 'ComputeBudget111111111111111111111111111111';
       const sessionInstructions = sessionTransaction.instructions.filter(
@@ -756,6 +762,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     async (): Promise<TransactionResult> => {
       console.log('[SessionContext] startDuelGame called');
 
+      if (!wallet.publicKey) {
+        return { success: false, error: 'Wallet not connected' };
+      }
+
       const sessionSignerResult = await sessionSigner.createWithoutFunding();
       if (!sessionSignerResult) {
         return { success: false, error: 'Failed to create sessionSigner wallet' };
@@ -772,6 +782,22 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
 
       const { transaction: sessionTransaction, sessionPda } = sessionResult;
+
+      // Clear stale fog/walls from a previous session on the same deterministic PDA
+      await clearFogState(sessionPda.toBase58()).catch(() => {});
+      await clearBrokenWalls(sessionPda.toBase58()).catch(() => {});
+
+      // Build enter_duel instruction (no seed arg needed — reads from generated_map account)
+      const [gameStatePda] = getGameStatePda(sessionPda);
+      const gameplayProgram = createGameplayStateProgram(connection);
+      const enterDuelIx = await buildEnterDuelInstruction(
+        gameplayProgram,
+        wallet.publicKey,
+        gameStatePda,
+        sessionPda
+      );
+
+      // Combine: fund_session_signer + start_duel_session + enter_duel in a single TX
       const combinedTransaction = new Transaction();
       combinedTransaction.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }));
       combinedTransaction.add(...fundTransaction.instructions);
@@ -781,15 +807,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         (ix) => ix.programId.toBase58() !== COMPUTE_BUDGET_PROGRAM_ID
       );
       combinedTransaction.add(...sessionInstructions);
+      combinedTransaction.add(enterDuelIx);
 
       const { blockhash } = await connection.getLatestBlockhash('confirmed');
       combinedTransaction.recentBlockhash = blockhash;
       combinedTransaction.feePayer = wallet.publicKey ?? undefined;
       combinedTransaction.partialSign(newSessionSignerKeypair);
 
+      let signature: string;
       await debugSimulateTransaction('startDuelGame:combined_tx', combinedTransaction);
       try {
-        const signature = await signAndSendTransaction(combinedTransaction);
+        signature = await signAndSendTransaction(combinedTransaction);
         console.log('[SessionContext] startDuelGame:combined_tx_sent', { signature });
         await confirmSignatureWithTimeout(signature);
         console.log('[SessionContext] startDuelGame:combined_tx_confirmed', { signature });
@@ -813,50 +841,19 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         };
       }
 
+      // Parse DuelQueued event from the combined TX
+      let duelQueued: { seed: bigint; slot: number } | undefined;
+      const events = await parseDuelEvents(connection, gameplayProgram, signature);
+      if (events.queued) {
+        duelQueued = { seed: events.queued.seed, slot: events.queued.slot };
+      }
+
       const generatedSeed = await fetchSessionGeneratedSeed(sessionPda);
       console.log('[SessionContext] startDuelGame:generated_seed', {
         generatedSeed: generatedSeed?.toString() ?? null,
       });
       setMapSeed(generatedSeed);
-
-      if (wallet.publicKey) {
-        const [gameStatePda] = getGameStatePda(sessionPda);
-        gameplayState.setGameStatePda(gameStatePda);
-      }
-
-      // Call enter_duel on base chain BEFORE delegation.
-      // After delegation, game_state is owned by the Delegation Program on base
-      // chain so enter_duel (which reads game_state) would fail.
-      let duelQueued: { seed: bigint; slot: number } | undefined;
-      if (generatedSeed !== null && wallet.publicKey) {
-        const [gameStatePdaForDuel] = getGameStatePda(sessionPda);
-        const gameplayProgram = createGameplayStateProgram(connection);
-        try {
-          const enterDuelTx = await buildEnterDuelTransaction(
-            connection,
-            gameplayProgram,
-            wallet.publicKey,
-            gameStatePdaForDuel,
-            sessionPda,
-            generatedSeed
-          );
-          const enterDuelSig = await signAndSendTransaction(enterDuelTx);
-          console.log('[SessionContext] startDuelGame:enter_duel_tx_sent', { signature: enterDuelSig });
-          await confirmSignatureWithTimeout(enterDuelSig);
-          console.log('[SessionContext] startDuelGame:enter_duel_tx_confirmed');
-
-          const events = await parseDuelEvents(connection, gameplayProgram, enterDuelSig);
-          if (events.queued) {
-            duelQueued = { seed: events.queued.seed, slot: events.queued.slot };
-          }
-        } catch (enterDuelError: unknown) {
-          logTxDebugError('startDuelGame:enter_duel_tx', enterDuelError);
-          return {
-            success: false,
-            error: enterDuelError instanceof Error ? enterDuelError.message : 'Failed to enter duel queue',
-          };
-        }
-      }
+      gameplayState.setGameStatePda(gameStatePda);
 
       const delegateResult = await ensureDelegatedToRollup({
         sessionPda,
@@ -908,6 +905,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
 
       const { transaction: sessionTransaction, sessionPda } = sessionResult;
+
+      // Clear stale fog/walls from a previous session on the same deterministic PDA
+      await clearFogState(sessionPda.toBase58()).catch(() => {});
+      await clearBrokenWalls(sessionPda.toBase58()).catch(() => {});
+
       const combinedTransaction = new Transaction();
       combinedTransaction.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }));
       combinedTransaction.add(...fundTransaction.instructions);
@@ -1057,16 +1059,26 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
       // Clear local state
       setMapSeed(null);
+      gameplayState.setGameStatePda(null);
 
-      // Clear fog and broken walls
-      if (wallet.publicKey && sessionManager.session?.campaignLevel) {
-        const [sessionPda] = deriveSessionPda(
-          wallet.publicKey,
-          sessionManager.session.campaignLevel
-        );
-        const sessionKeyStr = sessionPda.toBase58();
-        await clearFogState(sessionKeyStr);
-        await clearBrokenWalls(sessionKeyStr);
+      // Clear fog and broken walls for all possible session PDA types
+      if (wallet.publicKey) {
+        const pdaKeys: string[] = [];
+        if (sessionManager.session?.campaignLevel) {
+          const [campPda] = deriveSessionPda(
+            wallet.publicKey,
+            sessionManager.session.campaignLevel
+          );
+          pdaKeys.push(campPda.toBase58());
+        }
+        const [duelPda] = deriveDuelSessionPda(wallet.publicKey);
+        pdaKeys.push(duelPda.toBase58());
+        const [gauntletPda] = deriveGauntletSessionPda(wallet.publicKey);
+        pdaKeys.push(gauntletPda.toBase58());
+        for (const key of pdaKeys) {
+          await clearFogState(key).catch(() => {});
+          await clearBrokenWalls(key).catch(() => {});
+        }
       }
 
       // Drain/clear in background so post-combat navigation is not blocked.
@@ -1090,6 +1102,75 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setUseErForGameplay,
     wallet.publicKey,
     connection,
+    gameplayState.setGameStatePda,
+  ]);
+
+  /**
+   * Undelegate the current session from the rollup back to base chain.
+   * Extracted for use by CombatScreen before duel finalization.
+   */
+  const undelegateCurrentSession = useCallback(async (): Promise<TransactionResult> => {
+    if (!sessionSigner.keypair) {
+      return { success: false, error: 'Session key signer not available' };
+    }
+
+    const sessionPda =
+      sessionManager.activeSessionPda ??
+      (wallet.publicKey && sessionManager.session?.campaignLevel
+        ? deriveSessionPda(wallet.publicKey, sessionManager.session.campaignLevel)[0]
+        : null);
+    if (!sessionPda) {
+      return { success: false, error: 'Active session PDA not available' };
+    }
+
+    const sessionAccount = await connection.getAccountInfo(sessionPda, 'processed');
+    if (!sessionAccount) {
+      return { success: false, error: 'Session account not found on-chain' };
+    }
+
+    const sessionOwnedByProgram = sessionAccount.owner.equals(SOLANA_CONFIG.programs.sessionManager);
+    if (sessionOwnedByProgram && !sessionManager.session?.isDelegated) {
+      // Already on base chain
+      return { success: true };
+    }
+
+    const undelegateResult = await sessionManager.undelegateSession(
+      getFallbackStateHash(),
+      sessionSigner.keypair
+    );
+    if (!undelegateResult.success) {
+      return {
+        success: false,
+        error: undelegateResult.error ?? 'Failed to undelegate session from rollup',
+      };
+    }
+
+    // Wait for base layer ownership to be restored
+    let restored = false;
+    for (let i = 0; i < 20; i += 1) {
+      const info = await connection.getAccountInfo(sessionPda, 'processed');
+      if (info?.owner.equals(SOLANA_CONFIG.programs.sessionManager)) {
+        restored = true;
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    if (!restored) {
+      return {
+        success: false,
+        error: 'Session undelegate not finalized yet; please retry in a moment',
+      };
+    }
+
+    setUseErForGameplay(false);
+    return { success: true };
+  }, [
+    sessionSigner.keypair,
+    sessionManager,
+    wallet.publicKey,
+    connection,
+    getFallbackStateHash,
+    setUseErForGameplay,
   ]);
 
   /**
@@ -1494,11 +1575,24 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
       const campaignLevel = sessionManager.session?.campaignLevel ?? 0;
 
+      // Detect session type by comparing active PDA against known duel/gauntlet PDAs
+      let sessionType: 'campaign' | 'duel' | 'gauntlet' = 'campaign';
+      if (wallet.publicKey && sessionManager.activeSessionPda) {
+        const [duelPda] = deriveDuelSessionPda(wallet.publicKey);
+        const [gauntletPda] = deriveGauntletSessionPda(wallet.publicKey);
+        if (sessionManager.activeSessionPda.equals(duelPda)) {
+          sessionType = 'duel';
+        } else if (sessionManager.activeSessionPda.equals(gauntletPda)) {
+          sessionType = 'gauntlet';
+        }
+      }
+
       console.log('[SessionContext] Queueing deferred cleanup:', {
         walletAddress: walletId,
         campaignLevel,
         levelReached,
         isVictory,
+        sessionType,
       });
 
       await queueCleanup({
@@ -1508,6 +1602,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         isVictory,
         needsSessionEnd: sessionManager.hasActiveSession,
         needsResultRecord: true,
+        sessionType,
       });
 
       setHasPendingCleanupsState(true);
@@ -1516,17 +1611,23 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       // The actual on-chain cleanup will happen later
       setMapSeed(null);
 
-      // Clear fog state and broken walls for this session
+      // Clear fog state and broken walls for this session (and duel/gauntlet variants)
       // This ensures next playthrough starts fresh
-      if (wallet.publicKey && campaignLevel > 0) {
-        const [sessionPda] = deriveSessionPda(wallet.publicKey, campaignLevel);
-        const sessionKeyStr = sessionPda.toBase58();
-        await clearFogState(sessionKeyStr);
-        await clearBrokenWalls(sessionKeyStr);
-        console.log(
-          '[SessionContext] Fog and broken walls cleared for session:',
-          sessionKeyStr.slice(0, 8)
-        );
+      if (wallet.publicKey) {
+        const pdaKeys: string[] = [];
+        if (campaignLevel > 0) {
+          const [campPda] = deriveSessionPda(wallet.publicKey, campaignLevel);
+          pdaKeys.push(campPda.toBase58());
+        }
+        const [duelPda] = deriveDuelSessionPda(wallet.publicKey);
+        pdaKeys.push(duelPda.toBase58());
+        const [gauntletPda] = deriveGauntletSessionPda(wallet.publicKey);
+        pdaKeys.push(gauntletPda.toBase58());
+        for (const key of pdaKeys) {
+          await clearFogState(key).catch(() => {});
+          await clearBrokenWalls(key).catch(() => {});
+        }
+        console.log('[SessionContext] Fog and broken walls cleared for session PDAs');
       }
 
       // Keep sessionSigner persisted so deferred cleanup can undelegate/end on next app launch.
@@ -1539,6 +1640,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       wallet.publicKey,
       sessionManager.session?.campaignLevel,
       sessionManager.hasActiveSession,
+      sessionManager.activeSessionPda,
       sessionSigner,
       setUseErForGameplay,
     ]
@@ -1711,7 +1813,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             errorText.includes('InvalidAccountOwner');
 
           if (cleanup.needsSessionEnd) {
-            const [sessionPda] = deriveSessionPda(wallet.publicKey, cleanup.campaignLevel);
+            // Derive correct PDA based on session type
+            const sessionPda = cleanup.sessionType === 'duel'
+              ? deriveDuelSessionPda(wallet.publicKey)[0]
+              : cleanup.sessionType === 'gauntlet'
+                ? deriveGauntletSessionPda(wallet.publicKey)[0]
+                : deriveSessionPda(wallet.publicKey, cleanup.campaignLevel)[0];
             sessionManager.setActiveOnChainLevel(cleanup.campaignLevel);
             sessionManager.setActiveSessionPda(sessionPda);
 
@@ -2027,6 +2134,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const program = createSessionManagerProgram(connection);
 
       // Create the abandon session transaction
+      const [duelPda] = deriveDuelSessionPda(wallet.publicKey);
+      const isDuelSession = sessionPda.equals(duelPda);
       const tx = await abandonSessionTx(
         connection,
         program,
@@ -2034,7 +2143,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         inventoryPda,
         sessionOwner,
         sessionSignerKeypair.publicKey,
-        session.campaignLevel
+        session.campaignLevel,
+        isDuelSession
       );
 
       // Add compute budget for safety (increased for closing all accounts via CPI)
@@ -2139,6 +2249,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     startGauntletGame,
     endGame,
     endSessionWithSessionSigner,
+    undelegateCurrentSession,
     queueEndGame,
     processPendingCleanups,
     hasPendingCleanups: hasPendingCleanupsState,

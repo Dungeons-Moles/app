@@ -1048,12 +1048,7 @@
           "address": "11111111111111111111111111111111"
         }
       ],
-      "args": [
-        {
-          "name": "seed",
-          "type": "u64"
-        }
-      ]
+      "args": []
     },
     {
       "name": "enter_gauntlet",
@@ -1581,12 +1576,7 @@
           }
         }
       ],
-      "args": [
-        {
-          "name": "seed",
-          "type": "u64"
-        }
-      ]
+      "args": []
     },
     {
       "name": "finalize_gauntlet_epoch",
@@ -2908,6 +2898,121 @@
           "type": "i16"
         }
       ]
+    },
+    {
+      "name": "reset_duel_entry",
+      "docs": [
+        "Resets the duel entry for the current session.",
+        "If the run was not finalized (abandoned), refunds the player's stake from the vault",
+        "and re-queues any matched creator back into the open queue.",
+        "Called before end_session/abandon_session so the player can start a new duel."
+      ],
+      "discriminator": [
+        94,
+        6,
+        155,
+        185,
+        98,
+        64,
+        111,
+        255
+      ],
+      "accounts": [
+        {
+          "name": "duel_entry",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  117,
+                  101,
+                  108,
+                  95,
+                  101,
+                  110,
+                  116,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "game_state.session",
+                "account": "GameState"
+              }
+            ]
+          }
+        },
+        {
+          "name": "duel_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  117,
+                  101,
+                  108,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "duel_open_queue",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  117,
+                  101,
+                  108,
+                  95,
+                  111,
+                  112,
+                  101,
+                  110,
+                  95,
+                  113,
+                  117,
+                  101,
+                  117,
+                  101
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "game_state"
+        },
+        {
+          "name": "player",
+          "writable": true
+        },
+        {
+          "name": "session_signer",
+          "signer": true,
+          "relations": [
+            "game_state"
+          ]
+        }
+      ],
+      "args": []
     },
     {
       "name": "resolve_gauntlet_week",
@@ -7410,6 +7515,22 @@
                 10
               ]
             }
+          },
+          {
+            "name": "equipped_skin",
+            "docs": [
+              "Currently equipped Metaplex Core skin NFT (if any)"
+            ],
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
+            "name": "gauntlet_boosters",
+            "docs": [
+              "Free gauntlet entries from quest rewards"
+            ],
+            "type": "u8"
           }
         ]
       }

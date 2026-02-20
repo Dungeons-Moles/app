@@ -36,6 +36,8 @@ export interface PendingCleanup {
   needsSessionEnd: boolean;
   /** Whether run result needs to be recorded */
   needsResultRecord: boolean;
+  /** Session type for correct PDA derivation (defaults to campaign for backwards compat) */
+  sessionType?: 'campaign' | 'duel' | 'gauntlet';
 }
 
 interface CleanupQueue {

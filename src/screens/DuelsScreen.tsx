@@ -328,6 +328,7 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
                             styles.panelButtonText,
                             isCompact && compactStyles.panelButtonText,
                             duels.isLoading && { opacity: 0 },
+                            hasExistingDuelSession && { marginLeft: -30 },
                           ]}
                         >
                           {hasExistingDuelSession ? 'Resume Session' : 'Enter Duels'}

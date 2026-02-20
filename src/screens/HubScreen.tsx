@@ -118,11 +118,13 @@ export function HubScreen({ navigation }: HubScreenProps) {
     claimReward,
   } = useQuests();
   const { equipSkin, unequipSkin, isLoading: equipLoading } = useEquipSkin();
+  const { processPendingCleanups } = useSession();
 
   // Resolve equipped skin image for center character + avatar (single getAccountInfo, no heavy getProgramAccounts)
   const characterImage = useEquippedSkinImage(profile?.equippedSkin);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const didRunCleanupThisFocusRef = useRef(false);
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -131,6 +133,22 @@ export function HubScreen({ navigation }: HubScreenProps) {
       useNativeDriver: true,
     }).start();
   }, []);
+
+  // Process any pending session cleanups when Hub screen gains focus
+  // (e.g. returning from DeathScreen after a deferred queueEndGame)
+  useEffect(() => {
+    if (!isScreenFocused) {
+      didRunCleanupThisFocusRef.current = false;
+      return;
+    }
+    if (didRunCleanupThisFocusRef.current) {
+      return;
+    }
+    didRunCleanupThisFocusRef.current = true;
+    processPendingCleanups().catch((err) => {
+      console.warn('[HubScreen] Failed to run pending cleanup processing:', err);
+    });
+  }, [isScreenFocused, processPendingCleanups]);
 
   useEffect(() => {
     let cancelled = false;

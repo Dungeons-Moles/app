@@ -38,6 +38,7 @@ import {
 } from '@/services/solana/constants';
 import { SOLANA_CONFIG } from '@/services/solana/config';
 import { getUserErrorMessage } from '@/services/solana/errors';
+import { buildResetDuelEntryInstruction, deriveDuelEntryPda } from '@/services/solana/duels';
 import { sendSessionSignerTransaction } from '@/services/solana/sessionSigner';
 import { MAX_CAMPAIGN_LEVEL } from './useMapGenerator';
 import type { TransactionResult } from '@/types/solana';
@@ -1115,7 +1116,28 @@ export function useSessionManager() {
 
         // Build transaction manually since we're only using the session signer
         const program = createSessionManagerProgram(baseConnection);
-        const transaction = await program.methods
+        const transaction = new Transaction();
+
+        // For duel sessions, prepend reset_duel_entry to clean up duel state before closing
+        const [duelSessionPda] = deriveDuelSessionPda(wallet.publicKey);
+        const isDuelSession = sessionPda.equals(duelSessionPda);
+        if (isDuelSession) {
+          const [duelEntryPda] = deriveDuelEntryPda(sessionPda);
+          const duelEntryInfo = await baseConnection.getAccountInfo(duelEntryPda);
+          if (duelEntryInfo) {
+            const gameplayProgram = createGameplayStateProgram(baseConnection);
+            const resetIx = await buildResetDuelEntryInstruction(
+              gameplayProgram,
+              sessionPda,
+              gameStatePda,
+              wallet.publicKey,
+              sessionSignerKeypair.publicKey
+            );
+            transaction.add(resetIx);
+          }
+        }
+
+        const endSessionIx = await program.methods
           .endSession(session.campaignLevel)
           .accounts({
             gameSession: sessionPda,
@@ -1134,7 +1156,8 @@ export function useSessionManager() {
             mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
             poiSystemProgram: SOLANA_CONFIG.programs.poiSystem,
           })
-          .transaction();
+          .instruction();
+        transaction.add(endSessionIx);
 
         // Set blockhash and fee payer (session signer pays)
         const { blockhash } = await baseConnection.getLatestBlockhash('confirmed');

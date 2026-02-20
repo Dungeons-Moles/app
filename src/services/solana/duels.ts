@@ -7,7 +7,7 @@
  * - Event parsing for DuelQueued, DuelRunFinalized, DuelCombatVisual, DuelResolved
  */
 
-import { ComputeBudgetProgram, Connection, PublicKey, SystemProgram, Transaction } from '@solana/web3.js';
+import { ComputeBudgetProgram, Connection, PublicKey, SystemProgram, Transaction, TransactionInstruction } from '@solana/web3.js';
 import type { Program } from '@coral-xyz/anchor';
 import { SOLANA_CONFIG } from './config';
 import {
@@ -162,14 +162,12 @@ export async function fetchDuelEntry(
   }
 }
 
-export async function buildEnterDuelTransaction(
-  connection: Connection,
+export async function buildEnterDuelInstruction(
   program: Program,
   playerPublicKey: PublicKey,
   gameStatePda: PublicKey,
-  sessionPda: PublicKey,
-  seed: bigint
-): Promise<Transaction> {
+  sessionPda: PublicKey
+): Promise<TransactionInstruction> {
   const [duelOpenQueuePda] = deriveDuelOpenQueuePda();
   const [duelVaultPda] = deriveDuelVaultPda();
   const [gauntletPoolVaultPda] = deriveGauntletPoolVaultPda();
@@ -181,7 +179,7 @@ export async function buildEnterDuelTransaction(
 
   const tx = await (
     program.methods as unknown as {
-      enterDuel: (seed: bigint) => {
+      enterDuel: () => {
         accounts: (accounts: {
           duelEntry: PublicKey;
           duelOpenQueue: PublicKey;
@@ -196,7 +194,7 @@ export async function buildEnterDuelTransaction(
       };
     }
   )
-    .enterDuel(seed)
+    .enterDuel()
     .accounts({
       duelEntry: duelEntryPda,
       duelOpenQueue: duelOpenQueuePda,
@@ -210,9 +208,28 @@ export async function buildEnterDuelTransaction(
     })
     .transaction();
 
-  tx.instructions.unshift(
+  return tx.instructions[0];
+}
+
+export async function buildEnterDuelTransaction(
+  connection: Connection,
+  program: Program,
+  playerPublicKey: PublicKey,
+  gameStatePda: PublicKey,
+  sessionPda: PublicKey
+): Promise<Transaction> {
+  const ix = await buildEnterDuelInstruction(
+    program,
+    playerPublicKey,
+    gameStatePda,
+    sessionPda
+  );
+
+  const tx = new Transaction();
+  tx.add(
     ComputeBudgetProgram.setComputeUnitLimit({ units: DUEL_CU_LIMIT }),
-    ComputeBudgetProgram.setComputeUnitPrice({ microLamports: DUEL_CU_PRICE_MICROLAMPORTS })
+    ComputeBudgetProgram.setComputeUnitPrice({ microLamports: DUEL_CU_PRICE_MICROLAMPORTS }),
+    ix
   );
 
   const { blockhash } = await connection.getLatestBlockhash(SOLANA_CONFIG.commitment);
@@ -304,7 +321,6 @@ export async function buildFinalizeDuelRunTransaction(
   playerPublicKey: PublicKey,
   gameStatePda: PublicKey,
   sessionPda: PublicKey,
-  seed: bigint,
   creatorWallet?: PublicKey | null
 ): Promise<Transaction> {
   const [duelOpenQueuePda] = deriveDuelOpenQueuePda();
@@ -319,7 +335,7 @@ export async function buildFinalizeDuelRunTransaction(
 
   const tx = await (
     program.methods as unknown as {
-      finalizeDuelRun: (seed: bigint) => {
+      finalizeDuelRun: () => {
         accounts: (accounts: {
           duelEntry: PublicKey;
           duelOpenQueue: PublicKey;
@@ -335,7 +351,7 @@ export async function buildFinalizeDuelRunTransaction(
       };
     }
   )
-    .finalizeDuelRun(seed)
+    .finalizeDuelRun()
     .accounts({
       duelEntry: duelEntryPda,
       duelOpenQueue: duelOpenQueuePda,
@@ -360,6 +376,55 @@ export async function buildFinalizeDuelRunTransaction(
   tx.feePayer = playerPublicKey;
 
   return tx;
+}
+
+export function deriveDuelEntryPda(
+  sessionPda: PublicKey,
+  programId: PublicKey = GAMEPLAY_STATE_PROGRAM_ID
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from('duel_entry'), sessionPda.toBuffer()],
+    programId
+  );
+}
+
+export async function buildResetDuelEntryInstruction(
+  program: Program,
+  sessionPda: PublicKey,
+  gameStatePda: PublicKey,
+  playerPublicKey: PublicKey,
+  sessionSignerPublicKey: PublicKey
+): Promise<TransactionInstruction> {
+  const [duelEntryPda] = deriveDuelEntryPda(sessionPda);
+  const [duelVaultPda] = deriveDuelVaultPda();
+  const [duelOpenQueuePda] = deriveDuelOpenQueuePda();
+
+  const tx = await (
+    program.methods as unknown as {
+      resetDuelEntry: () => {
+        accounts: (accounts: {
+          duelEntry: PublicKey;
+          duelVault: PublicKey;
+          duelOpenQueue: PublicKey;
+          gameState: PublicKey;
+          player: PublicKey;
+          sessionSigner: PublicKey;
+        }) => { transaction: () => Promise<Transaction> };
+      };
+    }
+  )
+    .resetDuelEntry()
+    .accounts({
+      duelEntry: duelEntryPda,
+      duelVault: duelVaultPda,
+      duelOpenQueue: duelOpenQueuePda,
+      gameState: gameStatePda,
+      player: playerPublicKey,
+      sessionSigner: sessionSignerPublicKey,
+    })
+    .transaction();
+
+  return tx.instructions[0];
 }
 
 export type DuelResolution =

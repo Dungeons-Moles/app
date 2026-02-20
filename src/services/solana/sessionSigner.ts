@@ -383,33 +383,51 @@ export async function drainSessionSignerToMain(
 ): Promise<string> {
   const balance = await connection.getBalance(sessionSignerKeypair.publicKey);
   const latestBlockhash = await connection.getLatestBlockhash(SOLANA_CONFIG.commitment);
-  const feeProbe = new Transaction({
+
+  // Build the exact transaction we'll send (no extra ComputeBudget instruction)
+  // so the fee probe matches the actual fee precisely. We need the account to
+  // end at exactly 0 lamports — any non-zero residual below rent-exempt (~890K)
+  // causes "insufficient funds for rent".
+  const tx = new Transaction({
     feePayer: sessionSignerKeypair.publicKey,
     recentBlockhash: latestBlockhash.blockhash,
   }).add(
     SystemProgram.transfer({
       fromPubkey: sessionSignerKeypair.publicKey,
       toPubkey: mainWalletAddress,
-      lamports: 1,
+      lamports: 1, // placeholder, replaced below
     })
   );
-  const exactFee = (await connection.getFeeForMessage(feeProbe.compileMessage(), SOLANA_CONFIG.commitment))
+  const exactFee = (await connection.getFeeForMessage(tx.compileMessage(), SOLANA_CONFIG.commitment))
     .value;
-  const feeBuffer = exactFee ?? ESTIMATED_TX_FEE;
-  const transferAmount = balance - feeBuffer - 1; // keep 1 lamport safety margin for fee variance
+  const fee = exactFee ?? ESTIMATED_TX_FEE;
+  const transferAmount = balance - fee;
   if (transferAmount <= 0) {
     throw new Error('Insufficient balance to drain');
   }
 
-  const transaction = new Transaction().add(
+  // Rebuild with the correct transfer amount
+  const drainTx = new Transaction({
+    feePayer: sessionSignerKeypair.publicKey,
+    recentBlockhash: latestBlockhash.blockhash,
+  }).add(
     SystemProgram.transfer({
       fromPubkey: sessionSignerKeypair.publicKey,
       toPubkey: mainWalletAddress,
       lamports: transferAmount,
     })
   );
+  drainTx.sign(sessionSignerKeypair);
 
-  return sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair);
+  const signature = await connection.sendRawTransaction(drainTx.serialize(), {
+    skipPreflight: false,
+    maxRetries: 2,
+  });
+  await connection.confirmTransaction(
+    { signature, blockhash: latestBlockhash.blockhash, lastValidBlockHeight: latestBlockhash.lastValidBlockHeight },
+    SOLANA_CONFIG.commitment
+  );
+  return signature;
 }
 
 /**

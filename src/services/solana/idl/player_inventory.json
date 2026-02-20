@@ -684,6 +684,136 @@
       ]
     },
     {
+      "name": "equip_special_gear_authorized",
+      "docs": [
+        "Equips an NFT-backed gear item into the player's inventory.",
+        "Validates the NFT is owned by the player and the nft_item_id exists in the catalog."
+      ],
+      "discriminator": [
+        240,
+        199,
+        50,
+        125,
+        52,
+        214,
+        1,
+        126
+      ],
+      "accounts": [
+        {
+          "name": "inventory",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  110,
+                  118,
+                  101,
+                  110,
+                  116,
+                  111,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "inventory.session",
+                "account": "PlayerInventory"
+              }
+            ]
+          }
+        },
+        {
+          "name": "poi_authority",
+          "docs": [
+            "POI authority PDA from poi-system that must sign"
+          ],
+          "signer": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  105,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                77,
+                160,
+                63,
+                209,
+                182,
+                56,
+                149,
+                181,
+                2,
+                195,
+                173,
+                95,
+                65,
+                136,
+                88,
+                122,
+                235,
+                166,
+                235,
+                216,
+                241,
+                107,
+                2,
+                35,
+                185,
+                14,
+                177,
+                21,
+                150,
+                103,
+                215,
+                77
+              ]
+            }
+          }
+        },
+        {
+          "name": "special_asset",
+          "docs": [
+            "1. AssetV1 discriminator check",
+            "2. Owner field matches inventory player"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "nft_item_id",
+          "type": {
+            "array": [
+              "u8",
+              8
+            ]
+          }
+        }
+      ]
+    },
+    {
       "name": "equip_tool",
       "docs": [
         "DEPRECATED: Use poi-system interactions (interact_pick_item, shop_purchase) instead.",

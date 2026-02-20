@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useMemo, ReactNode, useState, useCallback } from 'react';
+import React, { createContext, useContext, useMemo, useEffect, ReactNode, useState, useCallback } from 'react';
 import type { Connection } from '@solana/web3.js';
 import { createErConnection, createSolanaConnection } from '@/services/solana/programs';
+import { checkValidatorFingerprint } from '@/services/solana/validatorFingerprint';
 
 interface SolanaConnectionContextValue {
   /** Base layer Solana connection (L1). */
@@ -26,6 +27,16 @@ export function SolanaConnectionProvider({ children }: { children: ReactNode }) 
   const setUseErForGameplay = useCallback((enabled: boolean) => {
     setUseErForGameplayState(enabled);
   }, []);
+
+  // Check for validator reset on startup (local dev only).
+  // Clears stale caches when genesis hash changes.
+  useEffect(() => {
+    checkValidatorFingerprint(baseConnection).then((wasReset) => {
+      if (wasReset) {
+        console.log('[SolanaConnectionProvider] Validator reset detected — caches cleared');
+      }
+    });
+  }, [baseConnection]);
   const gameplayConnection = useErForGameplay ? erConnection : baseConnection;
   const contextValue = useMemo(
     () => ({

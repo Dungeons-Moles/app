@@ -157,14 +157,19 @@ export function GameplayStateProvider({ children }: { children: ReactNode }) {
   // SessionContext sets the PDA on its own useGameplayState instance; this effect
   // mirrors that onto GameplayStateProvider's instance so consumers (e.g. BossPanel)
   // reading from useGameplayStateContext() see the correct on-chain state.
-  useEffect(() => {
-    if (sessionPda) {
-      const [derived] = getGameStatePda(sessionPda);
+  //
+  // Uses render-time state sync (not useEffect) so the PDA is cleared in the same
+  // render cycle that sessionPda becomes null. This prevents the auto-refresh effect
+  // in useGameplayState from firing with a stale PDA during session end, which would
+  // cause unnecessary fetches and re-renders on the Defeat/Victory screens.
+  if (sessionPda) {
+    const [derived] = getGameStatePda(sessionPda);
+    if (!gameplay.gameStatePda?.equals(derived)) {
       gameplay.setGameStatePda(derived);
-    } else {
-      gameplay.setGameStatePda(null);
     }
-  }, [sessionPda]);
+  } else if (gameplay.gameStatePda !== null) {
+    gameplay.setGameStatePda(null);
+  }
 
   // Map entities state
   const [enemies, setEnemies] = useState<EnemyData[]>([]);
