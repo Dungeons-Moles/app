@@ -19,7 +19,7 @@ import { useSolanaConnection } from '../contexts/SolanaConnectionContext';
 import { useLandscapeLock } from '../hooks/useOrientationLock';
 import { CombatLayout } from '../components/combat';
 import { DebugOverlay } from '../components/game';
-import { ENEMY_TRAITS } from '../game/combat/traits';
+import { ENEMY_TRAITS, type EnemyId } from '../game/combat/traits';
 import { getEntityImageSource } from '../components/game/entityImages';
 
 const defaultMoleImageSource = require('../../assets/entities/characters/default-mole.png');
@@ -204,7 +204,7 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
         playerTool: gameState.player.equippedTool,
         playerGold: gameState.player.stats.gold,
         enemyDefinitionId: gameState.combat.enemyDefinitionId,
-        enemyId: gameState.combat.enemyDefinitionId,
+        enemyId: gameState.combat.enemyDefinitionId as EnemyId,
         enemyTier: gameState.combat.enemyTier,
       });
     }
@@ -498,7 +498,7 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
   const enemyTrait = useMemo(() => {
     const enemyId = combatState.combat?.enemyDefinitionId;
     if (!enemyId) return undefined;
-    const trait = ENEMY_TRAITS[enemyId];
+    const trait = ENEMY_TRAITS[enemyId as EnemyId];
     return trait ? { name: trait.name, description: trait.description } : undefined;
   }, [combatState.combat?.enemyDefinitionId]);
 

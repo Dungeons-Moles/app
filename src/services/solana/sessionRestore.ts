@@ -326,7 +326,12 @@ export async function fetchFullSessionState(
     generatedMapData.enemies,
     generatedMapData.enemyCount
   );
-  const pois = convertPois(generatedMapData.pois, generatedMapData.poiCount, mapPoisData);
+  const pois = convertPois(
+    generatedMapData.pois,
+    generatedMapData.poiCount,
+    mapPoisData,
+    gameStateData.runMode
+  );
   const time = convertTimeState(
     gameStateData,
     gameStateData.campaignLevel,
@@ -507,24 +512,37 @@ export function convertEnemies(
 // POI Conversion
 // ============================================================================
 
+/** Counter Cache POI type ID (L13) — excluded from Duel/Gauntlet on-chain */
+const COUNTER_CACHE_POI_TYPE = 13;
+
 /**
  * Converts on-chain POI data to game engine MapPOI array.
+ *
+ * Counter Cache (type 13) is boss-prep content and is excluded from
+ * Duel/Gauntlet modes on-chain (see poi-system initialize_map_pois).
+ * We must mirror that filter here so the local map matches MapPois.
  *
  * @param generatedPois - GeneratedMap POI spawns
  * @param poiCount - Actual POI count
  * @param mapPoisData - On-chain MapPois data (has used/discovered state)
+ * @param runMode - Session run mode (Campaign, Duel, Gauntlet)
  * @returns Array of MapPOI for the game engine
  */
 export function convertPois(
   generatedPois: GeneratedMapData['pois'],
   poiCount: number,
-  mapPoisData: MapPoisData | null
+  mapPoisData: MapPoisData | null,
+  runMode: RunMode = RunMode.Campaign
 ): MapPOI[] {
   const result: MapPOI[] = [];
+  const excludeCounterCache = runMode === RunMode.Duel || runMode === RunMode.Gauntlet;
 
   for (let i = 0; i < poiCount; i++) {
     const poi = generatedPois[i];
     if (!poi) continue;
+
+    // Mirror on-chain filter: Counter Cache is boss-prep, excluded from PvP modes
+    if (excludeCounterCache && poi.poiType === COUNTER_CACHE_POI_TYPE) continue;
 
     const poiId = POI_TYPE_TO_ID[poi.poiType];
     if (!poiId) {
@@ -532,13 +550,15 @@ export function convertPois(
       continue;
     }
 
-    // Use MapPois data for visited/discovered state if available
-    const mapPoiInstance = mapPoisData?.pois?.[i];
+    // Match MapPois entry by position (indices can differ when POIs are filtered)
+    const mapPoiInstance = mapPoisData?.pois?.find(
+      (p) => p.x === poi.x && p.y === poi.y
+    );
     const isUsed = mapPoiInstance ? mapPoiInstance.used : poi.isUsed;
     const isDiscovered = mapPoiInstance ? mapPoiInstance.discovered : false;
 
     result.push({
-      id: `poi-${i}`,
+      id: `poi-${result.length}`,
       definitionId: poiId,
       position: { x: poi.x, y: poi.y },
       visited: isUsed,

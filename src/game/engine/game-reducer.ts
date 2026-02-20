@@ -17,6 +17,7 @@ import type {
   CombatState,
   Player,
   POIInteraction,
+  ItemRarity,
 } from './types';
 import { GamePhase, CombatPhase, DEFAULT_STATUS_EFFECTS, TimePhase } from './types';
 // On-chain types inlined to avoid importing from services/solana which requires env vars.
@@ -135,6 +136,7 @@ export type GameAction =
   | { type: 'COLLECT_GEAR'; gear: Gear }
   | { type: 'DISCARD_GEAR'; slotIndex: number }
   | { type: 'DISCARD_GEAR_BY_ID'; gearId: GearId }
+  | { type: 'FUSE_GEAR'; gearId: GearId }
   | { type: 'INCREASE_INVENTORY' }
   | { type: 'ADD_GOLD'; amount: number }
   | { type: 'SPEND_GOLD'; amount: number }
@@ -259,6 +261,9 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
 
     case 'DISCARD_GEAR_BY_ID':
       return handleDiscardGearById(state, action.gearId);
+
+    case 'FUSE_GEAR':
+      return handleFuseGear(state, action.gearId);
 
     case 'INCREASE_INVENTORY':
       return handleIncreaseInventory(state);
@@ -1833,6 +1838,37 @@ function handleDiscardGearById(state: GameState, gearId: GearId): GameState {
   return {
     ...state,
     player,
+  };
+}
+
+/**
+ * Handles FUSE_GEAR action.
+ * Removes one copy of the gear and upgrades the other to the next tier.
+ * Used after a confirmed Rune Kiln on-chain fusion.
+ */
+function handleFuseGear(state: GameState, gearId: GearId): GameState {
+  const NEXT_RARITY: Partial<Record<ItemRarity, ItemRarity>> = {
+    COMMON: 'GILDED',
+    GILDED: 'DIAMOND',
+  };
+
+  // Remove one copy
+  const { player } = removeGearById(state.player, gearId);
+
+  // Upgrade the remaining copy to the next tier
+  const upgradedInventory = player.inventory.map((slot) => {
+    if (slot.item.id === gearId && NEXT_RARITY[slot.item.currentRarity]) {
+      return {
+        ...slot,
+        item: { ...slot.item, currentRarity: NEXT_RARITY[slot.item.currentRarity]! },
+      };
+    }
+    return slot;
+  });
+
+  return {
+    ...state,
+    player: { ...player, inventory: upgradedInventory },
   };
 }
 

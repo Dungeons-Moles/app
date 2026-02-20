@@ -60,7 +60,7 @@ export const TIER_GOLD_REWARDS: Record<1 | 2 | 3, number> = {
  * Calculate gold reward for defeating an enemy
  * Per GDD: T1=2, T2=4, T3=6 (regardless of enemy type)
  */
-export function calculateGoldReward(_enemyId: EnemyId, tier: 1 | 2 | 3): number {
+export function calculateGoldReward(_enemyId: string, tier: 1 | 2 | 3): number {
   return TIER_GOLD_REWARDS[tier];
 }
 

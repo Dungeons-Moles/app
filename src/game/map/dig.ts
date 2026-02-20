@@ -24,12 +24,7 @@ export function calculateDigCost(dig: number): number | null {
  * Check if a wall can be dug at the given position.
  */
 export function canDig(map: GameMap, position: Position): boolean {
-  if (
-    position.x <= 0 ||
-    position.y <= 0 ||
-    position.x >= map.width - 1 ||
-    position.y >= map.height - 1
-  ) {
+  if (position.x < 0 || position.y < 0 || position.x >= map.width || position.y >= map.height) {
     return false;
   }
 

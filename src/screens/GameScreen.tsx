@@ -203,6 +203,7 @@ function createBossCombatParams(
     enemy: buildEnemyCombatant(bossDef.name, bossDef.emoji, bossId, bossDef.stats),
     seed,
     bossId,
+    enemyDefinitionId: bossId,
     goldReward: 0,
     activeItemSets: activeItemsets as any[],
     playerGear,
@@ -468,6 +469,14 @@ export function GameScreen({ navigation }: GameScreenProps) {
   const isTriggeringBossRef = useRef(false);
   const isRestoringSessionRef = useRef(false);
 
+  // Reset isTriggeringBossRef when screen regains focus (e.g., returning from
+  // CombatScreen/VictoryScreen). This ensures future boss fights can trigger.
+  useEffect(() => {
+    if (isFocused) {
+      isTriggeringBossRef.current = false;
+    }
+  }, [isFocused]);
+
   useEffect(() => {
     if (!isFocused || state || !hasActiveSession || !sessionPda || isRestoringSessionRef.current) {
       return;
@@ -520,6 +529,13 @@ export function GameScreen({ navigation }: GameScreenProps) {
       return;
     }
 
+    // Guard: if local HP doesn't match on-chain HP, sync first and let the
+    // effect re-run on the next render with the correct HP value.
+    if (state.player.stats.hp !== onChainState.hp) {
+      dispatch({ type: 'SYNC_MOVE', confirmedState: onChainState });
+      return;
+    }
+
     isTriggeringBossRef.current = true;
     console.log('[GameScreen] Weekly fight detected via on-chain state, triggering:', {
       weekBoss: resolvedWeekBoss ?? null,
@@ -530,6 +546,53 @@ export function GameScreen({ navigation }: GameScreenProps) {
     });
 
     (async () => {
+      // Campaign and Duel (weeks 1-2) resolve the boss inline during move_player.
+      // The move handler normally navigates to CombatScreen for these cases.
+      // This guard catches edge cases (e.g., screen refresh with stale state)
+      // where the boss effect fires for an already-resolved inline boss fight.
+      const bossAlreadyResolvedInline =
+        !isGauntletRun &&
+        onChainState.isDead &&
+        (onChainState.runMode === RunMode.Campaign ||
+          (onChainState.runMode === RunMode.Duel &&
+            (state.time.week === 1 || state.time.week === 2)));
+
+      if (bossAlreadyResolvedInline && resolvedWeekBoss) {
+        console.log(
+          '[GameScreen] Boss already resolved inline (player died), navigating to CombatScreen with local resolver'
+        );
+        const playerStats = {
+          hp: Math.max(state.player.stats.maxHp, 1),
+          maxHp: state.player.stats.maxHp,
+          atk: state.player.stats.atk,
+          arm: state.player.stats.arm,
+          spd: state.player.stats.spd,
+          dig: state.player.stats.dig,
+          gold: onChainState.gold,
+        };
+        const bossCombatParams = createBossCombatParams(
+          resolvedWeekBoss,
+          playerStats,
+          state.player.inventory.map((slot) => slot.item),
+          state.player.equippedTool,
+          state.player.activeItemsets ?? [],
+          state.rngState,
+          state.time.week,
+          undefined, // No combat log available — local resolver will simulate
+          {
+            finalPlayerHp: onChainState.hp,
+            finalPlayerGold: onChainState.gold,
+            playerWon: false,
+          }
+        );
+        navigateToCombat(navigation, bossCombatParams, {
+          campaignLevel: onChainState.campaignLevel,
+          totalMoves: onChainState.totalMoves,
+          phase: onChainState.phase,
+        });
+        return;
+      }
+
       // Build player stats from on-chain state (post-move, pre-boss).
       // Captured outside try so it's available in the catch fallback.
       // When on-chain HP is 0 (boss fight already resolved inline or field death),
@@ -546,7 +609,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
       };
 
       try {
-        // Trigger weekly combat on-chain (boss in campaign/duel, echo in gauntlet)
+        // Trigger weekly combat on-chain (boss/echo for Gauntlet, or Duel week 3)
         const bossResult = await triggerBoss();
         if (!bossResult.success) {
           console.error('[GameScreen] triggerBoss on-chain weekly resolver failed');
@@ -971,6 +1034,66 @@ export function GameScreen({ navigation }: GameScreenProps) {
                   gold: state.player.stats.gold,
                 };
 
+            // Handle inline boss resolution (Campaign, Duel weeks 1-2).
+            // The boss fight was already resolved inside move_player on-chain —
+            // no separate trigger_boss_fight transaction is needed.
+            if (result.bossResolvedInline && result.newState) {
+              const resolvedWeekBoss: BossId | null =
+                result.newState.runMode === RunMode.Duel &&
+                (currentWeek === 1 || currentWeek === 2) &&
+                mapSeed != null
+                  ? selectDuelWeekBossForSeed(mapSeed, currentWeek)
+                  : (state.time.weekBoss ?? null);
+
+              if (resolvedWeekBoss) {
+                // Prevent the boss useEffect from also triggering
+                isTriggeringBossRef.current = true;
+
+                const bossPlayerHp =
+                  result.preBossPlayerHp ?? preCombatPlayerStats.hp;
+                const bossPlayerStats: PlayerStats = {
+                  hp: bossPlayerHp,
+                  maxHp: preCombatPlayerStats.maxHp,
+                  atk: preCombatPlayerStats.atk,
+                  arm: preCombatPlayerStats.arm,
+                  spd: preCombatPlayerStats.spd,
+                  dig: preCombatPlayerStats.dig,
+                  gold: preCombatPlayerStats.gold,
+                };
+
+                const bossCombatParams = createBossCombatParams(
+                  resolvedWeekBoss,
+                  bossPlayerStats,
+                  preCombatGear,
+                  preCombatTool,
+                  preCombatItemsets,
+                  preCombatSeed,
+                  currentWeek,
+                  result.bossCombatLog,
+                  {
+                    finalPlayerHp: result.newState.hp,
+                    finalPlayerGold: result.newState.gold,
+                    playerWon: !result.isDead,
+                  }
+                );
+
+                console.log(
+                  '[GameScreen] Inline boss resolved in move_player, navigating to CombatScreen:',
+                  {
+                    bossId: resolvedWeekBoss,
+                    preBossHp: bossPlayerHp,
+                    postBossHp: result.newState.hp,
+                    playerWon: !result.isDead,
+                    hasCombatLog: !!result.bossCombatLog,
+                    combatLogEntries: result.bossCombatLog?.length ?? 0,
+                  }
+                );
+
+                navigateToCombat(navigation, bossCombatParams, result.newState);
+                return; // Skip field enemy combat handling below
+              }
+            }
+
             // Handle combat - always go through CombatScreen for visualization
             // This includes deaths from combat (CombatScreen will navigate to DeathScreen)
             if (result.combatOccurred) {
@@ -1138,6 +1261,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
       isMovePending,
       navigation,
       sessionPda,
+      mapSeed,
       refreshMapEntities,
       isFastTravelActive,
       fastTravelDestinations.length,

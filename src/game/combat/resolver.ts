@@ -40,8 +40,8 @@ export interface CombatResolverInput {
   bossId?: BossId;
   /** Optional enemy ID for trait execution (regular enemies) */
   enemyId?: EnemyId;
-  /** Optional enemy definition ID for rewards */
-  enemyDefinitionId?: MapEnemyId;
+  /** Optional enemy definition ID for rewards/image lookup (EnemyId, BossId, or 'pvpOpponent') */
+  enemyDefinitionId?: string;
   /** Optional enemy tier for rewards */
   enemyTier?: 1 | 2 | 3;
   /** Optional gold reward for combat victory */
@@ -72,7 +72,7 @@ interface CountdownItem {
  */
 export function createCombatState(input: CombatResolverInput): CombatState {
   const enemyDefinitionId =
-    input.enemyDefinitionId ?? (input.enemyId as MapEnemyId | undefined) ?? 'TUNNEL_RAT';
+    input.enemyDefinitionId ?? input.enemyId ?? 'TUNNEL_RAT';
   const enemyTier = input.enemyTier ?? 1;
   const goldReward = input.goldReward ?? calculateGoldReward(enemyDefinitionId, enemyTier);
 

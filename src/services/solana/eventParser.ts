@@ -346,6 +346,64 @@ export async function parseCombatLog(
   return { log, enemyInfo };
 }
 
+/**
+ * Parse boss combat data from a move_player transaction that resolved the boss
+ * fight inline (Campaign mode, Duel weeks 1-2).
+ *
+ * When move_player resolves both field enemy combat and boss combat in the same
+ * transaction, this extracts the LAST CombatLog and CombatStarted events
+ * (boss combat is always resolved after field enemies on-chain).
+ */
+export async function parseBossCombatFromMoveTx(
+  connection: Connection,
+  signature: string
+): Promise<{
+  combatLog?: BackendCombatLogEntry[];
+  preBossPlayerHp?: number;
+}> {
+  const tx = await connection.getTransaction(signature, {
+    commitment: 'confirmed',
+    maxSupportedTransactionVersion: 0,
+  });
+
+  if (!tx?.meta?.logMessages) {
+    return {};
+  }
+
+  let lastLog: CombatLogEvent | null = null;
+  let lastPlayerHp: number | undefined;
+
+  for (const logLine of tx.meta.logMessages) {
+    if (!logLine.startsWith('Program data: ')) continue;
+    const base64Data = logLine.slice('Program data: '.length);
+    try {
+      const buf = Buffer.from(base64Data, 'base64');
+      if (buf.length >= 8) {
+        const disc = buf.subarray(0, 8);
+        if (disc.equals(COMBAT_LOG_DISCRIMINATOR)) {
+          const result = decodeCombatLogManually(buf.subarray(8));
+          if (result && result.entries.length > 0) {
+            lastLog = result; // Keep scanning — we want the LAST match
+          }
+        } else if (disc.equals(COMBAT_STARTED_DISCRIMINATOR)) {
+          const PUBKEY_LEN = 32;
+          const data = buf.subarray(8);
+          if (data.length >= PUBKEY_LEN + 2) {
+            lastPlayerHp = data.readInt16LE(PUBKEY_LEN); // player_hp at offset 32
+          }
+        }
+      }
+    } catch {
+      // Skip unparseable events
+    }
+  }
+
+  return {
+    combatLog: lastLog?.entries,
+    preBossPlayerHp: lastPlayerHp,
+  };
+}
+
 // ============================================================================
 // Low-Level Log Parser
 // ============================================================================

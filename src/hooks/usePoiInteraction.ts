@@ -55,6 +55,50 @@ import { createToolInstance } from '@/game/entities/items';
 import type { Position, POIOption, GearId, ToolId, Tool, Gear, ToolOil } from '@/game/engine/types';
 
 // ============================================================================
+// ER Position Retry Helper
+// ============================================================================
+
+/** poi-system error 6028 = PlayerNotOnPoiTile */
+const ER_POSITION_MISMATCH_CODE = 6028;
+const ER_POSITION_SETTLE_DELAY_MS = 400;
+
+/**
+ * Checks if an error is the on-chain "Player is not on the POI tile" error.
+ * This can occur transiently on the MagicBlock ER when a POI interaction tx
+ * arrives before the ER's execution engine has fully settled state from a
+ * prior move_player transaction.
+ */
+function isPositionMismatchError(err: unknown): boolean {
+  if (err instanceof Error) {
+    return (
+      err.message.includes(`"Custom":${ER_POSITION_MISMATCH_CODE}`) ||
+      err.message.includes(`"Custom": ${ER_POSITION_MISMATCH_CODE}`)
+    );
+  }
+  return false;
+}
+
+/**
+ * Wraps an on-chain POI call with a single retry on error 6028.
+ * Gives the ER time to settle state from a prior move_player before retrying.
+ */
+async function withErPositionRetry<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (err) {
+    if (isPositionMismatchError(err)) {
+      console.warn(
+        `[usePoiInteraction] ER position not settled (error ${ER_POSITION_MISMATCH_CODE}), ` +
+          `retrying after ${ER_POSITION_SETTLE_DELAY_MS}ms...`
+      );
+      await new Promise((resolve) => setTimeout(resolve, ER_POSITION_SETTLE_DELAY_MS));
+      return fn();
+    }
+    throw err;
+  }
+}
+
+// ============================================================================
 // Types
 // ============================================================================
 
@@ -924,14 +968,16 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             if (!mapPoisData?.currentOffer || mapPoisData.currentOffer.poiIndex !== poiIndex) {
               console.log('[usePoiInteraction] Sending generateCacheOffer on-chain');
               try {
-                await generateCacheOffer(
-                  gameplayConnection,
-                  poiProgram,
-                  mapPoisPda,
-                  gameStatePda,
-                  sessionPda,
-                  sessionSignerKeypair,
-                  poiIndex
+                await withErPositionRetry(() =>
+                  generateCacheOffer(
+                    gameplayConnection,
+                    poiProgram,
+                    mapPoisPda,
+                    gameStatePda,
+                    sessionPda,
+                    sessionSignerKeypair,
+                    poiIndex
+                  )
                 );
               } catch (err) {
                 if (!isPoiAlreadyUsedError(err)) {
@@ -1008,14 +1054,16 @@ export function usePoiInteraction(): UsePoiInteractionResult {
               mapPoisData.currentOilOffer.poiIndex !== poiIndex
             ) {
               console.log('[usePoiInteraction] Sending generateOilOffer on-chain');
-              await generateOilOffer(
-                gameplayConnection,
-                poiProgram,
-                mapPoisPda,
-                gameStatePda,
-                sessionPda,
-                sessionSignerKeypair,
-                poiIndex
+              await withErPositionRetry(() =>
+                generateOilOffer(
+                  gameplayConnection,
+                  poiProgram,
+                  mapPoisPda,
+                  gameStatePda,
+                  sessionPda,
+                  sessionSignerKeypair,
+                  poiIndex
+                )
               );
               console.log('[usePoiInteraction] generateOilOffer CONFIRMED, re-fetching...');
               mapPoisData = await fetchMapPois(poiProgram, mapPoisPda);
@@ -1056,13 +1104,15 @@ export function usePoiInteraction(): UsePoiInteractionResult {
 
           // Survey Beacon (L6)
           case POI_TYPES.SURVEY_BEACON:
-            await interactSurveyBeacon(
-              gameplayConnection,
-              poiProgram,
-              mapPoisPda,
-              gameStatePda,
-              sessionSignerKeypair,
-              poiIndex
+            await withErPositionRetry(() =>
+              interactSurveyBeacon(
+                gameplayConnection,
+                poiProgram,
+                mapPoisPda,
+                gameStatePda,
+                sessionSignerKeypair,
+                poiIndex
+              )
             );
             break;
 
@@ -1097,14 +1147,16 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             // Check if shop is already active on-chain (e.g. reopening after closing modal)
             let shopData = await fetchMapPois(poiProgram, mapPoisPda);
             if (!shopData?.shopState?.active) {
-              await enterShop(
-                gameplayConnection,
-                poiProgram,
-                mapPoisPda,
-                gameStatePda,
-                sessionPda,
-                sessionSignerKeypair,
-                poiIndex
+              await withErPositionRetry(() =>
+                enterShop(
+                  gameplayConnection,
+                  poiProgram,
+                  mapPoisPda,
+                  gameStatePda,
+                  sessionPda,
+                  sessionSignerKeypair,
+                  poiIndex
+                )
               );
               // Re-fetch after entering
               shopData = await fetchMapPois(poiProgram, mapPoisPda);
@@ -1384,14 +1436,16 @@ export function usePoiInteraction(): UsePoiInteractionResult {
       setError(null);
 
       try {
-        await fastTravel(
-          gameplayConnection,
-          poiProgram,
-          mapPoisPda,
-          gameStatePda,
-          sessionSignerKeypair,
-          fromPoiIndex,
-          toPoiIndex
+        await withErPositionRetry(() =>
+          fastTravel(
+            gameplayConnection,
+            poiProgram,
+            mapPoisPda,
+            gameStatePda,
+            sessionSignerKeypair,
+            fromPoiIndex,
+            toPoiIndex
+          )
         );
         return { success: true };
       } catch (err) {
@@ -1429,14 +1483,16 @@ export function usePoiInteraction(): UsePoiInteractionResult {
       setError(null);
 
       try {
-        await fastTravel(
-          gameplayConnection,
-          poiProgram,
-          mapPoisPda,
-          gameStatePda,
-          sessionSignerKeypair,
-          fromPoiIndex,
-          toPoiIndex
+        await withErPositionRetry(() =>
+          fastTravel(
+            gameplayConnection,
+            poiProgram,
+            mapPoisPda,
+            gameStatePda,
+            sessionSignerKeypair,
+            fromPoiIndex,
+            toPoiIndex
+          )
         );
 
         await refreshGameplayState();
@@ -1525,15 +1581,17 @@ export function usePoiInteraction(): UsePoiInteractionResult {
           '| choice:',
           choiceIndex
         );
-        await interactPickItem(
-          gameplayConnection,
-          poiProgram,
-          mapPoisPda,
-          gameStatePda,
-          sessionPda,
-          sessionSignerKeypair,
-          cacheOfferParams.poiIndex,
-          choiceIndex
+        await withErPositionRetry(() =>
+          interactPickItem(
+            gameplayConnection,
+            poiProgram,
+            mapPoisPda,
+            gameStatePda,
+            sessionPda,
+            sessionSignerKeypair,
+            cacheOfferParams.poiIndex,
+            choiceIndex
+          )
         );
         console.log('[usePoiInteraction] interactPickItem CONFIRMED on-chain');
         await assertPoiConsumedOnChain(cacheOfferParams.poiIndex);
@@ -1676,14 +1734,16 @@ export function usePoiInteraction(): UsePoiInteractionResult {
               '[usePoiInteraction] Sending interactRest on-chain | poiIndex:',
               deferredPoiIndex
             );
-            await interactRest(
-              gameplayConnection,
-              poiProgram,
-              mapPoisPda,
-              gameStatePda,
-              sessionPda!,
-              sessionSignerKeypair,
-              deferredPoiIndex
+            await withErPositionRetry(() =>
+              interactRest(
+                gameplayConnection,
+                poiProgram,
+                mapPoisPda,
+                gameStatePda,
+                sessionPda!,
+                sessionSignerKeypair,
+                deferredPoiIndex
+              )
             );
             console.log('[usePoiInteraction] interactRest CONFIRMED');
 
@@ -1756,16 +1816,18 @@ export function usePoiInteraction(): UsePoiInteractionResult {
 
             // Send combined transaction (poi-system + player-inventory in one tx)
             // This validates the POI, marks it as used, and applies the oil atomically
-            await interactToolOilCombined(
-              gameplayConnection,
-              poiProgram,
-              mapPoisPda,
-              gameStatePda,
-              sessionPda!,
-              sessionSignerKeypair,
-              deferredPoiIndex,
-              modification,
-              oilFlag
+            await withErPositionRetry(() =>
+              interactToolOilCombined(
+                gameplayConnection,
+                poiProgram,
+                mapPoisPda,
+                gameStatePda,
+                sessionPda!,
+                sessionSignerKeypair,
+                deferredPoiIndex,
+                modification,
+                oilFlag
+              )
             );
             console.log('[usePoiInteraction] Tool oil applied on-chain:', modification);
 
@@ -1804,14 +1866,16 @@ export function usePoiInteraction(): UsePoiInteractionResult {
               return { success: true };
             }
             const scanCat = labelToScanCategory(label);
-            await interactSeismicScanner(
-              gameplayConnection,
-              poiProgram,
-              mapPoisPda,
-              gameStatePda,
-              sessionSignerKeypair,
-              deferredPoiIndex,
-              scanCat
+            await withErPositionRetry(() =>
+              interactSeismicScanner(
+                gameplayConnection,
+                poiProgram,
+                mapPoisPda,
+                gameStatePda,
+                sessionSignerKeypair,
+                deferredPoiIndex,
+                scanCat
+              )
             );
             // Dispatch REVEAL_POI_LOCATIONS to update local fog state
             // This reveals all POIs matching the selected category
@@ -1859,14 +1923,16 @@ export function usePoiInteraction(): UsePoiInteractionResult {
                   '| to poiIndex:',
                   destPoiIndex
                 );
-                await fastTravel(
-                  gameplayConnection,
-                  poiProgram,
-                  mapPoisPda,
-                  gameStatePda,
-                  sessionSignerKeypair,
-                  deferredPoiIndex,
-                  destPoiIndex
+                await withErPositionRetry(() =>
+                  fastTravel(
+                    gameplayConnection,
+                    poiProgram,
+                    mapPoisPda,
+                    gameStatePda,
+                    sessionSignerKeypair,
+                    deferredPoiIndex,
+                    destPoiIndex
+                  )
                 );
                 console.log('[usePoiInteraction] fastTravel CONFIRMED');
 
@@ -1892,20 +1958,24 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             }
 
             if (option.label === 'Leave') {
-              await leaveShop(gameplayConnection, poiProgram, mapPoisPda, sessionPda!, sessionSignerKeypair);
+              await withErPositionRetry(() =>
+                leaveShop(gameplayConnection, poiProgram, mapPoisPda, sessionPda!, sessionSignerKeypair)
+              );
               setShopOffers([]);
               setShopRerollCount(0);
               break; // Will clean up deferred state and consume POI below
             }
 
             if (option.label.includes('Reroll')) {
-              await shopReroll(
-                gameplayConnection,
-                poiProgram,
-                mapPoisPda,
-                gameStatePda,
-                sessionPda!,
-                sessionSignerKeypair
+              await withErPositionRetry(() =>
+                shopReroll(
+                  gameplayConnection,
+                  poiProgram,
+                  mapPoisPda,
+                  gameStatePda,
+                  sessionPda!,
+                  sessionSignerKeypair
+                )
               );
               // Re-fetch shop state and update options
               const rerollData = await fetchMapPois(poiProgram, mapPoisPda);
@@ -1926,14 +1996,16 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             }
 
             // Purchase item — optionIndex maps to on-chain offer index
-            await shopPurchase(
-              gameplayConnection,
-              poiProgram,
-              mapPoisPda,
-              gameStatePda,
-              sessionPda!,
-              sessionSignerKeypair,
-              optionIndex
+            await withErPositionRetry(() =>
+              shopPurchase(
+                gameplayConnection,
+                poiProgram,
+                mapPoisPda,
+                gameStatePda,
+                sessionPda!,
+                sessionSignerKeypair,
+                optionIndex
+              )
             );
             // Re-fetch shop state and update options
             const purchaseData = await fetchMapPois(poiProgram, mapPoisPda);
@@ -1993,27 +2065,25 @@ export function usePoiInteraction(): UsePoiInteractionResult {
               '| tier:',
               kilnTier
             );
-            await interactRuneKiln(
-              gameplayConnection,
-              poiProgram,
-              mapPoisPda,
-              gameStatePda,
-              sessionPda!,
-              sessionSignerKeypair,
-              deferredPoiIndex,
-              kilnIdBytes,
-              kilnTier,
-              kilnIdBytes,
-              kilnTier
+            await withErPositionRetry(() =>
+              interactRuneKiln(
+                gameplayConnection,
+                poiProgram,
+                mapPoisPda,
+                gameStatePda,
+                sessionPda!,
+                sessionSignerKeypair,
+                deferredPoiIndex,
+                kilnIdBytes,
+                kilnTier,
+                kilnIdBytes,
+                kilnTier
+              )
             );
             console.log('[usePoiInteraction] interactRuneKiln CONFIRMED');
 
-            // Refresh gameplay state to sync changes
-            await refreshGameplayState();
-
-            // Remove 2 copies of the fused gear from local inventory
-            dispatch({ type: 'DISCARD_GEAR_BY_ID', gearId: kilnGear.id as GearId });
-            dispatch({ type: 'DISCARD_GEAR_BY_ID', gearId: kilnGear.id as GearId });
+            // Remove one copy and upgrade the other to the next tier locally
+            dispatch({ type: 'FUSE_GEAR', gearId: kilnGear.id as GearId });
 
             break;
           }
@@ -2063,16 +2133,18 @@ export function usePoiInteraction(): UsePoiInteractionResult {
               '| tier:',
               anvilTier
             );
-            await interactRustyAnvil(
-              gameplayConnection,
-              poiProgram,
-              mapPoisPda,
-              gameStatePda,
-              sessionPda!,
-              sessionSignerKeypair,
-              deferredPoiIndex,
-              anvilIdBytes,
-              anvilTier
+            await withErPositionRetry(() =>
+              interactRustyAnvil(
+                gameplayConnection,
+                poiProgram,
+                mapPoisPda,
+                gameStatePda,
+                sessionPda!,
+                sessionSignerKeypair,
+                deferredPoiIndex,
+                anvilIdBytes,
+                anvilTier
+              )
             );
             console.log('[usePoiInteraction] interactRustyAnvil CONFIRMED');
 
@@ -2134,15 +2206,17 @@ export function usePoiInteraction(): UsePoiInteractionResult {
               '| backendId:',
               backendId
             );
-            await interactScrapChute(
-              gameplayConnection,
-              poiProgram,
-              mapPoisPda,
-              gameStatePda,
-              sessionPda!,
-              sessionSignerKeypair,
-              deferredPoiIndex,
-              idBytes
+            await withErPositionRetry(() =>
+              interactScrapChute(
+                gameplayConnection,
+                poiProgram,
+                mapPoisPda,
+                gameStatePda,
+                sessionPda!,
+                sessionSignerKeypair,
+                deferredPoiIndex,
+                idBytes
+              )
             );
             console.log('[usePoiInteraction] interactScrapChute CONFIRMED');
 

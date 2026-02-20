@@ -28,12 +28,13 @@ import {
 import {
   GameState,
   RunMode,
+  Phase,
   StatType,
   GameStateInitParams,
   MovePlayerParams,
   ModifyStatParams,
 } from '@/services/solana/types/gameplay_state';
-import { parseCombatLog } from '@/services/solana/eventParser';
+import { parseCombatLog, parseBossCombatFromMoveTx } from '@/services/solana/eventParser';
 import type { CombatEnemyInfo } from '@/services/solana/eventParser';
 import type { BackendCombatLogEntry } from '@/services/solana/types/combat_events';
 import type { GauntletCombatVisualEvent } from '@/services/solana/gauntlet';
@@ -75,6 +76,12 @@ export interface UseGameplayStateReturn {
     combatLog?: BackendCombatLogEntry[];
     /** Enemy info from CombatStarted event (archetype + HP for tier derivation) */
     combatEnemyInfo?: CombatEnemyInfo;
+    /** Boss fight was resolved inline in this move_player tx (Campaign, Duel weeks 1-2) */
+    bossResolvedInline?: boolean;
+    /** Boss combat log (from inline resolution — last CombatLog in tx) */
+    bossCombatLog?: BackendCombatLogEntry[];
+    /** Player HP at the start of the boss fight (from CombatStarted event) */
+    preBossPlayerHp?: number;
   }>;
   /** Modify a player stat */
   updateStat: (
@@ -271,6 +278,9 @@ export function useGameplayState(): UseGameplayStateReturn {
       bossFightReady?: boolean;
       isDead?: boolean;
       signature?: string;
+      bossResolvedInline?: boolean;
+      bossCombatLog?: BackendCombatLogEntry[];
+      preBossPlayerHp?: number;
     }> => {
       console.log(
         '[useGameplayState] move() called — program:',
@@ -372,6 +382,41 @@ export function useGameplayState(): UseGameplayStateReturn {
           combatEnemyInfo = parsed.combatEnemyInfo;
         }
 
+        // Detect inline boss resolution: Campaign and Duel (weeks 1-2) resolve
+        // the boss fight inside move_player when the last Night3 move is exhausted.
+        // The on-chain program calls should_resolve_weekly_boss() which returns true
+        // for these modes, so no separate trigger_boss_fight tx is needed.
+        let bossResolvedInline = false;
+        let bossCombatLog: BackendCombatLogEntry[] | undefined;
+        let preBossPlayerHp: number | undefined;
+
+        if (
+          confirmedState != null &&
+          signature &&
+          previousState.phase === Phase.Night3 &&
+          confirmedState.movesRemaining === 0 &&
+          (previousState.runMode === RunMode.Campaign ||
+            (previousState.runMode === RunMode.Duel &&
+              (previousState.week === 1 || previousState.week === 2)))
+        ) {
+          bossResolvedInline = true;
+          try {
+            const bossParsed = await parseBossCombatFromMoveTx(
+              gameplayConnection,
+              signature
+            );
+            bossCombatLog = bossParsed.combatLog;
+            preBossPlayerHp = bossParsed.preBossPlayerHp;
+            console.log('[useGameplayState] Inline boss resolution detected:', {
+              hasCombatLog: !!bossCombatLog,
+              logEntries: bossCombatLog?.length ?? 0,
+              preBossPlayerHp,
+            });
+          } catch (err) {
+            console.warn('[useGameplayState] Failed to parse inline boss combat:', err);
+          }
+        }
+
         return {
           success: true,
           newState: confirmedState ?? undefined,
@@ -382,6 +427,9 @@ export function useGameplayState(): UseGameplayStateReturn {
           bossFightReady: confirmedState?.bossFightReady ?? false,
           isDead: confirmedState?.isDead ?? false,
           signature,
+          bossResolvedInline,
+          bossCombatLog,
+          preBossPlayerHp,
         };
       } catch (err) {
         console.error('[useGameplayState] Failed to move player:', err);

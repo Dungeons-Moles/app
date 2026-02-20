@@ -48,8 +48,8 @@ export interface CombatParams {
   bossId?: BossId;
   /** Enemy trait ID for regular enemies */
   enemyId?: EnemyId;
-  /** Enemy definition ID (for rewards calculation) */
-  enemyDefinitionId?: EnemyId;
+  /** Enemy definition ID (for rewards, image lookup — accepts EnemyId, BossId, or 'pvpOpponent') */
+  enemyDefinitionId?: EnemyId | BossId | string;
   /** Enemy tier (1, 2, or 3) */
   enemyTier?: 1 | 2 | 3;
   /** Gold reward for victory */

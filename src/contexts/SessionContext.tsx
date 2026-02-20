@@ -157,6 +157,9 @@ interface SessionContextType extends SessionState {
     bossFightReady?: boolean;
     isDead?: boolean;
     signature?: string;
+    bossResolvedInline?: boolean;
+    bossCombatLog?: BackendCombatLogEntry[];
+    preBossPlayerHp?: number;
   }>;
   /** Trigger boss fight on-chain (via session key signer) */
   triggerBoss: () => Promise<{
@@ -1307,6 +1310,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       bossFightReady?: boolean;
       isDead?: boolean;
       signature?: string;
+      bossResolvedInline?: boolean;
+      bossCombatLog?: BackendCombatLogEntry[];
+      preBossPlayerHp?: number;
     }> => {
       if (!sessionSigner.keypair) {
         console.error('[SessionContext] movePlayer failed: Session key signer not available');
@@ -1782,11 +1788,29 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             if (!queuedForLevel || queuedForLevel.retryCount < 3) {
               continue;
             }
-            await updateCleanup(queuedForLevel.id, { retryCount: 0 });
+            // Cap revivals to prevent infinite retry loops for truly stuck sessions
+            // (e.g., ER unresponsive, accounts permanently delegated).
+            const currentRevivalCount = queuedForLevel.revivalCount ?? 0;
+            if (currentRevivalCount >= 2) {
+              console.warn(
+                '[SessionContext] processPendingCleanups:skip_revival_max_reached',
+                {
+                  cleanupId: queuedForLevel.id,
+                  campaignLevel: level,
+                  revivalCount: currentRevivalCount,
+                }
+              );
+              continue;
+            }
+            await updateCleanup(queuedForLevel.id, {
+              retryCount: 0,
+              revivalCount: currentRevivalCount + 1,
+            });
             revivedCount += 1;
             console.log('[SessionContext] processPendingCleanups:revived_exhausted_cleanup', {
               cleanupId: queuedForLevel.id,
               campaignLevel: level,
+              revivalCount: currentRevivalCount + 1,
             });
           }
           if (revivedCount > 0) {
@@ -1809,8 +1833,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       for (const cleanup of pending) {
         try {
           let allComplete = true;
-          const isInvalidAccountOwnerError = (errorText: string): boolean =>
-            errorText.includes('InvalidAccountOwner');
+          const isRecoverableDelegationError = (errorText: string): boolean =>
+            errorText.includes('InvalidAccountOwner') ||
+            errorText.includes('InvalidWritableAccount');
 
           if (cleanup.needsSessionEnd) {
             // Derive correct PDA based on session type
@@ -1889,32 +1914,46 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                 );
                 if (!undelegateResult.success) {
                   const undelegateError = undelegateResult.error ?? 'Deferred undelegate failed';
-                  if (isInvalidAccountOwnerError(undelegateError)) {
-                    const postUndelegateInfo = await connection.getAccountInfo(sessionPda, 'processed');
-                    if (postUndelegateInfo?.owner.equals(SOLANA_CONFIG.programs.sessionManager)) {
-                      console.log(
-                        '[SessionContext] Deferred cleanup: undelegate returned InvalidAccountOwner but owner restored; continuing to end session',
-                        { cleanupId: cleanup.id }
-                      );
-                    } else {
-                      throw new Error(undelegateError);
-                    }
-                  } else {
+                  if (!isRecoverableDelegationError(undelegateError)) {
                     throw new Error(undelegateError);
                   }
+                  // Recoverable delegation error — accounts may already be partially
+                  // restored from a previous attempt.  The owner wait loop below will
+                  // verify all accounts before we call endSession.
+                  console.log(
+                    '[SessionContext] Deferred cleanup: undelegate returned recoverable error; will verify account owners',
+                    { cleanupId: cleanup.id, undelegateError }
+                  );
                 }
 
-                let ownerRestored = false;
-                for (let i = 0; i < 20; i += 1) {
-                  const info = await connection.getAccountInfo(sessionPda, 'processed');
-                  if (info?.owner.equals(SOLANA_CONFIG.programs.sessionManager)) {
-                    ownerRestored = true;
-                    break;
-                  }
+                // Wait for ALL account owners to be restored, not just the session PDA.
+                // After ER undelegation, base-layer accounts may take time to propagate.
+                const [gsP] = getGameStatePda(sessionPda);
+                const [meP] = deriveMapEnemiesPda(sessionPda);
+                const [gmP] = deriveGeneratedMapPda(sessionPda);
+                const [mpP] = deriveMapPoisPda(sessionPda);
+                const [invP] = deriveInventoryPda(sessionPda);
+                const expectedOwners: Array<[PublicKey, PublicKey, string]> = [
+                  [sessionPda, SOLANA_CONFIG.programs.sessionManager, 'session'],
+                  [gsP, SOLANA_CONFIG.programs.gameplayState, 'gameState'],
+                  [meP, SOLANA_CONFIG.programs.gameplayState, 'mapEnemies'],
+                  [gmP, SOLANA_CONFIG.programs.mapGenerator, 'generatedMap'],
+                  [mpP, SOLANA_CONFIG.programs.poiSystem, 'mapPois'],
+                  [invP, SOLANA_CONFIG.programs.playerInventory, 'inventory'],
+                ];
+                let allRestored = false;
+                for (let i = 0; i < 30; i += 1) {
+                  const infos = await Promise.all(
+                    expectedOwners.map(([pda]) => connection.getAccountInfo(pda, 'processed'))
+                  );
+                  allRestored = infos.every(
+                    (info, idx) => info?.owner.equals(expectedOwners[idx][1])
+                  );
+                  if (allRestored) break;
                   await new Promise((resolve) => setTimeout(resolve, 250));
                 }
-                if (!ownerRestored) {
-                  throw new Error('Deferred undelegate did not restore base owner in time');
+                if (!allRestored) {
+                  throw new Error('Deferred undelegate did not restore all account owners in time');
                 }
               } else if (!ownerIsSessionProgram) {
                 console.warn('[SessionContext] Deferred cleanup: unexpected session owner, dropping cleanup', {
@@ -1930,7 +1969,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                 const endError = endResult.error ?? 'Deferred end session failed';
                 if (
                   endError.includes('No active session to end') ||
-                  isInvalidAccountOwnerError(endError)
+                  isRecoverableDelegationError(endError)
                 ) {
                   const postEndInfo = await connection.getAccountInfo(sessionPda, 'processed');
                   if (!postEndInfo) {
