@@ -102,11 +102,17 @@ export function useSkiaEntityImages(
 
   // Stabilize the skin source — only reload when the resolved URI actually changes
   const resolvedPlayerImage = playerSkinSource ?? playerImage;
-  const playerUri = Image.resolveAssetSource(resolvedPlayerImage)?.uri ?? '';
+  const playerUri = useMemo(
+    () => Image.resolveAssetSource(resolvedPlayerImage)?.uri ?? '',
+    [resolvedPlayerImage]
+  );
   const prevPlayerUri = useRef(playerUri);
 
   const resolvedOpponentImage = pvpOpponentSkinSource ?? playerImage;
-  const opponentUri = Image.resolveAssetSource(resolvedOpponentImage)?.uri ?? '';
+  const opponentUri = useMemo(
+    () => Image.resolveAssetSource(resolvedOpponentImage)?.uri ?? '',
+    [resolvedOpponentImage]
+  );
   const prevOpponentUri = useRef(opponentUri);
 
   // Load all static images once

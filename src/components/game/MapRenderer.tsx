@@ -85,6 +85,8 @@ interface TileData {
   y: number;
   type: TileType;
   fog: FogState;
+  floorVariation: number;
+  rockVariation: number;
 }
 
 // ============================================================================
@@ -375,9 +377,19 @@ export function MapRenderer({
 
   const visibleTiles = useMemo(() => {
     const tiles: TileData[] = [];
+    const floorCount = 5; // number of floor image variants
+    const rockCount = 4;  // number of rock image variants
     for (let y = visibleRange.startY; y <= visibleRange.endY; y++) {
       for (let x = visibleRange.startX; x <= visibleRange.endX; x++) {
-        tiles.push({ x, y, type: map.tiles[y][x], fog: map.fog[y][x] });
+        const variation = Math.abs(x * 7 + y * 13);
+        tiles.push({
+          x,
+          y,
+          type: map.tiles[y][x],
+          fog: map.fog[y][x],
+          floorVariation: variation % floorCount,
+          rockVariation: variation % rockCount,
+        });
       }
     }
     return tiles;
@@ -531,28 +543,21 @@ export function MapRenderer({
     <View style={styles.container} onLayout={handleLayout} {...panResponder.panHandlers}>
       <Canvas style={styles.canvas}>
         {/* 1. Tiles */}
-        {visibleTiles.map((tile) => {
-          // Select a stable random variation based on coordinates
-          const variation = Math.abs(tile.x * 7 + tile.y * 13);
-          const floorVariation = variation % floorImages.length;
-          const rockVariation = variation % rockImages.length;
-
-          return (
-            <TileRect
-              key={`tile-${tile.x}-${tile.y}`}
-              x={tile.x}
-              y={tile.y}
-              type={tile.type}
-              fog={tile.fog}
-              showRevealOverlay={showRevealOverlay}
-              offsetX={cameraOffset.x}
-              offsetY={cameraOffset.y}
-              zoom={zoom}
-              floorImage={floorImages[floorVariation]}
-              rockImage={rockImages[rockVariation]}
-            />
-          );
-        })}
+        {visibleTiles.map((tile) => (
+          <TileRect
+            key={`tile-${tile.x}-${tile.y}`}
+            x={tile.x}
+            y={tile.y}
+            type={tile.type}
+            fog={tile.fog}
+            showRevealOverlay={showRevealOverlay}
+            offsetX={cameraOffset.x}
+            offsetY={cameraOffset.y}
+            zoom={zoom}
+            floorImage={floorImages[tile.floorVariation]}
+            rockImage={rockImages[tile.rockVariation]}
+          />
+        ))}
 
         {/* 3. POIs */}
         {visiblePOIs.map((poi) => {

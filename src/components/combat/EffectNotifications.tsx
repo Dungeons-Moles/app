@@ -3,7 +3,7 @@
  * Shows item triggers, status effects, and other combat effects
  */
 
-import React, { useEffect, useRef } from 'react';
+import React, { memo, useEffect, useRef } from 'react';
 import { Animated, StyleSheet, View, Text } from 'react-native';
 import type { EffectNotification } from '../../contexts/CombatContext';
 
@@ -17,7 +17,7 @@ interface EffectNotificationsProps {
  * EffectNotifications renders floating effect indicators
  * Shows item/status/trait effects with emoji and text
  */
-export function EffectNotifications({
+export const EffectNotifications = memo(function EffectNotifications({
   notifications,
   enemyPosition,
   playerPosition,
@@ -33,14 +33,14 @@ export function EffectNotifications({
       ))}
     </View>
   );
-}
+});
 
 interface FloatingNotificationProps {
   notification: EffectNotification;
   position: { x: number; y: number };
 }
 
-function FloatingNotification({ notification, position }: FloatingNotificationProps) {
+const FloatingNotification = memo(function FloatingNotification({ notification, position }: FloatingNotificationProps) {
   const translateY = useRef(new Animated.Value(0)).current;
   const opacity = useRef(new Animated.Value(0)).current;
   const scale = useRef(new Animated.Value(0.8)).current;
@@ -112,7 +112,7 @@ function FloatingNotification({ notification, position }: FloatingNotificationPr
       <Text style={styles.text}>{notification.text}</Text>
     </Animated.View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {

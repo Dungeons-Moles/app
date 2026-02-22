@@ -4,7 +4,7 @@
  * @see specs/001-pve-dungeon-crawler/spec.md FR-015
  */
 
-import React, { useEffect, useRef } from 'react';
+import React, { memo, useEffect, useRef } from 'react';
 import { Animated, StyleSheet, View, Text } from 'react-native';
 import type { DamageNumber } from '../../contexts/CombatContext';
 import { Typography } from '../../theme/typography';
@@ -22,7 +22,7 @@ interface DamageNumbersProps {
  * - Green for healing
  * - Purple for armor loss
  */
-export function DamageNumbers({
+export const DamageNumbers = memo(function DamageNumbers({
   damageNumbers,
   enemyPosition,
   playerPosition,
@@ -38,14 +38,14 @@ export function DamageNumbers({
       ))}
     </View>
   );
-}
+});
 
 interface FloatingNumberProps {
   number: DamageNumber;
   position: { x: number; y: number };
 }
 
-function FloatingNumber({ number, position }: FloatingNumberProps) {
+const FloatingNumber = memo(function FloatingNumber({ number, position }: FloatingNumberProps) {
   const translateY = useRef(new Animated.Value(0)).current;
   const opacity = useRef(new Animated.Value(1)).current;
   const scale = useRef(new Animated.Value(0.5)).current;
@@ -114,7 +114,7 @@ function FloatingNumber({ number, position }: FloatingNumberProps) {
       <Text style={[styles.numberText, { color: getColor() }]}>{getText()}</Text>
     </Animated.View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {

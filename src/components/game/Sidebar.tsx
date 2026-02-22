@@ -2,7 +2,7 @@
  * Sidebar Component - Combines BossPanel, StatsPanel, and InventoryPanel
  */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, StyleSheet, ImageBackground, Text, Image, Pressable } from 'react-native';
 import { PublicKey } from '@solana/web3.js';
 import { StatsPanel } from './StatsPanel';
@@ -93,15 +93,15 @@ interface SidebarProps {
 const GEAR_SLOT_SIZE = 28;
 const TOOL_SLOT_SIZE = 42;
 
-function EchoGearSlot({ item, size = GEAR_SLOT_SIZE }: { item: Gear | null; size?: number }) {
-  const tierBorder = item
-    ? (() => {
-        const tier = getTierFromRarity(item.currentRarity);
-        if (tier === 2) return '#4A90D9';
-        if (tier === 3) return '#FFD700';
-        return null;
-      })()
-    : null;
+const EchoGearSlot = React.memo(function EchoGearSlot({ item, size = GEAR_SLOT_SIZE }: { item: Gear | null; size?: number }) {
+  const tierBorder = useMemo(() => {
+    if (!item) return null;
+    const tier = getTierFromRarity(item.currentRarity);
+    if (tier === 2) return '#4A90D9';
+    if (tier === 3) return '#FFD700';
+    return null;
+  }, [item]);
+
   return (
     <ImageBackground
       source={SLOT_BG}
@@ -120,17 +120,17 @@ function EchoGearSlot({ item, size = GEAR_SLOT_SIZE }: { item: Gear | null; size
         ))}
     </ImageBackground>
   );
-}
+});
 
-function EchoToolSlot({ tool, size = TOOL_SLOT_SIZE }: { tool: Tool | null; size?: number }) {
-  const tierBorder = tool
-    ? (() => {
-        const tier = getTierFromRarity(tool.rarity);
-        if (tier === 2) return '#4A90D9';
-        if (tier === 3) return '#FFD700';
-        return null;
-      })()
-    : null;
+const EchoToolSlot = React.memo(function EchoToolSlot({ tool, size = TOOL_SLOT_SIZE }: { tool: Tool | null; size?: number }) {
+  const tierBorder = useMemo(() => {
+    if (!tool) return null;
+    const tier = getTierFromRarity(tool.rarity);
+    if (tier === 2) return '#4A90D9';
+    if (tier === 3) return '#FFD700';
+    return null;
+  }, [tool]);
+
   return (
     <ImageBackground
       source={SLOT_BG}
@@ -149,7 +149,7 @@ function EchoToolSlot({ tool, size = TOOL_SLOT_SIZE }: { tool: Tool | null; size
         ))}
     </ImageBackground>
   );
-}
+});
 
 function EchoOilSlot({ oil, size = TOOL_SLOT_SIZE }: { oil: ToolOil | null; size?: number }) {
   return (
@@ -252,12 +252,12 @@ export function BossPanel({
     sessionGameState?.maxWeeks === 5;
   const isDuelRun = resolvedRunMode === RunMode.Duel;
   const isDuelFinalWeek = isDuelRun && resolvedWeek === 3;
-  const duelWeekBoss = useCallback(() => {
+  const duelWeekBoss = useMemo(() => {
     if (!isDuelRun || (resolvedWeek !== 1 && resolvedWeek !== 2)) return null;
     if (mapSeed == null) return null;
     const derivedBossId = selectDuelWeekBossForSeed(mapSeed, resolvedWeek);
     return getBoss(derivedBossId);
-  }, [isDuelRun, mapSeed, resolvedWeek])();
+  }, [isDuelRun, mapSeed, resolvedWeek]);
   const displayedBoss = isDuelFinalWeek ? null : isDuelRun ? duelWeekBoss : boss;
   const shouldShowGauntletEcho = !displayedBoss && isGauntletRun;
   const shouldShowDuelOpponent = !displayedBoss && isDuelFinalWeek;
@@ -284,6 +284,7 @@ export function BossPanel({
     [connection]
   );
 
+  const gameStateWeek = gameState?.week;
   const loadPvpDetails = useCallback(async () => {
     if (!wallet.publicKey || displayedBoss || !isGauntletRun) {
       setPvpDetails({
@@ -292,7 +293,7 @@ export function BossPanel({
         tool: null,
         gear: [],
         stats: { hp: 15, atk: 1, arm: 0, spd: 0, dig: 0, gold: 0 },
-        week: gameState?.week ?? 1,
+        week: gameStateWeek ?? 1,
       });
       return;
     }
@@ -300,7 +301,7 @@ export function BossPanel({
     setPvpLoading(true);
     try {
       const gameplayProgram = createGameplayStateProgram(connection);
-      const week = gameState?.week;
+      const week = gameStateWeek;
 
       if (week === undefined) {
         setPvpDetails({
@@ -383,7 +384,7 @@ export function BossPanel({
         tool: null,
         gear: [],
         stats: { hp: 15, atk: 1, arm: 0, spd: 0, dig: 0, gold: 0 },
-        week: gameState?.week ?? 1,
+        week: gameStateWeek ?? 1,
       });
     } finally {
       setPvpLoading(false);
@@ -392,7 +393,7 @@ export function BossPanel({
     displayedBoss,
     connection,
     fetchProfileNameByWallet,
-    gameState,
+    gameStateWeek,
     wallet.publicKey,
     isGauntletRun,
   ]);

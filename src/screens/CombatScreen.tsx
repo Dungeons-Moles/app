@@ -107,7 +107,7 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
     startCombat,
     startCombatWithLog,
     startCombatWithOnchainOutcome,
-    getDisplayStates,
+    displayStates,
     getResult,
   } = useCombat();
 
@@ -527,7 +527,7 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
   }, [gameState?.player, combatInput]);
 
   // Get display states for gold fallback
-  const { playerGold, enemyGold } = getDisplayStates();
+  const { playerGold, enemyGold } = displayStates;
 
   return (
     <CombatLayout

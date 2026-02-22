@@ -62,7 +62,7 @@ export function CombatLayout({
     state: combatState,
     speed,
     setSpeed,
-    getDisplayStates,
+    displayStates,
     getResult,
   } = useCombat();
 
@@ -124,7 +124,7 @@ export function CombatLayout({
       : 0;
   }
 
-  const { player, enemy, playerGold, enemyGold } = getDisplayStates();
+  const { player, enemy, playerGold, enemyGold } = displayStates;
   const result = getResult();
 
   if (player) {
