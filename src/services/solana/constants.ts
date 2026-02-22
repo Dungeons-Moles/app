@@ -402,6 +402,54 @@ export function deriveQuestProgressPda(player: PublicKey, questId: number): [Pub
 }
 
 // ============================================================================
+// Composite PDA Derivation
+// ============================================================================
+
+/** All session-scoped PDAs derived from a single session PDA. */
+export interface SessionPdas {
+  gameStatePda: PublicKey;
+  mapEnemiesPda: PublicKey;
+  mapPoisPda: PublicKey;
+  inventoryPda: PublicKey;
+  generatedMapPda: PublicKey;
+}
+
+/**
+ * Derive all session-scoped PDAs from a session PDA in one call.
+ * Eliminates repeated individual derivation calls scattered across services.
+ */
+export function deriveSessionPdas(sessionPda: PublicKey): SessionPdas {
+  return {
+    gameStatePda: deriveGameStatePda(sessionPda)[0],
+    mapEnemiesPda: deriveMapEnemiesPda(sessionPda)[0],
+    mapPoisPda: deriveMapPoisPda(sessionPda)[0],
+    inventoryPda: deriveInventoryPda(sessionPda)[0],
+    generatedMapPda: deriveGeneratedMapPda(sessionPda)[0],
+  };
+}
+
+/** All global authority PDAs (not session-specific). */
+export interface GlobalAuthorityPdas {
+  poiAuthorityPda: PublicKey;
+  gameplayAuthorityPda: PublicKey;
+  inventoryAuthorityPda: PublicKey;
+  sessionManagerAuthorityPda: PublicKey;
+}
+
+/**
+ * Derive all global authority PDAs in one call.
+ * These are constant across all sessions.
+ */
+export function deriveGlobalAuthorityPdas(): GlobalAuthorityPdas {
+  return {
+    poiAuthorityPda: derivePoiAuthorityPda()[0],
+    gameplayAuthorityPda: deriveGameplayAuthorityPda()[0],
+    inventoryAuthorityPda: deriveInventoryAuthorityPda()[0],
+    sessionManagerAuthorityPda: deriveSessionManagerAuthorityPda()[0],
+  };
+}
+
+// ============================================================================
 // Account Sizes (for rent calculation)
 // ============================================================================
 

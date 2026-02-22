@@ -36,6 +36,10 @@ const PRELOAD_ASSETS = [
 ];
 
 function prefetchImages(images: number[]): Promise<void> {
+  if (Platform.OS === 'web') {
+    // Image.resolveAssetSource is not available on web; skip prefetch
+    return Promise.resolve();
+  }
   return Promise.all(
     images.map((source) => {
       const resolved = Image.resolveAssetSource(source);

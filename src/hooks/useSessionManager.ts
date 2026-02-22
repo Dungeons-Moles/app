@@ -102,68 +102,46 @@ export function useSessionManager() {
     };
   }, []);
 
-  const provider = useMemo(() => {
-    if (!wallet.publicKey) {
-      return null;
-    }
+  // Passthrough wallet adapter — session signer handles actual signing
+  const walletAdapter = useMemo(
+    () =>
+      wallet.publicKey
+        ? ({
+            publicKey: wallet.publicKey,
+            signTransaction: async (transaction: any) => transaction,
+            signAllTransactions: async (transactions: any) => transactions,
+          } as AnchorProvider['wallet'])
+        : null,
+    [wallet.publicKey]
+  );
 
-    const walletAdapter: AnchorProvider['wallet'] = {
-      publicKey: wallet.publicKey,
-      signTransaction: async (transaction) => transaction,
-      signAllTransactions: async (transactions) => transactions,
-    } as AnchorProvider['wallet'];
+  const provider = useMemo(
+    () => (walletAdapter ? createAnchorProvider(baseConnection, walletAdapter) : null),
+    [baseConnection, walletAdapter]
+  );
 
-    return createAnchorProvider(baseConnection, walletAdapter);
-  }, [baseConnection, wallet.publicKey]);
-
-  const baseWriteProgram = useMemo(() => {
-    if (!provider) {
-      return null;
-    }
-    return createSessionManagerProgramWithProvider(provider);
+  // All write programs share the same provider — create them together
+  const writePrograms = useMemo(() => {
+    if (!provider) return null;
+    return {
+      sessionManager: createSessionManagerProgramWithProvider(provider),
+      gameplayState: createGameplayStateProgramWithProvider(provider),
+      mapGenerator: createMapGeneratorProgramWithProvider(provider),
+      playerInventory: createPlayerInventoryProgramWithProvider(provider),
+      poiSystem: createPoiSystemProgramWithProvider(provider),
+    };
   }, [provider]);
 
-  const gameplayStateWriteProgram = useMemo(() => {
-    if (!provider) {
-      return null;
-    }
-    return createGameplayStateProgramWithProvider(provider);
-  }, [provider]);
+  const baseWriteProgram = writePrograms?.sessionManager ?? null;
+  const gameplayStateWriteProgram = writePrograms?.gameplayState ?? null;
+  const mapGeneratorWriteProgram = writePrograms?.mapGenerator ?? null;
+  const playerInventoryWriteProgram = writePrograms?.playerInventory ?? null;
+  const poiSystemWriteProgram = writePrograms?.poiSystem ?? null;
 
-  const mapGeneratorWriteProgram = useMemo(() => {
-    if (!provider) {
-      return null;
-    }
-    return createMapGeneratorProgramWithProvider(provider);
-  }, [provider]);
-
-  const playerInventoryWriteProgram = useMemo(() => {
-    if (!provider) {
-      return null;
-    }
-    return createPlayerInventoryProgramWithProvider(provider);
-  }, [provider]);
-
-  const poiSystemWriteProgram = useMemo(() => {
-    if (!provider) {
-      return null;
-    }
-    return createPoiSystemProgramWithProvider(provider);
-  }, [provider]);
-
-  const erProvider = useMemo(() => {
-    if (!wallet.publicKey) {
-      return null;
-    }
-
-    const walletAdapter: AnchorProvider['wallet'] = {
-      publicKey: wallet.publicKey,
-      signTransaction: async (transaction) => transaction,
-      signAllTransactions: async (transactions) => transactions,
-    } as AnchorProvider['wallet'];
-
-    return createAnchorProvider(erConnection, walletAdapter);
-  }, [erConnection, wallet.publicKey]);
+  const erProvider = useMemo(
+    () => (walletAdapter ? createAnchorProvider(erConnection, walletAdapter) : null),
+    [erConnection, walletAdapter]
+  );
 
   const erWriteProgram = useMemo(() => {
     if (!erProvider) {

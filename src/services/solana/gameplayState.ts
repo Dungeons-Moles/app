@@ -29,53 +29,6 @@ import {
 } from './types/gameplay_state';
 
 // ============================================================================
-// Error Messages (T015)
-// ============================================================================
-
-/**
- * User-friendly error messages for gameplay-state program errors.
- */
-export const GAMEPLAY_ERROR_MESSAGES: Record<number, string> = {
-  6000: 'Target position is out of map boundaries',
-  6001: 'Not enough moves remaining for this action',
-  6002: 'Can only move to adjacent tiles',
-  6003: 'Stat value is at maximum',
-  6004: 'HP cannot go below zero',
-  6005: 'Invalid stat modification',
-  6006: 'Boss fight triggered - end your session!',
-  6007: 'Not authorized for this action',
-  6008: 'Game session is not active',
-  6009: 'Calculation overflow',
-  6033: 'Gauntlet mode is not active for this run.',
-  6034: 'Gauntlet run has already ended.',
-  6035: 'Invalid gauntlet week.',
-};
-
-/**
- * Extracts user-friendly error message from gameplay-state program error.
- */
-export function getGameplayErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    // Extract error code from Anchor error
-    const match = error.message.match(/custom program error: 0x([0-9a-fA-F]+)/);
-    if (match) {
-      const errorCode = parseInt(match[1], 16);
-      const message = GAMEPLAY_ERROR_MESSAGES[errorCode];
-      if (message) {
-        return message;
-      }
-    }
-
-    // Check for insufficient funds
-    if (error.message.includes('insufficient funds')) {
-      return 'SessionSigner wallet needs more SOL. Please top up.';
-    }
-  }
-
-  return 'An unexpected error occurred. Please try again.';
-}
-
-// ============================================================================
 // PDA Derivation (T014)
 // ============================================================================
 

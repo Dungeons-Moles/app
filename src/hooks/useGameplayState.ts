@@ -20,10 +20,10 @@ import {
   modifyStat,
   closeGameState,
   fetchGameState,
-  getGameplayErrorMessage,
   calculateMoveCost,
   triggerBossFight,
 } from '@/services/solana/gameplayState';
+import { getUserErrorMessage } from '@/services/solana/errors';
 import {
   GameState,
   RunMode,
@@ -39,6 +39,7 @@ import type { BackendCombatLogEntry } from '@/services/solana/types/combat_event
 import { parseGauntletCombatVisualEvent } from '@/services/solana/gauntlet';
 import type { GauntletCombatVisualEvent } from '@/services/solana/gauntlet';
 import { sendSessionSignerTransaction } from '@/services/solana/sessionSigner';
+import { parseWithRetry } from '@/utils/retry';
 
 // ============================================================================
 // Types
@@ -201,7 +202,7 @@ export function useGameplayState(): UseGameplayStateReturn {
         console.error('Failed to refresh game state:', err);
         if (isMountedRef.current) {
           setSyncStatus('error');
-          setError(getGameplayErrorMessage(err));
+          setError(getUserErrorMessage(err, 'gameplay_state'));
         }
         return null;
       } finally {
@@ -261,7 +262,7 @@ export function useGameplayState(): UseGameplayStateReturn {
       } catch (err) {
         console.error('Failed to initialize game state:', err);
         if (isMountedRef.current) {
-          setError(getGameplayErrorMessage(err));
+          setError(getUserErrorMessage(err, 'gameplay_state'));
           setIsLoading(false);
         }
         return false;
@@ -474,7 +475,7 @@ export function useGameplayState(): UseGameplayStateReturn {
 
         if (isMountedRef.current) {
           setSyncStatus('error');
-          setError(getGameplayErrorMessage(err));
+          setError(getUserErrorMessage(err, 'gameplay_state'));
         }
 
         return { success: false };
@@ -522,7 +523,7 @@ export function useGameplayState(): UseGameplayStateReturn {
 
         if (isMountedRef.current) {
           setSyncStatus('error');
-          setError(getGameplayErrorMessage(err));
+          setError(getUserErrorMessage(err, 'gameplay_state'));
         }
 
         return { success: false };
@@ -621,7 +622,7 @@ export function useGameplayState(): UseGameplayStateReturn {
 
         if (isMountedRef.current) {
           setSyncStatus('error');
-          setError(getGameplayErrorMessage(err));
+          setError(getUserErrorMessage(err, 'gameplay_state'));
         }
 
         return { success: false };
@@ -660,7 +661,7 @@ export function useGameplayState(): UseGameplayStateReturn {
         console.error('Failed to close game state:', err);
 
         if (isMountedRef.current) {
-          setError(getGameplayErrorMessage(err));
+          setError(getUserErrorMessage(err, 'gameplay_state'));
           setIsLoading(false);
         }
 
@@ -729,6 +730,7 @@ export function useGameplayState(): UseGameplayStateReturn {
 /**
  * Parse combat log from a transaction signature with retry.
  * Returns entries and enemy info if available.
+ * Uses parseWithRetry for the retry loop; accumulates enemyInfo across attempts.
  */
 async function parseCombatLogWithRetry(
   connection: Parameters<typeof parseCombatLog>[0],
@@ -739,71 +741,41 @@ async function parseCombatLogWithRetry(
   combatLog?: BackendCombatLogEntry[];
   combatEnemyInfo?: CombatEnemyInfo;
 }> {
-  let combatLog: BackendCombatLogEntry[] | undefined;
   let combatEnemyInfo: CombatEnemyInfo | undefined;
-  const maxAttempts = 3;
 
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    try {
+  const combatLog = await parseWithRetry(
+    async () => {
       const result = await parseCombatLog(connection, program, signature);
-      if (result.enemyInfo) {
-        combatEnemyInfo = result.enemyInfo;
-      }
+      if (result.enemyInfo) combatEnemyInfo = result.enemyInfo;
       if (result.log && result.log.entries.length > 0) {
-        combatLog = result.log.entries;
-        console.log(`[useGameplayState] Parsed ${label} combat log:`, combatLog.length, 'entries');
-        break;
+        console.log(`[useGameplayState] Parsed ${label} combat log:`, result.log.entries.length, 'entries');
+        return result.log.entries;
       }
-      console.warn(
-        `[useGameplayState] ${label} combat log parse attempt ${attempt + 1}/${maxAttempts}: no CombatLog event found`
-      );
-    } catch (logErr) {
-      console.warn(
-        `[useGameplayState] ${label} combat log parse attempt ${attempt + 1}/${maxAttempts} error:`,
-        logErr
-      );
-    }
-    if (attempt < maxAttempts - 1) {
-      await new Promise((resolve) => setTimeout(resolve, 400));
-    }
-  }
+      return null;
+    },
+    { label: `${label} combat log` }
+  );
 
   if (!combatLog) {
     console.warn(
-      `[useGameplayState] Could not parse ${label} combat log after ${maxAttempts} attempts, using on-chain outcome fallback`
+      `[useGameplayState] Could not parse ${label} combat log after retries, using on-chain outcome fallback`
     );
   }
 
-  return { combatLog, combatEnemyInfo };
+  return { combatLog: combatLog ?? undefined, combatEnemyInfo };
 }
 
 /**
  * Parse gauntlet combat visual from a transaction signature with retry.
- * Mirrors parseCombatLogWithRetry: 3 attempts, 400ms delay between each.
  */
 async function parseGauntletVisualWithRetry(
   connection: Connection,
   signature: string
 ): Promise<GauntletCombatVisualEvent | null> {
-  const maxAttempts = 3;
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    try {
-      const visual = await parseGauntletCombatVisualEvent(connection, signature);
-      if (visual) return visual;
-    } catch (err) {
-      console.warn(
-        `[useGameplayState] Gauntlet visual parse attempt ${attempt + 1}/${maxAttempts}:`,
-        err
-      );
-    }
-    if (attempt < maxAttempts - 1) {
-      await new Promise((resolve) => setTimeout(resolve, 400));
-    }
-  }
-  console.warn(
-    `[useGameplayState] Could not parse gauntlet visual after ${maxAttempts} attempts`
+  return parseWithRetry(
+    () => parseGauntletCombatVisualEvent(connection, signature),
+    { label: 'gauntlet visual' }
   );
-  return null;
 }
 
 /**

@@ -102,6 +102,14 @@ export interface GameState {
   maxWeeks: number;
   /** Completion flag */
   completed: boolean;
+  /** Gauntlet epoch ID */
+  gauntletEpochId: number;
+  /** Gauntlet points earned this run */
+  gauntletPointsEarned: number;
+  /** Highest week won in gauntlet */
+  gauntletHighestWeekWon: number;
+  /** Whether gauntlet session has been settled */
+  gauntletSettled: boolean;
 }
 
 /**
