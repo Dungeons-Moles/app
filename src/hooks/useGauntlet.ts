@@ -48,7 +48,7 @@ function isRecoverableStartError(errorMessage: string | undefined): boolean {
 
 export function useGauntlet() {
   const { wallet, signAndSendTransaction, checkBalance } = useWallet();
-  const { mapSeed, startGauntletGame, switchToSession, queueEndGame, forceAbandonCurrentSession } = useSession();
+  const { mapSeed, startGauntletGame, switchToSession, forceAbandonCurrentSession } = useSession();
   const { connection } = useSolanaConnection();
 
   const [phase, setPhase] = useState<GauntletPhase>('confirm');
@@ -244,8 +244,8 @@ export function useGauntlet() {
         const gameState = await fetchGameState(gameplayProgram, gameStatePda);
 
         if (gameState?.isDead) {
-          console.log('[useGauntlet] enterGauntlet:existing_session_is_dead, queueing cleanup');
-          await queueEndGame(gameState.campaignLevel, false);
+          console.log('[useGauntlet] enterGauntlet:existing_session_is_dead, abandoning');
+          await forceAbandonCurrentSession();
           needsFreshStart = true;
           shouldSkipEnterTx = false;
         } else if (gameState?.bossFightReady) {

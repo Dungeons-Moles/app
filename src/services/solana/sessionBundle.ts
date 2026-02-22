@@ -28,6 +28,7 @@ import {
   DEFAULT_SESSION_SIGNER_FUNDING,
 } from './constants';
 import { SOLANA_CONFIG } from './config';
+import { deriveDuelSessionPda } from './constants';
 import { buildResetDuelEntryInstruction, deriveDuelEntryPda } from './duels';
 import { createGameplayStateProgram } from './programs';
 
@@ -197,8 +198,8 @@ export async function endSession(
  * Used when player wants to quit a session early.
  * Closes all session-related accounts to allow starting a new session on the same level.
  *
- * For duel sessions, prepends a reset_duel_entry instruction to refund staked SOL
- * and clean up duel state before closing the session.
+ * For duel sessions, automatically detects and prepends a reset_duel_entry instruction
+ * to refund staked SOL and clean up duel state before closing the session.
  */
 export async function abandonSession(
   connection: Connection,
@@ -207,8 +208,7 @@ export async function abandonSession(
   inventoryPda: PublicKey,
   playerPubkey: PublicKey,
   sessionSignerPubkey: PublicKey,
-  campaignLevel: number,
-  isDuelSession = false
+  campaignLevel: number
 ): Promise<Transaction> {
   // Derive all PDAs that need to be closed
   const [gameStatePda] = deriveGameStatePda(sessionPda);
@@ -218,7 +218,9 @@ export async function abandonSession(
 
   const transaction = new Transaction();
 
-  // For duel sessions, prepend reset_duel_entry to refund and clean up before closing
+  // Auto-detect duel sessions and prepend reset_duel_entry to refund and clean up
+  const [duelPda] = deriveDuelSessionPda(playerPubkey);
+  const isDuelSession = sessionPda.equals(duelPda);
   if (isDuelSession) {
     const [duelEntryPda] = deriveDuelEntryPda(sessionPda);
     const duelEntryInfo = await connection.getAccountInfo(duelEntryPda);

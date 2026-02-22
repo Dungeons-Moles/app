@@ -2399,8 +2399,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const program = createSessionManagerProgram(connection);
 
       // Create the abandon session transaction
-      const [duelPda] = deriveDuelSessionPda(wallet.publicKey);
-      const isDuelSession = sessionPda.equals(duelPda);
       const tx = await abandonSessionTx(
         connection,
         program,
@@ -2408,8 +2406,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         inventoryPda,
         sessionOwner,
         sessionSignerKeypair.publicKey,
-        session.campaignLevel,
-        isDuelSession
+        session.campaignLevel
       );
 
       // Add compute budget for safety (increased for closing all accounts via CPI)
