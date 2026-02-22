@@ -7,6 +7,7 @@ import { createGameplayStateProgram, createMapGeneratorProgram } from '@/service
 import {
   deriveGauntletSessionPda,
   deriveGeneratedMapPda,
+  deriveGameStatePda,
 } from '@/services/solana/constants';
 import { SOLANA_CONFIG } from '@/services/solana/config';
 import {
@@ -16,6 +17,7 @@ import {
   getGauntletErrorMessage,
 } from '@/services/solana/gauntlet';
 import { fetchGeneratedMap } from '@/services/solana/mapGeneratorClient';
+import { fetchGameState } from '@/services/solana/gameplayState';
 
 export type GauntletPhase = 'confirm' | 'queued' | 'error';
 const MAX_SEED_FETCH_RETRIES = 8;
@@ -46,7 +48,7 @@ function isRecoverableStartError(errorMessage: string | undefined): boolean {
 
 export function useGauntlet() {
   const { wallet, signAndSendTransaction, checkBalance } = useWallet();
-  const { mapSeed, startGauntletGame, switchToSession } = useSession();
+  const { mapSeed, startGauntletGame, switchToSession, queueEndGame, forceAbandonCurrentSession } = useSession();
   const { connection } = useSolanaConnection();
 
   const [phase, setPhase] = useState<GauntletPhase>('confirm');
@@ -233,17 +235,53 @@ export function useGauntlet() {
       });
 
       let shouldSkipEnterTx = !!existingGauntletSessionInfo;
+      let needsFreshStart = false;
 
       if (existingGauntletSessionInfo) {
-        console.log('[useGauntlet] enterGauntlet:resuming_existing_session');
-        const switchResult = await switchToGauntletSessionWithRetry(gauntletSessionPda);
-        if (!switchResult.success) {
-          setError(switchResult.error ?? 'Failed to resume gauntlet session');
+        // Check if the existing session is dead or stuck before resuming
+        const [gameStatePda] = deriveGameStatePda(gauntletSessionPda);
+        const gameplayProgram = createGameplayStateProgram(connection);
+        const gameState = await fetchGameState(gameplayProgram, gameStatePda);
+
+        if (gameState?.isDead) {
+          console.log('[useGauntlet] enterGauntlet:existing_session_is_dead, queueing cleanup');
+          await queueEndGame(gameState.campaignLevel, false);
+          needsFreshStart = true;
+          shouldSkipEnterTx = false;
+        } else if (gameState?.bossFightReady) {
+          console.log('[useGauntlet] enterGauntlet:existing_session_stuck (bossFightReady), abandoning');
+          await forceAbandonCurrentSession();
+          needsFreshStart = true;
+          shouldSkipEnterTx = false;
+        } else {
+          console.log('[useGauntlet] enterGauntlet:resuming_existing_session');
+          const switchResult = await switchToGauntletSessionWithRetry(gauntletSessionPda);
+          if (!switchResult.success) {
+            setError(switchResult.error ?? 'Failed to resume gauntlet session');
+            setPhase('error');
+            return false;
+          }
+          seed = await resolveSessionGeneratedSeed(gauntletSessionPda);
+        }
+      }
+
+      if (needsFreshStart) {
+        // Dead/stuck session was cleaned up — start a fresh gauntlet
+        console.log('[useGauntlet] enterGauntlet:starting_fresh_after_cleanup');
+        const startResult = await startGauntletGame();
+        if (!startResult.success) {
+          setError(startResult.error ?? 'Failed to start gauntlet session after cleanup');
           setPhase('error');
           return false;
         }
-        seed = await resolveSessionGeneratedSeed(gauntletSessionPda);
-      } else {
+        const switchResult = await switchToGauntletSessionWithRetry(gauntletSessionPda);
+        if (!switchResult.success) {
+          setError(switchResult.error ?? 'Failed to finalize gauntlet session setup');
+          setPhase('error');
+          return false;
+        }
+        seed = startResult.mapSeed ?? (await resolveSessionGeneratedSeed(gauntletSessionPda));
+      } else if (!existingGauntletSessionInfo) {
         console.log('[useGauntlet] enterGauntlet:starting_new_gauntlet_session');
         const startResult = await startGauntletGame();
         console.log('[useGauntlet] enterGauntlet:startGauntletGame_result', startResult);

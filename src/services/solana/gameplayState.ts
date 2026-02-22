@@ -5,11 +5,10 @@
  * Uses sessionSigner wallet for signing all gameplay transactions.
  */
 
-import { Keypair, PublicKey, SystemProgram, Connection } from '@solana/web3.js';
+import { Keypair, PublicKey, SystemProgram, Connection, Transaction, ComputeBudgetProgram } from '@solana/web3.js';
 import { Program } from '@coral-xyz/anchor';
 import { SOLANA_CONFIG } from './config';
 import { sendSessionSignerTransaction } from './sessionSigner';
-import { buildResolveGauntletWeekTransaction, parseGauntletCombatVisualEvent } from './gauntlet';
 import {
   deriveMapEnemiesPda,
   deriveInventoryPda,
@@ -192,6 +191,13 @@ export async function movePlayer(
     })
     .transaction();
 
+  // move_player can resolve boss fights / gauntlet echoes inline on the last
+  // move of night3 (up to 50-turn combat + CPIs), which far exceeds the
+  // default 200k CU limit.
+  transaction.instructions.unshift(
+    ComputeBudgetProgram.setComputeUnitLimit({ units: 1_000_000 })
+  );
+
   // Await confirmation — on-chain-first principle requires confirmed state before UI update
   const signature = await sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair);
 
@@ -270,31 +276,12 @@ export async function triggerBossFight(
     })
     .transaction();
 
-  return sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair);
-}
-
-export async function resolveGauntletWeek(
-  connection: Connection,
-  program: Program,
-  gameStatePda: PublicKey,
-  sessionPda: PublicKey,
-  sessionSignerKeypair: Keypair
-): Promise<{
-  signature: string;
-  combatVisual: Awaited<ReturnType<typeof parseGauntletCombatVisualEvent>>;
-}> {
-  const transaction = await buildResolveGauntletWeekTransaction(
-    connection,
-    program,
-    sessionSignerKeypair.publicKey,
-    gameStatePda,
-    sessionPda
+  // Boss fight runs full combat resolution (up to 50 turns + effect processing)
+  transaction.instructions.unshift(
+    ComputeBudgetProgram.setComputeUnitLimit({ units: 1_000_000 })
   );
 
-  const signature = await sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair);
-  const combatVisual = await parseGauntletCombatVisualEvent(connection, signature);
-
-  return { signature, combatVisual };
+  return sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair);
 }
 
 /**
@@ -412,6 +399,10 @@ interface OnChainGameState {
   };
   maxWeeks?: number;
   completed?: boolean;
+  gauntletEpochId?: number;
+  gauntletPointsEarned?: number;
+  gauntletHighestWeekWon?: number;
+  gauntletSettled?: boolean;
   bump: number;
 }
 
@@ -463,6 +454,10 @@ function parseOnChainGameState(account: OnChainGameState): GameState {
     runMode: parseRunMode(account.runMode),
     maxWeeks: account.maxWeeks ?? 3,
     completed: account.completed ?? false,
+    gauntletEpochId: account.gauntletEpochId ?? 0,
+    gauntletPointsEarned: account.gauntletPointsEarned ?? 0,
+    gauntletHighestWeekWon: account.gauntletHighestWeekWon ?? 0,
+    gauntletSettled: account.gauntletSettled ?? false,
   };
 }
 

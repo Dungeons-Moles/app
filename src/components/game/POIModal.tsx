@@ -48,7 +48,12 @@ interface POIModalProps {
   visible: boolean;
   onSelectOption: (optionIndex: number) => void;
   onClose: () => void;
-  kilnSelection?: { gearId: GearId | null; rarity: ItemRarity | null; emoji: string; count: number };
+  kilnSelection?: {
+    gearId: GearId | null;
+    rarity: ItemRarity | null;
+    emoji: string;
+    count: number;
+  };
   kilnFuseOptionIndex?: number | null;
   onKilnSlotPress?: (slotIndex: number) => void;
   scrapSelection?: Gear | null;
@@ -60,6 +65,7 @@ interface POIModalProps {
   selectableGear?: Gear[];
   /** Called when controller selects a gear item from the inline inventory. */
   onGearSelect?: (gear: Gear) => void;
+  centerInCompact?: boolean;
 }
 
 // POI types that use the 3-choice card layout
@@ -135,7 +141,9 @@ function getRarityColor(item: Tool | Gear): string {
   }
 }
 
-function getTierBorderStyle(rarity: ItemRarity | null | undefined): { borderWidth: number; borderColor: string } | null {
+function getTierBorderStyle(
+  rarity: ItemRarity | null | undefined
+): { borderWidth: number; borderColor: string } | null {
   if (!rarity) return null;
   const tier = getTierFromRarity(rarity);
   switch (tier) {
@@ -212,14 +220,23 @@ interface ModalWrapperProps {
   visible: boolean;
   isCompact: boolean;
   onClose: () => void;
+  centerInCompact?: boolean;
 }
 
-function ModalWrapper({ children, alignLeft, visible, isCompact, onClose }: ModalWrapperProps) {
+function ModalWrapper({
+  children,
+  alignLeft,
+  visible,
+  isCompact,
+  onClose,
+  centerInCompact,
+}: ModalWrapperProps) {
   if (isCompact) {
     if (!visible) return null;
+    const shouldAlignLeft = alignLeft && !centerInCompact;
     return (
-      <View style={[styles.compactModalOverlay, alignLeft && styles.compactModalOverlayLeft]}>
-        <View style={[styles.compactModalScale, alignLeft && styles.compactModalScaleLeft]}>
+      <View style={[styles.compactModalOverlay, shouldAlignLeft && styles.compactModalOverlayLeft]}>
+        <View style={[styles.compactModalScale, shouldAlignLeft && styles.compactModalScaleLeft]}>
           {children}
         </View>
       </View>
@@ -246,9 +263,7 @@ function OverlayWrapper({ children, visible, isCompact }: OverlayWrapperProps) {
   if (isCompact) {
     return (
       <View style={styles.compactModalOverlay}>
-        <View style={styles.compactModalScale}>
-          {children}
-        </View>
+        <View style={styles.compactModalScale}>{children}</View>
       </View>
     );
   }
@@ -274,6 +289,7 @@ export function POIModal({
   onFastTravel,
   selectableGear,
   onGearSelect,
+  centerInCompact,
 }: POIModalProps) {
   if (!interaction) {
     return null;
@@ -327,7 +343,15 @@ export function POIModal({
       return displayOptions.filter(({ option }) => !option.disabled).length;
     }
     return displayOptions.length;
-  }, [isThreeChoicePOI, hasValidOptions, options.length, isSmugglerHatch, isSeismicScanner, displayOptions, indexedOptions]);
+  }, [
+    isThreeChoicePOI,
+    hasValidOptions,
+    options.length,
+    isSmugglerHatch,
+    isSeismicScanner,
+    displayOptions,
+    indexedOptions,
+  ]);
 
   useEffect(() => {
     if (!visible) {
@@ -437,7 +461,7 @@ export function POIModal({
       },
       onB: onClose,
     },
-    isController && visible,
+    isController && visible
   );
 
   const getOptionRarity = useCallback((option: POIOption): ItemRarity => {
@@ -556,7 +580,11 @@ export function POIModal({
 
             <View style={styles.fuseRow}>
               <TouchableOpacity
-                style={[styles.fuseSlot, filledSlots < 1 && styles.fuseSlotEmpty, filledSlots >= 1 && kilnTierBorder]}
+                style={[
+                  styles.fuseSlot,
+                  filledSlots < 1 && styles.fuseSlotEmpty,
+                  filledSlots >= 1 && kilnTierBorder,
+                ]}
                 onPress={() => onKilnSlotPress?.(0)}
                 activeOpacity={0.7}
                 disabled={!canRemoveSlotOne}
@@ -582,7 +610,11 @@ export function POIModal({
               </TouchableOpacity>
               <Text style={styles.fusePlus}>+</Text>
               <TouchableOpacity
-                style={[styles.fuseSlot, filledSlots < 2 && styles.fuseSlotEmpty, filledSlots >= 2 && kilnTierBorder]}
+                style={[
+                  styles.fuseSlot,
+                  filledSlots < 2 && styles.fuseSlotEmpty,
+                  filledSlots >= 2 && kilnTierBorder,
+                ]}
                 onPress={() => onKilnSlotPress?.(1)}
                 activeOpacity={0.7}
                 disabled={!canRemoveSlotTwo}
@@ -616,12 +648,13 @@ export function POIModal({
                       style={styles.inlineInventoryCell}
                       onPress={() => onGearSelect?.(gear)}
                     >
-                      <Image
-                        source={squareSource}
-                        style={styles.inlineInventoryCellBg}
-                      />
+                      <Image source={squareSource} style={styles.inlineInventoryCellBg} />
                       {gear.image ? (
-                        <Image source={gear.image} style={styles.inlineInventoryImage} resizeMode="contain" />
+                        <Image
+                          source={gear.image}
+                          style={styles.inlineInventoryImage}
+                          resizeMode="contain"
+                        />
                       ) : (
                         <Text style={styles.inlineInventoryEmoji}>{gear.emoji}</Text>
                       )}
@@ -736,12 +769,13 @@ export function POIModal({
                       style={styles.inlineInventoryCell}
                       onPress={() => onGearSelect?.(gear)}
                     >
-                      <Image
-                        source={squareSource}
-                        style={styles.inlineInventoryCellBg}
-                      />
+                      <Image source={squareSource} style={styles.inlineInventoryCellBg} />
                       {gear.image ? (
-                        <Image source={gear.image} style={styles.inlineInventoryImage} resizeMode="contain" />
+                        <Image
+                          source={gear.image}
+                          style={styles.inlineInventoryImage}
+                          resizeMode="contain"
+                        />
                       ) : (
                         <Text style={styles.inlineInventoryEmoji}>{gear.emoji}</Text>
                       )}
@@ -780,7 +814,13 @@ export function POIModal({
     }
 
     return (
-      <ModalWrapper visible={visible} isCompact={isCompact} onClose={onClose} alignLeft={poiId !== 'L4'}>
+      <ModalWrapper
+        visible={visible}
+        isCompact={isCompact}
+        onClose={onClose}
+        alignLeft={true}
+        centerInCompact={centerInCompact}
+      >
         <View style={styles.threeChoiceModal} pointerEvents="auto">
           <Image
             source={paperPanelSource}
@@ -820,7 +860,11 @@ export function POIModal({
                 const itemName = option.item?.name ?? statMapping?.name ?? option.label;
                 const effectDescription = getItemEffectDescription(option.item);
                 return (
-                  <FocusGlow key={index} active={isController && focusedIndex === index} style={{ flex: 1 }}>
+                  <FocusGlow
+                    key={index}
+                    active={isController && focusedIndex === index}
+                    style={{ flex: 1 }}
+                  >
                     <SimplifiedItemOption
                       emoji={emoji}
                       image={image}
@@ -885,7 +929,11 @@ export function POIModal({
 
             {hasOtherWaypoints ? (
               <FocusGlow active={isController}>
-                <TouchableOpacity style={styles.primaryButton} onPress={() => onFastTravel?.()} activeOpacity={0.7}>
+                <TouchableOpacity
+                  style={styles.primaryButton}
+                  onPress={() => onFastTravel?.()}
+                  activeOpacity={0.7}
+                >
                   <Text style={styles.primaryButtonText}>Fast travel?</Text>
                 </TouchableOpacity>
               </FocusGlow>
@@ -940,7 +988,10 @@ export function POIModal({
                 {gridItems.map(({ option, index: optionIndex }, gridIdx) => {
                   const disabled = option.disabled;
                   return (
-                    <FocusGlow key={`shop-${optionIndex}`} active={isController && focusedIndex === gridIdx}>
+                    <FocusGlow
+                      key={`shop-${optionIndex}`}
+                      active={isController && focusedIndex === gridIdx}
+                    >
                       <TouchableOpacity
                         style={[styles.shopCell, disabled && styles.shopCellDisabled]}
                         onPress={() => onSelectOption(optionIndex)}
@@ -1171,7 +1222,10 @@ export function POIModal({
                       option.label.includes(def.name)
                     );
                     return (
-                      <FocusGlow key={`scan-${index}`} active={isController && focusedIndex === scanIdx}>
+                      <FocusGlow
+                        key={`scan-${index}`}
+                        active={isController && focusedIndex === scanIdx}
+                      >
                         <TouchableOpacity
                           style={styles.scannerCell}
                           onPress={() => onSelectOption(index)}
@@ -1244,11 +1298,7 @@ export function POIModal({
           <View style={styles.optionsContent}>
             {displayOptions.map(({ option, index }, listIdx) => (
               <FocusGlow key={index} active={isController && focusedIndex === listIdx}>
-                <ListOptionButton
-                  option={option}
-                  index={index}
-                  onPress={onSelectOption}
-                />
+                <ListOptionButton option={option} index={index} onPress={onSelectOption} />
               </FocusGlow>
             ))}
           </View>
@@ -1285,14 +1335,17 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
   },
   compactModalOverlayLeft: {
-    alignItems: 'flex-start',
+    alignItems: 'stretch',
     paddingLeft: 48,
+    paddingRight: 48,
   },
   compactModalScale: {
     transform: [{ scale: 1.4 }],
   },
   compactModalScaleLeft: {
     transformOrigin: 'left center',
+    width: '100%',
+    maxWidth: 580,
   },
   modalDarkArea: {
     flex: 1,
@@ -1327,8 +1380,8 @@ const styles = StyleSheet.create({
   },
   inlineModal: {
     borderRadius: 4,
-    maxWidth: 320,
-    width: '80%',
+    maxWidth: 400,
+    width: '90%',
     position: 'relative',
     overflow: 'visible',
   },
@@ -1455,14 +1508,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
-    gap: 10,
+    gap: 12,
     marginBottom: 12,
-    width: 240,
+    width: 300, // Increased to fit larger cells
     alignSelf: 'center',
   },
   shopCell: {
-    width: 70,
-    height: 70,
+    width: 90, // Increased size
+    height: 90, // Increased size
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1474,15 +1527,15 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   shopEmoji: {
-    fontSize: 20,
+    fontSize: 28, // Increased size
   },
   shopImage: {
-    width: 32,
-    height: 32,
+    width: 48, // Increased size
+    height: 48, // Increased size
   },
   shopCost: {
     fontFamily: Typography.number,
-    fontSize: 12,
+    fontSize: 14, // Increased size
     color: '#3d2b1f',
     marginTop: 4,
     fontWeight: 'bold',
@@ -1511,23 +1564,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
-    gap: 8,
-    width: 320,
+    gap: 12,
+    width: 360,
     alignSelf: 'center',
   },
   scannerCell: {
-    width: 80, // Increased size
-    height: 80, // Increased size
+    width: 100, // Increased size further
+    height: 100, // Increased size further
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 10,
+    padding: 12,
   },
   scannerEmoji: {
-    fontSize: 32, // Increased size
+    fontSize: 40, // Increased size further
   },
   scannerImage: {
-    width: 60, // Increased size
-    height: 60, // Increased size
+    width: 76, // Increased size further
+    height: 76, // Increased size further
   },
 
   // ============================================================================

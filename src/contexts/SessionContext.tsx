@@ -10,6 +10,7 @@ import React, {
 } from 'react';
 import { Alert } from 'react-native';
 import { Keypair, PublicKey, Transaction, ComputeBudgetProgram } from '@solana/web3.js';
+import BN from 'bn.js';
 import { useWallet } from './WalletContext';
 import { useProfile } from './ProfileContext';
 import { useSolanaConnection } from './SolanaConnectionContext';
@@ -46,6 +47,7 @@ import {
 import {
   loadSessionSignerWallet,
   drainSessionSignerToMain,
+  sendSessionSignerTransaction,
 } from '@/services/solana/sessionSigner';
 import {
   fetchSessionList,
@@ -57,16 +59,23 @@ import { abandonSession as abandonSessionTx } from '@/services/solana/sessionBun
 import { buildEnterDuelInstruction, parseDuelEvents } from '@/services/solana/duels';
 import { clearFogState, clearBrokenWalls } from '@/services/solana/sessionRestore';
 import type { OnChainGameSession } from '@/services/solana/types/session_manager';
-import type {
-  GameState,
-  MovePlayerParams,
-  ModifyStatParams,
+import {
+  RunMode,
+  type GameState,
+  type MovePlayerParams,
+  type ModifyStatParams,
 } from '@/services/solana/types/gameplay_state';
 import type { TransactionResult } from '@/types/solana';
 import type { SessionSignerState } from '@/services/solana/sessionSigner';
 import type { BackendCombatLogEntry } from '@/services/solana/types/combat_events';
 import type { CombatEnemyInfo } from '@/services/solana/eventParser';
 import type { GauntletCombatVisualEvent } from '@/services/solana/gauntlet';
+import {
+  buildEnterGauntletInstruction,
+  deriveGauntletConfigPda,
+  buildSettleGauntletSessionTransaction,
+  ensureLocalFeeAccounts,
+} from '@/services/solana/gauntlet';
 
 /** Commit interval in milliseconds (30 seconds) */
 const COMMIT_INTERVAL_MS = 30_000;
@@ -160,6 +169,7 @@ interface SessionContextType extends SessionState {
     bossResolvedInline?: boolean;
     bossCombatLog?: BackendCombatLogEntry[];
     preBossPlayerHp?: number;
+    gauntletCombatVisual?: GauntletCombatVisualEvent | null;
   }>;
   /** Trigger boss fight on-chain (via session key signer) */
   triggerBoss: () => Promise<{
@@ -453,20 +463,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
   ): Promise<TransactionResult> => {
     const targetSessionPda = options?.sessionPda ?? sessionManager.activeSessionPda ?? null;
-    if (sessionManager.session?.isDelegated) {
-      if (!targetSessionPda) {
+    // Check on-chain first — avoids redundant delegation attempts when React state is stale
+    // (e.g. switchToSession called right after startGauntletGame already delegated).
+    if (targetSessionPda) {
+      const alreadyDelegated = await isGameStateDelegatedOnBase(targetSessionPda);
+      if (alreadyDelegated) {
         setUseErForGameplay(true);
         return { success: true };
       }
-      const delegatedOnBase = await isGameStateDelegatedOnBase(targetSessionPda);
-      if (delegatedOnBase) {
-        setUseErForGameplay(true);
-        return { success: true };
-      }
-      console.warn(
-        '[SessionContext] ensureDelegatedToRollup: stale isDelegated flag detected; retrying delegation',
-        { sessionPda: targetSessionPda.toBase58() }
-      );
+    } else if (sessionManager.session?.isDelegated) {
+      setUseErForGameplay(true);
+      return { success: true };
     }
 
     const sessionSignerKeypair = options?.sessionSignerKeypair ?? sessionSigner.keypair;
@@ -892,6 +899,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     async (): Promise<TransactionResult> => {
       console.log('[SessionContext] startGauntletGame called');
 
+      if (!wallet.publicKey) {
+        return { success: false, error: 'Wallet not connected' };
+      }
+
       const sessionSignerResult = await sessionSigner.createWithoutFunding();
       if (!sessionSignerResult) {
         return { success: false, error: 'Failed to create sessionSigner wallet' };
@@ -913,6 +924,30 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       await clearFogState(sessionPda.toBase58()).catch(() => {});
       await clearBrokenWalls(sessionPda.toBase58()).catch(() => {});
 
+      // Build enter_gauntlet instruction to bundle into the same TX (Rule 1: single wallet signature)
+      await ensureLocalFeeAccounts(connection);
+      const [gameStatePda] = getGameStatePda(sessionPda);
+      const gameplayProgram = createGameplayStateProgram(connection);
+
+      const [gauntletConfigPda] = deriveGauntletConfigPda();
+      const gauntletConfig = await (
+        gameplayProgram.account as {
+          gauntletConfig: { fetch: (address: PublicKey) => Promise<{ currentEpochId: bigint | number }> };
+        }
+      ).gauntletConfig.fetch(gauntletConfigPda);
+
+      const epochIdBigInt = BigInt(gauntletConfig.currentEpochId.toString());
+      const epochIdBN = new BN(gauntletConfig.currentEpochId.toString());
+
+      const enterGauntletIx = await buildEnterGauntletInstruction(
+        gameplayProgram,
+        wallet.publicKey,
+        gameStatePda,
+        epochIdBN,
+        epochIdBigInt
+      );
+
+      // Combine: fund_session_signer + start_gauntlet_session + enter_gauntlet in a single TX
       const combinedTransaction = new Transaction();
       combinedTransaction.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }));
       combinedTransaction.add(...fundTransaction.instructions);
@@ -922,6 +957,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         (ix) => ix.programId.toBase58() !== COMPUTE_BUDGET_PROGRAM_ID
       );
       combinedTransaction.add(...sessionInstructions);
+      combinedTransaction.add(enterGauntletIx);
 
       const { blockhash } = await connection.getLatestBlockhash('confirmed');
       combinedTransaction.recentBlockhash = blockhash;
@@ -959,11 +995,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         generatedSeed: generatedSeed?.toString() ?? null,
       });
       setMapSeed(generatedSeed);
-
-      if (wallet.publicKey) {
-        const [gameStatePda] = getGameStatePda(sessionPda);
-        gameplayState.setGameStatePda(gameStatePda);
-      }
+      gameplayState.setGameStatePda(gameStatePda);
 
       const delegateResult = await ensureDelegatedToRollup({
         sessionPda,
@@ -1021,8 +1053,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       return { success: false, error: 'Session account not found on-chain' };
     }
 
+    // Check ALL accounts for delegation, not just the session.
+    // Child accounts (game_state, etc.) can remain delegated even when the session
+    // account has been restored, causing end_session to fail with AccountOwnedByWrongProgram.
+    const [gameStatePda] = deriveGameStatePda(sessionPda);
+    const gameStateInfo = await connection.getAccountInfo(gameStatePda, 'processed');
     const sessionOwnedByProgram = sessionAccount.owner.equals(SOLANA_CONFIG.programs.sessionManager);
-    const mustUndelegate = !sessionOwnedByProgram || Boolean(sessionManager.session?.isDelegated);
+    const anyChildDelegated = !!gameStateInfo?.owner.equals(DELEGATION_PROGRAM_ID);
+    const mustUndelegate =
+      !sessionOwnedByProgram ||
+      anyChildDelegated ||
+      Boolean(sessionManager.session?.isDelegated);
     if (mustUndelegate) {
       const undelegateResult = await sessionManager.undelegateSession(
         getFallbackStateHash(),
@@ -1036,14 +1077,20 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
       setUseErForGameplay(false);
 
-      // Ensure base layer ownership is restored before attempting end_session.
+      // Ensure base layer ownership is restored for ALL accounts before attempting end_session.
       let restored = false;
+      const expectedOwners: Array<[PublicKey, PublicKey]> = [
+        [sessionPda, SOLANA_CONFIG.programs.sessionManager],
+        [gameStatePda, SOLANA_CONFIG.programs.gameplayState],
+      ];
       for (let i = 0; i < 20; i += 1) {
-        const info = await connection.getAccountInfo(sessionPda, 'processed');
-        if (info?.owner.equals(SOLANA_CONFIG.programs.sessionManager)) {
-          restored = true;
-          break;
-        }
+        const infos = await Promise.all(
+          expectedOwners.map(([pda]) => connection.getAccountInfo(pda, 'processed'))
+        );
+        restored = infos.every(
+          (info, idx) => info?.owner.equals(expectedOwners[idx][1])
+        );
+        if (restored) break;
         await new Promise((resolve) => setTimeout(resolve, 250));
       }
       if (!restored) {
@@ -1051,6 +1098,34 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           success: false,
           error: 'Session undelegate not finalized yet; please retry in a moment',
         };
+      }
+    }
+
+    // For gauntlet sessions, settle points/echoes on base layer before ending.
+    // settle_gauntlet_session is signed by the session key (no wallet popup).
+    if (
+      gameplayState.gameState?.runMode === RunMode.Gauntlet &&
+      !gameplayState.gameState?.gauntletSettled &&
+      wallet.publicKey &&
+      sessionSigner.keypair
+    ) {
+      try {
+        console.log('[SessionContext] Gauntlet: settling session before end...');
+        const gameplayProgram = createGameplayStateProgram(connection);
+        const settleTx = await buildSettleGauntletSessionTransaction(
+          connection,
+          gameplayProgram,
+          wallet.publicKey,
+          sessionSigner.keypair.publicKey,
+          gameStatePda,
+          sessionPda
+        );
+        const settleSig = await sendSessionSignerTransaction(connection, settleTx, sessionSigner.keypair);
+        await connection.confirmTransaction(settleSig, 'confirmed');
+        console.log('[SessionContext] Gauntlet settle confirmed:', settleSig);
+      } catch (settleErr) {
+        console.warn('[SessionContext] Gauntlet settle failed (non-fatal):', settleErr);
+        // Continue to end_session even if settle fails — the session can still be closed
       }
     }
 
@@ -1333,6 +1408,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   /**
    * Trigger boss fight on-chain via session key signer.
+   * Gauntlet echo combat auto-resolves inline in move_player — this is only
+   * used for Campaign and Duel modes.
    */
   const triggerBoss = useCallback(async (): Promise<{
     success: boolean;
@@ -1347,6 +1424,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       console.error('[SessionContext] triggerBoss failed: Session key signer not available');
       return { success: false };
     }
+
     return gameplayState.triggerBoss(sessionSigner.keypair);
   }, [sessionSigner.keypair, gameplayState]);
 
@@ -1773,6 +1851,83 @@ export function SessionProvider({ children }: { children: ReactNode }) {
               sessionPda: sessionInfo.sessionPda,
               error: sessionScanErr,
             });
+          }
+        }
+
+        // Scan duel and gauntlet session PDAs for stale finished sessions.
+        // fetchSessionList only checks campaign levels 1-40 — duel/gauntlet
+        // sessions use fixed PDAs and would never be discovered otherwise.
+        const extraPdas: Array<{ pda: PublicKey; sessionType: 'duel' | 'gauntlet'; sentinel: number }> = [
+          { pda: deriveDuelSessionPda(wallet.publicKey)[0], sessionType: 'duel', sentinel: 100 },
+          { pda: deriveGauntletSessionPda(wallet.publicKey)[0], sessionType: 'gauntlet', sentinel: 200 },
+        ];
+
+        for (const { pda, sessionType, sentinel } of extraPdas) {
+          try {
+            const accountInfo = await connection.getAccountInfo(pda, 'processed');
+            if (!accountInfo) {
+              console.log('[SessionContext] processPendingCleanups:pvp_scan_no_account', {
+                sessionType,
+                pda: pda.toBase58(),
+              });
+              continue;
+            }
+
+            const [gameStatePda] = getGameStatePda(pda);
+            const delegatedOnBase = !!accountInfo.owner.equals(DELEGATION_PROGRAM_ID);
+
+            // Prefer ER state when session is delegated (ER is more up-to-date during gameplay)
+            const primaryState = delegatedOnBase
+              ? await fetchGameState(gameplayProgramEr, gameStatePda)
+              : await fetchGameState(gameplayProgramBase, gameStatePda);
+            const state = primaryState
+              ?? (delegatedOnBase
+                ? await fetchGameState(gameplayProgramBase, gameStatePda)
+                : await fetchGameState(gameplayProgramEr, gameStatePda));
+
+            if (!state) {
+              console.log('[SessionContext] processPendingCleanups:pvp_scan_no_gamestate', {
+                sessionType,
+                pda: pda.toBase58(),
+                delegatedOnBase,
+              });
+              continue;
+            }
+
+            const isDead = Boolean(state.isDead || (typeof state.hp === 'number' && state.hp <= 0));
+            const completed = Boolean(state.completed);
+            console.log('[SessionContext] processPendingCleanups:pvp_scan_status', {
+              sessionType,
+              pda: pda.toBase58(),
+              isDead,
+              completed,
+              hp: state.hp,
+              delegatedOnBase,
+              alreadyQueued: existingCleanupLevels.has(sentinel),
+            });
+            if (!isDead && !completed) continue;
+
+            if (existingCleanupLevels.has(sentinel)) {
+              staleFinishedQueuedLevels.add(sentinel);
+              continue;
+            }
+
+            await queueCleanup({
+              walletAddress: walletId,
+              campaignLevel: sentinel,
+              levelReached: sentinel,
+              isVictory: completed && !isDead,
+              needsSessionEnd: true,
+              needsResultRecord: true,
+              sessionType,
+            });
+            console.log('[SessionContext] processPendingCleanups:queued_stale_finished_session', {
+              sessionType,
+              sentinel,
+            });
+            existingCleanupLevels.add(sentinel);
+          } catch (err) {
+            console.warn(`[SessionContext] processPendingCleanups:scan_${sessionType}_failed`, err);
           }
         }
 

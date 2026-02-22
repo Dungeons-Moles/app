@@ -1977,12 +1977,28 @@ export function usePoiInteraction(): UsePoiInteractionResult {
                   sessionSignerKeypair
                 )
               );
+
+              // Sync gold from on-chain state after reroll
+              await refreshGameplayState();
+              const rerollGameplayProgram = createGameplayStateProgram(gameplayConnection);
+              const updatedRerollState = await fetchGameState(
+                rerollGameplayProgram,
+                gameStatePda
+              );
+              if (updatedRerollState) {
+                console.log(
+                  '[usePoiInteraction] Syncing SHOP reroll | gold:',
+                  updatedRerollState.gold
+                );
+                dispatch({ type: 'SYNC_MOVE', confirmedState: updatedRerollState });
+              }
+
               // Re-fetch shop state and update options
               const rerollData = await fetchMapPois(poiProgram, mapPoisPda);
               if (rerollData?.shopState?.active) {
                 setShopOffers(rerollData.shopState.offers);
                 setShopRerollCount(rerollData.shopState.rerollCount);
-                const gold = gameState?.player?.stats?.gold ?? 0;
+                const gold = updatedRerollState?.gold ?? gameState?.player?.stats?.gold ?? 0;
                 setCacheOfferOptions(
                   convertShopOffersToOptions(
                     rerollData.shopState.offers,
@@ -2007,12 +2023,25 @@ export function usePoiInteraction(): UsePoiInteractionResult {
                 optionIndex
               )
             );
+
+            // Sync gold from on-chain state after purchase
+            await refreshGameplayState();
+            const gameplayProgram = createGameplayStateProgram(gameplayConnection);
+            const updatedShopState = await fetchGameState(gameplayProgram, gameStatePda);
+            if (updatedShopState) {
+              console.log(
+                '[usePoiInteraction] Syncing SHOP purchase | gold:',
+                updatedShopState.gold
+              );
+              dispatch({ type: 'SYNC_MOVE', confirmedState: updatedShopState });
+            }
+
             // Re-fetch shop state and update options
             const purchaseData = await fetchMapPois(poiProgram, mapPoisPda);
             if (purchaseData?.shopState?.active) {
               setShopOffers(purchaseData.shopState.offers);
               setShopRerollCount(purchaseData.shopState.rerollCount);
-              const gold = gameState?.player?.stats?.gold ?? 0;
+              const gold = updatedShopState?.gold ?? gameState?.player?.stats?.gold ?? 0;
               setCacheOfferOptions(
                 convertShopOffersToOptions(
                   purchaseData.shopState.offers,

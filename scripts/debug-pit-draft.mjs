@@ -5,7 +5,7 @@
 import { Connection, PublicKey } from '@solana/web3.js';
 
 const RPC_URL = 'http://127.0.0.1:8899';
-const GAMEPLAY_STATE_PROGRAM_ID = new PublicKey('5VAaGSSoBP4UEt3RL2EXvDwpeDxAXMndsJn7QX96nc4n');
+const GAMEPLAY_STATE_PROGRAM_ID = new PublicKey('C8hK4qsqsSYQeqyXuTPTUUS3T7N74WnZCuzvChTpK1Mo');
 const PIT_DRAFT_QUEUE_SEED = 'pit_draft_queue';
 
 // Discriminators

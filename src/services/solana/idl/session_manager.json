@@ -1,5 +1,5 @@
 {
-  "address": "FcMT7MzBLVQGaMATEMws3fjsL2Q77QSHmoEPdowTMxJa",
+  "address": "6w1XVMSTRmZU9AWCKVvKohGAHSFMENhda7vqhKPQ8TPn",
   "metadata": {
     "name": "session_manager",
     "version": "0.1.0",
@@ -89,19 +89,19 @@
         },
         {
           "name": "player_inventory_program",
-          "address": "5BtqiWegvVAgEnTRUofB9oUoQvPztYqSkMPwRpYQacP8"
+          "address": "APRnvp41jEYnT1EnrdBTim7bodqE6v2RSgzv1CG7Qv7u"
         },
         {
           "name": "gameplay_state_program",
-          "address": "5VAaGSSoBP4UEt3RL2EXvDwpeDxAXMndsJn7QX96nc4n"
+          "address": "C8hK4qsqsSYQeqyXuTPTUUS3T7N74WnZCuzvChTpK1Mo"
         },
         {
           "name": "map_generator_program",
-          "address": "BYdGuEGf8NqtLnHpSRuZFrPGEgvdxMfGfTt71QVBxYHa"
+          "address": "GCy5GqvnJN99rgGtV6fMn8NtL9E7RoAyHDGzQv8me65j"
         },
         {
           "name": "poi_system_program",
-          "address": "6E27r1Cyo2CNPvtRsonn3uHUAdznS3cMXEBX4HRbfBQY"
+          "address": "KiT25b86BSAF8yErcWwyuuWNaoXMpNf859NjH41TpSj"
         }
       ],
       "args": [
@@ -222,38 +222,38 @@
             "program": {
               "kind": "const",
               "value": [
-                217,
-                18,
-                17,
-                128,
+                88,
+                32,
+                100,
+                135,
+                223,
+                216,
+                104,
+                241,
+                164,
+                121,
+                21,
+                139,
+                178,
+                138,
+                86,
+                12,
+                169,
                 79,
-                140,
-                152,
-                73,
-                103,
-                95,
-                134,
-                179,
-                31,
-                109,
-                34,
-                82,
-                250,
-                167,
-                91,
-                67,
-                186,
-                23,
-                209,
-                2,
-                80,
-                255,
-                118,
-                192,
-                175,
-                242,
-                222,
-                183
+                86,
+                46,
+                98,
+                133,
+                38,
+                183,
+                79,
+                139,
+                161,
+                77,
+                8,
+                54,
+                32,
+                153
               ]
             }
           }
@@ -339,7 +339,7 @@
         },
         {
           "name": "owner_program",
-          "address": "FcMT7MzBLVQGaMATEMws3fjsL2Q77QSHmoEPdowTMxJa"
+          "address": "6w1XVMSTRmZU9AWCKVvKohGAHSFMENhda7vqhKPQ8TPn"
         },
         {
           "name": "delegation_program",
@@ -397,38 +397,38 @@
             "program": {
               "kind": "const",
               "value": [
-                217,
-                18,
-                17,
-                128,
+                88,
+                32,
+                100,
+                135,
+                223,
+                216,
+                104,
+                241,
+                164,
+                121,
+                21,
+                139,
+                178,
+                138,
+                86,
+                12,
+                169,
                 79,
-                140,
-                152,
-                73,
-                103,
-                95,
-                134,
-                179,
-                31,
-                109,
-                34,
-                82,
-                250,
-                167,
-                91,
-                67,
-                186,
-                23,
-                209,
-                2,
-                80,
-                255,
-                118,
-                192,
-                175,
-                242,
-                222,
-                183
+                86,
+                46,
+                98,
+                133,
+                38,
+                183,
+                79,
+                139,
+                161,
+                77,
+                8,
+                54,
+                32,
+                153
               ]
             }
           }
@@ -514,7 +514,7 @@
         },
         {
           "name": "owner_program",
-          "address": "FcMT7MzBLVQGaMATEMws3fjsL2Q77QSHmoEPdowTMxJa"
+          "address": "6w1XVMSTRmZU9AWCKVvKohGAHSFMENhda7vqhKPQ8TPn"
         },
         {
           "name": "delegation_program",
@@ -572,38 +572,38 @@
             "program": {
               "kind": "const",
               "value": [
-                217,
-                18,
-                17,
-                128,
+                88,
+                32,
+                100,
+                135,
+                223,
+                216,
+                104,
+                241,
+                164,
+                121,
+                21,
+                139,
+                178,
+                138,
+                86,
+                12,
+                169,
                 79,
-                140,
-                152,
-                73,
-                103,
-                95,
-                134,
-                179,
-                31,
-                109,
-                34,
-                82,
-                250,
-                167,
-                91,
-                67,
-                186,
-                23,
-                209,
-                2,
-                80,
-                255,
-                118,
-                192,
-                175,
-                242,
-                222,
-                183
+                86,
+                46,
+                98,
+                133,
+                38,
+                183,
+                79,
+                139,
+                161,
+                77,
+                8,
+                54,
+                32,
+                153
               ]
             }
           }
@@ -689,7 +689,7 @@
         },
         {
           "name": "owner_program",
-          "address": "FcMT7MzBLVQGaMATEMws3fjsL2Q77QSHmoEPdowTMxJa"
+          "address": "6w1XVMSTRmZU9AWCKVvKohGAHSFMENhda7vqhKPQ8TPn"
         },
         {
           "name": "delegation_program",
@@ -747,38 +747,38 @@
             "program": {
               "kind": "const",
               "value": [
-                217,
-                18,
-                17,
-                128,
+                88,
+                32,
+                100,
+                135,
+                223,
+                216,
+                104,
+                241,
+                164,
+                121,
+                21,
+                139,
+                178,
+                138,
+                86,
+                12,
+                169,
                 79,
-                140,
-                152,
-                73,
-                103,
-                95,
-                134,
-                179,
-                31,
-                109,
-                34,
-                82,
-                250,
-                167,
-                91,
-                67,
-                186,
-                23,
-                209,
-                2,
-                80,
-                255,
-                118,
-                192,
-                175,
-                242,
-                222,
-                183
+                86,
+                46,
+                98,
+                133,
+                38,
+                183,
+                79,
+                139,
+                161,
+                77,
+                8,
+                54,
+                32,
+                153
               ]
             }
           }
@@ -864,7 +864,7 @@
         },
         {
           "name": "owner_program",
-          "address": "FcMT7MzBLVQGaMATEMws3fjsL2Q77QSHmoEPdowTMxJa"
+          "address": "6w1XVMSTRmZU9AWCKVvKohGAHSFMENhda7vqhKPQ8TPn"
         },
         {
           "name": "delegation_program",
@@ -922,38 +922,38 @@
             "program": {
               "kind": "const",
               "value": [
-                217,
-                18,
-                17,
-                128,
+                88,
+                32,
+                100,
+                135,
+                223,
+                216,
+                104,
+                241,
+                164,
+                121,
+                21,
+                139,
+                178,
+                138,
+                86,
+                12,
+                169,
                 79,
-                140,
-                152,
-                73,
-                103,
-                95,
-                134,
-                179,
-                31,
-                109,
-                34,
-                82,
-                250,
-                167,
-                91,
-                67,
-                186,
-                23,
-                209,
-                2,
-                80,
-                255,
-                118,
-                192,
-                175,
-                242,
-                222,
-                183
+                86,
+                46,
+                98,
+                133,
+                38,
+                183,
+                79,
+                139,
+                161,
+                77,
+                8,
+                54,
+                32,
+                153
               ]
             }
           }
@@ -1039,7 +1039,7 @@
         },
         {
           "name": "owner_program",
-          "address": "FcMT7MzBLVQGaMATEMws3fjsL2Q77QSHmoEPdowTMxJa"
+          "address": "6w1XVMSTRmZU9AWCKVvKohGAHSFMENhda7vqhKPQ8TPn"
         },
         {
           "name": "delegation_program",
@@ -1097,38 +1097,38 @@
             "program": {
               "kind": "const",
               "value": [
-                217,
-                18,
-                17,
-                128,
+                88,
+                32,
+                100,
+                135,
+                223,
+                216,
+                104,
+                241,
+                164,
+                121,
+                21,
+                139,
+                178,
+                138,
+                86,
+                12,
+                169,
                 79,
-                140,
-                152,
-                73,
-                103,
-                95,
-                134,
-                179,
-                31,
-                109,
-                34,
-                82,
-                250,
-                167,
-                91,
-                67,
-                186,
-                23,
-                209,
-                2,
-                80,
-                255,
-                118,
-                192,
-                175,
-                242,
-                222,
-                183
+                86,
+                46,
+                98,
+                133,
+                38,
+                183,
+                79,
+                139,
+                161,
+                77,
+                8,
+                54,
+                32,
+                153
               ]
             }
           }
@@ -1217,7 +1217,7 @@
         },
         {
           "name": "owner_program",
-          "address": "FcMT7MzBLVQGaMATEMws3fjsL2Q77QSHmoEPdowTMxJa"
+          "address": "6w1XVMSTRmZU9AWCKVvKohGAHSFMENhda7vqhKPQ8TPn"
         },
         {
           "name": "delegation_program",
@@ -1291,38 +1291,38 @@
             "program": {
               "kind": "const",
               "value": [
-                66,
                 165,
-                213,
-                208,
-                125,
-                103,
-                44,
-                88,
-                115,
-                217,
-                192,
-                197,
+                105,
+                51,
+                195,
+                50,
+                68,
+                93,
+                183,
+                82,
+                141,
+                122,
+                107,
+                195,
                 1,
-                117,
-                7,
+                86,
+                30,
+                104,
+                80,
                 170,
-                78,
-                32,
-                208,
-                143,
-                119,
-                94,
-                47,
-                124,
-                229,
-                196,
-                47,
-                149,
-                235,
+                150,
+                122,
+                133,
+                234,
+                98,
+                181,
+                121,
                 227,
-                237,
-                31
+                35,
+                228,
+                168,
+                136,
+                54
               ]
             }
           }
@@ -1375,38 +1375,38 @@
             "program": {
               "kind": "const",
               "value": [
-                16,
-                246,
-                87,
-                160,
-                4,
-                90,
-                95,
-                80,
-                22,
+                173,
+                178,
+                185,
+                109,
+                85,
+                174,
+                41,
+                240,
                 83,
-                190,
-                182,
-                115,
-                36,
-                214,
-                171,
-                118,
-                16,
-                77,
-                181,
-                88,
-                7,
-                159,
+                161,
+                21,
+                228,
+                174,
+                149,
+                101,
+                192,
+                117,
+                119,
+                254,
+                61,
+                55,
                 200,
-                56,
-                211,
-                7,
-                33,
-                206,
-                150,
-                68,
-                123
+                75,
+                179,
+                126,
+                215,
+                130,
+                121,
+                72,
+                90,
+                152,
+                13
               ]
             }
           }
@@ -1478,23 +1478,23 @@
         },
         {
           "name": "player_inventory_program",
-          "address": "5BtqiWegvVAgEnTRUofB9oUoQvPztYqSkMPwRpYQacP8"
+          "address": "APRnvp41jEYnT1EnrdBTim7bodqE6v2RSgzv1CG7Qv7u"
         },
         {
           "name": "gameplay_state_program",
-          "address": "5VAaGSSoBP4UEt3RL2EXvDwpeDxAXMndsJn7QX96nc4n"
+          "address": "C8hK4qsqsSYQeqyXuTPTUUS3T7N74WnZCuzvChTpK1Mo"
         },
         {
           "name": "player_profile_program",
-          "address": "29DPbP1zuCCRg63PiShMjxAmZos97BR5TmhpijUYQzze"
+          "address": "Ch3bbL1oQk2z5rX1jiun3KuSWZqnXZ1MnrfrtKj4MKun"
         },
         {
           "name": "map_generator_program",
-          "address": "BYdGuEGf8NqtLnHpSRuZFrPGEgvdxMfGfTt71QVBxYHa"
+          "address": "GCy5GqvnJN99rgGtV6fMn8NtL9E7RoAyHDGzQv8me65j"
         },
         {
           "name": "poi_system_program",
-          "address": "6E27r1Cyo2CNPvtRsonn3uHUAdznS3cMXEBX4HRbfBQY"
+          "address": "KiT25b86BSAF8yErcWwyuuWNaoXMpNf859NjH41TpSj"
         }
       ],
       "args": [
@@ -1698,38 +1698,38 @@
             "program": {
               "kind": "const",
               "value": [
-                16,
-                246,
-                87,
-                160,
-                4,
-                90,
-                95,
-                80,
-                22,
+                173,
+                178,
+                185,
+                109,
+                85,
+                174,
+                41,
+                240,
                 83,
-                190,
-                182,
-                115,
-                36,
-                214,
-                171,
-                118,
-                16,
-                77,
-                181,
-                88,
-                7,
-                159,
+                161,
+                21,
+                228,
+                174,
+                149,
+                101,
+                192,
+                117,
+                119,
+                254,
+                61,
+                55,
                 200,
-                56,
-                211,
-                7,
-                33,
-                206,
-                150,
-                68,
-                123
+                75,
+                179,
+                126,
+                215,
+                130,
+                121,
+                72,
+                90,
+                152,
+                13
               ]
             }
           }
@@ -1806,19 +1806,19 @@
         },
         {
           "name": "map_generator_program",
-          "address": "BYdGuEGf8NqtLnHpSRuZFrPGEgvdxMfGfTt71QVBxYHa"
+          "address": "GCy5GqvnJN99rgGtV6fMn8NtL9E7RoAyHDGzQv8me65j"
         },
         {
           "name": "gameplay_state_program",
-          "address": "5VAaGSSoBP4UEt3RL2EXvDwpeDxAXMndsJn7QX96nc4n"
+          "address": "C8hK4qsqsSYQeqyXuTPTUUS3T7N74WnZCuzvChTpK1Mo"
         },
         {
           "name": "poi_system_program",
-          "address": "6E27r1Cyo2CNPvtRsonn3uHUAdznS3cMXEBX4HRbfBQY"
+          "address": "KiT25b86BSAF8yErcWwyuuWNaoXMpNf859NjH41TpSj"
         },
         {
           "name": "player_inventory_program",
-          "address": "5BtqiWegvVAgEnTRUofB9oUoQvPztYqSkMPwRpYQacP8"
+          "address": "APRnvp41jEYnT1EnrdBTim7bodqE6v2RSgzv1CG7Qv7u"
         },
         {
           "name": "system_program",
@@ -1927,38 +1927,38 @@
             "program": {
               "kind": "const",
               "value": [
-                16,
-                246,
-                87,
-                160,
-                4,
-                90,
-                95,
-                80,
-                22,
+                173,
+                178,
+                185,
+                109,
+                85,
+                174,
+                41,
+                240,
                 83,
-                190,
-                182,
-                115,
-                36,
-                214,
-                171,
-                118,
-                16,
-                77,
-                181,
-                88,
-                7,
-                159,
+                161,
+                21,
+                228,
+                174,
+                149,
+                101,
+                192,
+                117,
+                119,
+                254,
+                61,
+                55,
                 200,
-                56,
-                211,
-                7,
-                33,
-                206,
-                150,
-                68,
-                123
+                75,
+                179,
+                126,
+                215,
+                130,
+                121,
+                72,
+                90,
+                152,
+                13
               ]
             }
           }
@@ -2035,19 +2035,19 @@
         },
         {
           "name": "map_generator_program",
-          "address": "BYdGuEGf8NqtLnHpSRuZFrPGEgvdxMfGfTt71QVBxYHa"
+          "address": "GCy5GqvnJN99rgGtV6fMn8NtL9E7RoAyHDGzQv8me65j"
         },
         {
           "name": "gameplay_state_program",
-          "address": "5VAaGSSoBP4UEt3RL2EXvDwpeDxAXMndsJn7QX96nc4n"
+          "address": "C8hK4qsqsSYQeqyXuTPTUUS3T7N74WnZCuzvChTpK1Mo"
         },
         {
           "name": "poi_system_program",
-          "address": "6E27r1Cyo2CNPvtRsonn3uHUAdznS3cMXEBX4HRbfBQY"
+          "address": "KiT25b86BSAF8yErcWwyuuWNaoXMpNf859NjH41TpSj"
         },
         {
           "name": "player_inventory_program",
-          "address": "5BtqiWegvVAgEnTRUofB9oUoQvPztYqSkMPwRpYQacP8"
+          "address": "APRnvp41jEYnT1EnrdBTim7bodqE6v2RSgzv1CG7Qv7u"
         },
         {
           "name": "system_program",
@@ -2143,38 +2143,38 @@
             "program": {
               "kind": "const",
               "value": [
-                16,
-                246,
-                87,
-                160,
-                4,
-                90,
-                95,
-                80,
-                22,
+                173,
+                178,
+                185,
+                109,
+                85,
+                174,
+                41,
+                240,
                 83,
-                190,
-                182,
-                115,
-                36,
-                214,
-                171,
-                118,
-                16,
-                77,
-                181,
-                88,
-                7,
-                159,
+                161,
+                21,
+                228,
+                174,
+                149,
+                101,
+                192,
+                117,
+                119,
+                254,
+                61,
+                55,
                 200,
-                56,
-                211,
-                7,
-                33,
-                206,
-                150,
-                68,
-                123
+                75,
+                179,
+                126,
+                215,
+                130,
+                121,
+                72,
+                90,
+                152,
+                13
               ]
             }
           }
@@ -2221,23 +2221,23 @@
         },
         {
           "name": "map_generator_program",
-          "address": "BYdGuEGf8NqtLnHpSRuZFrPGEgvdxMfGfTt71QVBxYHa"
+          "address": "GCy5GqvnJN99rgGtV6fMn8NtL9E7RoAyHDGzQv8me65j"
         },
         {
           "name": "gameplay_state_program",
-          "address": "5VAaGSSoBP4UEt3RL2EXvDwpeDxAXMndsJn7QX96nc4n"
+          "address": "C8hK4qsqsSYQeqyXuTPTUUS3T7N74WnZCuzvChTpK1Mo"
         },
         {
           "name": "poi_system_program",
-          "address": "6E27r1Cyo2CNPvtRsonn3uHUAdznS3cMXEBX4HRbfBQY"
+          "address": "KiT25b86BSAF8yErcWwyuuWNaoXMpNf859NjH41TpSj"
         },
         {
           "name": "player_inventory_program",
-          "address": "5BtqiWegvVAgEnTRUofB9oUoQvPztYqSkMPwRpYQacP8"
+          "address": "APRnvp41jEYnT1EnrdBTim7bodqE6v2RSgzv1CG7Qv7u"
         },
         {
           "name": "player_profile_program",
-          "address": "29DPbP1zuCCRg63PiShMjxAmZos97BR5TmhpijUYQzze"
+          "address": "Ch3bbL1oQk2z5rX1jiun3KuSWZqnXZ1MnrfrtKj4MKun"
         },
         {
           "name": "system_program",
@@ -2744,6 +2744,207 @@
               "Used by session_manager to validate end_session calls"
             ],
             "type": "bool"
+          },
+          {
+            "name": "gauntlet_echoes",
+            "docs": [
+              "Pre-drawn gauntlet echo opponents (cached at entry, resolved during ER gameplay)."
+            ],
+            "type": {
+              "array": [
+                {
+                  "option": {
+                    "defined": {
+                      "name": "GauntletEchoSnapshot"
+                    }
+                  }
+                },
+                5
+              ]
+            }
+          },
+          {
+            "name": "gauntlet_epoch_id",
+            "docs": [
+              "Epoch ID at gauntlet entry, used for settlement validation."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "gauntlet_points_earned",
+            "docs": [
+              "Points accumulated during gauntlet ER gameplay, settled after undelegation."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "gauntlet_defender_credit",
+            "docs": [
+              "Defender credit to apply at settlement (only for Player echo losses)."
+            ],
+            "type": {
+              "option": {
+                "defined": {
+                  "name": "GauntletDefenderCredit"
+                }
+              }
+            }
+          },
+          {
+            "name": "gauntlet_highest_week_won",
+            "docs": [
+              "Highest week the player won (for echo insertion at settlement)."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "gauntlet_settled",
+            "docs": [
+              "Whether gauntlet points have been settled to global accounts."
+            ],
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "GauntletDefenderCredit",
+      "docs": [
+        "Defender credit accumulated during gauntlet ER gameplay, settled after undelegation."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "defender",
+            "type": "pubkey"
+          },
+          {
+            "name": "points",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "GauntletEchoSnapshot",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "week",
+            "type": "u8"
+          },
+          {
+            "name": "source",
+            "type": {
+              "defined": {
+                "name": "GauntletEchoSource"
+              }
+            }
+          },
+          {
+            "name": "loadout",
+            "type": {
+              "defined": {
+                "name": "GauntletLoadoutSnapshot"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "GauntletEchoSource",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Bootstrap"
+          },
+          {
+            "name": "Player",
+            "fields": [
+              "pubkey"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "GauntletLoadoutSnapshot",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "tool",
+            "type": {
+              "option": {
+                "defined": {
+                  "name": "ItemInstance"
+                }
+              }
+            }
+          },
+          {
+            "name": "gear",
+            "type": {
+              "array": [
+                {
+                  "option": {
+                    "defined": {
+                      "name": "ItemInstance"
+                    }
+                  }
+                },
+                12
+              ]
+            }
+          },
+          {
+            "name": "gold_at_battle_start",
+            "type": "u16"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ItemInstance",
+      "docs": [
+        "A specific item owned by a player"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "item_id",
+            "docs": [
+              "References ItemDefinition ID (e.g., \"T-ST-01\\0\")"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                8
+              ]
+            }
+          },
+          {
+            "name": "tier",
+            "docs": [
+              "Upgrade tier"
+            ],
+            "type": {
+              "defined": {
+                "name": "Tier"
+              }
+            }
+          },
+          {
+            "name": "tool_oil_flags",
+            "docs": [
+              "Tool Oil bitflags: 0x01=+ATK, 0x02=+SPD, 0x04=+DIG, 0x08=+ARM"
+            ],
+            "type": "u8"
           }
         ]
       }
@@ -3008,6 +3209,26 @@
           {
             "name": "timestamp",
             "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Tier",
+      "docs": [
+        "Item tier (upgrade level)"
+      ],
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "I"
+          },
+          {
+            "name": "II"
+          },
+          {
+            "name": "III"
           }
         ]
       }

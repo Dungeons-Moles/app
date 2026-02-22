@@ -26,7 +26,7 @@ import {
   GAMEPLAY_STATE_PROGRAM_ID,
 } from '../../services/solana/constants';
 import { RunMode } from '../../services/solana/types/gameplay_state';
-import { fetchGauntletWeekEchoPreview } from '../../services/solana/gauntlet';
+import { fetchGauntletEchoFromGameState } from '../../services/solana/gauntlet';
 import { calculateItemStats } from '../../game/entities/items';
 import {
   convertItemInstanceToGear,
@@ -62,7 +62,7 @@ const OIL_IMAGES: Record<ToolOil, any> = {
 
 /** Gauntlet gear capacity per week (starts at 4, gains 4 each week) */
 function gauntletGearCapacity(week: number): number {
-  return Math.min(4 + (week - 1) * 4, 12);
+  return Math.min(4 + (week - 1) * 2, 12);
 }
 
 interface SidebarProps {
@@ -291,7 +291,7 @@ export function BossPanel({
         sourceLabel: 'PvP Echo',
         tool: null,
         gear: [],
-        stats: { hp: 10, atk: 1, arm: 0, spd: 0, dig: 0, gold: 0 },
+        stats: { hp: 15, atk: 1, arm: 0, spd: 0, dig: 0, gold: 0 },
         week: gameState?.week ?? 1,
       });
       return;
@@ -300,66 +300,29 @@ export function BossPanel({
     setPvpLoading(true);
     try {
       const gameplayProgram = createGameplayStateProgram(connection);
-      let runMode = gameState?.runMode;
-      let week = gameState?.week;
-      let totalMoves = gameState?.totalMoves;
-      let session = gameState?.session;
-      let maxWeeks: number | undefined = gameState?.maxWeeks;
+      const week = gameState?.week;
 
-      // Web can lag context hydration; fetch directly from on-chain gauntlet session when needed.
-      if (
-        (runMode !== RunMode.Gauntlet && maxWeeks !== 5) ||
-        week === undefined ||
-        totalMoves === undefined ||
-        !session
-      ) {
-        const [gauntletSessionPda] = deriveGauntletSessionPda(wallet.publicKey);
-        const [gauntletGameStatePda] = PublicKey.findProgramAddressSync(
-          [Buffer.from('game_state'), gauntletSessionPda.toBuffer()],
-          GAMEPLAY_STATE_PROGRAM_ID
-        );
-        const fetched = await (
-          gameplayProgram.account as {
-            gameState: {
-              fetch: (address: PublicKey) => Promise<{
-                runMode?: { gauntlet?: object };
-                week: number;
-                totalMoves: number;
-                session: PublicKey;
-                maxWeeks?: number;
-              }>;
-            };
-          }
-        ).gameState.fetch(gauntletGameStatePda);
-        runMode = fetched?.runMode && 'gauntlet' in fetched.runMode ? RunMode.Gauntlet : runMode;
-        week = fetched.week;
-        totalMoves = fetched.totalMoves;
-        session = fetched.session;
-        maxWeeks = fetched.maxWeeks;
-      }
-
-      if (
-        (runMode !== RunMode.Gauntlet && maxWeeks !== 5) ||
-        week === undefined ||
-        totalMoves === undefined ||
-        !session
-      ) {
+      if (week === undefined) {
         setPvpDetails({
           name: 'Mole Echo',
           sourceLabel: 'PvP Echo',
           tool: null,
           gear: [],
-          stats: { hp: 10, atk: 1, arm: 0, spd: 0, dig: 0, gold: 0 },
-          week: week ?? 1,
+          stats: { hp: 15, atk: 1, arm: 0, spd: 0, dig: 0, gold: 0 },
+          week: 1,
         });
         return;
       }
 
-      const preview = await fetchGauntletWeekEchoPreview(gameplayProgram, {
-        week,
-        session,
-        player: wallet.publicKey,
-      });
+      // Derive game state PDA and read echo directly from the account's gauntletEchoes field.
+      // This is the source of truth — echoes are drawn at enter_gauntlet time and stored here.
+      const [gauntletSessionPda] = deriveGauntletSessionPda(wallet.publicKey);
+      const [gameStatePda] = PublicKey.findProgramAddressSync(
+        [Buffer.from('game_state'), gauntletSessionPda.toBuffer()],
+        GAMEPLAY_STATE_PROGRAM_ID
+      );
+
+      const preview = await fetchGauntletEchoFromGameState(gameplayProgram, gameStatePda, week);
 
       if (!preview) {
         setPvpDetails({
@@ -367,7 +330,7 @@ export function BossPanel({
           sourceLabel: 'PvP Echo',
           tool: null,
           gear: [],
-          stats: { hp: 10, atk: 1, arm: 0, spd: 0, dig: 0, gold: 0 },
+          stats: { hp: 15, atk: 1, arm: 0, spd: 0, dig: 0, gold: 0 },
           week,
         });
         return;
@@ -404,7 +367,7 @@ export function BossPanel({
         tool,
         gear,
         stats: {
-          hp: 10 + (itemStats.hp ?? 0),
+          hp: 15 + (itemStats.hp ?? 0),
           atk: 1 + (itemStats.atk ?? 0),
           arm: itemStats.arm ?? 0,
           spd: itemStats.spd ?? 0,
@@ -419,7 +382,7 @@ export function BossPanel({
         sourceLabel: 'PvP Echo',
         tool: null,
         gear: [],
-        stats: { hp: 10, atk: 1, arm: 0, spd: 0, dig: 0, gold: 0 },
+        stats: { hp: 15, atk: 1, arm: 0, spd: 0, dig: 0, gold: 0 },
         week: gameState?.week ?? 1,
       });
     } finally {

@@ -105,18 +105,8 @@ export function HubScreen({ navigation }: HubScreenProps) {
   const [skinsFocus, setSkinsFocus] = useState(0);
   const [questsFocus, setQuestsFocus] = useState(0);
   const [showProfileKeyboard, setShowProfileKeyboard] = useState(false);
-  const {
-    userSkins,
-    isLoading: skinsLoading,
-    fetchUserAssets,
-  } = useNftMarketplace();
-  const {
-    quests,
-    isLoading: questsLoading,
-    fetchQuests,
-    acceptQuest,
-    claimReward,
-  } = useQuests();
+  const { userSkins, isLoading: skinsLoading, fetchUserAssets } = useNftMarketplace();
+  const { quests, isLoading: questsLoading, fetchQuests, acceptQuest, claimReward } = useQuests();
   const { equipSkin, unequipSkin, isLoading: equipLoading } = useEquipSkin();
   const { processPendingCleanups } = useSession();
 
@@ -310,13 +300,15 @@ export function HubScreen({ navigation }: HubScreenProps) {
     });
   };
 
-  const isProfileSaveDisabled = profileSaving || isLoading || !!profileValidationError || profileName === profile?.name;
+  const isProfileSaveDisabled =
+    profileSaving || isLoading || !!profileValidationError || profileName === profile?.name;
   const walletBalanceSol =
-    walletBalanceLamports !== null ? (Number(walletBalanceLamports) / 1_000_000_000).toFixed(4) : null;
+    walletBalanceLamports !== null
+      ? (Number(walletBalanceLamports) / 1_000_000_000).toFixed(4)
+      : null;
 
   // --- Controller navigation ---
-  const anyModalOpen =
-    showSettings || showProfile || showSkins || showQuests || showPvP;
+  const anyModalOpen = showSettings || showProfile || showSkins || showQuests || showPvP;
   const isController = inputMode === 'controller';
 
   const controllerCloseHint = isController ? (
@@ -326,7 +318,9 @@ export function HubScreen({ navigation }: HubScreenProps) {
         style={{ width: isCompact ? 40 : 18, height: isCompact ? 40 : 18 }}
         resizeMode="contain"
       />
-      <Text style={[styles.controllerCloseHintText, isCompact && compactStyles.controllerCloseHintText]}>
+      <Text
+        style={[styles.controllerCloseHintText, isCompact && compactStyles.controllerCloseHintText]}
+      >
         Close
       </Text>
     </View>
@@ -340,7 +334,9 @@ export function HubScreen({ navigation }: HubScreenProps) {
 
   const handleControllerA = () => {
     if (focus.group === 'left') {
-      [handleItems, handleQuests, handleSkins, handleMarketplace, handleLeaderboard][focus.index]?.();
+      [handleItems, handleQuests, handleSkins, handleMarketplace, handleLeaderboard][
+        focus.index
+      ]?.();
     } else {
       [handlePlayPvE, handlePlayPvP][focus.index]?.();
     }
@@ -374,19 +370,20 @@ export function HubScreen({ navigation }: HubScreenProps) {
       }
     : null;
 
-  const profileActions = showProfile && !showProfileKeyboard
-    ? {
-        onA:
-          profileFocus === 0
-            ? () => setShowProfileKeyboard(true)
-            : !isProfileSaveDisabled
-              ? handleProfileSave
-              : undefined,
-        onB: closeAnyModal,
-        onDPadUp: () => setProfileFocus((p) => Math.max(0, p - 1)),
-        onDPadDown: () => setProfileFocus((p) => Math.min(1, p + 1)),
-      }
-    : null;
+  const profileActions =
+    showProfile && !showProfileKeyboard
+      ? {
+          onA:
+            profileFocus === 0
+              ? () => setShowProfileKeyboard(true)
+              : !isProfileSaveDisabled
+                ? handleProfileSave
+                : undefined,
+          onB: closeAnyModal,
+          onDPadUp: () => setProfileFocus((p) => Math.max(0, p - 1)),
+          onDPadDown: () => setProfileFocus((p) => Math.min(1, p + 1)),
+        }
+      : null;
 
   const pvpActions = showPvP
     ? {
@@ -397,82 +394,105 @@ export function HubScreen({ navigation }: HubScreenProps) {
       }
     : null;
 
-  const skinsActions = showSkins && userSkins.length > 0
-    ? {
-        onA: () => {
-          const skin = userSkins[skinsFocus];
-          if (!skin || equipLoading) return;
-          const isEquipped = profile?.equippedSkin?.equals(skin.address) ?? false;
-          if (isEquipped) {
-            unequipSkin().then(() => { refresh(); fetchUserAssets(); });
-          } else {
-            equipSkin(skin.address).then(() => { refresh(); fetchUserAssets(); });
-          }
-        },
-        onB: closeAnyModal,
-        onDPadUp: () => setSkinsFocus((p) => Math.max(0, p - 1)),
-        onDPadDown: () => setSkinsFocus((p) => Math.min(userSkins.length - 1, p + 1)),
-      }
-    : showSkins
-      ? { onB: closeAnyModal }
-      : null;
+  const skinsActions =
+    showSkins && userSkins.length > 0
+      ? {
+          onA: () => {
+            const skin = userSkins[skinsFocus];
+            if (!skin || equipLoading) return;
+            const isEquipped = profile?.equippedSkin?.equals(skin.address) ?? false;
+            if (isEquipped) {
+              unequipSkin().then(() => {
+                refresh();
+                fetchUserAssets();
+              });
+            } else {
+              equipSkin(skin.address).then(() => {
+                refresh();
+                fetchUserAssets();
+              });
+            }
+          },
+          onB: closeAnyModal,
+          onDPadUp: () => setSkinsFocus((p) => Math.max(0, p - 1)),
+          onDPadDown: () => setSkinsFocus((p) => Math.min(userSkins.length - 1, p + 1)),
+        }
+      : showSkins
+        ? { onB: closeAnyModal }
+        : null;
 
   // Flatten quests into a single list for focus tracking
   const flatQuests = quests;
-  const questsActions = showQuests && flatQuests.length > 0
-    ? {
-        onA: () => {
-          const quest = flatQuests[questsFocus];
-          if (!quest || questsLoading) return;
-          if (quest.progress?.completed && !quest.progress?.claimed) {
-            claimReward(quest.definition.questId);
-          } else if (!quest.progress) {
-            acceptQuest(quest.definition.questId);
-          }
-        },
-        onB: closeAnyModal,
-        onDPadUp: () => setQuestsFocus((p) => Math.max(0, p - 1)),
-        onDPadDown: () => setQuestsFocus((p) => Math.min(flatQuests.length - 1, p + 1)),
-      }
-    : showQuests
-      ? { onB: closeAnyModal }
-      : null;
+  const questsActions =
+    showQuests && flatQuests.length > 0
+      ? {
+          onA: () => {
+            const quest = flatQuests[questsFocus];
+            if (!quest || questsLoading) return;
+            if (quest.progress?.completed && !quest.progress?.claimed) {
+              claimReward(quest.definition.questId);
+            } else if (!quest.progress) {
+              acceptQuest(quest.definition.questId);
+            }
+          },
+          onB: closeAnyModal,
+          onDPadUp: () => setQuestsFocus((p) => Math.max(0, p - 1)),
+          onDPadDown: () => setQuestsFocus((p) => Math.min(flatQuests.length - 1, p + 1)),
+        }
+      : showQuests
+        ? { onB: closeAnyModal }
+        : null;
 
-  const otherModalOpen = anyModalOpen && !showSettings && !showProfile && !showPvP && !showSkins && !showQuests;
+  const otherModalOpen =
+    anyModalOpen && !showSettings && !showProfile && !showPvP && !showSkins && !showQuests;
 
   useControllerAction(
-    settingsActions ?? profileActions ?? pvpActions ?? skinsActions ?? questsActions ?? {
-      onA: otherModalOpen ? undefined : handleControllerA,
-      onB: otherModalOpen ? closeAnyModal : undefined,
-      onDPadUp: otherModalOpen
-        ? undefined
-        : () => setFocus((p) => (p.index > 0 ? { ...p, index: p.index - 1 } : p)),
-      onDPadDown: otherModalOpen
-        ? undefined
-        : () =>
-            setFocus((p) => {
-              const max = (p.group === 'left' ? leftCount : rightCount) - 1;
-              return p.index < max ? { ...p, index: p.index + 1 } : p;
-            }),
-      onDPadLeft: otherModalOpen
-        ? undefined
-        : () =>
-            setFocus((p) =>
-              p.group === 'right' && leftCount > 0
-                ? { group: 'left', index: Math.min(p.index, leftCount - 1) }
-                : p
-            ),
-      onDPadRight: otherModalOpen
-        ? undefined
-        : () =>
-            setFocus((p) =>
-              p.group === 'left'
-                ? { group: 'right', index: Math.min(p.index, rightCount - 1) }
-                : p
-            ),
-      onStart: otherModalOpen ? undefined : () => { setSettingsFocus(0); setShowSettings(true); },
-      onSelect: otherModalOpen ? undefined : () => { setProfileFocus(0); handleProfileSettings(); },
-    },
+    settingsActions ??
+      profileActions ??
+      pvpActions ??
+      skinsActions ??
+      questsActions ?? {
+        onA: otherModalOpen ? undefined : handleControllerA,
+        onB: otherModalOpen ? closeAnyModal : undefined,
+        onDPadUp: otherModalOpen
+          ? undefined
+          : () => setFocus((p) => (p.index > 0 ? { ...p, index: p.index - 1 } : p)),
+        onDPadDown: otherModalOpen
+          ? undefined
+          : () =>
+              setFocus((p) => {
+                const max = (p.group === 'left' ? leftCount : rightCount) - 1;
+                return p.index < max ? { ...p, index: p.index + 1 } : p;
+              }),
+        onDPadLeft: otherModalOpen
+          ? undefined
+          : () =>
+              setFocus((p) =>
+                p.group === 'right' && leftCount > 0
+                  ? { group: 'left', index: Math.min(p.index, leftCount - 1) }
+                  : p
+              ),
+        onDPadRight: otherModalOpen
+          ? undefined
+          : () =>
+              setFocus((p) =>
+                p.group === 'left'
+                  ? { group: 'right', index: Math.min(p.index, rightCount - 1) }
+                  : p
+              ),
+        onStart: otherModalOpen
+          ? undefined
+          : () => {
+              setSettingsFocus(0);
+              setShowSettings(true);
+            },
+        onSelect: otherModalOpen
+          ? undefined
+          : () => {
+              setProfileFocus(0);
+              handleProfileSettings();
+            },
+      },
     !showProfileKeyboard && isScreenFocused
   );
 
@@ -482,7 +502,6 @@ export function HubScreen({ navigation }: HubScreenProps) {
         { button: 'A', label: 'Select' },
         { button: 'Start', label: 'Settings' },
         { button: 'Select', label: 'Profile' },
-        { button: 'DPad', label: 'Navigate' },
       ];
 
   return (
@@ -501,10 +520,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
         <View style={styles.hubLayout}>
           {/* TOP LEFT - Player Info (compact: full left column) */}
           <View style={[styles.topLeft, isCompact && compactStyles.leftColumn]}>
-            <TouchableOpacity
-              onPress={handleProfileSettings}
-              activeOpacity={0.8}
-            >
+            <TouchableOpacity onPress={handleProfileSettings} activeOpacity={0.8}>
               <ImageBackground
                 source={walletImageSource}
                 style={[styles.playerPanel, isCompact && compactStyles.playerPanel]}
@@ -535,16 +551,25 @@ export function HubScreen({ navigation }: HubScreenProps) {
                         {profile?.name ?? 'Adventurer'}
                       </Text>
                       {isGuest ? (
-                        <Text style={[styles.walletAddress, isCompact && compactStyles.walletAddress]}>
+                        <Text
+                          style={[styles.walletAddress, isCompact && compactStyles.walletAddress]}
+                        >
                           (GUEST)
                         </Text>
                       ) : profile?.owner ? (
                         <>
-                          <Text style={[styles.walletAddress, isCompact && compactStyles.walletAddress]}>
+                          <Text
+                            style={[styles.walletAddress, isCompact && compactStyles.walletAddress]}
+                          >
                             {shortenAddress(profile.owner.toBase58())}
                           </Text>
                           {walletBalanceSol !== null && (
-                            <Text style={[styles.walletBalance, isCompact && compactStyles.walletBalance]}>
+                            <Text
+                              style={[
+                                styles.walletBalance,
+                                isCompact && compactStyles.walletBalance,
+                              ]}
+                            >
                               {walletBalanceSol} SOL
                             </Text>
                           )}
@@ -591,7 +616,9 @@ export function HubScreen({ navigation }: HubScreenProps) {
                       style={[styles.navButton, compactStyles.navButton]}
                       resizeMode="stretch"
                     >
-                      <Text style={[styles.navButtonText, compactStyles.navButtonText]}>Quests</Text>
+                      <Text style={[styles.navButtonText, compactStyles.navButtonText]}>
+                        Quests
+                      </Text>
                     </ImageBackground>
                   </TouchableOpacity>
                 </FocusGlow>
@@ -629,11 +656,12 @@ export function HubScreen({ navigation }: HubScreenProps) {
                       style={[styles.navButton, compactStyles.navButton]}
                       resizeMode="stretch"
                     >
-                      <Text style={[styles.navButtonText, compactStyles.navButtonText]}>PvP Ranks</Text>
+                      <Text style={[styles.navButtonText, compactStyles.navButtonText]}>
+                        PvP Ranks
+                      </Text>
                     </ImageBackground>
                   </TouchableOpacity>
                 </FocusGlow>
-
               </View>
             )}
           </View>
@@ -761,7 +789,6 @@ export function HubScreen({ navigation }: HubScreenProps) {
                   </TouchableOpacity>
                 </View>
               )}
-
             </View>
           )}
 
@@ -852,14 +879,20 @@ export function HubScreen({ navigation }: HubScreenProps) {
                 resizeMode="stretch"
               >
                 <View style={styles.modalHeader}>
-                  <Text style={[styles.modalTitle, isCompact && compactStyles.modalTitle]}>Settings</Text>
+                  <Text style={[styles.modalTitle, isCompact && compactStyles.modalTitle]}>
+                    Settings
+                  </Text>
                   {!isController && (
                     <TouchableOpacity
                       onPress={() => setShowSettings(false)}
                       style={styles.closeButton}
                       hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                     >
-                      <Text style={[styles.closeButtonText, isCompact && compactStyles.closeButtonText]}>✕</Text>
+                      <Text
+                        style={[styles.closeButtonText, isCompact && compactStyles.closeButtonText]}
+                      >
+                        ✕
+                      </Text>
                     </TouchableOpacity>
                   )}
                 </View>
@@ -867,7 +900,9 @@ export function HubScreen({ navigation }: HubScreenProps) {
                 <View style={[styles.modalBody, isCompact && compactStyles.settingsModalBody]}>
                   <FocusGlow active={isController && showSettings && settingsFocus === 0}>
                     <View style={styles.settingRow}>
-                      <Text style={[styles.settingLabel, isCompact && compactStyles.settingLabel]}>Combat speed</Text>
+                      <Text style={[styles.settingLabel, isCompact && compactStyles.settingLabel]}>
+                        Combat speed
+                      </Text>
                       <SpeedControls
                         currentSpeed={defaultCombatSpeed}
                         onSpeedChange={updateDefaultCombatSpeed}
@@ -887,7 +922,9 @@ export function HubScreen({ navigation }: HubScreenProps) {
                         style={styles.buttonImage}
                         resizeMode="stretch"
                       >
-                        <Text style={[styles.disconnectText, isCompact && compactStyles.disconnectText]}>
+                        <Text
+                          style={[styles.disconnectText, isCompact && compactStyles.disconnectText]}
+                        >
                           {isGuest ? 'Disconnect' : 'Reset Profile'}
                         </Text>
                       </ImageBackground>
@@ -898,19 +935,70 @@ export function HubScreen({ navigation }: HubScreenProps) {
                   <View style={[styles.settingsHints, isCompact && compactStyles.settingsHints]}>
                     {settingsFocus === 0 ? (
                       <View style={styles.settingsHintRow}>
-                        <Image source={iconDirSource} style={[styles.settingsHintIcon, isCompact && compactStyles.settingsHintIcon, { transform: [{ rotate: '-90deg' }] }]} resizeMode="contain" />
-                        <Image source={iconDirSource} style={[styles.settingsHintIcon, isCompact && compactStyles.settingsHintIcon, { transform: [{ rotate: '90deg' }] }]} resizeMode="contain" />
-                        <Text style={[styles.settingsHintText, isCompact && compactStyles.settingsHintText]}>Change speed</Text>
+                        <Image
+                          source={iconDirSource}
+                          style={[
+                            styles.settingsHintIcon,
+                            isCompact && compactStyles.settingsHintIcon,
+                            { transform: [{ rotate: '-90deg' }] },
+                          ]}
+                          resizeMode="contain"
+                        />
+                        <Image
+                          source={iconDirSource}
+                          style={[
+                            styles.settingsHintIcon,
+                            isCompact && compactStyles.settingsHintIcon,
+                            { transform: [{ rotate: '90deg' }] },
+                          ]}
+                          resizeMode="contain"
+                        />
+                        <Text
+                          style={[
+                            styles.settingsHintText,
+                            isCompact && compactStyles.settingsHintText,
+                          ]}
+                        >
+                          Change speed
+                        </Text>
                       </View>
                     ) : (
                       <View style={styles.settingsHintRow}>
-                        <Image source={iconASource} style={[styles.settingsHintIcon, isCompact && compactStyles.settingsHintIcon]} resizeMode="contain" />
-                        <Text style={[styles.settingsHintText, isCompact && compactStyles.settingsHintText]}>Confirm</Text>
+                        <Image
+                          source={iconASource}
+                          style={[
+                            styles.settingsHintIcon,
+                            isCompact && compactStyles.settingsHintIcon,
+                          ]}
+                          resizeMode="contain"
+                        />
+                        <Text
+                          style={[
+                            styles.settingsHintText,
+                            isCompact && compactStyles.settingsHintText,
+                          ]}
+                        >
+                          Confirm
+                        </Text>
                       </View>
                     )}
                     <View style={styles.settingsHintRow}>
-                      <Image source={iconBSource} style={[styles.settingsHintIcon, isCompact && compactStyles.settingsHintIcon]} resizeMode="contain" />
-                      <Text style={[styles.settingsHintText, isCompact && compactStyles.settingsHintText]}>Close</Text>
+                      <Image
+                        source={iconBSource}
+                        style={[
+                          styles.settingsHintIcon,
+                          isCompact && compactStyles.settingsHintIcon,
+                        ]}
+                        resizeMode="contain"
+                      />
+                      <Text
+                        style={[
+                          styles.settingsHintText,
+                          isCompact && compactStyles.settingsHintText,
+                        ]}
+                      >
+                        Close
+                      </Text>
                     </View>
                   </View>
                 )}
@@ -936,29 +1024,51 @@ export function HubScreen({ navigation }: HubScreenProps) {
                   style={[styles.marketplaceBg, isCompact && compactStyles.marketplaceBg]}
                   resizeMode="stretch"
                 />
-                <View style={[styles.marketplaceInner, isCompact && compactStyles.marketplaceInner]}>
+                <View
+                  style={[styles.marketplaceInner, isCompact && compactStyles.marketplaceInner]}
+                >
                   <View style={styles.modalHeader}>
-                    <Text style={[styles.modalTitle, isCompact && compactStyles.modalTitle]}>Skins</Text>
+                    <Text style={[styles.modalTitle, isCompact && compactStyles.modalTitle]}>
+                      Skins
+                    </Text>
                     {!isController && (
                       <TouchableOpacity
                         onPress={() => setShowSkins(false)}
                         style={styles.closeButton}
                         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                       >
-                        <Text style={[styles.closeButtonText, isCompact && compactStyles.closeButtonText]}>✕</Text>
+                        <Text
+                          style={[
+                            styles.closeButtonText,
+                            isCompact && compactStyles.closeButtonText,
+                          ]}
+                        >
+                          ✕
+                        </Text>
                       </TouchableOpacity>
                     )}
                   </View>
 
-                  <ScrollView style={{ flex: 1, width: '100%' }} contentContainerStyle={{ alignItems: 'center', gap: 8, paddingBottom: 8 }}>
+                  <ScrollView
+                    style={{ flex: 1, width: '100%' }}
+                    contentContainerStyle={{ alignItems: 'center', gap: 8, paddingBottom: 8 }}
+                  >
                     {skinsLoading ? (
-                      <ActivityIndicator color="#3d2b1f" size={isCompact ? 'large' : 'small'} style={{ marginTop: 20 }} />
+                      <ActivityIndicator
+                        color="#3d2b1f"
+                        size={isCompact ? 'large' : 'small'}
+                        style={{ marginTop: 20 }}
+                      />
                     ) : userSkins.length === 0 ? (
                       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                        <Text style={[styles.comingSoonText, isCompact && compactStyles.comingSoonText]}>
+                        <Text
+                          style={[styles.comingSoonText, isCompact && compactStyles.comingSoonText]}
+                        >
                           No skins yet
                         </Text>
-                        <Text style={[styles.emptySubtext, isCompact && compactStyles.emptySubtext]}>
+                        <Text
+                          style={[styles.emptySubtext, isCompact && compactStyles.emptySubtext]}
+                        >
                           Visit the Marketplace to browse skins
                         </Text>
                       </View>
@@ -967,16 +1077,28 @@ export function HubScreen({ navigation }: HubScreenProps) {
                         {userSkins.map((skin, idx) => {
                           const isEquipped = profile?.equippedSkin?.equals(skin.address) ?? false;
                           return (
-                            <FocusGlow key={skin.address.toBase58()} active={isController && skinsFocus === idx}>
+                            <FocusGlow
+                              key={skin.address.toBase58()}
+                              active={isController && skinsFocus === idx}
+                            >
                               <NftCard
                                 name={skin.name}
                                 image={getSkinImage(skin.name)}
                                 isOwned
                                 isEquipped={isEquipped}
                                 actionLabel={isEquipped ? 'Unequip' : 'Equip'}
-                                onAction={isEquipped
-                                  ? async () => { await unequipSkin(); refresh(); fetchUserAssets(); }
-                                  : async () => { await equipSkin(skin.address); refresh(); fetchUserAssets(); }
+                                onAction={
+                                  isEquipped
+                                    ? async () => {
+                                        await unequipSkin();
+                                        refresh();
+                                        fetchUserAssets();
+                                      }
+                                    : async () => {
+                                        await equipSkin(skin.address);
+                                        refresh();
+                                        fetchUserAssets();
+                                      }
                                 }
                                 disabled={equipLoading}
                                 isCompact={isCompact}
@@ -988,19 +1110,66 @@ export function HubScreen({ navigation }: HubScreenProps) {
                     )}
                   </ScrollView>
                   {isController && (
-                    <View style={[styles.controllerCloseHint, isCompact && compactStyles.controllerCloseHint]}>
+                    <View
+                      style={[
+                        styles.controllerCloseHint,
+                        isCompact && compactStyles.controllerCloseHint,
+                      ]}
+                    >
                       {userSkins.length > 0 && (
                         <>
-                          <Image source={iconDirSource} style={{ width: isCompact ? 40 : 18, height: isCompact ? 40 : 18 }} resizeMode="contain" />
-                          <Text style={[styles.controllerCloseHintText, isCompact && compactStyles.controllerCloseHintText]}>Navigate</Text>
-                          <Image source={iconASource} style={{ width: isCompact ? 40 : 18, height: isCompact ? 40 : 18, marginLeft: 8 }} resizeMode="contain" />
-                          <Text style={[styles.controllerCloseHintText, isCompact && compactStyles.controllerCloseHintText]}>
-                            {userSkins[skinsFocus] && (profile?.equippedSkin?.equals(userSkins[skinsFocus].address) ?? false) ? 'Unequip' : 'Equip'}
+                          <Image
+                            source={iconDirSource}
+                            style={{ width: isCompact ? 40 : 18, height: isCompact ? 40 : 18 }}
+                            resizeMode="contain"
+                          />
+                          <Text
+                            style={[
+                              styles.controllerCloseHintText,
+                              isCompact && compactStyles.controllerCloseHintText,
+                            ]}
+                          >
+                            Navigate
+                          </Text>
+                          <Image
+                            source={iconASource}
+                            style={{
+                              width: isCompact ? 40 : 18,
+                              height: isCompact ? 40 : 18,
+                              marginLeft: 8,
+                            }}
+                            resizeMode="contain"
+                          />
+                          <Text
+                            style={[
+                              styles.controllerCloseHintText,
+                              isCompact && compactStyles.controllerCloseHintText,
+                            ]}
+                          >
+                            {userSkins[skinsFocus] &&
+                            (profile?.equippedSkin?.equals(userSkins[skinsFocus].address) ?? false)
+                              ? 'Unequip'
+                              : 'Equip'}
                           </Text>
                         </>
                       )}
-                      <Image source={iconBSource} style={{ width: isCompact ? 40 : 18, height: isCompact ? 40 : 18, marginLeft: 8 }} resizeMode="contain" />
-                      <Text style={[styles.controllerCloseHintText, isCompact && compactStyles.controllerCloseHintText]}>Close</Text>
+                      <Image
+                        source={iconBSource}
+                        style={{
+                          width: isCompact ? 40 : 18,
+                          height: isCompact ? 40 : 18,
+                          marginLeft: 8,
+                        }}
+                        resizeMode="contain"
+                      />
+                      <Text
+                        style={[
+                          styles.controllerCloseHintText,
+                          isCompact && compactStyles.controllerCloseHintText,
+                        ]}
+                      >
+                        Close
+                      </Text>
                     </View>
                   )}
                 </View>
@@ -1026,26 +1195,46 @@ export function HubScreen({ navigation }: HubScreenProps) {
                   style={[styles.marketplaceBg, isCompact && compactStyles.marketplaceBg]}
                   resizeMode="stretch"
                 />
-                <View style={[styles.marketplaceInner, isCompact && compactStyles.marketplaceInner]}>
+                <View
+                  style={[styles.marketplaceInner, isCompact && compactStyles.marketplaceInner]}
+                >
                   <View style={styles.modalHeader}>
-                    <Text style={[styles.modalTitle, isCompact && compactStyles.modalTitle]}>Quests</Text>
+                    <Text style={[styles.modalTitle, isCompact && compactStyles.modalTitle]}>
+                      Quests
+                    </Text>
                     {!isController && (
                       <TouchableOpacity
                         onPress={() => setShowQuests(false)}
                         style={styles.closeButton}
                         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                       >
-                        <Text style={[styles.closeButtonText, isCompact && compactStyles.closeButtonText]}>✕</Text>
+                        <Text
+                          style={[
+                            styles.closeButtonText,
+                            isCompact && compactStyles.closeButtonText,
+                          ]}
+                        >
+                          ✕
+                        </Text>
                       </TouchableOpacity>
                     )}
                   </View>
 
-                  <ScrollView style={{ flex: 1, width: '100%' }} contentContainerStyle={{ alignItems: 'center', gap: 8, paddingBottom: 8 }}>
+                  <ScrollView
+                    style={{ flex: 1, width: '100%' }}
+                    contentContainerStyle={{ alignItems: 'center', gap: 8, paddingBottom: 8 }}
+                  >
                     {questsLoading ? (
-                      <ActivityIndicator color="#3d2b1f" size={isCompact ? 'large' : 'small'} style={{ marginTop: 20 }} />
+                      <ActivityIndicator
+                        color="#3d2b1f"
+                        size={isCompact ? 'large' : 'small'}
+                        style={{ marginTop: 20 }}
+                      />
                     ) : quests.length === 0 ? (
                       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                        <Text style={[styles.comingSoonText, isCompact && compactStyles.comingSoonText]}>
+                        <Text
+                          style={[styles.comingSoonText, isCompact && compactStyles.comingSoonText]}
+                        >
                           No active quests
                         </Text>
                       </View>
@@ -1055,9 +1244,13 @@ export function HubScreen({ navigation }: HubScreenProps) {
                           const objectiveLabel = getObjectiveLabel(quest.definition);
                           const rewardLabel = getRewardLabel(quest.definition);
                           const qt = quest.definition.questType;
-                          const type = 'daily' in qt ? 'Daily' : 'weekly' in qt ? 'Weekly' : 'Seasonal';
+                          const type =
+                            'daily' in qt ? 'Daily' : 'weekly' in qt ? 'Weekly' : 'Seasonal';
                           return (
-                            <FocusGlow key={quest.definition.questId} active={isController && questsFocus === idx}>
+                            <FocusGlow
+                              key={quest.definition.questId}
+                              active={isController && questsFocus === idx}
+                            >
                               <QuestCard
                                 objectiveText={objectiveLabel}
                                 questType={type}
@@ -1067,8 +1260,12 @@ export function HubScreen({ navigation }: HubScreenProps) {
                                 isCompleted={quest.progress?.completed ?? false}
                                 isClaimed={quest.progress?.claimed ?? false}
                                 isAccepted={quest.progress !== null}
-                                onAccept={async () => { await acceptQuest(quest.definition.questId); }}
-                                onClaim={async () => { await claimReward(quest.definition.questId); }}
+                                onAccept={async () => {
+                                  await acceptQuest(quest.definition.questId);
+                                }}
+                                onClaim={async () => {
+                                  await claimReward(quest.definition.questId);
+                                }}
                                 disabled={questsLoading}
                                 isCompact={isCompact}
                               />
@@ -1079,20 +1276,68 @@ export function HubScreen({ navigation }: HubScreenProps) {
                     )}
                   </ScrollView>
                   {isController && (
-                    <View style={[styles.controllerCloseHint, isCompact && compactStyles.controllerCloseHint]}>
+                    <View
+                      style={[
+                        styles.controllerCloseHint,
+                        isCompact && compactStyles.controllerCloseHint,
+                      ]}
+                    >
                       {quests.length > 0 && (
                         <>
-                          <Image source={iconDirSource} style={{ width: isCompact ? 40 : 18, height: isCompact ? 40 : 18 }} resizeMode="contain" />
-                          <Text style={[styles.controllerCloseHintText, isCompact && compactStyles.controllerCloseHintText]}>Navigate</Text>
-                          <Image source={iconASource} style={{ width: isCompact ? 40 : 18, height: isCompact ? 40 : 18, marginLeft: 8 }} resizeMode="contain" />
-                          <Text style={[styles.controllerCloseHintText, isCompact && compactStyles.controllerCloseHintText]}>
-                            {quests[questsFocus] && !quests[questsFocus].progress ? 'Accept' :
-                             quests[questsFocus]?.progress?.completed && !quests[questsFocus]?.progress?.claimed ? 'Claim' : 'Select'}
+                          <Image
+                            source={iconDirSource}
+                            style={{ width: isCompact ? 40 : 18, height: isCompact ? 40 : 18 }}
+                            resizeMode="contain"
+                          />
+                          <Text
+                            style={[
+                              styles.controllerCloseHintText,
+                              isCompact && compactStyles.controllerCloseHintText,
+                            ]}
+                          >
+                            Navigate
+                          </Text>
+                          <Image
+                            source={iconASource}
+                            style={{
+                              width: isCompact ? 40 : 18,
+                              height: isCompact ? 40 : 18,
+                              marginLeft: 8,
+                            }}
+                            resizeMode="contain"
+                          />
+                          <Text
+                            style={[
+                              styles.controllerCloseHintText,
+                              isCompact && compactStyles.controllerCloseHintText,
+                            ]}
+                          >
+                            {quests[questsFocus] && !quests[questsFocus].progress
+                              ? 'Accept'
+                              : quests[questsFocus]?.progress?.completed &&
+                                  !quests[questsFocus]?.progress?.claimed
+                                ? 'Claim'
+                                : 'Select'}
                           </Text>
                         </>
                       )}
-                      <Image source={iconBSource} style={{ width: isCompact ? 40 : 18, height: isCompact ? 40 : 18, marginLeft: 8 }} resizeMode="contain" />
-                      <Text style={[styles.controllerCloseHintText, isCompact && compactStyles.controllerCloseHintText]}>Close</Text>
+                      <Image
+                        source={iconBSource}
+                        style={{
+                          width: isCompact ? 40 : 18,
+                          height: isCompact ? 40 : 18,
+                          marginLeft: 8,
+                        }}
+                        resizeMode="contain"
+                      />
+                      <Text
+                        style={[
+                          styles.controllerCloseHintText,
+                          isCompact && compactStyles.controllerCloseHintText,
+                        ]}
+                      >
+                        Close
+                      </Text>
                     </View>
                   )}
                 </View>
@@ -1118,28 +1363,53 @@ export function HubScreen({ navigation }: HubScreenProps) {
                   style={[styles.marketplaceBg, isCompact && compactStyles.marketplaceBg]}
                   resizeMode="stretch"
                 />
-                <View style={[styles.marketplaceInner, isCompact && compactStyles.marketplaceInner]}>
+                <View
+                  style={[styles.marketplaceInner, isCompact && compactStyles.marketplaceInner]}
+                >
                   <View style={styles.modalHeader}>
-                    <Text style={[styles.modalTitle, isCompact && compactStyles.modalTitle]}>Profile</Text>
+                    <Text style={[styles.modalTitle, isCompact && compactStyles.modalTitle]}>
+                      Profile
+                    </Text>
                     {!isController && (
                       <TouchableOpacity
                         onPress={() => setShowProfile(false)}
                         style={styles.closeButton}
                         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                       >
-                        <Text style={[styles.closeButtonText, isCompact && compactStyles.closeButtonText]}>✕</Text>
+                        <Text
+                          style={[
+                            styles.closeButtonText,
+                            isCompact && compactStyles.closeButtonText,
+                          ]}
+                        >
+                          ✕
+                        </Text>
                       </TouchableOpacity>
                     )}
                   </View>
 
-                  <ScrollView style={{ flex: 1, width: '100%' }} contentContainerStyle={{ gap: 16 }}>
+                  <ScrollView
+                    style={{ flex: 1, width: '100%' }}
+                    contentContainerStyle={{ gap: 16 }}
+                  >
                     {/* Name Edit */}
                     <View style={styles.profileSection}>
-                      <Text style={[styles.profileSectionTitle, isCompact && compactStyles.profileSectionTitle]}>Display Name</Text>
+                      <Text
+                        style={[
+                          styles.profileSectionTitle,
+                          isCompact && compactStyles.profileSectionTitle,
+                        ]}
+                      >
+                        Display Name
+                      </Text>
                       <FocusGlow active={isController && showProfile && profileFocus === 0}>
                         <View style={styles.profileInputContainer}>
                           <TextInput
-                            style={[styles.profileInput, isCompact && compactStyles.profileInput, profileValidationError && styles.profileInputError]}
+                            style={[
+                              styles.profileInput,
+                              isCompact && compactStyles.profileInput,
+                              profileValidationError && styles.profileInputError,
+                            ]}
                             value={profileName}
                             onChangeText={handleProfileNameChange}
                             placeholder="Enter your name"
@@ -1147,13 +1417,36 @@ export function HubScreen({ navigation }: HubScreenProps) {
                             maxLength={NAME_MAX_LENGTH}
                             editable={!isController && !profileSaving}
                           />
-                          <Text style={[styles.profileCharCount, isCompact && compactStyles.profileCharCount]}>
+                          <Text
+                            style={[
+                              styles.profileCharCount,
+                              isCompact && compactStyles.profileCharCount,
+                            ]}
+                          >
                             {profileName.length}/{NAME_MAX_LENGTH}
                           </Text>
                         </View>
                       </FocusGlow>
-                      {profileValidationError && <Text style={[styles.profileErrorText, isCompact && compactStyles.profileFeedbackText]}>{profileValidationError}</Text>}
-                      {profileSuccessMessage && <Text style={[styles.profileSuccessText, isCompact && compactStyles.profileFeedbackText]}>{profileSuccessMessage}</Text>}
+                      {profileValidationError && (
+                        <Text
+                          style={[
+                            styles.profileErrorText,
+                            isCompact && compactStyles.profileFeedbackText,
+                          ]}
+                        >
+                          {profileValidationError}
+                        </Text>
+                      )}
+                      {profileSuccessMessage && (
+                        <Text
+                          style={[
+                            styles.profileSuccessText,
+                            isCompact && compactStyles.profileFeedbackText,
+                          ]}
+                        >
+                          {profileSuccessMessage}
+                        </Text>
+                      )}
                       <FocusGlow active={isController && showProfile && profileFocus === 1}>
                         <TouchableOpacity
                           onPress={handleProfileSave}
@@ -1163,13 +1456,24 @@ export function HubScreen({ navigation }: HubScreenProps) {
                         >
                           <ImageBackground
                             source={buttonV3Source}
-                            style={[styles.profileSaveButton, isCompact && compactStyles.profileSaveButton, isProfileSaveDisabled && { opacity: 0.5 }]}
+                            style={[
+                              styles.profileSaveButton,
+                              isCompact && compactStyles.profileSaveButton,
+                              isProfileSaveDisabled && { opacity: 0.5 },
+                            ]}
                             resizeMode="stretch"
                           >
                             {profileSaving ? (
                               <ActivityIndicator size="small" color="#3d2b1f" />
                             ) : (
-                              <Text style={[styles.profileSaveButtonText, isCompact && compactStyles.profileSaveButtonText]}>Save</Text>
+                              <Text
+                                style={[
+                                  styles.profileSaveButtonText,
+                                  isCompact && compactStyles.profileSaveButtonText,
+                                ]}
+                              >
+                                Save
+                              </Text>
                             )}
                           </ImageBackground>
                         </TouchableOpacity>
@@ -1178,23 +1482,84 @@ export function HubScreen({ navigation }: HubScreenProps) {
 
                     {/* Statistics */}
                     <View style={styles.profileSection}>
-                      <Text style={[styles.profileSectionTitle, isCompact && compactStyles.profileSectionTitle]}>Statistics</Text>
+                      <Text
+                        style={[
+                          styles.profileSectionTitle,
+                          isCompact && compactStyles.profileSectionTitle,
+                        ]}
+                      >
+                        Statistics
+                      </Text>
                       <View style={styles.profileStatsGrid}>
                         <View style={styles.profileStatRow}>
-                          <Text style={[styles.profileStatLabel, isCompact && compactStyles.profileStatText]}>Sessions Played</Text>
-                          <Text style={[styles.profileStatValue, isCompact && compactStyles.profileStatText]}>{profile?.totalRuns ?? 0}</Text>
+                          <Text
+                            style={[
+                              styles.profileStatLabel,
+                              isCompact && compactStyles.profileStatText,
+                            ]}
+                          >
+                            Sessions Played
+                          </Text>
+                          <Text
+                            style={[
+                              styles.profileStatValue,
+                              isCompact && compactStyles.profileStatText,
+                            ]}
+                          >
+                            {profile?.totalRuns ?? 0}
+                          </Text>
                         </View>
                         <View style={styles.profileStatRow}>
-                          <Text style={[styles.profileStatLabel, isCompact && compactStyles.profileStatText]}>Current Level</Text>
-                          <Text style={[styles.profileStatValue, isCompact && compactStyles.profileStatText]}>{(profile?.currentLevel ?? 0) + 1} / 40</Text>
+                          <Text
+                            style={[
+                              styles.profileStatLabel,
+                              isCompact && compactStyles.profileStatText,
+                            ]}
+                          >
+                            Current Level
+                          </Text>
+                          <Text
+                            style={[
+                              styles.profileStatValue,
+                              isCompact && compactStyles.profileStatText,
+                            ]}
+                          >
+                            {(profile?.currentLevel ?? 0) + 1} / 40
+                          </Text>
                         </View>
                         <View style={styles.profileStatRow}>
-                          <Text style={[styles.profileStatLabel, isCompact && compactStyles.profileStatText]}>Available Sessions</Text>
-                          <Text style={[styles.profileStatValue, isCompact && compactStyles.profileStatText]}>{profile?.availableRuns ?? 0}</Text>
+                          <Text
+                            style={[
+                              styles.profileStatLabel,
+                              isCompact && compactStyles.profileStatText,
+                            ]}
+                          >
+                            Available Sessions
+                          </Text>
+                          <Text
+                            style={[
+                              styles.profileStatValue,
+                              isCompact && compactStyles.profileStatText,
+                            ]}
+                          >
+                            {profile?.availableRuns ?? 0}
+                          </Text>
                         </View>
                         <View style={styles.profileStatRow}>
-                          <Text style={[styles.profileStatLabel, isCompact && compactStyles.profileStatText]}>Member Since</Text>
-                          <Text style={[styles.profileStatValue, isCompact && compactStyles.profileStatText]}>
+                          <Text
+                            style={[
+                              styles.profileStatLabel,
+                              isCompact && compactStyles.profileStatText,
+                            ]}
+                          >
+                            Member Since
+                          </Text>
+                          <Text
+                            style={[
+                              styles.profileStatValue,
+                              isCompact && compactStyles.profileStatText,
+                            ]}
+                          >
                             {profile?.createdAt ? formatDate(profile.createdAt) : 'N/A'}
                           </Text>
                         </View>
@@ -1204,14 +1569,40 @@ export function HubScreen({ navigation }: HubScreenProps) {
                   {isController && (
                     <View style={[styles.settingsHints, isCompact && compactStyles.settingsHints]}>
                       <View style={styles.settingsHintRow}>
-                        <Image source={iconASource} style={[styles.settingsHintIcon, isCompact && compactStyles.settingsHintIcon]} resizeMode="contain" />
-                        <Text style={[styles.settingsHintText, isCompact && compactStyles.settingsHintText]}>
+                        <Image
+                          source={iconASource}
+                          style={[
+                            styles.settingsHintIcon,
+                            isCompact && compactStyles.settingsHintIcon,
+                          ]}
+                          resizeMode="contain"
+                        />
+                        <Text
+                          style={[
+                            styles.settingsHintText,
+                            isCompact && compactStyles.settingsHintText,
+                          ]}
+                        >
                           {profileFocus === 0 ? 'Edit Name' : 'Save'}
                         </Text>
                       </View>
                       <View style={styles.settingsHintRow}>
-                        <Image source={iconBSource} style={[styles.settingsHintIcon, isCompact && compactStyles.settingsHintIcon]} resizeMode="contain" />
-                        <Text style={[styles.settingsHintText, isCompact && compactStyles.settingsHintText]}>Close</Text>
+                        <Image
+                          source={iconBSource}
+                          style={[
+                            styles.settingsHintIcon,
+                            isCompact && compactStyles.settingsHintIcon,
+                          ]}
+                          resizeMode="contain"
+                        />
+                        <Text
+                          style={[
+                            styles.settingsHintText,
+                            isCompact && compactStyles.settingsHintText,
+                          ]}
+                        >
+                          Close
+                        </Text>
                       </View>
                     </View>
                   )}
@@ -1256,43 +1647,85 @@ export function HubScreen({ navigation }: HubScreenProps) {
                     style={[styles.pvpCloseButton, isCompact && compactStyles.pvpCloseButton]}
                     hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                   >
-                    <Text style={[styles.pvpCloseButtonText, isCompact && compactStyles.pvpCloseButtonText]}>✕</Text>
+                    <Text
+                      style={[
+                        styles.pvpCloseButtonText,
+                        isCompact && compactStyles.pvpCloseButtonText,
+                      ]}
+                    >
+                      ✕
+                    </Text>
                   </TouchableOpacity>
                 )}
                 {isController && (
                   <View style={[styles.modalHintBar, isCompact && compactStyles.modalHintBar]}>
                     <View style={styles.settingsHintRow}>
-                      <Image source={iconASource} style={[styles.settingsHintIcon, isCompact && compactStyles.settingsHintIcon]} resizeMode="contain" />
-                      <Text style={[styles.settingsHintText, isCompact && compactStyles.settingsHintText]}>Select</Text>
+                      <Image
+                        source={iconASource}
+                        style={[
+                          styles.settingsHintIcon,
+                          isCompact && compactStyles.settingsHintIcon,
+                        ]}
+                        resizeMode="contain"
+                      />
+                      <Text
+                        style={[
+                          styles.settingsHintText,
+                          isCompact && compactStyles.settingsHintText,
+                        ]}
+                      >
+                        Select
+                      </Text>
                     </View>
                     <View style={styles.settingsHintRow}>
-                      <Image source={iconBSource} style={[styles.settingsHintIcon, isCompact && compactStyles.settingsHintIcon]} resizeMode="contain" />
-                      <Text style={[styles.settingsHintText, isCompact && compactStyles.settingsHintText]}>Close</Text>
+                      <Image
+                        source={iconBSource}
+                        style={[
+                          styles.settingsHintIcon,
+                          isCompact && compactStyles.settingsHintIcon,
+                        ]}
+                        resizeMode="contain"
+                      />
+                      <Text
+                        style={[
+                          styles.settingsHintText,
+                          isCompact && compactStyles.settingsHintText,
+                        ]}
+                      >
+                        Close
+                      </Text>
                     </View>
                   </View>
                 )}
                 <View style={[styles.pvpPapersStack, isCompact && compactStyles.pvpPapersStack]}>
-                  <View style={[
-                    styles.pvpPaperGauntletWrap,
-                    isCompact && compactStyles.pvpPaperGauntletWrap,
-                    isController && { zIndex: pvpFocus === 0 ? 10 : 1 },
-                  ]}>
+                  <View
+                    style={[
+                      styles.pvpPaperGauntletWrap,
+                      isCompact && compactStyles.pvpPaperGauntletWrap,
+                      isController && { zIndex: pvpFocus === 0 ? 10 : 1 },
+                    ]}
+                  >
                     <FocusGlow active={isController && pvpFocus === 0}>
                       <TouchableOpacity onPress={handleGauntlet} activeOpacity={0.7}>
                         <Image
                           source={gauntletPaperSource}
-                          style={[styles.pvpPaperGauntlet, isCompact && compactStyles.pvpPaperGauntlet]}
+                          style={[
+                            styles.pvpPaperGauntlet,
+                            isCompact && compactStyles.pvpPaperGauntlet,
+                          ]}
                           resizeMode="contain"
                         />
                       </TouchableOpacity>
                     </FocusGlow>
                   </View>
 
-                  <View style={[
-                    styles.pvpPaperDuelsWrap,
-                    isCompact && compactStyles.pvpPaperDuelsWrap,
-                    isController && { zIndex: pvpFocus === 1 ? 10 : 1 },
-                  ]}>
+                  <View
+                    style={[
+                      styles.pvpPaperDuelsWrap,
+                      isCompact && compactStyles.pvpPaperDuelsWrap,
+                      isController && { zIndex: pvpFocus === 1 ? 10 : 1 },
+                    ]}
+                  >
                     <FocusGlow active={isController && pvpFocus === 1}>
                       <TouchableOpacity onPress={handleDuels} activeOpacity={0.7}>
                         <Image
@@ -1304,16 +1737,21 @@ export function HubScreen({ navigation }: HubScreenProps) {
                     </FocusGlow>
                   </View>
 
-                  <View style={[
-                    styles.pvpPaperPitDraftWrap,
-                    isCompact && compactStyles.pvpPaperPitDraftWrap,
-                    isController && { zIndex: pvpFocus === 2 ? 10 : 1 },
-                  ]}>
+                  <View
+                    style={[
+                      styles.pvpPaperPitDraftWrap,
+                      isCompact && compactStyles.pvpPaperPitDraftWrap,
+                      isController && { zIndex: pvpFocus === 2 ? 10 : 1 },
+                    ]}
+                  >
                     <FocusGlow active={isController && pvpFocus === 2}>
                       <TouchableOpacity onPress={handlePitDraft} activeOpacity={0.7}>
                         <Image
                           source={pitDraftPaperSource}
-                          style={[styles.pvpPaperPitDraft, isCompact && compactStyles.pvpPaperPitDraft]}
+                          style={[
+                            styles.pvpPaperPitDraft,
+                            isCompact && compactStyles.pvpPaperPitDraft,
+                          ]}
                           resizeMode="contain"
                         />
                       </TouchableOpacity>
@@ -1327,7 +1765,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
       </InlineModal>
 
       {/* Controller button hints */}
-      <ControllerHints hints={controllerHints} />
+      <ControllerHints hints={controllerHints} horizontal size="large" />
     </Animated.View>
   );
 }
@@ -1611,12 +2049,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: '#EFE9D6',
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#c8b99a',
-    paddingVertical: 4,
-    paddingHorizontal: 8,
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+    paddingVertical: 0,
+    paddingHorizontal: 0,
   },
   controllerCloseHintText: {
     fontFamily: Typography.body,
@@ -1646,12 +2082,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
-    backgroundColor: '#EFE9D6',
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#c8b99a',
-    paddingVertical: 4,
-    paddingHorizontal: 8,
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+    paddingVertical: 0,
+    paddingHorizontal: 0,
   },
   settingsHintRow: {
     flexDirection: 'row',
@@ -2198,10 +2632,10 @@ const compactStyles = StyleSheet.create({
     bottom: 32,
     left: 32,
     gap: 12,
-    borderRadius: 10,
-    borderWidth: 1.5,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
+    borderRadius: 0,
+    borderWidth: 0,
+    paddingVertical: 0,
+    paddingHorizontal: 0,
   },
   controllerCloseHintText: {
     fontSize: 26,
@@ -2221,10 +2655,10 @@ const compactStyles = StyleSheet.create({
     bottom: 32,
     left: 32,
     gap: 24,
-    borderRadius: 10,
-    borderWidth: 1.5,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
+    borderRadius: 0,
+    borderWidth: 0,
+    paddingVertical: 0,
+    paddingHorizontal: 0,
   },
   settingsHintIcon: {
     width: 36,

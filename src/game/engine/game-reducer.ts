@@ -559,6 +559,7 @@ function handleMove(state: GameState, direction: Direction): GameState {
       enemy: bossCombatant,
       seed: newState.rngState,
       bossId: newState.time.weekBoss,
+      enemyDefinitionId: newState.time.weekBoss,
       playerGold: newState.player.stats.gold,
     });
 
@@ -722,6 +723,7 @@ function handleBreakWall(state: GameState): GameState {
       enemy: bossCombatant,
       seed: newState.rngState,
       bossId: newState.time.weekBoss,
+      enemyDefinitionId: newState.time.weekBoss,
       playerGold: newState.player.stats.gold,
     });
 
@@ -1343,6 +1345,7 @@ function handleTriggerBoss(state: GameState): GameState {
     enemy: bossCombatant,
     seed: state.rngState,
     bossId: state.time.weekBoss,
+    enemyDefinitionId: state.time.weekBoss,
     playerGold: state.player.stats.gold,
   });
 

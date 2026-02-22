@@ -428,7 +428,9 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
         // gameplayConnection may still be stale (base chain) in this closure.
         // Fall back to base connection if ER hasn't received the accounts yet.
         if (!isGuestMode && result?.success && connection && wallet.publicKey) {
-          console.log('[CampaignSelect] On-chain session active, fetching full state from chain...');
+          console.log(
+            '[CampaignSelect] On-chain session active, fetching full state from chain...'
+          );
           const onChainLevel = level.level + 1; // Convert 0-indexed frontend to 1-indexed on-chain
           const [sessionPda] = deriveSessionPda(wallet.publicKey, onChainLevel);
           const restoredState =
@@ -621,7 +623,9 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
 
             {/* Current level border highlight */}
             {isCurrentLevel && (
-              <View style={[styles.currentLevelBorder, isCompact && compactStyles.currentLevelBorder]} />
+              <View
+                style={[styles.currentLevelBorder, isCompact && compactStyles.currentLevelBorder]}
+              />
             )}
 
             {/* Selected state overlay */}
@@ -666,7 +670,14 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
 
       return isCursorItem ? <FocusGlow active>{cell}</FocusGlow> : cell;
     },
-    [handleLevelSelect, isStartingGame, selectedLevel, profile?.currentLevel, isController, cursorIdx]
+    [
+      handleLevelSelect,
+      isStartingGame,
+      selectedLevel,
+      profile?.currentLevel,
+      isController,
+      cursorIdx,
+    ]
   );
 
   const keyExtractor = useCallback((item: CampaignLevel) => `level-${item.level}`, []);
@@ -718,7 +729,9 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
           {/* Mode indicator */}
           {(isGuestMode || isCachedMode) && (
             <View style={[styles.modeIndicator, isCompact && compactStyles.modeIndicator]}>
-              <Text style={[styles.modeIndicatorText, isCompact && compactStyles.modeIndicatorText]}>
+              <Text
+                style={[styles.modeIndicatorText, isCompact && compactStyles.modeIndicatorText]}
+              >
                 {isGuestMode ? 'GUEST' : 'OFFLINE'}
               </Text>
             </View>
@@ -797,7 +810,11 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
             {isCompact ? (
               <View style={compactStyles.modalHintRow}>
                 <View style={compactStyles.modalHintItem}>
-                  <Image source={iconASource} style={compactStyles.modalHintIcon} resizeMode="contain" />
+                  <Image
+                    source={iconASource}
+                    style={compactStyles.modalHintIcon}
+                    resizeMode="contain"
+                  />
                   <Text style={compactStyles.modalHintLabel}>OK</Text>
                 </View>
               </View>
@@ -834,11 +851,19 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
             {isCompact ? (
               <View style={compactStyles.modalHintRow}>
                 <View style={compactStyles.modalHintItem}>
-                  <Image source={iconBSource} style={compactStyles.modalHintIcon} resizeMode="contain" />
+                  <Image
+                    source={iconBSource}
+                    style={compactStyles.modalHintIcon}
+                    resizeMode="contain"
+                  />
                   <Text style={compactStyles.modalHintLabel}>Cancel</Text>
                 </View>
                 <View style={compactStyles.modalHintItem}>
-                  <Image source={iconASource} style={compactStyles.modalHintIcon} resizeMode="contain" />
+                  <Image
+                    source={iconASource}
+                    style={compactStyles.modalHintIcon}
+                    resizeMode="contain"
+                  />
                   <Text style={compactStyles.modalHintLabel}>Resume</Text>
                 </View>
               </View>
@@ -881,7 +906,11 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
             {isCompact ? (
               <View style={compactStyles.modalHintRow}>
                 <View style={compactStyles.modalHintItem}>
-                  <Image source={iconASource} style={compactStyles.modalHintIcon} resizeMode="contain" />
+                  <Image
+                    source={iconASource}
+                    style={compactStyles.modalHintIcon}
+                    resizeMode="contain"
+                  />
                   <Text style={compactStyles.modalHintLabel}>OK</Text>
                 </View>
               </View>

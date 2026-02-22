@@ -31,6 +31,7 @@ import {
   fetchDuelEntry,
   parseDuelEvents,
 } from '@/services/solana/duels';
+import { sendSessionSignerTransaction } from '@/services/solana/sessionSigner';
 import { convertItemInstanceToGear, convertItemInstanceToTool } from '@/services/solana/pitDraft';
 import type { BackendCombatLogEntry } from '@/services/solana/types/combat_events';
 import type { CombatantState, Gear, Tool } from '@/game/engine/types';
@@ -42,7 +43,7 @@ type CombatScreenProps = {
 };
 
 // On-chain base values (ATK/ARM/SPD start at 0; bonuses come from BattleStart log entries)
-const DUEL_BASE_HP = 10;
+const DUEL_BASE_HP = 15;
 const DUEL_BASE_ATK = 0;
 const DUEL_BASE_ARM = 0;
 const DUEL_BASE_SPD = 0;
@@ -98,7 +99,7 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
   const playerSkinSource = useEquippedSkinImage(profile?.equippedSkin);
   const { wallet, signAndSendTransaction } = useWallet();
   const { connection } = useSolanaConnection();
-  const { endSessionWithSessionSigner, undelegateCurrentSession, queueEndGame, stopAutoCommit, hasActiveSession, session, mapSeed, gameplayState } =
+  const { endSessionWithSessionSigner, undelegateCurrentSession, queueEndGame, stopAutoCommit, hasActiveSession, session, mapSeed, gameplayState, getSessionSignerKeypair } =
     useSession();
   const isResolvingDuelRef = useRef(false);
   const {
@@ -305,16 +306,20 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
         duelProgram.programId
       );
 
+      const sessionSignerKeypair = getSessionSignerKeypair();
+      if (!sessionSignerKeypair) return;
+
       const tx = await buildFinalizeDuelRunTransaction(
         connection,
         duelProgram,
         wallet.publicKey,
+        sessionSignerKeypair.publicKey,
         gameStatePda,
         gameplayState.session,
         duelEntry.matchedCreatorPlayer
       );
 
-      const signature = await signAndSendTransaction(tx);
+      const signature = await sendSessionSignerTransaction(connection, tx, sessionSignerKeypair);
       await connection.confirmTransaction(signature, 'confirmed');
 
       const events = await parseDuelEvents(
@@ -492,6 +497,7 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
     mapSeed,
     connection,
     signAndSendTransaction,
+    getSessionSignerKeypair,
   ]);
 
   // Look up enemy trait from the combat state's enemy definition ID

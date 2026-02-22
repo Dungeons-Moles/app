@@ -89,6 +89,11 @@ export function useSessionManager() {
   const activeOnChainLevelRef = useRef<number>(1);
   /** Tracks the exact active session PDA (campaign/duel/gauntlet). */
   const activeSessionPdaRef = useRef<PublicKey | null>(null);
+  /** Ref mirrors for session/hasActiveSession — endSession reads these so deferred
+   *  cleanup can call fetchSession() + endSession() in the same async tick without
+   *  waiting for React to re-render and flush the setState calls from fetchSession. */
+  const sessionRef = useRef<OnChainGameSession | null>(null);
+  const hasActiveSessionRef = useRef(false);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -199,7 +204,7 @@ export function useSessionManager() {
           return null;
         }
         return readOnlyProgram.coder.accounts.decode(
-          'GameSession',
+          'gameSession',
           accountInfo.data
         ) as RawGameSessionAccount;
       };
@@ -232,6 +237,8 @@ export function useSessionManager() {
       if (!isMountedRef.current) return;
 
       if (!account) {
+        sessionRef.current = null;
+        hasActiveSessionRef.current = false;
         setSession(null);
         setHasActiveSession(false);
         activeSessionPdaRef.current = null;
@@ -255,11 +262,15 @@ export function useSessionManager() {
         stateHash: Array.from(account.stateHash),
       };
 
+      sessionRef.current = sessionData;
+      hasActiveSessionRef.current = true;
       setSession(sessionData);
       setHasActiveSession(true);
     } catch (fetchError) {
       if (isMountedRef.current) {
         setError(getUserErrorMessage(fetchError));
+        sessionRef.current = null;
+        hasActiveSessionRef.current = false;
         setSession(null);
         setHasActiveSession(false);
       }
@@ -486,7 +497,6 @@ export function useSessionManager() {
               playerProfile: PublicKey;
               player: PublicKey;
               sessionSigner: PublicKey;
-              sessionManagerAuthority: PublicKey;
               mapConfig: PublicKey;
               generatedMap: PublicKey;
               gameState: PublicKey;
@@ -509,7 +519,6 @@ export function useSessionManager() {
           playerProfile: profilePda,
           player: wallet.publicKey,
           sessionSigner: sessionSignerPublicKey,
-          sessionManagerAuthority: sessionManagerAuthorityPda,
           mapConfig: mapConfigPda,
           generatedMap: generatedMapPda,
           gameState: gameStatePda,
@@ -649,7 +658,7 @@ export function useSessionManager() {
     }
 
     const hasSessionOverride = Boolean(options?.sessionPda);
-    if (!hasActiveSession && !hasSessionOverride) {
+    if (!hasActiveSessionRef.current && !hasSessionOverride) {
       return { success: false, error: 'No active session to delegate' };
     }
 
@@ -660,7 +669,7 @@ export function useSessionManager() {
 
     try {
       const onChainLevel =
-        options?.onChainLevel ?? session?.campaignLevel ?? activeOnChainLevelRef.current;
+        options?.onChainLevel ?? sessionRef.current?.campaignLevel ?? activeOnChainLevelRef.current;
       const [fallbackSessionPda] = deriveSessionPda(wallet.publicKey, onChainLevel);
       const sessionPda = options?.sessionPda ?? activeSessionPdaRef.current ?? fallbackSessionPda;
       const [gameStatePda] = deriveGameStatePda(sessionPda);
@@ -807,7 +816,7 @@ export function useSessionManager() {
         return { success: false, error: 'Wallet not connected' };
       }
 
-      if (!hasActiveSession) {
+      if (!hasActiveSessionRef.current) {
         return { success: false, error: 'No active session to commit' };
       }
 
@@ -821,7 +830,7 @@ export function useSessionManager() {
       }
 
       try {
-        const onChainLevel = session?.campaignLevel ?? activeOnChainLevelRef.current;
+        const onChainLevel = sessionRef.current?.campaignLevel ?? activeOnChainLevelRef.current;
         const [fallbackSessionPda] = deriveSessionPda(wallet.publicKey, onChainLevel);
         const sessionPda = activeSessionPdaRef.current ?? fallbackSessionPda;
         const [gameStatePda] = deriveGameStatePda(sessionPda);
@@ -868,7 +877,6 @@ export function useSessionManager() {
     [
       erConnection,
       fetchSession,
-      hasActiveSession,
       signAndSendTransaction,
       wallet.publicKey,
       erWriteProgram,
@@ -881,7 +889,7 @@ export function useSessionManager() {
         return { success: false, error: 'Wallet not connected' };
       }
 
-      if (!hasActiveSession) {
+      if (!hasActiveSessionRef.current) {
         return { success: false, error: 'No active session to undelegate' };
       }
 
@@ -895,7 +903,7 @@ export function useSessionManager() {
       }
 
       try {
-        const onChainLevel = session?.campaignLevel ?? activeOnChainLevelRef.current;
+        const onChainLevel = sessionRef.current?.campaignLevel ?? activeOnChainLevelRef.current;
         const [fallbackSessionPda] = deriveSessionPda(wallet.publicKey, onChainLevel);
         const sessionPda = activeSessionPdaRef.current ?? fallbackSessionPda;
         const [gameStatePda] = deriveGameStatePda(sessionPda);
@@ -951,20 +959,6 @@ export function useSessionManager() {
         const mapGeneratorProgramEr = createMapGeneratorProgram(erConnection);
         const playerInventoryProgramEr = createPlayerInventoryProgram(erConnection);
         const poiSystemProgramEr = createPoiSystemProgram(erConnection);
-        const waitForBaseOwner = async (
-          account: PublicKey,
-          expectedOwner: PublicKey,
-          label: string
-        ): Promise<void> => {
-          for (let i = 0; i < 30; i += 1) {
-            const info = await baseConnection.getAccountInfo(account, 'processed');
-            if (info?.owner.equals(expectedOwner)) {
-              return;
-            }
-            await new Promise((resolve) => setTimeout(resolve, 250));
-          }
-          throw new Error(`Owner not restored for ${label}`);
-        };
 
         // Check if an account is already restored to its expected base-layer owner.
         const isAlreadyRestored = async (
@@ -1027,8 +1021,8 @@ export function useSessionManager() {
           pois: delegatedPois ? 'DELEGATED' : 'base',
         });
 
-        // Try ALL groups even if some fail (continueOnFailure=true).
-        // This handles partial undelegation from previous attempts.
+        // Undelegate child accounts via their owning programs first, then session last.
+        // Each program can only undelegate accounts it owns (delegation program validates ownership).
         if (delegatedGameplay) {
           await tryUndelegateOrSkip(
             async () => {
@@ -1155,8 +1149,7 @@ export function useSessionManager() {
           );
         }
 
-        // After trying all groups, wait for ALL accounts to be restored.
-        // This replaces the per-group waitForBaseOwner calls.
+        // Wait for ALL accounts to be restored on base chain.
         const allChecks: Array<[PublicKey, PublicKey, string]> = [];
         if (delegatedGameplay) {
           allChecks.push(
@@ -1225,8 +1218,6 @@ export function useSessionManager() {
       erConnection,
       erWriteProgram,
       fetchSession,
-      hasActiveSession,
-      session?.campaignLevel,
       wallet.publicKey,
     ]
   );
@@ -1242,7 +1233,13 @@ export function useSessionManager() {
         return { success: false, error: 'Wallet not connected' };
       }
 
-      if (!hasActiveSession || !session) {
+      // Read from refs (not closure state) so that callers who await fetchSession()
+      // and then immediately call endSession() in the same async tick get the
+      // freshly-fetched values instead of stale pre-render state.
+      const currentSession = sessionRef.current;
+      const currentHasActive = hasActiveSessionRef.current;
+
+      if (!currentHasActive || !currentSession) {
         return { success: false, error: 'No active session to end' };
       }
 
@@ -1252,7 +1249,7 @@ export function useSessionManager() {
       }
 
       try {
-        const [fallbackSessionPda] = deriveSessionPda(wallet.publicKey, session.campaignLevel);
+        const [fallbackSessionPda] = deriveSessionPda(wallet.publicKey, currentSession.campaignLevel);
         const sessionPda = activeSessionPdaRef.current ?? fallbackSessionPda;
         const [gameStatePda] = deriveGameStatePda(sessionPda);
         const [inventoryPda] = deriveInventoryPda(sessionPda);
@@ -1285,7 +1282,7 @@ export function useSessionManager() {
         }
 
         const endSessionIx = await program.methods
-          .endSession(session.campaignLevel)
+          .endSession(currentSession.campaignLevel)
           .accounts({
             gameSession: sessionPda,
             gameState: gameStatePda,
@@ -1324,12 +1321,14 @@ export function useSessionManager() {
         console.log('[useSessionManager] Session ended successfully:', signature);
 
         // Clear session state
+        sessionRef.current = null;
+        hasActiveSessionRef.current = false;
+        activeSessionPdaRef.current = null;
         if (isMountedRef.current) {
           setSession(null);
           setHasActiveSession(false);
           setActiveSessionPdaState(null);
         }
-        activeSessionPdaRef.current = null;
 
         return { success: true, signature };
       } catch (txError) {
@@ -1341,14 +1340,16 @@ export function useSessionManager() {
         if (isMountedRef.current) setIsLoading(false);
       }
     },
-    [baseConnection, hasActiveSession, session, wallet.publicKey]
+    [baseConnection, wallet.publicKey]
   );
 
   const resetSession = useCallback(() => {
+    sessionRef.current = null;
+    hasActiveSessionRef.current = false;
+    activeSessionPdaRef.current = null;
     setSession(null);
     setHasActiveSession(false);
     setError(null);
-    activeSessionPdaRef.current = null;
     setActiveSessionPdaState(null);
   }, []);
 

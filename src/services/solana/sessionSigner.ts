@@ -474,8 +474,19 @@ export async function sendSessionSignerTransaction(
     // Add a random compute unit price to ensure transaction uniqueness on localnet.
     // This prevents "transaction already processed" errors when making similar
     // transactions (e.g., moving back and forth) within the same blockhash slot.
-    const randomMicroLamports = Math.floor(Math.random() * 1000) + 1;
-    tx.add(ComputeBudgetProgram.setComputeUnitPrice({ microLamports: randomMicroLamports }));
+    // Skip if the transaction already has a setComputeUnitPrice instruction.
+    const COMPUTE_BUDGET_PROGRAM_ID = ComputeBudgetProgram.programId;
+    const SET_CU_PRICE_DISCRIMINATOR = 3;
+    const hasCuPrice = baseInstructions.some(
+      (ix) =>
+        ix.programId.equals(COMPUTE_BUDGET_PROGRAM_ID) &&
+        ix.data.length > 0 &&
+        ix.data[0] === SET_CU_PRICE_DISCRIMINATOR
+    );
+    if (!hasCuPrice) {
+      const randomMicroLamports = Math.floor(Math.random() * 1000) + 1;
+      tx.add(ComputeBudgetProgram.setComputeUnitPrice({ microLamports: randomMicroLamports }));
+    }
 
     const confirmationCommitment = erConnection
       ? SOLANA_CONFIG.erCommitment
@@ -551,14 +562,20 @@ export async function sendSessionSignerTransaction(
       lastError = err;
       if (!erConnection || !isRetriableErWriteLockError(err) || attempt >= maxAttempts) {
         if (err instanceof SendTransactionError) {
-          try {
-            const logs = await err.getLogs(connection);
-            console.error('[sessionSignerWallet] sendSessionSignerTransaction logs:', logs);
-          } catch (logErr) {
-            console.error(
-              '[sessionSignerWallet] sendSessionSignerTransaction getLogs failed:',
-              logErr
-            );
+          // Log preflight simulation logs if available (works on base chain
+          // where skipPreflight=false). Fallback to getLogs() only if needed.
+          const preflightLogs = err.logs;
+          if (preflightLogs?.length) {
+            console.error('[sessionSignerWallet] Transaction failed. Logs:', preflightLogs);
+          } else {
+            try {
+              const fetchedLogs = await err.getLogs(connection);
+              console.error('[sessionSignerWallet] Transaction failed. Logs:', fetchedLogs);
+            } catch (_logErr) {
+              // getLogs requires 'confirmed' commitment but ER/localnet connections
+              // use 'processed'. Log what we have from the error itself.
+              console.error('[sessionSignerWallet] Transaction failed:', err.message);
+            }
           }
         }
         throw err;

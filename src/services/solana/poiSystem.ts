@@ -14,6 +14,7 @@ import {
   derivePoiAuthorityPda,
   deriveGameplayAuthorityPda,
   deriveInventoryAuthorityPda,
+  deriveGeneratedMapPda,
 } from './constants';
 import { SOLANA_CONFIG } from './config';
 import type { MapPoisData, PoiInstance, ShopState, ItemOffer } from './types/poi_system';
@@ -24,6 +25,10 @@ import type { ToolOilModification } from './types/player_inventory';
 // ============================================================================
 
 export type { MapPoisData, PoiInstance, ShopState, ItemOffer };
+
+// GameState with gauntlet echoes is large; POI instructions that CPI into
+// gameplay-state deserialize it multiple times, easily exceeding the 200K default.
+const POI_CU_LIMIT = 400_000;
 
 // ============================================================================
 // Read-Only Fetch
@@ -88,6 +93,7 @@ export async function interactRest(
   const [inventoryPda] = deriveInventoryPda(sessionPda);
   const [poiAuthorityPda] = derivePoiAuthorityPda();
   const [gameplayAuthorityPda] = deriveGameplayAuthorityPda();
+  const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
 
   const transaction = await program.methods
     .interactRest(poiIndex)
@@ -95,6 +101,7 @@ export async function interactRest(
       mapPois: mapPoisPda,
       gameState: gameStatePda,
       inventory: inventoryPda,
+      generatedMap: generatedMapPda,
       poiAuthority: poiAuthorityPda,
       gameplayAuthority: gameplayAuthorityPda,
       gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
@@ -102,6 +109,10 @@ export async function interactRest(
       player: sessionSignerKeypair.publicKey,
     })
     .transaction();
+
+  // Rest does 2 CPIs (heal_player + skip_to_day) that each deserialize GameState;
+  // gauntlet echoes make GameState large enough to exceed the default 200K CU.
+  transaction.add(ComputeBudgetProgram.setComputeUnitLimit({ units: POI_CU_LIMIT }));
 
   return sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair);
 }
@@ -154,7 +165,7 @@ export async function generateCacheOffer(
     .transaction();
 
   // GenerateCacheOffer can exceed the default 200K CU limit (e.g. Geode Vault filtering)
-  transaction.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }));
+  transaction.add(ComputeBudgetProgram.setComputeUnitLimit({ units: POI_CU_LIMIT }));
 
   return sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair);
 }
@@ -207,6 +218,7 @@ export async function interactPickItem(
     })
     .transaction();
 
+  transaction.add(ComputeBudgetProgram.setComputeUnitLimit({ units: POI_CU_LIMIT }));
   return sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair);
 }
 
@@ -253,6 +265,7 @@ export async function interactToolOil(
     })
     .transaction();
 
+  transaction.add(ComputeBudgetProgram.setComputeUnitLimit({ units: POI_CU_LIMIT }));
   return sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair);
 }
 
@@ -335,6 +348,7 @@ export async function generateOilOffer(
     })
     .transaction();
 
+  transaction.add(ComputeBudgetProgram.setComputeUnitLimit({ units: POI_CU_LIMIT }));
   return sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair);
 }
 
@@ -371,6 +385,7 @@ export async function interactSurveyBeacon(
     })
     .transaction();
 
+  transaction.add(ComputeBudgetProgram.setComputeUnitLimit({ units: POI_CU_LIMIT }));
   return sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair);
 }
 
@@ -409,6 +424,7 @@ export async function interactSeismicScanner(
     })
     .transaction();
 
+  transaction.add(ComputeBudgetProgram.setComputeUnitLimit({ units: POI_CU_LIMIT }));
   return sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair);
 }
 
@@ -450,6 +466,7 @@ export async function fastTravel(
     })
     .transaction();
 
+  transaction.add(ComputeBudgetProgram.setComputeUnitLimit({ units: POI_CU_LIMIT }));
   return sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair);
 }
 
@@ -489,6 +506,7 @@ export async function enterShop(
     })
     .transaction();
 
+  transaction.add(ComputeBudgetProgram.setComputeUnitLimit({ units: POI_CU_LIMIT }));
   return sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair);
 }
 
@@ -531,6 +549,7 @@ export async function shopPurchase(
     })
     .transaction();
 
+  transaction.add(ComputeBudgetProgram.setComputeUnitLimit({ units: POI_CU_LIMIT }));
   return sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair);
 }
 
@@ -569,6 +588,7 @@ export async function shopReroll(
     })
     .transaction();
 
+  transaction.add(ComputeBudgetProgram.setComputeUnitLimit({ units: POI_CU_LIMIT }));
   return sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair);
 }
 
@@ -598,6 +618,7 @@ export async function leaveShop(
     })
     .transaction();
 
+  transaction.add(ComputeBudgetProgram.setComputeUnitLimit({ units: POI_CU_LIMIT }));
   return sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair);
 }
 
@@ -648,6 +669,7 @@ export async function interactRustyAnvil(
     })
     .transaction();
 
+  transaction.add(ComputeBudgetProgram.setComputeUnitLimit({ units: POI_CU_LIMIT }));
   return sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair);
 }
 
@@ -698,6 +720,7 @@ export async function interactRuneKiln(
     })
     .transaction();
 
+  transaction.add(ComputeBudgetProgram.setComputeUnitLimit({ units: POI_CU_LIMIT }));
   return sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair);
 }
 
@@ -747,5 +770,6 @@ export async function interactScrapChute(
     })
     .transaction();
 
+  transaction.add(ComputeBudgetProgram.setComputeUnitLimit({ units: POI_CU_LIMIT }));
   return sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair);
 }

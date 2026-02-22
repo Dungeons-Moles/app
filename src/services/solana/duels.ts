@@ -319,6 +319,7 @@ export async function buildFinalizeDuelRunTransaction(
   connection: Connection,
   program: Program,
   playerPublicKey: PublicKey,
+  sessionSignerPublicKey: PublicKey,
   gameStatePda: PublicKey,
   sessionPda: PublicKey,
   creatorWallet?: PublicKey | null
@@ -341,6 +342,7 @@ export async function buildFinalizeDuelRunTransaction(
           duelOpenQueue: PublicKey;
           duelVault: PublicKey;
           player: PublicKey;
+          sessionSigner: PublicKey;
           gameState: PublicKey;
           inventory: PublicKey;
           generatedMap: PublicKey;
@@ -357,6 +359,7 @@ export async function buildFinalizeDuelRunTransaction(
       duelOpenQueue: duelOpenQueuePda,
       duelVault: duelVaultPda,
       player: playerPublicKey,
+      sessionSigner: sessionSignerPublicKey,
       gameState: gameStatePda,
       inventory: inventoryPda,
       generatedMap: generatedMapPda,
@@ -373,7 +376,7 @@ export async function buildFinalizeDuelRunTransaction(
 
   const { blockhash } = await connection.getLatestBlockhash(SOLANA_CONFIG.commitment);
   tx.recentBlockhash = blockhash;
-  tx.feePayer = playerPublicKey;
+  tx.feePayer = sessionSignerPublicKey;
 
   return tx;
 }

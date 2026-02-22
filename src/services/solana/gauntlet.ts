@@ -1,9 +1,9 @@
-import { ComputeBudgetProgram, Connection, PublicKey, SystemProgram, Transaction } from '@solana/web3.js';
+import { ComputeBudgetProgram, Connection, PublicKey, SystemProgram, Transaction, TransactionInstruction } from '@solana/web3.js';
 import type { Program } from '@coral-xyz/anchor';
+import BN from 'bn.js';
 import { SOLANA_CONFIG } from './config';
 import {
   GAMEPLAY_STATE_PROGRAM_ID,
-  deriveGameplayAuthorityPda,
   deriveInventoryPda,
 } from './constants';
 import type { BackendCombatLogEntry } from './types/combat_events';
@@ -26,7 +26,6 @@ const PUBKEY_LEN = 32;
 const ITEM_OPTION_SIZE = 11;
 const ENTRY_SIZE = 6;
 const ENTER_CU_LIMIT = 500_000;
-const RESOLVE_CU_LIMIT = 1_400_000;
 const INITIALIZE_CU_LIMIT = 1_400_000;
 const LOCAL_FEE_ACCOUNT_AIRDROP_LAMPORTS = 1_000_000;
 
@@ -78,7 +77,7 @@ export interface GauntletWeekEchoPreview {
   goldAtBattleStart: number;
 }
 
-async function ensureLocalFeeAccounts(connection: Connection): Promise<void> {
+export async function ensureLocalFeeAccounts(connection: Connection): Promise<void> {
   if (!SOLANA_CONFIG.isLocalValidator) return;
 
   const treasury = await connection.getAccountInfo(COMPANY_TREASURY, SOLANA_CONFIG.commitment);
@@ -289,6 +288,62 @@ export async function fetchGauntletWeekEchoPreview(
   };
 }
 
+/**
+ * Reads the echo for a given week directly from the game state's gauntletEchoes field.
+ * This is the correct source of truth — the echoes are drawn at enter_gauntlet time and
+ * stored in the game state. Reading from the week pool can return stale/different data
+ * if the pool was reinitialized or modified after the echo was drawn.
+ */
+export async function fetchGauntletEchoFromGameState(
+  program: Program,
+  gameStatePda: PublicKey,
+  week: number
+): Promise<GauntletWeekEchoPreview | null> {
+  const clampedWeek = Math.max(1, Math.min(5, week));
+  const raw = await (
+    program.account as {
+      gameState: { fetch: (address: PublicKey) => Promise<Record<string, unknown>> };
+    }
+  ).gameState.fetch(gameStatePda);
+
+  const echoes = raw.gauntletEchoes as unknown[] | undefined;
+  if (!Array.isArray(echoes)) return null;
+
+  const echoRaw = unwrapAnchorOption(echoes[clampedWeek - 1]);
+  if (!echoRaw || typeof echoRaw !== 'object') return null;
+
+  const echo = echoRaw as Record<string, unknown>;
+  const source = unwrapAnchorOption(echo.source) as Record<string, unknown> | null;
+  const hasPlayerSource = !!source && 'player' in source;
+  const sourcePlayer = hasPlayerSource ? parseOptionalPubkey(source.player) : null;
+  const isBootstrap = !hasPlayerSource || sourcePlayer === null;
+
+  const loadout = (echo.loadout as Record<string, unknown> | undefined) ?? {};
+  const tool = normalizeItemInstance(loadout.tool);
+  const gearRaw = Array.isArray(loadout.gear) ? loadout.gear : [];
+  const gear: (OnChainItemInstance | null)[] = [];
+  for (let i = 0; i < 12; i++) {
+    gear.push(normalizeItemInstance(gearRaw[i] ?? null));
+  }
+
+  console.log('[gauntlet] fetchGauntletEchoFromGameState', {
+    week: clampedWeek,
+    isBootstrap,
+    sourcePlayer: sourcePlayer?.toBase58?.() ?? null,
+    toolDecoded: !!tool,
+    gearDecodedCount: gear.filter((g) => g !== null).length,
+  });
+
+  return {
+    week: clampedWeek,
+    sourcePlayer,
+    isBootstrap,
+    tool,
+    gear,
+    goldAtBattleStart: Number(loadout.goldAtBattleStart ?? loadout.gold_at_battle_start ?? 0),
+  };
+}
+
 function decodeOptionItemInstance(
   data: Buffer,
   offset: number
@@ -469,6 +524,67 @@ export async function parseGauntletEvents(
   return result;
 }
 
+export async function buildEnterGauntletInstruction(
+  program: Program,
+  playerPublicKey: PublicKey,
+  gameStatePda: PublicKey,
+  epochIdBN: BN,
+  epochIdBigInt: bigint
+): Promise<TransactionInstruction> {
+  const [gauntletConfigPda] = deriveGauntletConfigPda();
+  const [gauntletPoolVaultPda] = deriveGauntletPoolVaultPda();
+  const [epochPoolPda] = deriveGauntletEpochPoolPda(epochIdBigInt);
+  const [playerScorePda] = deriveGauntletPlayerScorePda(epochIdBigInt, playerPublicKey);
+
+  const [week1] = deriveGauntletWeekPoolPda(1);
+  const [week2] = deriveGauntletWeekPoolPda(2);
+  const [week3] = deriveGauntletWeekPoolPda(3);
+  const [week4] = deriveGauntletWeekPoolPda(4);
+  const [week5] = deriveGauntletWeekPoolPda(5);
+
+  const tx = await (
+    program.methods as unknown as {
+      enterGauntlet: (epochId: BN) => {
+        accounts: (accounts: {
+          gameState: PublicKey;
+          player: PublicKey;
+          gauntletConfig: PublicKey;
+          gauntletPoolVault: PublicKey;
+          companyTreasury: PublicKey;
+          gauntletEpochPool: PublicKey;
+          gauntletPlayerScore: PublicKey;
+          systemProgram: PublicKey;
+        }) => {
+          remainingAccounts: (accounts: { pubkey: PublicKey; isSigner: boolean; isWritable: boolean }[]) => {
+            transaction: () => Promise<Transaction>;
+          };
+        };
+      };
+    }
+  )
+    .enterGauntlet(epochIdBN)
+    .accounts({
+      gameState: gameStatePda,
+      player: playerPublicKey,
+      gauntletConfig: gauntletConfigPda,
+      gauntletPoolVault: gauntletPoolVaultPda,
+      companyTreasury: COMPANY_TREASURY,
+      gauntletEpochPool: epochPoolPda,
+      gauntletPlayerScore: playerScorePda,
+      systemProgram: SystemProgram.programId,
+    })
+    .remainingAccounts([
+      { pubkey: week1, isSigner: false, isWritable: false },
+      { pubkey: week2, isSigner: false, isWritable: false },
+      { pubkey: week3, isSigner: false, isWritable: false },
+      { pubkey: week4, isSigner: false, isWritable: false },
+      { pubkey: week5, isSigner: false, isWritable: false },
+    ])
+    .transaction();
+
+  return tx.instructions[0];
+}
+
 export async function buildEnterGauntletTransaction(
   connection: Connection,
   program: Program,
@@ -478,34 +594,27 @@ export async function buildEnterGauntletTransaction(
   await ensureLocalFeeAccounts(connection);
 
   const [gauntletConfigPda] = deriveGauntletConfigPda();
-  const [gauntletPoolVaultPda] = deriveGauntletPoolVaultPda();
 
-  const tx = await (
-    program.methods as unknown as {
-      enterGauntlet: () => {
-        accounts: (accounts: {
-          gameState: PublicKey;
-          player: PublicKey;
-          gauntletConfig: PublicKey;
-          gauntletPoolVault: PublicKey;
-          companyTreasury: PublicKey;
-          systemProgram: PublicKey;
-        }) => { transaction: () => Promise<Transaction> };
-      };
+  const gauntletConfig = await (
+    program.account as {
+      gauntletConfig: { fetch: (address: PublicKey) => Promise<{ currentEpochId: bigint | number }> };
     }
-  )
-    .enterGauntlet()
-    .accounts({
-      gameState: gameStatePda,
-      player: playerPublicKey,
-      gauntletConfig: gauntletConfigPda,
-      gauntletPoolVault: gauntletPoolVaultPda,
-      companyTreasury: COMPANY_TREASURY,
-      systemProgram: SystemProgram.programId,
-    })
-    .transaction();
+  ).gauntletConfig.fetch(gauntletConfigPda);
 
-  tx.instructions.unshift(ComputeBudgetProgram.setComputeUnitLimit({ units: ENTER_CU_LIMIT }));
+  const epochIdBigInt = BigInt(gauntletConfig.currentEpochId.toString());
+  const epochIdBN = new BN(gauntletConfig.currentEpochId.toString());
+
+  const ix = await buildEnterGauntletInstruction(
+    program,
+    playerPublicKey,
+    gameStatePda,
+    epochIdBN,
+    epochIdBigInt
+  );
+
+  const tx = new Transaction();
+  tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: ENTER_CU_LIMIT }));
+  tx.add(ix);
 
   const { blockhash } = await connection.getLatestBlockhash(SOLANA_CONFIG.commitment);
   tx.recentBlockhash = blockhash;
@@ -564,21 +673,17 @@ export async function buildInitializeGauntletTransaction(
   return tx;
 }
 
-export async function buildResolveGauntletWeekTransaction(
+const SETTLE_CU_LIMIT = 500_000;
+
+export async function buildSettleGauntletSessionTransaction(
   connection: Connection,
   program: Program,
   playerPublicKey: PublicKey,
+  sessionSignerPublicKey: PublicKey,
   gameStatePda: PublicKey,
   sessionPda: PublicKey
 ): Promise<Transaction> {
   const [gauntletConfigPda] = deriveGauntletConfigPda();
-  const [week1] = deriveGauntletWeekPoolPda(1);
-  const [week2] = deriveGauntletWeekPoolPda(2);
-  const [week3] = deriveGauntletWeekPoolPda(3);
-  const [week4] = deriveGauntletWeekPoolPda(4);
-  const [week5] = deriveGauntletWeekPoolPda(5);
-  const [inventoryPda] = deriveInventoryPda(sessionPda);
-  const [gameplayAuthorityPda] = deriveGameplayAuthorityPda();
 
   const gauntletConfig = await (
     program.account as {
@@ -586,56 +691,57 @@ export async function buildResolveGauntletWeekTransaction(
     }
   ).gauntletConfig.fetch(gauntletConfigPda);
 
-  const epochId = BigInt(gauntletConfig.currentEpochId.toString());
-  const [epochPoolPda] = deriveGauntletEpochPoolPda(epochId);
-  const [playerScorePda] = deriveGauntletPlayerScorePda(epochId, playerPublicKey);
+  const epochIdBigInt = BigInt(gauntletConfig.currentEpochId.toString());
+  const epochIdBN = new BN(gauntletConfig.currentEpochId.toString());
+  const [epochPoolPda] = deriveGauntletEpochPoolPda(epochIdBigInt);
+  const [playerScorePda] = deriveGauntletPlayerScorePda(epochIdBigInt, playerPublicKey);
+  const [inventoryPda] = deriveInventoryPda(sessionPda);
+  const [week1] = deriveGauntletWeekPoolPda(1);
+  const [week2] = deriveGauntletWeekPoolPda(2);
+  const [week3] = deriveGauntletWeekPoolPda(3);
+  const [week4] = deriveGauntletWeekPoolPda(4);
+  const [week5] = deriveGauntletWeekPoolPda(5);
 
   const tx = await (
     program.methods as unknown as {
-      resolveGauntletWeek: (epochIdArg: bigint) => {
+      settleGauntletSession: (epochIdArg: BN) => {
         accounts: (accounts: {
           gameState: PublicKey;
           player: PublicKey;
-          inventory: PublicKey;
-          gameplayAuthority: PublicKey;
-          playerInventoryProgram: PublicKey;
-          gauntletConfig: PublicKey;
+          sessionSigner: PublicKey;
           gauntletEpochPool: PublicKey;
           gauntletPlayerScore: PublicKey;
+          inventory: PublicKey;
           gauntletWeek1: PublicKey;
           gauntletWeek2: PublicKey;
           gauntletWeek3: PublicKey;
           gauntletWeek4: PublicKey;
           gauntletWeek5: PublicKey;
-          systemProgram: PublicKey;
         }) => { transaction: () => Promise<Transaction> };
       };
     }
   )
-    .resolveGauntletWeek(epochId)
+    .settleGauntletSession(epochIdBN)
     .accounts({
       gameState: gameStatePda,
       player: playerPublicKey,
-      inventory: inventoryPda,
-      gameplayAuthority: gameplayAuthorityPda,
-      playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
-      gauntletConfig: gauntletConfigPda,
+      sessionSigner: sessionSignerPublicKey,
       gauntletEpochPool: epochPoolPda,
       gauntletPlayerScore: playerScorePda,
+      inventory: inventoryPda,
       gauntletWeek1: week1,
       gauntletWeek2: week2,
       gauntletWeek3: week3,
       gauntletWeek4: week4,
       gauntletWeek5: week5,
-      systemProgram: SystemProgram.programId,
     })
     .transaction();
 
-  tx.instructions.unshift(ComputeBudgetProgram.setComputeUnitLimit({ units: RESOLVE_CU_LIMIT }));
+  tx.instructions.unshift(ComputeBudgetProgram.setComputeUnitLimit({ units: SETTLE_CU_LIMIT }));
 
   const { blockhash } = await connection.getLatestBlockhash(SOLANA_CONFIG.commitment);
   tx.recentBlockhash = blockhash;
-  tx.feePayer = playerPublicKey;
+  tx.feePayer = sessionSignerPublicKey;
   return tx;
 }
 

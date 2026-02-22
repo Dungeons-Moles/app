@@ -17,7 +17,7 @@ export const GAME_CONSTANTS = {
   INITIAL_SIGHT_RADIUS: 6,
 
   // Player
-  INITIAL_HP: 10,
+  INITIAL_HP: 15,
   INITIAL_ATK: 0,
   INITIAL_ARM: 0,
   INITIAL_SPD: 0,

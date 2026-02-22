@@ -59,7 +59,6 @@ function isMissingAccountError(err: unknown): boolean {
   return msg.includes('Account does not exist') || msg.includes('has no data');
 }
 
-
 export function GauntletRankingScreen({ navigation, route }: GauntletRankingScreenProps) {
   const returnTo = route.params?.returnTo;
   const { wallet } = useWallet();
@@ -98,17 +97,20 @@ export function GauntletRankingScreen({ navigation, route }: GauntletRankingScre
       const allScores = await (
         gameplayProgram.account as {
           gauntletPlayerScore: {
-            all: () => Promise<Array<{ account: { epochId: bigint | number; player: PublicKey; points: bigint | number } }>>;
+            all: () => Promise<
+              Array<{
+                account: { epochId: bigint | number; player: PublicKey; points: bigint | number };
+              }>
+            >;
           };
         }
       ).gauntletPlayerScore.all();
 
-      const normalized = allScores
-        .map((row) => ({
-          epochId: BigInt(row.account.epochId.toString()),
-          player: row.account.player,
-          points: Number(row.account.points.toString()),
-        }));
+      const normalized = allScores.map((row) => ({
+        epochId: BigInt(row.account.epochId.toString()),
+        player: row.account.player,
+        points: Number(row.account.points.toString()),
+      }));
 
       if (currentEpoch === null) {
         const maxEpoch = normalized.reduce<bigint | null>(
@@ -181,7 +183,7 @@ export function GauntletRankingScreen({ navigation, route }: GauntletRankingScre
   const totalPages = useMemo(() => Math.ceil(items.length / PAGE_SIZE), [items.length]);
   const pageItems = useMemo(
     () => items.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE),
-    [items, page],
+    [items, page]
   );
   const leftItems = useMemo(() => pageItems.slice(0, HALF_PAGE), [pageItems]);
   const rightItems = useMemo(() => pageItems.slice(HALF_PAGE), [pageItems]);
@@ -211,7 +213,7 @@ export function GauntletRankingScreen({ navigation, route }: GauntletRankingScre
       onDPadLeft: () => setActionFocus((f) => Math.max(0, f - 1)),
       onDPadRight: () => setActionFocus((f) => Math.min(totalPages > 1 ? 2 : 0, f + 1)),
     },
-    isController,
+    isController
   );
 
   const controllerHints: ButtonHint[] = [
@@ -221,10 +223,15 @@ export function GauntletRankingScreen({ navigation, route }: GauntletRankingScre
   ];
 
   const renderRow = (item: RankingItem) => (
-    <View key={`${item.wallet}-${item.rank}`} style={[styles.row, item.isYou && styles.rowYou, isCompact && compactStyles.row]}>
+    <View
+      key={`${item.wallet}-${item.rank}`}
+      style={[styles.row, item.isYou && styles.rowYou, isCompact && compactStyles.row]}
+    >
       <Text style={[styles.rankText, isCompact && compactStyles.rankText]}>#{item.rank}</Text>
       <View style={styles.rowMain}>
-        <Text style={[styles.nameText, isCompact && compactStyles.nameText]}>{item.profileName}</Text>
+        <Text style={[styles.nameText, isCompact && compactStyles.nameText]}>
+          {item.profileName}
+        </Text>
         <Text style={[styles.metaText, isCompact && compactStyles.metaText]}>
           {item.points} pts - {item.sharePct.toFixed(1)}%
         </Text>
@@ -254,7 +261,9 @@ export function GauntletRankingScreen({ navigation, route }: GauntletRankingScre
                 style={[styles.headerButton, isCompact && compactStyles.headerButton]}
                 resizeMode="stretch"
               >
-                <Text style={[styles.headerButtonText, isCompact && compactStyles.headerButtonText]}>
+                <Text
+                  style={[styles.headerButtonText, isCompact && compactStyles.headerButtonText]}
+                >
                   Back
                 </Text>
               </ImageBackground>
@@ -314,7 +323,12 @@ export function GauntletRankingScreen({ navigation, route }: GauntletRankingScre
                       style={[styles.actionButton, isCompact && compactStyles.actionButton]}
                       resizeMode="stretch"
                     >
-                      <Text style={[styles.buttonTextPrimary, isCompact && compactStyles.buttonTextPrimary]}>
+                      <Text
+                        style={[
+                          styles.buttonTextPrimary,
+                          isCompact && compactStyles.buttonTextPrimary,
+                        ]}
+                      >
                         Refresh
                       </Text>
                     </ImageBackground>
@@ -324,7 +338,9 @@ export function GauntletRankingScreen({ navigation, route }: GauntletRankingScre
             </View>
 
             {/* Right page */}
-            <View style={[styles.column, styles.rightColumn, isCompact && compactStyles.rightColumn]}>
+            <View
+              style={[styles.column, styles.rightColumn, isCompact && compactStyles.rightColumn]}
+            >
               {rightItems.map(renderRow)}
               {totalPages > 1 && (
                 <View style={styles.columnFooter}>
