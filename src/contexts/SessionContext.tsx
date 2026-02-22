@@ -1223,14 +1223,23 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       };
     }
 
-    // Wait for base layer ownership to be restored
+    // Wait for base layer ownership to be restored for ALL accounts.
+    // Child accounts (game_state) can remain delegated even after the session PDA
+    // is restored, causing downstream instructions to fail with AccountOwnedByWrongProgram.
+    const [gameStatePda] = deriveGameStatePda(sessionPda);
     let restored = false;
+    const expectedOwners: Array<[PublicKey, PublicKey]> = [
+      [sessionPda, SOLANA_CONFIG.programs.sessionManager],
+      [gameStatePda, SOLANA_CONFIG.programs.gameplayState],
+    ];
     for (let i = 0; i < 20; i += 1) {
-      const info = await connection.getAccountInfo(sessionPda, 'processed');
-      if (info?.owner.equals(SOLANA_CONFIG.programs.sessionManager)) {
-        restored = true;
-        break;
-      }
+      const infos = await Promise.all(
+        expectedOwners.map(([pda]) => connection.getAccountInfo(pda, 'processed'))
+      );
+      restored = infos.every(
+        (info, idx) => info?.owner.equals(expectedOwners[idx][1])
+      );
+      if (restored) break;
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
     if (!restored) {

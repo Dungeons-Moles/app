@@ -1858,9 +1858,11 @@ function handleFuseGear(state: GameState, gearId: GearId): GameState {
   // Remove one copy
   const { player } = removeGearById(state.player, gearId);
 
-  // Upgrade the remaining copy to the next tier
+  // Upgrade exactly one remaining copy to the next tier
+  let upgraded = false;
   const upgradedInventory = player.inventory.map((slot) => {
-    if (slot.item.id === gearId && NEXT_RARITY[slot.item.currentRarity]) {
+    if (!upgraded && slot.item.id === gearId && NEXT_RARITY[slot.item.currentRarity]) {
+      upgraded = true;
       return {
         ...slot,
         item: { ...slot.item, currentRarity: NEXT_RARITY[slot.item.currentRarity]! },
