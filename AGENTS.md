@@ -30,6 +30,31 @@ This repository hosts the React Native + Expo codebase for Dungeons & Moles, a P
 
 If the on-chain transaction fails, the local state must NOT change. No optimistic updates that persist on failure. The on-chain programs (`gameplay-state`, `combat-system`, `poi-system`, `session-manager`, `map-generator`, `player-inventory`, `field-enemies`) are the single source of truth.
 
+## Session & Signing Rules (MANDATORY)
+
+These rules are non-negotiable. All code — programs and frontend — must follow them strictly. If existing code violates these rules, it must be refactored.
+
+### Rule 1: One wallet signature per session entry
+
+The player's wallet signs **exactly one transaction** to enter a game session. Every other in-session transaction (movement, combat, POI interaction, session closure) is signed by the **session key** in the background — no wallet popups.
+
+The only exception is **abandon session**, which requires the wallet signature as a safety measure.
+
+**Implication:** Any instruction that runs during a session (start to end) must accept the session signer, not the player wallet. Entry fees, echo draws, and any other setup must be bundled into the single entry transaction or handled by session-key-authorized instructions.
+
+### Rule 2: All in-session gameplay happens on the Ephemeral Rollup
+
+Everything between delegation and undelegation runs on the ER via session keys. No base-layer transactions during active gameplay.
+
+Base-layer wallet transactions are only for **out-of-session** actions:
+- Starting/entering a session (the single wallet-signed entry tx)
+- Equipping skins
+- Buying sessions / top-ups
+- Marketplace trades (list, buy, cancel)
+- Managing the item pool
+
+**Implication:** Settlement, point crediting, echo insertion, and any other post-game bookkeeping that touches global/shared accounts must either (a) be deferred to session end and signed by the session key, or (b) be handled by a PDA authority so the session key can invoke it via CPI. Never require the player wallet mid-session or at session teardown.
+
 ### On-Chain Instruction Map
 
 | Action            | Program         | Instruction                                       | Notes                                                                             |

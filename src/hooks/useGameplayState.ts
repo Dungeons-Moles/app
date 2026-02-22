@@ -6,8 +6,8 @@
  */
 
 import { useCallback, useState, useRef, useEffect, useMemo } from 'react';
-import { PublicKey, Keypair } from '@solana/web3.js';
-import { AnchorProvider } from '@coral-xyz/anchor';
+import { PublicKey, Keypair, Connection, Transaction } from '@solana/web3.js';
+import { AnchorProvider, Program } from '@coral-xyz/anchor';
 import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
 import { useWallet } from '@/contexts/WalletContext';
 import {
@@ -20,23 +20,26 @@ import {
   modifyStat,
   closeGameState,
   fetchGameState,
-  getGameplayErrorMessage,
   calculateMoveCost,
   triggerBossFight,
-  resolveGauntletWeek,
 } from '@/services/solana/gameplayState';
+import { getUserErrorMessage } from '@/services/solana/errors';
 import {
   GameState,
   RunMode,
+  Phase,
   StatType,
   GameStateInitParams,
   MovePlayerParams,
   ModifyStatParams,
 } from '@/services/solana/types/gameplay_state';
-import { parseCombatLog } from '@/services/solana/eventParser';
+import { parseCombatLog, parseBossCombatFromMoveTx } from '@/services/solana/eventParser';
 import type { CombatEnemyInfo } from '@/services/solana/eventParser';
 import type { BackendCombatLogEntry } from '@/services/solana/types/combat_events';
+import { parseGauntletCombatVisualEvent } from '@/services/solana/gauntlet';
 import type { GauntletCombatVisualEvent } from '@/services/solana/gauntlet';
+import { sendSessionSignerTransaction } from '@/services/solana/sessionSigner';
+import { parseWithRetry } from '@/utils/retry';
 
 // ============================================================================
 // Types
@@ -75,6 +78,14 @@ export interface UseGameplayStateReturn {
     combatLog?: BackendCombatLogEntry[];
     /** Enemy info from CombatStarted event (archetype + HP for tier derivation) */
     combatEnemyInfo?: CombatEnemyInfo;
+    /** Boss fight was resolved inline in this move_player tx (Campaign, Duel weeks 1-2) */
+    bossResolvedInline?: boolean;
+    /** Boss combat log (from inline resolution — last CombatLog in tx) */
+    bossCombatLog?: BackendCombatLogEntry[];
+    /** Player HP at the start of the boss fight (from CombatStarted event) */
+    preBossPlayerHp?: number;
+    /** Gauntlet echo combat visual (from inline resolution in move_player) */
+    gauntletCombatVisual?: GauntletCombatVisualEvent | null;
   }>;
   /** Modify a player stat */
   updateStat: (
@@ -90,7 +101,15 @@ export interface UseGameplayStateReturn {
   /** Last sync timestamp */
   lastSyncAt: number | null;
   /** Trigger boss fight on-chain */
-  triggerBoss: (sessionSignerKeypair: Keypair) => Promise<{
+  triggerBoss: (
+    sessionSignerKeypair: Keypair,
+    overrides?: {
+      connection: Connection;
+      program: Program;
+      playerPublicKey?: PublicKey;
+      sendTransaction?: (tx: Transaction) => Promise<string>;
+    }
+  ) => Promise<{
     success: boolean;
     newState?: GameState;
     previousState?: GameState;
@@ -183,7 +202,7 @@ export function useGameplayState(): UseGameplayStateReturn {
         console.error('Failed to refresh game state:', err);
         if (isMountedRef.current) {
           setSyncStatus('error');
-          setError(getGameplayErrorMessage(err));
+          setError(getUserErrorMessage(err, 'gameplay_state'));
         }
         return null;
       } finally {
@@ -243,7 +262,7 @@ export function useGameplayState(): UseGameplayStateReturn {
       } catch (err) {
         console.error('Failed to initialize game state:', err);
         if (isMountedRef.current) {
-          setError(getGameplayErrorMessage(err));
+          setError(getUserErrorMessage(err, 'gameplay_state'));
           setIsLoading(false);
         }
         return false;
@@ -271,6 +290,10 @@ export function useGameplayState(): UseGameplayStateReturn {
       bossFightReady?: boolean;
       isDead?: boolean;
       signature?: string;
+      bossResolvedInline?: boolean;
+      bossCombatLog?: BackendCombatLogEntry[];
+      preBossPlayerHp?: number;
+      gauntletCombatVisual?: GauntletCombatVisualEvent | null;
     }> => {
       console.log(
         '[useGameplayState] move() called — program:',
@@ -358,10 +381,34 @@ export function useGameplayState(): UseGameplayStateReturn {
             confirmedState.isDead ||
             confirmedState.gold > previousState.gold);
 
+        // Detect inline boss/echo resolution from state changes.
+        // Boss fights auto-resolve inside move_player when the last Night3 move
+        // is exhausted (Campaign, Duel weeks 1-2, Gauntlet).
+        // After a WIN, moves_remaining resets to DAY_MOVES (non-zero) and week
+        // advances, so we detect via week change / death / completion instead of
+        // checking movesRemaining === 0.
+        let bossResolvedInline = false;
+        let bossCombatLog: BackendCombatLogEntry[] | undefined;
+        let preBossPlayerHp: number | undefined;
+        let gauntletCombatVisual: GauntletCombatVisualEvent | null = null;
+
+        const bossResolvedIndicator =
+          confirmedState != null &&
+          signature &&
+          previousState.phase === Phase.Night3 &&
+          (confirmedState.isDead ||
+            confirmedState.week > previousState.week ||
+            (confirmedState.completed && !previousState.completed));
+
+        // Gauntlet echo combat emits GauntletCombatVisual (not CombatLog),
+        // so skip the CombatLog retry loop when we know it's a gauntlet echo.
+        const isGauntletEchoResolution =
+          bossResolvedIndicator && previousState.runMode === RunMode.Gauntlet;
+
         // Fetch combat log and enemy info from transaction if combat occurred
         let combatLog: BackendCombatLogEntry[] | undefined;
         let combatEnemyInfo: CombatEnemyInfo | undefined;
-        if (combatOccurred && signature) {
+        if (combatOccurred && signature && !isGauntletEchoResolution) {
           const parsed = await parseCombatLogWithRetry(
             gameplayConnection,
             program,
@@ -370,6 +417,42 @@ export function useGameplayState(): UseGameplayStateReturn {
           );
           combatLog = parsed.combatLog;
           combatEnemyInfo = parsed.combatEnemyInfo;
+        }
+
+        if (
+          bossResolvedIndicator &&
+          (previousState.runMode === RunMode.Campaign ||
+            (previousState.runMode === RunMode.Duel &&
+              (previousState.week === 1 || previousState.week === 2)))
+        ) {
+          bossResolvedInline = true;
+          try {
+            const bossParsed = await parseBossCombatFromMoveTx(
+              gameplayConnection,
+              signature!
+            );
+            bossCombatLog = bossParsed.combatLog;
+            preBossPlayerHp = bossParsed.preBossPlayerHp;
+            console.log('[useGameplayState] Inline boss resolution detected:', {
+              hasCombatLog: !!bossCombatLog,
+              logEntries: bossCombatLog?.length ?? 0,
+              preBossPlayerHp,
+            });
+          } catch (err) {
+            console.warn('[useGameplayState] Failed to parse inline boss combat:', err);
+          }
+        }
+
+        if (bossResolvedIndicator && previousState.runMode === RunMode.Gauntlet) {
+          bossResolvedInline = true;
+          gauntletCombatVisual = await parseGauntletVisualWithRetry(
+            gameplayConnection,
+            signature!
+          );
+          console.log('[useGameplayState] Inline gauntlet echo resolution detected:', {
+            hasVisual: !!gauntletCombatVisual,
+            playerWon: gauntletCombatVisual?.playerWon,
+          });
         }
 
         return {
@@ -382,13 +465,17 @@ export function useGameplayState(): UseGameplayStateReturn {
           bossFightReady: confirmedState?.bossFightReady ?? false,
           isDead: confirmedState?.isDead ?? false,
           signature,
+          bossResolvedInline,
+          bossCombatLog,
+          preBossPlayerHp,
+          gauntletCombatVisual,
         };
       } catch (err) {
         console.error('[useGameplayState] Failed to move player:', err);
 
         if (isMountedRef.current) {
           setSyncStatus('error');
-          setError(getGameplayErrorMessage(err));
+          setError(getUserErrorMessage(err, 'gameplay_state'));
         }
 
         return { success: false };
@@ -436,7 +523,7 @@ export function useGameplayState(): UseGameplayStateReturn {
 
         if (isMountedRef.current) {
           setSyncStatus('error');
-          setError(getGameplayErrorMessage(err));
+          setError(getUserErrorMessage(err, 'gameplay_state'));
         }
 
         return { success: false };
@@ -451,7 +538,13 @@ export function useGameplayState(): UseGameplayStateReturn {
    */
   const triggerBoss = useCallback(
     async (
-      sessionSignerKeypair: Keypair
+      sessionSignerKeypair: Keypair,
+      overrides?: {
+        connection: Connection;
+        program: Program;
+        playerPublicKey?: PublicKey;
+        sendTransaction?: (tx: Transaction) => Promise<string>;
+      }
     ): Promise<{
       success: boolean;
       newState?: GameState;
@@ -466,6 +559,10 @@ export function useGameplayState(): UseGameplayStateReturn {
         return { success: false };
       }
 
+      // Use overrides when provided (e.g. gauntlet needs base-layer connection)
+      const conn = overrides?.connection ?? gameplayConnection;
+      const prog = overrides?.program ?? program;
+
       const previousState = gameState;
 
       if (isMountedRef.current) {
@@ -475,31 +572,17 @@ export function useGameplayState(): UseGameplayStateReturn {
 
       try {
         const sessionPda = gameState.session;
-        let signature: string;
-        let gauntletVisual: GauntletCombatVisualEvent | null = null;
-
-        if (gameState.runMode === RunMode.Gauntlet) {
-          const gauntletResult = await resolveGauntletWeek(
-            gameplayConnection,
-            program,
-            gameStatePda,
-            sessionPda,
-            sessionSignerKeypair
-          );
-          signature = gauntletResult.signature;
-          gauntletVisual = gauntletResult.combatVisual ?? null;
-        } else {
-          signature = await triggerBossFight(
-            gameplayConnection,
-            program,
-            gameStatePda,
-            sessionPda,
-            sessionSignerKeypair
-          );
-        }
-
+        // Gauntlet echo combat auto-resolves inline in move_player — triggerBoss
+        // should only be called for Campaign and Duel modes.
+        const signature = await triggerBossFight(
+          conn,
+          prog,
+          gameStatePda,
+          sessionPda,
+          sessionSignerKeypair
+        );
         // Fetch confirmed state after on-chain confirmation
-        const confirmedState = await fetchGameState(program, gameStatePda);
+        const confirmedState = await fetchGameState(prog, gameStatePda);
 
         console.log('[useGameplayState] triggerBoss() fetched state:', {
           previousHp: previousState.hp,
@@ -515,12 +598,10 @@ export function useGameplayState(): UseGameplayStateReturn {
 
         // Parse combat log from transaction
         let combatLog: BackendCombatLogEntry[] | undefined;
-        if (gauntletVisual?.combatLog?.length) {
-          combatLog = gauntletVisual.combatLog;
-        } else if (signature) {
+        if (signature) {
           const parsed = await parseCombatLogWithRetry(
-            gameplayConnection,
-            program,
+            conn,
+            prog,
             signature,
             'boss'
           );
@@ -533,7 +614,7 @@ export function useGameplayState(): UseGameplayStateReturn {
           previousState,
           isDead: confirmedState?.isDead ?? false,
           combatLog,
-          gauntletVisual,
+          gauntletVisual: null,
           signature,
         };
       } catch (err) {
@@ -541,7 +622,7 @@ export function useGameplayState(): UseGameplayStateReturn {
 
         if (isMountedRef.current) {
           setSyncStatus('error');
-          setError(getGameplayErrorMessage(err));
+          setError(getUserErrorMessage(err, 'gameplay_state'));
         }
 
         return { success: false };
@@ -580,7 +661,7 @@ export function useGameplayState(): UseGameplayStateReturn {
         console.error('Failed to close game state:', err);
 
         if (isMountedRef.current) {
-          setError(getGameplayErrorMessage(err));
+          setError(getUserErrorMessage(err, 'gameplay_state'));
           setIsLoading(false);
         }
 
@@ -649,6 +730,7 @@ export function useGameplayState(): UseGameplayStateReturn {
 /**
  * Parse combat log from a transaction signature with retry.
  * Returns entries and enemy info if available.
+ * Uses parseWithRetry for the retry loop; accumulates enemyInfo across attempts.
  */
 async function parseCombatLogWithRetry(
   connection: Parameters<typeof parseCombatLog>[0],
@@ -659,42 +741,41 @@ async function parseCombatLogWithRetry(
   combatLog?: BackendCombatLogEntry[];
   combatEnemyInfo?: CombatEnemyInfo;
 }> {
-  let combatLog: BackendCombatLogEntry[] | undefined;
   let combatEnemyInfo: CombatEnemyInfo | undefined;
-  const maxAttempts = 3;
 
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    try {
+  const combatLog = await parseWithRetry(
+    async () => {
       const result = await parseCombatLog(connection, program, signature);
-      if (result.enemyInfo) {
-        combatEnemyInfo = result.enemyInfo;
-      }
+      if (result.enemyInfo) combatEnemyInfo = result.enemyInfo;
       if (result.log && result.log.entries.length > 0) {
-        combatLog = result.log.entries;
-        console.log(`[useGameplayState] Parsed ${label} combat log:`, combatLog.length, 'entries');
-        break;
+        console.log(`[useGameplayState] Parsed ${label} combat log:`, result.log.entries.length, 'entries');
+        return result.log.entries;
       }
-      console.warn(
-        `[useGameplayState] ${label} combat log parse attempt ${attempt + 1}/${maxAttempts}: no CombatLog event found`
-      );
-    } catch (logErr) {
-      console.warn(
-        `[useGameplayState] ${label} combat log parse attempt ${attempt + 1}/${maxAttempts} error:`,
-        logErr
-      );
-    }
-    if (attempt < maxAttempts - 1) {
-      await new Promise((resolve) => setTimeout(resolve, 400));
-    }
-  }
+      return null;
+    },
+    { label: `${label} combat log` }
+  );
 
   if (!combatLog) {
     console.warn(
-      `[useGameplayState] Could not parse ${label} combat log after ${maxAttempts} attempts, using on-chain outcome fallback`
+      `[useGameplayState] Could not parse ${label} combat log after retries, using on-chain outcome fallback`
     );
   }
 
-  return { combatLog, combatEnemyInfo };
+  return { combatLog: combatLog ?? undefined, combatEnemyInfo };
+}
+
+/**
+ * Parse gauntlet combat visual from a transaction signature with retry.
+ */
+async function parseGauntletVisualWithRetry(
+  connection: Connection,
+  signature: string
+): Promise<GauntletCombatVisualEvent | null> {
+  return parseWithRetry(
+    () => parseGauntletCombatVisualEvent(connection, signature),
+    { label: 'gauntlet visual' }
+  );
 }
 
 /**

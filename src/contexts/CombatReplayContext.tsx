@@ -289,7 +289,7 @@ export function CombatReplayProvider({ children }: { children: ReactNode }) {
     setNightMovementState(null);
   }, []);
 
-  const value: CombatReplayContextType = {
+  const value = useMemo<CombatReplayContextType>(() => ({
     combatReplay,
     replayState,
     currentTurn,
@@ -307,7 +307,25 @@ export function CombatReplayProvider({ children }: { children: ReactNode }) {
     setNightMovement,
     animateNightMovement,
     clearNightMovement,
-  };
+  }), [
+    combatReplay,
+    replayState,
+    currentTurn,
+    currentTurnData,
+    currentStatusEffects,
+    isPlaying,
+    playerWon,
+    nightMovement,
+    setCombatReplay,
+    playCombatReplay,
+    pauseReplay,
+    resumeReplay,
+    skipToEnd,
+    clearReplay,
+    setNightMovement,
+    animateNightMovement,
+    clearNightMovement,
+  ]);
 
   return <CombatReplayContext.Provider value={value}>{children}</CombatReplayContext.Provider>;
 }

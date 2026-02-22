@@ -21,26 +21,27 @@ const APP_IDENTITY = {
 const DEV_WEB_WALLET_KEY = 'dm_dev_web_wallet_secret';
 const WEB_WALLET_CHOICE_KEY = 'dm_web_wallet_choice';
 const IS_WEB = Platform.OS === 'web';
-type PersistedWebWallet = Exclude<SupportedWallet, 'DevKeypair'>;
 
-function isPersistedWebWallet(value: string): value is PersistedWebWallet {
-  return value === 'Jupiter' || value === 'Phantom' || value === 'Backpack';
+function isPersistedWebWallet(value: string): value is SupportedWallet {
+  return (
+    value === 'Jupiter' || value === 'Phantom' || value === 'Backpack' || value === 'DevKeypair'
+  );
 }
 
-function loadPreferredWebWallet(): PersistedWebWallet | null {
+function loadPreferredWebWallet(): SupportedWallet | null {
   if (!IS_WEB || typeof window === 'undefined') {
     return null;
   }
 
   try {
     const stored = window.localStorage.getItem(WEB_WALLET_CHOICE_KEY);
-    return stored && isPersistedWebWallet(stored) ? stored : null;
+    return stored && isPersistedWebWallet(stored) ? (stored as SupportedWallet) : null;
   } catch (error) {
     return null;
   }
 }
 
-function storePreferredWebWallet(walletName: PersistedWebWallet | null): void {
+function storePreferredWebWallet(walletName: SupportedWallet | null): void {
   if (!IS_WEB || typeof window === 'undefined') {
     return;
   }
@@ -211,13 +212,14 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [devWebWallet] = useState<Keypair | null>(() => (IS_WEB ? loadDevWebWallet() : null));
-  const [preferredWebWallet, setPreferredWebWallet] = useState<PersistedWebWallet | null>(() =>
+  const [preferredWebWallet, setPreferredWebWallet] = useState<SupportedWallet | null>(() =>
     loadPreferredWebWallet()
   );
 
   // Auto-airdrop on local validator when using dev wallet
   useEffect(() => {
-    if (!SOLANA_CONFIG.isLocalValidator || !devWebWallet || wallet.authToken !== 'dev-web-wallet') return;
+    if (!SOLANA_CONFIG.isLocalValidator || !devWebWallet || wallet.authToken !== 'dev-web-wallet')
+      return;
 
     const airdropIfNeeded = async () => {
       try {
@@ -240,7 +242,19 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     if (!IS_WEB || typeof window === 'undefined') return;
 
     const checkExistingConnection = () => {
+      // Allow auto-connect for DevKeypair
       const targetWallet = preferredWebWallet ?? loadPreferredWebWallet();
+
+      if (targetWallet === 'DevKeypair' && devWebWallet) {
+        setWallet({
+          isConnected: true,
+          address: devWebWallet.publicKey.toBase58(),
+          publicKey: devWebWallet.publicKey,
+          authToken: 'dev-web-wallet',
+        });
+        return;
+      }
+
       if (!targetWallet) return;
       const webWallet = getWebWalletProvider(targetWallet);
       if (!webWallet) return;
@@ -421,9 +435,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
           });
         }
 
-        const webWallet = preferredWebWallet
-          ? getWebWalletProvider(preferredWebWallet)
-          : null;
+        const webWallet = preferredWebWallet ? getWebWalletProvider(preferredWebWallet) : null;
         if (webWallet) {
           // Only set blockhash if the transaction doesn't already have one.
           // If the transaction has already been partially signed, changing the
@@ -514,7 +526,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         return [];
       }
 
-      const targetConnection = options?.connection ?? new Connection(SOLANA_CONFIG.rpcUrl, 'confirmed');
+      const targetConnection =
+        options?.connection ?? new Connection(SOLANA_CONFIG.rpcUrl, 'confirmed');
       const sendOptions = {
         preflightCommitment: SOLANA_CONFIG.commitment,
         skipPreflight: options?.skipPreflight ?? false,

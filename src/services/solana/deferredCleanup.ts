@@ -36,6 +36,10 @@ export interface PendingCleanup {
   needsSessionEnd: boolean;
   /** Whether run result needs to be recorded */
   needsResultRecord: boolean;
+  /** Session type for correct PDA derivation (defaults to campaign for backwards compat) */
+  sessionType?: 'campaign' | 'duel' | 'gauntlet';
+  /** Number of times this cleanup has been revived after exhausting retries */
+  revivalCount?: number;
 }
 
 interface CleanupQueue {
@@ -49,6 +53,7 @@ interface CleanupQueue {
 
 const CLEANUP_QUEUE_KEY = 'deferred_cleanup_queue';
 const MAX_RETRY_COUNT = 3;
+const MAX_REVIVAL_COUNT = 2;
 
 // ============================================================================
 // Queue Management

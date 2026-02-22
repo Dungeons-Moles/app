@@ -12,7 +12,7 @@ import React, { createContext, useContext, useState, useCallback, useMemo, useEf
 import { Keypair, PublicKey } from '@solana/web3.js';
 import { useGameplayState, SyncStatus } from '@/hooks/useGameplayState';
 import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
-import { useSession } from '@/contexts/SessionContext';
+import { useSessionIdentity } from '@/contexts/SessionContext';
 import { getGameStatePda } from '@/services/solana/gameplayState';
 import {
   GameState,
@@ -151,20 +151,25 @@ const GameplayStateContext = createContext<GameplayStateContextType | undefined>
 export function GameplayStateProvider({ children }: { children: ReactNode }) {
   const gameplay = useGameplayState();
   const { gameplayConnection } = useSolanaConnection();
-  const { sessionPda } = useSession();
+  const { sessionPda } = useSessionIdentity();
 
   // Sync gameStatePda from SessionContext so this context's gameState stays populated.
   // SessionContext sets the PDA on its own useGameplayState instance; this effect
   // mirrors that onto GameplayStateProvider's instance so consumers (e.g. BossPanel)
   // reading from useGameplayStateContext() see the correct on-chain state.
-  useEffect(() => {
-    if (sessionPda) {
-      const [derived] = getGameStatePda(sessionPda);
+  //
+  // Uses render-time state sync (not useEffect) so the PDA is cleared in the same
+  // render cycle that sessionPda becomes null. This prevents the auto-refresh effect
+  // in useGameplayState from firing with a stale PDA during session end, which would
+  // cause unnecessary fetches and re-renders on the Defeat/Victory screens.
+  if (sessionPda) {
+    const [derived] = getGameStatePda(sessionPda);
+    if (!gameplay.gameStatePda?.equals(derived)) {
       gameplay.setGameStatePda(derived);
-    } else {
-      gameplay.setGameStatePda(null);
     }
-  }, [sessionPda]);
+  } else if (gameplay.gameStatePda !== null) {
+    gameplay.setGameStatePda(null);
+  }
 
   // Map entities state
   const [enemies, setEnemies] = useState<EnemyData[]>([]);
@@ -363,60 +368,89 @@ export function GameplayStateProvider({ children }: { children: ReactNode }) {
     refreshMapEntities(sessionPda);
   }, [gameplay.gameState?.session, gameplayConnection, refreshMapEntities]);
 
-  // Compute derived values for UI convenience
-  const position: [number, number] | null = gameplay.gameState
-    ? [gameplay.gameState.positionX, gameplay.gameState.positionY]
-    : null;
+  // Stable refresh wrapper to avoid recreating on every render
+  const refresh = useCallback(async () => { await gameplay.refresh(); }, [gameplay.refresh]);
 
-  const stats: PlayerStats | null = gameplay.gameState
-    ? {
-        hp: gameplay.gameState.hp,
-        maxHp: gameplay.gameState.maxHp,
-        atk: gameplay.gameState.atk,
-        arm: gameplay.gameState.arm,
-        spd: gameplay.gameState.spd,
-        dig: gameplay.gameState.dig,
-      }
-    : null;
+  const value = useMemo<GameplayStateContextType>(() => {
+    // Compute derived values for UI convenience
+    const position: [number, number] | null = gameplay.gameState
+      ? [gameplay.gameState.positionX, gameplay.gameState.positionY]
+      : null;
 
-  const phaseName = gameplay.gameState ? getPhaseName(gameplay.gameState.phase) : null;
+    const stats: PlayerStats | null = gameplay.gameState
+      ? {
+          hp: gameplay.gameState.hp,
+          maxHp: gameplay.gameState.maxHp,
+          atk: gameplay.gameState.atk,
+          arm: gameplay.gameState.arm,
+          spd: gameplay.gameState.spd,
+          dig: gameplay.gameState.dig,
+        }
+      : null;
 
-  const currentPhaseMoveAllowance = gameplay.gameState
-    ? PHASE_MOVE_ALLOWANCE[gameplay.gameState.phase]
-    : null;
+    const phaseName = gameplay.gameState ? getPhaseName(gameplay.gameState.phase) : null;
 
-  const value: GameplayStateContextType = {
-    gameState: gameplay.gameState,
-    gameStatePda: gameplay.gameStatePda,
-    isLoading: gameplay.isLoading,
-    error: gameplay.error,
-    syncStatus: gameplay.syncStatus,
-    lastSyncAt: gameplay.lastSyncAt,
+    const currentPhaseMoveAllowance = gameplay.gameState
+      ? PHASE_MOVE_ALLOWANCE[gameplay.gameState.phase]
+      : null;
 
-    // Map entities
+    return {
+      gameState: gameplay.gameState,
+      gameStatePda: gameplay.gameStatePda,
+      isLoading: gameplay.isLoading,
+      error: gameplay.error,
+      syncStatus: gameplay.syncStatus,
+      lastSyncAt: gameplay.lastSyncAt,
+
+      // Map entities
+      enemies,
+      pois,
+      isMapEntitiesLoading,
+
+      // Computed properties
+      position,
+      stats,
+      phaseName,
+      week: gameplay.gameState?.week ?? null,
+      movesRemaining: gameplay.gameState?.movesRemaining ?? null,
+      totalMoves: gameplay.gameState?.totalMoves ?? null,
+      bossFightReady: gameplay.gameState?.bossFightReady ?? false,
+      gearSlots: gameplay.gameState?.gearSlots ?? null,
+      currentPhaseMoveAllowance,
+
+      // Actions
+      initialize: gameplay.initialize,
+      move: gameplay.move,
+      modifyStat: gameplay.updateStat,
+      close: gameplay.close,
+      refresh,
+      getMoveCost: gameplay.getMoveCost,
+      setGameStatePda: gameplay.setGameStatePda,
+      refreshMapEntities,
+      removeEnemy,
+      consumePoi,
+      getEnemyAt,
+      getPoiAt,
+      discoveredWaypoints,
+      canFastTravel,
+    };
+  }, [
+    gameplay.gameState,
+    gameplay.gameStatePda,
+    gameplay.isLoading,
+    gameplay.error,
+    gameplay.syncStatus,
+    gameplay.lastSyncAt,
+    gameplay.initialize,
+    gameplay.move,
+    gameplay.updateStat,
+    gameplay.close,
+    refresh,
+    gameplay.getMoveCost,
+    gameplay.setGameStatePda,
     enemies,
     pois,
     isMapEntitiesLoading,
-
-    // Computed properties
-    position,
-    stats,
-    phaseName,
-    week: gameplay.gameState?.week ?? null,
-    movesRemaining: gameplay.gameState?.movesRemaining ?? null,
-    totalMoves: gameplay.gameState?.totalMoves ?? null,
-    bossFightReady: gameplay.gameState?.bossFightReady ?? false,
-    gearSlots: gameplay.gameState?.gearSlots ?? null,
-    currentPhaseMoveAllowance,
-
-    // Actions
-    initialize: gameplay.initialize,
-    move: gameplay.move,
-    modifyStat: gameplay.updateStat,
-    close: gameplay.close,
-    refresh: async () => { await gameplay.refresh(); },
-    getMoveCost: gameplay.getMoveCost,
-    setGameStatePda: gameplay.setGameStatePda,
     refreshMapEntities,
     removeEnemy,
     consumePoi,
@@ -424,7 +458,7 @@ export function GameplayStateProvider({ children }: { children: ReactNode }) {
     getPoiAt,
     discoveredWaypoints,
     canFastTravel,
-  };
+  ]);
 
   return <GameplayStateContext.Provider value={value}>{children}</GameplayStateContext.Provider>;
 }

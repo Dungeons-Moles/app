@@ -20,14 +20,8 @@ import { useControllerAction } from '../hooks/useControllerAction';
 import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHints';
 import { useInputMode } from '../hooks/useInputMode';
 import { FocusGlow } from '../components/ui/FocusGlow';
-import {
-  getGearByTag,
-  GearDefinition,
-} from '../data/gear';
-import {
-  getToolsByTag,
-  ToolDefinition,
-} from '../game/entities/items';
+import { getGearByTag, GearDefinition } from '../data/gear';
+import { getToolsByTag, ToolDefinition } from '../game/entities/items';
 import { ItemTag, ItemStats, ItemRarity } from '../game/engine/types';
 import {
   BITMASK_SIZE,
@@ -160,16 +154,7 @@ const TAG_COLORS: Record<ItemTag, string> = {
   TEMPO: '#9333ea',
 };
 
-const ALL_TAGS: ItemTag[] = [
-  'STONE',
-  'SCOUT',
-  'GREED',
-  'BLAST',
-  'FROST',
-  'RUST',
-  'BLOOD',
-  'TEMPO',
-];
+const ALL_TAGS: ItemTag[] = ['STONE', 'SCOUT', 'GREED', 'BLAST', 'FROST', 'RUST', 'BLOOD', 'TEMPO'];
 
 const ITEM_POOL_MIN_SIZE = MIN_ACTIVE_POOL;
 
@@ -357,7 +342,7 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
       setSelectedItem(allItems[cursorIdx]);
       // Scroll the focused item into view on web
       requestAnimationFrame(() => {
-        const el = (cursorRef.current as unknown) as HTMLElement;
+        const el = cursorRef.current as unknown as HTMLElement;
         if (el?.scrollIntoView) {
           el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
         }
@@ -394,7 +379,11 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
   return (
     <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
       <Image source={backgroundImage} style={styles.backgroundImage} resizeMode="stretch" />
-      <Image source={isCompact ? bookImageCompact : bookImageMobile} style={styles.backgroundImage} resizeMode="stretch" />
+      <Image
+        source={isCompact ? bookImageCompact : bookImageMobile}
+        style={styles.backgroundImage}
+        resizeMode="stretch"
+      />
 
       <View style={[styles.content, isCompact && compactStyles.content]}>
         {/* Header */}
@@ -421,7 +410,14 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
             >
               <Text style={[styles.title, isCompact && compactStyles.title]}>Items</Text>
             </ImageBackground>
-            <Text numberOfLines={1} style={[styles.poolCountText, isCompact && compactStyles.poolCountText, styles.poolCountAbsolute]}>
+            <Text
+              numberOfLines={1}
+              style={[
+                styles.poolCountText,
+                isCompact && compactStyles.poolCountText,
+                styles.poolCountAbsolute,
+              ]}
+            >
               Pool: {draftPoolIndices.size} (min {ITEM_POOL_MIN_SIZE})
             </Text>
           </View>
@@ -439,7 +435,9 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
               style={[
                 styles.saveButton,
                 isCompact && compactStyles.saveButton,
-                (isSavingItemPool || !hasPoolChanges || draftPoolIndices.size < ITEM_POOL_MIN_SIZE) &&
+                (isSavingItemPool ||
+                  !hasPoolChanges ||
+                  draftPoolIndices.size < ITEM_POOL_MIN_SIZE) &&
                   styles.saveButtonDisabled,
               ]}
               resizeMode="stretch"
@@ -458,79 +456,88 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
         {/* Two-column layout */}
         <View style={styles.columnsContainer}>
           {/* Left column - Item grid by tag */}
-          <ScrollView ref={scrollViewRef} style={styles.itemsListColumn} showsVerticalScrollIndicator={false}>
-            {(() => { let flatIdx = 0; return ALL_TAGS.map((tag) => {
-              const tagItems = getItemsByTag(tag);
-              return (
-                <View key={tag} style={styles.tagSection}>
-                  <Text
-                    style={[
-                      styles.tagHeader,
-                      isCompact && compactStyles.tagHeader,
-                      { color: TAG_COLORS[tag] },
-                    ]}
-                  >
-                    {TAG_DISPLAY_NAMES[tag]}
-                  </Text>
-                  <View style={[styles.itemsGrid, isCompact && compactStyles.itemsGrid]}>
-                    {tagItems.map((item) => {
-                      const idx = flatIdx++;
-                      const unlocked = checkItemUnlocked(item.id);
-                      const isSelected = selectedItem?.id === item.id;
-                      const poolIndex = getItemPoolIndex(item.id);
-                      const isInPool = poolIndex >= 0 && draftPoolIndices.has(poolIndex);
-                      const isCursorItem = isController && idx === cursorIdx;
-                      const cell = (
-                        <TouchableOpacity
-                          key={item.id}
-                          style={[
-                            styles.itemGridCell,
-                            isCompact && compactStyles.itemGridCell,
-                            isInPool && styles.itemGridCellInPool,
-                            isSelected && styles.itemGridCellSelected,
-                          ]}
-                          onPress={() => setSelectedItem(item)}
-                          activeOpacity={0.7}
-                        >
-                          <ImageBackground
-                            source={squareFrameSource}
-                            style={[styles.itemFrame, isCompact && compactStyles.itemFrame]}
-                            resizeMode="stretch"
+          <ScrollView
+            ref={scrollViewRef}
+            style={styles.itemsListColumn}
+            showsVerticalScrollIndicator={false}
+          >
+            {(() => {
+              let flatIdx = 0;
+              return ALL_TAGS.map((tag) => {
+                const tagItems = getItemsByTag(tag);
+                return (
+                  <View key={tag} style={styles.tagSection}>
+                    <Text
+                      style={[
+                        styles.tagHeader,
+                        isCompact && compactStyles.tagHeader,
+                        { color: TAG_COLORS[tag] },
+                      ]}
+                    >
+                      {TAG_DISPLAY_NAMES[tag]}
+                    </Text>
+                    <View style={[styles.itemsGrid, isCompact && compactStyles.itemsGrid]}>
+                      {tagItems.map((item) => {
+                        const idx = flatIdx++;
+                        const unlocked = checkItemUnlocked(item.id);
+                        const isSelected = selectedItem?.id === item.id;
+                        const poolIndex = getItemPoolIndex(item.id);
+                        const isInPool = poolIndex >= 0 && draftPoolIndices.has(poolIndex);
+                        const isCursorItem = isController && idx === cursorIdx;
+                        const cell = (
+                          <TouchableOpacity
+                            key={item.id}
+                            style={[
+                              styles.itemGridCell,
+                              isCompact && compactStyles.itemGridCell,
+                              isInPool && styles.itemGridCellInPool,
+                              isSelected && styles.itemGridCellSelected,
+                            ]}
+                            onPress={() => setSelectedItem(item)}
+                            activeOpacity={0.7}
                           >
-                            <Image
-                              source={item.image}
-                              style={[
-                                styles.itemImage,
-                                isCompact && compactStyles.itemImage,
-                                !unlocked && styles.itemImageLocked,
-                              ]}
-                              resizeMode="contain"
-                            />
-                            {!unlocked && (
-                              <View style={styles.itemLockOverlay}>
-                                <Image
-                                  source={lockIconSource}
-                                  style={[
-                                    styles.gridLockIcon,
-                                    isCompact && compactStyles.gridLockIcon,
-                                  ]}
-                                  resizeMode="contain"
-                                />
-                              </View>
-                            )}
-                          </ImageBackground>
-                        </TouchableOpacity>
-                      );
-                      return isCursorItem ? (
-                        <View key={item.id} ref={cursorRef}>
-                          <FocusGlow active>{cell}</FocusGlow>
-                        </View>
-                      ) : cell;
-                    })}
+                            <ImageBackground
+                              source={squareFrameSource}
+                              style={[styles.itemFrame, isCompact && compactStyles.itemFrame]}
+                              resizeMode="stretch"
+                            >
+                              <Image
+                                source={item.image}
+                                style={[
+                                  styles.itemImage,
+                                  isCompact && compactStyles.itemImage,
+                                  !unlocked && styles.itemImageLocked,
+                                ]}
+                                resizeMode="contain"
+                              />
+                              {!unlocked && (
+                                <View style={styles.itemLockOverlay}>
+                                  <Image
+                                    source={lockIconSource}
+                                    style={[
+                                      styles.gridLockIcon,
+                                      isCompact && compactStyles.gridLockIcon,
+                                    ]}
+                                    resizeMode="contain"
+                                  />
+                                </View>
+                              )}
+                            </ImageBackground>
+                          </TouchableOpacity>
+                        );
+                        return isCursorItem ? (
+                          <View key={item.id} ref={cursorRef}>
+                            <FocusGlow active>{cell}</FocusGlow>
+                          </View>
+                        ) : (
+                          cell
+                        );
+                      })}
+                    </View>
                   </View>
-                </View>
-              );
-            }); })()}
+                );
+              });
+            })()}
           </ScrollView>
 
           {/* Right column - Item details sidebar */}
@@ -548,7 +555,9 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                       style={styles.lockedBannerIcon}
                       resizeMode="contain"
                     />
-                    <Text style={[styles.lockedBannerText, isCompact && compactStyles.lockedBannerText]}>
+                    <Text
+                      style={[styles.lockedBannerText, isCompact && compactStyles.lockedBannerText]}
+                    >
                       LOCKED
                     </Text>
                   </ImageBackground>
@@ -562,28 +571,42 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                     activeOpacity={0.8}
                   >
                     <ImageBackground
-                      source={!canRemoveSelectedItem
-                        ? buttonGraySource
-                        : selectedItemInPool
-                          ? buttonV1Source
-                          : buttonGreenSource}
-                      style={[styles.poolToggleButtonBg, isCompact && compactStyles.poolToggleButtonBg]}
+                      source={
+                        !canRemoveSelectedItem
+                          ? buttonGraySource
+                          : selectedItemInPool
+                            ? buttonV1Source
+                            : buttonGreenSource
+                      }
+                      style={[
+                        styles.poolToggleButtonBg,
+                        isCompact && compactStyles.poolToggleButtonBg,
+                      ]}
                       resizeMode="stretch"
                     >
-                      <Text style={[styles.poolToggleButtonText, isCompact && compactStyles.poolToggleButtonText]}>
+                      <Text
+                        style={[
+                          styles.poolToggleButtonText,
+                          isCompact && compactStyles.poolToggleButtonText,
+                        ]}
+                      >
                         {selectedItemInPool ? 'Remove from Pool' : 'Add to Pool'}
                       </Text>
                     </ImageBackground>
                   </TouchableOpacity>
                 )}
 
-                <View style={[styles.selectedItemHeader, isCompact && compactStyles.selectedItemHeader]}>
+                <View
+                  style={[styles.selectedItemHeader, isCompact && compactStyles.selectedItemHeader]}
+                >
                   <Image
                     source={selectedItem.image}
                     style={[styles.selectedItemImage, isCompact && compactStyles.selectedItemImage]}
                     resizeMode="contain"
                   />
-                  <Text style={[styles.selectedItemName, isCompact && compactStyles.selectedItemName]}>
+                  <Text
+                    style={[styles.selectedItemName, isCompact && compactStyles.selectedItemName]}
+                  >
                     {selectedItem.name}
                   </Text>
                   <View
@@ -602,11 +625,11 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                   style={styles.itemDescriptionScroll}
                   showsVerticalScrollIndicator={false}
                 >
-                  {(selectedItem.effect?.description ||
-                    ITEM_DESCRIPTIONS[selectedItem.name]) && (
-                    <Text style={[styles.itemDescription, isCompact && compactStyles.itemDescription]}>
-                      {selectedItem.effect?.description ||
-                        ITEM_DESCRIPTIONS[selectedItem.name]}
+                  {(selectedItem.effect?.description || ITEM_DESCRIPTIONS[selectedItem.name]) && (
+                    <Text
+                      style={[styles.itemDescription, isCompact && compactStyles.itemDescription]}
+                    >
+                      {selectedItem.effect?.description || ITEM_DESCRIPTIONS[selectedItem.name]}
                     </Text>
                   )}
 
@@ -622,8 +645,14 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                       {selectedItem.stats.atk !== undefined && (
                         <View style={styles.statRow}>
                           <View style={styles.statLabelRow}>
-                            <Image source={statIconATK} style={[styles.statIcon, isCompact && compactStyles.statIcon]} resizeMode="contain" />
-                            <Text style={[styles.statLabel, isCompact && compactStyles.statLabel]}>ATK</Text>
+                            <Image
+                              source={statIconATK}
+                              style={[styles.statIcon, isCompact && compactStyles.statIcon]}
+                              resizeMode="contain"
+                            />
+                            <Text style={[styles.statLabel, isCompact && compactStyles.statLabel]}>
+                              ATK
+                            </Text>
                           </View>
                           <Text style={[styles.statValue, isCompact && compactStyles.statValue]}>
                             +{selectedItem.stats.atk}
@@ -633,8 +662,14 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                       {selectedItem.stats.arm !== undefined && (
                         <View style={styles.statRow}>
                           <View style={styles.statLabelRow}>
-                            <Image source={statIconARM} style={[styles.statIcon, isCompact && compactStyles.statIcon]} resizeMode="contain" />
-                            <Text style={[styles.statLabel, isCompact && compactStyles.statLabel]}>ARM</Text>
+                            <Image
+                              source={statIconARM}
+                              style={[styles.statIcon, isCompact && compactStyles.statIcon]}
+                              resizeMode="contain"
+                            />
+                            <Text style={[styles.statLabel, isCompact && compactStyles.statLabel]}>
+                              ARM
+                            </Text>
                           </View>
                           <Text style={[styles.statValue, isCompact && compactStyles.statValue]}>
                             +{selectedItem.stats.arm}
@@ -644,8 +679,14 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                       {selectedItem.stats.spd !== undefined && (
                         <View style={styles.statRow}>
                           <View style={styles.statLabelRow}>
-                            <Image source={statIconSPD} style={[styles.statIcon, isCompact && compactStyles.statIcon]} resizeMode="contain" />
-                            <Text style={[styles.statLabel, isCompact && compactStyles.statLabel]}>SPD</Text>
+                            <Image
+                              source={statIconSPD}
+                              style={[styles.statIcon, isCompact && compactStyles.statIcon]}
+                              resizeMode="contain"
+                            />
+                            <Text style={[styles.statLabel, isCompact && compactStyles.statLabel]}>
+                              SPD
+                            </Text>
                           </View>
                           <Text style={[styles.statValue, isCompact && compactStyles.statValue]}>
                             +{selectedItem.stats.spd}
@@ -655,8 +696,14 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                       {selectedItem.stats.dig !== undefined && (
                         <View style={styles.statRow}>
                           <View style={styles.statLabelRow}>
-                            <Image source={statIconDIG} style={[styles.statIcon, isCompact && compactStyles.statIcon]} resizeMode="contain" />
-                            <Text style={[styles.statLabel, isCompact && compactStyles.statLabel]}>DIG</Text>
+                            <Image
+                              source={statIconDIG}
+                              style={[styles.statIcon, isCompact && compactStyles.statIcon]}
+                              resizeMode="contain"
+                            />
+                            <Text style={[styles.statLabel, isCompact && compactStyles.statLabel]}>
+                              DIG
+                            </Text>
                           </View>
                           <Text style={[styles.statValue, isCompact && compactStyles.statValue]}>
                             +{selectedItem.stats.dig}
@@ -666,8 +713,14 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                       {selectedItem.stats.hp !== undefined && (
                         <View style={styles.statRow}>
                           <View style={styles.statLabelRow}>
-                            <Image source={statIconHP} style={[styles.statIcon, isCompact && compactStyles.statIcon]} resizeMode="contain" />
-                            <Text style={[styles.statLabel, isCompact && compactStyles.statLabel]}>HP</Text>
+                            <Image
+                              source={statIconHP}
+                              style={[styles.statIcon, isCompact && compactStyles.statIcon]}
+                              resizeMode="contain"
+                            />
+                            <Text style={[styles.statLabel, isCompact && compactStyles.statLabel]}>
+                              HP
+                            </Text>
                           </View>
                           <Text style={[styles.statValue, isCompact && compactStyles.statValue]}>
                             +{selectedItem.stats.hp}

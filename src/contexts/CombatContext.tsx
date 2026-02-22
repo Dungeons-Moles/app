@@ -10,6 +10,7 @@ import React, {
   useReducer,
   useCallback,
   useEffect,
+  useMemo,
   useState,
   ReactNode,
   Dispatch,
@@ -547,9 +548,10 @@ function combatReducer(state: CombatUIState, action: CombatAction): CombatUIStat
         }
       }
 
-      // Keep only recent items (last 10)
-      const trimmedNumbers = newDamageNumbers.slice(-10);
-      const trimmedNotifications = newEffectNotifications.slice(-8);
+      // Cap concurrent floating numbers to limit native-thread animation pressure
+      // (each FloatingNumber creates 3 animated values: translateY, opacity, scale)
+      const trimmedNumbers = newDamageNumbers.slice(-6);
+      const trimmedNotifications = newEffectNotifications.slice(-4);
 
       return {
         ...state,
@@ -600,8 +602,8 @@ interface CombatContextType {
     input: CombatResolverInput,
     outcome: { finalPlayerHp: number; playerWon: boolean; finalEnemyHp?: number }
   ) => void;
-  /** Get current combatant states for display (includes dynamic gold tracking) */
-  getDisplayStates: () => {
+  /** Current combatant states for display (includes dynamic gold tracking) */
+  displayStates: {
     player: CombatantState | null;
     enemy: CombatantState | null;
     playerGold?: number;
@@ -668,9 +670,9 @@ export function CombatProvider({ children, initialSpeed, onSpeedChange }: Combat
     [dispatch]
   );
 
-  const getDisplayStates = useCallback(() => {
+  const displayStates = useMemo(() => {
     if (!state.resolvedCombat || !state.combat) {
-      return { player: null, enemy: null };
+      return { player: null, enemy: null } as const;
     }
 
     const normalizeCombatant = (combatant: CombatantState): CombatantState => ({
@@ -793,20 +795,30 @@ export function CombatProvider({ children, initialSpeed, onSpeedChange }: Combat
     return () => clearTimeout(timer);
   }, [state.currentLogIndex, state.resolvedCombat, state.isComplete, speed, dispatch, terminalLogIndex]);
 
+  const value = useMemo<CombatContextType>(() => ({
+    state,
+    dispatch,
+    speed,
+    setSpeed,
+    startCombat,
+    startCombatWithLog,
+    startCombatWithOnchainOutcome,
+    displayStates,
+    getResult,
+  }), [
+    state,
+    dispatch,
+    speed,
+    setSpeed,
+    startCombat,
+    startCombatWithLog,
+    startCombatWithOnchainOutcome,
+    displayStates,
+    getResult,
+  ]);
+
   return (
-    <CombatContext.Provider
-      value={{
-        state,
-        dispatch,
-        speed,
-        setSpeed,
-        startCombat,
-        startCombatWithLog,
-        startCombatWithOnchainOutcome,
-        getDisplayStates,
-        getResult,
-      }}
-    >
+    <CombatContext.Provider value={value}>
       {children}
     </CombatContext.Provider>
   );

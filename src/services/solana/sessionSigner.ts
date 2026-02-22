@@ -383,33 +383,51 @@ export async function drainSessionSignerToMain(
 ): Promise<string> {
   const balance = await connection.getBalance(sessionSignerKeypair.publicKey);
   const latestBlockhash = await connection.getLatestBlockhash(SOLANA_CONFIG.commitment);
-  const feeProbe = new Transaction({
+
+  // Build the exact transaction we'll send (no extra ComputeBudget instruction)
+  // so the fee probe matches the actual fee precisely. We need the account to
+  // end at exactly 0 lamports — any non-zero residual below rent-exempt (~890K)
+  // causes "insufficient funds for rent".
+  const tx = new Transaction({
     feePayer: sessionSignerKeypair.publicKey,
     recentBlockhash: latestBlockhash.blockhash,
   }).add(
     SystemProgram.transfer({
       fromPubkey: sessionSignerKeypair.publicKey,
       toPubkey: mainWalletAddress,
-      lamports: 1,
+      lamports: 1, // placeholder, replaced below
     })
   );
-  const exactFee = (await connection.getFeeForMessage(feeProbe.compileMessage(), SOLANA_CONFIG.commitment))
+  const exactFee = (await connection.getFeeForMessage(tx.compileMessage(), SOLANA_CONFIG.commitment))
     .value;
-  const feeBuffer = exactFee ?? ESTIMATED_TX_FEE;
-  const transferAmount = balance - feeBuffer - 1; // keep 1 lamport safety margin for fee variance
+  const fee = exactFee ?? ESTIMATED_TX_FEE;
+  const transferAmount = balance - fee;
   if (transferAmount <= 0) {
     throw new Error('Insufficient balance to drain');
   }
 
-  const transaction = new Transaction().add(
+  // Rebuild with the correct transfer amount
+  const drainTx = new Transaction({
+    feePayer: sessionSignerKeypair.publicKey,
+    recentBlockhash: latestBlockhash.blockhash,
+  }).add(
     SystemProgram.transfer({
       fromPubkey: sessionSignerKeypair.publicKey,
       toPubkey: mainWalletAddress,
       lamports: transferAmount,
     })
   );
+  drainTx.sign(sessionSignerKeypair);
 
-  return sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair);
+  const signature = await connection.sendRawTransaction(drainTx.serialize(), {
+    skipPreflight: false,
+    maxRetries: 2,
+  });
+  await connection.confirmTransaction(
+    { signature, blockhash: latestBlockhash.blockhash, lastValidBlockHeight: latestBlockhash.lastValidBlockHeight },
+    SOLANA_CONFIG.commitment
+  );
+  return signature;
 }
 
 /**
@@ -456,8 +474,19 @@ export async function sendSessionSignerTransaction(
     // Add a random compute unit price to ensure transaction uniqueness on localnet.
     // This prevents "transaction already processed" errors when making similar
     // transactions (e.g., moving back and forth) within the same blockhash slot.
-    const randomMicroLamports = Math.floor(Math.random() * 1000) + 1;
-    tx.add(ComputeBudgetProgram.setComputeUnitPrice({ microLamports: randomMicroLamports }));
+    // Skip if the transaction already has a setComputeUnitPrice instruction.
+    const COMPUTE_BUDGET_PROGRAM_ID = ComputeBudgetProgram.programId;
+    const SET_CU_PRICE_DISCRIMINATOR = 3;
+    const hasCuPrice = baseInstructions.some(
+      (ix) =>
+        ix.programId.equals(COMPUTE_BUDGET_PROGRAM_ID) &&
+        ix.data.length > 0 &&
+        ix.data[0] === SET_CU_PRICE_DISCRIMINATOR
+    );
+    if (!hasCuPrice) {
+      const randomMicroLamports = Math.floor(Math.random() * 1000) + 1;
+      tx.add(ComputeBudgetProgram.setComputeUnitPrice({ microLamports: randomMicroLamports }));
+    }
 
     const confirmationCommitment = erConnection
       ? SOLANA_CONFIG.erCommitment
@@ -533,14 +562,20 @@ export async function sendSessionSignerTransaction(
       lastError = err;
       if (!erConnection || !isRetriableErWriteLockError(err) || attempt >= maxAttempts) {
         if (err instanceof SendTransactionError) {
-          try {
-            const logs = await err.getLogs(connection);
-            console.error('[sessionSignerWallet] sendSessionSignerTransaction logs:', logs);
-          } catch (logErr) {
-            console.error(
-              '[sessionSignerWallet] sendSessionSignerTransaction getLogs failed:',
-              logErr
-            );
+          // Log preflight simulation logs if available (works on base chain
+          // where skipPreflight=false). Fallback to getLogs() only if needed.
+          const preflightLogs = err.logs;
+          if (preflightLogs?.length) {
+            console.error('[sessionSignerWallet] Transaction failed. Logs:', preflightLogs);
+          } else {
+            try {
+              const fetchedLogs = await err.getLogs(connection);
+              console.error('[sessionSignerWallet] Transaction failed. Logs:', fetchedLogs);
+            } catch (_logErr) {
+              // getLogs requires 'confirmed' commitment but ER/localnet connections
+              // use 'processed'. Log what we have from the error itself.
+              console.error('[sessionSignerWallet] Transaction failed:', err.message);
+            }
           }
         }
         throw err;

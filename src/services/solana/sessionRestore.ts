@@ -304,9 +304,10 @@ export async function fetchFullSessionState(
     generatedMapData.height
   );
 
-  // Apply broken walls from AsyncStorage (walls dug during gameplay are not stored on-chain)
+  // Apply broken walls from AsyncStorage (walls dug during gameplay are not stored on-chain).
+  // Skip for fresh sessions to prevent stale data from a previous session on the same PDA.
   const sessionKey = sessionPda.toBase58();
-  const brokenWalls = await loadBrokenWalls(sessionKey);
+  const brokenWalls = gameStateData.totalMoves === 0 ? null : await loadBrokenWalls(sessionKey);
   if (brokenWalls) {
     for (const wall of brokenWalls) {
       if (
@@ -325,7 +326,12 @@ export async function fetchFullSessionState(
     generatedMapData.enemies,
     generatedMapData.enemyCount
   );
-  const pois = convertPois(generatedMapData.pois, generatedMapData.poiCount, mapPoisData);
+  const pois = convertPois(
+    generatedMapData.pois,
+    generatedMapData.poiCount,
+    mapPoisData,
+    gameStateData.runMode
+  );
   const time = convertTimeState(
     gameStateData,
     gameStateData.campaignLevel,
@@ -348,12 +354,14 @@ export async function fetchFullSessionState(
     },
   };
 
-  // Restore fog from AsyncStorage or build from player position
-  const restoredFog = await loadFogState(
-    sessionKey,
-    generatedMapData.width,
-    generatedMapData.height
-  );
+  // Restore fog from AsyncStorage or build from player position.
+  // Skip loading cached fog/walls for fresh sessions (totalMoves === 0) to prevent
+  // stale data from a previous session on the same deterministic PDA from bleeding through
+  // (e.g., after a validator reset where the same PDA is reused for a new session).
+  const isFreshSession = gameStateData.totalMoves === 0;
+  const restoredFog = isFreshSession
+    ? null
+    : await loadFogState(sessionKey, generatedMapData.width, generatedMapData.height);
   if (restoredFog) {
     map.fog = restoredFog;
     // Mark enemies as discovered if they're on revealed/visible tiles
@@ -368,10 +376,16 @@ export async function fetchFullSessionState(
       return enemy;
     });
   } else {
-    // No saved fog: new session, reveal with initial sight radius (6)
+    // No saved fog or fresh session: reveal with initial sight radius (6)
     const updatedMap = applyInitialVisibility(map, playerPos);
     map.fog = updatedMap.fog;
     map.enemies = updatedMap.enemies;
+  }
+
+  // Clear stale caches for fresh sessions
+  if (isFreshSession) {
+    await clearFogState(sessionKey).catch(() => {});
+    await clearBrokenWalls(sessionKey).catch(() => {});
   }
 
   // Build RNG state: seed + totalMoves for deterministic resumption
@@ -498,24 +512,37 @@ export function convertEnemies(
 // POI Conversion
 // ============================================================================
 
+/** Counter Cache POI type ID (L13) — excluded from Duel/Gauntlet on-chain */
+const COUNTER_CACHE_POI_TYPE = 13;
+
 /**
  * Converts on-chain POI data to game engine MapPOI array.
+ *
+ * Counter Cache (type 13) is boss-prep content and is excluded from
+ * Duel/Gauntlet modes on-chain (see poi-system initialize_map_pois).
+ * We must mirror that filter here so the local map matches MapPois.
  *
  * @param generatedPois - GeneratedMap POI spawns
  * @param poiCount - Actual POI count
  * @param mapPoisData - On-chain MapPois data (has used/discovered state)
+ * @param runMode - Session run mode (Campaign, Duel, Gauntlet)
  * @returns Array of MapPOI for the game engine
  */
 export function convertPois(
   generatedPois: GeneratedMapData['pois'],
   poiCount: number,
-  mapPoisData: MapPoisData | null
+  mapPoisData: MapPoisData | null,
+  runMode: RunMode = RunMode.Campaign
 ): MapPOI[] {
   const result: MapPOI[] = [];
+  const excludeCounterCache = runMode === RunMode.Duel || runMode === RunMode.Gauntlet;
 
   for (let i = 0; i < poiCount; i++) {
     const poi = generatedPois[i];
     if (!poi) continue;
+
+    // Mirror on-chain filter: Counter Cache is boss-prep, excluded from PvP modes
+    if (excludeCounterCache && poi.poiType === COUNTER_CACHE_POI_TYPE) continue;
 
     const poiId = POI_TYPE_TO_ID[poi.poiType];
     if (!poiId) {
@@ -523,13 +550,15 @@ export function convertPois(
       continue;
     }
 
-    // Use MapPois data for visited/discovered state if available
-    const mapPoiInstance = mapPoisData?.pois?.[i];
+    // Match MapPois entry by position (indices can differ when POIs are filtered)
+    const mapPoiInstance = mapPoisData?.pois?.find(
+      (p) => p.x === poi.x && p.y === poi.y
+    );
     const isUsed = mapPoiInstance ? mapPoiInstance.used : poi.isUsed;
     const isDiscovered = mapPoiInstance ? mapPoiInstance.discovered : false;
 
     result.push({
-      id: `poi-${i}`,
+      id: `poi-${result.length}`,
       definitionId: poiId,
       position: { x: poi.x, y: poi.y },
       visited: isUsed,

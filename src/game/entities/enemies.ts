@@ -60,7 +60,7 @@ export const TIER_GOLD_REWARDS: Record<1 | 2 | 3, number> = {
  * Calculate gold reward for defeating an enemy
  * Per GDD: T1=2, T2=4, T3=6 (regardless of enemy type)
  */
-export function calculateGoldReward(_enemyId: EnemyId, tier: 1 | 2 | 3): number {
+export function calculateGoldReward(_enemyId: string, tier: 1 | 2 | 3): number {
   return TIER_GOLD_REWARDS[tier];
 }
 
@@ -180,7 +180,7 @@ export const ENEMY_DEFINITIONS: Record<EnemyId, EnemyDefinition> = {
 
   // --------------------------------------------------------------------------
   // Shard Beetle: 🪲 | T1: 8/1/2/1/2 | T2: 11/2/3/1/2 | T3: 14/3/4/2/3
-  // Trait: Battle Start: gain 3 Shrapnel
+  // Trait: Battle Start: gain 1 Shrapnel
   // --------------------------------------------------------------------------
   SHARD_BEETLE: {
     id: 'SHARD_BEETLE',
@@ -193,7 +193,7 @@ export const ENEMY_DEFINITIONS: Record<EnemyId, EnemyDefinition> = {
     ],
     trait: {
       name: 'Shards',
-      description: 'Battle Start: gain 3 Shrapnel',
+      description: 'Battle Start: gain 1 Shrapnel',
       timing: 'BATTLE_START',
     },
     biome: 'A',
@@ -201,7 +201,7 @@ export const ENEMY_DEFINITIONS: Record<EnemyId, EnemyDefinition> = {
 
   // --------------------------------------------------------------------------
   // Tunnel Warden: 🦀 | T1: 8/2/2/2/2 | T2: 11/3/4/3/2 | T3: 14/4/6/4/3
-  // Trait: First strike each turn: remove 2 Armor from you before damage
+  // Trait: First strike each turn: remove 1 Armor from you before damage
   // --------------------------------------------------------------------------
   TUNNEL_WARDEN: {
     id: 'TUNNEL_WARDEN',
@@ -214,7 +214,7 @@ export const ENEMY_DEFINITIONS: Record<EnemyId, EnemyDefinition> = {
     ],
     trait: {
       name: 'Armor Pierce',
-      description: 'First strike each turn: remove 2 Armor from you before damage',
+      description: 'First strike each turn: remove 1 Armor from you before damage',
       timing: 'FIRST_STRIKE',
     },
     biome: 'BOTH',
@@ -222,7 +222,7 @@ export const ENEMY_DEFINITIONS: Record<EnemyId, EnemyDefinition> = {
 
   // --------------------------------------------------------------------------
   // Burrow Ambusher: 🦂 | T1: 6/2/0/4/2 | T2: 9/3/0/5/2 | T3: 12/4/0/6/3
-  // Trait: Battle Start: deal 2 damage ignoring Armor
+  // Trait: Battle Start: deal 1 damage ignoring Armor
   // --------------------------------------------------------------------------
   BURROW_AMBUSHER: {
     id: 'BURROW_AMBUSHER',
@@ -235,7 +235,7 @@ export const ENEMY_DEFINITIONS: Record<EnemyId, EnemyDefinition> = {
     ],
     trait: {
       name: 'Ambush',
-      description: 'Battle Start: deal 2 damage ignoring Armor',
+      description: 'Battle Start: deal 1 damage ignoring Armor',
       timing: 'BATTLE_START',
     },
     biome: 'B',
@@ -243,7 +243,7 @@ export const ENEMY_DEFINITIONS: Record<EnemyId, EnemyDefinition> = {
 
   // --------------------------------------------------------------------------
   // Frost Wisp: 🧊 | T1: 7/1/0/4/1 | T2: 10/2/0/5/1 | T3: 13/3/0/6/2
-  // Trait: If it acts first on Turn 1: apply 2 Chill
+  // Trait: If it acts first on Turn 1: apply 1 Chill
   // --------------------------------------------------------------------------
   FROST_WISP: {
     id: 'FROST_WISP',
@@ -256,7 +256,7 @@ export const ENEMY_DEFINITIONS: Record<EnemyId, EnemyDefinition> = {
     ],
     trait: {
       name: 'Frost Aura',
-      description: 'If it acts first on Turn 1: apply 2 Chill',
+      description: 'If it acts first on Turn 1: apply 1 Chill',
       timing: 'FIRST_TURN',
     },
     biome: 'B',
@@ -264,7 +264,7 @@ export const ENEMY_DEFINITIONS: Record<EnemyId, EnemyDefinition> = {
 
   // --------------------------------------------------------------------------
   // Powder Tick: 🧨 | T1: 6/1/0/2/1 | T2: 9/2/0/3/1 | T3: 12/3/0/4/2
-  // Trait: Countdown(3): deal 5 damage to you and itself (non-weapon)
+  // Trait: Countdown(3): deal 3 damage to you and itself (non-weapon)
   // --------------------------------------------------------------------------
   POWDER_TICK: {
     id: 'POWDER_TICK',
@@ -277,7 +277,7 @@ export const ENEMY_DEFINITIONS: Record<EnemyId, EnemyDefinition> = {
     ],
     trait: {
       name: 'Explosive',
-      description: 'Countdown(3): deal 5 damage to you and itself (non-weapon)',
+      description: 'Countdown(3): deal 3 damage to you and itself (non-weapon)',
       timing: 'COUNTDOWN',
     },
     biome: 'B',

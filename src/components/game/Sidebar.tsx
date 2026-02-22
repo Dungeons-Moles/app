@@ -2,7 +2,7 @@
  * Sidebar Component - Combines BossPanel, StatsPanel, and InventoryPanel
  */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, StyleSheet, ImageBackground, Text, Image, Pressable } from 'react-native';
 import { PublicKey } from '@solana/web3.js';
 import { StatsPanel } from './StatsPanel';
@@ -26,7 +26,7 @@ import {
   GAMEPLAY_STATE_PROGRAM_ID,
 } from '../../services/solana/constants';
 import { RunMode } from '../../services/solana/types/gameplay_state';
-import { fetchGauntletWeekEchoPreview } from '../../services/solana/gauntlet';
+import { fetchGauntletEchoFromGameState } from '../../services/solana/gauntlet';
 import { calculateItemStats } from '../../game/entities/items';
 import {
   convertItemInstanceToGear,
@@ -62,7 +62,7 @@ const OIL_IMAGES: Record<ToolOil, any> = {
 
 /** Gauntlet gear capacity per week (starts at 4, gains 4 each week) */
 function gauntletGearCapacity(week: number): number {
-  return Math.min(4 + (week - 1) * 4, 12);
+  return Math.min(4 + (week - 1) * 2, 12);
 }
 
 interface SidebarProps {
@@ -93,15 +93,15 @@ interface SidebarProps {
 const GEAR_SLOT_SIZE = 28;
 const TOOL_SLOT_SIZE = 42;
 
-function EchoGearSlot({ item, size = GEAR_SLOT_SIZE }: { item: Gear | null; size?: number }) {
-  const tierBorder = item
-    ? (() => {
-        const tier = getTierFromRarity(item.currentRarity);
-        if (tier === 2) return '#4A90D9';
-        if (tier === 3) return '#FFD700';
-        return null;
-      })()
-    : null;
+const EchoGearSlot = React.memo(function EchoGearSlot({ item, size = GEAR_SLOT_SIZE }: { item: Gear | null; size?: number }) {
+  const tierBorder = useMemo(() => {
+    if (!item) return null;
+    const tier = getTierFromRarity(item.currentRarity);
+    if (tier === 2) return '#4A90D9';
+    if (tier === 3) return '#FFD700';
+    return null;
+  }, [item]);
+
   return (
     <ImageBackground
       source={SLOT_BG}
@@ -120,17 +120,17 @@ function EchoGearSlot({ item, size = GEAR_SLOT_SIZE }: { item: Gear | null; size
         ))}
     </ImageBackground>
   );
-}
+});
 
-function EchoToolSlot({ tool, size = TOOL_SLOT_SIZE }: { tool: Tool | null; size?: number }) {
-  const tierBorder = tool
-    ? (() => {
-        const tier = getTierFromRarity(tool.rarity);
-        if (tier === 2) return '#4A90D9';
-        if (tier === 3) return '#FFD700';
-        return null;
-      })()
-    : null;
+const EchoToolSlot = React.memo(function EchoToolSlot({ tool, size = TOOL_SLOT_SIZE }: { tool: Tool | null; size?: number }) {
+  const tierBorder = useMemo(() => {
+    if (!tool) return null;
+    const tier = getTierFromRarity(tool.rarity);
+    if (tier === 2) return '#4A90D9';
+    if (tier === 3) return '#FFD700';
+    return null;
+  }, [tool]);
+
   return (
     <ImageBackground
       source={SLOT_BG}
@@ -149,7 +149,7 @@ function EchoToolSlot({ tool, size = TOOL_SLOT_SIZE }: { tool: Tool | null; size
         ))}
     </ImageBackground>
   );
-}
+});
 
 function EchoOilSlot({ oil, size = TOOL_SLOT_SIZE }: { oil: ToolOil | null; size?: number }) {
   return (
@@ -252,12 +252,12 @@ export function BossPanel({
     sessionGameState?.maxWeeks === 5;
   const isDuelRun = resolvedRunMode === RunMode.Duel;
   const isDuelFinalWeek = isDuelRun && resolvedWeek === 3;
-  const duelWeekBoss = useCallback(() => {
+  const duelWeekBoss = useMemo(() => {
     if (!isDuelRun || (resolvedWeek !== 1 && resolvedWeek !== 2)) return null;
     if (mapSeed == null) return null;
     const derivedBossId = selectDuelWeekBossForSeed(mapSeed, resolvedWeek);
     return getBoss(derivedBossId);
-  }, [isDuelRun, mapSeed, resolvedWeek])();
+  }, [isDuelRun, mapSeed, resolvedWeek]);
   const displayedBoss = isDuelFinalWeek ? null : isDuelRun ? duelWeekBoss : boss;
   const shouldShowGauntletEcho = !displayedBoss && isGauntletRun;
   const shouldShowDuelOpponent = !displayedBoss && isDuelFinalWeek;
@@ -284,6 +284,7 @@ export function BossPanel({
     [connection]
   );
 
+  const gameStateWeek = gameState?.week;
   const loadPvpDetails = useCallback(async () => {
     if (!wallet.publicKey || displayedBoss || !isGauntletRun) {
       setPvpDetails({
@@ -291,8 +292,8 @@ export function BossPanel({
         sourceLabel: 'PvP Echo',
         tool: null,
         gear: [],
-        stats: { hp: 10, atk: 1, arm: 0, spd: 0, dig: 0, gold: 0 },
-        week: gameState?.week ?? 1,
+        stats: { hp: 15, atk: 1, arm: 0, spd: 0, dig: 0, gold: 0 },
+        week: gameStateWeek ?? 1,
       });
       return;
     }
@@ -300,66 +301,29 @@ export function BossPanel({
     setPvpLoading(true);
     try {
       const gameplayProgram = createGameplayStateProgram(connection);
-      let runMode = gameState?.runMode;
-      let week = gameState?.week;
-      let totalMoves = gameState?.totalMoves;
-      let session = gameState?.session;
-      let maxWeeks: number | undefined = gameState?.maxWeeks;
+      const week = gameStateWeek;
 
-      // Web can lag context hydration; fetch directly from on-chain gauntlet session when needed.
-      if (
-        (runMode !== RunMode.Gauntlet && maxWeeks !== 5) ||
-        week === undefined ||
-        totalMoves === undefined ||
-        !session
-      ) {
-        const [gauntletSessionPda] = deriveGauntletSessionPda(wallet.publicKey);
-        const [gauntletGameStatePda] = PublicKey.findProgramAddressSync(
-          [Buffer.from('game_state'), gauntletSessionPda.toBuffer()],
-          GAMEPLAY_STATE_PROGRAM_ID
-        );
-        const fetched = await (
-          gameplayProgram.account as {
-            gameState: {
-              fetch: (address: PublicKey) => Promise<{
-                runMode?: { gauntlet?: object };
-                week: number;
-                totalMoves: number;
-                session: PublicKey;
-                maxWeeks?: number;
-              }>;
-            };
-          }
-        ).gameState.fetch(gauntletGameStatePda);
-        runMode = fetched?.runMode && 'gauntlet' in fetched.runMode ? RunMode.Gauntlet : runMode;
-        week = fetched.week;
-        totalMoves = fetched.totalMoves;
-        session = fetched.session;
-        maxWeeks = fetched.maxWeeks;
-      }
-
-      if (
-        (runMode !== RunMode.Gauntlet && maxWeeks !== 5) ||
-        week === undefined ||
-        totalMoves === undefined ||
-        !session
-      ) {
+      if (week === undefined) {
         setPvpDetails({
           name: 'Mole Echo',
           sourceLabel: 'PvP Echo',
           tool: null,
           gear: [],
-          stats: { hp: 10, atk: 1, arm: 0, spd: 0, dig: 0, gold: 0 },
-          week: week ?? 1,
+          stats: { hp: 15, atk: 1, arm: 0, spd: 0, dig: 0, gold: 0 },
+          week: 1,
         });
         return;
       }
 
-      const preview = await fetchGauntletWeekEchoPreview(gameplayProgram, {
-        week,
-        session,
-        player: wallet.publicKey,
-      });
+      // Derive game state PDA and read echo directly from the account's gauntletEchoes field.
+      // This is the source of truth — echoes are drawn at enter_gauntlet time and stored here.
+      const [gauntletSessionPda] = deriveGauntletSessionPda(wallet.publicKey);
+      const [gameStatePda] = PublicKey.findProgramAddressSync(
+        [Buffer.from('game_state'), gauntletSessionPda.toBuffer()],
+        GAMEPLAY_STATE_PROGRAM_ID
+      );
+
+      const preview = await fetchGauntletEchoFromGameState(gameplayProgram, gameStatePda, week);
 
       if (!preview) {
         setPvpDetails({
@@ -367,7 +331,7 @@ export function BossPanel({
           sourceLabel: 'PvP Echo',
           tool: null,
           gear: [],
-          stats: { hp: 10, atk: 1, arm: 0, spd: 0, dig: 0, gold: 0 },
+          stats: { hp: 15, atk: 1, arm: 0, spd: 0, dig: 0, gold: 0 },
           week,
         });
         return;
@@ -404,7 +368,7 @@ export function BossPanel({
         tool,
         gear,
         stats: {
-          hp: 10 + (itemStats.hp ?? 0),
+          hp: 15 + (itemStats.hp ?? 0),
           atk: 1 + (itemStats.atk ?? 0),
           arm: itemStats.arm ?? 0,
           spd: itemStats.spd ?? 0,
@@ -419,8 +383,8 @@ export function BossPanel({
         sourceLabel: 'PvP Echo',
         tool: null,
         gear: [],
-        stats: { hp: 10, atk: 1, arm: 0, spd: 0, dig: 0, gold: 0 },
-        week: gameState?.week ?? 1,
+        stats: { hp: 15, atk: 1, arm: 0, spd: 0, dig: 0, gold: 0 },
+        week: gameStateWeek ?? 1,
       });
     } finally {
       setPvpLoading(false);
@@ -429,7 +393,7 @@ export function BossPanel({
     displayedBoss,
     connection,
     fetchProfileNameByWallet,
-    gameState,
+    gameStateWeek,
     wallet.publicKey,
     isGauntletRun,
   ]);

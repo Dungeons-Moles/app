@@ -73,7 +73,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
   const [mode, setMode] = React.useState<'online' | 'cached' | 'guest'>('guest');
   const [error, setError] = React.useState<string | null>(null);
   const [isPurchasing, setIsPurchasing] = useState(false);
-  const [unlockedIndices, setUnlockedIndices] = useState<Set<number>>(new Set());
+  const [localUnlockedIndices, setLocalUnlockedIndices] = useState<Set<number>>(new Set());
   const [defaultCombatSpeed, setDefaultCombatSpeed] = useState<CombatSpeed>('normal');
   const hasFetchedRef = useRef(false);
   const fetchProfileRef = useRef(profileApi.fetchProfile);
@@ -88,25 +88,29 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  // Update unlocked items when profile loads from bitmask
-  useEffect(() => {
-    if (profileApi.profile?.unlockedItems) {
-      const bitmask = profileApi.profile.unlockedItems;
-      const newIndices = new Set<number>();
-
-      // Parse bitmask (10 bytes = 80 bits)
-      for (let byteIndex = 0; byteIndex < bitmask.length; byteIndex++) {
-        const byte = bitmask[byteIndex];
-        for (let bitIndex = 0; bitIndex < 8; bitIndex++) {
-          if ((byte & (1 << bitIndex)) !== 0) {
-            // Global index = byteIndex * 8 + bitIndex
-            newIndices.add(byteIndex * 8 + bitIndex);
-          }
+  // Derive unlocked indices from profile bitmask (pure computation, no effect needed)
+  const onChainUnlockedIndices = useMemo(() => {
+    if (!profileApi.profile?.unlockedItems) return new Set<number>();
+    const bitmask = profileApi.profile.unlockedItems;
+    const indices = new Set<number>();
+    for (let byteIndex = 0; byteIndex < bitmask.length; byteIndex++) {
+      const byte = bitmask[byteIndex];
+      for (let bitIndex = 0; bitIndex < 8; bitIndex++) {
+        if ((byte & (1 << bitIndex)) !== 0) {
+          indices.add(byteIndex * 8 + bitIndex);
         }
       }
-      setUnlockedIndices(newIndices);
     }
+    return indices;
   }, [profileApi.profile?.unlockedItems]);
+
+  // Merge on-chain indices with local optimistic unlocks
+  const unlockedIndices = useMemo(() => {
+    if (localUnlockedIndices.size === 0) return onChainUnlockedIndices;
+    const merged = new Set(onChainUnlockedIndices);
+    for (const idx of localUnlockedIndices) merged.add(idx);
+    return merged;
+  }, [onChainUnlockedIndices, localUnlockedIndices]);
 
   // Keep ref updated with latest fetchProfile
   useEffect(() => {
@@ -332,7 +336,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     (itemId: string) => {
       const index = getGlobalItemIndex(itemId);
       if (index !== -1) {
-        setUnlockedIndices((prev) => {
+        setLocalUnlockedIndices((prev) => {
           const newSet = new Set(prev);
           newSet.add(index);
           return newSet;
@@ -349,13 +353,8 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     return getItemForLevel(level);
   }, []);
 
-  // Compute unlocked items list (Placeholder implementation if not used by HubScreen)
-  const unlockedItems = useMemo((): any[] => {
-    // This is kept for compatibility but might need proper implementation
-    // if other screens use unlockedItems array.
-    // For now, HubScreen uses isItemUnlocked(id) which works correctly with new logic.
-    return [];
-  }, [unlockedIndices]);
+  // Placeholder — HubScreen uses isItemUnlocked(id) instead of this array.
+  const unlockedItems: any[] = [];
 
   // Convenience accessors
   const availableRuns = profileApi.profile?.availableRuns ?? 0;

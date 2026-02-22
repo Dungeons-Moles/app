@@ -81,11 +81,7 @@ function ButtonIcon({ button, size }: { button: HintButton; size: number }) {
   if (button === 'DPadUpDown') {
     return (
       <View style={iconStyles.compound}>
-        <Image
-          source={ICON_DIRECTION}
-          style={{ width: size, height: size }}
-          resizeMode="contain"
-        />
+        <Image source={ICON_DIRECTION} style={{ width: size, height: size }} resizeMode="contain" />
         <Image
           source={ICON_DIRECTION}
           style={{ width: size, height: size, transform: [{ rotate: '180deg' }] }}
@@ -124,15 +120,25 @@ interface ControllerHintsProps {
   columns?: number;
   /** Position the hints on the right side instead of the default left */
   align?: 'left' | 'right';
+  noBackground?: boolean;
+  size?: 'normal' | 'large';
 }
 
-export function ControllerHints({ hints, horizontal, columns, align = 'left' }: ControllerHintsProps) {
+export function ControllerHints({
+  hints,
+  horizontal,
+  columns,
+  align = 'left',
+  noBackground,
+  size = 'normal',
+}: ControllerHintsProps) {
   const inputMode = useInputMode();
   const isCompact = useScreenVariant() === 'compact';
 
   if (inputMode !== 'controller' || hints.length === 0) return null;
 
-  const iconSize = isCompact ? 30 : 20;
+  const baseIconSize = isCompact ? 30 : 20;
+  const iconSize = size === 'large' ? baseIconSize * 1.3 : baseIconSize;
   const isRight = align === 'right';
   const dpadHint = !horizontal ? hints.find((h) => h.button === 'DPad') : undefined;
   const regularHints = dpadHint ? hints.filter((h) => h.button !== 'DPad') : hints;
@@ -142,12 +148,22 @@ export function ControllerHints({ hints, horizontal, columns, align = 'left' }: 
       <View style={[styles.iconWrap, { minWidth: iconSize + 8 }]}>
         <ButtonIcon button={hint.button} size={iconSize} />
       </View>
-      <Text style={[styles.label, isCompact && styles.labelCompact]}>{hint.label}</Text>
+      <Text
+        style={[
+          styles.label,
+          isCompact && styles.labelCompact,
+          size === 'large' && { fontSize: isCompact ? 22 : 14 },
+        ]}
+      >
+        {hint.label}
+      </Text>
     </View>
   ));
 
   const positionStyle = isRight
-    ? isCompact ? styles.containerRight : styles.containerRightBase
+    ? isCompact
+      ? styles.containerRight
+      : styles.containerRightBase
     : undefined;
 
   if (dpadHint) {
@@ -160,6 +176,7 @@ export function ControllerHints({ hints, horizontal, columns, align = 'left' }: 
           styles.containerRow,
           isCompact && styles.containerRowCompact,
           positionStyle,
+          noBackground && styles.noBackground,
         ]}
       >
         <View style={{ gap: isCompact ? 10 : 6 }}>{hintRows}</View>
@@ -183,12 +200,16 @@ export function ControllerHints({ hints, horizontal, columns, align = 'left' }: 
       rows.push(hintRows.slice(i, i + columns));
     }
     return (
-      <View style={[styles.container, isCompact && styles.containerCompact, positionStyle]}>
+      <View
+        style={[
+          styles.container,
+          isCompact && styles.containerCompact,
+          positionStyle,
+          noBackground && styles.noBackground,
+        ]}
+      >
         {rows.map((row, ri) => (
-          <View
-            key={ri}
-            style={[styles.containerRow, isCompact && styles.containerRowCompact]}
-          >
+          <View key={ri} style={[styles.containerRow, isCompact && styles.containerRowCompact]}>
             {row}
           </View>
         ))}
@@ -205,6 +226,7 @@ export function ControllerHints({ hints, horizontal, columns, align = 'left' }: 
           styles.containerRow,
           isCompact && styles.containerRowCompact,
           positionStyle,
+          noBackground && styles.noBackground,
         ]}
       >
         {hintRows}
@@ -213,7 +235,14 @@ export function ControllerHints({ hints, horizontal, columns, align = 'left' }: 
   }
 
   return (
-    <View style={[styles.container, isCompact && styles.containerCompact, positionStyle]}>
+    <View
+      style={[
+        styles.container,
+        isCompact && styles.containerCompact,
+        positionStyle,
+        noBackground && styles.noBackground,
+      ]}
+    >
       {hintRows}
     </View>
   );
@@ -273,6 +302,12 @@ const styles = StyleSheet.create({
   },
   containerRowCompact: {
     gap: 24,
+  },
+  noBackground: {
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+    paddingVertical: 0,
+    paddingHorizontal: 0,
   },
   dpadColumn: {
     alignItems: 'center',

@@ -151,17 +151,18 @@ export function PlayerPanel({
   const hasItems = equippedTool || equippedGear.length > 0;
   const isCompact = scale > 1;
 
+  const containerStyle = useMemo(
+    () => [styles.container, isCompact && { height: '80%' as const, alignSelf: 'center' as const }],
+    [isCompact]
+  );
+  const scrollContentStyle = useMemo(() => ({ padding: 16 * scale }), [scale]);
+
   return (
-    <View
-      style={[
-        styles.container,
-        isCompact && { height: '80%', alignSelf: 'center' },
-      ]}
-    >
+    <View style={containerStyle}>
       <ImageBackground source={SIDEBAR_BG} style={styles.sidePanelBg} resizeMode="stretch">
         <ScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={{ padding: 16 * scale }}
+          style={styles.flex1}
+          contentContainerStyle={scrollContentStyle}
           showsVerticalScrollIndicator={false}
         >
           {/* Gold display in top left */}
@@ -286,6 +287,9 @@ const styles = StyleSheet.create({
   sidePanelBg: {
     width: '100%',
     height: '100%',
+  },
+  flex1: {
+    flex: 1,
   },
   header: {
     alignItems: 'center',

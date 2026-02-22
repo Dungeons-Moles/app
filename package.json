@@ -48,10 +48,12 @@
     "react-native-web": "^0.21.0"
   },
   "devDependencies": {
+    "@types/bn.js": "^5.2.0",
     "@types/jest": "^30.0.0",
     "@types/react": "~19.1.0",
     "@typescript-eslint/eslint-plugin": "^8.52.0",
     "@typescript-eslint/parser": "^8.52.0",
+    "babel-plugin-transform-remove-console": "^6.9.4",
     "babel-preset-expo": "^54.0.9",
     "eslint": "^9.39.2",
     "eslint-config-prettier": "^10.1.8",

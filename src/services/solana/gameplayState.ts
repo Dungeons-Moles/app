@@ -5,11 +5,10 @@
  * Uses sessionSigner wallet for signing all gameplay transactions.
  */
 
-import { Keypair, PublicKey, SystemProgram, Connection } from '@solana/web3.js';
+import { Keypair, PublicKey, SystemProgram, Connection, Transaction, ComputeBudgetProgram } from '@solana/web3.js';
 import { Program } from '@coral-xyz/anchor';
 import { SOLANA_CONFIG } from './config';
 import { sendSessionSignerTransaction } from './sessionSigner';
-import { buildResolveGauntletWeekTransaction, parseGauntletCombatVisualEvent } from './gauntlet';
 import {
   deriveMapEnemiesPda,
   deriveInventoryPda,
@@ -28,53 +27,6 @@ import {
   ModifyStatParams,
   deriveGameStatePda,
 } from './types/gameplay_state';
-
-// ============================================================================
-// Error Messages (T015)
-// ============================================================================
-
-/**
- * User-friendly error messages for gameplay-state program errors.
- */
-export const GAMEPLAY_ERROR_MESSAGES: Record<number, string> = {
-  6000: 'Target position is out of map boundaries',
-  6001: 'Not enough moves remaining for this action',
-  6002: 'Can only move to adjacent tiles',
-  6003: 'Stat value is at maximum',
-  6004: 'HP cannot go below zero',
-  6005: 'Invalid stat modification',
-  6006: 'Boss fight triggered - end your session!',
-  6007: 'Not authorized for this action',
-  6008: 'Game session is not active',
-  6009: 'Calculation overflow',
-  6033: 'Gauntlet mode is not active for this run.',
-  6034: 'Gauntlet run has already ended.',
-  6035: 'Invalid gauntlet week.',
-};
-
-/**
- * Extracts user-friendly error message from gameplay-state program error.
- */
-export function getGameplayErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    // Extract error code from Anchor error
-    const match = error.message.match(/custom program error: 0x([0-9a-fA-F]+)/);
-    if (match) {
-      const errorCode = parseInt(match[1], 16);
-      const message = GAMEPLAY_ERROR_MESSAGES[errorCode];
-      if (message) {
-        return message;
-      }
-    }
-
-    // Check for insufficient funds
-    if (error.message.includes('insufficient funds')) {
-      return 'SessionSigner wallet needs more SOL. Please top up.';
-    }
-  }
-
-  return 'An unexpected error occurred. Please try again.';
-}
 
 // ============================================================================
 // PDA Derivation (T014)
@@ -192,6 +144,13 @@ export async function movePlayer(
     })
     .transaction();
 
+  // move_player can resolve boss fights / gauntlet echoes inline on the last
+  // move of night3 (up to 50-turn combat + CPIs), which far exceeds the
+  // default 200k CU limit.
+  transaction.instructions.unshift(
+    ComputeBudgetProgram.setComputeUnitLimit({ units: 1_000_000 })
+  );
+
   // Await confirmation — on-chain-first principle requires confirmed state before UI update
   const signature = await sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair);
 
@@ -270,31 +229,12 @@ export async function triggerBossFight(
     })
     .transaction();
 
-  return sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair);
-}
-
-export async function resolveGauntletWeek(
-  connection: Connection,
-  program: Program,
-  gameStatePda: PublicKey,
-  sessionPda: PublicKey,
-  sessionSignerKeypair: Keypair
-): Promise<{
-  signature: string;
-  combatVisual: Awaited<ReturnType<typeof parseGauntletCombatVisualEvent>>;
-}> {
-  const transaction = await buildResolveGauntletWeekTransaction(
-    connection,
-    program,
-    sessionSignerKeypair.publicKey,
-    gameStatePda,
-    sessionPda
+  // Boss fight runs full combat resolution (up to 50 turns + effect processing)
+  transaction.instructions.unshift(
+    ComputeBudgetProgram.setComputeUnitLimit({ units: 1_000_000 })
   );
 
-  const signature = await sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair);
-  const combatVisual = await parseGauntletCombatVisualEvent(connection, signature);
-
-  return { signature, combatVisual };
+  return sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair);
 }
 
 /**
@@ -412,6 +352,10 @@ interface OnChainGameState {
   };
   maxWeeks?: number;
   completed?: boolean;
+  gauntletEpochId?: number;
+  gauntletPointsEarned?: number;
+  gauntletHighestWeekWon?: number;
+  gauntletSettled?: boolean;
   bump: number;
 }
 
@@ -463,6 +407,10 @@ function parseOnChainGameState(account: OnChainGameState): GameState {
     runMode: parseRunMode(account.runMode),
     maxWeeks: account.maxWeeks ?? 3,
     completed: account.completed ?? false,
+    gauntletEpochId: account.gauntletEpochId ?? 0,
+    gauntletPointsEarned: account.gauntletPointsEarned ?? 0,
+    gauntletHighestWeekWon: account.gauntletHighestWeekWon ?? 0,
+    gauntletSettled: account.gauntletSettled ?? false,
   };
 }
 

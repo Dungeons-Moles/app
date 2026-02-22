@@ -33,7 +33,7 @@ interface StatRowProps {
   isCompact?: boolean;
 }
 
-function StatRow({ icon, label, value, maxValue, color = '#E0E0E0', isSidebar, isCompact }: StatRowProps) {
+const StatRow = React.memo(function StatRow({ icon, label, value, maxValue, color = '#E0E0E0', isSidebar, isCompact }: StatRowProps) {
   const displayValue = maxValue !== undefined ? `${value}/${maxValue}` : `${value}`;
   const textColor = isSidebar ? '#000000' : color;
   const iconSize = isCompact ? 28 : 18;
@@ -51,7 +51,7 @@ function StatRow({ icon, label, value, maxValue, color = '#E0E0E0', isSidebar, i
       <Text style={[styles.value, { color: textColor, fontSize }]}>{displayValue}</Text>
     </View>
   );
-}
+});
 
 export function StatsPanel({ stats, isSidebar }: StatsPanelProps) {
   const variant = useScreenVariant();

@@ -323,7 +323,7 @@ export interface CombatState {
   playerGold: number;
   enemyGold: number;
   goldReward: number;
-  enemyDefinitionId: EnemyId;
+  enemyDefinitionId: string;
   enemyTier: 1 | 2 | 3;
   consumedGearIds: GearId[];
   result: CombatResult | null;

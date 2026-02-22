@@ -19,7 +19,7 @@ import { useSolanaConnection } from '../contexts/SolanaConnectionContext';
 import { useLandscapeLock } from '../hooks/useOrientationLock';
 import { CombatLayout } from '../components/combat';
 import { DebugOverlay } from '../components/game';
-import { ENEMY_TRAITS } from '../game/combat/traits';
+import { ENEMY_TRAITS, type EnemyId } from '../game/combat/traits';
 import { getEntityImageSource } from '../components/game/entityImages';
 
 const defaultMoleImageSource = require('../../assets/entities/characters/default-mole.png');
@@ -31,6 +31,7 @@ import {
   fetchDuelEntry,
   parseDuelEvents,
 } from '@/services/solana/duels';
+import { sendSessionSignerTransaction } from '@/services/solana/sessionSigner';
 import { convertItemInstanceToGear, convertItemInstanceToTool } from '@/services/solana/pitDraft';
 import type { BackendCombatLogEntry } from '@/services/solana/types/combat_events';
 import type { CombatantState, Gear, Tool } from '@/game/engine/types';
@@ -42,7 +43,7 @@ type CombatScreenProps = {
 };
 
 // On-chain base values (ATK/ARM/SPD start at 0; bonuses come from BattleStart log entries)
-const DUEL_BASE_HP = 10;
+const DUEL_BASE_HP = 15;
 const DUEL_BASE_ATK = 0;
 const DUEL_BASE_ARM = 0;
 const DUEL_BASE_SPD = 0;
@@ -98,7 +99,7 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
   const playerSkinSource = useEquippedSkinImage(profile?.equippedSkin);
   const { wallet, signAndSendTransaction } = useWallet();
   const { connection } = useSolanaConnection();
-  const { endSessionWithSessionSigner, queueEndGame, stopAutoCommit, hasActiveSession, session, mapSeed, gameplayState } =
+  const { endSessionWithSessionSigner, undelegateCurrentSession, queueEndGame, stopAutoCommit, hasActiveSession, session, mapSeed, gameplayState, getSessionSignerKeypair } =
     useSession();
   const isResolvingDuelRef = useRef(false);
   const {
@@ -106,7 +107,7 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
     startCombat,
     startCombatWithLog,
     startCombatWithOnchainOutcome,
-    getDisplayStates,
+    displayStates,
     getResult,
   } = useCombat();
 
@@ -204,7 +205,7 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
         playerTool: gameState.player.equippedTool,
         playerGold: gameState.player.stats.gold,
         enemyDefinitionId: gameState.combat.enemyDefinitionId,
-        enemyId: gameState.combat.enemyDefinitionId,
+        enemyId: gameState.combat.enemyDefinitionId as EnemyId,
         enemyTier: gameState.combat.enemyTier,
       });
     }
@@ -285,6 +286,15 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
     const tryFinalizeDuelAndBuildReplay = async () => {
       if (!wallet.publicKey || !session || !gameplayState || mapSeed === null) return;
 
+      // Undelegate session from ER before sending finalize_duel_run to base chain.
+      // Without this, game_state is still owned by the delegation program and the
+      // base chain instruction fails with AccountOwnedByWrongProgram.
+      const undelegateResult = await undelegateCurrentSession();
+      if (!undelegateResult.success) {
+        console.warn('[CombatScreen] Failed to undelegate before duel finalization:', undelegateResult.error);
+        return;
+      }
+
       const duelProgram = createGameplayStateProgram(connection);
 
       const ourKey = wallet.publicKey.toBase58();
@@ -296,17 +306,20 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
         duelProgram.programId
       );
 
+      const sessionSignerKeypair = getSessionSignerKeypair();
+      if (!sessionSignerKeypair) return;
+
       const tx = await buildFinalizeDuelRunTransaction(
         connection,
         duelProgram,
         wallet.publicKey,
+        sessionSignerKeypair.publicKey,
         gameStatePda,
         gameplayState.session,
-        mapSeed,
         duelEntry.matchedCreatorPlayer
       );
 
-      const signature = await signAndSendTransaction(tx);
+      const signature = await sendSessionSignerTransaction(connection, tx, sessionSignerKeypair);
       await connection.confirmTransaction(signature, 'confirmed');
 
       const events = await parseDuelEvents(
@@ -369,22 +382,36 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
           console.warn('[CombatScreen] Duel finalization skipped/failed:', duelFinalizeError);
         }
 
-        console.log('[CombatScreen] Ending session in background (non-blocking UI)');
-        void (async () => {
-          const endResult = await endSessionWithSessionSigner();
-          if (!endResult.success) {
-            console.warn('[CombatScreen] Failed to end session:', endResult.error);
-            try {
-              await queueEndGame(levelReached, isVictory);
-              console.log('[CombatScreen] Immediate end failed; deferred cleanup queued');
-            } catch (queueError) {
-              console.error(
-                '[CombatScreen] Failed to queue deferred cleanup after end failure:',
-                queueError
-              );
+        if (isVictory) {
+          // Victory: end session in background (state changes are fine since
+          // we navigate to VictoryScreen/Hub which handle them naturally).
+          console.log('[CombatScreen] Ending session in background (victory)');
+          void (async () => {
+            const endResult = await endSessionWithSessionSigner();
+            if (!endResult.success) {
+              console.warn('[CombatScreen] Failed to end session:', endResult.error);
+              try {
+                await queueEndGame(levelReached, isVictory);
+                console.log('[CombatScreen] Immediate end failed; deferred cleanup queued');
+              } catch (queueError) {
+                console.error(
+                  '[CombatScreen] Failed to queue deferred cleanup after end failure:',
+                  queueError
+                );
+              }
             }
-          }
-        })();
+          })();
+        } else {
+          // Defeat: queue deferred cleanup instead of ending session immediately.
+          // endSessionWithSessionSigner modifies React state across multiple context
+          // providers, which causes cascading re-renders that visibly blink the
+          // DeathScreen on web. The queued cleanup runs via processPendingCleanups
+          // when the user returns to HubScreen or CampaignSelectScreen.
+          console.log('[CombatScreen] Queueing deferred session cleanup (defeat)');
+          void queueEndGame(levelReached, false).catch((err) => {
+            console.error('[CombatScreen] Failed to queue deferred cleanup:', err);
+          });
+        }
       }
 
       if (duelReplayCombatInput) {
@@ -418,13 +445,23 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
         : 0;
       if (result === 'DEFEAT') {
         console.log('[CombatScreen] Navigating to DeathScreen (defeat)');
-        navigation.replace('Death', {
-          totalMoves: resolvedTotalMoves,
-          level: levelReached,
-          week: currentWeek,
-          phase: getPhaseLabel(combatInput?.phase ?? localPhaseNumber),
-          combatTurns: combatState.resolvedCombat?.turn ?? 0,
-          killedBy: combatState.resolvedCombat?.enemy.name,
+        // Use reset to remove GameScreen from the stack. On web, hidden
+        // screens behind the current one still live in the DOM; when session
+        // state changes trigger re-renders in GameScreen, the layout churn
+        // causes visible flickering on the DeathScreen.
+        navigation.reset({
+          index: 0,
+          routes: [{
+            name: 'Death',
+            params: {
+              totalMoves: resolvedTotalMoves,
+              level: levelReached,
+              week: currentWeek,
+              phase: getPhaseLabel(combatInput?.phase ?? localPhaseNumber),
+              combatTurns: combatState.resolvedCombat?.turn ?? 0,
+              killedBy: combatState.resolvedCombat?.enemy.name,
+            },
+          }],
         });
       } else if (isFinalWeekBoss) {
         console.log('[CombatScreen] Navigating to Victory screen (final week boss victory)');
@@ -451,6 +488,7 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
     stopAutoCommit,
     hasActiveSession,
     endSessionWithSessionSigner,
+    undelegateCurrentSession,
     queueEndGame,
     combatState.resolvedCombat,
     wallet.publicKey,
@@ -459,13 +497,14 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
     mapSeed,
     connection,
     signAndSendTransaction,
+    getSessionSignerKeypair,
   ]);
 
   // Look up enemy trait from the combat state's enemy definition ID
   const enemyTrait = useMemo(() => {
     const enemyId = combatState.combat?.enemyDefinitionId;
     if (!enemyId) return undefined;
-    const trait = ENEMY_TRAITS[enemyId];
+    const trait = ENEMY_TRAITS[enemyId as EnemyId];
     return trait ? { name: trait.name, description: trait.description } : undefined;
   }, [combatState.combat?.enemyDefinitionId]);
 
@@ -488,7 +527,7 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
   }, [gameState?.player, combatInput]);
 
   // Get display states for gold fallback
-  const { playerGold, enemyGold } = getDisplayStates();
+  const { playerGold, enemyGold } = displayStates;
 
   return (
     <CombatLayout
