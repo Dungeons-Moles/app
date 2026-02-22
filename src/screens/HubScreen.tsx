@@ -18,7 +18,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useIsFocused } from '@react-navigation/native';
 import Svg, { Ellipse, Defs, Pattern, Line } from 'react-native-svg';
 import { useProfile } from '../contexts/ProfileContext';
-import { useSession } from '../contexts/SessionContext';
+import { useSessionIdentity } from '../contexts/SessionContext';
 import { useGame, GamePhase } from '../contexts/GameContext';
 import { useWallet } from '../contexts/WalletContext';
 import { shortenAddress } from '../utils/storage';
@@ -108,7 +108,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
   const { userSkins, isLoading: skinsLoading, fetchUserAssets } = useNftMarketplace();
   const { quests, isLoading: questsLoading, fetchQuests, acceptQuest, claimReward } = useQuests();
   const { equipSkin, unequipSkin, isLoading: equipLoading } = useEquipSkin();
-  const { processPendingCleanups } = useSession();
+  const { processPendingCleanups } = useSessionIdentity();
 
   // Resolve equipped skin image for center character + avatar (single getAccountInfo, no heavy getProgramAccounts)
   const characterImage = useEquippedSkinImage(profile?.equippedSkin);

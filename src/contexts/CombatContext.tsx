@@ -548,9 +548,10 @@ function combatReducer(state: CombatUIState, action: CombatAction): CombatUIStat
         }
       }
 
-      // Keep only recent items (last 10)
-      const trimmedNumbers = newDamageNumbers.slice(-10);
-      const trimmedNotifications = newEffectNotifications.slice(-8);
+      // Cap concurrent floating numbers to limit native-thread animation pressure
+      // (each FloatingNumber creates 3 animated values: translateY, opacity, scale)
+      const trimmedNumbers = newDamageNumbers.slice(-6);
+      const trimmedNotifications = newEffectNotifications.slice(-4);
 
       return {
         ...state,

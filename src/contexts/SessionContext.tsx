@@ -208,6 +208,68 @@ interface SessionContextType extends SessionState {
 const SessionContext = createContext<SessionContextType | undefined>(undefined);
 
 // ============================================================================
+// Split Contexts for Performance
+// ============================================================================
+
+/** Stable session identity + actions (changes only on session start/end/switch) */
+interface SessionIdentityContextType {
+  session: OnChainGameSession | null;
+  hasActiveSession: boolean;
+  mapSeed: bigint | null;
+  currentLevel: number | null;
+  sessionKey: string | null;
+  sessionPda: PublicKey | null;
+  activeSessions: ActiveSession[];
+  isSessionListLoading: boolean;
+  isWalletDisconnected: boolean;
+  sessionSignerState: SessionSignerState;
+  sessionSignerBalance: number;
+  isSessionSignerLowBalance: boolean;
+  hasPendingCleanups: boolean;
+  isAutoCommitActive: boolean;
+  // Actions (stable callbacks)
+  startGame: SessionContextType['startGame'];
+  startDuelGame: SessionContextType['startDuelGame'];
+  startGauntletGame: SessionContextType['startGauntletGame'];
+  endGame: SessionContextType['endGame'];
+  endSessionWithSessionSigner: SessionContextType['endSessionWithSessionSigner'];
+  undelegateCurrentSession: SessionContextType['undelegateCurrentSession'];
+  queueEndGame: SessionContextType['queueEndGame'];
+  processPendingCleanups: SessionContextType['processPendingCleanups'];
+  delegateToRollup: SessionContextType['delegateToRollup'];
+  commitGameState: SessionContextType['commitGameState'];
+  refreshSession: SessionContextType['refreshSession'];
+  getMapSeedForLevel: SessionContextType['getMapSeedForLevel'];
+  verifySeed: SessionContextType['verifySeed'];
+  startAutoCommit: SessionContextType['startAutoCommit'];
+  stopAutoCommit: SessionContextType['stopAutoCommit'];
+  topUpSessionSigner: SessionContextType['topUpSessionSigner'];
+  getSessionSignerKeypair: SessionContextType['getSessionSignerKeypair'];
+  refreshSessionList: SessionContextType['refreshSessionList'];
+  switchToSession: SessionContextType['switchToSession'];
+  abandonSession: SessionContextType['abandonSession'];
+  forceAbandonCurrentSession: SessionContextType['forceAbandonCurrentSession'];
+  hasSessionForLevel: SessionContextType['hasSessionForLevel'];
+  getSessionPdaForLevel: SessionContextType['getSessionPdaForLevel'];
+  setGameStatePda: SessionContextType['setGameStatePda'];
+}
+
+/** Frequently-changing gameplay state (updates during active gameplay) */
+interface SessionGameplayContextType {
+  gameplayState: GameState | null;
+  gameplaySyncStatus: 'synced' | 'syncing' | 'offline' | 'error';
+  isLoading: boolean;
+  error: string | null;
+  movePlayer: SessionContextType['movePlayer'];
+  triggerBoss: SessionContextType['triggerBoss'];
+  modifyPlayerStat: SessionContextType['modifyPlayerStat'];
+  refreshGameplayState: SessionContextType['refreshGameplayState'];
+}
+
+const SessionIdentityContext = createContext<SessionIdentityContextType | undefined>(undefined);
+const SessionGameplayContext = createContext<SessionGameplayContextType | undefined>(undefined);
+
+// ============================================================================
 // Provider
 // ============================================================================
 
@@ -2430,23 +2492,22 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setUseErForGameplay,
   ]);
 
-  const value = useMemo<SessionContextType>(() => ({
+  // Split context: stable identity + actions (only changes on session start/end/switch)
+  const identityValue = useMemo<SessionIdentityContextType>(() => ({
     session: sessionManager.session,
     hasActiveSession: sessionManager.hasActiveSession,
     mapSeed,
-    isLoading: sessionManager.isLoading || mapGenerator.isLoading || gameplayState.isLoading,
-    error: sessionManager.error || mapGenerator.error || gameplayState.error || sessionSigner.error,
+    currentLevel,
+    sessionKey,
+    sessionPda: activeSessionPda,
+    activeSessions,
+    isSessionListLoading,
     isWalletDisconnected,
     sessionSignerState: sessionSigner.state,
     sessionSignerBalance: sessionSigner.balance,
     isSessionSignerLowBalance: sessionSigner.isLowBalance,
-    gameplayState: gameplayState.gameState,
-    gameplaySyncStatus: gameplayState.syncStatus,
-    activeSessions,
-    isSessionListLoading,
-    currentLevel,
-    sessionKey,
-    sessionPda: activeSessionPda,
+    hasPendingCleanups: hasPendingCleanupsState,
+    isAutoCommitActive,
     startGame,
     startDuelGame,
     startGauntletGame,
@@ -2455,7 +2516,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     undelegateCurrentSession,
     queueEndGame,
     processPendingCleanups,
-    hasPendingCleanups: hasPendingCleanupsState,
     delegateToRollup,
     commitGameState,
     refreshSession,
@@ -2463,10 +2523,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     verifySeed,
     startAutoCommit,
     stopAutoCommit,
-    isAutoCommitActive,
-    movePlayer,
-    triggerBoss,
-    modifyPlayerStat,
     topUpSessionSigner,
     getSessionSignerKeypair,
     refreshSessionList,
@@ -2476,31 +2532,21 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     hasSessionForLevel,
     getSessionPdaForLevel,
     setGameStatePda: gameplayState.setGameStatePda,
-    refreshGameplayState: gameplayState.refresh,
   }), [
     sessionManager.session,
     sessionManager.hasActiveSession,
-    sessionManager.isLoading,
-    sessionManager.error,
     mapSeed,
-    mapGenerator.isLoading,
-    mapGenerator.error,
-    gameplayState.isLoading,
-    gameplayState.error,
-    gameplayState.gameState,
-    gameplayState.syncStatus,
-    gameplayState.setGameStatePda,
-    gameplayState.refresh,
-    sessionSigner.error,
-    sessionSigner.state,
-    sessionSigner.balance,
-    sessionSigner.isLowBalance,
-    isWalletDisconnected,
-    activeSessions,
-    isSessionListLoading,
     currentLevel,
     sessionKey,
     activeSessionPda,
+    activeSessions,
+    isSessionListLoading,
+    isWalletDisconnected,
+    sessionSigner.state,
+    sessionSigner.balance,
+    sessionSigner.isLowBalance,
+    hasPendingCleanupsState,
+    isAutoCommitActive,
     startGame,
     startDuelGame,
     startGauntletGame,
@@ -2509,7 +2555,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     undelegateCurrentSession,
     queueEndGame,
     processPendingCleanups,
-    hasPendingCleanupsState,
     delegateToRollup,
     commitGameState,
     refreshSession,
@@ -2517,10 +2562,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     verifySeed,
     startAutoCommit,
     stopAutoCommit,
-    isAutoCommitActive,
-    movePlayer,
-    triggerBoss,
-    modifyPlayerStat,
     topUpSessionSigner,
     getSessionSignerKeypair,
     refreshSessionList,
@@ -2529,9 +2570,51 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     forceAbandonCurrentSession,
     hasSessionForLevel,
     getSessionPdaForLevel,
+    gameplayState.setGameStatePda,
   ]);
 
-  return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
+  // Split context: frequently-changing gameplay state (updates during active gameplay)
+  const gameplayValue = useMemo<SessionGameplayContextType>(() => ({
+    gameplayState: gameplayState.gameState,
+    gameplaySyncStatus: gameplayState.syncStatus,
+    isLoading: sessionManager.isLoading || mapGenerator.isLoading || gameplayState.isLoading,
+    error: sessionManager.error || mapGenerator.error || gameplayState.error || sessionSigner.error,
+    movePlayer,
+    triggerBoss,
+    modifyPlayerStat,
+    refreshGameplayState: gameplayState.refresh,
+  }), [
+    gameplayState.gameState,
+    gameplayState.syncStatus,
+    gameplayState.isLoading,
+    gameplayState.error,
+    gameplayState.refresh,
+    sessionManager.isLoading,
+    sessionManager.error,
+    mapGenerator.isLoading,
+    mapGenerator.error,
+    sessionSigner.error,
+    movePlayer,
+    triggerBoss,
+    modifyPlayerStat,
+  ]);
+
+  // Combined value for backward-compatible useSession() hook
+  const value = useMemo<SessionContextType>(() => ({
+    ...identityValue,
+    ...gameplayValue,
+    refreshGameplayState: gameplayValue.refreshGameplayState,
+  }), [identityValue, gameplayValue]);
+
+  return (
+    <SessionContext.Provider value={value}>
+      <SessionIdentityContext.Provider value={identityValue}>
+        <SessionGameplayContext.Provider value={gameplayValue}>
+          {children}
+        </SessionGameplayContext.Provider>
+      </SessionIdentityContext.Provider>
+    </SessionContext.Provider>
+  );
 }
 
 // ============================================================================
@@ -2542,6 +2625,35 @@ export function useSession() {
   const context = useContext(SessionContext);
   if (context === undefined) {
     throw new Error('useSession must be used within a SessionProvider');
+  }
+  return context;
+}
+
+/**
+ * Use only stable session identity & actions. Does NOT re-render when
+ * gameplayState, syncStatus, isLoading, or error change.
+ * Prefer this in screens that don't need live gameplay updates
+ * (HubScreen, CampaignSelectScreen, GauntletScreen, DuelsScreen).
+ */
+export function useSessionIdentity() {
+  const context = useContext(SessionIdentityContext);
+  if (context === undefined) {
+    throw new Error('useSessionIdentity must be used within a SessionProvider');
+  }
+  return context;
+}
+
+/**
+ * Use only frequently-changing gameplay fields (gameplayState, syncStatus,
+ * isLoading, error, movePlayer, triggerBoss, etc.). Does NOT re-render when
+ * session identity fields change.
+ * Prefer this in components that only need live gameplay data
+ * (GameScreen gameplay logic, Sidebar stats, usePoiInteraction).
+ */
+export function useSessionGameplay() {
+  const context = useContext(SessionGameplayContext);
+  if (context === undefined) {
+    throw new Error('useSessionGameplay must be used within a SessionProvider');
   }
   return context;
 }

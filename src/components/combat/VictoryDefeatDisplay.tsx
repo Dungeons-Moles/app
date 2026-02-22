@@ -7,7 +7,7 @@
  * @see specs/002-qol-balance-batch/contracts/gold-rewards.md
  */
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, Animated, Easing } from 'react-native';
 import { GAME_CONSTANTS } from '../../game/engine/constants';
 import { Typography } from '../../theme/typography';
@@ -41,8 +41,8 @@ export function VictoryDefeatDisplay({
   const opacityAnim = useRef(new Animated.Value(0)).current;
   const goldOpacityAnim = useRef(new Animated.Value(0)).current;
   const goldScaleAnim = useRef(new Animated.Value(0.5)).current;
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const goldCounterRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const goldCountAnim = useRef(new Animated.Value(0)).current;
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const didCompleteRef = useRef(false);
 
   const isVictory = result === 'VICTORY';
@@ -68,12 +68,16 @@ export function VictoryDefeatDisplay({
   // T076: Gold reward animation sequence
   // 1. Short delay (300ms) after result appears
   // 2. Gold icon and amount animate in
-  // 3. Gold counter increments from 0 to reward amount
+  // 3. Gold counter animates from 0 to reward amount via Animated.timing
   useEffect(() => {
     if (!showGoldReward) return;
 
+    goldCountAnim.setValue(0);
+    const listenerId = goldCountAnim.addListener(({ value }) => {
+      setDisplayedGold(Math.round(value));
+    });
+
     const delayTimer = setTimeout(() => {
-      // Animate gold display in
       Animated.parallel([
         Animated.timing(goldOpacityAnim, {
           toValue: 1,
@@ -88,60 +92,47 @@ export function VictoryDefeatDisplay({
         }),
       ]).start();
 
-      // Increment gold counter from 0 to reward amount
-      const incrementDuration = 400; // Total time to count up
-      const steps = Math.min(goldReward, 10); // Max 10 increments
-      const stepValue = goldReward / steps;
-      const stepInterval = incrementDuration / steps;
-      let currentStep = 0;
-
-      goldCounterRef.current = setInterval(() => {
-        currentStep += 1;
-        if (currentStep >= steps) {
-          setDisplayedGold(goldReward);
-          if (goldCounterRef.current) {
-            clearInterval(goldCounterRef.current);
-            goldCounterRef.current = null;
-          }
-        } else {
-          setDisplayedGold(Math.round(stepValue * currentStep));
-        }
-      }, stepInterval);
+      Animated.timing(goldCountAnim, {
+        toValue: goldReward,
+        duration: 400,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: false,
+      }).start();
     }, 300);
 
     return () => {
       clearTimeout(delayTimer);
-      if (goldCounterRef.current) {
-        clearInterval(goldCounterRef.current);
-        goldCounterRef.current = null;
-      }
+      goldCountAnim.removeListener(listenerId);
     };
   }, [showGoldReward, goldReward]);
 
-  // Countdown timer
-  useEffect(() => {
-    timerRef.current = setInterval(() => {
-      setCountdown((prev) => Math.max(0, prev - 1));
-    }, 1000);
+  // Countdown timer using chained setTimeout instead of setInterval
+  const scheduleCountdown = useCallback(
+    (remaining: number) => {
+      if (remaining <= 0) {
+        if (!didCompleteRef.current) {
+          didCompleteRef.current = true;
+          onComplete();
+        }
+        return;
+      }
+      timerRef.current = setTimeout(() => {
+        setCountdown(remaining - 1);
+        scheduleCountdown(remaining - 1);
+      }, 1000);
+    },
+    [onComplete]
+  );
 
+  useEffect(() => {
+    scheduleCountdown(3);
     return () => {
       if (timerRef.current) {
-        clearInterval(timerRef.current);
+        clearTimeout(timerRef.current);
         timerRef.current = null;
       }
     };
-  }, []);
-
-  useEffect(() => {
-    if (countdown > 0) return;
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
-    if (didCompleteRef.current) return;
-    didCompleteRef.current = true;
-    onComplete();
-  }, [countdown, onComplete]);
+  }, [scheduleCountdown]);
 
   return (
     <View style={styles.container}>

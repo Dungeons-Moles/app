@@ -15,7 +15,7 @@ import { Typography } from '@/theme/typography';
 import { useDuels } from '@/hooks/useDuels';
 import { useIsFocused } from '@react-navigation/native';
 import { useScreenVariant } from '@/contexts/ScreenVariantContext';
-import { useSession } from '@/contexts/SessionContext';
+import { useSessionIdentity } from '@/contexts/SessionContext';
 import { useWallet } from '@/contexts/WalletContext';
 import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
 import { deriveDuelSessionPda } from '@/services/solana/constants';
@@ -42,7 +42,7 @@ type DuelsScreenProps = {
 
 export function DuelsScreen({ navigation }: DuelsScreenProps) {
   const duels = useDuels();
-  const { activeSessions } = useSession();
+  const { activeSessions } = useSessionIdentity();
   const { dispatch } = useGame();
   const { wallet } = useWallet();
   const { connection } = useSolanaConnection();

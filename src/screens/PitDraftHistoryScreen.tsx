@@ -436,6 +436,9 @@ export function PitDraftHistoryScreen({ navigation }: PitDraftHistoryScreenProps
                     data={items}
                     keyExtractor={(item) => item.signature}
                     showsVerticalScrollIndicator={false}
+                    initialNumToRender={10}
+                    maxToRenderPerBatch={5}
+                    windowSize={5}
                     contentContainerStyle={[
                       styles.listContent,
                       isCompact && compactStyles.listContent,

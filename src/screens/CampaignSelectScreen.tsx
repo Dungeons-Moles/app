@@ -16,7 +16,7 @@ import { InlineModal } from '../components/InlineModal';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { PublicKey } from '@solana/web3.js';
 import { useProfile } from '../contexts/ProfileContext';
-import { useSession } from '../contexts/SessionContext';
+import { useSessionIdentity } from '../contexts/SessionContext';
 import { useGame, GamePhase } from '../contexts/GameContext';
 import { useSolanaConnection } from '../contexts/SolanaConnectionContext';
 import { useMapGenerator, MAX_CAMPAIGN_LEVEL } from '../hooks/useMapGenerator';
@@ -68,7 +68,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
     switchToSession,
     getSessionPdaForLevel,
     setGameStatePda,
-  } = useSession();
+  } = useSessionIdentity();
   const { state: gameState, dispatch } = useGame();
   const {
     fetchMapConfig: refreshConfig,

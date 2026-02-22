@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { Suspense } from 'react';
+import { ActivityIndicator, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { LoadingScreen } from '../screens/LoadingScreen';
@@ -9,15 +10,63 @@ import { GameScreen } from '../screens/GameScreen';
 import { CombatScreen } from '../screens/CombatScreen';
 import { DeathScreen } from '../screens/DeathScreen';
 import { VictoryScreen } from '../screens/VictoryScreen';
-import { PitDraftScreen } from '../screens/PitDraftScreen';
-import { PitDraftHistoryScreen } from '../screens/PitDraftHistoryScreen';
-import { DuelsScreen } from '../screens/DuelsScreen';
-import { DuelsHistoryScreen } from '../screens/DuelsHistoryScreen';
-import { GauntletScreen } from '../screens/GauntletScreen';
-import { GauntletHistoryScreen } from '../screens/GauntletHistoryScreen';
-import { GauntletRankingScreen } from '../screens/GauntletRankingScreen';
-import { MarketplaceScreen } from '../screens/MarketplaceScreen';
-import { ItemsScreen } from '../screens/ItemsScreen';
+
+// Lazy-loaded secondary screens (not needed at startup)
+const PitDraftScreen = React.lazy(() =>
+  import('../screens/PitDraftScreen').then((m) => ({ default: m.PitDraftScreen }))
+);
+const PitDraftHistoryScreen = React.lazy(() =>
+  import('../screens/PitDraftHistoryScreen').then((m) => ({ default: m.PitDraftHistoryScreen }))
+);
+const DuelsScreen = React.lazy(() =>
+  import('../screens/DuelsScreen').then((m) => ({ default: m.DuelsScreen }))
+);
+const DuelsHistoryScreen = React.lazy(() =>
+  import('../screens/DuelsHistoryScreen').then((m) => ({ default: m.DuelsHistoryScreen }))
+);
+const GauntletScreen = React.lazy(() =>
+  import('../screens/GauntletScreen').then((m) => ({ default: m.GauntletScreen }))
+);
+const GauntletHistoryScreen = React.lazy(() =>
+  import('../screens/GauntletHistoryScreen').then((m) => ({ default: m.GauntletHistoryScreen }))
+);
+const GauntletRankingScreen = React.lazy(() =>
+  import('../screens/GauntletRankingScreen').then((m) => ({ default: m.GauntletRankingScreen }))
+);
+const MarketplaceScreen = React.lazy(() =>
+  import('../screens/MarketplaceScreen').then((m) => ({ default: m.MarketplaceScreen }))
+);
+const ItemsScreen = React.lazy(() =>
+  import('../screens/ItemsScreen').then((m) => ({ default: m.ItemsScreen }))
+);
+
+function LazyFallback() {
+  return (
+    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' }}>
+      <ActivityIndicator color="#666" size="large" />
+    </View>
+  );
+}
+
+function withSuspense<P extends object>(LazyComponent: React.LazyExoticComponent<React.ComponentType<P>>) {
+  return function SuspenseWrapper(props: P) {
+    return (
+      <Suspense fallback={<LazyFallback />}>
+        <LazyComponent {...props} />
+      </Suspense>
+    );
+  };
+}
+
+const LazyPitDraft = withSuspense(PitDraftScreen);
+const LazyPitDraftHistory = withSuspense(PitDraftHistoryScreen);
+const LazyDuels = withSuspense(DuelsScreen);
+const LazyDuelsHistory = withSuspense(DuelsHistoryScreen);
+const LazyGauntlet = withSuspense(GauntletScreen);
+const LazyGauntletHistory = withSuspense(GauntletHistoryScreen);
+const LazyGauntletRanking = withSuspense(GauntletRankingScreen);
+const LazyMarketplace = withSuspense(MarketplaceScreen);
+const LazyItems = withSuspense(ItemsScreen);
 import type { CombatReplay, BackendCombatLogEntry } from '../services/solana/types/combat_events';
 import type {
   ItemStats,
@@ -155,15 +204,15 @@ export function AppNavigator() {
         <Stack.Screen name="Combat" component={CombatScreen} />
         <Stack.Screen name="Death" component={DeathScreen} />
         <Stack.Screen name="Victory" component={VictoryScreen} />
-        <Stack.Screen name="PitDraft" component={PitDraftScreen} />
-        <Stack.Screen name="PitDraftHistory" component={PitDraftHistoryScreen} />
-        <Stack.Screen name="Duels" component={DuelsScreen} />
-        <Stack.Screen name="DuelsHistory" component={DuelsHistoryScreen} />
-        <Stack.Screen name="Gauntlet" component={GauntletScreen} />
-        <Stack.Screen name="GauntletHistory" component={GauntletHistoryScreen} />
-        <Stack.Screen name="GauntletRanking" component={GauntletRankingScreen} />
-        <Stack.Screen name="Marketplace" component={MarketplaceScreen} />
-        <Stack.Screen name="Items" component={ItemsScreen} />
+        <Stack.Screen name="PitDraft" component={LazyPitDraft} />
+        <Stack.Screen name="PitDraftHistory" component={LazyPitDraftHistory} />
+        <Stack.Screen name="Duels" component={LazyDuels} />
+        <Stack.Screen name="DuelsHistory" component={LazyDuelsHistory} />
+        <Stack.Screen name="Gauntlet" component={LazyGauntlet} />
+        <Stack.Screen name="GauntletHistory" component={LazyGauntletHistory} />
+        <Stack.Screen name="GauntletRanking" component={LazyGauntletRanking} />
+        <Stack.Screen name="Marketplace" component={LazyMarketplace} />
+        <Stack.Screen name="Items" component={LazyItems} />
       </Stack.Navigator>
     </NavigationContainer>
   );

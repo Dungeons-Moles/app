@@ -12,7 +12,7 @@ import React, { createContext, useContext, useState, useCallback, useMemo, useEf
 import { Keypair, PublicKey } from '@solana/web3.js';
 import { useGameplayState, SyncStatus } from '@/hooks/useGameplayState';
 import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
-import { useSession } from '@/contexts/SessionContext';
+import { useSessionIdentity } from '@/contexts/SessionContext';
 import { getGameStatePda } from '@/services/solana/gameplayState';
 import {
   GameState,
@@ -151,7 +151,7 @@ const GameplayStateContext = createContext<GameplayStateContextType | undefined>
 export function GameplayStateProvider({ children }: { children: ReactNode }) {
   const gameplay = useGameplayState();
   const { gameplayConnection } = useSolanaConnection();
-  const { sessionPda } = useSession();
+  const { sessionPda } = useSessionIdentity();
 
   // Sync gameStatePda from SessionContext so this context's gameState stays populated.
   // SessionContext sets the PDA on its own useGameplayState instance; this effect

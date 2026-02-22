@@ -1,8 +1,8 @@
 // Polyfills must be imported first
 import './src/polyfills';
 
-import React, { useEffect } from 'react';
-import { Platform } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Image, Platform } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as ScreenOrientation from 'expo-screen-orientation';
@@ -24,6 +24,29 @@ import { CombatReplayProvider } from './src/contexts/CombatReplayContext';
 import { AppNavigator } from './src/navigation';
 import { Psg1Wrapper } from './src/components/Psg1Wrapper';
 
+// Critical assets to preload during splash screen (first screens the user sees)
+const PRELOAD_ASSETS = [
+  require('./assets/ui/backgrounds/loading-background.png'),
+  require('./assets/ui/backgrounds/account-background-compact.png'),
+  require('./assets/ui/backgrounds/account-background-wide.png'),
+  require('./assets/ui/backgrounds/hub-background-compact.png'),
+  require('./assets/ui/backgrounds/hub-background-wide.png'),
+  require('./assets/ui/panels/paper-panel.png'),
+  require('./assets/branding/logo.png'),
+];
+
+function prefetchImages(images: number[]): Promise<void> {
+  return Promise.all(
+    images.map((source) => {
+      const resolved = Image.resolveAssetSource(source);
+      if (resolved?.uri) {
+        return Image.prefetch(resolved.uri).catch(() => {});
+      }
+      return Promise.resolve();
+    })
+  ).then(() => {});
+}
+
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
 
@@ -35,6 +58,7 @@ export default function App() {
     'Inter-SemiBold': Inter_600SemiBold,
     'Inter-Bold': Inter_700Bold,
   });
+  const [assetsLoaded, setAssetsLoaded] = useState(false);
 
   useEffect(() => {
     ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
@@ -46,12 +70,18 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (fontsLoaded || fontError) {
+    prefetchImages(PRELOAD_ASSETS).then(() => setAssetsLoaded(true));
+  }, []);
+
+  const isReady = (fontsLoaded || fontError) && assetsLoaded;
+
+  useEffect(() => {
+    if (isReady) {
       SplashScreen.hideAsync();
     }
-  }, [fontsLoaded, fontError]);
+  }, [isReady]);
 
-  if (!fontsLoaded && !fontError) {
+  if (!isReady) {
     return null;
   }
 

@@ -15,7 +15,7 @@ import { Typography } from '@/theme/typography';
 import { useGauntlet } from '@/hooks/useGauntlet';
 import { useIsFocused } from '@react-navigation/native';
 import { useScreenVariant } from '@/contexts/ScreenVariantContext';
-import { useSession } from '@/contexts/SessionContext';
+import { useSessionIdentity } from '@/contexts/SessionContext';
 import { useWallet } from '@/contexts/WalletContext';
 import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
 import { deriveGauntletSessionPda } from '@/services/solana/constants';
@@ -42,7 +42,7 @@ type GauntletScreenProps = {
 
 export function GauntletScreen({ navigation }: GauntletScreenProps) {
   const gauntlet = useGauntlet();
-  const { activeSessions } = useSession();
+  const { activeSessions } = useSessionIdentity();
   const { dispatch } = useGame();
   const { wallet } = useWallet();
   const { connection } = useSolanaConnection();
