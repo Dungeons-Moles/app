@@ -46,6 +46,7 @@ import {
 } from '@/services/solana/deferredCleanup';
 import {
   loadSessionSignerWallet,
+  loadSessionSignerForSession,
   drainSessionSignerToMain,
   sendSessionSignerTransaction,
 } from '@/services/solana/sessionSigner';
@@ -1090,15 +1091,47 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   );
 
   /**
+   * Resolve the correct signer for a session PDA.
+   * Prefers session-scoped signer, then in-memory signer, then legacy global signer.
+   * If expectedSigner is provided, only a matching keypair is returned.
+   */
+  const resolveSessionSignerForSession = useCallback(
+    async (sessionPda: PublicKey, expectedSigner?: PublicKey | null): Promise<Keypair | null> => {
+      const sessionPdaStr = sessionPda.toBase58();
+      const candidates: Keypair[] = [];
+      const seen = new Set<string>();
+
+      const push = (keypair: Keypair | null) => {
+        if (!keypair) return;
+        const key = keypair.publicKey.toBase58();
+        if (seen.has(key)) return;
+        seen.add(key);
+        candidates.push(keypair);
+      };
+
+      if (walletId) {
+        push(await loadSessionSignerForSession(walletId, sessionPdaStr));
+      }
+      push(sessionSigner.keypair);
+      if (walletId) {
+        push(await loadSessionSignerWallet(walletId));
+      }
+
+      if (!expectedSigner) {
+        return candidates[0] ?? null;
+      }
+
+      return candidates.find((candidate) => candidate.publicKey.equals(expectedSigner)) ?? null;
+    },
+    [walletId, sessionSigner.keypair]
+  );
+
+  /**
    * End session immediately with session key signer (no user interaction).
    * Called automatically after combat ends in death or final victory.
    * The program validates that game_state.is_dead or game_state.completed is true.
    */
   const endSessionWithSessionSigner = useCallback(async (): Promise<TransactionResult> => {
-    if (!sessionSigner.keypair) {
-      return { success: false, error: 'Session key signer not available' };
-    }
-
     console.log('[SessionContext] Ending session with session key signer...');
     await sessionManager.fetchSession();
     const sessionPda =
@@ -1108,6 +1141,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         : null);
     if (!sessionPda) {
       return { success: false, error: 'Active session PDA not available' };
+    }
+
+    const expectedSessionSigner = sessionManager.session?.sessionSigner ?? null;
+    const cleanupSigner = await resolveSessionSignerForSession(sessionPda, expectedSessionSigner);
+    if (!cleanupSigner) {
+      return {
+        success: false,
+        error: expectedSessionSigner
+          ? `Session key signer mismatch. Expected ${expectedSessionSigner.toBase58()}`
+          : 'Session key signer not available',
+      };
     }
 
     const sessionAccount = await connection.getAccountInfo(sessionPda, 'processed');
@@ -1122,6 +1166,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     const gameStateInfo = await connection.getAccountInfo(gameStatePda, 'processed');
     const sessionOwnedByProgram = sessionAccount.owner.equals(SOLANA_CONFIG.programs.sessionManager);
     const anyChildDelegated = !!gameStateInfo?.owner.equals(DELEGATION_PROGRAM_ID);
+
+    // Settle result as early as possible once session account is back on base layer.
+    // This is idempotent on-chain and guarantees rewards/progression even if close fails later.
+    if (sessionOwnedByProgram) {
+      const settleResult = await sessionManager.settleSessionResult(cleanupSigner);
+      if (!settleResult.success) {
+        console.warn('[SessionContext] settleSessionResult failed (will continue cleanup):', settleResult.error);
+      }
+    }
+
     const mustUndelegate =
       !sessionOwnedByProgram ||
       anyChildDelegated ||
@@ -1129,9 +1183,21 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     if (mustUndelegate) {
       const undelegateResult = await sessionManager.undelegateSession(
         getFallbackStateHash(),
-        sessionSigner.keypair
+        cleanupSigner
       );
       if (!undelegateResult.success) {
+        const latestSessionInfo = await connection.getAccountInfo(sessionPda, 'processed');
+        if (latestSessionInfo?.owner.equals(SOLANA_CONFIG.programs.sessionManager)) {
+          console.warn(
+            '[SessionContext] Undelegate failed with session already on base; trying closeSessionOnly fallback:',
+            undelegateResult.error
+          );
+          const closeOnlyResult = await sessionManager.closeSessionOnly(cleanupSigner);
+          if (closeOnlyResult.success) {
+            setUseErForGameplay(false);
+            return closeOnlyResult;
+          }
+        }
         return {
           success: false,
           error: undelegateResult.error ?? 'Failed to undelegate session from rollup',
@@ -1156,10 +1222,31 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         await new Promise((resolve) => setTimeout(resolve, 250));
       }
       if (!restored) {
+        const latestSessionInfo = await connection.getAccountInfo(sessionPda, 'processed');
+        if (latestSessionInfo?.owner.equals(SOLANA_CONFIG.programs.sessionManager)) {
+          console.warn(
+            '[SessionContext] Owner restore timed out with session on base; trying closeSessionOnly fallback'
+          );
+          const closeOnlyResult = await sessionManager.closeSessionOnly(cleanupSigner);
+          if (closeOnlyResult.success) {
+            setUseErForGameplay(false);
+            return closeOnlyResult;
+          }
+        }
         return {
           success: false,
           error: 'Session undelegate not finalized yet; please retry in a moment',
         };
+      }
+
+      // Session ownership is restored now, so retry settlement if the early attempt
+      // could not run while the session account was still delegated.
+      const settleAfterUndelegate = await sessionManager.settleSessionResult(cleanupSigner);
+      if (!settleAfterUndelegate.success) {
+        console.warn(
+          '[SessionContext] settleSessionResult after undelegate failed (will continue cleanup):',
+          settleAfterUndelegate.error
+        );
       }
     }
 
@@ -1168,8 +1255,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     if (
       gameplayState.gameState?.runMode === RunMode.Gauntlet &&
       !gameplayState.gameState?.gauntletSettled &&
-      wallet.publicKey &&
-      sessionSigner.keypair
+      wallet.publicKey
     ) {
       try {
         console.log('[SessionContext] Gauntlet: settling session before end...');
@@ -1178,11 +1264,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           connection,
           gameplayProgram,
           wallet.publicKey,
-          sessionSigner.keypair.publicKey,
+          cleanupSigner.publicKey,
           gameStatePda,
           sessionPda
         );
-        const settleSig = await sendSessionSignerTransaction(connection, settleTx, sessionSigner.keypair);
+        const settleSig = await sendSessionSignerTransaction(connection, settleTx, cleanupSigner);
         await connection.confirmTransaction(settleSig, 'confirmed');
         console.log('[SessionContext] Gauntlet settle confirmed:', settleSig);
       } catch (settleErr) {
@@ -1192,7 +1278,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
 
     // End the session on-chain (only session signer signs)
-    const result = await sessionManager.endSession(sessionSigner.keypair);
+    const result = await sessionManager.endSession(cleanupSigner);
 
     if (result.success) {
       console.log('[SessionContext] Session ended successfully');
@@ -1243,6 +1329,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     wallet.publicKey,
     connection,
     gameplayState.setGameStatePda,
+    gameplayState.gameState?.runMode,
+    gameplayState.gameState?.gauntletSettled,
+    resolveSessionSignerForSession,
   ]);
 
   /**
@@ -1250,10 +1339,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
    * Extracted for use by CombatScreen before duel finalization.
    */
   const undelegateCurrentSession = useCallback(async (): Promise<TransactionResult> => {
-    if (!sessionSigner.keypair) {
-      return { success: false, error: 'Session key signer not available' };
-    }
-
     const sessionPda =
       sessionManager.activeSessionPda ??
       (wallet.publicKey && sessionManager.session?.campaignLevel
@@ -1261,6 +1346,18 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         : null);
     if (!sessionPda) {
       return { success: false, error: 'Active session PDA not available' };
+    }
+
+    await sessionManager.fetchSession();
+    const expectedSessionSigner = sessionManager.session?.sessionSigner ?? null;
+    const cleanupSigner = await resolveSessionSignerForSession(sessionPda, expectedSessionSigner);
+    if (!cleanupSigner) {
+      return {
+        success: false,
+        error: expectedSessionSigner
+          ? `Session key signer mismatch. Expected ${expectedSessionSigner.toBase58()}`
+          : 'Session key signer not available',
+      };
     }
 
     const sessionAccount = await connection.getAccountInfo(sessionPda, 'processed');
@@ -1276,7 +1373,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
     const undelegateResult = await sessionManager.undelegateSession(
       getFallbackStateHash(),
-      sessionSigner.keypair
+      cleanupSigner
     );
     if (!undelegateResult.success) {
       return {
@@ -1314,12 +1411,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setUseErForGameplay(false);
     return { success: true };
   }, [
-    sessionSigner.keypair,
     sessionManager,
     wallet.publicKey,
     connection,
     getFallbackStateHash,
     setUseErForGameplay,
+    resolveSessionSignerForSession,
   ]);
 
   /**
@@ -2073,21 +2170,23 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             sessionManager.setActiveOnChainLevel(cleanup.campaignLevel);
             sessionManager.setActiveSessionPda(sessionPda);
 
-            // Recover session signer from in-memory hook or persisted storage.
-            let cleanupSigner = sessionSigner.keypair;
-            if (!cleanupSigner) {
-              cleanupSigner = await loadSessionSignerWallet(walletId);
-            }
+            await sessionManager.fetchSession();
+            const expectedSessionSigner = sessionManager.session?.sessionSigner ?? null;
+            const cleanupSigner = await resolveSessionSignerForSession(
+              sessionPda,
+              expectedSessionSigner
+            );
 
             if (!cleanupSigner) {
               allComplete = false;
               console.warn(
-                '[SessionContext] Deferred cleanup waiting for recoverable session signer:',
-                cleanup.id
+                '[SessionContext] Deferred cleanup waiting for matching session signer:',
+                {
+                  cleanupId: cleanup.id,
+                  expectedSessionSigner: expectedSessionSigner?.toBase58() ?? null,
+                }
               );
             } else {
-              await sessionManager.fetchSession();
-
               const sessionAccount = await connection.getAccountInfo(sessionPda, 'processed');
               if (!sessionAccount) {
                 console.log('[SessionContext] Deferred cleanup: session already closed on-chain', {
@@ -2181,6 +2280,22 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                   await new Promise((resolve) => setTimeout(resolve, 1000));
                 }
                 if (!allRestored) {
+                  const latestSessionInfo = await connection.getAccountInfo(sessionPda, 'processed');
+                  if (
+                    latestSessionInfo?.owner.equals(SOLANA_CONFIG.programs.sessionManager)
+                  ) {
+                    console.warn(
+                      '[SessionContext] Deferred cleanup: owner restore timed out; trying closeSessionOnly fallback',
+                      { cleanupId: cleanup.id }
+                    );
+                    const closeOnlyResult = await sessionManager.closeSessionOnly(cleanupSigner);
+                    if (closeOnlyResult.success) {
+                      await updateCleanup(cleanup.id, { needsSessionEnd: false });
+                      cleanup.needsSessionEnd = false;
+                      await removeCleanup(cleanup.id);
+                      continue;
+                    }
+                  }
                   throw new Error('Deferred undelegate did not restore all account owners in time');
                 }
               } else if (!ownerIsSessionProgram) {
@@ -2254,6 +2369,22 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                     await new Promise((resolve) => setTimeout(resolve, 1000));
                   }
                   if (!allRestored) {
+                    const latestSessionInfo = await connection.getAccountInfo(sessionPda, 'processed');
+                    if (
+                      latestSessionInfo?.owner.equals(SOLANA_CONFIG.programs.sessionManager)
+                    ) {
+                      console.warn(
+                        '[SessionContext] Deferred cleanup: child owners still delegated; trying closeSessionOnly fallback',
+                        { cleanupId: cleanup.id }
+                      );
+                      const closeOnlyResult = await sessionManager.closeSessionOnly(cleanupSigner);
+                      if (closeOnlyResult.success) {
+                        await updateCleanup(cleanup.id, { needsSessionEnd: false });
+                        cleanup.needsSessionEnd = false;
+                        await removeCleanup(cleanup.id);
+                        continue;
+                      }
+                    }
                     throw new Error('Child accounts still delegated after undelegation retry');
                   }
                 }
@@ -2274,6 +2405,28 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                     );
                     await removeCleanup(cleanup.id);
                     continue;
+                  }
+                }
+                if (
+                  endError.includes('Owner not restored') ||
+                  endError.includes('InvalidAccountOwner') ||
+                  endError.includes('ReadonlyDataModified')
+                ) {
+                  const latestSessionInfo = await connection.getAccountInfo(sessionPda, 'processed');
+                  if (
+                    latestSessionInfo?.owner.equals(SOLANA_CONFIG.programs.sessionManager)
+                  ) {
+                    console.warn(
+                      '[SessionContext] Deferred cleanup: endSession failed; trying closeSessionOnly fallback',
+                      { cleanupId: cleanup.id, endError }
+                    );
+                    const closeOnlyResult = await sessionManager.closeSessionOnly(cleanupSigner);
+                    if (closeOnlyResult.success) {
+                      await updateCleanup(cleanup.id, { needsSessionEnd: false });
+                      cleanup.needsSessionEnd = false;
+                      await removeCleanup(cleanup.id);
+                      continue;
+                    }
                   }
                 }
                 throw new Error(endError);
@@ -2330,6 +2483,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     sessionManager,
     sessionSigner.keypair,
     getFallbackStateHash,
+    resolveSessionSignerForSession,
   ]);
 
   // IMPORTANT: pending cleanup processing is intentionally triggered only by Campaign screen focus.
@@ -2391,11 +2545,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       };
     }
 
-    const sessionSignerKeypair = sessionSigner.keypair;
-    if (!sessionSignerKeypair) {
-      return { success: false, error: 'Session key signer not available' };
-    }
-
     try {
       console.log('[SessionContext] Force abandoning session...', {
         level: session.campaignLevel,
@@ -2407,6 +2556,19 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const sessionPda = sessionManager.activeSessionPda;
       if (!sessionPda) {
         return { success: false, error: 'Active session PDA not available' };
+      }
+
+      const sessionSignerKeypair = await resolveSessionSignerForSession(
+        sessionPda,
+        session.sessionSigner ?? null
+      );
+      if (!sessionSignerKeypair) {
+        return {
+          success: false,
+          error: session.sessionSigner
+            ? `Session key signer mismatch. Expected ${session.sessionSigner.toBase58()}`
+            : 'Session key signer not available',
+        };
       }
 
       // Always undelegate first. `session.isDelegated` can be stale when session decode
@@ -2552,7 +2714,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     sessionManager.activeSessionPda,
     sessionManager.resetSession,
     sessionManager.undelegateSession,
-    sessionSigner.keypair,
+    resolveSessionSignerForSession,
     refreshSessionList,
     getFallbackStateHash,
     setUseErForGameplay,
