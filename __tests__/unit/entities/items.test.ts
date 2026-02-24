@@ -10,6 +10,7 @@ import {
   applyRarityMultiplier,
   getToolDefinition,
   getGearDefinition,
+  getToolStatsAtTier,
   TOOL_DEFINITIONS,
 } from '../../../src/game/entities/items';
 import type { ToolId, GearId } from '../../../src/game/engine/types';
@@ -326,6 +327,32 @@ describe('Items Entity', () => {
     it('T6 Gemfinder Staff has GREED tag', () => {
       const def = getToolDefinition('T6');
       expect(def.tags).toContain('GREED');
+    });
+  });
+
+  describe('getToolStatsAtTier', () => {
+    it('returns tier 1 stats matching base definition for T1 Bulwark Shovel', () => {
+      const stats = getToolStatsAtTier('T1', 1);
+      expect(stats.atk).toBe(1);
+      expect(stats.arm).toBe(4);
+    });
+
+    it('returns correct tier 2 stats for T1 Bulwark Shovel (matches on-chain [1,2,3] ATK, [4,6,8] ARM)', () => {
+      const stats = getToolStatsAtTier('T1', 2);
+      expect(stats.atk).toBe(2);
+      expect(stats.arm).toBe(6);
+    });
+
+    it('returns correct tier 3 stats for T1 Bulwark Shovel', () => {
+      const stats = getToolStatsAtTier('T1', 3);
+      expect(stats.atk).toBe(3);
+      expect(stats.arm).toBe(8);
+    });
+
+    it('returns correct tier 2 stats for T15 Quickpick (ATK + SPD)', () => {
+      const stats = getToolStatsAtTier('T15', 2);
+      expect(stats.atk).toBe(2); // [1,2,3]
+      expect(stats.spd).toBe(3); // [2,3,4]
     });
   });
 });

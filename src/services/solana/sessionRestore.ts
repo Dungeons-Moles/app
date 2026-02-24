@@ -53,10 +53,14 @@ import type {
 import type { GameMap, MapEnemy, MapPOI, EnemyId } from '@/game/map/types';
 import { TileType, FogState } from '@/game/map/types';
 import { getEnemyTierStats, ARCHETYPE_TO_ENEMY_ID } from '@/game/entities/enemies';
-import { createToolInstance, createGearInstance, getToolDefinition } from '@/game/entities/items';
-import { RARITY_MULTIPLIER } from '@/data/gear';
+import {
+  createToolInstance,
+  createGearInstance,
+  getToolStatsAtTier,
+  rarityToToolTier,
+} from '@/game/entities/items';
 import { refreshPlayerStats } from '@/game/entities/player';
-import { GAME_CONSTANTS } from '@/game/engine/constants';
+import { GAME_CONSTANTS, getBaseHp } from '@/game/engine/constants';
 import { selectDuelWeekBossForSeed, selectWeekBossForLevel } from '@/game/time/progression';
 import { updateFogOfWar, applyInitialVisibility } from '@/game/map/fog-of-war';
 
@@ -651,15 +655,17 @@ function buildPlayer(
     hp: number;
     gold: number;
     gearSlots: number;
+    campaignLevel: number;
   },
   inventoryData: PlayerInventoryData | null
 ): Player {
   const position = { x: gameState.positionX, y: gameState.positionY };
+  const initialHp = getBaseHp(gameState.campaignLevel);
 
   // Base stats from game engine constants (pre-gear values)
   const baseStats: PlayerStats = {
-    hp: GAME_CONSTANTS.INITIAL_HP,
-    maxHp: GAME_CONSTANTS.INITIAL_HP,
+    hp: initialHp,
+    maxHp: initialHp,
     atk: GAME_CONSTANTS.INITIAL_ATK,
     arm: GAME_CONSTANTS.INITIAL_ARM,
     spd: GAME_CONSTANTS.INITIAL_SPD,
@@ -724,7 +730,7 @@ function buildPlayer(
   // The on-chain HP may not reflect +HP gear bonuses if sync_hp_from_inventory
   // wasn't called (e.g., older sessions or failed sync).
   const onChainHp = gameState.hp;
-  const baseHp = GAME_CONSTANTS.INITIAL_HP;
+  const baseHp = initialHp;
   const computedMaxHp = player.stats.maxHp;
 
   // ============================================================
@@ -778,7 +784,7 @@ function buildPlayer(
 /**
  * Converts an on-chain ItemInstance (tool) to a game engine Tool.
  */
-function convertToolInstance(item: ItemInstance): Tool | null {
+export function convertToolInstance(item: ItemInstance): Tool | null {
   const id = decodeItemId(item.itemId);
   if (!id || !id.startsWith('T')) return null;
 
@@ -789,15 +795,11 @@ function convertToolInstance(item: ItemInstance): Tool | null {
     const upgradedRarity = tierToRarity(item.tier);
     if (upgradedRarity) {
       tool.rarity = upgradedRarity;
-      // Recalculate stats with rarity multiplier
-      const def = getToolDefinition(id as ToolId);
-      const multiplier = RARITY_MULTIPLIER[upgradedRarity];
-      if (def.stats.atk !== undefined) tool.stats.atk = Math.floor(def.stats.atk * multiplier);
-      if (def.stats.arm !== undefined) tool.stats.arm = Math.floor(def.stats.arm * multiplier);
-      if (def.stats.spd !== undefined) tool.stats.spd = Math.floor(def.stats.spd * multiplier);
-      if (def.stats.dig !== undefined) tool.stats.dig = Math.floor(def.stats.dig * multiplier);
-      if (def.stats.hp !== undefined) tool.stats.hp = Math.floor(def.stats.hp * multiplier);
     }
+
+    // Recalculate stats using TOOL_EFFECTS tier values (matches on-chain)
+    const tier = rarityToToolTier(tool.rarity);
+    tool.stats = { ...getToolStatsAtTier(id as ToolId, tier) };
 
     // Apply tool oil modifications
     const oils: ToolOil[] = [];
@@ -818,7 +820,7 @@ function convertToolInstance(item: ItemInstance): Tool | null {
 /**
  * Converts an on-chain ItemInstance (gear) to a game engine Gear.
  */
-function convertGearInstance(item: ItemInstance): Gear | null {
+export function convertGearInstance(item: ItemInstance): Gear | null {
   const id = decodeItemId(item.itemId);
   if (!id || !id.startsWith('I')) return null;
 

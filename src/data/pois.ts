@@ -90,7 +90,7 @@ export const POI_DEFINITIONS: Record<POIId, POIDefinition> = {
     image: require('../../assets/world/pois/tool-oil-rack.png'),
     rarity: 'COMMON',
     interaction: 'TOOL_MODIFY',
-    description: 'Apply one oil (+1 ATK/SPD/DIG/ARM), then this rack is consumed',
+    description: 'Modify current tool: +1 ATK, +1 SPD, +1 DIG, or +1 ARM (once per tool)',
   },
 
   // ============================================================================
@@ -156,7 +156,7 @@ export const POI_DEFINITIONS: Record<POIId, POIDefinition> = {
     image: require('../../assets/world/pois/smuggler-hatch.png'),
     rarity: 'UNCOMMON',
     interaction: 'SHOP',
-    description: 'Shop: 5 Rare + 1 Heroic items (max 3 rerolls per visit)',
+    description: 'Shop: 1 Tool + 5 Gear; max 3 rerolls per visit',
   },
 
   // ============================================================================

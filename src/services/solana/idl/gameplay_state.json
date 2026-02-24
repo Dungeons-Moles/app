@@ -4913,6 +4913,11 @@
       "code": 6052,
       "name": "GauntletAlreadySettled",
       "msg": "Gauntlet session already settled"
+    },
+    {
+      "code": 6053,
+      "name": "InvalidCampaignLevel",
+      "msg": "Campaign level must be between 1 and 40"
     }
   ],
   "types": [
@@ -6801,7 +6806,7 @@
           {
             "name": "pois",
             "docs": [
-              "POI spawn positions (max 50)"
+              "POI spawn positions (max 64)"
             ],
             "type": {
               "array": [
@@ -6810,7 +6815,7 @@
                     "name": "PoiSpawn"
                   }
                 },
-                50
+                64
               ]
             }
           },

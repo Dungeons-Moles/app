@@ -10,7 +10,7 @@ import type { CombatState, Gear, Tool, GearId, ToolId } from '../engine/types';
 import type { ItemEffect } from '../../data/combat-types';
 import { GEAR_EFFECTS, getGearEffectsAtTier } from '../../data/gear-effects';
 import { TOOL_EFFECTS, getToolEffectsAtTier } from '../../data/tool-effects';
-import { RARITY_MULTIPLIER } from '../../data/gear';
+import { RARITY_MULTIPLIER, getTierFromRarity } from '../../data/gear';
 import type { CombatEffectContext, EffectLogEntry } from './effect-executor';
 import { processEffects } from './effect-executor';
 
@@ -70,8 +70,7 @@ export function collectToolEffects(tool: Tool | null): EquippedEffect[] {
   const toolEffects = TOOL_EFFECTS[tool.id];
   if (!toolEffects) return [];
 
-  // Tools are always tier 1 (no fusion system for tools in current implementation)
-  const tier: 1 | 2 | 3 = 1;
+  const tier = getTierFromRarity(tool.rarity);
   const itemEffects = getToolEffectsAtTier(tool.id, tier);
 
   return itemEffects.map((effect, i) => ({

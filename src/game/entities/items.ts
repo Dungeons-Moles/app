@@ -19,7 +19,9 @@ import {
   GEAR_DEFINITIONS,
   RARITY_MULTIPLIER,
   createGearInstance as createGearFromData,
+  getTierFromRarity,
 } from '../../data/gear';
+import { getToolEffectsAtTier } from '../../data/tool-effects';
 
 // ============================================================================
 // Tool Definitions (per spec.md Appendix C)
@@ -294,6 +296,46 @@ export const TOOL_DEFINITIONS: Record<ToolId, ToolDefinition> = {
  */
 export function applyRarityMultiplier(rarity: ItemRarity): number {
   return RARITY_MULTIPLIER[rarity];
+}
+
+/**
+ * Convert item rarity to tool tier (1/2/3).
+ * Re-exports getTierFromRarity for convenience.
+ */
+export const rarityToToolTier = getTierFromRarity;
+
+/**
+ * Get tool stats at a specific tier using TOOL_EFFECTS (matching on-chain values).
+ * Extracts BattleStart stat bonuses (GainAtk, GainArmor, GainSpd, GainDig, MaxHp)
+ * from the tool's effect definitions.
+ */
+export function getToolStatsAtTier(toolId: ToolId, tier: 1 | 2 | 3): ItemStats {
+  const effects = getToolEffectsAtTier(toolId, tier);
+  const stats: ItemStats = {};
+
+  for (const effect of effects) {
+    if (effect.trigger.type !== 'BattleStart') continue;
+
+    switch (effect.effectType) {
+      case 'GainAtk':
+        stats.atk = (stats.atk ?? 0) + effect.value;
+        break;
+      case 'GainArmor':
+        stats.arm = (stats.arm ?? 0) + effect.value;
+        break;
+      case 'GainSpd':
+        stats.spd = (stats.spd ?? 0) + effect.value;
+        break;
+      case 'GainDig':
+        stats.dig = (stats.dig ?? 0) + effect.value;
+        break;
+      case 'MaxHp':
+        stats.hp = (stats.hp ?? 0) + effect.value;
+        break;
+    }
+  }
+
+  return stats;
 }
 
 // ============================================================================

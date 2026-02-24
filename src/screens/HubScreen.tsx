@@ -486,7 +486,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
               setSettingsFocus(0);
               setShowSettings(true);
             },
-        onSelect: otherModalOpen
+        onSelect: otherModalOpen || isGuest
           ? undefined
           : () => {
               setProfileFocus(0);
@@ -501,7 +501,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
     : [
         { button: 'A', label: 'Select' },
         { button: 'Start', label: 'Settings' },
-        { button: 'Select', label: 'Profile' },
+        ...(!isGuest ? [{ button: 'Select', label: 'Profile' } as ButtonHint] : []),
       ];
 
   return (
@@ -520,7 +520,11 @@ export function HubScreen({ navigation }: HubScreenProps) {
         <View style={styles.hubLayout}>
           {/* TOP LEFT - Player Info (compact: full left column) */}
           <View style={[styles.topLeft, isCompact && compactStyles.leftColumn]}>
-            <TouchableOpacity onPress={handleProfileSettings} activeOpacity={0.8}>
+            <TouchableOpacity
+              onPress={isGuest ? undefined : handleProfileSettings}
+              activeOpacity={isGuest ? 1 : 0.8}
+              disabled={isGuest}
+            >
               <ImageBackground
                 source={walletImageSource}
                 style={[styles.playerPanel, isCompact && compactStyles.playerPanel]}
@@ -580,6 +584,13 @@ export function HubScreen({ navigation }: HubScreenProps) {
                 </View>
               </ImageBackground>
             </TouchableOpacity>
+
+            {/* Guest mode description */}
+            {isGuest && (
+              <Text style={[styles.guestModeDescription, isCompact && compactStyles.guestModeDescription]}>
+                {'Guest mode — explore freely with no strings attached.\nYour progress won\'t be saved.'}
+              </Text>
+            )}
 
             {/* Wide: Items button directly below profile */}
             {!isCompact && !isGuest && (
@@ -1872,6 +1883,14 @@ const styles = StyleSheet.create({
     lineHeight: 11,
     marginTop: 3,
   },
+  guestModeDescription: {
+    fontFamily: Typography.body,
+    fontSize: 10,
+    color: '#888888',
+    lineHeight: 14,
+    marginTop: 6,
+    textAlign: 'left',
+  },
 
   // TOP CENTER - Points
   topCenter: {
@@ -2439,6 +2458,11 @@ const compactStyles = StyleSheet.create({
   walletBalance: {
     fontSize: 20,
     lineHeight: 22,
+  },
+  guestModeDescription: {
+    fontSize: 20,
+    lineHeight: 26,
+    marginTop: 12,
   },
   navButton: {
     width: 300,

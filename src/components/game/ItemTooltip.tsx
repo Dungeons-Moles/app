@@ -21,7 +21,6 @@ import { GEAR_DEFINITIONS, getTierFromRarity, getScaledEffectDescription } from 
 import { getItemsetsForItem } from '../../game/entities/itemsets';
 
 const paperPanelSource = require('../../../assets/ui/panels/paper-panel.png');
-const rectangleSource = require('../../../assets/ui/frames/rectangle.png');
 const squareSource = require('../../../assets/ui/frames/square.png');
 
 const STAT_ICONS = {
@@ -96,7 +95,7 @@ function getRarityName(rarity: string): string {
 }
 
 const TIER_LABELS = ['I', 'II', 'III'] as const;
-const TIER_COLORS = ['#808080', '#4A90D9', '#FFD700'] as const;
+const TIER_COLORS = ['#808080', '#4A90D9', '#CC9900'] as const;
 
 function getTagColor(tag: ItemTag): string {
   switch (tag) {
@@ -214,8 +213,6 @@ export function ItemTooltip({ item, visible, onClose }: ItemTooltipProps) {
     effectDescription = getScaledEffectDescription(item.id, rarity);
   }
 
-  const effectText = effectDescription ?? 'No effect.';
-
   return (
     <InlineModal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onClose}>
@@ -271,14 +268,11 @@ export function ItemTooltip({ item, visible, onClose }: ItemTooltipProps) {
             <StatDisplay stats={item.stats} scale={s} />
 
             {/* Effect */}
-            <View style={styles.effectSection}>
-              <Image
-                source={rectangleSource}
-                style={{ position: 'absolute', width: '100%', height: '100%' }}
-                resizeMode="stretch"
-              />
-              <Text style={[styles.effectText, { fontSize: 12 * s, lineHeight: 16 * s }]}>{effectText}</Text>
-            </View>
+            {effectDescription && (
+              <View style={styles.effectSection}>
+                <Text style={[styles.effectText, { fontSize: 12 * s, lineHeight: 16 * s }]}>{effectDescription}</Text>
+              </View>
+            )}
 
             {/* Tags */}
             <TagsDisplay tags={item.tags} scale={s} />
@@ -386,16 +380,17 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   effectSection: {
-    paddingVertical: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
     marginBottom: 12,
-    justifyContent: 'center',
-    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: '#3d2b1f',
+    borderRadius: 4,
   },
   effectText: {
     color: '#3d2b1f',
     fontSize: 12,
     lineHeight: 16,
-    paddingLeft: 12,
   },
   tagsSection: {
     flexDirection: 'row',

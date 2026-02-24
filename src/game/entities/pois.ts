@@ -655,28 +655,29 @@ function generateRustyAnvilOptions(state: GameState): POIOption[] {
 function generateRuneKilnOptions(state: GameState): POIOption[] {
   const options: POIOption[] = [];
 
-  // Find pairs of identical items that can be fused
-  const gearCounts = new Map<GearId, { count: number; rarity: ItemRarity }>();
+  // Find pairs of identical items that can be fused (any non-Diamond gear)
+  // Key by id:rarity so different tiers of the same item are counted separately
+  const gearCounts = new Map<string, { gearId: GearId; count: number; rarity: ItemRarity }>();
   for (const slot of state.player.inventory) {
     const { id, currentRarity } = slot.item;
-    // Only Common and Gilded can be upgraded
-    if (currentRarity === 'COMMON' || currentRarity === 'GILDED') {
-      const key = id;
+    // Any gear that hasn't reached max tier (Diamond) can be upgraded
+    if (currentRarity !== 'DIAMOND') {
+      const key = `${id}:${currentRarity}`;
       const existing = gearCounts.get(key);
       if (existing) {
         existing.count++;
       } else {
-        gearCounts.set(key, { count: 1, rarity: currentRarity });
+        gearCounts.set(key, { gearId: id, count: 1, rarity: currentRarity });
       }
     }
   }
 
   // Create fusion options for pairs
-  for (const [gearId, info] of gearCounts) {
+  for (const [, info] of gearCounts) {
     if (info.count >= 2) {
-      const def = GEAR_DEFINITIONS[gearId];
-      const nextRarity = info.rarity === 'COMMON' ? 'GILDED' : 'DIAMOND';
-      const previewGear = createGearInstance(gearId, info.rarity);
+      const def = GEAR_DEFINITIONS[info.gearId];
+      const nextRarity = info.rarity === 'GILDED' ? 'DIAMOND' : 'GILDED';
+      const previewGear = createGearInstance(info.gearId, info.rarity);
       options.push({
         label: `${def.emoji} Fuse 2x ${def.name} -> ${nextRarity}`,
         item: previewGear,
@@ -688,7 +689,7 @@ function generateRuneKilnOptions(state: GameState): POIOption[] {
     options.push({
       label: 'No items to fuse',
       disabled: true,
-      disabledReason: 'Need 2 identical Common or Gilded items',
+      disabledReason: 'Need 2 identical items (not Diamond)',
     });
   }
 

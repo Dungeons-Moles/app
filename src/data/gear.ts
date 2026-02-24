@@ -223,7 +223,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['SCOUT'],
     effect: {
       timing: 'ON_HIT',
-      description: 'Your On Hit effects from SCOUT items trigger twice (once/turn)',
+      description: 'Your On Hit effects from SCOUT items trigger twice (once/turn); Tier II/III: +1/2 SPD',
     },
   },
 
@@ -400,7 +400,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['BLAST'],
     effect: {
       timing: 'BATTLE_START',
-      description: 'Battle Start: reduce Countdown of all your bomb items by 1 (min 0)',
+      description: 'Battle Start: reduce Countdown of all your bomb items by 1 (min 0); Tier II/III: +1/2 ARM',
     },
   },
   I30: {
@@ -440,7 +440,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['BLAST'],
     effect: {
       timing: 'PASSIVE',
-      description: 'Your bomb triggers happen twice',
+      description: 'Your bomb triggers happen twice; Tier II/III: next bomb self-damage reduced by 1/2',
     },
   },
 
@@ -536,7 +536,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     effect: {
       timing: 'EVERY_OTHER_TURN',
       description:
-        'Every other turn: apply 1 Chill and deal 1 non-weapon damage; if enemy already has Chill, gain +1 SPD this turn',
+        'Every other turn: apply 1 Chill and deal 1/2/3 non-weapon damage; if enemy already has Chill, gain +1/1/2 SPD this turn',
     },
   },
   I40: {
@@ -643,7 +643,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['RUST'],
     effect: {
       timing: 'ON_HIT',
-      description: 'On Hit (once/turn): apply +2 additional Rust; if enemy has 0 Armor, deal 2 non-weapon damage',
+      description: 'On Hit (once/turn): apply +2/3/4 additional Rust; if enemy has 0 Armor, deal 2/3/4 non-weapon damage',
     },
   },
   I48: {
@@ -657,7 +657,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     effect: {
       timing: 'PASSIVE',
       description:
-        'Whenever you apply Rust (once/turn): gain 1 Gold; if enemy has no Armor, apply 1 Rust at battle start',
+        'Whenever you apply Rust (once/turn): gain 1/2/3 Gold; if enemy has no Armor, apply 1 Rust at battle start',
     },
   },
 
@@ -766,7 +766,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     effect: {
       timing: 'ON_HIT',
       description:
-        'On Hit (once/turn): apply 1 Bleed; your first hit each turn vs a Bleeding enemy heals HP equal to Bleed (max 5)',
+        'On Hit (once/turn): apply 1 Bleed; your first hit each turn vs a Bleeding enemy heals HP equal to Bleed (max 5/7/9)',
     },
   },
 

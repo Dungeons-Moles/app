@@ -429,7 +429,8 @@ export function useGameplayState(): UseGameplayStateReturn {
           try {
             const bossParsed = await parseBossCombatFromMoveTx(
               gameplayConnection,
-              signature!
+              signature!,
+              program
             );
             bossCombatLog = bossParsed.combatLog;
             preBossPlayerHp = bossParsed.preBossPlayerHp;

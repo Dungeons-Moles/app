@@ -10,6 +10,53 @@
 import React, { useRef, useEffect } from 'react';
 import { View, Platform, type ViewStyle } from 'react-native';
 
+/** Apply the focus glow animation directly to an existing View ref. */
+export function useFocusGlow(active: boolean) {
+  const ref = useRef<View>(null);
+  const animRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !active) {
+      if (animRef.current != null) {
+        cancelAnimationFrame(animRef.current);
+        animRef.current = null;
+      }
+      if (ref.current) {
+        const el = (ref.current as unknown) as HTMLElement;
+        if (el?.style) el.style.filter = '';
+      }
+      return;
+    }
+
+    const el = (ref.current as unknown) as HTMLElement;
+    if (!el) return;
+
+    let start: number | null = null;
+    const animate = (time: number) => {
+      if (!start) start = time;
+      const elapsed = (time - start) % 1600;
+      const t = elapsed < 800 ? elapsed / 800 : 2 - elapsed / 800;
+      const r1 = 10 + t * 14;
+      const r2 = 5 + t * 8;
+      const r3 = 2 + t * 4;
+      const o = 0.7 + t * 0.3;
+      el.style.filter =
+        `drop-shadow(0 0 ${r1}px rgba(250, 188, 15, ${o})) ` +
+        `drop-shadow(0 0 ${r2}px rgba(255, 200, 50, ${o})) ` +
+        `drop-shadow(0 0 ${r3}px rgba(255, 220, 100, 1))`;
+      animRef.current = requestAnimationFrame(animate);
+    };
+    animRef.current = requestAnimationFrame(animate);
+
+    return () => {
+      if (animRef.current) cancelAnimationFrame(animRef.current);
+      if (el?.style) el.style.filter = '';
+    };
+  }, [active]);
+
+  return ref;
+}
+
 interface FocusGlowProps {
   active: boolean;
   children: React.ReactNode;

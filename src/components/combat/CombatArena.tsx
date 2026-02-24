@@ -182,11 +182,13 @@ export function CombatArena({
           damageNumbers={damageNumbers}
           enemyPosition={{ x: enemyX, y: combatantY - combatantRadius - 20 }}
           playerPosition={{ x: playerX, y: combatantY - combatantRadius - 20 }}
+          scale={scale}
         />
         <EffectNotifications
           notifications={effectNotifications}
           enemyPosition={{ x: enemyX, y: combatantY - combatantRadius - 40 }}
           playerPosition={{ x: playerX, y: combatantY - combatantRadius - 40 }}
+          scale={scale}
         />
       </View>
 
@@ -207,37 +209,42 @@ interface StatusEffectsRowProps {
   scale?: number;
 }
 
+const STATUS_ICONS = {
+  chill: require('../../../assets/icons/status-effects/chill.png'),
+  shrapnel: require('../../../assets/icons/status-effects/shrapnel.png'),
+  rust: require('../../../assets/icons/status-effects/rust.png'),
+  bleed: require('../../../assets/icons/status-effects/bleed.png'),
+};
+
 function StatusEffectsRow({ statusEffects, x, y, scale = 1 }: StatusEffectsRowProps) {
-  const effects: { type: 'chill' | 'shrapnel' | 'rust'; stacks: number }[] = [];
+  const effects: { type: 'chill' | 'shrapnel' | 'rust' | 'bleed'; stacks: number }[] = [];
 
-  if (statusEffects.chill > 0) {
-    effects.push({ type: 'chill', stacks: statusEffects.chill });
-  }
-  if (statusEffects.shrapnel > 0) {
-    effects.push({ type: 'shrapnel', stacks: statusEffects.shrapnel });
-  }
-  if (statusEffects.rust > 0) {
-    effects.push({ type: 'rust', stacks: statusEffects.rust });
-  }
+  if (statusEffects.chill > 0) effects.push({ type: 'chill', stacks: statusEffects.chill });
+  if (statusEffects.shrapnel > 0) effects.push({ type: 'shrapnel', stacks: statusEffects.shrapnel });
+  if (statusEffects.rust > 0) effects.push({ type: 'rust', stacks: statusEffects.rust });
+  if (statusEffects.bleed > 0) effects.push({ type: 'bleed', stacks: statusEffects.bleed });
 
-  if (effects.length === 0) {
-    return null;
-  }
+  if (effects.length === 0) return null;
 
   const config = {
-    chill: { emoji: '❄️', color: '#60a5fa' },
-    shrapnel: { emoji: '💥', color: '#f97316' },
-    rust: { emoji: '🦠', color: '#a16207' },
+    chill: { color: '#5CAEC8' },
+    shrapnel: { color: '#6E7784' },
+    rust: { color: '#A4542A' },
+    bleed: { color: '#B33A3F' },
   };
 
-  const badgeWidth = 28 * scale;
-  const totalWidth = effects.length * badgeWidth + (effects.length - 1) * 4 * scale;
+  const gap = 4 * scale;
+  const isGrid = effects.length > 2;
+  const badgeWidth = 42 * scale;
+  const cols = isGrid ? 2 : effects.length;
+  const totalWidth = cols * badgeWidth + (cols - 1) * gap;
   const startX = x - totalWidth / 2;
+  const adjustedY = isGrid ? y - 20 * scale : y;
 
   return (
-    <View style={[styles.statusRow, { left: startX, top: y, gap: 4 * scale }]}>
-      {effects.map((effect, index) => {
-        const { emoji, color } = config[effect.type];
+    <View style={[styles.statusGrid, { left: startX, top: adjustedY, width: totalWidth, gap }]}>
+      {effects.map((effect) => {
+        const { color } = config[effect.type];
         return (
           <View
             key={effect.type}
@@ -250,8 +257,8 @@ function StatusEffectsRow({ statusEffects, x, y, scale = 1 }: StatusEffectsRowPr
               },
             ]}
           >
-            <Text style={{ fontSize: 10 * scale }}>{emoji}</Text>
-            <Text style={{ fontSize: 9 * scale, fontWeight: 'bold', marginLeft: 2 * scale, color }}>
+            <RNImage source={STATUS_ICONS[effect.type]} style={{ width: 18 * scale, height: 18 * scale }} />
+            <Text style={{ fontSize: 11 * scale, fontWeight: 'bold', marginLeft: 2 * scale, color }}>
               {effect.stacks}
             </Text>
           </View>
@@ -274,15 +281,17 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     pointerEvents: 'none',
   },
-  statusRow: {
+  statusGrid: {
     position: 'absolute',
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
   },
   statusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     borderRadius: 4,
     borderWidth: 1,
-    backgroundColor: '#1a1a2e',
+    backgroundColor: 'transparent',
   },
 });

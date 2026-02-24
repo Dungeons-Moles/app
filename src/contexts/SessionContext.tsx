@@ -700,7 +700,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         (ix) => ix.programId.toBase58() !== COMPUTE_BUDGET_PROGRAM_ID
       );
       const startTx = new Transaction().add(
-        ComputeBudgetProgram.setComputeUnitLimit({ units: 1_200_000 })
+        ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 })
       );
       startTx.add(...fundTransaction.instructions);
       startTx.add(...sessionInstructions);
@@ -2167,8 +2167,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                   [mpP, SOLANA_CONFIG.programs.poiSystem, 'mapPois'],
                   [invP, SOLANA_CONFIG.programs.playerInventory, 'inventory'],
                 ];
+                // This is a background operation so we can afford to wait longer
+                // (60 * 1s = 60s) for the ER commit to propagate to base layer.
                 let allRestored = false;
-                for (let i = 0; i < 30; i += 1) {
+                for (let i = 0; i < 60; i += 1) {
                   const infos = await Promise.all(
                     expectedOwners.map(([pda]) => connection.getAccountInfo(pda, 'processed'))
                   );
@@ -2176,7 +2178,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                     (info, idx) => info?.owner.equals(expectedOwners[idx][1])
                   );
                   if (allRestored) break;
-                  await new Promise((resolve) => setTimeout(resolve, 250));
+                  await new Promise((resolve) => setTimeout(resolve, 1000));
                 }
                 if (!allRestored) {
                   throw new Error('Deferred undelegate did not restore all account owners in time');
@@ -2188,6 +2190,73 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                 });
                 await removeCleanup(cleanup.id);
                 continue;
+              } else {
+                // Session PDA is owned by session-manager, but child accounts may
+                // still be delegated from a partial undelegation that timed out.
+                const [gsP] = getGameStatePda(sessionPda);
+                const [meP] = deriveMapEnemiesPda(sessionPda);
+                const [gmP] = deriveGeneratedMapPda(sessionPda);
+                const [mpP] = deriveMapPoisPda(sessionPda);
+                const [invP] = deriveInventoryPda(sessionPda);
+                const childAccounts: Array<[PublicKey, PublicKey, string]> = [
+                  [gsP, SOLANA_CONFIG.programs.gameplayState, 'gameState'],
+                  [meP, SOLANA_CONFIG.programs.gameplayState, 'mapEnemies'],
+                  [gmP, SOLANA_CONFIG.programs.mapGenerator, 'generatedMap'],
+                  [mpP, SOLANA_CONFIG.programs.poiSystem, 'mapPois'],
+                  [invP, SOLANA_CONFIG.programs.playerInventory, 'inventory'],
+                ];
+                const childInfos = await Promise.all(
+                  childAccounts.map(([pda]) => connection.getAccountInfo(pda, 'processed'))
+                );
+                const anyChildDelegated = childInfos.some(
+                  (info) => info && info.owner.equals(DELEGATION_PROGRAM_ID)
+                );
+
+                if (anyChildDelegated) {
+                  console.log(
+                    '[SessionContext] Deferred cleanup: session restored but child accounts still delegated, retrying undelegation',
+                    {
+                      cleanupId: cleanup.id,
+                      delegated: childAccounts
+                        .filter((_, idx) => childInfos[idx]?.owner.equals(DELEGATION_PROGRAM_ID))
+                        .map(([, , label]) => label),
+                    }
+                  );
+
+                  // Retry undelegation for the remaining accounts.
+                  // The ER may return InvalidWritableAccount if it already committed
+                  // the accounts — that's fine, we just need to wait for the base
+                  // layer to receive the commit. Treat any error as recoverable here.
+                  try {
+                    await sessionManager.undelegateSession(
+                      getFallbackStateHash(),
+                      cleanupSigner
+                    );
+                  } catch (undelegateErr) {
+                    console.warn(
+                      '[SessionContext] Deferred cleanup: undelegate retry error (will still wait for base layer)',
+                      undelegateErr instanceof Error ? undelegateErr.message : undelegateErr
+                    );
+                  }
+
+                  // Wait for all child accounts to be restored on base layer.
+                  // This is a background operation so we can afford to wait longer
+                  // (60 * 1s = 60s) for the ER commit to propagate.
+                  let allRestored = false;
+                  for (let i = 0; i < 60; i += 1) {
+                    const infos = await Promise.all(
+                      childAccounts.map(([pda]) => connection.getAccountInfo(pda, 'processed'))
+                    );
+                    allRestored = infos.every(
+                      (info, idx) => info?.owner.equals(childAccounts[idx][1])
+                    );
+                    if (allRestored) break;
+                    await new Promise((resolve) => setTimeout(resolve, 1000));
+                  }
+                  if (!allRestored) {
+                    throw new Error('Child accounts still delegated after undelegation retry');
+                  }
+                }
               }
 
               const endResult = await sessionManager.endSession(cleanupSigner);

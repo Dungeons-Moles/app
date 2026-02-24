@@ -18,6 +18,7 @@ import type {
   BossCombatStartedEvent,
   EnemyMovedEvent,
   PlayerDefeatedEvent,
+  PlayerHealedEvent,
   LevelCompletedEvent,
   ItemUnlockedEvent,
   ParsedEvent,
@@ -356,10 +357,12 @@ export async function parseCombatLog(
  */
 export async function parseBossCombatFromMoveTx(
   connection: Connection,
-  signature: string
+  signature: string,
+  program?: Program
 ): Promise<{
   combatLog?: BackendCombatLogEntry[];
   preBossPlayerHp?: number;
+  combatEnded?: CombatEndedEvent;
 }> {
   const tx = await connection.getTransaction(signature, {
     commitment: 'confirmed',
@@ -372,12 +375,41 @@ export async function parseBossCombatFromMoveTx(
 
   let lastLog: CombatLogEvent | null = null;
   let lastPlayerHp: number | undefined;
+  let preBossPlayerHpFromHeal: number | undefined;
+  let lastCombatEnded: CombatEndedEvent | undefined;
+  let bossStartedSeen = false;
 
   for (const logLine of tx.meta.logMessages) {
     if (!logLine.startsWith('Program data: ')) continue;
     const base64Data = logLine.slice('Program data: '.length);
     try {
       const buf = Buffer.from(base64Data, 'base64');
+
+      // Prefer typed event decoding when program is available so we can
+      // recover extra context (PlayerHealed + CombatEnded) in POI-driven boss flows.
+      if (program) {
+        try {
+          const raw = program.coder.events.decode(buf.toString('base64'));
+          if (raw) {
+            const eventName = raw.name;
+            const eventData = convertEventData(
+              eventName,
+              raw.data as Record<string, unknown>
+            );
+            if (eventName === EVENT_NAMES.BOSS_COMBAT_STARTED) {
+              bossStartedSeen = true;
+            } else if (eventName === EVENT_NAMES.PLAYER_HEALED && !bossStartedSeen) {
+              const healed = eventData as PlayerHealedEvent;
+              preBossPlayerHpFromHeal = healed.newHp;
+            } else if (eventName === EVENT_NAMES.COMBAT_ENDED) {
+              lastCombatEnded = eventData as CombatEndedEvent;
+            }
+          }
+        } catch {
+          // Ignore non-event program-data lines.
+        }
+      }
+
       if (buf.length >= 8) {
         const disc = buf.subarray(0, 8);
         if (disc.equals(COMBAT_LOG_DISCRIMINATOR)) {
@@ -400,7 +432,8 @@ export async function parseBossCombatFromMoveTx(
 
   return {
     combatLog: lastLog?.entries,
-    preBossPlayerHp: lastPlayerHp,
+    preBossPlayerHp: preBossPlayerHpFromHeal ?? lastPlayerHp,
+    combatEnded: lastCombatEnded,
   };
 }
 

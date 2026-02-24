@@ -119,12 +119,12 @@ export const TOOL_EFFECTS: Record<ToolId, ToolEffects> = {
     ],
   },
 
-  // T-GR-02: Gemfinder Staff - +1 ATK, +1 ARM, +1 DIG (all flat), OnHit: TriggerAllShards
+  // T-GR-02: Gemfinder Staff - +1/1/2 ATK, +1/2/2 ARM, +1/1/2 DIG, OnHit: TriggerAllShards
   T6: {
     effects: [
-      E(Trigger.BattleStart(), 'GainAtk', [1, 1, 1]),
-      E(Trigger.BattleStart(), 'GainArmor', [1, 1, 1]),
-      E(Trigger.BattleStart(), 'GainDig', [1, 1, 1]),
+      E(Trigger.BattleStart(), 'GainAtk', [1, 1, 2]),
+      E(Trigger.BattleStart(), 'GainArmor', [1, 2, 2]),
+      E(Trigger.BattleStart(), 'GainDig', [1, 1, 2]),
       E(Trigger.OnHit(), 'TriggerAllShards', [1, 1, 1], { oncePerTurn: true }),
     ],
   },
@@ -133,11 +133,11 @@ export const TOOL_EFFECTS: Record<ToolId, ToolEffects> = {
   // BLAST (T7, T8)
   // ===========================================================================
 
-  // T-BL-01: Fuse Pick - +1/2/3 ATK, OnHit (once/turn): deal 1/2/3 non-weapon
+  // T-BL-01: Fuse Pick - +1/2/3 ATK, OnHit (once/turn): deal 1/2/2 non-weapon
   T7: {
     effects: [
       E(Trigger.BattleStart(), 'GainAtk', [1, 2, 3]),
-      E(Trigger.OnHit(), 'DealNonWeaponDamage', [1, 2, 3], { oncePerTurn: true }),
+      E(Trigger.OnHit(), 'DealNonWeaponDamage', [1, 2, 2], { oncePerTurn: true }),
     ],
   },
 

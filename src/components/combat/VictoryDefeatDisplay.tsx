@@ -164,7 +164,7 @@ export function VictoryDefeatDisplay({
             },
           ]}
         >
-          {isFinalVictory ? 'YOU WIN!' : result}
+          {isFinalVictory && isVictory ? 'YOU WIN!' : result}
         </Text>
 
         {/* Subtext */}

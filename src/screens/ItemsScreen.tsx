@@ -30,6 +30,8 @@ import {
   setItemUnlocked as setPoolBit,
   getItemPoolIndex,
 } from '../services/solana/types/item_pool';
+import { getAllItemsetDefinitions, getItemsetsForItem } from '../data/itemsets';
+import type { ItemsetDefinition } from '../data/itemsets';
 
 const backgroundImage = require('../../assets/ui/backgrounds/loading-background.png');
 const bookImageMobile = require('../../assets/ui/backgrounds/book-wide.png');
@@ -47,6 +49,21 @@ const statIconSPD = require('../../assets/icons/stats/speed.png');
 const statIconDIG = require('../../assets/icons/stats/DIG.png');
 const statIconHP = require('../../assets/icons/stats/HP.png');
 const squareFrameSource = require('../../assets/ui/frames/square.png');
+
+const ITEMSET_ICONS: Record<string, any> = {
+  UNION_STANDARD: require('../../assets/icons/itemsets/union_standard.png'),
+  SHARD_CIRCUIT: require('../../assets/icons/itemsets/shard_circuit.png'),
+  DEMOLITION_PERMIT: require('../../assets/icons/itemsets/demolition_permit.png'),
+  FUSE_NETWORK: require('../../assets/icons/itemsets/fuse_network.png'),
+  SHRAPNEL_HARNESS: require('../../assets/icons/itemsets/shrapnel_harness.png'),
+  RUST_RITUAL: require('../../assets/icons/itemsets/rust_ritual.png'),
+  SWIFT_DIGGER_KIT: require('../../assets/icons/itemsets/swift_digger_kit.png'),
+  ROYAL_EXTRACTION: require('../../assets/icons/itemsets/royal_extraction.png'),
+  WHITEOUT_INITIATIVE: require('../../assets/icons/itemsets/whiteout_initiative.png'),
+  BLOODRUSH_PROTOCOL: require('../../assets/icons/itemsets/bloodrush_protocol.png'),
+  CORROSION_PAYLOAD: require('../../assets/icons/itemsets/corrosion_payload.png'),
+  GOLDEN_SHRAPNEL_EXCHANGE: require('../../assets/icons/itemsets/golden_shrapnel_exchange.png'),
+};
 
 // Item descriptions mapping
 const ITEM_DESCRIPTIONS: Record<string, string> = {
@@ -249,6 +266,7 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
     const allItems = getAllItems();
     const firstUnlocked = allItems.find((item) => isItemUnlocked(item.id));
     setSelectedItem(firstUnlocked || allItems[0] || null);
+    setSelectedItemset(getAllItemsetDefinitions()[0] || null);
   }, []);
 
   const checkItemUnlocked = useCallback(
@@ -336,6 +354,20 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
 
   const [cursorIdx, setCursorIdx] = useState(0);
 
+  // Tab state
+  const [activeTab, setActiveTab] = useState<'items' | 'itemsets'>('items');
+  const [selectedItemset, setSelectedItemset] = useState<ItemsetDefinition | null>(null);
+  const [itemsetCursorIdx, setItemsetCursorIdx] = useState(0);
+  const allItemsets = useMemo(() => getAllItemsetDefinitions(), []);
+  const allItemsById = useMemo(() => {
+    const map: Record<string, DisplayItem> = {};
+    getAllItems().forEach((item) => {
+      map[item.id] = item;
+    });
+    return map;
+  }, []);
+  const itemsetCursorRef = useRef<View>(null);
+
   // Sync cursor → selected item + auto-scroll into view
   useEffect(() => {
     if (isController && allItems[cursorIdx]) {
@@ -350,29 +382,72 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
     }
   }, [cursorIdx, isController]);
 
+  // Sync itemset cursor → selected itemset
+  useEffect(() => {
+    if (isController && activeTab === 'itemsets' && allItemsets[itemsetCursorIdx]) {
+      setSelectedItemset(allItemsets[itemsetCursorIdx]);
+    }
+  }, [itemsetCursorIdx, isController, activeTab]);
+
   const scrollViewRef = useRef<ScrollView>(null);
   const cursorRef = useRef<View>(null);
+
+  const toggleTab = useCallback(() => {
+    setActiveTab((prev) => {
+      if (prev === 'items') {
+        setItemsetCursorIdx(0);
+        setSelectedItemset(getAllItemsetDefinitions()[0] || null);
+        return 'itemsets';
+      } else {
+        setCursorIdx(0);
+        return 'items';
+      }
+    });
+  }, []);
 
   useControllerAction(
     {
       onB: handleBack,
-      onA: () => {
-        const item = allItems[cursorIdx];
-        if (item && checkItemUnlocked(item.id)) togglePoolItem(item);
+      onA:
+        activeTab === 'items'
+          ? () => {
+              const item = allItems[cursorIdx];
+              if (item && checkItemUnlocked(item.id)) togglePoolItem(item);
+            }
+          : undefined,
+      onX: activeTab === 'items' && hasPoolChanges ? handleSaveItemPool : undefined,
+      onL1: toggleTab,
+      onR1: toggleTab,
+      onDPadLeft: () => {
+        if (activeTab === 'items') setCursorIdx((p) => Math.max(0, p - 1));
+        else setItemsetCursorIdx((p) => Math.max(0, p - 1));
       },
-      onX: hasPoolChanges ? handleSaveItemPool : undefined,
-      onDPadLeft: () => setCursorIdx((p) => Math.max(0, p - 1)),
-      onDPadRight: () => setCursorIdx((p) => Math.min(allItems.length - 1, p + 1)),
-      onDPadUp: () => setCursorIdx((p) => Math.max(0, p - itemsPerRow)),
-      onDPadDown: () => setCursorIdx((p) => Math.min(allItems.length - 1, p + itemsPerRow)),
+      onDPadRight: () => {
+        if (activeTab === 'items') setCursorIdx((p) => Math.min(allItems.length - 1, p + 1));
+        else setItemsetCursorIdx((p) => Math.min(allItemsets.length - 1, p + 1));
+      },
+      onDPadUp: () => {
+        if (activeTab === 'items') setCursorIdx((p) => Math.max(0, p - itemsPerRow));
+        else setItemsetCursorIdx((p) => Math.max(0, p - itemsPerRow));
+      },
+      onDPadDown: () => {
+        if (activeTab === 'items')
+          setCursorIdx((p) => Math.min(allItems.length - 1, p + itemsPerRow));
+        else setItemsetCursorIdx((p) => Math.min(allItemsets.length - 1, p + itemsPerRow));
+      },
     },
     isController
   );
 
   const controllerHints: ButtonHint[] = [
+    { button: 'L1R1', label: 'Tab' },
     { button: 'DPad', label: 'Navigate' },
-    { button: 'A', label: selectedItemInPool ? 'Remove' : 'Add to Pool' },
-    ...(hasPoolChanges ? [{ button: 'X' as const, label: 'Save' }] : []),
+    ...(activeTab === 'items'
+      ? [
+          { button: 'A' as const, label: selectedItemInPool ? 'Remove' : 'Add to Pool' },
+          ...(hasPoolChanges ? [{ button: 'X' as const, label: 'Save' }] : []),
+        ]
+      : []),
     { button: 'B', label: 'Back' },
   ];
 
@@ -403,146 +478,314 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
           )}
 
           <View style={styles.titleGroup}>
-            <ImageBackground
-              source={buttonV4Source}
-              style={[styles.titlePanel, isCompact && compactStyles.titlePanel]}
-              resizeMode="stretch"
-            >
-              <Text style={[styles.title, isCompact && compactStyles.title]}>Items</Text>
-            </ImageBackground>
-            <Text
-              numberOfLines={1}
-              style={[
-                styles.poolCountText,
-                isCompact && compactStyles.poolCountText,
-                styles.poolCountAbsolute,
-              ]}
-            >
-              Pool: {draftPoolIndices.size} (min {ITEM_POOL_MIN_SIZE})
-            </Text>
+            <TouchableOpacity onPress={toggleTab} activeOpacity={0.8}>
+              <ImageBackground
+                source={buttonV4Source}
+                style={[styles.titlePanel, isCompact && compactStyles.titlePanel]}
+                resizeMode="stretch"
+              >
+                <Text style={[styles.title, isCompact && compactStyles.title]}>
+                  {activeTab === 'items' ? 'Items' : 'Itemsets'}
+                </Text>
+              </ImageBackground>
+            </TouchableOpacity>
+            {activeTab === 'items' && (
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.poolCountText,
+                  isCompact && compactStyles.poolCountText,
+                  styles.poolCountAbsolute,
+                ]}
+              >
+                Pool: {draftPoolIndices.size} (min {ITEM_POOL_MIN_SIZE})
+              </Text>
+            )}
           </View>
 
-          {/* Save button in header right */}
-          <TouchableOpacity
-            disabled={
-              isSavingItemPool || !hasPoolChanges || draftPoolIndices.size < ITEM_POOL_MIN_SIZE
-            }
-            onPress={handleSaveItemPool}
-            activeOpacity={0.7}
-          >
-            <ImageBackground
-              source={buttonV3Source}
-              style={[
-                styles.saveButton,
-                isCompact && compactStyles.saveButton,
-                (isSavingItemPool ||
-                  !hasPoolChanges ||
-                  draftPoolIndices.size < ITEM_POOL_MIN_SIZE) &&
-                  styles.saveButtonDisabled,
-              ]}
-              resizeMode="stretch"
+          {/* Save button in header right — only on items tab */}
+          {activeTab === 'items' ? (
+            <TouchableOpacity
+              disabled={
+                isSavingItemPool || !hasPoolChanges || draftPoolIndices.size < ITEM_POOL_MIN_SIZE
+              }
+              onPress={handleSaveItemPool}
+              activeOpacity={0.7}
             >
-              {isSavingItemPool ? (
-                <ActivityIndicator size="small" color="#1a1a1a" />
-              ) : (
-                <Text style={[styles.saveButtonText, isCompact && compactStyles.saveButtonText]}>
-                  Save
-                </Text>
-              )}
-            </ImageBackground>
-          </TouchableOpacity>
+              <ImageBackground
+                source={buttonV3Source}
+                style={[
+                  styles.saveButton,
+                  isCompact && compactStyles.saveButton,
+                  (isSavingItemPool ||
+                    !hasPoolChanges ||
+                    draftPoolIndices.size < ITEM_POOL_MIN_SIZE) &&
+                    styles.saveButtonDisabled,
+                ]}
+                resizeMode="stretch"
+              >
+                {isSavingItemPool ? (
+                  <ActivityIndicator size="small" color="#1a1a1a" />
+                ) : (
+                  <Text style={[styles.saveButtonText, isCompact && compactStyles.saveButtonText]}>
+                    Save
+                  </Text>
+                )}
+              </ImageBackground>
+            </TouchableOpacity>
+          ) : (
+            <View style={[styles.saveButton, isCompact && compactStyles.saveButton]} />
+          )}
         </View>
 
         {/* Two-column layout */}
         <View style={styles.columnsContainer}>
-          {/* Left column - Item grid by tag */}
+          {/* Left column - Item grid by tag / Itemset grid */}
           <ScrollView
             ref={scrollViewRef}
             style={styles.itemsListColumn}
             showsVerticalScrollIndicator={false}
           >
-            {(() => {
-              let flatIdx = 0;
-              return ALL_TAGS.map((tag) => {
-                const tagItems = getItemsByTag(tag);
-                return (
-                  <View key={tag} style={styles.tagSection}>
-                    <Text
-                      style={[
-                        styles.tagHeader,
-                        isCompact && compactStyles.tagHeader,
-                        { color: TAG_COLORS[tag] },
-                      ]}
-                    >
-                      {TAG_DISPLAY_NAMES[tag]}
-                    </Text>
-                    <View style={[styles.itemsGrid, isCompact && compactStyles.itemsGrid]}>
-                      {tagItems.map((item) => {
-                        const idx = flatIdx++;
-                        const unlocked = checkItemUnlocked(item.id);
-                        const isSelected = selectedItem?.id === item.id;
-                        const poolIndex = getItemPoolIndex(item.id);
-                        const isInPool = poolIndex >= 0 && draftPoolIndices.has(poolIndex);
-                        const isCursorItem = isController && idx === cursorIdx;
-                        const cell = (
-                          <TouchableOpacity
-                            key={item.id}
-                            style={[
-                              styles.itemGridCell,
-                              isCompact && compactStyles.itemGridCell,
-                              isInPool && styles.itemGridCellInPool,
-                              isSelected && styles.itemGridCellSelected,
-                            ]}
-                            onPress={() => setSelectedItem(item)}
-                            activeOpacity={0.7}
-                          >
-                            <ImageBackground
-                              source={squareFrameSource}
-                              style={[styles.itemFrame, isCompact && compactStyles.itemFrame]}
-                              resizeMode="stretch"
+            {activeTab === 'items' ? (
+              (() => {
+                let flatIdx = 0;
+                return ALL_TAGS.map((tag) => {
+                  const tagItems = getItemsByTag(tag);
+                  return (
+                    <View key={tag} style={styles.tagSection}>
+                      <Text
+                        style={[
+                          styles.tagHeader,
+                          isCompact && compactStyles.tagHeader,
+                          { color: TAG_COLORS[tag] },
+                        ]}
+                      >
+                        {TAG_DISPLAY_NAMES[tag]}
+                      </Text>
+                      <View style={[styles.itemsGrid, isCompact && compactStyles.itemsGrid]}>
+                        {tagItems.map((item) => {
+                          const idx = flatIdx++;
+                          const unlocked = checkItemUnlocked(item.id);
+                          const isSelected = selectedItem?.id === item.id;
+                          const poolIndex = getItemPoolIndex(item.id);
+                          const isInPool = poolIndex >= 0 && draftPoolIndices.has(poolIndex);
+                          const isCursorItem = isController && idx === cursorIdx;
+                          const cell = (
+                            <TouchableOpacity
+                              key={item.id}
+                              style={[
+                                styles.itemGridCell,
+                                isCompact && compactStyles.itemGridCell,
+                                isInPool && styles.itemGridCellInPool,
+                                isSelected && styles.itemGridCellSelected,
+                              ]}
+                              onPress={() => setSelectedItem(item)}
+                              activeOpacity={0.7}
                             >
-                              <Image
-                                source={item.image}
-                                style={[
-                                  styles.itemImage,
-                                  isCompact && compactStyles.itemImage,
-                                  !unlocked && styles.itemImageLocked,
-                                ]}
-                                resizeMode="contain"
-                              />
-                              {!unlocked && (
-                                <View style={styles.itemLockOverlay}>
-                                  <Image
-                                    source={lockIconSource}
-                                    style={[
-                                      styles.gridLockIcon,
-                                      isCompact && compactStyles.gridLockIcon,
-                                    ]}
-                                    resizeMode="contain"
-                                  />
-                                </View>
-                              )}
-                            </ImageBackground>
-                          </TouchableOpacity>
-                        );
-                        return isCursorItem ? (
-                          <View key={item.id} ref={cursorRef}>
-                            <FocusGlow active>{cell}</FocusGlow>
-                          </View>
-                        ) : (
-                          cell
-                        );
-                      })}
+                              <ImageBackground
+                                source={squareFrameSource}
+                                style={[styles.itemFrame, isCompact && compactStyles.itemFrame]}
+                                resizeMode="stretch"
+                              >
+                                <Image
+                                  source={item.image}
+                                  style={[
+                                    styles.itemImage,
+                                    isCompact && compactStyles.itemImage,
+                                    !unlocked && styles.itemImageLocked,
+                                  ]}
+                                  resizeMode="contain"
+                                />
+                                {!unlocked && (
+                                  <View style={styles.itemLockOverlay}>
+                                    <Image
+                                      source={lockIconSource}
+                                      style={[
+                                        styles.gridLockIcon,
+                                        isCompact && compactStyles.gridLockIcon,
+                                      ]}
+                                      resizeMode="contain"
+                                    />
+                                  </View>
+                                )}
+                              </ImageBackground>
+                            </TouchableOpacity>
+                          );
+                          return isCursorItem ? (
+                            <View key={item.id} ref={cursorRef}>
+                              <FocusGlow active>{cell}</FocusGlow>
+                            </View>
+                          ) : (
+                            cell
+                          );
+                        })}
+                      </View>
                     </View>
-                  </View>
-                );
-              });
-            })()}
+                  );
+                });
+              })()
+            ) : (
+              <View style={styles.tagSection}>
+                <Text
+                  style={[
+                    styles.tagHeader,
+                    isCompact && compactStyles.tagHeader,
+                    { color: '#DAA520' },
+                  ]}
+                >
+                  ITEMSETS
+                </Text>
+                <View style={[styles.itemsGrid, isCompact && compactStyles.itemsGrid]}>
+                  {allItemsets.map((itemset, idx) => {
+                    const isSelected = selectedItemset?.id === itemset.id;
+                    const isCursorItem = isController && idx === itemsetCursorIdx;
+                    const cell = (
+                      <TouchableOpacity
+                        key={itemset.id}
+                        style={[
+                          styles.itemGridCell,
+                          isCompact && compactStyles.itemGridCell,
+                          isSelected && styles.itemGridCellSelected,
+                        ]}
+                        onPress={() => setSelectedItemset(itemset)}
+                        activeOpacity={0.7}
+                      >
+                        <ImageBackground
+                          source={squareFrameSource}
+                          style={[styles.itemFrame, isCompact && compactStyles.itemFrame]}
+                          resizeMode="stretch"
+                        >
+                          <Image
+                            source={ITEMSET_ICONS[itemset.id]}
+                            style={[styles.itemImage, isCompact && compactStyles.itemImage]}
+                            resizeMode="contain"
+                          />
+                        </ImageBackground>
+                      </TouchableOpacity>
+                    );
+                    return isCursorItem ? (
+                      <View key={itemset.id} ref={itemsetCursorRef}>
+                        <FocusGlow active>{cell}</FocusGlow>
+                      </View>
+                    ) : (
+                      cell
+                    );
+                  })}
+                </View>
+              </View>
+            )}
           </ScrollView>
 
           {/* Right column - Item details sidebar */}
           <View style={[styles.itemDetailsColumn, isCompact && compactStyles.itemDetailsColumn]}>
-            {selectedItem && (
+            {activeTab === 'itemsets' && selectedItemset && (
+              <>
+                <View
+                  style={[
+                    styles.selectedItemHeader,
+                    isCompact && compactStyles.selectedItemHeader,
+                    styles.itemsetDetailHeader,
+                    isCompact && compactStyles.itemsetDetailHeader,
+                  ]}
+                >
+                  <Image
+                    source={ITEMSET_ICONS[selectedItemset.id]}
+                    style={[styles.selectedItemImage, isCompact && compactStyles.selectedItemImage]}
+                    resizeMode="contain"
+                  />
+                  <Text
+                    style={[styles.selectedItemName, isCompact && compactStyles.selectedItemName]}
+                  >
+                    {selectedItemset.name}
+                  </Text>
+                </View>
+
+                <ScrollView
+                  style={styles.itemDescriptionScroll}
+                  showsVerticalScrollIndicator={false}
+                >
+                  {(() => {
+                    const timingLabel = selectedItemset.bonus.timing
+                      ? selectedItemset.bonus.timing.replace(/_/g, ' ')
+                      : selectedItemset.bonus.passive
+                        ? 'PASSIVE'
+                        : null;
+                    return (
+                      <>
+                        {timingLabel && (
+                          <Text
+                            style={[
+                              styles.itemsetTimingLabel,
+                              isCompact && compactStyles.itemsetTimingLabel,
+                            ]}
+                          >
+                            {timingLabel}
+                          </Text>
+                        )}
+                        <View style={styles.statsContainer}>
+                          <Text
+                            style={[
+                              styles.itemDescription,
+                              isCompact && compactStyles.itemDescription,
+                            ]}
+                          >
+                            {selectedItemset.bonus.description}
+                          </Text>
+                        </View>
+                        <View style={styles.itemsetsSection}>
+                          <Text
+                            style={[
+                              styles.itemsetsSectionTitle,
+                              isCompact && compactStyles.itemsetsSectionTitle,
+                            ]}
+                          >
+                            Items:
+                          </Text>
+                          {selectedItemset.requiredItems.map((itemId) => {
+                            const item = allItemsById[itemId as string];
+                            if (!item) return null;
+                            return (
+                              <View
+                                key={itemId as string}
+                                style={styles.itemsetMemberRow}
+                              >
+                                <ImageBackground
+                                  source={squareFrameSource}
+                                  style={[
+                                    styles.itemsetReqFrame,
+                                    isCompact && compactStyles.itemsetReqFrame,
+                                  ]}
+                                  resizeMode="stretch"
+                                >
+                                  <Image
+                                    source={item.image}
+                                    style={[
+                                      styles.itemsetReqItemImage,
+                                      isCompact && compactStyles.itemsetReqItemImage,
+                                    ]}
+                                    resizeMode="contain"
+                                  />
+                                </ImageBackground>
+                                <Text
+                                  style={[
+                                    styles.itemsetMemberName,
+                                    isCompact && compactStyles.itemsetMemberName,
+                                  ]}
+                                >
+                                  {item.name}
+                                </Text>
+                              </View>
+                            );
+                          })}
+                        </View>
+                      </>
+                    );
+                  })()}
+                </ScrollView>
+              </>
+            )}
+
+            {activeTab === 'items' && selectedItem && (
               <>
                 {!checkItemUnlocked(selectedItem.id) && (
                   <ImageBackground
@@ -729,6 +972,44 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                       )}
                     </View>
                   )}
+
+                  {/* Itemsets this item is part of */}
+                  {(() => {
+                    const itemsets = getItemsetsForItem(selectedItem.id as any);
+                    if (itemsets.length === 0) return null;
+                    return (
+                      <View style={styles.itemsetsSection}>
+                        <Text
+                          style={[
+                            styles.itemsetsSectionTitle,
+                            isCompact && compactStyles.itemsetsSectionTitle,
+                          ]}
+                        >
+                          Part of:
+                        </Text>
+                        {itemsets.map((itemset) => (
+                          <View key={itemset.id} style={styles.itemsetMemberRow}>
+                            <Image
+                              source={ITEMSET_ICONS[itemset.id]}
+                              style={[
+                                styles.itemsetMemberIcon,
+                                isCompact && compactStyles.itemsetMemberIcon,
+                              ]}
+                              resizeMode="contain"
+                            />
+                            <Text
+                              style={[
+                                styles.itemsetMemberName,
+                                isCompact && compactStyles.itemsetMemberName,
+                              ]}
+                            >
+                              {itemset.name}
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
+                    );
+                  })()}
                 </ScrollView>
               </>
             )}
@@ -921,6 +1202,9 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     marginTop: 40,
   },
+  itemsetDetailHeader: {
+    marginTop: 16,
+  },
   selectedItemImage: {
     width: 80,
     height: 80,
@@ -1012,6 +1296,59 @@ const styles = StyleSheet.create({
     color: '#3d2b1f',
     fontWeight: 'bold',
   },
+  // Itemsets membership section (items tab right panel)
+  itemsetsSection: {
+    width: '100%',
+    backgroundColor: 'rgba(0,0,0,0.03)',
+    borderRadius: 6,
+    padding: 8,
+    marginTop: 8,
+  },
+  itemsetsSectionTitle: {
+    fontFamily: Typography.header,
+    fontSize: 10,
+    color: '#3d2b1f',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  itemsetMemberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 2,
+  },
+  itemsetMemberIcon: {
+    width: 18,
+    height: 18,
+  },
+  itemsetMemberName: {
+    fontFamily: Typography.body,
+    fontSize: 11,
+    color: '#8B4513',
+  },
+  // Required item frames inside itemset detail panel
+  itemsetReqFrame: {
+    width: 26,
+    height: 26,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  itemsetReqItemImage: {
+    width: 20,
+    height: 20,
+  },
+  // Itemset detail timing label (itemsets tab right panel)
+  itemsetTimingLabel: {
+    fontFamily: Typography.header,
+    fontSize: 11,
+    color: '#8B4513',
+    fontWeight: 'bold',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    textAlign: 'center',
+    marginBottom: 4,
+  },
 });
 
 const compactStyles = StyleSheet.create({
@@ -1094,6 +1431,9 @@ const compactStyles = StyleSheet.create({
   selectedItemHeader: {
     marginTop: 150,
   },
+  itemsetDetailHeader: {
+    marginTop: 30,
+  },
   selectedItemName: {
     fontSize: 24,
     marginBottom: 8,
@@ -1126,6 +1466,30 @@ const compactStyles = StyleSheet.create({
     fontSize: 18,
   },
   statValue: {
+    fontSize: 18,
+  },
+  // Itemsets membership section compact
+  itemsetsSectionTitle: {
+    fontSize: 16,
+  },
+  itemsetMemberIcon: {
+    width: 28,
+    height: 28,
+  },
+  itemsetMemberName: {
+    fontSize: 18,
+  },
+  // Required item frames compact
+  itemsetReqFrame: {
+    width: 42,
+    height: 42,
+  },
+  itemsetReqItemImage: {
+    width: 34,
+    height: 34,
+  },
+  // Itemset detail timing label compact
+  itemsetTimingLabel: {
     fontSize: 18,
   },
 });

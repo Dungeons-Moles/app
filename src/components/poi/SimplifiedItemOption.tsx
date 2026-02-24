@@ -105,7 +105,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     minHeight: 160,
     position: 'relative',
-    overflow: 'hidden', // Added to clip the border overlay
   },
   contentContainer: {
     width: '100%',
@@ -113,8 +112,7 @@ const styles = StyleSheet.create({
     padding: 8,
   },
   selected: {
-    // We might want to add some specific style for selected items if needed,
-    // but the tint color handles the rarity visualization now.
+    transform: [{ scale: 1.08 }],
   },
   disabled: {
     opacity: 0.5,

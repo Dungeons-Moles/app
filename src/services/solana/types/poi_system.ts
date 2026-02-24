@@ -77,8 +77,8 @@ export interface MapPoisData {
   seed: bigint;
   pois: PoiInstance[];
   shopState: ShopState;
-  currentOffer: CacheOffer | null;
-  currentOilOffer: OilOffer | null;
+  cacheOffers: CacheOffer[];
+  oilOffers: OilOffer[];
 }
 
 // Account interfaces for POI instructions

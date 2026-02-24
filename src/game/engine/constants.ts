@@ -16,7 +16,9 @@ export const GAME_CONSTANTS = {
   MAP_HEIGHT: 50,
   INITIAL_SIGHT_RADIUS: 6,
 
-  // Player
+  // Player (base stats before items)
+  // NOTE: INITIAL_HP is for PvP / default fallback (campaign level 20+).
+  // Campaign HP scales by level — use getBaseHp(campaignLevel) instead.
   INITIAL_HP: 15,
   INITIAL_ATK: 0,
   INITIAL_ARM: 0,
@@ -47,6 +49,18 @@ export const GAME_CONSTANTS = {
   TARGET_FPS: 60,
   FRAME_BUDGET_MS: 16,
 } as const;
+
+/**
+ * Get base HP for a campaign level.
+ * Matches on-chain `base_hp()` in gameplay-state/constants.rs.
+ * Levels 1-9: 25 HP, 10-19: 20 HP, 20+: 15 HP.
+ * PvP modes always use level 20+ (15 HP).
+ */
+export function getBaseHp(campaignLevel: number): number {
+  if (campaignLevel >= 1 && campaignLevel <= 9) return 25;
+  if (campaignLevel >= 10 && campaignLevel <= 19) return 20;
+  return 15;
+}
 
 // ============================================================================
 // Time Phase Constants

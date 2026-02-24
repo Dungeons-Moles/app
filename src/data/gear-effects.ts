@@ -157,10 +157,11 @@ export const GEAR_EFFECTS: Record<GearId, GearEffects> = {
     effects: [E(Trigger.BattleStart(), 'SetArmorPiercing', [1, 2, 3])],
   },
 
-  // G-SC-08: Gear-Link Medallion - DoubleOnHitEffects, +1/2/3 DIG
+  // G-SC-08: Gear-Link Medallion - DoubleOnHitEffects (toggle); +0/1/2 SPD
   I16: {
     effects: [
       E(Trigger.BattleStart(), 'DoubleOnHitEffects', [1, 1, 1]),
+      E(Trigger.BattleStart(), 'GainSpd', [0, 1, 2]),
     ],
   },
 
@@ -240,9 +241,12 @@ export const GEAR_EFFECTS: Record<GearId, GearEffects> = {
     effects: [E(Trigger.OnHit(), 'DealNonWeaponDamage', [2, 3, 4], { oncePerTurn: true })],
   },
 
-  // G-BL-05: Bomb Satchel - Battle Start: ReduceAllCountdowns by 1
+  // G-BL-05: Bomb Satchel - Battle Start: ReduceAllCountdowns by 1; +0/1/2 ARM
   I29: {
-    effects: [E(Trigger.BattleStart(), 'ReduceAllCountdowns', [1, 1, 1])],
+    effects: [
+      E(Trigger.BattleStart(), 'ReduceAllCountdowns', [1, 1, 1]),
+      E(Trigger.BattleStart(), 'GainArmor', [0, 1, 2]),
+    ],
   },
 
   // G-BL-06: Kindling Charge - Battle Start: deal 2/3/4; next bomb +3/5/7, self-damage -2/3/4
@@ -259,9 +263,12 @@ export const GEAR_EFFECTS: Record<GearId, GearEffects> = {
     effects: [E(Trigger.TurnStart(), 'StoreDamage', [1, 2, 3])],
   },
 
-  // G-BL-08: Twin-Fuse Knot - DoubleBombTrigger
+  // G-BL-08: Twin-Fuse Knot - DoubleBombTrigger (toggle); +0/1/2 ReduceNextBombSelfDamage
   I32: {
-    effects: [E(Trigger.BattleStart(), 'DoubleBombTrigger', [1, 1, 1])],
+    effects: [
+      E(Trigger.BattleStart(), 'DoubleBombTrigger', [1, 1, 1]),
+      E(Trigger.BattleStart(), 'ReduceNextBombSelfDamage', [0, 1, 2]),
+    ],
   },
 
   // ===========================================================================
@@ -316,12 +323,12 @@ export const GEAR_EFFECTS: Record<GearId, GearEffects> = {
     ],
   },
 
-  // G-FR-07: Cold Front Idol - EveryOtherTurn: apply 1 Chill and deal 1 non-weapon; if enemy has Chill: +1 SPD
+  // G-FR-07: Cold Front Idol - EveryOtherTurn: apply 1 Chill and deal 1/2/3 non-weapon; if enemy has Chill: +1/1/2 SPD
   I39: {
     effects: [
       E(Trigger.EveryOtherTurn(), 'ApplyChill', [1, 1, 1]),
-      E(Trigger.EveryOtherTurn(), 'DealNonWeaponDamage', [1, 1, 1]),
-      E(Trigger.EveryOtherTurn(), 'GainSpd', [1, 1, 1], {
+      E(Trigger.EveryOtherTurn(), 'DealNonWeaponDamage', [1, 2, 3]),
+      E(Trigger.EveryOtherTurn(), 'GainSpd', [1, 1, 2], {
         condition: Cond.EnemyHasStatus('Chill'),
       }),
     ],
@@ -389,23 +396,23 @@ export const GEAR_EFFECTS: Record<GearId, GearEffects> = {
     ],
   },
 
-  // G-RU-07: Corrosion Loop - OnHit (once/turn): apply +2 Rust; if enemy has 0 Armor, deal 2 non-weapon
+  // G-RU-07: Corrosion Loop - OnHit (once/turn): apply +2/3/4 Rust; if enemy has 0 Armor, deal 2/3/4 non-weapon
   I47: {
     effects: [
-      E(Trigger.OnHit(), 'ApplyRust', [2, 2, 2], {
+      E(Trigger.OnHit(), 'ApplyRust', [2, 3, 4], {
         oncePerTurn: true,
       }),
-      E(Trigger.OnHit(), 'DealNonWeaponDamage', [2, 2, 2], {
+      E(Trigger.OnHit(), 'DealNonWeaponDamage', [2, 3, 4], {
         oncePerTurn: true,
         condition: Cond.EnemyHasNoArmor(),
       }),
     ],
   },
 
-  // G-RU-08: Salvage Clamp - OnApplyRust: gain 1 Gold; if no armor, apply rust at battle start
+  // G-RU-08: Salvage Clamp - OnApplyRust: gain 1/2/3 Gold; if no armor, apply rust at battle start
   I48: {
     effects: [
-      E(Trigger.OnApplyRust(), 'GainGold', [1, 1, 1], { oncePerTurn: true }),
+      E(Trigger.OnApplyRust(), 'GainGold', [1, 2, 3], { oncePerTurn: true }),
       E(Trigger.BattleStart(), 'ApplyRust', [1, 1, 1], { condition: Cond.EnemyHasNoArmor() }),
     ],
   },
@@ -458,10 +465,10 @@ export const GEAR_EFFECTS: Record<GearId, GearEffects> = {
     effects: [E(Trigger.FirstTimeWounded(), 'GainArmor', [4, 6, 8])],
   },
 
-  // G-BO-08: Vampiric Tooth - OnHit: if enemy has Bleed, heal up to 5 HP; also applies bleed
+  // G-BO-08: Vampiric Tooth - OnHit: if enemy has Bleed, heal up to 5/7/9 HP; also applies bleed
   I56: {
     effects: [
-      E(Trigger.OnHit(), 'Heal', [5, 5, 5], {
+      E(Trigger.OnHit(), 'Heal', [5, 7, 9], {
         oncePerTurn: true,
         condition: Cond.EnemyHasStatus('Bleed'),
       }),

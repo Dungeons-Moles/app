@@ -29,6 +29,7 @@ import type {
   CacheOffer,
 } from '@/services/solana/types/poi_system';
 import { Phase } from '@/services/solana/types/gameplay_state';
+import { parseBossCombatFromMoveTx } from '@/services/solana/eventParser';
 import { getUserErrorMessage } from '@/services/solana/errors';
 import {
   interactRest,
@@ -49,11 +50,19 @@ import {
   generateOilOffer,
   type PoiTransactionContext,
 } from '@/services/solana/poiSystem';
-import { decodeItemId } from '@/services/solana/sessionRestore';
+import {
+  decodeItemId,
+  convertToolInstance,
+  convertGearInstance,
+} from '@/services/solana/sessionRestore';
+import { fetchInventory } from '@/services/solana/playerInventory';
+import { createPlayerInventoryProgram } from '@/services/solana/programs';
+import { deriveInventoryPda } from '@/services/solana/constants';
 import { gearToBackend, toolToBackend } from '@/data/id-mapping';
 import { createGearInstance } from '@/game/entities/items';
 import { createToolInstance } from '@/game/entities/items';
 import type { Position, POIOption, GearId, ToolId, Tool, Gear, ToolOil } from '@/game/engine/types';
+import type { BackendCombatLogEntry } from '@/services/solana/types/combat_events';
 
 // ============================================================================
 // ER Position Retry Helper
@@ -61,7 +70,8 @@ import type { Position, POIOption, GearId, ToolId, Tool, Gear, ToolOil } from '@
 
 /** poi-system error 6028 = PlayerNotOnPoiTile */
 const ER_POSITION_MISMATCH_CODE = 6028;
-const ER_POSITION_SETTLE_DELAY_MS = 400;
+const ER_POSITION_MAX_RETRIES = 3;
+const ER_POSITION_BASE_DELAY_MS = 400;
 
 /**
  * Checks if an error is the on-chain "Player is not on the POI tile" error.
@@ -80,22 +90,80 @@ function isPositionMismatchError(err: unknown): boolean {
 }
 
 /**
- * Wraps an on-chain POI call with a single retry on error 6028.
- * Gives the ER time to settle state from a prior move_player before retrying.
+ * Wraps an on-chain POI call with retries on error 6028.
+ * Uses exponential backoff (400ms, 800ms, 1600ms) to give the ER time
+ * to settle state from a prior move_player before retrying.
  */
 async function withErPositionRetry<T>(fn: () => Promise<T>): Promise<T> {
-  try {
-    return await fn();
-  } catch (err) {
-    if (isPositionMismatchError(err)) {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= ER_POSITION_MAX_RETRIES; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (!isPositionMismatchError(err) || attempt === ER_POSITION_MAX_RETRIES) {
+        throw err;
+      }
+      lastErr = err;
+      const delay = ER_POSITION_BASE_DELAY_MS * Math.pow(2, attempt);
       console.warn(
         `[usePoiInteraction] ER position not settled (error ${ER_POSITION_MISMATCH_CODE}), ` +
-          `retrying after ${ER_POSITION_SETTLE_DELAY_MS}ms...`
+          `retry ${attempt + 1}/${ER_POSITION_MAX_RETRIES} after ${delay}ms...`
       );
-      await new Promise((resolve) => setTimeout(resolve, ER_POSITION_SETTLE_DELAY_MS));
-      return fn();
+      await new Promise((resolve) => setTimeout(resolve, delay));
     }
-    throw err;
+  }
+  throw lastErr;
+}
+
+/**
+ * Validates a poiIndex against fresh on-chain MapPois data.
+ * The GameplayStateContext pois can be stale (e.g., ER state divergence,
+ * connection switch), causing findPoiIndex to return an index that is
+ * out of bounds or points to the wrong POI on-chain.
+ *
+ * Returns the validated (possibly re-derived) index, or -1 if not found.
+ */
+async function validatePoiIndex(
+  program: Parameters<typeof fetchMapPois>[0],
+  mapPoisPda: Parameters<typeof fetchMapPois>[1],
+  poiIndex: number,
+  x: number,
+  y: number,
+  contextLabel: string
+): Promise<{ index: number; freshPois?: Awaited<ReturnType<typeof fetchMapPois>> }> {
+  try {
+    const freshPois = await fetchMapPois(program, mapPoisPda);
+    if (!freshPois?.pois) {
+      return { index: poiIndex, freshPois: freshPois ?? undefined };
+    }
+
+    const freshLen = freshPois.pois.length;
+    const isValid =
+      poiIndex >= 0 &&
+      poiIndex < freshLen &&
+      freshPois.pois[poiIndex]?.x === x &&
+      freshPois.pois[poiIndex]?.y === y;
+
+    if (isValid) {
+      return { index: poiIndex, freshPois };
+    }
+
+    // Re-derive from fresh data by position
+    const rederived = freshPois.pois.findIndex(
+      (p) => p.x === x && p.y === y && !p.used
+    );
+    console.warn(
+      `[usePoiInteraction] ${contextLabel}: poiIndex re-derived from fresh on-chain data:`,
+      poiIndex,
+      '→',
+      rederived,
+      '| fresh Vec length:',
+      freshLen
+    );
+    return { index: rederived, freshPois };
+  } catch (err) {
+    console.warn(`[usePoiInteraction] ${contextLabel}: fresh validation fetch failed:`, err);
+    return { index: poiIndex }; // Fall through with original index
   }
 }
 
@@ -153,7 +221,24 @@ export interface UsePoiInteractionResult extends PoiInteractionHookState {
   /** Confirm a deferred POI selection on-chain (Tool Oil, Scanner, Shop) */
   confirmPoiSelection: (
     optionIndex: number
-  ) => Promise<{ success: boolean; keepOpen?: boolean; error?: string }>;
+  ) => Promise<{
+    success: boolean;
+    keepOpen?: boolean;
+    error?: string;
+    bossResolved?: {
+      playerWon: boolean;
+      finalPlayerHp: number;
+      finalPlayerGold: number;
+      totalMoves: number;
+      phase: number;
+      combatLog?: BackendCombatLogEntry[];
+      preBossPlayerHp?: number;
+      turnsTaken?: number;
+      finalEnemyHp?: number;
+      rawFinalPlayerHp?: number;
+      signature?: string;
+    };
+  }>;
   /** POI type of the current deferred selection (null if none) */
   deferredPoiType: number | null;
 }
@@ -260,6 +345,24 @@ function labelToScanCategory(label: string): number {
   return 0;
 }
 
+/** Map seismic scanner option label to the specific POI definition ID */
+function labelToPoiDefId(label: string): string | null {
+  if (label.includes('Supply Cache')) return 'L2';
+  if (label.includes('Tool Crate')) return 'L3';
+  if (label.includes('Tool Oil')) return 'L4';
+  if (label.includes('Rest Alcove')) return 'L5';
+  if (label.includes('Survey Beacon')) return 'L6';
+  if (label.includes('Seismic Scanner')) return 'L7';
+  if (label.includes('Rail Waypoint')) return 'L8';
+  if (label.includes('Smuggler Hatch')) return 'L9';
+  if (label.includes('Rusty Anvil')) return 'L10';
+  if (label.includes('Rune Kiln')) return 'L11';
+  if (label.includes('Geode Vault')) return 'L12';
+  if (label.includes('Counter Cache')) return 'L13';
+  if (label.includes('Scrap Chute')) return 'L14';
+  return null;
+}
+
 function isNightPhase(phase: Phase): boolean {
   return phase === Phase.Night1 || phase === Phase.Night2 || phase === Phase.Night3;
 }
@@ -283,6 +386,18 @@ function isPoiAlreadyUsedError(error: unknown): boolean {
     extractCustomErrorCode(error) === 6003 ||
     message.includes('PoiAlreadyUsed') ||
     message.includes('already been used')
+  );
+}
+
+function isInvalidPoiIndexError(error: unknown): boolean {
+  return extractCustomErrorCode(error) === 6017;
+}
+
+function isOfferAlreadyGeneratedError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  return (
+    extractCustomErrorCode(error) === 6025 ||
+    message.includes('OfferAlreadyGenerated')
   );
 }
 
@@ -865,41 +980,29 @@ export function usePoiInteraction(): UsePoiInteractionResult {
         return { success: false };
       }
 
-      let poiIndex = findPoiIndex(currentPoi.x, currentPoi.y);
+      const contextPoiIndex = findPoiIndex(currentPoi.x, currentPoi.y);
       console.log(
         '[usePoiInteraction] findPoiIndex result:',
-        poiIndex,
-        '| on-chain pois count:',
+        contextPoiIndex,
+        '| context pois count:',
         pois.length
       );
 
-      // If POIs haven't been loaded into context yet, fetch directly from on-chain
-      if (poiIndex === -1 && mapPoisPda) {
-        console.log(
-          '[usePoiInteraction] POI not in context — fetching MapPois directly from on-chain...'
+      // Validate against fresh on-chain data to prevent stale-index bugs
+      const validated = await validatePoiIndex(
+        ctx.program,
+        ctx.mapPoisPda,
+        contextPoiIndex,
+        currentPoi.x,
+        currentPoi.y,
+        'interact'
+      );
+      let poiIndex = validated.index;
+      if (poiIndex !== contextPoiIndex && sessionPda) {
+        // Refresh context in background so future lookups are correct
+        refreshMapEntities(sessionPda).catch((err) =>
+          console.warn('[usePoiInteraction] Background refreshMapEntities failed:', err)
         );
-        try {
-          const mapPoisData = await fetchMapPois(ctx.program, ctx.mapPoisPda);
-          if (mapPoisData?.pois) {
-            console.log(
-              '[usePoiInteraction] Fetched',
-              mapPoisData.pois.length,
-              'POIs from on-chain'
-            );
-            poiIndex = mapPoisData.pois.findIndex(
-              (p) => p.x === currentPoi.x && p.y === currentPoi.y && !p.used
-            );
-            console.log('[usePoiInteraction] Direct lookup poiIndex:', poiIndex);
-            // Also trigger a background refresh so context catches up
-            if (sessionPda) {
-              refreshMapEntities(sessionPda).catch((err) =>
-                console.warn('[usePoiInteraction] Background refreshMapEntities failed:', err)
-              );
-            }
-          }
-        } catch (fetchErr) {
-          console.error('[usePoiInteraction] Direct fetchMapPois failed:', fetchErr);
-        }
       }
 
       if (poiIndex === -1) {
@@ -964,6 +1067,12 @@ export function usePoiInteraction(): UsePoiInteractionResult {
               '| poiIndex:',
               poiIndex
             );
+            // Clear any stale deferred state from a previous interaction (e.g. a Rest POI that
+            // was dismissed without going through confirmPoiSelection). Pick-item POIs use
+            // selectCacheOffer, not confirmPoiSelection, so deferredPoiType must be null here
+            // to ensure handlePOIOption routes correctly.
+            setDeferredPoiType(null);
+            setDeferredPoiIndex(null);
             // Fetch current MapPois to check for existing offer
             let mapPoisData = await fetchMapPois(ctx.program, ctx.mapPoisPda);
 
@@ -979,40 +1088,57 @@ export function usePoiInteraction(): UsePoiInteractionResult {
               return { success: true };
             }
 
-            // Generate offers on-chain if not already present for this POI
-            if (!mapPoisData?.currentOffer || mapPoisData.currentOffer.poiIndex !== poiIndex) {
+            // Check if a saved offer already exists for this POI
+            let existingOffer = mapPoisData?.cacheOffers?.find(
+              (o) => o.poiIndex === poiIndex
+            );
+
+            if (!existingOffer) {
               console.log('[usePoiInteraction] Sending generateCacheOffer on-chain');
               try {
                 await withErPositionRetry(() =>
                   generateCacheOffer(ctx, poiIndex)
                 );
               } catch (err) {
-                if (!isPoiAlreadyUsedError(err)) {
+                if (isOfferAlreadyGeneratedError(err)) {
+                  console.log(
+                    '[usePoiInteraction] Offer already exists on-chain, re-fetching existing offer'
+                  );
+                  // Offer already generated (e.g., previous attempt succeeded on-chain
+                  // but frontend didn't complete the flow). Just re-fetch and use it.
+                } else if (isPoiAlreadyUsedError(err)) {
+                  console.warn(
+                    '[usePoiInteraction] generateCacheOffer hit PoiAlreadyUsed; syncing local state'
+                  );
+                  await Promise.all([
+                    refreshMapEntities(ctx.sessionPda),
+                    refreshGameplayState(),
+                    refreshSessionState(),
+                  ]);
+                  syncLocalPoiAsConsumed(currentPoi);
+                  dispatch({ type: 'CLOSE_POI' });
+                  setInteractionState('complete');
+                  return { success: true };
+                } else {
                   throw err;
                 }
-                console.warn(
-                  '[usePoiInteraction] generateCacheOffer hit PoiAlreadyUsed; syncing local state'
-                );
-                await Promise.all([
-                  refreshMapEntities(ctx.sessionPda),
-                  refreshGameplayState(),
-                  refreshSessionState(),
-                ]);
-                syncLocalPoiAsConsumed(currentPoi);
-                dispatch({ type: 'CLOSE_POI' });
-                setInteractionState('complete');
-                return { success: true };
               }
               console.log('[usePoiInteraction] generateCacheOffer CONFIRMED, re-fetching...');
               // Re-fetch to read the stored offer
               mapPoisData = await fetchMapPois(ctx.program, ctx.mapPoisPda);
+              existingOffer = mapPoisData?.cacheOffers?.find(
+                (o) => o.poiIndex === poiIndex
+              );
             } else {
-              console.log('[usePoiInteraction] Existing cache offer found for poiIndex:', poiIndex);
+              console.log('[usePoiInteraction] Saved cache offer found for poiIndex:', poiIndex);
             }
 
-            if (!mapPoisData?.currentOffer) {
+            if (!existingOffer) {
               console.error(
-                '[usePoiInteraction] Failed to generate cache offers — currentOffer is null'
+                '[usePoiInteraction] No cache offer found for poiIndex:',
+                poiIndex,
+                '| available:',
+                mapPoisData?.cacheOffers?.map((o) => o.poiIndex)
               );
               setError('Failed to generate cache offers');
               setIsInteracting(false);
@@ -1021,7 +1147,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             }
 
             // Convert on-chain offers to POIOption[] for the modal
-            const offerOptions = convertCacheOfferToOptions(mapPoisData.currentOffer);
+            const offerOptions = convertCacheOfferToOptions(existingOffer);
             console.log(
               '[usePoiInteraction] Cache offers ready:',
               offerOptions.length,
@@ -1029,7 +1155,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
               offerOptions.map((o) => o.label)
             );
             setCacheOfferOptions(offerOptions);
-            setCacheOfferParams({ poiIndex, rawOffer: mapPoisData.currentOffer, poiType });
+            setCacheOfferParams({ poiIndex, rawOffer: existingOffer, poiType });
 
             // Dispatch INTERACT_POI locally to transition to POIInteraction phase (shows modal)
             dispatchPoiModal(dispatch, gameState?.map?.pois, currentPoi, `L${poiType}`, 'ITEM_SELECTION');
@@ -1052,27 +1178,56 @@ export function usePoiInteraction(): UsePoiInteractionResult {
               return { success: false };
             }
 
-            // Step 1: Generate oil offer on-chain
+            // Step 1: Check for existing saved oil offer, or generate one on-chain
             let mapPoisData = await fetchMapPois(ctx.program, ctx.mapPoisPda);
 
-            // Generate offers if not already present for this POI
-            if (
-              !mapPoisData?.currentOilOffer ||
-              mapPoisData.currentOilOffer.poiIndex !== poiIndex
-            ) {
+            let existingOilOffer = mapPoisData?.oilOffers?.find(
+              (o) => o.poiIndex === poiIndex
+            );
+
+            if (!existingOilOffer) {
               console.log('[usePoiInteraction] Sending generateOilOffer on-chain');
-              await withErPositionRetry(() =>
-                generateOilOffer(ctx, poiIndex)
-              );
+              try {
+                await withErPositionRetry(() =>
+                  generateOilOffer(ctx, poiIndex)
+                );
+              } catch (err) {
+                if (isOfferAlreadyGeneratedError(err)) {
+                  console.log(
+                    '[usePoiInteraction] Oil offer already exists on-chain, re-fetching'
+                  );
+                } else if (isPoiAlreadyUsedError(err)) {
+                  console.warn(
+                    '[usePoiInteraction] generateOilOffer hit PoiAlreadyUsed; syncing local state'
+                  );
+                  await Promise.all([
+                    refreshMapEntities(ctx.sessionPda),
+                    refreshGameplayState(),
+                    refreshSessionState(),
+                  ]);
+                  syncLocalPoiAsConsumed(currentPoi);
+                  dispatch({ type: 'CLOSE_POI' });
+                  setInteractionState('complete');
+                  return { success: true };
+                } else {
+                  throw err;
+                }
+              }
               console.log('[usePoiInteraction] generateOilOffer CONFIRMED, re-fetching...');
               mapPoisData = await fetchMapPois(ctx.program, ctx.mapPoisPda);
+              existingOilOffer = mapPoisData?.oilOffers?.find(
+                (o) => o.poiIndex === poiIndex
+              );
             } else {
-              console.log('[usePoiInteraction] Existing oil offer found for poiIndex:', poiIndex);
+              console.log('[usePoiInteraction] Saved oil offer found for poiIndex:', poiIndex);
             }
 
-            if (!mapPoisData?.currentOilOffer) {
+            if (!existingOilOffer) {
               console.error(
-                '[usePoiInteraction] Failed to generate oil offers — currentOilOffer is null'
+                '[usePoiInteraction] No oil offer found for poiIndex:',
+                poiIndex,
+                '| available:',
+                mapPoisData?.oilOffers?.map((o) => o.poiIndex)
               );
               setError('Failed to generate oil offers');
               setIsInteracting(false);
@@ -1082,7 +1237,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
 
             // Convert on-chain oils to POIOption[] for the modal
             const oilOptions = convertOilOfferToOptions(
-              Array.from(mapPoisData.currentOilOffer.oils)
+              Array.from(existingOilOffer.oils)
             );
             console.log(
               '[usePoiInteraction] Oil offers ready:',
@@ -1422,10 +1577,21 @@ export function usePoiInteraction(): UsePoiInteractionResult {
         return { success: false, error: 'Session not ready' };
       }
 
-      const fromPoiIndex = findPoiIndex(fromPos.x, fromPos.y);
-      const toPoiIndex = findPoiIndex(toPos.x, toPos.y);
+      // Validate both waypoint indices against fresh on-chain data
+      const fromValidated = await validatePoiIndex(
+        ctx.program, ctx.mapPoisPda,
+        findPoiIndex(fromPos.x, fromPos.y),
+        fromPos.x, fromPos.y,
+        'executeFastTravel(from)'
+      );
+      const toValidated = await validatePoiIndex(
+        ctx.program, ctx.mapPoisPda,
+        findPoiIndex(toPos.x, toPos.y),
+        toPos.x, toPos.y,
+        'executeFastTravel(to)'
+      );
 
-      if (fromPoiIndex === -1 || toPoiIndex === -1) {
+      if (fromValidated.index === -1 || toValidated.index === -1) {
         return { success: false, error: 'Waypoint not found' };
       }
 
@@ -1434,7 +1600,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
 
       try {
         await withErPositionRetry(() =>
-          fastTravel(ctx, fromPoiIndex, toPoiIndex)
+          fastTravel(ctx, fromValidated.index, toValidated.index)
         );
 
         await refreshGameplayState();
@@ -1504,18 +1670,49 @@ export function usePoiInteraction(): UsePoiInteractionResult {
       setIsInteracting(true);
       setError(null);
 
+      let confirmedPoiIndex = cacheOfferParams.poiIndex;
       try {
+
+        // Validate args before sending
+        if (confirmedPoiIndex < 0 || confirmedPoiIndex > 254 || !Number.isInteger(confirmedPoiIndex)) {
+          console.error('[usePoiInteraction] Invalid poiIndex:', confirmedPoiIndex);
+          setError('Invalid POI index');
+          return { success: false };
+        }
+        if (choiceIndex < 0 || choiceIndex > 2 || !Number.isInteger(choiceIndex)) {
+          console.error('[usePoiInteraction] Invalid choiceIndex:', choiceIndex);
+          setError('Invalid choice');
+          return { success: false };
+        }
+
+        // Validate the stored poiIndex against fresh on-chain data.
+        if (currentPoi) {
+          const cacheValidated = await validatePoiIndex(
+            ctx.program,
+            ctx.mapPoisPda,
+            confirmedPoiIndex,
+            currentPoi.x,
+            currentPoi.y,
+            'selectCacheOffer'
+          );
+          if (cacheValidated.index === -1) {
+            setError('POI state changed. Please try again.');
+            return { success: false };
+          }
+          confirmedPoiIndex = cacheValidated.index;
+        }
+
         console.log(
           '[usePoiInteraction] Sending interactPickItem on-chain | poiIndex:',
-          cacheOfferParams.poiIndex,
+          confirmedPoiIndex,
           '| choice:',
           choiceIndex
         );
         await withErPositionRetry(() =>
-          interactPickItem(ctx, cacheOfferParams.poiIndex, choiceIndex)
+          interactPickItem(ctx, confirmedPoiIndex, choiceIndex)
         );
         console.log('[usePoiInteraction] interactPickItem CONFIRMED on-chain');
-        await assertPoiConsumedOnChain(cacheOfferParams.poiIndex);
+        await assertPoiConsumedOnChain(confirmedPoiIndex);
 
         // Item is now auto-equipped via CPI in the on-chain program.
         // The poi-system calls player-inventory::equip_gear_authorized or equip_tool_authorized,
@@ -1538,6 +1735,14 @@ export function usePoiInteraction(): UsePoiInteractionResult {
         setInteractionState('complete');
         return { success: true };
       } catch (err) {
+        if (isInvalidPoiIndexError(err)) {
+          console.error(
+            '[usePoiInteraction] selectCacheOffer InvalidPoiIndex! poiIndex:',
+            confirmedPoiIndex,
+            '| choiceIndex:',
+            choiceIndex
+          );
+        }
         const errorMessage = getUserErrorMessage(err, 'poi_system');
         setError(errorMessage);
         console.error('[usePoiInteraction] selectCacheOffer ERROR:', err);
@@ -1591,7 +1796,24 @@ export function usePoiInteraction(): UsePoiInteractionResult {
   const confirmPoiSelection = useCallback(
     async (
       optionIndex: number
-    ): Promise<{ success: boolean; keepOpen?: boolean; error?: string }> => {
+    ): Promise<{
+    success: boolean;
+    keepOpen?: boolean;
+    error?: string;
+    bossResolved?: {
+      playerWon: boolean;
+      finalPlayerHp: number;
+      finalPlayerGold: number;
+      totalMoves: number;
+      phase: number;
+      combatLog?: BackendCombatLogEntry[];
+      preBossPlayerHp?: number;
+      turnsTaken?: number;
+      finalEnemyHp?: number;
+      rawFinalPlayerHp?: number;
+      signature?: string;
+    };
+  }> => {
       console.log(
         '[usePoiInteraction] confirmPoiSelection called | optionIndex:',
         optionIndex,
@@ -1608,6 +1830,26 @@ export function usePoiInteraction(): UsePoiInteractionResult {
       ) {
         setError('Session not ready for POI selection');
         return { success: false };
+      }
+
+      // Validate deferredPoiIndex against fresh on-chain data before using it.
+      const confirmValidated = currentPoi
+        ? await validatePoiIndex(
+            ctx.program,
+            ctx.mapPoisPda,
+            deferredPoiIndex,
+            currentPoi.x,
+            currentPoi.y,
+            'confirmPoiSelection'
+          )
+        : { index: deferredPoiIndex };
+      const validatedPoiIndex = confirmValidated.index;
+      if (validatedPoiIndex === -1) {
+        setError('POI state changed. Please try again.');
+        return { success: false };
+      }
+      if (validatedPoiIndex !== deferredPoiIndex) {
+        setDeferredPoiIndex(validatedPoiIndex);
       }
 
       setIsInteracting(true);
@@ -1641,13 +1883,16 @@ export function usePoiInteraction(): UsePoiInteractionResult {
               return { success: false, error: restOption.disabledReason ?? 'Option is disabled' };
             }
 
+            // Save pre-interaction week to detect boss resolution after on-chain call
+            const preWeek = gameState?.time.week ?? 0;
+
             // Send interactRest on-chain
             console.log(
               '[usePoiInteraction] Sending interactRest on-chain | poiIndex:',
-              deferredPoiIndex
+              validatedPoiIndex
             );
-            await withErPositionRetry(() =>
-              interactRest(ctx, deferredPoiIndex)
+            const restSignature = await withErPositionRetry(() =>
+              interactRest(ctx, validatedPoiIndex)
             );
             console.log('[usePoiInteraction] interactRest CONFIRMED');
 
@@ -1658,8 +1903,23 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             // sees bossFightReady=true (e.g., after rest on Night 3).
             await Promise.all([refreshGameplayState(), refreshSessionState()]);
 
-            // Now fetch and sync to local reducer (healed HP, new phase)
+            // Parse inline boss combat (if Night3 triggered resolution in the same tx).
+            // We do this before syncing local state so navigation can use authoritative logs.
             const gameplayProgram = createGameplayStateProgram(gameplayConnection);
+            let parsedBossCombat:
+              | Awaited<ReturnType<typeof parseBossCombatFromMoveTx>>
+              | undefined;
+            try {
+              parsedBossCombat = await parseBossCombatFromMoveTx(
+                gameplayConnection,
+                restSignature,
+                gameplayProgram
+              );
+            } catch (err) {
+              console.warn('[usePoiInteraction] Failed to parse rest tx boss combat:', err);
+            }
+
+            // Now fetch and sync to local reducer (healed HP, new phase)
             const updatedState = await fetchGameState(gameplayProgram, ctx.gameStatePda);
             if (updatedState) {
               console.log(
@@ -1669,6 +1929,49 @@ export function usePoiInteraction(): UsePoiInteractionResult {
                 updatedState.phase
               );
               dispatch({ type: 'SYNC_MOVE', confirmedState: updatedState });
+            }
+
+            // Detect boss resolution: week advanced (win) or player died (loss)
+            // during this POI interaction (e.g., Rest Alcove on Night 3).
+            let bossResolved:
+              | {
+                  playerWon: boolean;
+                  finalPlayerHp: number;
+                  finalPlayerGold: number;
+                  totalMoves: number;
+                  phase: number;
+                  combatLog?: BackendCombatLogEntry[];
+                  preBossPlayerHp?: number;
+                  turnsTaken?: number;
+                  finalEnemyHp?: number;
+                  rawFinalPlayerHp?: number;
+                  signature?: string;
+                }
+              | undefined;
+            if (updatedState) {
+              const weekAdvanced = updatedState.week > preWeek;
+              const playerDied = updatedState.isDead;
+              if (weekAdvanced || playerDied) {
+                bossResolved = {
+                  playerWon: parsedBossCombat?.combatEnded
+                    ? parsedBossCombat.combatEnded.playerWon
+                    : !playerDied,
+                  finalPlayerHp: updatedState.hp,
+                  finalPlayerGold: updatedState.gold,
+                  totalMoves: updatedState.totalMoves,
+                  phase: updatedState.phase,
+                  combatLog: parsedBossCombat?.combatLog,
+                  preBossPlayerHp: parsedBossCombat?.preBossPlayerHp,
+                  turnsTaken: parsedBossCombat?.combatEnded?.turnsTaken,
+                  finalEnemyHp: parsedBossCombat?.combatEnded?.finalEnemyHp,
+                  rawFinalPlayerHp: parsedBossCombat?.combatEnded?.finalPlayerHp,
+                  signature: restSignature,
+                };
+                console.log(
+                  '[usePoiInteraction] Boss resolved during REST POI:',
+                  bossResolved
+                );
+              }
             }
 
             // Only consume one-time POIs.
@@ -1693,7 +1996,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             setDeferredPoiIndex(null);
             setDeferredPoiType(null);
             setInteractionState('complete');
-            return { success: true };
+            return { success: true, bossResolved };
           }
 
           case POI_TYPES.TOOL_OIL_RACK: {
@@ -1721,22 +2024,39 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             // Send combined transaction (poi-system + player-inventory in one tx)
             // This validates the POI, marks it as used, and applies the oil atomically
             await withErPositionRetry(() =>
-              interactToolOilCombined(ctx, deferredPoiIndex, modification, oilFlag)
+              interactToolOilCombined(ctx, validatedPoiIndex, modification, oilFlag)
             );
             console.log('[usePoiInteraction] Tool oil applied on-chain:', modification);
 
-            // Update local game state's tool with the oil modification
-            // Only set the oil property - calculateItemStats handles the +1 stat bonus
-            const currentTool = gameState?.player?.equippedTool;
-            if (currentTool) {
-              const oilInfo = oilFlagToToolOil(oilFlag);
-              if (oilInfo) {
-                const updatedTool: Tool = {
-                  ...currentTool,
-                  oil: oilInfo.oil,
-                };
-                dispatch({ type: 'EQUIP_TOOL', tool: updatedTool });
-                console.log('[usePoiInteraction] Local tool updated with oil:', oilInfo.oil);
+            // Update tool from confirmed on-chain inventory (not optimistic)
+            const oilInventoryProgram = createPlayerInventoryProgram(gameplayConnection);
+            const [oilInventoryPda] = deriveInventoryPda(ctx.sessionPda);
+            const oilInventoryData = await fetchInventory(oilInventoryProgram, oilInventoryPda);
+
+            if (oilInventoryData?.tool) {
+              const confirmedOilTool = convertToolInstance(oilInventoryData.tool);
+              if (confirmedOilTool) {
+                dispatch({ type: 'EQUIP_TOOL', tool: confirmedOilTool });
+                console.log(
+                  '[usePoiInteraction] Tool oil confirmed from on-chain | oil:',
+                  confirmedOilTool.oil
+                );
+              } else {
+                console.warn(
+                  '[usePoiInteraction] Tool oil: failed to convert on-chain tool, UI not updated'
+                );
+              }
+            } else {
+              console.warn(
+                '[usePoiInteraction] Tool oil: failed to fetch inventory, falling back to local'
+              );
+              // Fallback: apply locally if inventory fetch fails
+              const currentTool = gameState?.player?.equippedTool;
+              if (currentTool) {
+                const oilInfo = oilFlagToToolOil(oilFlag);
+                if (oilInfo) {
+                  dispatch({ type: 'EQUIP_TOOL', tool: { ...currentTool, oil: oilInfo.oil } });
+                }
               }
             }
 
@@ -1761,15 +2081,17 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             }
             const scanCat = labelToScanCategory(label);
             await withErPositionRetry(() =>
-              interactSeismicScanner(ctx, deferredPoiIndex, scanCat)
+              interactSeismicScanner(ctx, validatedPoiIndex, scanCat)
             );
-            // Dispatch REVEAL_POI_LOCATIONS to update local fog state
-            // This reveals all POIs matching the selected category
-            dispatch({ type: 'REVEAL_POI_LOCATIONS', category: scanCat });
-            console.log(
-              '[usePoiInteraction] Dispatched REVEAL_POI_LOCATIONS for category:',
-              scanCat
-            );
+            // Dispatch REVEAL_POI_LOCATIONS to reveal only the nearest POI of the selected type
+            const poiDefId = labelToPoiDefId(label);
+            if (poiDefId) {
+              dispatch({ type: 'REVEAL_POI_LOCATIONS', poiDefId });
+              console.log(
+                '[usePoiInteraction] Dispatched REVEAL_POI_LOCATIONS for poiDefId:',
+                poiDefId
+              );
+            }
             break;
           }
 
@@ -1805,12 +2127,12 @@ export function usePoiInteraction(): UsePoiInteractionResult {
               if (destPoiIndex !== -1) {
                 console.log(
                   '[usePoiInteraction] Fast travel | from poiIndex:',
-                  deferredPoiIndex,
+                  validatedPoiIndex,
                   '| to poiIndex:',
                   destPoiIndex
                 );
                 await withErPositionRetry(() =>
-                  fastTravel(ctx, deferredPoiIndex, destPoiIndex)
+                  fastTravel(ctx, validatedPoiIndex, destPoiIndex)
                 );
                 console.log('[usePoiInteraction] fastTravel CONFIRMED');
 
@@ -1887,7 +2209,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
               shopPurchase(ctx, optionIndex)
             );
 
-            // Sync gold from on-chain state after purchase
+            // Sync gold + inventory from on-chain state after purchase
             await refreshGameplayState();
             const gameplayProgram = createGameplayStateProgram(gameplayConnection);
             const updatedShopState = await fetchGameState(gameplayProgram, ctx.gameStatePda);
@@ -1897,6 +2219,31 @@ export function usePoiInteraction(): UsePoiInteractionResult {
                 updatedShopState.gold
               );
               dispatch({ type: 'SYNC_MOVE', confirmedState: updatedShopState });
+            }
+
+            // Sync inventory so newly purchased gear is available to other POIs (e.g. Rune Kiln)
+            const shopInventoryProgram = createPlayerInventoryProgram(gameplayConnection);
+            const [shopInventoryPda] = deriveInventoryPda(ctx.sessionPda);
+            const shopInventoryData = await fetchInventory(
+              shopInventoryProgram,
+              shopInventoryPda
+            );
+            if (shopInventoryData) {
+              const confirmedShopTool = shopInventoryData.tool
+                ? convertToolInstance(shopInventoryData.tool)
+                : null;
+              const confirmedShopGear = shopInventoryData.gear
+                .map((g) => (g ? convertGearInstance(g) : null))
+                .filter((g): g is Gear => g !== null);
+              console.log(
+                '[usePoiInteraction] Shop: syncing inventory from on-chain | gear count:',
+                confirmedShopGear.length
+              );
+              dispatch({
+                type: 'SYNC_INVENTORY',
+                tool: confirmedShopTool,
+                gear: confirmedShopGear,
+              });
             }
 
             // Re-fetch shop state and update options
@@ -1958,12 +2305,41 @@ export function usePoiInteraction(): UsePoiInteractionResult {
               kilnTier
             );
             await withErPositionRetry(() =>
-              interactRuneKiln(ctx, deferredPoiIndex, kilnIdBytes, kilnTier, kilnIdBytes, kilnTier)
+              interactRuneKiln(ctx, validatedPoiIndex, kilnIdBytes, kilnTier, kilnIdBytes, kilnTier)
             );
             console.log('[usePoiInteraction] interactRuneKiln CONFIRMED');
 
-            // Remove one copy and upgrade the other to the next tier locally
-            dispatch({ type: 'FUSE_GEAR', gearId: kilnGear.id as GearId });
+            // Sync inventory from confirmed on-chain state (not optimistic)
+            const kilnInventoryProgram = createPlayerInventoryProgram(gameplayConnection);
+            const [kilnInventoryPda] = deriveInventoryPda(ctx.sessionPda);
+            const kilnInventoryData = await fetchInventory(
+              kilnInventoryProgram,
+              kilnInventoryPda
+            );
+
+            if (kilnInventoryData) {
+              const confirmedKilnTool = kilnInventoryData.tool
+                ? convertToolInstance(kilnInventoryData.tool)
+                : null;
+              const confirmedKilnGear = kilnInventoryData.gear
+                .map((g) => (g ? convertGearInstance(g) : null))
+                .filter((g): g is Gear => g !== null);
+
+              console.log(
+                '[usePoiInteraction] Kiln: syncing inventory from on-chain | gear count:',
+                confirmedKilnGear.length
+              );
+              dispatch({
+                type: 'SYNC_INVENTORY',
+                tool: confirmedKilnTool,
+                gear: confirmedKilnGear,
+              });
+            } else {
+              console.warn(
+                '[usePoiInteraction] Kiln: failed to fetch inventory, falling back to local update'
+              );
+              dispatch({ type: 'FUSE_GEAR', gearId: kilnGear.id as GearId });
+            }
 
             break;
           }
@@ -2014,15 +2390,23 @@ export function usePoiInteraction(): UsePoiInteractionResult {
               anvilTier
             );
             await withErPositionRetry(() =>
-              interactRustyAnvil(ctx, deferredPoiIndex, anvilIdBytes, anvilTier)
+              interactRustyAnvil(ctx, validatedPoiIndex, anvilIdBytes, anvilTier)
             );
             console.log('[usePoiInteraction] interactRustyAnvil CONFIRMED');
 
-            // Refresh gameplay state to sync gold changes
-            await refreshGameplayState();
+            // Fetch confirmed on-chain state (gameplay + inventory) to verify the upgrade
+            const [gameplayProgram, inventoryProgram] = [
+              createGameplayStateProgram(gameplayConnection),
+              createPlayerInventoryProgram(gameplayConnection),
+            ];
+            const [inventoryPda] = deriveInventoryPda(ctx.sessionPda);
 
-            const gameplayProgram = createGameplayStateProgram(gameplayConnection);
-            const updatedAnvilState = await fetchGameState(gameplayProgram, ctx.gameStatePda);
+            const [updatedAnvilState, inventoryData] = await Promise.all([
+              fetchGameState(gameplayProgram, ctx.gameStatePda),
+              fetchInventory(inventoryProgram, inventoryPda),
+              refreshGameplayState(),
+            ]);
+
             if (updatedAnvilState) {
               console.log(
                 '[usePoiInteraction] Syncing ANVIL result | gold:',
@@ -2031,12 +2415,29 @@ export function usePoiInteraction(): UsePoiInteractionResult {
               dispatch({ type: 'SYNC_MOVE', confirmedState: updatedAnvilState });
             }
 
-            // Upgrade tool locally to reflect new tier
-            const nextRarity = tool.rarity === 'COMMON' ? 'GILDED' : 'DIAMOND';
-            dispatch({
-              type: 'EQUIP_TOOL',
-              tool: { ...tool, rarity: nextRarity as any },
-            });
+            // Update tool from confirmed on-chain inventory (not optimistic)
+            if (inventoryData?.tool) {
+              const confirmedTool = convertToolInstance(inventoryData.tool);
+              if (confirmedTool) {
+                console.log(
+                  '[usePoiInteraction] Anvil: confirmed tool from on-chain | id:',
+                  confirmedTool.id,
+                  '| rarity:',
+                  confirmedTool.rarity,
+                  '| stats:',
+                  confirmedTool.stats
+                );
+                dispatch({ type: 'EQUIP_TOOL', tool: confirmedTool });
+              } else {
+                console.warn(
+                  '[usePoiInteraction] Anvil: failed to convert on-chain tool, UI not updated'
+                );
+              }
+            } else {
+              console.warn(
+                '[usePoiInteraction] Anvil: failed to fetch inventory, UI not updated'
+              );
+            }
 
             break;
           }
@@ -2077,15 +2478,21 @@ export function usePoiInteraction(): UsePoiInteractionResult {
               backendId
             );
             await withErPositionRetry(() =>
-              interactScrapChute(ctx, deferredPoiIndex, idBytes)
+              interactScrapChute(ctx, validatedPoiIndex, idBytes)
             );
             console.log('[usePoiInteraction] interactScrapChute CONFIRMED');
 
-            // Refresh gameplay state to sync gold changes
-            await refreshGameplayState();
+            // Fetch confirmed on-chain state (gameplay + inventory)
+            const scrapGameplayProgram = createGameplayStateProgram(gameplayConnection);
+            const scrapInventoryProgram = createPlayerInventoryProgram(gameplayConnection);
+            const [scrapInventoryPda] = deriveInventoryPda(ctx.sessionPda);
 
-            const gameplayProgram = createGameplayStateProgram(gameplayConnection);
-            const updatedScrapState = await fetchGameState(gameplayProgram, ctx.gameStatePda);
+            const [updatedScrapState, scrapInventoryData] = await Promise.all([
+              fetchGameState(scrapGameplayProgram, ctx.gameStatePda),
+              fetchInventory(scrapInventoryProgram, scrapInventoryPda),
+              refreshGameplayState(),
+            ]);
+
             if (updatedScrapState) {
               console.log(
                 '[usePoiInteraction] Syncing SCRAP result | gold:',
@@ -2094,8 +2501,30 @@ export function usePoiInteraction(): UsePoiInteractionResult {
               dispatch({ type: 'SYNC_MOVE', confirmedState: updatedScrapState });
             }
 
-            // Remove scrapped gear from local inventory
-            dispatch({ type: 'DISCARD_GEAR_BY_ID', gearId: scrapGear.id as any });
+            // Sync inventory from confirmed on-chain state (not optimistic)
+            if (scrapInventoryData) {
+              const confirmedScrapTool = scrapInventoryData.tool
+                ? convertToolInstance(scrapInventoryData.tool)
+                : null;
+              const confirmedScrapGear = scrapInventoryData.gear
+                .map((g) => (g ? convertGearInstance(g) : null))
+                .filter((g): g is Gear => g !== null);
+
+              console.log(
+                '[usePoiInteraction] Scrap: syncing inventory from on-chain | gear count:',
+                confirmedScrapGear.length
+              );
+              dispatch({
+                type: 'SYNC_INVENTORY',
+                tool: confirmedScrapTool,
+                gear: confirmedScrapGear,
+              });
+            } else {
+              console.warn(
+                '[usePoiInteraction] Scrap: failed to fetch inventory, falling back to local update'
+              );
+              dispatch({ type: 'DISCARD_GEAR_BY_ID', gearId: scrapGear.id as any });
+            }
 
             break;
           }
@@ -2108,8 +2537,8 @@ export function usePoiInteraction(): UsePoiInteractionResult {
 
         // Only consume one-time POIs.
         if (currentPoi && isOneTimePoiType(deferredPoiType)) {
-          if (deferredPoiIndex !== null) {
-            await assertPoiConsumedOnChain(deferredPoiIndex);
+          if (validatedPoiIndex !== null) {
+            await assertPoiConsumedOnChain(validatedPoiIndex);
           }
           consumePoi(currentPoi.x, currentPoi.y);
         }
@@ -2127,6 +2556,8 @@ export function usePoiInteraction(): UsePoiInteractionResult {
         // Close the POI modal and return to exploration
         dispatch({ type: 'CLOSE_POI' });
 
+        setCacheOfferOptions(null);
+        setCacheOfferParams(null);
         setDeferredPoiIndex(null);
         setDeferredPoiType(null);
         setInteractionState('complete');

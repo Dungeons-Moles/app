@@ -77,6 +77,7 @@ interface SidebarProps {
   onItemPress?: (item: Tool | Gear, slotIndex: number) => void;
   onItemInspect?: (item: Tool | Gear, slotIndex: number) => void;
   onToolInspect?: (tool: Tool) => void;
+  onItemsetPress?: (id: ItemsetId) => void;
   isRuneKilnActive?: boolean;
   handleInventoryItemPress?: (item: Tool | Gear, slotIndex: number) => void;
   onlyBoss?: boolean;
@@ -98,7 +99,7 @@ const EchoGearSlot = React.memo(function EchoGearSlot({ item, size = GEAR_SLOT_S
     if (!item) return null;
     const tier = getTierFromRarity(item.currentRarity);
     if (tier === 2) return '#4A90D9';
-    if (tier === 3) return '#FFD700';
+    if (tier === 3) return '#CC9900';
     return null;
   }, [item]);
 
@@ -127,7 +128,7 @@ const EchoToolSlot = React.memo(function EchoToolSlot({ tool, size = TOOL_SLOT_S
     if (!tool) return null;
     const tier = getTierFromRarity(tool.rarity);
     if (tier === 2) return '#4A90D9';
-    if (tier === 3) return '#FFD700';
+    if (tier === 3) return '#CC9900';
     return null;
   }, [tool]);
 
@@ -597,6 +598,7 @@ export function Sidebar(props: SidebarProps) {
           onItemPress={props.isRuneKilnActive ? props.handleInventoryItemPress : undefined}
           onItemInspect={props.onItemInspect}
           onToolInspect={props.onToolInspect}
+          onItemsetPress={props.onItemsetPress}
           isSidebar={true}
           controllerFocusIndex={props.controllerFocusIndex}
         />

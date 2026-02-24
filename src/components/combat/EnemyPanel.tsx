@@ -34,7 +34,7 @@ function getTierBorderColor(rarity: ItemRarity): string | null {
     case 2:
       return '#4A90D9';
     case 3:
-      return '#FFD700';
+      return '#CC9900';
     default:
       return null;
   }
