@@ -134,11 +134,11 @@ export const TOOL_DEFINITIONS: Record<ToolId, ToolDefinition> = {
     emoji: '🔮',
     image: require('../../../assets/icons/items/greed/gemfinder_staff.png'),
     rarity: 'HEROIC',
-    stats: { atk: 1, arm: 1, dig: 1 },
+    stats: { atk: 2, arm: 2, dig: 1 },
     tags: ['GREED'],
     effect: {
       timing: 'ON_HIT',
-      description: 'First hit each turn triggers all your Shard effects',
+      description: 'First hit each turn triggers all your Shard effects; Shard outputs are +1',
     },
   },
   // ============================================================================

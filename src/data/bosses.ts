@@ -48,14 +48,14 @@ export const BOSSES: Record<BossId, BossDefinition> = {
     emoji: '\u{1F577}\uFE0F', // Spider
     biome: 'A',
     week: 1,
-    stats: { hp: 32, atk: 2, arm: 2, spd: 3, dig: 1 },
+    stats: { hp: 24, atk: 2, arm: 1, spd: 2, dig: 1 },
     weaknessTags: ['STONE', 'FROST'],
     abilities: [
       {
         name: 'Swarm Queen',
         timing: 'PASSIVE',
-        description: 'Attacks 3 times per turn',
-        params: { strikes: 3 },
+        description: 'Attacks 2 times per turn',
+        params: { strikes: 2 },
       },
       {
         name: 'Webbed Strikes',
@@ -72,14 +72,14 @@ export const BOSSES: Record<BossId, BossDefinition> = {
     emoji: '\u{1F5FF}', // Moyai
     biome: 'A',
     week: 1,
-    stats: { hp: 40, atk: 3, arm: 14, spd: 0, dig: 3 },
+    stats: { hp: 28, atk: 2, arm: 8, spd: 0, dig: 3 },
     weaknessTags: ['RUST', 'BLAST'],
     abilities: [
       {
         name: 'Hardened Core',
         timing: 'TURN_START',
-        description: 'Turn Start: +4 Armor',
-        params: { armor: 4 },
+        description: 'Turn Start: +2 Armor',
+        params: { armor: 2 },
       },
       {
         name: 'Cracked Shell',
@@ -96,14 +96,14 @@ export const BOSSES: Record<BossId, BossDefinition> = {
     emoji: '\u2601\uFE0F', // Cloud
     biome: 'A',
     week: 1,
-    stats: { hp: 34, atk: 2, arm: 0, spd: 2, dig: 2 },
+    stats: { hp: 26, atk: 2, arm: 0, spd: 1, dig: 2 },
     weaknessTags: ['BLOOD', 'TEMPO'],
     abilities: [
       {
         name: 'Toxic Seep',
         timing: 'TURN_START',
-        description: 'Turn Start: Deal 2 damage ignoring Armor',
-        params: { damage: 2 },
+        description: 'Turn Start: Deal 1 damage ignoring Armor',
+        params: { damage: 1 },
       },
       {
         name: 'Fume Panic',
@@ -120,7 +120,7 @@ export const BOSSES: Record<BossId, BossDefinition> = {
     emoji: '\u26CF\uFE0F', // Pick
     biome: 'A',
     week: 1,
-    stats: { hp: 36, atk: 3, arm: 6, spd: 2, dig: 4 },
+    stats: { hp: 26, atk: 2, arm: 3, spd: 2, dig: 3 },
     weaknessTags: ['SCOUT', 'GREED'],
     abilities: [
       {
@@ -143,20 +143,20 @@ export const BOSSES: Record<BossId, BossDefinition> = {
     emoji: '\u{1FAB2}', // Beetle
     biome: 'A',
     week: 1,
-    stats: { hp: 38, atk: 2, arm: 6, spd: 1, dig: 2 },
+    stats: { hp: 26, atk: 2, arm: 3, spd: 1, dig: 2 },
     weaknessTags: ['STONE', 'BLOOD'],
     abilities: [
       {
         name: 'Prismatic Spines',
         timing: 'BATTLE_START',
-        description: 'Battle Start: gain 8 Shrapnel',
-        params: { shrapnel: 8 },
+        description: 'Battle Start: gain 4 Shrapnel',
+        params: { shrapnel: 4 },
       },
       {
         name: 'Refracting Hide',
         timing: 'EVERY_OTHER_TURN',
-        description: 'Every other turn: gain +4 Shrapnel',
-        params: { shrapnel: 4 },
+        description: 'Every other turn: gain +2 Shrapnel',
+        params: { shrapnel: 2 },
       },
     ],
   },
@@ -168,7 +168,7 @@ export const BOSSES: Record<BossId, BossDefinition> = {
     emoji: '\u{1FA96}', // Military Helmet
     biome: 'A',
     week: 2,
-    stats: { hp: 46, atk: 2, arm: 10, spd: 3, dig: 3 },
+    stats: { hp: 34, atk: 2, arm: 6, spd: 2, dig: 3 },
     weaknessTags: ['FROST', 'TEMPO'],
     abilities: [
       {
@@ -180,8 +180,8 @@ export const BOSSES: Record<BossId, BossDefinition> = {
       {
         name: 'Formation',
         timing: 'EVERY_OTHER_TURN',
-        description: 'Every other turn: +2 Armor',
-        params: { armor: 2 },
+        description: 'Every other turn: +1 Armor',
+        params: { armor: 1 },
       },
     ],
   },
@@ -192,7 +192,7 @@ export const BOSSES: Record<BossId, BossDefinition> = {
     emoji: '\u{1F48E}', // Gem
     biome: 'A',
     week: 2,
-    stats: { hp: 50, atk: 4, arm: 8, spd: 2, dig: 2 },
+    stats: { hp: 36, atk: 3, arm: 5, spd: 2, dig: 2 },
     weaknessTags: ['BLAST', 'SCOUT'],
     abilities: [
       {
@@ -216,7 +216,7 @@ export const BOSSES: Record<BossId, BossDefinition> = {
     emoji: '\u{1F451}\u2623\uFE0F', // Crown + Biohazard
     biome: 'A',
     week: 2,
-    stats: { hp: 48, atk: 3, arm: 8, spd: 2, dig: 3 },
+    stats: { hp: 36, atk: 2, arm: 5, spd: 2, dig: 3 },
     weaknessTags: ['BLOOD', 'TEMPO'],
     abilities: [
       {
@@ -228,8 +228,8 @@ export const BOSSES: Record<BossId, BossDefinition> = {
       {
         name: 'Execution Tax',
         timing: 'TURN_START',
-        description: 'If you are Exposed at Turn Start, take 2 damage ignoring Armor',
-        params: { damage: 2 },
+        description: 'If you are Exposed at Turn Start, take 1 damage ignoring Armor',
+        params: { damage: 1 },
       },
     ],
   },
@@ -240,14 +240,14 @@ export const BOSSES: Record<BossId, BossDefinition> = {
     emoji: '\u{1F9E8}', // Firecracker
     biome: 'A',
     week: 2,
-    stats: { hp: 44, atk: 3, arm: 6, spd: 2, dig: 2 },
+    stats: { hp: 32, atk: 2, arm: 4, spd: 2, dig: 2 },
     weaknessTags: ['STONE', 'FROST'],
     abilities: [
       {
         name: 'Volatile Countdown',
         timing: 'COUNTDOWN',
-        description: 'Countdown(3): deal 10 damage to you and self (non-weapon)',
-        params: { countdown: 3, damage: 10 },
+        description: 'Countdown(3): deal 8 damage to you and self (non-weapon)',
+        params: { countdown: 3, damage: 8 },
       },
       {
         name: 'Short Fuse',
@@ -264,20 +264,20 @@ export const BOSSES: Record<BossId, BossDefinition> = {
     emoji: '\u{1FA99}\u{1F5DD}\uFE0F', // Coin + Key
     biome: 'A',
     week: 2,
-    stats: { hp: 52, atk: 2, arm: 12, spd: 1, dig: 2 },
+    stats: { hp: 38, atk: 2, arm: 6, spd: 1, dig: 2 },
     weaknessTags: ['GREED', 'RUST'],
     abilities: [
       {
         name: 'Toll Collector',
         timing: 'BATTLE_START',
-        description: 'Battle Start: steal 10 Gold (or all)',
-        params: { goldSteal: 10 },
+        description: 'Battle Start: steal 8 Gold (or all)',
+        params: { goldSteal: 8 },
       },
       {
         name: 'Gilded Barrier',
         timing: 'BATTLE_START',
-        description: 'Gain Armor equal to floor(stolenGold/5) (cap 6)',
-        params: { armorPerGold: 5, armorCap: 6 },
+        description: 'Gain Armor equal to floor(stolenGold/4) (cap 4)',
+        params: { armorPerGold: 4, armorCap: 4 },
       },
     ],
   },
@@ -289,20 +289,20 @@ export const BOSSES: Record<BossId, BossDefinition> = {
     emoji: '\u{1F409}', // Dragon
     biome: 'A',
     week: 3,
-    stats: { hp: 72, atk: 5, arm: 12, spd: 3, dig: 4 },
+    stats: { hp: 50, atk: 4, arm: 8, spd: 3, dig: 4 },
     weaknessTags: ['RUST', 'TEMPO'],
     abilities: [
       {
         name: 'Three Phases',
         timing: 'PASSIVE',
-        description: '75% HP: +10 Armor; 50%: attacks twice/turn; 25%: Turn Start apply 2 Bleed to you',
-        params: { phase1Armor: 10, phase2Strikes: 2, phase3Bleed: 2 },
+      description: '75% HP: +6 Armor; 50%: attacks twice/turn; 25%: Turn Start apply 2 Bleed to you',
+      params: { phase1Armor: 6, phase2Strikes: 2, phase3Bleed: 2 },
       },
       {
         name: 'Deep Dig',
         timing: 'BATTLE_START',
-        description: 'Battle Start: if your DIG > boss DIG, Phase 1 armor gain reduced by 10',
-        params: { armorReduction: 10 },
+      description: 'Battle Start: if your DIG > boss DIG, Phase 1 armor gain reduced by 6',
+      params: { armorReduction: 6 },
       },
     ],
   },
@@ -313,20 +313,20 @@ export const BOSSES: Record<BossId, BossDefinition> = {
     emoji: '\u{1F40D}\u{1F3E6}', // Snake + Bank
     biome: 'A',
     week: 3,
-    stats: { hp: 68, atk: 4, arm: 10, spd: 2, dig: 3 },
+    stats: { hp: 46, atk: 3, arm: 6, spd: 2, dig: 3 },
     weaknessTags: ['GREED', 'BLOOD'],
     abilities: [
       {
         name: 'Tax Feast',
         timing: 'BATTLE_START',
-        description: 'Battle Start: convert your Gold into its Armor (+1 Armor per 5 Gold, cap 10)',
-        params: { goldPerArmor: 5, armorCap: 10 },
+        description: 'Battle Start: convert your Gold into Armor (+1 per 6 Gold, cap 6)',
+        params: { goldPerArmor: 6, armorCap: 6 },
       },
       {
         name: 'Hunger',
         timing: 'WOUNDED',
-        description: 'Wounded: apply 3 Bleed to you',
-        params: { bleed: 3 },
+        description: 'Wounded: apply 2 Bleed to you',
+        params: { bleed: 2 },
       },
     ],
   },
@@ -338,20 +338,20 @@ export const BOSSES: Record<BossId, BossDefinition> = {
     emoji: '\u{1F40B}\u{1F9CA}', // Whale + Ice
     biome: 'B',
     week: 3,
-    stats: { hp: 74, atk: 4, arm: 14, spd: 2, dig: 3 },
+    stats: { hp: 52, atk: 3, arm: 10, spd: 2, dig: 3 },
     weaknessTags: ['TEMPO', 'STONE'],
     abilities: [
       {
         name: 'Whiteout',
         timing: 'BATTLE_START',
-        description: 'Battle Start: apply 3 Chill to you',
-        params: { chill: 3 },
+        description: 'Battle Start: apply 2 Chill to you',
+        params: { chill: 2 },
       },
       {
         name: 'Glacial Bulk',
         timing: 'EVERY_OTHER_TURN',
-        description: 'Every other turn: +4 Armor',
-        params: { armor: 4 },
+        description: 'Every other turn: +3 Armor',
+        params: { armor: 3 },
       },
       {
         name: 'Crack Ice',
@@ -368,7 +368,7 @@ export const BOSSES: Record<BossId, BossDefinition> = {
     emoji: '\u{1F9D9}\u2623\uFE0F\u23F3', // Mage + Biohazard + Hourglass
     biome: 'B',
     week: 3,
-    stats: { hp: 66, atk: 5, arm: 8, spd: 4, dig: 2 },
+    stats: { hp: 48, atk: 4, arm: 6, spd: 3, dig: 2 },
     weaknessTags: ['RUST', 'BLOOD'],
     abilities: [
       {
@@ -386,8 +386,8 @@ export const BOSSES: Record<BossId, BossDefinition> = {
       {
         name: 'Blood Price',
         timing: 'WOUNDED',
-        description: 'Wounded: apply 4 Bleed to you',
-        params: { bleed: 4 },
+        description: 'Wounded: apply 3 Bleed to you',
+        params: { bleed: 3 },
       },
     ],
   },

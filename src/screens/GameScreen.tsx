@@ -1210,13 +1210,15 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
             // Refresh map entities (enemies/POIs) to get updated positions
             // During night phases, enemies move toward the player after each player move
-            // Only sync enemy positions during night when enemies actually move
-            const isNightPhase =
-              result.newState.phase === 1 || // Night1
-              result.newState.phase === 3 || // Night2
-              result.newState.phase === 5; // Night3
+            // Use previousState phase: on the last night move, newState has already
+            // transitioned to the next day, but enemies moved during the night phase
+            const wasNightPhase = result.previousState
+              ? result.previousState.phase === 1 || // Night1
+                result.previousState.phase === 3 || // Night2
+                result.previousState.phase === 5 // Night3
+              : false;
 
-            if (sessionPda && isNightPhase) {
+            if (sessionPda && wasNightPhase) {
               refreshMapEntities(sessionPda)
                 .then((data) => {
                   if (data?.enemies && data.enemies.length > 0) {

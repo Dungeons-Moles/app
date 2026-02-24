@@ -450,17 +450,18 @@ export function convertBackendLogToFrontend(
     switch (entry.action) {
       case LogAction.Attack:
         // is_player = !is_target_player → isPlayer = attacker
-        return {
-          turn: entry.turn,
-          timing: 'ON_HIT',
-          actor: actorAsAttacker,
-          action: 'ATTACK',
-          target: targetOfAttacker,
-          result: {
+      return {
+        turn: entry.turn,
+        timing: 'ON_HIT',
+        actor: actorAsAttacker,
+        action: 'ATTACK',
+        target: targetOfAttacker,
+        result: {
             damage: entry.value,
+            spdBonus: entry.extra > 0 ? entry.extra : undefined,
           },
-          rngValues: [],
-        };
+        rngValues: [],
+      };
 
       case LogAction.Heal:
         // is_player = is_target_player → isPlayer = who is healed

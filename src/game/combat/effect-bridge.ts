@@ -124,8 +124,10 @@ export function extractBattleFlags(effects: EquippedEffect[]): BattleFlags {
   };
 
   for (const { effect } of effects) {
-    // Only process BattleStart effects for flags
-    if (effect.trigger.type !== 'BattleStart') continue;
+    // Most flags are BattleStart, but TriggerAllShards is an OnHit flag.
+    if (effect.trigger.type !== 'BattleStart' && effect.effectType !== 'TriggerAllShards') {
+      continue;
+    }
 
     switch (effect.effectType) {
       case 'BlastImmunity':

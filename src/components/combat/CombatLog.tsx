@@ -33,7 +33,10 @@ function formatEntry(entry: CombatLogEntry, index: number): FormattedEntry {
   switch (entry.action) {
     case 'ATTACK':
       const damage = entry.result.damage ?? 0;
-      text = `${actorName} attacks for ${damage} damage`;
+      const spdBonus = entry.result.spdBonus ?? 0;
+      text = `${actorName} attacks for ${damage} damage${
+        spdBonus > 0 ? ` (+${spdBonus} from SPD)` : ''
+      }`;
       color = entry.actor === 'player' ? '#22c55e' : '#ef4444';
       icon = '⚔️';
       break;

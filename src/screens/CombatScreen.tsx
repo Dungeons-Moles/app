@@ -26,6 +26,7 @@ const defaultMoleImageSource = require('../../assets/entities/characters/default
 import { useEquippedSkinImage } from '../hooks/useEquippedSkinImage';
 import { getPhaseLabel } from '../utils/phase-labels';
 import { createGameplayStateProgram } from '@/services/solana/programs';
+import { RunMode } from '@/services/solana/types/gameplay_state';
 import {
   buildFinalizeDuelRunTransaction,
   fetchDuelEntry,
@@ -43,7 +44,7 @@ type CombatScreenProps = {
 };
 
 // On-chain base values (ATK/ARM/SPD start at 0; bonuses come from BattleStart log entries)
-const DUEL_BASE_HP = 15;
+const DUEL_BASE_HP = 20;
 const DUEL_BASE_ATK = 0;
 const DUEL_BASE_ARM = 0;
 const DUEL_BASE_SPD = 0;
@@ -376,10 +377,13 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
     };
 
       if (shouldEndSession && hasActiveSession && mode !== 'guest') {
-        try {
-          await tryFinalizeDuelAndBuildReplay();
-        } catch (duelFinalizeError) {
-          console.warn('[CombatScreen] Duel finalization skipped/failed:', duelFinalizeError);
+        const isDuelRun = gameplayState?.runMode === RunMode.Duel;
+        if (isDuelRun) {
+          try {
+            await tryFinalizeDuelAndBuildReplay();
+          } catch (duelFinalizeError) {
+            console.warn('[CombatScreen] Duel finalization skipped/failed:', duelFinalizeError);
+          }
         }
 
         if (isVictory) {

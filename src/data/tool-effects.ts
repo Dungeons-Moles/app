@@ -119,12 +119,12 @@ export const TOOL_EFFECTS: Record<ToolId, ToolEffects> = {
     ],
   },
 
-  // T-GR-02: Gemfinder Staff - +1/1/2 ATK, +1/2/2 ARM, +1/1/2 DIG, OnHit: TriggerAllShards
+  // T-GR-02: Gemfinder Staff - +2/2/3 ATK, +2/3/3 ARM, +1/2/2 DIG, OnHit: TriggerAllShards
   T6: {
     effects: [
-      E(Trigger.BattleStart(), 'GainAtk', [1, 1, 2]),
-      E(Trigger.BattleStart(), 'GainArmor', [1, 2, 2]),
-      E(Trigger.BattleStart(), 'GainDig', [1, 1, 2]),
+      E(Trigger.BattleStart(), 'GainAtk', [2, 2, 3]),
+      E(Trigger.BattleStart(), 'GainArmor', [2, 3, 3]),
+      E(Trigger.BattleStart(), 'GainDig', [1, 2, 2]),
       E(Trigger.OnHit(), 'TriggerAllShards', [1, 1, 1], { oncePerTurn: true }),
     ],
   },

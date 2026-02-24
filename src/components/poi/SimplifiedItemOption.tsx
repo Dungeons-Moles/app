@@ -87,7 +87,7 @@ export function SimplifiedItemOption({
         </Text>
         {statDisplay ? <Text style={textStyle}>{statDisplay}</Text> : null}
         {effectDescription && (
-          <Text style={styles.effectText} numberOfLines={3}>
+          <Text style={styles.effectText} numberOfLines={6}>
             {effectDescription}
           </Text>
         )}
@@ -103,7 +103,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     justifyContent: 'center',
     alignItems: 'center',
-    minHeight: 160,
+    minHeight: 230,
     position: 'relative',
   },
   contentContainer: {

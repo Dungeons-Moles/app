@@ -229,7 +229,8 @@ const getAllItems = (): DisplayItem[] => {
 };
 
 export function ItemsScreen({ navigation }: ItemsScreenProps) {
-  const { isItemUnlocked, updateActiveItemPool, profile } = useProfile();
+  const { isItemUnlocked, updateActiveItemPool, profile, mode } = useProfile();
+  const isGuest = mode === 'guest';
   const screenVariant = useScreenVariant();
   const isCompact = screenVariant === 'compact';
   const [selectedItem, setSelectedItem] = useState<DisplayItem | null>(null);
@@ -270,8 +271,8 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
   }, []);
 
   const checkItemUnlocked = useCallback(
-    (id: string): boolean => isItemUnlocked(id),
-    [isItemUnlocked]
+    (id: string): boolean => isGuest || isItemUnlocked(id),
+    [isGuest, isItemUnlocked]
   );
 
   const togglePoolItem = useCallback(
@@ -409,13 +410,13 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
     {
       onB: handleBack,
       onA:
-        activeTab === 'items'
+        activeTab === 'items' && !isGuest
           ? () => {
               const item = allItems[cursorIdx];
               if (item && checkItemUnlocked(item.id)) togglePoolItem(item);
             }
           : undefined,
-      onX: activeTab === 'items' && hasPoolChanges ? handleSaveItemPool : undefined,
+      onX: activeTab === 'items' && !isGuest && hasPoolChanges ? handleSaveItemPool : undefined,
       onL1: toggleTab,
       onR1: toggleTab,
       onDPadLeft: () => {
@@ -442,7 +443,7 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
   const controllerHints: ButtonHint[] = [
     { button: 'L1R1', label: 'Tab' },
     { button: 'DPad', label: 'Navigate' },
-    ...(activeTab === 'items'
+    ...(activeTab === 'items' && !isGuest
       ? [
           { button: 'A' as const, label: selectedItemInPool ? 'Remove' : 'Add to Pool' },
           ...(hasPoolChanges ? [{ button: 'X' as const, label: 'Save' }] : []),
@@ -489,7 +490,7 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                 </Text>
               </ImageBackground>
             </TouchableOpacity>
-            {activeTab === 'items' && (
+            {activeTab === 'items' && !isGuest && (
               <Text
                 numberOfLines={1}
                 style={[
@@ -503,8 +504,8 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
             )}
           </View>
 
-          {/* Save button in header right — only on items tab */}
-          {activeTab === 'items' ? (
+          {/* Save button in header right — only on items tab, hidden for guests */}
+          {activeTab === 'items' && !isGuest ? (
             <TouchableOpacity
               disabled={
                 isSavingItemPool || !hasPoolChanges || draftPoolIndices.size < ITEM_POOL_MIN_SIZE
@@ -568,7 +569,7 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                           const unlocked = checkItemUnlocked(item.id);
                           const isSelected = selectedItem?.id === item.id;
                           const poolIndex = getItemPoolIndex(item.id);
-                          const isInPool = poolIndex >= 0 && draftPoolIndices.has(poolIndex);
+                          const isInPool = !isGuest && poolIndex >= 0 && draftPoolIndices.has(poolIndex);
                           const isCursorItem = isController && idx === cursorIdx;
                           const cell = (
                             <TouchableOpacity
@@ -787,7 +788,7 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
 
             {activeTab === 'items' && selectedItem && (
               <>
-                {!checkItemUnlocked(selectedItem.id) && (
+                {!isGuest && !checkItemUnlocked(selectedItem.id) && (
                   <ImageBackground
                     source={rectangleFrameSource}
                     style={[styles.lockedBanner, isCompact && compactStyles.lockedBanner]}
@@ -806,7 +807,7 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                   </ImageBackground>
                 )}
 
-                {checkItemUnlocked(selectedItem.id) && selectedItemPoolIndex >= 0 && (
+                {!isGuest && checkItemUnlocked(selectedItem.id) && selectedItemPoolIndex >= 0 && (
                   <TouchableOpacity
                     onPress={() => togglePoolItem(selectedItem)}
                     style={[styles.poolToggleButton, isCompact && compactStyles.poolToggleButton]}

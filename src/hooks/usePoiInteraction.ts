@@ -1032,6 +1032,11 @@ export function usePoiInteraction(): UsePoiInteractionResult {
           poiIndex
         );
 
+        // Clear stale cache offers from any previous POI interaction.
+        // POIs that need them (L2, L3, L4, L9, L12, L13) will set fresh values below.
+        setCacheOfferOptions(null);
+        setCacheOfferParams(null);
+
         switch (poiType) {
           // Rest POIs (L1, L5) — Deferred flow:
           // Step 1 (here): show modal with options (Rest / Leave)
@@ -1931,7 +1936,10 @@ export function usePoiInteraction(): UsePoiInteractionResult {
               dispatch({ type: 'SYNC_MOVE', confirmedState: updatedState });
             }
 
-            // Detect boss resolution: week advanced (win) or player died (loss)
+            // Detect boss resolution:
+            // - week advanced (typical win on week 1/2),
+            // - player died (loss),
+            // - final week completed flag set (week 3 win keeps week=3).
             // during this POI interaction (e.g., Rest Alcove on Night 3).
             let bossResolved:
               | {
@@ -1951,7 +1959,8 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             if (updatedState) {
               const weekAdvanced = updatedState.week > preWeek;
               const playerDied = updatedState.isDead;
-              if (weekAdvanced || playerDied) {
+              const levelCompleted = updatedState.completed;
+              if (weekAdvanced || playerDied || levelCompleted) {
                 bossResolved = {
                   playerWon: parsedBossCombat?.combatEnded
                     ? parsedBossCombat.combatEnded.playerWon
@@ -1969,7 +1978,10 @@ export function usePoiInteraction(): UsePoiInteractionResult {
                 };
                 console.log(
                   '[usePoiInteraction] Boss resolved during REST POI:',
-                  bossResolved
+                  {
+                    ...bossResolved,
+                    detection: { weekAdvanced, playerDied, levelCompleted },
+                  }
                 );
               }
             }

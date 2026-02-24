@@ -379,7 +379,7 @@ export function useGameplayState(): UseGameplayStateReturn {
           confirmedState != null &&
           (confirmedState.hp < previousState.hp ||
             confirmedState.isDead ||
-            confirmedState.gold > previousState.gold);
+            confirmedState.gold !== previousState.gold);
 
         // Detect inline boss/echo resolution from state changes.
         // Boss fights auto-resolve inside move_player when the last Night3 move

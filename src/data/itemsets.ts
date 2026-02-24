@@ -115,7 +115,7 @@ export const ITEMSET_DEFINITIONS: Record<ItemsetId, ItemsetDefinition> = {
     emoji: '⚡',
     requiredItems: ['T3', 'I9', 'I14'], // T-SC-01 + G-SC-01 + G-SC-06
     bonus: {
-      description: 'Battle Start: If DIG > enemy DIG, +1 strike and +2 ATK',
+      description: 'Battle Start: If DIG > enemy DIG, +1 strike and +3 ATK',
       timing: 'BATTLE_START',
     },
   },
@@ -159,7 +159,7 @@ export const ITEMSET_DEFINITIONS: Record<ItemsetId, ItemsetDefinition> = {
     emoji: '🩸',
     requiredItems: ['T13', 'I53', 'I57'],
     bonus: {
-      description: 'Turn 1: apply 2 Bleed; when enemy takes Bleed dmg, gain +1 SPD this turn',
+      description: 'Turn 1: apply 3 Bleed; when enemy takes Bleed dmg, gain +1 SPD this turn',
       timing: 'FIRST_TURN',
     },
   },

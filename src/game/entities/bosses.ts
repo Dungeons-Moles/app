@@ -83,17 +83,17 @@ export function getBossPhaseState(): BossPhaseState {
 const broodmotherTrait: BossTrait = {
   id: 'B-A-W1-01',
   name: 'Swarm Queen',
-  description: 'Strikes 3 times per turn',
+  description: 'Strikes 2 times per turn',
   timings: ['BATTLE_START'],
   execute: (state, context) => {
     if (context.timing !== 'BATTLE_START') {
       return { state, triggered: false };
     }
 
-    // Set enemy to strike 3 times per turn
+    // Set enemy to strike 2 times per turn
     const newEnemy: CombatantState = {
       ...state.enemy,
-      strikesPerTurn: 3,
+      strikesPerTurn: 2,
     };
 
     return {
@@ -111,17 +111,16 @@ const broodmotherTrait: BossTrait = {
 const obsidianGolemTrait: BossTrait = {
   id: 'B-A-W1-02',
   name: 'Hardened',
-  description: 'Turn Start: Regenerate +4 Armor',
+  description: 'Turn Start: Regenerate +2 Armor',
   timings: ['TURN_START'],
   execute: (state, context) => {
     if (context.timing !== 'TURN_START') {
       return { state, triggered: false };
     }
 
-    // Add +4 to bonus armor (per GDD Section 10)
     const newEnemy: CombatantState = {
       ...state.enemy,
-      bonusArm: state.enemy.bonusArm + 4,
+      bonusArm: state.enemy.bonusArm + 2,
     };
 
     return {

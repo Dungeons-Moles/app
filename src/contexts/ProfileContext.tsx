@@ -39,7 +39,7 @@ interface ProfileContextType {
   recordRunResult: (levelReached: number, victory: boolean) => Promise<TransactionResult>;
   updateName: (name: string) => Promise<TransactionResult>;
   updateActiveItemPool: (activeItemPool: Uint8Array) => Promise<TransactionResult>;
-  clearProfile: () => Promise<void>;
+  clearProfile: () => Promise<TransactionResult>;
   defaultCombatSpeed: CombatSpeed;
   updateDefaultCombatSpeed: (speed: CombatSpeed) => Promise<void>;
   updateLastPlayed: () => Promise<void>;
@@ -190,10 +190,14 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     };
   }, [connection, wallet.address]);
 
-  const clearProfile = useCallback(async () => {
+  const clearProfile = useCallback(async (): Promise<TransactionResult> => {
     setError(null);
-    await profileApi.resetProfile();
-    hasFetchedRef.current = false;
+    const result = await profileApi.resetProfile();
+    if (result.success) {
+      hasFetchedRef.current = false;
+      setMode('online');
+    }
+    return result;
   }, [profileApi]);
 
   const updateDefaultCombatSpeed = useCallback(async (speed: CombatSpeed) => {

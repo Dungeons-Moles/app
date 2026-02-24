@@ -249,13 +249,48 @@ export function usePlayerProfile() {
     }
   }, [wallet.address]);
 
-  const resetProfile = useCallback(async () => {
-    updateState(null, false, false);
-    setError(null);
-    if (wallet.address) {
-      await clearCachedProfile(wallet.address);
+  const resetProfile = useCallback(async (): Promise<TransactionResult> => {
+    if (!wallet.publicKey || !wallet.address || !writeProgram) {
+      return { success: false, error: 'Wallet not connected' };
     }
-  }, [updateState, wallet.address]);
+
+    if (isMountedRef.current) {
+      setIsLoading(true);
+      setError(null);
+    }
+
+    try {
+      const [profilePda] = derivePlayerProfilePda(wallet.publicKey);
+      const transaction = await writeProgram.methods
+        .closeProfile()
+        .accounts({
+          playerProfile: profilePda,
+          owner: wallet.publicKey,
+        })
+        .transaction();
+
+      const signature = await signAndSendTransaction(transaction);
+      await connection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
+
+      updateState(null, false, false);
+      await clearCachedProfile(wallet.address);
+
+      return { success: true, signature };
+    } catch (txError) {
+      const message = getUserErrorMessage(txError, 'player_profile');
+      if (isMountedRef.current) setError(message);
+      return { success: false, error: message };
+    } finally {
+      if (isMountedRef.current) setIsLoading(false);
+    }
+  }, [
+    connection,
+    signAndSendTransaction,
+    updateState,
+    wallet.address,
+    wallet.publicKey,
+    writeProgram,
+  ]);
 
   /**
    * Records the result of a completed dungeon run on-chain.

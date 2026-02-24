@@ -4726,196 +4726,201 @@
     },
     {
       "code": 6015,
+      "name": "RunCompleted",
+      "msg": "Run is already completed - no further actions allowed"
+    },
+    {
+      "code": 6016,
       "name": "InvalidWeek",
       "msg": "Invalid week value"
     },
     {
-      "code": 6016,
+      "code": 6017,
       "name": "InvalidEnemyTier",
       "msg": "Invalid enemy tier"
     },
     {
-      "code": 6017,
+      "code": 6018,
       "name": "InvalidSession",
       "msg": "Invalid session account"
     },
     {
-      "code": 6018,
+      "code": 6019,
       "name": "InvalidSessionOwner",
       "msg": "Invalid session owner program"
     },
     {
-      "code": 6019,
+      "code": 6020,
       "name": "NotNightPhase",
       "msg": "Skip to day can only be used during night phases"
     },
     {
-      "code": 6020,
+      "code": 6021,
       "name": "InvalidHpBonus",
       "msg": "Invalid HP bonus value"
     },
     {
-      "code": 6021,
+      "code": 6022,
       "name": "TestOnlyInstructionDisabled",
       "msg": "Test-only instruction is disabled in production builds"
     },
     {
-      "code": 6022,
+      "code": 6023,
       "name": "PitDraftAlreadyQueued",
       "msg": "Player is already queued in pit draft"
     },
     {
-      "code": 6023,
+      "code": 6024,
       "name": "PitDraftInvalidWaitingState",
       "msg": "Pit draft waiting player data is missing or inconsistent"
     },
     {
-      "code": 6024,
+      "code": 6025,
       "name": "PitDraftMissingWaitingAccounts",
       "msg": "Waiting player account inputs are missing"
     },
     {
-      "code": 6025,
+      "code": 6026,
       "name": "PitDraftSelfMatch",
       "msg": "Cannot match against yourself in pit draft"
     },
     {
-      "code": 6026,
+      "code": 6027,
       "name": "PitDraftWaitingAccountMismatch",
       "msg": "Provided waiting accounts do not match queued player"
     },
     {
-      "code": 6027,
+      "code": 6028,
       "name": "InvalidPitDraftFeeAccount",
       "msg": "Invalid pit draft fee account"
     },
     {
-      "code": 6028,
+      "code": 6029,
       "name": "PitDraftInsufficientVaultFunds",
       "msg": "Pit draft vault has insufficient funds"
     },
     {
-      "code": 6029,
+      "code": 6030,
       "name": "PitDraftInsufficientPoolItems",
       "msg": "Active pool does not contain enough items for pit draft loadout"
     },
     {
-      "code": 6030,
+      "code": 6031,
       "name": "DuelAlreadyQueued",
       "msg": "Player is already queued in duels for this seed"
     },
     {
-      "code": 6031,
+      "code": 6032,
       "name": "DuelQueueFull",
       "msg": "Duel queue is already full for this seed"
     },
     {
-      "code": 6032,
+      "code": 6033,
       "name": "DuelRunNotFinished",
       "msg": "Duel run is not finished yet"
     },
     {
-      "code": 6033,
+      "code": 6034,
       "name": "DuelSeedMismatch",
       "msg": "Provided seed does not match session generated map seed"
     },
     {
-      "code": 6034,
+      "code": 6035,
       "name": "DuelInvalidRunMode",
       "msg": "Session is not configured for duel mode"
     },
     {
-      "code": 6035,
+      "code": 6036,
       "name": "DuelNotQueued",
       "msg": "Player is not queued in this duel"
     },
     {
-      "code": 6036,
+      "code": 6037,
       "name": "DuelGameStateMismatch",
       "msg": "Provided game state does not match queued duel participant"
     },
     {
-      "code": 6037,
+      "code": 6038,
       "name": "DuelSelfMatch",
       "msg": "Cannot match against yourself in duels"
     },
     {
-      "code": 6038,
+      "code": 6039,
       "name": "InvalidDuelFeeAccount",
       "msg": "Invalid duel fee account"
     },
     {
-      "code": 6039,
+      "code": 6040,
       "name": "DuelMissingWalletAccount",
       "msg": "Required duel wallet account is missing"
     },
     {
-      "code": 6040,
+      "code": 6041,
       "name": "DuelInvalidQueueState",
       "msg": "Duel queue state is invalid or inconsistent"
     },
     {
-      "code": 6041,
+      "code": 6042,
       "name": "GauntletNotInitialized",
       "msg": "Gauntlet mode is not initialized"
     },
     {
-      "code": 6042,
+      "code": 6043,
       "name": "InvalidGauntletFeeAccount",
       "msg": "Invalid gauntlet fee account"
     },
     {
-      "code": 6043,
+      "code": 6044,
       "name": "InvalidGauntletWeek",
       "msg": "Invalid gauntlet week"
     },
     {
-      "code": 6044,
+      "code": 6045,
       "name": "GauntletRunNotActive",
       "msg": "Gauntlet run is not active"
     },
     {
-      "code": 6045,
+      "code": 6046,
       "name": "GauntletRunEnded",
       "msg": "Gauntlet run already ended"
     },
     {
-      "code": 6046,
+      "code": 6047,
       "name": "GauntletAlreadyClaimed",
       "msg": "Gauntlet rewards already claimed for this epoch"
     },
     {
-      "code": 6047,
+      "code": 6048,
       "name": "GauntletScoreMismatch",
       "msg": "Gauntlet score account mismatch"
     },
     {
-      "code": 6048,
+      "code": 6049,
       "name": "GauntletEpochNotFinalized",
       "msg": "Gauntlet epoch pool is not finalized"
     },
     {
-      "code": 6049,
+      "code": 6050,
       "name": "GauntletAlreadyEntered",
       "msg": "Gauntlet entry already paid for this run"
     },
     {
-      "code": 6050,
+      "code": 6051,
       "name": "RunModeConfigurationLocked",
       "msg": "Run mode can only be configured at session start"
     },
     {
-      "code": 6051,
+      "code": 6052,
       "name": "InvalidRunModeMaxWeeks",
       "msg": "Invalid max weeks value for run mode"
     },
     {
-      "code": 6052,
+      "code": 6053,
       "name": "GauntletAlreadySettled",
       "msg": "Gauntlet session already settled"
     },
     {
-      "code": 6053,
+      "code": 6054,
       "name": "InvalidCampaignLevel",
       "msg": "Campaign level must be between 1 and 40"
     }
@@ -5078,7 +5083,7 @@
           {
             "name": "extra",
             "docs": [
-              "Extra data (status_id for ApplyStatus, 0 otherwise)"
+              "Extra data (status_id for ApplyStatus, SPD bonus for Attack, 0 otherwise)"
             ],
             "type": "u8"
           }

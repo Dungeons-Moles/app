@@ -118,13 +118,13 @@ describe('Boss Definitions', () => {
     });
 
     it('should have correct stats for each boss', () => {
-      expect(BOSSES['B-A-W1-01'].stats).toEqual({ hp: 32, atk: 2, arm: 2, spd: 3, dig: 1 });
-      expect(BOSSES['B-A-W1-02'].stats).toEqual({ hp: 40, atk: 3, arm: 14, spd: 0, dig: 3 });
-      expect(BOSSES['B-A-W1-03'].stats).toEqual({ hp: 34, atk: 2, arm: 0, spd: 2, dig: 2 });
-      expect(BOSSES['B-A-W1-04'].stats).toEqual({ hp: 36, atk: 3, arm: 6, spd: 2, dig: 4 });
-      expect(BOSSES['B-A-W2-01'].stats).toEqual({ hp: 46, atk: 2, arm: 10, spd: 3, dig: 3 });
-      expect(BOSSES['B-A-W2-02'].stats).toEqual({ hp: 50, atk: 4, arm: 8, spd: 2, dig: 2 });
-      expect(BOSSES['B-A-W3-01'].stats).toEqual({ hp: 72, atk: 5, arm: 12, spd: 3, dig: 4 });
+      expect(BOSSES['B-A-W1-01'].stats).toEqual({ hp: 24, atk: 2, arm: 1, spd: 2, dig: 1 });
+      expect(BOSSES['B-A-W1-02'].stats).toEqual({ hp: 28, atk: 2, arm: 8, spd: 0, dig: 3 });
+      expect(BOSSES['B-A-W1-03'].stats).toEqual({ hp: 26, atk: 2, arm: 0, spd: 1, dig: 2 });
+      expect(BOSSES['B-A-W1-04'].stats).toEqual({ hp: 26, atk: 2, arm: 3, spd: 2, dig: 3 });
+      expect(BOSSES['B-A-W2-01'].stats).toEqual({ hp: 34, atk: 2, arm: 6, spd: 2, dig: 3 });
+      expect(BOSSES['B-A-W2-02'].stats).toEqual({ hp: 36, atk: 3, arm: 5, spd: 2, dig: 2 });
+      expect(BOSSES['B-A-W3-01'].stats).toEqual({ hp: 50, atk: 4, arm: 8, spd: 3, dig: 4 });
     });
 
     // T062: Biome A boss distribution
@@ -183,10 +183,10 @@ describe('Boss Definitions', () => {
     it('should create combatant with correct stats', () => {
       const broodmother = createBossCombatant('B-A-W1-01');
       expect(broodmother.name).toBe('The Broodmother');
-      expect(broodmother.hp).toBe(32);
+      expect(broodmother.hp).toBe(24);
       expect(broodmother.atk).toBe(2);
-      expect(broodmother.arm).toBe(2);
-      expect(broodmother.spd).toBe(3);
+      expect(broodmother.arm).toBe(1);
+      expect(broodmother.spd).toBe(2);
       expect(broodmother.strikesPerTurn).toBe(1); // Before trait activates
     });
 
@@ -202,13 +202,13 @@ describe('Boss Traits', () => {
     resetBossPhaseState();
   });
 
-  describe('T103: Broodmother - Swarm (3 strikes per turn)', () => {
+  describe('T103: Broodmother - Swarm (2 strikes per turn)', () => {
     it('should set strikesPerTurn to 3 on BATTLE_START', () => {
       const state = createTestCombatState({}, { strikesPerTurn: 1 });
       const result = executeBossTrait(state, 'B-A-W1-01', 'BATTLE_START');
 
       expect(result.triggered).toBe(true);
-      expect(result.state.enemy.strikesPerTurn).toBe(3);
+      expect(result.state.enemy.strikesPerTurn).toBe(2);
       expect(result.effectName).toBe('Swarm');
     });
 
@@ -221,13 +221,13 @@ describe('Boss Traits', () => {
     });
   });
 
-  describe('T104: Obsidian Golem - Hardened (+4 Armor on Turn Start)', () => {
-    it('should add +4 to bonusArm on TURN_START', () => {
+  describe('T104: Obsidian Golem - Hardened (+2 Armor on Turn Start)', () => {
+    it('should add +2 to bonusArm on TURN_START', () => {
       const state = createTestCombatState({}, { bonusArm: 0 });
       const result = executeBossTrait(state, 'B-A-W1-02', 'TURN_START');
 
       expect(result.triggered).toBe(true);
-      expect(result.state.enemy.bonusArm).toBe(4);
+      expect(result.state.enemy.bonusArm).toBe(2);
       expect(result.effectName).toBe('Hardened');
     });
 
@@ -237,17 +237,17 @@ describe('Boss Traits', () => {
       // Turn 1
       let result = executeBossTrait(state, 'B-A-W1-02', 'TURN_START');
       state = result.state;
-      expect(state.enemy.bonusArm).toBe(4);
+      expect(state.enemy.bonusArm).toBe(2);
 
       // Turn 2
       result = executeBossTrait(state, 'B-A-W1-02', 'TURN_START');
       state = result.state;
-      expect(state.enemy.bonusArm).toBe(8);
+      expect(state.enemy.bonusArm).toBe(4);
 
       // Turn 3
       result = executeBossTrait(state, 'B-A-W1-02', 'TURN_START');
       state = result.state;
-      expect(state.enemy.bonusArm).toBe(12);
+      expect(state.enemy.bonusArm).toBe(6);
     });
   });
 

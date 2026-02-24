@@ -952,6 +952,10 @@ export function useSessionManager() {
         // succeeded on ER but base hadn't caught up when we checked owners).
         // If restored, skip silently. Otherwise, re-throw.
         const undelegateErrors: string[] = [];
+        const isRecoverableUndelegateError = (message: string): boolean =>
+          message.includes('InvalidAccountOwner') ||
+          message.includes('InvalidWritableAccount') ||
+          message.includes('ReadonlyDataModified');
         const tryUndelegateOrSkip = async (
           sendTx: () => Promise<void>,
           checks: Array<[PublicKey, PublicKey, string]>,
@@ -983,7 +987,13 @@ export function useSessionManager() {
               return;
             }
             if (continueOnFailure) {
-              undelegateErrors.push(`${labels}: ${errMsg}`);
+              if (!isRecoverableUndelegateError(errMsg)) {
+                undelegateErrors.push(`${labels}: ${errMsg}`);
+              } else {
+                console.log(
+                  `[useSessionManager] undelegate ${labels}: recoverable tx error; waiting for base owner restoration`
+                );
+              }
               return;
             }
             throw err;
@@ -1149,7 +1159,8 @@ export function useSessionManager() {
         }
 
         let allRestored = false;
-        for (let i = 0; i < 30; i += 1) {
+        // ER commit propagation can be slow/non-uniform; allow up to 60s.
+        for (let i = 0; i < 60; i += 1) {
           const infos = await Promise.all(
             allChecks.map(([pda]) => baseConnection.getAccountInfo(pda, 'processed'))
           );
@@ -1168,7 +1179,7 @@ export function useSessionManager() {
               }
             });
           }
-          await new Promise((resolve) => setTimeout(resolve, 250));
+          await new Promise((resolve) => setTimeout(resolve, 1000));
         }
 
         if (!allRestored && undelegateErrors.length > 0) {

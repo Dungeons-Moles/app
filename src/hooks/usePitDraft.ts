@@ -94,7 +94,7 @@ export interface PitDraftHistoryItem {
 // ============================================================================
 
 const QUEUE_POLL_INTERVAL_MS = 3000;
-const PIT_DRAFT_BASE_HP = 15;
+const PIT_DRAFT_BASE_HP = 20;
 const PIT_DRAFT_BASE_ATK = 1;
 const PIT_DRAFT_BASE_ARM = 0;
 const PIT_DRAFT_BASE_SPD = 0;
