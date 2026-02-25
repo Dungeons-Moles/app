@@ -51,6 +51,8 @@ type CampaignSelectScreenProps = {
 };
 
 const NUM_COLUMNS = 5;
+const SESSION_CLEANUP_WAIT_TIMEOUT_MS = 45000;
+const SESSION_CLEANUP_POLL_MS = 1000;
 
 export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) {
   const { profile, mode, availableRuns, highestLevelUnlocked } = useProfile();
@@ -60,6 +62,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
     startGame: startSessionOnChain,
     hasSessionForLevel,
     activeSessions,
+    hasPendingCleanups,
     processPendingCleanups,
     getMapSeedForLevel,
     switchToSession,
@@ -321,6 +324,38 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
       }
 
       if (!isGuestMode) {
+        // If deferred cleanup is still running for a previous run, wait until
+        // the level session slot is truly free before trying to start again.
+        if (hasPendingCleanups) {
+          setSelectedLevel(level.level);
+          setIsStartingGame(true);
+          const startWait = Date.now();
+          try {
+            while (Date.now() - startWait < SESSION_CLEANUP_WAIT_TIMEOUT_MS) {
+              await processPendingCleanups().catch((err) => {
+                console.warn('[CampaignSelect] processPendingCleanups during start wait failed:', err);
+              });
+              const stillExists = await hasSessionForLevel(level.level);
+              if (!stillExists) {
+                break;
+              }
+              await new Promise((resolve) => setTimeout(resolve, SESSION_CLEANUP_POLL_MS));
+            }
+
+            const stillExistsAfterWait = await hasSessionForLevel(level.level);
+            if (stillExistsAfterWait) {
+              setErrorMessage(
+                'Previous session cleanup is still in progress. Please wait a few seconds and try again.'
+              );
+              setShowErrorModal(true);
+              return;
+            }
+          } finally {
+            setIsStartingGame(false);
+            setSelectedLevel(null);
+          }
+        }
+
         const localSession = activeSessions.find((session) => session.level === level.level);
         const hasExistingSession = localSession
           ? true
@@ -446,12 +481,14 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
       connection,
       erConnection,
       gameplayConnection,
+      hasPendingCleanups,
       dispatch,
       navigation,
       gameState?.phase,
       hasSessionForLevel,
       highestLevelUnlocked,
       isCachedMode,
+      processPendingCleanups,
       setGameStatePda,
       startSessionOnChain,
       isStartingGame,

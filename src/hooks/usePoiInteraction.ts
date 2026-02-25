@@ -8,7 +8,7 @@
  * @see spec.md for POI interaction requirements
  */
 
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useGame, GamePhase } from '@/contexts/GameContext';
 import { useSession } from '@/contexts/SessionContext';
 import { useGameplayStateContext, type PoiData } from '@/contexts/GameplayStateContext';
@@ -20,6 +20,7 @@ import {
 } from '@/services/solana/programs';
 import { oilFlagToModification } from '@/services/solana/types/player_inventory';
 import { useWallet } from '@/contexts/WalletContext';
+import { useAudio } from '@/contexts/AudioContext';
 import { deriveMapPoisPda } from '@/services/solana/constants';
 import { getGameStatePda, fetchGameState } from '@/services/solana/gameplayState';
 import { POI_TYPES } from '@/services/solana/types/poi_system';
@@ -61,6 +62,12 @@ import { deriveInventoryPda } from '@/services/solana/constants';
 import { gearToBackend, toolToBackend } from '@/data/id-mapping';
 import { createGearInstance } from '@/game/entities/items';
 import { createToolInstance } from '@/game/entities/items';
+import {
+  generateRuneKilnOptions,
+  generateRustyAnvilOptions,
+  generateScrapChuteOptions,
+} from '@/game/entities/pois';
+import type { GameState } from '@/game/engine/types';
 import type { Position, POIOption, GearId, ToolId, Tool, Gear, ToolOil } from '@/game/engine/types';
 import type { BackendCombatLogEntry } from '@/services/solana/types/combat_events';
 
@@ -401,6 +408,18 @@ function isOfferAlreadyGeneratedError(error: unknown): boolean {
   );
 }
 
+function isIgnorableLeaveShopCloseError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  const code = extractCustomErrorCode(error);
+  return (
+    code === 6011 || // ShopNotActive
+    code === 6018 || // Unauthorized (session changed while closing modal)
+    message.includes('ShopNotActive') ||
+    message.includes('No active shop session') ||
+    message.includes('Unauthorized')
+  );
+}
+
 /**
  * Convert on-chain CacheOffer items to POIOption[] for the POI modal.
  * Decodes 8-byte item IDs, looks up gear/tool definitions, creates instances.
@@ -478,8 +497,9 @@ function convertShopOffersToOptions(
   playerGold: number
 ): POIOption[] {
   const options: POIOption[] = [];
-  // Tier: 1=Tier I (COMMON), 2=Tier II (GILDED), 3=Tier III (DIAMOND)
-  const tierToRarity = ['COMMON', 'COMMON', 'GILDED', 'DIAMOND'] as const; // Index 0 unused, tiers are 1-3
+  // Tier: 1=base rarity (use gear's baseRarity), 2=GILDED, 3=DIAMOND
+  // Tier 1 means unupgraded — don't override the gear's base rarity
+  const tierToRarity: Record<number, 'GILDED' | 'DIAMOND' | undefined> = { 1: undefined, 2: 'GILDED', 3: 'DIAMOND' };
 
   for (const offer of offers) {
     const engineId = decodeItemId(offer.itemId);
@@ -489,7 +509,7 @@ function convertShopOffersToOptions(
     }
 
     try {
-      const rarity = tierToRarity[offer.tier] ?? 'COMMON';
+      const rarity = tierToRarity[offer.tier];
       const item = engineId.startsWith('T')
         ? createToolInstance(engineId as ToolId)
         : createGearInstance(engineId as GearId, rarity);
@@ -623,12 +643,16 @@ export function usePoiInteraction(): UsePoiInteractionResult {
   } = useGameplayStateContext();
   const { gameplayConnection } = useSolanaConnection();
   const { wallet } = useWallet();
+  const { playSfx } = useAudio();
 
   const [isInteracting, setIsInteracting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [interactionState, setInteractionState] = useState<PoiInteractionState>('idle');
   const [shopOffers, setShopOffers] = useState<ItemOffer[]>([]);
   const [shopRerollCount, setShopRerollCount] = useState(0);
+  // Tracks whether leaveShop was already sent (e.g. via "Leave" button) so
+  // clearCacheOffers doesn't fire a redundant on-chain call.
+  const shopLeftRef = useRef(false);
   const [cacheOfferOptions, setCacheOfferOptions] = useState<POIOption[] | null>(null);
   // Store params used during generateCacheOffer so interactPickItem uses the same values
   const [cacheOfferParams, setCacheOfferParams] = useState<{
@@ -812,10 +836,48 @@ export function usePoiInteraction(): UsePoiInteractionResult {
       }
     }
 
-    // Pick Item POIs (L2, L3, L12, L13): Don't auto-open if inventory is full
+    // Tool Crate (L3): Don't auto-open if player has a non-starter tool equipped
+    if (poiType === POI_TYPES.TOOL_CRATE) {
+      if (gameState.player.equippedTool && gameState.player.equippedTool.id !== 'T0') {
+        console.log('[usePoiInteraction] shouldAutoOpen: false (already has tool equipped)');
+        return false;
+      }
+    }
+
+    // Rusty Anvil (L10): Don't auto-open if tool is already max tier (DIAMOND)
+    if (poiType === POI_TYPES.RUSTY_ANVIL) {
+      if (gameState.player.equippedTool?.rarity === 'DIAMOND') {
+        console.log('[usePoiInteraction] shouldAutoOpen: false (tool already max tier)');
+        return false;
+      }
+    }
+
+    // Rune Kiln (L11): Don't auto-open if no fuseable pairs (need 2 identical non-Diamond gear)
+    if (poiType === POI_TYPES.RUNE_KILN) {
+      const gearCounts = new Map<string, number>();
+      let hasPair = false;
+      for (const slot of gameState.player.inventory) {
+        if (slot.item.currentRarity !== 'DIAMOND') {
+          const key = `${slot.item.id}:${slot.item.currentRarity}`;
+          const count = (gearCounts.get(key) ?? 0) + 1;
+          gearCounts.set(key, count);
+          if (count >= 2) {
+            hasPair = true;
+            break;
+          }
+        }
+      }
+      if (!hasPair) {
+        console.log('[usePoiInteraction] shouldAutoOpen: false (no fuseable pairs for kiln)');
+        return false;
+      }
+    }
+
+    // Item-granting POIs (L2, L3, L9, L12, L13): Don't auto-open if inventory is full
     const PICK_ITEM_POIS: number[] = [
       POI_TYPES.SUPPLY_CACHE,
       POI_TYPES.TOOL_CRATE,
+      POI_TYPES.SMUGGLER_HATCH,
       POI_TYPES.GEODE_VAULT,
       POI_TYPES.COUNTER_CACHE,
     ];
@@ -1301,6 +1363,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
 
           // Smuggler Hatch Shop (L9) — Enter shop on-chain, then show modal with on-chain offers
           case POI_TYPES.SMUGGLER_HATCH: {
+            shopLeftRef.current = false;
             // Check if shop is already active on-chain (e.g. reopening after closing modal)
             let shopData = await fetchMapPois(ctx.program, ctx.mapPoisPda);
             if (!shopData?.shopState?.active) {
@@ -1470,6 +1533,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
 
       try {
         await shopPurchase(ctx, offerIndex);
+        playSfx('gold_pickup');
         // Refresh shop state to update offers
         await refreshShopState();
         return { success: true };
@@ -1483,6 +1547,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
     [
       createPoiCtx,
       refreshShopState,
+      playSfx,
     ]
   );
 
@@ -1532,6 +1597,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
 
     try {
       await leaveShop(ctx);
+      shopLeftRef.current = true;
       setShopOffers([]);
       setShopRerollCount(0);
       setInteractionState('complete');
@@ -1780,14 +1846,21 @@ export function usePoiInteraction(): UsePoiInteractionResult {
   const clearCacheOffers = useCallback(() => {
     setCacheOfferOptions(null);
     setCacheOfferParams(null);
-    // If in shop, close on-chain (fire-and-forget)
+    // If in shop, close on-chain (fire-and-forget) — skip if already left
     if (deferredPoiType === POI_TYPES.SMUGGLER_HATCH) {
-      const ctx = createPoiCtx();
-      if (ctx) {
-        leaveShop(ctx).catch((err) => {
-          console.error('[usePoiInteraction] leaveShop on close:', err);
-        });
+      if (!shopLeftRef.current) {
+        const ctx = createPoiCtx();
+        if (ctx) {
+          leaveShop(ctx).catch((err) => {
+            if (!isIgnorableLeaveShopCloseError(err)) {
+              console.error('[usePoiInteraction] leaveShop on close:', err);
+            } else {
+              console.warn('[usePoiInteraction] leaveShop on close ignored:', err);
+            }
+          });
+        }
       }
+      shopLeftRef.current = false;
       setShopOffers([]);
       setShopRerollCount(0);
     }
@@ -2178,6 +2251,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
               await withErPositionRetry(() =>
                 leaveShop(ctx)
               );
+              shopLeftRef.current = true;
               setShopOffers([]);
               setShopRerollCount(0);
               break; // Will clean up deferred state and consume POI below
@@ -2225,6 +2299,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             await withErPositionRetry(() =>
               shopPurchase(ctx, optionIndex)
             );
+            playSfx('gold_pickup');
 
             // Sync gold + inventory from on-chain state after purchase
             await refreshGameplayState();
@@ -2325,6 +2400,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
               interactRuneKiln(ctx, validatedPoiIndex, kilnIdBytes, kilnTier, kilnIdBytes, kilnTier)
             );
             console.log('[usePoiInteraction] interactRuneKiln CONFIRMED');
+            playSfx('poi_kiln');
 
             // Sync inventory from confirmed on-chain state (not optimistic)
             const kilnInventoryProgram = createPlayerInventoryProgram(gameplayConnection);
@@ -2351,6 +2427,33 @@ export function usePoiInteraction(): UsePoiInteractionResult {
                 tool: confirmedKilnTool,
                 gear: confirmedKilnGear,
               });
+
+              // Check if more fusable pairs remain — keep modal open if so
+              const kilnUpdatedState: Pick<GameState, 'player' | 'time'> = {
+                player: {
+                  ...gameState!.player,
+                  inventory: confirmedKilnGear.map((g, i) => ({ item: g, index: i })),
+                  equippedTool: confirmedKilnTool ?? gameState!.player.equippedTool,
+                },
+                time: gameState!.time,
+              };
+              const freshKilnOptions = generateRuneKilnOptions(kilnUpdatedState as GameState);
+              const hasMoreFusable = freshKilnOptions.some(
+                (opt) => opt.label !== 'Leave' && !opt.disabled
+              );
+
+              if (hasMoreFusable && gameState?.activePOI) {
+                dispatch({
+                  type: 'SHOW_POI_MODAL',
+                  interaction: {
+                    poi: gameState.activePOI.poi,
+                    type: gameState.activePOI.type,
+                    options: freshKilnOptions,
+                  },
+                });
+                setIsInteracting(false);
+                return { success: true, keepOpen: true };
+              }
             } else {
               console.warn(
                 '[usePoiInteraction] Kiln: failed to fetch inventory, falling back to local update'
@@ -2410,6 +2513,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
               interactRustyAnvil(ctx, validatedPoiIndex, anvilIdBytes, anvilTier)
             );
             console.log('[usePoiInteraction] interactRustyAnvil CONFIRMED');
+            playSfx('poi_anvil');
 
             // Fetch confirmed on-chain state (gameplay + inventory) to verify the upgrade
             const [gameplayProgram, inventoryProgram] = [
@@ -2445,6 +2549,30 @@ export function usePoiInteraction(): UsePoiInteractionResult {
                   confirmedTool.stats
                 );
                 dispatch({ type: 'EQUIP_TOOL', tool: confirmedTool });
+
+                // Keep open if upgraded to GILDED and can still afford next tier (20g)
+                const confirmedGold = updatedAnvilState?.gold ?? gameState?.player?.stats?.gold ?? 0;
+                if (confirmedTool.rarity === 'GILDED' && confirmedGold >= 20 && gameState?.activePOI) {
+                  const anvilUpdatedState: Pick<GameState, 'player' | 'time'> = {
+                    player: {
+                      ...gameState.player,
+                      equippedTool: confirmedTool,
+                      stats: { ...gameState.player.stats, gold: confirmedGold },
+                    },
+                    time: gameState.time,
+                  };
+                  const freshAnvilOptions = generateRustyAnvilOptions(anvilUpdatedState as GameState);
+                  dispatch({
+                    type: 'SHOW_POI_MODAL',
+                    interaction: {
+                      poi: gameState.activePOI.poi,
+                      type: gameState.activePOI.type,
+                      options: freshAnvilOptions,
+                    },
+                  });
+                  setIsInteracting(false);
+                  return { success: true, keepOpen: true };
+                }
               } else {
                 console.warn(
                   '[usePoiInteraction] Anvil: failed to convert on-chain tool, UI not updated'
@@ -2498,6 +2626,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
               interactScrapChute(ctx, validatedPoiIndex, idBytes)
             );
             console.log('[usePoiInteraction] interactScrapChute CONFIRMED');
+            playSfx('gold_pickup');
 
             // Fetch confirmed on-chain state (gameplay + inventory)
             const scrapGameplayProgram = createGameplayStateProgram(gameplayConnection);
@@ -2536,6 +2665,36 @@ export function usePoiInteraction(): UsePoiInteractionResult {
                 tool: confirmedScrapTool,
                 gear: confirmedScrapGear,
               });
+
+              // Check if more scrapable gear remains — keep modal open if so
+              const confirmedScrapGold =
+                updatedScrapState?.gold ?? gameState?.player?.stats?.gold ?? 0;
+              const scrapUpdatedState: Pick<GameState, 'player' | 'time'> = {
+                player: {
+                  ...gameState!.player,
+                  inventory: confirmedScrapGear.map((g, i) => ({ item: g, index: i })),
+                  equippedTool: confirmedScrapTool ?? gameState!.player.equippedTool,
+                  stats: { ...gameState!.player.stats, gold: confirmedScrapGold },
+                },
+                time: gameState!.time,
+              };
+              const freshScrapOptions = generateScrapChuteOptions(scrapUpdatedState as GameState);
+              const hasMoreScrapable = freshScrapOptions.some(
+                (opt) => opt.label !== 'Leave' && !opt.disabled
+              );
+
+              if (hasMoreScrapable && gameState?.activePOI) {
+                dispatch({
+                  type: 'SHOW_POI_MODAL',
+                  interaction: {
+                    poi: gameState.activePOI.poi,
+                    type: gameState.activePOI.type,
+                    options: freshScrapOptions,
+                  },
+                });
+                setIsInteracting(false);
+                return { success: true, keepOpen: true };
+              }
             } else {
               console.warn(
                 '[usePoiInteraction] Scrap: failed to fetch inventory, falling back to local update'

@@ -6,28 +6,34 @@
  */
 export async function parseWithRetry<T>(
   fn: () => Promise<T | null | undefined>,
-  options?: { maxAttempts?: number; delayMs?: number; label?: string }
+  options?: { maxAttempts?: number; delayMs?: number; label?: string; quiet?: boolean }
 ): Promise<T | null> {
-  const { maxAttempts = 3, delayMs = 400, label = 'event' } = options ?? {};
+  const { maxAttempts = 3, delayMs = 400, label = 'event', quiet = false } = options ?? {};
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
       const result = await fn();
       if (result != null) return result;
-      console.warn(
-        `[parseWithRetry] ${label} attempt ${attempt + 1}/${maxAttempts}: no result`
-      );
+      if (!quiet) {
+        console.warn(
+          `[parseWithRetry] ${label} attempt ${attempt + 1}/${maxAttempts}: no result`
+        );
+      }
     } catch (err) {
-      console.warn(
-        `[parseWithRetry] ${label} attempt ${attempt + 1}/${maxAttempts} error:`,
-        err
-      );
+      if (!quiet) {
+        console.warn(
+          `[parseWithRetry] ${label} attempt ${attempt + 1}/${maxAttempts} error:`,
+          err
+        );
+      }
     }
     if (attempt < maxAttempts - 1) {
       await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
   }
 
-  console.warn(`[parseWithRetry] Could not parse ${label} after ${maxAttempts} attempts`);
+  if (!quiet) {
+    console.warn(`[parseWithRetry] Could not parse ${label} after ${maxAttempts} attempts`);
+  }
   return null;
 }

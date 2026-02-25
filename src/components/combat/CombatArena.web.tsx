@@ -30,7 +30,7 @@ interface CombatArenaProps {
   scale?: number;
 }
 
-export function CombatArena({
+export const CombatArena = React.memo(function CombatArena({
   player,
   enemy,
   damageNumbers,
@@ -152,7 +152,7 @@ export function CombatArena({
       </ImageBackground>
     </View>
   );
-}
+});
 
 // Status effects row component
 interface StatusEffectsRowProps {

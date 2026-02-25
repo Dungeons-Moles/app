@@ -14,6 +14,7 @@ import { useProfile } from '../contexts/ProfileContext';
 import { useGameplayStateContext } from '../contexts/GameplayStateContext';
 import { useWallet } from '../contexts/WalletContext';
 import { useAudio } from '../contexts/AudioContext';
+import { useSettings } from '../contexts/SettingsContext';
 import { useSolanaConnection } from '../contexts/SolanaConnectionContext';
 import { RunMode } from '../services/solana/types/gameplay_state';
 import { convertItemInstanceToGear, convertItemInstanceToTool } from '../services/solana/pitDraft';
@@ -498,11 +499,23 @@ export function GameScreen({ navigation }: GameScreenProps) {
   const nightMovement = useNightMovement();
   const poiInteraction = usePoiInteraction();
   const { playBgm, playSfx } = useAudio();
+  const { autoOpenPOI } = useSettings();
   const isFocused = useIsFocused();
   const inputMode = useInputMode();
   const isController = inputMode === 'controller';
   const psg1Input = usePsg1Input();
   const nativeMotion = useNativeGamepadMotion();
+
+  // Performance: Store frequently-changing values in refs to avoid
+  // rebuilding effects/callbacks on every render.
+  const psg1StickRef = useRef(psg1Input.leftStick);
+  const nativeStickRef = useRef(nativeMotion.leftStick);
+  psg1StickRef.current = psg1Input.leftStick;
+  nativeStickRef.current = nativeMotion.leftStick;
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const onChainStateRef = useRef(onChainState);
+  onChainStateRef.current = onChainState;
 
   // Persist fog of war state to AsyncStorage for session restore
   useFogPersistence({
@@ -548,49 +561,63 @@ export function GameScreen({ navigation }: GameScreenProps) {
   // On-chain state drift correction: periodically sync local state from on-chain.
   // This catches any drift from missed events or reconnection scenarios.
   // With on-chain-first movement, this should rarely trigger during normal play.
+  // Deps use specific scalar fields instead of full `state`/`onChainState` objects
+  // to avoid re-firing on every unrelated state change.
+  const localPosX = state?.player?.position?.x;
+  const localPosY = state?.player?.position?.y;
+  const localHp = state?.player?.stats?.hp;
+  const localMovesRemaining = state?.time?.movesRemaining;
+  const localPhase = state?.phase;
+  const chainPosX = onChainState?.positionX;
+  const chainPosY = onChainState?.positionY;
+  const chainHp = onChainState?.hp;
+  const chainMovesRemaining = onChainState?.movesRemaining;
   useEffect(() => {
+    const currentState = stateRef.current;
+    const currentOnChain = onChainStateRef.current;
     if (
-      !state ||
-      !onChainState ||
+      !currentState ||
+      !currentOnChain ||
       mode === 'guest' ||
       gameplaySyncStatus !== 'synced' ||
-      state.phase !== GamePhase.Exploration ||
+      localPhase !== GamePhase.Exploration ||
       isMovePending ||
-      // Skip when screen isn't focused (e.g., during CombatScreen)
-      // Prevents stale onChainState from overwriting correct HP after combat
       !isFocused ||
-      // Skip during/after POI interactions - the hook handles its own state sync
-      // Use ref for synchronous check (state-based checks have timing issues)
       skipMismatchDetectionRef.current ||
       poiInteraction.isInteracting
     ) {
       return;
     }
 
-    // On-chain HP is the authoritative effective HP for gameplay-state.
-    // Compare against local effective HP (stats.hp), not baseStats.hp.
     const hasMismatch =
-      state.player.position.x !== onChainState.positionX ||
-      state.player.position.y !== onChainState.positionY ||
-      state.player.stats.hp !== onChainState.hp ||
-      state.time.movesRemaining !== onChainState.movesRemaining;
+      localPosX !== chainPosX ||
+      localPosY !== chainPosY ||
+      localHp !== chainHp ||
+      localMovesRemaining !== chainMovesRemaining;
 
     if (hasMismatch) {
       console.log('[GameScreen] Mismatch detected, syncing:', {
-        localBaseHp: state.player.baseStats.hp,
-        localStatsHp: state.player.stats.hp,
-        onChainHp: onChainState.hp,
-        localPos: state.player.position,
-        onChainPos: { x: onChainState.positionX, y: onChainState.positionY },
+        localBaseHp: currentState.player.baseStats.hp,
+        localStatsHp: localHp,
+        onChainHp: chainHp,
+        localPos: currentState.player.position,
+        onChainPos: { x: chainPosX, y: chainPosY },
       });
-      dispatch({ type: 'SYNC_MOVE', confirmedState: onChainState });
+      dispatch({ type: 'SYNC_MOVE', confirmedState: currentOnChain });
     }
   }, [
     dispatch,
     gameplaySyncStatus,
     mode,
-    onChainState,
-    state,
+    localPosX,
+    localPosY,
+    localHp,
+    localMovesRemaining,
+    localPhase,
+    chainPosX,
+    chainPosY,
+    chainHp,
+    chainMovesRemaining,
     isMovePending,
     isFocused,
     poiInteraction.isInteracting,
@@ -611,6 +638,16 @@ export function GameScreen({ navigation }: GameScreenProps) {
   }, [isFocused]);
 
   // Audio: Handle exploration BGM based on phase + night transition SFX
+  // Track whether this is the first BGM play for the current session.
+  // On session entry (start/resume), play from the beginning; within a session
+  // (e.g. returning from combat), resume from saved position.
+  const sessionFreshBgmRef = useRef(true);
+  useEffect(() => {
+    if (!state) {
+      sessionFreshBgmRef.current = true;
+    }
+  }, [state]);
+
   const prevPhaseRef = useRef(state?.time?.phase);
   useEffect(() => {
     if (!state || !isFocused) return;
@@ -624,9 +661,12 @@ export function GameScreen({ navigation }: GameScreenProps) {
     }
     prevPhaseRef.current = currentPhase;
 
-    // Play correct BGM for the phase, resuming from prior timestamp if same track
-    // (the AudioContext handles crossfading internally via the playBgm options)
-    playBgm(isNight ? 'exploration_night' : 'exploration_day', { resume: true, crossfade: true });
+    // On session entry, start exploration music from the beginning.
+    // Within an active session (e.g. returning from combat), resume from saved position.
+    const shouldResume = !sessionFreshBgmRef.current;
+    sessionFreshBgmRef.current = false;
+
+    playBgm(isNight ? 'exploration_night' : 'exploration_day', { resume: shouldResume, crossfade: true });
   }, [state?.time?.phase, isFocused, playBgm, playSfx]);
 
   useEffect(() => {
@@ -1000,7 +1040,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
   }, [isExitingSession, forceAbandonCurrentSession, navigation, showWallBreakFeedback]);
 
   const discoveredWaypoints = useMemo(() => {
-    if (!state) return [];
+    if (!state?.map) return [];
 
     // Primary source: local map discovery (same source used by rail waypoint POI options).
     const merged = new Map<string, MapPOI>();
@@ -1029,7 +1069,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
     }
 
     return Array.from(merged.values());
-  }, [state, onChainPois]);
+  }, [state?.map, onChainPois]);
 
   const isFastTravelActive = isFastTravelMode && fastTravelDestinations.length > 0;
 
@@ -1110,6 +1150,9 @@ export function GameScreen({ navigation }: GameScreenProps) {
         }
         return;
       }
+
+      // Read state from ref — avoids rebuilding this callback on every state change
+      const state = stateRef.current;
 
       // Use ref for synchronous check to prevent race conditions with rapid clicks
       if (
@@ -1578,7 +1621,6 @@ export function GameScreen({ navigation }: GameScreenProps) {
       dispatch,
       overviewMode.active,
       showWallBreakFeedback,
-      state,
       mode,
       hasActiveSession,
       movePlayer,
@@ -1921,6 +1963,8 @@ export function GameScreen({ navigation }: GameScreenProps) {
   }, [state?.phase]);
 
   // --- Controller: L3 joystick for panning the overview map ---
+  // Joystick values are read from refs (updated in render body) so the interval
+  // is NOT torn down/recreated at 60Hz when the stick moves.
   const panIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   useEffect(() => {
     if (!isController || !overviewMode.active || isFastTravelActive) {
@@ -1931,29 +1975,16 @@ export function GameScreen({ navigation }: GameScreenProps) {
       return;
     }
 
-    const usePsg1Stick =
-      Math.abs(psg1Input.leftStick.x) > 0.01 || Math.abs(psg1Input.leftStick.y) > 0.01;
-    const x = usePsg1Stick ? psg1Input.leftStick.x : nativeMotion.leftStick.x;
-    const y = usePsg1Stick ? psg1Input.leftStick.y : nativeMotion.leftStick.y;
-    const DEAD_ZONE = 0.15;
-    const isIdle = Math.abs(x) < DEAD_ZONE && Math.abs(y) < DEAD_ZONE;
-
-    if (isIdle) {
-      if (panIntervalRef.current) {
-        clearInterval(panIntervalRef.current);
-        panIntervalRef.current = null;
-      }
-      return;
-    }
-
-    // Start continuous panning at 60fps-ish interval
+    // Start continuous panning — interval reads live joystick values from refs
     if (panIntervalRef.current) clearInterval(panIntervalRef.current);
     const PAN_SPEED = 8;
+    const DEAD_ZONE = 0.15;
     panIntervalRef.current = setInterval(() => {
-      const useLivePsg1Stick =
-        Math.abs(psg1Input.leftStick.x) > 0.01 || Math.abs(psg1Input.leftStick.y) > 0.01;
-      const sx = useLivePsg1Stick ? psg1Input.leftStick.x : nativeMotion.leftStick.x;
-      const sy = useLivePsg1Stick ? psg1Input.leftStick.y : nativeMotion.leftStick.y;
+      const psg1 = psg1StickRef.current;
+      const native = nativeStickRef.current;
+      const usePsg1 = Math.abs(psg1.x) > 0.01 || Math.abs(psg1.y) > 0.01;
+      const sx = usePsg1 ? psg1.x : native.x;
+      const sy = usePsg1 ? psg1.y : native.y;
       if (Math.abs(sx) >= DEAD_ZONE || Math.abs(sy) >= DEAD_ZONE) {
         panOverview({
           x: Math.round(sx * PAN_SPEED),
@@ -1968,16 +1999,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
         panIntervalRef.current = null;
       }
     };
-  }, [
-    isController,
-    overviewMode.active,
-    isFastTravelActive,
-    psg1Input.leftStick.x,
-    psg1Input.leftStick.y,
-    nativeMotion.leftStick.x,
-    nativeMotion.leftStick.y,
-    panOverview,
-  ]);
+  }, [isController, overviewMode.active, isFastTravelActive, panOverview]);
 
   const disabledDirections = useMemo(() => {
     if (!state) return [];
@@ -2020,10 +2042,15 @@ export function GameScreen({ navigation }: GameScreenProps) {
   // one render after the position update (on-chain POI data loads asynchronously).
   const lastAutoTriggeredPosRef = useRef<{ x: number; y: number } | null>(null);
 
-  // Extract stable values from poiInteraction to avoid re-triggering on every hook state change
+  // Extract stable values from poiInteraction to avoid re-triggering on every hook state change.
+  // poiInteract is stored in a ref because it has 15+ deps and changes reference frequently,
+  // but the effect only needs to call it — not re-run when it changes.
   const { shouldAutoOpen, isInteracting, interact: poiInteract } = poiInteraction;
+  const poiInteractRef = useRef(poiInteract);
+  poiInteractRef.current = poiInteract;
 
   useEffect(() => {
+    if (!autoOpenPOI) return;
     if (!state?.player?.position || state.phase !== GamePhase.Exploration || !isFocused) return;
     const currentPos = state.player.position;
     const lastAutoPos = lastAutoTriggeredPosRef.current;
@@ -2034,7 +2061,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
     if (shouldAutoOpen && !isInteracting && !alreadyTriggeredHere) {
       console.log('[GameScreen] Auto-triggering POI interaction at', currentPos.x, currentPos.y);
       lastAutoTriggeredPosRef.current = { x: currentPos.x, y: currentPos.y };
-      poiInteract();
+      poiInteractRef.current();
     }
 
     // Clear last auto-triggered position when player moves away from it
@@ -2042,11 +2069,11 @@ export function GameScreen({ navigation }: GameScreenProps) {
       lastAutoTriggeredPosRef.current = null;
     }
   }, [
+    autoOpenPOI,
     state?.player?.position,
     state?.phase,
     shouldAutoOpen,
     isInteracting,
-    poiInteract,
     isFocused,
   ]);
 
@@ -2415,14 +2442,15 @@ export function GameScreen({ navigation }: GameScreenProps) {
     (state.activePOI?.poi.definitionId === 'L11' || state.activePOI?.poi.definitionId === 'L14');
 
   // Filtered gear for controller-mode inventory cycling in Rune Kiln / Scrap Chute
+  const playerInventory = state?.player?.inventory;
+  const activePoiDefId = state?.activePOI?.poi?.definitionId;
   const selectableGear = useMemo(() => {
-    if (!state || !isItemSelectPoiActive) return [];
-    const poiDefId = state.activePOI?.poi.definitionId;
+    if (!playerInventory || !isItemSelectPoiActive) return [];
 
-    if (poiDefId === 'L11') {
+    if (activePoiDefId === 'L11') {
       // Rune Kiln: only show gear with 2+ copies (non-Diamond), deduplicated
       const gearCounts = new Map<string, { gear: Gear; count: number }>();
-      for (const slot of state.player.inventory) {
+      for (const slot of playerInventory) {
         const item = slot.item;
         if (!('currentRarity' in item) || item.currentRarity === 'DIAMOND') continue;
         const gear = item as Gear;
@@ -2441,10 +2469,10 @@ export function GameScreen({ navigation }: GameScreenProps) {
     }
 
     // Scrap Chute: any gear
-    return state.player.inventory
+    return playerInventory
       .map((slot) => slot.item)
       .filter((item): item is Gear => 'currentRarity' in item);
-  }, [state, isItemSelectPoiActive]);
+  }, [playerInventory, activePoiDefId, isItemSelectPoiActive]);
 
   if (!state) {
     return (

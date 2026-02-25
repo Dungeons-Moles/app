@@ -35,6 +35,8 @@ import { useControllerAction } from '../hooks/useControllerAction';
 import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHints';
 import { useInputMode } from '../hooks/useInputMode';
 import { FocusGlow } from '../components/ui/FocusGlow';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { BetaWelcomeModal, BETA_WELCOME_KEY } from '../components/ui/BetaWelcomeModal';
 import { ControllerKeyboard } from '../components/ui/ControllerKeyboard';
 import { getVrfSeed } from '../services/solana/vrf';
 import { useNftMarketplace } from '../hooks/useNftMarketplace';
@@ -45,6 +47,8 @@ import { QuestCard } from '../components/quests/QuestCard';
 import { getSkinImage } from '../data/skinImages';
 import { useEquippedSkinImage } from '../hooks/useEquippedSkinImage';
 import { useAudio } from '../contexts/AudioContext';
+import { useSettings } from '../contexts/SettingsContext';
+import { Checkbox } from '../components/ui/Checkbox';
 
 const iconASource = require('../../assets/ui/control-buttons/a.png');
 const iconBSource = require('../../assets/ui/control-buttons/b.png');
@@ -86,12 +90,14 @@ export function HubScreen({ navigation }: HubScreenProps) {
   const inputMode = useInputMode();
   const { state: gameState, dispatch } = useGame();
   const { musicVolume, setMusicVolume, sfxVolume, setSfxVolume, playBgm, playSfx } = useAudio();
+  const { autoOpenPOI, setAutoOpenPOI } = useSettings();
   const { wallet, getBalance, disconnect } = useWallet();
   const [showSettings, setShowSettings] = useState(false);
   const [showSkins, setShowSkins] = useState(false);
   const [showQuests, setShowQuests] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [showPvP, setShowPvP] = useState(false);
+  const [showBetaWelcome, setShowBetaWelcome] = useState(false);
   const [pvpFocus, setPvpFocus] = useState(0);
   const [profileName, setProfileName] = useState(profile?.name ?? '');
   const [profileSaving, setProfileSaving] = useState(false);
@@ -132,6 +138,13 @@ export function HubScreen({ navigation }: HubScreenProps) {
       useNativeDriver: true,
     }).start();
   }, [isScreenFocused, playBgm, fadeAnim]);
+
+  // Show beta welcome modal on first visit
+  useEffect(() => {
+    AsyncStorage.getItem(BETA_WELCOME_KEY).then((shown) => {
+      if (!shown) setShowBetaWelcome(true);
+    });
+  }, []);
 
   // Process any pending session cleanups when Hub screen gains focus
   // (e.g. returning from DeathScreen after a deferred queueEndGame)
@@ -368,7 +381,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
 
   // --- Controller navigation ---
   const anyModalOpen =
-    showSettings || showResetWarning || showProfile || showSkins || showQuests || showPvP;
+    showSettings || showResetWarning || showProfile || showSkins || showQuests || showPvP || showBetaWelcome;
   const isController = inputMode === 'controller';
 
   const controllerCloseHint = isController ? (
@@ -404,7 +417,8 @@ export function HubScreen({ navigation }: HubScreenProps) {
 
   const closeAnyModal = () => {
     playSfx('ui_click');
-    if (showResetWarning) setShowResetWarning(false);
+    if (showBetaWelcome) setShowBetaWelcome(false);
+    else if (showResetWarning) setShowResetWarning(false);
     else if (showPvP) setShowPvP(false);
     else if (showSettings) setShowSettings(false);
     else if (showProfile) setShowProfile(false);
@@ -421,17 +435,24 @@ export function HubScreen({ navigation }: HubScreenProps) {
   };
 
   // Build controller actions based on which modal is open
-  const maxSettingsFocus = isGuest ? 3 : 4;
+  const maxSettingsFocus = isGuest ? 4 : 5;
+
+  const toggleAutoOpenPOI = () => {
+    playSfx('ui_click');
+    setAutoOpenPOI(!autoOpenPOI);
+  };
 
   const settingsActions =
     showSettings && !showResetWarning
       ? {
           onA:
             settingsFocus === 3
-              ? handleDisconnect
-              : settingsFocus === 4 && !isGuest
-                ? handleOpenResetWarning
-                : undefined,
+              ? toggleAutoOpenPOI
+              : settingsFocus === 4
+                ? handleDisconnect
+                : settingsFocus === 5 && !isGuest
+                  ? handleOpenResetWarning
+                  : undefined,
           onB: closeAnyModal,
           onDPadUp: () => setSettingsFocus((p) => Math.max(0, p - 1)),
           onDPadDown: () => setSettingsFocus((p) => Math.min(maxSettingsFocus, p + 1)),
@@ -442,7 +463,9 @@ export function HubScreen({ navigation }: HubScreenProps) {
                 ? () => setSfxVolume(Math.round(Math.max(0, sfxVolume - 0.1) * 10) / 10)
                 : settingsFocus === 2
                   ? () => cycleSpeed(-1)
-                  : undefined,
+                  : settingsFocus === 3
+                    ? toggleAutoOpenPOI
+                    : undefined,
           onDPadRight:
             settingsFocus === 0
               ? () => setMusicVolume(Math.round(Math.min(1, musicVolume + 0.1) * 10) / 10)
@@ -450,7 +473,9 @@ export function HubScreen({ navigation }: HubScreenProps) {
                 ? () => setSfxVolume(Math.round(Math.min(1, sfxVolume + 0.1) * 10) / 10)
                 : settingsFocus === 2
                   ? () => cycleSpeed(1)
-                  : undefined,
+                  : settingsFocus === 3
+                    ? toggleAutoOpenPOI
+                    : undefined,
         }
       : null;
 
@@ -1081,7 +1106,17 @@ export function HubScreen({ navigation }: HubScreenProps) {
                     </View>
                   </FocusGlow>
 
-                  <FocusGlow active={isController && showSettings && settingsFocus === 3}>
+                  <FocusGlow active={isController && showSettings && settingsFocus === 3} style={styles.settingGlow}>
+                    <Checkbox
+                      label="Auto-open POI"
+                      checked={autoOpenPOI}
+                      onToggle={toggleAutoOpenPOI}
+                      size={isCompact ? 44 : 20}
+                      labelStyle={isCompact ? { fontSize: 26 } : undefined}
+                    />
+                  </FocusGlow>
+
+                  <FocusGlow active={isController && showSettings && settingsFocus === 4}>
                     <TouchableOpacity
                       style={[styles.resetButton, isCompact && compactStyles.resetButton]}
                       onPress={handleDisconnect}
@@ -1102,7 +1137,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
                   </FocusGlow>
 
                   {!isGuest && (
-                    <FocusGlow active={isController && showSettings && settingsFocus === 4}>
+                    <FocusGlow active={isController && showSettings && settingsFocus === 5}>
                       <TouchableOpacity
                         style={[styles.resetButton, isCompact && compactStyles.resetButton]}
                         onPress={handleOpenResetWarning}
@@ -1173,7 +1208,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
                             isCompact && compactStyles.settingsHintText,
                           ]}
                         >
-                          Confirm
+                          {settingsFocus === 3 ? 'Toggle' : 'Confirm'}
                         </Text>
                       </View>
                     )}
@@ -2137,6 +2172,11 @@ export function HubScreen({ navigation }: HubScreenProps) {
           </View>
         </TouchableWithoutFeedback>
       </InlineModal>
+
+      <BetaWelcomeModal
+        visible={showBetaWelcome}
+        onClose={() => setShowBetaWelcome(false)}
+      />
 
       {/* Controller button hints */}
       <ControllerHints hints={controllerHints} horizontal size="large" />

@@ -24,6 +24,8 @@ const MAX_SEED_FETCH_RETRIES = 8;
 const SEED_FETCH_RETRY_DELAY_MS = 250;
 const MAX_SWITCH_RETRIES = 3;
 const SWITCH_RETRY_DELAY_MS = 250;
+const GAUNTLET_CLEANUP_WAIT_TIMEOUT_MS = 45000;
+const GAUNTLET_CLEANUP_POLL_MS = 1000;
 
 function isNonBlockingDelegationError(errorMessage: string | undefined): boolean {
   const message = (errorMessage ?? '').toLowerCase();
@@ -48,7 +50,14 @@ function isRecoverableStartError(errorMessage: string | undefined): boolean {
 
 export function useGauntlet() {
   const { wallet, signAndSendTransaction, checkBalance } = useWallet();
-  const { mapSeed, startGauntletGame, switchToSession, forceAbandonCurrentSession } = useSession();
+  const {
+    mapSeed,
+    startGauntletGame,
+    switchToSession,
+    forceAbandonCurrentSession,
+    processPendingCleanups,
+    hasPendingCleanups,
+  } = useSession();
   const { connection } = useSolanaConnection();
 
   const [phase, setPhase] = useState<GauntletPhase>('confirm');
@@ -223,6 +232,35 @@ export function useGauntlet() {
       let seed: bigint | null = null;
 
       const [gauntletSessionPda] = deriveGauntletSessionPda(wallet.publicKey);
+      if (hasPendingCleanups) {
+        const waitStartedAt = Date.now();
+        while (Date.now() - waitStartedAt < GAUNTLET_CLEANUP_WAIT_TIMEOUT_MS) {
+          await processPendingCleanups().catch((err) => {
+            console.warn('[useGauntlet] cleanup wait: processPendingCleanups failed', err);
+          });
+          const pendingSessionInfo = await connection.getAccountInfo(
+            gauntletSessionPda,
+            SOLANA_CONFIG.commitment
+          );
+          if (!pendingSessionInfo) {
+            break;
+          }
+          await new Promise((resolve) => setTimeout(resolve, GAUNTLET_CLEANUP_POLL_MS));
+        }
+
+        const stillPendingSessionInfo = await connection.getAccountInfo(
+          gauntletSessionPda,
+          SOLANA_CONFIG.commitment
+        );
+        if (stillPendingSessionInfo) {
+          setError(
+            'Previous gauntlet session cleanup is still in progress. Please wait a few seconds and try again.'
+          );
+          setPhase('error');
+          return false;
+        }
+      }
+
       console.log('[useGauntlet] enterGauntlet:checking_existing_session', {
         gauntletSessionPda: gauntletSessionPda.toBase58(),
       });
@@ -362,6 +400,8 @@ export function useGauntlet() {
     startGauntletGame,
     switchToGauntletSessionWithRetry,
     connection,
+    processPendingCleanups,
+    hasPendingCleanups,
   ]);
 
   const reset = useCallback(() => {

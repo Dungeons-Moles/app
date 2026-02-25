@@ -147,69 +147,66 @@ export function VictoryScreen({ navigation, route }: VictoryScreenProps) {
     </View>
   );
 
-  const UnlockDisplays = () => (
-    <>
-      {/* Level Unlock Display */}
-      {showUnlock && levelUnlocked && (
-        <Animated.View
-          style={[
-            isVerticalLayout ? styles.unlockContainerVertical : styles.unlockContainer,
-            { opacity: glowAnim },
-          ]}
-        >
-          <Text style={isVerticalLayout ? styles.unlockTitleVertical : styles.unlockTitle}>
-            Level Unlocked!
-          </Text>
-          <View style={isVerticalLayout ? styles.unlockBadgeVertical : styles.unlockBadge}>
-            <Text style={isVerticalLayout ? styles.unlockLevelVertical : styles.unlockLevel}>
-              {levelUnlocked}
-            </Text>
-          </View>
-          <Text style={isVerticalLayout ? styles.unlockTextVertical : styles.unlockText}>
-            Level {levelUnlocked} is now available
-          </Text>
-        </Animated.View>
-      )}
+  const UnlockDisplays = () => {
+    const hasLevel = showUnlock && levelUnlocked;
+    const hasItem = showUnlock && itemUnlocked;
+    if (!hasLevel && !hasItem) return null;
 
-      {/* Item Unlock Display */}
-      {showUnlock && itemUnlocked && (
-        <Animated.View
-          style={[
-            isVerticalLayout ? styles.itemUnlockContainerVertical : styles.itemUnlockContainer,
-            { opacity: glowAnim },
-          ]}
-        >
-          <Text style={isVerticalLayout ? styles.unlockTitleVertical : styles.unlockTitle}>
-            New Item Unlocked!
-          </Text>
-          <View style={isVerticalLayout ? styles.itemCardVertical : styles.itemCard}>
-            <Text style={isVerticalLayout ? styles.itemEmojiVertical : styles.itemEmoji}>
-              {itemUnlocked.emoji ?? '📦'}
+    return (
+      <Animated.View
+        style={[
+          isVerticalLayout ? styles.unlocksRowVertical : styles.unlocksRow,
+          { opacity: glowAnim },
+        ]}
+      >
+        {/* Level Unlock Display */}
+        {hasLevel && (
+          <View
+            style={isVerticalLayout ? styles.unlockContainerVertical : styles.unlockContainer}
+          >
+            <Text style={isVerticalLayout ? styles.unlockTitleVertical : styles.unlockTitle}>
+              Level Unlocked!
             </Text>
-            <Text style={isVerticalLayout ? styles.itemNameVertical : styles.itemName}>
-              {itemUnlocked.name ?? 'Mystery Item'}
+            <View style={isVerticalLayout ? styles.unlockBadgeVertical : styles.unlockBadge}>
+              <Text style={isVerticalLayout ? styles.unlockLevelVertical : styles.unlockLevel}>
+                {levelUnlocked}
+              </Text>
+            </View>
+            <Text style={isVerticalLayout ? styles.unlockTextVertical : styles.unlockText}>
+              Level {levelUnlocked} is now available
             </Text>
-            {itemUnlocked.stats && (
-              <View style={styles.itemStats}>
-                {itemUnlocked.stats.atk && (
-                  <Text style={styles.itemStat}>+{itemUnlocked.stats.atk} ATK</Text>
-                )}
-                {itemUnlocked.stats.arm && (
-                  <Text style={styles.itemStat}>+{itemUnlocked.stats.arm} ARM</Text>
-                )}
-                {itemUnlocked.stats.spd && (
-                  <Text style={styles.itemStat}>+{itemUnlocked.stats.spd} SPD</Text>
-                )}
-                {itemUnlocked.stats.dig && (
-                  <Text style={styles.itemStat}>+{itemUnlocked.stats.dig} DIG</Text>
-                )}
-              </View>
-            )}
           </View>
-        </Animated.View>
-      )}
-    </>
-  );
+        )}
+
+        {/* Item Unlock Display */}
+        {hasItem && (
+          <View
+            style={isVerticalLayout ? styles.itemUnlockContainerVertical : styles.itemUnlockContainer}
+          >
+            <Text style={isVerticalLayout ? styles.unlockTitleVertical : styles.unlockTitle}>
+              New Item Unlocked!
+            </Text>
+            <View style={isVerticalLayout ? styles.itemCardVertical : styles.itemCard}>
+              {itemUnlocked.image ? (
+                <Image
+                  source={itemUnlocked.image}
+                  style={isVerticalLayout ? styles.itemImageVertical : styles.itemImage}
+                  resizeMode="contain"
+                />
+              ) : (
+                <Text style={isVerticalLayout ? styles.itemEmojiVertical : styles.itemEmoji}>
+                  {itemUnlocked.emoji ?? '📦'}
+                </Text>
+              )}
+              <Text style={isVerticalLayout ? styles.itemNameVertical : styles.itemName}>
+                {itemUnlocked.name ?? 'Mystery Item'}
+              </Text>
+            </View>
+          </View>
+        )}
+      </Animated.View>
+    );
+  };
 
   const ReturnButton = () => (
     <View style={isVerticalLayout ? styles.buttonSlotVertical : styles.buttonSlot}>
@@ -390,13 +387,19 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#000000',
   },
+  unlocksRow: {
+    flexDirection: 'row',
+    gap: 8,
+    width: '140%',
+    alignSelf: 'center',
+    marginTop: 12,
+    marginBottom: 8,
+  },
   unlockContainer: {
     backgroundColor: 'rgba(50, 100, 50, 0.9)',
     borderRadius: 10,
     padding: 12,
-    width: '100%',
-    marginTop: 12,
-    marginBottom: 8,
+    flex: 1,
     borderWidth: 2,
     borderColor: '#44AA44',
     alignItems: 'center',
@@ -434,9 +437,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(80, 60, 100, 0.9)',
     borderRadius: 10,
     padding: 12,
-    width: '100%',
-    marginTop: 12,
-    marginBottom: 8,
+    flex: 1,
     borderWidth: 2,
     borderColor: '#8866AA',
     alignItems: 'center',
@@ -444,6 +445,11 @@ const styles = StyleSheet.create({
   itemCard: {
     alignItems: 'center',
     padding: 8,
+  },
+  itemImage: {
+    width: 40,
+    height: 40,
+    marginBottom: 4,
   },
   itemEmoji: {
     fontSize: 36,
@@ -563,13 +569,19 @@ const styles = StyleSheet.create({
     color: '#1A1A1A',
     marginTop: 2,
   },
+  unlocksRowVertical: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '130%',
+    alignSelf: 'center',
+    marginTop: 16,
+    marginBottom: 16,
+  },
   unlockContainerVertical: {
     backgroundColor: 'rgba(50, 100, 50, 0.9)',
     borderRadius: 12,
     padding: 20,
-    width: '100%',
-    marginTop: 16,
-    marginBottom: 16,
+    flex: 1,
     borderWidth: 2,
     borderColor: '#44AA44',
     alignItems: 'center',
@@ -607,9 +619,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(80, 60, 100, 0.9)',
     borderRadius: 12,
     padding: 20,
-    width: '100%',
-    marginTop: 16,
-    marginBottom: 16,
+    flex: 1,
     borderWidth: 2,
     borderColor: '#8866AA',
     alignItems: 'center',
@@ -617,6 +627,11 @@ const styles = StyleSheet.create({
   itemCardVertical: {
     alignItems: 'center',
     padding: 12,
+  },
+  itemImageVertical: {
+    width: 56,
+    height: 56,
+    marginBottom: 8,
   },
   itemEmojiVertical: {
     fontSize: 48,

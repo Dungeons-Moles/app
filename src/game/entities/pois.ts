@@ -363,11 +363,15 @@ function generateSurveyBeaconOptions(): POIOption[] {
 // ============================================================================
 
 function generateSeismicScannerOptions(state: GameState): POIOption[] {
-  // Get unique POI types on the map (excluding current position and already discovered)
+  // Get unique POI types that still have at least one hidden (undiscovered) instance
   const poiTypes = new Set<POIId>();
   for (const poi of state.map.pois) {
-    if (!poi.visited && poi.definitionId !== 'L1') {
-      // Exclude Mole Den
+    if (
+      !poi.visited &&
+      !poi.discovered &&
+      poi.definitionId !== 'L1' &&
+      state.map.fog[poi.position.y][poi.position.x] === FogState.Hidden
+    ) {
       poiTypes.add(poi.definitionId);
     }
   }
@@ -598,7 +602,7 @@ function generateToolOilRackOptions(state: GameState, rng: SeededRNG): POIOption
 // Cost: 10g (to Gilded), 20g (to Diamond)
 // ============================================================================
 
-function generateRustyAnvilOptions(state: GameState): POIOption[] {
+export function generateRustyAnvilOptions(state: GameState): POIOption[] {
   const tool = state.player.equippedTool;
 
   if (!tool) {
@@ -652,7 +656,7 @@ function generateRustyAnvilOptions(state: GameState): POIOption[] {
 // Fuse 2 identical items to upgrade tier (Common->Gilded->Diamond)
 // ============================================================================
 
-function generateRuneKilnOptions(state: GameState): POIOption[] {
+export function generateRuneKilnOptions(state: GameState): POIOption[] {
   const options: POIOption[] = [];
 
   // Find pairs of identical items that can be fused (any non-Diamond gear)
@@ -765,7 +769,16 @@ function generateCounterCacheOptions(state: GameState, rng: SeededRNG): POIOptio
 // Destroy 1 Gear item (costs 4 Gold, refunds by rarity)
 // ============================================================================
 
-function generateScrapChuteOptions(state: GameState): POIOption[] {
+export const SCRAP_REFUND_BY_RARITY: Record<ItemRarity, number> = {
+  COMMON: 2,
+  RARE: 4,
+  HEROIC: 6,
+  MYTHIC: 10,
+  GILDED: 4,
+  DIAMOND: 6,
+};
+
+export function generateScrapChuteOptions(state: GameState): POIOption[] {
   const options: POIOption[] = [];
   const inventory = state.player.inventory;
 
@@ -782,9 +795,13 @@ function generateScrapChuteOptions(state: GameState): POIOption[] {
   } else {
     for (const slot of inventory) {
       const gear = slot.item;
+      const baseRarity: ItemRarity = gear.baseRarity ?? gear.currentRarity;
+      const refund = SCRAP_REFUND_BY_RARITY[baseRarity] ?? 3;
+      const net = -scrapCost + refund;
+      const goldLabel = net >= 0 ? `+${net}g` : `${net}g`;
       const canAfford = state.player.stats.gold >= scrapCost;
       options.push({
-        label: `Scrap ${gear.name} (-${scrapCost}g)`,
+        label: `Scrap ${gear.name} (${goldLabel})`,
         description: getGearDescription(gear),
         item: gear,
         cost: scrapCost,
@@ -1351,16 +1368,7 @@ function applyScrapChuteEffect(
 
   const cost = option.cost ?? 0;
   const baseRarity: ItemRarity = gearItem.baseRarity ?? gearItem.currentRarity;
-  const refundByRarity: Record<ItemRarity, number> = {
-    COMMON: 2,
-    RARE: 4,
-    HEROIC: 6,
-    MYTHIC: 10,
-    // Tier rarities are mapped to their nearest base-value fallback.
-    GILDED: 4,
-    DIAMOND: 6,
-  };
-  const refund = refundByRarity[baseRarity] ?? 3;
+  const refund = SCRAP_REFUND_BY_RARITY[baseRarity] ?? 3;
 
   if (state.player.stats.gold < cost) {
     return state;

@@ -37,6 +37,7 @@ const backgroundImage = require('../../assets/ui/backgrounds/loading-background.
 const bookImageMobile = require('../../assets/ui/backgrounds/book-wide.png');
 const bookImageCompact = require('../../assets/ui/backgrounds/book-compact.png');
 const buttonV1Source = require('../../assets/ui/buttons/button-v1.png');
+const buttonSource = require('../../assets/ui/buttons/button.png');
 const buttonV3Source = require('../../assets/ui/buttons/button-v3.png');
 const buttonV4Source = require('../../assets/ui/buttons/button-v4.png');
 const buttonGreenSource = require('../../assets/ui/buttons/button-green.png');
@@ -357,7 +358,9 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
   }, [activePoolBitmask, draftPoolIndices]);
 
   const handleSaveItemPool = useCallback(async () => {
+    console.log('[ItemsScreen] Save pressed, pool size:', draftPoolIndices.size);
     if (draftPoolIndices.size < ITEM_POOL_MIN_SIZE) {
+      console.warn('[ItemsScreen] Pool too small:', draftPoolIndices.size, '<', ITEM_POOL_MIN_SIZE);
       Alert.alert(
         'Invalid Pool Size',
         `Select at least ${ITEM_POOL_MIN_SIZE} items before saving.`
@@ -370,14 +373,20 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
       setPoolBit(nextBitmask, index);
     }
 
+    console.log('[ItemsScreen] Sending updateActiveItemPool transaction...');
     setIsSavingItemPool(true);
     try {
       const result = await updateActiveItemPool(nextBitmask);
       if (!result.success) {
+        console.error('[ItemsScreen] Save failed:', result.error);
         Alert.alert('Failed to Save', result.error ?? 'Could not update active item pool.');
         return;
       }
+      console.log('[ItemsScreen] Item pool saved successfully, signature:', result.signature);
       Alert.alert('Saved', 'Your item pool has been updated.');
+    } catch (err) {
+      console.error('[ItemsScreen] Unexpected save error:', err);
+      Alert.alert('Failed to Save', 'An unexpected error occurred.');
     } finally {
       setIsSavingItemPool(false);
     }
@@ -574,7 +583,7 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                   <ActivityIndicator size="small" color="#1a1a1a" />
                 ) : (
                   <Text style={[styles.saveButtonText, isCompact && compactStyles.saveButtonText]}>
-                    Save
+                    Press X to Save
                   </Text>
                 )}
               </ImageBackground>
@@ -864,7 +873,7 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                         !canRemoveSelectedItem
                           ? buttonGraySource
                           : selectedItemInPool
-                            ? buttonV1Source
+                            ? buttonSource
                             : buttonGreenSource
                       }
                       style={[
@@ -1061,7 +1070,7 @@ const styles = StyleSheet.create({
     fontSize: 20,
   },
   saveButton: {
-    width: 80,
+    width: 130,
     height: 45,
     justifyContent: 'center',
     alignItems: 'center',
@@ -1370,7 +1379,7 @@ const compactStyles = StyleSheet.create({
     fontSize: 36,
   },
   saveButton: {
-    width: 140,
+    width: 220,
     height: 76,
   },
   saveButtonText: {

@@ -293,7 +293,7 @@ const SkiaEntity = memo(function SkiaEntity({
 // Component
 // ============================================================================
 
-export function MapRenderer({
+export const MapRenderer = memo(function MapRenderer({
   map,
   playerPosition,
   playerFacing = 'right',
@@ -627,7 +627,7 @@ export function MapRenderer({
       )}
     </View>
   );
-}
+});
 
 // ============================================================================
 // Styles

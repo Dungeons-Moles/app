@@ -374,12 +374,10 @@ export function useGameplayState(): UseGameplayStateReturn {
           setLastSyncAt(Date.now());
         }
 
-        // Detect combat from state changes
-        const combatOccurred =
-          confirmedState != null &&
-          (confirmedState.hp < previousState.hp ||
-            confirmedState.isDead ||
-            confirmedState.gold !== previousState.gold);
+        // Heuristic combat indicator: HP loss or death strongly suggests combat.
+        // Used to pick parse aggressiveness for combat event extraction below.
+        const hpOrDeathChanged =
+          confirmedState != null && (confirmedState.hp < previousState.hp || confirmedState.isDead);
 
         // Detect inline boss/echo resolution from state changes.
         // Boss fights auto-resolve inside move_player when the last Night3 move
@@ -405,23 +403,27 @@ export function useGameplayState(): UseGameplayStateReturn {
         const isGauntletEchoResolution =
           bossResolvedIndicator && previousState.runMode === RunMode.Gauntlet;
 
-        // Fetch combat log and enemy info from transaction if combat occurred
+        // Always attempt to parse combat logs from the move transaction.
+        // This catches zero-damage combat wins where HP doesn't change.
+        // Parse aggressiveness varies: HP/death → retry twice, otherwise → single quick attempt.
         let combatLog: BackendCombatLogEntry[] | undefined;
         let combatEnemyInfo: CombatEnemyInfo | undefined;
-        if (combatOccurred && signature && !isGauntletEchoResolution) {
+        if (signature && !isGauntletEchoResolution) {
           const parsed = await parseCombatLogWithRetry(
             gameplayConnection,
             program,
             signature,
             'move',
-            {
-              maxAttempts: 2,
-              delayMs: 120,
-            }
+            hpOrDeathChanged
+              ? { maxAttempts: 2, delayMs: 120 }
+              : { maxAttempts: 1, delayMs: 0, quiet: true }
           );
           combatLog = parsed.combatLog;
           combatEnemyInfo = parsed.combatEnemyInfo;
         }
+
+        const parsedCombatDetected = !!combatLog?.length || !!combatEnemyInfo;
+        const combatOccurred = hpOrDeathChanged || parsedCombatDetected;
 
         if (
           bossResolvedIndicator &&
@@ -750,11 +752,12 @@ async function parseCombatLogWithRetry(
   program: Parameters<typeof parseCombatLog>[1],
   signature: string,
   label: string,
-  options?: { maxAttempts?: number; delayMs?: number }
+  options?: { maxAttempts?: number; delayMs?: number; quiet?: boolean }
 ): Promise<{
   combatLog?: BackendCombatLogEntry[];
   combatEnemyInfo?: CombatEnemyInfo;
 }> {
+  const quiet = options?.quiet ?? false;
   let combatEnemyInfo: CombatEnemyInfo | undefined;
 
   const combatLog = await parseWithRetry(
@@ -770,7 +773,7 @@ async function parseCombatLogWithRetry(
     { label: `${label} combat log`, ...options }
   );
 
-  if (!combatLog) {
+  if (!combatLog && !quiet) {
     console.warn(
       `[useGameplayState] Could not parse ${label} combat log after retries, using on-chain outcome fallback`
     );

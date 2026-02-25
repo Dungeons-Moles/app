@@ -32,6 +32,7 @@ const paperPanelSource = require('../../../assets/ui/panels/paper-panel.png');
 const squareSource = require('../../../assets/ui/frames/square.png');
 
 import { TOOL_DEFINITIONS, getToolStatsAtTier } from '@/game/entities/items';
+import { SCRAP_REFUND_BY_RARITY } from '@/game/entities/pois';
 import { GEAR_DEFINITIONS } from '@/data/gear';
 import type { POIId } from '@/game/engine/types';
 import { extractStatBonuses, formatStatBonuses } from '@/utils/stat-display';
@@ -256,9 +257,16 @@ function ModalWrapper({
   if (isCompact) {
     if (!visible) return null;
     const shouldAlignLeft = alignLeft && !centerInCompact;
+    const shouldCenterWide = alignLeft && centerInCompact;
     return (
       <View style={[styles.compactModalOverlay, shouldAlignLeft && styles.compactModalOverlayLeft]}>
-        <View style={[styles.compactModalScale, shouldAlignLeft && styles.compactModalScaleLeft]}>
+        <View
+          style={[
+            styles.compactModalScale,
+            shouldAlignLeft && styles.compactModalScaleLeft,
+            shouldCenterWide && styles.compactModalScaleCenter,
+          ]}
+        >
           {children}
         </View>
       </View>
@@ -296,7 +304,7 @@ function OverlayWrapper({ children, visible, isCompact }: OverlayWrapperProps) {
   );
 }
 
-export function POIModal({
+export const POIModal = React.memo(function POIModal({
   interaction,
   visible,
   onSelectOption,
@@ -767,6 +775,13 @@ export function POIModal({
         : null;
     const cost = selectedOption?.cost;
     const canAfford = !selectedOption?.disabled;
+    const scrapGoldLabel = (() => {
+      if (!cost || !item) return cost ? `(-${cost}g)` : '';
+      const baseRarity: ItemRarity = item.baseRarity ?? item.currentRarity;
+      const refund = SCRAP_REFUND_BY_RARITY[baseRarity] ?? 3;
+      const net = -cost + refund;
+      return net >= 0 ? `(+${net}g)` : `(${net}g)`;
+    })();
 
     return (
       <OverlayWrapper visible={visible} isCompact={isCompact}>
@@ -884,7 +899,7 @@ export function POIModal({
                 activeOpacity={0.7}
                 disabled={!hasSelection || !canAfford}
               >
-                <Text style={styles.scrapButtonText}>{cost ? `Scrap (-${cost}g)` : 'Scrap'}</Text>
+                <Text style={styles.scrapButtonText}>{`Scrap ${scrapGoldLabel}`}</Text>
               </TouchableOpacity>
             </FocusGlow>
           </View>
@@ -1005,7 +1020,7 @@ export function POIModal({
     );
     return (
       <ModalWrapper visible={visible} isCompact={isCompact} onClose={onClose}>
-        <View style={styles.standardModal} pointerEvents="auto">
+        <View style={[styles.standardModal, isCompact && { minWidth: 280 }]} pointerEvents="auto">
           <Image
             source={paperPanelSource}
             style={{
@@ -1018,14 +1033,16 @@ export function POIModal({
             }}
             resizeMode="stretch"
           />
-          <View style={{ padding: 16, paddingTop: 24 }}>
+          <View style={{ padding: isCompact ? 24 : 16, paddingTop: isCompact ? 32 : 24 }}>
             {!isController && (
               <TouchableOpacity style={styles.closeButtonTop} onPress={onClose} activeOpacity={0.7}>
                 <Text style={styles.closeButtonTopText}>X</Text>
               </TouchableOpacity>
             )}
 
-            <Text style={styles.threeChoiceTitle}>{poiDef.name}</Text>
+            <Text style={[styles.threeChoiceTitle, isCompact && { fontSize: 26 }]}>
+              {poiDef.name}
+            </Text>
 
             {hasOtherWaypoints ? (
               <FocusGlow active={isController}>
@@ -1514,7 +1531,7 @@ export function POIModal({
       </View>
     </ModalWrapper>
   );
-}
+});
 
 const styles = StyleSheet.create({
   // ============================================================================
@@ -1553,6 +1570,10 @@ const styles = StyleSheet.create({
   compactModalScaleLeft: {
     transformOrigin: 'left center',
     width: '100%',
+    maxWidth: 580,
+  },
+  compactModalScaleCenter: {
+    width: '80%',
     maxWidth: 580,
   },
   modalDarkArea: {

@@ -379,31 +379,53 @@ export function GameplayStateProvider({ children }: { children: ReactNode }) {
   // Stable refresh wrapper to avoid recreating on every render
   const refresh = useCallback(async () => { await gameplay.refresh(); }, [gameplay.refresh]);
 
+  // Extract individual scalar fields from gameState to use as deps instead of the
+  // full object. This prevents ALL context consumers from re-rendering on every
+  // game action (gameState is a new object on every change).
+  // The full gameState is held in a ref so the useMemo body can still return it.
+  const gs = gameplay.gameState;
+  const gameStateRef = useRef(gs);
+  gameStateRef.current = gs;
+  const gsPositionX = gs?.positionX;
+  const gsPositionY = gs?.positionY;
+  const gsHp = gs?.hp;
+  const gsMaxHp = gs?.maxHp;
+  const gsAtk = gs?.atk;
+  const gsArm = gs?.arm;
+  const gsSpd = gs?.spd;
+  const gsDig = gs?.dig;
+  const gsPhase = gs?.phase;
+  const gsWeek = gs?.week;
+  const gsMovesRemaining = gs?.movesRemaining;
+  const gsTotalMoves = gs?.totalMoves;
+  const gsBossFightReady = gs?.bossFightReady;
+  const gsGearSlots = gs?.gearSlots;
+  const gsSession = gs?.session;
+
   const value = useMemo<GameplayStateContextType>(() => {
     // Compute derived values for UI convenience
-    const position: [number, number] | null = gameplay.gameState
-      ? [gameplay.gameState.positionX, gameplay.gameState.positionY]
-      : null;
+    const position: [number, number] | null =
+      gsPositionX != null && gsPositionY != null ? [gsPositionX, gsPositionY] : null;
 
-    const stats: PlayerStats | null = gameplay.gameState
-      ? {
-          hp: gameplay.gameState.hp,
-          maxHp: gameplay.gameState.maxHp,
-          atk: gameplay.gameState.atk,
-          arm: gameplay.gameState.arm,
-          spd: gameplay.gameState.spd,
-          dig: gameplay.gameState.dig,
-        }
-      : null;
+    const stats: PlayerStats | null =
+      gsHp != null
+        ? {
+            hp: gsHp,
+            maxHp: gsMaxHp!,
+            atk: gsAtk!,
+            arm: gsArm!,
+            spd: gsSpd!,
+            dig: gsDig!,
+          }
+        : null;
 
-    const phaseName = gameplay.gameState ? getPhaseName(gameplay.gameState.phase) : null;
+    const phaseName = gsPhase != null ? getPhaseName(gsPhase) : null;
 
-    const currentPhaseMoveAllowance = gameplay.gameState
-      ? PHASE_MOVE_ALLOWANCE[gameplay.gameState.phase]
-      : null;
+    const currentPhaseMoveAllowance =
+      gsPhase != null ? PHASE_MOVE_ALLOWANCE[gsPhase] : null;
 
     return {
-      gameState: gameplay.gameState,
+      gameState: gameStateRef.current,
       gameStatePda: gameplay.gameStatePda,
       isLoading: gameplay.isLoading,
       error: gameplay.error,
@@ -419,11 +441,11 @@ export function GameplayStateProvider({ children }: { children: ReactNode }) {
       position,
       stats,
       phaseName,
-      week: gameplay.gameState?.week ?? null,
-      movesRemaining: gameplay.gameState?.movesRemaining ?? null,
-      totalMoves: gameplay.gameState?.totalMoves ?? null,
-      bossFightReady: gameplay.gameState?.bossFightReady ?? false,
-      gearSlots: gameplay.gameState?.gearSlots ?? null,
+      week: gsWeek ?? null,
+      movesRemaining: gsMovesRemaining ?? null,
+      totalMoves: gsTotalMoves ?? null,
+      bossFightReady: gsBossFightReady ?? false,
+      gearSlots: gsGearSlots ?? null,
       currentPhaseMoveAllowance,
 
       // Actions
@@ -443,7 +465,22 @@ export function GameplayStateProvider({ children }: { children: ReactNode }) {
       canFastTravel,
     };
   }, [
-    gameplay.gameState,
+    // Scalar fields from gameState — only recompute when these actually change
+    gsPositionX,
+    gsPositionY,
+    gsHp,
+    gsMaxHp,
+    gsAtk,
+    gsArm,
+    gsSpd,
+    gsDig,
+    gsPhase,
+    gsWeek,
+    gsMovesRemaining,
+    gsTotalMoves,
+    gsBossFightReady,
+    gsGearSlots,
+    gsSession,
     gameplay.gameStatePda,
     gameplay.isLoading,
     gameplay.error,

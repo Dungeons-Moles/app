@@ -401,6 +401,7 @@ export interface FrontendCombatLogEntry {
     statusApplied?: { type: string; stacks: number };
     effectName?: string;
     goldStolen?: number;
+    spdBonus?: number;
   };
   rngValues: number[];
 }

@@ -47,7 +47,7 @@ interface CombatArenaProps {
  * CombatArena renders the battle scene with combatants
  * Enemy on LEFT, Player on RIGHT per spec FR-048/FR-049
  */
-export function CombatArena({
+export const CombatArena = React.memo(function CombatArena({
   player,
   enemy,
   damageNumbers,
@@ -199,7 +199,7 @@ export function CombatArena({
       <StatusEffectsRow statusEffects={player.statusEffects} x={playerX} y={statusEffectsY} scale={scale} />
     </View>
   );
-}
+});
 
 // Status effects row component
 interface StatusEffectsRowProps {

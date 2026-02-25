@@ -34,6 +34,7 @@ import type { EnemyId } from '../game/map/types';
 export interface UnlockedItem {
   name: string;
   emoji: string;
+  image?: any;
   stats?: ItemStats;
 }
 

@@ -389,11 +389,14 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
 
   const handleUpdateActiveItemPool = useCallback(
     async (activeItemPool: Uint8Array): Promise<TransactionResult> => {
+      console.log('[ProfileContext] updateActiveItemPool called, mode:', mode);
       if (mode === 'guest') {
+        console.warn('[ProfileContext] Cannot update item pool in guest mode');
         return { success: false, error: 'Cannot update item pool in guest mode' };
       }
 
       if (mode === 'cached') {
+        console.warn('[ProfileContext] Cannot update item pool in cached mode');
         return { success: false, error: 'Item pool updates require an online connection' };
       }
 

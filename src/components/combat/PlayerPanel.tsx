@@ -118,7 +118,7 @@ function ItemBadge({ emoji, name, image, rarity, scale = 1 }: ItemBadgeProps) {
   );
 }
 
-export function PlayerPanel({
+export const PlayerPanel = React.memo(function PlayerPanel({
   name,
   emoji,
   imageSource,
@@ -276,7 +276,7 @@ export function PlayerPanel({
       </ImageBackground>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {

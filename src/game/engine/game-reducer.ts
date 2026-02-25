@@ -2061,11 +2061,17 @@ function handleRevealPoiLocations(state: GameState, poiDefId: string): GameState
   const newFog: FogState[][] = state.map.fog.map((row) => [...row]);
   newFog[target.position.y][target.position.x] = FogState.Revealed;
 
+  // Mark the revealed POI as discovered (mirrors on-chain discovered flag)
+  const newPois = state.map.pois.map((poi) =>
+    poi.id === target.id ? { ...poi, discovered: true } : poi
+  );
+
   return {
     ...state,
     map: {
       ...state.map,
       fog: newFog,
+      pois: newPois,
     },
   };
 }

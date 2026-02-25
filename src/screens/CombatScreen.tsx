@@ -28,6 +28,7 @@ import { getEntityImageSource } from '../components/game/entityImages';
 const defaultMoleImageSource = require('../../assets/entities/characters/default-mole.png');
 import { useEquippedSkinImage } from '../hooks/useEquippedSkinImage';
 import { getPhaseLabel } from '../utils/phase-labels';
+import { getUnlockedItemForLevel } from '@/services/solana/eventParser';
 import { createGameplayStateProgram } from '@/services/solana/programs';
 import { RunMode } from '@/services/solana/types/gameplay_state';
 import {
@@ -500,6 +501,8 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
         navigation.replace('Victory', {
           level: levelReached,
           totalMoves: resolvedTotalMoves,
+          levelUnlocked: levelReached + 1,
+          itemUnlocked: getUnlockedItemForLevel(levelReached),
         });
       } else {
         console.log('[CombatScreen] Navigating back to map (victory)');
