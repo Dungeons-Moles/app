@@ -101,6 +101,7 @@ if (
 
 export const SOLANA_CONFIG = {
   cluster,
+  mobileChain: `solana:${cluster}` as `solana:${typeof cluster}`,
   rpcUrl,
   erRpcUrl,
   erWsUrl,

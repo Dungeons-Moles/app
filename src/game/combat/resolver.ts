@@ -941,7 +941,11 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
       ? { ...effectiveAttacker, atk: effectiveAttacker.dig }
       : effectiveAttacker;
 
-    const damageResult = calculateDamage(attackerForDamage, defenderState);
+    const damageResult = calculateDamage(
+      attackerForDamage,
+      defenderState,
+      attackerState.statusEffects.chill
+    );
     const {
       combatant: updatedDefender,
       armorLost,
@@ -1012,7 +1016,7 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
     };
   };
 
-  const handleTurnEnd = (actor: 'player' | 'enemy') => {
+  const handleTurnEnd = () => {
     state = { ...state, phase: CombatPhase.TurnEnd };
 
     if (countdownItems.length > 0) {
@@ -1028,62 +1032,89 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
       countdownItems = updatedCountdowns;
     }
 
-    if (actor === 'player') {
-      const statusResult = processStatusEffectsTurnEnd(state.player, hasShrapnelHarness);
-      state = { ...state, player: statusResult.combatant };
-      if (statusResult.bleedDamage > 0) {
-        state = addLogEntry(state, {
-          turn: state.turn,
-          timing: 'TURN_END',
-          actor: 'system',
-          action: 'ATTACK',
-          target: 'player',
-          result: {
-            damage: statusResult.bleedDamage,
-            statusApplied: { type: 'bleed', stacks: -1 },
-          },
-          rngValues: [],
-        });
-      }
-      playerTurnsTaken += 1;
-    } else {
-      const statusResult = processStatusEffectsTurnEnd(state.enemy, false);
-      state = { ...state, enemy: statusResult.combatant };
-      if (statusResult.bleedDamage > 0) {
-        state = addLogEntry(state, {
-          turn: state.turn,
-          timing: 'TURN_END',
-          actor: 'system',
-          action: 'ATTACK',
-          target: 'enemy',
-          result: {
-            damage: statusResult.bleedDamage,
-            statusApplied: { type: 'bleed', stacks: -1 },
-          },
-          rngValues: [],
-        });
+    // On-chain parity: apply_end_of_turn_effects processes BOTH sides each turn
+    const preserveShrapnelCap = hasShrapnelHarness ? 2 : 0;
+    const playerStatusResult = processStatusEffectsTurnEnd(state.player, preserveShrapnelCap);
+    const enemyStatusResult = processStatusEffectsTurnEnd(state.enemy, 0);
+    state = {
+      ...state,
+      player: playerStatusResult.combatant,
+      enemy: enemyStatusResult.combatant,
+    };
 
-        // BLOODRUSH_PROTOCOL: Gain +1 SPD when enemy takes Bleed damage
-        if (activeItemSets.includes('BLOODRUSH_PROTOCOL')) {
-          state = {
-            ...state,
-            player: {
-              ...state.player,
-              spd: state.player.spd + 1,
-            },
-          };
-          state = addLogEntry(state, {
-            turn: state.turn,
-            timing: 'TURN_END',
-            actor: 'player',
-            action: 'TRIGGER_ITEMSET',
-            target: 'player',
-            result: { effectName: 'Bloodrush Protocol (+1 SPD)' },
-            rngValues: [],
-          });
-        }
+    if (playerStatusResult.armLost > 0) {
+      state = addLogEntry(state, {
+        turn: state.turn,
+        timing: 'TURN_END',
+        actor: 'system',
+        action: 'TRIGGER_TRAIT',
+        target: 'player',
+        result: { armorLost: playerStatusResult.armLost, effectName: 'Rust' },
+        rngValues: [],
+      });
+    }
+    if (enemyStatusResult.armLost > 0) {
+      state = addLogEntry(state, {
+        turn: state.turn,
+        timing: 'TURN_END',
+        actor: 'system',
+        action: 'TRIGGER_TRAIT',
+        target: 'enemy',
+        result: { armorLost: enemyStatusResult.armLost, effectName: 'Rust' },
+        rngValues: [],
+      });
+    }
+
+    if (playerStatusResult.bleedDamage > 0) {
+      state = addLogEntry(state, {
+        turn: state.turn,
+        timing: 'TURN_END',
+        actor: 'system',
+        action: 'ATTACK',
+        target: 'player',
+        result: {
+          damage: playerStatusResult.bleedDamage,
+          statusApplied: { type: 'bleed', stacks: -1 },
+        },
+        rngValues: [],
+      });
+    }
+    if (enemyStatusResult.bleedDamage > 0) {
+      state = addLogEntry(state, {
+        turn: state.turn,
+        timing: 'TURN_END',
+        actor: 'system',
+        action: 'ATTACK',
+        target: 'enemy',
+        result: {
+          damage: enemyStatusResult.bleedDamage,
+          statusApplied: { type: 'bleed', stacks: -1 },
+        },
+        rngValues: [],
+      });
+
+      // BLOODRUSH_PROTOCOL: Gain +1 SPD when enemy takes Bleed damage
+      if (activeItemSets.includes('BLOODRUSH_PROTOCOL')) {
+        state = {
+          ...state,
+          player: {
+            ...state.player,
+            spd: state.player.spd + 1,
+          },
+        };
+        state = addLogEntry(state, {
+          turn: state.turn,
+          timing: 'TURN_END',
+          actor: 'player',
+          action: 'TRIGGER_ITEMSET',
+          target: 'player',
+          result: { effectName: 'Bloodrush Protocol (+1 SPD)' },
+          rngValues: [],
+        });
       }
     }
+
+    playerTurnsTaken += 1;
   };
 
   handleBattleStart();
@@ -1092,104 +1123,74 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
     return finalizeCombat(state, rng);
   }
 
-  const playerSpeed = state.player.spd + state.player.bonusSpd;
-  const enemySpeed = state.enemy.spd + state.enemy.bonusSpd;
-  // Player attacks first ONLY if strictly faster (matches on-chain logic in engine.rs)
-  // When speeds are equal, enemy attacks first
-  let nextAttacker: 'player' | 'enemy' = playerSpeed > enemySpeed ? 'player' : 'enemy';
+  // On-chain parity constants (constants.rs)
+  const MAX_TURNS = 50;
+  const SUDDEN_DEATH_TURN = 20;
+  const SUDDEN_DEATH_RAMP_TURN = 30;
+  let suddenDeathBonus = 0;
 
-  const MAX_TURNS = 200;
-  while (state.turn < MAX_TURNS && !state.result) {
-    state = {
-      ...state,
-      turn: state.turn + 1,
-      phase: CombatPhase.TurnStart,
-    };
-    nonWeaponDamageCount = 0;
-    blastSuitArmorTriggeredThisTurn = false;
-    salvageClampGoldTriggeredThisTurn = false;
-
-    if (nextAttacker === 'player') {
-      handlePlayerTurnStart();
-    } else {
-      if (bossId) {
-        if (bossId === 'B-A-W2-02') {
-          resetStatusReflectionFlag();
-        }
-
-        const traitResult = executeBossTrait(state, bossId, 'TURN_START');
-        if (traitResult.triggered) {
-          state = traitResult.state;
-          state = addLogEntry(state, {
-            turn: state.turn,
-            timing: 'TURN_START',
-            actor: 'enemy',
-            action: 'TRIGGER_TRAIT',
-            target: bossId === 'B-A-W1-03' ? 'player' : 'enemy',
-            result: {
-              effectName: traitResult.effectName,
-            },
-            rngValues: [],
-          });
-        }
-      }
-
-      if (enemyId) {
-        state = executeTraitEffects(state, 'TURN_START', enemyId, 'enemy');
-      }
-
-      preventDeathWithCanary();
+  // On-chain parity: check_sudden_death (engine.rs)
+  const checkSuddenDeath = (turn: number): number => {
+    if (turn < SUDDEN_DEATH_TURN) return 0;
+    let bonus = turn - (SUDDEN_DEATH_TURN - 1);
+    if (turn >= SUDDEN_DEATH_RAMP_TURN) {
+      bonus += (turn - (SUDDEN_DEATH_RAMP_TURN - 1)) * 2;
     }
+    return bonus;
+  };
 
-    if (checkCombatEnd(state)) {
-      break;
-    }
+  // On-chain parity: check_failsafe (engine.rs)
+  const checkFailsafe = (turn: number): boolean | null => {
+    if (turn < MAX_TURNS) return null;
+    const playerPct = Math.floor((state.player.hp * 100) / state.player.maxHp);
+    const enemyPct = Math.floor((state.enemy.hp * 100) / state.enemy.maxHp);
+    return playerPct > enemyPct; // Enemy wins on tie
+  };
 
-    state = {
-      ...state,
-      phase: nextAttacker === 'player' ? CombatPhase.PlayerAttack : CombatPhase.EnemyAttack,
-    };
-
-    const attackerState = nextAttacker === 'player' ? state.player : state.enemy;
-    // Apply Chill effect: reduces strikes by stack count (min 1)
-    // This matches on-chain behavior in effects.rs:apply_chill_to_strikes()
+  // Helper: execute strikes for one side (factored from main loop)
+  const executeStrikes = (attackerKey: 'player' | 'enemy') => {
+    const defenderKey = attackerKey === 'player' ? 'enemy' : 'player';
+    const attackerState = state[attackerKey];
     const strikes = getEffectiveStrikes(attackerState);
     let strikesLanded = 0;
-    // Removed whetstoneBonus - that item no longer exists in the new item system
-    const tempAtkBonus = 0;
+
+    state = {
+      ...state,
+      phase: attackerKey === 'player' ? CombatPhase.PlayerAttack : CombatPhase.EnemyAttack,
+    };
 
     for (let strike = 0; strike < strikes; strike += 1) {
-      if (isDefeated(nextAttacker === 'player' ? state.enemy : state.player)) {
-        break;
-      }
+      if (isDefeated(state[defenderKey])) break;
 
-      const attackerEffectiveSpeed = attackerState.spd + attackerState.bonusSpd;
-      const defenderState = nextAttacker === 'player' ? state.enemy : state.player;
-      const defenderEffectiveSpeed = defenderState.spd + defenderState.bonusSpd;
+      const currentAttacker = state[attackerKey];
+      const currentDefender = state[defenderKey];
+      const attackerEffectiveSpeed = currentAttacker.spd + currentAttacker.bonusSpd;
+      const defenderEffectiveSpeed = currentDefender.spd + currentDefender.bonusSpd;
       const speedDifference = Math.max(0, attackerEffectiveSpeed - defenderEffectiveSpeed);
       const firstStrikeSpdBonus = strike === 0 ? Math.floor(speedDifference / 2) : 0;
 
-      const strikeTempBonus =
-        nextAttacker === 'player' &&
-        playerTool?.id === 'T4' &&
-        strike >= 2 &&
-        pneumaticDrillGearAtkPenalty > 0
-          ? -pneumaticDrillGearAtkPenalty
-          : tempAtkBonus +
-            (nextAttacker === 'player' &&
-            activeItemSets.includes('WHITEOUT_INITIATIVE') &&
-            whiteoutFirstStrikeBonusPending &&
-            state.turn === 1 &&
-            strike === 0
-              ? 3
-              : 0);
+      let strikeTempBonus = 0;
+      if (attackerKey === 'player') {
+        if (playerTool?.id === 'T4' && strike >= 2 && pneumaticDrillGearAtkPenalty > 0) {
+          strikeTempBonus = -pneumaticDrillGearAtkPenalty;
+        } else if (
+          activeItemSets.includes('WHITEOUT_INITIATIVE') &&
+          whiteoutFirstStrikeBonusPending &&
+          state.turn === 1 &&
+          strike === 0
+        ) {
+          strikeTempBonus = 3;
+        }
+      }
+
       const { hpLost } = resolveWeaponStrike(
-        nextAttacker,
+        attackerKey,
         strikeTempBonus + firstStrikeSpdBonus,
         firstStrikeSpdBonus
       );
+
       if (
-        nextAttacker === 'player' &&
+        attackerKey === 'player' &&
         activeItemSets.includes('WHITEOUT_INITIATIVE') &&
         whiteoutFirstStrikeBonusPending &&
         state.turn === 1 &&
@@ -1199,7 +1200,7 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
       }
       strikesLanded += 1;
 
-      if (bossId === 'B-A-W3-01' && nextAttacker === 'player' && hpLost > 0) {
+      if (bossId === 'B-A-W3-01' && attackerKey === 'player' && hpLost > 0) {
         const phaseResult = checkEldritchMolePhases(state, bossId);
         if (phaseResult.phaseTriggered) {
           state = phaseResult.state;
@@ -1215,21 +1216,19 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
         }
       }
 
-      if (nextAttacker === 'enemy' && enemyId) {
+      if (attackerKey === 'enemy' && enemyId) {
         state = executeTraitEffects(state, 'ON_HIT', enemyId, 'enemy');
       }
 
-      if (isDefeated(nextAttacker === 'player' ? state.enemy : state.player)) {
-        break;
-      }
+      if (isDefeated(state[defenderKey])) break;
     }
 
-    if (nextAttacker === 'player' && strikesLanded > 0) {
+    // Post-strike effects for player
+    if (attackerKey === 'player' && strikesLanded > 0) {
       if (rustSpikeCount > 0) {
         const totalRustStacks = strikesLanded * rustSpikeCount * gearLinkMultiplier;
         applyRustToEnemy(totalRustStacks, 'Rust Spike');
       }
-      // RUST_RITUAL: On Hit apply +1 Rust
       if (activeItemSets.includes('RUST_RITUAL')) {
         const totalRustStacks = strikesLanded * 1 * gearLinkMultiplier;
         applyRustToEnemy(totalRustStacks, 'Rust Ritual');
@@ -1238,18 +1237,115 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
         }
       }
     }
+  };
 
-    if (checkCombatEnd(state)) {
-      break;
+  // ========================================================================
+  // Main Combat Loop (on-chain parity: lib.rs resolve_combat_with_both_gold)
+  // Each turn = BOTH sides attack (faster side first, then slower).
+  // ========================================================================
+  while (state.turn < MAX_TURNS && !state.result) {
+    state = {
+      ...state,
+      turn: state.turn + 1,
+      phase: CombatPhase.TurnStart,
+    };
+    nonWeaponDamageCount = 0;
+    blastSuitArmorTriggeredThisTurn = false;
+    salvageClampGoldTriggeredThisTurn = false;
+
+    // FirstTurn triggers (turn 1 only, both sides)
+    if (state.turn === 1) {
+      // FirstTurn triggers would fire here for both sides via item effects
+      // (Currently handled inline by item-specific code)
     }
 
-    handleTurnEnd(nextAttacker);
+    // TurnStart triggers (both sides)
+    handlePlayerTurnStart();
 
-    if (checkCombatEnd(state)) {
-      break;
+    if (bossId) {
+      if (bossId === 'B-A-W2-02') {
+        resetStatusReflectionFlag();
+      }
+
+      const traitResult = executeBossTrait(state, bossId, 'TURN_START');
+      if (traitResult.triggered) {
+        state = traitResult.state;
+        state = addLogEntry(state, {
+          turn: state.turn,
+          timing: 'TURN_START',
+          actor: 'enemy',
+          action: 'TRIGGER_TRAIT',
+          target: bossId === 'B-A-W1-03' ? 'player' : 'enemy',
+          result: {
+            effectName: traitResult.effectName,
+          },
+          rngValues: [],
+        });
+      }
     }
 
-    nextAttacker = nextAttacker === 'player' ? 'enemy' : 'player';
+    if (enemyId) {
+      state = executeTraitEffects(state, 'TURN_START', enemyId, 'enemy');
+    }
+
+    preventDeathWithCanary();
+
+    if (checkCombatEnd(state)) break;
+
+    // Sudden death: apply ATK bonus to both sides (on-chain parity: apply_sudden_death)
+    const newBonus = checkSuddenDeath(state.turn);
+    if (newBonus > suddenDeathBonus) {
+      const delta = newBonus - suddenDeathBonus;
+      state = {
+        ...state,
+        player: { ...state.player, atk: state.player.atk + delta },
+        enemy: { ...state.enemy, atk: state.enemy.atk + delta },
+      };
+      suddenDeathBonus = newBonus;
+    }
+
+    // Determine turn order: player first only if strictly faster (on-chain parity)
+    const playerSpeed = state.player.spd + state.player.bonusSpd;
+    const enemySpeed = state.enemy.spd + state.enemy.bonusSpd;
+    const playerFirst = playerSpeed > enemySpeed;
+
+    // Execute turn: faster side attacks, then slower side (if defender alive)
+    if (playerFirst) {
+      executeStrikes('player');
+      if (!isDefeated(state.enemy)) {
+        executeStrikes('enemy');
+      }
+    } else {
+      executeStrikes('enemy');
+      if (!isDefeated(state.player)) {
+        executeStrikes('player');
+      }
+    }
+
+    // Wounded/Exposed checks (both sides)
+    // (Already handled within handlePlayerTurnStart and item triggers)
+
+    if (checkCombatEnd(state)) break;
+
+    // End-of-turn effects (both sides simultaneously)
+    handleTurnEnd();
+
+    if (checkCombatEnd(state)) break;
+
+    // Failsafe check at MAX_TURNS (on-chain parity: check_failsafe)
+    const failsafeResult = checkFailsafe(state.turn);
+    if (failsafeResult !== null) {
+      state = {
+        ...state,
+        result: failsafeResult ? 'VICTORY' : 'DEFEAT',
+      };
+      break;
+    }
+  }
+
+  // If MAX_TURNS reached without a result (shouldn't happen with failsafe, but safety net)
+  if (!state.result && state.turn >= MAX_TURNS) {
+    state = { ...state, result: 'DEFEAT' };
   }
 
   return finalizeCombat(state, rng);

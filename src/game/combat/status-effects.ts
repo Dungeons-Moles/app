@@ -147,12 +147,40 @@ export function getEffectiveArm(combatant: CombatantState): number {
 }
 
 /**
- * Process Rust damage at turn end (optional - for future armor decay)
- * Currently Rust persists until explicitly removed
+ * Process Rust ARM decay at turn end (on-chain parity: effects.rs process_rust_decay)
+ * Rust permanently subtracts from ARM each turn. ARM cannot go below 0.
+ * Subtracts from bonusArm first, then base arm.
  */
-export function processRustDamage(combatant: CombatantState): CombatantState {
-  // Rust doesn't decay naturally - it persists until removed
-  return combatant;
+export function processRustDamage(combatant: CombatantState): {
+  combatant: CombatantState;
+  armLost: number;
+} {
+  if (combatant.statusEffects.rust <= 0) {
+    return { combatant, armLost: 0 };
+  }
+
+  const totalArm = combatant.arm + combatant.bonusArm;
+  const decay = combatant.statusEffects.rust;
+  const armLost = Math.min(totalArm, decay);
+
+  let newBonusArm = combatant.bonusArm;
+  let newArm = combatant.arm;
+  let remaining = decay;
+
+  if (remaining > 0 && newBonusArm > 0) {
+    const fromBonus = Math.min(newBonusArm, remaining);
+    newBonusArm -= fromBonus;
+    remaining -= fromBonus;
+  }
+  if (remaining > 0 && newArm > 0) {
+    const fromBase = Math.min(newArm, remaining);
+    newArm -= fromBase;
+  }
+
+  return {
+    combatant: { ...combatant, arm: newArm, bonusArm: newBonusArm },
+    armLost,
+  };
 }
 
 // ============================================================================
@@ -169,32 +197,28 @@ export function getBleedDamage(combatant: CombatantState): number {
 }
 
 /**
- * Process Bleed damage at turn end
- * - Deals damage equal to Bleed stacks
- * - Removes 1 Bleed stack
+ * Process Bleed damage at turn end (on-chain parity: effects.rs process_bleed_damage_with_chill)
+ * - Deals damage equal to Bleed stacks + Chill bonus (capped at 3)
+ * - Bleed stack decay is handled separately in processStatusEffectsTurnEnd
  * Returns updated combatant and damage dealt
  */
 export function processBleedDamage(combatant: CombatantState): {
   combatant: CombatantState;
   damage: number;
 } {
-  const damage = combatant.statusEffects.bleed;
-
-  if (damage <= 0) {
+  const bleedStacks = combatant.statusEffects.bleed;
+  if (bleedStacks <= 0) {
     return { combatant, damage: 0 };
   }
 
+  const chillBonus = Math.min(3, combatant.statusEffects.chill);
+  const damage = bleedStacks + chillBonus;
   const newHp = Math.max(0, combatant.hp - damage);
-  const newBleed = Math.max(0, combatant.statusEffects.bleed - 1);
 
   return {
     combatant: {
       ...combatant,
       hp: newHp,
-      statusEffects: {
-        ...combatant.statusEffects,
-        bleed: newBleed,
-      },
     },
     damage,
   };
@@ -311,25 +335,55 @@ export function getActiveStatusEffects(
 // ============================================================================
 
 /**
- * Process all status effects at turn end
- * - Chill: decay by 1
- * - Shrapnel: clear (unless Shrapnel Harness)
- * - Rust: persists
- * - Bleed: deal damage and decay by 1
- * Returns updated combatant and bleed damage dealt
+ * Process all status effects at turn end (on-chain parity: lib.rs apply_end_of_turn_effects)
+ *
+ * Order matches on-chain:
+ * 1. Rust ARM decay (permanent)
+ * 2. Bleed damage + chill bonus
+ * 3. Status decay (chill -1, bleed -1, shrapnel = 0)
+ * 4. Shrapnel preservation (if preserveShrapnelCap > 0)
+ *
+ * @param combatant - The combatant to process
+ * @param preserveShrapnelCap - Numeric cap for shrapnel preservation (0 = clear all)
  */
 export function processStatusEffectsTurnEnd(
   combatant: CombatantState,
-  hasShrapnelHarness: boolean = false
-): { combatant: CombatantState; bleedDamage: number } {
+  preserveShrapnelCap: number = 0
+): { combatant: CombatantState; bleedDamage: number; armLost: number } {
   let updated = combatant;
-  updated = processChillDecay(updated);
-  updated = processShrapnelClear(updated, hasShrapnelHarness);
-  // Rust persists - no processing needed
+  const shrapnelBefore = updated.statusEffects.shrapnel;
 
-  // Process Bleed damage and decay
+  // 1. Rust ARM decay (permanent, matches process_rust_decay on-chain)
+  const rustResult = processRustDamage(updated);
+  updated = rustResult.combatant;
+
+  // 2. Bleed damage with chill bonus (matches process_bleed_damage_with_chill on-chain)
   const bleedResult = processBleedDamage(updated);
   updated = bleedResult.combatant;
 
-  return { combatant: updated, bleedDamage: bleedResult.damage };
+  // 3. Status decay (matches decay_status_effects on-chain: chill -1, bleed -1, shrapnel = 0)
+  updated = {
+    ...updated,
+    statusEffects: {
+      ...updated.statusEffects,
+      chill: Math.max(0, updated.statusEffects.chill - 1),
+      bleed: Math.max(0, updated.statusEffects.bleed - 1),
+      shrapnel: 0,
+      // rust persists — no decay
+    },
+  };
+
+  // 4. Shrapnel preservation (matches preserve_shrapnel_cap on-chain)
+  if (preserveShrapnelCap > 0) {
+    const keep = Math.min(shrapnelBefore, preserveShrapnelCap);
+    updated = {
+      ...updated,
+      statusEffects: {
+        ...updated.statusEffects,
+        shrapnel: Math.max(updated.statusEffects.shrapnel, keep),
+      },
+    };
+  }
+
+  return { combatant: updated, bleedDamage: bleedResult.damage, armLost: rustResult.armLost };
 }

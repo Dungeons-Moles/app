@@ -230,8 +230,8 @@ describe('Damage Calculation', () => {
       });
     });
 
-    describe('Rust status effect', () => {
-      it('should reduce effective ARM by Rust stacks', () => {
+    describe('Rust status effect (on-chain parity: Rust handled at turn end, not during strikes)', () => {
+      it('should NOT reduce effective ARM during strikes (Rust decays ARM at turn end)', () => {
         const attacker = createTestCombatant({ atk: 10 });
         const defender = createTestCombatant({
           arm: 5,
@@ -240,12 +240,13 @@ describe('Damage Calculation', () => {
 
         const result = calculateDamage(attacker, defender);
 
-        // ARM 5 - Rust 3 = effective ARM 2
-        expect(result.armorDamage).toBe(2);
-        expect(result.hpDamage).toBe(8);
+        // On-chain parity: Rust does not reduce ARM during strikes
+        // ARM = 5, ATK = 10 → armor absorbs 5, HP takes 5
+        expect(result.armorDamage).toBe(5);
+        expect(result.hpDamage).toBe(5);
       });
 
-      it('should not reduce ARM below 0 with Rust', () => {
+      it('should use full ARM even with high Rust stacks (Rust decays ARM at turn end)', () => {
         const attacker = createTestCombatant({ atk: 10 });
         const defender = createTestCombatant({
           arm: 2,
@@ -254,13 +255,15 @@ describe('Damage Calculation', () => {
 
         const result = calculateDamage(attacker, defender);
 
-        expect(result.armorDamage).toBe(0); // max(0, 2 - 5) = 0
-        expect(result.hpDamage).toBe(10);
+        // On-chain parity: Rust does not reduce ARM during strikes
+        // ARM = 2, ATK = 10 → armor absorbs 2, HP takes 8
+        expect(result.armorDamage).toBe(2);
+        expect(result.hpDamage).toBe(8);
       });
     });
 
     describe('complex scenarios', () => {
-      it('should handle all effects together (Chill does NOT affect ATK)', () => {
+      it('should handle all effects together (Chill does NOT affect ATK, Rust handled at turn end)', () => {
         const attacker = createTestCombatant({
           atk: 12,
           bonusAtk: 2,
@@ -272,24 +275,25 @@ describe('Damage Calculation', () => {
           statusEffects: { ...DEFAULT_STATUS_EFFECTS, rust: 2, shrapnel: 3 },
         });
 
-        const result = calculateDamage(attacker, defender);
+        const result = calculateDamage(attacker, defender, attacker.statusEffects.chill);
 
         // Base ATK: 12 + 2 = 14
         // Chill does NOT affect ATK (it affects strikes per turn)
-        // Defender effective ARM: (4 + 1) - 2 = 3
-        // Damage: 14 - 3 = 11
-        // Shrapnel reflect: 3
+        // On-chain parity: Rust reduces ARM permanently at end of turn, not during strikes
+        // Defender effective ARM: (4 + 1) = 5
+        // Damage: 14 - 5 = 9
+        // Shrapnel reflect: 3 + min(3, attacker chill 1) = 4
         expect(result.baseAtk).toBe(14);
         expect(result.effectiveAtk).toBe(14); // Chill doesn't reduce ATK
-        expect(result.armorDamage).toBe(3);
-        expect(result.hpDamage).toBe(11);
-        expect(result.shrapnelReflect).toBe(3);
+        expect(result.armorDamage).toBe(5);
+        expect(result.hpDamage).toBe(9);
+        expect(result.shrapnelReflect).toBe(4);
       });
     });
   });
 
   describe('applyDamage', () => {
-    it('depletes armor based on rust-adjusted armor damage', () => {
+    it('depletes armor directly (Rust handled at turn end, not during strikes)', () => {
       const attacker = createTestCombatant({ atk: 6 });
       const defender = createTestCombatant({
         arm: 10,
@@ -302,11 +306,13 @@ describe('Damage Calculation', () => {
         hp: result.hpDamage,
       });
 
-      expect(result.armorDamage).toBe(2);
-      expect(result.hpDamage).toBe(4);
-      expect(applied.armorLost).toBe(2);
-      expect(applied.combatant.arm).toBe(8);
-      expect(applied.combatant.hp).toBe(16);
+      // On-chain parity: Rust reduces ARM permanently at end of turn, not during strikes
+      // ARM = 10, ATK = 6, so armor absorbs all 6 damage
+      expect(result.armorDamage).toBe(6);
+      expect(result.hpDamage).toBe(0);
+      expect(applied.armorLost).toBe(6);
+      expect(applied.combatant.arm).toBe(4);
+      expect(applied.combatant.hp).toBe(20);
     });
   });
 
