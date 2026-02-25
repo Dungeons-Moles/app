@@ -8,8 +8,8 @@ import { useWallet } from '../contexts/WalletContext';
 import { useSolanaConnection } from '../contexts/SolanaConnectionContext';
 import { useProfile } from '../contexts/ProfileContext';
 
-/** Price for 20 runs in lamports (0.001 SOL) */
-export const RUN_PRICE_LAMPORTS = 1_000_000;
+/** Price for 20 runs in lamports (0.05 SOL) */
+export const RUN_PRICE_LAMPORTS = 50_000_000;
 /** Number of runs per purchase */
 export const RUNS_PER_PURCHASE = 20;
 /** Minimum SOL balance required (price + transaction fees) */

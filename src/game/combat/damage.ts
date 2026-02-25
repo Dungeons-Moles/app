@@ -26,31 +26,39 @@ export interface DamageResult {
 /**
  * Calculate damage from attacker to defender
  *
- * Damage formula per spec FR-014:
+ * Damage formula (on-chain parity with engine.rs execute_strike):
  * 1. Calculate base ATK (atk + bonusAtk)
- * 2. Calculate effective ARM pool (arm + bonusArm - rust, minimum 0)
+ * 2. Calculate effective ARM pool (arm + bonusArm, Rust handled by permanent decay)
  * 3. If ignoresArmor, skip ARM absorption
  * 4. Armor damage = min(effectiveArm, effectiveAtk)
  * 5. HP damage = effectiveAtk - armorDamage (minimum 0)
- * 6. Shrapnel reflect = defender's shrapnel stacks
+ * 6. Shrapnel reflect = defender's shrapnel stacks + attacker's chill bonus (cap 3)
  *
  * Note: Chill affects strikes per turn (see getEffectiveStrikes in status-effects.ts),
  * NOT attack damage. This matches the on-chain behavior in effects.rs.
  *
  * @param attacker - The attacking combatant
  * @param defender - The defending combatant
+ * @param attackerChill - Optional attacker chill stacks (for shrapnel chill bonus calculation)
  * @returns DamageResult with breakdown of damage calculation
  */
-export function calculateDamage(attacker: CombatantState, defender: CombatantState): DamageResult {
+export function calculateDamage(
+  attacker: CombatantState,
+  defender: CombatantState,
+  attackerChill: number = 0
+): DamageResult {
   // Step 1: Calculate base ATK (Chill does NOT affect ATK - it affects strikes)
   const baseAtk = attacker.atk + attacker.bonusAtk;
   // On-chain parity: Chill adds bonus damage to all sources (capped at +3).
   const chillBonus = Math.min(3, defender.statusEffects.chill);
   const effectiveAtk = Math.max(0, baseAtk + chillBonus);
 
-  // Step 2: Calculate effective ARM pool (reduced by Rust)
+  // Step 2: Calculate effective ARM pool
+  // On-chain parity: Rust is handled by permanent ARM decay at end of each turn
+  // (processRustDamage), NOT as a modifier during strikes. The ARM value already
+  // reflects cumulative Rust decay from previous turns.
   const totalArm = defender.arm + defender.bonusArm;
-  const effectiveArm = Math.max(0, totalArm - defender.statusEffects.rust);
+  const effectiveArm = Math.max(0, totalArm);
 
   // Step 3: Calculate armor damage (0 if ignoresArmor)
   // ARM is "HP before HP": armor absorbs damage first, remainder goes to HP.
@@ -63,8 +71,12 @@ export function calculateDamage(attacker: CombatantState, defender: CombatantSta
   const hpDamage =
     effectiveAtk <= 0 || defender.hp <= 0 ? 0 : Math.max(0, effectiveAtk - armorDamage);
 
-  // Step 5: Calculate Shrapnel reflect
-  const shrapnelReflect = defender.statusEffects.shrapnel;
+  // Step 5: Calculate Shrapnel reflect (on-chain parity: effects.rs process_shrapnel_retaliation_with_chill)
+  // Shrapnel reflect includes attacker's chill bonus (capped at 3)
+  const shrapnelReflect =
+    defender.statusEffects.shrapnel > 0
+      ? defender.statusEffects.shrapnel + Math.min(3, attackerChill)
+      : 0;
 
   return {
     baseAtk,

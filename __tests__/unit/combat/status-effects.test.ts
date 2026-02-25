@@ -499,8 +499,8 @@ describe('Status Effects System', () => {
       });
     });
 
-    describe('T013: Bleed stack decay (-1 per turn)', () => {
-      it('should reduce Bleed stacks by 1 at turn end', () => {
+    describe('T013: Bleed stack decay (-1 per turn, handled in processStatusEffectsTurnEnd)', () => {
+      it('processBleedDamage should deal damage but NOT decay stacks (decay in turn end)', () => {
         const combatant = createTestCombatant({
           hp: 20,
           statusEffects: { ...DEFAULT_STATUS_EFFECTS, bleed: 4 },
@@ -508,16 +508,30 @@ describe('Status Effects System', () => {
 
         const { combatant: updated } = processBleedDamage(combatant);
 
-        expect(updated.statusEffects.bleed).toBe(3); // 4 - 1 = 3
+        // processBleedDamage no longer decays stacks — that's in processStatusEffectsTurnEnd
+        expect(updated.statusEffects.bleed).toBe(4);
+        expect(updated.hp).toBe(16); // 20 - 4 = 16
       });
 
-      it('should remove Bleed completely when at 1 stack', () => {
+      it('should reduce Bleed stacks by 1 at turn end via processStatusEffectsTurnEnd', () => {
+        const combatant = createTestCombatant({
+          hp: 20,
+          statusEffects: { ...DEFAULT_STATUS_EFFECTS, bleed: 4 },
+        });
+
+        const { combatant: updated } = processStatusEffectsTurnEnd(combatant);
+
+        expect(updated.statusEffects.bleed).toBe(3); // 4 - 1 = 3
+        expect(updated.hp).toBe(16); // 20 - 4 = 16 (bleed damage)
+      });
+
+      it('should remove Bleed completely when at 1 stack via processStatusEffectsTurnEnd', () => {
         const combatant = createTestCombatant({
           hp: 20,
           statusEffects: { ...DEFAULT_STATUS_EFFECTS, bleed: 1 },
         });
 
-        const { combatant: updated } = processBleedDamage(combatant);
+        const { combatant: updated } = processStatusEffectsTurnEnd(combatant);
 
         expect(updated.statusEffects.bleed).toBe(0);
       });

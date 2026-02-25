@@ -364,7 +364,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
         const result = await transact(async (wallet: Web3MobileWallet) => {
           const authorizationResult = await wallet.authorize({
-            chain: SOLANA_CONFIG.cluster,
+            chain: SOLANA_CONFIG.mobileChain,
             identity: APP_IDENTITY,
           });
 
@@ -484,7 +484,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
         return transact(async (walletAdapter: Web3MobileWallet) => {
           await walletAdapter.authorize({
-            chain: SOLANA_CONFIG.cluster,
+            chain: SOLANA_CONFIG.mobileChain,
             identity: APP_IDENTITY,
             auth_token: wallet.authToken ?? undefined,
           });
@@ -595,7 +595,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
       return transact(async (walletAdapter: Web3MobileWallet) => {
         await walletAdapter.authorize({
-          chain: SOLANA_CONFIG.cluster,
+          chain: SOLANA_CONFIG.mobileChain,
           identity: APP_IDENTITY,
           auth_token: wallet.authToken ?? undefined,
         });

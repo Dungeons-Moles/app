@@ -38,6 +38,8 @@ import { useInputMode } from '../hooks/useInputMode';
 import { FocusGlow } from '../components/ui/FocusGlow';
 import { useEquippedSkinImage } from '../hooks/useEquippedSkinImage';
 import { useAudio } from '../contexts/AudioContext';
+import { usePaymentToken } from '@/hooks/usePaymentToken';
+import { PaymentTokenSelector, PaymentConfirmationModal } from '@/components/payment';
 
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.png');
 const STAINS_BACKGROUND = require('../../assets/ui/backgrounds/stains-background.png');
@@ -95,6 +97,9 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
   const isFocused = useIsFocused();
   const isCompact = useScreenVariant() === 'compact';
   const { playBgm } = useAudio();
+
+  const payment = usePaymentToken(BigInt(PIT_DRAFT_ENTRY_LAMPORTS));
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
 
   // Play victory/defeat music on result phase
   useEffect(() => {
@@ -157,13 +162,46 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
     navigation.navigate('PitDraftHistory');
   }, [navigation]);
 
-  useControllerAction(
-    {
-      onB: handleBack,
-      onA: panelFocus === 0 ? handleHistory : !pitDraft.isLoading ? pitDraft.enterPitDraft : undefined,
-      onDPadLeft: () => setPanelFocus(0),
-      onDPadRight: () => setPanelFocus(1),
+  const handleEnterDirect = useCallback(() => {
+    pitDraft.enterPitDraft();
+  }, [pitDraft]);
+
+  const handleEnter = useCallback(async () => {
+    if (!payment.selectedToken.isNative && payment.quote) {
+      setShowPaymentModal(true);
+      return;
+    }
+    handleEnterDirect();
+  }, [payment.selectedToken, payment.quote, handleEnterDirect]);
+
+  const handlePaymentConfirm = useCallback(() => {
+    setShowPaymentModal(false);
+    handleEnterDirect();
+  }, [handleEnterDirect]);
+
+  const cycleToken = useCallback(
+    (dir: -1 | 1) => {
+      const tokens = payment.supportedTokens;
+      const idx = tokens.findIndex((t) => t.symbol === payment.selectedToken.symbol);
+      const next = idx + dir;
+      if (next >= 0 && next < tokens.length) {
+        payment.setSelectedToken(tokens[next]);
+      }
     },
+    [payment]
+  );
+
+  useControllerAction(
+    showPaymentModal
+      ? {}
+      : {
+          onB: handleBack,
+          onA: panelFocus === 0 ? handleHistory : !pitDraft.isLoading ? handleEnter : undefined,
+          onDPadLeft: () => setPanelFocus(0),
+          onDPadRight: () => setPanelFocus(1),
+          onL1: () => cycleToken(-1),
+          onR1: () => cycleToken(1),
+        },
     isController && isFocused && (pitDraft.phase === 'confirm' || pitDraft.phase === 'queuing')
   );
 
@@ -181,6 +219,7 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
     : [{ button: 'A', label: 'Back to Hub' }];
 
   const controllerHints: ButtonHint[] = [
+    { button: 'L1R1', label: 'Currency' },
     { button: 'DPadLeftRight', label: 'Switch' },
     { button: 'A', label: 'Select' },
     { button: 'B', label: 'Back' },
@@ -423,7 +462,7 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
 
                     <FocusGlow active={isController && panelFocus === 1}>
                       <TouchableOpacity
-                        onPress={pitDraft.enterPitDraft}
+                        onPress={handleEnter}
                         activeOpacity={0.7}
                         disabled={pitDraft.isLoading}
                       >
@@ -450,9 +489,34 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
                   </View>
                 </View>
               </View>
+
+              {/* Token selector — below the panel */}
+              <View style={[styles.tokenSelectorWrap, isCompact && compactStyles.tokenSelectorWrap]}>
+                <PaymentTokenSelector
+                  tokens={payment.supportedTokens}
+                  selectedToken={payment.selectedToken}
+                  onSelectToken={payment.setSelectedToken}
+                  quote={payment.quote}
+                  isQuoteLoading={payment.isQuoteLoading}
+                  solUsdPrice={payment.solUsdPrice}
+                  requiredLamports={BigInt(PIT_DRAFT_ENTRY_LAMPORTS)}
+                  isCompact={isCompact}
+                  isController={isController}
+                />
+              </View>
             </View>
           </View>
         </ImageBackground>
+        {payment.quote && (
+          <PaymentConfirmationModal
+            visible={showPaymentModal}
+            quote={payment.quote}
+            isDevnet={payment.isDevnet}
+            isCompact={isCompact}
+            onConfirm={handlePaymentConfirm}
+            onCancel={() => setShowPaymentModal(false)}
+          />
+        )}
         <ControllerHints hints={controllerHints} />
       </Animated.View>
     );
@@ -665,18 +729,20 @@ const styles = StyleSheet.create({
   },
   confirmContent: {
     flex: 1,
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 4,
   },
   confirmHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 8,
+    marginTop: 0,
   },
   headerSpacer: { flex: 1 },
   headerButton: {
     width: 90,
-    height: 45,
+    height: 36,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -690,12 +756,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   titleImage: {
-    width: 280,
-    height: 70,
+    width: 265,
+    height: 58,
   },
   confirmCenterContent: {
     flex: 1,
-    justifyContent: 'center',
     alignItems: 'center',
   },
   panelWrapper: {
@@ -745,6 +810,10 @@ const styles = StyleSheet.create({
   panelIcon: {
     width: 40,
     height: 40,
+  },
+  tokenSelectorWrap: {
+    alignItems: 'center',
+    marginTop: 0,
   },
   panelButtons: {
     flexDirection: 'row',
@@ -966,20 +1035,20 @@ const styles = StyleSheet.create({
 
 const compactStyles = StyleSheet.create({
   confirmHeader: {
-    marginTop: 12,
+    marginTop: 0,
   },
   headerButton: {
     width: 140,
-    height: 76,
+    height: 64,
   },
   headerButtonText: {
     fontSize: 28,
     marginBottom: 6,
   },
   titleImage: {
-    width: 520,
-    height: 130,
-    marginBottom: 20,
+    width: 510,
+    height: 105,
+    marginBottom: 12,
   },
   panelWrapper: {
     width: '95%',
@@ -1010,6 +1079,9 @@ const compactStyles = StyleSheet.create({
   panelIcon: {
     width: 162,
     height: 162,
+  },
+  tokenSelectorWrap: {
+    marginTop: 10,
   },
   panelButtons: {
     marginTop: 150,

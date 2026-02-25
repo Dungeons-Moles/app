@@ -165,10 +165,10 @@ describe('Combat Flow Integration', () => {
         (entry) => entry.actor === 'player' && entry.action === 'ATTACK'
       );
 
-      // Each attack should deal 10 ATK - 3 ARM = 7 damage
+      // First strike: ATK 10 + SPD bonus floor((5-1)/2)=2 = 12, ARM 3 → armor 3, HP 9
       expect(playerAttacks.length).toBeGreaterThan(0);
       expect(playerAttacks[0].result.armorLost).toBe(3);
-      expect(playerAttacks[0].result.damage).toBe(7);
+      expect(playerAttacks[0].result.damage).toBe(9);
     });
 
     it('should end combat when enemy HP reaches 0 with VICTORY', () => {

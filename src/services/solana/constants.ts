@@ -519,8 +519,8 @@ export const ACCOUNT_SIZES = {
 // Run Economy Constants
 // ============================================================================
 
-/** Price for 20 sessions in lamports (0.005 SOL) */
-export const RUN_PRICE_LAMPORTS = 5_000_000;
+/** Price for 20 sessions in lamports (0.05 SOL) */
+export const RUN_PRICE_LAMPORTS = 50_000_000;
 
 /** Number of runs received per purchase */
 export const RUNS_PER_PURCHASE = 20;
@@ -568,3 +568,14 @@ export const RPC_URL = process.env.EXPO_PUBLIC_SOLANA_RPC_URL ?? 'https://api.de
 
 /** Whether we're on devnet */
 export const IS_DEVNET = CLUSTER === 'devnet';
+
+// ============================================================================
+// Token Mints (mainnet addresses, used for Jupiter Price API on all clusters)
+// ============================================================================
+
+export const TOKEN_MINTS = {
+  SOL: new PublicKey('So11111111111111111111111111111111111111112'),
+  USDC: new PublicKey('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'),
+  JUP: new PublicKey('JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN'),
+  BONK: new PublicKey('DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263'),
+} as const;
