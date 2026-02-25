@@ -25,10 +25,13 @@ import {
 } from '@/services/solana/pitDraft';
 import { Typography } from '@/theme/typography';
 import { PublicKey } from '@solana/web3.js';
+import { useEquippedSkinImage } from '../hooks/useEquippedSkinImage';
 import { useControllerAction } from '../hooks/useControllerAction';
 import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHints';
 import { useInputMode } from '../hooks/useInputMode';
 import { FocusGlow } from '../components/ui/FocusGlow';
+import { useAudio } from '@/contexts/AudioContext';
+import { useIsFocused } from '@react-navigation/native';
 import { calculateItemStats } from '@/game/entities/items';
 import type { CombatantState, Gear, Tool } from '@/game/engine/types';
 import type { BackendCombatLogEntry } from '@/services/solana/types/combat_events';
@@ -39,13 +42,14 @@ const PIT_DRAFT_TITLE = require('../../assets/ui/text/pit-draft.png');
 const HISTORY_TITLE = require('../../assets/ui/text/history.png');
 const HISTORY_SCROLL = require('../../assets/ui/illustrations/history-scroll.png');
 const RECTANGLE_FRAME = require('../../assets/ui/frames/rectangle.png');
+const SQUARE_FRAME = require('../../assets/ui/frames/square.png');
 const GREEN_BRUSH = require('../../assets/ui/illustrations/green-brush.png');
 const RED_BRUSH = require('../../assets/ui/illustrations/red-brush.png');
 const buttonV1Source = require('../../assets/ui/buttons/button-v1.png');
 
-// On-chain base values (ATK/ARM/SPD start at 0; bonuses come from BattleStart log entries)
+// Pit Draft base values mirror live Pit Draft replay construction in usePitDraft.
 const PVP_BASE_HP = 20;
-const PVP_BASE_ATK = 0;
+const PVP_BASE_ATK = 1;
 const PVP_BASE_ARM = 0;
 const PVP_BASE_SPD = 0;
 const PVP_BASE_DIG = 0;
@@ -57,9 +61,6 @@ function buildPvpCombatant(
   tool: Tool | null,
   gear: Gear[],
 ): CombatantState {
-  // Only HP is pre-calculated on-chain (via calculate_stats).
-  // ATK/ARM/SPD bonuses are applied during combat's BattleStart phase
-  // and appear as AtkChange/ArmorChange/SpdChange log entries.
   const itemStats = calculateItemStats(tool, gear);
   const maxHp = PVP_BASE_HP + (itemStats.hp ?? 0);
   return {
@@ -69,9 +70,9 @@ function buildPvpCombatant(
     isPlayer,
     maxHp,
     hp: maxHp,
-    atk: PVP_BASE_ATK,
-    arm: PVP_BASE_ARM,
-    spd: PVP_BASE_SPD,
+    atk: PVP_BASE_ATK + (itemStats.atk ?? 0),
+    arm: PVP_BASE_ARM + (itemStats.arm ?? 0),
+    spd: PVP_BASE_SPD + (itemStats.spd ?? 0),
     dig: PVP_BASE_DIG + (itemStats.dig ?? 0),
     bonusAtk: 0,
     bonusArm: 0,
@@ -95,9 +96,35 @@ interface PitDraftHistoryItem {
   playedAtUnix: number | null;
   opponentWallet: string;
   opponentName: string;
+  opponentSkinPubkey: PublicKey | null;
   isWinner: boolean;
   winnerPayoutLamports: number;
   turnsTaken: number;
+}
+
+function OpponentAvatar({ skinPubkey, isCompact }: { skinPubkey: PublicKey | null; isCompact: boolean }) {
+  const skinImage = useEquippedSkinImage(skinPubkey);
+  const size = isCompact ? 40 : 22;
+  return (
+    <View style={{ width: size, height: size, overflow: 'hidden', borderRadius: 1 }}>
+      <Image
+        source={skinImage}
+        style={{
+          width: size * 1.65,
+          height: size * 1.6,
+          position: 'absolute',
+          top: 0,
+          left: -(size * 0.35),
+        }}
+        resizeMode="cover"
+      />
+      <Image
+        source={SQUARE_FRAME}
+        style={{ position: 'absolute', width: size, height: size, zIndex: 1 }}
+        resizeMode="stretch"
+      />
+    </View>
+  );
 }
 
 export function PitDraftHistoryScreen({ navigation }: PitDraftHistoryScreenProps) {
@@ -110,6 +137,15 @@ export function PitDraftHistoryScreen({ navigation }: PitDraftHistoryScreenProps
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [isLoadingReplay, setIsLoadingReplay] = useState(false);
   const flatListRef = useRef<FlatList<PitDraftHistoryItem>>(null);
+  const { playBgm } = useAudio();
+  const isFocused = useIsFocused();
+
+  // Resume hub music when returning from combat replay
+  useEffect(() => {
+    if (isFocused) {
+      playBgm('hub');
+    }
+  }, [isFocused, playBgm]);
 
   const formatDate = useCallback((unixTs: number | null) => {
     if (!unixTs) return '—';
@@ -133,6 +169,7 @@ export function PitDraftHistoryScreen({ navigation }: PitDraftHistoryScreenProps
       const profileProgram = createPlayerProfileProgram(connection);
       const [queuePda] = derivePitDraftQueuePda();
       const profileNameCache = new Map<string, string>();
+      const profileSkinCache = new Map<string, PublicKey | null>();
       const blockTimeCache = new Map<number, number | null>();
       const history: PitDraftHistoryItem[] = [];
       let before: string | undefined;
@@ -156,6 +193,7 @@ export function PitDraftHistoryScreen({ navigation }: PitDraftHistoryScreenProps
 
           const opponentWallet = playerA === ourKey ? playerB : playerA;
           let opponentName = profileNameCache.get(opponentWallet);
+          let opponentSkinPubkey: PublicKey | null = profileSkinCache.get(opponentWallet) ?? null;
 
           if (!opponentName) {
             try {
@@ -163,7 +201,7 @@ export function PitDraftHistoryScreen({ navigation }: PitDraftHistoryScreenProps
               const account = await (
                 profileProgram.account as {
                   playerProfile: {
-                    fetchNullable: (address: PublicKey) => Promise<{ name?: unknown } | null>;
+                    fetchNullable: (address: PublicKey) => Promise<{ name?: unknown; equippedSkin?: PublicKey | null } | null>;
                   };
                 }
               ).playerProfile.fetchNullable(profilePda);
@@ -172,10 +210,14 @@ export function PitDraftHistoryScreen({ navigation }: PitDraftHistoryScreenProps
                 fetched.length > 0
                   ? fetched
                   : `${opponentWallet.slice(0, 4)}..${opponentWallet.slice(-4)}`;
+              opponentSkinPubkey = account?.equippedSkin ?? null;
             } catch {
               opponentName = `${opponentWallet.slice(0, 4)}..${opponentWallet.slice(-4)}`;
             }
             profileNameCache.set(opponentWallet, opponentName);
+            profileSkinCache.set(opponentWallet, opponentSkinPubkey);
+          } else {
+            opponentSkinPubkey = profileSkinCache.get(opponentWallet) ?? null;
           }
 
           let playedAtUnix = sigInfo.blockTime ?? null;
@@ -198,6 +240,7 @@ export function PitDraftHistoryScreen({ navigation }: PitDraftHistoryScreenProps
             playedAtUnix,
             opponentWallet,
             opponentName,
+            opponentSkinPubkey,
             isWinner: events.resolved.winner.toBase58() === ourKey,
             winnerPayoutLamports: events.resolved.winnerPayout,
             turnsTaken: events.resolved.turnsTaken,
@@ -294,6 +337,7 @@ export function PitDraftHistoryScreen({ navigation }: PitDraftHistoryScreenProps
             duelReplay: true,
             historyReplay: true,
             preserveArmor: true,
+            pvpOpponentSkinPubkey: item.opponentSkinPubkey?.toBase58() ?? null,
           },
         });
       } catch (err) {
@@ -480,14 +524,16 @@ export function PitDraftHistoryScreen({ navigation }: PitDraftHistoryScreenProps
                                     {item.isWinner ? 'WIN' : 'LOSS'}
                                   </Text>
                                 </View>
-                                <Text
+                              <Text
                                   style={[
                                     styles.resultText,
                                     isCompact && compactStyles.resultText,
                                   ]}
+                                  numberOfLines={1}
                                 >
                                   vs {item.opponentName}
                                 </Text>
+                                <OpponentAvatar skinPubkey={item.opponentSkinPubkey} isCompact={isCompact} />
                               </View>
                               <View style={styles.metaRow}>
                                 <Text

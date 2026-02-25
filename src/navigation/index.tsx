@@ -1,5 +1,6 @@
 import React, { useCallback } from 'react';
 import { Platform } from 'react-native';
+import type { ImageSourcePropType } from 'react-native';
 import { NavigationContainer, type NavigationState } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { LoadingScreen } from '../screens/LoadingScreen';
@@ -34,7 +35,7 @@ import type { EnemyId } from '../game/map/types';
 export interface UnlockedItem {
   name: string;
   emoji: string;
-  image?: any;
+  image?: ImageSourcePropType;
   stats?: ItemStats;
 }
 
@@ -95,6 +96,8 @@ export interface CombatParams {
   enemyGear?: Gear[];
   /** Enemy tool (for PvP replay panel display) */
   enemyTool?: Tool | null;
+  /** Opponent equipped skin pubkey (base58) for PvP replay visuals */
+  pvpOpponentSkinPubkey?: string | null;
 }
 
 export type RootStackParamList = {

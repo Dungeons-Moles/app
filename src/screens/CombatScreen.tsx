@@ -24,8 +24,6 @@ import { ENEMY_TRAITS, type EnemyId } from '../game/combat/traits';
 import { BOSSES } from '../data/bosses';
 import type { BossId } from '../game/engine/types';
 import { getEntityImageSource } from '../components/game/entityImages';
-
-const defaultMoleImageSource = require('../../assets/entities/characters/default-mole.png');
 import { useEquippedSkinImage } from '../hooks/useEquippedSkinImage';
 import { getPhaseLabel } from '../utils/phase-labels';
 import { getUnlockedItemForLevel } from '@/services/solana/eventParser';
@@ -128,6 +126,16 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
 
   // Get combat input from route params (on-chain mode) or null (guest mode)
   const combatInput = route?.params?.combatInput;
+  const pvpOpponentSkinPubkey = useMemo(() => {
+    const skinKey = combatInput?.pvpOpponentSkinPubkey;
+    if (!skinKey) return null;
+    try {
+      return new PublicKey(skinKey);
+    } catch {
+      return null;
+    }
+  }, [combatInput?.pvpOpponentSkinPubkey]);
+  const pvpOpponentSkinSource = useEquippedSkinImage(pvpOpponentSkinPubkey);
   const isBossFight = combatInput?.isBossFight ?? gameState?.phase === GamePhase.BossFight;
   const currentWeek = combatInput?.week ?? gameState?.time.week ?? 1;
 
@@ -569,20 +577,26 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
 
   // Get display states for gold fallback
   const { playerGold, enemyGold } = displayStates;
+  const enemyDig = displayStates.enemy?.dig ?? combatInput?.enemy.dig ?? 0;
+  const playerDig = displayStates.player?.dig ?? combatInput?.player.dig ?? gameState?.player.stats.dig ?? 0;
+  const victoryGoldReward = combatInput?.historyReplay
+    ? undefined
+    : combatState.resolvedCombat?.goldReward;
 
   return (
     <CombatLayout
       playerSkinSource={playerSkinSource}
+      pvpOpponentSkinSource={pvpOpponentSkinSource}
       enemyPanel={{
         name: combatState.combat?.enemy.name ?? 'Enemy',
         emoji: combatState.combat?.enemy.emoji ?? '',
         imageSource:
           (combatState.combat?.enemyDefinitionId as string) === 'pvpOpponent'
-            ? defaultMoleImageSource
+            ? pvpOpponentSkinSource
             : combatState.combat?.enemyDefinitionId
               ? getEntityImageSource(combatState.combat.enemyDefinitionId)
               : undefined,
-        dig: 0,
+        dig: enemyDig,
         gold: enemyGold ?? combatInput?.enemyGold,
         traits: enemyTraits,
         equippedTool: combatInput?.enemyTool,
@@ -592,12 +606,12 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
         name: combatState.combat?.player.name ?? 'Player',
         emoji: combatState.combat?.player.emoji ?? '',
         imageSource: playerSkinSource,
-        dig: gameState?.player.stats.dig ?? 0,
+        dig: playerDig,
         gold: playerGold ?? combatInput?.playerGold ?? gameState?.player.stats.gold,
         equippedTool: playerEquipment.tool,
         equippedGear: playerEquipment.gear,
       }}
-      goldReward={combatState.resolvedCombat?.goldReward}
+      goldReward={victoryGoldReward}
       isFinalVictory={isBossFight && currentWeek === 3}
       onCombatComplete={handleCombatComplete}
       arenaChildren={
