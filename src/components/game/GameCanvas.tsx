@@ -22,7 +22,7 @@ interface GameCanvasProps {
   playerSkinSource?: ImageSourcePropType;
 }
 
-export function GameCanvas({
+export const GameCanvas = React.memo(function GameCanvas({
   map,
   playerPosition,
   playerFacing,
@@ -60,7 +60,7 @@ export function GameCanvas({
       )}
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {

@@ -47,7 +47,7 @@ export interface CombatLayoutProps {
   arenaChildren?: React.ReactNode;
 }
 
-export function CombatLayout({
+export const CombatLayout = React.memo(function CombatLayout({
   enemyPanel,
   playerPanel,
   label,
@@ -279,7 +279,7 @@ export function CombatLayout({
       </ImageBackground>
     </Animated.View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {

@@ -11,6 +11,7 @@ import type {
   Gear,
   Tool,
   GearId,
+  ItemRarity,
   ItemsetId,
 } from '../engine/types';
 import { CombatPhase } from '../engine/types';
@@ -123,12 +124,21 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
       (sum, gear) => sum + Math.floor(base * RARITY_MULTIPLIER[gear.currentRarity]),
       0
     );
+  const tierValueFromRarity = (values: [number, number, number], rarity: ItemRarity) => {
+    if (rarity === 'DIAMOND') return values[2];
+    if (rarity === 'GILDED') return values[1];
+    return values[0];
+  };
+  const sumTierValues = (id: GearId, values: [number, number, number]) =>
+    getGear(id).reduce((sum, gear) => sum + tierValueFromRarity(values, gear.currentRarity), 0);
 
   // STONE items
   // NOTE: I1 (Miner Helmet) and I2 (Work Vest) provide permanent stat bonuses via gear.ts,
   // not battle start effects. Their stats are already included in player stats.
   const spikedBracersShrapnel = sumScaled('I3', 2); // G-ST-03: Battle Start: gain 2 Shrapnel
   const shrapnelTalismanCount = countGear('I6'); // G-ST-06: gain 1 Armor when gaining Shrapnel
+  const shrapnelTalismanBaseArmor = sumTierValues('I6', [3, 4, 5]);
+  const rebarCarapaceBaseArmor = sumTierValues('I5', [3, 4, 5]);
   const crystalCrownCount = countGear('I7'); // G-ST-07: gain Max HP equal to starting Armor
   const stoneSigilCount = countGear('I8'); // G-ST-08: End of turn: if you have Armor, gain 1 Armor
 
@@ -136,16 +146,25 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
   const drillServoBonuses = getGear('I14').map((gear) => (gear.currentRarity === 'DIAMOND' ? 2 : 1)); // G-SC-06: Wounded: gain +1/+1/+2 strikes
   const gearLinkMultiplier = countGear('I16') > 0 ? 2 : 1; // G-SC-08: On Hit effects trigger twice
 
+  const tunnelInstinctDig = sumTierValues('I11', [1, 2, 3]);
+  const tunnelInstinctSpd = sumTierValues('I11', [1, 2, 3]);
+  const tunnelInstinctAtk = sumTierValues('I11', [1, 1, 2]);
+
   // GREED items
+  const looseNuggetsArmor = sumTierValues('I17', [1, 1, 1]);
   const royalBracerCount = countGear('I20'); // G-GR-04: Turn Start: convert 1 Gold -> 2 Armor
   const shardEmerald = countGear('I21'); // G-GR-05: Every other turn: heal 1 HP
   const shardRuby = countGear('I22'); // G-GR-06: Every other turn: deal 1 non-weapon damage
   const shardSapphire = countGear('I23'); // G-GR-07: Every other turn: gain 1 Armor
   const shardCitrine = countGear('I24'); // G-GR-08: Every other turn: gain 1 Gold
+  const gemfinderShardAmp = playerTool?.id === 'T6' ? 1 : 0;
+  const gemfinderTriggersShards = playerTool?.id === 'T6';
 
   // BLAST items
   const smallChargeCount = countGear('I25'); // G-BL-01: Countdown(2): deal 8 to enemy and you
   const blastSuitActive = countGear('I26') > 0; // G-BL-02: Ignore damage from your own BLAST items
+  const blastSuitBattleArmor = sumTierValues('I26', [4, 5, 6]);
+  const blastSuitArmorOnNonWeapon = sumTierValues('I26', [1, 2, 3]);
   const explosivePowderCount = countGear('I27'); // G-BL-03: Non-weapon damage deals +1
   const doubleDetonationBonus = countGear('I28') * 3; // G-BL-04: Second non-weapon damage deals +2
   const bombSatchelCount = countGear('I29'); // G-BL-05: Battle Start: reduce Countdown by 1
@@ -154,6 +173,7 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
   const twinFuseMultiplier = countGear('I32') > 0 ? 2 : 1; // G-BL-08: Bomb triggers happen twice
 
   // FROST items
+  const frostLanternArmor = sumTierValues('I33', [1, 2, 3]);
   const frostLanternChill = sumScaled('I33', 1); // G-FR-01: Battle Start: give enemy 1 Chill
   const frostguardBonuses = getGear('I34').map((gear) => {
     if (gear.currentRarity === 'DIAMOND') return 5;
@@ -162,10 +182,17 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
   }); // G-FR-02: Battle Start: if enemy has Chill, gain +3/+4/+5 Armor and apply 1 Chill
 
   // RUST items
+  const oxidizerCount = countGear('I41');
+  const oxidizerArmor = sumTierValues('I41', [1, 2, 3]);
+  const oxidizerBaseRust = sumTierValues('I41', [1, 2, 3]);
+  const salvageClampCount = countGear('I48');
+  const salvageClampGoldPerRust = sumTierValues('I48', [2, 3, 4]);
   const rustSpikeCount = countGear('I42'); // G-RU-02: On Hit: apply 1 Rust
   const corrodedGreavesCount = countGear('I43'); // G-RU-03: Wounded: apply 2 Rust
 
   // BLOOD items
+  const bloodlettingBaseAtk = sumTierValues('I50', [1, 1, 2]);
+  const ambushCharmBaseSpd = sumTierValues('I58', [1, 1, 2]);
   const canaryCharges = countGear('I49'); // G-BO-01: Last Breath Sigil - prevent death, heal 2 HP
 
   let remainingCanaryCharges = canaryCharges;
@@ -180,6 +207,8 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
   let nextBombSelfDamageReduction = 0;
   let storedTimeChargeDamage = 0;
   let nonWeaponDamageCount = 0;
+  let blastSuitArmorTriggeredThisTurn = false;
+  let salvageClampGoldTriggeredThisTurn = false;
   let playerTurnsTaken = 0;
   let wasPlayerWounded = isWounded(state.player);
   let wasPlayerExposed = isExposed(state.player);
@@ -267,6 +296,24 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
       },
       rngValues: [],
     });
+
+    if (
+      salvageClampGoldPerRust > 0 &&
+      !salvageClampGoldTriggeredThisTurn &&
+      stacks > 0
+    ) {
+      salvageClampGoldTriggeredThisTurn = true;
+      updatePlayerGold(state.playerGold + salvageClampGoldPerRust);
+      state = addLogEntry(state, {
+        turn: state.turn,
+        timing: state.phase,
+        actor: 'player',
+        action: 'TRIGGER_ITEM',
+        target: 'player',
+        result: { effectName: 'Salvage Clamp', goldStolen: salvageClampGoldPerRust },
+        rngValues: [],
+      });
+    }
   };
 
   const applyShrapnelToPlayer = (stacks: number, effectName?: string) => {
@@ -411,6 +458,11 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
       result: { damage, effectName: options.source },
       rngValues: [],
     });
+
+    if (target === 'enemy' && blastSuitArmorOnNonWeapon > 0 && !blastSuitArmorTriggeredThisTurn) {
+      blastSuitArmorTriggeredThisTurn = true;
+      applyPlayerArmor(blastSuitArmorOnNonWeapon, 'Blast Suit');
+    }
 
     if (target === 'player') {
       preventDeathWithCanary();
@@ -598,9 +650,63 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
       applyShrapnelToPlayer(spikedBracersShrapnel, 'Spiked Bracers');
     }
 
+    if (rebarCarapaceBaseArmor > 0) {
+      applyPlayerArmor(rebarCarapaceBaseArmor, 'Rebar Carapace');
+    }
+    if (shrapnelTalismanBaseArmor > 0) {
+      applyPlayerArmor(shrapnelTalismanBaseArmor, 'Shrapnel Talisman');
+    }
+    if (looseNuggetsArmor > 0) {
+      applyPlayerArmor(looseNuggetsArmor, 'Loose Nuggets');
+    }
+    if (blastSuitBattleArmor > 0) {
+      applyPlayerArmor(blastSuitBattleArmor, 'Blast Suit');
+    }
+    if (frostLanternArmor > 0) {
+      applyPlayerArmor(frostLanternArmor, 'Frost Lantern');
+    }
+    if (oxidizerArmor > 0) {
+      applyPlayerArmor(oxidizerArmor, 'Oxidizer Vial');
+    }
+    if (bloodlettingBaseAtk > 0) {
+      state = {
+        ...state,
+        player: { ...state.player, bonusAtk: state.player.bonusAtk + bloodlettingBaseAtk },
+      };
+    }
+    if (ambushCharmBaseSpd > 0) {
+      state = {
+        ...state,
+        player: { ...state.player, bonusSpd: state.player.bonusSpd + ambushCharmBaseSpd },
+      };
+    }
+    if (tunnelInstinctDig > 0) {
+      state = {
+        ...state,
+        player: { ...state.player, dig: state.player.dig + tunnelInstinctDig },
+      };
+      if (state.player.dig > state.enemy.dig) {
+        state = {
+          ...state,
+          player: {
+            ...state.player,
+            bonusSpd: state.player.bonusSpd + tunnelInstinctSpd,
+            bonusAtk: state.player.bonusAtk + tunnelInstinctAtk,
+          },
+        };
+      }
+    }
+
     // G-FR-01: Frost Lantern - Battle Start: give enemy 1/2/3 Chill
     if (frostLanternChill > 0) {
       applyChill('enemy', frostLanternChill, 'Frost Lantern');
+    }
+    if (oxidizerBaseRust > 0) {
+      const extraRust = state.enemy.arm > 0 ? oxidizerCount : 0;
+      applyRustToEnemy(oxidizerBaseRust + extraRust, 'Oxidizer Vial');
+    }
+    if (salvageClampCount > 0) {
+      applyRustToEnemy(salvageClampCount, 'Salvage Clamp');
     }
 
     // G-FR-02: Frostguard Buckler - Battle Start: if enemy has Chill, gain +3/+4/+5 Armor and apply 1 Chill
@@ -688,7 +794,7 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
           actor: 'player',
           action: 'TRIGGER_ITEMSET',
           target: 'player',
-          result: { effectName: 'Swift Digger Kit (+1 Strike, +2 ATK)' },
+          result: { effectName: 'Swift Digger Kit (+1 Strike, +3 ATK)' },
           rngValues: [],
         });
       }
@@ -727,7 +833,7 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
 
     // BLOODRUSH_PROTOCOL: Turn 1 apply 2 Bleed
     if (activeItemSets.includes('BLOODRUSH_PROTOCOL')) {
-      applyBleed('enemy', 2, 'Bloodrush Protocol');
+      applyBleed('enemy', 3, 'Bloodrush Protocol');
     }
   };
 
@@ -798,31 +904,29 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
 
     // Shard Circuit: Shards trigger every turn
     const shardCircuitActive = activeItemSets.includes('SHARD_CIRCUIT');
-    if (shardCircuitActive || playerTurnsTaken % 2 === 0) {
+    if (shardCircuitActive || gemfinderTriggersShards || playerTurnsTaken % 2 === 0) {
       if (shardEmerald > 0) {
-        applyHealing('player', shardEmerald, 'Emerald Shard');
+        applyHealing('player', shardEmerald * (1 + gemfinderShardAmp), 'Emerald Shard');
       }
       if (shardRuby > 0) {
         for (let i = 0; i < shardRuby; i += 1) {
-          applyNonWeaponDamage('enemy', 1, { source: 'Ruby Shard' });
+          applyNonWeaponDamage('enemy', 1 + gemfinderShardAmp, { source: 'Ruby Shard' });
         }
       }
       if (shardSapphire > 0) {
-        applyPlayerArmor(shardSapphire, 'Sapphire Shard');
+        applyPlayerArmor(shardSapphire * (1 + gemfinderShardAmp), 'Sapphire Shard');
       }
       if (shardCitrine > 0) {
-        state = {
-          ...state,
-          player: {
-            ...state.player,
-            dig: state.player.dig + shardCitrine,
-          },
-        };
+        updatePlayerGold(state.playerGold + shardCitrine * (1 + gemfinderShardAmp));
       }
     }
   };
 
-  const resolveWeaponStrike = (attackerKey: 'player' | 'enemy', tempAtkBonus: number) => {
+  const resolveWeaponStrike = (
+    attackerKey: 'player' | 'enemy',
+    tempAtkBonus: number,
+    spdBonus: number = 0
+  ) => {
     const defenderKey = attackerKey === 'player' ? 'enemy' : 'player';
     const attackerState = state[attackerKey];
     const defenderState = state[defenderKey];
@@ -862,6 +966,7 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
         result: {
           damage: hpLost,
           armorLost,
+          ...(spdBonus > 0 ? { spdBonus } : {}),
         },
         rngValues: [rng.next()],
       });
@@ -903,6 +1008,7 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
     return {
       armorLost,
       hpLost,
+      spdBonus,
     };
   };
 
@@ -1000,6 +1106,8 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
       phase: CombatPhase.TurnStart,
     };
     nonWeaponDamageCount = 0;
+    blastSuitArmorTriggeredThisTurn = false;
+    salvageClampGoldTriggeredThisTurn = false;
 
     if (nextAttacker === 'player') {
       handlePlayerTurnStart();
@@ -1055,6 +1163,12 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
         break;
       }
 
+      const attackerEffectiveSpeed = attackerState.spd + attackerState.bonusSpd;
+      const defenderState = nextAttacker === 'player' ? state.enemy : state.player;
+      const defenderEffectiveSpeed = defenderState.spd + defenderState.bonusSpd;
+      const speedDifference = Math.max(0, attackerEffectiveSpeed - defenderEffectiveSpeed);
+      const firstStrikeSpdBonus = strike === 0 ? Math.floor(speedDifference / 2) : 0;
+
       const strikeTempBonus =
         nextAttacker === 'player' &&
         playerTool?.id === 'T4' &&
@@ -1069,8 +1183,11 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
             strike === 0
               ? 3
               : 0);
-
-      const { hpLost } = resolveWeaponStrike(nextAttacker, strikeTempBonus);
+      const { hpLost } = resolveWeaponStrike(
+        nextAttacker,
+        strikeTempBonus + firstStrikeSpdBonus,
+        firstStrikeSpdBonus
+      );
       if (
         nextAttacker === 'player' &&
         activeItemSets.includes('WHITEOUT_INITIATIVE') &&

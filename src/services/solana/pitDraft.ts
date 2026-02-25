@@ -16,8 +16,8 @@ import { toolToFrontend, gearToFrontend } from '@/data/id-mapping';
 import type { BackendCombatLogEntry } from './types/combat_events';
 import { LogAction } from './types/combat_events';
 import type { Tool, Gear, ToolOil } from '@/game/engine/types';
-import { getAllToolDefinitions } from '@/game/entities/items';
-import { getAllGearDefinitions, RARITY_MULTIPLIER } from '@/data/gear';
+import { getAllToolDefinitions, getToolStatsAtTier } from '@/game/entities/items';
+import { getAllGearDefinitions, RARITY_MULTIPLIER, getTierFromRarity } from '@/data/gear';
 
 // ============================================================================
 // Constants
@@ -564,12 +564,14 @@ export function convertItemInstanceToTool(item: OnChainItemInstance): Tool | nul
 
   const rarity = tierToRarity(item.tier, toolDef.rarity);
 
+  const tier = getTierFromRarity(rarity);
+
   return {
     id: toolDef.id,
     name: toolDef.name,
     emoji: toolDef.emoji,
     image: toolDef.image,
-    stats: scaleStatsWithRarity(toolDef.stats, rarity),
+    stats: { ...getToolStatsAtTier(toolDef.id, tier) },
     rarity,
     tags: toolDef.tags,
     oil: getToolOilFromFlags(item.toolOilFlags),

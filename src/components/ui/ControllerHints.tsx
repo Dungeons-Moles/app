@@ -45,6 +45,7 @@ export type HintButton =
   | 'Y'
   | 'L1'
   | 'R1'
+  | 'L1R1'
   | 'Start'
   | 'Select'
   | 'DPadUp'
@@ -61,6 +62,15 @@ export interface ButtonHint {
 }
 
 function ButtonIcon({ button, size }: { button: HintButton; size: number }) {
+  if (button === 'L1R1') {
+    return (
+      <View style={iconStyles.compound}>
+        <Image source={ICON_L1} style={{ width: size, height: size }} resizeMode="contain" />
+        <Image source={ICON_R1} style={{ width: size, height: size }} resizeMode="contain" />
+      </View>
+    );
+  }
+
   if (button === 'DPadLeftRight') {
     return (
       <View style={iconStyles.compound}>

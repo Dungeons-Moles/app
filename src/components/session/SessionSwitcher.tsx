@@ -7,6 +7,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, Pressable, Modal, ScrollView } from 'react-native';
 import { Typography } from '../../theme/typography';
 import { formatPhaseLabel } from '../../utils/phase-labels';
+import { useAudio } from '../../contexts/AudioContext';
 
 interface SessionSummary {
   sessionPda: string;
@@ -33,6 +34,7 @@ export function SessionSwitcher({
   disabled = false,
 }: SessionSwitcherProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const { playSfx } = useAudio();
 
   const otherSessions = activeSessions.filter((s) => s.level !== currentLevel);
 
@@ -41,6 +43,7 @@ export function SessionSwitcher({
   }
 
   const handleSelect = (sessionPda: string) => {
+    playSfx('ui_click');
     setIsOpen(false);
     onSwitch(sessionPda);
   };
@@ -50,7 +53,12 @@ export function SessionSwitcher({
       {/* Current session badge */}
       <Pressable
         style={[styles.currentBadge, disabled && styles.disabled]}
-        onPress={() => !disabled && setIsOpen(true)}
+        onPress={() => {
+          if (!disabled) {
+            playSfx('ui_click');
+            setIsOpen(true);
+          }
+        }}
         disabled={disabled}
       >
         <Text style={styles.currentLabel}>Level</Text>
@@ -59,7 +67,12 @@ export function SessionSwitcher({
       </Pressable>
 
       {/* Session selector modal */}
-      <Modal visible={isOpen} transparent animationType="fade" onRequestClose={() => setIsOpen(false)}>
+      <Modal
+        visible={isOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsOpen(false)}
+      >
         <Pressable style={styles.modalOverlay} onPress={() => setIsOpen(false)}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Switch Session</Text>
@@ -91,7 +104,13 @@ export function SessionSwitcher({
               ))}
             </ScrollView>
 
-            <Pressable style={styles.closeButton} onPress={() => setIsOpen(false)}>
+            <Pressable
+              style={styles.closeButton}
+              onPress={() => {
+                playSfx('ui_click');
+                setIsOpen(false);
+              }}
+            >
               <Text style={styles.closeButtonText}>Cancel</Text>
             </Pressable>
           </View>

@@ -7,6 +7,7 @@ export { GameCanvas } from './GameCanvas';
 export { StatsPanel } from './StatsPanel';
 export { InventoryPanel } from './InventoryPanel';
 export { ItemTooltip } from './ItemTooltip';
+export { ItemsetTooltip } from './ItemsetTooltip';
 export { POIModal } from './POIModal';
 export { DebugOverlay } from './DebugOverlay';
 export { FastTravelButton } from './FastTravelButton';

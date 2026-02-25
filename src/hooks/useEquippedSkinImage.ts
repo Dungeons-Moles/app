@@ -1,9 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { type ImageSourcePropType } from 'react-native';
 import type { PublicKey } from '@solana/web3.js';
 import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
 import { parseMetaplexCoreAsset } from '@/services/solana/metaplexCore';
 import { getSkinImage, defaultMoleImage } from '@/data/skinImages';
+
+// Module-level cache: avoids the default-image flash when navigating between screens.
+// Once a skin is resolved, subsequent hook instances return it immediately.
+const skinImageCache = new Map<string, ImageSourcePropType>();
 
 /**
  * Lightweight hook that resolves the equipped skin's image.
@@ -13,14 +17,24 @@ import { getSkinImage, defaultMoleImage } from '@/data/skinImages';
  */
 export function useEquippedSkinImage(equippedSkin: PublicKey | null | undefined): ImageSourcePropType {
   const { connection } = useSolanaConnection();
-  const [skinImage, setSkinImage] = useState<ImageSourcePropType>(defaultMoleImage);
 
   // Stabilize dependency — only re-run when the pubkey string actually changes
   const skinKeyStr = equippedSkin?.toBase58() ?? null;
 
+  const [skinImage, setSkinImage] = useState<ImageSourcePropType>(
+    skinKeyStr ? (skinImageCache.get(skinKeyStr) ?? defaultMoleImage) : defaultMoleImage
+  );
+
   useEffect(() => {
     if (!skinKeyStr || !equippedSkin) {
       setSkinImage(defaultMoleImage);
+      return;
+    }
+
+    // If already cached, set immediately (covers cases where skinKeyStr changed after mount)
+    const cached = skinImageCache.get(skinKeyStr);
+    if (cached) {
+      setSkinImage(cached);
       return;
     }
 
@@ -32,8 +46,9 @@ export function useEquippedSkinImage(equippedSkin: PublicKey | null | undefined)
         if (cancelled || !accountInfo) return;
 
         const asset = parseMetaplexCoreAsset(equippedSkin, accountInfo.data as Buffer);
-        const image = getSkinImage(asset.name);
-        setSkinImage(image ?? defaultMoleImage);
+        const resolved = getSkinImage(asset.name) ?? defaultMoleImage;
+        skinImageCache.set(skinKeyStr, resolved);
+        setSkinImage(resolved);
       } catch {
         if (!cancelled) setSkinImage(defaultMoleImage);
       }

@@ -18,6 +18,7 @@ import type {
   BossCombatStartedEvent,
   EnemyMovedEvent,
   PlayerDefeatedEvent,
+  PlayerHealedEvent,
   LevelCompletedEvent,
   ItemUnlockedEvent,
   ParsedEvent,
@@ -27,7 +28,10 @@ import type {
   BackendCombatLogEntry,
 } from './types/combat_events';
 import { EVENT_NAMES, LogAction } from './types/combat_events';
-import { getItemById, getItemForLevel } from '@/data/items/all-items';
+import { getItemForLevel } from '@/data/items/all-items';
+import { getGearDefinition } from '@/data/gear';
+import { getToolDefinition } from '@/game/entities/items';
+import type { GearId, ToolId } from '@/game/engine/types';
 import type { UnlockedItem } from '@/navigation';
 
 // ============================================================================
@@ -340,7 +344,7 @@ export async function parseCombatLog(
   }
 
   if (!log) {
-    console.warn('[parseCombatLog] No CombatLog event found in', tx.meta.logMessages.length, 'log lines');
+    console.debug('[parseCombatLog] No CombatLog event found in', tx.meta.logMessages.length, 'log lines');
   }
 
   return { log, enemyInfo };
@@ -356,10 +360,12 @@ export async function parseCombatLog(
  */
 export async function parseBossCombatFromMoveTx(
   connection: Connection,
-  signature: string
+  signature: string,
+  program?: Program
 ): Promise<{
   combatLog?: BackendCombatLogEntry[];
   preBossPlayerHp?: number;
+  combatEnded?: CombatEndedEvent;
 }> {
   const tx = await connection.getTransaction(signature, {
     commitment: 'confirmed',
@@ -372,12 +378,41 @@ export async function parseBossCombatFromMoveTx(
 
   let lastLog: CombatLogEvent | null = null;
   let lastPlayerHp: number | undefined;
+  let preBossPlayerHpFromHeal: number | undefined;
+  let lastCombatEnded: CombatEndedEvent | undefined;
+  let bossStartedSeen = false;
 
   for (const logLine of tx.meta.logMessages) {
     if (!logLine.startsWith('Program data: ')) continue;
     const base64Data = logLine.slice('Program data: '.length);
     try {
       const buf = Buffer.from(base64Data, 'base64');
+
+      // Prefer typed event decoding when program is available so we can
+      // recover extra context (PlayerHealed + CombatEnded) in POI-driven boss flows.
+      if (program) {
+        try {
+          const raw = program.coder.events.decode(buf.toString('base64'));
+          if (raw) {
+            const eventName = raw.name;
+            const eventData = convertEventData(
+              eventName,
+              raw.data as Record<string, unknown>
+            );
+            if (eventName === EVENT_NAMES.BOSS_COMBAT_STARTED) {
+              bossStartedSeen = true;
+            } else if (eventName === EVENT_NAMES.PLAYER_HEALED && !bossStartedSeen) {
+              const healed = eventData as PlayerHealedEvent;
+              preBossPlayerHpFromHeal = healed.newHp;
+            } else if (eventName === EVENT_NAMES.COMBAT_ENDED) {
+              lastCombatEnded = eventData as CombatEndedEvent;
+            }
+          }
+        } catch {
+          // Ignore non-event program-data lines.
+        }
+      }
+
       if (buf.length >= 8) {
         const disc = buf.subarray(0, 8);
         if (disc.equals(COMBAT_LOG_DISCRIMINATOR)) {
@@ -400,7 +435,8 @@ export async function parseBossCombatFromMoveTx(
 
   return {
     combatLog: lastLog?.entries,
-    preBossPlayerHp: lastPlayerHp,
+    preBossPlayerHp: preBossPlayerHpFromHeal ?? lastPlayerHp,
+    combatEnded: lastCombatEnded,
   };
 }
 
@@ -693,43 +729,69 @@ export async function hasNightMovementEvents(
 // ============================================================================
 
 /**
+ * Look up gear/tool definition by pool index and return UnlockedItem data.
+ * Pool indices 0-63 map to gear I1-I64, indices 64-79 map to tools T1-T16.
+ */
+function poolIndexToUnlockedItem(index: number): UnlockedItem | undefined {
+  if (index >= 0 && index <= 63) {
+    const gearId = `I${index + 1}` as GearId;
+    try {
+      const def = getGearDefinition(gearId);
+      if (!def) return undefined;
+      return { name: def.name, emoji: def.emoji, image: def.image, stats: def.stats };
+    } catch {
+      return undefined;
+    }
+  }
+  if (index >= 64 && index <= 79) {
+    const toolId = `T${index - 63}` as ToolId;
+    try {
+      const def = getToolDefinition(toolId);
+      if (!def) return undefined;
+      return { name: def.name, emoji: def.emoji, image: def.image, stats: def.stats };
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
+/**
  * Convert an ItemUnlockedEvent to UnlockedItem format for VictoryScreen.
+ * Uses gear/tool definitions directly from the pool index.
  *
  * @param event - ItemUnlockedEvent from transaction logs
- * @returns UnlockedItem with name, emoji, and stats, or undefined if item not found
+ * @returns UnlockedItem with name, emoji, image, and stats, or undefined if item not found
  */
 export function itemUnlockedEventToUnlockedItem(
   event: ItemUnlockedEvent
 ): UnlockedItem | undefined {
-  const item = getItemById(event.itemIndex);
-  if (!item) {
-    console.warn('[eventParser] Item not found for index:', event.itemIndex);
-    return undefined;
+  const result = poolIndexToUnlockedItem(event.itemIndex);
+  if (!result) {
+    console.warn('[eventParser] Item not found for pool index:', event.itemIndex);
   }
-
-  return {
-    name: item.name,
-    emoji: item.emoji,
-    stats: item.stats,
-  };
+  return result;
 }
 
 /**
  * Get the item that should be unlocked for a given level completion.
+ * Uses the legacy all-items level mapping to find the pool index,
+ * then looks up display data from gear/tool definitions.
  *
  * @param level - Campaign level that was completed
  * @returns UnlockedItem for the level, or undefined if no item for this level
  */
 export function getUnlockedItemForLevel(level: number): UnlockedItem | undefined {
-  const item = getItemForLevel(level);
-  if (!item) {
+  // all-items.ts provides the level → pool index mapping
+  const legacyItem = getItemForLevel(level);
+  if (!legacyItem) {
     return undefined;
   }
-
-  return {
-    name: item.name,
-    emoji: item.emoji,
-    stats: item.stats,
+  // Look up the actual gear/tool definition for display data
+  return poolIndexToUnlockedItem(legacyItem.id) ?? {
+    name: legacyItem.name,
+    emoji: legacyItem.emoji,
+    stats: legacyItem.stats,
   };
 }
 

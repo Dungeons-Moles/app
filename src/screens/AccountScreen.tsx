@@ -11,6 +11,7 @@ import {
   Animated,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useFocusEffect } from '@react-navigation/native';
 import { useProfile } from '../contexts/ProfileContext';
 import { useScreenVariant } from '../contexts/ScreenVariantContext';
 import { useWallet, type SupportedWallet } from '../contexts/WalletContext';
@@ -21,6 +22,7 @@ import { BackpackIcon } from '../components/wallet/BackpackIcon';
 import { useControllerAction } from '../hooks/useControllerAction';
 import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHints';
 import { ControllerKeyboard } from '../components/ui/ControllerKeyboard';
+import { useAudio } from '../contexts/AudioContext';
 
 type AccountScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Account'>;
@@ -38,13 +40,16 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
     mode,
   } = useProfile();
   const { wallet, connect, isConnecting, error: walletError } = useWallet();
+  const { playBgm, playSfx, isInitialLoading } = useAudio();
   const screenVariant = useScreenVariant();
   const isCompact = screenVariant === 'compact';
   const [selectedWallet, setSelectedWallet] = useState<SupportedWallet>('Jupiter');
   const [profileName, setProfileName] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
   const [isActionLoading, setIsActionLoading] = useState(false);
+  const [isSignInChecking, setIsSignInChecking] = useState(false);
   const hasInitialized = useRef(false);
+  const sawProfileLoadRef = useRef(false);
   const [guestModeActivated, setGuestModeActivated] = useState(false);
   const [showKeyboard, setShowKeyboard] = useState(false);
   const [panelDimensions, setPanelDimensions] = useState<{ width: number; height: number } | null>(
@@ -54,37 +59,59 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
 
   // Derived state
   const showLoading =
-    isActionLoading || isConnecting || (!hasInitialized.current && isProfileLoading);
+    isActionLoading ||
+    isSignInChecking ||
+    isConnecting ||
+    (!hasInitialized.current && isProfileLoading);
   const isConnected = wallet.isConnected;
+  const showWalletSelection = !isConnected || isSignInChecking;
+  const isCheckingExistingProfile =
+    isConnected && !profile && (isSignInChecking || isProfileLoading);
+  const showCreateProfile = isConnected && !profile && !isCheckingExistingProfile;
   const errorMessage = localError ?? walletError ?? profileError;
 
   // --- Handlers ---
 
   const handleSignIn = useCallback(async () => {
+    playSfx('ui_click');
     setLocalError(null);
-    const result = await connect(selectedWallet);
-    if (!result) {
-      return;
+    setIsSignInChecking(true);
+    sawProfileLoadRef.current = false;
+    try {
+      const result = await connect(selectedWallet);
+      if (!result) {
+        setIsSignInChecking(false);
+        return;
+      }
+      // Wallet connected — isSignInChecking stays true.
+      // ProfileContext auto-fetches when wallet.publicKey changes.
+      // The effect below clears isSignInChecking once profile state settles.
+    } catch {
+      setIsSignInChecking(false);
     }
-  }, [connect, selectedWallet]);
+  }, [connect, selectedWallet, playSfx]);
 
   const handlePlayAsGuest = useCallback(() => {
+    playSfx('ui_click');
     setLocalError(null);
     setGuestModeActivated(true);
     loginAsGuest();
-  }, [loginAsGuest]);
+  }, [loginAsGuest, playSfx]);
 
   const handleCreateProfile = useCallback(async () => {
     if (!profileName.trim()) {
+      playSfx('ui_error');
       setLocalError('Enter a display name to continue');
       return;
     }
 
     if (profileName.trim().length > 32) {
+      playSfx('ui_error');
       setLocalError('Name must be 32 characters or less');
       return;
     }
 
+    playSfx('ui_click');
     setLocalError(null);
     setIsActionLoading(true);
     try {
@@ -92,65 +119,83 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
       if (result.success) {
         navigation.replace('Hub');
       } else {
+        playSfx('ui_error');
         setLocalError(result.error ?? 'Failed to create profile');
       }
     } finally {
       setIsActionLoading(false);
     }
-  }, [profileName, createProfile, navigation]);
+  }, [profileName, createProfile, navigation, playSfx]);
 
   const handleDPadLeft = useCallback(() => {
+    playSfx('ui_hover');
     setSelectedWallet((prev) => {
       const idx = WALLET_IDS.indexOf(prev);
       return WALLET_IDS[(idx - 1 + WALLET_IDS.length) % WALLET_IDS.length];
     });
-  }, []);
+  }, [playSfx]);
 
   const handleDPadRight = useCallback(() => {
+    playSfx('ui_hover');
     setSelectedWallet((prev) => {
       const idx = WALLET_IDS.indexOf(prev);
       return WALLET_IDS[(idx + 1) % WALLET_IDS.length];
     });
-  }, []);
+  }, [playSfx]);
 
   // --- Controller integration ---
 
   const hasName = profileName.trim().length > 0;
 
   const handleOpenKeyboard = useCallback(() => {
+    playSfx('ui_click');
     setShowKeyboard(true);
-  }, []);
+  }, [playSfx]);
 
-  const handleKeyboardSubmit = useCallback((name: string) => {
-    setProfileName(name);
-    setShowKeyboard(false);
-  }, []);
+  const handleKeyboardSubmit = useCallback(
+    (name: string) => {
+      playSfx('ui_click');
+      setProfileName(name);
+      setShowKeyboard(false);
+    },
+    [playSfx]
+  );
 
   const handleKeyboardCancel = useCallback(() => {
+    playSfx('ui_click');
     setShowKeyboard(false);
-  }, []);
+  }, [playSfx]);
 
   const handleClearName = useCallback(() => {
+    playSfx('ui_click');
     setProfileName('');
-  }, []);
+  }, [playSfx]);
 
   useControllerAction(
     {
-      onA: !isConnected ? handleSignIn : hasName ? handleCreateProfile : handleOpenKeyboard,
-      onB: isConnected && hasName ? handleClearName : undefined,
-      onDPadLeft: !isConnected ? handleDPadLeft : undefined,
-      onDPadRight: !isConnected ? handleDPadRight : undefined,
-      onSelect: !isConnected ? handlePlayAsGuest : undefined,
+      onA: showWalletSelection
+        ? handleSignIn
+        : showCreateProfile
+          ? hasName
+            ? handleCreateProfile
+            : handleOpenKeyboard
+          : undefined,
+      onB: showCreateProfile && hasName ? handleClearName : undefined,
+      onDPadLeft: showWalletSelection ? handleDPadLeft : undefined,
+      onDPadRight: showWalletSelection ? handleDPadRight : undefined,
+      onSelect: showWalletSelection ? handlePlayAsGuest : undefined,
     },
     !showLoading && !showKeyboard
   );
 
-  const controllerHints: ButtonHint[] = !isConnected
+  const controllerHints: ButtonHint[] = showWalletSelection
     ? [
         { button: 'DPadLeftRight', label: 'Select Wallet' },
         { button: 'A', label: 'Sign In' },
         { button: 'Select', label: 'Play as Guest' },
       ]
+    : isCheckingExistingProfile
+      ? [{ button: 'A', label: 'Checking Profile' }]
     : hasName
       ? [
           { button: 'A', label: 'Create Profile' },
@@ -166,13 +211,42 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
       duration: 600,
       useNativeDriver: true,
     }).start();
-  }, []);
+  }, [fadeAnim]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!isInitialLoading) {
+        playBgm('title');
+      }
+    }, [playBgm, isInitialLoading])
+  );
 
   useEffect(() => {
     if (!isProfileLoading && !hasInitialized.current) {
       hasInitialized.current = true;
     }
   }, [isProfileLoading]);
+
+  // Clear isSignInChecking once the profile auto-fetch cycle completes after connect.
+  // We wait for isProfileLoading to go true→false (a full load cycle) so we don't
+  // clear prematurely on a stale isProfileLoading=false before the fetch starts.
+  useEffect(() => {
+    if (!isSignInChecking || !isConnected) return;
+    if (profile) {
+      // Profile found — navigation effect below handles Hub redirect.
+      setIsSignInChecking(false);
+      return;
+    }
+    if (isProfileLoading) {
+      sawProfileLoadRef.current = true;
+      return;
+    }
+    if (sawProfileLoadRef.current) {
+      // Load cycle finished with no profile — show create profile form.
+      setIsSignInChecking(false);
+      sawProfileLoadRef.current = false;
+    }
+  }, [isSignInChecking, isConnected, profile, isProfileLoading]);
 
   useEffect(() => {
     if (isConnected && profile && !isProfileLoading) {
@@ -245,9 +319,11 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
             resizeMode="contain"
           >
             <View style={[styles.topSlot, isCompact && { top: '19%' }]}>
-              {!isConnected ? (
+              {showWalletSelection ? (
                 <>
-                  <Text style={[styles.profileLabel, isCompact && { fontSize: 22 }]}>SUPPORTED WALLETS</Text>
+                  <Text style={[styles.profileLabel, isCompact && { fontSize: 22 }]}>
+                    SUPPORTED WALLETS
+                  </Text>
                   <View style={styles.walletOptions}>
                     {(
                       [
@@ -263,7 +339,10 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
                           isCompact && { width: 96, height: 96 },
                           id === selectedWallet && styles.walletOptionSelected,
                         ]}
-                        onPress={() => setSelectedWallet(id)}
+                        onPress={() => {
+                          playSfx('ui_click');
+                          setSelectedWallet(id);
+                        }}
                         activeOpacity={0.7}
                         disabled={showLoading}
                       >
@@ -284,7 +363,10 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
                         isCompact && { width: 96, height: 96 },
                         'DevKeypair' === selectedWallet && styles.walletOptionSelected,
                       ]}
-                      onPress={() => setSelectedWallet('DevKeypair')}
+                      onPress={() => {
+                        playSfx('ui_click');
+                        setSelectedWallet('DevKeypair');
+                      }}
                       activeOpacity={0.7}
                       disabled={showLoading}
                     >
@@ -303,13 +385,31 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
                       </Text>
                     </TouchableOpacity>
                   </View>
-                  <Text style={[styles.walletHint, isCompact && { fontSize: 20 }]}>Select a wallet to sign in</Text>
+                  <Text style={[styles.walletHint, isCompact && { fontSize: 20 }]}>
+                    Select a wallet to sign in
+                  </Text>
+                </>
+              ) : isCheckingExistingProfile ? (
+                <>
+                  <Text style={[styles.profileLabel, isCompact && { fontSize: 22 }]}>
+                    CHECKING PROFILE
+                  </Text>
+                  <Text style={[styles.walletHint, isCompact && { fontSize: 20 }]}>
+                    Verifying account...
+                  </Text>
                 </>
               ) : (
                 <>
-                  <Text style={[styles.profileLabel, isCompact && { fontSize: 22, marginBottom: 20 }]}>CREATE PROFILE</Text>
+                  <Text
+                    style={[styles.profileLabel, isCompact && { fontSize: 22, marginBottom: 20 }]}
+                  >
+                    CREATE PROFILE
+                  </Text>
                   <TextInput
-                    style={[styles.profileInput, isCompact && { fontSize: 20, paddingVertical: 14, width: '85%' }]}
+                    style={[
+                      styles.profileInput,
+                      isCompact && { fontSize: 20, paddingVertical: 14, width: '85%' },
+                    ]}
                     placeholder="Adventurer name"
                     placeholderTextColor="#999999"
                     value={profileName}
@@ -325,9 +425,15 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
             <View style={[styles.buttonSlot, isCompact && { width: '60%', aspectRatio: 3.0 }]}>
               <TouchableOpacity
                 style={styles.primaryButton}
-                onPress={!isConnected ? handleSignIn : handleCreateProfile}
+                onPress={
+                  showWalletSelection
+                    ? handleSignIn
+                    : isCheckingExistingProfile
+                      ? undefined
+                      : handleCreateProfile
+                }
                 activeOpacity={0.7}
-                disabled={showLoading}
+                disabled={showLoading || (isConnected && !!profile) || isCheckingExistingProfile}
               >
                 <ImageBackground
                   source={require('../../assets/ui/buttons/button.png')}
@@ -337,11 +443,23 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
                   {showLoading ? (
                     <View style={styles.loadingRow}>
                       <ActivityIndicator size={isCompact ? 'large' : 'small'} color="#ffffff" />
-                      <Text style={[styles.primaryButtonText, isCompact && { fontSize: 32 }, { marginLeft: 8 }]}>Loading...</Text>
+                      <Text
+                        style={[
+                          styles.primaryButtonText,
+                          isCompact && { fontSize: 32 },
+                          { marginLeft: 8 },
+                        ]}
+                      >
+                        Loading...
+                      </Text>
                     </View>
                   ) : (
                     <Text style={[styles.primaryButtonText, isCompact && { fontSize: 32 }]}>
-                      {!isConnected ? 'Sign In' : 'Create Profile'}
+                      {showWalletSelection
+                        ? 'Sign In'
+                        : isCheckingExistingProfile
+                          ? 'Checking...'
+                          : 'Create Profile'}
                     </Text>
                   )}
                 </ImageBackground>
@@ -349,16 +467,22 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
             </View>
 
             {/* Guest Mode Link - only show when not connected (T002) */}
-            {!isConnected && (
+            {showWalletSelection && (
               <View style={[styles.guestSlot, isCompact && { bottom: '13%' }]}>
                 <TouchableOpacity onPress={handlePlayAsGuest} disabled={showLoading}>
-                  <Text style={[styles.guestText, isCompact && { fontSize: 22 }]}>or play as guest</Text>
+                  <Text style={[styles.guestText, isCompact && { fontSize: 22 }]}>
+                    or play as guest
+                  </Text>
                 </TouchableOpacity>
               </View>
             )}
 
             <View style={[styles.errorSlot, isCompact && { bottom: '14%' }]}>
-              {errorMessage ? <Text style={[styles.errorText, isCompact && { fontSize: 16 }]}>{errorMessage}</Text> : null}
+              {errorMessage ? (
+                <Text style={[styles.errorText, isCompact && { fontSize: 16 }]}>
+                  {errorMessage}
+                </Text>
+              ) : null}
             </View>
           </ImageBackground>
         </View>
@@ -376,6 +500,12 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
 
       {/* Controller button hints */}
       <ControllerHints hints={controllerHints} />
+
+      <View style={[styles.versionLabel, isCompact && styles.versionLabelCompact]}>
+        <Text style={[styles.versionText, isCompact && styles.versionTextCompact]}>
+          Beta Version 0.1.0
+        </Text>
+      </View>
     </Animated.View>
   );
 }
@@ -565,5 +695,31 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#a33a3a',
     textAlign: 'center',
+  },
+  versionLabel: {
+    position: 'absolute',
+    top: 14,
+    left: 14,
+    zIndex: 100,
+    backgroundColor: '#a33a3a',
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  versionLabelCompact: {
+    top: 24,
+    left: 24,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  versionText: {
+    fontSize: 12,
+    color: '#ffffff',
+    fontFamily: 'Inter-Regular',
+    fontWeight: 'bold',
+  },
+  versionTextCompact: {
+    fontSize: 18,
   },
 });

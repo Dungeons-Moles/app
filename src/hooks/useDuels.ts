@@ -33,9 +33,13 @@ export interface DuelHistoryItem {
   turnsTaken: number | null;
 }
 
+const DUEL_CLEANUP_WAIT_TIMEOUT_MS = 45000;
+const DUEL_CLEANUP_POLL_MS = 1000;
+
 export function useDuels() {
   const { wallet, signAndSendTransaction, checkBalance } = useWallet();
-  const { mapSeed, startDuelGame, switchToSession } = useSession();
+  const { mapSeed, startDuelGame, switchToSession, processPendingCleanups, hasPendingCleanups } =
+    useSession();
   const { connection } = useSolanaConnection();
 
   const [phase, setPhase] = useState<DuelsPhase>('confirm');
@@ -161,6 +165,38 @@ export function useDuels() {
       }
 
       const [duelSessionPda] = deriveDuelSessionPda(wallet.publicKey);
+
+      // If a previous duel run is still being undelegated/closed in background,
+      // wait for the duel session PDA to disappear before starting a new one.
+      if (hasPendingCleanups) {
+        const waitStartedAt = Date.now();
+        while (Date.now() - waitStartedAt < DUEL_CLEANUP_WAIT_TIMEOUT_MS) {
+          await processPendingCleanups().catch((err) => {
+            console.warn('[useDuels] cleanup wait: processPendingCleanups failed', err);
+          });
+          const pendingSessionInfo = await connection.getAccountInfo(
+            duelSessionPda,
+            SOLANA_CONFIG.commitment
+          );
+          if (!pendingSessionInfo) {
+            break;
+          }
+          await new Promise((resolve) => setTimeout(resolve, DUEL_CLEANUP_POLL_MS));
+        }
+
+        const stillPendingSessionInfo = await connection.getAccountInfo(
+          duelSessionPda,
+          SOLANA_CONFIG.commitment
+        );
+        if (stillPendingSessionInfo) {
+          setError(
+            'Previous duel session cleanup is still in progress. Please wait a few seconds and try again.'
+          );
+          setPhase('error');
+          return false;
+        }
+      }
+
       const existingDuelSessionInfo = await connection.getAccountInfo(
         duelSessionPda,
         SOLANA_CONFIG.commitment
@@ -298,6 +334,8 @@ export function useDuels() {
     connection,
     signAndSendTransaction,
     isRecoverableDuelStartError,
+    processPendingCleanups,
+    hasPendingCleanups,
   ]);
 
   const loadHistory = useCallback(

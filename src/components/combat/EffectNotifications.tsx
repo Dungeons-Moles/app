@@ -11,6 +11,7 @@ interface EffectNotificationsProps {
   notifications: EffectNotification[];
   enemyPosition: { x: number; y: number };
   playerPosition: { x: number; y: number };
+  scale?: number;
 }
 
 /**
@@ -21,6 +22,7 @@ export const EffectNotifications = memo(function EffectNotifications({
   notifications,
   enemyPosition,
   playerPosition,
+  scale = 1,
 }: EffectNotificationsProps) {
   return (
     <View style={styles.container}>
@@ -29,6 +31,7 @@ export const EffectNotifications = memo(function EffectNotifications({
           key={notification.id}
           notification={notification}
           position={notification.target === 'enemy' ? enemyPosition : playerPosition}
+          scale={scale}
         />
       ))}
     </View>
@@ -38,18 +41,19 @@ export const EffectNotifications = memo(function EffectNotifications({
 interface FloatingNotificationProps {
   notification: EffectNotification;
   position: { x: number; y: number };
+  scale?: number;
 }
 
-const FloatingNotification = memo(function FloatingNotification({ notification, position }: FloatingNotificationProps) {
+const FloatingNotification = memo(function FloatingNotification({ notification, position, scale: sizeScale = 1 }: FloatingNotificationProps) {
   const translateY = useRef(new Animated.Value(0)).current;
   const opacity = useRef(new Animated.Value(0)).current;
-  const scale = useRef(new Animated.Value(0.8)).current;
+  const animScale = useRef(new Animated.Value(0.8)).current;
 
   useEffect(() => {
     // Fade in, float up, then fade out
     Animated.parallel([
       // Scale up and fade in
-      Animated.timing(scale, {
+      Animated.timing(animScale, {
         toValue: 1,
         duration: 150,
         useNativeDriver: true,
@@ -61,7 +65,7 @@ const FloatingNotification = memo(function FloatingNotification({ notification, 
       }),
       // Float up animation
       Animated.timing(translateY, {
-        toValue: -50,
+        toValue: -50 * sizeScale,
         duration: 1200,
         useNativeDriver: true,
       }),
@@ -100,16 +104,21 @@ const FloatingNotification = memo(function FloatingNotification({ notification, 
       style={[
         styles.notificationContainer,
         {
-          left: position.x - 50 + randomOffset,
-          top: position.y - 10,
-          transform: [{ translateY }, { scale }],
+          left: position.x - 50 * sizeScale + randomOffset,
+          top: position.y - 10 * sizeScale,
+          paddingHorizontal: 8 * sizeScale,
+          paddingVertical: 4 * sizeScale,
+          borderRadius: 12 * sizeScale,
+          minWidth: 60 * sizeScale,
+          maxWidth: 120 * sizeScale,
+          transform: [{ translateY }, { scale: animScale }],
           opacity,
           backgroundColor: getBackgroundColor(),
         },
       ]}
     >
-      <Text style={styles.emoji}>{notification.emoji}</Text>
-      <Text style={styles.text}>{notification.text}</Text>
+      <Text style={[styles.emoji, { fontSize: 12 * sizeScale, marginRight: 4 * sizeScale }]}>{notification.emoji}</Text>
+      <Text style={[styles.text, { fontSize: 10 * sizeScale }]}>{notification.text}</Text>
     </Animated.View>
   );
 });

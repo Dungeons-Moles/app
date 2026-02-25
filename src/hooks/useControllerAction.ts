@@ -3,7 +3,9 @@
  * Reacts to buttonDown events and dispatches to the appropriate callback.
  */
 import { useEffect, useRef } from 'react';
-import { usePsg1Gamepad, Psg1Button } from 'psg1-sim';
+import { Psg1Button } from 'psg1-sim';
+import { useAudio } from '../contexts/AudioContext';
+import { usePsg1LastEvent } from './usePsg1LastEvent';
 
 export interface ControllerActions {
   onA?: () => void;
@@ -21,7 +23,8 @@ export interface ControllerActions {
 }
 
 export function useControllerAction(actions: ControllerActions, enabled = true) {
-  const { lastEvent } = usePsg1Gamepad();
+  const lastEvent = usePsg1LastEvent();
+  const { playSfx } = useAudio();
   const actionsRef = useRef(actions);
   actionsRef.current = actions;
 
@@ -42,7 +45,19 @@ export function useControllerAction(actions: ControllerActions, enabled = true) 
     lastHandledTs.current = lastEvent.ts;
 
     const a = actionsRef.current;
-    switch (lastEvent.button) {
+    const btn = lastEvent.button;
+
+    // Play hover SFX on navigation buttons (DPad + L1/R1)
+    const isNavButton =
+      btn === Psg1Button.DPadUp ||
+      btn === Psg1Button.DPadDown ||
+      btn === Psg1Button.DPadLeft ||
+      btn === Psg1Button.DPadRight ||
+      btn === Psg1Button.L1 ||
+      btn === Psg1Button.R1;
+    if (isNavButton) playSfx('ui_hover');
+
+    switch (btn) {
       case Psg1Button.Cross:
         a.onA?.();
         break;

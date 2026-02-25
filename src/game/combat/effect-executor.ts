@@ -217,6 +217,9 @@ export function shouldTrigger(
     case 'OnApplyRust':
       return context.rustApplied === true;
 
+    case 'OnDealNonWeaponDamage':
+      return phase === 'ON_DEAL_NON_WEAPON_DAMAGE';
+
     case 'OnGainShrapnel':
       return context.shrapnelGained === true;
 

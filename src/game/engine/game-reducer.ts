@@ -53,6 +53,7 @@ interface OnChainGameState {
   isDead: boolean;
   campaignLevel: number;
   runMode?: number;
+  gearSlots?: number;
 }
 import { Direction, DIRECTION_DELTA } from '../input/types';
 import { isValidTransition } from './state-machine';
@@ -101,7 +102,9 @@ import { BOSSES } from '../../data/bosses';
 import { ENEMY_DEFINITIONS } from '../entities/enemies';
 
 /** Selection POIs that require on-chain interact() flow — not auto-triggered in handleSyncMove */
-const SELECTION_POIS = new Set(['L1', 'L2', 'L3', 'L4', 'L5', 'L7', 'L8', 'L9', 'L12', 'L13']);
+const SELECTION_POIS = new Set([
+  'L1', 'L2', 'L3', 'L4', 'L5', 'L7', 'L8', 'L9', 'L10', 'L11', 'L12', 'L13', 'L14',
+]);
 
 // ============================================================================
 // Game Actions
@@ -137,6 +140,7 @@ export type GameAction =
   | { type: 'DISCARD_GEAR'; slotIndex: number }
   | { type: 'DISCARD_GEAR_BY_ID'; gearId: GearId }
   | { type: 'FUSE_GEAR'; gearId: GearId }
+  | { type: 'SYNC_INVENTORY'; tool: Tool | null; gear: Gear[] }
   | { type: 'INCREASE_INVENTORY' }
   | { type: 'ADD_GOLD'; amount: number }
   | { type: 'SPEND_GOLD'; amount: number }
@@ -145,7 +149,7 @@ export type GameAction =
   | { type: 'SYNC_COMBAT_RESULT'; confirmedState: OnChainGameState; result: CombatResult }
   // POI reveal actions (Survey Beacon, Seismic Scanner)
   | { type: 'REVEAL_TILES'; center: Position; radius: number }
-  | { type: 'REVEAL_POI_LOCATIONS'; category: number }
+  | { type: 'REVEAL_POI_LOCATIONS'; poiDefId: string }
   // Enemy position sync (for night movement from on-chain)
   | {
       type: 'SYNC_ENEMY_POSITIONS';
@@ -265,6 +269,9 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     case 'FUSE_GEAR':
       return handleFuseGear(state, action.gearId);
 
+    case 'SYNC_INVENTORY':
+      return handleSyncInventory(state, action.tool, action.gear);
+
     case 'INCREASE_INVENTORY':
       return handleIncreaseInventory(state);
 
@@ -286,7 +293,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       return handleRevealTiles(state, action.center, action.radius);
 
     case 'REVEAL_POI_LOCATIONS':
-      return handleRevealPoiLocations(state, action.category);
+      return handleRevealPoiLocations(state, action.poiDefId);
 
     // Enemy position sync (for night movement from on-chain)
     case 'SYNC_ENEMY_POSITIONS':
@@ -1165,7 +1172,8 @@ function findEnemyAtPlayerPosition(state: GameState): MapEnemy | undefined {
  */
 function handleInteractPOI(state: GameState, poiId: string): GameState {
   if (!isValidTransition(state.phase, GamePhase.POIInteraction)) {
-    throw new Error(`Invalid transition: cannot interact with POI from ${state.phase}`);
+    console.warn(`[handleInteractPOI] Invalid transition: cannot interact with POI from ${state.phase}, ignoring`);
+    return state;
   }
 
   // Find the POI on the map
@@ -1567,6 +1575,10 @@ function handleSyncMove(state: GameState, confirmedState: OnChainGameState): Gam
       gold: confirmedState.gold,
       // HP will be recalculated by refreshPlayerStats to include gear bonuses
     },
+    // Sync gear slot capacity from on-chain (unlocked after boss victories)
+    ...(confirmedState.gearSlots != null && {
+      inventoryCapacity: confirmedState.gearSlots,
+    }),
   };
 
   // Recalculate derived stats, then force effective HP to exactly match on-chain.
@@ -1641,7 +1653,7 @@ function handleSyncMove(state: GameState, confirmedState: OnChainGameState): Gam
       // Fall through — usePoiInteraction.canInteract will detect the POI
       // and the "Interact" button will appear in Exploration phase
     } else {
-      // Auto-trigger POIs (L1, L5, L8, L10, L11, L14): existing behavior
+      // Auto-trigger POIs: only L6 (Survey Beacon, handled above) is auto-triggered
       const tempState: GameState = {
         ...state,
         player: updatedPlayer,
@@ -1745,6 +1757,10 @@ function handleSyncCombatResult(
       ...state.player.stats,
       gold: confirmedState.gold,
     },
+    // Sync gear slot capacity from on-chain (unlocked after boss victories)
+    ...(confirmedState.gearSlots != null && {
+      inventoryCapacity: confirmedState.gearSlots,
+    }),
   };
 
   // Recalculate derived stats, then force effective HP to exactly match on-chain.
@@ -1852,6 +1868,9 @@ function handleDiscardGearById(state: GameState, gearId: GearId): GameState {
 function handleFuseGear(state: GameState, gearId: GearId): GameState {
   const NEXT_RARITY: Partial<Record<ItemRarity, ItemRarity>> = {
     COMMON: 'GILDED',
+    RARE: 'GILDED',
+    HEROIC: 'GILDED',
+    MYTHIC: 'GILDED',
     GILDED: 'DIAMOND',
   };
 
@@ -1875,6 +1894,24 @@ function handleFuseGear(state: GameState, gearId: GearId): GameState {
     ...state,
     player: { ...player, inventory: upgradedInventory },
   };
+}
+
+/**
+ * Handles SYNC_INVENTORY action.
+ * Replaces tool and gear inventory from confirmed on-chain data.
+ * Recalculates player stats to reflect the new equipment.
+ */
+function handleSyncInventory(state: GameState, tool: Tool | null, gear: Gear[]): GameState {
+  const inventory = gear.map((item, index) => ({ item, index }));
+
+  const syncedPlayer = {
+    ...state.player,
+    equippedTool: tool,
+    inventory,
+  };
+
+  const updatedPlayer = refreshPlayerStats(syncedPlayer);
+  return { ...state, player: updatedPlayer };
 }
 
 /**
@@ -1921,20 +1958,10 @@ function handleSpendGold(state: GameState, amount: number): GameState {
 // POI Reveal Action Handlers (Fog Persistence)
 // ============================================================================
 
-/**
- * Category to POI definition ID mapping for Seismic Scanner.
- * Matches the on-chain category enum:
- * - 0 = Items (Supply Cache, Tool Crate, Tool Oil, Geode Vault, Counter Cache)
- * - 1 = Upgrades (Rusty Anvil, Rune Kiln, Scrap Chute)
- * - 2 = Utility (Mole Den, Rest Alcove, Survey Beacon, Rail Waypoint, Seismic Scanner)
- * - 3 = Shop (Smuggler Hatch)
- */
-const POI_CATEGORY_MAP: Record<number, string[]> = {
-  0: ['L2', 'L3', 'L4', 'L12', 'L13'], // Items
-  1: ['L10', 'L11', 'L14'], // Upgrades
-  2: ['L1', 'L5', 'L6', 'L7', 'L8'], // Utility
-  3: ['L9'], // Shop
-};
+/** Manhattan distance between two positions */
+function manhattanDistance(a: Position, b: Position): number {
+  return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+}
 
 /**
  * Handles REVEAL_TILES action.
@@ -1996,43 +2023,55 @@ function handleRevealTiles(state: GameState, center: Position, radius: number): 
 
 /**
  * Handles REVEAL_POI_LOCATIONS action.
- * Reveals the tile positions of all POIs matching a specific category.
- * Used by Seismic Scanner.
+ * Reveals the nearest unvisited POI of the specified type.
+ * Used by Seismic Scanner — "Choose POI type, reveal nearest instance".
  */
-function handleRevealPoiLocations(state: GameState, category: number): GameState {
-  const poiDefIds = POI_CATEGORY_MAP[category];
-  if (!poiDefIds) {
-    console.warn('[gameReducer] Unknown POI category:', category);
-    return state;
-  }
+function handleRevealPoiLocations(state: GameState, poiDefId: string): GameState {
+  const playerPos = state.player.position;
 
-  // Find all POIs matching the category
+  // Find unvisited POIs of the exact type, sorted by distance
   const matchingPois = state.map.pois.filter(
-    (poi) => poiDefIds.includes(poi.definitionId) && !poi.visited
+    (poi) => poi.definitionId === poiDefId && !poi.visited
   );
 
   if (matchingPois.length === 0) {
     return state;
   }
 
-  // Create deep copy of fog
-  const newFog: FogState[][] = state.map.fog.map((row) => [...row]);
+  matchingPois.sort(
+    (a, b) => manhattanDistance(a.position, playerPos) - manhattanDistance(b.position, playerPos)
+  );
 
-  // Reveal the tile at each matching POI's position
-  for (const poi of matchingPois) {
+  // Find the nearest POI whose tile is still hidden (skip already-discovered ones)
+  const target = matchingPois.find((poi) => {
     const { x, y } = poi.position;
-    if (x >= 0 && x < state.map.width && y >= 0 && y < state.map.height) {
-      if (newFog[y][x] === FogState.Hidden) {
-        newFog[y][x] = FogState.Revealed;
-      }
-    }
+    return (
+      x >= 0 &&
+      x < state.map.width &&
+      y >= 0 &&
+      y < state.map.height &&
+      state.map.fog[y][x] === FogState.Hidden
+    );
+  });
+
+  if (!target) {
+    return state;
   }
+
+  const newFog: FogState[][] = state.map.fog.map((row) => [...row]);
+  newFog[target.position.y][target.position.x] = FogState.Revealed;
+
+  // Mark the revealed POI as discovered (mirrors on-chain discovered flag)
+  const newPois = state.map.pois.map((poi) =>
+    poi.id === target.id ? { ...poi, discovered: true } : poi
+  );
 
   return {
     ...state,
     map: {
       ...state.map,
       fog: newFog,
+      pois: newPois,
     },
   };
 }

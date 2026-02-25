@@ -8,6 +8,42 @@
   },
   "instructions": [
     {
+      "name": "close_empty_map_pois",
+      "docs": [
+        "Close a corrupted/empty MapPois account (0-byte data).",
+        "After an ER reset, force-undelegation can leave accounts with no data.",
+        "Only works on accounts owned by this program with 0 bytes of data."
+      ],
+      "discriminator": [
+        40,
+        117,
+        223,
+        247,
+        183,
+        213,
+        184,
+        215
+      ],
+      "accounts": [
+        {
+          "name": "map_pois",
+          "writable": true
+        },
+        {
+          "name": "destination",
+          "docs": [
+            "Receives the lamports from the closed account."
+          ],
+          "writable": true
+        },
+        {
+          "name": "payer",
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "close_map_pois",
       "docs": [
         "Close MapPois account, returning rent to the session owner."
@@ -63,6 +99,77 @@
           ],
           "writable": true,
           "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "close_map_pois_orphaned",
+      "docs": [
+        "Close MapPois account when the session PDA no longer exists (orphaned).",
+        "Validates session_signer and player via the GameState account instead.",
+        "Used by frontend orphaned-account cleanup when force_close_session",
+        "already closed the session PDA but some children were still delegated."
+      ],
+      "discriminator": [
+        218,
+        44,
+        98,
+        133,
+        139,
+        114,
+        27,
+        98
+      ],
+      "accounts": [
+        {
+          "name": "map_pois",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  112,
+                  95,
+                  112,
+                  111,
+                  105,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois.session",
+                "account": "MapPois"
+              }
+            ]
+          }
+        },
+        {
+          "name": "game_state",
+          "docs": [
+            "GameState for auth — must belong to the same session as map_pois."
+          ]
+        },
+        {
+          "name": "player",
+          "docs": [
+            "Player wallet receives the rent refund."
+          ],
+          "writable": true
+        },
+        {
+          "name": "session_signer",
+          "docs": [
+            "Session key signer — validated via game_state.session_signer."
+          ],
+          "signer": true,
+          "relations": [
+            "game_state"
+          ]
         }
       ],
       "args": []
@@ -306,7 +413,14 @@
           "address": "11111111111111111111111111111111"
         }
       ],
-      "args": []
+      "args": [
+        {
+          "name": "validator",
+          "type": {
+            "option": "pubkey"
+          }
+        }
+      ]
     },
     {
       "name": "discover_visible_waypoints",
@@ -738,10 +852,11 @@
         "Generate and store cache offers for a pick-item POI (L2, L3, L12, L13).",
         "",
         "This instruction generates offers using an on-chain derived seed (Clock)",
-        "and stores them in `MapPois.current_offer` so the frontend can read them.",
+        "and stores them in `MapPois.cache_offers` so the frontend can read them.",
         "The user then calls `interact_pick_item` with their chosen index.",
         "",
-        "Must be called before `interact_pick_item` for pick-item POIs."
+        "Offers persist for the entire session — revisiting a POI returns the",
+        "same offer instead of regenerating (VRF-ready)."
       ],
       "discriminator": [
         228,
@@ -1055,10 +1170,11 @@
         "Generate and store oil offers for a Tool Oil Rack (L4).",
         "",
         "This instruction generates 3 of 4 possible oils using an on-chain derived seed",
-        "and stores them in `MapPois.current_oil_offer` so the frontend can read them.",
+        "and stores them in `MapPois.oil_offers` so the frontend can read them.",
         "The user then calls `interact_tool_oil` with their chosen oil.",
         "",
-        "Must be called before `interact_tool_oil` for Tool Oil Rack POIs."
+        "Offers persist for the entire session — revisiting a POI returns the",
+        "same offer instead of regenerating (VRF-ready)."
       ],
       "discriminator": [
         214,
@@ -1404,7 +1520,7 @@
         "- L13 (Counter Cache): Pick 1 of 3 weakness-tagged items",
         "",
         "Requires `generate_cache_offer` to have been called first.",
-        "Reads the stored offers from `current_offer` and applies the user's choice.",
+        "Reads the stored offer from `cache_offers` and applies the user's choice.",
         "",
         "After validating the pick, this instruction calls player-inventory to",
         "equip the item via CPI (equip_gear_authorized or equip_tool_authorized).",
@@ -4027,6 +4143,7 @@
         },
         {
           "name": "session_signer",
+          "writable": true,
           "signer": true
         },
         {
@@ -4756,6 +4873,27 @@
                 32
               ]
             }
+          },
+          {
+            "name": "settled",
+            "docs": [
+              "Whether run result has already been settled into player-profile."
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "settled_victory",
+            "docs": [
+              "Settled run outcome (true = victory, false = defeat)."
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "settled_at",
+            "docs": [
+              "Unix timestamp when settlement happened."
+            ],
+            "type": "i64"
           }
         ]
       }
@@ -5355,12 +5493,13 @@
             }
           },
           {
-            "name": "current_offer",
+            "name": "cache_offers",
             "docs": [
-              "Current cache offer (for pick-item POIs)"
+              "Persisted cache offers for pick-item POIs (L2, L3, L12, L13).",
+              "Generated once per POI per session — walking away and returning yields the same offer."
             ],
             "type": {
-              "option": {
+              "vec": {
                 "defined": {
                   "name": "CacheOffer"
                 }
@@ -5368,12 +5507,12 @@
             }
           },
           {
-            "name": "current_oil_offer",
+            "name": "oil_offers",
             "docs": [
-              "Current oil offer (for Tool Oil Rack L4)"
+              "Persisted oil offers for Tool Oil Rack POIs (L4)."
             ],
             "type": {
-              "option": {
+              "vec": {
                 "defined": {
                   "name": "OilOffer"
                 }

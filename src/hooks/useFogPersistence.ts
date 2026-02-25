@@ -19,6 +19,14 @@ interface UseFogPersistenceOptions {
   isActive: boolean;
 }
 
+const FOG_DEBUG_LOGS = false;
+
+function debugLog(...args: unknown[]) {
+  if (__DEV__ && FOG_DEBUG_LOGS) {
+    console.log(...args);
+  }
+}
+
 /**
  * Hook that persists fog of war state to AsyncStorage.
  *
@@ -60,7 +68,7 @@ export function useFogPersistence({
     saveFogState(sessionKey, fog)
       .then(() => {
         lastSavedFogRef.current = fogHash;
-        console.log('[useFogPersistence] Fog state saved for session:', sessionKey.slice(0, 8));
+        debugLog('[useFogPersistence] Fog state saved for session:', sessionKey.slice(0, 8));
       })
       .catch((error) => {
         console.warn('[useFogPersistence] Failed to save fog state:', error);
@@ -76,7 +84,7 @@ export function useFogPersistence({
     try {
       await clearFogState(sessionKey);
       lastSavedFogRef.current = null;
-      console.log('[useFogPersistence] Fog state cleared for session:', sessionKey.slice(0, 8));
+      debugLog('[useFogPersistence] Fog state cleared for session:', sessionKey.slice(0, 8));
     } catch (error) {
       console.warn('[useFogPersistence] Failed to clear fog state:', error);
     }

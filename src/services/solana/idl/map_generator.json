@@ -254,7 +254,14 @@
           "address": "11111111111111111111111111111111"
         }
       ],
-      "args": []
+      "args": [
+        {
+          "name": "validator",
+          "type": {
+            "option": "pubkey"
+          }
+        }
+      ]
     },
     {
       "name": "generate_map",
@@ -790,6 +797,7 @@
         },
         {
           "name": "session_signer",
+          "writable": true,
           "signer": true
         },
         {
@@ -1068,7 +1076,7 @@
           {
             "name": "pois",
             "docs": [
-              "POI spawn positions (max 50)"
+              "POI spawn positions (max 64)"
             ],
             "type": {
               "array": [
@@ -1077,7 +1085,7 @@
                     "name": "PoiSpawn"
                   }
                 },
-                50
+                64
               ]
             }
           },

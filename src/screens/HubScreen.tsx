@@ -25,6 +25,7 @@ import { shortenAddress } from '../utils/storage';
 import { RootStackParamList } from '../navigation';
 import { InlineModal } from '../components/InlineModal';
 import { SpeedControls } from '../components/combat';
+import { VolumeControls } from '../components/ui/VolumeControls';
 import { Skeleton } from '../components/common/Skeleton';
 import { Typography } from '../theme/typography';
 import type { CombatSpeed } from '../types';
@@ -34,6 +35,8 @@ import { useControllerAction } from '../hooks/useControllerAction';
 import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHints';
 import { useInputMode } from '../hooks/useInputMode';
 import { FocusGlow } from '../components/ui/FocusGlow';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { BetaWelcomeModal, BETA_WELCOME_KEY } from '../components/ui/BetaWelcomeModal';
 import { ControllerKeyboard } from '../components/ui/ControllerKeyboard';
 import { getVrfSeed } from '../services/solana/vrf';
 import { useNftMarketplace } from '../hooks/useNftMarketplace';
@@ -43,6 +46,9 @@ import { NftCard } from '../components/marketplace/NftCard';
 import { QuestCard } from '../components/quests/QuestCard';
 import { getSkinImage } from '../data/skinImages';
 import { useEquippedSkinImage } from '../hooks/useEquippedSkinImage';
+import { useAudio } from '../contexts/AudioContext';
+import { useSettings } from '../contexts/SettingsContext';
+import { Checkbox } from '../components/ui/Checkbox';
 
 const iconASource = require('../../assets/ui/control-buttons/a.png');
 const iconBSource = require('../../assets/ui/control-buttons/b.png');
@@ -83,12 +89,15 @@ export function HubScreen({ navigation }: HubScreenProps) {
   const isCompact = screenVariant === 'compact';
   const inputMode = useInputMode();
   const { state: gameState, dispatch } = useGame();
-  const { wallet, getBalance } = useWallet();
+  const { musicVolume, setMusicVolume, sfxVolume, setSfxVolume, playBgm, playSfx } = useAudio();
+  const { autoOpenPOI, setAutoOpenPOI } = useSettings();
+  const { wallet, getBalance, disconnect } = useWallet();
   const [showSettings, setShowSettings] = useState(false);
   const [showSkins, setShowSkins] = useState(false);
   const [showQuests, setShowQuests] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [showPvP, setShowPvP] = useState(false);
+  const [showBetaWelcome, setShowBetaWelcome] = useState(false);
   const [pvpFocus, setPvpFocus] = useState(0);
   const [profileName, setProfileName] = useState(profile?.name ?? '');
   const [profileSaving, setProfileSaving] = useState(false);
@@ -100,7 +109,11 @@ export function HubScreen({ navigation }: HubScreenProps) {
     group: 'right',
     index: 0,
   });
-  const [settingsFocus, setSettingsFocus] = useState(0); // 0 = speed, 1 = reset
+  const [settingsFocus, setSettingsFocus] = useState(0); // 0 = speed, 1 = disconnect, 2 = reset
+  const [showResetWarning, setShowResetWarning] = useState(false);
+  const [resetInProgress, setResetInProgress] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
+  const [resetWarningFocus, setResetWarningFocus] = useState(1); // 0 = cancel, 1 = confirm
   const [profileFocus, setProfileFocus] = useState(0); // 0 = name, 1 = save
   const [skinsFocus, setSkinsFocus] = useState(0);
   const [questsFocus, setQuestsFocus] = useState(0);
@@ -117,11 +130,20 @@ export function HubScreen({ navigation }: HubScreenProps) {
   const didRunCleanupThisFocusRef = useRef(false);
 
   useEffect(() => {
+    if (!isScreenFocused) return;
+    playBgm('hub');
     Animated.timing(fadeAnim, {
       toValue: 1,
       duration: 600,
       useNativeDriver: true,
     }).start();
+  }, [isScreenFocused, playBgm, fadeAnim]);
+
+  // Show beta welcome modal on first visit
+  useEffect(() => {
+    AsyncStorage.getItem(BETA_WELCOME_KEY).then((shown) => {
+      if (!shown) setShowBetaWelcome(true);
+    });
   }, []);
 
   // Process any pending session cleanups when Hub screen gains focus
@@ -179,15 +201,50 @@ export function HubScreen({ navigation }: HubScreenProps) {
     setRefreshing(false);
   }, [refresh]);
 
-  const handleResetProfile = async () => {
-    await clearProfile();
+  const handleDisconnect = useCallback(() => {
+    playSfx('ui_click');
+    setShowResetWarning(false);
+    setShowSettings(false);
+    setResetError(null);
+    disconnect();
     navigation.reset({
       index: 0,
       routes: [{ name: 'Account' }],
     });
-  };
+  }, [disconnect, navigation, playSfx]);
+
+  const handleOpenResetWarning = useCallback(() => {
+    playSfx('ui_click');
+    setResetError(null);
+    setResetWarningFocus(1);
+    setShowResetWarning(true);
+  }, [playSfx]);
+
+  const handleResetProfile = useCallback(async () => {
+    playSfx('ui_click');
+    setResetError(null);
+    setResetInProgress(true);
+    try {
+      const result = await clearProfile();
+      if (!result.success) {
+        playSfx('ui_error');
+        setResetError(result.error ?? 'Failed to reset profile');
+        return;
+      }
+      playSfx('ui_click');
+      setShowResetWarning(false);
+      setShowSettings(false);
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'Account' }],
+      });
+    } finally {
+      setResetInProgress(false);
+    }
+  }, [clearProfile, navigation, playSfx]);
 
   const handlePlayPvE = useCallback(async () => {
+    playSfx('ui_click');
     if (isGuest) {
       // Guest mode: Start game directly with secure/VRF-backed seed
       const seed = await getVrfSeed();
@@ -203,51 +260,61 @@ export function HubScreen({ navigation }: HubScreenProps) {
       // Navigate to campaign selection screen
       navigation.navigate('CampaignSelect');
     }
-  }, [navigation, isGuest, dispatch, gameState?.phase]);
+  }, [navigation, isGuest, dispatch, gameState?.phase, playSfx]);
 
   const handlePlayPvP = () => {
+    playSfx('ui_click');
     setPvpFocus(0);
     setShowPvP(true);
   };
 
   const handleGauntlet = () => {
+    playSfx('ui_click');
     setShowPvP(false);
     navigation.navigate('Gauntlet');
   };
 
   const handleDuels = () => {
+    playSfx('ui_click');
     setShowPvP(false);
     navigation.navigate('Duels');
   };
 
   const handlePitDraft = () => {
+    playSfx('ui_click');
     setShowPvP(false);
     navigation.navigate('PitDraft');
   };
 
   const handleMarketplace = () => {
+    playSfx('ui_click');
     navigation.navigate('Marketplace');
   };
 
   const handleLeaderboard = () => {
+    playSfx('ui_click');
     navigation.navigate('GauntletRanking', { returnTo: 'Hub' });
   };
 
   const handleQuests = () => {
+    playSfx('ui_click');
     setQuestsFocus(0);
     setShowQuests(true);
   };
 
   const handleSkins = () => {
+    playSfx('ui_click');
     setSkinsFocus(0);
     setShowSkins(true);
   };
 
   const handleItems = () => {
+    playSfx('ui_click');
     navigation.navigate('Items');
   };
 
   const handleProfileSettings = () => {
+    playSfx('ui_click');
     setProfileName(profile?.name ?? '');
     setProfileValidationError(null);
     setProfileSuccessMessage(null);
@@ -270,26 +337,31 @@ export function HubScreen({ navigation }: HubScreenProps) {
 
   const handleProfileSave = useCallback(async () => {
     if (!profileName.trim()) {
+      playSfx('ui_error');
       setProfileValidationError('Name is required');
       return;
     }
     if (profileName === profile?.name) {
+      playSfx('ui_error');
       setProfileSuccessMessage('Name unchanged');
       return;
     }
+    playSfx('ui_click');
     setProfileSaving(true);
     setProfileSuccessMessage(null);
     try {
       const result = await updateName(profileName);
       if (result.success) {
+        playSfx('ui_click');
         setProfileSuccessMessage('Name updated!');
       } else {
+        playSfx('ui_error');
         setProfileValidationError(result.error ?? 'Failed to update name');
       }
     } finally {
       setProfileSaving(false);
     }
-  }, [profileName, profile?.name, updateName]);
+  }, [profileName, profile?.name, updateName, playSfx]);
 
   const formatDate = (timestamp: number): string => {
     const date = new Date(timestamp * 1000);
@@ -308,7 +380,8 @@ export function HubScreen({ navigation }: HubScreenProps) {
       : null;
 
   // --- Controller navigation ---
-  const anyModalOpen = showSettings || showProfile || showSkins || showQuests || showPvP;
+  const anyModalOpen =
+    showSettings || showResetWarning || showProfile || showSkins || showQuests || showPvP || showBetaWelcome;
   const isController = inputMode === 'controller';
 
   const controllerCloseHint = isController ? (
@@ -329,7 +402,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
   const isFocused = (group: 'left' | 'right', index: number) =>
     inputMode === 'controller' && !anyModalOpen && focus.group === group && focus.index === index;
 
-  const leftCount = isGuest ? 0 : 5;
+  const leftCount = isGuest ? 1 : 5;
   const rightCount = isGuest ? 1 : 2;
 
   const handleControllerA = () => {
@@ -343,7 +416,10 @@ export function HubScreen({ navigation }: HubScreenProps) {
   };
 
   const closeAnyModal = () => {
-    if (showPvP) setShowPvP(false);
+    playSfx('ui_click');
+    if (showBetaWelcome) setShowBetaWelcome(false);
+    else if (showResetWarning) setShowResetWarning(false);
+    else if (showPvP) setShowPvP(false);
     else if (showSettings) setShowSettings(false);
     else if (showProfile) setShowProfile(false);
     else if (showSkins) setShowSkins(false);
@@ -359,14 +435,61 @@ export function HubScreen({ navigation }: HubScreenProps) {
   };
 
   // Build controller actions based on which modal is open
-  const settingsActions = showSettings
+  const maxSettingsFocus = isGuest ? 4 : 5;
+
+  const toggleAutoOpenPOI = () => {
+    playSfx('ui_click');
+    setAutoOpenPOI(!autoOpenPOI);
+  };
+
+  const settingsActions =
+    showSettings && !showResetWarning
+      ? {
+          onA:
+            settingsFocus === 3
+              ? toggleAutoOpenPOI
+              : settingsFocus === 4
+                ? handleDisconnect
+                : settingsFocus === 5 && !isGuest
+                  ? handleOpenResetWarning
+                  : undefined,
+          onB: closeAnyModal,
+          onDPadUp: () => setSettingsFocus((p) => Math.max(0, p - 1)),
+          onDPadDown: () => setSettingsFocus((p) => Math.min(maxSettingsFocus, p + 1)),
+          onDPadLeft:
+            settingsFocus === 0
+              ? () => setMusicVolume(Math.round(Math.max(0, musicVolume - 0.1) * 10) / 10)
+              : settingsFocus === 1
+                ? () => setSfxVolume(Math.round(Math.max(0, sfxVolume - 0.1) * 10) / 10)
+                : settingsFocus === 2
+                  ? () => cycleSpeed(-1)
+                  : settingsFocus === 3
+                    ? toggleAutoOpenPOI
+                    : undefined,
+          onDPadRight:
+            settingsFocus === 0
+              ? () => setMusicVolume(Math.round(Math.min(1, musicVolume + 0.1) * 10) / 10)
+              : settingsFocus === 1
+                ? () => setSfxVolume(Math.round(Math.min(1, sfxVolume + 0.1) * 10) / 10)
+                : settingsFocus === 2
+                  ? () => cycleSpeed(1)
+                  : settingsFocus === 3
+                    ? toggleAutoOpenPOI
+                    : undefined,
+        }
+      : null;
+
+  const resetWarningActions = showResetWarning
     ? {
-        onA: settingsFocus === 1 ? handleResetProfile : undefined,
-        onB: closeAnyModal,
-        onDPadUp: () => setSettingsFocus((p) => Math.max(0, p - 1)),
-        onDPadDown: () => setSettingsFocus((p) => Math.min(1, p + 1)),
-        onDPadLeft: settingsFocus === 0 ? () => cycleSpeed(-1) : undefined,
-        onDPadRight: settingsFocus === 0 ? () => cycleSpeed(1) : undefined,
+        onA:
+          resetWarningFocus === 1 && !resetInProgress
+            ? handleResetProfile
+            : resetWarningFocus === 0 && !resetInProgress
+              ? () => setShowResetWarning(false)
+              : undefined,
+        onB: resetInProgress ? undefined : () => setShowResetWarning(false),
+        onDPadLeft: () => setResetWarningFocus((p) => Math.max(0, p - 1)),
+        onDPadRight: () => setResetWarningFocus((p) => Math.min(1, p + 1)),
       }
     : null;
 
@@ -402,11 +525,13 @@ export function HubScreen({ navigation }: HubScreenProps) {
             if (!skin || equipLoading) return;
             const isEquipped = profile?.equippedSkin?.equals(skin.address) ?? false;
             if (isEquipped) {
+              playSfx('ui_click');
               unequipSkin().then(() => {
                 refresh();
                 fetchUserAssets();
               });
             } else {
+              playSfx('ui_click');
               equipSkin(skin.address).then(() => {
                 refresh();
                 fetchUserAssets();
@@ -430,8 +555,10 @@ export function HubScreen({ navigation }: HubScreenProps) {
             const quest = flatQuests[questsFocus];
             if (!quest || questsLoading) return;
             if (quest.progress?.completed && !quest.progress?.claimed) {
+              playSfx('ui_click');
               claimReward(quest.definition.questId);
             } else if (!quest.progress) {
+              playSfx('ui_click');
               acceptQuest(quest.definition.questId);
             }
           },
@@ -444,10 +571,17 @@ export function HubScreen({ navigation }: HubScreenProps) {
         : null;
 
   const otherModalOpen =
-    anyModalOpen && !showSettings && !showProfile && !showPvP && !showSkins && !showQuests;
+    anyModalOpen &&
+    !showSettings &&
+    !showResetWarning &&
+    !showProfile &&
+    !showPvP &&
+    !showSkins &&
+    !showQuests;
 
   useControllerAction(
-    settingsActions ??
+    resetWarningActions ??
+      settingsActions ??
       profileActions ??
       pvpActions ??
       skinsActions ??
@@ -483,15 +617,17 @@ export function HubScreen({ navigation }: HubScreenProps) {
         onStart: otherModalOpen
           ? undefined
           : () => {
+              playSfx('ui_click');
               setSettingsFocus(0);
               setShowSettings(true);
             },
-        onSelect: otherModalOpen
-          ? undefined
-          : () => {
-              setProfileFocus(0);
-              handleProfileSettings();
-            },
+        onSelect:
+          otherModalOpen || isGuest
+            ? undefined
+            : () => {
+                setProfileFocus(0);
+                handleProfileSettings();
+              },
       },
     !showProfileKeyboard && isScreenFocused
   );
@@ -501,7 +637,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
     : [
         { button: 'A', label: 'Select' },
         { button: 'Start', label: 'Settings' },
-        { button: 'Select', label: 'Profile' },
+        ...(!isGuest ? [{ button: 'Select', label: 'Profile' } as ButtonHint] : []),
       ];
 
   return (
@@ -520,7 +656,11 @@ export function HubScreen({ navigation }: HubScreenProps) {
         <View style={styles.hubLayout}>
           {/* TOP LEFT - Player Info (compact: full left column) */}
           <View style={[styles.topLeft, isCompact && compactStyles.leftColumn]}>
-            <TouchableOpacity onPress={handleProfileSettings} activeOpacity={0.8}>
+            <TouchableOpacity
+              onPress={isGuest ? undefined : handleProfileSettings}
+              activeOpacity={isGuest ? 1 : 0.8}
+              disabled={isGuest}
+            >
               <ImageBackground
                 source={walletImageSource}
                 style={[styles.playerPanel, isCompact && compactStyles.playerPanel]}
@@ -581,8 +721,22 @@ export function HubScreen({ navigation }: HubScreenProps) {
               </ImageBackground>
             </TouchableOpacity>
 
+            {/* Guest mode description */}
+            {isGuest && (
+              <Text
+                style={[
+                  styles.guestModeDescription,
+                  isCompact && compactStyles.guestModeDescription,
+                ]}
+              >
+                {
+                  "Guest mode — explore freely with no strings attached.\nYour progress won't be saved."
+                }
+              </Text>
+            )}
+
             {/* Wide: Items button directly below profile */}
-            {!isCompact && !isGuest && (
+            {!isCompact && (
               <TouchableOpacity onPress={handleItems} activeOpacity={0.7} style={{ marginTop: 8 }}>
                 <ImageBackground
                   source={buttonV1Source}
@@ -594,8 +748,8 @@ export function HubScreen({ navigation }: HubScreenProps) {
               </TouchableOpacity>
             )}
 
-            {/* Compact: all nav buttons centered vertically below profile */}
-            {isCompact && !isGuest && (
+            {/* Compact: nav buttons centered vertically below profile */}
+            {isCompact && (
               <View style={compactStyles.leftButtonsCenter}>
                 <FocusGlow active={isFocused('left', 0)}>
                   <TouchableOpacity onPress={handleItems} activeOpacity={0.7}>
@@ -609,59 +763,65 @@ export function HubScreen({ navigation }: HubScreenProps) {
                   </TouchableOpacity>
                 </FocusGlow>
 
-                <FocusGlow active={isFocused('left', 1)}>
-                  <TouchableOpacity onPress={handleQuests} activeOpacity={0.7}>
-                    <ImageBackground
-                      source={buttonV1Source}
-                      style={[styles.navButton, compactStyles.navButton]}
-                      resizeMode="stretch"
-                    >
-                      <Text style={[styles.navButtonText, compactStyles.navButtonText]}>
-                        Quests
-                      </Text>
-                    </ImageBackground>
-                  </TouchableOpacity>
-                </FocusGlow>
+                {!isGuest && (
+                  <>
+                    <FocusGlow active={isFocused('left', 1)}>
+                      <TouchableOpacity onPress={handleQuests} activeOpacity={0.7}>
+                        <ImageBackground
+                          source={buttonV1Source}
+                          style={[styles.navButton, compactStyles.navButton]}
+                          resizeMode="stretch"
+                        >
+                          <Text style={[styles.navButtonText, compactStyles.navButtonText]}>
+                            Quests
+                          </Text>
+                        </ImageBackground>
+                      </TouchableOpacity>
+                    </FocusGlow>
 
-                <FocusGlow active={isFocused('left', 2)}>
-                  <TouchableOpacity onPress={handleSkins} activeOpacity={0.7}>
-                    <ImageBackground
-                      source={buttonV1Source}
-                      style={[styles.navButton, compactStyles.navButton]}
-                      resizeMode="stretch"
-                    >
-                      <Text style={[styles.navButtonText, compactStyles.navButtonText]}>Skins</Text>
-                    </ImageBackground>
-                  </TouchableOpacity>
-                </FocusGlow>
+                    <FocusGlow active={isFocused('left', 2)}>
+                      <TouchableOpacity onPress={handleSkins} activeOpacity={0.7}>
+                        <ImageBackground
+                          source={buttonV1Source}
+                          style={[styles.navButton, compactStyles.navButton]}
+                          resizeMode="stretch"
+                        >
+                          <Text style={[styles.navButtonText, compactStyles.navButtonText]}>
+                            Skins
+                          </Text>
+                        </ImageBackground>
+                      </TouchableOpacity>
+                    </FocusGlow>
 
-                <FocusGlow active={isFocused('left', 3)}>
-                  <TouchableOpacity onPress={handleMarketplace} activeOpacity={0.7}>
-                    <ImageBackground
-                      source={buttonV1Source}
-                      style={[styles.navButton, compactStyles.navButton]}
-                      resizeMode="stretch"
-                    >
-                      <Text style={[styles.navButtonText, compactStyles.navButtonText]}>
-                        Marketplace
-                      </Text>
-                    </ImageBackground>
-                  </TouchableOpacity>
-                </FocusGlow>
+                    <FocusGlow active={isFocused('left', 3)}>
+                      <TouchableOpacity onPress={handleMarketplace} activeOpacity={0.7}>
+                        <ImageBackground
+                          source={buttonV1Source}
+                          style={[styles.navButton, compactStyles.navButton]}
+                          resizeMode="stretch"
+                        >
+                          <Text style={[styles.navButtonText, compactStyles.navButtonText]}>
+                            Marketplace
+                          </Text>
+                        </ImageBackground>
+                      </TouchableOpacity>
+                    </FocusGlow>
 
-                <FocusGlow active={isFocused('left', 4)}>
-                  <TouchableOpacity onPress={handleLeaderboard} activeOpacity={0.7}>
-                    <ImageBackground
-                      source={buttonV1Source}
-                      style={[styles.navButton, compactStyles.navButton]}
-                      resizeMode="stretch"
-                    >
-                      <Text style={[styles.navButtonText, compactStyles.navButtonText]}>
-                        PvP Ranks
-                      </Text>
-                    </ImageBackground>
-                  </TouchableOpacity>
-                </FocusGlow>
+                    <FocusGlow active={isFocused('left', 4)}>
+                      <TouchableOpacity onPress={handleLeaderboard} activeOpacity={0.7}>
+                        <ImageBackground
+                          source={buttonV1Source}
+                          style={[styles.navButton, compactStyles.navButton]}
+                          resizeMode="stretch"
+                        >
+                          <Text style={[styles.navButtonText, compactStyles.navButtonText]}>
+                            PvP Ranks
+                          </Text>
+                        </ImageBackground>
+                      </TouchableOpacity>
+                    </FocusGlow>
+                  </>
+                )}
               </View>
             )}
           </View>
@@ -702,7 +862,13 @@ export function HubScreen({ navigation }: HubScreenProps) {
                 </ImageBackground>
               )
             ) : (
-              <TouchableOpacity onPress={() => setShowSettings(true)} activeOpacity={0.7}>
+              <TouchableOpacity
+                onPress={() => {
+                  playSfx('ui_click');
+                  setShowSettings(true);
+                }}
+                activeOpacity={0.7}
+              >
                 <ImageBackground
                   source={buttonV1Source}
                   style={styles.settingsBtn}
@@ -884,7 +1050,10 @@ export function HubScreen({ navigation }: HubScreenProps) {
                   </Text>
                   {!isController && (
                     <TouchableOpacity
-                      onPress={() => setShowSettings(false)}
+                      onPress={() => {
+                        playSfx('ui_click');
+                        setShowSettings(false);
+                      }}
                       style={styles.closeButton}
                       hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                     >
@@ -898,7 +1067,33 @@ export function HubScreen({ navigation }: HubScreenProps) {
                 </View>
 
                 <View style={[styles.modalBody, isCompact && compactStyles.settingsModalBody]}>
-                  <FocusGlow active={isController && showSettings && settingsFocus === 0}>
+                  <FocusGlow active={isController && showSettings && settingsFocus === 0} style={styles.settingGlow}>
+                    <View style={styles.settingRow}>
+                      <Text style={[styles.settingLabel, isCompact && compactStyles.settingLabel]}>
+                        Music volume
+                      </Text>
+                      <VolumeControls
+                        currentVolume={musicVolume}
+                        onVolumeChange={setMusicVolume}
+                        scale={isCompact ? 2 : 1}
+                      />
+                    </View>
+                  </FocusGlow>
+
+                  <FocusGlow active={isController && showSettings && settingsFocus === 1} style={styles.settingGlow}>
+                    <View style={styles.settingRow}>
+                      <Text style={[styles.settingLabel, isCompact && compactStyles.settingLabel]}>
+                        SFX volume
+                      </Text>
+                      <VolumeControls
+                        currentVolume={sfxVolume}
+                        onVolumeChange={setSfxVolume}
+                        scale={isCompact ? 2 : 1}
+                      />
+                    </View>
+                  </FocusGlow>
+
+                  <FocusGlow active={isController && showSettings && settingsFocus === 2} style={styles.settingGlow}>
                     <View style={styles.settingRow}>
                       <Text style={[styles.settingLabel, isCompact && compactStyles.settingLabel]}>
                         Combat speed
@@ -906,15 +1101,25 @@ export function HubScreen({ navigation }: HubScreenProps) {
                       <SpeedControls
                         currentSpeed={defaultCombatSpeed}
                         onSpeedChange={updateDefaultCombatSpeed}
-                        scale={isCompact ? 2 : 1}
+                        scale={isCompact ? 1.4 : 0.7}
                       />
                     </View>
                   </FocusGlow>
 
-                  <FocusGlow active={isController && showSettings && settingsFocus === 1}>
+                  <FocusGlow active={isController && showSettings && settingsFocus === 3} style={styles.settingGlow}>
+                    <Checkbox
+                      label="Auto-open POI"
+                      checked={autoOpenPOI}
+                      onToggle={toggleAutoOpenPOI}
+                      size={isCompact ? 44 : 20}
+                      labelStyle={isCompact ? { fontSize: 26 } : undefined}
+                    />
+                  </FocusGlow>
+
+                  <FocusGlow active={isController && showSettings && settingsFocus === 4}>
                     <TouchableOpacity
                       style={[styles.resetButton, isCompact && compactStyles.resetButton]}
-                      onPress={handleResetProfile}
+                      onPress={handleDisconnect}
                       activeOpacity={0.7}
                     >
                       <ImageBackground
@@ -925,15 +1130,40 @@ export function HubScreen({ navigation }: HubScreenProps) {
                         <Text
                           style={[styles.disconnectText, isCompact && compactStyles.disconnectText]}
                         >
-                          {isGuest ? 'Disconnect' : 'Reset Profile'}
+                          Disconnect
                         </Text>
                       </ImageBackground>
                     </TouchableOpacity>
                   </FocusGlow>
+
+                  {!isGuest && (
+                    <FocusGlow active={isController && showSettings && settingsFocus === 5}>
+                      <TouchableOpacity
+                        style={[styles.resetButton, isCompact && compactStyles.resetButton]}
+                        onPress={handleOpenResetWarning}
+                        activeOpacity={0.7}
+                      >
+                        <ImageBackground
+                          source={buttonV1Source}
+                          style={styles.buttonImage}
+                          resizeMode="stretch"
+                        >
+                          <Text
+                            style={[
+                              styles.disconnectText,
+                              isCompact && compactStyles.disconnectText,
+                            ]}
+                          >
+                            Reset Profile
+                          </Text>
+                        </ImageBackground>
+                      </TouchableOpacity>
+                    </FocusGlow>
+                  )}
                 </View>
                 {isController && (
                   <View style={[styles.settingsHints, isCompact && compactStyles.settingsHints]}>
-                    {settingsFocus === 0 ? (
+                    {settingsFocus <= 2 ? (
                       <View style={styles.settingsHintRow}>
                         <Image
                           source={iconDirSource}
@@ -959,7 +1189,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
                             isCompact && compactStyles.settingsHintText,
                           ]}
                         >
-                          Change speed
+                          {settingsFocus === 2 ? 'Change speed' : 'Change volume'}
                         </Text>
                       </View>
                     ) : (
@@ -978,7 +1208,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
                             isCompact && compactStyles.settingsHintText,
                           ]}
                         >
-                          Confirm
+                          {settingsFocus === 3 ? 'Toggle' : 'Confirm'}
                         </Text>
                       </View>
                     )}
@@ -998,6 +1228,170 @@ export function HubScreen({ navigation }: HubScreenProps) {
                         ]}
                       >
                         Close
+                      </Text>
+                    </View>
+                  </View>
+                )}
+              </ImageBackground>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </InlineModal>
+
+      {/* Reset Warning Modal */}
+      <InlineModal
+        visible={showResetWarning}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!resetInProgress) {
+            playSfx('ui_click');
+            setShowResetWarning(false);
+          }
+        }}
+      >
+        <TouchableWithoutFeedback
+          onPress={() => {
+            if (!resetInProgress) {
+              playSfx('ui_click');
+              setShowResetWarning(false);
+            }
+          }}
+        >
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
+              <ImageBackground
+                source={paperPanelSource}
+                style={[styles.warningModalContent, isCompact && compactStyles.warningModalContent]}
+                resizeMode="stretch"
+              >
+                <Text
+                  style={[
+                    styles.modalTitle,
+                    isCompact && compactStyles.modalTitle,
+                    { color: '#a33a3a' },
+                  ]}
+                >
+                  Warning
+                </Text>
+                <Text style={[styles.warningText, isCompact && compactStyles.warningText]}>
+                  Resetting your profile will permanently delete your on-chain profile for this
+                  wallet. This cannot be undone.
+                </Text>
+                {!!resetError && (
+                  <Text
+                    style={[styles.warningErrorText, isCompact && compactStyles.warningErrorText]}
+                  >
+                    {resetError}
+                  </Text>
+                )}
+                <View style={styles.warningActions}>
+                  <FocusGlow active={isController && resetWarningFocus === 0}>
+                    <TouchableOpacity
+                      style={[styles.warningButton, isCompact && compactStyles.warningButton]}
+                      onPress={() => {
+                        playSfx('ui_click');
+                        setShowResetWarning(false);
+                      }}
+                      disabled={resetInProgress}
+                      activeOpacity={0.7}
+                    >
+                      <ImageBackground
+                        source={buttonV1Source}
+                        style={styles.buttonImage}
+                        resizeMode="stretch"
+                      >
+                        <Text
+                          style={[
+                            styles.warningButtonText,
+                            isCompact && compactStyles.warningButtonText,
+                          ]}
+                        >
+                          Cancel
+                        </Text>
+                      </ImageBackground>
+                    </TouchableOpacity>
+                  </FocusGlow>
+                  <FocusGlow active={isController && resetWarningFocus === 1}>
+                    <TouchableOpacity
+                      style={[styles.warningButton, isCompact && compactStyles.warningButton]}
+                      onPress={handleResetProfile}
+                      disabled={resetInProgress}
+                      activeOpacity={0.7}
+                    >
+                      <ImageBackground
+                        source={buttonV2Source}
+                        style={styles.buttonImage}
+                        resizeMode="stretch"
+                      >
+                        <Text
+                          style={[
+                            styles.warningButtonText,
+                            isCompact && compactStyles.warningButtonText,
+                            { color: '#a33a3a' },
+                          ]}
+                        >
+                          {resetInProgress ? 'Resetting...' : 'Reset'}
+                        </Text>
+                      </ImageBackground>
+                    </TouchableOpacity>
+                  </FocusGlow>
+                </View>
+                {isController && (
+                  <View style={[styles.settingsHints, isCompact && compactStyles.settingsHints]}>
+                    <View style={styles.settingsHintRow}>
+                      <Image
+                        source={iconDirSource}
+                        style={[
+                          styles.settingsHintIcon,
+                          isCompact && compactStyles.settingsHintIcon,
+                          { transform: [{ rotate: '90deg' }] },
+                        ]}
+                        resizeMode="contain"
+                      />
+                      <Text
+                        style={[
+                          styles.settingsHintText,
+                          isCompact && compactStyles.settingsHintText,
+                        ]}
+                      >
+                        Choose action
+                      </Text>
+                    </View>
+                    <View style={styles.settingsHintRow}>
+                      <Image
+                        source={iconASource}
+                        style={[
+                          styles.settingsHintIcon,
+                          isCompact && compactStyles.settingsHintIcon,
+                        ]}
+                        resizeMode="contain"
+                      />
+                      <Text
+                        style={[
+                          styles.settingsHintText,
+                          isCompact && compactStyles.settingsHintText,
+                        ]}
+                      >
+                        Confirm
+                      </Text>
+                    </View>
+                    <View style={styles.settingsHintRow}>
+                      <Image
+                        source={iconBSource}
+                        style={[
+                          styles.settingsHintIcon,
+                          isCompact && compactStyles.settingsHintIcon,
+                        ]}
+                        resizeMode="contain"
+                      />
+                      <Text
+                        style={[
+                          styles.settingsHintText,
+                          isCompact && compactStyles.settingsHintText,
+                        ]}
+                      >
+                        Back
                       </Text>
                     </View>
                   </View>
@@ -1033,7 +1427,10 @@ export function HubScreen({ navigation }: HubScreenProps) {
                     </Text>
                     {!isController && (
                       <TouchableOpacity
-                        onPress={() => setShowSkins(false)}
+                        onPress={() => {
+                          playSfx('ui_click');
+                          setShowSkins(false);
+                        }}
                         style={styles.closeButton}
                         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                       >
@@ -1084,17 +1481,18 @@ export function HubScreen({ navigation }: HubScreenProps) {
                               <NftCard
                                 name={skin.name}
                                 image={getSkinImage(skin.name)}
-                                isOwned
                                 isEquipped={isEquipped}
                                 actionLabel={isEquipped ? 'Unequip' : 'Equip'}
                                 onAction={
                                   isEquipped
                                     ? async () => {
+                                        playSfx('ui_click');
                                         await unequipSkin();
                                         refresh();
                                         fetchUserAssets();
                                       }
                                     : async () => {
+                                        playSfx('ui_click');
                                         await equipSkin(skin.address);
                                         refresh();
                                         fetchUserAssets();
@@ -1204,7 +1602,10 @@ export function HubScreen({ navigation }: HubScreenProps) {
                     </Text>
                     {!isController && (
                       <TouchableOpacity
-                        onPress={() => setShowQuests(false)}
+                        onPress={() => {
+                          playSfx('ui_click');
+                          setShowQuests(false);
+                        }}
                         style={styles.closeButton}
                         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                       >
@@ -1261,9 +1662,11 @@ export function HubScreen({ navigation }: HubScreenProps) {
                                 isClaimed={quest.progress?.claimed ?? false}
                                 isAccepted={quest.progress !== null}
                                 onAccept={async () => {
+                                  playSfx('ui_click');
                                   await acceptQuest(quest.definition.questId);
                                 }}
                                 onClaim={async () => {
+                                  playSfx('ui_click');
                                   await claimReward(quest.definition.questId);
                                 }}
                                 disabled={questsLoading}
@@ -1372,7 +1775,10 @@ export function HubScreen({ navigation }: HubScreenProps) {
                     </Text>
                     {!isController && (
                       <TouchableOpacity
-                        onPress={() => setShowProfile(false)}
+                        onPress={() => {
+                          playSfx('ui_click');
+                          setShowProfile(false);
+                        }}
                         style={styles.closeButton}
                         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                       >
@@ -1643,7 +2049,10 @@ export function HubScreen({ navigation }: HubScreenProps) {
               >
                 {!isController && (
                   <TouchableOpacity
-                    onPress={() => setShowPvP(false)}
+                    onPress={() => {
+                      playSfx('ui_click');
+                      setShowPvP(false);
+                    }}
                     style={[styles.pvpCloseButton, isCompact && compactStyles.pvpCloseButton]}
                     hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                   >
@@ -1764,6 +2173,11 @@ export function HubScreen({ navigation }: HubScreenProps) {
         </TouchableWithoutFeedback>
       </InlineModal>
 
+      <BetaWelcomeModal
+        visible={showBetaWelcome}
+        onClose={() => setShowBetaWelcome(false)}
+      />
+
       {/* Controller button hints */}
       <ControllerHints hints={controllerHints} horizontal size="large" />
     </Animated.View>
@@ -1871,6 +2285,14 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     lineHeight: 11,
     marginTop: 3,
+  },
+  guestModeDescription: {
+    fontFamily: Typography.body,
+    fontSize: 10,
+    color: '#888888',
+    lineHeight: 14,
+    marginTop: 6,
+    textAlign: 'left',
   },
 
   // TOP CENTER - Points
@@ -2111,8 +2533,8 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   modalContent: {
-    width: 340,
-    height: 340,
+    width: 380,
+    height: 420,
     padding: 40,
     alignItems: 'center',
     justifyContent: 'flex-start',
@@ -2146,7 +2568,7 @@ const styles = StyleSheet.create({
   modalBody: {
     width: '100%',
     alignItems: 'center',
-    gap: 30,
+    gap: 20,
   },
   resumeModalContent: {
     width: 320,
@@ -2192,15 +2614,21 @@ const styles = StyleSheet.create({
   resumeModalButtonTextPrimary: {
     color: '#ffffff',
   },
+  settingGlow: {
+    width: '100%',
+  },
   settingRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    gap: 12,
+    width: '100%',
   },
   settingLabel: {
     fontFamily: Typography.header,
-    fontSize: 20,
+    fontSize: 13,
     color: '#3d2b1f',
-    marginBottom: 2,
+    width: 90,
+    flexShrink: 0,
   },
   resetButton: {
     width: 180,
@@ -2217,6 +2645,46 @@ const styles = StyleSheet.create({
     fontFamily: Typography.button,
     fontSize: 18,
     color: '#a33a3a',
+  },
+  warningModalContent: {
+    width: 320,
+    height: 280,
+    paddingHorizontal: 26,
+    paddingTop: 26,
+    paddingBottom: 22,
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+  },
+  warningText: {
+    marginTop: 10,
+    textAlign: 'center',
+    fontFamily: Typography.body,
+    fontSize: 14,
+    lineHeight: 20,
+    color: '#5c4033',
+  },
+  warningErrorText: {
+    marginTop: 10,
+    textAlign: 'center',
+    fontFamily: Typography.body,
+    fontSize: 12,
+    color: '#a33a3a',
+  },
+  warningActions: {
+    marginTop: 18,
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  warningButton: {
+    width: 126,
+    height: 44,
+  },
+  warningButtonText: {
+    fontFamily: Typography.button,
+    fontSize: 16,
+    color: '#3d2b1f',
   },
 
   // SHARED MODAL STYLES (used by Skins, Ranks, Quests modals)
@@ -2440,6 +2908,11 @@ const compactStyles = StyleSheet.create({
     fontSize: 20,
     lineHeight: 22,
   },
+  guestModeDescription: {
+    fontSize: 20,
+    lineHeight: 26,
+    marginTop: 12,
+  },
   navButton: {
     width: 300,
     height: 96,
@@ -2608,8 +3081,8 @@ const compactStyles = StyleSheet.create({
 
   // Settings modal — scaled up for compact
   settingsModalContent: {
-    width: 680,
-    height: 680,
+    width: 760,
+    height: 840,
     padding: 80,
   },
   settingsModalBody: {
@@ -2617,7 +3090,8 @@ const compactStyles = StyleSheet.create({
     justifyContent: 'center',
   },
   settingLabel: {
-    fontSize: 36,
+    fontSize: 26,
+    width: 180,
   },
   resetButton: {
     width: 360,
@@ -2625,6 +3099,29 @@ const compactStyles = StyleSheet.create({
   },
   disconnectText: {
     fontSize: 32,
+  },
+  warningModalContent: {
+    width: 620,
+    height: 520,
+    paddingHorizontal: 44,
+    paddingTop: 42,
+    paddingBottom: 32,
+  },
+  warningText: {
+    marginTop: 16,
+    fontSize: 30,
+    lineHeight: 42,
+  },
+  warningErrorText: {
+    marginTop: 16,
+    fontSize: 24,
+  },
+  warningButton: {
+    width: 240,
+    height: 84,
+  },
+  warningButtonText: {
+    fontSize: 30,
   },
 
   // Controller close hint — scaled up for compact

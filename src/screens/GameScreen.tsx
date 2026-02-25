@@ -13,6 +13,8 @@ import { useSession } from '../contexts/SessionContext';
 import { useProfile } from '../contexts/ProfileContext';
 import { useGameplayStateContext } from '../contexts/GameplayStateContext';
 import { useWallet } from '../contexts/WalletContext';
+import { useAudio } from '../contexts/AudioContext';
+import { useSettings } from '../contexts/SettingsContext';
 import { useSolanaConnection } from '../contexts/SolanaConnectionContext';
 import { RunMode } from '../services/solana/types/gameplay_state';
 import { convertItemInstanceToGear, convertItemInstanceToTool } from '../services/solana/pitDraft';
@@ -28,20 +30,25 @@ import {
   POIModal,
   FastTravelOverlay,
   ItemTooltip,
+  ItemsetTooltip,
 } from '../components/game';
 import { Sidebar } from '../components/game/Sidebar';
+import { useFocusGlow } from '../components/ui/FocusGlow';
 import { PauseMenuModal } from '../components/ui/PauseMenuModal';
 import { useDirectionInput } from '../hooks/useInput';
 import { useLandscapeLock } from '../hooks/useOrientationLock';
 import { useScreenVariant } from '../contexts/ScreenVariantContext';
 import { useInputMode } from '../hooks/useInputMode';
 import { useControllerAction } from '../hooks/useControllerAction';
-import { useNativeGamepadMotion } from '../hooks/useNativeGamepadMotion';
-import { usePsg1Input } from 'psg1-sim';
+import { OverviewPanController } from '../components/game/OverviewPanController';
 import { Direction, DIRECTION_DELTA } from '../game/input/types';
 import { TileType, MapEnemy, MapPOI } from '../game/map/types';
 import { getDiscoveredWaypoints } from '../game/entities/pois';
-import { canAffordCostAcrossPhases, selectDuelWeekBossForSeed } from '../game/time/progression';
+import {
+  canAffordCostAcrossPhases,
+  selectDuelWeekBossForSeed,
+  selectWeekBossForLevel,
+} from '../game/time/progression';
 import { Typography } from '../theme/typography';
 import { useEquippedSkinImage } from '../hooks/useEquippedSkinImage';
 import { promptTransactionRetry } from '../utils/transaction-alerts';
@@ -54,7 +61,7 @@ import type {
   ItemRarity,
   Position,
 } from '../game/engine/types';
-import type { BackendCombatLogEntry } from '../services/solana/types/combat_events';
+import { LogAction, type BackendCombatLogEntry } from '../services/solana/types/combat_events';
 import { calculateItemStats } from '@/game/entities/items';
 import type { GauntletCombatVisualEvent } from '@/services/solana/gauntlet';
 import { fetchGauntletEchoFromGameState } from '@/services/solana/gauntlet';
@@ -79,6 +86,13 @@ const ICON_Y = require('../../assets/ui/control-buttons/y.png');
 const SIDEBAR_WIDTH = 230;
 const COMPACT_SIDEBAR_WIDTH = 280;
 const NAVBAR_HEIGHT = 60;
+const PERF_DEBUG_LOGS = false;
+
+function debugLog(...args: unknown[]) {
+  if (__DEV__ && PERF_DEBUG_LOGS) {
+    console.log(...args);
+  }
+}
 
 type PlayerStats = {
   hp: number;
@@ -93,13 +107,17 @@ type PlayerStats = {
 type InventoryFocusTarget = 'none' | 'player' | 'enemy';
 
 function buildPlayerCombatant(stats: PlayerStats): CombatantState {
+  // Defensive normalization: combat UI must never receive hp > maxHp.
+  const normalizedMaxHp = Math.max(1, stats.maxHp);
+  const normalizedHp = Math.min(Math.max(0, stats.hp), normalizedMaxHp);
+
   return {
     name: 'Player',
     emoji: '🧑‍🔧',
     definitionId: 'player',
     isPlayer: true,
-    maxHp: stats.maxHp,
-    hp: stats.hp,
+    maxHp: normalizedMaxHp,
+    hp: normalizedHp,
     atk: stats.atk,
     arm: stats.arm,
     spd: stats.spd,
@@ -269,6 +287,50 @@ function createGauntletCombatParams(
       playerWon: visual.playerWon,
     },
   };
+}
+
+/**
+ * Infer player's HP at combat start from backend combat log + final HP.
+ * Uses raw on-chain final HP when available (can be negative before state clamp).
+ */
+function inferPlayerStartHpFromBackendLog(
+  combatLog: BackendCombatLogEntry[] | undefined,
+  finalPlayerHp: number | undefined
+): number | null {
+  if (!combatLog?.length || finalPlayerHp == null) return null;
+
+  let playerDamageTaken = 0;
+  let playerHealing = 0;
+
+  for (const entry of combatLog) {
+    switch (entry.action) {
+      case LogAction.Attack:
+        // Attack logs attacker side. isPlayer=false means enemy attacked player.
+        if (!entry.isPlayer && entry.value > 0) playerDamageTaken += entry.value;
+        break;
+      case LogAction.StatusDamage:
+        // StatusDamage logs target side. isPlayer=true means player took it.
+        if (entry.isPlayer && entry.value > 0) playerDamageTaken += entry.value;
+        break;
+      case LogAction.NonWeaponDamage:
+        // NonWeaponDamage logs target side. isPlayer=true means player took it.
+        if (entry.isPlayer && entry.value > 0) playerDamageTaken += entry.value;
+        break;
+      case LogAction.ShrapnelRetaliation:
+        // ShrapnelRetaliation logs attacker side. isPlayer=true means player took it.
+        if (entry.isPlayer && entry.value > 0) playerDamageTaken += entry.value;
+        break;
+      case LogAction.Heal:
+        // Heal logs target side. isPlayer=true means player healed.
+        if (entry.isPlayer && entry.value > 0) playerHealing += entry.value;
+        break;
+      default:
+        break;
+    }
+  }
+
+  const inferred = finalPlayerHp + playerDamageTaken - playerHealing;
+  return inferred > 0 ? inferred : null;
 }
 
 /**
@@ -442,11 +504,15 @@ export function GameScreen({ navigation }: GameScreenProps) {
   const variant = useScreenVariant();
   const nightMovement = useNightMovement();
   const poiInteraction = usePoiInteraction();
+  const { playBgm, playSfx } = useAudio();
+  const { autoOpenPOI } = useSettings();
   const isFocused = useIsFocused();
   const inputMode = useInputMode();
   const isController = inputMode === 'controller';
-  const psg1Input = usePsg1Input();
-  const nativeMotion = useNativeGamepadMotion();
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const onChainStateRef = useRef(onChainState);
+  onChainStateRef.current = onChainState;
 
   // Persist fog of war state to AsyncStorage for session restore
   useFogPersistence({
@@ -471,6 +537,8 @@ export function GameScreen({ navigation }: GameScreenProps) {
   const skipMismatchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [inventoryFocus, setInventoryFocus] = useState<InventoryFocusTarget>('none');
   const [focusedSlotIndex, setFocusedSlotIndex] = useState(0);
+  const sidebarPlayerRef = useFocusGlow(inventoryFocus === 'player');
+  const sidebarEnemyRef = useFocusGlow(inventoryFocus === 'enemy');
   const [totalEchoSlots, setTotalEchoSlots] = useState(0);
   const echoEquipmentRef = useRef<{ gear: Gear[]; tool: Tool | null }>({ gear: [], tool: null });
 
@@ -490,49 +558,63 @@ export function GameScreen({ navigation }: GameScreenProps) {
   // On-chain state drift correction: periodically sync local state from on-chain.
   // This catches any drift from missed events or reconnection scenarios.
   // With on-chain-first movement, this should rarely trigger during normal play.
+  // Deps use specific scalar fields instead of full `state`/`onChainState` objects
+  // to avoid re-firing on every unrelated state change.
+  const localPosX = state?.player?.position?.x;
+  const localPosY = state?.player?.position?.y;
+  const localHp = state?.player?.stats?.hp;
+  const localMovesRemaining = state?.time?.movesRemaining;
+  const localPhase = state?.phase;
+  const chainPosX = onChainState?.positionX;
+  const chainPosY = onChainState?.positionY;
+  const chainHp = onChainState?.hp;
+  const chainMovesRemaining = onChainState?.movesRemaining;
   useEffect(() => {
+    const currentState = stateRef.current;
+    const currentOnChain = onChainStateRef.current;
     if (
-      !state ||
-      !onChainState ||
+      !currentState ||
+      !currentOnChain ||
       mode === 'guest' ||
       gameplaySyncStatus !== 'synced' ||
-      state.phase !== GamePhase.Exploration ||
+      localPhase !== GamePhase.Exploration ||
       isMovePending ||
-      // Skip when screen isn't focused (e.g., during CombatScreen)
-      // Prevents stale onChainState from overwriting correct HP after combat
       !isFocused ||
-      // Skip during/after POI interactions - the hook handles its own state sync
-      // Use ref for synchronous check (state-based checks have timing issues)
       skipMismatchDetectionRef.current ||
       poiInteraction.isInteracting
     ) {
       return;
     }
 
-    // On-chain HP is the authoritative effective HP for gameplay-state.
-    // Compare against local effective HP (stats.hp), not baseStats.hp.
     const hasMismatch =
-      state.player.position.x !== onChainState.positionX ||
-      state.player.position.y !== onChainState.positionY ||
-      state.player.stats.hp !== onChainState.hp ||
-      state.time.movesRemaining !== onChainState.movesRemaining;
+      localPosX !== chainPosX ||
+      localPosY !== chainPosY ||
+      localHp !== chainHp ||
+      localMovesRemaining !== chainMovesRemaining;
 
     if (hasMismatch) {
-      console.log('[GameScreen] Mismatch detected, syncing:', {
-        localBaseHp: state.player.baseStats.hp,
-        localStatsHp: state.player.stats.hp,
-        onChainHp: onChainState.hp,
-        localPos: state.player.position,
-        onChainPos: { x: onChainState.positionX, y: onChainState.positionY },
+      debugLog('[GameScreen] Mismatch detected, syncing:', {
+        localBaseHp: currentState.player.baseStats.hp,
+        localStatsHp: localHp,
+        onChainHp: chainHp,
+        localPos: currentState.player.position,
+        onChainPos: { x: chainPosX, y: chainPosY },
       });
-      dispatch({ type: 'SYNC_MOVE', confirmedState: onChainState });
+      dispatch({ type: 'SYNC_MOVE', confirmedState: currentOnChain });
     }
   }, [
     dispatch,
     gameplaySyncStatus,
     mode,
-    onChainState,
-    state,
+    localPosX,
+    localPosY,
+    localHp,
+    localMovesRemaining,
+    localPhase,
+    chainPosX,
+    chainPosY,
+    chainHp,
+    chainMovesRemaining,
     isMovePending,
     isFocused,
     poiInteraction.isInteracting,
@@ -552,13 +634,45 @@ export function GameScreen({ navigation }: GameScreenProps) {
     }
   }, [isFocused]);
 
+  // Audio: Handle exploration BGM based on phase + night transition SFX
+  // Track whether this is the first BGM play for the current session.
+  // On session entry (start/resume), play from the beginning; within a session
+  // (e.g. returning from combat), resume from saved position.
+  const sessionFreshBgmRef = useRef(true);
+  useEffect(() => {
+    if (!state) {
+      sessionFreshBgmRef.current = true;
+    }
+  }, [state]);
+
+  const prevPhaseRef = useRef(state?.time?.phase);
+  useEffect(() => {
+    if (!state || !isFocused) return;
+
+    const currentPhase = state.time?.phase;
+    const isNight = currentPhase === 'NIGHT';
+
+    // Play night transition SFX when switching from DAY to NIGHT
+    if (isNight && prevPhaseRef.current === 'DAY') {
+      playSfx('phase_night');
+    }
+    prevPhaseRef.current = currentPhase;
+
+    // On session entry, start exploration music from the beginning.
+    // Within an active session (e.g. returning from combat), resume from saved position.
+    const shouldResume = !sessionFreshBgmRef.current;
+    sessionFreshBgmRef.current = false;
+
+    playBgm(isNight ? 'exploration_night' : 'exploration_day', { resume: shouldResume, crossfade: true });
+  }, [state?.time?.phase, isFocused, playBgm, playSfx]);
+
   useEffect(() => {
     if (!isFocused || state || !hasActiveSession || !sessionPda || isRestoringSessionRef.current) {
       return;
     }
 
     isRestoringSessionRef.current = true;
-    console.log('[GameScreen] Auto-restoring active session from chain...', {
+    debugLog('[GameScreen] Auto-restoring active session from chain...', {
       sessionPda: sessionPda.toBase58(),
       currentLevel,
     });
@@ -570,7 +684,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
           return;
         }
         dispatch({ type: 'RESTORE_GAME', state: restored });
-        console.log('[GameScreen] Auto-restore completed');
+        debugLog('[GameScreen] Auto-restore completed');
       })
       .catch((err) => {
         console.error('[GameScreen] Auto-restore failed with error:', err);
@@ -587,7 +701,8 @@ export function GameScreen({ navigation }: GameScreenProps) {
       !state ||
       mode === 'guest' ||
       isTriggeringBossRef.current ||
-      isMovePending
+      isMovePending ||
+      state.phase === GamePhase.POIInteraction
     ) {
       return;
     }
@@ -657,7 +772,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
     }
 
     isTriggeringBossRef.current = true;
-    console.log('[GameScreen] Weekly fight detected via on-chain state, triggering:', {
+    debugLog('[GameScreen] Weekly fight detected via on-chain state, triggering:', {
       weekBoss: resolvedWeekBoss ?? null,
       resolvedWeekBoss: resolvedWeekBoss ?? null,
       runMode: onChainState.runMode,
@@ -666,19 +781,47 @@ export function GameScreen({ navigation }: GameScreenProps) {
     });
 
     (async () => {
-      // Campaign and Duel (weeks 1-2) resolve the boss inline during move_player.
-      // The move handler normally navigates to CombatScreen for these cases.
-      // This guard catches edge cases (e.g., screen refresh with stale state)
-      // where the boss effect fires for an already-resolved inline boss fight.
+      // Campaign and Duel (weeks 1-2) resolve the boss inline on-chain (either
+      // inside move_player or when a POI interaction exhausts remaining moves).
+      // The move handler normally navigates to CombatScreen for these cases, but
+      // when the boss is triggered by a POI interaction (e.g., Rest Alcove consuming
+      // the last moves on Night 3), the move handler doesn't fire. This guard
+      // catches both scenarios — wins AND losses — and shows CombatScreen via the
+      // local resolver so the player always sees the boss fight animation.
       const bossAlreadyResolvedInline =
-        onChainState.isDead &&
-        (onChainState.runMode === RunMode.Campaign ||
-          (onChainState.runMode === RunMode.Duel &&
-            (state.time.week === 1 || state.time.week === 2)));
+        onChainState.runMode === RunMode.Campaign ||
+        (onChainState.runMode === RunMode.Duel &&
+          // For deaths the week stays the same; for wins the week already advanced.
+          // Week 1 death → state.time.week=1, Week 1 win → state.time.week=2.
+          // Week 2 death → state.time.week=2, Week 2 win → state.time.week=3.
+          // So we check both the current week and the previous week.
+          (state.time.week <= 2 || (!onChainState.isDead && state.time.week === 3)));
 
-      if (bossAlreadyResolvedInline && resolvedWeekBoss) {
-        console.log(
-          '[GameScreen] Boss already resolved inline (player died), navigating to CombatScreen with local resolver'
+      if (bossAlreadyResolvedInline) {
+        // When the player won, the week already advanced on-chain, so
+        // resolvedWeekBoss points at the NEXT week's boss. Compute the
+        // correct (just-fought) boss from the previous week instead.
+        const playerWon = !onChainState.isDead;
+        const foughtWeek = playerWon ? ((state.time.week - 1) as 1 | 2 | 3) : state.time.week;
+        const foughtBoss: BossId | null =
+          onChainState.runMode === RunMode.Duel &&
+          (foughtWeek === 1 || foughtWeek === 2) &&
+          mapSeed != null
+            ? selectDuelWeekBossForSeed(mapSeed, foughtWeek)
+            : selectWeekBossForLevel(onChainState.campaignLevel, foughtWeek);
+
+        if (!foughtBoss) {
+          console.warn(
+            '[GameScreen] Boss already resolved inline but no boss ID for week',
+            foughtWeek
+          );
+          isTriggeringBossRef.current = false;
+          return;
+        }
+
+        debugLog(
+          '[GameScreen] Boss already resolved inline, navigating to CombatScreen with local resolver:',
+          { playerWon, foughtWeek, foughtBoss }
         );
         const playerStats = {
           hp: Math.max(state.player.stats.maxHp, 1),
@@ -690,18 +833,18 @@ export function GameScreen({ navigation }: GameScreenProps) {
           gold: onChainState.gold,
         };
         const bossCombatParams = createBossCombatParams(
-          resolvedWeekBoss,
+          foughtBoss,
           playerStats,
           state.player.inventory.map((slot) => slot.item),
           state.player.equippedTool,
           state.player.activeItemsets ?? [],
           state.rngState,
-          state.time.week,
+          foughtWeek,
           undefined, // No combat log available — local resolver will simulate
           {
             finalPlayerHp: onChainState.hp,
             finalPlayerGold: onChainState.gold,
-            playerWon: false,
+            playerWon,
           }
         );
         navigateToCombat(navigation, bossCombatParams, {
@@ -752,7 +895,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
             : undefined
         );
 
-        console.log('[GameScreen] Navigating to CombatScreen for weekly fight:', {
+        debugLog('[GameScreen] Navigating to CombatScreen for weekly fight:', {
           bossId: resolvedWeekBoss ?? null,
           enemyName: bossCombatParams.enemy.name,
           playerHp: playerStats.hp,
@@ -787,13 +930,10 @@ export function GameScreen({ navigation }: GameScreenProps) {
             state.time.week
           );
 
-          console.warn(
-            '[GameScreen] Boss fight on-chain failed, falling back to local resolver:',
-            {
-              bossId: resolvedWeekBoss,
-              playerHp: playerStats.hp,
-            }
-          );
+          console.warn('[GameScreen] Boss fight on-chain failed, falling back to local resolver:', {
+            bossId: resolvedWeekBoss,
+            playerHp: playerStats.hp,
+          });
 
           navigateToCombat(navigation, bossCombatParams, {
             campaignLevel: onChainState.campaignLevel,
@@ -848,7 +988,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
       return;
     }
 
-    console.log('[GameScreen] Dead gauntlet session detected, navigating to DeathScreen');
+    debugLog('[GameScreen] Dead gauntlet session detected, navigating to DeathScreen');
     isTriggeringBossRef.current = true;
     navigateToDeath(navigation, onChainState, `Week ${onChainState.week} Echo`);
   }, [
@@ -879,10 +1019,10 @@ export function GameScreen({ navigation }: GameScreenProps) {
     if (isExitingSession) return;
     setIsExitingSession(true);
     try {
-      console.log('[GameScreen] Debug: Force abandoning session...');
+      debugLog('[GameScreen] Debug: Force abandoning session...');
       const result = await forceAbandonCurrentSession();
       if (result.success) {
-        console.log('[GameScreen] Debug: Session abandoned successfully');
+        debugLog('[GameScreen] Debug: Session abandoned successfully');
         navigation.replace('Hub');
       } else {
         console.error('[GameScreen] Debug: Failed to abandon session:', result.error);
@@ -897,7 +1037,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
   }, [isExitingSession, forceAbandonCurrentSession, navigation, showWallBreakFeedback]);
 
   const discoveredWaypoints = useMemo(() => {
-    if (!state) return [];
+    if (!state?.map) return [];
 
     // Primary source: local map discovery (same source used by rail waypoint POI options).
     const merged = new Map<string, MapPOI>();
@@ -926,7 +1066,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
     }
 
     return Array.from(merged.values());
-  }, [state, onChainPois]);
+  }, [state?.map, onChainPois]);
 
   const isFastTravelActive = isFastTravelMode && fastTravelDestinations.length > 0;
 
@@ -1008,6 +1148,9 @@ export function GameScreen({ navigation }: GameScreenProps) {
         return;
       }
 
+      // Read state from ref — avoids rebuilding this callback on every state change
+      const state = stateRef.current;
+
       // Use ref for synchronous check to prevent race conditions with rapid clicks
       if (
         !state ||
@@ -1032,11 +1175,11 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
       // Guest mode: use local reducer (preserves offline play)
       if (mode === 'guest' || !hasActiveSession) {
-        console.log('[GameScreen] Using local MOVE (guest or no session)');
+        debugLog('[GameScreen] Using local MOVE (guest or no session)');
         dispatch({ type: 'MOVE', direction });
         return;
       }
-      console.log('[GameScreen] Using on-chain move path');
+      debugLog('[GameScreen] Using on-chain move path');
 
       // On-chain mode: validate locally first, then send on-chain
       const isWall = state.map.tiles[targetPos.y][targetPos.x] === TileType.Wall;
@@ -1050,7 +1193,13 @@ export function GameScreen({ navigation }: GameScreenProps) {
         if (!isHighlighted) {
           // First tap on wall: show highlight (local only, no transaction)
           dispatch({ type: 'MOVE', direction });
-          if (state.player.stats.dig < 1) showWallBreakFeedback('Requires DIG to break walls');
+          if (state.player.stats.dig < 1) {
+            showWallBreakFeedback('Requires DIG to break walls');
+            playSfx('ui_error');
+          } else {
+            // Highlighting a wall
+            playSfx('ui_hover');
+          }
           return;
         }
 
@@ -1060,14 +1209,18 @@ export function GameScreen({ navigation }: GameScreenProps) {
           !canAffordCostAcrossPhases(state.time, state.wallHighlight.cost)
         ) {
           showWallBreakFeedback(`Not enough moves (need ${state.wallHighlight.cost})`);
+          playSfx('ui_error');
           return;
         }
       }
 
+      // Play appropriate movement sound immediately upon confirming the move direction
+      playSfx(isWall ? 'move_dig' : 'move_floor');
+
       // On-chain-first: send transaction, await confirmation, then sync local state
       isMovePendingRef.current = true;
       setIsMovePending(true);
-      console.log('[GameScreen] Sending on-chain move to', targetPos.x, targetPos.y);
+      debugLog('[GameScreen] Sending on-chain move to', targetPos.x, targetPos.y);
 
       // Store pre-combat state for potential combat replay
       // Note: HP/gold are captured inside .then() from result.previousState (on-chain truth)
@@ -1086,7 +1239,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
       movePlayer({ targetX: targetPos.x, targetY: targetPos.y })
         .then(async (result) => {
-          console.log(
+          debugLog(
             '[GameScreen] movePlayer result:',
             JSON.stringify({
               success: result.success,
@@ -1126,17 +1279,19 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
             // Refresh map entities (enemies/POIs) to get updated positions
             // During night phases, enemies move toward the player after each player move
-            // Only sync enemy positions during night when enemies actually move
-            const isNightPhase =
-              result.newState.phase === 1 || // Night1
-              result.newState.phase === 3 || // Night2
-              result.newState.phase === 5; // Night3
+            // Use previousState phase: on the last night move, newState has already
+            // transitioned to the next day, but enemies moved during the night phase
+            const wasNightPhase = result.previousState
+              ? result.previousState.phase === 1 || // Night1
+                result.previousState.phase === 3 || // Night2
+                result.previousState.phase === 5 // Night3
+              : false;
 
-            if (sessionPda && isNightPhase) {
+            if (sessionPda && wasNightPhase) {
               refreshMapEntities(sessionPda)
                 .then((data) => {
                   if (data?.enemies && data.enemies.length > 0) {
-                    console.log(
+                    debugLog(
                       '[GameScreen] Syncing enemy positions, count:',
                       data.enemies.length
                     );
@@ -1199,7 +1354,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
                     result.newState.gold
                   );
 
-                  console.log(
+                  debugLog(
                     '[GameScreen] Inline gauntlet echo resolved in move_player, navigating to CombatScreen:',
                     {
                       week: currentWeek,
@@ -1230,7 +1385,9 @@ export function GameScreen({ navigation }: GameScreenProps) {
                     preCombatSeed
                   );
                   if (fallback) {
-                    console.log('[GameScreen] Fallback gauntlet combat params built, navigating to CombatScreen');
+                    debugLog(
+                      '[GameScreen] Fallback gauntlet combat params built, navigating to CombatScreen'
+                    );
                     navigateToCombat(navigation, fallback, result.newState);
                     return;
                   }
@@ -1284,7 +1441,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
                   }
                 );
 
-                console.log(
+                debugLog(
                   '[GameScreen] Inline boss resolved in move_player, navigating to CombatScreen:',
                   {
                     bossId: resolvedWeekBoss,
@@ -1318,7 +1475,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
                     e.position.y === state.player.position.y
                 );
                 if (combatEnemy) {
-                  console.log(
+                  debugLog(
                     '[GameScreen] Found enemy at player position (night combat):',
                     combatEnemy.definitionId
                   );
@@ -1328,7 +1485,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
               if (combatEnemy) {
                 // Combat was resolved on-chain during move_player.
                 // Navigate to CombatScreen to show combat replay.
-                console.log('[GameScreen] Combat occurred with enemy:', {
+                debugLog('[GameScreen] Combat occurred with enemy:', {
                   enemyId: combatEnemy.definitionId,
                   enemyTier: combatEnemy.tier,
                   enemyPosition: combatEnemy.position,
@@ -1353,7 +1510,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
                     playerWon: !result.isDead,
                   }
                 );
-                console.log('[GameScreen] Navigating to CombatScreen with params:', {
+                debugLog('[GameScreen] Navigating to CombatScreen with params:', {
                   playerHp: combatParams.player.hp,
                   playerAtk: combatParams.player.atk,
                   enemyName: combatParams.enemy.name,
@@ -1375,7 +1532,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
                   const tier = deriveEnemyTier(enemyId, result.combatEnemyInfo.hp);
                   const enemyDef = ENEMY_DEFINITIONS[enemyId];
                   const tierStats = enemyDef.tiers[tier - 1];
-                  console.log(
+                  debugLog(
                     '[GameScreen] Night combat fallback: archetype=',
                     result.combatEnemyInfo.archetype,
                     'enemyId=',
@@ -1443,7 +1600,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
             } else if (result.isDead && !result.bossFightReady) {
               // Non-combat death (shouldn't normally happen, but handle edge case).
               // Skip when bossFightReady — the boss useEffect will show CombatScreen first.
-              console.log('[GameScreen] Player died (non-combat), navigating to DeathScreen');
+              debugLog('[GameScreen] Player died (non-combat), navigating to DeathScreen');
               navigateToDeath(navigation, result.newState);
             }
           }
@@ -1461,7 +1618,6 @@ export function GameScreen({ navigation }: GameScreenProps) {
       dispatch,
       overviewMode.active,
       showWallBreakFeedback,
-      state,
       mode,
       hasActiveSession,
       movePlayer,
@@ -1487,9 +1643,10 @@ export function GameScreen({ navigation }: GameScreenProps) {
       return;
     }
 
+    playSfx('ui_click');
     // Guest mode: teleport player locally
     if (mode === 'guest' || !hasActiveSession) {
-      console.log('[GameScreen] Guest mode fast travel to', dest.x, dest.y);
+      debugLog('[GameScreen] Guest mode fast travel to', dest.x, dest.y);
       lastAutoTriggeredPosRef.current = { x: dest.x, y: dest.y };
       dispatch({ type: 'FAST_TRAVEL_TO', destination: dest });
       setIsFastTravelMode(false);
@@ -1542,7 +1699,8 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
   const maxGearSlots = onChainState?.runMode === RunMode.Gauntlet ? 12 : 8;
   const isGauntletLayout = onChainState?.runMode === RunMode.Gauntlet;
-  const totalPlayerSlots = maxGearSlots + 1; // gear slots + weapon slot
+  const activeItemsetsCount = state?.player?.activeItemsets?.length ?? 0;
+  const totalPlayerSlots = maxGearSlots + 1 + activeItemsetsCount; // gear slots + weapon slot + itemset slots
 
   const getPlayerItemAtSlot = useCallback(
     (index: number): Tool | Gear | null => {
@@ -1584,8 +1742,9 @@ export function GameScreen({ navigation }: GameScreenProps) {
   const controllerEnabled =
     isController && isFocused && !!state && !isPOIModalOpen && !showPauseMenu;
 
-  // Compact view sidebar toggle via X
+  // Compact view sidebar toggle via X — kept separate so it works even when POI modal is open
   const [isCompactSidebarVisible, setIsCompactSidebarVisible] = useState(true);
+  const sidebarToggleEnabled = isController && isFocused && !!state && !showPauseMenu;
 
   useControllerAction(
     {
@@ -1598,18 +1757,34 @@ export function GameScreen({ navigation }: GameScreenProps) {
           setIsCompactSidebarVisible((prev) => !prev);
         }
       },
+    },
+    sidebarToggleEnabled
+  );
+
+  useControllerAction(
+    {
       onDPadUp: () => {
         if (inventoryFocus !== 'none') {
           setFocusedSlotIndex((prev) => {
-            const max = inventoryFocus === 'player' ? totalPlayerSlots : totalEchoSlots;
-            const gearMax = max - 1; // weapon is last index
+            if (inventoryFocus === 'player') {
+              // If in itemset zone, go back to weapon
+              if (prev > maxGearSlots) return maxGearSlots;
+              if (prev === maxGearSlots) {
+                // Weapon → last gear row (column 0)
+                const lastRowStart = Math.max(0, maxGearSlots - (maxGearSlots % 4 || 4));
+                return Math.min(lastRowStart, maxGearSlots - 1);
+              }
+              if (prev >= 4) return prev - 4;
+              return prev;
+            }
+            // echo focus (no itemsets, original logic)
+            const gearMax = totalEchoSlots - 1;
             if (prev === gearMax) {
-              // Weapon → last gear row (column 0)
               const lastRowStart = Math.max(0, gearMax - (gearMax % 4 || 4));
               return Math.min(lastRowStart, gearMax - 1);
             }
-            if (prev >= 4) return prev - 4; // move up a row
-            return prev; // already at top
+            if (prev >= 4) return prev - 4;
+            return prev;
           });
           return;
         }
@@ -1618,11 +1793,28 @@ export function GameScreen({ navigation }: GameScreenProps) {
       onDPadDown: () => {
         if (inventoryFocus !== 'none') {
           setFocusedSlotIndex((prev) => {
-            const max = inventoryFocus === 'player' ? totalPlayerSlots : totalEchoSlots;
-            const gearMax = max - 1; // weapon is last index
-            if (prev >= gearMax) return prev; // already at weapon or beyond
+            if (inventoryFocus === 'player') {
+              // In itemset zone
+              if (prev > maxGearSlots) {
+                const lastItemsetIndex = maxGearSlots + activeItemsetsCount;
+                if (prev >= lastItemsetIndex) return prev;
+                return prev + 1;
+              }
+              // At weapon — go to first itemset if any
+              if (prev === maxGearSlots) {
+                if (activeItemsetsCount > 0) return maxGearSlots + 1;
+                return prev;
+              }
+              // In gear zone
+              const nextRow = prev + 4;
+              if (nextRow >= maxGearSlots) return maxGearSlots;
+              return nextRow;
+            }
+            // echo focus (no itemsets, original logic)
+            const gearMax = totalEchoSlots - 1;
+            if (prev >= gearMax) return prev;
             const nextRow = prev + 4;
-            if (nextRow >= gearMax) return gearMax; // jump to weapon
+            if (nextRow >= gearMax) return gearMax;
             return nextRow;
           });
           return;
@@ -1632,10 +1824,20 @@ export function GameScreen({ navigation }: GameScreenProps) {
       onDPadLeft: () => {
         if (inventoryFocus !== 'none') {
           setFocusedSlotIndex((prev) => {
-            const max = inventoryFocus === 'player' ? totalPlayerSlots : totalEchoSlots;
-            const gearMax = max - 1;
-            if (prev === gearMax) return prev; // weapon slot, no left/right
-            if (prev % 4 === 0) return prev; // left edge
+            if (inventoryFocus === 'player') {
+              // In itemset zone — navigate left between itemsets
+              if (prev > maxGearSlots) {
+                if (prev <= maxGearSlots + 1) return prev;
+                return prev - 1;
+              }
+              if (prev === maxGearSlots) return prev; // weapon, no left/right
+              if (prev % 4 === 0) return prev;
+              return prev - 1;
+            }
+            // echo focus
+            const gearMax = totalEchoSlots - 1;
+            if (prev === gearMax) return prev;
+            if (prev % 4 === 0) return prev;
             return prev - 1;
           });
           return;
@@ -1645,11 +1847,23 @@ export function GameScreen({ navigation }: GameScreenProps) {
       onDPadRight: () => {
         if (inventoryFocus !== 'none') {
           setFocusedSlotIndex((prev) => {
-            const max = inventoryFocus === 'player' ? totalPlayerSlots : totalEchoSlots;
-            const gearMax = max - 1;
-            if (prev === gearMax) return prev; // weapon slot, no left/right
-            if (prev % 4 === 3) return prev; // right edge
-            if (prev + 1 >= gearMax) return prev; // don't overflow into weapon
+            if (inventoryFocus === 'player') {
+              // In itemset zone — navigate right between itemsets
+              if (prev > maxGearSlots) {
+                const lastItemsetIndex = maxGearSlots + activeItemsetsCount;
+                if (prev >= lastItemsetIndex) return prev;
+                return prev + 1;
+              }
+              if (prev === maxGearSlots) return prev; // weapon, no left/right
+              if (prev % 4 === 3) return prev;
+              if (prev + 1 >= maxGearSlots) return prev;
+              return prev + 1;
+            }
+            // echo focus
+            const gearMax = totalEchoSlots - 1;
+            if (prev === gearMax) return prev;
+            if (prev % 4 === 3) return prev;
+            if (prev + 1 >= gearMax) return prev;
             return prev + 1;
           });
           return;
@@ -1657,11 +1871,20 @@ export function GameScreen({ navigation }: GameScreenProps) {
         handleDirection(Direction.Right);
       },
       onY: () => {
-        if (!isFastTravelActive) toggleOverviewMode();
+        if (!isFastTravelActive) {
+          playSfx('map_reveal');
+          toggleOverviewMode();
+        }
       },
       onA: () => {
         if (inventoryFocus === 'player') {
-          if (focusedSlotIndex === maxGearSlots) {
+          if (focusedSlotIndex > maxGearSlots) {
+            // Itemset slot
+            const itemsetIndex = focusedSlotIndex - maxGearSlots - 1;
+            const itemsetId = state?.player?.activeItemsets?.[itemsetIndex];
+            if (itemsetId)
+              handleInspectItemset(itemsetId as import('../game/engine/types').ItemsetId);
+          } else if (focusedSlotIndex === maxGearSlots) {
             if (state?.player?.equippedTool) handleInspectTool(state.player.equippedTool);
           } else {
             const item = getPlayerItemAtSlot(focusedSlotIndex);
@@ -1681,6 +1904,10 @@ export function GameScreen({ navigation }: GameScreenProps) {
         }
       },
       onB: () => {
+        if (isItemsetTooltipVisible) {
+          handleCloseItemsetTooltip();
+          return;
+        }
         if (isTooltipVisible) {
           handleCloseTooltip();
           return;
@@ -1732,65 +1959,6 @@ export function GameScreen({ navigation }: GameScreenProps) {
     }
   }, [state?.phase]);
 
-  // --- Controller: L3 joystick for panning the overview map ---
-  const panIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  useEffect(() => {
-    if (!isController || !overviewMode.active || isFastTravelActive) {
-      if (panIntervalRef.current) {
-        clearInterval(panIntervalRef.current);
-        panIntervalRef.current = null;
-      }
-      return;
-    }
-
-    const usePsg1Stick =
-      Math.abs(psg1Input.leftStick.x) > 0.01 || Math.abs(psg1Input.leftStick.y) > 0.01;
-    const x = usePsg1Stick ? psg1Input.leftStick.x : nativeMotion.leftStick.x;
-    const y = usePsg1Stick ? psg1Input.leftStick.y : nativeMotion.leftStick.y;
-    const DEAD_ZONE = 0.15;
-    const isIdle = Math.abs(x) < DEAD_ZONE && Math.abs(y) < DEAD_ZONE;
-
-    if (isIdle) {
-      if (panIntervalRef.current) {
-        clearInterval(panIntervalRef.current);
-        panIntervalRef.current = null;
-      }
-      return;
-    }
-
-    // Start continuous panning at 60fps-ish interval
-    if (panIntervalRef.current) clearInterval(panIntervalRef.current);
-    const PAN_SPEED = 8;
-    panIntervalRef.current = setInterval(() => {
-      const useLivePsg1Stick =
-        Math.abs(psg1Input.leftStick.x) > 0.01 || Math.abs(psg1Input.leftStick.y) > 0.01;
-      const sx = useLivePsg1Stick ? psg1Input.leftStick.x : nativeMotion.leftStick.x;
-      const sy = useLivePsg1Stick ? psg1Input.leftStick.y : nativeMotion.leftStick.y;
-      if (Math.abs(sx) >= DEAD_ZONE || Math.abs(sy) >= DEAD_ZONE) {
-        panOverview({
-          x: Math.round(sx * PAN_SPEED),
-          y: Math.round(sy * PAN_SPEED),
-        });
-      }
-    }, 50);
-
-    return () => {
-      if (panIntervalRef.current) {
-        clearInterval(panIntervalRef.current);
-        panIntervalRef.current = null;
-      }
-    };
-  }, [
-    isController,
-    overviewMode.active,
-    isFastTravelActive,
-    psg1Input.leftStick.x,
-    psg1Input.leftStick.y,
-    nativeMotion.leftStick.x,
-    nativeMotion.leftStick.y,
-    panOverview,
-  ]);
-
   const disabledDirections = useMemo(() => {
     if (!state) return [];
     if (overviewMode.active && !isFastTravelActive)
@@ -1832,10 +2000,15 @@ export function GameScreen({ navigation }: GameScreenProps) {
   // one render after the position update (on-chain POI data loads asynchronously).
   const lastAutoTriggeredPosRef = useRef<{ x: number; y: number } | null>(null);
 
-  // Extract stable values from poiInteraction to avoid re-triggering on every hook state change
+  // Extract stable values from poiInteraction to avoid re-triggering on every hook state change.
+  // poiInteract is stored in a ref because it has 15+ deps and changes reference frequently,
+  // but the effect only needs to call it — not re-run when it changes.
   const { shouldAutoOpen, isInteracting, interact: poiInteract } = poiInteraction;
+  const poiInteractRef = useRef(poiInteract);
+  poiInteractRef.current = poiInteract;
 
   useEffect(() => {
+    if (!autoOpenPOI) return;
     if (!state?.player?.position || state.phase !== GamePhase.Exploration || !isFocused) return;
     const currentPos = state.player.position;
     const lastAutoPos = lastAutoTriggeredPosRef.current;
@@ -1844,9 +2017,9 @@ export function GameScreen({ navigation }: GameScreenProps) {
       lastAutoPos && lastAutoPos.x === currentPos.x && lastAutoPos.y === currentPos.y;
 
     if (shouldAutoOpen && !isInteracting && !alreadyTriggeredHere) {
-      console.log('[GameScreen] Auto-triggering POI interaction at', currentPos.x, currentPos.y);
+      debugLog('[GameScreen] Auto-triggering POI interaction at', currentPos.x, currentPos.y);
       lastAutoTriggeredPosRef.current = { x: currentPos.x, y: currentPos.y };
-      poiInteract();
+      poiInteractRef.current();
     }
 
     // Clear last auto-triggered position when player moves away from it
@@ -1854,11 +2027,11 @@ export function GameScreen({ navigation }: GameScreenProps) {
       lastAutoTriggeredPosRef.current = null;
     }
   }, [
+    autoOpenPOI,
     state?.player?.position,
     state?.phase,
     shouldAutoOpen,
     isInteracting,
-    poiInteract,
     isFocused,
   ]);
 
@@ -1924,7 +2097,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
   const handlePOIOption = useCallback(
     (optionIndex: number) => {
-      console.log(
+      debugLog(
         '[GameScreen] handlePOIOption called | optionIndex:',
         optionIndex,
         '| deferredPoiType:',
@@ -1947,27 +2120,93 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
         // Capture item before on-chain call (shop purchases update cacheOfferOptions)
         const selectedItem = poiInteraction.cacheOfferOptions?.[optionIndex]?.item;
-        console.log(
+        debugLog(
           '[GameScreen] handlePOIOption: DEFERRED path | type:',
           poiInteraction.deferredPoiType,
           '| selectedItem:',
           selectedItem?.name ?? 'none'
         );
         poiInteraction.confirmPoiSelection(optionIndex).then((result) => {
-          console.log('[GameScreen] confirmPoiSelection result:', result);
+          debugLog('[GameScreen] confirmPoiSelection result:', result);
           if (result.success) {
-            // For shop purchases (keepOpen), add item to local inventory after confirmation
-            if (result.keepOpen && selectedItem) {
-              console.log(
-                '[GameScreen] Adding purchased item to inventory after on-chain confirmation:',
-                selectedItem.name
-              );
-              if ('currentRarity' in selectedItem) {
-                dispatch({ type: 'COLLECT_GEAR', gear: selectedItem as Gear });
-              } else {
-                dispatch({ type: 'EQUIP_TOOL', tool: selectedItem as Tool });
+            // Boss resolved during POI (e.g., Rest Alcove on Night 3) — show CombatScreen
+            if (result.bossResolved && state) {
+              const {
+                playerWon,
+                finalPlayerHp,
+                finalPlayerGold,
+                totalMoves,
+                phase,
+                combatLog,
+                preBossPlayerHp,
+                turnsTaken,
+                finalEnemyHp,
+                rawFinalPlayerHp,
+                signature,
+              } = result.bossResolved;
+              // state.time.week is pre-POI (closure captures pre-dispatch value),
+              // which is the correct fought week for both wins and losses.
+              const foughtWeek = state.time.week as 1 | 2 | 3;
+              const foughtBoss: BossId | null =
+                onChainState?.runMode === RunMode.Duel &&
+                (foughtWeek === 1 || foughtWeek === 2) &&
+                mapSeed != null
+                  ? selectDuelWeekBossForSeed(mapSeed, foughtWeek)
+                  : selectWeekBossForLevel(onChainState?.campaignLevel ?? 0, foughtWeek);
+
+              if (foughtBoss) {
+                debugLog('[GameScreen] Boss resolved during POI, navigating to CombatScreen:', {
+                  playerWon,
+                  foughtWeek,
+                  foughtBoss,
+                  hasCombatLog: !!combatLog,
+                  combatLogEntries: combatLog?.length ?? 0,
+                  preBossPlayerHp,
+                  turnsTaken,
+                  finalEnemyHp,
+                  rawFinalPlayerHp,
+                  signature,
+                });
+                const playerStats = {
+                  hp:
+                    preBossPlayerHp ??
+                    inferPlayerStartHpFromBackendLog(
+                      combatLog,
+                      rawFinalPlayerHp ?? finalPlayerHp
+                    ) ??
+                    Math.max(state.player.stats.hp, 1),
+                  maxHp: state.player.stats.maxHp,
+                  atk: state.player.stats.atk,
+                  arm: state.player.stats.arm,
+                  spd: state.player.stats.spd,
+                  dig: state.player.stats.dig,
+                  gold: finalPlayerGold,
+                };
+                const bossCombatParams = createBossCombatParams(
+                  foughtBoss,
+                  playerStats,
+                  state.player.inventory.map((slot) => slot.item),
+                  state.player.equippedTool,
+                  state.player.activeItemsets ?? [],
+                  state.rngState,
+                  foughtWeek,
+                  combatLog,
+                  { finalPlayerHp, finalPlayerGold, playerWon }
+                );
+                navigateToCombat(navigation, bossCombatParams, {
+                  campaignLevel: onChainState?.campaignLevel ?? 0,
+                  totalMoves,
+                  phase,
+                });
               }
+              // usePoiInteraction already dispatched CLOSE_POI — skip the one below
+              skipMismatchTimeoutRef.current = setTimeout(() => {
+                skipMismatchDetectionRef.current = false;
+              }, 1000);
+              return;
             }
+
+            // Inventory is already synced via SYNC_INVENTORY dispatched by the hook
             if (!result.keepOpen) {
               dispatch({ type: 'CLOSE_POI' });
             }
@@ -1994,16 +2233,16 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
         // Capture item before on-chain call (selectCacheOffer clears cacheOfferOptions)
         const selectedItem = poiInteraction.cacheOfferOptions[optionIndex]?.item;
-        console.log(
+        debugLog(
           '[GameScreen] handlePOIOption: ON-CHAIN pick-item path | selectedItem:',
           selectedItem?.name ?? 'none'
         );
         poiInteraction.selectCacheOffer(optionIndex).then((result) => {
-          console.log('[GameScreen] selectCacheOffer result:', result);
+          debugLog('[GameScreen] selectCacheOffer result:', result);
           if (result.success) {
             // Add item to inventory only after blockchain confirmation
             if (selectedItem) {
-              console.log(
+              debugLog(
                 '[GameScreen] Adding item to inventory after on-chain confirmation:',
                 selectedItem.name
               );
@@ -2028,13 +2267,14 @@ export function GameScreen({ navigation }: GameScreenProps) {
       }
 
       // Default: local-only dispatch for auto-trigger POIs (L1, L5, L8, L11, L14)
-      console.log(
+      debugLog(
         '[GameScreen] handlePOIOption: LOCAL fallback path | activePOI:',
         state?.activePOI?.poi?.definitionId
       );
+      playSfx('ui_click');
       dispatch({ type: 'SELECT_POI_OPTION', optionIndex });
     },
-    [dispatch, poiInteraction, state?.activePOI?.poi?.definitionId]
+    [dispatch, poiInteraction, state?.activePOI?.poi?.definitionId, playSfx]
   );
 
   // Override POI interaction options with on-chain cache offers when available
@@ -2059,6 +2299,10 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
   const [inspectedItem, setInspectedItem] = useState<Tool | Gear | null>(null);
   const [isTooltipVisible, setTooltipVisible] = useState(false);
+  const [inspectedItemset, setInspectedItemset] = useState<
+    import('../game/engine/types').ItemsetId | null
+  >(null);
+  const [isItemsetTooltipVisible, setItemsetTooltipVisible] = useState(false);
 
   const handleInspectItem = useCallback((item: Tool | Gear) => {
     setInspectedItem(item);
@@ -2069,6 +2313,11 @@ export function GameScreen({ navigation }: GameScreenProps) {
     setTooltipVisible(true);
   }, []);
   const handleCloseTooltip = useCallback(() => setTooltipVisible(false), []);
+  const handleInspectItemset = useCallback((id: import('../game/engine/types').ItemsetId) => {
+    setInspectedItemset(id);
+    setItemsetTooltipVisible(true);
+  }, []);
+  const handleCloseItemsetTooltip = useCallback(() => setItemsetTooltipVisible(false), []);
 
   const handleInventoryItemPress = useCallback(
     (item: Tool | Gear) => {
@@ -2076,7 +2325,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
       // Rune Kiln (L11) Logic
       if (state.activePOI?.poi.definitionId === 'L11' && 'currentRarity' in item) {
-        if (item.currentRarity !== 'COMMON' && item.currentRarity !== 'GILDED') return;
+        if (item.currentRarity === 'DIAMOND') return;
         const gear = item as Gear;
         const availableCount = state.player.inventory.filter(
           (slot) =>
@@ -2084,13 +2333,13 @@ export function GameScreen({ navigation }: GameScreenProps) {
             'currentRarity' in slot.item &&
             (slot.item as Gear).currentRarity === gear.currentRarity
         ).length;
-        if (availableCount === 0) return;
-        setKilnSelection((prev) => {
-          // Different item or different rarity → replace selection
-          if (!prev.gearId || prev.gearId !== gear.id || prev.rarity !== gear.currentRarity)
-            return { gearId: gear.id, rarity: gear.currentRarity, emoji: gear.emoji, count: 1 };
-          const maxCount = Math.min(2, availableCount);
-          return prev.count < maxCount ? { ...prev, count: prev.count + 1 } : prev;
+        if (availableCount < 2) return;
+        // Single click fills both slots immediately
+        setKilnSelection({
+          gearId: gear.id,
+          rarity: gear.currentRarity,
+          emoji: gear.emoji,
+          count: 2,
         });
         return;
       }
@@ -2139,12 +2388,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
   );
 
   const handleKilnSlotPress = useCallback(() => {
-    setKilnSelection((prev) => {
-      if (!prev.gearId || prev.count === 0) return prev;
-      return prev.count - 1 <= 0
-        ? { gearId: null, rarity: null, emoji: '', count: 0 }
-        : { ...prev, count: prev.count - 1 };
-    });
+    setKilnSelection({ gearId: null, rarity: null, emoji: '', count: 0 });
   }, []);
 
   const handleScrapSlotPress = useCallback(() => {
@@ -2156,22 +2400,109 @@ export function GameScreen({ navigation }: GameScreenProps) {
     (state.activePOI?.poi.definitionId === 'L11' || state.activePOI?.poi.definitionId === 'L14');
 
   // Filtered gear for controller-mode inventory cycling in Rune Kiln / Scrap Chute
+  const playerInventory = state?.player?.inventory;
+  const activePoiDefId = state?.activePOI?.poi?.definitionId;
   const selectableGear = useMemo(() => {
-    if (!state || !isItemSelectPoiActive) return [];
-    const poiDefId = state.activePOI?.poi.definitionId;
-    return state.player.inventory
-      .map((slot) => slot.item)
-      .filter((item): item is Gear => {
-        if (!('currentRarity' in item)) return false;
-        // Rune Kiln: only COMMON or GILDED gear
-        if (poiDefId === 'L11') {
-          return item.currentRarity === 'COMMON' || item.currentRarity === 'GILDED';
-        }
-        return true; // Scrap Chute: any gear
-      });
-  }, [state, isItemSelectPoiActive]);
+    if (!playerInventory || !isItemSelectPoiActive) return [];
 
-  if (!state) {
+    if (activePoiDefId === 'L11') {
+      // Rune Kiln: only show gear with 2+ copies (non-Diamond), deduplicated
+      const gearCounts = new Map<string, { gear: Gear; count: number }>();
+      for (const slot of playerInventory) {
+        const item = slot.item;
+        if (!('currentRarity' in item) || item.currentRarity === 'DIAMOND') continue;
+        const gear = item as Gear;
+        const key = `${gear.id}:${gear.currentRarity}`;
+        const existing = gearCounts.get(key);
+        if (existing) {
+          existing.count++;
+        } else {
+          gearCounts.set(key, { gear, count: 1 });
+        }
+      }
+      // Only include items with 2+ copies, show one of each
+      return Array.from(gearCounts.values())
+        .filter((entry) => entry.count >= 2)
+        .map((entry) => entry.gear);
+    }
+
+    // Scrap Chute: any gear
+    return playerInventory
+      .map((slot) => slot.item)
+      .filter((item): item is Gear => 'currentRarity' in item);
+  }, [playerInventory, activePoiDefId, isItemSelectPoiActive]);
+
+  const isCompact = variant === 'compact';
+  const navScale = isCompact ? 2 : 1;
+  const navbarHeight = NAVBAR_HEIGHT * navScale;
+  const sharedSidebarProps = useMemo(
+    () =>
+      state
+        ? {
+            time: state.time,
+            stats: state.player.stats,
+            inventory: state.player.inventory,
+            inventoryCapacity: state.player.inventoryCapacity,
+            maxGearSlots,
+            isGauntletLayout,
+            equippedTool: state.player.equippedTool,
+            activeItemsets: state.player.activeItemsets,
+          }
+        : null,
+    [
+      state,
+      maxGearSlots,
+      isGauntletLayout,
+    ]
+  );
+  const handleToggleOverview = useCallback(() => {
+    playSfx('map_reveal');
+    toggleOverviewMode();
+  }, [playSfx, toggleOverviewMode]);
+  const handleFastTravelCycle = useCallback(() => {
+    setFastTravelSelectedIndex((prev) =>
+      fastTravelDestinations.length > 0 ? (prev + 1) % fastTravelDestinations.length : 0
+    );
+  }, [fastTravelDestinations.length]);
+  const handleFastTravelCancel = useCallback(() => {
+    setIsFastTravelMode(false);
+    setFastTravelDestinations([]);
+  }, []);
+  const handlePauseClose = useCallback(() => setShowPauseMenu(false), []);
+  const handleReturnToHub = useCallback(() => {
+    setShowPauseMenu(false);
+    navigation.replace('Hub');
+  }, [navigation]);
+  const handleDpadCenterPress = useMemo(() => {
+    if (isFastTravelActive) {
+      return handleFastTravelConfirm;
+    }
+    if (state && poiInteraction.canInteract && state.phase === GamePhase.Exploration) {
+      return () => {
+        debugLog(
+          '[GameScreen] A button pressed | currentPoi:',
+          poiInteraction.currentPoi
+            ? {
+                x: poiInteraction.currentPoi.x,
+                y: poiInteraction.currentPoi.y,
+                poiType: poiInteraction.currentPoi.poiType,
+              }
+            : null
+        );
+        poiInteraction.interact();
+      };
+    }
+    return undefined;
+  }, [
+    isFastTravelActive,
+    handleFastTravelConfirm,
+    poiInteraction.canInteract,
+    poiInteraction.currentPoi,
+    poiInteraction.interact,
+    state,
+  ]);
+
+  if (!state || !sharedSidebarProps) {
     return (
       <View style={styles.container}>
         <ImageBackground
@@ -2189,12 +2520,14 @@ export function GameScreen({ navigation }: GameScreenProps) {
     );
   }
 
-  const isCompact = variant === 'compact';
-  const navScale = isCompact ? 2 : 1;
-  const navbarHeight = NAVBAR_HEIGHT * navScale;
-
   return (
     <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
+      <OverviewPanController
+        isController={isController}
+        overviewActive={overviewMode.active}
+        isFastTravelActive={isFastTravelActive}
+        panOverview={panOverview}
+      />
       <ImageBackground source={BACKGROUND_IMAGE} style={styles.backgroundImage} resizeMode="cover">
         <View style={styles.darkOverlay}>
           <View style={styles.fullLayout}>
@@ -2210,7 +2543,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
                         justifyContent: 'center',
                         alignItems: 'center',
                       }}
-                      onPress={toggleOverviewMode}
+                      onPress={handleToggleOverview}
                       disabled={isFastTravelActive}
                     >
                       <Image
@@ -2249,17 +2582,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
               </View>
               {!isCompact && (
                 <View style={styles.bossTopContainer}>
-                  <Sidebar
-                    time={state.time}
-                    stats={state.player.stats}
-                    inventory={state.player.inventory}
-                    inventoryCapacity={state.player.inventoryCapacity}
-                    maxGearSlots={maxGearSlots}
-                    isGauntletLayout={isGauntletLayout}
-                    equippedTool={state.player.equippedTool}
-                    activeItemsets={state.player.activeItemsets}
-                    onlyBoss={true}
-                  />
+                  <Sidebar {...sharedSidebarProps} onlyBoss={true} />
                 </View>
               )}
             </View>
@@ -2293,18 +2616,9 @@ export function GameScreen({ navigation }: GameScreenProps) {
                     selectedIndex={fastTravelSelectedIndex}
                     currentPosition={state.player.position}
                     overviewMode={overviewMode}
-                    onCycle={() =>
-                      setFastTravelSelectedIndex((prev) =>
-                        fastTravelDestinations.length > 0
-                          ? (prev + 1) % fastTravelDestinations.length
-                          : 0
-                      )
-                    }
+                    onCycle={handleFastTravelCycle}
                     onConfirm={handleFastTravelConfirm}
-                    onCancel={() => {
-                      setIsFastTravelMode(false);
-                      setFastTravelDestinations([]);
-                    }}
+                    onCancel={handleFastTravelCancel}
                   />
                 )}
 
@@ -2317,43 +2631,19 @@ export function GameScreen({ navigation }: GameScreenProps) {
                       onDirection={handleDirection}
                       size={120}
                       disabledDirections={disabledDirections}
-                      onCenterPress={
-                        isFastTravelActive
-                          ? handleFastTravelConfirm
-                          : poiInteraction.canInteract && state.phase === GamePhase.Exploration
-                            ? () => {
-                                console.log(
-                                  '[GameScreen] A button pressed | currentPoi:',
-                                  poiInteraction.currentPoi
-                                    ? {
-                                        x: poiInteraction.currentPoi.x,
-                                        y: poiInteraction.currentPoi.y,
-                                        poiType: poiInteraction.currentPoi.poiType,
-                                      }
-                                    : null
-                                );
-                                poiInteraction.interact();
-                              }
-                            : undefined
-                      }
+                      onCenterPress={handleDpadCenterPress}
                       centerDisabled={poiInteraction.isInteracting}
                     />
                   </View>
                 )}
               </View>
               {!isCompact && (
-                <View style={styles.sidebarBottomContainer}>
+                <View ref={sidebarPlayerRef} style={styles.sidebarBottomContainer}>
                   <Sidebar
-                    time={state.time}
-                    stats={state.player.stats}
-                    inventory={state.player.inventory}
-                    inventoryCapacity={state.player.inventoryCapacity}
-                    maxGearSlots={maxGearSlots}
-                    isGauntletLayout={isGauntletLayout}
-                    equippedTool={state.player.equippedTool}
-                    activeItemsets={state.player.activeItemsets}
+                    {...sharedSidebarProps}
                     onItemInspect={handleInspectItem}
                     onToolInspect={handleInspectTool}
+                    onItemsetPress={handleInspectItemset}
                     isRuneKilnActive={isItemSelectPoiActive}
                     handleInventoryItemPress={handleInventoryItemPress}
                     onlyContent={true}
@@ -2366,33 +2656,34 @@ export function GameScreen({ navigation }: GameScreenProps) {
             {/* Crossing Separators */}
             <CrossingLines navbarHeight={navbarHeight} isCompact={isCompact} />
 
-            <POIModal
-              visible={state.phase === GamePhase.POIInteraction}
-              interaction={effectiveInteraction}
-              onSelectOption={handlePOIOption}
-              onClose={handlePOIClose}
-              kilnSelection={kilnSelection}
-              kilnFuseOptionIndex={kilnFuseOptionIndex}
-              onKilnSlotPress={handleKilnSlotPress}
-              scrapSelection={scrapSelection}
-              scrapOptionIndex={scrapOptionIndex}
-              onScrapSlotPress={handleScrapSlotPress}
-              equippedTool={state.player.equippedTool}
-              onFastTravel={handleFastTravel}
-              selectableGear={selectableGear}
-              onGearSelect={handleControllerGearSelect}
-              centerInCompact={isCompact && !isCompactSidebarVisible}
-            />
-            <PauseMenuModal
-              visible={showPauseMenu}
-              onClose={() => setShowPauseMenu(false)}
-              onReturnToHub={() => {
-                setShowPauseMenu(false);
-                navigation.replace('Hub');
-              }}
-              onAbandonSession={handleDebugExitSession}
-              isAbandoning={isExitingSession}
-            />
+            {state.phase === GamePhase.POIInteraction && (
+              <POIModal
+                visible={true}
+                interaction={effectiveInteraction}
+                onSelectOption={handlePOIOption}
+                onClose={handlePOIClose}
+                kilnSelection={kilnSelection}
+                kilnFuseOptionIndex={kilnFuseOptionIndex}
+                onKilnSlotPress={handleKilnSlotPress}
+                scrapSelection={scrapSelection}
+                scrapOptionIndex={scrapOptionIndex}
+                onScrapSlotPress={handleScrapSlotPress}
+                equippedTool={state.player.equippedTool}
+                onFastTravel={handleFastTravel}
+                selectableGear={selectableGear}
+                onGearSelect={handleControllerGearSelect}
+                centerInCompact={isCompact && !isCompactSidebarVisible}
+              />
+            )}
+            {showPauseMenu && (
+              <PauseMenuModal
+                visible={true}
+                onClose={handlePauseClose}
+                onReturnToHub={handleReturnToHub}
+                onAbandonSession={handleDebugExitSession}
+                isAbandoning={isExitingSession}
+              />
+            )}
           </View>
 
           {isCompact && isCompactSidebarVisible && (
@@ -2401,20 +2692,14 @@ export function GameScreen({ navigation }: GameScreenProps) {
               pointerEvents="box-none"
             >
               <ImageBackground
+                ref={sidebarEnemyRef}
                 source={SIDEBAR_BG}
                 style={styles.floatingBossPanel}
                 imageStyle={{ height: '100%' }}
                 resizeMode="stretch"
               >
                 <Sidebar
-                  time={state.time}
-                  stats={state.player.stats}
-                  inventory={state.player.inventory}
-                  inventoryCapacity={state.player.inventoryCapacity}
-                  maxGearSlots={maxGearSlots}
-                  isGauntletLayout={isGauntletLayout}
-                  equippedTool={state.player.equippedTool}
-                  activeItemsets={state.player.activeItemsets}
+                  {...sharedSidebarProps}
                   onlyBoss={true}
                   inlineBoss={true}
                   echoFocusIndex={inventoryFocus === 'enemy' ? focusedSlotIndex : null}
@@ -2422,22 +2707,17 @@ export function GameScreen({ navigation }: GameScreenProps) {
                 />
               </ImageBackground>
               <ImageBackground
+                ref={sidebarPlayerRef}
                 source={SIDEBAR_BG}
                 style={styles.floatingSidebarPanel}
                 imageStyle={{ height: '100%' }}
                 resizeMode="stretch"
               >
                 <Sidebar
-                  time={state.time}
-                  stats={state.player.stats}
-                  inventory={state.player.inventory}
-                  inventoryCapacity={state.player.inventoryCapacity}
-                  maxGearSlots={maxGearSlots}
-                  isGauntletLayout={isGauntletLayout}
-                  equippedTool={state.player.equippedTool}
-                  activeItemsets={state.player.activeItemsets}
+                  {...sharedSidebarProps}
                   onItemInspect={handleInspectItem}
                   onToolInspect={handleInspectTool}
+                  onItemsetPress={handleInspectItemset}
                   isRuneKilnActive={isItemSelectPoiActive}
                   handleInventoryItemPress={handleInventoryItemPress}
                   onlyContent={true}
@@ -2448,11 +2728,16 @@ export function GameScreen({ navigation }: GameScreenProps) {
             </View>
           )}
 
-          <ItemTooltip
-            item={inspectedItem}
-            visible={isTooltipVisible}
-            onClose={handleCloseTooltip}
-          />
+          {isTooltipVisible && (
+            <ItemTooltip item={inspectedItem} visible={true} onClose={handleCloseTooltip} />
+          )}
+          {isItemsetTooltipVisible && (
+            <ItemsetTooltip
+              itemsetId={inspectedItemset}
+              visible={true}
+              onClose={handleCloseItemsetTooltip}
+            />
+          )}
         </View>
       </ImageBackground>
     </Animated.View>

@@ -415,7 +415,14 @@
           "address": "11111111111111111111111111111111"
         }
       ],
-      "args": []
+      "args": [
+        {
+          "name": "validator",
+          "type": {
+            "option": "pubkey"
+          }
+        }
+      ]
     },
     {
       "name": "equip_gear",
@@ -1701,6 +1708,7 @@
         },
         {
           "name": "session_signer",
+          "writable": true,
           "signer": true
         },
         {
@@ -2374,6 +2382,11 @@
       "code": 6011,
       "name": "DirectMutationDisabled",
       "msg": "Direct inventory mutation is disabled; use authorized CPI flow"
+    },
+    {
+      "code": 6012,
+      "name": "InvalidSession",
+      "msg": "Invalid session account"
     }
   ],
   "types": [
@@ -2472,6 +2485,21 @@
                 }
               }
             ]
+          },
+          {
+            "name": "OwnerGoldAtLeast",
+            "fields": [
+              "u16"
+            ]
+          },
+          {
+            "name": "EnemyGoldAtLeast",
+            "fields": [
+              "u16"
+            ]
+          },
+          {
+            "name": "OwnerDigGreaterThanEnemyArmor"
           }
         ]
       }
@@ -2507,6 +2535,9 @@
           },
           {
             "name": "GainGold"
+          },
+          {
+            "name": "AmplifyGoldGain"
           },
           {
             "name": "ApplyBomb"
@@ -2570,6 +2601,12 @@
           },
           {
             "name": "EmpowerNextNonWeaponDamage"
+          },
+          {
+            "name": "DoubleDetonationFirst"
+          },
+          {
+            "name": "DoubleDetonationSecond"
           },
           {
             "name": "StoreDamage"
@@ -3202,6 +3239,9 @@
           },
           {
             "name": "OnApplyRust"
+          },
+          {
+            "name": "OnDealNonWeaponDamage"
           },
           {
             "name": "OnGainShrapnel"

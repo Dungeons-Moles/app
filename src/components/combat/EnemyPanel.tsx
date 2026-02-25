@@ -34,7 +34,7 @@ function getTierBorderColor(rarity: ItemRarity): string | null {
     case 2:
       return '#4A90D9';
     case 3:
-      return '#FFD700';
+      return '#CC9900';
     default:
       return null;
   }
@@ -84,10 +84,10 @@ export interface EnemyPanelProps {
   spd: number;
   dig: number;
   statusEffects: StatusEffects;
-  trait?: {
+  traits?: {
     name: string;
     description: string;
-  };
+  }[];
   /** Optional subtitle (e.g., wallet address for Pit Draft) */
   subtitle?: string;
   /** Optional enemy gold (for PvP combat display) */
@@ -123,7 +123,7 @@ function StatRow({ label, value, icon, scale = 1 }: StatRowProps) {
   );
 }
 
-export function EnemyPanel({
+export const EnemyPanel = React.memo(function EnemyPanel({
   name,
   emoji: _emoji,
   hp,
@@ -134,7 +134,7 @@ export function EnemyPanel({
   spd,
   dig,
   statusEffects: _statusEffects,
-  trait,
+  traits,
   imageSource,
   subtitle,
   gold,
@@ -238,7 +238,7 @@ export function EnemyPanel({
           <View
             style={[
               styles.statsSection,
-              { marginBottom: 12 * scale, paddingBottom: 12 * scale },
+              { marginBottom: 6 * scale, paddingBottom: 6 * scale },
             ]}
           >
             <View style={[styles.statsRow, { marginBottom: 8 * scale }]}>
@@ -250,32 +250,40 @@ export function EnemyPanel({
             </View>
           </View>
 
-          {/* Trait */}
-          {trait && (
-            <View
-              style={[
-                styles.traitSection,
-                {
-                  padding: 8 * scale,
-                  marginBottom: 12 * scale,
-                  marginHorizontal: 5 * scale,
-                },
-              ]}
-            >
-              <Text style={[styles.traitName, { fontSize: 13 * scale, marginBottom: 4 * scale }]}>
-                {trait.name}
-              </Text>
-              <Text
+          {/* Traits */}
+          {traits && (() => {
+            const multi = traits.length > 1;
+            const nameSize = (multi ? 11 : 13) * scale;
+            const descSize = (multi ? 9 : 10) * scale;
+            const descLine = (multi ? 12 : 14) * scale;
+            const pad = (multi ? 6 : 8) * scale;
+            return traits.map((t, i) => (
+              <View
+                key={i}
                 style={[
-                  styles.traitDescription,
-                  { fontSize: 10 * scale, lineHeight: 14 * scale },
+                  styles.traitSection,
+                  {
+                    padding: pad,
+                    marginBottom: (i < traits.length - 1 ? 3 : 8) * scale,
+                    marginHorizontal: 5 * scale,
+                  },
                 ]}
-                numberOfLines={3}
               >
-                {trait.description}
-              </Text>
-            </View>
-          )}
+                <Text style={[styles.traitName, { fontSize: nameSize, marginBottom: 2 * scale }]}>
+                  {t.name}
+                </Text>
+                <Text
+                  style={[
+                    styles.traitDescription,
+                    { fontSize: descSize, lineHeight: descLine },
+                  ]}
+                  numberOfLines={3}
+                >
+                  {t.description}
+                </Text>
+              </View>
+            ));
+          })()}
 
           {/* Equipment (Pit Draft PvP) */}
           {(equippedTool || equippedGear.length > 0) && (
@@ -310,7 +318,7 @@ export function EnemyPanel({
       </ImageBackground>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {

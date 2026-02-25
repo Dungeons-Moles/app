@@ -8,10 +8,10 @@ import React, { useCallback, useMemo, useRef } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Image, ImageBackground } from 'react-native';
 import { FocusGlow } from '../ui/FocusGlow';
 import type { Tool, Gear, InventorySlot, ItemsetId, ToolOil } from '../../game/engine/types';
-import { getItemsetDefinition } from '../../game/entities/itemsets';
 import { getTierFromRarity, type ItemTier } from '../../data/gear';
 import { Typography } from '../../theme/typography';
 import { useScreenVariant } from '../../contexts/ScreenVariantContext';
+import { useAudio } from '@/contexts/AudioContext';
 
 const SLOT_BG = require('../../../assets/ui/frames/square.png');
 const LOCK_ICON = require('../../../assets/icons/ui/lock.png');
@@ -32,6 +32,7 @@ interface InventoryPanelProps {
   onToolPress?: (tool: Tool) => void;
   onItemInspect?: (item: Tool | Gear, slotIndex: number) => void;
   onToolInspect?: (tool: Tool) => void;
+  onItemsetPress?: (id: ItemsetId) => void;
   isSidebar?: boolean;
   controllerFocusIndex?: number | null;
 }
@@ -54,7 +55,7 @@ function getTierBorderColor(tier: ItemTier): string | null {
     case 2:
       return '#4A90D9';
     case 3:
-      return '#FFD700';
+      return '#CC9900';
     default:
       return null;
   }
@@ -70,6 +71,7 @@ function ItemSlot({
   isSidebar,
   size = 28,
 }: ItemSlotProps) {
+  const { playSfx } = useAudio();
   const didLongPressRef = useRef(false);
   const handlePress = useCallback(() => {
     if (didLongPressRef.current) {
@@ -77,16 +79,18 @@ function ItemSlot({
       return;
     }
     if (item && slotIndex !== undefined && onPress) {
+      playSfx('ui_click');
       onPress(item, slotIndex);
     }
-  }, [item, slotIndex, onPress]);
+  }, [item, slotIndex, onPress, playSfx]);
 
   const handleLongPress = useCallback(() => {
     if (item && slotIndex !== undefined && onLongPress) {
       didLongPressRef.current = true;
+      playSfx('ui_hover');
       onLongPress(item, slotIndex);
     }
-  }, [item, slotIndex, onLongPress]);
+  }, [item, slotIndex, onLongPress, playSfx]);
 
   const rarityColor = useMemo(() => (item ? getRarityColor(item) : DEFAULT_RARITY_COLOR), [item]);
   const tierBorder = useMemo(() => {
@@ -244,25 +248,66 @@ function OilSlot({
   );
 }
 
-function ActiveItemsets({ itemsets, isSidebar }: { itemsets: ItemsetId[]; isSidebar?: boolean }) {
+const ITEMSET_ICONS: Record<ItemsetId, any> = {
+  UNION_STANDARD: require('../../../assets/icons/itemsets/union_standard.png'),
+  SHARD_CIRCUIT: require('../../../assets/icons/itemsets/shard_circuit.png'),
+  DEMOLITION_PERMIT: require('../../../assets/icons/itemsets/demolition_permit.png'),
+  FUSE_NETWORK: require('../../../assets/icons/itemsets/fuse_network.png'),
+  SHRAPNEL_HARNESS: require('../../../assets/icons/itemsets/shrapnel_harness.png'),
+  RUST_RITUAL: require('../../../assets/icons/itemsets/rust_ritual.png'),
+  SWIFT_DIGGER_KIT: require('../../../assets/icons/itemsets/swift_digger_kit.png'),
+  ROYAL_EXTRACTION: require('../../../assets/icons/itemsets/royal_extraction.png'),
+  WHITEOUT_INITIATIVE: require('../../../assets/icons/itemsets/whiteout_initiative.png'),
+  BLOODRUSH_PROTOCOL: require('../../../assets/icons/itemsets/bloodrush_protocol.png'),
+  CORROSION_PAYLOAD: require('../../../assets/icons/itemsets/corrosion_payload.png'),
+  GOLDEN_SHRAPNEL_EXCHANGE: require('../../../assets/icons/itemsets/golden_shrapnel_exchange.png'),
+};
+
+function ActiveItemsets({
+  itemsets,
+  isSidebar,
+  onPress,
+  controllerFocusIndex,
+  baseIndex,
+}: {
+  itemsets: ItemsetId[];
+  isSidebar?: boolean;
+  onPress?: (id: ItemsetId) => void;
+  controllerFocusIndex?: number | null;
+  baseIndex?: number;
+}) {
+  const { playSfx } = useAudio();
   if (itemsets.length === 0) {
     return null;
   }
 
   return (
     <View style={styles.itemsetsContainer}>
-      {itemsets.map((id) => {
-        const def = getItemsetDefinition(id);
+      {itemsets.map((id, i) => {
+        const slotIndex = (baseIndex ?? 0) + i;
+        const isFocused = controllerFocusIndex === slotIndex;
         return (
-          <View
-            key={id}
-            style={[
-              styles.itemsetBadge,
-              isSidebar && { backgroundColor: 'transparent', borderColor: '#000000' },
-            ]}
-          >
-            <Text style={styles.itemsetEmoji}>{def.emoji}</Text>
-          </View>
+          <FocusGlow key={id} active={isFocused}>
+            <TouchableOpacity
+              onPress={() => {
+                if (onPress) {
+                  playSfx('ui_click');
+                  onPress(id);
+                }
+              }}
+              activeOpacity={onPress ? 0.7 : 1}
+              disabled={!onPress}
+            >
+              <View
+                style={[
+                  styles.itemsetBadge,
+                  isSidebar && { backgroundColor: 'transparent', borderColor: '#000000' },
+                ]}
+              >
+                <Image source={ITEMSET_ICONS[id]} style={styles.itemsetIcon} resizeMode="contain" />
+              </View>
+            </TouchableOpacity>
+          </FocusGlow>
         );
       })}
     </View>
@@ -280,6 +325,7 @@ export function InventoryPanel({
   onToolPress,
   onItemInspect,
   onToolInspect,
+  onItemsetPress,
   isSidebar,
   controllerFocusIndex,
 }: InventoryPanelProps) {
@@ -325,8 +371,16 @@ export function InventoryPanel({
   const isCompactSidebar = !!isSidebar && variant === 'compact';
   const textColor = isSidebar ? '#000000' : '#FFFFFF';
   const useGauntletSidebarSizing = !!isSidebar && isGauntletLayout;
-  const gearSlotSize = isCompactSidebar ? COMPACT_GEAR_SLOT_SIZE : useGauntletSidebarSizing ? SIDEBAR_GEAR_SLOT_SIZE : 32;
-  const toolSlotSize = isCompactSidebar ? COMPACT_TOOL_SLOT_SIZE : useGauntletSidebarSizing ? SIDEBAR_TOOL_SLOT_SIZE : DEFAULT_TOOL_SLOT_SIZE;
+  const gearSlotSize = isCompactSidebar
+    ? COMPACT_GEAR_SLOT_SIZE
+    : useGauntletSidebarSizing
+      ? SIDEBAR_GEAR_SLOT_SIZE
+      : 32;
+  const toolSlotSize = isCompactSidebar
+    ? COMPACT_TOOL_SLOT_SIZE
+    : useGauntletSidebarSizing
+      ? SIDEBAR_TOOL_SLOT_SIZE
+      : DEFAULT_TOOL_SLOT_SIZE;
 
   return (
     <View
@@ -337,8 +391,19 @@ export function InventoryPanel({
       ]}
     >
       {/* Gear Section - Top */}
-      <View style={[styles.gearSection, (useGauntletSidebarSizing || isCompactSidebar) && styles.sidebarGearSection]}>
-        <Text style={[styles.sectionTitle, isCompactSidebar && styles.sidebarSectionTitle, { color: textColor }]}>
+      <View
+        style={[
+          styles.gearSection,
+          (useGauntletSidebarSizing || isCompactSidebar) && styles.sidebarGearSection,
+        ]}
+      >
+        <Text
+          style={[
+            styles.sectionTitle,
+            isCompactSidebar && styles.sidebarSectionTitle,
+            { color: textColor },
+          ]}
+        >
           GEAR ({inventory.length}/{inventoryCapacity})
         </Text>
         <View style={styles.gearGrid}>
@@ -368,16 +433,42 @@ export function InventoryPanel({
       </View>
 
       {/* Tool Section - Center */}
-      <View style={[styles.toolSection, (useGauntletSidebarSizing || isCompactSidebar) && styles.sidebarToolSection]}>
+      <View
+        style={[
+          styles.toolSection,
+          (useGauntletSidebarSizing || isCompactSidebar) && styles.sidebarToolSection,
+        ]}
+      >
         <View style={styles.toolHeaderRow}>
           <View style={[styles.toolHeaderCell, { width: toolSlotSize }]}>
-            <Text style={[styles.sectionTitle, isCompactSidebar && styles.sidebarSectionTitle, { color: textColor, marginBottom: 0 }]}>WEAPON</Text>
+            <Text
+              style={[
+                styles.sectionTitle,
+                isCompactSidebar && styles.sidebarSectionTitle,
+                { color: textColor, marginBottom: 0 },
+              ]}
+            >
+              WEAPON
+            </Text>
           </View>
           <View style={[styles.toolHeaderCell, { width: toolSlotSize }]}>
-            <Text style={[styles.sectionTitle, isCompactSidebar && styles.sidebarSectionTitle, { color: textColor, marginBottom: 0 }]}>OIL</Text>
+            <Text
+              style={[
+                styles.sectionTitle,
+                isCompactSidebar && styles.sidebarSectionTitle,
+                { color: textColor, marginBottom: 0 },
+              ]}
+            >
+              OIL
+            </Text>
           </View>
         </View>
-        <View style={[styles.toolRow, (useGauntletSidebarSizing || isCompactSidebar) && styles.sidebarToolRow]}>
+        <View
+          style={[
+            styles.toolRow,
+            (useGauntletSidebarSizing || isCompactSidebar) && styles.sidebarToolRow,
+          ]}
+        >
           <FocusGlow active={controllerFocusIndex === maxSlots}>
             <ItemSlot
               item={equippedTool}
@@ -394,7 +485,13 @@ export function InventoryPanel({
       </View>
 
       {/* Active Itemsets - Bottom */}
-      <ActiveItemsets itemsets={activeItemsets} isSidebar={isSidebar} />
+      <ActiveItemsets
+        itemsets={activeItemsets}
+        isSidebar={isSidebar}
+        onPress={onItemsetPress}
+        controllerFocusIndex={controllerFocusIndex}
+        baseIndex={maxSlots + 1}
+      />
     </View>
   );
 }
@@ -529,8 +626,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#FFD700',
   },
-  itemsetEmoji: {
-    fontSize: 14,
+  itemsetIcon: {
+    width: 20,
+    height: 20,
   },
 });
 

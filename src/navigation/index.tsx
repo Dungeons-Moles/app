@@ -1,5 +1,7 @@
-import React from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import React, { useCallback } from 'react';
+import { Platform } from 'react-native';
+import type { ImageSourcePropType } from 'react-native';
+import { NavigationContainer, type NavigationState } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { LoadingScreen } from '../screens/LoadingScreen';
 import { AccountScreen } from '../screens/AccountScreen';
@@ -33,6 +35,7 @@ import type { EnemyId } from '../game/map/types';
 export interface UnlockedItem {
   name: string;
   emoji: string;
+  image?: ImageSourcePropType;
   stats?: ItemStats;
 }
 
@@ -93,6 +96,8 @@ export interface CombatParams {
   enemyGear?: Gear[];
   /** Enemy tool (for PvP replay panel display) */
   enemyTool?: Tool | null;
+  /** Opponent equipped skin pubkey (base58) for PvP replay visuals */
+  pvpOpponentSkinPubkey?: string | null;
 }
 
 export type RootStackParamList = {
@@ -136,9 +141,43 @@ export type RootStackParamList = {
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
+const SCREEN_TITLES: Record<string, string> = {
+  Loading: 'Loading',
+  Account: 'Sign In',
+  Hub: 'Hub',
+  CampaignSelect: 'Campaign Select',
+  Game: 'Game',
+  Combat: 'Combat',
+  Death: 'Death',
+  Victory: 'Victory',
+  PitDraft: 'Pit Draft',
+  PitDraftHistory: 'Pit Draft History',
+  Duels: 'Duels',
+  DuelsHistory: 'Duels History',
+  Gauntlet: 'Gauntlet',
+  GauntletHistory: 'Gauntlet History',
+  GauntletRanking: 'Gauntlet Ranking',
+  Marketplace: 'Marketplace',
+  Items: 'Items',
+};
+
+function getActiveRouteName(state: NavigationState | undefined): string | undefined {
+  if (!state) return undefined;
+  const route = state.routes[state.index];
+  if (route.state) return getActiveRouteName(route.state as NavigationState);
+  return route.name;
+}
+
 export function AppNavigator() {
+  const onStateChange = useCallback((state: NavigationState | undefined) => {
+    if (Platform.OS !== 'web') return;
+    const routeName = getActiveRouteName(state);
+    const title = routeName ? SCREEN_TITLES[routeName] ?? routeName : '';
+    document.title = title ? `Dungeons & Moles - ${title}` : 'Dungeons & Moles';
+  }, []);
+
   return (
-    <NavigationContainer>
+    <NavigationContainer onStateChange={onStateChange}>
       <Stack.Navigator
         initialRouteName="Loading"
         screenOptions={{

@@ -10,6 +10,7 @@ import {
   Text,
   StyleSheet,
   Image,
+  ImageBackground,
   TouchableOpacity,
   ActivityIndicator,
 } from 'react-native';
@@ -18,8 +19,15 @@ import { useControllerAction } from '../../hooks/useControllerAction';
 import { ControllerHints, type ButtonHint } from './ControllerHints';
 import { FocusGlow } from './FocusGlow';
 import { Typography } from '../../theme/typography';
+import { useAudio } from '../../contexts/AudioContext';
+import { useSettings } from '../../contexts/SettingsContext';
+import { useScreenVariant } from '../../contexts/ScreenVariantContext';
+import { VolumeControls } from './VolumeControls';
+import { Checkbox } from './Checkbox';
 
 const paperPanelSource = require('../../../assets/ui/panels/paper-panel.png');
+const buttonV1Source = require('../../../assets/ui/buttons/button-v1.png');
+const buttonV2Source = require('../../../assets/ui/buttons/button-v2.png');
 
 export interface PauseMenuModalProps {
   visible: boolean;
@@ -27,14 +35,6 @@ export interface PauseMenuModalProps {
   onReturnToHub: () => void;
   onAbandonSession?: () => void;
   isAbandoning?: boolean;
-}
-
-interface MenuItem {
-  id: string;
-  label: string;
-  onPress: () => void;
-  loading?: boolean;
-  danger?: boolean;
 }
 
 export function PauseMenuModal({
@@ -46,26 +46,13 @@ export function PauseMenuModal({
 }: PauseMenuModalProps) {
   const inputMode = useInputMode();
   const isController = inputMode === 'controller';
+  const isCompact = useScreenVariant() === 'compact';
+  const { musicVolume, setMusicVolume, sfxVolume, setSfxVolume, playSfx } = useAudio();
+  const { autoOpenPOI, setAutoOpenPOI } = useSettings();
   const [focusIndex, setFocusIndex] = useState(0);
 
-  // Build menu items dynamically
-  const menuItems: MenuItem[] = [];
-
-  menuItems.push({
-    id: 'hub',
-    label: 'Return to Hub',
-    onPress: onReturnToHub,
-  });
-
-  if (onAbandonSession) {
-    menuItems.push({
-      id: 'abandon',
-      label: 'Abandon Session',
-      onPress: onAbandonSession,
-      loading: isAbandoning,
-      danger: true,
-    });
-  }
+  // focusIndex layout: 0=music, 1=sfx, 2=checkbox, 3=return to hub, 4=abandon (if present)
+  const totalItems = 3 + 1 + (onAbandonSession ? 1 : 0);
 
   // Reset focus when opening
   useEffect(() => {
@@ -74,26 +61,55 @@ export function PauseMenuModal({
 
   // Clamp focus index if items change
   useEffect(() => {
-    if (focusIndex >= menuItems.length) {
-      setFocusIndex(Math.max(0, menuItems.length - 1));
+    if (focusIndex >= totalItems) {
+      setFocusIndex(Math.max(0, totalItems - 1));
     }
-  }, [menuItems.length, focusIndex]);
+  }, [totalItems, focusIndex]);
 
   const handleSelect = useCallback(() => {
-    const item = menuItems[focusIndex];
-    if (item && !item.loading) {
-      item.onPress();
+    if (focusIndex === 2) {
+      playSfx('ui_click');
+      setAutoOpenPOI(!autoOpenPOI);
+      return;
     }
-  }, [focusIndex, menuItems]);
+    if (focusIndex === 3) {
+      playSfx('ui_click');
+      onReturnToHub();
+      return;
+    }
+    if (focusIndex === 4 && onAbandonSession && !isAbandoning) {
+      playSfx('ui_click');
+      onAbandonSession();
+    }
+  }, [focusIndex, playSfx, autoOpenPOI, setAutoOpenPOI, onReturnToHub, onAbandonSession, isAbandoning]);
 
   useControllerAction(
     {
       onDPadUp: () => setFocusIndex((i) => Math.max(0, i - 1)),
-      onDPadDown: () => setFocusIndex((i) => Math.min(menuItems.length - 1, i + 1)),
+      onDPadDown: () => setFocusIndex((i) => Math.min(totalItems - 1, i + 1)),
+      onDPadLeft:
+        focusIndex === 0
+          ? () => setMusicVolume(Math.round(Math.max(0, musicVolume - 0.1) * 10) / 10)
+          : focusIndex === 1
+            ? () => setSfxVolume(Math.round(Math.max(0, sfxVolume - 0.1) * 10) / 10)
+            : focusIndex === 2
+              ? () => { playSfx('ui_click'); setAutoOpenPOI(!autoOpenPOI); }
+              : undefined,
+      onDPadRight:
+        focusIndex === 0
+          ? () => setMusicVolume(Math.round(Math.min(1, musicVolume + 0.1) * 10) / 10)
+          : focusIndex === 1
+            ? () => setSfxVolume(Math.round(Math.min(1, sfxVolume + 0.1) * 10) / 10)
+            : focusIndex === 2
+              ? () => { playSfx('ui_click'); setAutoOpenPOI(!autoOpenPOI); }
+              : undefined,
       onA: handleSelect,
-      onB: onClose,
+      onB: () => {
+        playSfx('ui_click');
+        onClose();
+      },
     },
-    isController && visible,
+    isController && visible
   );
 
   if (!visible) return null;
@@ -105,50 +121,127 @@ export function PauseMenuModal({
 
   return (
     <View style={styles.overlay}>
-      <View style={styles.scaleWrapper}>
-        <View style={styles.container}>
-          <Image
-            source={paperPanelSource}
-            style={styles.paperBg}
-            resizeMode="stretch"
-          />
-          <View style={styles.content}>
-            <Text style={styles.title}>PAUSED</Text>
+      <View style={[styles.scaleWrapper, isCompact && compactStyles.scaleWrapper]}>
+        <View style={[styles.container, isCompact && compactStyles.container]}>
+          <Image source={paperPanelSource} style={styles.paperBg} resizeMode="stretch" />
+          <View style={[styles.content, isCompact && compactStyles.content]}>
+            <Text style={[styles.title, isCompact && compactStyles.title]}>PAUSED</Text>
 
-            <View style={styles.menuList}>
-              {menuItems.map((item, index) => (
-                <FocusGlow key={item.id} active={isController && focusIndex === index}>
+            <View style={[styles.volumeSection, isCompact && compactStyles.volumeSection]}>
+              <FocusGlow active={isController && focusIndex === 0}>
+                <View style={styles.volumeRow}>
+                  <Text style={[styles.volumeLabel, isCompact && compactStyles.volumeLabel]}>
+                    Music
+                  </Text>
+                  <VolumeControls
+                    currentVolume={musicVolume}
+                    onVolumeChange={setMusicVolume}
+                    scale={isCompact ? 1 : 0.8}
+                  />
+                </View>
+              </FocusGlow>
+              <FocusGlow active={isController && focusIndex === 1}>
+                <View style={styles.volumeRow}>
+                  <Text style={[styles.volumeLabel, isCompact && compactStyles.volumeLabel]}>
+                    SFX
+                  </Text>
+                  <VolumeControls
+                    currentVolume={sfxVolume}
+                    onVolumeChange={setSfxVolume}
+                    scale={isCompact ? 1 : 0.8}
+                  />
+                </View>
+              </FocusGlow>
+            </View>
+
+            <View style={[styles.checkboxRow, isCompact && compactStyles.checkboxRow]}>
+              <FocusGlow active={isController && focusIndex === 2}>
+                <Checkbox
+                  label="Auto-open POI"
+                  checked={autoOpenPOI}
+                  onToggle={() => {
+                    playSfx('ui_click');
+                    setAutoOpenPOI(!autoOpenPOI);
+                  }}
+                  size={isCompact ? 32 : 20}
+                  labelStyle={isCompact ? compactStyles.volumeLabel : undefined}
+                />
+              </FocusGlow>
+            </View>
+
+            <View style={[styles.menuList, isCompact && compactStyles.menuList]}>
+              <FocusGlow active={isController && focusIndex === 3}>
+                <TouchableOpacity
+                  onPress={() => {
+                    playSfx('ui_click');
+                    onReturnToHub();
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <ImageBackground
+                    source={buttonV1Source}
+                    style={[styles.menuButtonImage, isCompact && compactStyles.menuButtonImage]}
+                    resizeMode="stretch"
+                  >
+                    <Text style={[styles.menuButtonText, isCompact && compactStyles.menuButtonText]}>
+                      Return to Hub
+                    </Text>
+                  </ImageBackground>
+                </TouchableOpacity>
+              </FocusGlow>
+
+              {onAbandonSession && (
+                <FocusGlow active={isController && focusIndex === 4}>
                   <TouchableOpacity
-                    style={[styles.menuButton, item.danger && styles.menuButtonDanger]}
-                    onPress={item.onPress}
-                    disabled={item.loading}
+                    onPress={() => {
+                      playSfx('ui_click');
+                      onAbandonSession();
+                    }}
+                    disabled={isAbandoning}
                     activeOpacity={0.7}
                   >
-                    {item.loading ? (
-                      <ActivityIndicator size="small" color="#5c4033" />
-                    ) : (
-                      <Text
-                        style={[styles.menuButtonText, item.danger && styles.menuButtonTextDanger]}
-                      >
-                        {item.label}
-                      </Text>
-                    )}
+                    <ImageBackground
+                      source={buttonV2Source}
+                      style={[styles.menuButtonImage, isCompact && compactStyles.menuButtonImage]}
+                      resizeMode="stretch"
+                    >
+                      {isAbandoning ? (
+                        <ActivityIndicator size="small" color="#5c4033" />
+                      ) : (
+                        <Text
+                          style={[
+                            styles.menuButtonText,
+                            styles.menuButtonTextDanger,
+                            isCompact && compactStyles.menuButtonText,
+                          ]}
+                        >
+                          Abandon Session
+                        </Text>
+                      )}
+                    </ImageBackground>
                   </TouchableOpacity>
                 </FocusGlow>
-              ))}
+              )}
             </View>
 
             {!isController && (
-              <TouchableOpacity style={styles.resumeButton} onPress={onClose} activeOpacity={0.7}>
-                <Text style={styles.resumeButtonText}>Resume</Text>
+              <TouchableOpacity
+                style={styles.resumeButton}
+                onPress={() => {
+                  playSfx('ui_click');
+                  onClose();
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.resumeButtonText, isCompact && compactStyles.resumeButtonText]}>
+                  Resume
+                </Text>
               </TouchableOpacity>
             )}
           </View>
         </View>
       </View>
-      {isController && (
-        <ControllerHints hints={controllerHints} horizontal />
-      )}
+      {isController && <ControllerHints hints={controllerHints} horizontal />}
     </View>
   );
 }
@@ -187,25 +280,38 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: '#3d2b1f',
     letterSpacing: 1.5,
+    marginBottom: 8,
+  },
+  volumeSection: {
+    width: '100%',
+    marginBottom: 16,
+    gap: 8,
+  },
+  volumeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    width: '100%',
+  },
+  volumeLabel: {
+    fontFamily: Typography.header,
+    fontSize: 14,
+    color: '#3d2b1f',
+  },
+  checkboxRow: {
+    width: '100%',
     marginBottom: 16,
   },
   menuList: {
     width: '100%',
     gap: 10,
-  },
-  menuButton: {
-    width: '100%',
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    backgroundColor: 'rgba(92, 64, 51, 0.1)',
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#c8b99a',
     alignItems: 'center',
   },
-  menuButtonDanger: {
-    borderColor: '#a94442',
-    backgroundColor: 'rgba(169, 68, 66, 0.1)',
+  menuButtonImage: {
+    width: 180,
+    height: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   menuButtonText: {
     fontFamily: Typography.header,
@@ -226,5 +332,45 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#8b7355',
     letterSpacing: 0.3,
+  },
+});
+
+const compactStyles = StyleSheet.create({
+  scaleWrapper: {
+    transform: [{ scale: 1.4 }],
+  },
+  container: {
+    width: 260,
+  },
+  content: {
+    padding: 20,
+    paddingTop: 24,
+  },
+  title: {
+    fontSize: 22,
+    marginBottom: 12,
+  },
+  volumeSection: {
+    marginBottom: 20,
+    gap: 12,
+  },
+  volumeLabel: {
+    fontSize: 16,
+  },
+  checkboxRow: {
+    marginBottom: 20,
+  },
+  menuList: {
+    gap: 12,
+  },
+  menuButtonImage: {
+    width: 210,
+    height: 50,
+  },
+  menuButtonText: {
+    fontSize: 15,
+  },
+  resumeButtonText: {
+    fontSize: 13,
   },
 });

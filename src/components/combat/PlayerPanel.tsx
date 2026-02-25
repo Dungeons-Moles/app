@@ -80,7 +80,7 @@ function getTierBorderColor(rarity: ItemRarity): string | null {
     case 2:
       return '#4A90D9';
     case 3:
-      return '#FFD700';
+      return '#CC9900';
     default:
       return null;
   }
@@ -118,7 +118,7 @@ function ItemBadge({ emoji, name, image, rarity, scale = 1 }: ItemBadgeProps) {
   );
 }
 
-export function PlayerPanel({
+export const PlayerPanel = React.memo(function PlayerPanel({
   name,
   emoji,
   imageSource,
@@ -276,7 +276,7 @@ export function PlayerPanel({
       </ImageBackground>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {

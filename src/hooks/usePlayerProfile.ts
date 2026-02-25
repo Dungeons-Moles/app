@@ -11,7 +11,7 @@ import {
 import { derivePlayerProfilePda } from '@/services/solana/types';
 import { getCachedProfile, setCachedProfile, clearCachedProfile } from '@/services/solana/cache';
 import { getUserErrorMessage } from '@/services/solana/errors';
-import { GAUNTLET_POOL_PUBKEY, TREASURY_PUBKEY } from '@/services/solana/constants';
+import { GAUNTLET_POOL_PUBKEY, TREASURY_PUBKEY, GAMEPLAY_STATE_PROGRAM_ID } from '@/services/solana/constants';
 import { SOLANA_CONFIG } from '@/services/solana/config';
 import { MAX_CAMPAIGN_LEVEL } from './useMapGenerator';
 import type { CachedProfileData, OnChainPlayerProfile, TransactionResult } from '@/types/solana';
@@ -249,13 +249,48 @@ export function usePlayerProfile() {
     }
   }, [wallet.address]);
 
-  const resetProfile = useCallback(async () => {
-    updateState(null, false, false);
-    setError(null);
-    if (wallet.address) {
-      await clearCachedProfile(wallet.address);
+  const resetProfile = useCallback(async (): Promise<TransactionResult> => {
+    if (!wallet.publicKey || !wallet.address || !writeProgram) {
+      return { success: false, error: 'Wallet not connected' };
     }
-  }, [updateState, wallet.address]);
+
+    if (isMountedRef.current) {
+      setIsLoading(true);
+      setError(null);
+    }
+
+    try {
+      const [profilePda] = derivePlayerProfilePda(wallet.publicKey);
+      const transaction = await writeProgram.methods
+        .closeProfile()
+        .accounts({
+          playerProfile: profilePda,
+          owner: wallet.publicKey,
+        })
+        .transaction();
+
+      const signature = await signAndSendTransaction(transaction);
+      await connection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
+
+      updateState(null, false, false);
+      await clearCachedProfile(wallet.address);
+
+      return { success: true, signature };
+    } catch (txError) {
+      const message = getUserErrorMessage(txError, 'player_profile');
+      if (isMountedRef.current) setError(message);
+      return { success: false, error: message };
+    } finally {
+      if (isMountedRef.current) setIsLoading(false);
+    }
+  }, [
+    connection,
+    signAndSendTransaction,
+    updateState,
+    wallet.address,
+    wallet.publicKey,
+    writeProgram,
+  ]);
 
   /**
    * Records the result of a completed dungeon run on-chain.
@@ -382,11 +417,14 @@ export function usePlayerProfile() {
    */
   const updateActiveItemPool = useCallback(
     async (activeItemPool: Uint8Array): Promise<TransactionResult> => {
+      console.log('[usePlayerProfile] updateActiveItemPool called, wallet:', !!wallet.publicKey, 'program:', !!writeProgram);
       if (!wallet.publicKey || !wallet.address || !writeProgram) {
+        console.warn('[usePlayerProfile] Wallet not connected or program not ready');
         return { success: false, error: 'Wallet not connected' };
       }
 
       if (activeItemPool.length !== 10) {
+        console.warn('[usePlayerProfile] Invalid bitmask length:', activeItemPool.length);
         return { success: false, error: 'Invalid item pool bitmask length' };
       }
 
@@ -397,22 +435,32 @@ export function usePlayerProfile() {
 
       try {
         const [profilePda] = derivePlayerProfilePda(wallet.publicKey);
+        const [pitDraftQueuePda] = PublicKey.findProgramAddressSync(
+          [Buffer.from('pit_draft_queue')],
+          GAMEPLAY_STATE_PROGRAM_ID
+        );
+        console.log('[usePlayerProfile] Building updateActiveItemPool tx, profile:', profilePda.toBase58());
         const transaction = await writeProgram.methods
           .updateActiveItemPool(Array.from(activeItemPool))
           .accounts({
             playerProfile: profilePda,
             owner: wallet.publicKey,
+            pitDraftQueue: pitDraftQueuePda,
           })
           .transaction();
 
+        console.log('[usePlayerProfile] Signing and sending transaction...');
         const signature = await signAndSendTransaction(transaction);
+        console.log('[usePlayerProfile] Transaction sent, confirming:', signature);
         await connection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
 
+        console.log('[usePlayerProfile] Transaction confirmed, refreshing profile...');
         await fetchProfile();
 
         return { success: true, signature };
       } catch (txError) {
         const message = getUserErrorMessage(txError, 'player_profile');
+        console.error('[usePlayerProfile] updateActiveItemPool failed:', message, txError);
         if (isMountedRef.current) setError(message);
         return { success: false, error: message };
       } finally {

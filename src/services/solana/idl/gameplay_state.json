@@ -266,6 +266,78 @@
       ]
     },
     {
+      "name": "close_empty_game_state",
+      "docs": [
+        "Close a corrupted/empty GameState account (0-byte data).",
+        "After an ER reset, force-undelegation can leave accounts with no data.",
+        "Only works on accounts owned by this program with 0 bytes of data."
+      ],
+      "discriminator": [
+        37,
+        209,
+        168,
+        107,
+        112,
+        21,
+        162,
+        98
+      ],
+      "accounts": [
+        {
+          "name": "game_state",
+          "writable": true
+        },
+        {
+          "name": "destination",
+          "docs": [
+            "Receives the lamports from the closed account."
+          ],
+          "writable": true
+        },
+        {
+          "name": "payer",
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "close_empty_map_enemies",
+      "docs": [
+        "Close a corrupted/empty MapEnemies account (0-byte data).",
+        "After an ER reset, force-undelegation can leave accounts with no data.",
+        "Only works on accounts owned by this program with 0 bytes of data."
+      ],
+      "discriminator": [
+        139,
+        54,
+        126,
+        197,
+        116,
+        49,
+        39,
+        74
+      ],
+      "accounts": [
+        {
+          "name": "map_enemies",
+          "writable": true
+        },
+        {
+          "name": "destination",
+          "docs": [
+            "Receives the lamports from the closed account."
+          ],
+          "writable": true
+        },
+        {
+          "name": "payer",
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "close_game_state",
       "docs": [
         "Closes the GameState account, returning rent to player."
@@ -407,6 +479,73 @@
           "relations": [
             "game_state"
           ]
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "close_orphaned_map_enemies",
+      "docs": [
+        "Close an orphaned MapEnemies account that has valid data but whose",
+        "session PDA no longer exists. Proves the account is orphaned by",
+        "requiring the session PDA to have 0 lamports."
+      ],
+      "discriminator": [
+        171,
+        1,
+        244,
+        181,
+        5,
+        246,
+        175,
+        195
+      ],
+      "accounts": [
+        {
+          "name": "map_enemies",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  112,
+                  95,
+                  101,
+                  110,
+                  101,
+                  109,
+                  105,
+                  101,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_enemies.session",
+                "account": "MapEnemies"
+              }
+            ]
+          }
+        },
+        {
+          "name": "session_pda",
+          "docs": [
+            "Session PDA must not exist (proves the account is orphaned)."
+          ]
+        },
+        {
+          "name": "destination",
+          "docs": [
+            "Receives the lamports from the closed account."
+          ],
+          "writable": true
+        },
+        {
+          "name": "payer",
+          "signer": true
         }
       ],
       "args": []
@@ -831,7 +970,14 @@
           "address": "11111111111111111111111111111111"
         }
       ],
-      "args": []
+      "args": [
+        {
+          "name": "validator",
+          "type": {
+            "option": "pubkey"
+          }
+        }
+      ]
     },
     {
       "name": "enter_duel",
@@ -3724,6 +3870,69 @@
       "args": []
     },
     {
+      "name": "test_set_completed",
+      "docs": [
+        "TEST-ONLY: Sets game_state.completed = true so the victory path can",
+        "be exercised in e2e tests without requiring actual boss kills.",
+        "Validates session_signer authority so it cannot be called by a random wallet."
+      ],
+      "discriminator": [
+        185,
+        34,
+        110,
+        237,
+        6,
+        77,
+        177,
+        196
+      ],
+      "accounts": [
+        {
+          "name": "game_state",
+          "writable": true
+        },
+        {
+          "name": "session_signer",
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "test_set_hp",
+      "docs": [
+        "TEST-ONLY: Sets game_state.hp to given value and clears is_dead.",
+        "Used in e2e tests to keep the player alive through night enemy encounters",
+        "so the boss fight path can be tested."
+      ],
+      "discriminator": [
+        3,
+        94,
+        215,
+        212,
+        234,
+        164,
+        126,
+        32
+      ],
+      "accounts": [
+        {
+          "name": "game_state",
+          "writable": true
+        },
+        {
+          "name": "session_signer",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "hp",
+          "type": "i16"
+        }
+      ]
+    },
+    {
       "name": "trigger_boss_fight",
       "docs": [
         "Triggers and resolves the boss fight when conditions are met.",
@@ -3964,6 +4173,47 @@
       "args": []
     },
     {
+      "name": "undelegate_game_state",
+      "docs": [
+        "Commits and undelegates only the game_state account from ER back to base layer.",
+        "Used when map_enemies is already on base but game_state is still delegated."
+      ],
+      "discriminator": [
+        175,
+        184,
+        65,
+        235,
+        21,
+        44,
+        218,
+        212
+      ],
+      "accounts": [
+        {
+          "name": "game_state",
+          "writable": true
+        },
+        {
+          "name": "game_session"
+        },
+        {
+          "name": "session_signer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "magic_program",
+          "address": "Magic11111111111111111111111111111111111111"
+        },
+        {
+          "name": "magic_context",
+          "writable": true,
+          "address": "MagicContext1111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "undelegate_gameplay_accounts",
       "docs": [
         "Commits and undelegates gameplay runtime accounts from ER back to base layer."
@@ -3992,6 +4242,48 @@
         },
         {
           "name": "session_signer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "magic_program",
+          "address": "Magic11111111111111111111111111111111111111"
+        },
+        {
+          "name": "magic_context",
+          "writable": true,
+          "address": "MagicContext1111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "undelegate_map_enemies",
+      "docs": [
+        "Commits and undelegates only the map_enemies account from ER back to base layer.",
+        "Used when game_state is already on base but map_enemies is still delegated."
+      ],
+      "discriminator": [
+        49,
+        15,
+        227,
+        105,
+        27,
+        25,
+        71,
+        185
+      ],
+      "accounts": [
+        {
+          "name": "map_enemies",
+          "writable": true
+        },
+        {
+          "name": "game_session"
+        },
+        {
+          "name": "session_signer",
+          "writable": true,
           "signer": true
         },
         {
@@ -4726,193 +5018,208 @@
     },
     {
       "code": 6015,
+      "name": "RunCompleted",
+      "msg": "Run is already completed - no further actions allowed"
+    },
+    {
+      "code": 6016,
       "name": "InvalidWeek",
       "msg": "Invalid week value"
     },
     {
-      "code": 6016,
+      "code": 6017,
       "name": "InvalidEnemyTier",
       "msg": "Invalid enemy tier"
     },
     {
-      "code": 6017,
+      "code": 6018,
       "name": "InvalidSession",
       "msg": "Invalid session account"
     },
     {
-      "code": 6018,
+      "code": 6019,
       "name": "InvalidSessionOwner",
       "msg": "Invalid session owner program"
     },
     {
-      "code": 6019,
+      "code": 6020,
       "name": "NotNightPhase",
       "msg": "Skip to day can only be used during night phases"
     },
     {
-      "code": 6020,
+      "code": 6021,
       "name": "InvalidHpBonus",
       "msg": "Invalid HP bonus value"
     },
     {
-      "code": 6021,
+      "code": 6022,
       "name": "TestOnlyInstructionDisabled",
       "msg": "Test-only instruction is disabled in production builds"
     },
     {
-      "code": 6022,
+      "code": 6023,
       "name": "PitDraftAlreadyQueued",
       "msg": "Player is already queued in pit draft"
     },
     {
-      "code": 6023,
+      "code": 6024,
       "name": "PitDraftInvalidWaitingState",
       "msg": "Pit draft waiting player data is missing or inconsistent"
     },
     {
-      "code": 6024,
+      "code": 6025,
       "name": "PitDraftMissingWaitingAccounts",
       "msg": "Waiting player account inputs are missing"
     },
     {
-      "code": 6025,
+      "code": 6026,
       "name": "PitDraftSelfMatch",
       "msg": "Cannot match against yourself in pit draft"
     },
     {
-      "code": 6026,
+      "code": 6027,
       "name": "PitDraftWaitingAccountMismatch",
       "msg": "Provided waiting accounts do not match queued player"
     },
     {
-      "code": 6027,
+      "code": 6028,
       "name": "InvalidPitDraftFeeAccount",
       "msg": "Invalid pit draft fee account"
     },
     {
-      "code": 6028,
+      "code": 6029,
       "name": "PitDraftInsufficientVaultFunds",
       "msg": "Pit draft vault has insufficient funds"
     },
     {
-      "code": 6029,
+      "code": 6030,
       "name": "PitDraftInsufficientPoolItems",
       "msg": "Active pool does not contain enough items for pit draft loadout"
     },
     {
-      "code": 6030,
+      "code": 6031,
       "name": "DuelAlreadyQueued",
       "msg": "Player is already queued in duels for this seed"
     },
     {
-      "code": 6031,
+      "code": 6032,
       "name": "DuelQueueFull",
       "msg": "Duel queue is already full for this seed"
     },
     {
-      "code": 6032,
+      "code": 6033,
       "name": "DuelRunNotFinished",
       "msg": "Duel run is not finished yet"
     },
     {
-      "code": 6033,
+      "code": 6034,
       "name": "DuelSeedMismatch",
       "msg": "Provided seed does not match session generated map seed"
     },
     {
-      "code": 6034,
+      "code": 6035,
       "name": "DuelInvalidRunMode",
       "msg": "Session is not configured for duel mode"
     },
     {
-      "code": 6035,
+      "code": 6036,
       "name": "DuelNotQueued",
       "msg": "Player is not queued in this duel"
     },
     {
-      "code": 6036,
+      "code": 6037,
       "name": "DuelGameStateMismatch",
       "msg": "Provided game state does not match queued duel participant"
     },
     {
-      "code": 6037,
+      "code": 6038,
       "name": "DuelSelfMatch",
       "msg": "Cannot match against yourself in duels"
     },
     {
-      "code": 6038,
+      "code": 6039,
       "name": "InvalidDuelFeeAccount",
       "msg": "Invalid duel fee account"
     },
     {
-      "code": 6039,
+      "code": 6040,
       "name": "DuelMissingWalletAccount",
       "msg": "Required duel wallet account is missing"
     },
     {
-      "code": 6040,
+      "code": 6041,
       "name": "DuelInvalidQueueState",
       "msg": "Duel queue state is invalid or inconsistent"
     },
     {
-      "code": 6041,
+      "code": 6042,
       "name": "GauntletNotInitialized",
       "msg": "Gauntlet mode is not initialized"
     },
     {
-      "code": 6042,
+      "code": 6043,
       "name": "InvalidGauntletFeeAccount",
       "msg": "Invalid gauntlet fee account"
     },
     {
-      "code": 6043,
+      "code": 6044,
       "name": "InvalidGauntletWeek",
       "msg": "Invalid gauntlet week"
     },
     {
-      "code": 6044,
+      "code": 6045,
       "name": "GauntletRunNotActive",
       "msg": "Gauntlet run is not active"
     },
     {
-      "code": 6045,
+      "code": 6046,
       "name": "GauntletRunEnded",
       "msg": "Gauntlet run already ended"
     },
     {
-      "code": 6046,
+      "code": 6047,
       "name": "GauntletAlreadyClaimed",
       "msg": "Gauntlet rewards already claimed for this epoch"
     },
     {
-      "code": 6047,
+      "code": 6048,
       "name": "GauntletScoreMismatch",
       "msg": "Gauntlet score account mismatch"
     },
     {
-      "code": 6048,
+      "code": 6049,
       "name": "GauntletEpochNotFinalized",
       "msg": "Gauntlet epoch pool is not finalized"
     },
     {
-      "code": 6049,
+      "code": 6050,
       "name": "GauntletAlreadyEntered",
       "msg": "Gauntlet entry already paid for this run"
     },
     {
-      "code": 6050,
+      "code": 6051,
       "name": "RunModeConfigurationLocked",
       "msg": "Run mode can only be configured at session start"
     },
     {
-      "code": 6051,
+      "code": 6052,
       "name": "InvalidRunModeMaxWeeks",
       "msg": "Invalid max weeks value for run mode"
     },
     {
-      "code": 6052,
+      "code": 6053,
       "name": "GauntletAlreadySettled",
       "msg": "Gauntlet session already settled"
+    },
+    {
+      "code": 6054,
+      "name": "InvalidCampaignLevel",
+      "msg": "Campaign level must be between 1 and 40"
+    },
+    {
+      "code": 6055,
+      "name": "AccountNotEmpty",
+      "msg": "Account still has data — cannot close as empty"
     }
   ],
   "types": [
@@ -5073,7 +5380,7 @@
           {
             "name": "extra",
             "docs": [
-              "Extra data (status_id for ApplyStatus, 0 otherwise)"
+              "Extra data (status_id for ApplyStatus, SPD bonus for Attack, 0 otherwise)"
             ],
             "type": "u8"
           }
@@ -6801,7 +7108,7 @@
           {
             "name": "pois",
             "docs": [
-              "POI spawn positions (max 50)"
+              "POI spawn positions (max 64)"
             ],
             "type": {
               "array": [
@@ -6810,7 +7117,7 @@
                     "name": "PoiSpawn"
                   }
                 },
-                50
+                64
               ]
             }
           },

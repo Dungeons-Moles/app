@@ -1,5 +1,6 @@
 // Polyfills must be imported first
 import './src/polyfills';
+import { applyConsoleControl } from './src/utils/consoleControl';
 
 import React, { useEffect, useState } from 'react';
 import { Image, Platform } from 'react-native';
@@ -21,8 +22,12 @@ import { SolanaConnectionProvider } from './src/contexts/SolanaConnectionContext
 import { GameProvider } from './src/contexts/GameContext';
 import { GameplayStateProvider } from './src/contexts/GameplayStateContext';
 import { CombatReplayProvider } from './src/contexts/CombatReplayContext';
+import { AudioProvider } from './src/contexts/AudioContext';
+import { SettingsProvider } from './src/contexts/SettingsContext';
 import { AppNavigator } from './src/navigation';
 import { Psg1Wrapper } from './src/components/Psg1Wrapper';
+
+applyConsoleControl();
 
 // Critical assets to preload during splash screen (first screens the user sees)
 const PRELOAD_ASSETS = [
@@ -92,22 +97,26 @@ export default function App() {
   return (
     <Psg1Wrapper>
       <SafeAreaProvider>
-        <WalletProvider>
-          <SolanaConnectionProvider>
-            <ProfileProvider>
-              <SessionProvider>
-                <GameplayStateProvider>
-                  <GameProvider>
-                    <CombatReplayProvider>
-                    <StatusBar style="light" hidden />
-                    <AppNavigator />
-                    </CombatReplayProvider>
-                  </GameProvider>
-                </GameplayStateProvider>
-              </SessionProvider>
-            </ProfileProvider>
-          </SolanaConnectionProvider>
-        </WalletProvider>
+        <SettingsProvider>
+        <AudioProvider>
+          <WalletProvider>
+            <SolanaConnectionProvider>
+              <ProfileProvider>
+                <SessionProvider>
+                  <GameplayStateProvider>
+                    <GameProvider>
+                      <CombatReplayProvider>
+                        <StatusBar style="light" hidden />
+                        <AppNavigator />
+                      </CombatReplayProvider>
+                    </GameProvider>
+                  </GameplayStateProvider>
+                </SessionProvider>
+              </ProfileProvider>
+            </SolanaConnectionProvider>
+          </WalletProvider>
+        </AudioProvider>
+        </SettingsProvider>
       </SafeAreaProvider>
     </Psg1Wrapper>
   );

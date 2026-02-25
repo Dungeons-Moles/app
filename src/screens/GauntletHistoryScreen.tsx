@@ -38,7 +38,7 @@ const RED_BRUSH = require('../../assets/ui/illustrations/red-brush.png');
 const buttonV1Source = require('../../assets/ui/buttons/button-v1.png');
 
 // On-chain base values (ATK/ARM/SPD start at 0; bonuses come from BattleStart log entries)
-const PVP_BASE_HP = 15;
+const PVP_BASE_HP = 20;
 const PVP_BASE_ATK = 0;
 const PVP_BASE_ARM = 0;
 const PVP_BASE_SPD = 0;

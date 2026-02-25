@@ -37,6 +37,7 @@ import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHin
 import { useInputMode } from '../hooks/useInputMode';
 import { FocusGlow } from '../components/ui/FocusGlow';
 import { useEquippedSkinImage } from '../hooks/useEquippedSkinImage';
+import { useAudio } from '../contexts/AudioContext';
 
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.png');
 const STAINS_BACKGROUND = require('../../assets/ui/backgrounds/stains-background.png');
@@ -93,6 +94,14 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const isFocused = useIsFocused();
   const isCompact = useScreenVariant() === 'compact';
+  const { playBgm } = useAudio();
+
+  // Play victory/defeat music on result phase
+  useEffect(() => {
+    if (pitDraft.phase === 'result' && pitDraft.matchData) {
+      playBgm(pitDraft.matchData.isWinner ? 'victory' : 'defeat', { crossfade: true });
+    }
+  }, [pitDraft.phase, pitDraft.matchData, playBgm]);
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -577,9 +586,15 @@ interface CombatPhaseContentProps {
 
 function CombatPhaseContent({ pitDraft }: CombatPhaseContentProps) {
   const { profile } = useProfile();
+  const { playBgm } = useAudio();
   const playerSkinSource = useEquippedSkinImage(profile?.equippedSkin);
   const opponentSkinSource = useEquippedSkinImage(pitDraft.matchData?.opponentSkinPubkey ?? null);
   const { state: combatState, startCombatWithLog } = useCombat();
+
+  // Play combat music when combat phase starts
+  useEffect(() => {
+    playBgm('standard_combat', { crossfade: true, resume: false });
+  }, [playBgm]);
 
   // Start combat replay when component mounts
   useEffect(() => {

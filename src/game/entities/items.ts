@@ -19,7 +19,11 @@ import {
   GEAR_DEFINITIONS,
   RARITY_MULTIPLIER,
   createGearInstance as createGearFromData,
+  getTierFromRarity,
+  resolveDescriptionForTier,
+  resolveDescriptionAllTiers,
 } from '../../data/gear';
+import { getToolEffectsAtTier, TOOL_EFFECTS } from '../../data/tool-effects';
 
 // ============================================================================
 // Tool Definitions (per spec.md Appendix C)
@@ -132,11 +136,11 @@ export const TOOL_DEFINITIONS: Record<ToolId, ToolDefinition> = {
     emoji: '🔮',
     image: require('../../../assets/icons/items/greed/gemfinder_staff.png'),
     rarity: 'HEROIC',
-    stats: { atk: 1, arm: 1, dig: 1 },
+    stats: { atk: 2, arm: 2, dig: 1 },
     tags: ['GREED'],
     effect: {
       timing: 'ON_HIT',
-      description: 'First hit each turn triggers all your Shard effects',
+      description: 'First hit each turn triggers all your Shard effects; Shard outputs are +1',
     },
   },
   // ============================================================================
@@ -296,6 +300,46 @@ export function applyRarityMultiplier(rarity: ItemRarity): number {
   return RARITY_MULTIPLIER[rarity];
 }
 
+/**
+ * Convert item rarity to tool tier (1/2/3).
+ * Re-exports getTierFromRarity for convenience.
+ */
+export const rarityToToolTier = getTierFromRarity;
+
+/**
+ * Get tool stats at a specific tier using TOOL_EFFECTS (matching on-chain values).
+ * Extracts BattleStart stat bonuses (GainAtk, GainArmor, GainSpd, GainDig, MaxHp)
+ * from the tool's effect definitions.
+ */
+export function getToolStatsAtTier(toolId: ToolId, tier: 1 | 2 | 3): ItemStats {
+  const effects = getToolEffectsAtTier(toolId, tier);
+  const stats: ItemStats = {};
+
+  for (const effect of effects) {
+    if (effect.trigger.type !== 'BattleStart') continue;
+
+    switch (effect.effectType) {
+      case 'GainAtk':
+        stats.atk = (stats.atk ?? 0) + effect.value;
+        break;
+      case 'GainArmor':
+        stats.arm = (stats.arm ?? 0) + effect.value;
+        break;
+      case 'GainSpd':
+        stats.spd = (stats.spd ?? 0) + effect.value;
+        break;
+      case 'GainDig':
+        stats.dig = (stats.dig ?? 0) + effect.value;
+        break;
+      case 'MaxHp':
+        stats.hp = (stats.hp ?? 0) + effect.value;
+        break;
+    }
+  }
+
+  return stats;
+}
+
 // ============================================================================
 // Tool Functions
 // ============================================================================
@@ -436,4 +480,30 @@ export function getToolsByRarity(rarity: ItemRarity): ToolDefinition[] {
  */
 export function getToolsByTag(tag: ItemTag): ToolDefinition[] {
   return getAllToolDefinitions().filter((tool) => tool.tags.includes(tag));
+}
+
+/**
+ * Get the tool effect description scaled to the current tier.
+ */
+export function getToolScaledEffectDescription(toolId: ToolId, rarity: ItemRarity): string | null {
+  const def = TOOL_DEFINITIONS[toolId];
+  if (!def.effect) return null;
+
+  const tier = getTierFromRarity(rarity);
+  const toolEffects = TOOL_EFFECTS[toolId];
+
+  return resolveDescriptionForTier(def.effect.description, toolEffects?.effects ?? [], tier);
+}
+
+/**
+ * Get the tool effect description showing all tier values in X/Y/Z notation.
+ */
+export function getToolEffectDescriptionAllTiers(toolId: ToolId): string | null {
+  const def = TOOL_DEFINITIONS[toolId];
+  if (!def.effect) return null;
+
+  const toolEffects = TOOL_EFFECTS[toolId];
+  if (!toolEffects || toolEffects.effects.length === 0) return def.effect.description;
+
+  return resolveDescriptionAllTiers(def.effect.description, toolEffects.effects);
 }

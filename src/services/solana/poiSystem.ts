@@ -29,7 +29,7 @@ export type { MapPoisData, PoiInstance, ShopState, ItemOffer };
 
 // GameState with gauntlet echoes is large; POI instructions that CPI into
 // gameplay-state deserialize it multiple times, easily exceeding the 200K default.
-const POI_CU_LIMIT = 400_000;
+const POI_CU_LIMIT = 600_000;
 
 // ============================================================================
 // Transaction Context
@@ -120,7 +120,7 @@ export async function interactRest(ctx: PoiTransactionContext, poiIndex: number)
 
 /**
  * Generate and store cache offers for a pick-item POI on-chain.
- * Must be called before interactPickItem to populate MapPois.current_offer.
+ * Must be called before interactPickItem to populate MapPois.cache_offers.
  */
 export async function generateCacheOffer(
   ctx: PoiTransactionContext,
@@ -157,12 +157,23 @@ export async function interactPickItem(
   poiIndex: number,
   choiceIndex: number
 ): Promise<string> {
+  // Defensive: ensure u8 values are valid integers before Anchor serialization
+  const safePoiIndex = Math.floor(poiIndex) & 0xff;
+  const safeChoiceIndex = Math.floor(choiceIndex) & 0xff;
+  if (safePoiIndex !== poiIndex || safeChoiceIndex !== choiceIndex) {
+    console.error(
+      '[interactPickItem] arg sanitization changed values! poiIndex:',
+      poiIndex, '→', safePoiIndex,
+      '| choiceIndex:', choiceIndex, '→', safeChoiceIndex
+    );
+  }
+
   const [inventoryPda] = deriveInventoryPda(ctx.sessionPda);
   const [inventoryAuthorityPda] = deriveInventoryAuthorityPda();
   const [poiAuthorityPda] = derivePoiAuthorityPda();
 
   const transaction = await ctx.program.methods
-    .interactPickItem(poiIndex, choiceIndex)
+    .interactPickItem(safePoiIndex, safeChoiceIndex)
     .accounts({
       mapPois: ctx.mapPoisPda,
       gameState: ctx.gameStatePda,
@@ -225,7 +236,7 @@ export async function interactToolOilCombined(
 
 /**
  * Generate and store oil offers for a Tool Oil Rack (L4) on-chain.
- * Must be called before interactToolOil to populate MapPois.current_oil_offer.
+ * Must be called before interactToolOil to populate MapPois.oil_offers.
  */
 export async function generateOilOffer(
   ctx: PoiTransactionContext,

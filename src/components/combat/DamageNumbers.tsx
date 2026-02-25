@@ -13,6 +13,7 @@ interface DamageNumbersProps {
   damageNumbers: DamageNumber[];
   enemyPosition: { x: number; y: number };
   playerPosition: { x: number; y: number };
+  scale?: number;
 }
 
 /**
@@ -26,6 +27,7 @@ export const DamageNumbers = memo(function DamageNumbers({
   damageNumbers,
   enemyPosition,
   playerPosition,
+  scale = 1,
 }: DamageNumbersProps) {
   return (
     <View style={styles.container}>
@@ -34,6 +36,7 @@ export const DamageNumbers = memo(function DamageNumbers({
           key={dn.id}
           number={dn}
           position={dn.target === 'enemy' ? enemyPosition : playerPosition}
+          scale={scale}
         />
       ))}
     </View>
@@ -43,24 +46,25 @@ export const DamageNumbers = memo(function DamageNumbers({
 interface FloatingNumberProps {
   number: DamageNumber;
   position: { x: number; y: number };
+  scale?: number;
 }
 
-const FloatingNumber = memo(function FloatingNumber({ number, position }: FloatingNumberProps) {
+const FloatingNumber = memo(function FloatingNumber({ number, position, scale: sizScale = 1 }: FloatingNumberProps) {
   const translateY = useRef(new Animated.Value(0)).current;
   const opacity = useRef(new Animated.Value(1)).current;
-  const scale = useRef(new Animated.Value(0.5)).current;
+  const animScale = useRef(new Animated.Value(0.5)).current;
 
   useEffect(() => {
     // Pop-in animation
     Animated.parallel([
-      Animated.spring(scale, {
+      Animated.spring(animScale, {
         toValue: 1,
         friction: 5,
         tension: 100,
         useNativeDriver: true,
       }),
       Animated.timing(translateY, {
-        toValue: -40,
+        toValue: -40 * sizScale,
         duration: 1000,
         useNativeDriver: true,
       }),
@@ -104,14 +108,15 @@ const FloatingNumber = memo(function FloatingNumber({ number, position }: Floati
       style={[
         styles.numberContainer,
         {
-          left: position.x - 20 + randomOffset,
+          left: position.x - 20 * sizScale + randomOffset,
           top: position.y,
-          transform: [{ translateY }, { scale }],
+          width: 40 * sizScale,
+          transform: [{ translateY }, { scale: animScale }],
           opacity,
         },
       ]}
     >
-      <Text style={[styles.numberText, { color: getColor() }]}>{getText()}</Text>
+      <Text style={[styles.numberText, { color: getColor(), fontSize: 24 * sizScale }]}>{getText()}</Text>
     </Animated.View>
   );
 });

@@ -21,6 +21,7 @@ import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHin
 import { useInputMode } from '../hooks/useInputMode';
 import { FocusGlow } from '../components/ui/FocusGlow';
 import { useNftMarketplace } from '../hooks/useNftMarketplace';
+import { useAudio } from '../contexts/AudioContext';
 import { NftCard } from '../components/marketplace/NftCard';
 import { PriceInput } from '../components/marketplace/PriceInput';
 import { InlineModal } from '../components/InlineModal';
@@ -65,6 +66,7 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
     buyNft,
     refresh: refreshMarketplace,
   } = useNftMarketplace();
+  const { playSfx } = useAudio();
 
   const [showPriceInput, setShowPriceInput] = useState(false);
   const [selectedNft, setSelectedNft] = useState<{
@@ -87,10 +89,12 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
   }, [activeTab]);
 
   const handleBack = useCallback(() => {
+    playSfx('ui_click');
     navigation.goBack();
-  }, [navigation]);
+  }, [navigation, playSfx]);
 
   const handlePurchase = useCallback(async () => {
+    playSfx('ui_click');
     setIsPurchasing(true);
     setPurchaseError(null);
     try {
@@ -105,34 +109,41 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
     }
   }, [purchaseRuns]);
 
-  const handleListForSale = useCallback((asset: MetaplexCoreAsset, collection: any) => {
-    setSelectedNft({ asset, collection });
-    setShowPriceInput(true);
-  }, []);
+  const handleListForSale = useCallback(
+    (asset: MetaplexCoreAsset, collection: any) => {
+      playSfx('ui_click');
+      setSelectedNft({ asset, collection });
+      setShowPriceInput(true);
+    },
+    [playSfx]
+  );
 
   const handleConfirmListing = useCallback(
     async (priceSol: number) => {
+      playSfx('ui_click');
       if (!selectedNft) return;
       const priceLamports = Math.round(priceSol * LAMPORTS_PER_SOL);
       await listNft(selectedNft.asset.address, selectedNft.collection, priceLamports);
       setShowPriceInput(false);
       setSelectedNft(null);
     },
-    [listNft, selectedNft]
+    [listNft, selectedNft, playSfx]
   );
 
   const handleCancelListing = useCallback(
     async (listing: ListingWithAsset) => {
+      playSfx('ui_click');
       await cancelListing(listing.listing.asset, listing.listing.collection);
     },
-    [cancelListing]
+    [cancelListing, playSfx]
   );
 
   const handleBuyNft = useCallback(
     async (listing: ListingWithAsset) => {
+      playSfx('ui_click');
       await buyNft(listing);
     },
-    [buyNft]
+    [buyNft, playSfx]
   );
 
   // --- Controller navigation ---
@@ -141,16 +152,20 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
   const TABS: Tab[] = ['skins', 'items', 'pve'];
   const [nftFocus, setNftFocus] = useState(0);
 
-  const cycleTab = useCallback((dir: -1 | 1) => {
-    setActiveTab((prev) => {
-      const idx = TABS.indexOf(prev);
-      const next = idx + dir;
-      if (next < 0 || next >= TABS.length) return prev;
-      setPurchaseError(null);
-      setNftFocus(0);
-      return TABS[next];
-    });
-  }, []);
+  const cycleTab = useCallback(
+    (dir: -1 | 1) => {
+      playSfx('ui_click');
+      setActiveTab((prev) => {
+        const idx = TABS.indexOf(prev);
+        const next = idx + dir;
+        if (next < 0 || next >= TABS.length) return prev;
+        setPurchaseError(null);
+        setNftFocus(0);
+        return TABS[next];
+      });
+    },
+    [playSfx]
+  );
 
   // Build the list of focusable items for the current tab (excludes equipped skins)
   const equippedSkinKey = profile?.equippedSkin?.toBase58() ?? null;
@@ -267,6 +282,7 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
                 key={tab}
                 style={[styles.tab, activeTab === tab && styles.tabActive]}
                 onPress={() => {
+                  playSfx('ui_click');
                   setActiveTab(tab);
                   setPurchaseError(null);
                 }}
@@ -332,7 +348,6 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
                         <NftCard
                           name={skin.name}
                           image={getSkinImage(skin.name)}
-                          isOwned
                           isEquipped={isEquipped}
                           actionLabel={canList ? 'List' : undefined}
                           onAction={
@@ -417,7 +432,6 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
                           name={info?.name ?? item.name}
                           emoji={info?.emoji ?? '\u{2728}'}
                           rarity={info?.rarity}
-                          isOwned
                           isCompact={isCompact}
                         />
                       </FocusGlow>
@@ -497,9 +511,17 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
         visible={showPriceInput}
         transparent
         animationType="fade"
-        onRequestClose={() => setShowPriceInput(false)}
+        onRequestClose={() => {
+          playSfx('ui_click');
+          setShowPriceInput(false);
+        }}
       >
-        <TouchableWithoutFeedback onPress={() => setShowPriceInput(false)}>
+        <TouchableWithoutFeedback
+          onPress={() => {
+            playSfx('ui_click');
+            setShowPriceInput(false);
+          }}
+        >
           <View style={styles.modalOverlay}>
             <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
               <ImageBackground
@@ -509,7 +531,10 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
               >
                 <PriceInput
                   onConfirm={handleConfirmListing}
-                  onCancel={() => setShowPriceInput(false)}
+                  onCancel={() => {
+                    playSfx('ui_click');
+                    setShowPriceInput(false);
+                  }}
                   isCompact={isCompact}
                 />
               </ImageBackground>

@@ -401,6 +401,7 @@ export interface CombatActionResult {
   totalGold?: number;
   effectName?: string;
   goldStolen?: number;
+  spdBonus?: number;
 }
 
 export interface CombatLogEntry {

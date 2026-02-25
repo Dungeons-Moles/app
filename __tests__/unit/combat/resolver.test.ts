@@ -13,6 +13,7 @@ import {
 import type { CombatantState, CombatState } from '../../../src/game/engine/types';
 import { DEFAULT_STATUS_EFFECTS, CombatPhase } from '../../../src/game/engine/types';
 import { SeededRNG } from '../../../src/game/engine/rng';
+import type { Gear, Tool } from '../../../src/game/engine/types';
 
 // Helper to create a combatant for testing
 function createTestCombatant(overrides: Partial<CombatantState> = {}): CombatantState {
@@ -60,6 +61,32 @@ function createTestInput(overrides: Partial<CombatResolverInput> = {}): CombatRe
     }),
     seed: 12345,
     ...overrides,
+  };
+}
+
+function gear(id: Gear['id'], rarity: Gear['currentRarity'] = 'COMMON'): Gear {
+  return {
+    id,
+    name: id,
+    emoji: 'x',
+    image: null,
+    baseRarity: rarity,
+    currentRarity: rarity,
+    stats: {},
+    tags: [],
+  };
+}
+
+function tool(id: Tool['id'], rarity: Tool['rarity'] = 'COMMON'): Tool {
+  return {
+    id,
+    name: id,
+    emoji: 'x',
+    image: null,
+    rarity,
+    stats: {},
+    tags: [],
+    oil: null,
   };
 }
 
@@ -251,6 +278,148 @@ describe('Combat Resolver Determinism', () => {
       const result = resolveCombat(input);
 
       expect(result.phase).toBe(CombatPhase.BattleEnd);
+    });
+  });
+
+  describe('SPD advantage bonus', () => {
+    it('applies SPD bonus only to the first strike and logs the bonus', () => {
+      const input = createTestInput({
+        player: createTestCombatant({
+          isPlayer: true,
+          spd: 5,
+          strikesPerTurn: 2,
+        }),
+        enemy: createTestCombatant({
+          spd: 1,
+          arm: 0,
+        }),
+      });
+
+      const result = resolveCombat(input);
+      const playerAttacks = result.log.filter(
+        (entry) => entry.actor === 'player' && entry.action === 'ATTACK'
+      );
+
+      expect(playerAttacks.length).toBeGreaterThan(1);
+      expect(playerAttacks[0].result.spdBonus).toBe(Math.floor((5 - 1) / 2));
+      expect(playerAttacks[1].result.spdBonus).toBeUndefined();
+    });
+
+    it('does not grant SPD bonus when the speed gap is less than 2', () => {
+      const input = createTestInput({
+        player: createTestCombatant({
+          isPlayer: true,
+          spd: 3,
+        }),
+        enemy: createTestCombatant({
+          spd: 2,
+        }),
+      });
+
+      const result = resolveCombat(input);
+      const playerAttack = result.log.find(
+        (entry) => entry.actor === 'player' && entry.action === 'ATTACK'
+      );
+
+      expect(playerAttack).toBeDefined();
+      expect(playerAttack?.result.spdBonus).toBeUndefined();
+    });
+
+    it('lets the enemy apply SPD bonus when faster', () => {
+      const input = createTestInput({
+        player: createTestCombatant({
+          isPlayer: true,
+          spd: 1,
+        }),
+        enemy: createTestCombatant({
+          spd: 5,
+        }),
+      });
+
+      const result = resolveCombat(input);
+      const enemyAttack = result.log.find(
+        (entry) => entry.actor === 'enemy' && entry.action === 'ATTACK'
+      );
+
+      expect(enemyAttack).toBeDefined();
+      expect(enemyAttack?.result.spdBonus).toBe(Math.floor((5 - 1) / 2));
+    });
+  });
+
+  describe('v0.5b item follow-up behaviors', () => {
+    it('Ambush Charm base SPD contributes to SPD advantage bonus', () => {
+      const input = createTestInput({
+        player: createTestCombatant({
+          isPlayer: true,
+          spd: 5,
+        }),
+        enemy: createTestCombatant({
+          spd: 4,
+          arm: 0,
+        }),
+        playerGear: [gear('I58')],
+      });
+
+      const result = resolveCombat(input);
+      const firstPlayerAttack = result.log.find(
+        (entry) => entry.actor === 'player' && entry.action === 'ATTACK'
+      );
+
+      expect(firstPlayerAttack?.result.spdBonus).toBe(1);
+    });
+
+    it('Gemfinder Staff amplifies shard output by +1', () => {
+      const input = createTestInput({
+        player: createTestCombatant({
+          isPlayer: true,
+          hp: 8,
+          maxHp: 20,
+        }),
+        enemy: createTestCombatant({
+          spd: 1,
+        }),
+        playerTool: tool('T6', 'HEROIC'),
+        playerGear: [gear('I21')],
+      });
+
+      const result = resolveCombat(input);
+      const emeraldHeal = result.log.find(
+        (entry) => entry.action === 'HEAL' && entry.result.effectName === 'Emerald Shard'
+      );
+
+      expect(emeraldHeal).toBeDefined();
+      expect(emeraldHeal?.result.healing).toBe(2);
+    });
+
+    it('Blast Suit gains armor from non-weapon damage at most once per turn', () => {
+      const input = createTestInput({
+        player: createTestCombatant({
+          isPlayer: true,
+          spd: 6,
+        }),
+        enemy: createTestCombatant({
+          spd: 1,
+          hp: 30,
+          maxHp: 30,
+        }),
+        playerGear: [gear('I26'), gear('I22'), gear('I22')],
+      });
+
+      const result = resolveCombat(input);
+      const blastSuitArmorLogs = result.log.filter(
+        (entry) =>
+          entry.action === 'GAIN_ARMOR' &&
+          entry.result.effectName === 'Blast Suit'
+      );
+      const perTurn = new Map<number, number>();
+      for (const entry of blastSuitArmorLogs) {
+        perTurn.set(entry.turn, (perTurn.get(entry.turn) ?? 0) + 1);
+      }
+
+      expect(blastSuitArmorLogs.length).toBeGreaterThan(0);
+      for (const count of perTurn.values()) {
+        expect(count).toBe(1);
+      }
     });
   });
 

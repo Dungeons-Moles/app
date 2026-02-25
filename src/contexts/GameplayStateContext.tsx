@@ -179,6 +179,14 @@ export function GameplayStateProvider({ children }: { children: ReactNode }) {
   // redundant fetches while still re-fetching when the connection switches
   // (e.g. base chain → ER after delegation).
   const lastEntityFetchKeyRef = useRef<string>('');
+  const decodePoiProgram = useMemo(
+    () => createPoiSystemProgram(gameplayConnection),
+    [gameplayConnection]
+  );
+  const decodeGameplayProgram = useMemo(
+    () => createGameplayStateProgram(gameplayConnection),
+    [gameplayConnection]
+  );
 
   /**
    * Refresh map entities (enemies and POIs) from on-chain state.
@@ -199,10 +207,6 @@ export function GameplayStateProvider({ children }: { children: ReactNode }) {
         const [enemiesPda] = deriveMapEnemiesPda(sessionPda);
         const [poisPda] = deriveMapPoisPda(sessionPda);
 
-        // Create program instances for decoding
-        const poiProgram = createPoiSystemProgram(gameplayConnection);
-        const gameplayProgram = createGameplayStateProgram(gameplayConnection);
-
         // Fetch accounts in parallel
         const [enemiesAccountInfo, poisAccountInfo] = await gameplayConnection.getMultipleAccountsInfo([
           enemiesPda,
@@ -212,7 +216,7 @@ export function GameplayStateProvider({ children }: { children: ReactNode }) {
         // Parse enemies using gameplay-state program coder
         if (enemiesAccountInfo?.data) {
           try {
-            const mapEnemies = gameplayProgram.coder.accounts.decode(
+            const mapEnemies = decodeGameplayProgram.coder.accounts.decode(
               'mapEnemies',
               enemiesAccountInfo.data
             ) as { enemies: Array<{ x: number; y: number; archetypeId: number; tier: number; defeated: boolean }> };
@@ -236,8 +240,10 @@ export function GameplayStateProvider({ children }: { children: ReactNode }) {
             }));
 
             setEnemies(parsedEnemies);
-            console.log('[GameplayStateContext] Decoded enemies:', parsedEnemies.length);
-            console.log('[GameplayStateContext] Raw enemy data sample:', rawEnemyData.slice(0, 3));
+            if (__DEV__) {
+              console.log('[GameplayStateContext] Decoded enemies:', parsedEnemies.length);
+              console.log('[GameplayStateContext] Raw enemy data sample:', rawEnemyData.slice(0, 3));
+            }
           } catch (decodeError) {
             console.error('[GameplayStateContext] Failed to decode enemies:', decodeError);
             setEnemies([]);
@@ -249,7 +255,7 @@ export function GameplayStateProvider({ children }: { children: ReactNode }) {
         // Parse POIs using poi-system program coder
         if (poisAccountInfo?.data) {
           try {
-            const mapPois = poiProgram.coder.accounts.decode(
+            const mapPois = decodePoiProgram.coder.accounts.decode(
               'mapPois',
               poisAccountInfo.data
             ) as MapPoisData;
@@ -262,7 +268,9 @@ export function GameplayStateProvider({ children }: { children: ReactNode }) {
             }));
 
             setPois(parsedPois);
-            console.log('[GameplayStateContext] Decoded POIs:', parsedPois.length);
+            if (__DEV__) {
+              console.log('[GameplayStateContext] Decoded POIs:', parsedPois.length);
+            }
           } catch (decodeError) {
             console.error('[GameplayStateContext] Failed to decode POIs:', decodeError);
             setPois([]);
@@ -281,7 +289,7 @@ export function GameplayStateProvider({ children }: { children: ReactNode }) {
 
       return { enemies: rawEnemyData };
     },
-    [gameplayConnection]
+    [decodeGameplayProgram, decodePoiProgram, gameplayConnection]
   );
 
   /**
@@ -371,31 +379,53 @@ export function GameplayStateProvider({ children }: { children: ReactNode }) {
   // Stable refresh wrapper to avoid recreating on every render
   const refresh = useCallback(async () => { await gameplay.refresh(); }, [gameplay.refresh]);
 
+  // Extract individual scalar fields from gameState to use as deps instead of the
+  // full object. This prevents ALL context consumers from re-rendering on every
+  // game action (gameState is a new object on every change).
+  // The full gameState is held in a ref so the useMemo body can still return it.
+  const gs = gameplay.gameState;
+  const gameStateRef = useRef(gs);
+  gameStateRef.current = gs;
+  const gsPositionX = gs?.positionX;
+  const gsPositionY = gs?.positionY;
+  const gsHp = gs?.hp;
+  const gsMaxHp = gs?.maxHp;
+  const gsAtk = gs?.atk;
+  const gsArm = gs?.arm;
+  const gsSpd = gs?.spd;
+  const gsDig = gs?.dig;
+  const gsPhase = gs?.phase;
+  const gsWeek = gs?.week;
+  const gsMovesRemaining = gs?.movesRemaining;
+  const gsTotalMoves = gs?.totalMoves;
+  const gsBossFightReady = gs?.bossFightReady;
+  const gsGearSlots = gs?.gearSlots;
+  const gsSession = gs?.session;
+
   const value = useMemo<GameplayStateContextType>(() => {
     // Compute derived values for UI convenience
-    const position: [number, number] | null = gameplay.gameState
-      ? [gameplay.gameState.positionX, gameplay.gameState.positionY]
-      : null;
+    const position: [number, number] | null =
+      gsPositionX != null && gsPositionY != null ? [gsPositionX, gsPositionY] : null;
 
-    const stats: PlayerStats | null = gameplay.gameState
-      ? {
-          hp: gameplay.gameState.hp,
-          maxHp: gameplay.gameState.maxHp,
-          atk: gameplay.gameState.atk,
-          arm: gameplay.gameState.arm,
-          spd: gameplay.gameState.spd,
-          dig: gameplay.gameState.dig,
-        }
-      : null;
+    const stats: PlayerStats | null =
+      gsHp != null
+        ? {
+            hp: gsHp,
+            maxHp: gsMaxHp!,
+            atk: gsAtk!,
+            arm: gsArm!,
+            spd: gsSpd!,
+            dig: gsDig!,
+          }
+        : null;
 
-    const phaseName = gameplay.gameState ? getPhaseName(gameplay.gameState.phase) : null;
+    const phaseName = gsPhase != null ? getPhaseName(gsPhase) : null;
 
-    const currentPhaseMoveAllowance = gameplay.gameState
-      ? PHASE_MOVE_ALLOWANCE[gameplay.gameState.phase]
-      : null;
+    const currentPhaseMoveAllowance =
+      gsPhase != null ? PHASE_MOVE_ALLOWANCE[gsPhase] : null;
 
     return {
-      gameState: gameplay.gameState,
+      gameState: gameStateRef.current,
       gameStatePda: gameplay.gameStatePda,
       isLoading: gameplay.isLoading,
       error: gameplay.error,
@@ -411,11 +441,11 @@ export function GameplayStateProvider({ children }: { children: ReactNode }) {
       position,
       stats,
       phaseName,
-      week: gameplay.gameState?.week ?? null,
-      movesRemaining: gameplay.gameState?.movesRemaining ?? null,
-      totalMoves: gameplay.gameState?.totalMoves ?? null,
-      bossFightReady: gameplay.gameState?.bossFightReady ?? false,
-      gearSlots: gameplay.gameState?.gearSlots ?? null,
+      week: gsWeek ?? null,
+      movesRemaining: gsMovesRemaining ?? null,
+      totalMoves: gsTotalMoves ?? null,
+      bossFightReady: gsBossFightReady ?? false,
+      gearSlots: gsGearSlots ?? null,
       currentPhaseMoveAllowance,
 
       // Actions
@@ -435,7 +465,22 @@ export function GameplayStateProvider({ children }: { children: ReactNode }) {
       canFastTravel,
     };
   }, [
-    gameplay.gameState,
+    // Scalar fields from gameState — only recompute when these actually change
+    gsPositionX,
+    gsPositionY,
+    gsHp,
+    gsMaxHp,
+    gsAtk,
+    gsArm,
+    gsSpd,
+    gsDig,
+    gsPhase,
+    gsWeek,
+    gsMovesRemaining,
+    gsTotalMoves,
+    gsBossFightReady,
+    gsGearSlots,
+    gsSession,
     gameplay.gameStatePda,
     gameplay.isLoading,
     gameplay.error,

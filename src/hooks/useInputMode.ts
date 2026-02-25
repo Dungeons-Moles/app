@@ -7,7 +7,7 @@
  * "touch" without needing a React context wrapper (avoids full-tree re-renders).
  */
 import { useEffect, useRef, useSyncExternalStore } from 'react';
-import { usePsg1Gamepad } from 'psg1-sim';
+import { usePsg1LastEvent } from './usePsg1LastEvent';
 
 export type InputMode = 'touch' | 'controller';
 
@@ -43,7 +43,7 @@ export function setInputModeController(): void {
 
 export function useInputMode(): InputMode {
   const mode = useSyncExternalStore(subscribe, getSnapshot);
-  const { lastEvent } = usePsg1Gamepad();
+  const lastEvent = usePsg1LastEvent();
   const lastSeenTs = useRef(lastEvent?.ts ?? 0);
 
   // Switch to 'controller' when a gamepad button is pressed

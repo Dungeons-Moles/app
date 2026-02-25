@@ -8,6 +8,56 @@
   },
   "instructions": [
     {
+      "name": "close_profile",
+      "docs": [
+        "Closes the player's profile account and refunds rent to the owner."
+      ],
+      "discriminator": [
+        167,
+        36,
+        181,
+        8,
+        136,
+        158,
+        46,
+        207
+      ],
+      "accounts": [
+        {
+          "name": "player_profile",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  108,
+                  97,
+                  121,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "player_profile"
+          ]
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "consume_run",
       "docs": [
         "Consumes one available run from the player's profile.",

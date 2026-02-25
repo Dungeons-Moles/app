@@ -59,6 +59,13 @@ const OIL_IMAGES: Record<ToolOil, any> = {
   SPD: require('../../../assets/icons/oils/SPD.png'),
   ARM: require('../../../assets/icons/oils/ARM.png'),
 };
+const SIDEBAR_DEBUG_LOGS = false;
+
+function debugLog(...args: unknown[]) {
+  if (__DEV__ && SIDEBAR_DEBUG_LOGS) {
+    console.log(...args);
+  }
+}
 
 /** Gauntlet gear capacity per week (starts at 4, gains 4 each week) */
 function gauntletGearCapacity(week: number): number {
@@ -77,6 +84,7 @@ interface SidebarProps {
   onItemPress?: (item: Tool | Gear, slotIndex: number) => void;
   onItemInspect?: (item: Tool | Gear, slotIndex: number) => void;
   onToolInspect?: (tool: Tool) => void;
+  onItemsetPress?: (id: ItemsetId) => void;
   isRuneKilnActive?: boolean;
   handleInventoryItemPress?: (item: Tool | Gear, slotIndex: number) => void;
   onlyBoss?: boolean;
@@ -98,7 +106,7 @@ const EchoGearSlot = React.memo(function EchoGearSlot({ item, size = GEAR_SLOT_S
     if (!item) return null;
     const tier = getTierFromRarity(item.currentRarity);
     if (tier === 2) return '#4A90D9';
-    if (tier === 3) return '#FFD700';
+    if (tier === 3) return '#CC9900';
     return null;
   }, [item]);
 
@@ -127,7 +135,7 @@ const EchoToolSlot = React.memo(function EchoToolSlot({ tool, size = TOOL_SLOT_S
     if (!tool) return null;
     const tier = getTierFromRarity(tool.rarity);
     if (tier === 2) return '#4A90D9';
-    if (tier === 3) return '#FFD700';
+    if (tier === 3) return '#CC9900';
     return null;
   }, [tool]);
 
@@ -344,7 +352,7 @@ export function BossPanel({
         .filter((g): g is Gear => g !== null);
       const itemStats = calculateItemStats(tool, gear);
 
-      console.log('[BossPanel] Gauntlet echo preview decoded', {
+      debugLog('[BossPanel] Gauntlet echo preview decoded', {
         week,
         isBootstrap: preview.isBootstrap,
         sourcePlayer: preview.sourcePlayer?.toBase58?.() ?? null,
@@ -439,7 +447,7 @@ export function BossPanel({
         ? 'Build is hidden until duel resolves'
         : 'Duel final is at week end';
 
-  console.log('[BossPanel] render_mode', {
+  debugLog('[BossPanel] render_mode', {
     hasBoss: !!displayedBoss,
     originalTimeWeekBoss: time.weekBoss ?? null,
     hasDuelWeekBoss: !!duelWeekBoss,
@@ -558,7 +566,7 @@ export function BossPanel({
   );
 }
 
-export function Sidebar(props: SidebarProps) {
+export const Sidebar = React.memo(function Sidebar(props: SidebarProps) {
   if (props.onlyBoss) {
     return (
       <BossPanel
@@ -597,6 +605,7 @@ export function Sidebar(props: SidebarProps) {
           onItemPress={props.isRuneKilnActive ? props.handleInventoryItemPress : undefined}
           onItemInspect={props.onItemInspect}
           onToolInspect={props.onToolInspect}
+          onItemsetPress={props.onItemsetPress}
           isSidebar={true}
           controllerFocusIndex={props.controllerFocusIndex}
         />
@@ -623,7 +632,7 @@ export function Sidebar(props: SidebarProps) {
       </ImageBackground>
     </View>
   );
-}
+});
 
 function InlineStatRow({ icon, label, value }: { icon: any; label: string; value: number }) {
   return (

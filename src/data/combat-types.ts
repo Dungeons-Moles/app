@@ -25,6 +25,7 @@ export type TriggerType =
   | { type: 'TurnEnd' }
   | { type: 'OnEnemyBleedDamage' }
   | { type: 'OnApplyRust' }
+  | { type: 'OnDealNonWeaponDamage' }
   | { type: 'OnGainShrapnel' }
   | { type: 'DayStart' }
   | { type: 'FirstTimeWounded' }
@@ -50,6 +51,7 @@ export const Trigger = {
   TurnEnd: (): TriggerType => ({ type: 'TurnEnd' }),
   OnEnemyBleedDamage: (): TriggerType => ({ type: 'OnEnemyBleedDamage' }),
   OnApplyRust: (): TriggerType => ({ type: 'OnApplyRust' }),
+  OnDealNonWeaponDamage: (): TriggerType => ({ type: 'OnDealNonWeaponDamage' }),
   OnGainShrapnel: (): TriggerType => ({ type: 'OnGainShrapnel' }),
   DayStart: (): TriggerType => ({ type: 'DayStart' }),
   FirstTimeWounded: (): TriggerType => ({ type: 'FirstTimeWounded' }),
@@ -71,6 +73,7 @@ export type EffectType =
   | 'GainSpd'
   | 'GainDig'
   | 'GainGold'
+  | 'AmplifyGoldGain'
   | 'ApplyBomb'
   | 'ApplyChill'
   | 'ApplyShrapnel'
@@ -92,6 +95,8 @@ export type EffectType =
   | 'ReduceAllCountdowns'
   | 'AmplifyNonWeaponDamage'
   | 'StoreDamage'
+  | 'DoubleDetonationFirst'
+  | 'DoubleDetonationSecond'
   | 'EmpowerNextBombDamage'
   | 'ReduceNextBombSelfDamage'
   | 'HalfGearAtkAfterSecondStrike'
@@ -122,8 +127,11 @@ export type Condition =
   | { type: 'EnemyWounded' }
   | { type: 'OwnerHasArmor' }
   | { type: 'OwnerArmorAtLeast'; value: number }
+  | { type: 'OwnerGoldAtLeast'; value: number }
+  | { type: 'EnemyGoldAtLeast'; value: number }
   | { type: 'OwnerHasStatus'; status: StatusType }
   | { type: 'EnemyHasStatusAtLeast'; status: StatusType; minStacks: number }
+  | { type: 'OwnerDigGreaterThanEnemyArmor' }
   | { type: 'Or'; conditions: [Condition, Condition] };
 
 // Helper constructors for conditions
@@ -139,12 +147,15 @@ export const Cond = {
   EnemyWounded: (): Condition => ({ type: 'EnemyWounded' }),
   OwnerHasArmor: (): Condition => ({ type: 'OwnerHasArmor' }),
   OwnerArmorAtLeast: (value: number): Condition => ({ type: 'OwnerArmorAtLeast', value }),
+  OwnerGoldAtLeast: (value: number): Condition => ({ type: 'OwnerGoldAtLeast', value }),
+  EnemyGoldAtLeast: (value: number): Condition => ({ type: 'EnemyGoldAtLeast', value }),
   OwnerHasStatus: (status: StatusType): Condition => ({ type: 'OwnerHasStatus', status }),
   EnemyHasStatusAtLeast: (status: StatusType, minStacks: number): Condition => ({
     type: 'EnemyHasStatusAtLeast',
     status,
     minStacks,
   }),
+  OwnerDigGreaterThanEnemyArmor: (): Condition => ({ type: 'OwnerDigGreaterThanEnemyArmor' }),
   Or: (a: Condition, b: Condition): Condition => ({ type: 'Or', conditions: [a, b] }),
 } as const;
 

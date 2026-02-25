@@ -81,6 +81,106 @@
           ]
         },
         {
+          "name": "player_profile",
+          "docs": [
+            "Player profile for recording run result (defeat) if not settled yet"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  108,
+                  97,
+                  121,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "player"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                173,
+                178,
+                185,
+                109,
+                85,
+                174,
+                41,
+                240,
+                83,
+                161,
+                21,
+                228,
+                174,
+                149,
+                101,
+                192,
+                117,
+                119,
+                254,
+                61,
+                55,
+                200,
+                75,
+                179,
+                126,
+                215,
+                130,
+                121,
+                72,
+                90,
+                152,
+                13
+              ]
+            }
+          }
+        },
+        {
+          "name": "session_manager_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  95,
+                  109,
+                  97,
+                  110,
+                  97,
+                  103,
+                  101,
+                  114,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
           "name": "inventory",
           "docs": [
             "Player's inventory account (closed via CPI)"
@@ -94,6 +194,10 @@
         {
           "name": "gameplay_state_program",
           "address": "C8hK4qsqsSYQeqyXuTPTUUS3T7N74WnZCuzvChTpK1Mo"
+        },
+        {
+          "name": "player_profile_program",
+          "address": "Ch3bbL1oQk2z5rX1jiun3KuSWZqnXZ1MnrfrtKj4MKun"
         },
         {
           "name": "map_generator_program",
@@ -110,6 +214,222 @@
           "type": "u8"
         }
       ]
+    },
+    {
+      "name": "close_orphaned_accounts",
+      "docs": [
+        "Close orphaned child accounts after force_close_session already freed the session PDA.",
+        "Session PDA no longer exists, so we validate via game_state (which stores session_signer",
+        "and player). Only closes accounts that are on base layer (owned by their programs).",
+        "Call order: map_pois → map_enemies → game_state (game_state last since others depend on it)."
+      ],
+      "discriminator": [
+        153,
+        174,
+        148,
+        121,
+        49,
+        71,
+        27,
+        65
+      ],
+      "accounts": [
+        {
+          "name": "game_state",
+          "docs": [
+            "GameState is the auth source — stores session_signer and player.",
+            "May be delegated (skipped if so)."
+          ],
+          "writable": true
+        },
+        {
+          "name": "map_enemies",
+          "docs": [
+            "Map enemies account — may be delegated."
+          ],
+          "writable": true
+        },
+        {
+          "name": "map_pois",
+          "docs": [
+            "Map POIs account — may be delegated."
+          ],
+          "writable": true
+        },
+        {
+          "name": "player",
+          "docs": [
+            "Player wallet receives rent refunds."
+          ],
+          "writable": true
+        },
+        {
+          "name": "session_signer",
+          "docs": [
+            "Session key signer — validated by child program CPIs via game_state.session_signer."
+          ],
+          "signer": true
+        },
+        {
+          "name": "gameplay_state_program",
+          "address": "C8hK4qsqsSYQeqyXuTPTUUS3T7N74WnZCuzvChTpK1Mo"
+        },
+        {
+          "name": "poi_system_program",
+          "address": "KiT25b86BSAF8yErcWwyuuWNaoXMpNf859NjH41TpSj"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "close_session_only",
+      "docs": [
+        "Emergency fallback: settle run result (if needed) and close only the game_session account.",
+        "This allows users to recover from ER child-account undelegation failures and start new runs.",
+        "Child runtime accounts may remain delegated/stuck and must be cleaned up separately."
+      ],
+      "discriminator": [
+        97,
+        179,
+        126,
+        16,
+        29,
+        243,
+        56,
+        15
+      ],
+      "accounts": [
+        {
+          "name": "game_session",
+          "writable": true
+        },
+        {
+          "name": "game_state",
+          "docs": [
+            "Game state account can still be delegated; validated in handler."
+          ],
+          "writable": true
+        },
+        {
+          "name": "player_profile",
+          "docs": [
+            "Player profile for recording run result (if not settled yet)"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  108,
+                  97,
+                  121,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "player"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                173,
+                178,
+                185,
+                109,
+                85,
+                174,
+                41,
+                240,
+                83,
+                161,
+                21,
+                228,
+                174,
+                149,
+                101,
+                192,
+                117,
+                119,
+                254,
+                61,
+                55,
+                200,
+                75,
+                179,
+                126,
+                215,
+                130,
+                121,
+                72,
+                90,
+                152,
+                13
+              ]
+            }
+          }
+        },
+        {
+          "name": "player",
+          "writable": true,
+          "relations": [
+            "game_session"
+          ]
+        },
+        {
+          "name": "session_signer",
+          "signer": true,
+          "relations": [
+            "game_session"
+          ]
+        },
+        {
+          "name": "session_manager_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  95,
+                  109,
+                  97,
+                  110,
+                  97,
+                  103,
+                  101,
+                  114,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "player_profile_program",
+          "address": "Ch3bbL1oQk2z5rX1jiun3KuSWZqnXZ1MnrfrtKj4MKun"
+        }
+      ],
+      "args": []
     },
     {
       "name": "commit_session",
@@ -1232,6 +1552,12 @@
         {
           "name": "campaign_level",
           "type": "u8"
+        },
+        {
+          "name": "validator",
+          "type": {
+            "option": "pubkey"
+          }
         }
       ]
     },
@@ -1265,67 +1591,7 @@
           "docs": [
             "Game state account to validate death/completion status (closed via gameplay-state CPI)"
           ],
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  103,
-                  97,
-                  109,
-                  101,
-                  95,
-                  115,
-                  116,
-                  97,
-                  116,
-                  101
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "game_session"
-              }
-            ],
-            "program": {
-              "kind": "const",
-              "value": [
-                165,
-                105,
-                51,
-                195,
-                50,
-                68,
-                93,
-                183,
-                82,
-                141,
-                122,
-                107,
-                195,
-                1,
-                86,
-                30,
-                104,
-                80,
-                170,
-                150,
-                122,
-                133,
-                234,
-                98,
-                181,
-                121,
-                227,
-                35,
-                228,
-                168,
-                136,
-                54
-              ]
-            }
-          }
+          "writable": true
         },
         {
           "name": "map_enemies",
@@ -1414,7 +1680,7 @@
         {
           "name": "player",
           "docs": [
-            "Player wallet - receives rent refund but does NOT need to sign"
+            "Player wallet - receives rent refund but does NOT need to sign."
           ],
           "writable": true,
           "relations": [
@@ -1503,6 +1769,201 @@
           "type": "u8"
         }
       ]
+    },
+    {
+      "name": "force_close_session",
+      "docs": [
+        "Tolerant session close: settles result (defeat if unreadable) and closes whichever",
+        "child accounts are on base layer. Delegated/missing children are skipped.",
+        "This prevents the permanent soft-lock where close_session_only leaves orphaned",
+        "child accounts that block start_session (which uses `init`, not `init_if_needed`)."
+      ],
+      "discriminator": [
+        7,
+        248,
+        122,
+        200,
+        47,
+        119,
+        244,
+        82
+      ],
+      "accounts": [
+        {
+          "name": "game_session",
+          "writable": true
+        },
+        {
+          "name": "game_state",
+          "docs": [
+            "Game state account — may be delegated; validated by PDA derivation in handler."
+          ],
+          "writable": true
+        },
+        {
+          "name": "map_enemies",
+          "docs": [
+            "Map enemies account — may be delegated."
+          ],
+          "writable": true
+        },
+        {
+          "name": "generated_map",
+          "docs": [
+            "Generated map account — may be delegated."
+          ],
+          "writable": true
+        },
+        {
+          "name": "map_pois",
+          "docs": [
+            "Map POIs account — may be delegated."
+          ],
+          "writable": true
+        },
+        {
+          "name": "inventory",
+          "docs": [
+            "Player inventory account — may be delegated."
+          ],
+          "writable": true
+        },
+        {
+          "name": "player_profile",
+          "docs": [
+            "Player profile for recording run result (if not settled yet)"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  108,
+                  97,
+                  121,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "player"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                173,
+                178,
+                185,
+                109,
+                85,
+                174,
+                41,
+                240,
+                83,
+                161,
+                21,
+                228,
+                174,
+                149,
+                101,
+                192,
+                117,
+                119,
+                254,
+                61,
+                55,
+                200,
+                75,
+                179,
+                126,
+                215,
+                130,
+                121,
+                72,
+                90,
+                152,
+                13
+              ]
+            }
+          }
+        },
+        {
+          "name": "player",
+          "writable": true,
+          "relations": [
+            "game_session"
+          ]
+        },
+        {
+          "name": "session_signer",
+          "signer": true,
+          "relations": [
+            "game_session"
+          ]
+        },
+        {
+          "name": "session_manager_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  95,
+                  109,
+                  97,
+                  110,
+                  97,
+                  103,
+                  101,
+                  114,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "player_inventory_program",
+          "address": "APRnvp41jEYnT1EnrdBTim7bodqE6v2RSgzv1CG7Qv7u"
+        },
+        {
+          "name": "gameplay_state_program",
+          "address": "C8hK4qsqsSYQeqyXuTPTUUS3T7N74WnZCuzvChTpK1Mo"
+        },
+        {
+          "name": "player_profile_program",
+          "address": "Ch3bbL1oQk2z5rX1jiun3KuSWZqnXZ1MnrfrtKj4MKun"
+        },
+        {
+          "name": "map_generator_program",
+          "address": "GCy5GqvnJN99rgGtV6fMn8NtL9E7RoAyHDGzQv8me65j"
+        },
+        {
+          "name": "poi_system_program",
+          "address": "KiT25b86BSAF8yErcWwyuuWNaoXMpNf859NjH41TpSj"
+        }
+      ],
+      "args": []
     },
     {
       "name": "initialize_counter",
@@ -1594,6 +2055,167 @@
           "type": {
             "vec": "bytes"
           }
+        }
+      ]
+    },
+    {
+      "name": "settle_session_result",
+      "docs": [
+        "Settles run outcome into player-profile without requiring account closure.",
+        "This is idempotent and can be retried independently when close fails."
+      ],
+      "discriminator": [
+        62,
+        109,
+        54,
+        66,
+        163,
+        98,
+        123,
+        30
+      ],
+      "accounts": [
+        {
+          "name": "game_session",
+          "writable": true
+        },
+        {
+          "name": "game_state",
+          "docs": [
+            "Game state account can still be delegated; validated in handler."
+          ],
+          "writable": true
+        },
+        {
+          "name": "player_profile",
+          "docs": [
+            "Player profile for recording run result"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  108,
+                  97,
+                  121,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "player"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                173,
+                178,
+                185,
+                109,
+                85,
+                174,
+                41,
+                240,
+                83,
+                161,
+                21,
+                228,
+                174,
+                149,
+                101,
+                192,
+                117,
+                119,
+                254,
+                61,
+                55,
+                200,
+                75,
+                179,
+                126,
+                215,
+                130,
+                121,
+                72,
+                90,
+                152,
+                13
+              ]
+            }
+          }
+        },
+        {
+          "name": "player",
+          "docs": [
+            "Player wallet - validated by has_one constraint."
+          ],
+          "writable": true,
+          "relations": [
+            "game_session"
+          ]
+        },
+        {
+          "name": "session_signer",
+          "docs": [
+            "Session key signer - authorizes settlement without wallet popup"
+          ],
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "game_session"
+          ]
+        },
+        {
+          "name": "session_manager_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  95,
+                  109,
+                  97,
+                  110,
+                  97,
+                  103,
+                  101,
+                  114,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "player_profile_program",
+          "address": "Ch3bbL1oQk2z5rX1jiun3KuSWZqnXZ1MnrfrtKj4MKun"
+        }
+      ],
+      "args": [
+        {
+          "name": "_campaign_level",
+          "type": "u8"
         }
       ]
     },
@@ -2277,6 +2899,7 @@
         },
         {
           "name": "session_signer",
+          "writable": true,
           "signer": true
         },
         {
@@ -2321,19 +2944,6 @@
       ]
     },
     {
-      "name": "GameState",
-      "discriminator": [
-        144,
-        94,
-        208,
-        172,
-        248,
-        99,
-        134,
-        120
-      ]
-    },
-    {
       "name": "MapConfig",
       "discriminator": [
         186,
@@ -2375,6 +2985,19 @@
   ],
   "events": [
     {
+      "name": "OrphanedAccountsClosed",
+      "discriminator": [
+        46,
+        56,
+        156,
+        76,
+        116,
+        8,
+        147,
+        49
+      ]
+    },
+    {
       "name": "SessionDelegated",
       "discriminator": [
         196,
@@ -2398,6 +3021,19 @@
         232,
         236,
         18
+      ]
+    },
+    {
+      "name": "SessionResultSettled",
+      "discriminator": [
+        185,
+        142,
+        41,
+        127,
+        139,
+        152,
+        51,
+        5
       ]
     },
     {
@@ -2479,6 +3115,11 @@
       "code": 6012,
       "name": "SessionStillDelegated",
       "msg": "Session must be undelegated before closing"
+    },
+    {
+      "code": 6013,
+      "name": "RunNotTerminal",
+      "msg": "Run is not terminal yet"
     }
   ],
   "types": [
@@ -2573,378 +3214,27 @@
                 32
               ]
             }
-          }
-        ]
-      }
-    },
-    {
-      "name": "GameState",
-      "docs": [
-        "Core gameplay state account linked to a GameSession.",
-        "Contains all mutable game data for a single run.",
-        "Stats (ATK, ARM, SPD, DIG, MaxHP) are derived from inventory at runtime.",
-        "PDA Seeds: [\"game_state\", session_pda.as_ref()]"
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "player",
-            "docs": [
-              "Session owner's main wallet (used for lifecycle operations like close)"
-            ],
-            "type": "pubkey"
           },
           {
-            "name": "session_signer",
+            "name": "settled",
             "docs": [
-              "Session key signer authorized for gameplay transactions (move, boss fight)"
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "session",
-            "docs": [
-              "Linked GameSession PDA"
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "position_x",
-            "docs": [
-              "Current X coordinate (0 <= x < map_width)"
-            ],
-            "type": "u8"
-          },
-          {
-            "name": "position_y",
-            "docs": [
-              "Current Y coordinate (0 <= y < map_height)"
-            ],
-            "type": "u8"
-          },
-          {
-            "name": "map_width",
-            "docs": [
-              "Map boundary X (immutable after init)"
-            ],
-            "type": "u8"
-          },
-          {
-            "name": "map_height",
-            "docs": [
-              "Map boundary Y (immutable after init)"
-            ],
-            "type": "u8"
-          },
-          {
-            "name": "hp",
-            "docs": [
-              "Current health points (0 <= hp <= derived max_hp)"
-            ],
-            "type": "i16"
-          },
-          {
-            "name": "gear_slots",
-            "docs": [
-              "Gear slot capacity (4 -> 6 -> 8 -> 10 -> 12)"
-            ],
-            "type": "u8"
-          },
-          {
-            "name": "week",
-            "docs": [
-              "Current week (1-max_weeks)"
-            ],
-            "type": "u8"
-          },
-          {
-            "name": "phase",
-            "docs": [
-              "Current time phase"
-            ],
-            "type": {
-              "defined": {
-                "name": "Phase"
-              }
-            }
-          },
-          {
-            "name": "moves_remaining",
-            "docs": [
-              "Moves remaining in current phase (0-50)"
-            ],
-            "type": "u8"
-          },
-          {
-            "name": "total_moves",
-            "docs": [
-              "Total moves made across session"
-            ],
-            "type": "u32"
-          },
-          {
-            "name": "boss_fight_ready",
-            "docs": [
-              "Boss fight triggered flag"
+              "Whether run result has already been settled into player-profile."
             ],
             "type": "bool"
           },
           {
-            "name": "gold",
+            "name": "settled_victory",
             "docs": [
-              "Current gold amount (0-65535)"
-            ],
-            "type": "u16"
-          },
-          {
-            "name": "bump",
-            "docs": [
-              "PDA bump seed"
-            ],
-            "type": "u8"
-          },
-          {
-            "name": "campaign_level",
-            "docs": [
-              "Campaign level for this session (1-40)",
-              "Stored at init to prevent user manipulation of boss stage"
-            ],
-            "type": "u8"
-          },
-          {
-            "name": "run_mode",
-            "docs": [
-              "Session mode controls week cap and weekly resolver."
-            ],
-            "type": {
-              "defined": {
-                "name": "RunMode"
-              }
-            }
-          },
-          {
-            "name": "max_weeks",
-            "docs": [
-              "Maximum number of weeks for this run mode (3 campaign/duel, 5 gauntlet)."
-            ],
-            "type": "u8"
-          },
-          {
-            "name": "is_dead",
-            "docs": [
-              "Player death flag - once set, all gameplay instructions are blocked"
+              "Settled run outcome (true = victory, false = defeat)."
             ],
             "type": "bool"
           },
           {
-            "name": "completed",
+            "name": "settled_at",
             "docs": [
-              "Level completion flag - set when week 3 boss is defeated",
-              "Used by session_manager to validate end_session calls"
+              "Unix timestamp when settlement happened."
             ],
-            "type": "bool"
-          },
-          {
-            "name": "gauntlet_echoes",
-            "docs": [
-              "Pre-drawn gauntlet echo opponents (cached at entry, resolved during ER gameplay)."
-            ],
-            "type": {
-              "array": [
-                {
-                  "option": {
-                    "defined": {
-                      "name": "GauntletEchoSnapshot"
-                    }
-                  }
-                },
-                5
-              ]
-            }
-          },
-          {
-            "name": "gauntlet_epoch_id",
-            "docs": [
-              "Epoch ID at gauntlet entry, used for settlement validation."
-            ],
-            "type": "u64"
-          },
-          {
-            "name": "gauntlet_points_earned",
-            "docs": [
-              "Points accumulated during gauntlet ER gameplay, settled after undelegation."
-            ],
-            "type": "u64"
-          },
-          {
-            "name": "gauntlet_defender_credit",
-            "docs": [
-              "Defender credit to apply at settlement (only for Player echo losses)."
-            ],
-            "type": {
-              "option": {
-                "defined": {
-                  "name": "GauntletDefenderCredit"
-                }
-              }
-            }
-          },
-          {
-            "name": "gauntlet_highest_week_won",
-            "docs": [
-              "Highest week the player won (for echo insertion at settlement)."
-            ],
-            "type": "u8"
-          },
-          {
-            "name": "gauntlet_settled",
-            "docs": [
-              "Whether gauntlet points have been settled to global accounts."
-            ],
-            "type": "bool"
-          }
-        ]
-      }
-    },
-    {
-      "name": "GauntletDefenderCredit",
-      "docs": [
-        "Defender credit accumulated during gauntlet ER gameplay, settled after undelegation."
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "defender",
-            "type": "pubkey"
-          },
-          {
-            "name": "points",
-            "type": "u64"
-          }
-        ]
-      }
-    },
-    {
-      "name": "GauntletEchoSnapshot",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "week",
-            "type": "u8"
-          },
-          {
-            "name": "source",
-            "type": {
-              "defined": {
-                "name": "GauntletEchoSource"
-              }
-            }
-          },
-          {
-            "name": "loadout",
-            "type": {
-              "defined": {
-                "name": "GauntletLoadoutSnapshot"
-              }
-            }
-          }
-        ]
-      }
-    },
-    {
-      "name": "GauntletEchoSource",
-      "type": {
-        "kind": "enum",
-        "variants": [
-          {
-            "name": "Bootstrap"
-          },
-          {
-            "name": "Player",
-            "fields": [
-              "pubkey"
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "name": "GauntletLoadoutSnapshot",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "tool",
-            "type": {
-              "option": {
-                "defined": {
-                  "name": "ItemInstance"
-                }
-              }
-            }
-          },
-          {
-            "name": "gear",
-            "type": {
-              "array": [
-                {
-                  "option": {
-                    "defined": {
-                      "name": "ItemInstance"
-                    }
-                  }
-                },
-                12
-              ]
-            }
-          },
-          {
-            "name": "gold_at_battle_start",
-            "type": "u16"
-          }
-        ]
-      }
-    },
-    {
-      "name": "ItemInstance",
-      "docs": [
-        "A specific item owned by a player"
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "item_id",
-            "docs": [
-              "References ItemDefinition ID (e.g., \"T-ST-01\\0\")"
-            ],
-            "type": {
-              "array": [
-                "u8",
-                8
-              ]
-            }
-          },
-          {
-            "name": "tier",
-            "docs": [
-              "Upgrade tier"
-            ],
-            "type": {
-              "defined": {
-                "name": "Tier"
-              }
-            }
-          },
-          {
-            "name": "tool_oil_flags",
-            "docs": [
-              "Tool Oil bitflags: 0x01=+ATK, 0x02=+SPD, 0x04=+DIG, 0x08=+ARM"
-            ],
-            "type": "u8"
+            "type": "i64"
           }
         ]
       }
@@ -2994,31 +3284,13 @@
       }
     },
     {
-      "name": "Phase",
-      "docs": [
-        "Time phase enumeration determining move allowance.",
-        "Each day has 50 moves, each night has 30 moves."
-      ],
+      "name": "OrphanedAccountsClosed",
       "type": {
-        "kind": "enum",
-        "variants": [
+        "kind": "struct",
+        "fields": [
           {
-            "name": "Day1"
-          },
-          {
-            "name": "Night1"
-          },
-          {
-            "name": "Day2"
-          },
-          {
-            "name": "Night2"
-          },
-          {
-            "name": "Day3"
-          },
-          {
-            "name": "Night3"
+            "name": "player",
+            "type": "pubkey"
           }
         ]
       }
@@ -3079,26 +3351,6 @@
                 10
               ]
             }
-          }
-        ]
-      }
-    },
-    {
-      "name": "RunMode",
-      "docs": [
-        "Session mode for gameplay progression rules."
-      ],
-      "type": {
-        "kind": "enum",
-        "variants": [
-          {
-            "name": "Campaign"
-          },
-          {
-            "name": "Duel"
-          },
-          {
-            "name": "Gauntlet"
           }
         ]
       }
@@ -3186,6 +3438,34 @@
       }
     },
     {
+      "name": "SessionResultSettled",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "session_id",
+            "type": "u64"
+          },
+          {
+            "name": "campaign_level",
+            "type": "u8"
+          },
+          {
+            "name": "victory",
+            "type": "bool"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
       "name": "SessionStarted",
       "type": {
         "kind": "struct",
@@ -3209,26 +3489,6 @@
           {
             "name": "timestamp",
             "type": "i64"
-          }
-        ]
-      }
-    },
-    {
-      "name": "Tier",
-      "docs": [
-        "Item tier (upgrade level)"
-      ],
-      "type": {
-        "kind": "enum",
-        "variants": [
-          {
-            "name": "I"
-          },
-          {
-            "name": "II"
-          },
-          {
-            "name": "III"
           }
         ]
       }
