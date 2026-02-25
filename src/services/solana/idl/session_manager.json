@@ -1552,6 +1552,12 @@
         {
           "name": "campaign_level",
           "type": "u8"
+        },
+        {
+          "name": "validator",
+          "type": {
+            "option": "pubkey"
+          }
         }
       ]
     },

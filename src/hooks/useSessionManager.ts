@@ -606,7 +606,7 @@ export function useSessionManager() {
       const sessionDelegate = deriveDelegatePdas(sessionPda, SOLANA_CONFIG.programs.sessionManager);
 
       const delegateSessionIx = await baseWriteProgram.methods
-        .delegateSession(onChainLevel)
+        .delegateSession(onChainLevel, SOLANA_CONFIG.magic.delegationValidator)
         .accountsStrict({
           bufferGameSession: sessionDelegate.buffer,
           delegationRecordGameSession: sessionDelegate.delegationRecord,
@@ -664,9 +664,10 @@ export function useSessionManager() {
       const generatedMapDelegate = deriveDelegatePdas(generatedMapPda, SOLANA_CONFIG.programs.mapGenerator);
       const inventoryDelegate = deriveDelegatePdas(inventoryPda, SOLANA_CONFIG.programs.playerInventory);
       const mapPoisDelegate = deriveDelegatePdas(mapPoisPda, SOLANA_CONFIG.programs.poiSystem);
+      const delegationValidator = SOLANA_CONFIG.magic.delegationValidator;
 
       const delegateGameplayIx = await gameplayStateWriteProgram.methods
-        .delegateGameplayAccounts()
+        .delegateGameplayAccounts(delegationValidator)
         .accountsStrict({
           gameState: gameStatePda,
           mapEnemies: mapEnemiesPda,
@@ -684,7 +685,7 @@ export function useSessionManager() {
         } as any)
         .instruction();
       const delegateGeneratedMapIx = await mapGeneratorWriteProgram.methods
-        .delegateGeneratedMap()
+        .delegateGeneratedMap(delegationValidator)
         .accountsStrict({
           generatedMap: generatedMapPda,
           session: sessionPda,
@@ -698,7 +699,7 @@ export function useSessionManager() {
         } as any)
         .instruction();
       const delegateInventoryIx = await playerInventoryWriteProgram.methods
-        .delegateInventory()
+        .delegateInventory(delegationValidator)
         .accountsStrict({
           inventory: inventoryPda,
           session: sessionPda,
@@ -712,7 +713,7 @@ export function useSessionManager() {
         } as any)
         .instruction();
       const delegateMapPoisIx = await poiSystemWriteProgram.methods
-        .delegateMapPois()
+        .delegateMapPois(delegationValidator)
         .accountsStrict({
           mapPois: mapPoisPda,
           gameSession: sessionPda,
@@ -726,7 +727,7 @@ export function useSessionManager() {
         } as any)
         .instruction();
       const delegateSessionIx = await baseWriteProgram.methods
-        .delegateSession(onChainLevel)
+        .delegateSession(onChainLevel, delegationValidator)
         .accountsStrict({
           bufferGameSession: deriveDelegatePdas(sessionPda, SOLANA_CONFIG.programs.sessionManager)
             .buffer,
@@ -963,7 +964,8 @@ export function useSessionManager() {
         const isRecoverableUndelegateError = (message: string): boolean =>
           message.includes('InvalidAccountOwner') ||
           message.includes('InvalidWritableAccount') ||
-          message.includes('ReadonlyDataModified');
+          message.includes('ReadonlyDataModified') ||
+          message.toLowerCase().includes('blockhash not found');
         const tryUndelegateOrSkip = async (
           sendTx: () => Promise<void>,
           checks: Array<[PublicKey, PublicKey, string]>,
@@ -1051,14 +1053,7 @@ export function useSessionManager() {
           tx.instructions.unshift(
             ComputeBudgetProgram.setComputeUnitLimit({ units: UNDELEGATE_CU_LIMIT })
           );
-          const { blockhash } = await erConnection.getLatestBlockhash('confirmed');
-          tx.recentBlockhash = blockhash;
-          tx.feePayer = sessionSignerKeypair.publicKey;
-          tx.sign(sessionSignerKeypair);
-          const sig = await erConnection.sendRawTransaction(tx.serialize(), {
-            skipPreflight: true,
-          });
-          await erConnection.confirmTransaction(sig, 'confirmed');
+          const sig = await sendSessionSignerTransaction(erConnection, tx, sessionSignerKeypair);
           console.log(
             `[useSessionManager] undelegate ${label}: confirmed ${sig.slice(0, 20)}…`
           );

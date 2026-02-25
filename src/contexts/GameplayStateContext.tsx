@@ -179,6 +179,14 @@ export function GameplayStateProvider({ children }: { children: ReactNode }) {
   // redundant fetches while still re-fetching when the connection switches
   // (e.g. base chain → ER after delegation).
   const lastEntityFetchKeyRef = useRef<string>('');
+  const decodePoiProgram = useMemo(
+    () => createPoiSystemProgram(gameplayConnection),
+    [gameplayConnection]
+  );
+  const decodeGameplayProgram = useMemo(
+    () => createGameplayStateProgram(gameplayConnection),
+    [gameplayConnection]
+  );
 
   /**
    * Refresh map entities (enemies and POIs) from on-chain state.
@@ -199,10 +207,6 @@ export function GameplayStateProvider({ children }: { children: ReactNode }) {
         const [enemiesPda] = deriveMapEnemiesPda(sessionPda);
         const [poisPda] = deriveMapPoisPda(sessionPda);
 
-        // Create program instances for decoding
-        const poiProgram = createPoiSystemProgram(gameplayConnection);
-        const gameplayProgram = createGameplayStateProgram(gameplayConnection);
-
         // Fetch accounts in parallel
         const [enemiesAccountInfo, poisAccountInfo] = await gameplayConnection.getMultipleAccountsInfo([
           enemiesPda,
@@ -212,7 +216,7 @@ export function GameplayStateProvider({ children }: { children: ReactNode }) {
         // Parse enemies using gameplay-state program coder
         if (enemiesAccountInfo?.data) {
           try {
-            const mapEnemies = gameplayProgram.coder.accounts.decode(
+            const mapEnemies = decodeGameplayProgram.coder.accounts.decode(
               'mapEnemies',
               enemiesAccountInfo.data
             ) as { enemies: Array<{ x: number; y: number; archetypeId: number; tier: number; defeated: boolean }> };
@@ -236,8 +240,10 @@ export function GameplayStateProvider({ children }: { children: ReactNode }) {
             }));
 
             setEnemies(parsedEnemies);
-            console.log('[GameplayStateContext] Decoded enemies:', parsedEnemies.length);
-            console.log('[GameplayStateContext] Raw enemy data sample:', rawEnemyData.slice(0, 3));
+            if (__DEV__) {
+              console.log('[GameplayStateContext] Decoded enemies:', parsedEnemies.length);
+              console.log('[GameplayStateContext] Raw enemy data sample:', rawEnemyData.slice(0, 3));
+            }
           } catch (decodeError) {
             console.error('[GameplayStateContext] Failed to decode enemies:', decodeError);
             setEnemies([]);
@@ -249,7 +255,7 @@ export function GameplayStateProvider({ children }: { children: ReactNode }) {
         // Parse POIs using poi-system program coder
         if (poisAccountInfo?.data) {
           try {
-            const mapPois = poiProgram.coder.accounts.decode(
+            const mapPois = decodePoiProgram.coder.accounts.decode(
               'mapPois',
               poisAccountInfo.data
             ) as MapPoisData;
@@ -262,7 +268,9 @@ export function GameplayStateProvider({ children }: { children: ReactNode }) {
             }));
 
             setPois(parsedPois);
-            console.log('[GameplayStateContext] Decoded POIs:', parsedPois.length);
+            if (__DEV__) {
+              console.log('[GameplayStateContext] Decoded POIs:', parsedPois.length);
+            }
           } catch (decodeError) {
             console.error('[GameplayStateContext] Failed to decode POIs:', decodeError);
             setPois([]);
@@ -281,7 +289,7 @@ export function GameplayStateProvider({ children }: { children: ReactNode }) {
 
       return { enemies: rawEnemyData };
     },
-    [gameplayConnection]
+    [decodeGameplayProgram, decodePoiProgram, gameplayConnection]
   );
 
   /**

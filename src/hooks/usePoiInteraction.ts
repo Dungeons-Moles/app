@@ -988,21 +988,26 @@ export function usePoiInteraction(): UsePoiInteractionResult {
         pois.length
       );
 
-      // Validate against fresh on-chain data to prevent stale-index bugs
-      const validated = await validatePoiIndex(
-        ctx.program,
-        ctx.mapPoisPda,
-        contextPoiIndex,
-        currentPoi.x,
-        currentPoi.y,
-        'interact'
-      );
-      let poiIndex = validated.index;
-      if (poiIndex !== contextPoiIndex && sessionPda) {
-        // Refresh context in background so future lookups are correct
-        refreshMapEntities(sessionPda).catch((err) =>
-          console.warn('[usePoiInteraction] Background refreshMapEntities failed:', err)
+      // Fast path: trust the already loaded context index to avoid an extra
+      // RPC read before every POI action. Fallback to fresh validation only
+      // when local lookup misses.
+      let poiIndex = contextPoiIndex;
+      if (poiIndex === -1) {
+        const validated = await validatePoiIndex(
+          ctx.program,
+          ctx.mapPoisPda,
+          contextPoiIndex,
+          currentPoi.x,
+          currentPoi.y,
+          'interact'
         );
+        poiIndex = validated.index;
+        if (poiIndex !== contextPoiIndex && sessionPda) {
+          // Refresh context in background so future lookups are correct
+          refreshMapEntities(sessionPda).catch((err) =>
+            console.warn('[usePoiInteraction] Background refreshMapEntities failed:', err)
+          );
+        }
       }
 
       if (poiIndex === -1) {

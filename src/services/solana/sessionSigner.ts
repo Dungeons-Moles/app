@@ -43,9 +43,15 @@ const ER_RETRY_BASE_DELAY_MS = 500;
 const normalizeEndpoint = (url: string): string => url.replace(/\/+$/, '');
 const isErConnection = (connection: Connection): boolean =>
   normalizeEndpoint(connection.rpcEndpoint) === normalizeEndpoint(SOLANA_CONFIG.erRpcUrl);
+const isMagicRouterConnection = (connection: Connection): boolean =>
+  normalizeEndpoint(connection.rpcEndpoint).includes('router.magicblock.app');
 const isRetriableErWriteLockError = (err: unknown): boolean => {
   const message = err instanceof Error ? err.message : String(err);
   return message.includes('cannot be written') && message.includes('writable account');
+};
+const isRetriableErBlockhashError = (err: unknown): boolean => {
+  const message = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  return message.includes('blockhash not found');
 };
 const formatErr = (err: unknown): string =>
   err instanceof Error ? err.message : typeof err === 'string' ? err : JSON.stringify(err);
@@ -492,18 +498,34 @@ export async function sendSessionSignerTransaction(
     const confirmationCommitment = erConnection
       ? SOLANA_CONFIG.erCommitment
       : SOLANA_CONFIG.commitment;
-    const { blockhash, lastValidBlockHeight } =
-      await connection.getLatestBlockhash(confirmationCommitment);
-    tx.recentBlockhash = blockhash;
-    tx.sign(sessionSignerKeypair);
+    const isRouterPath = erConnection && isMagicRouterConnection(connection);
+    let blockhash = '';
+    let lastValidBlockHeight = 0;
+
+    if (!isRouterPath) {
+      // Direct ER/base path: build + sign locally.
+      const blockhashCommitment = erConnection ? 'confirmed' : confirmationCommitment;
+      const latest = await connection.getLatestBlockhash(blockhashCommitment);
+      blockhash = latest.blockhash;
+      lastValidBlockHeight = latest.lastValidBlockHeight;
+      tx.recentBlockhash = blockhash;
+      tx.sign(sessionSignerKeypair);
+    }
 
     try {
-      const signature = await connection.sendRawTransaction(tx.serialize(), {
-        // MagicBlock ER recommends skipping preflight; preflight can fail with
-        // transient writable-account verification errors before ER state settles.
-        skipPreflight: erConnection,
-        maxRetries: 2,
-      });
+      const signature = isRouterPath
+        ? await connection.sendTransaction(tx, [sessionSignerKeypair], {
+            // Let router choose blockhash/routing internally.
+            skipPreflight: true,
+            maxRetries: 2,
+            preflightCommitment: confirmationCommitment,
+          })
+        : await connection.sendRawTransaction(tx.serialize(), {
+            // MagicBlock ER recommends skipping preflight; preflight can fail with
+            // transient writable-account verification errors before ER state settles.
+            skipPreflight: erConnection,
+            maxRetries: 2,
+          });
 
       if (erConnection) {
         const erStatus = await waitForErProcessedStatus(connection, signature);
@@ -561,7 +583,9 @@ export async function sendSessionSignerTransaction(
       return signature;
     } catch (err) {
       lastError = err;
-      if (!erConnection || !isRetriableErWriteLockError(err) || attempt >= maxAttempts) {
+      const shouldRetryEr =
+        erConnection && (isRetriableErWriteLockError(err) || isRetriableErBlockhashError(err));
+      if (!shouldRetryEr || attempt >= maxAttempts) {
         if (err instanceof SendTransactionError) {
           // Log preflight simulation logs if available (works on base chain
           // where skipPreflight=false). Fallback to getLogs() only if needed.
@@ -572,7 +596,7 @@ export async function sendSessionSignerTransaction(
             try {
               const fetchedLogs = await err.getLogs(connection);
               console.error('[sessionSignerWallet] Transaction failed. Logs:', fetchedLogs);
-            } catch (_logErr) {
+            } catch {
               // getLogs requires 'confirmed' commitment but ER/localnet connections
               // use 'processed'. Log what we have from the error itself.
               console.error('[sessionSignerWallet] Transaction failed:', err.message);
@@ -581,9 +605,9 @@ export async function sendSessionSignerTransaction(
         }
         throw err;
       }
-      const delayMs = ER_RETRY_BASE_DELAY_MS;
+      const delayMs = isRetriableErBlockhashError(err) ? 80 : ER_RETRY_BASE_DELAY_MS;
       console.warn(
-        `[sessionSignerWallet] Retrying transient ER writable-account error (attempt ${attempt}/${maxAttempts}) in ${delayMs}ms`
+        `[sessionSignerWallet] Retrying transient ER send error (attempt ${attempt}/${maxAttempts}) in ${delayMs}ms`
       );
       await new Promise((resolve) => setTimeout(resolve, delayMs));
     }

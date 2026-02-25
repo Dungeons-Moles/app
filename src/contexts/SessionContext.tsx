@@ -1476,6 +1476,22 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     [walletId, sessionSigner.keypair]
   );
 
+  const removeSessionFromActiveList = useCallback(
+    (sessionPda: PublicKey, onChainLevel?: number | null): void => {
+      const pdaBase58 = sessionPda.toBase58();
+      const frontendLevel =
+        typeof onChainLevel === 'number' && onChainLevel > 0 ? onChainLevel - 1 : null;
+      setActiveSessions((prev) =>
+        prev.filter(
+          (session) =>
+            session.sessionPda !== pdaBase58 &&
+            (frontendLevel === null || session.level !== frontendLevel)
+        )
+      );
+    },
+    []
+  );
+
   /**
    * End session immediately with session key signer (no user interaction).
    * Called automatically after combat ends in death or final victory.
@@ -1494,6 +1510,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
 
     const expectedSessionSigner = sessionManager.session?.sessionSigner ?? null;
+    const currentOnChainLevel = sessionManager.session?.campaignLevel ?? null;
     const cleanupSigner = await resolveSessionSignerForSession(sessionPda, expectedSessionSigner);
     if (!cleanupSigner) {
       return {
@@ -1561,6 +1578,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           const forceCloseResult = await sessionManager.forceCloseSession(cleanupSigner);
           if (forceCloseResult.success) {
             setUseErForGameplay(false);
+            removeSessionFromActiveList(sessionPda, currentOnChainLevel);
             return forceCloseResult;
           }
           console.warn(
@@ -1569,6 +1587,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           const closeOnlyResult = await sessionManager.closeSessionOnly(cleanupSigner);
           if (closeOnlyResult.success) {
             setUseErForGameplay(false);
+            removeSessionFromActiveList(sessionPda, currentOnChainLevel);
             return closeOnlyResult;
           }
         }
@@ -1634,6 +1653,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           const forceCloseResult = await sessionManager.forceCloseSession(cleanupSigner);
           if (forceCloseResult.success) {
             setUseErForGameplay(false);
+            removeSessionFromActiveList(sessionPda, currentOnChainLevel);
             return forceCloseResult;
           }
           console.warn(
@@ -1642,6 +1662,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           const closeOnlyResult = await sessionManager.closeSessionOnly(cleanupSigner);
           if (closeOnlyResult.success) {
             setUseErForGameplay(false);
+            removeSessionFromActiveList(sessionPda, currentOnChainLevel);
             return closeOnlyResult;
           }
         }
@@ -1715,6 +1736,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
     if (result.success) {
       console.log('[SessionContext] Session ended successfully');
+      removeSessionFromActiveList(sessionPda, currentOnChainLevel);
 
       // Clear local state
       setMapSeed(null);
@@ -1765,6 +1787,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     gameplayState.gameState?.runMode,
     gameplayState.gameState?.gauntletSettled,
     resolveSessionSignerForSession,
+    removeSessionFromActiveList,
   ]);
 
   /**
@@ -2637,6 +2660,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
       if (pending.length === 0) {
         setHasPendingCleanupsState(false);
+        await refreshSessionList().catch((err) =>
+          console.warn('[SessionContext] processPendingCleanups:refreshSessionList failed:', err)
+        );
         console.log('[SessionContext] processPendingCleanups:done_no_pending');
         return;
       }
@@ -3028,6 +3054,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       // Check if there are still pending cleanups
       const remaining = await getPendingCleanups(walletId);
       setHasPendingCleanupsState(remaining.length > 0);
+      await refreshSessionList().catch((err) =>
+        console.warn('[SessionContext] processPendingCleanups:refreshSessionList failed:', err)
+      );
       console.log('[SessionContext] processPendingCleanups:done_remaining', remaining.length);
     } finally {
       cleanupProcessingRef.current = false;
@@ -3041,6 +3070,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     sessionSigner.keypair,
     getFallbackStateHash,
     resolveSessionSignerForSession,
+    refreshSessionList,
   ]);
 
   // IMPORTANT: pending cleanup processing is intentionally triggered only by Campaign screen focus.

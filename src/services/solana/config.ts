@@ -2,9 +2,62 @@ import { PublicKey, Commitment } from '@solana/web3.js';
 
 const cluster = (process.env.EXPO_PUBLIC_SOLANA_CLUSTER ?? 'devnet') as 'devnet' | 'mainnet-beta';
 const rpcUrl = process.env.EXPO_PUBLIC_SOLANA_RPC_URL ?? 'https://api.devnet.solana.com';
-const erRpcUrl = process.env.EXPO_PUBLIC_EPHEMERAL_PROVIDER_ENDPOINT ?? 'https://devnet.magicblock.app/';
-const erWsUrl = process.env.EXPO_PUBLIC_EPHEMERAL_WS_ENDPOINT ?? 'wss://devnet.magicblock.app/';
+const useMagicRouter = process.env.EXPO_PUBLIC_USE_MAGIC_ROUTER === 'true';
+const directErRpcUrl =
+  process.env.EXPO_PUBLIC_EPHEMERAL_PROVIDER_ENDPOINT ?? 'https://devnet.magicblock.app/';
+const directErWsUrl =
+  process.env.EXPO_PUBLIC_EPHEMERAL_WS_ENDPOINT ?? 'wss://devnet.magicblock.app/';
+const routerRpcUrl =
+  process.env.EXPO_PUBLIC_ROUTER_ENDPOINT ?? 'https://devnet-router.magicblock.app/';
+const routerWsUrl =
+  process.env.EXPO_PUBLIC_WS_ROUTER_ENDPOINT ?? 'wss://devnet-router.magicblock.app/';
+const erRpcUrl = useMagicRouter ? routerRpcUrl : directErRpcUrl;
+const erWsUrl = useMagicRouter ? routerWsUrl : directErWsUrl;
 const vrfEndpoint = process.env.EXPO_PUBLIC_MAGICBLOCK_VRF_ENDPOINT;
+const delegateValidatorOverride = process.env.EXPO_PUBLIC_DELEGATION_VALIDATOR;
+const delegateRegionRaw = (process.env.EXPO_PUBLIC_DELEGATION_REGION ?? 'auto').toLowerCase();
+
+const DEVNET_VALIDATORS = {
+  asia: 'MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57',
+  eu: 'MEUGGrYPxKk17hCr7wpT6s8dtNokZj5U2L57vjYMS8e',
+  us: 'MUS3hc9TCw4cGC12vHNoYcCGzJG1txjgQLZWVoeNHNd',
+} as const;
+
+type DelegationRegion = 'auto' | 'asia' | 'eu' | 'us';
+
+const normalizeDelegationRegion = (value: string): DelegationRegion => {
+  if (value === 'asia' || value === 'eu' || value === 'us') return value;
+  return 'auto';
+};
+
+const guessRegionByTimezone = (): Exclude<DelegationRegion, 'auto'> => {
+  let timezone = '';
+  try {
+    timezone = Intl.DateTimeFormat().resolvedOptions().timeZone ?? '';
+  } catch {
+    timezone = '';
+  }
+  if (timezone.startsWith('Europe/') || timezone.startsWith('Africa/')) return 'eu';
+  if (timezone.startsWith('Asia/') || timezone.startsWith('Australia/')) return 'asia';
+  return 'us';
+};
+
+const resolveDelegationValidator = (): PublicKey | null => {
+  const isLocalRpc = rpcUrl.includes('localhost') || rpcUrl.includes('127.0.0.1');
+  if (isLocalRpc) {
+    const localValidator =
+      process.env.EXPO_PUBLIC_LOCAL_ER_VALIDATOR ?? 'mAGicPQYBMvcYveUZA5F5UNNwyHvfYh5xkLS2Fr1mev';
+    return new PublicKey(localValidator);
+  }
+  if (cluster !== 'devnet') return null;
+  if (delegateValidatorOverride) return new PublicKey(delegateValidatorOverride);
+
+  const region = normalizeDelegationRegion(delegateRegionRaw);
+  const resolvedRegion = region === 'auto' ? guessRegionByTimezone() : region;
+  return new PublicKey(DEVNET_VALIDATORS[resolvedRegion]);
+};
+
+const delegationValidator = resolveDelegationValidator();
 
 /**
  * Detect if we're running against a local validator (localhost/127.0.0.1).
@@ -51,6 +104,7 @@ export const SOLANA_CONFIG = {
   rpcUrl,
   erRpcUrl,
   erWsUrl,
+  useMagicRouter,
   vrfEndpoint,
   commitment: baseCommitment,
   baseCommitment,
@@ -68,5 +122,6 @@ export const SOLANA_CONFIG = {
   magic: {
     programId: new PublicKey('Magic11111111111111111111111111111111111111'),
     contextId: new PublicKey('MagicContext1111111111111111111111111111111'),
+    delegationValidator,
   },
 };

@@ -413,7 +413,11 @@ export function useGameplayState(): UseGameplayStateReturn {
             gameplayConnection,
             program,
             signature,
-            'move'
+            'move',
+            {
+              maxAttempts: 2,
+              delayMs: 120,
+            }
           );
           combatLog = parsed.combatLog;
           combatEnemyInfo = parsed.combatEnemyInfo;
@@ -448,7 +452,11 @@ export function useGameplayState(): UseGameplayStateReturn {
           bossResolvedInline = true;
           gauntletCombatVisual = await parseGauntletVisualWithRetry(
             gameplayConnection,
-            signature!
+            signature!,
+            {
+              maxAttempts: 2,
+              delayMs: 120,
+            }
           );
           console.log('[useGameplayState] Inline gauntlet echo resolution detected:', {
             hasVisual: !!gauntletCombatVisual,
@@ -604,7 +612,11 @@ export function useGameplayState(): UseGameplayStateReturn {
             conn,
             prog,
             signature,
-            'boss'
+            'boss',
+            {
+              maxAttempts: 2,
+              delayMs: 120,
+            }
           );
           combatLog = parsed.combatLog;
         }
@@ -737,7 +749,8 @@ async function parseCombatLogWithRetry(
   connection: Parameters<typeof parseCombatLog>[0],
   program: Parameters<typeof parseCombatLog>[1],
   signature: string,
-  label: string
+  label: string,
+  options?: { maxAttempts?: number; delayMs?: number }
 ): Promise<{
   combatLog?: BackendCombatLogEntry[];
   combatEnemyInfo?: CombatEnemyInfo;
@@ -754,7 +767,7 @@ async function parseCombatLogWithRetry(
       }
       return null;
     },
-    { label: `${label} combat log` }
+    { label: `${label} combat log`, ...options }
   );
 
   if (!combatLog) {
@@ -771,11 +784,12 @@ async function parseCombatLogWithRetry(
  */
 async function parseGauntletVisualWithRetry(
   connection: Connection,
-  signature: string
+  signature: string,
+  options?: { maxAttempts?: number; delayMs?: number }
 ): Promise<GauntletCombatVisualEvent | null> {
   return parseWithRetry(
     () => parseGauntletCombatVisualEvent(connection, signature),
-    { label: 'gauntlet visual' }
+    { label: 'gauntlet visual', ...options }
   );
 }
 

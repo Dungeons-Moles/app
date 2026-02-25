@@ -1,5 +1,6 @@
 // Polyfills must be imported first
 import './src/polyfills';
+import { applyConsoleControl } from './src/utils/consoleControl';
 
 import React, { useEffect, useState } from 'react';
 import { Image, Platform } from 'react-native';
@@ -24,6 +25,8 @@ import { CombatReplayProvider } from './src/contexts/CombatReplayContext';
 import { AudioProvider } from './src/contexts/AudioContext';
 import { AppNavigator } from './src/navigation';
 import { Psg1Wrapper } from './src/components/Psg1Wrapper';
+
+applyConsoleControl();
 
 // Critical assets to preload during splash screen (first screens the user sees)
 const PRELOAD_ASSETS = [

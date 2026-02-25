@@ -1,5 +1,6 @@
 import { AnchorProvider, Program, Idl } from '@coral-xyz/anchor';
 import { Connection } from '@solana/web3.js';
+import { ConnectionMagicRouter } from '@magicblock-labs/ephemeral-rollups-sdk';
 import { SOLANA_CONFIG } from './config';
 import playerProfileIdl from './idl/player_profile.json';
 import sessionManagerIdl from './idl/session_manager.json';
@@ -15,11 +16,21 @@ export type AnchorWalletAdapter = {
   signAllTransactions: AnchorProvider['wallet']['signAllTransactions'];
 };
 
+const normalizeEndpoint = (url: string): string => url.replace(/\/+$/, '');
+const isErEndpoint = (connection: Connection): boolean =>
+  normalizeEndpoint(connection.rpcEndpoint) === normalizeEndpoint(SOLANA_CONFIG.erRpcUrl);
+
 export function createSolanaConnection() {
   return new Connection(SOLANA_CONFIG.rpcUrl, SOLANA_CONFIG.commitment);
 }
 
 export function createErConnection() {
+  if (SOLANA_CONFIG.useMagicRouter) {
+    return new ConnectionMagicRouter(SOLANA_CONFIG.erRpcUrl, {
+      commitment: SOLANA_CONFIG.erCommitment,
+      wsEndpoint: SOLANA_CONFIG.erWsUrl,
+    });
+  }
   return new Connection(SOLANA_CONFIG.erRpcUrl, {
     commitment: SOLANA_CONFIG.erCommitment,
     wsEndpoint: SOLANA_CONFIG.erWsUrl,
@@ -30,8 +41,12 @@ export function createAnchorProvider(
   connection: Connection,
   wallet: AnchorWalletAdapter
 ): AnchorProvider {
+  const commitment = isErEndpoint(connection)
+    ? SOLANA_CONFIG.erCommitment
+    : SOLANA_CONFIG.commitment;
   return new AnchorProvider(connection, wallet, {
-    commitment: SOLANA_CONFIG.commitment,
+    commitment,
+    preflightCommitment: commitment,
   });
 }
 
