@@ -243,6 +243,62 @@
       "args": []
     },
     {
+      "name": "close_poi_vrf_state",
+      "docs": [
+        "Closes PoiVrfState account and returns rent to the player.",
+        "Called via CPI from session-manager during end_session/abandon_session."
+      ],
+      "discriminator": [
+        27,
+        145,
+        120,
+        63,
+        58,
+        59,
+        103,
+        44
+      ],
+      "accounts": [
+        {
+          "name": "vrf_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  105,
+                  95,
+                  118,
+                  114,
+                  102
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "vrf_state.session",
+                "account": "PoiVrfState"
+              }
+            ]
+          }
+        },
+        {
+          "name": "game_session"
+        },
+        {
+          "name": "player",
+          "writable": true
+        },
+        {
+          "name": "session_signer",
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "delegate_map_pois",
       "docs": [
         "Delegates map-pois PDA to MagicBlock from poi-system (its owner program)."
@@ -667,6 +723,13 @@
           ]
         },
         {
+          "name": "poi_vrf_state",
+          "docs": [
+            "Optional VRF state for PvP offer generation."
+          ],
+          "optional": true
+        },
+        {
           "name": "player",
           "docs": [
             "Player initiating the interaction"
@@ -843,6 +906,67 @@
         {
           "name": "to_poi_index",
           "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "fulfill_poi_vrf",
+      "docs": [
+        "Oracle callback: receives VRF randomness for POI offers."
+      ],
+      "discriminator": [
+        166,
+        31,
+        37,
+        201,
+        6,
+        212,
+        250,
+        168
+      ],
+      "accounts": [
+        {
+          "name": "oracle",
+          "docs": [
+            "Oracle identity signer."
+          ],
+          "signer": true
+        },
+        {
+          "name": "vrf_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  105,
+                  95,
+                  118,
+                  114,
+                  102
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "vrf_state.session",
+                "account": "PoiVrfState"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "randomness",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
         }
       ]
     },
@@ -1150,6 +1274,14 @@
           ]
         },
         {
+          "name": "poi_vrf_state",
+          "docs": [
+            "Optional VRF state for PvP offer generation.",
+            "Required when RunMode is Duel or Gauntlet; ignored for Campaign."
+          ],
+          "optional": true
+        },
+        {
           "name": "player",
           "docs": [
             "Player initiating the interaction"
@@ -1381,6 +1513,13 @@
             "Player inventory program for CPI (apply_tool_oil)"
           ],
           "address": "APRnvp41jEYnT1EnrdBTim7bodqE6v2RSgzv1CG7Qv7u"
+        },
+        {
+          "name": "poi_vrf_state",
+          "docs": [
+            "Optional VRF state for PvP offer generation."
+          ],
+          "optional": true
         },
         {
           "name": "player",
@@ -1818,6 +1957,14 @@
           ]
         },
         {
+          "name": "poi_vrf_state",
+          "docs": [
+            "Optional VRF state for PvP offer generation.",
+            "Required when RunMode is Duel or Gauntlet; ignored for Campaign."
+          ],
+          "optional": true
+        },
+        {
           "name": "player",
           "docs": [
             "Player initiating the interaction"
@@ -2201,6 +2348,13 @@
             "Player inventory program for CPI (expand gear slots on boss victory via skip_to_day)"
           ],
           "address": "APRnvp41jEYnT1EnrdBTim7bodqE6v2RSgzv1CG7Qv7u"
+        },
+        {
+          "name": "gameplay_vrf_state",
+          "docs": [
+            "Optional GameplayVrfState for VRF-backed boss selection in skip_to_day CPI."
+          ],
+          "optional": true
         },
         {
           "name": "player",
@@ -3528,6 +3682,13 @@
           "address": "APRnvp41jEYnT1EnrdBTim7bodqE6v2RSgzv1CG7Qv7u"
         },
         {
+          "name": "poi_vrf_state",
+          "docs": [
+            "Optional VRF state for PvP offer generation."
+          ],
+          "optional": true
+        },
+        {
           "name": "player",
           "docs": [
             "Player initiating the interaction"
@@ -3644,6 +3805,62 @@
           }
         }
       ]
+    },
+    {
+      "name": "request_poi_vrf",
+      "docs": [
+        "Requests VRF randomness for POI offer generation.",
+        "Initializes a PoiVrfState account with status=Requested."
+      ],
+      "discriminator": [
+        251,
+        130,
+        91,
+        124,
+        249,
+        51,
+        125,
+        70
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "session"
+        },
+        {
+          "name": "vrf_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  105,
+                  95,
+                  118,
+                  114,
+                  102
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "session"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
     },
     {
       "name": "shop_purchase",
@@ -4211,6 +4428,19 @@
         45,
         32
       ]
+    },
+    {
+      "name": "PoiVrfState",
+      "discriminator": [
+        0,
+        175,
+        197,
+        228,
+        131,
+        13,
+        103,
+        75
+      ]
     }
   ],
   "events": [
@@ -4660,6 +4890,21 @@
       "code": 6036,
       "name": "InvalidVisionRadius",
       "msg": "Invalid vision radius for current phase/state"
+    },
+    {
+      "code": 6037,
+      "name": "VrfNotFulfilled",
+      "msg": "VRF not fulfilled"
+    },
+    {
+      "code": 6038,
+      "name": "VrfNotRequested",
+      "msg": "VRF not requested"
+    },
+    {
+      "code": 6039,
+      "name": "VrfRequired",
+      "msg": "VRF randomness required for PvP offer generation"
     }
   ],
   "types": [
@@ -5870,6 +6115,62 @@
       }
     },
     {
+      "name": "PoiVrfState",
+      "docs": [
+        "Per-session VRF randomness for POI offer generation.",
+        "PDA seeds: [\"poi_vrf\", session.key()]"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "session",
+            "docs": [
+              "Session PDA this VRF is tied to"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "randomness",
+            "docs": [
+              "Oracle-provided randomness (filled on fulfill)"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "nonce",
+            "docs": [
+              "Anti-replay counter"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "status",
+            "docs": [
+              "Lifecycle stage"
+            ],
+            "type": {
+              "defined": {
+                "name": "VrfStatus"
+              }
+            }
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
       "name": "PoisClosed",
       "type": {
         "kind": "struct",
@@ -6148,6 +6449,29 @@
           {
             "name": "cost",
             "type": "u16"
+          }
+        ]
+      }
+    },
+    {
+      "name": "VrfStatus",
+      "docs": [
+        "VRF request lifecycle stage.",
+        "",
+        "Shared across all programs that manage VRF state accounts.",
+        "Each program defines its own `#[account] VrfState` struct using this enum."
+      ],
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Requested"
+          },
+          {
+            "name": "Fulfilled"
+          },
+          {
+            "name": "Consumed"
           }
         ]
       }

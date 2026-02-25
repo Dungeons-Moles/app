@@ -43,6 +43,8 @@ export interface PoiTransactionContext {
   gameStatePda: PublicKey;
   sessionPda: PublicKey;
   sessionSignerKeypair: Keypair;
+  /** Optional VRF state PDA for offer randomness (PvP modes). */
+  poiVrfStatePda?: PublicKey;
 }
 
 /** Builds CU limit instruction and sends a POI transaction via session signer. */
@@ -132,7 +134,7 @@ export async function generateCacheOffer(
 
   const transaction = await ctx.program.methods
     .generateCacheOffer(poiIndex)
-    .accounts({
+    .accountsPartial({
       mapPois: ctx.mapPoisPda,
       gameState: ctx.gameStatePda,
       inventory: inventoryPda,
@@ -141,6 +143,7 @@ export async function generateCacheOffer(
       playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
       gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
       gameSession: ctx.sessionPda,
+      poiVrfState: ctx.poiVrfStatePda,
       player: ctx.sessionSignerKeypair.publicKey,
     })
     .transaction();
@@ -183,6 +186,7 @@ export async function interactPickItem(
       playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
       gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
       gameSession: ctx.sessionPda,
+      poiVrfState: ctx.poiVrfStatePda,
       player: ctx.sessionSignerKeypair.publicKey,
     })
     .transaction();
@@ -206,13 +210,17 @@ export async function interactToolOil(
 ): Promise<string> {
   const [inventoryPda] = deriveInventoryPda(ctx.sessionPda);
 
+  const [poiAuthorityPda] = derivePoiAuthorityPda();
+
   const transaction = await ctx.program.methods
     .interactToolOil(poiIndex, currentOilFlags, modification)
-    .accounts({
+    .accountsPartial({
       mapPois: ctx.mapPoisPda,
       gameState: ctx.gameStatePda,
       inventory: inventoryPda,
+      poiAuthority: poiAuthorityPda,
       playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
+      poiVrfState: ctx.poiVrfStatePda,
       player: ctx.sessionSignerKeypair.publicKey,
     })
     .transaction();
@@ -244,13 +252,17 @@ export async function generateOilOffer(
 ): Promise<string> {
   const [inventoryPda] = deriveInventoryPda(ctx.sessionPda);
 
+  const [poiAuthorityPda] = derivePoiAuthorityPda();
+
   const transaction = await ctx.program.methods
     .generateOilOffer(poiIndex)
-    .accounts({
+    .accountsPartial({
       mapPois: ctx.mapPoisPda,
       gameState: ctx.gameStatePda,
       inventory: inventoryPda,
+      poiAuthority: poiAuthorityPda,
       playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
+      poiVrfState: ctx.poiVrfStatePda,
       player: ctx.sessionSignerKeypair.publicKey,
     })
     .transaction();
@@ -349,10 +361,11 @@ export async function enterShop(
 ): Promise<string> {
   const transaction = await ctx.program.methods
     .enterShop(poiIndex)
-    .accounts({
+    .accountsPartial({
       mapPois: ctx.mapPoisPda,
       gameState: ctx.gameStatePda,
       gameSession: ctx.sessionPda,
+      poiVrfState: ctx.poiVrfStatePda,
       player: ctx.sessionSignerKeypair.publicKey,
     })
     .transaction();

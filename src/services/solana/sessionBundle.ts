@@ -25,6 +25,9 @@ import {
   deriveGeneratedMapPda,
   deriveMapConfigPda,
   deriveSessionManagerAuthorityPda,
+  deriveMapVrfStatePda,
+  derivePoiVrfStatePda,
+  deriveGameplayVrfStatePda,
   DEFAULT_SESSION_SIGNER_FUNDING,
 } from './constants';
 import { SOLANA_CONFIG } from './config';
@@ -237,9 +240,19 @@ export async function abandonSession(
     }
   }
 
+  // Check which VRF accounts exist (only for sessions that used VRF)
+  const [mapVrfStatePda] = deriveMapVrfStatePda(sessionPda);
+  const [poiVrfStatePda] = derivePoiVrfStatePda(sessionPda);
+  const [gameplayVrfStatePda] = deriveGameplayVrfStatePda(sessionPda);
+  const [mapVrfInfo, poiVrfInfo, gameplayVrfInfo] = await Promise.all([
+    connection.getAccountInfo(mapVrfStatePda).catch(() => null),
+    connection.getAccountInfo(poiVrfStatePda).catch(() => null),
+    connection.getAccountInfo(gameplayVrfStatePda).catch(() => null),
+  ]);
+
   const abandonSessionIx = await program.methods
     .abandonSession(campaignLevel)
-    .accounts({
+    .accountsPartial({
       gameSession: sessionPda,
       gameState: gameStatePda,
       mapEnemies: mapEnemiesPda,
@@ -248,6 +261,9 @@ export async function abandonSession(
       player: playerPubkey,
       sessionSigner: sessionSignerPubkey,
       inventory: inventoryPda,
+      mapVrfState: mapVrfInfo ? mapVrfStatePda : undefined,
+      poiVrfState: poiVrfInfo ? poiVrfStatePda : undefined,
+      gameplayVrfState: gameplayVrfInfo ? gameplayVrfStatePda : undefined,
       playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
       gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
       mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,

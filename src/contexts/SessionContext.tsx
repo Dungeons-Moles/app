@@ -35,13 +35,20 @@ import {
   deriveMapPoisPda,
   deriveSessionPdas,
   deriveSessionPda,
+  derivePoiVrfStatePda,
 } from '@/services/solana/constants';
 import { SOLANA_CONFIG } from '@/services/solana/config';
 import {
   createMapGeneratorProgram,
   createSessionManagerProgram,
   createGameplayStateProgram,
+  createPoiSystemProgramWithProvider,
 } from '@/services/solana/programs';
+import {
+  buildRequestAndFulfillAllVrfTransaction,
+  buildRegenerateMapTransaction,
+  buildRequestAndFulfillPoiVrfTransaction,
+} from '@/services/solana/vrf';
 import { fetchGeneratedMap } from '@/services/solana/mapGeneratorClient';
 import {
   queueCleanup,
@@ -1088,7 +1095,29 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         };
       }
 
-      // Step 6: Delegate all runtime accounts after session creation.
+      // Step 6: Request + fulfill POI VRF (campaign doesn't need map VRF)
+      console.log('[SessionContext] startGame:poi_vrf_request_fulfill');
+      try {
+        const poiSysProg = createPoiSystemProgramWithProvider(
+          new (await import('@coral-xyz/anchor')).AnchorProvider(
+            connection,
+            { publicKey: newSessionSignerKeypair.publicKey, signTransaction: async (tx: Transaction) => tx, signAllTransactions: async (txs: Transaction[]) => txs } as any,
+            { commitment: 'confirmed' }
+          )
+        );
+        const poiVrfTx = await buildRequestAndFulfillPoiVrfTransaction(
+          poiSysProg,
+          sessionPda,
+          newSessionSignerKeypair.publicKey,
+          newSessionSignerKeypair.publicKey
+        );
+        await sendSessionSignerTransaction(connection, poiVrfTx, newSessionSignerKeypair);
+        console.log('[SessionContext] startGame:poi_vrf_fulfilled');
+      } catch (vrfError) {
+        console.warn('[SessionContext] startGame:poi_vrf_failed, continuing without VRF', vrfError);
+      }
+
+      // Step 7: Delegate all runtime accounts after session creation.
       const delegateResult = await sessionManager.delegateSession(newSessionSignerKeypair, {
         sessionPda,
         onChainLevel: campaignLevel + 1,
@@ -1146,17 +1175,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         };
       }
 
-      // Step 7: Fetch the map seed for this level
+      // Step 8: Fetch the map seed for this level
       // Note: start_session now atomically creates GameState, MapEnemies,
       // PlayerInventory, MapPois, and GeneratedMap via CPI, so no separate
       // initialization step is needed.
-      console.log('[SessionContext] Step 7: Fetching map seed...');
+      console.log('[SessionContext] Step 8: Fetching map seed...');
       const seed = await mapGenerator.getMapSeed(campaignLevel);
       console.log('[SessionContext] Map seed:', seed?.toString());
       setMapSeed(seed);
 
-      // Step 8: Set GameState PDA so the gameplay hook can start working
-      console.log('[SessionContext] Step 8: Setting GameState PDA...');
+      // Step 9: Set GameState PDA so the gameplay hook can start working
+      console.log('[SessionContext] Step 9: Setting GameState PDA...');
       if (wallet.publicKey) {
         const [gameStatePda] = getGameStatePda(sessionPda);
         gameplayState.setGameStatePda(gameStatePda);
@@ -1274,12 +1303,46 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       duelQueued = { seed: events.queued.seed, slot: events.queued.slot };
     }
 
-    const generatedSeed = await fetchSessionGeneratedSeed(sessionPda);
-    console.log('[SessionContext] startDuelGame:generated_seed', {
-      generatedSeed: generatedSeed?.toString() ?? null,
-    });
-    setMapSeed(generatedSeed);
-    gameplayState.setGameStatePda(gameStatePda);
+      // VRF: Request + fulfill all VRF states, then regenerate map with VRF seed
+      console.log('[SessionContext] startDuelGame:vrf_request_fulfill');
+      try {
+        const mapGenProg = createMapGeneratorProgram(connection);
+        const poiSysProg = createPoiSystemProgramWithProvider(
+          new (await import('@coral-xyz/anchor')).AnchorProvider(
+            connection,
+            { publicKey: newSessionSignerKeypair.publicKey, signTransaction: async (tx: Transaction) => tx, signAllTransactions: async (txs: Transaction[]) => txs } as any,
+            { commitment: 'confirmed' }
+          )
+        );
+        const gameplayProg = createGameplayStateProgram(connection);
+
+        const vrfTx = await buildRequestAndFulfillAllVrfTransaction(
+          { mapGenerator: mapGenProg, poiSystem: poiSysProg, gameplayState: gameplayProg },
+          sessionPda,
+          newSessionSignerKeypair.publicKey,
+          newSessionSignerKeypair.publicKey
+        );
+        await sendSessionSignerTransaction(connection, vrfTx, newSessionSignerKeypair);
+        console.log('[SessionContext] startDuelGame:vrf_fulfilled');
+
+        const regenTx = await buildRegenerateMapTransaction(
+          mapGenProg,
+          sessionPda,
+          newSessionSignerKeypair.publicKey,
+          20 // duel level
+        );
+        await sendSessionSignerTransaction(connection, regenTx, newSessionSignerKeypair);
+        console.log('[SessionContext] startDuelGame:map_regenerated');
+      } catch (vrfError) {
+        console.warn('[SessionContext] startDuelGame:vrf_failed, continuing with fallback seed', vrfError);
+      }
+
+      const generatedSeed = await fetchSessionGeneratedSeed(sessionPda);
+      console.log('[SessionContext] startDuelGame:generated_seed', {
+        generatedSeed: generatedSeed?.toString() ?? null,
+      });
+      setMapSeed(generatedSeed);
+      gameplayState.setGameStatePda(gameStatePda);
 
     const delegateResult = await ensureDelegatedToRollup({
       sessionPda,
@@ -1405,12 +1468,46 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       };
     }
 
-    const generatedSeed = await fetchSessionGeneratedSeed(sessionPda);
-    console.log('[SessionContext] startGauntletGame:generated_seed', {
-      generatedSeed: generatedSeed?.toString() ?? null,
-    });
-    setMapSeed(generatedSeed);
-    gameplayState.setGameStatePda(gameStatePda);
+      // VRF: Request + fulfill all VRF states, then regenerate map with VRF seed
+      console.log('[SessionContext] startGauntletGame:vrf_request_fulfill');
+      try {
+        const mapGenProg = createMapGeneratorProgram(connection);
+        const poiSysProg = createPoiSystemProgramWithProvider(
+          new (await import('@coral-xyz/anchor')).AnchorProvider(
+            connection,
+            { publicKey: newSessionSignerKeypair.publicKey, signTransaction: async (tx: Transaction) => tx, signAllTransactions: async (txs: Transaction[]) => txs } as any,
+            { commitment: 'confirmed' }
+          )
+        );
+        const gameplayProg = createGameplayStateProgram(connection);
+
+        const vrfTx = await buildRequestAndFulfillAllVrfTransaction(
+          { mapGenerator: mapGenProg, poiSystem: poiSysProg, gameplayState: gameplayProg },
+          sessionPda,
+          newSessionSignerKeypair.publicKey,
+          newSessionSignerKeypair.publicKey
+        );
+        await sendSessionSignerTransaction(connection, vrfTx, newSessionSignerKeypair);
+        console.log('[SessionContext] startGauntletGame:vrf_fulfilled');
+
+        const regenTx = await buildRegenerateMapTransaction(
+          mapGenProg,
+          sessionPda,
+          newSessionSignerKeypair.publicKey,
+          20 // gauntlet level
+        );
+        await sendSessionSignerTransaction(connection, regenTx, newSessionSignerKeypair);
+        console.log('[SessionContext] startGauntletGame:map_regenerated');
+      } catch (vrfError) {
+        console.warn('[SessionContext] startGauntletGame:vrf_failed, continuing with fallback seed', vrfError);
+      }
+
+      const generatedSeed = await fetchSessionGeneratedSeed(sessionPda);
+      console.log('[SessionContext] startGauntletGame:generated_seed', {
+        generatedSeed: generatedSeed?.toString() ?? null,
+      });
+      setMapSeed(generatedSeed);
+      gameplayState.setGameStatePda(gameStatePda);
 
     const delegateResult = await ensureDelegatedToRollup({
       sessionPda,

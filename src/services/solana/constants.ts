@@ -134,6 +134,12 @@ export const PDA_SEEDS = {
   QUEST_DEF: 'quest_def',
   /** Quest progress: ["quest_progress", player, quest_id(u16 LE)] */
   QUEST_PROGRESS: 'quest_progress',
+  /** Map VRF state: ["map_vrf", session_pda] */
+  MAP_VRF: 'map_vrf',
+  /** POI VRF state: ["poi_vrf", session_pda] */
+  POI_VRF: 'poi_vrf',
+  /** Gameplay VRF state: ["gameplay_vrf", session_pda] */
+  GAMEPLAY_VRF: 'gameplay_vrf',
 } as const;
 
 // ============================================================================
@@ -402,6 +408,43 @@ export function deriveQuestProgressPda(player: PublicKey, questId: number): [Pub
 }
 
 // ============================================================================
+// VRF State PDA Derivation
+// ============================================================================
+
+/**
+ * Derive MapVrfState PDA for a session.
+ * Seeds: ["map_vrf", session_pda] — owned by map-generator program.
+ */
+export function deriveMapVrfStatePda(sessionPda: PublicKey): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from(PDA_SEEDS.MAP_VRF), sessionPda.toBuffer()],
+    MAP_GENERATOR_PROGRAM_ID
+  );
+}
+
+/**
+ * Derive PoiVrfState PDA for a session.
+ * Seeds: ["poi_vrf", session_pda] — owned by poi-system program.
+ */
+export function derivePoiVrfStatePda(sessionPda: PublicKey): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from(PDA_SEEDS.POI_VRF), sessionPda.toBuffer()],
+    POI_SYSTEM_PROGRAM_ID
+  );
+}
+
+/**
+ * Derive GameplayVrfState PDA for a session.
+ * Seeds: ["gameplay_vrf", session_pda] — owned by gameplay-state program.
+ */
+export function deriveGameplayVrfStatePda(sessionPda: PublicKey): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from(PDA_SEEDS.GAMEPLAY_VRF), sessionPda.toBuffer()],
+    GAMEPLAY_STATE_PROGRAM_ID
+  );
+}
+
+// ============================================================================
 // Composite PDA Derivation
 // ============================================================================
 
@@ -412,6 +455,9 @@ export interface SessionPdas {
   mapPoisPda: PublicKey;
   inventoryPda: PublicKey;
   generatedMapPda: PublicKey;
+  mapVrfStatePda: PublicKey;
+  poiVrfStatePda: PublicKey;
+  gameplayVrfStatePda: PublicKey;
 }
 
 /**
@@ -425,6 +471,9 @@ export function deriveSessionPdas(sessionPda: PublicKey): SessionPdas {
     mapPoisPda: deriveMapPoisPda(sessionPda)[0],
     inventoryPda: deriveInventoryPda(sessionPda)[0],
     generatedMapPda: deriveGeneratedMapPda(sessionPda)[0],
+    mapVrfStatePda: deriveMapVrfStatePda(sessionPda)[0],
+    poiVrfStatePda: derivePoiVrfStatePda(sessionPda)[0],
+    gameplayVrfStatePda: deriveGameplayVrfStatePda(sessionPda)[0],
   };
 }
 

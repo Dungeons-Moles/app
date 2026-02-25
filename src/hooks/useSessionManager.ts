@@ -35,6 +35,9 @@ import {
   deriveMapConfigPda,
   deriveSessionManagerAuthorityPda,
   deriveSessionPda,
+  deriveMapVrfStatePda,
+  derivePoiVrfStatePda,
+  deriveGameplayVrfStatePda,
 } from '@/services/solana/constants';
 import { SOLANA_CONFIG } from '@/services/solana/config';
 import { getUserErrorMessage } from '@/services/solana/errors';
@@ -410,6 +413,7 @@ export function useSessionManager() {
               mapEnemies: PublicKey;
               mapPois: PublicKey;
               inventory: PublicKey;
+              mapVrfState: PublicKey | null;
               mapGeneratorProgram: PublicKey;
               gameplayStateProgram: PublicKey;
               poiSystemProgram: PublicKey;
@@ -433,6 +437,7 @@ export function useSessionManager() {
           mapEnemies: enemiesPda,
           mapPois: poisPda,
           inventory: inventoryPda,
+          mapVrfState: null,
           mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
           gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
           poiSystemProgram: SOLANA_CONFIG.programs.poiSystem,
@@ -485,6 +490,7 @@ export function useSessionManager() {
               mapEnemies: PublicKey;
               mapPois: PublicKey;
               inventory: PublicKey;
+              mapVrfState: PublicKey | null;
               mapGeneratorProgram: PublicKey;
               gameplayStateProgram: PublicKey;
               poiSystemProgram: PublicKey;
@@ -507,6 +513,7 @@ export function useSessionManager() {
           mapEnemies: enemiesPda,
           mapPois: poisPda,
           inventory: inventoryPda,
+          mapVrfState: null,
           mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
           gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
           poiSystemProgram: SOLANA_CONFIG.programs.poiSystem,
@@ -748,9 +755,10 @@ export function useSessionManager() {
         } as any)
         .instruction();
 
-      // Split delegation into 2 transactions to stay under the 1232-byte tx size limit.
+      // Split delegation into 2-3 transactions to stay under the 1232-byte tx size limit.
       // Tx1: gameplay (gameState + mapEnemies) + session
       // Tx2: generatedMap + inventory + mapPois
+      // Tx3 (conditional): poiVrfState (only if VRF was used)
       const delegationTx1 = new Transaction().add(
         ComputeBudgetProgram.setComputeUnitLimit({ units: 600_000 }),
         delegateGameplayIx,
@@ -767,11 +775,44 @@ export function useSessionManager() {
         delegationTx1,
         sessionSignerKeypair
       );
-      const signature = await sendSessionSignerTransaction(
+      let signature = await sendSessionSignerTransaction(
         baseConnection,
         delegationTx2,
         sessionSignerKeypair
       );
+
+      // Tx3: Delegate PoiVrfState if it exists (VRF sessions only)
+      const [poiVrfStatePda] = derivePoiVrfStatePda(sessionPda);
+      const poiVrfInfo = await baseConnection.getAccountInfo(poiVrfStatePda);
+      if (poiVrfInfo) {
+        const poiVrfDelegate = deriveDelegatePdas(poiVrfStatePda, SOLANA_CONFIG.programs.poiSystem);
+        const delegatePoiVrfIx = await baseWriteProgram.methods
+          .delegatePoiVrfState(onChainLevel)
+          .accountsStrict({
+            poiVrfState: poiVrfStatePda,
+            player: sessionSignerKeypair.publicKey,
+            ...Object.fromEntries(
+              Object.entries(poiVrfDelegate).map(([k, v]) => [
+                k === 'buffer' ? 'bufferPoiVrfState' : k === 'delegationRecord' ? 'delegationRecordPoiVrfState' : 'delegationMetadataPoiVrfState',
+                v,
+              ])
+            ),
+            ownerProgram: SOLANA_CONFIG.programs.poiSystem,
+            delegationProgram: DELEGATION_PROGRAM_ID,
+            systemProgram: SystemProgram.programId,
+          } as any)
+          .instruction();
+
+        const delegationTx3 = new Transaction().add(
+          ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+          delegatePoiVrfIx
+        );
+        signature = await sendSessionSignerTransaction(
+          baseConnection,
+          delegationTx3,
+          sessionSignerKeypair
+        );
+      }
 
       // Refresh session state
       await fetchSession();
@@ -824,15 +865,20 @@ export function useSessionManager() {
 
         const { programId: magicProgramId, contextId: magicContextId } = SOLANA_CONFIG.magic;
 
+        // Check if poiVrfState is delegated (VRF sessions only)
+        const [poiVrfStatePda] = derivePoiVrfStatePda(sessionPda);
+        const poiVrfInfo = await erConnection.getAccountInfo(poiVrfStatePda).catch(() => null);
+
         const transaction = await erWriteProgram.methods
           .commitSession(onChainLevel, stateHash)
-          .accounts({
+          .accountsPartial({
             gameSession: sessionPda,
             gameState: gameStatePda,
             mapEnemies: mapEnemiesPda,
             generatedMap: generatedMapPda,
             inventory: inventoryPda,
             mapPois: mapPoisPda,
+            poiVrfState: poiVrfInfo ? poiVrfStatePda : undefined,
             player: wallet.publicKey,
             magicProgram: magicProgramId,
             magicContext: magicContextId,
@@ -897,6 +943,8 @@ export function useSessionManager() {
 
         // Frontend state can be stale (e.g., after interrupted cleanup). Check every account,
         // not only session PDA, because mixed ownership causes InvalidWritableAccount on move.
+        const [poiVrfStatePda] = derivePoiVrfStatePda(sessionPda);
+
         const [
           baseSessionInfo,
           baseGameStateInfo,
@@ -904,6 +952,7 @@ export function useSessionManager() {
           baseGeneratedMapInfo,
           baseInventoryInfo,
           baseMapPoisInfo,
+          basePoiVrfInfo,
         ] = await Promise.all([
           baseConnection.getAccountInfo(sessionPda, 'processed'),
           baseConnection.getAccountInfo(gameStatePda, 'processed'),
@@ -911,6 +960,7 @@ export function useSessionManager() {
           baseConnection.getAccountInfo(generatedMapPda, 'processed'),
           baseConnection.getAccountInfo(inventoryPda, 'processed'),
           baseConnection.getAccountInfo(mapPoisPda, 'processed'),
+          baseConnection.getAccountInfo(poiVrfStatePda, 'processed').catch(() => null),
         ]);
         if (!baseSessionInfo) {
           return { success: false, error: 'Session account not found' };
@@ -925,13 +975,15 @@ export function useSessionManager() {
         const delegatedMap = !!baseGeneratedMapInfo?.owner.equals(DELEGATION_PROGRAM_ID);
         const delegatedInventory = !!baseInventoryInfo?.owner.equals(DELEGATION_PROGRAM_ID);
         const delegatedPois = !!baseMapPoisInfo?.owner.equals(DELEGATION_PROGRAM_ID);
+        const delegatedPoiVrf = !!basePoiVrfInfo?.owner.equals(DELEGATION_PROGRAM_ID);
         const hasAnyDelegated =
           delegatedSession ||
           delegatedGameState ||
           delegatedMapEnemies ||
           delegatedMap ||
           delegatedInventory ||
-          delegatedPois;
+          delegatedPois ||
+          delegatedPoiVrf;
         if (!hasAnyDelegated) {
           console.warn(
             '[useSessionManager] undelegateSession skipped: no delegated accounts detected'
@@ -1040,6 +1092,7 @@ export function useSessionManager() {
           map: delegatedMap ? 'DELEGATED' : 'base',
           inventory: delegatedInventory ? 'DELEGATED' : 'base',
           pois: delegatedPois ? 'DELEGATED' : 'base',
+          poiVrf: delegatedPoiVrf ? 'DELEGATED' : basePoiVrfInfo ? 'base' : 'n/a',
         });
 
         // Send-and-confirm helper for ER undelegation.
@@ -1182,6 +1235,30 @@ export function useSessionManager() {
           );
         }
 
+        if (delegatedPoiVrf) {
+          await tryUndelegateOrSkip(
+            async () => {
+              const undelegatePoiVrfTx = await poiSystemProgramEr.methods
+                .undelegatePoiVrfState()
+                .accounts({
+                  poiVrfState: poiVrfStatePda,
+                  gameSession: sessionPda,
+                  sessionSigner: sessionSignerKeypair.publicKey,
+                  magicProgram: magicProgramId,
+                  magicContext: magicContextId,
+                })
+                .transaction();
+              await sendSessionSignerTransaction(
+                erConnection,
+                undelegatePoiVrfTx,
+                sessionSignerKeypair
+              );
+            },
+            [[poiVrfStatePda, SOLANA_CONFIG.programs.poiSystem, 'poi_vrf_state']],
+            true
+          );
+        }
+
         let signature = 'undelegate_partial';
         if (delegatedSession) {
           await tryUndelegateOrSkip(
@@ -1223,6 +1300,9 @@ export function useSessionManager() {
         }
         if (delegatedPois) {
           allChecks.push([mapPoisPda, SOLANA_CONFIG.programs.poiSystem, 'map_pois']);
+        }
+        if (delegatedPoiVrf) {
+          allChecks.push([poiVrfStatePda, SOLANA_CONFIG.programs.poiSystem, 'poi_vrf_state']);
         }
         if (delegatedSession) {
           allChecks.push([sessionPda, SOLANA_CONFIG.programs.sessionManager, 'game_session']);
@@ -1799,9 +1879,19 @@ export function useSessionManager() {
           }
         }
 
+        // Check which VRF accounts exist (only for sessions that used VRF)
+        const [mapVrfStatePda] = deriveMapVrfStatePda(sessionPda);
+        const [poiVrfStatePda] = derivePoiVrfStatePda(sessionPda);
+        const [gameplayVrfStatePda] = deriveGameplayVrfStatePda(sessionPda);
+        const [mapVrfInfo, poiVrfInfo, gameplayVrfInfo] = await Promise.all([
+          baseConnection.getAccountInfo(mapVrfStatePda).catch(() => null),
+          baseConnection.getAccountInfo(poiVrfStatePda).catch(() => null),
+          baseConnection.getAccountInfo(gameplayVrfStatePda).catch(() => null),
+        ]);
+
         const endSessionIx = await program.methods
           .endSession(currentSession.campaignLevel)
-          .accounts({
+          .accountsPartial({
             gameSession: sessionPda,
             gameState: gameStatePda,
             mapEnemies: mapEnemiesPda,
@@ -1812,6 +1902,9 @@ export function useSessionManager() {
             sessionSigner: sessionSignerKeypair.publicKey,
             sessionManagerAuthority: deriveSessionManagerAuthorityPda()[0],
             inventory: inventoryPda,
+            mapVrfState: mapVrfInfo ? mapVrfStatePda : undefined,
+            poiVrfState: poiVrfInfo ? poiVrfStatePda : undefined,
+            gameplayVrfState: gameplayVrfInfo ? gameplayVrfStatePda : undefined,
             playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
             gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
             playerProfileProgram: SOLANA_CONFIG.programs.playerProfile,

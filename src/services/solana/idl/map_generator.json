@@ -84,6 +84,111 @@
       "args": []
     },
     {
+      "name": "close_map_vrf_state",
+      "docs": [
+        "Closes MapVrfState account and returns rent to the player.",
+        "Called via CPI from session-manager during end_session/abandon_session."
+      ],
+      "discriminator": [
+        81,
+        161,
+        130,
+        150,
+        241,
+        141,
+        167,
+        205
+      ],
+      "accounts": [
+        {
+          "name": "vrf_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  112,
+                  95,
+                  118,
+                  114,
+                  102
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "vrf_state.session",
+                "account": "MapVrfState"
+              }
+            ]
+          }
+        },
+        {
+          "name": "session"
+        },
+        {
+          "name": "player",
+          "writable": true
+        },
+        {
+          "name": "session_signer",
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "consume_map_vrf",
+      "docs": [
+        "Marks MapVrfState as consumed after VRF randomness has been used.",
+        "Called via CPI from session-manager during PvP session start."
+      ],
+      "discriminator": [
+        108,
+        16,
+        35,
+        167,
+        103,
+        216,
+        48,
+        128
+      ],
+      "accounts": [
+        {
+          "name": "session_signer",
+          "signer": true
+        },
+        {
+          "name": "vrf_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  112,
+                  95,
+                  118,
+                  114,
+                  102
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "vrf_state.session",
+                "account": "MapVrfState"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "delegate_generated_map",
       "docs": [
         "Delegates generated-map PDA to MagicBlock from its owning program."
@@ -259,6 +364,69 @@
           "name": "validator",
           "type": {
             "option": "pubkey"
+          }
+        }
+      ]
+    },
+    {
+      "name": "fulfill_map_vrf",
+      "docs": [
+        "Oracle callback: receives VRF randomness and writes it to state.",
+        "TODO: Verify vrf_program_identity signer when ephemeral-vrf-sdk is available."
+      ],
+      "discriminator": [
+        16,
+        129,
+        66,
+        174,
+        79,
+        226,
+        145,
+        92
+      ],
+      "accounts": [
+        {
+          "name": "oracle",
+          "docs": [
+            "Oracle identity signer.",
+            "TODO: Constrain to VRF_PROGRAM_IDENTITY when ephemeral-vrf-sdk is available."
+          ],
+          "signer": true
+        },
+        {
+          "name": "vrf_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  112,
+                  95,
+                  118,
+                  114,
+                  102
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "vrf_state.session",
+                "account": "MapVrfState"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "randomness",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
           }
         }
       ]
@@ -625,6 +793,153 @@
       ]
     },
     {
+      "name": "regenerate_map",
+      "docs": [
+        "Re-generates the map using VRF-derived randomness.",
+        "Must be called after fulfill_map_vrf and before delegation."
+      ],
+      "discriminator": [
+        40,
+        37,
+        165,
+        216,
+        99,
+        87,
+        231,
+        146
+      ],
+      "accounts": [
+        {
+          "name": "session_signer",
+          "signer": true
+        },
+        {
+          "name": "session",
+          "relations": [
+            "generated_map",
+            "vrf_state"
+          ]
+        },
+        {
+          "name": "generated_map",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  101,
+                  110,
+                  101,
+                  114,
+                  97,
+                  116,
+                  101,
+                  100,
+                  95,
+                  109,
+                  97,
+                  112
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "session"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vrf_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  112,
+                  95,
+                  118,
+                  114,
+                  102
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "session"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "campaign_level",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "request_map_vrf",
+      "docs": [
+        "Requests VRF randomness for map generation.",
+        "Initializes a MapVrfState account with status=Requested.",
+        "Oracle CPI will be added when ephemeral-vrf-sdk is available."
+      ],
+      "discriminator": [
+        209,
+        190,
+        195,
+        89,
+        178,
+        153,
+        52,
+        184
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "session"
+        },
+        {
+          "name": "vrf_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  112,
+                  95,
+                  118,
+                  114,
+                  102
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "session"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "set_tile_floor",
       "docs": [
         "Converts a wall tile to a floor tile, authorized by gameplay-state.",
@@ -839,6 +1154,19 @@
         92,
         173
       ]
+    },
+    {
+      "name": "MapVrfState",
+      "discriminator": [
+        144,
+        80,
+        226,
+        84,
+        46,
+        221,
+        98,
+        37
+      ]
     }
   ],
   "events": [
@@ -911,6 +1239,16 @@
       "code": 6010,
       "name": "InvalidSession",
       "msg": "Invalid session account"
+    },
+    {
+      "code": 6011,
+      "name": "VrfNotFulfilled",
+      "msg": "VRF not fulfilled"
+    },
+    {
+      "code": 6012,
+      "name": "VrfNotRequested",
+      "msg": "VRF not requested"
     }
   ],
   "types": [
@@ -1156,6 +1494,62 @@
       }
     },
     {
+      "name": "MapVrfState",
+      "docs": [
+        "Per-session VRF randomness for map generation.",
+        "PDA seeds: [\"map_vrf\", session.key()]"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "session",
+            "docs": [
+              "Session PDA this VRF is tied to"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "randomness",
+            "docs": [
+              "Oracle-provided randomness (filled on fulfill)"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "nonce",
+            "docs": [
+              "Anti-replay counter (incremented on each request)"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "status",
+            "docs": [
+              "Lifecycle stage"
+            ],
+            "type": {
+              "defined": {
+                "name": "VrfStatus"
+              }
+            }
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
       "name": "PoiSpawn",
       "docs": [
         "Initial POI spawn position (4 bytes)"
@@ -1190,6 +1584,29 @@
               "Y position on map"
             ],
             "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "VrfStatus",
+      "docs": [
+        "VRF request lifecycle stage.",
+        "",
+        "Shared across all programs that manage VRF state accounts.",
+        "Each program defines its own `#[account] VrfState` struct using this enum."
+      ],
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Requested"
+          },
+          {
+            "name": "Fulfilled"
+          },
+          {
+            "name": "Consumed"
           }
         ]
       }

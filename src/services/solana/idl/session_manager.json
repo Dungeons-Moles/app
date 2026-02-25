@@ -188,6 +188,30 @@
           "writable": true
         },
         {
+          "name": "map_vrf_state",
+          "docs": [
+            "Optional MapVrfState (only for PvP sessions using VRF)"
+          ],
+          "writable": true,
+          "optional": true
+        },
+        {
+          "name": "poi_vrf_state",
+          "docs": [
+            "Optional PoiVrfState (only for PvP sessions using VRF)"
+          ],
+          "writable": true,
+          "optional": true
+        },
+        {
+          "name": "gameplay_vrf_state",
+          "docs": [
+            "Optional GameplayVrfState (only for sessions using VRF)"
+          ],
+          "writable": true,
+          "optional": true
+        },
+        {
           "name": "player_inventory_program",
           "address": "APRnvp41jEYnT1EnrdBTim7bodqE6v2RSgzv1CG7Qv7u"
         },
@@ -471,6 +495,10 @@
         {
           "name": "map_pois",
           "writable": true
+        },
+        {
+          "name": "poi_vrf_state",
+          "optional": true
         },
         {
           "name": "player",
@@ -1378,6 +1406,182 @@
       ]
     },
     {
+      "name": "delegate_poi_vrf_state",
+      "docs": [
+        "Delegates PoiVrfState account to the MagicBlock delegation program.",
+        "Only needed for PvP sessions that use VRF for POI offers."
+      ],
+      "discriminator": [
+        28,
+        137,
+        175,
+        178,
+        84,
+        119,
+        112,
+        245
+      ],
+      "accounts": [
+        {
+          "name": "buffer_poi_vrf_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "poi_vrf_state"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                88,
+                32,
+                100,
+                135,
+                223,
+                216,
+                104,
+                241,
+                164,
+                121,
+                21,
+                139,
+                178,
+                138,
+                86,
+                12,
+                169,
+                79,
+                86,
+                46,
+                98,
+                133,
+                38,
+                183,
+                79,
+                139,
+                161,
+                77,
+                8,
+                54,
+                32,
+                153
+              ]
+            }
+          }
+        },
+        {
+          "name": "delegation_record_poi_vrf_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "poi_vrf_state"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "delegation_metadata_poi_vrf_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "poi_vrf_state"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "poi_vrf_state",
+          "writable": true
+        },
+        {
+          "name": "player",
+          "signer": true
+        },
+        {
+          "name": "owner_program",
+          "address": "6w1XVMSTRmZU9AWCKVvKohGAHSFMENhda7vqhKPQ8TPn"
+        },
+        {
+          "name": "delegation_program",
+          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "campaign_level",
+          "type": "u8"
+        }
+      ]
+    },
+    {
       "name": "delegate_session",
       "docs": [
         "Marks the session delegated and delegates the session account itself."
@@ -1741,6 +1945,30 @@
             "Player's inventory account (closed via CPI to ensure fresh inventory next session)"
           ],
           "writable": true
+        },
+        {
+          "name": "map_vrf_state",
+          "docs": [
+            "Optional MapVrfState (only for PvP sessions using VRF)"
+          ],
+          "writable": true,
+          "optional": true
+        },
+        {
+          "name": "poi_vrf_state",
+          "docs": [
+            "Optional PoiVrfState (only for PvP sessions using VRF)"
+          ],
+          "writable": true,
+          "optional": true
+        },
+        {
+          "name": "gameplay_vrf_state",
+          "docs": [
+            "Optional GameplayVrfState (only for sessions using VRF)"
+          ],
+          "writable": true,
+          "optional": true
         },
         {
           "name": "player_inventory_program",
@@ -2427,6 +2655,15 @@
           "writable": true
         },
         {
+          "name": "map_vrf_state",
+          "docs": [
+            "Optional MapVrfState for VRF-derived map/POI seeds.",
+            "When provided, seeds are derived from VRF randomness instead of derive_pvp_seed."
+          ],
+          "writable": true,
+          "optional": true
+        },
+        {
           "name": "map_generator_program",
           "address": "GCy5GqvnJN99rgGtV6fMn8NtL9E7RoAyHDGzQv8me65j"
         },
@@ -2654,6 +2891,14 @@
         {
           "name": "inventory",
           "writable": true
+        },
+        {
+          "name": "map_vrf_state",
+          "docs": [
+            "Optional MapVrfState for VRF-derived map/POI seeds."
+          ],
+          "writable": true,
+          "optional": true
         },
         {
           "name": "map_generator_program",
@@ -3120,6 +3365,16 @@
       "code": 6013,
       "name": "RunNotTerminal",
       "msg": "Run is not terminal yet"
+    },
+    {
+      "code": 6014,
+      "name": "InvalidMapVrfState",
+      "msg": "Invalid MapVrfState account"
+    },
+    {
+      "code": 6015,
+      "name": "VrfNotFulfilled",
+      "msg": "VRF not fulfilled"
     }
   ],
   "types": [
