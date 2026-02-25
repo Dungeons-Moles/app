@@ -10,6 +10,7 @@ import { useScreenVariant } from '../../contexts/ScreenVariantContext';
 import type { ItemsetId } from '../../game/engine/types';
 import { getItemsetDefinition } from '../../data/itemsets';
 import { Typography } from '../../theme/typography';
+import { useAudio } from '@/contexts/AudioContext';
 
 const paperPanelSource = require('../../../assets/ui/panels/paper-panel.png');
 const squareSource = require('../../../assets/ui/frames/square.png');
@@ -36,9 +37,15 @@ interface ItemsetTooltipProps {
 }
 
 export function ItemsetTooltip({ itemsetId, visible, onClose }: ItemsetTooltipProps) {
+  const { playSfx } = useAudio();
   const [layout, setLayout] = useState({ width: 0, height: 0 });
   const isCompact = useScreenVariant() === 'compact';
   const s = isCompact ? 1.5 : 1;
+
+  const handleClose = () => {
+    playSfx('ui_click');
+    onClose();
+  };
 
   if (!itemsetId) return null;
 
@@ -50,8 +57,8 @@ export function ItemsetTooltip({ itemsetId, visible, onClose }: ItemsetTooltipPr
       : null;
 
   return (
-    <InlineModal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onClose}>
+    <InlineModal visible={visible} transparent animationType="fade" onRequestClose={handleClose}>
+      <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={handleClose}>
         <View
           style={[styles.tooltipContainer, { minWidth: 340 * s, maxWidth: 420 * s }]}
           onLayout={(event) => setLayout(event.nativeEvent.layout)}
@@ -71,7 +78,10 @@ export function ItemsetTooltip({ itemsetId, visible, onClose }: ItemsetTooltipPr
             />
           )}
 
-          <TouchableOpacity activeOpacity={1} style={[styles.contentContainer, { padding: 48 * s }]}>
+          <TouchableOpacity
+            activeOpacity={1}
+            style={[styles.contentContainer, { padding: 48 * s }]}
+          >
             {/* Header */}
             <View style={styles.header}>
               <View style={[styles.iconContainer, { width: 64 * s, height: 64 * s }]}>

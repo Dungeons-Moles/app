@@ -10,11 +10,9 @@ import {
   ActivityIndicator,
   RefreshControl,
   Animated,
-  Alert,
 } from 'react-native';
 import { InlineModal } from '../components/InlineModal';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { PublicKey } from '@solana/web3.js';
 import { useProfile } from '../contexts/ProfileContext';
 import { useSessionIdentity } from '../contexts/SessionContext';
 import { useGame, GamePhase } from '../contexts/GameContext';
@@ -34,7 +32,6 @@ import { createGameplayStateProgram } from '../services/solana/programs';
 import { fetchGameState, getGameStatePda } from '../services/solana/gameplayState';
 import { fetchFullSessionState } from '../services/solana/sessionRestore';
 import { deriveSessionPda } from '../services/solana/constants';
-import { promptTransactionRetry } from '../utils/transaction-alerts';
 import { useWallet } from '../contexts/WalletContext';
 import { getVrfSeed } from '../services/solana/vrf';
 import type { CampaignLevel } from '../types/solana';
@@ -88,6 +85,8 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
   const [pendingLevelWithSession, setPendingLevelWithSession] = useState<CampaignLevel | null>(
     null
   );
+  const [showErrorModal, setShowErrorModal] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -142,16 +141,11 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
       setSelectedLevel(level.level);
 
       try {
-        let shouldRetry = true;
-
-        while (shouldRetry) {
-          shouldRetry = false;
-
-          try {
-            if (!connection || !wallet.publicKey) {
-              Alert.alert('Connection Error', 'Wallet or connection not available.');
-              return;
-            }
+        if (!connection || !wallet.publicKey) {
+          setErrorMessage('Wallet or connection not available.');
+          setShowErrorModal(true);
+          return;
+        }
 
             // Use switchToSession to set up gameStatePda, recover sessionSigner wallet,
             // and fetch map seed — without creating a new session.
@@ -163,12 +157,9 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
               const switchResult = await switchToSession(sessionPda);
               if (!switchResult.success) {
                 console.warn('[CampaignSelect] switchToSession failed:', switchResult.error);
-                const message = switchResult.error ?? 'Failed to resume session.';
-                shouldRetry = await promptTransactionRetry({
-                  title: 'Resume Failed',
-                  message,
-                });
-                continue;
+                setErrorMessage(switchResult.error ?? 'Failed to resume session.');
+                setShowErrorModal(true);
+                return;
               }
             }
 
@@ -178,12 +169,9 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
               console.log('[CampaignSelect] No session PDA found, trying startSessionOnChain...');
               const result = await startSessionOnChain(level.level);
               if (result && !result.success) {
-                const message = result.error ?? 'Failed to resume session.';
-                shouldRetry = await promptTransactionRetry({
-                  title: 'Resume Failed',
-                  message,
-                });
-                continue;
+                setErrorMessage(result.error ?? 'Failed to resume session.');
+                setShowErrorModal(true);
+                return;
               }
             }
 
@@ -232,15 +220,11 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
             });
 
             navigation.navigate('Game');
-          } catch (error) {
-            const message =
-              error instanceof Error ? error.message : 'Failed to resume the session.';
-            shouldRetry = await promptTransactionRetry({
-              title: 'Resume Failed',
-              message,
-            });
-          }
-        }
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'Failed to resume the session.';
+        setErrorMessage(message);
+        setShowErrorModal(true);
       } finally {
         setIsStartingGame(false);
         setSelectedLevel(null);
@@ -363,32 +347,20 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
         } else {
           console.log('[CampaignSelect] Online mode - calling startSessionOnChain...');
           // Start on-chain session for this level
-          let shouldRetry = true;
+          try {
+            result = await startSessionOnChain(level.level);
+            console.log('[CampaignSelect] startSessionOnChain result:', result);
+          } catch (error) {
+            const message = error instanceof Error ? error.message : 'Failed to start session.';
+            setErrorMessage(message);
+            setShowErrorModal(true);
+            return;
+          }
 
-          while (shouldRetry) {
-            shouldRetry = false;
-            try {
-              result = await startSessionOnChain(level.level);
-              console.log('[CampaignSelect] startSessionOnChain result:', result);
-
-              if (result && !result.success) {
-                const message = result.error ?? 'Failed to start session.';
-                shouldRetry = await promptTransactionRetry({
-                  title: 'Session Start Failed',
-                  message,
-                  retryLabel: 'Retry',
-                  cancelLabel: 'Continue Offline',
-                });
-              }
-            } catch (error) {
-              const message = error instanceof Error ? error.message : 'Failed to start session.';
-              shouldRetry = await promptTransactionRetry({
-                title: 'Session Start Failed',
-                message,
-                retryLabel: 'Retry',
-                cancelLabel: 'Continue Offline',
-              });
-            }
+          if (!result?.success) {
+            setErrorMessage(result?.error ?? 'Failed to start session.');
+            setShowErrorModal(true);
+            return;
           }
 
           // Determine seed to use — prefer the seed returned directly from startGame
@@ -460,6 +432,9 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
         navigation.navigate('Game');
       } catch (error) {
         console.error('[CampaignSelect] Error starting game:', error);
+        const message = error instanceof Error ? error.message : 'Failed to start game.';
+        setErrorMessage(message);
+        setShowErrorModal(true);
       } finally {
         setIsStartingGame(false);
         setSelectedLevel(null);
@@ -498,7 +473,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
   const flatListRef = useRef<FlatList>(null);
   const didRunCleanupThisFocusRef = useRef(false);
 
-  const anyModalOpen = showNoRunsModal || showLockedModal || showSessionExistsModal;
+  const anyModalOpen = showNoRunsModal || showLockedModal || showSessionExistsModal || showErrorModal;
 
   useEffect(() => {
     if (!isScreenFocused) {
@@ -555,11 +530,13 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
           : () => {
               setShowNoRunsModal(false);
               setShowLockedModal(false);
+              setShowErrorModal(false);
             },
         onB: () => {
           setShowNoRunsModal(false);
           setShowLockedModal(false);
           setShowSessionExistsModal(false);
+          setShowErrorModal(false);
         },
       }
     : undefined;
@@ -918,6 +895,43 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
               <TouchableOpacity
                 style={styles.modalButtonPrimary}
                 onPress={() => setShowLockedModal(false)}
+              >
+                <Text style={styles.modalButtonTextPrimary}>OK</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      </InlineModal>
+      {/* Error Modal */}
+      <InlineModal
+        visible={showErrorModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowErrorModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, isCompact && compactStyles.modalContent]}>
+            <Text style={[styles.modalTitle, isCompact && compactStyles.modalTitle]}>
+              Request Failed
+            </Text>
+            <Text style={[styles.modalText, isCompact && compactStyles.modalText]}>
+              {errorMessage || 'The request failed, please try again.'}
+            </Text>
+            {isCompact ? (
+              <View style={compactStyles.modalHintRow}>
+                <View style={compactStyles.modalHintItem}>
+                  <Image
+                    source={iconASource}
+                    style={compactStyles.modalHintIcon}
+                    resizeMode="contain"
+                  />
+                  <Text style={compactStyles.modalHintLabel}>OK</Text>
+                </View>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={styles.modalButtonPrimary}
+                onPress={() => setShowErrorModal(false)}
               >
                 <Text style={styles.modalButtonTextPrimary}>OK</Text>
               </TouchableOpacity>

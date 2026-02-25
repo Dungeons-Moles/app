@@ -20,9 +20,9 @@ import { useControllerAction } from '../hooks/useControllerAction';
 import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHints';
 import { useInputMode } from '../hooks/useInputMode';
 import { FocusGlow } from '../components/ui/FocusGlow';
-import { getGearByTag, GearDefinition } from '../data/gear';
-import { getToolsByTag, ToolDefinition } from '../game/entities/items';
-import { ItemTag, ItemStats, ItemRarity } from '../game/engine/types';
+import { getGearByTag, GearDefinition, getEffectDescriptionAllTiers, RARITY_MULTIPLIER } from '../data/gear';
+import { getToolsByTag, ToolDefinition, getToolEffectDescriptionAllTiers, getToolStatsAtTier } from '../game/entities/items';
+import { ItemTag, ItemStats, ItemRarity, GearId, ToolId } from '../game/engine/types';
 import {
   BITMASK_SIZE,
   MIN_ACTIVE_POOL,
@@ -194,6 +194,51 @@ const RARITY_COLORS: Record<ItemRarity, string> = {
   HEROIC: '#F97316',
   MYTHIC: '#FFD700',
 };
+
+type StatTiers = { atk?: string; arm?: string; spd?: string; dig?: string; hp?: string };
+
+function formatTiered(v1: number, v2: number, v3: number): string {
+  if (v1 === v2 && v2 === v3) return `+${v1}`;
+  return `+${v1}/${v2}/${v3}`;
+}
+
+function getGearStatTiers(id: GearId, baseStats: ItemStats): StatTiers {
+  const result: StatTiers = {};
+  const mults = [RARITY_MULTIPLIER.COMMON, RARITY_MULTIPLIER.GILDED, RARITY_MULTIPLIER.DIAMOND];
+  if (baseStats.atk !== undefined)
+    result.atk = formatTiered(...mults.map((m) => Math.floor(baseStats.atk! * m)) as [number, number, number]);
+  if (baseStats.arm !== undefined)
+    result.arm = formatTiered(...mults.map((m) => Math.floor(baseStats.arm! * m)) as [number, number, number]);
+  if (baseStats.spd !== undefined)
+    result.spd = formatTiered(...mults.map((m) => Math.floor(baseStats.spd! * m)) as [number, number, number]);
+  if (baseStats.dig !== undefined)
+    result.dig = formatTiered(...mults.map((m) => Math.floor(baseStats.dig! * m)) as [number, number, number]);
+  if (baseStats.hp !== undefined)
+    result.hp = formatTiered(...mults.map((m) => Math.floor(baseStats.hp! * m)) as [number, number, number]);
+  return result;
+}
+
+function getToolStatTiers(id: ToolId): StatTiers {
+  const t1 = getToolStatsAtTier(id, 1);
+  const t2 = getToolStatsAtTier(id, 2);
+  const t3 = getToolStatsAtTier(id, 3);
+  const result: StatTiers = {};
+  const stats: (keyof ItemStats)[] = ['atk', 'arm', 'spd', 'dig', 'hp'];
+  for (const key of stats) {
+    const v1 = t1[key] ?? 0;
+    const v2 = t2[key] ?? 0;
+    const v3 = t3[key] ?? 0;
+    if (v1 || v2 || v3) {
+      result[key] = formatTiered(v1, v2, v3);
+    }
+  }
+  return result;
+}
+
+function getItemStatTiers(item: DisplayItem): StatTiers {
+  if (item.isTool) return getToolStatTiers(item.id as ToolId);
+  return getGearStatTiers(item.id as GearId, item.stats);
+}
 
 type ItemsScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Items'>;
@@ -869,110 +914,56 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                   style={styles.itemDescriptionScroll}
                   showsVerticalScrollIndicator={false}
                 >
-                  {(selectedItem.effect?.description || ITEM_DESCRIPTIONS[selectedItem.name]) && (
-                    <Text
-                      style={[styles.itemDescription, isCompact && compactStyles.itemDescription]}
-                    >
-                      {selectedItem.effect?.description || ITEM_DESCRIPTIONS[selectedItem.name]}
-                    </Text>
-                  )}
+                  {(() => {
+                    const allTiersDesc = selectedItem.effect
+                      ? selectedItem.isTool
+                        ? getToolEffectDescriptionAllTiers(selectedItem.id as any)
+                        : getEffectDescriptionAllTiers(selectedItem.id as any)
+                      : null;
+                    const desc = allTiersDesc || ITEM_DESCRIPTIONS[selectedItem.name];
+                    return desc ? (
+                      <Text
+                        style={[styles.itemDescription, isCompact && compactStyles.itemDescription]}
+                      >
+                        {desc}
+                      </Text>
+                    ) : null;
+                  })()}
 
-                  {(selectedItem.stats.atk !== undefined ||
-                    selectedItem.stats.arm !== undefined ||
-                    selectedItem.stats.spd !== undefined ||
-                    selectedItem.stats.dig !== undefined ||
-                    selectedItem.stats.hp !== undefined) && (
+                  {(() => {
+                    const tiers = getItemStatTiers(selectedItem);
+                    const statEntries: { label: string; icon: any; value: string }[] = [];
+                    if (tiers.atk) statEntries.push({ label: 'ATK', icon: statIconATK, value: tiers.atk });
+                    if (tiers.arm) statEntries.push({ label: 'ARM', icon: statIconARM, value: tiers.arm });
+                    if (tiers.spd) statEntries.push({ label: 'SPD', icon: statIconSPD, value: tiers.spd });
+                    if (tiers.dig) statEntries.push({ label: 'DIG', icon: statIconDIG, value: tiers.dig });
+                    if (tiers.hp) statEntries.push({ label: 'HP', icon: statIconHP, value: tiers.hp });
+                    if (statEntries.length === 0) return null;
+                    return (
                     <View style={styles.statsContainer}>
                       <Text style={[styles.statsHeader, isCompact && compactStyles.statsHeader]}>
                         Stats
                       </Text>
-                      {selectedItem.stats.atk !== undefined && (
-                        <View style={styles.statRow}>
+                      {statEntries.map((stat) => (
+                        <View key={stat.label} style={styles.statRow}>
                           <View style={styles.statLabelRow}>
                             <Image
-                              source={statIconATK}
+                              source={stat.icon}
                               style={[styles.statIcon, isCompact && compactStyles.statIcon]}
                               resizeMode="contain"
                             />
                             <Text style={[styles.statLabel, isCompact && compactStyles.statLabel]}>
-                              ATK
+                              {stat.label}
                             </Text>
                           </View>
                           <Text style={[styles.statValue, isCompact && compactStyles.statValue]}>
-                            +{selectedItem.stats.atk}
+                            {stat.value}
                           </Text>
                         </View>
-                      )}
-                      {selectedItem.stats.arm !== undefined && (
-                        <View style={styles.statRow}>
-                          <View style={styles.statLabelRow}>
-                            <Image
-                              source={statIconARM}
-                              style={[styles.statIcon, isCompact && compactStyles.statIcon]}
-                              resizeMode="contain"
-                            />
-                            <Text style={[styles.statLabel, isCompact && compactStyles.statLabel]}>
-                              ARM
-                            </Text>
-                          </View>
-                          <Text style={[styles.statValue, isCompact && compactStyles.statValue]}>
-                            +{selectedItem.stats.arm}
-                          </Text>
-                        </View>
-                      )}
-                      {selectedItem.stats.spd !== undefined && (
-                        <View style={styles.statRow}>
-                          <View style={styles.statLabelRow}>
-                            <Image
-                              source={statIconSPD}
-                              style={[styles.statIcon, isCompact && compactStyles.statIcon]}
-                              resizeMode="contain"
-                            />
-                            <Text style={[styles.statLabel, isCompact && compactStyles.statLabel]}>
-                              SPD
-                            </Text>
-                          </View>
-                          <Text style={[styles.statValue, isCompact && compactStyles.statValue]}>
-                            +{selectedItem.stats.spd}
-                          </Text>
-                        </View>
-                      )}
-                      {selectedItem.stats.dig !== undefined && (
-                        <View style={styles.statRow}>
-                          <View style={styles.statLabelRow}>
-                            <Image
-                              source={statIconDIG}
-                              style={[styles.statIcon, isCompact && compactStyles.statIcon]}
-                              resizeMode="contain"
-                            />
-                            <Text style={[styles.statLabel, isCompact && compactStyles.statLabel]}>
-                              DIG
-                            </Text>
-                          </View>
-                          <Text style={[styles.statValue, isCompact && compactStyles.statValue]}>
-                            +{selectedItem.stats.dig}
-                          </Text>
-                        </View>
-                      )}
-                      {selectedItem.stats.hp !== undefined && (
-                        <View style={styles.statRow}>
-                          <View style={styles.statLabelRow}>
-                            <Image
-                              source={statIconHP}
-                              style={[styles.statIcon, isCompact && compactStyles.statIcon]}
-                              resizeMode="contain"
-                            />
-                            <Text style={[styles.statLabel, isCompact && compactStyles.statLabel]}>
-                              HP
-                            </Text>
-                          </View>
-                          <Text style={[styles.statValue, isCompact && compactStyles.statValue]}>
-                            +{selectedItem.stats.hp}
-                          </Text>
-                        </View>
-                      )}
+                      ))}
                     </View>
-                  )}
+                    );
+                  })()}
 
                   {/* Itemsets this item is part of */}
                   {(() => {

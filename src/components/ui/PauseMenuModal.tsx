@@ -5,19 +5,14 @@
  */
 
 import React, { useState, useCallback, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  Image,
-  TouchableOpacity,
-  ActivityIndicator,
-} from 'react-native';
+import { View, Text, StyleSheet, Image, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useInputMode } from '../../hooks/useInputMode';
 import { useControllerAction } from '../../hooks/useControllerAction';
 import { ControllerHints, type ButtonHint } from './ControllerHints';
 import { FocusGlow } from './FocusGlow';
 import { Typography } from '../../theme/typography';
+import { useAudio } from '../../contexts/AudioContext';
+import { VolumeControls } from './VolumeControls';
 
 const paperPanelSource = require('../../../assets/ui/panels/paper-panel.png');
 
@@ -46,6 +41,7 @@ export function PauseMenuModal({
 }: PauseMenuModalProps) {
   const inputMode = useInputMode();
   const isController = inputMode === 'controller';
+  const { musicVolume, setMusicVolume, sfxVolume, setSfxVolume, playSfx } = useAudio();
   const [focusIndex, setFocusIndex] = useState(0);
 
   // Build menu items dynamically
@@ -73,27 +69,47 @@ export function PauseMenuModal({
   }, [visible]);
 
   // Clamp focus index if items change
+  const totalItems = menuItems.length + 2; // 2 volume controls
   useEffect(() => {
-    if (focusIndex >= menuItems.length) {
-      setFocusIndex(Math.max(0, menuItems.length - 1));
+    if (focusIndex >= totalItems) {
+      setFocusIndex(Math.max(0, totalItems - 1));
     }
-  }, [menuItems.length, focusIndex]);
+  }, [totalItems, focusIndex]);
 
   const handleSelect = useCallback(() => {
-    const item = menuItems[focusIndex];
-    if (item && !item.loading) {
-      item.onPress();
+    // Menu items start at focusIndex 2
+    if (focusIndex >= 2) {
+      const item = menuItems[focusIndex - 2];
+      if (item && !item.loading) {
+        playSfx('ui_click');
+        item.onPress();
+      }
     }
-  }, [focusIndex, menuItems]);
+  }, [focusIndex, menuItems, playSfx]);
 
   useControllerAction(
     {
       onDPadUp: () => setFocusIndex((i) => Math.max(0, i - 1)),
-      onDPadDown: () => setFocusIndex((i) => Math.min(menuItems.length - 1, i + 1)),
+      onDPadDown: () => setFocusIndex((i) => Math.min(totalItems - 1, i + 1)),
+      onDPadLeft:
+        focusIndex === 0
+          ? () => setMusicVolume(Math.round(Math.max(0, musicVolume - 0.1) * 10) / 10)
+          : focusIndex === 1
+            ? () => setSfxVolume(Math.round(Math.max(0, sfxVolume - 0.1) * 10) / 10)
+            : undefined,
+      onDPadRight:
+        focusIndex === 0
+          ? () => setMusicVolume(Math.round(Math.min(1, musicVolume + 0.1) * 10) / 10)
+          : focusIndex === 1
+            ? () => setSfxVolume(Math.round(Math.min(1, sfxVolume + 0.1) * 10) / 10)
+            : undefined,
       onA: handleSelect,
-      onB: onClose,
+      onB: () => {
+        playSfx('ui_click');
+        onClose();
+      },
     },
-    isController && visible,
+    isController && visible
   );
 
   if (!visible) return null;
@@ -107,17 +123,36 @@ export function PauseMenuModal({
     <View style={styles.overlay}>
       <View style={styles.scaleWrapper}>
         <View style={styles.container}>
-          <Image
-            source={paperPanelSource}
-            style={styles.paperBg}
-            resizeMode="stretch"
-          />
+          <Image source={paperPanelSource} style={styles.paperBg} resizeMode="stretch" />
           <View style={styles.content}>
             <Text style={styles.title}>PAUSED</Text>
 
+            <View style={styles.volumeSection}>
+              <FocusGlow active={isController && focusIndex === 0}>
+                <View style={styles.volumeRow}>
+                  <Text style={styles.volumeLabel}>Music</Text>
+                  <VolumeControls
+                    currentVolume={musicVolume}
+                    onVolumeChange={setMusicVolume}
+                    scale={0.8}
+                  />
+                </View>
+              </FocusGlow>
+              <FocusGlow active={isController && focusIndex === 1}>
+                <View style={styles.volumeRow}>
+                  <Text style={styles.volumeLabel}>SFX</Text>
+                  <VolumeControls
+                    currentVolume={sfxVolume}
+                    onVolumeChange={setSfxVolume}
+                    scale={0.8}
+                  />
+                </View>
+              </FocusGlow>
+            </View>
+
             <View style={styles.menuList}>
               {menuItems.map((item, index) => (
-                <FocusGlow key={item.id} active={isController && focusIndex === index}>
+                <FocusGlow key={item.id} active={isController && focusIndex === index + 2}>
                   <TouchableOpacity
                     style={[styles.menuButton, item.danger && styles.menuButtonDanger]}
                     onPress={item.onPress}
@@ -139,16 +174,21 @@ export function PauseMenuModal({
             </View>
 
             {!isController && (
-              <TouchableOpacity style={styles.resumeButton} onPress={onClose} activeOpacity={0.7}>
+              <TouchableOpacity
+                style={styles.resumeButton}
+                onPress={() => {
+                  playSfx('ui_click');
+                  onClose();
+                }}
+                activeOpacity={0.7}
+              >
                 <Text style={styles.resumeButtonText}>Resume</Text>
               </TouchableOpacity>
             )}
           </View>
         </View>
       </View>
-      {isController && (
-        <ControllerHints hints={controllerHints} horizontal />
-      )}
+      {isController && <ControllerHints hints={controllerHints} horizontal />}
     </View>
   );
 }
@@ -187,7 +227,23 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: '#3d2b1f',
     letterSpacing: 1.5,
+    marginBottom: 8,
+  },
+  volumeSection: {
+    width: '100%',
     marginBottom: 16,
+    gap: 8,
+  },
+  volumeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    width: '100%',
+  },
+  volumeLabel: {
+    fontFamily: Typography.header,
+    fontSize: 14,
+    color: '#3d2b1f',
   },
   menuList: {
     width: '100%',

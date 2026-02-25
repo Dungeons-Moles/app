@@ -20,8 +20,10 @@ import {
   RARITY_MULTIPLIER,
   createGearInstance as createGearFromData,
   getTierFromRarity,
+  resolveDescriptionForTier,
+  resolveDescriptionAllTiers,
 } from '../../data/gear';
-import { getToolEffectsAtTier } from '../../data/tool-effects';
+import { getToolEffectsAtTier, TOOL_EFFECTS } from '../../data/tool-effects';
 
 // ============================================================================
 // Tool Definitions (per spec.md Appendix C)
@@ -478,4 +480,30 @@ export function getToolsByRarity(rarity: ItemRarity): ToolDefinition[] {
  */
 export function getToolsByTag(tag: ItemTag): ToolDefinition[] {
   return getAllToolDefinitions().filter((tool) => tool.tags.includes(tag));
+}
+
+/**
+ * Get the tool effect description scaled to the current tier.
+ */
+export function getToolScaledEffectDescription(toolId: ToolId, rarity: ItemRarity): string | null {
+  const def = TOOL_DEFINITIONS[toolId];
+  if (!def.effect) return null;
+
+  const tier = getTierFromRarity(rarity);
+  const toolEffects = TOOL_EFFECTS[toolId];
+
+  return resolveDescriptionForTier(def.effect.description, toolEffects?.effects ?? [], tier);
+}
+
+/**
+ * Get the tool effect description showing all tier values in X/Y/Z notation.
+ */
+export function getToolEffectDescriptionAllTiers(toolId: ToolId): string | null {
+  const def = TOOL_DEFINITIONS[toolId];
+  if (!def.effect) return null;
+
+  const toolEffects = TOOL_EFFECTS[toolId];
+  if (!toolEffects || toolEffects.effects.length === 0) return def.effect.description;
+
+  return resolveDescriptionAllTiers(def.effect.description, toolEffects.effects);
 }

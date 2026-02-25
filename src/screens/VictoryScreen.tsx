@@ -21,6 +21,7 @@ import { Typography } from '../theme/typography';
 import { useInputMode } from '../hooks/useInputMode';
 import { useControllerAction } from '../hooks/useControllerAction';
 import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHints';
+import { useAudio } from '../contexts/AudioContext';
 
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.png');
 const STAINS_BACKGROUND = require('../../assets/ui/backgrounds/stains-background.png');
@@ -41,12 +42,13 @@ export function VictoryScreen({ navigation, route }: VictoryScreenProps) {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
   const glowAnim = useRef(new Animated.Value(0)).current;
+  const { playBgm } = useAudio();
   const [showUnlock, setShowUnlock] = useState(false);
 
-  // Use vertical layout for taller screens (portrait or large tablets)
   const isVerticalLayout = height > 768;
 
   useEffect(() => {
+    playBgm('victory', { crossfade: true });
     // Initial fade in
     Animated.parallel([
       Animated.timing(fadeAnim, {
@@ -82,7 +84,7 @@ export function VictoryScreen({ navigation, route }: VictoryScreenProps) {
         }, 500);
       }
     });
-  }, [fadeAnim, slideAnim, glowAnim, levelUnlocked, itemUnlocked]);
+  }, [fadeAnim, slideAnim, glowAnim, levelUnlocked, itemUnlocked, playBgm]);
 
   const handleReturnToHub = useCallback(() => {
     navigation.reset({
@@ -97,9 +99,7 @@ export function VictoryScreen({ navigation, route }: VictoryScreenProps) {
 
   useControllerAction({ onA: handleReturnToHub }, isController);
 
-  const controllerHints: ButtonHint[] = [
-    { button: 'A', label: 'Return to Hub' },
-  ];
+  const controllerHints: ButtonHint[] = [{ button: 'A', label: 'Return to Hub' }];
 
   const turnsTaken = replay?.combatEnded?.turnsTaken ?? 0;
 
@@ -214,11 +214,7 @@ export function VictoryScreen({ navigation, route }: VictoryScreenProps) {
   const ReturnButton = () => (
     <View style={isVerticalLayout ? styles.buttonSlotVertical : styles.buttonSlot}>
       <Pressable style={styles.buttonPressable} onPress={handleReturnToHub}>
-        <ImageBackground
-          source={BUTTON_GREEN}
-          style={styles.buttonImage}
-          resizeMode="contain"
-        >
+        <ImageBackground source={BUTTON_GREEN} style={styles.buttonImage} resizeMode="contain">
           <Text
             style={isVerticalLayout ? styles.returnButtonTextVertical : styles.returnButtonText}
           >
@@ -228,7 +224,6 @@ export function VictoryScreen({ navigation, route }: VictoryScreenProps) {
       </Pressable>
     </View>
   );
-
 
   return (
     <View style={styles.container}>

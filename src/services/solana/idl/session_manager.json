@@ -216,6 +216,72 @@
       ]
     },
     {
+      "name": "close_orphaned_accounts",
+      "docs": [
+        "Close orphaned child accounts after force_close_session already freed the session PDA.",
+        "Session PDA no longer exists, so we validate via game_state (which stores session_signer",
+        "and player). Only closes accounts that are on base layer (owned by their programs).",
+        "Call order: map_pois → map_enemies → game_state (game_state last since others depend on it)."
+      ],
+      "discriminator": [
+        153,
+        174,
+        148,
+        121,
+        49,
+        71,
+        27,
+        65
+      ],
+      "accounts": [
+        {
+          "name": "game_state",
+          "docs": [
+            "GameState is the auth source — stores session_signer and player.",
+            "May be delegated (skipped if so)."
+          ],
+          "writable": true
+        },
+        {
+          "name": "map_enemies",
+          "docs": [
+            "Map enemies account — may be delegated."
+          ],
+          "writable": true
+        },
+        {
+          "name": "map_pois",
+          "docs": [
+            "Map POIs account — may be delegated."
+          ],
+          "writable": true
+        },
+        {
+          "name": "player",
+          "docs": [
+            "Player wallet receives rent refunds."
+          ],
+          "writable": true
+        },
+        {
+          "name": "session_signer",
+          "docs": [
+            "Session key signer — validated by child program CPIs via game_state.session_signer."
+          ],
+          "signer": true
+        },
+        {
+          "name": "gameplay_state_program",
+          "address": "C8hK4qsqsSYQeqyXuTPTUUS3T7N74WnZCuzvChTpK1Mo"
+        },
+        {
+          "name": "poi_system_program",
+          "address": "KiT25b86BSAF8yErcWwyuuWNaoXMpNf859NjH41TpSj"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "close_session_only",
       "docs": [
         "Emergency fallback: settle run result (if needed) and close only the game_session account.",
@@ -1699,6 +1765,201 @@
       ]
     },
     {
+      "name": "force_close_session",
+      "docs": [
+        "Tolerant session close: settles result (defeat if unreadable) and closes whichever",
+        "child accounts are on base layer. Delegated/missing children are skipped.",
+        "This prevents the permanent soft-lock where close_session_only leaves orphaned",
+        "child accounts that block start_session (which uses `init`, not `init_if_needed`)."
+      ],
+      "discriminator": [
+        7,
+        248,
+        122,
+        200,
+        47,
+        119,
+        244,
+        82
+      ],
+      "accounts": [
+        {
+          "name": "game_session",
+          "writable": true
+        },
+        {
+          "name": "game_state",
+          "docs": [
+            "Game state account — may be delegated; validated by PDA derivation in handler."
+          ],
+          "writable": true
+        },
+        {
+          "name": "map_enemies",
+          "docs": [
+            "Map enemies account — may be delegated."
+          ],
+          "writable": true
+        },
+        {
+          "name": "generated_map",
+          "docs": [
+            "Generated map account — may be delegated."
+          ],
+          "writable": true
+        },
+        {
+          "name": "map_pois",
+          "docs": [
+            "Map POIs account — may be delegated."
+          ],
+          "writable": true
+        },
+        {
+          "name": "inventory",
+          "docs": [
+            "Player inventory account — may be delegated."
+          ],
+          "writable": true
+        },
+        {
+          "name": "player_profile",
+          "docs": [
+            "Player profile for recording run result (if not settled yet)"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  108,
+                  97,
+                  121,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "player"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                173,
+                178,
+                185,
+                109,
+                85,
+                174,
+                41,
+                240,
+                83,
+                161,
+                21,
+                228,
+                174,
+                149,
+                101,
+                192,
+                117,
+                119,
+                254,
+                61,
+                55,
+                200,
+                75,
+                179,
+                126,
+                215,
+                130,
+                121,
+                72,
+                90,
+                152,
+                13
+              ]
+            }
+          }
+        },
+        {
+          "name": "player",
+          "writable": true,
+          "relations": [
+            "game_session"
+          ]
+        },
+        {
+          "name": "session_signer",
+          "signer": true,
+          "relations": [
+            "game_session"
+          ]
+        },
+        {
+          "name": "session_manager_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  95,
+                  109,
+                  97,
+                  110,
+                  97,
+                  103,
+                  101,
+                  114,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "player_inventory_program",
+          "address": "APRnvp41jEYnT1EnrdBTim7bodqE6v2RSgzv1CG7Qv7u"
+        },
+        {
+          "name": "gameplay_state_program",
+          "address": "C8hK4qsqsSYQeqyXuTPTUUS3T7N74WnZCuzvChTpK1Mo"
+        },
+        {
+          "name": "player_profile_program",
+          "address": "Ch3bbL1oQk2z5rX1jiun3KuSWZqnXZ1MnrfrtKj4MKun"
+        },
+        {
+          "name": "map_generator_program",
+          "address": "GCy5GqvnJN99rgGtV6fMn8NtL9E7RoAyHDGzQv8me65j"
+        },
+        {
+          "name": "poi_system_program",
+          "address": "KiT25b86BSAF8yErcWwyuuWNaoXMpNf859NjH41TpSj"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "initialize_counter",
       "docs": [
         "Initializes the global session counter (one-time admin operation)."
@@ -2632,6 +2893,7 @@
         },
         {
           "name": "session_signer",
+          "writable": true,
           "signer": true
         },
         {
@@ -2716,6 +2978,19 @@
     }
   ],
   "events": [
+    {
+      "name": "OrphanedAccountsClosed",
+      "discriminator": [
+        46,
+        56,
+        156,
+        76,
+        116,
+        8,
+        147,
+        49
+      ]
+    },
     {
       "name": "SessionDelegated",
       "discriminator": [
@@ -2998,6 +3273,18 @@
               "PDA bump seed"
             ],
             "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "OrphanedAccountsClosed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "player",
+            "type": "pubkey"
           }
         ]
       }

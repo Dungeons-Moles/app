@@ -23,10 +23,11 @@ import { SOLANA_CONFIG } from './config';
 // Constants
 // ============================================================================
 
-/** Default amount to fund sessionSigner (0.08 SOL).
+/** Default amount to fund sessionSigner (0.2 SOL).
  * Must cover all delegation-account rent allocations across gameplay/map/inventory/POI/session.
+ * GenerateMap alone can consume ~0.07 SOL for the full map grid on devnet.
  */
-export const DEFAULT_FUND_AMOUNT = 80_000_000; // lamports
+export const DEFAULT_FUND_AMOUNT = 200_000_000; // lamports
 
 /** Low balance warning threshold (0.01 SOL) */
 export const LOW_BALANCE_THRESHOLD = 10_000_000; // lamports

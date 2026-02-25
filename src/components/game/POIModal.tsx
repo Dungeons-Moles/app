@@ -42,6 +42,24 @@ import { useScreenVariant } from '../../contexts/ScreenVariantContext';
 import { useInputMode } from '../../hooks/useInputMode';
 import { useControllerAction } from '../../hooks/useControllerAction';
 import { FocusGlow } from '../ui/FocusGlow';
+import { useAudio, type SfxTrack } from '@/contexts/AudioContext';
+
+const POI_SFX_MAP: Partial<Record<string, SfxTrack>> = {
+  L1: 'poi_rest',
+  L2: 'poi_loot_crate',
+  L3: 'poi_loot_crate',
+  L4: 'poi_oil_rack',
+  L5: 'poi_rest',
+  L6: 'poi_scanner',
+  L7: 'poi_scanner',
+  L8: 'poi_rail',
+  L9: 'poi_smuggler',
+  L10: 'poi_anvil',
+  L11: 'poi_kiln',
+  L12: 'poi_geode',
+  L13: 'poi_loot_crate',
+  L14: 'poi_scrap',
+};
 
 interface POIModalProps {
   interaction: POIInteraction | null;
@@ -163,11 +181,15 @@ interface ListOptionButtonProps {
 }
 
 function ListOptionButton({ option, index, onPress }: ListOptionButtonProps) {
+  const { playSfx } = useAudio();
   const handlePress = useCallback(() => {
     if (!option.disabled) {
+      playSfx('ui_click');
       onPress(index);
+    } else {
+      playSfx('ui_error');
     }
-  }, [option.disabled, index, onPress]);
+  }, [option.disabled, index, onPress, playSfx]);
 
   const buttonStyle = useMemo(
     () => [
@@ -301,6 +323,7 @@ export function POIModal({
   }
 
   const poiId = interaction.poi.definitionId as POIId;
+  const { playSfx } = useAudio();
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
   const [anvilModIndex, setAnvilModIndex] = useState<number | null>(null);
   const [selectedShopIndex, setSelectedShopIndex] = useState<number | null>(null);
@@ -333,7 +356,8 @@ export function POIModal({
   const gearCount = selectableGear?.length ?? 0;
   const kilnFull = isRuneKiln && (kilnSelection?.count ?? 0) >= 2;
   const scrapFull = isScrapChute && scrapSelection !== null && scrapSelection !== undefined;
-  const needsInventoryCycle = (isRuneKiln || isScrapChute) && gearCount > 0 && !kilnFull && !scrapFull;
+  const needsInventoryCycle =
+    (isRuneKiln || isScrapChute) && gearCount > 0 && !kilnFull && !scrapFull;
 
   // Determine the count of selectable items for the current POI type
   const selectableCount = useMemo(() => {
@@ -367,6 +391,14 @@ export function POIModal({
       setSelectedThreeChoiceIndex(null);
     }
   }, [visible]);
+
+  // Play POI SFX when modal opens
+  useEffect(() => {
+    if (visible) {
+      const sfx = POI_SFX_MAP[poiId];
+      if (sfx) playSfx(sfx);
+    }
+  }, [visible, poiId, playSfx]);
 
   useEffect(() => {
     setTooltip(null);
@@ -525,9 +557,10 @@ export function POIModal({
   const handleOptionSelect = useCallback(
     (optionIndex: number) => {
       setTooltip(null);
+      playSfx('ui_click');
       onSelectOption(optionIndex);
     },
-    [onSelectOption]
+    [onSelectOption, playSfx]
   );
 
   const handleTooltipDismiss = useCallback(() => {
@@ -555,10 +588,12 @@ export function POIModal({
 
   const handleKilnFuse = useCallback(() => {
     if (kilnFuseOptionIndex === null || kilnFuseOptionIndex === undefined) {
+      playSfx('ui_error');
       return;
     }
+    playSfx('ui_click');
     onSelectOption(kilnFuseOptionIndex);
-  }, [kilnFuseOptionIndex, onSelectOption]);
+  }, [kilnFuseOptionIndex, onSelectOption, playSfx]);
 
   const variant = useScreenVariant();
   const isCompact = variant === 'compact';
@@ -610,7 +645,10 @@ export function POIModal({
                   filledSlots < 1 && styles.fuseSlotEmpty,
                   filledSlots >= 1 && kilnTierBorder,
                 ]}
-                onPress={() => onKilnSlotPress?.(0)}
+                onPress={() => {
+                  playSfx('ui_click');
+                  onKilnSlotPress?.(0);
+                }}
                 activeOpacity={0.7}
                 disabled={!canRemoveSlotOne}
               >
@@ -640,7 +678,10 @@ export function POIModal({
                   filledSlots < 2 && styles.fuseSlotEmpty,
                   filledSlots >= 2 && kilnTierBorder,
                 ]}
-                onPress={() => onKilnSlotPress?.(1)}
+                onPress={() => {
+                  playSfx('ui_click');
+                  onKilnSlotPress?.(1);
+                }}
                 activeOpacity={0.7}
                 disabled={!canRemoveSlotTwo}
               >
@@ -756,7 +797,10 @@ export function POIModal({
 
             <TouchableOpacity
               style={[styles.scrapSlot, hasSelection && getTierBorderStyle(item?.currentRarity)]}
-              onPress={() => onScrapSlotPress?.()}
+              onPress={() => {
+                playSfx('ui_click');
+                onScrapSlotPress?.();
+              }}
               activeOpacity={0.7}
               disabled={!hasSelection}
             >
@@ -1013,9 +1057,7 @@ export function POIModal({
     const gridItems = shopItems.slice(0, 6);
     const selectedItem =
       selectedShopIndex !== null ? gridItems[selectedShopIndex]?.option.item : null;
-    const selectedStats = selectedItem
-      ? formatStatBonuses(extractStatBonuses(selectedItem))
-      : null;
+    const selectedStats = selectedItem ? formatStatBonuses(extractStatBonuses(selectedItem)) : null;
     const selectedEffect = getItemEffectDescription(selectedItem ?? undefined);
     const selectedRarity = selectedItem ? getItemRarity(selectedItem) : null;
     const selectedRarityColor = selectedItem ? getRarityColor(selectedItem) : '#A0A0A0';
@@ -1041,114 +1083,106 @@ export function POIModal({
                 <Text style={[styles.shopDescName, { color: selectedRarityColor }]}>
                   {selectedItem.name}
                 </Text>
-                {selectedRarity && (
-                  <Text style={styles.shopDescRarity}>{selectedRarity}</Text>
-                )}
-                {selectedStats ? (
-                  <Text style={styles.shopDescStats}>{selectedStats}</Text>
-                ) : null}
+                {selectedRarity && <Text style={styles.shopDescRarity}>{selectedRarity}</Text>}
+                {selectedStats ? <Text style={styles.shopDescStats}>{selectedStats}</Text> : null}
                 {selectedEffect ? (
                   <Text style={styles.shopDescEffect}>{selectedEffect}</Text>
                 ) : null}
               </View>
             </View>
           )}
-            <Image
-              source={paperPanelSource}
-              style={{
-                position: 'absolute',
-                width: '115%',
-                height: '115%',
-                top: '-7.5%',
-                left: '-7.5%',
-                zIndex: -1,
-              }}
-              resizeMode="stretch"
-            />
-            <View style={{ padding: 16, paddingTop: 24 }}>
-              {!isController && (
-                <TouchableOpacity
-                  style={styles.closeButtonTop}
-                  onPress={onClose}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.closeButtonTopText}>X</Text>
-                </TouchableOpacity>
-              )}
+          <Image
+            source={paperPanelSource}
+            style={{
+              position: 'absolute',
+              width: '115%',
+              height: '115%',
+              top: '-7.5%',
+              left: '-7.5%',
+              zIndex: -1,
+            }}
+            resizeMode="stretch"
+          />
+          <View style={{ padding: 16, paddingTop: 24 }}>
+            {!isController && (
+              <TouchableOpacity style={styles.closeButtonTop} onPress={onClose} activeOpacity={0.7}>
+                <Text style={styles.closeButtonTopText}>X</Text>
+              </TouchableOpacity>
+            )}
 
-              <Text style={styles.threeChoiceTitle}>{poiDef.name}</Text>
-              {poiDef.description ? (
-                <Text style={styles.description}>{poiDef.description}</Text>
-              ) : null}
+            <Text style={styles.threeChoiceTitle}>{poiDef.name}</Text>
+            {poiDef.description ? (
+              <Text style={styles.description}>{poiDef.description}</Text>
+            ) : null}
 
-              <View style={styles.gridWrapper}>
-                <View style={styles.shopGrid}>
-                  {gridItems.map(({ option, index: optionIndex }, gridIdx) => {
-                    const disabled = option.disabled;
-                    const isSelected = selectedShopIndex === gridIdx;
-                    return (
-                      <FocusGlow
-                        key={`shop-${optionIndex}`}
-                        active={isController && focusedIndex === gridIdx}
+            <View style={styles.gridWrapper}>
+              <View style={styles.shopGrid}>
+                {gridItems.map(({ option, index: optionIndex }, gridIdx) => {
+                  const disabled = option.disabled;
+                  const isSelected = selectedShopIndex === gridIdx;
+                  return (
+                    <FocusGlow
+                      key={`shop-${optionIndex}`}
+                      active={isController && focusedIndex === gridIdx}
+                    >
+                      <TouchableOpacity
+                        style={[
+                          styles.shopCell,
+                          disabled && styles.shopCellDisabled,
+                          isSelected && styles.shopCellSelected,
+                        ]}
+                        onPress={() => {
+                          if (selectedShopIndex === gridIdx) {
+                            onSelectOption(optionIndex);
+                          } else {
+                            setSelectedShopIndex(gridIdx);
+                          }
+                        }}
+                        activeOpacity={0.7}
+                        disabled={disabled}
                       >
-                        <TouchableOpacity
-                          style={[
-                            styles.shopCell,
-                            disabled && styles.shopCellDisabled,
-                            isSelected && styles.shopCellSelected,
-                          ]}
-                          onPress={() => {
-                            if (selectedShopIndex === gridIdx) {
-                              onSelectOption(optionIndex);
-                            } else {
-                              setSelectedShopIndex(gridIdx);
-                            }
+                        <Image
+                          source={squareSource}
+                          style={{
+                            position: 'absolute',
+                            width: '100%',
+                            height: '100%',
+                            resizeMode: 'stretch',
                           }}
-                          activeOpacity={0.7}
-                          disabled={disabled}
-                        >
+                        />
+                        {option.item?.image ? (
                           <Image
-                            source={squareSource}
-                            style={{
-                              position: 'absolute',
-                              width: '100%',
-                              height: '100%',
-                              resizeMode: 'stretch',
-                            }}
+                            source={option.item.image}
+                            style={styles.shopImage}
+                            resizeMode="contain"
                           />
-                          {option.item?.image ? (
-                            <Image
-                              source={option.item.image}
-                              style={styles.shopImage}
-                              resizeMode="contain"
-                            />
-                          ) : (
-                            <Text style={styles.shopEmoji}>{option.item?.emoji}</Text>
-                          )}
-                          {option.cost !== undefined && (
-                            <Text style={styles.shopCost}>{option.cost}g</Text>
-                          )}
-                        </TouchableOpacity>
-                      </FocusGlow>
-                    );
-                  })}
-                </View>
+                        ) : (
+                          <Text style={styles.shopEmoji}>{option.item?.emoji}</Text>
+                        )}
+                        {option.cost !== undefined && (
+                          <Text style={styles.shopCost}>{option.cost}g</Text>
+                        )}
+                      </TouchableOpacity>
+                    </FocusGlow>
+                  );
+                })}
               </View>
-
-              <FocusGlow active={isController && focusedIndex === gridItems.length}>
-                <TouchableOpacity
-                  style={[styles.rerollButton, rerollDisabled && styles.rerollButtonDisabled]}
-                  onPress={() => rerollOption && onSelectOption(rerollOption.index)}
-                  activeOpacity={0.7}
-                  disabled={rerollDisabled}
-                >
-                  <Text style={styles.rerollButtonText}>
-                    {rerollOption?.option.label ?? 'Reroll shop'}
-                  </Text>
-                </TouchableOpacity>
-              </FocusGlow>
             </View>
+
+            <FocusGlow active={isController && focusedIndex === gridItems.length}>
+              <TouchableOpacity
+                style={[styles.rerollButton, rerollDisabled && styles.rerollButtonDisabled]}
+                onPress={() => rerollOption && onSelectOption(rerollOption.index)}
+                activeOpacity={0.7}
+                disabled={rerollDisabled}
+              >
+                <Text style={styles.rerollButtonText}>
+                  {rerollOption?.option.label ?? 'Reroll shop'}
+                </Text>
+              </TouchableOpacity>
+            </FocusGlow>
           </View>
+        </View>
       </ModalWrapper>
     );
   }
@@ -1174,8 +1208,7 @@ export function POIModal({
     const currentTier = tool ? getTierFromRarity(tool.rarity) : 1;
     const nextTier = nextRarity ? getTierFromRarity(nextRarity) : null;
     const currentStats = tool ? getToolStatsAtTier(tool.id as ToolId, currentTier) : {};
-    const nextStats =
-      tool && nextTier ? getToolStatsAtTier(tool.id as ToolId, nextTier) : null;
+    const nextStats = tool && nextTier ? getToolStatsAtTier(tool.id as ToolId, nextTier) : null;
     const statDelta: Record<string, number> = {};
     if (nextStats) {
       for (const key of Object.keys(nextStats) as (keyof typeof nextStats)[]) {
@@ -1217,10 +1250,7 @@ export function POIModal({
               <>
                 <View style={styles.anvilUpgradeRow}>
                   <View style={styles.anvilSlot}>
-                    <Image
-                      source={squareSource}
-                      style={styles.anvilSlotBg}
-                    />
+                    <Image source={squareSource} style={styles.anvilSlotBg} />
                     {tool.image ? (
                       <Image
                         source={tool.image}
@@ -1236,10 +1266,7 @@ export function POIModal({
 
                   <View style={styles.anvilUpgradedColumn}>
                     <View style={[styles.anvilSlot, nextTierBorder]}>
-                      <Image
-                        source={squareSource}
-                        style={styles.anvilSlotBg}
-                      />
+                      <Image source={squareSource} style={styles.anvilSlotBg} />
                       {tool.image ? (
                         <Image
                           source={tool.image}
@@ -1250,25 +1277,16 @@ export function POIModal({
                         <Text style={styles.anvilSlotEmoji}>{tool.emoji}</Text>
                       )}
                     </View>
-                    {deltaText ? (
-                      <Text style={styles.anvilNextStats}>{deltaText}</Text>
-                    ) : null}
+                    {deltaText ? <Text style={styles.anvilNextStats}>{deltaText}</Text> : null}
                   </View>
                 </View>
               </>
             ) : (
               <View style={styles.anvilSlotCentered}>
                 <View style={styles.anvilSlot}>
-                  <Image
-                    source={squareSource}
-                    style={styles.anvilSlotBg}
-                  />
+                  <Image source={squareSource} style={styles.anvilSlotBg} />
                   {tool && tool.image ? (
-                    <Image
-                      source={tool.image}
-                      style={styles.anvilSlotImage}
-                      resizeMode="contain"
-                    />
+                    <Image source={tool.image} style={styles.anvilSlotImage} resizeMode="contain" />
                   ) : tool ? (
                     <Text style={styles.anvilSlotEmoji}>{tool.emoji}</Text>
                   ) : (
@@ -1285,7 +1303,14 @@ export function POIModal({
                   { marginTop: 24 },
                   (!upgradeOption || !canAfford) && styles.primaryButtonDisabled,
                 ]}
-                onPress={() => upgradeOption && onSelectOption(displayOptions[0].index)}
+                onPress={() => {
+                  if (upgradeOption) {
+                    playSfx('ui_click');
+                    onSelectOption(displayOptions[0].index);
+                  } else {
+                    playSfx('ui_error');
+                  }
+                }}
                 disabled={!upgradeOption || !canAfford}
               >
                 <Text style={styles.primaryButtonText}>
@@ -1340,7 +1365,10 @@ export function POIModal({
                     styles.primaryButton,
                     restOption.option.disabled && styles.primaryButtonDisabled,
                   ]}
-                  onPress={() => onSelectOption(restOption.index)}
+                  onPress={() => {
+                    playSfx('ui_click');
+                    onSelectOption(restOption.index);
+                  }}
                   activeOpacity={0.7}
                   disabled={restOption.option.disabled}
                 >
@@ -1405,7 +1433,10 @@ export function POIModal({
                       >
                         <TouchableOpacity
                           style={styles.scannerCell}
-                          onPress={() => onSelectOption(index)}
+                          onPress={() => {
+                            playSfx('ui_click');
+                            onSelectOption(index);
+                          }}
                           activeOpacity={0.7}
                         >
                           <Image

@@ -12,6 +12,7 @@ import { PublicKey } from '@solana/web3.js';
 import { RootStackParamList } from '../navigation';
 import { useGame, GamePhase } from '../contexts/GameContext';
 import { CombatProvider, useCombat } from '../contexts/CombatContext';
+import { useAudio, type BgmTrack } from '../contexts/AudioContext';
 import { useProfile } from '../contexts/ProfileContext';
 import { useSession } from '../contexts/SessionContext';
 import { useWallet } from '../contexts/WalletContext';
@@ -20,6 +21,8 @@ import { useLandscapeLock } from '../hooks/useOrientationLock';
 import { CombatLayout } from '../components/combat';
 import { DebugOverlay } from '../components/game';
 import { ENEMY_TRAITS, type EnemyId } from '../game/combat/traits';
+import { BOSSES } from '../data/bosses';
+import type { BossId } from '../game/engine/types';
 import { getEntityImageSource } from '../components/game/entityImages';
 
 const defaultMoleImageSource = require('../../assets/entities/characters/default-mole.png');
@@ -100,8 +103,18 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
   const playerSkinSource = useEquippedSkinImage(profile?.equippedSkin);
   const { wallet, signAndSendTransaction } = useWallet();
   const { connection } = useSolanaConnection();
-  const { endSessionWithSessionSigner, undelegateCurrentSession, queueEndGame, stopAutoCommit, hasActiveSession, session, mapSeed, gameplayState, getSessionSignerKeypair } =
-    useSession();
+  const { playBgm } = useAudio();
+  const {
+    endSessionWithSessionSigner,
+    undelegateCurrentSession,
+    queueEndGame,
+    stopAutoCommit,
+    hasActiveSession,
+    session,
+    mapSeed,
+    gameplayState,
+    getSessionSignerKeypair,
+  } = useSession();
   const isResolvingDuelRef = useRef(false);
   const {
     state: combatState,
@@ -122,6 +135,14 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
 
   // Start combat when screen loads
   useEffect(() => {
+    // Play combat music immediately
+    const track: BgmTrack = isBossFight
+      ? currentWeek === 3
+        ? 'boss_week_3'
+        : 'boss_week_1_2'
+      : 'standard_combat';
+    playBgm(track, { crossfade: true, resume: false });
+
     // Skip if combat already started
     if (combatState.combat) return;
 
@@ -213,11 +234,11 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
   }, [
     combatInput,
     gameState?.combat,
-    combatState.combat,
-    startCombat,
     startCombatWithLog,
     startCombatWithOnchainOutcome,
     gameState?.rngState,
+    isBossFight,
+    playBgm,
   ]);
 
   // Handle combat completion - now uses deferred cleanup for instant navigation
@@ -238,143 +259,148 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
         return;
       }
 
-    // On-chain outcome is authoritative — override local result if they disagree.
-    // This prevents getting stuck when the local resolver shows VICTORY but the
-    // player actually died on-chain (or vice-versa).
-    const onChainOutcome = combatInput?.onChainOutcome;
-    const result: 'VICTORY' | 'DEFEAT' = onChainOutcome
-      ? onChainOutcome.playerWon
-        ? 'VICTORY'
-        : 'DEFEAT'
-      : localResult;
+      // On-chain outcome is authoritative — override local result if they disagree.
+      // This prevents getting stuck when the local resolver shows VICTORY but the
+      // player actually died on-chain (or vice-versa).
+      const onChainOutcome = combatInput?.onChainOutcome;
+      const result: 'VICTORY' | 'DEFEAT' = onChainOutcome
+        ? onChainOutcome.playerWon
+          ? 'VICTORY'
+          : 'DEFEAT'
+        : localResult;
 
-    if (onChainOutcome && result !== localResult) {
-      console.warn('[CombatScreen] On-chain outcome overrides local result:', {
+      if (onChainOutcome && result !== localResult) {
+        console.warn('[CombatScreen] On-chain outcome overrides local result:', {
+          localResult,
+          onChainResult: result,
+          onChainPlayerWon: onChainOutcome.playerWon,
+        });
+      }
+
+      const isVictory = result === 'VICTORY';
+      const levelReached = combatInput?.campaignLevel ?? profile?.currentLevel ?? 1;
+      const isFinalWeekBoss = isBossFight && currentWeek === 3;
+      const isOnChainMode = mode !== 'guest' && combatInput !== undefined;
+
+      console.log('[CombatScreen] Combat complete:', {
+        result,
         localResult,
-        onChainResult: result,
-        onChainPlayerWon: onChainOutcome.playerWon,
+        isVictory,
+        isBossFight,
+        currentWeek,
+        isFinalWeekBoss,
+        isOnChainMode,
+        levelReached,
+        goldReward: combatState.resolvedCombat?.goldReward,
+        playerFinalHp: combatState.resolvedCombat?.player.hp,
+        enemyFinalHp: combatState.resolvedCombat?.enemy.hp,
       });
-    }
 
-    const isVictory = result === 'VICTORY';
-    const levelReached = combatInput?.campaignLevel ?? profile?.currentLevel ?? 1;
-    const isFinalWeekBoss = isBossFight && currentWeek === 3;
-    const isOnChainMode = mode !== 'guest' && combatInput !== undefined;
+      // Stop the auto-commit timer
+      stopAutoCommit();
 
-    console.log('[CombatScreen] Combat complete:', {
-      result,
-      localResult,
-      isVictory,
-      isBossFight,
-      currentWeek,
-      isFinalWeekBoss,
-      isOnChainMode,
-      levelReached,
-      goldReward: combatState.resolvedCombat?.goldReward,
-      playerFinalHp: combatState.resolvedCombat?.player.hp,
-      enemyFinalHp: combatState.resolvedCombat?.enemy.hp,
-    });
+      // For defeat or final week boss victory: end session immediately
+      // For regular victory or non-final boss victory: no cleanup needed, continue playing
+      const shouldEndSession = !isVictory || isFinalWeekBoss;
 
-    // Stop the auto-commit timer
-    stopAutoCommit();
+      let duelReplayCombatInput:
+        | NonNullable<RootStackParamList['Combat']>['combatInput']
+        | undefined;
 
-    // For defeat or final week boss victory: end session immediately
-    // For regular victory or non-final boss victory: no cleanup needed, continue playing
-    const shouldEndSession = !isVictory || isFinalWeekBoss;
+      const tryFinalizeDuelAndBuildReplay = async () => {
+        if (!wallet.publicKey || !session || !gameplayState || mapSeed === null) return;
 
-      let duelReplayCombatInput: NonNullable<RootStackParamList['Combat']>['combatInput'] | undefined;
+        // Undelegate session from ER before sending finalize_duel_run to base chain.
+        // Without this, game_state is still owned by the delegation program and the
+        // base chain instruction fails with AccountOwnedByWrongProgram.
+        const undelegateResult = await undelegateCurrentSession();
+        if (!undelegateResult.success) {
+          console.warn(
+            '[CombatScreen] Failed to undelegate before duel finalization:',
+            undelegateResult.error
+          );
+          return;
+        }
 
-    const tryFinalizeDuelAndBuildReplay = async () => {
-      if (!wallet.publicKey || !session || !gameplayState || mapSeed === null) return;
+        const duelProgram = createGameplayStateProgram(connection);
 
-      // Undelegate session from ER before sending finalize_duel_run to base chain.
-      // Without this, game_state is still owned by the delegation program and the
-      // base chain instruction fails with AccountOwnedByWrongProgram.
-      const undelegateResult = await undelegateCurrentSession();
-      if (!undelegateResult.success) {
-        console.warn('[CombatScreen] Failed to undelegate before duel finalization:', undelegateResult.error);
-        return;
-      }
+        const ourKey = wallet.publicKey.toBase58();
+        const duelEntry = await fetchDuelEntry(duelProgram, gameplayState.session);
+        if (!duelEntry || duelEntry.player.toBase58() !== ourKey) return;
 
-      const duelProgram = createGameplayStateProgram(connection);
+        const [gameStatePda] = PublicKey.findProgramAddressSync(
+          [Buffer.from('game_state'), gameplayState.session.toBuffer()],
+          duelProgram.programId
+        );
 
-      const ourKey = wallet.publicKey.toBase58();
-      const duelEntry = await fetchDuelEntry(duelProgram, gameplayState.session);
-      if (!duelEntry || duelEntry.player.toBase58() !== ourKey) return;
+        const sessionSignerKeypair = getSessionSignerKeypair();
+        if (!sessionSignerKeypair) return;
 
-      const [gameStatePda] = PublicKey.findProgramAddressSync(
-        [Buffer.from('game_state'), gameplayState.session.toBuffer()],
-        duelProgram.programId
-      );
+        const tx = await buildFinalizeDuelRunTransaction(
+          connection,
+          duelProgram,
+          wallet.publicKey,
+          sessionSignerKeypair.publicKey,
+          gameStatePda,
+          gameplayState.session,
+          duelEntry.matchedCreatorPlayer
+        );
 
-      const sessionSignerKeypair = getSessionSignerKeypair();
-      if (!sessionSignerKeypair) return;
+        const signature = await sendSessionSignerTransaction(connection, tx, sessionSignerKeypair);
+        await connection.confirmTransaction(signature, 'confirmed');
 
-      const tx = await buildFinalizeDuelRunTransaction(
-        connection,
-        duelProgram,
-        wallet.publicKey,
-        sessionSignerKeypair.publicKey,
-        gameStatePda,
-        gameplayState.session,
-        duelEntry.matchedCreatorPlayer
-      );
+        const events = await parseDuelEvents(connection, duelProgram, signature);
 
-      const signature = await sendSessionSignerTransaction(connection, tx, sessionSignerKeypair);
-      await connection.confirmTransaction(signature, 'confirmed');
+        if (
+          !events.combatVisual ||
+          !events.resolved ||
+          events.resolved.resolution !== 'completedCombat'
+        ) {
+          return;
+        }
 
-      const events = await parseDuelEvents(
-        connection,
-        duelProgram,
-        signature
-      );
+        const visual = events.combatVisual;
+        const isPlayerA = visual.playerA.toBase58() === ourKey;
+        const ourToolInstance = isPlayerA ? visual.playerATool : visual.playerBTool;
+        const ourGearInstances = isPlayerA ? visual.playerAGear : visual.playerBGear;
+        const oppToolInstance = isPlayerA ? visual.playerBTool : visual.playerATool;
+        const oppGearInstances = isPlayerA ? visual.playerBGear : visual.playerAGear;
 
-      if (!events.combatVisual || !events.resolved || events.resolved.resolution !== 'completedCombat') {
-        return;
-      }
+        const playerTool = ourToolInstance ? convertItemInstanceToTool(ourToolInstance) : null;
+        const playerGear = ourGearInstances
+          .filter((g): g is NonNullable<typeof g> => g !== null)
+          .map((g) => convertItemInstanceToGear(g))
+          .filter((g): g is Gear => g !== null);
 
-      const visual = events.combatVisual;
-      const isPlayerA = visual.playerA.toBase58() === ourKey;
-      const ourToolInstance = isPlayerA ? visual.playerATool : visual.playerBTool;
-      const ourGearInstances = isPlayerA ? visual.playerAGear : visual.playerBGear;
-      const oppToolInstance = isPlayerA ? visual.playerBTool : visual.playerATool;
-      const oppGearInstances = isPlayerA ? visual.playerBGear : visual.playerAGear;
+        const enemyTool = oppToolInstance ? convertItemInstanceToTool(oppToolInstance) : null;
+        const enemyGear = oppGearInstances
+          .filter((g): g is NonNullable<typeof g> => g !== null)
+          .map((g) => convertItemInstanceToGear(g))
+          .filter((g): g is Gear => g !== null);
 
-      const playerTool = ourToolInstance ? convertItemInstanceToTool(ourToolInstance) : null;
-      const playerGear = ourGearInstances
-        .filter((g): g is NonNullable<typeof g> => g !== null)
-        .map((g) => convertItemInstanceToGear(g))
-        .filter((g): g is Gear => g !== null);
+        const player = buildDuelCombatant('You', true, 'player', playerTool, playerGear);
+        const enemy = buildDuelCombatant('Opponent', false, 'pvpOpponent', enemyTool, enemyGear);
 
-      const enemyTool = oppToolInstance ? convertItemInstanceToTool(oppToolInstance) : null;
-      const enemyGear = oppGearInstances
-        .filter((g): g is NonNullable<typeof g> => g !== null)
-        .map((g) => convertItemInstanceToGear(g))
-        .filter((g): g is Gear => g !== null);
+        const combatLog: BackendCombatLogEntry[] = visual.combatLog.map((entry) => ({
+          ...entry,
+          isPlayer: isPlayerA ? entry.isPlayer : !entry.isPlayer,
+        }));
+        const isWinner = events.resolved.winner?.toBase58() === ourKey;
 
-      const player = buildDuelCombatant('You', true, 'player', playerTool, playerGear);
-      const enemy = buildDuelCombatant('Opponent', false, 'pvpOpponent', enemyTool, enemyGear);
-
-      const combatLog: BackendCombatLogEntry[] = visual.combatLog.map((entry) => ({
-        ...entry,
-        isPlayer: isPlayerA ? entry.isPlayer : !entry.isPlayer,
-      }));
-      const isWinner = events.resolved.winner?.toBase58() === ourKey;
-
-      duelReplayCombatInput = {
-        player,
-        enemy,
-        seed: 0,
-        combatLog,
-        onChainOutcome: {
-          finalPlayerHp: isPlayerA ? visual.finalPlayerAHp : visual.finalPlayerBHp,
-          finalPlayerGold: 0,
-          playerWon: isWinner,
-        },
-        duelReplay: true,
-        preserveArmor: true,
+        duelReplayCombatInput = {
+          player,
+          enemy,
+          seed: 0,
+          combatLog,
+          onChainOutcome: {
+            finalPlayerHp: isPlayerA ? visual.finalPlayerAHp : visual.finalPlayerBHp,
+            finalPlayerGold: 0,
+            playerWon: isWinner,
+          },
+          duelReplay: true,
+          preserveArmor: true,
+        };
       };
-    };
 
       if (shouldEndSession && hasActiveSession && mode !== 'guest') {
         const isDuelRun = gameplayState?.runMode === RunMode.Duel;
@@ -423,13 +449,13 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
         return;
       }
 
-    // Note: Run result recording is now handled via CPI in end_session
-    // No need to call recordRunResult separately - it's done on-chain
+      // Note: Run result recording is now handled via CPI in end_session
+      // No need to call recordRunResult separately - it's done on-chain
 
-    // Update local game state - ONLY for guest mode
-    // In on-chain mode, state was already synced via SYNC_MOVE before navigation to CombatScreen
-    // Dispatching RESOLVE_COMBAT in on-chain mode would overwrite the on-chain synced HP with
-    // the local combat replay result, causing HP desync (e.g., on-chain HP=4 but displays HP=10)
+      // Update local game state - ONLY for guest mode
+      // In on-chain mode, state was already synced via SYNC_MOVE before navigation to CombatScreen
+      // Dispatching RESOLVE_COMBAT in on-chain mode would overwrite the on-chain synced HP with
+      // the local combat replay result, causing HP desync (e.g., on-chain HP=4 but displays HP=10)
       if (!isOnChainMode) {
         console.log('[CombatScreen] Guest mode: Dispatching RESOLVE_COMBAT with result:', result);
         gameDispatch({
@@ -441,7 +467,7 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
         console.log('[CombatScreen] On-chain mode: Skipping RESOLVE_COMBAT (state already synced)');
       }
 
-    // Navigate based on result
+      // Navigate based on result
       const resolvedTotalMoves = combatInput?.totalMoves ?? gameState?.totalMoves ?? 0;
       // Convert local TimePhase (DAY/NIGHT) + cycle to on-chain phase number
       const localPhaseNumber = gameState?.time
@@ -455,17 +481,19 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
         // causes visible flickering on the DeathScreen.
         navigation.reset({
           index: 0,
-          routes: [{
-            name: 'Death',
-            params: {
-              totalMoves: resolvedTotalMoves,
-              level: levelReached,
-              week: currentWeek,
-              phase: getPhaseLabel(combatInput?.phase ?? localPhaseNumber),
-              combatTurns: combatState.resolvedCombat?.turn ?? 0,
-              killedBy: combatState.resolvedCombat?.enemy.name,
+          routes: [
+            {
+              name: 'Death',
+              params: {
+                totalMoves: resolvedTotalMoves,
+                level: levelReached,
+                week: currentWeek,
+                phase: getPhaseLabel(combatInput?.phase ?? localPhaseNumber),
+                combatTurns: combatState.resolvedCombat?.turn ?? 0,
+                killedBy: combatState.resolvedCombat?.enemy.name,
+              },
             },
-          }],
+          ],
         });
       } else if (isFinalWeekBoss) {
         console.log('[CombatScreen] Navigating to Victory screen (final week boss victory)');
@@ -504,13 +532,19 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
     getSessionSignerKeypair,
   ]);
 
-  // Look up enemy trait from the combat state's enemy definition ID
-  const enemyTrait = useMemo(() => {
+  // Look up enemy traits: boss abilities for boss fights, field enemy trait otherwise
+  const enemyTraits = useMemo(() => {
+    if (isBossFight && combatInput?.bossId) {
+      const boss = BOSSES[combatInput.bossId as BossId];
+      if (boss?.abilities.length) {
+        return boss.abilities.map((a) => ({ name: a.name, description: a.description }));
+      }
+    }
     const enemyId = combatState.combat?.enemyDefinitionId;
     if (!enemyId) return undefined;
     const trait = ENEMY_TRAITS[enemyId as EnemyId];
-    return trait ? { name: trait.name, description: trait.description } : undefined;
-  }, [combatState.combat?.enemyDefinitionId]);
+    return trait ? [{ name: trait.name, description: trait.description }] : undefined;
+  }, [isBossFight, combatInput?.bossId, combatState.combat?.enemyDefinitionId]);
 
   // Extract player equipment for display
   const playerEquipment = useMemo(() => {
@@ -547,7 +581,7 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
               : undefined,
         dig: 0,
         gold: enemyGold ?? combatInput?.enemyGold,
-        trait: enemyTrait,
+        traits: enemyTraits,
         equippedTool: combatInput?.enemyTool,
         equippedGear: combatInput?.enemyGear ?? [],
       }}

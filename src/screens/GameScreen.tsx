@@ -13,6 +13,7 @@ import { useSession } from '../contexts/SessionContext';
 import { useProfile } from '../contexts/ProfileContext';
 import { useGameplayStateContext } from '../contexts/GameplayStateContext';
 import { useWallet } from '../contexts/WalletContext';
+import { useAudio } from '../contexts/AudioContext';
 import { useSolanaConnection } from '../contexts/SolanaConnectionContext';
 import { RunMode } from '../services/solana/types/gameplay_state';
 import { convertItemInstanceToGear, convertItemInstanceToTool } from '../services/solana/pitDraft';
@@ -43,7 +44,11 @@ import { usePsg1Input } from 'psg1-sim';
 import { Direction, DIRECTION_DELTA } from '../game/input/types';
 import { TileType, MapEnemy, MapPOI } from '../game/map/types';
 import { getDiscoveredWaypoints } from '../game/entities/pois';
-import { canAffordCostAcrossPhases, selectDuelWeekBossForSeed, selectWeekBossForLevel } from '../game/time/progression';
+import {
+  canAffordCostAcrossPhases,
+  selectDuelWeekBossForSeed,
+  selectWeekBossForLevel,
+} from '../game/time/progression';
 import { Typography } from '../theme/typography';
 import { useEquippedSkinImage } from '../hooks/useEquippedSkinImage';
 import { promptTransactionRetry } from '../utils/transaction-alerts';
@@ -56,10 +61,7 @@ import type {
   ItemRarity,
   Position,
 } from '../game/engine/types';
-import {
-  LogAction,
-  type BackendCombatLogEntry,
-} from '../services/solana/types/combat_events';
+import { LogAction, type BackendCombatLogEntry } from '../services/solana/types/combat_events';
 import { calculateItemStats } from '@/game/entities/items';
 import type { GauntletCombatVisualEvent } from '@/services/solana/gauntlet';
 import { fetchGauntletEchoFromGameState } from '@/services/solana/gauntlet';
@@ -495,6 +497,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
   const variant = useScreenVariant();
   const nightMovement = useNightMovement();
   const poiInteraction = usePoiInteraction();
+  const { playBgm, playSfx } = useAudio();
   const isFocused = useIsFocused();
   const inputMode = useInputMode();
   const isController = inputMode === 'controller';
@@ -606,6 +609,25 @@ export function GameScreen({ navigation }: GameScreenProps) {
       isTriggeringBossRef.current = false;
     }
   }, [isFocused]);
+
+  // Audio: Handle exploration BGM based on phase + night transition SFX
+  const prevPhaseRef = useRef(state?.time?.phase);
+  useEffect(() => {
+    if (!state || !isFocused) return;
+
+    const currentPhase = state.time?.phase;
+    const isNight = currentPhase === 'NIGHT';
+
+    // Play night transition SFX when switching from DAY to NIGHT
+    if (isNight && prevPhaseRef.current === 'DAY') {
+      playSfx('phase_night');
+    }
+    prevPhaseRef.current = currentPhase;
+
+    // Play correct BGM for the phase, resuming from prior timestamp if same track
+    // (the AudioContext handles crossfading internally via the playBgm options)
+    playBgm(isNight ? 'exploration_night' : 'exploration_day', { resume: true, crossfade: true });
+  }, [state?.time?.phase, isFocused, playBgm, playSfx]);
 
   useEffect(() => {
     if (!isFocused || state || !hasActiveSession || !sessionPda || isRestoringSessionRef.current) {
@@ -736,17 +758,14 @@ export function GameScreen({ navigation }: GameScreenProps) {
           // Week 1 death → state.time.week=1, Week 1 win → state.time.week=2.
           // Week 2 death → state.time.week=2, Week 2 win → state.time.week=3.
           // So we check both the current week and the previous week.
-          (state.time.week <= 2 ||
-            (!onChainState.isDead && state.time.week === 3)));
+          (state.time.week <= 2 || (!onChainState.isDead && state.time.week === 3)));
 
       if (bossAlreadyResolvedInline) {
         // When the player won, the week already advanced on-chain, so
         // resolvedWeekBoss points at the NEXT week's boss. Compute the
         // correct (just-fought) boss from the previous week instead.
         const playerWon = !onChainState.isDead;
-        const foughtWeek = playerWon
-          ? ((state.time.week - 1) as 1 | 2 | 3)
-          : state.time.week;
+        const foughtWeek = playerWon ? ((state.time.week - 1) as 1 | 2 | 3) : state.time.week;
         const foughtBoss: BossId | null =
           onChainState.runMode === RunMode.Duel &&
           (foughtWeek === 1 || foughtWeek === 2) &&
@@ -755,7 +774,10 @@ export function GameScreen({ navigation }: GameScreenProps) {
             : selectWeekBossForLevel(onChainState.campaignLevel, foughtWeek);
 
         if (!foughtBoss) {
-          console.warn('[GameScreen] Boss already resolved inline but no boss ID for week', foughtWeek);
+          console.warn(
+            '[GameScreen] Boss already resolved inline but no boss ID for week',
+            foughtWeek
+          );
           isTriggeringBossRef.current = false;
           return;
         }
@@ -871,13 +893,10 @@ export function GameScreen({ navigation }: GameScreenProps) {
             state.time.week
           );
 
-          console.warn(
-            '[GameScreen] Boss fight on-chain failed, falling back to local resolver:',
-            {
-              bossId: resolvedWeekBoss,
-              playerHp: playerStats.hp,
-            }
-          );
+          console.warn('[GameScreen] Boss fight on-chain failed, falling back to local resolver:', {
+            bossId: resolvedWeekBoss,
+            playerHp: playerStats.hp,
+          });
 
           navigateToCombat(navigation, bossCombatParams, {
             campaignLevel: onChainState.campaignLevel,
@@ -1134,7 +1153,13 @@ export function GameScreen({ navigation }: GameScreenProps) {
         if (!isHighlighted) {
           // First tap on wall: show highlight (local only, no transaction)
           dispatch({ type: 'MOVE', direction });
-          if (state.player.stats.dig < 1) showWallBreakFeedback('Requires DIG to break walls');
+          if (state.player.stats.dig < 1) {
+            showWallBreakFeedback('Requires DIG to break walls');
+            playSfx('ui_error');
+          } else {
+            // Highlighting a wall
+            playSfx('ui_hover');
+          }
           return;
         }
 
@@ -1144,9 +1169,13 @@ export function GameScreen({ navigation }: GameScreenProps) {
           !canAffordCostAcrossPhases(state.time, state.wallHighlight.cost)
         ) {
           showWallBreakFeedback(`Not enough moves (need ${state.wallHighlight.cost})`);
+          playSfx('ui_error');
           return;
         }
       }
+
+      // Play appropriate movement sound immediately upon confirming the move direction
+      playSfx(isWall ? 'move_dig' : 'move_floor');
 
       // On-chain-first: send transaction, await confirmation, then sync local state
       isMovePendingRef.current = true;
@@ -1316,7 +1345,9 @@ export function GameScreen({ navigation }: GameScreenProps) {
                     preCombatSeed
                   );
                   if (fallback) {
-                    console.log('[GameScreen] Fallback gauntlet combat params built, navigating to CombatScreen');
+                    console.log(
+                      '[GameScreen] Fallback gauntlet combat params built, navigating to CombatScreen'
+                    );
                     navigateToCombat(navigation, fallback, result.newState);
                     return;
                   }
@@ -1573,6 +1604,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
       return;
     }
 
+    playSfx('ui_click');
     // Guest mode: teleport player locally
     if (mode === 'guest' || !hasActiveSession) {
       console.log('[GameScreen] Guest mode fast travel to', dest.x, dest.y);
@@ -1800,7 +1832,10 @@ export function GameScreen({ navigation }: GameScreenProps) {
         handleDirection(Direction.Right);
       },
       onY: () => {
-        if (!isFastTravelActive) toggleOverviewMode();
+        if (!isFastTravelActive) {
+          playSfx('map_reveal');
+          toggleOverviewMode();
+        }
       },
       onA: () => {
         if (inventoryFocus === 'player') {
@@ -1808,7 +1843,8 @@ export function GameScreen({ navigation }: GameScreenProps) {
             // Itemset slot
             const itemsetIndex = focusedSlotIndex - maxGearSlots - 1;
             const itemsetId = state?.player?.activeItemsets?.[itemsetIndex];
-            if (itemsetId) handleInspectItemset(itemsetId as import('../game/engine/types').ItemsetId);
+            if (itemsetId)
+              handleInspectItemset(itemsetId as import('../game/engine/types').ItemsetId);
           } else if (focusedSlotIndex === maxGearSlots) {
             if (state?.player?.equippedTool) handleInspectTool(state.player.equippedTool);
           } else {
@@ -2122,8 +2158,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
                 finalEnemyHp,
                 rawFinalPlayerHp,
                 signature,
-              } =
-                result.bossResolved;
+              } = result.bossResolved;
               // state.time.week is pre-POI (closure captures pre-dispatch value),
               // which is the correct fought week for both wins and losses.
               const foughtWeek = state.time.week as 1 | 2 | 3;
@@ -2132,27 +2167,21 @@ export function GameScreen({ navigation }: GameScreenProps) {
                 (foughtWeek === 1 || foughtWeek === 2) &&
                 mapSeed != null
                   ? selectDuelWeekBossForSeed(mapSeed, foughtWeek)
-                  : selectWeekBossForLevel(
-                      onChainState?.campaignLevel ?? 0,
-                      foughtWeek
-                    );
+                  : selectWeekBossForLevel(onChainState?.campaignLevel ?? 0, foughtWeek);
 
               if (foughtBoss) {
-                console.log(
-                  '[GameScreen] Boss resolved during POI, navigating to CombatScreen:',
-                  {
-                    playerWon,
-                    foughtWeek,
-                    foughtBoss,
-                    hasCombatLog: !!combatLog,
-                    combatLogEntries: combatLog?.length ?? 0,
-                    preBossPlayerHp,
-                    turnsTaken,
-                    finalEnemyHp,
-                    rawFinalPlayerHp,
-                    signature,
-                  }
-                );
+                console.log('[GameScreen] Boss resolved during POI, navigating to CombatScreen:', {
+                  playerWon,
+                  foughtWeek,
+                  foughtBoss,
+                  hasCombatLog: !!combatLog,
+                  combatLogEntries: combatLog?.length ?? 0,
+                  preBossPlayerHp,
+                  turnsTaken,
+                  finalEnemyHp,
+                  rawFinalPlayerHp,
+                  signature,
+                });
                 const playerStats = {
                   hp:
                     preBossPlayerHp ??
@@ -2257,9 +2286,10 @@ export function GameScreen({ navigation }: GameScreenProps) {
         '[GameScreen] handlePOIOption: LOCAL fallback path | activePOI:',
         state?.activePOI?.poi?.definitionId
       );
+      playSfx('ui_click');
       dispatch({ type: 'SELECT_POI_OPTION', optionIndex });
     },
-    [dispatch, poiInteraction, state?.activePOI?.poi?.definitionId]
+    [dispatch, poiInteraction, state?.activePOI?.poi?.definitionId, playSfx]
   );
 
   // Override POI interaction options with on-chain cache offers when available
@@ -2284,7 +2314,9 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
   const [inspectedItem, setInspectedItem] = useState<Tool | Gear | null>(null);
   const [isTooltipVisible, setTooltipVisible] = useState(false);
-  const [inspectedItemset, setInspectedItemset] = useState<import('../game/engine/types').ItemsetId | null>(null);
+  const [inspectedItemset, setInspectedItemset] = useState<
+    import('../game/engine/types').ItemsetId | null
+  >(null);
   const [isItemsetTooltipVisible, setItemsetTooltipVisible] = useState(false);
 
   const handleInspectItem = useCallback((item: Tool | Gear) => {
@@ -2453,7 +2485,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
                         justifyContent: 'center',
                         alignItems: 'center',
                       }}
-                      onPress={toggleOverviewMode}
+                      onPress={() => { playSfx('map_reveal'); toggleOverviewMode(); }}
                       disabled={isFastTravelActive}
                     >
                       <Image

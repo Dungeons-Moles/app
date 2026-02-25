@@ -11,6 +11,7 @@ import {
   Animated,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useFocusEffect } from '@react-navigation/native';
 import { useProfile } from '../contexts/ProfileContext';
 import { useScreenVariant } from '../contexts/ScreenVariantContext';
 import { useWallet, type SupportedWallet } from '../contexts/WalletContext';
@@ -21,6 +22,7 @@ import { BackpackIcon } from '../components/wallet/BackpackIcon';
 import { useControllerAction } from '../hooks/useControllerAction';
 import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHints';
 import { ControllerKeyboard } from '../components/ui/ControllerKeyboard';
+import { useAudio } from '../contexts/AudioContext';
 
 type AccountScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Account'>;
@@ -38,6 +40,7 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
     mode,
   } = useProfile();
   const { wallet, connect, isConnecting, error: walletError } = useWallet();
+  const { playBgm, playSfx, isInitialLoading } = useAudio();
   const screenVariant = useScreenVariant();
   const isCompact = screenVariant === 'compact';
   const [selectedWallet, setSelectedWallet] = useState<SupportedWallet>('Jupiter');
@@ -61,30 +64,35 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
   // --- Handlers ---
 
   const handleSignIn = useCallback(async () => {
+    playSfx('ui_click');
     setLocalError(null);
     const result = await connect(selectedWallet);
     if (!result) {
       return;
     }
-  }, [connect, selectedWallet]);
+  }, [connect, selectedWallet, playSfx]);
 
   const handlePlayAsGuest = useCallback(() => {
+    playSfx('ui_click');
     setLocalError(null);
     setGuestModeActivated(true);
     loginAsGuest();
-  }, [loginAsGuest]);
+  }, [loginAsGuest, playSfx]);
 
   const handleCreateProfile = useCallback(async () => {
     if (!profileName.trim()) {
+      playSfx('ui_error');
       setLocalError('Enter a display name to continue');
       return;
     }
 
     if (profileName.trim().length > 32) {
+      playSfx('ui_error');
       setLocalError('Name must be 32 characters or less');
       return;
     }
 
+    playSfx('ui_click');
     setLocalError(null);
     setIsActionLoading(true);
     try {
@@ -92,47 +100,54 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
       if (result.success) {
         navigation.replace('Hub');
       } else {
+        playSfx('ui_error');
         setLocalError(result.error ?? 'Failed to create profile');
       }
     } finally {
       setIsActionLoading(false);
     }
-  }, [profileName, createProfile, navigation]);
+  }, [profileName, createProfile, navigation, playSfx]);
 
   const handleDPadLeft = useCallback(() => {
+    playSfx('ui_hover');
     setSelectedWallet((prev) => {
       const idx = WALLET_IDS.indexOf(prev);
       return WALLET_IDS[(idx - 1 + WALLET_IDS.length) % WALLET_IDS.length];
     });
-  }, []);
+  }, [playSfx]);
 
   const handleDPadRight = useCallback(() => {
+    playSfx('ui_hover');
     setSelectedWallet((prev) => {
       const idx = WALLET_IDS.indexOf(prev);
       return WALLET_IDS[(idx + 1) % WALLET_IDS.length];
     });
-  }, []);
+  }, [playSfx]);
 
   // --- Controller integration ---
 
   const hasName = profileName.trim().length > 0;
 
   const handleOpenKeyboard = useCallback(() => {
+    playSfx('ui_click');
     setShowKeyboard(true);
-  }, []);
+  }, [playSfx]);
 
   const handleKeyboardSubmit = useCallback((name: string) => {
+    playSfx('ui_click');
     setProfileName(name);
     setShowKeyboard(false);
-  }, []);
+  }, [playSfx]);
 
   const handleKeyboardCancel = useCallback(() => {
+    playSfx('ui_click');
     setShowKeyboard(false);
-  }, []);
+  }, [playSfx]);
 
   const handleClearName = useCallback(() => {
+    playSfx('ui_click');
     setProfileName('');
-  }, []);
+  }, [playSfx]);
 
   useControllerAction(
     {
@@ -166,7 +181,15 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
       duration: 600,
       useNativeDriver: true,
     }).start();
-  }, []);
+  }, [fadeAnim]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!isInitialLoading) {
+        playBgm('title');
+      }
+    }, [playBgm, isInitialLoading])
+  );
 
   useEffect(() => {
     if (!isProfileLoading && !hasInitialized.current) {
@@ -247,7 +270,9 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
             <View style={[styles.topSlot, isCompact && { top: '19%' }]}>
               {!isConnected ? (
                 <>
-                  <Text style={[styles.profileLabel, isCompact && { fontSize: 22 }]}>SUPPORTED WALLETS</Text>
+                  <Text style={[styles.profileLabel, isCompact && { fontSize: 22 }]}>
+                    SUPPORTED WALLETS
+                  </Text>
                   <View style={styles.walletOptions}>
                     {(
                       [
@@ -263,7 +288,7 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
                           isCompact && { width: 96, height: 96 },
                           id === selectedWallet && styles.walletOptionSelected,
                         ]}
-                        onPress={() => setSelectedWallet(id)}
+                        onPress={() => { playSfx('ui_click'); setSelectedWallet(id); }}
                         activeOpacity={0.7}
                         disabled={showLoading}
                       >
@@ -284,7 +309,7 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
                         isCompact && { width: 96, height: 96 },
                         'DevKeypair' === selectedWallet && styles.walletOptionSelected,
                       ]}
-                      onPress={() => setSelectedWallet('DevKeypair')}
+                      onPress={() => { playSfx('ui_click'); setSelectedWallet('DevKeypair'); }}
                       activeOpacity={0.7}
                       disabled={showLoading}
                     >
@@ -303,13 +328,22 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
                       </Text>
                     </TouchableOpacity>
                   </View>
-                  <Text style={[styles.walletHint, isCompact && { fontSize: 20 }]}>Select a wallet to sign in</Text>
+                  <Text style={[styles.walletHint, isCompact && { fontSize: 20 }]}>
+                    Select a wallet to sign in
+                  </Text>
                 </>
               ) : (
                 <>
-                  <Text style={[styles.profileLabel, isCompact && { fontSize: 22, marginBottom: 20 }]}>CREATE PROFILE</Text>
+                  <Text
+                    style={[styles.profileLabel, isCompact && { fontSize: 22, marginBottom: 20 }]}
+                  >
+                    CREATE PROFILE
+                  </Text>
                   <TextInput
-                    style={[styles.profileInput, isCompact && { fontSize: 20, paddingVertical: 14, width: '85%' }]}
+                    style={[
+                      styles.profileInput,
+                      isCompact && { fontSize: 20, paddingVertical: 14, width: '85%' },
+                    ]}
                     placeholder="Adventurer name"
                     placeholderTextColor="#999999"
                     value={profileName}
@@ -337,7 +371,15 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
                   {showLoading ? (
                     <View style={styles.loadingRow}>
                       <ActivityIndicator size={isCompact ? 'large' : 'small'} color="#ffffff" />
-                      <Text style={[styles.primaryButtonText, isCompact && { fontSize: 32 }, { marginLeft: 8 }]}>Loading...</Text>
+                      <Text
+                        style={[
+                          styles.primaryButtonText,
+                          isCompact && { fontSize: 32 },
+                          { marginLeft: 8 },
+                        ]}
+                      >
+                        Loading...
+                      </Text>
                     </View>
                   ) : (
                     <Text style={[styles.primaryButtonText, isCompact && { fontSize: 32 }]}>
@@ -352,13 +394,19 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
             {!isConnected && (
               <View style={[styles.guestSlot, isCompact && { bottom: '13%' }]}>
                 <TouchableOpacity onPress={handlePlayAsGuest} disabled={showLoading}>
-                  <Text style={[styles.guestText, isCompact && { fontSize: 22 }]}>or play as guest</Text>
+                  <Text style={[styles.guestText, isCompact && { fontSize: 22 }]}>
+                    or play as guest
+                  </Text>
                 </TouchableOpacity>
               </View>
             )}
 
             <View style={[styles.errorSlot, isCompact && { bottom: '14%' }]}>
-              {errorMessage ? <Text style={[styles.errorText, isCompact && { fontSize: 16 }]}>{errorMessage}</Text> : null}
+              {errorMessage ? (
+                <Text style={[styles.errorText, isCompact && { fontSize: 16 }]}>
+                  {errorMessage}
+                </Text>
+              ) : null}
             </View>
           </ImageBackground>
         </View>
@@ -376,6 +424,12 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
 
       {/* Controller button hints */}
       <ControllerHints hints={controllerHints} />
+
+      <View style={[styles.versionLabel, isCompact && styles.versionLabelCompact]}>
+        <Text style={[styles.versionText, isCompact && styles.versionTextCompact]}>
+          Beta Version 0.0.1
+        </Text>
+      </View>
     </Animated.View>
   );
 }
@@ -565,5 +619,31 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#a33a3a',
     textAlign: 'center',
+  },
+  versionLabel: {
+    position: 'absolute',
+    top: 14,
+    left: 14,
+    zIndex: 100,
+    backgroundColor: '#a33a3a',
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  versionLabelCompact: {
+    top: 24,
+    left: 24,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  versionText: {
+    fontSize: 12,
+    color: '#ffffff',
+    fontFamily: 'Inter-Regular',
+    fontWeight: 'bold',
+  },
+  versionTextCompact: {
+    fontSize: 18,
   },
 });

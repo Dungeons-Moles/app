@@ -12,6 +12,8 @@ interface ItemTooltipProps {
   onDismiss: () => void;
 }
 
+import { useAudio } from '@/contexts/AudioContext';
+
 const TOOLTIP_MAX_WIDTH = 240;
 const SCREEN_PADDING = 12;
 
@@ -30,10 +32,16 @@ export function ItemTooltip({
   anchorPosition,
   onDismiss,
 }: ItemTooltipProps) {
+  const { playSfx } = useAudio();
+  const handleDismiss = () => {
+    playSfx('ui_click');
+    onDismiss();
+  };
+
   useEffect(() => {
-    const timeout = setTimeout(onDismiss, 3000);
+    const timeout = setTimeout(handleDismiss, 3000);
     return () => clearTimeout(timeout);
-  }, [onDismiss, name, description, rarity, anchorPosition.x, anchorPosition.y]);
+  }, [handleDismiss, name, description, rarity, anchorPosition.x, anchorPosition.y]);
 
   const rarityColor = ITEM_RARITY_COLORS[rarity] ?? '#9ca3af';
   const normalizedDescription = useMemo(() => {
@@ -63,9 +71,9 @@ export function ItemTooltip({
   );
 
   return (
-    <Modal transparent visible animationType="fade" onRequestClose={onDismiss}>
+    <Modal transparent visible animationType="fade" onRequestClose={handleDismiss}>
       <View style={styles.modalRoot}>
-        <Pressable style={styles.backdrop} onPress={onDismiss} />
+        <Pressable style={styles.backdrop} onPress={handleDismiss} />
         <View style={[styles.tooltip, { left, top, maxWidth, borderColor: rarityColor }]}>
           <Text style={styles.name}>{name}</Text>
           <Text style={[styles.rarity, { color: rarityColor }]}>{formatRarityLabel(rarity)}</Text>

@@ -11,6 +11,7 @@ import type { Tool, Gear, InventorySlot, ItemsetId, ToolOil } from '../../game/e
 import { getTierFromRarity, type ItemTier } from '../../data/gear';
 import { Typography } from '../../theme/typography';
 import { useScreenVariant } from '../../contexts/ScreenVariantContext';
+import { useAudio } from '@/contexts/AudioContext';
 
 const SLOT_BG = require('../../../assets/ui/frames/square.png');
 const LOCK_ICON = require('../../../assets/icons/ui/lock.png');
@@ -70,6 +71,7 @@ function ItemSlot({
   isSidebar,
   size = 28,
 }: ItemSlotProps) {
+  const { playSfx } = useAudio();
   const didLongPressRef = useRef(false);
   const handlePress = useCallback(() => {
     if (didLongPressRef.current) {
@@ -77,16 +79,18 @@ function ItemSlot({
       return;
     }
     if (item && slotIndex !== undefined && onPress) {
+      playSfx('ui_click');
       onPress(item, slotIndex);
     }
-  }, [item, slotIndex, onPress]);
+  }, [item, slotIndex, onPress, playSfx]);
 
   const handleLongPress = useCallback(() => {
     if (item && slotIndex !== undefined && onLongPress) {
       didLongPressRef.current = true;
+      playSfx('ui_hover');
       onLongPress(item, slotIndex);
     }
-  }, [item, slotIndex, onLongPress]);
+  }, [item, slotIndex, onLongPress, playSfx]);
 
   const rarityColor = useMemo(() => (item ? getRarityColor(item) : DEFAULT_RARITY_COLOR), [item]);
   const tierBorder = useMemo(() => {
@@ -272,6 +276,7 @@ function ActiveItemsets({
   controllerFocusIndex?: number | null;
   baseIndex?: number;
 }) {
+  const { playSfx } = useAudio();
   if (itemsets.length === 0) {
     return null;
   }
@@ -284,7 +289,12 @@ function ActiveItemsets({
         return (
           <FocusGlow key={id} active={isFocused}>
             <TouchableOpacity
-              onPress={() => onPress?.(id)}
+              onPress={() => {
+                if (onPress) {
+                  playSfx('ui_click');
+                  onPress(id);
+                }
+              }}
               activeOpacity={onPress ? 0.7 : 1}
               disabled={!onPress}
             >
@@ -361,8 +371,16 @@ export function InventoryPanel({
   const isCompactSidebar = !!isSidebar && variant === 'compact';
   const textColor = isSidebar ? '#000000' : '#FFFFFF';
   const useGauntletSidebarSizing = !!isSidebar && isGauntletLayout;
-  const gearSlotSize = isCompactSidebar ? COMPACT_GEAR_SLOT_SIZE : useGauntletSidebarSizing ? SIDEBAR_GEAR_SLOT_SIZE : 32;
-  const toolSlotSize = isCompactSidebar ? COMPACT_TOOL_SLOT_SIZE : useGauntletSidebarSizing ? SIDEBAR_TOOL_SLOT_SIZE : DEFAULT_TOOL_SLOT_SIZE;
+  const gearSlotSize = isCompactSidebar
+    ? COMPACT_GEAR_SLOT_SIZE
+    : useGauntletSidebarSizing
+      ? SIDEBAR_GEAR_SLOT_SIZE
+      : 32;
+  const toolSlotSize = isCompactSidebar
+    ? COMPACT_TOOL_SLOT_SIZE
+    : useGauntletSidebarSizing
+      ? SIDEBAR_TOOL_SLOT_SIZE
+      : DEFAULT_TOOL_SLOT_SIZE;
 
   return (
     <View
@@ -373,8 +391,19 @@ export function InventoryPanel({
       ]}
     >
       {/* Gear Section - Top */}
-      <View style={[styles.gearSection, (useGauntletSidebarSizing || isCompactSidebar) && styles.sidebarGearSection]}>
-        <Text style={[styles.sectionTitle, isCompactSidebar && styles.sidebarSectionTitle, { color: textColor }]}>
+      <View
+        style={[
+          styles.gearSection,
+          (useGauntletSidebarSizing || isCompactSidebar) && styles.sidebarGearSection,
+        ]}
+      >
+        <Text
+          style={[
+            styles.sectionTitle,
+            isCompactSidebar && styles.sidebarSectionTitle,
+            { color: textColor },
+          ]}
+        >
           GEAR ({inventory.length}/{inventoryCapacity})
         </Text>
         <View style={styles.gearGrid}>
@@ -404,16 +433,42 @@ export function InventoryPanel({
       </View>
 
       {/* Tool Section - Center */}
-      <View style={[styles.toolSection, (useGauntletSidebarSizing || isCompactSidebar) && styles.sidebarToolSection]}>
+      <View
+        style={[
+          styles.toolSection,
+          (useGauntletSidebarSizing || isCompactSidebar) && styles.sidebarToolSection,
+        ]}
+      >
         <View style={styles.toolHeaderRow}>
           <View style={[styles.toolHeaderCell, { width: toolSlotSize }]}>
-            <Text style={[styles.sectionTitle, isCompactSidebar && styles.sidebarSectionTitle, { color: textColor, marginBottom: 0 }]}>WEAPON</Text>
+            <Text
+              style={[
+                styles.sectionTitle,
+                isCompactSidebar && styles.sidebarSectionTitle,
+                { color: textColor, marginBottom: 0 },
+              ]}
+            >
+              WEAPON
+            </Text>
           </View>
           <View style={[styles.toolHeaderCell, { width: toolSlotSize }]}>
-            <Text style={[styles.sectionTitle, isCompactSidebar && styles.sidebarSectionTitle, { color: textColor, marginBottom: 0 }]}>OIL</Text>
+            <Text
+              style={[
+                styles.sectionTitle,
+                isCompactSidebar && styles.sidebarSectionTitle,
+                { color: textColor, marginBottom: 0 },
+              ]}
+            >
+              OIL
+            </Text>
           </View>
         </View>
-        <View style={[styles.toolRow, (useGauntletSidebarSizing || isCompactSidebar) && styles.sidebarToolRow]}>
+        <View
+          style={[
+            styles.toolRow,
+            (useGauntletSidebarSizing || isCompactSidebar) && styles.sidebarToolRow,
+          ]}
+        >
           <FocusGlow active={controllerFocusIndex === maxSlots}>
             <ItemSlot
               item={equippedTool}

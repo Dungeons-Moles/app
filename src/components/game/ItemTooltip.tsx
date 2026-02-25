@@ -5,20 +5,14 @@
  */
 
 import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  Image,
-  ImageBackground,
-} from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Image, ImageBackground } from 'react-native';
 import { InlineModal } from '../InlineModal';
 import { useScreenVariant } from '../../contexts/ScreenVariantContext';
 import type { Tool, Gear, ItemStats, ItemTag } from '../../game/engine/types';
-import { getToolDefinition, TOOL_DEFINITIONS } from '../../game/entities/items';
+import { getToolDefinition, TOOL_DEFINITIONS, getToolScaledEffectDescription } from '../../game/entities/items';
 import { GEAR_DEFINITIONS, getTierFromRarity, getScaledEffectDescription } from '../../data/gear';
 import { getItemsetsForItem } from '../../game/entities/itemsets';
+import { useAudio } from '@/contexts/AudioContext';
 
 const paperPanelSource = require('../../../assets/ui/panels/paper-panel.png');
 const squareSource = require('../../../assets/ui/frames/square.png');
@@ -137,7 +131,11 @@ function StatDisplay({ stats, scale = 1 }: { stats: ItemStats; scale?: number })
     <View style={styles.statsSection}>
       {statEntries.map((stat) => (
         <View key={stat.label} style={styles.statItem}>
-          <Image source={stat.icon} style={{ width: 16 * scale, height: 16 * scale }} resizeMode="contain" />
+          <Image
+            source={stat.icon}
+            style={{ width: 16 * scale, height: 16 * scale }}
+            resizeMode="contain"
+          />
           <Text style={[styles.statValue, { fontSize: 14 * scale }]}>+{stat.value}</Text>
           <Text style={[styles.statLabel, { fontSize: 12 * scale }]}>{stat.label}</Text>
         </View>
@@ -155,7 +153,9 @@ function TagsDisplay({ tags, scale = 1 }: { tags: ItemTag[]; scale?: number }) {
     <View style={styles.tagsSection}>
       {tags.map((tag) => (
         <View key={tag} style={styles.tagContainer}>
-          <Text style={[styles.tagText, { color: getTagColor(tag), fontSize: 10 * scale }]}>{tag}</Text>
+          <Text style={[styles.tagText, { color: getTagColor(tag), fontSize: 10 * scale }]}>
+            {tag}
+          </Text>
         </View>
       ))}
     </View>
@@ -187,9 +187,15 @@ function ItemsetsDisplay({ itemId, scale = 1 }: { itemId: string; scale?: number
 }
 
 export function ItemTooltip({ item, visible, onClose }: ItemTooltipProps) {
+  const { playSfx } = useAudio();
   const [layout, setLayout] = useState({ width: 0, height: 0 });
   const isCompact = useScreenVariant() === 'compact';
   const s = isCompact ? 1.5 : 1;
+
+  const handleClose = () => {
+    playSfx('ui_click');
+    onClose();
+  };
 
   if (!item) {
     return null;
@@ -202,20 +208,17 @@ export function ItemTooltip({ item, visible, onClose }: ItemTooltipProps) {
   const borderColor = getOriginalRarityColor(rarity);
   const tier = getTierFromRarity(rarity);
 
-  // Get effect description from definitions (scaled to current tier for gear)
+  // Get effect description scaled to current tier
   let effectDescription: string | null = null;
   if (isTool) {
-    const def = TOOL_DEFINITIONS[item.id];
-    if (def?.effect) {
-      effectDescription = def.effect.description;
-    }
+    effectDescription = getToolScaledEffectDescription(item.id, rarity);
   } else {
     effectDescription = getScaledEffectDescription(item.id, rarity);
   }
 
   return (
-    <InlineModal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onClose}>
+    <InlineModal visible={visible} transparent animationType="fade" onRequestClose={handleClose}>
+      <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={handleClose}>
         <View
           style={[styles.tooltipContainer, { minWidth: 380 * s, maxWidth: 440 * s }]}
           onLayout={(event) => setLayout(event.nativeEvent.layout)}
@@ -235,7 +238,10 @@ export function ItemTooltip({ item, visible, onClose }: ItemTooltipProps) {
             />
           )}
 
-          <TouchableOpacity activeOpacity={1} style={[styles.contentContainer, { padding: 48 * s }]}>
+          <TouchableOpacity
+            activeOpacity={1}
+            style={[styles.contentContainer, { padding: 48 * s }]}
+          >
             {/* Header */}
             <View style={[styles.header, { borderBottomColor: borderColor }]}>
               <View style={[styles.iconContainer, { width: 64 * s, height: 64 * s }]}>
@@ -257,7 +263,9 @@ export function ItemTooltip({ item, visible, onClose }: ItemTooltipProps) {
                     {getRarityName(rarity)}
                     {!isTool && baseRarity !== rarity && ` (${getRarityName(baseRarity)})`}
                   </Text>
-                  <Text style={[styles.tierLabel, { color: TIER_COLORS[tier - 1], fontSize: 11 * s }]}>
+                  <Text
+                    style={[styles.tierLabel, { color: TIER_COLORS[tier - 1], fontSize: 11 * s }]}
+                  >
                     Tier {TIER_LABELS[tier - 1]}
                   </Text>
                 </View>
@@ -270,7 +278,9 @@ export function ItemTooltip({ item, visible, onClose }: ItemTooltipProps) {
             {/* Effect */}
             {effectDescription && (
               <View style={styles.effectSection}>
-                <Text style={[styles.effectText, { fontSize: 12 * s, lineHeight: 16 * s }]}>{effectDescription}</Text>
+                <Text style={[styles.effectText, { fontSize: 12 * s, lineHeight: 16 * s }]}>
+                  {effectDescription}
+                </Text>
               </View>
             )}
 
@@ -282,7 +292,9 @@ export function ItemTooltip({ item, visible, onClose }: ItemTooltipProps) {
 
             {/* Type indicator */}
             <View style={styles.typeIndicator}>
-              <Text style={[styles.typeText, { fontSize: 10 * s }]}>{isTool ? 'Tool' : 'Gear'}</Text>
+              <Text style={[styles.typeText, { fontSize: 10 * s }]}>
+                {isTool ? 'Tool' : 'Gear'}
+              </Text>
             </View>
           </TouchableOpacity>
         </View>

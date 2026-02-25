@@ -1,17 +1,11 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  Image,
-} from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image } from 'react-native';
 import { Typography } from '@/theme/typography';
 import { useInputMode } from '@/hooks/useInputMode';
 import { useControllerAction } from '@/hooks/useControllerAction';
 import { FocusGlow } from '@/components/ui/FocusGlow';
 import { ControllerNumpad } from '@/components/ui/ControllerNumpad';
+import { useAudio } from '@/contexts/AudioContext';
 
 const iconASource = require('../../../assets/ui/control-buttons/a.png');
 const iconBSource = require('../../../assets/ui/control-buttons/b.png');
@@ -31,6 +25,7 @@ export function PriceInput({ onConfirm, onCancel, isCompact }: PriceInputProps) 
   const [focusIdx, setFocusIdx] = useState<FocusIndex>(0);
   const [showNumpad, setShowNumpad] = useState(false);
   const inputRef = useRef<TextInput>(null);
+  const { playSfx } = useAudio();
 
   const price = parseFloat(priceText) || 0;
   const sellerAmount = price * 0.95;
@@ -86,22 +81,22 @@ export function PriceInput({ onConfirm, onCancel, isCompact }: PriceInputProps) 
   }, [focusIdx]);
 
   useControllerAction(
-    showNumpad ? {} : {
-      onA: handleControllerA,
-      onB: onCancel,
-      onDPadUp: handleUp,
-      onDPadDown: handleDown,
-      onDPadLeft: handleLeft,
-      onDPadRight: handleRight,
-    },
+    showNumpad
+      ? {}
+      : {
+          onA: handleControllerA,
+          onB: onCancel,
+          onDPadUp: handleUp,
+          onDPadDown: handleDown,
+          onDPadLeft: handleLeft,
+          onDPadRight: handleRight,
+        },
     isController
   );
 
   return (
     <View style={[styles.container, isCompact && compactStyles.container]}>
-      <Text style={[styles.title, isCompact && compactStyles.title]}>
-        List for Sale
-      </Text>
+      <Text style={[styles.title, isCompact && compactStyles.title]}>List for Sale</Text>
 
       {/* Price Input */}
       <FocusGlow active={isController && focusIdx === 0} style={{ alignSelf: 'stretch' }}>
@@ -136,16 +131,28 @@ export function PriceInput({ onConfirm, onCancel, isCompact }: PriceInputProps) 
       {price > 0 && (
         <View style={styles.feeBreakdown}>
           <View style={styles.feeRow}>
-            <Text style={[styles.feeLabel, isCompact && compactStyles.feeLabel]}>You receive (95%)</Text>
-            <Text style={[styles.feeValue, isCompact && compactStyles.feeValue]}>{sellerAmount.toFixed(4)} SOL</Text>
+            <Text style={[styles.feeLabel, isCompact && compactStyles.feeLabel]}>
+              You receive (95%)
+            </Text>
+            <Text style={[styles.feeValue, isCompact && compactStyles.feeValue]}>
+              {sellerAmount.toFixed(4)} SOL
+            </Text>
           </View>
           <View style={styles.feeRow}>
-            <Text style={[styles.feeLabel, isCompact && compactStyles.feeLabel]}>Company fee (3%)</Text>
-            <Text style={[styles.feeValue, isCompact && compactStyles.feeValue]}>{companyFee.toFixed(4)} SOL</Text>
+            <Text style={[styles.feeLabel, isCompact && compactStyles.feeLabel]}>
+              Company fee (3%)
+            </Text>
+            <Text style={[styles.feeValue, isCompact && compactStyles.feeValue]}>
+              {companyFee.toFixed(4)} SOL
+            </Text>
           </View>
           <View style={styles.feeRow}>
-            <Text style={[styles.feeLabel, isCompact && compactStyles.feeLabel]}>Pool fee (2%)</Text>
-            <Text style={[styles.feeValue, isCompact && compactStyles.feeValue]}>{poolFee.toFixed(4)} SOL</Text>
+            <Text style={[styles.feeLabel, isCompact && compactStyles.feeLabel]}>
+              Pool fee (2%)
+            </Text>
+            <Text style={[styles.feeValue, isCompact && compactStyles.feeValue]}>
+              {poolFee.toFixed(4)} SOL
+            </Text>
           </View>
         </View>
       )}
@@ -158,7 +165,9 @@ export function PriceInput({ onConfirm, onCancel, isCompact }: PriceInputProps) 
             onPress={onCancel}
             activeOpacity={0.7}
           >
-            <Text style={[styles.cancelButtonText, isCompact && compactStyles.cancelButtonText]}>Cancel</Text>
+            <Text style={[styles.cancelButtonText, isCompact && compactStyles.cancelButtonText]}>
+              Cancel
+            </Text>
           </TouchableOpacity>
         </FocusGlow>
         <FocusGlow active={isController && focusIdx === 2}>
@@ -168,22 +177,41 @@ export function PriceInput({ onConfirm, onCancel, isCompact }: PriceInputProps) 
               isCompact && compactStyles.confirmButton,
               !isValid && styles.confirmButtonDisabled,
             ]}
-            onPress={() => isValid && onConfirm(price)}
+            onPress={() => {
+              if (isValid) {
+                playSfx('ui_click');
+                onConfirm(price);
+              }
+            }}
             disabled={!isValid}
             activeOpacity={0.7}
           >
-            <Text style={[styles.confirmButtonText, isCompact && compactStyles.confirmButtonText]}>Confirm</Text>
+            <Text style={[styles.confirmButtonText, isCompact && compactStyles.confirmButtonText]}>
+              Confirm
+            </Text>
           </TouchableOpacity>
         </FocusGlow>
       </View>
 
       {isController && !showNumpad && (
         <View style={styles.controllerHints}>
-          <Image source={iconDirSource} style={{ width: isCompact ? 40 : 18, height: isCompact ? 40 : 18 }} resizeMode="contain" />
+          <Image
+            source={iconDirSource}
+            style={{ width: isCompact ? 40 : 18, height: isCompact ? 40 : 18 }}
+            resizeMode="contain"
+          />
           <Text style={[styles.hintText, isCompact && compactStyles.hintText]}>Navigate</Text>
-          <Image source={iconASource} style={{ width: isCompact ? 40 : 18, height: isCompact ? 40 : 18, marginLeft: 8 }} resizeMode="contain" />
+          <Image
+            source={iconASource}
+            style={{ width: isCompact ? 40 : 18, height: isCompact ? 40 : 18, marginLeft: 8 }}
+            resizeMode="contain"
+          />
           <Text style={[styles.hintText, isCompact && compactStyles.hintText]}>Select</Text>
-          <Image source={iconBSource} style={{ width: isCompact ? 40 : 18, height: isCompact ? 40 : 18, marginLeft: 8 }} resizeMode="contain" />
+          <Image
+            source={iconBSource}
+            style={{ width: isCompact ? 40 : 18, height: isCompact ? 40 : 18, marginLeft: 8 }}
+            resizeMode="contain"
+          />
           <Text style={[styles.hintText, isCompact && compactStyles.hintText]}>Cancel</Text>
         </View>
       )}

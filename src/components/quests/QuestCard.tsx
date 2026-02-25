@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Typography } from '@/theme/typography';
+import { useAudio } from '@/contexts/AudioContext';
 
 interface QuestCardProps {
   objectiveText: string;
@@ -37,6 +38,7 @@ export function QuestCard({
   disabled,
   isCompact,
 }: QuestCardProps) {
+  const { playSfx } = useAudio();
   const progressPercent = target > 0 ? Math.min((progress / target) * 100, 100) : 0;
   const typeColor = QUEST_TYPE_COLORS[questType] ?? '#6B7280';
 
@@ -45,14 +47,9 @@ export function QuestCard({
       {/* Header: type badge + objective */}
       <View style={styles.header}>
         <View style={[styles.typeBadge, { backgroundColor: typeColor }]}>
-          <Text style={[styles.typeText, isCompact && compactStyles.typeText]}>
-            {questType}
-          </Text>
+          <Text style={[styles.typeText, isCompact && compactStyles.typeText]}>{questType}</Text>
         </View>
-        <Text
-          style={[styles.objective, isCompact && compactStyles.objective]}
-          numberOfLines={2}
-        >
+        <Text style={[styles.objective, isCompact && compactStyles.objective]} numberOfLines={2}>
           {objectiveText}
         </Text>
       </View>
@@ -77,18 +74,17 @@ export function QuestCard({
 
       {/* Reward + action */}
       <View style={styles.footer}>
-        <Text style={[styles.rewardText, isCompact && compactStyles.rewardText]}>
-          {rewardText}
-        </Text>
+        <Text style={[styles.rewardText, isCompact && compactStyles.rewardText]}>{rewardText}</Text>
 
         {isClaimed ? (
-          <Text style={[styles.claimedText, isCompact && compactStyles.claimedText]}>
-            Claimed
-          </Text>
+          <Text style={[styles.claimedText, isCompact && compactStyles.claimedText]}>Claimed</Text>
         ) : isCompleted && isAccepted ? (
           <TouchableOpacity
             style={[styles.claimButton, isCompact && compactStyles.claimButton]}
-            onPress={onClaim}
+            onPress={() => {
+              playSfx('ui_click');
+              onClaim?.();
+            }}
             disabled={disabled}
             activeOpacity={0.7}
           >
@@ -103,7 +99,10 @@ export function QuestCard({
         ) : (
           <TouchableOpacity
             style={[styles.acceptButton, isCompact && compactStyles.acceptButton]}
-            onPress={onAccept}
+            onPress={() => {
+              playSfx('ui_click');
+              onAccept?.();
+            }}
             disabled={disabled}
             activeOpacity={0.7}
           >

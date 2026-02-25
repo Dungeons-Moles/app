@@ -41,6 +41,10 @@ import { getUserErrorMessage } from '@/services/solana/errors';
 import { buildResetDuelEntryInstruction, deriveDuelEntryPda } from '@/services/solana/duels';
 import { sendSessionSignerTransaction } from '@/services/solana/sessionSigner';
 import { MAX_CAMPAIGN_LEVEL } from './useMapGenerator';
+import {
+  isForceUndelegateAvailable,
+  forceUndelegateAccounts,
+} from '@/services/solana/forceUndelegate';
 import type { TransactionResult } from '@/types/solana';
 import type { OnChainGameSession } from '@/services/solana/types/session_manager';
 
@@ -913,15 +917,17 @@ export function useSessionManager() {
         const delegatedSession = !!baseSessionInfo.owner.equals(DELEGATION_PROGRAM_ID);
         const delegatedGameState = !!baseGameStateInfo?.owner.equals(DELEGATION_PROGRAM_ID);
         const delegatedMapEnemies = !!baseMapEnemiesInfo?.owner.equals(DELEGATION_PROGRAM_ID);
-        // undelegate_gameplay_accounts currently undelegates game_state + map_enemies together,
-        // so only call it when BOTH are delegated to avoid mixed-state ReadonlyDataModified failures.
-        const delegatedGameplay = delegatedGameState && delegatedMapEnemies;
+        // Use atomic undelegate when both are delegated; individual instructions for mixed state.
+        const delegatedGameplayBoth = delegatedGameState && delegatedMapEnemies;
+        const delegatedGameStateOnly = delegatedGameState && !delegatedMapEnemies;
+        const delegatedMapEnemiesOnly = delegatedMapEnemies && !delegatedGameState;
         const delegatedMap = !!baseGeneratedMapInfo?.owner.equals(DELEGATION_PROGRAM_ID);
         const delegatedInventory = !!baseInventoryInfo?.owner.equals(DELEGATION_PROGRAM_ID);
         const delegatedPois = !!baseMapPoisInfo?.owner.equals(DELEGATION_PROGRAM_ID);
         const hasAnyDelegated =
           delegatedSession ||
-          delegatedGameplay ||
+          delegatedGameState ||
+          delegatedMapEnemies ||
           delegatedMap ||
           delegatedInventory ||
           delegatedPois;
@@ -1026,17 +1032,42 @@ export function useSessionManager() {
         // Log initial account owners for diagnostics
         console.log('[useSessionManager] undelegate: base account owners', {
           session: delegatedSession ? 'DELEGATED' : 'base',
-          gameplay: delegatedGameplay ? 'DELEGATED' : 'base',
-          gameStateOnly: delegatedGameState && !delegatedMapEnemies ? 'DELEGATED' : 'base',
-          mapEnemiesOnly: delegatedMapEnemies && !delegatedGameState ? 'DELEGATED' : 'base',
+          gameplayBoth: delegatedGameplayBoth ? 'DELEGATED' : 'base',
+          gameStateOnly: delegatedGameStateOnly ? 'DELEGATED' : 'base',
+          mapEnemiesOnly: delegatedMapEnemiesOnly ? 'DELEGATED' : 'base',
           map: delegatedMap ? 'DELEGATED' : 'base',
           inventory: delegatedInventory ? 'DELEGATED' : 'base',
           pois: delegatedPois ? 'DELEGATED' : 'base',
         });
 
+        // Send-and-confirm helper for ER undelegation.
+        // MagicBlock ER requires skipPreflight: true — simulation does not
+        // handle delegated accounts correctly on the ER.
+        const UNDELEGATE_CU_LIMIT = 400_000;
+        const sendAndConfirmOnEr = async (
+          tx: Transaction,
+          label: string
+        ): Promise<string> => {
+          tx.instructions.unshift(
+            ComputeBudgetProgram.setComputeUnitLimit({ units: UNDELEGATE_CU_LIMIT })
+          );
+          const { blockhash } = await erConnection.getLatestBlockhash('confirmed');
+          tx.recentBlockhash = blockhash;
+          tx.feePayer = sessionSignerKeypair.publicKey;
+          tx.sign(sessionSignerKeypair);
+          const sig = await erConnection.sendRawTransaction(tx.serialize(), {
+            skipPreflight: true,
+          });
+          await erConnection.confirmTransaction(sig, 'confirmed');
+          console.log(
+            `[useSessionManager] undelegate ${label}: confirmed ${sig.slice(0, 20)}…`
+          );
+          return sig;
+        };
+
         // Undelegate child accounts via their owning programs first, then session last.
         // Each program can only undelegate accounts it owns (delegation program validates ownership).
-        if (delegatedGameplay) {
+        if (delegatedGameplayBoth) {
           await tryUndelegateOrSkip(
             async () => {
               const undelegateGameplayTx = await gameplayProgramEr.methods
@@ -1050,16 +1081,48 @@ export function useSessionManager() {
                   magicContext: magicContextId,
                 })
                 .transaction();
-              await sendSessionSignerTransaction(
-                erConnection,
-                undelegateGameplayTx,
-                sessionSignerKeypair
-              );
+              await sendAndConfirmOnEr(undelegateGameplayTx, 'gameplay');
             },
             [
               [gameStatePda, SOLANA_CONFIG.programs.gameplayState, 'game_state'],
               [mapEnemiesPda, SOLANA_CONFIG.programs.gameplayState, 'map_enemies'],
             ],
+            true
+          );
+        } else if (delegatedGameStateOnly) {
+          await tryUndelegateOrSkip(
+            async () => {
+              const tx = await gameplayProgramEr.methods
+                .undelegateGameState()
+                .accounts({
+                  gameState: gameStatePda,
+                  gameSession: sessionPda,
+                  sessionSigner: sessionSignerKeypair.publicKey,
+                  magicProgram: magicProgramId,
+                  magicContext: magicContextId,
+                })
+                .transaction();
+              await sendAndConfirmOnEr(tx, 'game_state');
+            },
+            [[gameStatePda, SOLANA_CONFIG.programs.gameplayState, 'game_state']],
+            true
+          );
+        } else if (delegatedMapEnemiesOnly) {
+          await tryUndelegateOrSkip(
+            async () => {
+              const tx = await gameplayProgramEr.methods
+                .undelegateMapEnemies()
+                .accounts({
+                  mapEnemies: mapEnemiesPda,
+                  gameSession: sessionPda,
+                  sessionSigner: sessionSignerKeypair.publicKey,
+                  magicProgram: magicProgramId,
+                  magicContext: magicContextId,
+                })
+                .transaction();
+              await sendAndConfirmOnEr(tx, 'map_enemies');
+            },
+            [[mapEnemiesPda, SOLANA_CONFIG.programs.gameplayState, 'map_enemies']],
             true
           );
         }
@@ -1077,11 +1140,7 @@ export function useSessionManager() {
                   magicContext: magicContextId,
                 })
                 .transaction();
-              await sendSessionSignerTransaction(
-                erConnection,
-                undelegateMapTx,
-                sessionSignerKeypair
-              );
+              await sendAndConfirmOnEr(undelegateMapTx, 'generated_map');
             },
             [[generatedMapPda, SOLANA_CONFIG.programs.mapGenerator, 'generated_map']],
             true
@@ -1101,11 +1160,7 @@ export function useSessionManager() {
                   magicContext: magicContextId,
                 })
                 .transaction();
-              await sendSessionSignerTransaction(
-                erConnection,
-                undelegateInventoryTx,
-                sessionSignerKeypair
-              );
+              await sendAndConfirmOnEr(undelegateInventoryTx, 'inventory');
             },
             [[inventoryPda, SOLANA_CONFIG.programs.playerInventory, 'inventory']],
             true
@@ -1125,11 +1180,7 @@ export function useSessionManager() {
                   magicContext: magicContextId,
                 })
                 .transaction();
-              await sendSessionSignerTransaction(
-                erConnection,
-                undelegatePoisTx,
-                sessionSignerKeypair
-              );
+              await sendAndConfirmOnEr(undelegatePoisTx, 'map_pois');
             },
             [[mapPoisPda, SOLANA_CONFIG.programs.poiSystem, 'map_pois']],
             true
@@ -1150,12 +1201,7 @@ export function useSessionManager() {
                   magicContext: magicContextId,
                 })
                 .transaction();
-              signature = await sendSessionSignerTransaction(
-                erConnection,
-                transaction,
-                sessionSignerKeypair
-              );
-              await erConnection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
+              signature = await sendAndConfirmOnEr(transaction, 'session');
             },
             [[sessionPda, SOLANA_CONFIG.programs.sessionManager, 'game_session']],
             true
@@ -1164,9 +1210,13 @@ export function useSessionManager() {
 
         // Wait for ALL accounts to be restored on base chain.
         const allChecks: Array<[PublicKey, PublicKey, string]> = [];
-        if (delegatedGameplay) {
+        if (delegatedGameState) {
           allChecks.push(
-            [gameStatePda, SOLANA_CONFIG.programs.gameplayState, 'game_state'],
+            [gameStatePda, SOLANA_CONFIG.programs.gameplayState, 'game_state']
+          );
+        }
+        if (delegatedMapEnemies) {
+          allChecks.push(
             [mapEnemiesPda, SOLANA_CONFIG.programs.gameplayState, 'map_enemies']
           );
         }
@@ -1184,8 +1234,11 @@ export function useSessionManager() {
         }
 
         let allRestored = false;
-        // ER commit propagation can be slow/non-uniform; allow up to 60s.
-        for (let i = 0; i < 60; i += 1) {
+        // E2e test uses a fixed 5s wait for ER→base commit propagation before checking.
+        // Match that behavior: wait 5s upfront, then poll for up to 55s more.
+        console.log('[useSessionManager] undelegate: waiting 5s for base layer restoration...');
+        await new Promise((resolve) => setTimeout(resolve, 5000));
+        for (let i = 0; i < 55; i += 1) {
           const infos = await Promise.all(
             allChecks.map(([pda]) => baseConnection.getAccountInfo(pda, 'processed'))
           );
@@ -1205,6 +1258,42 @@ export function useSessionManager() {
             });
           }
           await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
+
+        // LOCAL-ONLY: If ER-based undelegation didn't restore accounts, try
+        // force-undelegate via the Delegation Program directly on the base layer.
+        if (!allRestored && isForceUndelegateAvailable()) {
+          const stillDelegated = (
+            await Promise.all(
+              allChecks.map(([pda]) => baseConnection.getAccountInfo(pda, 'processed'))
+            )
+          )
+            .map((info, idx) => ({ info, pda: allChecks[idx][0], label: allChecks[idx][2] }))
+            .filter(({ info }) => info && info.owner.equals(DELEGATION_PROGRAM_ID));
+
+          if (stillDelegated.length > 0) {
+            console.log(
+              '[useSessionManager] undelegate: falling back to local force-undelegate for:',
+              stillDelegated.map((a) => a.label)
+            );
+            const count = await forceUndelegateAccounts(
+              baseConnection,
+              stillDelegated.map((a) => a.pda)
+            );
+            console.log(
+              `[useSessionManager] force-undelegated ${count}/${stillDelegated.length} accounts`
+            );
+            // Re-check after force-undelegate
+            const recheckInfos = await Promise.all(
+              allChecks.map(([pda]) => baseConnection.getAccountInfo(pda, 'processed'))
+            );
+            allRestored = recheckInfos.every(
+              (info, idx) => info?.owner.equals(allChecks[idx][1])
+            );
+            if (allRestored) {
+              console.log('[useSessionManager] All accounts restored after force-undelegate');
+            }
+          }
         }
 
         if (!allRestored && undelegateErrors.length > 0) {
@@ -1394,6 +1483,269 @@ export function useSessionManager() {
   );
 
   /**
+   * Tolerant session close: settles result and closes whichever child accounts
+   * are on base layer. Delegated/missing children are skipped. This prevents
+   * the soft-lock where close_session_only leaves orphaned child accounts that
+   * block start_session.
+   */
+  const forceCloseSession = useCallback(
+    async (sessionSignerKeypair: Keypair): Promise<TransactionResult> => {
+      if (!wallet.publicKey) {
+        return { success: false, error: 'Wallet not connected' };
+      }
+
+      const currentSession = sessionRef.current;
+      const currentHasActive = hasActiveSessionRef.current;
+      if (!currentHasActive || !currentSession) {
+        return { success: false, error: 'No active session to force-close' };
+      }
+
+      if (isMountedRef.current) {
+        setIsLoading(true);
+        setError(null);
+      }
+
+      try {
+        const [fallbackSessionPda] = deriveSessionPda(wallet.publicKey, currentSession.campaignLevel);
+        const sessionPda = activeSessionPdaRef.current ?? fallbackSessionPda;
+        const [gameStatePda] = deriveGameStatePda(sessionPda);
+        const [mapEnemiesPda] = deriveMapEnemiesPda(sessionPda);
+        const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
+        const [mapPoisPda] = deriveMapPoisPda(sessionPda);
+        const [inventoryPda] = deriveInventoryPda(sessionPda);
+        const [playerProfilePda] = derivePlayerProfilePda(wallet.publicKey);
+
+        const program = createSessionManagerProgram(baseConnection);
+        const transaction = new Transaction();
+
+        const forceCloseIx = await program.methods
+          .forceCloseSession()
+          .accounts({
+            gameSession: sessionPda,
+            gameState: gameStatePda,
+            mapEnemies: mapEnemiesPda,
+            generatedMap: generatedMapPda,
+            mapPois: mapPoisPda,
+            inventory: inventoryPda,
+            playerProfile: playerProfilePda,
+            player: wallet.publicKey,
+            sessionSigner: sessionSignerKeypair.publicKey,
+            sessionManagerAuthority: deriveSessionManagerAuthorityPda()[0],
+            playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
+            gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
+            playerProfileProgram: SOLANA_CONFIG.programs.playerProfile,
+            mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
+            poiSystemProgram: SOLANA_CONFIG.programs.poiSystem,
+          })
+          .instruction();
+        transaction.add(forceCloseIx);
+
+        const { blockhash } = await baseConnection.getLatestBlockhash('confirmed');
+        transaction.recentBlockhash = blockhash;
+        transaction.feePayer = sessionSignerKeypair.publicKey;
+        transaction.sign(sessionSignerKeypair);
+
+        const signature = await baseConnection.sendRawTransaction(transaction.serialize(), {
+          skipPreflight: false,
+          preflightCommitment: SOLANA_CONFIG.commitment,
+        });
+        await baseConnection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
+
+        console.log('[useSessionManager] Session force-closed:', signature);
+        sessionRef.current = null;
+        hasActiveSessionRef.current = false;
+        activeSessionPdaRef.current = null;
+        if (isMountedRef.current) {
+          setSession(null);
+          setHasActiveSession(false);
+          setActiveSessionPdaState(null);
+        }
+
+        return { success: true, signature };
+      } catch (txError) {
+        const message = getUserErrorMessage(txError, 'session_manager');
+        console.error('[useSessionManager] Failed to force-close session:', message, txError);
+        if (isMountedRef.current) setError(message);
+        return { success: false, error: message };
+      } finally {
+        if (isMountedRef.current) setIsLoading(false);
+      }
+    },
+    [baseConnection, wallet.publicKey]
+  );
+
+  /**
+   * Close orphaned child accounts after force_close_session already freed the session PDA.
+   * Calls session-manager's close_orphaned_accounts which CPIs into child programs.
+   * Only closes accounts that are on base layer (owned by their programs).
+   * Order: map_pois → map_enemies → game_state (game_state last since others depend on it).
+   */
+  const closeOrphanedAccounts = useCallback(
+    async (
+      sessionPda: PublicKey,
+      sessionSignerKeypair: Keypair
+    ): Promise<TransactionResult> => {
+      if (!wallet.publicKey) {
+        return { success: false, error: 'Wallet not connected' };
+      }
+
+      try {
+        const [gameStatePda] = deriveGameStatePda(sessionPda);
+        const [mapEnemiesPda] = deriveMapEnemiesPda(sessionPda);
+        const [mapPoisPda] = deriveMapPoisPda(sessionPda);
+
+        const program = createSessionManagerProgram(baseConnection);
+        const transaction = new Transaction();
+
+        const ix = await program.methods
+          .closeOrphanedAccounts()
+          .accounts({
+            gameState: gameStatePda,
+            mapEnemies: mapEnemiesPda,
+            mapPois: mapPoisPda,
+            player: wallet.publicKey,
+            sessionSigner: sessionSignerKeypair.publicKey,
+            gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
+            poiSystemProgram: SOLANA_CONFIG.programs.poiSystem,
+          })
+          .instruction();
+        transaction.add(ix);
+
+        const { blockhash } = await baseConnection.getLatestBlockhash('confirmed');
+        transaction.recentBlockhash = blockhash;
+        transaction.feePayer = sessionSignerKeypair.publicKey;
+        transaction.sign(sessionSignerKeypair);
+
+        const signature = await baseConnection.sendRawTransaction(transaction.serialize(), {
+          skipPreflight: false,
+          preflightCommitment: SOLANA_CONFIG.commitment,
+        });
+        await baseConnection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
+
+        console.log('[useSessionManager] Orphaned accounts closed:', signature);
+        return { success: true, signature };
+      } catch (txError) {
+        const message = getUserErrorMessage(txError, 'session_manager');
+        console.error('[useSessionManager] Failed to close orphaned accounts:', message, txError);
+        return { success: false, error: message };
+      }
+    },
+    [baseConnection, wallet.publicKey]
+  );
+
+  /**
+   * Close corrupted/empty orphaned accounts individually.
+   * After an ER reset + force-undelegate, accounts may have 0-byte data.
+   * This calls the close_empty_* instructions on each program directly.
+   */
+  const closeEmptyOrphanedAccounts = useCallback(
+    async (
+      sessionPda: PublicKey,
+      signerKeypair: Keypair
+    ): Promise<TransactionResult> => {
+      if (!wallet.publicKey) {
+        return { success: false, error: 'Wallet not connected' };
+      }
+
+      try {
+        const [gameStatePda] = deriveGameStatePda(sessionPda);
+        const [mapEnemiesPda] = deriveMapEnemiesPda(sessionPda);
+        const [mapPoisPda] = deriveMapPoisPda(sessionPda);
+
+        const gameplayProgram = createGameplayStateProgram(baseConnection);
+        const poiProgram = createPoiSystemProgram(baseConnection);
+        const transaction = new Transaction();
+
+        // Check each account and add close_empty_* ix if it exists with 0 data
+        const [gsInfo, meInfo, mpInfo] = await Promise.all([
+          baseConnection.getAccountInfo(gameStatePda, 'confirmed'),
+          baseConnection.getAccountInfo(mapEnemiesPda, 'confirmed'),
+          baseConnection.getAccountInfo(mapPoisPda, 'confirmed'),
+        ]);
+
+        if (mpInfo && mpInfo.data.length === 0) {
+          console.log('[useSessionManager] Adding close_empty_map_pois ix');
+          const ix = await poiProgram.methods
+            .closeEmptyMapPois()
+            .accounts({
+              mapPois: mapPoisPda,
+              destination: wallet.publicKey,
+              payer: signerKeypair.publicKey,
+            })
+            .instruction();
+          transaction.add(ix);
+        }
+
+        if (meInfo && meInfo.data.length === 0) {
+          console.log('[useSessionManager] Adding close_empty_map_enemies ix');
+          const ix = await gameplayProgram.methods
+            .closeEmptyMapEnemies()
+            .accounts({
+              mapEnemies: mapEnemiesPda,
+              destination: wallet.publicKey,
+              payer: signerKeypair.publicKey,
+            })
+            .instruction();
+          transaction.add(ix);
+        } else if (meInfo && meInfo.data.length > 0) {
+          // map_enemies has valid data but session PDA is gone — use close_orphaned_map_enemies
+          const sessionPdaInfo = await baseConnection.getAccountInfo(sessionPda, 'confirmed');
+          if (!sessionPdaInfo) {
+            console.log('[useSessionManager] Adding close_orphaned_map_enemies ix (valid data, no session)');
+            const ix = await gameplayProgram.methods
+              .closeOrphanedMapEnemies()
+              .accounts({
+                mapEnemies: mapEnemiesPda,
+                sessionPda: sessionPda,
+                destination: wallet.publicKey,
+                payer: signerKeypair.publicKey,
+              })
+              .instruction();
+            transaction.add(ix);
+          }
+        }
+
+        if (gsInfo && gsInfo.data.length === 0) {
+          console.log('[useSessionManager] Adding close_empty_game_state ix');
+          const ix = await gameplayProgram.methods
+            .closeEmptyGameState()
+            .accounts({
+              gameState: gameStatePda,
+              destination: wallet.publicKey,
+              payer: signerKeypair.publicKey,
+            })
+            .instruction();
+          transaction.add(ix);
+        }
+
+        if (transaction.instructions.length === 0) {
+          console.log('[useSessionManager] No empty orphaned accounts to close');
+          return { success: true };
+        }
+
+        const { blockhash } = await baseConnection.getLatestBlockhash('confirmed');
+        transaction.recentBlockhash = blockhash;
+        transaction.feePayer = signerKeypair.publicKey;
+        transaction.sign(signerKeypair);
+
+        const signature = await baseConnection.sendRawTransaction(transaction.serialize(), {
+          skipPreflight: false,
+          preflightCommitment: SOLANA_CONFIG.commitment,
+        });
+        await baseConnection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
+
+        console.log('[useSessionManager] Empty orphaned accounts closed:', signature);
+        return { success: true, signature };
+      } catch (txError) {
+        const message = getUserErrorMessage(txError, 'session_manager');
+        console.error('[useSessionManager] Failed to close empty orphaned accounts:', message, txError);
+        return { success: false, error: message };
+      }
+    },
+    [baseConnection, wallet.publicKey]
+  );
+
+  /**
    * End session after death or level completion.
    * Only requires session signer - no user interaction needed.
    * Victory/defeat is determined on-chain from game_state.
@@ -1544,6 +1896,9 @@ export function useSessionManager() {
     undelegateSession,
     settleSessionResult,
     closeSessionOnly,
+    forceCloseSession,
+    closeOrphanedAccounts,
+    closeEmptyOrphanedAccounts,
     endSession,
     resetSession,
   };

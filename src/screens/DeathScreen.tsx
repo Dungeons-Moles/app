@@ -23,6 +23,7 @@ import { Typography } from '../theme/typography';
 import { useInputMode } from '../hooks/useInputMode';
 import { useControllerAction } from '../hooks/useControllerAction';
 import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHints';
+import { useAudio } from '../contexts/AudioContext';
 
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.png');
 const STAINS_BACKGROUND = require('../../assets/ui/backgrounds/stains-background.png');
@@ -43,12 +44,14 @@ export function DeathScreen({ navigation, route }: DeathScreenProps) {
   const { height } = useWindowDimensions();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
+  const { playBgm } = useAudio();
 
   const isOutOfRuns = mode !== 'guest' && availableRuns === 0;
   // Use vertical layout for taller screens (portrait or large tablets)
   const isVerticalLayout = height > 768;
 
   useEffect(() => {
+    playBgm('defeat', { crossfade: true });
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
@@ -62,7 +65,7 @@ export function DeathScreen({ navigation, route }: DeathScreenProps) {
         useNativeDriver: true,
       }),
     ]).start();
-  }, [fadeAnim, slideAnim]);
+  }, [fadeAnim, slideAnim, playBgm]);
 
   const handleReturnToHub = useCallback(() => {
     navigation.reset({
@@ -77,9 +80,7 @@ export function DeathScreen({ navigation, route }: DeathScreenProps) {
 
   useControllerAction({ onA: handleReturnToHub }, isController);
 
-  const controllerHints: ButtonHint[] = [
-    { button: 'A', label: 'Return to Hub' },
-  ];
+  const controllerHints: ButtonHint[] = [{ button: 'A', label: 'Return to Hub' }];
 
   // Determine death cause description
   const getDeathCause = (): string => {
@@ -127,11 +128,7 @@ export function DeathScreen({ navigation, route }: DeathScreenProps) {
 
   const RunSummary = () => (
     <View style={isVerticalLayout ? styles.summaryContainerVertical : styles.summaryContainer}>
-      <Image
-        source={PAPER_PANEL}
-        style={styles.summaryPanelBg}
-        resizeMode="stretch"
-      />
+      <Image source={PAPER_PANEL} style={styles.summaryPanelBg} resizeMode="stretch" />
       <Text style={isVerticalLayout ? styles.summaryTitleVertical : styles.summaryTitle}>
         Run Summary
       </Text>
@@ -178,19 +175,16 @@ export function DeathScreen({ navigation, route }: DeathScreenProps) {
   const ReturnButton = () => (
     <View style={isVerticalLayout ? styles.buttonSlotVertical : styles.buttonSlot}>
       <Pressable style={styles.buttonPressable} onPress={handleReturnToHub}>
-        <ImageBackground
-          source={BUTTON_BG}
-          style={styles.buttonImage}
-          resizeMode="contain"
-        >
-          <Text style={isVerticalLayout ? styles.returnButtonTextVertical : styles.returnButtonText}>
+        <ImageBackground source={BUTTON_BG} style={styles.buttonImage} resizeMode="contain">
+          <Text
+            style={isVerticalLayout ? styles.returnButtonTextVertical : styles.returnButtonText}
+          >
             Return to Hub
           </Text>
         </ImageBackground>
       </Pressable>
     </View>
   );
-
 
   return (
     <View style={styles.container}>

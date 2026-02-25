@@ -266,6 +266,78 @@
       ]
     },
     {
+      "name": "close_empty_game_state",
+      "docs": [
+        "Close a corrupted/empty GameState account (0-byte data).",
+        "After an ER reset, force-undelegation can leave accounts with no data.",
+        "Only works on accounts owned by this program with 0 bytes of data."
+      ],
+      "discriminator": [
+        37,
+        209,
+        168,
+        107,
+        112,
+        21,
+        162,
+        98
+      ],
+      "accounts": [
+        {
+          "name": "game_state",
+          "writable": true
+        },
+        {
+          "name": "destination",
+          "docs": [
+            "Receives the lamports from the closed account."
+          ],
+          "writable": true
+        },
+        {
+          "name": "payer",
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "close_empty_map_enemies",
+      "docs": [
+        "Close a corrupted/empty MapEnemies account (0-byte data).",
+        "After an ER reset, force-undelegation can leave accounts with no data.",
+        "Only works on accounts owned by this program with 0 bytes of data."
+      ],
+      "discriminator": [
+        139,
+        54,
+        126,
+        197,
+        116,
+        49,
+        39,
+        74
+      ],
+      "accounts": [
+        {
+          "name": "map_enemies",
+          "writable": true
+        },
+        {
+          "name": "destination",
+          "docs": [
+            "Receives the lamports from the closed account."
+          ],
+          "writable": true
+        },
+        {
+          "name": "payer",
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "close_game_state",
       "docs": [
         "Closes the GameState account, returning rent to player."
@@ -407,6 +479,73 @@
           "relations": [
             "game_state"
           ]
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "close_orphaned_map_enemies",
+      "docs": [
+        "Close an orphaned MapEnemies account that has valid data but whose",
+        "session PDA no longer exists. Proves the account is orphaned by",
+        "requiring the session PDA to have 0 lamports."
+      ],
+      "discriminator": [
+        171,
+        1,
+        244,
+        181,
+        5,
+        246,
+        175,
+        195
+      ],
+      "accounts": [
+        {
+          "name": "map_enemies",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  112,
+                  95,
+                  101,
+                  110,
+                  101,
+                  109,
+                  105,
+                  101,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_enemies.session",
+                "account": "MapEnemies"
+              }
+            ]
+          }
+        },
+        {
+          "name": "session_pda",
+          "docs": [
+            "Session PDA must not exist (proves the account is orphaned)."
+          ]
+        },
+        {
+          "name": "destination",
+          "docs": [
+            "Receives the lamports from the closed account."
+          ],
+          "writable": true
+        },
+        {
+          "name": "payer",
+          "signer": true
         }
       ],
       "args": []
@@ -3724,6 +3863,69 @@
       "args": []
     },
     {
+      "name": "test_set_completed",
+      "docs": [
+        "TEST-ONLY: Sets game_state.completed = true so the victory path can",
+        "be exercised in e2e tests without requiring actual boss kills.",
+        "Validates session_signer authority so it cannot be called by a random wallet."
+      ],
+      "discriminator": [
+        185,
+        34,
+        110,
+        237,
+        6,
+        77,
+        177,
+        196
+      ],
+      "accounts": [
+        {
+          "name": "game_state",
+          "writable": true
+        },
+        {
+          "name": "session_signer",
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "test_set_hp",
+      "docs": [
+        "TEST-ONLY: Sets game_state.hp to given value and clears is_dead.",
+        "Used in e2e tests to keep the player alive through night enemy encounters",
+        "so the boss fight path can be tested."
+      ],
+      "discriminator": [
+        3,
+        94,
+        215,
+        212,
+        234,
+        164,
+        126,
+        32
+      ],
+      "accounts": [
+        {
+          "name": "game_state",
+          "writable": true
+        },
+        {
+          "name": "session_signer",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "hp",
+          "type": "i16"
+        }
+      ]
+    },
+    {
       "name": "trigger_boss_fight",
       "docs": [
         "Triggers and resolves the boss fight when conditions are met.",
@@ -3964,6 +4166,47 @@
       "args": []
     },
     {
+      "name": "undelegate_game_state",
+      "docs": [
+        "Commits and undelegates only the game_state account from ER back to base layer.",
+        "Used when map_enemies is already on base but game_state is still delegated."
+      ],
+      "discriminator": [
+        175,
+        184,
+        65,
+        235,
+        21,
+        44,
+        218,
+        212
+      ],
+      "accounts": [
+        {
+          "name": "game_state",
+          "writable": true
+        },
+        {
+          "name": "game_session"
+        },
+        {
+          "name": "session_signer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "magic_program",
+          "address": "Magic11111111111111111111111111111111111111"
+        },
+        {
+          "name": "magic_context",
+          "writable": true,
+          "address": "MagicContext1111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "undelegate_gameplay_accounts",
       "docs": [
         "Commits and undelegates gameplay runtime accounts from ER back to base layer."
@@ -3992,6 +4235,48 @@
         },
         {
           "name": "session_signer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "magic_program",
+          "address": "Magic11111111111111111111111111111111111111"
+        },
+        {
+          "name": "magic_context",
+          "writable": true,
+          "address": "MagicContext1111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "undelegate_map_enemies",
+      "docs": [
+        "Commits and undelegates only the map_enemies account from ER back to base layer.",
+        "Used when game_state is already on base but map_enemies is still delegated."
+      ],
+      "discriminator": [
+        49,
+        15,
+        227,
+        105,
+        27,
+        25,
+        71,
+        185
+      ],
+      "accounts": [
+        {
+          "name": "map_enemies",
+          "writable": true
+        },
+        {
+          "name": "game_session"
+        },
+        {
+          "name": "session_signer",
+          "writable": true,
           "signer": true
         },
         {
@@ -4923,6 +5208,11 @@
       "code": 6054,
       "name": "InvalidCampaignLevel",
       "msg": "Campaign level must be between 1 and 40"
+    },
+    {
+      "code": 6055,
+      "name": "AccountNotEmpty",
+      "msg": "Account still has data — cannot close as empty"
     }
   ],
   "types": [

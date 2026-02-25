@@ -84,10 +84,10 @@ export interface EnemyPanelProps {
   spd: number;
   dig: number;
   statusEffects: StatusEffects;
-  trait?: {
+  traits?: {
     name: string;
     description: string;
-  };
+  }[];
   /** Optional subtitle (e.g., wallet address for Pit Draft) */
   subtitle?: string;
   /** Optional enemy gold (for PvP combat display) */
@@ -134,7 +134,7 @@ export function EnemyPanel({
   spd,
   dig,
   statusEffects: _statusEffects,
-  trait,
+  traits,
   imageSource,
   subtitle,
   gold,
@@ -250,20 +250,21 @@ export function EnemyPanel({
             </View>
           </View>
 
-          {/* Trait */}
-          {trait && (
+          {/* Traits */}
+          {traits && traits.map((t, i) => (
             <View
+              key={i}
               style={[
                 styles.traitSection,
                 {
                   padding: 8 * scale,
-                  marginBottom: 12 * scale,
+                  marginBottom: (i < traits.length - 1 ? 4 : 12) * scale,
                   marginHorizontal: 5 * scale,
                 },
               ]}
             >
               <Text style={[styles.traitName, { fontSize: 13 * scale, marginBottom: 4 * scale }]}>
-                {trait.name}
+                {t.name}
               </Text>
               <Text
                 style={[
@@ -272,10 +273,10 @@ export function EnemyPanel({
                 ]}
                 numberOfLines={3}
               >
-                {trait.description}
+                {t.description}
               </Text>
             </View>
-          )}
+          ))}
 
           {/* Equipment (Pit Draft PvP) */}
           {(equippedTool || equippedGear.length > 0) && (

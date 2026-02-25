@@ -25,6 +25,7 @@ import { shortenAddress } from '../utils/storage';
 import { RootStackParamList } from '../navigation';
 import { InlineModal } from '../components/InlineModal';
 import { SpeedControls } from '../components/combat';
+import { VolumeControls } from '../components/ui/VolumeControls';
 import { Skeleton } from '../components/common/Skeleton';
 import { Typography } from '../theme/typography';
 import type { CombatSpeed } from '../types';
@@ -43,6 +44,7 @@ import { NftCard } from '../components/marketplace/NftCard';
 import { QuestCard } from '../components/quests/QuestCard';
 import { getSkinImage } from '../data/skinImages';
 import { useEquippedSkinImage } from '../hooks/useEquippedSkinImage';
+import { useAudio } from '../contexts/AudioContext';
 
 const iconASource = require('../../assets/ui/control-buttons/a.png');
 const iconBSource = require('../../assets/ui/control-buttons/b.png');
@@ -83,6 +85,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
   const isCompact = screenVariant === 'compact';
   const inputMode = useInputMode();
   const { state: gameState, dispatch } = useGame();
+  const { musicVolume, setMusicVolume, sfxVolume, setSfxVolume, playBgm, playSfx } = useAudio();
   const { wallet, getBalance, disconnect } = useWallet();
   const [showSettings, setShowSettings] = useState(false);
   const [showSkins, setShowSkins] = useState(false);
@@ -121,12 +124,14 @@ export function HubScreen({ navigation }: HubScreenProps) {
   const didRunCleanupThisFocusRef = useRef(false);
 
   useEffect(() => {
+    if (!isScreenFocused) return;
+    playBgm('hub');
     Animated.timing(fadeAnim, {
       toValue: 1,
       duration: 600,
       useNativeDriver: true,
     }).start();
-  }, []);
+  }, [isScreenFocused, playBgm, fadeAnim]);
 
   // Process any pending session cleanups when Hub screen gains focus
   // (e.g. returning from DeathScreen after a deferred queueEndGame)
@@ -184,6 +189,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
   }, [refresh]);
 
   const handleDisconnect = useCallback(() => {
+    playSfx('ui_click');
     setShowResetWarning(false);
     setShowSettings(false);
     setResetError(null);
@@ -192,23 +198,27 @@ export function HubScreen({ navigation }: HubScreenProps) {
       index: 0,
       routes: [{ name: 'Account' }],
     });
-  }, [disconnect, navigation]);
+  }, [disconnect, navigation, playSfx]);
 
   const handleOpenResetWarning = useCallback(() => {
+    playSfx('ui_click');
     setResetError(null);
     setResetWarningFocus(1);
     setShowResetWarning(true);
-  }, []);
+  }, [playSfx]);
 
   const handleResetProfile = useCallback(async () => {
+    playSfx('ui_click');
     setResetError(null);
     setResetInProgress(true);
     try {
       const result = await clearProfile();
       if (!result.success) {
+        playSfx('ui_error');
         setResetError(result.error ?? 'Failed to reset profile');
         return;
       }
+      playSfx('ui_click');
       setShowResetWarning(false);
       setShowSettings(false);
       navigation.reset({
@@ -218,9 +228,10 @@ export function HubScreen({ navigation }: HubScreenProps) {
     } finally {
       setResetInProgress(false);
     }
-  }, [clearProfile, navigation]);
+  }, [clearProfile, navigation, playSfx]);
 
   const handlePlayPvE = useCallback(async () => {
+    playSfx('ui_click');
     if (isGuest) {
       // Guest mode: Start game directly with secure/VRF-backed seed
       const seed = await getVrfSeed();
@@ -236,51 +247,61 @@ export function HubScreen({ navigation }: HubScreenProps) {
       // Navigate to campaign selection screen
       navigation.navigate('CampaignSelect');
     }
-  }, [navigation, isGuest, dispatch, gameState?.phase]);
+  }, [navigation, isGuest, dispatch, gameState?.phase, playSfx]);
 
   const handlePlayPvP = () => {
+    playSfx('ui_click');
     setPvpFocus(0);
     setShowPvP(true);
   };
 
   const handleGauntlet = () => {
+    playSfx('ui_click');
     setShowPvP(false);
     navigation.navigate('Gauntlet');
   };
 
   const handleDuels = () => {
+    playSfx('ui_click');
     setShowPvP(false);
     navigation.navigate('Duels');
   };
 
   const handlePitDraft = () => {
+    playSfx('ui_click');
     setShowPvP(false);
     navigation.navigate('PitDraft');
   };
 
   const handleMarketplace = () => {
+    playSfx('ui_click');
     navigation.navigate('Marketplace');
   };
 
   const handleLeaderboard = () => {
+    playSfx('ui_click');
     navigation.navigate('GauntletRanking', { returnTo: 'Hub' });
   };
 
   const handleQuests = () => {
+    playSfx('ui_click');
     setQuestsFocus(0);
     setShowQuests(true);
   };
 
   const handleSkins = () => {
+    playSfx('ui_click');
     setSkinsFocus(0);
     setShowSkins(true);
   };
 
   const handleItems = () => {
+    playSfx('ui_click');
     navigation.navigate('Items');
   };
 
   const handleProfileSettings = () => {
+    playSfx('ui_click');
     setProfileName(profile?.name ?? '');
     setProfileValidationError(null);
     setProfileSuccessMessage(null);
@@ -303,26 +324,31 @@ export function HubScreen({ navigation }: HubScreenProps) {
 
   const handleProfileSave = useCallback(async () => {
     if (!profileName.trim()) {
+      playSfx('ui_error');
       setProfileValidationError('Name is required');
       return;
     }
     if (profileName === profile?.name) {
+      playSfx('ui_error');
       setProfileSuccessMessage('Name unchanged');
       return;
     }
+    playSfx('ui_click');
     setProfileSaving(true);
     setProfileSuccessMessage(null);
     try {
       const result = await updateName(profileName);
       if (result.success) {
+        playSfx('ui_click');
         setProfileSuccessMessage('Name updated!');
       } else {
+        playSfx('ui_error');
         setProfileValidationError(result.error ?? 'Failed to update name');
       }
     } finally {
       setProfileSaving(false);
     }
-  }, [profileName, profile?.name, updateName]);
+  }, [profileName, profile?.name, updateName, playSfx]);
 
   const formatDate = (timestamp: number): string => {
     const date = new Date(timestamp * 1000);
@@ -377,6 +403,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
   };
 
   const closeAnyModal = () => {
+    playSfx('ui_click');
     if (showResetWarning) setShowResetWarning(false);
     else if (showPvP) setShowPvP(false);
     else if (showSettings) setShowSettings(false);
@@ -394,23 +421,38 @@ export function HubScreen({ navigation }: HubScreenProps) {
   };
 
   // Build controller actions based on which modal is open
-  const maxSettingsFocus = isGuest ? 1 : 2;
+  const maxSettingsFocus = isGuest ? 3 : 4;
 
-  const settingsActions = showSettings && !showResetWarning
-    ? {
-        onA:
-          settingsFocus === 1
-            ? handleDisconnect
-            : settingsFocus === 2 && !isGuest
-              ? handleOpenResetWarning
-              : undefined,
-        onB: closeAnyModal,
-        onDPadUp: () => setSettingsFocus((p) => Math.max(0, p - 1)),
-        onDPadDown: () => setSettingsFocus((p) => Math.min(maxSettingsFocus, p + 1)),
-        onDPadLeft: settingsFocus === 0 ? () => cycleSpeed(-1) : undefined,
-        onDPadRight: settingsFocus === 0 ? () => cycleSpeed(1) : undefined,
-      }
-    : null;
+  const settingsActions =
+    showSettings && !showResetWarning
+      ? {
+          onA:
+            settingsFocus === 3
+              ? handleDisconnect
+              : settingsFocus === 4 && !isGuest
+                ? handleOpenResetWarning
+                : undefined,
+          onB: closeAnyModal,
+          onDPadUp: () => setSettingsFocus((p) => Math.max(0, p - 1)),
+          onDPadDown: () => setSettingsFocus((p) => Math.min(maxSettingsFocus, p + 1)),
+          onDPadLeft:
+            settingsFocus === 0
+              ? () => setMusicVolume(Math.round(Math.max(0, musicVolume - 0.1) * 10) / 10)
+              : settingsFocus === 1
+                ? () => setSfxVolume(Math.round(Math.max(0, sfxVolume - 0.1) * 10) / 10)
+                : settingsFocus === 2
+                  ? () => cycleSpeed(-1)
+                  : undefined,
+          onDPadRight:
+            settingsFocus === 0
+              ? () => setMusicVolume(Math.round(Math.min(1, musicVolume + 0.1) * 10) / 10)
+              : settingsFocus === 1
+                ? () => setSfxVolume(Math.round(Math.min(1, sfxVolume + 0.1) * 10) / 10)
+                : settingsFocus === 2
+                  ? () => cycleSpeed(1)
+                  : undefined,
+        }
+      : null;
 
   const resetWarningActions = showResetWarning
     ? {
@@ -458,11 +500,13 @@ export function HubScreen({ navigation }: HubScreenProps) {
             if (!skin || equipLoading) return;
             const isEquipped = profile?.equippedSkin?.equals(skin.address) ?? false;
             if (isEquipped) {
+              playSfx('ui_click');
               unequipSkin().then(() => {
                 refresh();
                 fetchUserAssets();
               });
             } else {
+              playSfx('ui_click');
               equipSkin(skin.address).then(() => {
                 refresh();
                 fetchUserAssets();
@@ -486,8 +530,10 @@ export function HubScreen({ navigation }: HubScreenProps) {
             const quest = flatQuests[questsFocus];
             if (!quest || questsLoading) return;
             if (quest.progress?.completed && !quest.progress?.claimed) {
+              playSfx('ui_click');
               claimReward(quest.definition.questId);
             } else if (!quest.progress) {
+              playSfx('ui_click');
               acceptQuest(quest.definition.questId);
             }
           },
@@ -546,15 +592,17 @@ export function HubScreen({ navigation }: HubScreenProps) {
         onStart: otherModalOpen
           ? undefined
           : () => {
+              playSfx('ui_click');
               setSettingsFocus(0);
               setShowSettings(true);
             },
-        onSelect: otherModalOpen || isGuest
-          ? undefined
-          : () => {
-              setProfileFocus(0);
-              handleProfileSettings();
-            },
+        onSelect:
+          otherModalOpen || isGuest
+            ? undefined
+            : () => {
+                setProfileFocus(0);
+                handleProfileSettings();
+              },
       },
     !showProfileKeyboard && isScreenFocused
   );
@@ -650,8 +698,15 @@ export function HubScreen({ navigation }: HubScreenProps) {
 
             {/* Guest mode description */}
             {isGuest && (
-              <Text style={[styles.guestModeDescription, isCompact && compactStyles.guestModeDescription]}>
-                {'Guest mode — explore freely with no strings attached.\nYour progress won\'t be saved.'}
+              <Text
+                style={[
+                  styles.guestModeDescription,
+                  isCompact && compactStyles.guestModeDescription,
+                ]}
+              >
+                {
+                  "Guest mode — explore freely with no strings attached.\nYour progress won't be saved."
+                }
               </Text>
             )}
 
@@ -782,7 +837,13 @@ export function HubScreen({ navigation }: HubScreenProps) {
                 </ImageBackground>
               )
             ) : (
-              <TouchableOpacity onPress={() => setShowSettings(true)} activeOpacity={0.7}>
+              <TouchableOpacity
+                onPress={() => {
+                  playSfx('ui_click');
+                  setShowSettings(true);
+                }}
+                activeOpacity={0.7}
+              >
                 <ImageBackground
                   source={buttonV1Source}
                   style={styles.settingsBtn}
@@ -964,7 +1025,10 @@ export function HubScreen({ navigation }: HubScreenProps) {
                   </Text>
                   {!isController && (
                     <TouchableOpacity
-                      onPress={() => setShowSettings(false)}
+                      onPress={() => {
+                        playSfx('ui_click');
+                        setShowSettings(false);
+                      }}
                       style={styles.closeButton}
                       hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                     >
@@ -978,7 +1042,33 @@ export function HubScreen({ navigation }: HubScreenProps) {
                 </View>
 
                 <View style={[styles.modalBody, isCompact && compactStyles.settingsModalBody]}>
-                  <FocusGlow active={isController && showSettings && settingsFocus === 0}>
+                  <FocusGlow active={isController && showSettings && settingsFocus === 0} style={styles.settingGlow}>
+                    <View style={styles.settingRow}>
+                      <Text style={[styles.settingLabel, isCompact && compactStyles.settingLabel]}>
+                        Music volume
+                      </Text>
+                      <VolumeControls
+                        currentVolume={musicVolume}
+                        onVolumeChange={setMusicVolume}
+                        scale={isCompact ? 2 : 1}
+                      />
+                    </View>
+                  </FocusGlow>
+
+                  <FocusGlow active={isController && showSettings && settingsFocus === 1} style={styles.settingGlow}>
+                    <View style={styles.settingRow}>
+                      <Text style={[styles.settingLabel, isCompact && compactStyles.settingLabel]}>
+                        SFX volume
+                      </Text>
+                      <VolumeControls
+                        currentVolume={sfxVolume}
+                        onVolumeChange={setSfxVolume}
+                        scale={isCompact ? 2 : 1}
+                      />
+                    </View>
+                  </FocusGlow>
+
+                  <FocusGlow active={isController && showSettings && settingsFocus === 2} style={styles.settingGlow}>
                     <View style={styles.settingRow}>
                       <Text style={[styles.settingLabel, isCompact && compactStyles.settingLabel]}>
                         Combat speed
@@ -986,12 +1076,12 @@ export function HubScreen({ navigation }: HubScreenProps) {
                       <SpeedControls
                         currentSpeed={defaultCombatSpeed}
                         onSpeedChange={updateDefaultCombatSpeed}
-                        scale={isCompact ? 2 : 1}
+                        scale={isCompact ? 1.4 : 0.7}
                       />
                     </View>
                   </FocusGlow>
 
-                  <FocusGlow active={isController && showSettings && settingsFocus === 1}>
+                  <FocusGlow active={isController && showSettings && settingsFocus === 3}>
                     <TouchableOpacity
                       style={[styles.resetButton, isCompact && compactStyles.resetButton]}
                       onPress={handleDisconnect}
@@ -1012,7 +1102,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
                   </FocusGlow>
 
                   {!isGuest && (
-                    <FocusGlow active={isController && showSettings && settingsFocus === 2}>
+                    <FocusGlow active={isController && showSettings && settingsFocus === 4}>
                       <TouchableOpacity
                         style={[styles.resetButton, isCompact && compactStyles.resetButton]}
                         onPress={handleOpenResetWarning}
@@ -1038,7 +1128,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
                 </View>
                 {isController && (
                   <View style={[styles.settingsHints, isCompact && compactStyles.settingsHints]}>
-                    {settingsFocus === 0 ? (
+                    {settingsFocus <= 2 ? (
                       <View style={styles.settingsHintRow}>
                         <Image
                           source={iconDirSource}
@@ -1064,7 +1154,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
                             isCompact && compactStyles.settingsHintText,
                           ]}
                         >
-                          Change speed
+                          {settingsFocus === 2 ? 'Change speed' : 'Change volume'}
                         </Text>
                       </View>
                     ) : (
@@ -1119,12 +1209,18 @@ export function HubScreen({ navigation }: HubScreenProps) {
         transparent
         animationType="fade"
         onRequestClose={() => {
-          if (!resetInProgress) setShowResetWarning(false);
+          if (!resetInProgress) {
+            playSfx('ui_click');
+            setShowResetWarning(false);
+          }
         }}
       >
         <TouchableWithoutFeedback
           onPress={() => {
-            if (!resetInProgress) setShowResetWarning(false);
+            if (!resetInProgress) {
+              playSfx('ui_click');
+              setShowResetWarning(false);
+            }
           }}
         >
           <View style={styles.modalOverlay}>
@@ -1148,7 +1244,9 @@ export function HubScreen({ navigation }: HubScreenProps) {
                   wallet. This cannot be undone.
                 </Text>
                 {!!resetError && (
-                  <Text style={[styles.warningErrorText, isCompact && compactStyles.warningErrorText]}>
+                  <Text
+                    style={[styles.warningErrorText, isCompact && compactStyles.warningErrorText]}
+                  >
                     {resetError}
                   </Text>
                 )}
@@ -1156,7 +1254,10 @@ export function HubScreen({ navigation }: HubScreenProps) {
                   <FocusGlow active={isController && resetWarningFocus === 0}>
                     <TouchableOpacity
                       style={[styles.warningButton, isCompact && compactStyles.warningButton]}
-                      onPress={() => setShowResetWarning(false)}
+                      onPress={() => {
+                        playSfx('ui_click');
+                        setShowResetWarning(false);
+                      }}
                       disabled={resetInProgress}
                       activeOpacity={0.7}
                     >
@@ -1214,7 +1315,10 @@ export function HubScreen({ navigation }: HubScreenProps) {
                         resizeMode="contain"
                       />
                       <Text
-                        style={[styles.settingsHintText, isCompact && compactStyles.settingsHintText]}
+                        style={[
+                          styles.settingsHintText,
+                          isCompact && compactStyles.settingsHintText,
+                        ]}
                       >
                         Choose action
                       </Text>
@@ -1222,11 +1326,17 @@ export function HubScreen({ navigation }: HubScreenProps) {
                     <View style={styles.settingsHintRow}>
                       <Image
                         source={iconASource}
-                        style={[styles.settingsHintIcon, isCompact && compactStyles.settingsHintIcon]}
+                        style={[
+                          styles.settingsHintIcon,
+                          isCompact && compactStyles.settingsHintIcon,
+                        ]}
                         resizeMode="contain"
                       />
                       <Text
-                        style={[styles.settingsHintText, isCompact && compactStyles.settingsHintText]}
+                        style={[
+                          styles.settingsHintText,
+                          isCompact && compactStyles.settingsHintText,
+                        ]}
                       >
                         Confirm
                       </Text>
@@ -1234,11 +1344,17 @@ export function HubScreen({ navigation }: HubScreenProps) {
                     <View style={styles.settingsHintRow}>
                       <Image
                         source={iconBSource}
-                        style={[styles.settingsHintIcon, isCompact && compactStyles.settingsHintIcon]}
+                        style={[
+                          styles.settingsHintIcon,
+                          isCompact && compactStyles.settingsHintIcon,
+                        ]}
                         resizeMode="contain"
                       />
                       <Text
-                        style={[styles.settingsHintText, isCompact && compactStyles.settingsHintText]}
+                        style={[
+                          styles.settingsHintText,
+                          isCompact && compactStyles.settingsHintText,
+                        ]}
                       >
                         Back
                       </Text>
@@ -1276,7 +1392,10 @@ export function HubScreen({ navigation }: HubScreenProps) {
                     </Text>
                     {!isController && (
                       <TouchableOpacity
-                        onPress={() => setShowSkins(false)}
+                        onPress={() => {
+                          playSfx('ui_click');
+                          setShowSkins(false);
+                        }}
                         style={styles.closeButton}
                         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                       >
@@ -1327,17 +1446,18 @@ export function HubScreen({ navigation }: HubScreenProps) {
                               <NftCard
                                 name={skin.name}
                                 image={getSkinImage(skin.name)}
-                                isOwned
                                 isEquipped={isEquipped}
                                 actionLabel={isEquipped ? 'Unequip' : 'Equip'}
                                 onAction={
                                   isEquipped
                                     ? async () => {
+                                        playSfx('ui_click');
                                         await unequipSkin();
                                         refresh();
                                         fetchUserAssets();
                                       }
                                     : async () => {
+                                        playSfx('ui_click');
                                         await equipSkin(skin.address);
                                         refresh();
                                         fetchUserAssets();
@@ -1447,7 +1567,10 @@ export function HubScreen({ navigation }: HubScreenProps) {
                     </Text>
                     {!isController && (
                       <TouchableOpacity
-                        onPress={() => setShowQuests(false)}
+                        onPress={() => {
+                          playSfx('ui_click');
+                          setShowQuests(false);
+                        }}
                         style={styles.closeButton}
                         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                       >
@@ -1504,9 +1627,11 @@ export function HubScreen({ navigation }: HubScreenProps) {
                                 isClaimed={quest.progress?.claimed ?? false}
                                 isAccepted={quest.progress !== null}
                                 onAccept={async () => {
+                                  playSfx('ui_click');
                                   await acceptQuest(quest.definition.questId);
                                 }}
                                 onClaim={async () => {
+                                  playSfx('ui_click');
                                   await claimReward(quest.definition.questId);
                                 }}
                                 disabled={questsLoading}
@@ -1615,7 +1740,10 @@ export function HubScreen({ navigation }: HubScreenProps) {
                     </Text>
                     {!isController && (
                       <TouchableOpacity
-                        onPress={() => setShowProfile(false)}
+                        onPress={() => {
+                          playSfx('ui_click');
+                          setShowProfile(false);
+                        }}
                         style={styles.closeButton}
                         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                       >
@@ -1886,7 +2014,10 @@ export function HubScreen({ navigation }: HubScreenProps) {
               >
                 {!isController && (
                   <TouchableOpacity
-                    onPress={() => setShowPvP(false)}
+                    onPress={() => {
+                      playSfx('ui_click');
+                      setShowPvP(false);
+                    }}
                     style={[styles.pvpCloseButton, isCompact && compactStyles.pvpCloseButton]}
                     hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                   >
@@ -2362,8 +2493,8 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   modalContent: {
-    width: 340,
-    height: 340,
+    width: 380,
+    height: 420,
     padding: 40,
     alignItems: 'center',
     justifyContent: 'flex-start',
@@ -2397,7 +2528,7 @@ const styles = StyleSheet.create({
   modalBody: {
     width: '100%',
     alignItems: 'center',
-    gap: 30,
+    gap: 20,
   },
   resumeModalContent: {
     width: 320,
@@ -2443,15 +2574,21 @@ const styles = StyleSheet.create({
   resumeModalButtonTextPrimary: {
     color: '#ffffff',
   },
+  settingGlow: {
+    width: '100%',
+  },
   settingRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    gap: 12,
+    width: '100%',
   },
   settingLabel: {
     fontFamily: Typography.header,
-    fontSize: 20,
+    fontSize: 13,
     color: '#3d2b1f',
-    marginBottom: 2,
+    width: 90,
+    flexShrink: 0,
   },
   resetButton: {
     width: 180,
@@ -2904,8 +3041,8 @@ const compactStyles = StyleSheet.create({
 
   // Settings modal — scaled up for compact
   settingsModalContent: {
-    width: 680,
-    height: 680,
+    width: 760,
+    height: 840,
     padding: 80,
   },
   settingsModalBody: {
@@ -2913,7 +3050,8 @@ const compactStyles = StyleSheet.create({
     justifyContent: 'center',
   },
   settingLabel: {
-    fontSize: 36,
+    fontSize: 26,
+    width: 180,
   },
   resetButton: {
     width: 360,

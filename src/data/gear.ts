@@ -955,33 +955,114 @@ export function getTierFromRarity(rarity: ItemRarity): ItemTier {
 }
 
 /**
+ * Replace the first occurrence of a numeric value in a description.
+ * Prefers +V patterns (stat bonuses like "+2 ATK") over bare matches,
+ * and skips numbers already inside X/Y/Z slash notation.
+ */
+function replaceValue(text: string, oldVal: number, newStr: string): string {
+  // Prefer +V (stat bonus) — avoids contextual numbers like "Turn 1", "Countdown(2)"
+  const plusPattern = new RegExp(`\\+${oldVal}\\b(?!\\/\\d)`);
+  if (plusPattern.test(text)) {
+    return text.replace(plusPattern, `+${newStr}`);
+  }
+  // Fallback: bare word-bounded match, skip if inside existing slash notation
+  return text.replace(new RegExp(`(?<!\\d\\/)\\b${oldVal}\\b(?!\\/\\d)`), newStr);
+}
+
+/**
+ * Resolve a description to show only the given tier's values.
+ * 1. Replaces existing X/Y/Z slash notation with the tier-appropriate value
+ * 2. Replaces remaining base values with tier values for effects without slash notation
+ *    Uses placeholders to prevent cascading replacements (e.g., +1→+2 then +2→+3)
+ */
+export function resolveDescriptionForTier(
+  description: string,
+  effects: { values: [number, number, number] }[],
+  tier: number
+): string {
+  const handledBaseValues = new Set<number>();
+  let result = description.replace(/(\d+)\/(\d+)\/(\d+)/g, (_match, v1, v2, v3) => {
+    handledBaseValues.add(Number(v1));
+    return [v1, v2, v3][tier - 1];
+  });
+
+  if (tier > 1) {
+    // Collect replacements, use placeholders to avoid cascading
+    const replacements: { oldVal: number; newVal: string; placeholder: string }[] = [];
+    let idx = 0;
+    for (const effect of effects) {
+      const baseValue = effect.values[0];
+      const scaledValue = effect.values[tier - 1];
+      if (baseValue !== scaledValue && !handledBaseValues.has(baseValue)) {
+        replacements.push({ oldVal: baseValue, newVal: String(scaledValue), placeholder: `\x00${idx++}\x00` });
+      }
+    }
+    // Pass 1: replace values with placeholders
+    for (const r of replacements) {
+      result = replaceValue(result, r.oldVal, r.placeholder);
+    }
+    // Pass 2: replace placeholders with final values
+    for (const r of replacements) {
+      result = result.replace(r.placeholder, r.newVal);
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Generate a description with X/Y/Z notation for all scaling values.
+ * Values that are the same across all tiers are left as-is.
+ * Values already in slash notation are left as-is.
+ */
+export function resolveDescriptionAllTiers(
+  description: string,
+  effects: { values: [number, number, number] }[]
+): string {
+  let result = description;
+
+  for (const effect of effects) {
+    const [v1, v2, v3] = effect.values;
+    if (v1 === v2 && v2 === v3) continue;
+
+    const slashNotation = `${v1}/${v2}/${v3}`;
+    if (result.includes(slashNotation)) continue;
+
+    result = replaceValue(result, v1, slashNotation);
+  }
+
+  return result;
+}
+
+/**
  * Get the effect description scaled to the item's current tier.
- * Replaces tier-1 values in the base description with the current tier's values
- * using the gear-effects data.
+ * Handles both items with slash notation (e.g., "3/4/5") and items without.
  */
 export function getScaledEffectDescription(gearId: GearId, rarity: ItemRarity): string | null {
   const def = GEAR_DEFINITIONS[gearId];
   if (!def.effect) return null;
 
   const tier = getTierFromRarity(rarity);
-  if (tier === 1) return def.effect.description;
+  const gearEffects = GEAR_EFFECTS[gearId];
+
+  return resolveDescriptionForTier(
+    def.effect.description,
+    gearEffects?.effects ?? [],
+    tier
+  );
+}
+
+/**
+ * Get the effect description showing all tier values in X/Y/Z notation.
+ */
+export function getEffectDescriptionAllTiers(gearId: GearId): string | null {
+  const def = GEAR_DEFINITIONS[gearId];
+  if (!def.effect) return null;
 
   const gearEffects = GEAR_EFFECTS[gearId];
   if (!gearEffects || gearEffects.effects.length === 0) return def.effect.description;
 
-  let description = def.effect.description;
-  for (const effect of gearEffects.effects) {
-    const baseValue = effect.values[0];
-    const scaledValue = effect.values[tier - 1];
-    if (baseValue !== scaledValue) {
-      description = description.replace(
-        new RegExp(`\\b${baseValue}\\b`),
-        String(scaledValue)
-      );
-    }
-  }
-
-  return description;
+  return resolveDescriptionAllTiers(def.effect.description, gearEffects.effects);
 }
 
 /**

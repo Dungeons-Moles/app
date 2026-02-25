@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Image, ImageSourcePropType } from 'react-native';
 import { Typography } from '@/theme/typography';
+import { useAudio } from '@/contexts/AudioContext';
 
 interface NftCardProps {
   name: string;
@@ -8,7 +9,6 @@ interface NftCardProps {
   emoji?: string;
   rarity?: string;
   priceSol?: number;
-  isOwned?: boolean;
   isEquipped?: boolean;
   actionLabel?: string;
   onAction?: () => void;
@@ -31,37 +31,34 @@ export function NftCard({
   emoji,
   rarity,
   priceSol,
-  isOwned,
   isEquipped,
   actionLabel,
   onAction,
   disabled,
   isCompact,
 }: NftCardProps) {
-  const rarityColor = rarity ? RARITY_COLORS[rarity] ?? '#6B7280' : '#6B7280';
+  const { playSfx } = useAudio();
+  const rarityColor = rarity ? (RARITY_COLORS[rarity] ?? '#6B7280') : '#6B7280';
 
   return (
-    <View style={[
-      styles.container,
-      isCompact && compactStyles.container,
-      isEquipped && styles.equippedContainer,
-    ]}>
+    <View
+      style={[
+        styles.container,
+        isCompact && compactStyles.container,
+        isEquipped && styles.equippedContainer,
+      ]}
+    >
       {/* Image */}
       <View style={[styles.imageContainer, isCompact && compactStyles.imageContainer]}>
         {image ? (
           <Image source={image} style={styles.nftImage} resizeMode="contain" />
         ) : (
-          <Text style={[styles.emoji, isCompact && compactStyles.emoji]}>
-            {emoji ?? '?'}
-          </Text>
+          <Text style={[styles.emoji, isCompact && compactStyles.emoji]}>{emoji ?? '?'}</Text>
         )}
       </View>
 
       {/* Name */}
-      <Text
-        style={[styles.name, isCompact && compactStyles.name]}
-        numberOfLines={1}
-      >
+      <Text style={[styles.name, isCompact && compactStyles.name]} numberOfLines={1}>
         {name}
       </Text>
 
@@ -96,15 +93,20 @@ export function NftCard({
             isCompact && compactStyles.actionButton,
             disabled && styles.actionButtonDisabled,
           ]}
-          onPress={onAction}
+          onPress={() => {
+            playSfx('ui_click');
+            onAction();
+          }}
           disabled={disabled}
           activeOpacity={0.7}
         >
-          <Text style={[
-            styles.actionButtonText,
-            isCompact && compactStyles.actionButtonText,
-            disabled && styles.actionButtonTextDisabled,
-          ]}>
+          <Text
+            style={[
+              styles.actionButtonText,
+              isCompact && compactStyles.actionButtonText,
+              disabled && styles.actionButtonTextDisabled,
+            ]}
+          >
             {actionLabel}
           </Text>
         </TouchableOpacity>

@@ -9,11 +9,21 @@
  */
 import React, { useRef, useEffect } from 'react';
 import { View, Platform, type ViewStyle } from 'react-native';
+import { useAudio } from '../../contexts/AudioContext';
 
 /** Apply the focus glow animation directly to an existing View ref. */
 export function useFocusGlow(active: boolean) {
   const ref = useRef<View>(null);
   const animRef = useRef<number | null>(null);
+  const { playSfx } = useAudio();
+  const prevActiveRef = useRef(active);
+
+  useEffect(() => {
+    if (active && !prevActiveRef.current) {
+      playSfx('ui_hover');
+    }
+    prevActiveRef.current = active;
+  }, [active, playSfx]);
 
   useEffect(() => {
     if (Platform.OS !== 'web' || !active) {
@@ -66,6 +76,15 @@ interface FocusGlowProps {
 export function FocusGlow({ active, children, style }: FocusGlowProps) {
   const ref = useRef<View>(null);
   const animRef = useRef<number | null>(null);
+  const { playSfx } = useAudio();
+  const prevActiveRef = useRef(active);
+
+  useEffect(() => {
+    if (active && !prevActiveRef.current) {
+      playSfx('ui_hover');
+    }
+    prevActiveRef.current = active;
+  }, [active, playSfx]);
 
   useEffect(() => {
     if (Platform.OS !== 'web' || !active) {
