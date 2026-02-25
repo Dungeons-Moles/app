@@ -118,10 +118,12 @@ export function NftCard({
 const styles = StyleSheet.create({
   container: {
     width: 100,
+    height: 160,
     backgroundColor: 'rgba(255, 255, 255, 0.6)',
     borderRadius: 8,
     padding: 8,
     alignItems: 'center',
+    justifyContent: 'space-between',
     gap: 4,
     borderWidth: 1,
     borderColor: 'rgba(92, 64, 51, 0.2)',
@@ -200,6 +202,7 @@ const styles = StyleSheet.create({
 const compactStyles = StyleSheet.create({
   container: {
     width: 180,
+    height: 230,
     padding: 14,
     gap: 6,
   },

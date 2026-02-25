@@ -25,6 +25,8 @@ import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHin
 import { useInputMode } from '../hooks/useInputMode';
 import { FocusGlow } from '../components/ui/FocusGlow';
 import { useGame } from '@/contexts/GameContext';
+import { usePaymentToken } from '@/hooks/usePaymentToken';
+import { PaymentTokenSelector, PaymentConfirmationModal } from '@/components/payment';
 
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.png');
 const STAINS_BACKGROUND = require('../../assets/ui/backgrounds/stains-background.png');
@@ -50,6 +52,9 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
   const isFocused = useIsFocused();
   const isCompact = useScreenVariant() === 'compact';
   const [hasExistingDuelSessionOnChain, setHasExistingDuelSessionOnChain] = useState(false);
+
+  const payment = usePaymentToken(BigInt(DUEL_ENTRY_LAMPORTS));
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
 
   const duelPdaBase58 = useMemo(() => {
     if (!wallet.publicKey) return null;
@@ -103,13 +108,26 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
     navigation.goBack();
   }, [duels, navigation]);
 
-  const handleEnter = useCallback(async () => {
+  const handleEnterDirect = useCallback(async () => {
     const ok = await duels.enterCurrentSessionDuel();
     if (ok) {
       dispatch({ type: 'RESET_GAME' });
       navigation.navigate('Game');
     }
   }, [dispatch, duels, navigation]);
+
+  const handleEnter = useCallback(async () => {
+    if (!payment.selectedToken.isNative && payment.quote) {
+      setShowPaymentModal(true);
+      return;
+    }
+    await handleEnterDirect();
+  }, [payment.selectedToken, payment.quote, handleEnterDirect]);
+
+  const handlePaymentConfirm = useCallback(async () => {
+    setShowPaymentModal(false);
+    await handleEnterDirect();
+  }, [handleEnterDirect]);
 
   const entryFeeSol = DUEL_ENTRY_LAMPORTS / 1_000_000_000;
 
@@ -122,13 +140,29 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
     navigation.navigate('DuelsHistory');
   }, [navigation]);
 
-  useControllerAction(
-    {
-      onB: handleBack,
-      onA: panelFocus === 0 ? handleHistory : !duels.isLoading ? handleEnter : undefined,
-      onDPadLeft: () => setPanelFocus(0),
-      onDPadRight: () => setPanelFocus(1),
+  const cycleToken = useCallback(
+    (dir: -1 | 1) => {
+      const tokens = payment.supportedTokens;
+      const idx = tokens.findIndex((t) => t.symbol === payment.selectedToken.symbol);
+      const next = idx + dir;
+      if (next >= 0 && next < tokens.length) {
+        payment.setSelectedToken(tokens[next]);
+      }
     },
+    [payment]
+  );
+
+  useControllerAction(
+    showPaymentModal
+      ? {}
+      : {
+          onB: handleBack,
+          onA: panelFocus === 0 ? handleHistory : !duels.isLoading ? handleEnter : undefined,
+          onDPadLeft: () => setPanelFocus(0),
+          onDPadRight: () => setPanelFocus(1),
+          onL1: () => cycleToken(-1),
+          onR1: () => cycleToken(1),
+        },
     isController && isFocused && duels.phase !== 'error'
   );
 
@@ -141,6 +175,7 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
   );
 
   const controllerHints: ButtonHint[] = [
+    { button: 'L1R1', label: 'Currency' },
     { button: 'DPadLeftRight', label: 'Switch' },
     { button: 'A', label: 'Select' },
     { button: 'B', label: 'Back' },
@@ -346,9 +381,34 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
                 </View>
               </View>
             </View>
+
+            {/* Token selector — below the panel */}
+            <View style={[styles.tokenSelectorWrap, isCompact && compactStyles.tokenSelectorWrap]}>
+              <PaymentTokenSelector
+                tokens={payment.supportedTokens}
+                selectedToken={payment.selectedToken}
+                onSelectToken={payment.setSelectedToken}
+                quote={payment.quote}
+                isQuoteLoading={payment.isQuoteLoading}
+                solUsdPrice={payment.solUsdPrice}
+                requiredLamports={BigInt(DUEL_ENTRY_LAMPORTS)}
+                isCompact={isCompact}
+                isController={isController}
+              />
+            </View>
           </View>
         </View>
       </ImageBackground>
+      {payment.quote && (
+        <PaymentConfirmationModal
+          visible={showPaymentModal}
+          quote={payment.quote}
+          isDevnet={payment.isDevnet}
+          isCompact={isCompact}
+          onConfirm={handlePaymentConfirm}
+          onCancel={() => setShowPaymentModal(false)}
+        />
+      )}
       <ControllerHints hints={controllerHints} />
     </Animated.View>
   );
@@ -364,18 +424,20 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 4,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 8,
+    marginTop: 0,
   },
   headerSpacer: { flex: 1 },
   headerButton: {
     width: 90,
-    height: 45,
+    height: 36,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -389,12 +451,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   titleImage: {
-    width: 280,
-    height: 70,
+    width: 265,
+    height: 58,
   },
   centerContent: {
     flex: 1,
-    justifyContent: 'center',
     alignItems: 'center',
   },
   panelWrapper: {
@@ -444,6 +505,10 @@ const styles = StyleSheet.create({
   panelIcon: {
     width: 40,
     height: 40,
+  },
+  tokenSelectorWrap: {
+    alignItems: 'center',
+    marginTop: 0,
   },
   panelButtons: {
     flexDirection: 'row',
@@ -508,20 +573,20 @@ const styles = StyleSheet.create({
 
 const compactStyles = StyleSheet.create({
   header: {
-    marginTop: 12,
+    marginTop: 0,
   },
   headerButton: {
     width: 140,
-    height: 76,
+    height: 64,
   },
   headerButtonText: {
     fontSize: 28,
     marginBottom: 6,
   },
   titleImage: {
-    width: 520,
-    height: 130,
-    marginBottom: 20,
+    width: 510,
+    height: 105,
+    marginBottom: 12,
   },
   panelWrapper: {
     width: '95%',
@@ -552,6 +617,9 @@ const compactStyles = StyleSheet.create({
   panelIcon: {
     width: 162,
     height: 162,
+  },
+  tokenSelectorWrap: {
+    marginTop: 10,
   },
   panelButtons: {
     marginTop: 150,

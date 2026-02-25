@@ -3,20 +3,12 @@ const path = require('path');
 
 const config = getDefaultConfig(__dirname);
 
-// psg1-sim lives outside the project root as a symlinked local dependency.
-// Metro needs to know about it so it can resolve and watch the files.
-const psg1SimPath = path.resolve(__dirname, '../../psg1-sim');
-
-config.watchFolders = [psg1SimPath];
-
-// Only resolve node_modules from the app — never from psg1-sim's own node_modules.
-// This prevents the duplicate React problem (psg1-sim has react as a devDependency).
+// Worktree: node_modules is symlinked from the main app directory.
+// Tell Metro to watch and resolve from the real node_modules location.
+const appRoot = path.resolve(__dirname, '../../..');
+config.watchFolders = [appRoot];
 config.resolver.nodeModulesPaths = [
-  path.resolve(__dirname, 'node_modules'),
-];
-
-config.resolver.blockList = [
-  new RegExp(path.resolve(__dirname, '../../psg1-sim/node_modules').replace(/[/\\]/g, '[/\\\\]') + '.*'),
+  path.resolve(appRoot, 'node_modules'),
 ];
 
 module.exports = config;

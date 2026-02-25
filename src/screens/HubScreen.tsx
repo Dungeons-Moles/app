@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -122,6 +122,16 @@ export function HubScreen({ navigation }: HubScreenProps) {
   const { quests, isLoading: questsLoading, fetchQuests, acceptQuest, claimReward } = useQuests();
   const { equipSkin, unequipSkin, isLoading: equipLoading } = useEquipSkin();
   const { processPendingCleanups } = useSessionIdentity();
+
+  // Sort skins: equipped first
+  const sortedSkins = useMemo(() => {
+    const equippedKey = profile?.equippedSkin?.toBase58() ?? null;
+    return [...userSkins].sort((a, b) => {
+      const aEq = a.address.toBase58() === equippedKey ? 0 : 1;
+      const bEq = b.address.toBase58() === equippedKey ? 0 : 1;
+      return aEq - bEq;
+    });
+  }, [userSkins, profile?.equippedSkin]);
 
   // Resolve equipped skin image for center character + avatar (single getAccountInfo, no heavy getProgramAccounts)
   const characterImage = useEquippedSkinImage(profile?.equippedSkin);
@@ -518,10 +528,10 @@ export function HubScreen({ navigation }: HubScreenProps) {
     : null;
 
   const skinsActions =
-    showSkins && userSkins.length > 0
+    showSkins && sortedSkins.length > 0
       ? {
           onA: () => {
-            const skin = userSkins[skinsFocus];
+            const skin = sortedSkins[skinsFocus];
             if (!skin || equipLoading) return;
             const isEquipped = profile?.equippedSkin?.equals(skin.address) ?? false;
             if (isEquipped) {
@@ -539,8 +549,8 @@ export function HubScreen({ navigation }: HubScreenProps) {
             }
           },
           onB: closeAnyModal,
-          onDPadUp: () => setSkinsFocus((p) => Math.max(0, p - 1)),
-          onDPadDown: () => setSkinsFocus((p) => Math.min(userSkins.length - 1, p + 1)),
+          onDPadLeft: () => setSkinsFocus((p) => Math.max(0, p - 1)),
+          onDPadRight: () => setSkinsFocus((p) => Math.min(sortedSkins.length - 1, p + 1)),
         }
       : showSkins
         ? { onB: closeAnyModal }
@@ -1456,7 +1466,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
                         size={isCompact ? 'large' : 'small'}
                         style={{ marginTop: 20 }}
                       />
-                    ) : userSkins.length === 0 ? (
+                    ) : sortedSkins.length === 0 ? (
                       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
                         <Text
                           style={[styles.comingSoonText, isCompact && compactStyles.comingSoonText]}
@@ -1470,8 +1480,8 @@ export function HubScreen({ navigation }: HubScreenProps) {
                         </Text>
                       </View>
                     ) : (
-                      <View style={styles.skinGrid}>
-                        {userSkins.map((skin, idx) => {
+                      <View style={[styles.skinGrid, isCompact && compactStyles.skinGrid]}>
+                        {sortedSkins.map((skin, idx) => {
                           const isEquipped = profile?.equippedSkin?.equals(skin.address) ?? false;
                           return (
                             <FocusGlow
@@ -1514,11 +1524,16 @@ export function HubScreen({ navigation }: HubScreenProps) {
                         isCompact && compactStyles.controllerCloseHint,
                       ]}
                     >
-                      {userSkins.length > 0 && (
+                      {sortedSkins.length > 0 && (
                         <>
                           <Image
                             source={iconDirSource}
-                            style={{ width: isCompact ? 40 : 18, height: isCompact ? 40 : 18 }}
+                            style={{ width: isCompact ? 40 : 18, height: isCompact ? 40 : 18, transform: [{ rotate: '-90deg' }] }}
+                            resizeMode="contain"
+                          />
+                          <Image
+                            source={iconDirSource}
+                            style={{ width: isCompact ? 40 : 18, height: isCompact ? 40 : 18, transform: [{ rotate: '90deg' }] }}
                             resizeMode="contain"
                           />
                           <Text
@@ -1544,8 +1559,8 @@ export function HubScreen({ navigation }: HubScreenProps) {
                               isCompact && compactStyles.controllerCloseHintText,
                             ]}
                           >
-                            {userSkins[skinsFocus] &&
-                            (profile?.equippedSkin?.equals(userSkins[skinsFocus].address) ?? false)
+                            {sortedSkins[skinsFocus] &&
+                            (profile?.equippedSkin?.equals(sortedSkins[skinsFocus].address) ?? false)
                               ? 'Unequip'
                               : 'Equip'}
                           </Text>
@@ -2723,7 +2738,7 @@ const styles = StyleSheet.create({
   skinGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: 20,
     justifyContent: 'center',
   },
   emptySubtext: {
@@ -3004,6 +3019,9 @@ const compactStyles = StyleSheet.create({
   },
   emptySubtext: {
     fontSize: 22,
+  },
+  skinGrid: {
+    gap: 32,
   },
   // Profile modal — scaled up for compact
   profileSectionTitle: {
