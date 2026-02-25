@@ -3,8 +3,9 @@
  * Reacts to buttonDown events and dispatches to the appropriate callback.
  */
 import { useEffect, useRef } from 'react';
-import { usePsg1Gamepad, Psg1Button } from 'psg1-sim';
+import { Psg1Button } from 'psg1-sim';
 import { useAudio } from '../contexts/AudioContext';
+import { usePsg1LastEvent } from './usePsg1LastEvent';
 
 export interface ControllerActions {
   onA?: () => void;
@@ -22,7 +23,7 @@ export interface ControllerActions {
 }
 
 export function useControllerAction(actions: ControllerActions, enabled = true) {
-  const { lastEvent } = usePsg1Gamepad();
+  const lastEvent = usePsg1LastEvent();
   const { playSfx } = useAudio();
   const actionsRef = useRef(actions);
   actionsRef.current = actions;

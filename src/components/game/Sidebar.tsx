@@ -59,6 +59,13 @@ const OIL_IMAGES: Record<ToolOil, any> = {
   SPD: require('../../../assets/icons/oils/SPD.png'),
   ARM: require('../../../assets/icons/oils/ARM.png'),
 };
+const SIDEBAR_DEBUG_LOGS = false;
+
+function debugLog(...args: unknown[]) {
+  if (__DEV__ && SIDEBAR_DEBUG_LOGS) {
+    console.log(...args);
+  }
+}
 
 /** Gauntlet gear capacity per week (starts at 4, gains 4 each week) */
 function gauntletGearCapacity(week: number): number {
@@ -345,7 +352,7 @@ export function BossPanel({
         .filter((g): g is Gear => g !== null);
       const itemStats = calculateItemStats(tool, gear);
 
-      console.log('[BossPanel] Gauntlet echo preview decoded', {
+      debugLog('[BossPanel] Gauntlet echo preview decoded', {
         week,
         isBootstrap: preview.isBootstrap,
         sourcePlayer: preview.sourcePlayer?.toBase58?.() ?? null,
@@ -440,7 +447,7 @@ export function BossPanel({
         ? 'Build is hidden until duel resolves'
         : 'Duel final is at week end';
 
-  console.log('[BossPanel] render_mode', {
+  debugLog('[BossPanel] render_mode', {
     hasBoss: !!displayedBoss,
     originalTimeWeekBoss: time.weekBoss ?? null,
     hasDuelWeekBoss: !!duelWeekBoss,
@@ -559,7 +566,7 @@ export function BossPanel({
   );
 }
 
-export function Sidebar(props: SidebarProps) {
+export const Sidebar = React.memo(function Sidebar(props: SidebarProps) {
   if (props.onlyBoss) {
     return (
       <BossPanel
@@ -625,7 +632,7 @@ export function Sidebar(props: SidebarProps) {
       </ImageBackground>
     </View>
   );
-}
+});
 
 function InlineStatRow({ icon, label, value }: { icon: any; label: string; value: number }) {
   return (

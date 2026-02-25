@@ -47,7 +47,9 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
   const [profileName, setProfileName] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
   const [isActionLoading, setIsActionLoading] = useState(false);
+  const [isSignInChecking, setIsSignInChecking] = useState(false);
   const hasInitialized = useRef(false);
+  const sawProfileLoadRef = useRef(false);
   const [guestModeActivated, setGuestModeActivated] = useState(false);
   const [showKeyboard, setShowKeyboard] = useState(false);
   const [panelDimensions, setPanelDimensions] = useState<{ width: number; height: number } | null>(
@@ -57,8 +59,15 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
 
   // Derived state
   const showLoading =
-    isActionLoading || isConnecting || (!hasInitialized.current && isProfileLoading);
+    isActionLoading ||
+    isSignInChecking ||
+    isConnecting ||
+    (!hasInitialized.current && isProfileLoading);
   const isConnected = wallet.isConnected;
+  const showWalletSelection = !isConnected || isSignInChecking;
+  const isCheckingExistingProfile =
+    isConnected && !profile && (isSignInChecking || isProfileLoading);
+  const showCreateProfile = isConnected && !profile && !isCheckingExistingProfile;
   const errorMessage = localError ?? walletError ?? profileError;
 
   // --- Handlers ---
@@ -66,9 +75,19 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
   const handleSignIn = useCallback(async () => {
     playSfx('ui_click');
     setLocalError(null);
-    const result = await connect(selectedWallet);
-    if (!result) {
-      return;
+    setIsSignInChecking(true);
+    sawProfileLoadRef.current = false;
+    try {
+      const result = await connect(selectedWallet);
+      if (!result) {
+        setIsSignInChecking(false);
+        return;
+      }
+      // Wallet connected — isSignInChecking stays true.
+      // ProfileContext auto-fetches when wallet.publicKey changes.
+      // The effect below clears isSignInChecking once profile state settles.
+    } catch {
+      setIsSignInChecking(false);
     }
   }, [connect, selectedWallet, playSfx]);
 
@@ -133,11 +152,14 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
     setShowKeyboard(true);
   }, [playSfx]);
 
-  const handleKeyboardSubmit = useCallback((name: string) => {
-    playSfx('ui_click');
-    setProfileName(name);
-    setShowKeyboard(false);
-  }, [playSfx]);
+  const handleKeyboardSubmit = useCallback(
+    (name: string) => {
+      playSfx('ui_click');
+      setProfileName(name);
+      setShowKeyboard(false);
+    },
+    [playSfx]
+  );
 
   const handleKeyboardCancel = useCallback(() => {
     playSfx('ui_click');
@@ -151,21 +173,29 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
 
   useControllerAction(
     {
-      onA: !isConnected ? handleSignIn : hasName ? handleCreateProfile : handleOpenKeyboard,
-      onB: isConnected && hasName ? handleClearName : undefined,
-      onDPadLeft: !isConnected ? handleDPadLeft : undefined,
-      onDPadRight: !isConnected ? handleDPadRight : undefined,
-      onSelect: !isConnected ? handlePlayAsGuest : undefined,
+      onA: showWalletSelection
+        ? handleSignIn
+        : showCreateProfile
+          ? hasName
+            ? handleCreateProfile
+            : handleOpenKeyboard
+          : undefined,
+      onB: showCreateProfile && hasName ? handleClearName : undefined,
+      onDPadLeft: showWalletSelection ? handleDPadLeft : undefined,
+      onDPadRight: showWalletSelection ? handleDPadRight : undefined,
+      onSelect: showWalletSelection ? handlePlayAsGuest : undefined,
     },
     !showLoading && !showKeyboard
   );
 
-  const controllerHints: ButtonHint[] = !isConnected
+  const controllerHints: ButtonHint[] = showWalletSelection
     ? [
         { button: 'DPadLeftRight', label: 'Select Wallet' },
         { button: 'A', label: 'Sign In' },
         { button: 'Select', label: 'Play as Guest' },
       ]
+    : isCheckingExistingProfile
+      ? [{ button: 'A', label: 'Checking Profile' }]
     : hasName
       ? [
           { button: 'A', label: 'Create Profile' },
@@ -196,6 +226,27 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
       hasInitialized.current = true;
     }
   }, [isProfileLoading]);
+
+  // Clear isSignInChecking once the profile auto-fetch cycle completes after connect.
+  // We wait for isProfileLoading to go true→false (a full load cycle) so we don't
+  // clear prematurely on a stale isProfileLoading=false before the fetch starts.
+  useEffect(() => {
+    if (!isSignInChecking || !isConnected) return;
+    if (profile) {
+      // Profile found — navigation effect below handles Hub redirect.
+      setIsSignInChecking(false);
+      return;
+    }
+    if (isProfileLoading) {
+      sawProfileLoadRef.current = true;
+      return;
+    }
+    if (sawProfileLoadRef.current) {
+      // Load cycle finished with no profile — show create profile form.
+      setIsSignInChecking(false);
+      sawProfileLoadRef.current = false;
+    }
+  }, [isSignInChecking, isConnected, profile, isProfileLoading]);
 
   useEffect(() => {
     if (isConnected && profile && !isProfileLoading) {
@@ -268,7 +319,7 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
             resizeMode="contain"
           >
             <View style={[styles.topSlot, isCompact && { top: '19%' }]}>
-              {!isConnected ? (
+              {showWalletSelection ? (
                 <>
                   <Text style={[styles.profileLabel, isCompact && { fontSize: 22 }]}>
                     SUPPORTED WALLETS
@@ -288,7 +339,10 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
                           isCompact && { width: 96, height: 96 },
                           id === selectedWallet && styles.walletOptionSelected,
                         ]}
-                        onPress={() => { playSfx('ui_click'); setSelectedWallet(id); }}
+                        onPress={() => {
+                          playSfx('ui_click');
+                          setSelectedWallet(id);
+                        }}
                         activeOpacity={0.7}
                         disabled={showLoading}
                       >
@@ -309,7 +363,10 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
                         isCompact && { width: 96, height: 96 },
                         'DevKeypair' === selectedWallet && styles.walletOptionSelected,
                       ]}
-                      onPress={() => { playSfx('ui_click'); setSelectedWallet('DevKeypair'); }}
+                      onPress={() => {
+                        playSfx('ui_click');
+                        setSelectedWallet('DevKeypair');
+                      }}
                       activeOpacity={0.7}
                       disabled={showLoading}
                     >
@@ -330,6 +387,15 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
                   </View>
                   <Text style={[styles.walletHint, isCompact && { fontSize: 20 }]}>
                     Select a wallet to sign in
+                  </Text>
+                </>
+              ) : isCheckingExistingProfile ? (
+                <>
+                  <Text style={[styles.profileLabel, isCompact && { fontSize: 22 }]}>
+                    CHECKING PROFILE
+                  </Text>
+                  <Text style={[styles.walletHint, isCompact && { fontSize: 20 }]}>
+                    Verifying account...
                   </Text>
                 </>
               ) : (
@@ -359,9 +425,15 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
             <View style={[styles.buttonSlot, isCompact && { width: '60%', aspectRatio: 3.0 }]}>
               <TouchableOpacity
                 style={styles.primaryButton}
-                onPress={!isConnected ? handleSignIn : handleCreateProfile}
+                onPress={
+                  showWalletSelection
+                    ? handleSignIn
+                    : isCheckingExistingProfile
+                      ? undefined
+                      : handleCreateProfile
+                }
                 activeOpacity={0.7}
-                disabled={showLoading}
+                disabled={showLoading || (isConnected && !!profile) || isCheckingExistingProfile}
               >
                 <ImageBackground
                   source={require('../../assets/ui/buttons/button.png')}
@@ -383,7 +455,11 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
                     </View>
                   ) : (
                     <Text style={[styles.primaryButtonText, isCompact && { fontSize: 32 }]}>
-                      {!isConnected ? 'Sign In' : 'Create Profile'}
+                      {showWalletSelection
+                        ? 'Sign In'
+                        : isCheckingExistingProfile
+                          ? 'Checking...'
+                          : 'Create Profile'}
                     </Text>
                   )}
                 </ImageBackground>
@@ -391,7 +467,7 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
             </View>
 
             {/* Guest Mode Link - only show when not connected (T002) */}
-            {!isConnected && (
+            {showWalletSelection && (
               <View style={[styles.guestSlot, isCompact && { bottom: '13%' }]}>
                 <TouchableOpacity onPress={handlePlayAsGuest} disabled={showLoading}>
                   <Text style={[styles.guestText, isCompact && { fontSize: 22 }]}>
@@ -427,7 +503,7 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
 
       <View style={[styles.versionLabel, isCompact && styles.versionLabelCompact]}>
         <Text style={[styles.versionText, isCompact && styles.versionTextCompact]}>
-          Beta Version 0.0.1
+          Beta Version 0.1.0
         </Text>
       </View>
     </Animated.View>
