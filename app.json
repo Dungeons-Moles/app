@@ -28,9 +28,16 @@
     "web": {
       "favicon": "./assets/branding/favicon.png"
     },
-    "plugins": ["expo-secure-store", "expo-screen-orientation", "expo-font"],
+    "plugins": [
+      "expo-secure-store",
+      "expo-screen-orientation",
+      "expo-font"
+    ],
     "extra": {
-      "solanaCluster": "devnet"
+      "solanaCluster": "devnet",
+      "eas": {
+        "projectId": "f753db04-2b42-442d-a36b-abf39f4aaf09"
+      }
     }
   }
 }

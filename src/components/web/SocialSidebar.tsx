@@ -7,6 +7,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 
 const PSG1_W = 1240;
 const PSG1_H = 1080;
+const APK_RELEASE_URL = 'https://github.com/Dungeons-Moles/app/releases/download/v0.1.0/dungeons-and-moles.apk';
 
 /* ── SVG Icons ─────────────────────────────────────────────── */
 
@@ -435,6 +436,11 @@ export function SocialSidebar() {
           label={muted ? 'Unmute' : 'Mute'}
         />
         <SocialButton icon={<TvIcon />} onClick={navigateToDemo} label="Watch" />
+        <SocialButton
+          icon={<span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.08em' }}>APK</span>}
+          href={APK_RELEASE_URL}
+          label="Download APK"
+        />
         <SocialButton icon={<XIcon />} href="https://x.com/DungeonsMoles" label="Follow on X" />
         <SocialButton
           icon={<DiscordIcon />}
