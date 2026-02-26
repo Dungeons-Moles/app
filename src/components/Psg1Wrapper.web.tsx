@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Psg1Simulator } from 'psg1-sim';
 import { ScreenVariantProvider } from '../contexts/ScreenVariantContext';
+import { SocialSidebar } from './web/SocialSidebar';
 
 /** PSG1 native screen resolution */
 const PSG1_W = 1240;
@@ -35,6 +36,7 @@ export function Psg1Wrapper({ children }: { children: ReactNode }) {
           {children}
         </div>
       </Psg1Simulator>
+      <SocialSidebar />
     </ScreenVariantProvider>
   );
 }

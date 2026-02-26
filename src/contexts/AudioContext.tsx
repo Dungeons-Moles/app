@@ -49,7 +49,8 @@ export type SfxTrack =
   | 'poi_kiln'
   | 'poi_geode'
   | 'poi_scrap'
-  | 'phase_night';
+  | 'phase_night'
+  | 'ui_page_turn';
 
 interface AudioVolumes {
   music: number;
@@ -106,7 +107,19 @@ const SFX_FILES: Record<SfxTrack, number> = {
   poi_geode: require('../../assets/audio/sfx/poi_geode.wav'),
   poi_scrap: require('../../assets/audio/sfx/poi_scrap.wav'),
   phase_night: require('../../assets/audio/sfx/phase_night.wav'),
+  ui_page_turn: require('../../assets/audio/sfx/ui_page_turn.wav'),
 };
+
+// Custom event names for cross-tree mute bridge (web only).
+// The SocialSidebar (outside React tree) dispatches 'dm-toggle-mute';
+// AudioProvider handles it and dispatches 'dm-mute-state' back.
+const TOGGLE_MUTE_EVENT = 'dm-toggle-mute';
+const MUTE_STATE_EVENT = 'dm-mute-state';
+
+function dispatchMuteState(muted: boolean) {
+  if (Platform.OS !== 'web') return;
+  window.dispatchEvent(new CustomEvent(MUTE_STATE_EVENT, { detail: { muted } }));
+}
 
 export function AudioProvider({ children }: { children: ReactNode }) {
   const [musicVolume, setMusicVolumeState] = useState<number>(DEFAULT_MUSIC_VOLUME);
@@ -119,6 +132,10 @@ export function AudioProvider({ children }: { children: ReactNode }) {
 
   // Store playback positions to resume exploration tracks
   const playbackPositions = useRef<Partial<Record<BgmTrack, number>>>({});
+
+  // Mute bridge state (web only)
+  const isMutedRef = useRef(false);
+  const preMuteVolumesRef = useRef<{ music: number; sfx: number } | null>(null);
 
   // Fading interval reference
   const fadeIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -165,6 +182,45 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       if (fadingOutBgmRef.current?.sound) fadingOutBgmRef.current.sound.unloadAsync();
     };
   }, []);
+
+  // Web mute bridge: listen for toggle events from SocialSidebar
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    // Broadcast initial state so the sidebar picks it up on mount
+    dispatchMuteState(isMutedRef.current);
+
+    const onToggleMute = () => {
+      if (isMutedRef.current) {
+        // Unmute — restore saved volumes
+        const saved = preMuteVolumesRef.current ?? {
+          music: DEFAULT_MUSIC_VOLUME,
+          sfx: DEFAULT_SFX_VOLUME,
+        };
+        isMutedRef.current = false;
+        preMuteVolumesRef.current = null;
+        setMusicVolumeState(saved.music);
+        setSfxVolumeState(saved.sfx);
+        saveVolumes(saved.music, saved.sfx);
+        if (activeBgmRef.current?.sound && !fadeIntervalRef.current) {
+          activeBgmRef.current.sound.setVolumeAsync(saved.music).catch(() => {});
+        }
+      } else {
+        // Mute — save current volumes, set to 0
+        preMuteVolumesRef.current = { music: musicVolume, sfx: sfxVolume };
+        isMutedRef.current = true;
+        setMusicVolumeState(0);
+        setSfxVolumeState(0);
+        saveVolumes(0, 0);
+        if (activeBgmRef.current?.sound) {
+          activeBgmRef.current.sound.setVolumeAsync(0).catch(() => {});
+        }
+      }
+      dispatchMuteState(isMutedRef.current);
+    };
+
+    window.addEventListener(TOGGLE_MUTE_EVENT, onToggleMute);
+    return () => window.removeEventListener(TOGGLE_MUTE_EVENT, onToggleMute);
+  }, [musicVolume, sfxVolume]);
 
   // Ref to hold latest playBgm for the interaction listener callback
   const playBgmRef = useRef<((track: BgmTrack, options?: PlayBgmOptions) => Promise<void>) | null>(

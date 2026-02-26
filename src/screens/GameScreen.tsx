@@ -35,6 +35,9 @@ import {
 import { Sidebar } from '../components/game/Sidebar';
 import { useFocusGlow } from '../components/ui/FocusGlow';
 import { PauseMenuModal } from '../components/ui/PauseMenuModal';
+import { TutorialModal } from '../components/ui/TutorialModal';
+import { TUTORIAL_SEEN_KEY } from '../components/ui/tutorialPages';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useDirectionInput } from '../hooks/useInput';
 import { useLandscapeLock } from '../hooks/useOrientationLock';
 import { useScreenVariant } from '../contexts/ScreenVariantContext';
@@ -525,6 +528,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
   const [isMovePending, setIsMovePending] = useState(false);
   const [isExitingSession, setIsExitingSession] = useState(false);
   const [showPauseMenu, setShowPauseMenu] = useState(false);
+  const [showTutorial, setShowTutorial] = useState(false);
   const [isFastTravelMode, setIsFastTravelMode] = useState(false);
   const [fastTravelCameraTarget, setFastTravelCameraTarget] = useState<Position | null>(null);
   const [fastTravelDestinations, setFastTravelDestinations] = useState<Position[]>([]);
@@ -545,6 +549,20 @@ export function GameScreen({ navigation }: GameScreenProps) {
   useEffect(() => {
     Animated.timing(fadeAnim, { toValue: 1, duration: 800, useNativeDriver: true }).start();
   }, []);
+
+  // Auto-show tutorial on first session entry
+  useEffect(() => {
+    AsyncStorage.getItem(TUTORIAL_SEEN_KEY).then((seen) => {
+      if (!seen) setShowTutorial(true);
+    });
+  }, []);
+
+  // Auto-close tutorial on combat/boss transitions
+  useEffect(() => {
+    if (state?.phase === GamePhase.Combat || state?.phase === GamePhase.BossFight) {
+      setShowTutorial(false);
+    }
+  }, [state?.phase]);
 
   // Cleanup skip mismatch timeout on unmount
   useEffect(() => {
@@ -1740,11 +1758,11 @@ export function GameScreen({ navigation }: GameScreenProps) {
   // A inspects items, and B/R1/L1 exits focus mode.
   const isPOIModalOpen = state?.phase === GamePhase.POIInteraction;
   const controllerEnabled =
-    isController && isFocused && !!state && !isPOIModalOpen && !showPauseMenu;
+    isController && isFocused && !!state && !isPOIModalOpen && !showPauseMenu && !showTutorial;
 
   // Compact view sidebar toggle via X — kept separate so it works even when POI modal is open
   const [isCompactSidebarVisible, setIsCompactSidebarVisible] = useState(true);
-  const sidebarToggleEnabled = isController && isFocused && !!state && !showPauseMenu;
+  const sidebarToggleEnabled = isController && isFocused && !!state && !showPauseMenu && !showTutorial;
 
   useControllerAction(
     {
@@ -1948,6 +1966,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
         }
       },
       onStart: () => setShowPauseMenu(true),
+      onSelect: () => setShowTutorial(true),
     },
     controllerEnabled
   );
@@ -2686,7 +2705,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
             )}
           </View>
 
-          {isCompact && isCompactSidebarVisible && (
+          {isCompact && isCompactSidebarVisible && !showTutorial && (
             <View
               style={[styles.floatingSidebarWrapper, { top: navbarHeight }]}
               pointerEvents="box-none"
@@ -2738,6 +2757,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
               onClose={handleCloseItemsetTooltip}
             />
           )}
+        <TutorialModal visible={showTutorial} onClose={() => setShowTutorial(false)} />
         </View>
       </ImageBackground>
     </Animated.View>

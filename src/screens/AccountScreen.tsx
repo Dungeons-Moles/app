@@ -390,14 +390,14 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
                   </Text>
                 </>
               ) : isCheckingExistingProfile ? (
-                <>
+                <View style={{ marginTop: 32 }}>
                   <Text style={[styles.profileLabel, isCompact && { fontSize: 22 }]}>
                     CHECKING PROFILE
                   </Text>
                   <Text style={[styles.walletHint, isCompact && { fontSize: 20 }]}>
                     Verifying account...
                   </Text>
-                </>
+                </View>
               ) : (
                 <>
                   <Text

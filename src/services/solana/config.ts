@@ -77,7 +77,8 @@ const baseCommitment: Commitment = isLocalValidator ? 'processed' : 'confirmed';
  * - Default to processed to prioritize realtime responsiveness for delegated gameplay.
  * - Can be overridden via env for debugging/tuning.
  */
-const erCommitment = (process.env.EXPO_PUBLIC_ER_COMMITMENT as Commitment | undefined) ?? 'processed';
+const erCommitment =
+  (process.env.EXPO_PUBLIC_ER_COMMITMENT as Commitment | undefined) ?? 'processed';
 
 const playerProfileProgramId = process.env.EXPO_PUBLIC_PLAYER_PROFILE_PROGRAM_ID;
 const sessionManagerProgramId = process.env.EXPO_PUBLIC_SESSION_MANAGER_PROGRAM_ID;
