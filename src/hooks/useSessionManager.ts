@@ -785,19 +785,22 @@ export function useSessionManager() {
       const [poiVrfStatePda] = derivePoiVrfStatePda(sessionPda);
       const poiVrfInfo = await baseConnection.getAccountInfo(poiVrfStatePda);
       if (poiVrfInfo) {
-        const poiVrfDelegate = deriveDelegatePdas(poiVrfStatePda, SOLANA_CONFIG.programs.poiSystem);
+        const poiVrfDelegate = deriveDelegatePdas(
+          poiVrfStatePda,
+          SOLANA_CONFIG.programs.sessionManager
+        );
         const delegatePoiVrfIx = await baseWriteProgram.methods
           .delegatePoiVrfState(onChainLevel)
           .accountsStrict({
             poiVrfState: poiVrfStatePda,
-            player: sessionSignerKeypair.publicKey,
+            player: wallet.publicKey,
             ...Object.fromEntries(
               Object.entries(poiVrfDelegate).map(([k, v]) => [
                 k === 'buffer' ? 'bufferPoiVrfState' : k === 'delegationRecord' ? 'delegationRecordPoiVrfState' : 'delegationMetadataPoiVrfState',
                 v,
               ])
             ),
-            ownerProgram: SOLANA_CONFIG.programs.poiSystem,
+            ownerProgram: SOLANA_CONFIG.programs.sessionManager,
             delegationProgram: DELEGATION_PROGRAM_ID,
             systemProgram: SystemProgram.programId,
           } as any)
@@ -807,11 +810,10 @@ export function useSessionManager() {
           ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
           delegatePoiVrfIx
         );
-        signature = await sendSessionSignerTransaction(
-          baseConnection,
-          delegationTx3,
-          sessionSignerKeypair
-        );
+        signature = await signAndSendTransaction(delegationTx3, {
+          connection: baseConnection,
+          skipPreflight: true,
+        });
       }
 
       // Refresh session state
@@ -878,7 +880,7 @@ export function useSessionManager() {
             generatedMap: generatedMapPda,
             inventory: inventoryPda,
             mapPois: mapPoisPda,
-            poiVrfState: poiVrfInfo ? poiVrfStatePda : undefined,
+            poiVrfState: poiVrfInfo ? poiVrfStatePda : null,
             player: wallet.publicKey,
             magicProgram: magicProgramId,
             magicContext: magicContextId,
@@ -1902,9 +1904,9 @@ export function useSessionManager() {
             sessionSigner: sessionSignerKeypair.publicKey,
             sessionManagerAuthority: deriveSessionManagerAuthorityPda()[0],
             inventory: inventoryPda,
-            mapVrfState: mapVrfInfo ? mapVrfStatePda : undefined,
-            poiVrfState: poiVrfInfo ? poiVrfStatePda : undefined,
-            gameplayVrfState: gameplayVrfInfo ? gameplayVrfStatePda : undefined,
+            mapVrfState: mapVrfInfo ? mapVrfStatePda : null,
+            poiVrfState: poiVrfInfo ? poiVrfStatePda : null,
+            gameplayVrfState: gameplayVrfInfo ? gameplayVrfStatePda : null,
             playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
             gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
             playerProfileProgram: SOLANA_CONFIG.programs.playerProfile,

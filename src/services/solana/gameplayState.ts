@@ -15,6 +15,7 @@ import {
   deriveGeneratedMapPda,
   deriveGameplayAuthorityPda,
   deriveMapPoisPda,
+  deriveGameplayVrfStatePda,
 } from './constants';
 
 import {
@@ -126,10 +127,19 @@ export async function movePlayer(
   const [inventoryPda] = deriveInventoryPda(sessionPda);
   const [gameplayAuthorityPda] = deriveGameplayAuthorityPda();
   const [mapPoisPda] = deriveMapPoisPda(sessionPda);
+  const [gameplayVrfStatePda] = deriveGameplayVrfStatePda(sessionPda);
+  // Optional account: include only when fully initialized/deserializable.
+  // Some local flows can leave the PDA allocated but not initialized, which
+  // triggers Anchor 3012 (AccountNotInitialized) if passed.
+  // Must pass null explicitly for Anchor to skip optional accounts — omitting
+  // the key causes validateAccounts to error with "not provided".
+  const gameplayVrfStateAccount = await (program.account as any)?.gameplayVrfState
+    ?.fetchNullable(gameplayVrfStatePda)
+    .catch(() => null);
 
   const transaction = await program.methods
     .movePlayer(params.targetX, params.targetY)
-    .accounts({
+    .accountsPartial({
       gameState: gameStatePda,
       gameSession: sessionPda,
       mapEnemies: mapEnemiesPda,
@@ -140,6 +150,7 @@ export async function movePlayer(
       mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
       mapPois: mapPoisPda,
       poiSystemProgram: SOLANA_CONFIG.programs.poiSystem,
+      gameplayVrfState: gameplayVrfStateAccount ? gameplayVrfStatePda : null,
       player: sessionSignerKeypair.publicKey,
     })
     .transaction();
