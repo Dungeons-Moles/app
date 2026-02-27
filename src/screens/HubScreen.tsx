@@ -1638,7 +1638,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
 
                   <ScrollView
                     style={{ flex: 1, width: '100%' }}
-                    contentContainerStyle={{ alignItems: 'center', gap: 8, paddingBottom: 8 }}
+                    contentContainerStyle={{ gap: 8, paddingBottom: 8, paddingHorizontal: 10 }}
                   >
                     {questsLoading ? (
                       <ActivityIndicator

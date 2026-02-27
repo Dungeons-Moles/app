@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { Psg1Simulator } from 'psg1-sim';
 import { ScreenVariantProvider } from '../contexts/ScreenVariantContext';
 import { SocialSidebar } from './web/SocialSidebar';
@@ -14,6 +14,34 @@ const PSG1_H = 1080;
  * Always provides 'compact' variant when the simulator is active.
  */
 export function Psg1Wrapper({ children }: { children: ReactNode }) {
+  const forcedLandscapeRef = useRef(false);
+
+  useEffect(() => {
+    if (forcedLandscapeRef.current) return;
+
+    const forceLandscape = () => {
+      const toggle = document.querySelector<HTMLButtonElement>(
+        'button[title="Switch to landscape layout"]'
+      );
+      if (!toggle) return false;
+      toggle.click();
+      forcedLandscapeRef.current = true;
+      return true;
+    };
+
+    if (forceLandscape()) return;
+
+    let attempts = 0;
+    const interval = window.setInterval(() => {
+      attempts += 1;
+      if (forceLandscape() || attempts >= 20) {
+        window.clearInterval(interval);
+      }
+    }, 100);
+
+    return () => window.clearInterval(interval);
+  }, []);
+
   // Compact when: simulator is active (viewport larger than PSG1 in at least one dimension
   // on a capable screen), OR viewport matches PSG1 resolution (DevTools testing).
   const vw = window.innerWidth;

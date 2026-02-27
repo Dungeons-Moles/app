@@ -5,9 +5,11 @@
  */
 import React, { useState, useEffect, useCallback } from 'react';
 
+import { APP_VERSION } from '../../constants/app';
+
 const PSG1_W = 1240;
 const PSG1_H = 1080;
-const APK_RELEASE_URL = 'https://github.com/Dungeons-Moles/app/releases/download/v0.1.0/dungeons-and-moles.apk';
+const APK_RELEASE_URL = `https://github.com/Dungeons-Moles/app/releases/download/v${APP_VERSION}/dungeons-and-moles.apk`;
 
 /* ── SVG Icons ─────────────────────────────────────────────── */
 
@@ -181,7 +183,7 @@ function VideoOverlay({ onClose }: { onClose: () => void }) {
     return () => window.removeEventListener('keydown', handler);
   }, [handleClose]);
 
-  const videoId = activeVideo === 'pitch' ? '5C8us7BUpss' : 'MiUTE-ASi2Q';
+  const videoId = activeVideo === 'pitch' ? '5C8us7BUpss' : 'hH4t8_unsbw';
 
   return (
     <div
@@ -437,7 +439,12 @@ export function SocialSidebar() {
         />
         <SocialButton icon={<TvIcon />} onClick={navigateToDemo} label="Watch" />
         <SocialButton
-          icon={<span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.08em' }}>APK</span>}
+          icon={
+            <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: 1 }}>
+              <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.08em' }}>APK</span>
+              <span style={{ fontSize: 9, fontWeight: 400, opacity: 0.7, marginTop: 1 }}>{APP_VERSION}</span>
+            </span>
+          }
           href={APK_RELEASE_URL}
           label="Download APK"
         />

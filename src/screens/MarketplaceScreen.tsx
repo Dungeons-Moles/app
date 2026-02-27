@@ -27,7 +27,7 @@ import { PriceInput } from '../components/marketplace/PriceInput';
 import { InlineModal } from '../components/InlineModal';
 import { LAMPORTS_PER_SOL } from '@solana/web3.js';
 import type { MetaplexCoreAsset, ListingWithAsset } from '../types/solana';
-import { NFT_ITEMS } from '../data/nftItems';
+import { findNftItemInfo } from '../data/nftItems';
 import { getSkinImage } from '../data/skinImages';
 import { RUN_PRICE_LAMPORTS } from '@/services/solana/constants';
 import { usePaymentToken } from '@/hooks/usePaymentToken';
@@ -566,7 +566,7 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
               ) : (
                 <View style={[styles.nftGrid, isCompact && compactStyles.nftGrid]}>
                   {userNftItems.map((item, idx) => {
-                    const info = NFT_ITEMS[item.name] ?? null;
+                    const info = findNftItemInfo(item.name) ?? null;
                     const isListed = itemListings.some((l) => l.listing.asset.equals(item.address));
                     return (
                       <FocusGlow
@@ -575,6 +575,7 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
                       >
                         <NftCard
                           name={info?.name ?? item.name}
+                          image={info?.image}
                           emoji={info?.emoji ?? '\u{2728}'}
                           rarity={info?.rarity}
                           actionLabel={!isListed ? 'List' : undefined}
@@ -606,7 +607,7 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
               ) : (
                 <View style={[styles.nftGrid, isCompact && compactStyles.nftGrid]}>
                   {itemListings.map((listing, idx) => {
-                    const info = NFT_ITEMS[listing.asset.name] ?? null;
+                    const info = findNftItemInfo(listing.asset.name) ?? null;
                     const priceSol = Number(listing.listing.priceLamports) / LAMPORTS_PER_SOL;
                     const isOwnListing = userNftItems.some((i) =>
                       i.address.equals(listing.listing.asset)
@@ -618,6 +619,7 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
                       >
                         <NftCard
                           name={info?.name ?? listing.asset.name}
+                          image={info?.image}
                           emoji={info?.emoji ?? '\u{2728}'}
                           rarity={info?.rarity}
                           priceSol={priceSol}

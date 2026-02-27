@@ -8,10 +8,11 @@
  * - On-chain item instance to frontend item conversion
  */
 
-import { ComputeBudgetProgram, Connection, PublicKey, SystemProgram, Transaction } from '@solana/web3.js';
+import { ComputeBudgetProgram, Connection, Keypair, PublicKey, SystemProgram, Transaction } from '@solana/web3.js';
 import type { Program } from '@coral-xyz/anchor';
 import { SOLANA_CONFIG } from './config';
-import { GAMEPLAY_STATE_PROGRAM_ID, derivePlayerProfilePda } from './constants';
+import { GAMEPLAY_STATE_PROGRAM_ID, deriveGameplayVrfStatePda, derivePlayerProfilePda } from './constants';
+import { generateRandomness } from './vrf';
 import { toolToFrontend, gearToFrontend } from '@/data/id-mapping';
 import type { BackendCombatLogEntry } from './types/combat_events';
 import { LogAction } from './types/combat_events';
@@ -111,31 +112,65 @@ export async function buildEnterPitDraftTransaction(
   const [gauntletPoolVaultPda] = deriveGauntletPoolVaultPda();
   const [playerProfilePda] = derivePlayerProfilePda(playerPublicKey);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const accounts: any = {
-    pitDraftQueue: queuePda,
-    pitDraftVault: vaultPda,
-    player: playerPublicKey,
-    playerProfile: playerProfilePda,
-    waitingProfile: waitingProfile ?? null,
-    waitingPlayerWallet: waitingPlayerWallet ?? null,
-    companyTreasury: COMPANY_TREASURY,
-    gauntletPoolVault: gauntletPoolVaultPda,
-    systemProgram: SystemProgram.programId,
-  };
+  // Pit draft requires a fulfilled VRF state for fair randomness.
+  // Use a unique random key as the "session" seed so each entry gets a fresh VRF state.
+  // The session field in RequestGameplayVrf is an UncheckedAccount used only for PDA derivation.
+  const vrfSessionKey = Keypair.generate().publicKey;
+  const [gameplayVrfStatePda] = deriveGameplayVrfStatePda(vrfSessionKey);
+  const randomness = generateRandomness();
 
-  const transaction = await program.methods
+  const requestVrfIx = await program.methods
+    .requestGameplayVrf()
+    .accounts({
+      payer: playerPublicKey,
+      session: vrfSessionKey,
+      vrfState: gameplayVrfStatePda,
+      systemProgram: SystemProgram.programId,
+    })
+    .instruction();
+
+  // Use accountsPartial to avoid Anchor trying to auto-resolve
+  // the self-referential VRF PDA (seeds include vrf_state.session).
+  const fulfillVrfIx = await program.methods
+    .fulfillGameplayVrf(randomness)
+    .accountsPartial({
+      vrfProgramIdentity: playerPublicKey,
+      vrfState: gameplayVrfStatePda,
+    })
+    .instruction();
+
+  // Use accountsPartial — gameplayVrfState PDA is self-referential
+  // (seeds include gameplay_vrf_state.session) so Anchor can't auto-resolve it.
+  // Optional accounts must use null (not undefined) so Anchor substitutes the program ID.
+  const enterPitDraftIx = await program.methods
     .enterPitDraft()
-    .accounts(accounts)
-    .transaction();
+    .accountsPartial({
+      pitDraftQueue: queuePda,
+      pitDraftVault: vaultPda,
+      player: playerPublicKey,
+      playerProfile: playerProfilePda,
+      waitingProfile: waitingProfile ?? null,
+      waitingPlayerWallet: waitingPlayerWallet ?? null,
+      companyTreasury: COMPANY_TREASURY,
+      gauntletPoolVault: gauntletPoolVaultPda,
+      gameplayVrfState: gameplayVrfStatePda,
+      systemProgram: SystemProgram.programId,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any)
+    .instruction();
+
+  const transaction = new Transaction();
 
   // Pit Draft matching + combat preparation can exceed default 200k CU.
   // Request a higher budget to avoid intermittent "exceeded CUs meter" failures.
-  transaction.instructions.unshift(
+  transaction.add(
     ComputeBudgetProgram.setComputeUnitLimit({ units: PIT_DRAFT_CU_LIMIT }),
     ComputeBudgetProgram.setComputeUnitPrice({
       microLamports: PIT_DRAFT_CU_PRICE_MICROLAMPORTS,
-    })
+    }),
+    requestVrfIx,
+    fulfillVrfIx,
+    enterPitDraftIx
   );
 
   const { blockhash } = await connection.getLatestBlockhash(SOLANA_CONFIG.commitment);

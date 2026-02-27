@@ -779,6 +779,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         const [gameStatePda] = deriveGameStatePda(targetSessionPda);
         const [mapEnemiesPda] = deriveMapEnemiesPda(targetSessionPda);
         const [mapPoisPda] = deriveMapPoisPda(targetSessionPda);
+        const [inventoryPda] = deriveInventoryPda(targetSessionPda);
+        const [generatedMapPda] = deriveGeneratedMapPda(targetSessionPda);
         console.log('[SessionContext] Step 0: orphan check', {
           campaignLevel,
           onChainLevel,
@@ -787,13 +789,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           gameStatePda: gameStatePda.toBase58(),
           mapEnemiesPda: mapEnemiesPda.toBase58(),
           mapPoisPda: mapPoisPda.toBase58(),
+          inventoryPda: inventoryPda.toBase58(),
+          generatedMapPda: generatedMapPda.toBase58(),
           rpcEndpoint: connection.rpcEndpoint,
         });
-        const [sessionInfo, gsInfo, meInfo, mpInfo] = await Promise.all([
+        const [sessionInfo, gsInfo, meInfo, mpInfo, invInfo, gmInfo] = await Promise.all([
           connection.getAccountInfo(targetSessionPda, 'processed'),
           connection.getAccountInfo(gameStatePda, 'processed'),
           connection.getAccountInfo(mapEnemiesPda, 'processed'),
           connection.getAccountInfo(mapPoisPda, 'processed'),
+          connection.getAccountInfo(inventoryPda, 'processed'),
+          connection.getAccountInfo(generatedMapPda, 'processed'),
         ]);
         console.log('[SessionContext] Step 0: account info results', {
           session: sessionInfo
@@ -808,9 +814,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           mapPois: mpInfo
             ? `exists owner=${mpInfo.owner.toBase58()} size=${mpInfo.data.length}`
             : 'null',
+          inventory: invInfo
+            ? `exists owner=${invInfo.owner.toBase58()} size=${invInfo.data.length}`
+            : 'null',
+          generatedMap: gmInfo
+            ? `exists owner=${gmInfo.owner.toBase58()} size=${gmInfo.data.length}`
+            : 'null',
         });
         const sessionExists = !!sessionInfo;
-        const orphanedChildren = !sessionExists && (!!gsInfo || !!meInfo || !!mpInfo);
+        const orphanedChildren = !sessionExists && (!!gsInfo || !!meInfo || !!mpInfo || !!invInfo || !!gmInfo);
         if (orphanedChildren) {
           console.log('[SessionContext] Detected orphaned child accounts at session slot', {
             sessionPda: targetSessionPda.toBase58(),

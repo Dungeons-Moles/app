@@ -1,9 +1,12 @@
+import { ImageSourcePropType } from 'react-native';
+
 export interface NftItemInfo {
   name: string;
   description: string;
   tag: string;
   rarity: string;
   emoji: string;
+  image?: ImageSourcePropType;
 }
 
 export const NFT_ITEMS: Record<string, NftItemInfo> = {
@@ -13,6 +16,7 @@ export const NFT_ITEMS: Record<string, NftItemInfo> = {
     tag: 'BLAST',
     rarity: 'heroic',
     emoji: '\u{1F525}',
+    image: require('../../assets/icons/items/nft/infernal_pickaxe.png'),
   },
   'S-XX-02': {
     name: 'Phantom Cloak',
@@ -53,4 +57,10 @@ export const NFT_ITEMS: Record<string, NftItemInfo> = {
 
 export function getNftItemInfo(id: string): NftItemInfo | undefined {
   return NFT_ITEMS[id];
+}
+
+/** Look up by either the ID key (e.g. "S-XX-01") or the display name (e.g. "Infernal Pickaxe"). */
+export function findNftItemInfo(nameOrId: string): NftItemInfo | undefined {
+  if (NFT_ITEMS[nameOrId]) return NFT_ITEMS[nameOrId];
+  return Object.values(NFT_ITEMS).find((info) => info.name === nameOrId);
 }

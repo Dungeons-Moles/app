@@ -169,7 +169,7 @@ export function GauntletRankingScreen({ navigation, route }: GauntletRankingScre
       setItems(rows);
     } catch (err) {
       console.error('[GauntletRanking] Failed to load ranking:', err);
-      setError('Failed to load gauntlet ranking. Please try again.');
+      setError('Failed to load ranking data');
     } finally {
       setIsLoading(false);
     }

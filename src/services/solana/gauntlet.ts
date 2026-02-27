@@ -542,28 +542,9 @@ export async function buildEnterGauntletInstruction(
   const [week4] = deriveGauntletWeekPoolPda(4);
   const [week5] = deriveGauntletWeekPoolPda(5);
 
-  const tx = await (
-    program.methods as unknown as {
-      enterGauntlet: (epochId: BN) => {
-        accounts: (accounts: {
-          gameState: PublicKey;
-          player: PublicKey;
-          gauntletConfig: PublicKey;
-          gauntletPoolVault: PublicKey;
-          companyTreasury: PublicKey;
-          gauntletEpochPool: PublicKey;
-          gauntletPlayerScore: PublicKey;
-          systemProgram: PublicKey;
-        }) => {
-          remainingAccounts: (accounts: { pubkey: PublicKey; isSigner: boolean; isWritable: boolean }[]) => {
-            transaction: () => Promise<Transaction>;
-          };
-        };
-      };
-    }
-  )
+  const tx = await program.methods
     .enterGauntlet(epochIdBN)
-    .accounts({
+    .accountsPartial({
       gameState: gameStatePda,
       player: playerPublicKey,
       gauntletConfig: gauntletConfigPda,
@@ -571,8 +552,12 @@ export async function buildEnterGauntletInstruction(
       companyTreasury: COMPANY_TREASURY,
       gauntletEpochPool: epochPoolPda,
       gauntletPlayerScore: playerScorePda,
+      // VRF state is optional — null means absent. The on-chain code falls back
+      // to legacy RNG. VRF is created in a separate tx after session start.
+      gameplayVrfState: null,
       systemProgram: SystemProgram.programId,
-    })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any)
     .remainingAccounts([
       { pubkey: week1, isSigner: false, isWritable: false },
       { pubkey: week2, isSigner: false, isWritable: false },

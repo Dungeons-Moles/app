@@ -23,6 +23,7 @@ import { useControllerAction } from '../hooks/useControllerAction';
 import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHints';
 import { ControllerKeyboard } from '../components/ui/ControllerKeyboard';
 import { useAudio } from '../contexts/AudioContext';
+import { APP_VERSION } from '../constants/app';
 
 type AccountScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Account'>;
@@ -503,7 +504,7 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
 
       <View style={[styles.versionLabel, isCompact && styles.versionLabelCompact]}>
         <Text style={[styles.versionText, isCompact && styles.versionTextCompact]}>
-          Beta Version 0.1.0
+          Beta Version {APP_VERSION}
         </Text>
       </View>
     </Animated.View>

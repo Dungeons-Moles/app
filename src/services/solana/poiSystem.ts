@@ -18,6 +18,7 @@ import {
   deriveGeneratedMapPda,
 } from './constants';
 import { SOLANA_CONFIG } from './config';
+import { createGameplayStateProgram } from './programs';
 import type { MapPoisData, PoiInstance, ShopState, ItemOffer } from './types/poi_system';
 import type { ToolOilModification } from './types/player_inventory';
 
@@ -45,6 +46,8 @@ export interface PoiTransactionContext {
   sessionSignerKeypair: Keypair;
   /** Optional VRF state PDA for offer randomness (PvP modes). */
   poiVrfStatePda?: PublicKey;
+  /** Optional GameplayVrfState PDA for VRF-backed boss selection in skip_to_day CPI. */
+  gameplayVrfStatePda?: PublicKey;
 }
 
 /** Builds CU limit instruction and sends a POI transaction via session signer. */
@@ -98,9 +101,22 @@ export async function interactRest(ctx: PoiTransactionContext, poiIndex: number)
   const [gameplayAuthorityPda] = deriveGameplayAuthorityPda();
   const [generatedMapPda] = deriveGeneratedMapPda(ctx.sessionPda);
 
+  // Optional account: include only when fully initialized/deserializable.
+  // Some local flows can leave the PDA allocated but not initialized, which
+  // triggers Anchor 3012 (AccountNotInitialized) if passed.
+  // Must pass null explicitly for Anchor to skip optional accounts.
+  let vrfState: PublicKey | null = null;
+  if (ctx.gameplayVrfStatePda) {
+    const gpProgram = createGameplayStateProgram(ctx.connection);
+    const vrfAccount = await (gpProgram.account as any)?.gameplayVrfState
+      ?.fetchNullable(ctx.gameplayVrfStatePda)
+      .catch(() => null);
+    if (vrfAccount) vrfState = ctx.gameplayVrfStatePda;
+  }
+
   const transaction = await ctx.program.methods
     .interactRest(poiIndex)
-    .accounts({
+    .accountsPartial({
       mapPois: ctx.mapPoisPda,
       gameState: ctx.gameStatePda,
       inventory: inventoryPda,
@@ -109,6 +125,7 @@ export async function interactRest(ctx: PoiTransactionContext, poiIndex: number)
       gameplayAuthority: gameplayAuthorityPda,
       gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
       playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
+      gameplayVrfState: vrfState,
       player: ctx.sessionSignerKeypair.publicKey,
     })
     .transaction();

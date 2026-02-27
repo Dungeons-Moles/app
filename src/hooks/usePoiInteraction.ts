@@ -21,7 +21,7 @@ import {
 import { oilFlagToModification } from '@/services/solana/types/player_inventory';
 import { useWallet } from '@/contexts/WalletContext';
 import { useAudio } from '@/contexts/AudioContext';
-import { deriveMapPoisPda, derivePoiVrfStatePda } from '@/services/solana/constants';
+import { deriveMapPoisPda, derivePoiVrfStatePda, deriveGameplayVrfStatePda } from '@/services/solana/constants';
 import { getGameStatePda, fetchGameState } from '@/services/solana/gameplayState';
 import { POI_TYPES } from '@/services/solana/types/poi_system';
 import type {
@@ -738,6 +738,12 @@ export function usePoiInteraction(): UsePoiInteractionResult {
     return derivePoiVrfStatePda(sessionPda)[0];
   }, [sessionPda]);
 
+  /** Derive GameplayVrfState PDA for VRF-backed boss selection in skip_to_day CPI. */
+  const gameplayVrfStatePda = useMemo(() => {
+    if (!sessionPda) return undefined;
+    return deriveGameplayVrfStatePda(sessionPda)[0];
+  }, [sessionPda]);
+
   /** Creates a PoiTransactionContext or returns null if session not ready. */
   const createPoiCtx = useCallback((): PoiTransactionContext | null => {
     const keypair = getSessionSignerKeypair();
@@ -752,8 +758,9 @@ export function usePoiInteraction(): UsePoiInteractionResult {
       sessionPda,
       sessionSignerKeypair: keypair,
       poiVrfStatePda,
+      gameplayVrfStatePda,
     };
-  }, [getSessionSignerKeypair, poiProgram, mapPoisPda, gameStatePda, sessionPda, gameplayConnection, poiVrfStatePda]);
+  }, [getSessionSignerKeypair, poiProgram, mapPoisPda, gameStatePda, sessionPda, gameplayConnection, poiVrfStatePda, gameplayVrfStatePda]);
 
   // Check if there's a valid POI at the player's current position
   const currentPoi = useMemo((): PoiData | undefined => {
