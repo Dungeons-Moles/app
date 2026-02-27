@@ -29,7 +29,10 @@ type AccountScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Account'>;
 };
 
-const WALLET_IDS: SupportedWallet[] = ['Jupiter', 'Phantom', 'Backpack', 'DevKeypair'];
+const WALLET_IDS: SupportedWallet[] =
+  process.env.EXPO_PUBLIC_SHOW_DEV_WALLET === 'true'
+    ? ['Jupiter', 'Phantom', 'Backpack', 'DevKeypair']
+    : ['Jupiter', 'Phantom', 'Backpack'];
 
 export function AccountScreen({ navigation }: AccountScreenProps) {
   const {

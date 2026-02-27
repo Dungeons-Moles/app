@@ -21,6 +21,7 @@ import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHin
 import { useInputMode } from '../hooks/useInputMode';
 import { FocusGlow } from '../components/ui/FocusGlow';
 import { getGearByTag, GearDefinition, getEffectDescriptionAllTiers, RARITY_MULTIPLIER } from '../data/gear';
+import { getGearStatsAtTier } from '../data/gear-effects';
 import { getToolsByTag, ToolDefinition, getToolEffectDescriptionAllTiers, getToolStatsAtTier } from '../game/entities/items';
 import { ItemTag, ItemStats, ItemRarity, GearId, ToolId } from '../game/engine/types';
 import {
@@ -69,7 +70,6 @@ const ITEMSET_ICONS: Record<string, any> = {
 // Item descriptions mapping
 const ITEM_DESCRIPTIONS: Record<string, string> = {
   'Basic Pickaxe': 'A sturdy pickaxe for digging through tough terrain. Essential for any miner.',
-  'Miner Helmet': 'Protective headgear that provides basic defense against falling debris.',
   'Mining Gloves': 'Reinforced gloves that improve grip and digging efficiency.',
   Headlamp: 'Bright light source that helps you move faster through dark tunnels.',
   'Reinforced Boots': 'Sturdy boots with reinforced soles for better protection and digging.',
@@ -206,16 +206,30 @@ function formatTiered(v1: number, v2: number, v3: number): string {
 function getGearStatTiers(id: GearId, baseStats: ItemStats): StatTiers {
   const result: StatTiers = {};
   const mults = [RARITY_MULTIPLIER.COMMON, RARITY_MULTIPLIER.GILDED, RARITY_MULTIPLIER.DIAMOND];
-  if (baseStats.atk !== undefined)
-    result.atk = formatTiered(...mults.map((m) => Math.floor(baseStats.atk! * m)) as [number, number, number]);
-  if (baseStats.arm !== undefined)
-    result.arm = formatTiered(...mults.map((m) => Math.floor(baseStats.arm! * m)) as [number, number, number]);
-  if (baseStats.spd !== undefined)
-    result.spd = formatTiered(...mults.map((m) => Math.floor(baseStats.spd! * m)) as [number, number, number]);
-  if (baseStats.dig !== undefined)
-    result.dig = formatTiered(...mults.map((m) => Math.floor(baseStats.dig! * m)) as [number, number, number]);
-  if (baseStats.hp !== undefined)
-    result.hp = formatTiered(...mults.map((m) => Math.floor(baseStats.hp! * m)) as [number, number, number]);
+
+  // BattleStart flat stats from effects (authoritative tier values)
+  const e1 = getGearStatsAtTier(id, 1);
+  const e2 = getGearStatsAtTier(id, 2);
+  const e3 = getGearStatsAtTier(id, 3);
+
+  const statKeys: (keyof ItemStats)[] = ['atk', 'arm', 'spd', 'dig', 'hp'];
+  for (const key of statKeys) {
+    const ev1 = e1[key] ?? 0;
+    const ev2 = e2[key] ?? 0;
+    const ev3 = e3[key] ?? 0;
+    const hasEffectStat = ev1 || ev2 || ev3;
+
+    const baseVal = baseStats[key];
+    if (hasEffectStat) {
+      // Effect tier values are authoritative (already include any base stat contribution)
+      result[key] = formatTiered(ev1, ev2, ev3);
+    } else if (baseVal !== undefined) {
+      // Permanent stat only (no BattleStart effect) — scale with rarity multiplier
+      result[key] = formatTiered(
+        ...mults.map((m) => Math.floor(baseVal * m)) as [number, number, number]
+      );
+    }
+  }
   return result;
 }
 

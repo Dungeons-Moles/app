@@ -415,46 +415,46 @@ export function SocialSidebar() {
     window.dispatchEvent(new Event('dm-toggle-mute'));
   }, []);
 
-  if (!visible) return null;
-
   return (
     <>
-      <div
-        style={{
-          position: 'fixed',
-          right: 24,
-          top: '50%',
-          transform: 'translateY(-50%)',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 10,
-          zIndex: 9999,
-          animation: 'dm-sidebar-fadeIn 0.6s ease 0.8s both',
-        }}
-      >
-        <SocialButton
-          icon={muted ? <SpeakerOffIcon /> : <SpeakerOnIcon />}
-          onClick={toggleMute}
-          label={muted ? 'Unmute' : 'Mute'}
-        />
-        <SocialButton icon={<TvIcon />} onClick={navigateToDemo} label="Watch" />
-        <SocialButton
-          icon={
-            <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: 1 }}>
-              <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.08em' }}>APK</span>
-              <span style={{ fontSize: 9, fontWeight: 400, opacity: 0.7, marginTop: 1 }}>{APP_VERSION}</span>
-            </span>
-          }
-          href={APK_RELEASE_URL}
-          label="Download APK"
-        />
-        <SocialButton icon={<XIcon />} href="https://x.com/DungeonsMoles" label="Follow on X" />
-        <SocialButton
-          icon={<DiscordIcon />}
-          href="https://discord.gg/SbRz7Axa"
-          label="Join Discord"
-        />
-      </div>
+      {visible && (
+        <div
+          style={{
+            position: 'fixed',
+            right: 24,
+            top: '50%',
+            transform: 'translateY(-50%)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 10,
+            zIndex: 9999,
+            animation: 'dm-sidebar-fadeIn 0.6s ease 0.8s both',
+          }}
+        >
+          <SocialButton
+            icon={muted ? <SpeakerOffIcon /> : <SpeakerOnIcon />}
+            onClick={toggleMute}
+            label={muted ? 'Unmute' : 'Mute'}
+          />
+          <SocialButton icon={<TvIcon />} onClick={navigateToDemo} label="Watch" />
+          <SocialButton
+            icon={
+              <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: 1 }}>
+                <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.08em' }}>APK</span>
+                <span style={{ fontSize: 9, fontWeight: 400, opacity: 0.7, marginTop: 1 }}>{APP_VERSION}</span>
+              </span>
+            }
+            href={APK_RELEASE_URL}
+            label="Download APK"
+          />
+          <SocialButton icon={<XIcon />} href="https://x.com/DungeonsMoles" label="Follow on X" />
+          <SocialButton
+            icon={<DiscordIcon />}
+            href="https://discord.gg/SbRz7Axa"
+            label="Join Discord"
+          />
+        </div>
+      )}
 
       {demoOpen && <VideoOverlay onClose={navigateFromDemo} />}
 

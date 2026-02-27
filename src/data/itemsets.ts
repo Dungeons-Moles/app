@@ -31,7 +31,7 @@ export const ITEMSET_DEFINITIONS: Record<ItemsetId, ItemsetDefinition> = {
     emoji: '🧰',
     requiredItems: ['I1', 'I2', 'I9'], // G-ST-01 + G-ST-02 + G-SC-01
     bonus: {
-      description: 'Battle Start: +4 Armor, +1 DIG',
+      description: '+4 ARM, +1 DIG',
       timing: 'BATTLE_START',
     },
   },
@@ -87,7 +87,7 @@ export const ITEMSET_DEFINITIONS: Record<ItemsetId, ItemsetDefinition> = {
     emoji: '🛡️',
     requiredItems: ['I3', 'I6', 'T1'], // G-ST-03 + G-ST-06 + T-ST-01
     bonus: {
-      description: 'Keep up to 2 Shrapnel at end of turn; when struck with Shrapnel, gain +1 Armor',
+      description: 'Keep up to 2 Shrapnel at end of turn; when struck with Shrapnel, gain +1 ARM',
       passive: true,
     },
   },
@@ -101,7 +101,7 @@ export const ITEMSET_DEFINITIONS: Record<ItemsetId, ItemsetDefinition> = {
     emoji: '☣️',
     requiredItems: ['T11', 'I42', 'I43'], // T-RU-01 + G-RU-02 + G-RU-03
     bonus: {
-      description: 'On Hit: apply +1 Rust; if enemy has no Armor, Rust applications deal 1 non-weapon',
+      description: 'On Hit: apply +1 Rust; if enemy has no ARM, Rust applications deal 1 non-weapon',
       timing: 'ON_HIT',
     },
   },
@@ -129,7 +129,7 @@ export const ITEMSET_DEFINITIONS: Record<ItemsetId, ItemsetDefinition> = {
     emoji: '🏦',
     requiredItems: ['I17', 'I20', 'T6'], // G-GR-01 + G-GR-04 + T-GR-02
     bonus: {
-      description: 'Gold to Armor conversion becomes 1:4; gain +1 Gold at battle start',
+      description: 'Gold to ARM conversion becomes 1:4; gain +1 Gold at battle start',
       passive: true,
     },
   },
@@ -144,7 +144,7 @@ export const ITEMSET_DEFINITIONS: Record<ItemsetId, ItemsetDefinition> = {
     emoji: '🧊',
     requiredItems: ['I36', 'I35', 'I61'],
     bonus: {
-      description: 'Battle Start: +1 SPD; if you act first Turn 1, apply +2 Chill and +3 first-strike damage',
+      description: '+1 SPD; if you act first Turn 1, apply +2 Chill and +3 first-strike damage',
       timing: 'BATTLE_START',
     },
   },
@@ -189,7 +189,7 @@ export const ITEMSET_DEFINITIONS: Record<ItemsetId, ItemsetDefinition> = {
     emoji: '🪙🛡️',
     requiredItems: ['I20', 'I6', 'I19'],
     bonus: {
-      description: 'When you convert Gold to Armor: gain +3 Shrapnel (once/turn)',
+      description: 'When you convert Gold to ARM: gain +3 Shrapnel (once/turn)',
       passive: true,
     },
   },

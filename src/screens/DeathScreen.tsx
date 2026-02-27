@@ -78,9 +78,12 @@ export function DeathScreen({ navigation, route }: DeathScreenProps) {
   const inputMode = useInputMode();
   const isController = inputMode === 'controller';
 
-  useControllerAction({ onA: handleReturnToHub }, isController);
+  useControllerAction({ onA: handleReturnToHub, onB: handleReturnToHub }, isController);
 
-  const controllerHints: ButtonHint[] = [{ button: 'A', label: 'Return to Hub' }];
+  const controllerHints: ButtonHint[] = [
+    { button: 'A', label: 'Return to Hub' },
+    { button: 'B', label: 'Return to Hub' },
+  ];
 
   // Determine death cause description
   const getDeathCause = (): string => {

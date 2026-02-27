@@ -97,9 +97,12 @@ export function VictoryScreen({ navigation, route }: VictoryScreenProps) {
   const inputMode = useInputMode();
   const isController = inputMode === 'controller';
 
-  useControllerAction({ onA: handleReturnToHub }, isController);
+  useControllerAction({ onA: handleReturnToHub, onB: handleReturnToHub }, isController);
 
-  const controllerHints: ButtonHint[] = [{ button: 'A', label: 'Return to Hub' }];
+  const controllerHints: ButtonHint[] = [
+    { button: 'A', label: 'Return to Hub' },
+    { button: 'B', label: 'Return to Hub' },
+  ];
 
   const turnsTaken = replay?.combatEnded?.turnsTaken ?? 0;
 

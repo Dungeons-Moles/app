@@ -58,7 +58,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['STONE'],
     effect: {
       timing: 'BATTLE_START',
-      description: 'Battle Start: gain 3 Shrapnel; +1 Armor',
+      description: '+3 Shrapnel',
     },
   },
   I4: {
@@ -71,7 +71,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['STONE'],
     effect: {
       timing: 'EVERY_OTHER_TURN',
-      description: 'Battle Start: gain 2 Armor; every other turn: gain 2 Armor',
+      description: 'Every other turn: gain 2 ARM',
     },
   },
   I5: {
@@ -84,7 +84,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['STONE'],
     effect: {
       timing: 'BATTLE_START',
-      description: 'Battle Start: gain 3 Armor; first time you become Exposed: gain 4 Armor',
+      description: 'Exposed (once per battle): gain 4 ARM',
     },
   },
   I6: {
@@ -97,7 +97,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['STONE'],
     effect: {
       timing: 'PASSIVE',
-      description: 'Battle Start: gain 3 Armor; first time you gain Shrapnel: gain 2 Armor',
+      description: 'Whenever you gain Shrapnel (once per battle): gain 2 ARM',
     },
   },
   I7: {
@@ -110,7 +110,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['STONE'],
     effect: {
       timing: 'BATTLE_START',
-      description: 'Battle Start: gain Max HP equal to your starting Armor (cap 10)',
+      description: 'Battle Start: gain Max HP equal to your starting ARM (cap 10)',
     },
   },
   I8: {
@@ -123,7 +123,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['STONE'],
     effect: {
       timing: 'TURN_END',
-      description: 'Battle Start: gain 3 Armor; end of turn: if you have 2+ Armor, gain 2 Armor',
+      description: 'End of turn: if you have 2+ ARM, gain 2 ARM',
     },
   },
 
@@ -138,10 +138,6 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     baseRarity: 'COMMON',
     stats: { dig: 2 },
     tags: ['SCOUT'],
-    effect: {
-      timing: 'BATTLE_START',
-      description: 'Battle Start: gain 2 DIG and +1 SPD',
-    },
   },
   I10: {
     id: 'I10',
@@ -162,7 +158,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['SCOUT'],
     effect: {
       timing: 'BATTLE_START',
-      description: 'Battle Start: gain +1 DIG; if DIG > enemy DIG, gain +1 SPD and +1 ATK',
+      description: 'Battle Start: if DIG > enemy DIG, gain +1 SPD and +1 ATK',
     },
   },
   I12: {
@@ -176,7 +172,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     effect: {
       timing: 'BATTLE_START',
       description:
-        'Battle Start: gain +2 SPD; if you act first on Turn 1, gain +1 DIG and +2 Armor (this battle)',
+        'If you act first on Turn 1, gain +1 DIG and +2 ARM',
     },
   },
   I13: {
@@ -190,7 +186,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     effect: {
       timing: 'BATTLE_START',
       description:
-        'Battle Start: gain +1 SPD; if DIG > enemy DIG, gain +3 Armor (this battle)',
+        'Battle Start: if DIG > enemy DIG, gain +3 ARM',
     },
   },
   I14: {
@@ -217,7 +213,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     effect: {
       timing: 'BATTLE_START',
       description:
-        'Battle Start: gain +1 ATK and +1 DIG; if DIG > enemy Armor, your strikes ignore 2 Armor (this battle)',
+        'If DIG > enemy ARM: your strikes ignore 2 ARM',
     },
   },
   I16: {
@@ -247,7 +243,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['GREED'],
     effect: {
       timing: 'PASSIVE',
-      description: 'Start of each Day: gain 5 Gold; Battle Start: gain +1 Armor',
+      description: 'Start of each Day: gain 5 Gold',
     },
   },
   I18: {
@@ -274,7 +270,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     effect: {
       timing: 'BATTLE_START',
       description:
-        'Battle Start: gain +2 Armor; armor equal to floor(Gold/6) (cap 6); if Gold ≥ 20, gain +1 SPD this battle',
+        'Battle Start: gain ARM equal to floor(Gold/6) (cap 6); if Gold ≥ 20, gain +1 SPD',
     },
   },
   I20: {
@@ -288,7 +284,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     effect: {
       timing: 'TURN_START',
       description:
-        'Battle Start: gain +1 ATK; Turn Start: convert 1 Gold -> 4 Armor; gold gains increased by 50% (round down)',
+        'Turn Start: convert 1 Gold → 4 ARM; gold gains increased by 50%',
     },
   },
   I21: {
@@ -327,7 +323,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['GREED'],
     effect: {
       timing: 'EVERY_OTHER_TURN',
-      description: 'Every other turn (on first hit): gain 2 Armor',
+      description: 'Every other turn (on first hit): gain 2 ARM',
     },
   },
   I24: {
@@ -340,7 +336,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['GREED'],
     effect: {
       timing: 'EVERY_OTHER_TURN',
-      description: 'Every other turn (on first hit): gain 2 Gold and +1 Armor',
+      description: 'Every other turn (on first hit): gain 2 Gold and +1 ARM',
     },
   },
 
@@ -370,7 +366,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['BLAST'],
     effect: {
       timing: 'PASSIVE',
-      description: 'You ignore self-BLAST damage; Battle Start: gain 4 Armor; non-weapon damage grants +1 Armor once/turn',
+      description: 'You ignore self-BLAST damage; non-weapon damage grants +1 ARM once/turn',
     },
   },
   I27: {
@@ -383,7 +379,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['BLAST'],
     effect: {
       timing: 'BATTLE_START',
-      description: 'Battle Start: your non-weapon damage deals +2 and gain +2 Armor',
+      description: 'Your non-weapon damage deals +2',
     },
   },
   I28: {
@@ -411,7 +407,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     effect: {
       timing: 'BATTLE_START',
       description:
-        'Battle Start: reduce Countdown of your bomb items by 1 (min 0); gain +4 Armor and +1 ATK',
+        'Reduce all bomb Countdown by 1 (min 0)',
     },
   },
   I30: {
@@ -438,7 +434,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     effect: {
       timing: 'TURN_START',
       description:
-        'Battle Start: gain +2 Armor; Turn Start: store +2 damage (this battle); when Exposed or Turn 5+: deal stored damage',
+        'Turn Start: store +2 damage; when Exposed or Turn 5+: deal stored damage',
     },
   },
   I32: {
@@ -468,7 +464,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['FROST'],
     effect: {
       timing: 'BATTLE_START',
-      description: 'Battle Start: gain +1 Armor and give enemy 1 Chill',
+      description: 'Battle Start: give enemy 1 Chill',
     },
   },
   I34: {
@@ -481,7 +477,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['FROST'],
     effect: {
       timing: 'BATTLE_START',
-      description: 'Battle Start: if enemy has Chill, gain +3 Armor and apply 1 Chill',
+      description: 'Battle Start: if enemy has Chill, gain +3 ARM and apply 1 Chill',
     },
   },
   I35: {
@@ -495,7 +491,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     effect: {
       timing: 'BATTLE_START',
       description:
-        'Battle Start: gain +1 SPD; if you act first on Turn 1, apply 2 Chill and gain +2 Armor',
+        'If you act first on Turn 1: apply 2 Chill and gain +2 ARM',
     },
   },
   I36: {
@@ -506,10 +502,6 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     baseRarity: 'RARE',
     stats: { spd: 1 },
     tags: ['FROST'],
-    effect: {
-      timing: 'BATTLE_START',
-      description: 'Battle Start: gain +2 SPD, +1 DIG, and gain +2 Armor',
-    },
   },
   I37: {
     id: 'I37',
@@ -534,7 +526,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['FROST'],
     effect: {
       timing: 'TURN_START',
-      description: 'Turn Start: if enemy has Chill, gain 2 Armor and deal 2 non-weapon damage',
+      description: 'Turn Start: if enemy has Chill, gain 2 ARM and deal 2 non-weapon damage',
     },
   },
   I39: {
@@ -548,7 +540,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     effect: {
       timing: 'EVERY_OTHER_TURN',
       description:
-        'Every other turn: apply 1 Chill, deal 2/3/4 non-weapon damage, and gain 1/2/3 Armor; if enemy already has Chill, gain +2/2/3 SPD this turn',
+        'Every other turn: apply 1 Chill, deal 2/3/4 non-weapon damage, and gain 1/2/3 ARM; if enemy already has Chill, gain +2/2/3 SPD this turn',
     },
   },
   I40: {
@@ -578,7 +570,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['RUST'],
     effect: {
       timing: 'BATTLE_START',
-      description: 'Battle Start: gain +1 Armor; apply 1 Rust (if enemy has Armor, apply +1 more)',
+      description: 'Battle Start: apply 1 Rust (if enemy has ARM, apply +1 more)',
     },
   },
   I42: {
@@ -617,7 +609,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['RUST'],
     effect: {
       timing: 'BATTLE_START',
-      description: 'Battle Start: reduce enemy Armor by 3/4/5 and apply 1/2/3 Rust',
+      description: 'Battle Start: reduce enemy ARM by 3/4/5 and apply 1/2/3 Rust',
     },
   },
   I45: {
@@ -644,7 +636,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     effect: {
       timing: 'TURN_START',
       description:
-        'Battle Start: gain +1 ATK and +3 Armor; Turn Start: if enemy has Rust or no Armor, deal 2/3/4 non-weapon damage',
+        'Turn Start: if enemy has Rust or no ARM, deal 2/3/4 non-weapon damage',
     },
   },
   I47: {
@@ -657,7 +649,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['RUST'],
     effect: {
       timing: 'ON_HIT',
-      description: 'On Hit (once/turn): apply +2/3/4 additional Rust; if enemy has 0 Armor, deal 2/3/4 non-weapon damage',
+      description: 'On Hit (once/turn): apply +2/3/4 additional Rust; if enemy has 0 ARM, deal 2/3/4 non-weapon damage',
     },
   },
   I48: {
@@ -670,7 +662,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['RUST'],
     effect: {
       timing: 'PASSIVE',
-      description: 'Battle Start: apply 1 Rust; whenever you apply Rust (once/turn), gain 2 Gold',
+      description: 'Whenever you apply Rust (once/turn): gain 2 Gold; Battle Start: apply 1 Rust',
     },
   },
 
@@ -700,7 +692,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['BLOOD'],
     effect: {
       timing: 'PASSIVE',
-      description: 'Battle Start: gain +1 ATK; your attacks deal +1 damage to Bleeding enemies',
+      description: 'Your attacks deal +1 damage to Bleeding enemies',
     },
   },
   I51: {
@@ -713,7 +705,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['BLOOD'],
     effect: {
       timing: 'TURN_END',
-      description: 'When enemy takes Bleed damage: gain +2 Armor and heal 2 HP (once/turn)',
+      description: 'When enemy takes Bleed damage: gain +2 ARM and heal 2 HP (once/turn)',
     },
   },
   I52: {
@@ -726,7 +718,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['BLOOD'],
     effect: {
       timing: 'VICTORY',
-      description: 'Battle Start: gain +2 Armor; Victory: heal 5/7/9 HP',
+      description: 'Victory: heal 5/7/9 HP',
     },
   },
   I53: {
@@ -739,7 +731,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['BLOOD'],
     effect: {
       timing: 'WOUNDED',
-      description: 'Battle Start: gain +1 ATK and +3 Armor; Wounded: apply 3 Bleed',
+      description: 'Wounded: apply 3 Bleed',
     },
   },
   I54: {
@@ -752,7 +744,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['BLOOD'],
     effect: {
       timing: 'ON_HIT',
-      description: 'Battle Start: gain +1 ATK and +2 Armor; if enemy is Wounded, your first strike each turn deals +3 damage',
+      description: 'If enemy is Wounded, your first strike each turn deals +3 damage',
     },
   },
   I55: {
@@ -765,7 +757,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['BLOOD'],
     effect: {
       timing: 'WOUNDED',
-      description: 'First time you become Wounded in battle: gain 4 Armor',
+      description: 'First time you become Wounded in battle: gain 4 ARM',
     },
   },
   I56: {
@@ -809,7 +801,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['TEMPO'],
     effect: {
       timing: 'FIRST_TURN',
-      description: 'Battle Start: gain +1 SPD; if you act first on Turn 1, your first strike deals +3 damage',
+      description: 'If you act first on Turn 1, your first strike deals +3 damage',
     },
   },
   I59: {
@@ -823,7 +815,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     effect: {
       timing: 'BATTLE_START',
       description:
-        'Battle Start: gain +1 SPD; if enemy acts first on Turn 1, gain +7 Armor before damage',
+        'If enemy acts first on Turn 1, gain +7 ARM before damage',
     },
   },
   I60: {
@@ -836,7 +828,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['TEMPO'],
     effect: {
       timing: 'TURN_START',
-      description: 'Battle Start: gain +2 Armor; Turn 5: gain +3 ATK and +2 SPD (this battle)',
+      description: 'Turn 5: gain +3 ATK and +2 SPD',
     },
   },
   I61: {
@@ -849,7 +841,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['TEMPO'],
     effect: {
       timing: 'BATTLE_START',
-      description: 'Battle Start: if your SPD > enemy SPD, gain 3 Armor',
+      description: 'Battle Start: if your SPD > enemy SPD, gain 3 ARM',
     },
   },
   I62: {
@@ -862,7 +854,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['TEMPO'],
     effect: {
       timing: 'FIRST_TURN',
-      description: 'If enemy acts first on Turn 1, gain 4 Armor and your first strike deals +3 damage',
+      description: 'If enemy acts first on Turn 1, gain 4 ARM and your first strike deals +3 damage',
     },
   },
   I63: {
@@ -876,7 +868,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     effect: {
       timing: 'EVERY_OTHER_TURN',
       description:
-        'Battle Start: gain +1 ATK and +3 Armor; every other turn, gain +2 SPD (this battle)',
+        'Every other turn: gain +2 SPD',
     },
   },
   I64: {
@@ -890,7 +882,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     effect: {
       timing: 'TURN_START',
       description:
-        'Battle Start: gain +3 Armor; Turn 5: heal 6 HP and gain +2 SPD (this battle)',
+        'Turn 5: heal 6 HP and gain +2 SPD',
     },
   },
 };
