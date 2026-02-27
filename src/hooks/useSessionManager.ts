@@ -804,42 +804,56 @@ export function useSessionManager() {
         );
 
         // Tx3: Delegate PoiVrfState if it exists (VRF sessions only)
+        // NOTE: This currently fails because poi_vrf_state is owned by the POI system program
+        // but the delegation instruction lives in session-manager. Only the owning program
+        // can delegate its accounts. TODO: Move delegate_poi_vrf_state to poi-system program.
+        // For now, failure is non-blocking — VRF state was already fulfilled during setup.
         const [poiVrfStatePda] = derivePoiVrfStatePda(sessionPda);
         const poiVrfInfo = await baseConnection.getAccountInfo(poiVrfStatePda);
         if (poiVrfInfo) {
-          const poiVrfDelegate = deriveDelegatePdas(
-            poiVrfStatePda,
-            SOLANA_CONFIG.programs.sessionManager
-          );
-          const delegatePoiVrfIx = await baseWriteProgram.methods
-            .delegatePoiVrfState(onChainLevel)
-            .accountsStrict({
-              poiVrfState: poiVrfStatePda,
-              player: wallet.publicKey,
-              ...Object.fromEntries(
-                Object.entries(poiVrfDelegate).map(([k, v]) => [
-                  k === 'buffer'
-                    ? 'bufferPoiVrfState'
-                    : k === 'delegationRecord'
-                      ? 'delegationRecordPoiVrfState'
-                      : 'delegationMetadataPoiVrfState',
-                  v,
-                ])
-              ),
-              ownerProgram: SOLANA_CONFIG.programs.sessionManager,
-              delegationProgram: DELEGATION_PROGRAM_ID,
-              systemProgram: SystemProgram.programId,
-            } as any)
-            .instruction();
+          try {
+            const poiVrfDelegate = deriveDelegatePdas(
+              poiVrfStatePda,
+              SOLANA_CONFIG.programs.sessionManager
+            );
+            const delegatePoiVrfIx = await baseWriteProgram.methods
+              .delegatePoiVrfState(sessionPda, delegationValidator)
+              .accountsStrict({
+                poiVrfState: poiVrfStatePda,
+                player: sessionSignerKeypair.publicKey,
+                ...Object.fromEntries(
+                  Object.entries(poiVrfDelegate).map(([k, v]) => [
+                    k === 'buffer'
+                      ? 'bufferPoiVrfState'
+                      : k === 'delegationRecord'
+                        ? 'delegationRecordPoiVrfState'
+                        : 'delegationMetadataPoiVrfState',
+                    v,
+                  ])
+                ),
+                ownerProgram: SOLANA_CONFIG.programs.sessionManager,
+                delegationProgram: DELEGATION_PROGRAM_ID,
+                systemProgram: SystemProgram.programId,
+              } as any)
+              .instruction();
 
-          const delegationTx3 = new Transaction().add(
-            ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
-            delegatePoiVrfIx
-          );
-          signature = await signAndSendTransaction(delegationTx3, {
-            connection: baseConnection,
-            skipPreflight: true,
-          });
+            const delegationTx3 = new Transaction().add(
+              ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+              delegatePoiVrfIx
+            );
+            signature = await sendSessionSignerTransaction(
+              baseConnection,
+              delegationTx3,
+              sessionSignerKeypair
+            );
+          } catch (poiVrfDelegateError) {
+            console.warn(
+              '[delegateSession] PoiVrfState delegation failed (non-blocking), continuing:',
+              poiVrfDelegateError instanceof Error
+                ? poiVrfDelegateError.message
+                : poiVrfDelegateError
+            );
+          }
         }
 
         // Refresh session state

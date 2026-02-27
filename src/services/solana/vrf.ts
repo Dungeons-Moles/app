@@ -10,7 +10,7 @@
  * signer and providing crypto.getRandomValues() randomness.
  */
 
-import { PublicKey, Transaction, SystemProgram } from '@solana/web3.js';
+import { ComputeBudgetProgram, PublicKey, Transaction, SystemProgram } from '@solana/web3.js';
 import type { Connection, Keypair } from '@solana/web3.js';
 import type { Program } from '@coral-xyz/anchor';
 import {
@@ -163,7 +163,10 @@ export async function buildRegenerateMapTransaction(
     })
     .instruction();
 
-  return new Transaction().add(ix);
+  return new Transaction().add(
+    ComputeBudgetProgram.setComputeUnitLimit({ units: 1_000_000 }),
+    ix
+  );
 }
 
 // ============================================================================

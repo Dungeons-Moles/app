@@ -1576,8 +1576,14 @@
       ],
       "args": [
         {
-          "name": "campaign_level",
-          "type": "u8"
+          "name": "session_key",
+          "type": "pubkey"
+        },
+        {
+          "name": "validator",
+          "type": {
+            "option": "pubkey"
+          }
         }
       ]
     },

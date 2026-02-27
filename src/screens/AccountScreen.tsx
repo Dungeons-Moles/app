@@ -357,34 +357,35 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
                         />
                       </TouchableOpacity>
                     ))}
-                    {/* TEMPORARY: Dev Keypair option for local development. Remove when Phantom issues are resolved. */}
-                    <TouchableOpacity
-                      style={[
-                        styles.walletOption,
-                        isCompact && { width: 96, height: 96 },
-                        'DevKeypair' === selectedWallet && styles.walletOptionSelected,
-                      ]}
-                      onPress={() => {
-                        playSfx('ui_click');
-                        setSelectedWallet('DevKeypair');
-                      }}
-                      activeOpacity={0.7}
-                      disabled={showLoading}
-                    >
-                      <Text
-                        style={{
-                          fontSize: isCompact ? 18 : 10,
-                          fontWeight: 'bold',
-                          color:
-                            'DevKeypair' === selectedWallet
-                              ? styles.walletIconActive.color
-                              : styles.walletIconInactive.color,
-                          textAlign: 'center',
+                    {process.env.EXPO_PUBLIC_SHOW_DEV_WALLET === 'true' && (
+                      <TouchableOpacity
+                        style={[
+                          styles.walletOption,
+                          isCompact && { width: 96, height: 96 },
+                          'DevKeypair' === selectedWallet && styles.walletOptionSelected,
+                        ]}
+                        onPress={() => {
+                          playSfx('ui_click');
+                          setSelectedWallet('DevKeypair');
                         }}
+                        activeOpacity={0.7}
+                        disabled={showLoading}
                       >
-                        DEV{'\n'}KEY
-                      </Text>
-                    </TouchableOpacity>
+                        <Text
+                          style={{
+                            fontSize: isCompact ? 18 : 10,
+                            fontWeight: 'bold',
+                            color:
+                              'DevKeypair' === selectedWallet
+                                ? styles.walletIconActive.color
+                                : styles.walletIconInactive.color,
+                            textAlign: 'center',
+                          }}
+                        >
+                          DEV{'\n'}KEY
+                        </Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
                   <Text style={[styles.walletHint, isCompact && { fontSize: 20 }]}>
                     Select a wallet to sign in
