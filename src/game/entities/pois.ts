@@ -159,12 +159,10 @@ function getToolDescription(tool: Tool): string {
  */
 export function createPOIInteraction(poi: MapPOI, state: GameState): POIInteraction | null {
   const definition = getPOIDefinition(poi.definitionId);
-  const isNight = state.time.phase === TimePhase.Night;
 
-  // Check if POI can be interacted with
-  if (!canInteractWithPOI(poi.definitionId, isNight)) {
-    return null;
-  }
+  // Night-only check is NOT here — callers (e.g. MOVE handler) gate auto-open
+  // themselves. Manual interaction (INTERACT_POI via 'A' button) always reaches
+  // generatePOIOptions, which returns disabled options with an explanation.
 
   // Create RNG with a per-POI seed so each POI generates unique options
   // Hash the POI's unique ID and position into a numeric offset

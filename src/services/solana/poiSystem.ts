@@ -105,7 +105,7 @@ export async function interactRest(ctx: PoiTransactionContext, poiIndex: number)
   // Some local flows can leave the PDA allocated but not initialized, which
   // triggers Anchor 3012 (AccountNotInitialized) if passed.
   // Must pass null explicitly for Anchor to skip optional accounts.
-  let vrfState: PublicKey | null = null;
+  let vrfState: PublicKey | undefined;
   if (ctx.gameplayVrfStatePda) {
     const gpProgram = createGameplayStateProgram(ctx.connection);
     const vrfAccount = await (gpProgram.account as any)?.gameplayVrfState
@@ -194,7 +194,7 @@ export async function interactPickItem(
 
   const transaction = await ctx.program.methods
     .interactPickItem(safePoiIndex, safeChoiceIndex)
-    .accounts({
+    .accountsPartial({
       mapPois: ctx.mapPoisPda,
       gameState: ctx.gameStatePda,
       inventory: inventoryPda,

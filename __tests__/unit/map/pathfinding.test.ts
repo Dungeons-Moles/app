@@ -175,7 +175,7 @@ describe('moveEnemiesNight', () => {
     const playerPosition = { x: 5, y: 1 };
 
     // Chebyshev distance = max(|3-5|,|1-1|) = 2, within range 1-3
-    const result = moveEnemiesNight(map, playerPosition);
+    const result = moveEnemiesNight(map, playerPosition, playerPosition);
 
     expect(result.updatedEnemies).toHaveLength(1);
     expect(result.updatedEnemies[0].position).toEqual({ x: 4, y: 1 });
@@ -192,7 +192,7 @@ describe('moveEnemiesNight', () => {
     const playerPosition = { x: 7, y: 1 };
 
     // Chebyshev distance = max(|1-7|,|1-1|) = 6, out of range
-    const result = moveEnemiesNight(map, playerPosition);
+    const result = moveEnemiesNight(map, playerPosition, playerPosition);
 
     expect(result.updatedEnemies[0].position).toEqual({ x: 1, y: 1 });
     expect(result.combatTriggered).toBeNull();
@@ -207,7 +207,7 @@ describe('moveEnemiesNight', () => {
     map.enemies = [createEnemy('enemy1', { x: 2, y: 1 })];
     const playerPosition = { x: 3, y: 1 };
 
-    const result = moveEnemiesNight(map, playerPosition);
+    const result = moveEnemiesNight(map, playerPosition, playerPosition);
 
     expect(result.combatTriggered).toBe('enemy1');
     expect(result.updatedEnemies[0].position).toEqual({ x: 3, y: 1 });
@@ -228,7 +228,7 @@ describe('moveEnemiesNight', () => {
     // Sorted by id: enemy1 first (x=4), then enemy2 (x=3)
     // enemy1: Chebyshev=1, steps to (5,1) = player. playerTileBlocked = true.
     // enemy2: Chebyshev=2, xStep=(4,1) which enemy1 vacated. Moves to (4,1).
-    const result = moveEnemiesNight(map, playerPosition);
+    const result = moveEnemiesNight(map, playerPosition, playerPosition);
 
     expect(result.combatTriggered).toBe('enemy1');
     const enemy1 = result.updatedEnemies.find((e) => e.id === 'enemy1');
@@ -258,8 +258,8 @@ describe('moveEnemiesNight', () => {
       ],
     };
 
-    const result1 = moveEnemiesNight(map, playerPosition);
-    const result2 = moveEnemiesNight(map2, playerPosition);
+    const result1 = moveEnemiesNight(map, playerPosition, playerPosition);
+    const result2 = moveEnemiesNight(map2, playerPosition, playerPosition);
 
     expect(
       result1.updatedEnemies.map((e) => ({ id: e.id, pos: e.position }))
@@ -276,7 +276,7 @@ describe('moveEnemiesNight', () => {
     const playerPosition = { x: 3, y: 1 };
 
     // Chebyshev = 2, in range. But wall at (2,1) and dy=0, so no valid move.
-    const result = moveEnemiesNight(map, playerPosition);
+    const result = moveEnemiesNight(map, playerPosition, playerPosition);
 
     expect(result.updatedEnemies[0].position).toEqual({ x: 1, y: 1 });
     expect(result.combatTriggered).toBeNull();
@@ -295,7 +295,7 @@ describe('moveEnemiesNight', () => {
     const playerPosition = { x: 5, y: 1 };
 
     // enemy1: Chebyshev=2, enemy2: Chebyshev=1. Both in range.
-    const result = moveEnemiesNight(map, playerPosition);
+    const result = moveEnemiesNight(map, playerPosition, playerPosition);
 
     const positions = result.updatedEnemies.map((e) => e.position);
     const positionStrings = positions.map((p) => `${p.x},${p.y}`);
@@ -320,7 +320,7 @@ describe('moveEnemiesNight', () => {
     // Sorted by id: enemy1 (x=4) first, enemy2 (x=3) second.
     // enemy1 moves to (5,1) player tile. Vacates (4,1).
     // enemy2 can now move to (4,1) since enemy1 left.
-    const result = moveEnemiesNight(map, playerPosition);
+    const result = moveEnemiesNight(map, playerPosition, playerPosition);
 
     const enemy2 = result.updatedEnemies.find((e) => e.id === 'enemy2');
     expect(enemy2!.position).toEqual({ x: 4, y: 1 });

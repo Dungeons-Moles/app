@@ -93,18 +93,22 @@ function selectEnemyStep(
 /**
  * Move all enemies one step toward the player during Night phase.
  * Matches the on-chain algorithm:
- * - Only enemies within Chebyshev distance 1-3 move
+ * - Detection uses OLD player position (where enemies "notice" the player)
+ * - Chase uses NEW player position (where enemies step toward)
+ * - Only enemies within Chebyshev distance 1-3 of detect position move
  * - Greedy step (larger delta axis first)
  * - Occupied grid updated as enemies move
  * - Only one enemy can reach the player tile (player_tile_blocked)
  * - First enemy reaching the player triggers combat
  *
- * @param map - The game map
- * @param playerPosition - The player's current position
+ * @param map - The game map (with ALL enemies, not pre-filtered)
+ * @param detectPosition - Player's OLD position (for Chebyshev distance check)
+ * @param chasePosition - Player's NEW position (where enemies step toward)
  */
 export function moveEnemiesNight(
   map: GameMap,
-  playerPosition: Position
+  detectPosition: Position,
+  chasePosition: Position
 ): { updatedEnemies: MapEnemy[]; combatTriggered: string | null } {
   // Build occupied grid from current enemy positions
   const occupied = new Set<string>();
@@ -120,16 +124,18 @@ export function moveEnemiesNight(
   const sortedEnemies = [...map.enemies].sort((a, b) => a.id.localeCompare(b.id));
 
   for (const enemy of sortedEnemies) {
-    const distance = chebyshevDistance(enemy.position, playerPosition);
+    // Detection uses OLD player position (matches on-chain)
+    const distance = chebyshevDistance(enemy.position, detectPosition);
 
     // Only enemies within Chebyshev distance 1-3 move (matches on-chain)
     if (distance > 0 && distance <= 3) {
       // Remove enemy from old position in occupied grid
       const oldKey = `${enemy.position.x},${enemy.position.y}`;
 
+      // Chase uses NEW player position (matches on-chain)
       const nextPos = selectEnemyStep(
         enemy.position,
-        playerPosition,
+        chasePosition,
         map,
         occupied,
         playerTileBlocked
@@ -138,7 +144,7 @@ export function moveEnemiesNight(
       if (nextPos) {
         // Update occupied grid
         occupied.delete(oldKey);
-        if (nextPos.x === playerPosition.x && nextPos.y === playerPosition.y) {
+        if (nextPos.x === chasePosition.x && nextPos.y === chasePosition.y) {
           playerTileBlocked = true;
         } else {
           occupied.add(`${nextPos.x},${nextPos.y}`);
@@ -149,8 +155,8 @@ export function moveEnemiesNight(
         // First enemy reaching player triggers combat
         if (
           !combatTriggered &&
-          nextPos.x === playerPosition.x &&
-          nextPos.y === playerPosition.y
+          nextPos.x === chasePosition.x &&
+          nextPos.y === chasePosition.y
         ) {
           combatTriggered = enemy.id;
         }

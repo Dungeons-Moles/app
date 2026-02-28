@@ -35,6 +35,7 @@ import {
   deriveMapPoisPda,
   deriveSessionPdas,
   deriveSessionPda,
+  deriveSessionNoncesPda,
   derivePoiVrfStatePda,
 } from '@/services/solana/constants';
 import { SOLANA_CONFIG } from '@/services/solana/config';
@@ -46,7 +47,6 @@ import {
 } from '@/services/solana/programs';
 import {
   buildRequestAndFulfillAllVrfTransaction,
-  buildRegenerateMapTransaction,
   buildRequestAndFulfillPoiVrfTransaction,
 } from '@/services/solana/vrf';
 import { fetchGeneratedMap } from '@/services/solana/mapGeneratorClient';
@@ -145,6 +145,8 @@ export interface SessionState {
 interface SessionContextType extends SessionState {
   /** Start a new game session for a campaign level */
   startGame: (campaignLevel: number) => Promise<TransactionResult>;
+  /** Override campaign session slot by bumping campaign nonce */
+  overrideCampaignSession: () => Promise<TransactionResult>;
   /** Start a new duel session */
   startDuelGame: () => Promise<TransactionResult>;
   /** Start a new gauntlet session */
@@ -251,6 +253,7 @@ interface SessionIdentityContextType {
   isAutoCommitActive: boolean;
   // Actions (stable callbacks)
   startGame: SessionContextType['startGame'];
+  overrideCampaignSession: SessionContextType['overrideCampaignSession'];
   startDuelGame: SessionContextType['startDuelGame'];
   startGauntletGame: SessionContextType['startGauntletGame'];
   endGame: SessionContextType['endGame'];
@@ -703,30 +706,41 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         return { success: false, error: 'No available sessions remaining' };
       }
 
-      // Check if session already exists on-chain before trying to create a new one
-      // session.campaignLevel is 1-indexed (on-chain), campaignLevel arg is 0-indexed (frontend)
-      if (sessionManager.session && sessionManager.session.campaignLevel === campaignLevel + 1) {
+      if (!wallet.publicKey) {
+        return { success: false, error: 'Wallet not connected' };
+      }
+
+      // Resolve using current nonce namespace + on-chain existence.
+      // Cached session state can be stale right after override (X).
+      const onChainLevel = campaignLevel + 1;
+      const currentNonces = await sessionManager.fetchSessionNonces(wallet.publicKey);
+      const [currentNonceSessionPda] = deriveSessionPda(
+        wallet.publicKey,
+        onChainLevel,
+        currentNonces.campaign
+      );
+      const currentSessionInfo = await connection.getAccountInfo(currentNonceSessionPda, 'processed');
+
+      // Check if session already exists on-chain before trying to create a new one.
+      if (currentSessionInfo) {
         console.log('[SessionContext] Session already exists, signaling resume...');
         // Just fetch map seed and ensure sessionSigner is ready
         const seed = await mapGenerator.getMapSeed(campaignLevel);
         setMapSeed(seed);
+        const resumedSessionPda = currentNonceSessionPda;
+        sessionManager.setActiveOnChainLevel(onChainLevel);
+        sessionManager.setActiveSessionPda(resumedSessionPda);
 
         // Load the correct session signer keypair for this session.
-        if (sessionManager.session && wallet.publicKey) {
-          const [resumeSessionPda] = deriveSessionPda(
-            wallet.publicKey,
-            sessionManager.session.campaignLevel
-          );
-          const loadedForSession = await sessionSigner.loadForSession(resumeSessionPda.toBase58());
-          if (!loadedForSession && !sessionSigner.keypair) {
-            console.warn('[SessionContext] Session key signer missing for active session!');
-            const recovered = await sessionSigner.checkPendingSession();
-            if (!recovered) {
-              return {
-                success: false,
-                error: 'Session credentials lost. Please reset or abandon run.',
-              };
-            }
+        const loadedForSession = await sessionSigner.loadForSession(resumedSessionPda.toBase58());
+        if (!loadedForSession && !sessionSigner.keypair) {
+          console.warn('[SessionContext] Session key signer missing for active session!');
+          const recovered = await sessionSigner.checkPendingSession();
+          if (!recovered) {
+            return {
+              success: false,
+              error: 'Session credentials lost. Please reset or abandon run.',
+            };
           }
         } else if (!sessionSigner.keypair) {
           const recovered = await sessionSigner.checkPendingSession();
@@ -739,12 +753,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         }
 
         // Set up GameState PDA for the gameplay state hook
-        if (sessionManager.session && wallet.publicKey) {
-          const [sessionPda] = deriveSessionPda(
-            wallet.publicKey,
-            sessionManager.session.campaignLevel
-          );
-          const [gameStatePda] = getGameStatePda(sessionPda);
+        if (resumedSessionPda) {
+          const [gameStatePda] = getGameStatePda(resumedSessionPda);
           gameplayState.setGameStatePda(gameStatePda);
           console.log(
             '[SessionContext] Restored GameState PDA for existing session:',
@@ -752,7 +762,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           );
         }
 
-        const delegateResult = await ensureDelegatedToRollup();
+        const delegateResult = await ensureDelegatedToRollup({
+          sessionPda: resumedSessionPda,
+          onChainLevel,
+        });
         if (!delegateResult.success) {
           return {
             success: false,
@@ -761,7 +774,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         }
 
         // Signal resumption — caller will do full on-chain restore
-        return { success: true, isResumed: true, mapSeed: seed };
+        return {
+          success: true,
+          isResumed: true,
+          mapSeed: seed,
+          sessionPda: resumedSessionPda.toBase58(),
+        };
       }
 
       // Validate campaign level is unlocked
@@ -775,7 +793,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       // were still delegated. After ER restart + undelegation, they sit at the same PDAs.
       {
         const onChainLevel = campaignLevel + 1;
-        const [targetSessionPda] = deriveSessionPda(wallet.publicKey!, onChainLevel);
+        const startNonces = await sessionManager.fetchSessionNonces(wallet.publicKey!);
+        const [targetSessionPda] = deriveSessionPda(
+          wallet.publicKey!,
+          onChainLevel,
+          startNonces.campaign
+        );
         const [gameStatePda] = deriveGameStatePda(targetSessionPda);
         const [mapEnemiesPda] = deriveMapEnemiesPda(targetSessionPda);
         const [mapPoisPda] = deriveMapPoisPda(targetSessionPda);
@@ -1205,7 +1228,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
 
       console.log('[SessionContext] startGame complete');
-      return { success: true, mapSeed: seed };
+      return { success: true, mapSeed: seed, sessionPda: sessionPda.toBase58() };
     },
     [
       sessionSigner,
@@ -1337,14 +1360,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         await sendSessionSignerTransaction(connection, vrfTx, newSessionSignerKeypair);
         console.log('[SessionContext] startDuelGame:vrf_fulfilled');
 
-        const regenTx = await buildRegenerateMapTransaction(
-          mapGenProg,
-          sessionPda,
-          newSessionSignerKeypair.publicKey,
-          20 // duel level
-        );
-        await sendSessionSignerTransaction(connection, regenTx, newSessionSignerKeypair);
-        console.log('[SessionContext] startDuelGame:map_regenerated');
+        // Do NOT regenerate map after start_session.
+        // start_duel_session already generated map + initialized game_state/enemies/pois
+        // from that map. Regenerating only generated_map here can desync spawn/layout.
+        console.log('[SessionContext] startDuelGame:map_regen_skipped_post_start');
       } catch (vrfError) {
         console.warn('[SessionContext] startDuelGame:vrf_failed, continuing with fallback seed', vrfError);
       }
@@ -1502,14 +1521,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         await sendSessionSignerTransaction(connection, vrfTx, newSessionSignerKeypair);
         console.log('[SessionContext] startGauntletGame:vrf_fulfilled');
 
-        const regenTx = await buildRegenerateMapTransaction(
-          mapGenProg,
-          sessionPda,
-          newSessionSignerKeypair.publicKey,
-          20 // gauntlet level
-        );
-        await sendSessionSignerTransaction(connection, regenTx, newSessionSignerKeypair);
-        console.log('[SessionContext] startGauntletGame:map_regenerated');
+        // Do NOT regenerate map after start_session.
+        // start_gauntlet_session already generated map + initialized game_state/enemies/pois
+        // from that map. Regenerating only generated_map here can desync spawn/layout.
+        console.log('[SessionContext] startGauntletGame:map_regen_skipped_post_start');
       } catch (vrfError) {
         console.warn('[SessionContext] startGauntletGame:vrf_failed, continuing with fallback seed', vrfError);
       }
@@ -1609,10 +1624,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const endSessionWithSessionSigner = useCallback(async (): Promise<TransactionResult> => {
     console.log('[SessionContext] Ending session with session key signer...');
     await sessionManager.fetchSession();
+    const endNonces = wallet.publicKey
+      ? await sessionManager.fetchSessionNonces(wallet.publicKey)
+      : null;
     const sessionPda =
       sessionManager.activeSessionPda ??
-      (wallet.publicKey && sessionManager.session?.campaignLevel
-        ? deriveSessionPda(wallet.publicKey, sessionManager.session.campaignLevel)[0]
+      (wallet.publicKey && sessionManager.session?.campaignLevel && endNonces
+        ? deriveSessionPda(
+            wallet.publicKey,
+            sessionManager.session.campaignLevel,
+            endNonces.campaign
+          )[0]
         : null);
     if (!sessionPda) {
       return { success: false, error: 'Active session PDA not available' };
@@ -1853,17 +1875,19 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
       // Clear fog and broken walls for all possible session PDA types
       if (wallet.publicKey) {
+        const endNonces = await sessionManager.fetchSessionNonces(wallet.publicKey);
         const pdaKeys: string[] = [];
         if (sessionManager.session?.campaignLevel) {
           const [campPda] = deriveSessionPda(
             wallet.publicKey,
-            sessionManager.session.campaignLevel
+            sessionManager.session.campaignLevel,
+            endNonces.campaign
           );
           pdaKeys.push(campPda.toBase58());
         }
-        const [duelPda] = deriveDuelSessionPda(wallet.publicKey);
+        const [duelPda] = deriveDuelSessionPda(wallet.publicKey, endNonces.duel);
         pdaKeys.push(duelPda.toBase58());
-        const [gauntletPda] = deriveGauntletSessionPda(wallet.publicKey);
+        const [gauntletPda] = deriveGauntletSessionPda(wallet.publicKey, endNonces.gauntlet);
         pdaKeys.push(gauntletPda.toBase58());
         for (const key of pdaKeys) {
           await clearFogState(key).catch(() => {});
@@ -1904,10 +1928,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
    * Extracted for use by CombatScreen before duel finalization.
    */
   const undelegateCurrentSession = useCallback(async (): Promise<TransactionResult> => {
+    const undelegateNonces = wallet.publicKey
+      ? await sessionManager.fetchSessionNonces(wallet.publicKey)
+      : null;
     const sessionPda =
       sessionManager.activeSessionPda ??
-      (wallet.publicKey && sessionManager.session?.campaignLevel
-        ? deriveSessionPda(wallet.publicKey, sessionManager.session.campaignLevel)[0]
+      (wallet.publicKey && sessionManager.session?.campaignLevel && undelegateNonces
+        ? deriveSessionPda(
+            wallet.publicKey,
+            sessionManager.session.campaignLevel,
+            undelegateNonces.campaign
+          )[0]
         : null);
     if (!sessionPda) {
       return { success: false, error: 'Active session PDA not available' };
@@ -2218,11 +2249,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       // The sessionList service handles this
       const sessionProgram = createSessionManagerProgram(connection);
       const gameplayProgram = createGameplayStateProgram(connection);
+      const nonces = await sessionManager.fetchSessionNonces(wallet.publicKey);
       const sessions = await fetchSessionList(
         connection,
         sessionProgram,
         gameplayProgram,
-        wallet.publicKey
+        wallet.publicKey,
+        nonces.campaign
       ).catch(() => []);
       setActiveSessions(sessions);
     } catch (error) {
@@ -2250,9 +2283,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       if (!wallet.publicKey || !connection) {
         return false;
       }
-      return checkSessionExists(connection, wallet.publicKey, level);
+      const nonces = await sessionManager.fetchSessionNonces(wallet.publicKey);
+      return checkSessionExists(connection, wallet.publicKey, level, nonces.campaign);
     },
-    [connection, wallet.publicKey]
+    [connection, wallet.publicKey, sessionManager]
   );
 
   /**
@@ -2263,11 +2297,21 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       if (!wallet.publicKey || !connection) {
         return null;
       }
-      const pda = await getSessionForLevel(connection, wallet.publicKey, level);
+      const nonces = await sessionManager.fetchSessionNonces(wallet.publicKey);
+      const pda = await getSessionForLevel(connection, wallet.publicKey, level, nonces.campaign);
       return pda ? pda.toBase58() : null;
     },
-    [connection, wallet.publicKey]
+    [connection, wallet.publicKey, sessionManager]
   );
+
+  const overrideCampaignSession = useCallback(async (): Promise<TransactionResult> => {
+    const result = await sessionManager.overrideCampaignSession();
+    if (!result.success) {
+      return result;
+    }
+    await refreshSessionList();
+    return result;
+  }, [sessionManager, refreshSessionList]);
 
   /**
    * Switch to a different active session.
@@ -2281,17 +2325,18 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       try {
         const sessionPubkey = new PublicKey(sessionPda);
         // Infer on-chain level from PDA so SessionManager fetch targets the right session.
+        const switchNonces = await sessionManager.fetchSessionNonces(wallet.publicKey);
         let onChainLevel: number | null = null;
         for (let level = 1; level <= 40; level++) {
-          const [candidate] = deriveSessionPda(wallet.publicKey, level);
+          const [candidate] = deriveSessionPda(wallet.publicKey, level, switchNonces.campaign);
           if (candidate.equals(sessionPubkey)) {
             onChainLevel = level;
             break;
           }
         }
         if (onChainLevel === null) {
-          const [duelSessionPda] = deriveDuelSessionPda(wallet.publicKey);
-          const [gauntletSessionPda] = deriveGauntletSessionPda(wallet.publicKey);
+          const [duelSessionPda] = deriveDuelSessionPda(wallet.publicKey, switchNonces.duel);
+          const [gauntletSessionPda] = deriveGauntletSessionPda(wallet.publicKey, switchNonces.gauntlet);
           if (duelSessionPda.equals(sessionPubkey) || gauntletSessionPda.equals(sessionPubkey)) {
             onChainLevel = 20;
           }
@@ -2417,8 +2462,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       // Detect session type by comparing active PDA against known duel/gauntlet PDAs
       let sessionType: 'campaign' | 'duel' | 'gauntlet' = 'campaign';
       if (wallet.publicKey && sessionManager.activeSessionPda) {
-        const [duelPda] = deriveDuelSessionPda(wallet.publicKey);
-        const [gauntletPda] = deriveGauntletSessionPda(wallet.publicKey);
+        const queueNonces = await sessionManager.fetchSessionNonces(wallet.publicKey);
+        const [duelPda] = deriveDuelSessionPda(wallet.publicKey, queueNonces.duel);
+        const [gauntletPda] = deriveGauntletSessionPda(wallet.publicKey, queueNonces.gauntlet);
         if (sessionManager.activeSessionPda.equals(duelPda)) {
           sessionType = 'duel';
         } else if (sessionManager.activeSessionPda.equals(gauntletPda)) {
@@ -2453,14 +2499,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       // Clear fog state and broken walls for this session (and duel/gauntlet variants)
       // This ensures next playthrough starts fresh
       if (wallet.publicKey) {
+        const fogNonces = await sessionManager.fetchSessionNonces(wallet.publicKey);
         const pdaKeys: string[] = [];
         if (campaignLevel > 0) {
-          const [campPda] = deriveSessionPda(wallet.publicKey, campaignLevel);
+          const [campPda] = deriveSessionPda(wallet.publicKey, campaignLevel, fogNonces.campaign);
           pdaKeys.push(campPda.toBase58());
         }
-        const [duelPda] = deriveDuelSessionPda(wallet.publicKey);
+        const [duelPda] = deriveDuelSessionPda(wallet.publicKey, fogNonces.duel);
         pdaKeys.push(duelPda.toBase58());
-        const [gauntletPda] = deriveGauntletSessionPda(wallet.publicKey);
+        const [gauntletPda] = deriveGauntletSessionPda(wallet.publicKey, fogNonces.gauntlet);
         pdaKeys.push(gauntletPda.toBase58());
         for (const key of pdaKeys) {
           await clearFogState(key).catch(() => {});
@@ -2518,6 +2565,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       );
       const staleFinishedQueuedLevels = new Set<number>();
 
+      // Fetch session nonces once for all PDA derivations in this cleanup pass
+      const cleanupNonces = await sessionManager.fetchSessionNonces(wallet.publicKey);
+
       // Discover finished sessions that were never queued (e.g. app navigated away/crashed
       // before queueEndGame ran) and enqueue them for background cleanup.
       try {
@@ -2528,7 +2578,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           connection,
           sessionProgram,
           gameplayProgramBase,
-          wallet.publicKey
+          wallet.publicKey,
+          cleanupNonces.campaign
         );
         console.log('[SessionContext] processPendingCleanups:session_scan_count', sessions.length);
 
@@ -2644,9 +2695,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           sessionType: 'duel' | 'gauntlet';
           sentinel: number;
         }> = [
-          { pda: deriveDuelSessionPda(wallet.publicKey)[0], sessionType: 'duel', sentinel: 100 },
+          { pda: deriveDuelSessionPda(wallet.publicKey, cleanupNonces.duel)[0], sessionType: 'duel', sentinel: 100 },
           {
-            pda: deriveGauntletSessionPda(wallet.publicKey)[0],
+            pda: deriveGauntletSessionPda(wallet.publicKey, cleanupNonces.gauntlet)[0],
             sessionType: 'gauntlet',
             sentinel: 200,
           },
@@ -2786,13 +2837,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             errorText.includes('InvalidWritableAccount');
 
           if (cleanup.needsSessionEnd) {
-            // Derive correct PDA based on session type
+            // Derive correct PDA based on session type (using current nonces)
             const sessionPda =
               cleanup.sessionType === 'duel'
-                ? deriveDuelSessionPda(wallet.publicKey)[0]
+                ? deriveDuelSessionPda(wallet.publicKey, cleanupNonces.duel)[0]
                 : cleanup.sessionType === 'gauntlet'
-                  ? deriveGauntletSessionPda(wallet.publicKey)[0]
-                  : deriveSessionPda(wallet.publicKey, cleanup.campaignLevel)[0];
+                  ? deriveGauntletSessionPda(wallet.publicKey, cleanupNonces.gauntlet)[0]
+                  : deriveSessionPda(wallet.publicKey, cleanup.campaignLevel, cleanupNonces.campaign)[0];
             sessionManager.setActiveOnChainLevel(cleanup.campaignLevel);
             sessionManager.setActiveSessionPda(sessionPda);
 
@@ -3472,6 +3523,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       hasPendingCleanups: hasPendingCleanupsState,
       isAutoCommitActive,
       startGame,
+      overrideCampaignSession,
       startDuelGame,
       startGauntletGame,
       endGame,
@@ -3512,6 +3564,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       hasPendingCleanupsState,
       isAutoCommitActive,
       startGame,
+      overrideCampaignSession,
       startDuelGame,
       startGauntletGame,
       endGame,

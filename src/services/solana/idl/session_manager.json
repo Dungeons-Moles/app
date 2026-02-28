@@ -686,6 +686,36 @@
           "signer": true
         },
         {
+          "name": "session_nonces",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  95,
+                  110,
+                  111,
+                  110,
+                  99,
+                  101,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "player"
+              }
+            ]
+          }
+        },
+        {
           "name": "owner_program",
           "address": "6w1XVMSTRmZU9AWCKVvKohGAHSFMENhda7vqhKPQ8TPn"
         },
@@ -859,6 +889,36 @@
         {
           "name": "player",
           "signer": true
+        },
+        {
+          "name": "session_nonces",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  95,
+                  110,
+                  111,
+                  110,
+                  99,
+                  101,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "player"
+              }
+            ]
+          }
         },
         {
           "name": "owner_program",
@@ -1036,6 +1096,36 @@
           "signer": true
         },
         {
+          "name": "session_nonces",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  95,
+                  110,
+                  111,
+                  110,
+                  99,
+                  101,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "player"
+              }
+            ]
+          }
+        },
+        {
           "name": "owner_program",
           "address": "6w1XVMSTRmZU9AWCKVvKohGAHSFMENhda7vqhKPQ8TPn"
         },
@@ -1211,6 +1301,36 @@
           "signer": true
         },
         {
+          "name": "session_nonces",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  95,
+                  110,
+                  111,
+                  110,
+                  99,
+                  101,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "player"
+              }
+            ]
+          }
+        },
+        {
           "name": "owner_program",
           "address": "6w1XVMSTRmZU9AWCKVvKohGAHSFMENhda7vqhKPQ8TPn"
         },
@@ -1384,6 +1504,36 @@
         {
           "name": "player",
           "signer": true
+        },
+        {
+          "name": "session_nonces",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  95,
+                  110,
+                  111,
+                  110,
+                  99,
+                  101,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "player"
+              }
+            ]
+          }
         },
         {
           "name": "owner_program",
@@ -1744,6 +1894,36 @@
         {
           "name": "session_signer",
           "signer": true
+        },
+        {
+          "name": "session_nonces",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  95,
+                  110,
+                  111,
+                  110,
+                  99,
+                  101,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "player"
+              }
+            ]
+          }
         },
         {
           "name": "owner_program",
@@ -2256,6 +2436,185 @@
       "args": []
     },
     {
+      "name": "override_campaign_session",
+      "docs": [
+        "Override a stuck campaign session by incrementing the campaign nonce.",
+        "Wallet-only — no session key required. After calling this, start_session",
+        "will create at a new PDA, bypassing the stuck session."
+      ],
+      "discriminator": [
+        109,
+        151,
+        16,
+        78,
+        126,
+        174,
+        238,
+        125
+      ],
+      "accounts": [
+        {
+          "name": "session_nonces",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  95,
+                  110,
+                  111,
+                  110,
+                  99,
+                  101,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "player"
+              }
+            ]
+          }
+        },
+        {
+          "name": "player",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "override_duel_session",
+      "docs": [
+        "Override a stuck duel session by incrementing the duel nonce."
+      ],
+      "discriminator": [
+        5,
+        2,
+        165,
+        152,
+        32,
+        110,
+        142,
+        23
+      ],
+      "accounts": [
+        {
+          "name": "session_nonces",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  95,
+                  110,
+                  111,
+                  110,
+                  99,
+                  101,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "player"
+              }
+            ]
+          }
+        },
+        {
+          "name": "player",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "override_gauntlet_session",
+      "docs": [
+        "Override a stuck gauntlet session by incrementing the gauntlet nonce."
+      ],
+      "discriminator": [
+        251,
+        255,
+        250,
+        176,
+        205,
+        243,
+        107,
+        46
+      ],
+      "accounts": [
+        {
+          "name": "session_nonces",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  95,
+                  110,
+                  111,
+                  110,
+                  99,
+                  101,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "player"
+              }
+            ]
+          }
+        },
+        {
+          "name": "player",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "process_undelegation",
       "discriminator": [
         196,
@@ -2291,6 +2650,99 @@
           }
         }
       ]
+    },
+    {
+      "name": "rotate_session_key",
+      "docs": [
+        "Rotates the session key on a game session and its child accounts.",
+        "Requires the player wallet AND the new session signer to both sign.",
+        "Used when the original session key is lost but the wallet is available."
+      ],
+      "discriminator": [
+        141,
+        28,
+        137,
+        234,
+        221,
+        140,
+        7,
+        22
+      ],
+      "accounts": [
+        {
+          "name": "game_session",
+          "writable": true
+        },
+        {
+          "name": "game_state",
+          "writable": true
+        },
+        {
+          "name": "inventory",
+          "writable": true
+        },
+        {
+          "name": "player",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "game_session"
+          ]
+        },
+        {
+          "name": "new_session_signer",
+          "docs": [
+            "New session key — must sign to prove possession of private key"
+          ],
+          "signer": true
+        },
+        {
+          "name": "session_manager_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  95,
+                  109,
+                  97,
+                  110,
+                  97,
+                  103,
+                  101,
+                  114,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "gameplay_state_program",
+          "address": "C8hK4qsqsSYQeqyXuTPTUUS3T7N74WnZCuzvChTpK1Mo"
+        },
+        {
+          "name": "player_inventory_program",
+          "address": "APRnvp41jEYnT1EnrdBTim7bodqE6v2RSgzv1CG7Qv7u"
+        }
+      ],
+      "args": []
     },
     {
       "name": "settle_session_result",
@@ -2475,6 +2927,37 @@
       ],
       "accounts": [
         {
+          "name": "session_nonces",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  95,
+                  110,
+                  111,
+                  110,
+                  99,
+                  101,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "player"
+              }
+            ]
+          }
+        },
+        {
           "name": "game_session",
           "writable": true,
           "pda": {
@@ -2499,6 +2982,11 @@
               {
                 "kind": "account",
                 "path": "player"
+              },
+              {
+                "kind": "account",
+                "path": "session_nonces.duel_nonce",
+                "account": "SessionNonces"
               }
             ]
           }
@@ -2709,6 +3197,37 @@
       ],
       "accounts": [
         {
+          "name": "session_nonces",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  95,
+                  110,
+                  111,
+                  110,
+                  99,
+                  101,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "player"
+              }
+            ]
+          }
+        },
+        {
           "name": "game_session",
           "writable": true,
           "pda": {
@@ -2737,6 +3256,11 @@
               {
                 "kind": "account",
                 "path": "player"
+              },
+              {
+                "kind": "account",
+                "path": "session_nonces.gauntlet_nonce",
+                "account": "SessionNonces"
               }
             ]
           }
@@ -2957,6 +3481,37 @@
         175
       ],
       "accounts": [
+        {
+          "name": "session_nonces",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  95,
+                  110,
+                  111,
+                  110,
+                  99,
+                  101,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "player"
+              }
+            ]
+          }
+        },
         {
           "name": "game_session",
           "writable": true
@@ -3232,6 +3787,19 @@
         254,
         100
       ]
+    },
+    {
+      "name": "SessionNonces",
+      "discriminator": [
+        244,
+        120,
+        170,
+        127,
+        185,
+        99,
+        135,
+        20
+      ]
     }
   ],
   "events": [
@@ -3272,6 +3840,32 @@
         232,
         236,
         18
+      ]
+    },
+    {
+      "name": "SessionKeyRotated",
+      "discriminator": [
+        172,
+        87,
+        66,
+        147,
+        26,
+        174,
+        140,
+        90
+      ]
+    },
+    {
+      "name": "SessionOverridden",
+      "discriminator": [
+        136,
+        135,
+        198,
+        235,
+        70,
+        12,
+        59,
+        53
       ]
     },
     {
@@ -3694,6 +4288,80 @@
           {
             "name": "timestamp",
             "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "SessionKeyRotated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "session_id",
+            "type": "u64"
+          },
+          {
+            "name": "old_session_signer",
+            "type": "pubkey"
+          },
+          {
+            "name": "new_session_signer",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "SessionNonces",
+      "docs": [
+        "Per-player session nonces for override-based recovery.",
+        "When a session is permanently stuck, incrementing the mode's nonce",
+        "causes start_session to create at a new PDA, bypassing the old one.",
+        "PDA: [b\"session_nonces\", player.key()]"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "campaign_nonce",
+            "type": "u64"
+          },
+          {
+            "name": "duel_nonce",
+            "type": "u64"
+          },
+          {
+            "name": "gauntlet_nonce",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "SessionOverridden",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "mode",
+            "type": "string"
+          },
+          {
+            "name": "new_nonce",
+            "type": "u64"
           }
         ]
       }

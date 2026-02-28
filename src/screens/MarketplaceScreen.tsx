@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useProfile } from '../contexts/ProfileContext';
+import { useWallet } from '../contexts/WalletContext';
 import { RootStackParamList } from '../navigation';
 import { Typography } from '../theme/typography';
 import { useScreenVariant } from '../contexts/ScreenVariantContext';
@@ -20,6 +21,7 @@ import { useControllerAction } from '../hooks/useControllerAction';
 import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHints';
 import { useInputMode } from '../hooks/useInputMode';
 import { FocusGlow } from '../components/ui/FocusGlow';
+import { HubSettingsModal } from '../components/ui/HubSettingsModal';
 import { useNftMarketplace } from '../hooks/useNftMarketplace';
 import { useAudio } from '../contexts/AudioContext';
 import { NftCard } from '../components/marketplace/NftCard';
@@ -51,6 +53,7 @@ type Tab = 'skins' | 'items' | 'pve';
 
 export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
   const { purchaseRuns, availableRuns, profile } = useProfile();
+  const { disconnect } = useWallet();
   const screenVariant = useScreenVariant();
   const isCompact = screenVariant === 'compact';
   const [activeTab, setActiveTab] = useState<Tab>('pve');
@@ -100,6 +103,14 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
     playSfx('ui_click');
     navigation.goBack();
   }, [navigation, playSfx]);
+
+  const handleDisconnect = useCallback(() => {
+    disconnect();
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'Account' }],
+    });
+  }, [disconnect, navigation]);
 
   const handlePurchaseDirect = useCallback(async () => {
     playSfx('ui_click');
@@ -170,6 +181,7 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
   // --- Controller navigation ---
   const inputMode = useInputMode();
   const isController = inputMode === 'controller';
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
   const TABS: Tab[] = ['skins', 'items', 'pve'];
   const [nftFocus, setNftFocus] = useState(0);
   const [sectionFocus, setSectionFocus] = useState<0 | 1>(0); // 0 = My, 1 = For Sale
@@ -287,10 +299,11 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
   ]);
 
   useControllerAction(
-    showPriceInput || showRunPaymentModal
+    showPriceInput || showRunPaymentModal || showSettingsModal
       ? {} // Modals have their own controller handlers
       : {
           onB: handleBack,
+          onStart: () => setShowSettingsModal(true),
           onA:
             activeTab === 'pve' && !isPurchasing
               ? handlePurchase
@@ -299,26 +312,24 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
                 : undefined,
           onL1: () => cycleTab(-1),
           onR1: () => cycleTab(1),
-          onDPadUp:
-            hasSections
-              ? () => {
-                  setSectionFocus((p) => {
-                    if (p === 0) return p;
-                    setNftFocus(0);
-                    return 0;
-                  });
-                }
-              : undefined,
-          onDPadDown:
-            hasSections
-              ? () => {
-                  setSectionFocus((p) => {
-                    if (p === 1) return p;
-                    setNftFocus(0);
-                    return 1;
-                  });
-                }
-              : undefined,
+          onDPadUp: hasSections
+            ? () => {
+                setSectionFocus((p) => {
+                  if (p === 0) return p;
+                  setNftFocus(0);
+                  return 0;
+                });
+              }
+            : undefined,
+          onDPadDown: hasSections
+            ? () => {
+                setSectionFocus((p) => {
+                  if (p === 1) return p;
+                  setNftFocus(0);
+                  return 1;
+                });
+              }
+            : undefined,
           onDPadLeft:
             activeTab === 'pve'
               ? () => cycleToken(-1)
@@ -649,9 +660,7 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
 
               <Text style={[styles.priceText, isCompact && compactStyles.priceText]}>
                 Price: 0.05 SOL
-                {payment.solUsdPrice
-                  ? ` (~$${(0.05 * payment.solUsdPrice).toFixed(2)})`
-                  : ''}
+                {payment.solUsdPrice ? ` (~$${(0.05 * payment.solUsdPrice).toFixed(2)})` : ''}
               </Text>
 
               <PaymentTokenSelector
@@ -766,6 +775,11 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
           </View>
         </TouchableWithoutFeedback>
       </InlineModal>
+      <HubSettingsModal
+        visible={showSettingsModal}
+        onClose={() => setShowSettingsModal(false)}
+        onDisconnect={handleDisconnect}
+      />
       <ControllerHints hints={controllerHints} horizontal />
     </Animated.View>
   );

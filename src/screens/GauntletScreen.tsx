@@ -24,6 +24,7 @@ import { useControllerAction } from '../hooks/useControllerAction';
 import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHints';
 import { useInputMode } from '../hooks/useInputMode';
 import { FocusGlow } from '../components/ui/FocusGlow';
+import { HubSettingsModal } from '../components/ui/HubSettingsModal';
 import { useGame } from '@/contexts/GameContext';
 import { usePaymentToken } from '@/hooks/usePaymentToken';
 import { PaymentTokenSelector, PaymentConfirmationModal } from '@/components/payment';
@@ -46,7 +47,7 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
   const gauntlet = useGauntlet();
   const { activeSessions } = useSessionIdentity();
   const { dispatch } = useGame();
-  const { wallet } = useWallet();
+  const { wallet, disconnect } = useWallet();
   const { connection } = useSolanaConnection();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const isFocused = useIsFocused();
@@ -55,6 +56,7 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
 
   const payment = usePaymentToken(BigInt(GAUNTLET_ENTRY_LAMPORTS));
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
 
   const gauntletPdaBase58 = useMemo(() => {
     if (!wallet.publicKey) return null;
@@ -101,6 +103,14 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
     gauntlet.reset();
     navigation.goBack();
   }, [gauntlet, navigation]);
+
+  const handleDisconnect = useCallback(() => {
+    disconnect();
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'Account' }],
+    });
+  }, [disconnect, navigation]);
 
   const handleEnterDirect = useCallback(async () => {
     const ok = await gauntlet.enterGauntlet();
@@ -153,16 +163,12 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
   );
 
   useControllerAction(
-    showPaymentModal
+    showPaymentModal || showSettingsModal
       ? {} // Modal has its own controller handler
       : {
           onB: handleBack,
-          onA:
-            panelFocus === 0
-              ? handleHistory
-              : !gauntlet.isLoading
-                ? handleEnter
-                : undefined,
+          onStart: () => setShowSettingsModal(true),
+          onA: panelFocus === 0 ? handleHistory : !gauntlet.isLoading ? handleEnter : undefined,
           onDPadLeft: () => setPanelFocus(0),
           onDPadRight: () => setPanelFocus(1),
           onL1: () => cycleToken(-1),
@@ -241,46 +247,65 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
           {/* Panel with all content overlaid */}
           <View style={styles.centerContent}>
             <View style={[styles.panelWrapper, isCompact && compactStyles.panelWrapper]}>
-              <Image
-                source={PVP_MODES_PANEL}
-                style={styles.pvpModesPanel}
-                resizeMode="contain"
-              />
-              <View
-                style={[styles.panelOverlay, isCompact && compactStyles.panelOverlay]}
-              >
-                <View style={[styles.panelRow, styles.panelRowFee, isCompact && compactStyles.panelRowFee]}>
+              <Image source={PVP_MODES_PANEL} style={styles.pvpModesPanel} resizeMode="contain" />
+              <View style={[styles.panelOverlay, isCompact && compactStyles.panelOverlay]}>
+                <View
+                  style={[
+                    styles.panelRow,
+                    styles.panelRowFee,
+                    isCompact && compactStyles.panelRowFee,
+                  ]}
+                >
                   <Text style={[styles.panelTextFee, isCompact && compactStyles.panelText]}>
                     Entry fee: {entryFeeSol} SOL
                   </Text>
-                  <Image source={SOL_PILE} style={[styles.panelIcon, isCompact && compactStyles.panelIcon]} resizeMode="contain" />
+                  <Image
+                    source={SOL_PILE}
+                    style={[styles.panelIcon, isCompact && compactStyles.panelIcon]}
+                    resizeMode="contain"
+                  />
                 </View>
-                <View style={[styles.panelRow, styles.panelRowPrizes, isCompact && compactStyles.panelRowPrizes]}>
+                <View
+                  style={[
+                    styles.panelRow,
+                    styles.panelRowPrizes,
+                    isCompact && compactStyles.panelRowPrizes,
+                  ]}
+                >
                   <Text style={[styles.panelTextBody, isCompact && compactStyles.panelText]}>
                     Compete for{'\n'}weekly prizes
                   </Text>
-                  <Image source={CHEST} style={[styles.panelIcon, isCompact && compactStyles.panelIcon]} resizeMode="contain" />
+                  <Image
+                    source={CHEST}
+                    style={[styles.panelIcon, isCompact && compactStyles.panelIcon]}
+                    resizeMode="contain"
+                  />
                 </View>
-                <View style={[styles.panelRow, styles.panelRowEcho, isCompact && compactStyles.panelRowEcho]}>
+                <View
+                  style={[
+                    styles.panelRow,
+                    styles.panelRowEcho,
+                    isCompact && compactStyles.panelRowEcho,
+                  ]}
+                >
                   <Text style={[styles.panelTextBody, isCompact && compactStyles.panelText]}>
                     At each week end,{'\n'}fight an echo build
                   </Text>
-                  <Image source={ECHO_FIGHT} style={[styles.panelIcon, isCompact && compactStyles.panelIcon]} resizeMode="contain" />
+                  <Image
+                    source={ECHO_FIGHT}
+                    style={[styles.panelIcon, isCompact && compactStyles.panelIcon]}
+                    resizeMode="contain"
+                  />
                 </View>
 
-                <View
-                  style={[styles.panelButtons, isCompact && compactStyles.panelButtons]}
-                >
+                <View style={[styles.panelButtons, isCompact && compactStyles.panelButtons]}>
                   <FocusGlow active={isController && panelFocus === 0}>
                     <TouchableOpacity
                       onPress={() => navigation.navigate('GauntletHistory')}
                       activeOpacity={0.7}
                     >
                       <Text
-                        style={[
-                          styles.panelButtonText,
-                          isCompact && compactStyles.panelButtonText,
-                        ]}
+                        style={[styles.panelButtonText, isCompact && compactStyles.panelButtonText]}
                       >
                         History
                       </Text>
@@ -344,6 +369,11 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
           onCancel={() => setShowPaymentModal(false)}
         />
       )}
+      <HubSettingsModal
+        visible={showSettingsModal}
+        onClose={() => setShowSettingsModal(false)}
+        onDisconnect={handleDisconnect}
+      />
       <ControllerHints hints={controllerHints} />
     </Animated.View>
   );

@@ -24,6 +24,7 @@ import { useControllerAction } from '../hooks/useControllerAction';
 import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHints';
 import { useInputMode } from '../hooks/useInputMode';
 import { FocusGlow } from '../components/ui/FocusGlow';
+import { HubSettingsModal } from '../components/ui/HubSettingsModal';
 import { useGame } from '@/contexts/GameContext';
 import { usePaymentToken } from '@/hooks/usePaymentToken';
 import { PaymentTokenSelector, PaymentConfirmationModal } from '@/components/payment';
@@ -46,7 +47,7 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
   const duels = useDuels();
   const { activeSessions } = useSessionIdentity();
   const { dispatch } = useGame();
-  const { wallet } = useWallet();
+  const { wallet, disconnect } = useWallet();
   const { connection } = useSolanaConnection();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const isFocused = useIsFocused();
@@ -55,6 +56,7 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
 
   const payment = usePaymentToken(BigInt(DUEL_ENTRY_LAMPORTS));
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
 
   const duelPdaBase58 = useMemo(() => {
     if (!wallet.publicKey) return null;
@@ -108,6 +110,14 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
     navigation.goBack();
   }, [duels, navigation]);
 
+  const handleDisconnect = useCallback(() => {
+    disconnect();
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'Account' }],
+    });
+  }, [disconnect, navigation]);
+
   const handleEnterDirect = useCallback(async () => {
     const ok = await duels.enterCurrentSessionDuel();
     if (ok) {
@@ -153,10 +163,11 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
   );
 
   useControllerAction(
-    showPaymentModal
+    showPaymentModal || showSettingsModal
       ? {}
       : {
           onB: handleBack,
+          onStart: () => setShowSettingsModal(true),
           onA: panelFocus === 0 ? handleHistory : !duels.isLoading ? handleEnter : undefined,
           onDPadLeft: () => setPanelFocus(0),
           onDPadRight: () => setPanelFocus(1),
@@ -170,8 +181,9 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
     {
       onA: duels.reset,
       onB: handleBack,
+      onStart: () => setShowSettingsModal(true),
     },
-    isController && isFocused && duels.phase === 'error'
+    isController && isFocused && duels.phase === 'error' && !showSettingsModal
   );
 
   const controllerHints: ButtonHint[] = [
@@ -196,7 +208,9 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
           <View style={styles.errorOverlay}>
             <View style={styles.errorContent}>
               <Text style={[styles.errorTitle, isCompact && compactStyles.errorTitle]}>DUELS</Text>
-              <Text style={[styles.errorText, isCompact && compactStyles.errorText]}>{duels.error}</Text>
+              <Text style={[styles.errorText, isCompact && compactStyles.errorText]}>
+                {duels.error}
+              </Text>
               <View style={styles.errorButtonRow}>
                 <TouchableOpacity onPress={handleBack} activeOpacity={0.7}>
                   <ImageBackground
@@ -204,7 +218,9 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
                     style={[styles.errorButton, isCompact && compactStyles.errorButton]}
                     resizeMode="stretch"
                   >
-                    <Text style={[styles.errorButtonText, isCompact && compactStyles.errorButtonText]}>
+                    <Text
+                      style={[styles.errorButtonText, isCompact && compactStyles.errorButtonText]}
+                    >
                       Back
                     </Text>
                   </ImageBackground>
@@ -230,6 +246,11 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
             </View>
           </View>
         </ImageBackground>
+        <HubSettingsModal
+          visible={showSettingsModal}
+          onClose={() => setShowSettingsModal(false)}
+          onDisconnect={handleDisconnect}
+        />
         <ControllerHints hints={errorHints} horizontal />
       </Animated.View>
     );
@@ -275,14 +296,8 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
           {/* Panel with all content overlaid */}
           <View style={styles.centerContent}>
             <View style={[styles.panelWrapper, isCompact && compactStyles.panelWrapper]}>
-              <Image
-                source={PVP_MODES_PANEL}
-                style={styles.pvpModesPanel}
-                resizeMode="contain"
-              />
-              <View
-                style={[styles.panelOverlay, isCompact && compactStyles.panelOverlay]}
-              >
+              <Image source={PVP_MODES_PANEL} style={styles.pvpModesPanel} resizeMode="contain" />
+              <View style={[styles.panelOverlay, isCompact && compactStyles.panelOverlay]}>
                 <View
                   style={[
                     styles.panelRow,
@@ -332,19 +347,14 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
                   />
                 </View>
 
-                <View
-                  style={[styles.panelButtons, isCompact && compactStyles.panelButtons]}
-                >
+                <View style={[styles.panelButtons, isCompact && compactStyles.panelButtons]}>
                   <FocusGlow active={isController && panelFocus === 0}>
                     <TouchableOpacity
                       onPress={() => navigation.navigate('DuelsHistory')}
                       activeOpacity={0.7}
                     >
                       <Text
-                        style={[
-                          styles.panelButtonText,
-                          isCompact && compactStyles.panelButtonText,
-                        ]}
+                        style={[styles.panelButtonText, isCompact && compactStyles.panelButtonText]}
                       >
                         History
                       </Text>
@@ -409,6 +419,11 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
           onCancel={() => setShowPaymentModal(false)}
         />
       )}
+      <HubSettingsModal
+        visible={showSettingsModal}
+        onClose={() => setShowSettingsModal(false)}
+        onDisconnect={handleDisconnect}
+      />
       <ControllerHints hints={controllerHints} />
     </Animated.View>
   );

@@ -21,6 +21,7 @@ import { useControllerAction } from '../hooks/useControllerAction';
 import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHints';
 import { useInputMode } from '../hooks/useInputMode';
 import { FocusGlow } from '../components/ui/FocusGlow';
+import { HubSettingsModal } from '../components/ui/HubSettingsModal';
 import { createGameplayStateProgram } from '@/services/solana/programs';
 import { parseDuelEvents } from '@/services/solana/duels';
 import { convertItemInstanceToTool, convertItemInstanceToGear } from '@/services/solana/pitDraft';
@@ -50,7 +51,7 @@ function buildPvpCombatant(
   isPlayer: boolean,
   definitionId: string,
   tool: Tool | null,
-  gear: Gear[],
+  gear: Gear[]
 ): CombatantState {
   const itemStats = calculateItemStats(tool, gear);
   const maxHp = PVP_BASE_HP + (itemStats.hp ?? 0);
@@ -80,7 +81,7 @@ type DuelsHistoryScreenProps = {
 
 export function DuelsHistoryScreen({ navigation }: DuelsHistoryScreenProps) {
   const duels = useDuels();
-  const { wallet } = useWallet();
+  const { wallet, disconnect } = useWallet();
   const { connection } = useSolanaConnection();
   const isCompact = useScreenVariant() === 'compact';
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -134,7 +135,7 @@ export function DuelsHistoryScreen({ navigation }: DuelsHistoryScreenProps) {
           false,
           'pvpOpponent',
           enemyTool,
-          enemyGear,
+          enemyGear
         );
 
         const combatLog: BackendCombatLogEntry[] = visual.combatLog.map((entry) => ({
@@ -170,16 +171,25 @@ export function DuelsHistoryScreen({ navigation }: DuelsHistoryScreenProps) {
         setIsLoadingReplay(false);
       }
     },
-    [isLoadingReplay, wallet.publicKey, connection, navigation],
+    [isLoadingReplay, wallet.publicKey, connection, navigation]
   );
 
   // --- Controller navigation ---
   const inputMode = useInputMode();
   const isController = inputMode === 'controller';
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
 
   const handleBack = useCallback(() => {
     navigation.goBack();
   }, [navigation]);
+
+  const handleDisconnect = useCallback(() => {
+    disconnect();
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'Account' }],
+    });
+  }, [disconnect, navigation]);
 
   const handleDPadUp = useCallback(() => {
     setSelectedIndex((prev) => Math.max(0, prev - 1));
@@ -202,12 +212,9 @@ export function DuelsHistoryScreen({ navigation }: DuelsHistoryScreenProps) {
   useControllerAction(
     {
       onB: handleBack,
+      onStart: () => setShowSettingsModal(true),
       onA: () => {
-        if (
-          historyData.length > 0 &&
-          selectedIndex >= 0 &&
-          selectedIndex < historyData.length
-        ) {
+        if (historyData.length > 0 && selectedIndex >= 0 && selectedIndex < historyData.length) {
           void handleReplay(historyData[selectedIndex]);
         } else {
           void duels.loadHistory();
@@ -216,7 +223,7 @@ export function DuelsHistoryScreen({ navigation }: DuelsHistoryScreenProps) {
       onDPadUp: handleDPadUp,
       onDPadDown: handleDPadDown,
     },
-    isController,
+    isController && !showSettingsModal
   );
 
   const controllerHints: ButtonHint[] = [
@@ -258,11 +265,7 @@ export function DuelsHistoryScreen({ navigation }: DuelsHistoryScreenProps) {
             )}
             {!isCompact && (
               <View style={styles.titleRow}>
-                <Image
-                  source={DUELS_TITLE}
-                  style={styles.titleImage}
-                  resizeMode="contain"
-                />
+                <Image source={DUELS_TITLE} style={styles.titleImage} resizeMode="contain" />
                 <Image
                   source={HISTORY_TITLE}
                   style={styles.historyTitleImage}
@@ -277,11 +280,7 @@ export function DuelsHistoryScreen({ navigation }: DuelsHistoryScreenProps) {
           {/* Title row — compact only (separate from header) */}
           {isCompact && (
             <View style={compactStyles.titleRow}>
-              <Image
-                source={DUELS_TITLE}
-                style={compactStyles.titleImage}
-                resizeMode="contain"
-              />
+              <Image source={DUELS_TITLE} style={compactStyles.titleImage} resizeMode="contain" />
               <Image
                 source={HISTORY_TITLE}
                 style={compactStyles.historyTitleImage}
@@ -293,11 +292,7 @@ export function DuelsHistoryScreen({ navigation }: DuelsHistoryScreenProps) {
           {/* Scroll with history data */}
           <View style={[styles.centerContent, isCompact && compactStyles.centerContent]}>
             <View style={[styles.scrollWrapper, isCompact && compactStyles.scrollWrapper]}>
-              <Image
-                source={HISTORY_SCROLL}
-                style={styles.scrollImage}
-                resizeMode="stretch"
-              />
+              <Image source={HISTORY_SCROLL} style={styles.scrollImage} resizeMode="stretch" />
               <View style={[styles.scrollOverlay, isCompact && compactStyles.scrollOverlay]}>
                 {duels.isHistoryLoading ? (
                   <View style={styles.loadingContainer}>
@@ -307,7 +302,9 @@ export function DuelsHistoryScreen({ navigation }: DuelsHistoryScreenProps) {
                   <Text style={styles.errorText}>{duels.historyError}</Text>
                 ) : !hasData ? (
                   <View style={styles.emptyWrapper}>
-                    <Text style={[styles.emptyText, isCompact && compactStyles.emptyText]}>No Duels matches found yet.</Text>
+                    <Text style={[styles.emptyText, isCompact && compactStyles.emptyText]}>
+                      No Duels matches found yet.
+                    </Text>
                   </View>
                 ) : (
                   <FlatList
@@ -360,10 +357,7 @@ export function DuelsHistoryScreen({ navigation }: DuelsHistoryScreenProps) {
                                   </Text>
                                 </View>
                                 <Text
-                                  style={[
-                                    styles.resultText,
-                                    isCompact && compactStyles.resultText,
-                                  ]}
+                                  style={[styles.resultText, isCompact && compactStyles.resultText]}
                                 >
                                   vs {item.opponentProfileName}
                                 </Text>
@@ -373,9 +367,7 @@ export function DuelsHistoryScreen({ navigation }: DuelsHistoryScreenProps) {
                                   style={[styles.metaText, isCompact && compactStyles.metaText]}
                                 >
                                   Payout:{' '}
-                                  {item.isWinner
-                                    ? formatSol(item.winnerPayoutLamports)
-                                    : '0.000'}{' '}
+                                  {item.isWinner ? formatSol(item.winnerPayoutLamports) : '0.000'}{' '}
                                   SOL
                                 </Text>
                                 <Text
@@ -402,6 +394,11 @@ export function DuelsHistoryScreen({ navigation }: DuelsHistoryScreenProps) {
           )}
         </View>
       </ImageBackground>
+      <HubSettingsModal
+        visible={showSettingsModal}
+        onClose={() => setShowSettingsModal(false)}
+        onDisconnect={handleDisconnect}
+      />
       <ControllerHints hints={controllerHints} horizontal />
     </View>
   );

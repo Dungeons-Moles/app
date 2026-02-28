@@ -35,6 +35,7 @@ import {
   deriveMapConfigPda,
   deriveSessionManagerAuthorityPda,
   deriveSessionPda,
+  deriveSessionNoncesPda,
   deriveMapVrfStatePda,
   derivePoiVrfStatePda,
   deriveGameplayVrfStatePda,
@@ -172,6 +173,36 @@ export function useSessionManager() {
     setActiveSessionPdaState(sessionPda);
   }, []);
 
+  /**
+   * Fetch the player's SessionNonces account.
+   * Returns { campaign: 0n, duel: 0n, gauntlet: 0n } when the account doesn't exist yet.
+   */
+  const fetchSessionNonces = useCallback(
+    async (
+      player: PublicKey
+    ): Promise<{ campaign: bigint; duel: bigint; gauntlet: bigint }> => {
+      const defaults = { campaign: 0n, duel: 0n, gauntlet: 0n };
+      try {
+        const [noncesPda] = deriveSessionNoncesPda(player);
+        const info = await baseConnection.getAccountInfo(noncesPda);
+        if (!info) return defaults;
+        const decoded = readOnlyProgram.coder.accounts.decode('sessionNonces', info.data) as {
+          campaignNonce: { toString(): string };
+          duelNonce: { toString(): string };
+          gauntletNonce: { toString(): string };
+        };
+        return {
+          campaign: BigInt(decoded.campaignNonce.toString()),
+          duel: BigInt(decoded.duelNonce.toString()),
+          gauntlet: BigInt(decoded.gauntletNonce.toString()),
+        };
+      } catch {
+        return defaults;
+      }
+    },
+    [baseConnection, readOnlyProgram]
+  );
+
   const fetchSession = useCallback(async () => {
     if (!wallet.publicKey) {
       if (isMountedRef.current) setError('Wallet not connected');
@@ -184,11 +215,16 @@ export function useSessionManager() {
     }
 
     try {
-      const [fallbackSessionPda] = deriveSessionPda(
-        wallet.publicKey,
-        activeOnChainLevelRef.current
-      );
-      const sessionPda = activeSessionPdaRef.current ?? fallbackSessionPda;
+      let sessionPda = activeSessionPdaRef.current;
+      if (!sessionPda) {
+        const nonces = await fetchSessionNonces(wallet.publicKey);
+        const [fallbackSessionPda] = deriveSessionPda(
+          wallet.publicKey,
+          activeOnChainLevelRef.current,
+          nonces.campaign
+        );
+        sessionPda = fallbackSessionPda;
+      }
       const decodeRawGameSession = async (): Promise<RawGameSessionAccount | null> => {
         const accountInfo = await baseConnection.getAccountInfo(
           sessionPda,
@@ -303,7 +339,8 @@ export function useSessionManager() {
         const onChainLevel = campaignLevel + 1;
         activeOnChainLevelRef.current = onChainLevel;
 
-        const [sessionPda] = deriveSessionPda(wallet.publicKey, onChainLevel);
+        const nonces = await fetchSessionNonces(wallet.publicKey);
+        const [sessionPda] = deriveSessionPda(wallet.publicKey, onChainLevel, nonces.campaign);
         activeSessionPdaRef.current = sessionPda;
         setActiveSessionPdaState(sessionPda);
         const [counterPda] = deriveSessionCounterPda();
@@ -371,6 +408,47 @@ export function useSessionManager() {
     [baseConnection, fetchSession, signAndSendTransaction, wallet.publicKey, baseWriteProgram]
   );
 
+  const overrideCampaignSession = useCallback(async (): Promise<TransactionResult> => {
+    if (!wallet.publicKey || !baseWriteProgram) {
+      return { success: false, error: 'Wallet not connected' };
+    }
+
+    if (isMountedRef.current) {
+      setIsLoading(true);
+      setError(null);
+    }
+
+    try {
+      const [sessionNoncesPda] = deriveSessionNoncesPda(wallet.publicKey);
+      const transaction = await baseWriteProgram.methods
+        .overrideCampaignSession()
+        .accounts({
+          sessionNonces: sessionNoncesPda,
+          player: wallet.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .transaction();
+
+      const signature = await signAndSendTransaction(transaction, {
+        connection: baseConnection,
+      });
+      await baseConnection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
+
+      // Force future fetch/start flows to derive from current nonces.
+      activeSessionPdaRef.current = null;
+      setActiveSessionPdaState(null);
+      await fetchSession();
+
+      return { success: true, signature };
+    } catch (txError) {
+      const message = getUserErrorMessage(txError, 'session_manager');
+      if (isMountedRef.current) setError(message);
+      return { success: false, error: message };
+    } finally {
+      if (isMountedRef.current) setIsLoading(false);
+    }
+  }, [baseConnection, fetchSession, signAndSendTransaction, wallet.publicKey, baseWriteProgram]);
+
   const buildStartDuelSessionTransaction = useCallback(
     async (
       sessionSignerPublicKey: PublicKey
@@ -393,7 +471,8 @@ export function useSessionManager() {
       const DUEL_ONCHAIN_LEVEL = 20;
       activeOnChainLevelRef.current = DUEL_ONCHAIN_LEVEL;
 
-      const [sessionPda] = deriveDuelSessionPda(wallet.publicKey);
+      const nonces = await fetchSessionNonces(wallet.publicKey);
+      const [sessionPda] = deriveDuelSessionPda(wallet.publicKey, nonces.duel);
       activeSessionPdaRef.current = sessionPda;
       setActiveSessionPdaState(sessionPda);
       const [counterPda] = deriveSessionCounterPda();
@@ -471,7 +550,8 @@ export function useSessionManager() {
       const GAUNTLET_ONCHAIN_LEVEL = 20;
       activeOnChainLevelRef.current = GAUNTLET_ONCHAIN_LEVEL;
 
-      const [sessionPda] = deriveGauntletSessionPda(wallet.publicKey);
+      const nonces = await fetchSessionNonces(wallet.publicKey);
+      const [sessionPda] = deriveGauntletSessionPda(wallet.publicKey, nonces.gauntlet);
       activeSessionPdaRef.current = sessionPda;
       setActiveSessionPdaState(sessionPda);
       const [counterPda] = deriveSessionCounterPda();
@@ -557,7 +637,8 @@ export function useSessionManager() {
       const onChainLevel = campaignLevel + 1;
       activeOnChainLevelRef.current = onChainLevel;
 
-      const [sessionPda] = deriveSessionPda(wallet.publicKey, onChainLevel);
+      const nonces = await fetchSessionNonces(wallet.publicKey);
+      const [sessionPda] = deriveSessionPda(wallet.publicKey, onChainLevel, nonces.campaign);
       activeSessionPdaRef.current = sessionPda;
       setActiveSessionPdaState(sessionPda);
       const [counterPda] = deriveSessionCounterPda();
@@ -617,6 +698,7 @@ export function useSessionManager() {
       const [fallbackSessionPda] = deriveSessionPda(wallet.publicKey, onChainLevel);
       const sessionPda = sessionPdaOverride ?? activeSessionPdaRef.current ?? fallbackSessionPda;
       const sessionDelegate = deriveDelegatePdas(sessionPda, SOLANA_CONFIG.programs.sessionManager);
+      const [sessionNoncesPda] = deriveSessionNoncesPda(wallet.publicKey);
 
       const delegateSessionIx = await baseWriteProgram.methods
         .delegateSession(onChainLevel, SOLANA_CONFIG.magic.delegationValidator)
@@ -627,6 +709,7 @@ export function useSessionManager() {
           gameSession: sessionPda,
           player: wallet.publicKey,
           sessionSigner: sessionSignerPublicKey,
+          sessionNonces: sessionNoncesPda,
           ownerProgram: SOLANA_CONFIG.programs.sessionManager,
           delegationProgram: DELEGATION_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
@@ -759,6 +842,7 @@ export function useSessionManager() {
             systemProgram: SystemProgram.programId,
           } as any)
           .instruction();
+        const [sessionNoncesPda] = deriveSessionNoncesPda(wallet.publicKey);
         const delegateSessionIx = await baseWriteProgram.methods
           .delegateSession(onChainLevel, delegationValidator)
           .accountsStrict({
@@ -775,6 +859,7 @@ export function useSessionManager() {
             gameSession: sessionPda,
             player: wallet.publicKey,
             sessionSigner: sessionSignerKeypair.publicKey,
+            sessionNonces: sessionNoncesPda,
             ownerProgram: SOLANA_CONFIG.programs.sessionManager,
             delegationProgram: DELEGATION_PROGRAM_ID,
             systemProgram: SystemProgram.programId,
@@ -803,58 +888,9 @@ export function useSessionManager() {
           sessionSignerKeypair
         );
 
-        // Tx3: Delegate PoiVrfState if it exists (VRF sessions only)
-        // NOTE: This currently fails because poi_vrf_state is owned by the POI system program
-        // but the delegation instruction lives in session-manager. Only the owning program
-        // can delegate its accounts. TODO: Move delegate_poi_vrf_state to poi-system program.
-        // For now, failure is non-blocking — VRF state was already fulfilled during setup.
-        const [poiVrfStatePda] = derivePoiVrfStatePda(sessionPda);
-        const poiVrfInfo = await baseConnection.getAccountInfo(poiVrfStatePda);
-        if (poiVrfInfo) {
-          try {
-            const poiVrfDelegate = deriveDelegatePdas(
-              poiVrfStatePda,
-              SOLANA_CONFIG.programs.sessionManager
-            );
-            const delegatePoiVrfIx = await baseWriteProgram.methods
-              .delegatePoiVrfState(sessionPda, delegationValidator)
-              .accountsStrict({
-                poiVrfState: poiVrfStatePda,
-                player: sessionSignerKeypair.publicKey,
-                ...Object.fromEntries(
-                  Object.entries(poiVrfDelegate).map(([k, v]) => [
-                    k === 'buffer'
-                      ? 'bufferPoiVrfState'
-                      : k === 'delegationRecord'
-                        ? 'delegationRecordPoiVrfState'
-                        : 'delegationMetadataPoiVrfState',
-                    v,
-                  ])
-                ),
-                ownerProgram: SOLANA_CONFIG.programs.sessionManager,
-                delegationProgram: DELEGATION_PROGRAM_ID,
-                systemProgram: SystemProgram.programId,
-              } as any)
-              .instruction();
-
-            const delegationTx3 = new Transaction().add(
-              ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
-              delegatePoiVrfIx
-            );
-            signature = await sendSessionSignerTransaction(
-              baseConnection,
-              delegationTx3,
-              sessionSignerKeypair
-            );
-          } catch (poiVrfDelegateError) {
-            console.warn(
-              '[delegateSession] PoiVrfState delegation failed (non-blocking), continuing:',
-              poiVrfDelegateError instanceof Error
-                ? poiVrfDelegateError.message
-                : poiVrfDelegateError
-            );
-          }
-        }
+        // Skip PoiVrfState delegation here. This account is POI-system-owned and
+        // delegating it from session-manager can fail with runtime access violations.
+        // TODO: Perform this delegation from POI-system when/if required.
 
         // Refresh session state
         await fetchSession();
@@ -919,7 +955,7 @@ export function useSessionManager() {
             player: wallet.publicKey,
             magicProgram: magicProgramId,
             magicContext: magicContextId,
-          })
+          } as any)
           .transaction();
 
         const signature = await signAndSendTransaction(transaction, {
@@ -1947,7 +1983,7 @@ export function useSessionManager() {
             playerProfileProgram: SOLANA_CONFIG.programs.playerProfile,
             mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
             poiSystemProgram: SOLANA_CONFIG.programs.poiSystem,
-          })
+          } as any)
           .instruction();
         transaction.add(endSessionIx);
 
@@ -2010,6 +2046,7 @@ export function useSessionManager() {
     activeSessionPda: activeSessionPdaState,
     fetchSession,
     startSession,
+    overrideCampaignSession,
     buildStartDuelSessionTransaction,
     buildStartGauntletSessionTransaction,
     buildStartSessionTransaction,
@@ -2026,5 +2063,6 @@ export function useSessionManager() {
     closeEmptyOrphanedAccounts,
     endSession,
     resetSession,
+    fetchSessionNonces,
   };
 }

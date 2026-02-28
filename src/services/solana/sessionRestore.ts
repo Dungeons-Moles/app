@@ -223,7 +223,8 @@ const TOOL_OIL_FLAG_ARM = 0x08;
 export async function fetchFullSessionState(
   connection: Connection,
   sessionPda: PublicKey,
-  seedOverride?: number
+  seedOverride?: number,
+  options?: { silentMissingData?: boolean }
 ): Promise<GameState | null> {
   // Derive all PDAs
   const [gameStatePda] = deriveGameStatePda(sessionPda);
@@ -249,10 +250,12 @@ export async function fetchFullSessionState(
     ]);
 
   if (!gameStateData || !generatedMapData) {
-    console.error('[sessionRestore] Missing required on-chain data:', {
-      gameState: !!gameStateData,
-      generatedMap: !!generatedMapData,
-    });
+    if (!options?.silentMissingData) {
+      console.error('[sessionRestore] Missing required on-chain data:', {
+        gameState: !!gameStateData,
+        generatedMap: !!generatedMapData,
+      });
+    }
     return null;
   }
 

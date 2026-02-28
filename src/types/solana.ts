@@ -30,6 +30,7 @@ export interface TransactionResult {
   error?: string;
   gameState?: GameState | null;
   mapSeed?: bigint | null;
+  sessionPda?: string;
   isResumed?: boolean;
   duelQueued?: { seed: bigint; slot: number };
 }

@@ -3514,6 +3514,114 @@
       "args": []
     },
     {
+      "name": "rotate_game_state_session_key",
+      "docs": [
+        "Rotates the session_signer on a GameState account.",
+        "Called via CPI from session-manager during rotate_session_key.",
+        "Only the session_manager_authority PDA can authorize this."
+      ],
+      "discriminator": [
+        2,
+        205,
+        232,
+        77,
+        60,
+        80,
+        151,
+        214
+      ],
+      "accounts": [
+        {
+          "name": "game_state",
+          "writable": true
+        },
+        {
+          "name": "session_manager_authority",
+          "docs": [
+            "Session manager PDA authority (only session-manager can sign)"
+          ],
+          "signer": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  95,
+                  109,
+                  97,
+                  110,
+                  97,
+                  103,
+                  101,
+                  114,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                88,
+                32,
+                100,
+                135,
+                223,
+                216,
+                104,
+                241,
+                164,
+                121,
+                21,
+                139,
+                178,
+                138,
+                86,
+                12,
+                169,
+                79,
+                86,
+                46,
+                98,
+                133,
+                38,
+                183,
+                79,
+                139,
+                161,
+                77,
+                8,
+                54,
+                32,
+                153
+              ]
+            }
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "new_session_signer",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
       "name": "set_phase_for_testing",
       "docs": [
         "TEST ONLY: Sets the game phase and moves remaining directly.",

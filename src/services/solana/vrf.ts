@@ -164,7 +164,9 @@ export async function buildRegenerateMapTransaction(
     .instruction();
 
   return new Transaction().add(
-    ComputeBudgetProgram.setComputeUnitLimit({ units: 1_000_000 }),
+    // Regeneration at duel/gauntlet level (20) can exceed 1M CU.
+    // Use the higher budget already used by session-start flows.
+    ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }),
     ix
   );
 }

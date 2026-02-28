@@ -102,6 +102,8 @@ export const PDA_SEEDS = {
   DUEL_SESSION: 'duel_session',
   /** Gauntlet session: ["gauntlet_session", player] */
   GAUNTLET_SESSION: 'gauntlet_session',
+  /** Session nonces: ["session_nonces", player] */
+  SESSION_NONCES: 'session_nonces',
   /** Session counter: ["session_counter"] */
   SESSION_COUNTER: 'session_counter',
   /** Game state: ["game_state", session_pda] */
@@ -160,15 +162,36 @@ export function derivePlayerProfilePda(owner: PublicKey): [PublicKey, number] {
 }
 
 /**
+ * Derive SessionNonces PDA for a player.
+ * Stores per-mode nonces for session override/recovery.
+ *
+ * @param player - Player's main wallet public key
+ * @returns [PDA, bump]
+ */
+export function deriveSessionNoncesPda(player: PublicKey): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from(PDA_SEEDS.SESSION_NONCES), player.toBuffer()],
+    SESSION_MANAGER_PROGRAM_ID
+  );
+}
+
+/**
  * Derive GameSession PDA for a specific campaign level.
  *
  * @param player - Player's main wallet public key
  * @param campaignLevel - Campaign level (1-40)
+ * @param nonce - Session nonce (default 0, incremented by override)
  * @returns [PDA, bump]
  */
-export function deriveSessionPda(player: PublicKey, campaignLevel: number): [PublicKey, number] {
+export function deriveSessionPda(
+  player: PublicKey,
+  campaignLevel: number,
+  nonce: bigint | number = 0
+): [PublicKey, number] {
+  const nonceBuf = Buffer.alloc(8);
+  nonceBuf.writeBigUInt64LE(BigInt(nonce));
   return PublicKey.findProgramAddressSync(
-    [Buffer.from(PDA_SEEDS.SESSION), player.toBuffer(), Buffer.from([campaignLevel])],
+    [Buffer.from(PDA_SEEDS.SESSION), player.toBuffer(), Buffer.from([campaignLevel]), nonceBuf],
     SESSION_MANAGER_PROGRAM_ID
   );
 }
@@ -177,11 +200,17 @@ export function deriveSessionPda(player: PublicKey, campaignLevel: number): [Pub
  * Derive Duel GameSession PDA.
  *
  * @param player - Player's main wallet public key
+ * @param nonce - Session nonce (default 0, incremented by override)
  * @returns [PDA, bump]
  */
-export function deriveDuelSessionPda(player: PublicKey): [PublicKey, number] {
+export function deriveDuelSessionPda(
+  player: PublicKey,
+  nonce: bigint | number = 0
+): [PublicKey, number] {
+  const nonceBuf = Buffer.alloc(8);
+  nonceBuf.writeBigUInt64LE(BigInt(nonce));
   return PublicKey.findProgramAddressSync(
-    [Buffer.from(PDA_SEEDS.DUEL_SESSION), player.toBuffer()],
+    [Buffer.from(PDA_SEEDS.DUEL_SESSION), player.toBuffer(), nonceBuf],
     SESSION_MANAGER_PROGRAM_ID
   );
 }
@@ -190,11 +219,17 @@ export function deriveDuelSessionPda(player: PublicKey): [PublicKey, number] {
  * Derive Gauntlet GameSession PDA.
  *
  * @param player - Player's main wallet public key
+ * @param nonce - Session nonce (default 0, incremented by override)
  * @returns [PDA, bump]
  */
-export function deriveGauntletSessionPda(player: PublicKey): [PublicKey, number] {
+export function deriveGauntletSessionPda(
+  player: PublicKey,
+  nonce: bigint | number = 0
+): [PublicKey, number] {
+  const nonceBuf = Buffer.alloc(8);
+  nonceBuf.writeBigUInt64LE(BigInt(nonce));
   return PublicKey.findProgramAddressSync(
-    [Buffer.from(PDA_SEEDS.GAUNTLET_SESSION), player.toBuffer()],
+    [Buffer.from(PDA_SEEDS.GAUNTLET_SESSION), player.toBuffer(), nonceBuf],
     SESSION_MANAGER_PROGRAM_ID
   );
 }

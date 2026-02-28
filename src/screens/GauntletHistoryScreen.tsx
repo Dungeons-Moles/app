@@ -23,6 +23,7 @@ import { useControllerAction } from '../hooks/useControllerAction';
 import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHints';
 import { useInputMode } from '../hooks/useInputMode';
 import { FocusGlow } from '../components/ui/FocusGlow';
+import { HubSettingsModal } from '../components/ui/HubSettingsModal';
 import { calculateItemStats } from '@/game/entities/items';
 import type { CombatantState, Gear, Tool } from '@/game/engine/types';
 import type { BackendCombatLogEntry } from '@/services/solana/types/combat_events';
@@ -49,7 +50,7 @@ function buildPvpCombatant(
   isPlayer: boolean,
   definitionId: string,
   tool: Tool | null,
-  gear: Gear[],
+  gear: Gear[]
 ): CombatantState {
   const itemStats = calculateItemStats(tool, gear);
   const maxHp = PVP_BASE_HP + (itemStats.hp ?? 0);
@@ -96,7 +97,7 @@ function shortWallet(wallet: string): string {
 }
 
 export function GauntletHistoryScreen({ navigation }: GauntletHistoryScreenProps) {
-  const { wallet } = useWallet();
+  const { wallet, disconnect } = useWallet();
   const { connection } = useSolanaConnection();
   const isCompact = useScreenVariant() === 'compact';
   const [items, setItems] = useState<GauntletHistoryItem[]>([]);
@@ -122,10 +123,17 @@ export function GauntletHistoryScreen({ navigation }: GauntletHistoryScreenProps
 
     try {
       const ourKey = wallet.publicKey.toBase58();
-      const signaturesById = new Map<string, { signature: string; slot: number; blockTime: number | null }>();
+      const signaturesById = new Map<
+        string,
+        { signature: string; slot: number; blockTime: number | null }
+      >();
       const [walletSigs, programSigs] = await Promise.all([
         connection.getSignaturesForAddress(wallet.publicKey, { limit: PAGE_SIZE }, 'confirmed'),
-        connection.getSignaturesForAddress(GAMEPLAY_STATE_PROGRAM_ID, { limit: PAGE_SIZE * MAX_PAGES }, 'confirmed'),
+        connection.getSignaturesForAddress(
+          GAMEPLAY_STATE_PROGRAM_ID,
+          { limit: PAGE_SIZE * MAX_PAGES },
+          'confirmed'
+        ),
       ]);
 
       for (const sig of [...walletSigs, ...programSigs]) {
@@ -151,9 +159,7 @@ export function GauntletHistoryScreen({ navigation }: GauntletHistoryScreenProps
           ? `Echo: ${shortWallet(events.weekEchoSelected.sourcePlayer.toBase58())}`
           : 'Echo: Bootstrap';
 
-        const completedRun = Boolean(
-          events.weekAdvanced?.completed || events.runEnded?.completed
-        );
+        const completedRun = Boolean(events.weekAdvanced?.completed || events.runEnded?.completed);
 
         history.push({
           signature: sigInfo.signature,
@@ -197,17 +203,13 @@ export function GauntletHistoryScreen({ navigation }: GauntletHistoryScreenProps
 
         const visual = events.combatVisual;
 
-        const playerTool = visual.playerTool
-          ? convertItemInstanceToTool(visual.playerTool)
-          : null;
+        const playerTool = visual.playerTool ? convertItemInstanceToTool(visual.playerTool) : null;
         const playerGear = visual.playerGear
           .filter((g): g is NonNullable<typeof g> => g !== null)
           .map((g) => convertItemInstanceToGear(g))
           .filter((g): g is Gear => g !== null);
 
-        const echoTool = visual.echoTool
-          ? convertItemInstanceToTool(visual.echoTool)
-          : null;
+        const echoTool = visual.echoTool ? convertItemInstanceToTool(visual.echoTool) : null;
         const echoGear = visual.echoGear
           .filter((g): g is NonNullable<typeof g> => g !== null)
           .map((g) => convertItemInstanceToGear(g))
@@ -219,7 +221,7 @@ export function GauntletHistoryScreen({ navigation }: GauntletHistoryScreenProps
           false,
           'pvpOpponent',
           echoTool,
-          echoGear,
+          echoGear
         );
 
         const combatLog: BackendCombatLogEntry[] = visual.combatLog;
@@ -252,16 +254,25 @@ export function GauntletHistoryScreen({ navigation }: GauntletHistoryScreenProps
         setIsLoadingReplay(false);
       }
     },
-    [isLoadingReplay, connection, navigation],
+    [isLoadingReplay, connection, navigation]
   );
 
   // --- Controller navigation ---
   const inputMode = useInputMode();
   const isController = inputMode === 'controller';
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
 
   const handleBack = useCallback(() => {
     navigation.goBack();
   }, [navigation]);
+
+  const handleDisconnect = useCallback(() => {
+    disconnect();
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'Account' }],
+    });
+  }, [disconnect, navigation]);
 
   const handleDPadUp = useCallback(() => {
     setSelectedIndex((prev) => Math.max(0, prev - 1));
@@ -284,6 +295,7 @@ export function GauntletHistoryScreen({ navigation }: GauntletHistoryScreenProps
   useControllerAction(
     {
       onB: handleBack,
+      onStart: () => setShowSettingsModal(true),
       onA: () => {
         if (items.length > 0 && selectedIndex >= 0 && selectedIndex < items.length) {
           void handleReplay(items[selectedIndex]);
@@ -294,7 +306,7 @@ export function GauntletHistoryScreen({ navigation }: GauntletHistoryScreenProps
       onDPadUp: handleDPadUp,
       onDPadDown: handleDPadDown,
     },
-    isController,
+    isController && !showSettingsModal
   );
 
   const controllerHints: ButtonHint[] = [
@@ -329,11 +341,7 @@ export function GauntletHistoryScreen({ navigation }: GauntletHistoryScreenProps
             )}
             {!isCompact && (
               <View style={styles.titleRow}>
-                <Image
-                  source={GAUNTLET_TITLE}
-                  style={styles.titleImage}
-                  resizeMode="contain"
-                />
+                <Image source={GAUNTLET_TITLE} style={styles.titleImage} resizeMode="contain" />
                 <Image
                   source={HISTORY_TITLE}
                   style={styles.historyTitleImage}
@@ -364,11 +372,7 @@ export function GauntletHistoryScreen({ navigation }: GauntletHistoryScreenProps
           {/* Scroll with history data */}
           <View style={[styles.centerContent, isCompact && compactStyles.centerContent]}>
             <View style={[styles.scrollWrapper, isCompact && compactStyles.scrollWrapper]}>
-              <Image
-                source={HISTORY_SCROLL}
-                style={styles.scrollImage}
-                resizeMode="stretch"
-              />
+              <Image source={HISTORY_SCROLL} style={styles.scrollImage} resizeMode="stretch" />
               <View style={[styles.scrollOverlay, isCompact && compactStyles.scrollOverlay]}>
                 {isLoading ? (
                   <View style={styles.loadingContainer}>
@@ -378,7 +382,9 @@ export function GauntletHistoryScreen({ navigation }: GauntletHistoryScreenProps
                   <Text style={styles.errorText}>{error}</Text>
                 ) : !hasData ? (
                   <View style={styles.emptyWrapper}>
-                    <Text style={[styles.emptyText, isCompact && compactStyles.emptyText]}>No gauntlet fights found yet.</Text>
+                    <Text style={[styles.emptyText, isCompact && compactStyles.emptyText]}>
+                      No gauntlet fights found yet.
+                    </Text>
                   </View>
                 ) : (
                   <FlatList
@@ -431,10 +437,7 @@ export function GauntletHistoryScreen({ navigation }: GauntletHistoryScreenProps
                                   </Text>
                                 </View>
                                 <Text
-                                  style={[
-                                    styles.resultText,
-                                    isCompact && compactStyles.resultText,
-                                  ]}
+                                  style={[styles.resultText, isCompact && compactStyles.resultText]}
                                 >
                                   - Week {item.week}
                                 </Text>
@@ -474,6 +477,11 @@ export function GauntletHistoryScreen({ navigation }: GauntletHistoryScreenProps
           )}
         </View>
       </ImageBackground>
+      <HubSettingsModal
+        visible={showSettingsModal}
+        onClose={() => setShowSettingsModal(false)}
+        onDisconnect={handleDisconnect}
+      />
       <ControllerHints hints={controllerHints} horizontal />
     </View>
   );

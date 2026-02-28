@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { PublicKey } from '@solana/web3.js';
 import {
   View,
   Text,
@@ -26,12 +27,12 @@ import { useControllerAction } from '../hooks/useControllerAction';
 import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHints';
 import { useInputMode } from '../hooks/useInputMode';
 import { FocusGlow } from '../components/ui/FocusGlow';
+import { HubSettingsModal } from '../components/ui/HubSettingsModal';
 import { Skeleton } from '../components/common/Skeleton';
 import { ProfileCard } from '../components/profile/ProfileCard';
 import { createGameplayStateProgram } from '../services/solana/programs';
 import { fetchGameState, getGameStatePda } from '../services/solana/gameplayState';
 import { fetchFullSessionState } from '../services/solana/sessionRestore';
-import { deriveSessionPda } from '../services/solana/constants';
 import { useWallet } from '../contexts/WalletContext';
 import { getVrfSeed } from '../services/solana/vrf';
 import type { CampaignLevel } from '../types/solana';
@@ -45,6 +46,7 @@ const squareSource = require('../../assets/ui/frames/square.png');
 const lockSource = require('../../assets/icons/ui/lock.png');
 const iconASource = require('../../assets/ui/control-buttons/a.png');
 const iconBSource = require('../../assets/ui/control-buttons/b.png');
+const iconXSource = require('../../assets/ui/control-buttons/x.png');
 
 type CampaignSelectScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'CampaignSelect'>;
@@ -53,13 +55,16 @@ type CampaignSelectScreenProps = {
 const NUM_COLUMNS = 5;
 const SESSION_CLEANUP_WAIT_TIMEOUT_MS = 45000;
 const SESSION_CLEANUP_POLL_MS = 1000;
+const SESSION_PROPAGATION_TIMEOUT_MS = 25000;
+const SESSION_PROPAGATION_POLL_MS = 300;
 
 export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) {
   const { profile, mode, availableRuns, highestLevelUnlocked } = useProfile();
-  const { wallet } = useWallet();
+  const { wallet, disconnect } = useWallet();
   const { connection, gameplayConnection, erConnection } = useSolanaConnection();
   const {
     startGame: startSessionOnChain,
+    overrideCampaignSession,
     hasSessionForLevel,
     activeSessions,
     hasPendingCleanups,
@@ -67,6 +72,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
     getMapSeedForLevel,
     switchToSession,
     getSessionPdaForLevel,
+    refreshSessionList,
     setGameStatePda,
   } = useSessionIdentity();
   const { state: gameState, dispatch } = useGame();
@@ -88,6 +94,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
   const [pendingLevelWithSession, setPendingLevelWithSession] = useState<CampaignLevel | null>(
     null
   );
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -150,82 +157,86 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
           return;
         }
 
-            // Use switchToSession to set up gameStatePda, recover sessionSigner wallet,
-            // and fetch map seed — without creating a new session.
-            // This avoids the "SessionSigner wallet missing" error that startGame hits
-            // when the sessionSigner hasn't been loaded from SecureStore yet.
-            const sessionPda = await getSessionPdaForLevel(level.level);
-            if (sessionPda) {
-              console.log('[CampaignSelect] Switching to existing session...');
-              const switchResult = await switchToSession(sessionPda);
-              if (!switchResult.success) {
-                console.warn('[CampaignSelect] switchToSession failed:', switchResult.error);
-                setErrorMessage(switchResult.error ?? 'Failed to resume session.');
-                setShowErrorModal(true);
-                return;
-              }
-            }
+        // Use switchToSession to set up gameStatePda, recover sessionSigner wallet,
+        // and fetch map seed — without creating a new session.
+        // This avoids the "SessionSigner wallet missing" error that startGame hits
+        // when the sessionSigner hasn't been loaded from SecureStore yet.
+        const sessionPda = await getSessionPdaForLevel(level.level);
+        if (sessionPda) {
+          console.log('[CampaignSelect] Switching to existing session...');
+          const switchResult = await switchToSession(sessionPda);
+          if (!switchResult.success) {
+            console.warn('[CampaignSelect] switchToSession failed:', switchResult.error);
+            setErrorMessage(switchResult.error ?? 'Failed to resume session.');
+            setShowErrorModal(true);
+            return;
+          }
+        }
 
-            // If switchToSession didn't work (no PDA found or failed),
-            // fall back to startSessionOnChain which handles the reuse path
-            if (!sessionPda) {
-              console.log('[CampaignSelect] No session PDA found, trying startSessionOnChain...');
-              const result = await startSessionOnChain(level.level);
-              if (result && !result.success) {
-                setErrorMessage(result.error ?? 'Failed to resume session.');
-                setShowErrorModal(true);
-                return;
-              }
-            }
+        // If switchToSession didn't work (no PDA found or failed),
+        // fall back to startSessionOnChain which handles the reuse path
+        if (!sessionPda) {
+          console.log('[CampaignSelect] No session PDA found, trying startSessionOnChain...');
+          const result = await startSessionOnChain(level.level);
+          if (result && !result.success) {
+            setErrorMessage(result.error ?? 'Failed to resume session.');
+            setShowErrorModal(true);
+            return;
+          }
+        }
 
-            const onChainLevel = level.level + 1;
-            const [sessionPdaKey] = deriveSessionPda(wallet.publicKey, onChainLevel);
+        const sessionPdaBase58 = await getSessionPdaForLevel(level.level);
+        if (!sessionPdaBase58) {
+          setErrorMessage('No session found for this level.');
+          setShowErrorModal(true);
+          return;
+        }
+        const sessionPdaKey = new PublicKey(sessionPdaBase58);
 
-            // Determine seed
-            const seedFromChain = await getMapSeedForLevel(level.level);
-            let seed: number;
-            if (seedFromChain !== null) {
-              seed = Number(seedFromChain % BigInt(2147483647));
-            } else if (level.seed !== null) {
-              seed = Number(level.seed % BigInt(2147483647));
-            } else {
-              seed = await getVrfSeed();
-            }
+        // Determine seed
+        const seedFromChain = await getMapSeedForLevel(level.level);
+        let seed: number;
+        if (seedFromChain !== null) {
+          seed = Number(seedFromChain % BigInt(2147483647));
+        } else if (level.seed !== null) {
+          seed = Number(level.seed % BigInt(2147483647));
+        } else {
+          seed = await getVrfSeed();
+        }
 
-            // Full on-chain restore: fetch all accounts and build complete GameState.
-            // Use erConnection directly because delegated accounts live on the ER,
-            // and the gameplayConnection closure may still point to base chain.
-            console.log('[CampaignSelect] Restoring session from on-chain data...');
-            const restoredState = await fetchFullSessionState(erConnection, sessionPdaKey, seed);
+        // Full on-chain restore: fetch all accounts and build complete GameState.
+        // Use erConnection directly because delegated accounts live on the ER,
+        // and the gameplayConnection closure may still point to base chain.
+        console.log('[CampaignSelect] Restoring session from on-chain data...');
+        const restoredState = await fetchFullSessionState(erConnection, sessionPdaKey, seed);
 
-            if (restoredState) {
-              console.log('[CampaignSelect] Full session restore successful');
-              // Set the gameStatePda so gameplay hooks can interact with the blockchain
-              const [derivedGameStatePda] = getGameStatePda(sessionPdaKey);
-              setGameStatePda(derivedGameStatePda);
-              dispatch({ type: 'RESTORE_GAME', state: restoredState });
-              navigation.navigate('Game');
-              return;
-            }
+        if (restoredState) {
+          console.log('[CampaignSelect] Full session restore successful');
+          // Set the gameStatePda so gameplay hooks can interact with the blockchain
+          const [derivedGameStatePda] = getGameStatePda(sessionPdaKey);
+          setGameStatePda(derivedGameStatePda);
+          dispatch({ type: 'RESTORE_GAME', state: restoredState });
+          navigation.navigate('Game');
+          return;
+        }
 
-            // Fallback: partial restore from GameState only
-            console.warn('[CampaignSelect] Full restore failed, falling back to partial restore');
-            const program = createGameplayStateProgram(erConnection);
-            const [gameStatePdaFallback] = getGameStatePda(sessionPdaKey);
-            setGameStatePda(gameStatePdaFallback);
-            const stateToRestore = await fetchGameState(program, gameStatePdaFallback);
-            const restorePayload = createRestorePayload(stateToRestore);
+        // Fallback: partial restore from GameState only
+        console.warn('[CampaignSelect] Full restore failed, falling back to partial restore');
+        const program = createGameplayStateProgram(erConnection);
+        const [gameStatePdaFallback] = getGameStatePda(sessionPdaKey);
+        setGameStatePda(gameStatePdaFallback);
+        const stateToRestore = await fetchGameState(program, gameStatePdaFallback);
+        const restorePayload = createRestorePayload(stateToRestore);
 
-            dispatch({
-              type: 'START_GAME',
-              seed,
-              restore: restorePayload,
-            });
+        dispatch({
+          type: 'START_GAME',
+          seed,
+          restore: restorePayload,
+        });
 
-            navigation.navigate('Game');
+        navigation.navigate('Game');
       } catch (error) {
-        const message =
-          error instanceof Error ? error.message : 'Failed to resume the session.';
+        const message = error instanceof Error ? error.message : 'Failed to resume the session.';
         setErrorMessage(message);
         setShowErrorModal(true);
       } finally {
@@ -333,7 +344,10 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
           try {
             while (Date.now() - startWait < SESSION_CLEANUP_WAIT_TIMEOUT_MS) {
               await processPendingCleanups().catch((err) => {
-                console.warn('[CampaignSelect] processPendingCleanups during start wait failed:', err);
+                console.warn(
+                  '[CampaignSelect] processPendingCleanups during start wait failed:',
+                  err
+                );
               });
               const stillExists = await hasSessionForLevel(level.level);
               if (!stillExists) {
@@ -356,10 +370,9 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
           }
         }
 
-        const localSession = activeSessions.find((session) => session.level === level.level);
-        const hasExistingSession = localSession
-          ? true
-          : !isCachedMode && (await hasSessionForLevel(level.level));
+        // Always check current on-chain nonce namespace instead of local cached list.
+        // This avoids reopening the modal right after override when React state is stale.
+        const hasExistingSession = !isCachedMode && (await hasSessionForLevel(level.level));
 
         if (hasExistingSession) {
           setPendingLevelWithSession(level);
@@ -438,11 +451,41 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
           console.log(
             '[CampaignSelect] On-chain session active, fetching full state from chain...'
           );
-          const onChainLevel = level.level + 1; // Convert 0-indexed frontend to 1-indexed on-chain
-          const [sessionPda] = deriveSessionPda(wallet.publicKey, onChainLevel);
-          const restoredState =
-            (await fetchFullSessionState(erConnection, sessionPda, seed)) ??
-            (await fetchFullSessionState(connection, sessionPda, seed));
+          const propagationDeadline = Date.now() + SESSION_PROPAGATION_TIMEOUT_MS;
+          // Prefer the exact PDA returned by start/resume path.
+          // Level-based lookup can lag right after nonce override.
+          let sessionPdaBase58: string | null = result?.sessionPda ?? null;
+          if (!sessionPdaBase58) {
+            while (Date.now() < propagationDeadline && !sessionPdaBase58) {
+              sessionPdaBase58 = await getSessionPdaForLevel(level.level);
+              if (sessionPdaBase58) break;
+              await new Promise((resolve) => setTimeout(resolve, SESSION_PROPAGATION_POLL_MS));
+            }
+          }
+          if (!sessionPdaBase58) {
+            await refreshSessionList();
+            sessionPdaBase58 = await getSessionPdaForLevel(level.level);
+          }
+          if (!sessionPdaBase58) {
+            setErrorMessage(
+              'Session started but did not propagate in time. Please try again.'
+            );
+            setShowErrorModal(true);
+            return;
+          }
+          const sessionPda = new PublicKey(sessionPdaBase58);
+          let restoredState: Awaited<ReturnType<typeof fetchFullSessionState>> | null = null;
+          while (Date.now() < propagationDeadline && !restoredState) {
+            restoredState =
+              (await fetchFullSessionState(erConnection, sessionPda, seed, {
+                silentMissingData: true,
+              })) ??
+              (await fetchFullSessionState(connection, sessionPda, seed, {
+                silentMissingData: true,
+              }));
+            if (restoredState) break;
+            await new Promise((resolve) => setTimeout(resolve, SESSION_PROPAGATION_POLL_MS));
+          }
 
           if (restoredState) {
             console.log('[CampaignSelect] Full on-chain state fetch successful');
@@ -453,10 +496,17 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
             navigation.navigate('Game');
             return;
           }
-          console.warn('[CampaignSelect] On-chain state fetch failed, falling back to START_GAME');
+          setErrorMessage(
+            'Session was created but on-chain state is not readable yet. Please try opening the level again.'
+          );
+          setShowErrorModal(true);
+          return;
         }
 
-        // Guest mode or fallback: start with frontend-generated map
+        // Guest mode only: start with frontend-generated map
+        if (gameState?.phase !== GamePhase.MainMenu) {
+          dispatch({ type: 'RETURN_TO_MENU' });
+        }
         dispatch({
           type: 'START_GAME',
           seed,
@@ -489,6 +539,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
       highestLevelUnlocked,
       isCachedMode,
       processPendingCleanups,
+      refreshSessionList,
       setGameStatePda,
       startSessionOnChain,
       isStartingGame,
@@ -502,6 +553,14 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
     navigation.goBack();
   }, [navigation]);
 
+  const handleDisconnect = useCallback(() => {
+    disconnect();
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'Account' }],
+    });
+  }, [disconnect, navigation]);
+
   // --- Controller navigation ---
   const inputMode = useInputMode();
   const isController = inputMode === 'controller';
@@ -510,7 +569,8 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
   const flatListRef = useRef<FlatList>(null);
   const didRunCleanupThisFocusRef = useRef(false);
 
-  const anyModalOpen = showNoRunsModal || showLockedModal || showSessionExistsModal || showErrorModal;
+  const anyModalOpen =
+    showNoRunsModal || showLockedModal || showSessionExistsModal || showErrorModal;
 
   useEffect(() => {
     if (!isScreenFocused) {
@@ -555,6 +615,32 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
     }
   }, [cursorIdx, isController, levels.length, isCompact]);
 
+  const handleResumeExistingSession = useCallback(async () => {
+    if (!pendingLevelWithSession) {
+      return;
+    }
+    setShowSessionExistsModal(false);
+    await resumeSession(pendingLevelWithSession);
+  }, [pendingLevelWithSession, resumeSession]);
+
+  const handleOverrideExistingSession = useCallback(async () => {
+    if (!pendingLevelWithSession) {
+      return;
+    }
+
+    setShowSessionExistsModal(false);
+
+    const overrideResult = await overrideCampaignSession();
+    if (!overrideResult.success) {
+      setErrorMessage(overrideResult.error ?? 'Failed to override session slot.');
+      setShowErrorModal(true);
+      return;
+    }
+
+    await refreshSessionList();
+    await handleLevelSelect(pendingLevelWithSession);
+  }, [pendingLevelWithSession, overrideCampaignSession, refreshSessionList, handleLevelSelect]);
+
   const modalActions = anyModalOpen
     ? {
         onA: showSessionExistsModal
@@ -575,12 +661,14 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
           setShowSessionExistsModal(false);
           setShowErrorModal(false);
         },
+        onX: showSessionExistsModal ? handleOverrideExistingSession : undefined,
       }
     : undefined;
 
   useControllerAction(
     modalActions ?? {
       onB: handleBack,
+      onStart: () => setShowSettingsModal(true),
       onA: () => {
         if (levels[cursorIdx]) handleLevelSelect(levels[cursorIdx]);
       },
@@ -589,27 +677,20 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
       onDPadUp: () => setCursorIdx((p) => Math.max(0, p - NUM_COLUMNS)),
       onDPadDown: () => setCursorIdx((p) => Math.min(levels.length - 1, p + NUM_COLUMNS)),
     },
-    isController && isScreenFocused
+    isController && isScreenFocused && !showSettingsModal
   );
 
   const controllerHints: ButtonHint[] = anyModalOpen
     ? [
         { button: 'A', label: showSessionExistsModal ? 'Resume' : 'OK' },
         { button: 'B', label: 'Cancel' },
+        ...(showSessionExistsModal ? [{ button: 'X' as const, label: 'Override' }] : []),
       ]
     : [
         { button: 'DPad', label: 'Navigate' },
         { button: 'A', label: 'Select Level' },
         { button: 'B', label: 'Back' },
       ];
-
-  const handleResumeExistingSession = useCallback(async () => {
-    if (!pendingLevelWithSession) {
-      return;
-    }
-    setShowSessionExistsModal(false);
-    await resumeSession(pendingLevelWithSession);
-  }, [pendingLevelWithSession, resumeSession]);
 
   const renderLevelItem = useCallback(
     ({ item, index }: { item: CampaignLevel; index: number }) => {
@@ -851,10 +932,16 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
         visible={showSessionExistsModal}
         transparent
         animationType="fade"
-        onRequestClose={() => setShowSessionExistsModal(false)}
+        onRequestClose={handleOverrideExistingSession}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, isCompact && compactStyles.modalContent]}>
+          <View
+            style={[
+              styles.modalContent,
+              styles.sessionExistsModalContent,
+              isCompact && compactStyles.modalContent,
+            ]}
+          >
             <Text style={[styles.modalTitle, isCompact && compactStyles.modalTitle]}>
               Session Already Exists
             </Text>
@@ -874,6 +961,14 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
                 </View>
                 <View style={compactStyles.modalHintItem}>
                   <Image
+                    source={iconXSource}
+                    style={compactStyles.modalHintIcon}
+                    resizeMode="contain"
+                  />
+                  <Text style={compactStyles.modalHintLabel}>Override</Text>
+                </View>
+                <View style={compactStyles.modalHintItem}>
+                  <Image
                     source={iconASource}
                     style={compactStyles.modalHintIcon}
                     resizeMode="contain"
@@ -888,6 +983,12 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
                   onPress={() => setShowSessionExistsModal(false)}
                 >
                   <Text style={styles.modalButtonTextSecondary}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.modalButtonSecondary}
+                  onPress={handleOverrideExistingSession}
+                >
+                  <Text style={styles.modalButtonTextSecondary}>Override (X)</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.modalButtonPrimary}
@@ -976,6 +1077,11 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
           </View>
         </View>
       </InlineModal>
+      <HubSettingsModal
+        visible={showSettingsModal}
+        onClose={() => setShowSettingsModal(false)}
+        onDisconnect={handleDisconnect}
+      />
       <ControllerHints hints={controllerHints} horizontal />
     </Animated.View>
   );
@@ -1208,6 +1314,10 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#5c4033',
   },
+  sessionExistsModalContent: {
+    backgroundColor: '#5a4030',
+    borderColor: '#7a5a44',
+  },
   modalTitle: {
     fontFamily: Typography.header,
     fontSize: 20,
@@ -1367,8 +1477,8 @@ const compactStyles = StyleSheet.create({
     gap: 10,
   },
   modalHintIcon: {
-    width: 32,
-    height: 32,
+    width: 40,
+    height: 40,
   },
   modalHintLabel: {
     fontFamily: Typography.button,

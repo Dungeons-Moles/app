@@ -30,6 +30,7 @@ import { useControllerAction } from '../hooks/useControllerAction';
 import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHints';
 import { useInputMode } from '../hooks/useInputMode';
 import { FocusGlow } from '../components/ui/FocusGlow';
+import { HubSettingsModal } from '../components/ui/HubSettingsModal';
 import { useAudio } from '@/contexts/AudioContext';
 import { useIsFocused } from '@react-navigation/native';
 import { calculateItemStats } from '@/game/entities/items';
@@ -59,7 +60,7 @@ function buildPvpCombatant(
   isPlayer: boolean,
   definitionId: string,
   tool: Tool | null,
-  gear: Gear[],
+  gear: Gear[]
 ): CombatantState {
   const itemStats = calculateItemStats(tool, gear);
   const maxHp = PVP_BASE_HP + (itemStats.hp ?? 0);
@@ -102,7 +103,13 @@ interface PitDraftHistoryItem {
   turnsTaken: number;
 }
 
-function OpponentAvatar({ skinPubkey, isCompact }: { skinPubkey: PublicKey | null; isCompact: boolean }) {
+function OpponentAvatar({
+  skinPubkey,
+  isCompact,
+}: {
+  skinPubkey: PublicKey | null;
+  isCompact: boolean;
+}) {
   const skinImage = useEquippedSkinImage(skinPubkey);
   const size = isCompact ? 40 : 22;
   return (
@@ -128,7 +135,7 @@ function OpponentAvatar({ skinPubkey, isCompact }: { skinPubkey: PublicKey | nul
 }
 
 export function PitDraftHistoryScreen({ navigation }: PitDraftHistoryScreenProps) {
-  const { wallet } = useWallet();
+  const { wallet, disconnect } = useWallet();
   const { connection } = useSolanaConnection();
   const isCompact = useScreenVariant() === 'compact';
   const [items, setItems] = useState<PitDraftHistoryItem[]>([]);
@@ -201,7 +208,9 @@ export function PitDraftHistoryScreen({ navigation }: PitDraftHistoryScreenProps
               const account = await (
                 profileProgram.account as {
                   playerProfile: {
-                    fetchNullable: (address: PublicKey) => Promise<{ name?: unknown; equippedSkin?: PublicKey | null } | null>;
+                    fetchNullable: (
+                      address: PublicKey
+                    ) => Promise<{ name?: unknown; equippedSkin?: PublicKey | null } | null>;
                   };
                 }
               ).playerProfile.fetchNullable(profilePda);
@@ -307,7 +316,7 @@ export function PitDraftHistoryScreen({ navigation }: PitDraftHistoryScreenProps
           false,
           'pvpOpponent',
           enemyTool,
-          enemyGear,
+          enemyGear
         );
 
         const combatLog: BackendCombatLogEntry[] = visual.combatLog.map((entry) => ({
@@ -346,16 +355,25 @@ export function PitDraftHistoryScreen({ navigation }: PitDraftHistoryScreenProps
         setIsLoadingReplay(false);
       }
     },
-    [isLoadingReplay, wallet.publicKey, connection, navigation],
+    [isLoadingReplay, wallet.publicKey, connection, navigation]
   );
 
   // --- Controller navigation ---
   const inputMode = useInputMode();
   const isController = inputMode === 'controller';
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
 
   const handleBack = useCallback(() => {
     navigation.goBack();
   }, [navigation]);
+
+  const handleDisconnect = useCallback(() => {
+    disconnect();
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'Account' }],
+    });
+  }, [disconnect, navigation]);
 
   const handleDPadUp = useCallback(() => {
     setSelectedIndex((prev) => Math.max(0, prev - 1));
@@ -378,6 +396,7 @@ export function PitDraftHistoryScreen({ navigation }: PitDraftHistoryScreenProps
   useControllerAction(
     {
       onB: handleBack,
+      onStart: () => setShowSettingsModal(true),
       onA: () => {
         if (items.length > 0 && selectedIndex >= 0 && selectedIndex < items.length) {
           void handleReplay(items[selectedIndex]);
@@ -388,7 +407,7 @@ export function PitDraftHistoryScreen({ navigation }: PitDraftHistoryScreenProps
       onDPadUp: handleDPadUp,
       onDPadDown: handleDPadDown,
     },
-    isController,
+    isController && !showSettingsModal
   );
 
   const controllerHints: ButtonHint[] = [
@@ -423,11 +442,7 @@ export function PitDraftHistoryScreen({ navigation }: PitDraftHistoryScreenProps
             )}
             {!isCompact && (
               <View style={styles.titleRow}>
-                <Image
-                  source={PIT_DRAFT_TITLE}
-                  style={styles.titleImage}
-                  resizeMode="contain"
-                />
+                <Image source={PIT_DRAFT_TITLE} style={styles.titleImage} resizeMode="contain" />
                 <Image
                   source={HISTORY_TITLE}
                   style={styles.historyTitleImage}
@@ -458,11 +473,7 @@ export function PitDraftHistoryScreen({ navigation }: PitDraftHistoryScreenProps
           {/* Scroll with history data */}
           <View style={[styles.centerContent, isCompact && compactStyles.centerContent]}>
             <View style={[styles.scrollWrapper, isCompact && compactStyles.scrollWrapper]}>
-              <Image
-                source={HISTORY_SCROLL}
-                style={styles.scrollImage}
-                resizeMode="stretch"
-              />
+              <Image source={HISTORY_SCROLL} style={styles.scrollImage} resizeMode="stretch" />
               <View style={[styles.scrollOverlay, isCompact && compactStyles.scrollOverlay]}>
                 {isLoading ? (
                   <View style={styles.loadingContainer}>
@@ -472,7 +483,9 @@ export function PitDraftHistoryScreen({ navigation }: PitDraftHistoryScreenProps
                   <Text style={styles.errorText}>{error}</Text>
                 ) : !hasData ? (
                   <View style={styles.emptyWrapper}>
-                    <Text style={[styles.emptyText, isCompact && compactStyles.emptyText]}>No Pit Draft matches found yet.</Text>
+                    <Text style={[styles.emptyText, isCompact && compactStyles.emptyText]}>
+                      No Pit Draft matches found yet.
+                    </Text>
                   </View>
                 ) : (
                   <FlatList
@@ -524,16 +537,16 @@ export function PitDraftHistoryScreen({ navigation }: PitDraftHistoryScreenProps
                                     {item.isWinner ? 'WIN' : 'LOSS'}
                                   </Text>
                                 </View>
-                              <Text
-                                  style={[
-                                    styles.resultText,
-                                    isCompact && compactStyles.resultText,
-                                  ]}
+                                <Text
+                                  style={[styles.resultText, isCompact && compactStyles.resultText]}
                                   numberOfLines={1}
                                 >
                                   vs {item.opponentName}
                                 </Text>
-                                <OpponentAvatar skinPubkey={item.opponentSkinPubkey} isCompact={isCompact} />
+                                <OpponentAvatar
+                                  skinPubkey={item.opponentSkinPubkey}
+                                  isCompact={isCompact}
+                                />
                               </View>
                               <View style={styles.metaRow}>
                                 <Text
@@ -545,9 +558,7 @@ export function PitDraftHistoryScreen({ navigation }: PitDraftHistoryScreenProps
                                   style={[styles.metaText, isCompact && compactStyles.metaText]}
                                 >
                                   Payout:{' '}
-                                  {item.isWinner
-                                    ? formatSol(item.winnerPayoutLamports)
-                                    : '0.000'}{' '}
+                                  {item.isWinner ? formatSol(item.winnerPayoutLamports) : '0.000'}{' '}
                                   SOL
                                 </Text>
                                 <Text
@@ -574,6 +585,11 @@ export function PitDraftHistoryScreen({ navigation }: PitDraftHistoryScreenProps
           )}
         </View>
       </ImageBackground>
+      <HubSettingsModal
+        visible={showSettingsModal}
+        onClose={() => setShowSettingsModal(false)}
+        onDisconnect={handleDisconnect}
+      />
       <ControllerHints hints={controllerHints} horizontal />
     </View>
   );

@@ -587,12 +587,15 @@ export function GameScreen({ navigation }: GameScreenProps) {
   const chainPosY = onChainState?.positionY;
   const chainHp = onChainState?.hp;
   const chainMovesRemaining = onChainState?.movesRemaining;
+  const onChainSessionMatchesActive =
+    !!onChainState && !!sessionPda && onChainState.session.equals(sessionPda);
   useEffect(() => {
     const currentState = stateRef.current;
     const currentOnChain = onChainStateRef.current;
     if (
       !currentState ||
       !currentOnChain ||
+      !onChainSessionMatchesActive ||
       mode === 'guest' ||
       gameplaySyncStatus !== 'synced' ||
       localPhase !== GamePhase.Exploration ||
@@ -633,6 +636,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
     chainPosY,
     chainHp,
     chainMovesRemaining,
+    onChainSessionMatchesActive,
     isMovePending,
     isFocused,
     poiInteraction.isInteracting,
@@ -1194,6 +1198,40 @@ export function GameScreen({ navigation }: GameScreenProps) {
       // Guest mode: use local reducer (preserves offline play)
       if (mode === 'guest' || !hasActiveSession) {
         debugLog('[GameScreen] Using local MOVE (guest or no session)');
+
+        // Play movement audio and show feedback matching on-chain behavior
+        const isWall = state.map.tiles[targetPos.y][targetPos.x] === TileType.Wall;
+        if (isWall) {
+          const isHighlighted =
+            state.wallHighlight &&
+            state.wallHighlight.direction === direction &&
+            state.wallHighlight.targetPosition.x === targetPos.x &&
+            state.wallHighlight.targetPosition.y === targetPos.y;
+
+          if (!isHighlighted) {
+            // First tap on wall: highlighting or error
+            if (state.player.stats.dig < 1) {
+              showWallBreakFeedback('Requires DIG to break walls');
+              playSfx('ui_error');
+            } else {
+              playSfx('ui_hover');
+            }
+          } else {
+            // Second tap on highlighted wall: breaking or error
+            if (
+              state.wallHighlight &&
+              !canAffordCostAcrossPhases(state.time, state.wallHighlight.cost)
+            ) {
+              showWallBreakFeedback(`Not enough moves (need ${state.wallHighlight.cost})`);
+              playSfx('ui_error');
+            } else {
+              playSfx('move_dig');
+            }
+          }
+        } else {
+          playSfx('move_floor');
+        }
+
         dispatch({ type: 'MOVE', direction });
         return;
       }

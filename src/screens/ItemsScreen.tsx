@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useProfile } from '../contexts/ProfileContext';
+import { useWallet } from '../contexts/WalletContext';
 import { RootStackParamList } from '../navigation';
 import { Typography } from '../theme/typography';
 import { useScreenVariant } from '../contexts/ScreenVariantContext';
@@ -20,9 +21,20 @@ import { useControllerAction } from '../hooks/useControllerAction';
 import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHints';
 import { useInputMode } from '../hooks/useInputMode';
 import { FocusGlow } from '../components/ui/FocusGlow';
-import { getGearByTag, GearDefinition, getEffectDescriptionAllTiers, RARITY_MULTIPLIER } from '../data/gear';
+import { HubSettingsModal } from '../components/ui/HubSettingsModal';
+import {
+  getGearByTag,
+  GearDefinition,
+  getEffectDescriptionAllTiers,
+  RARITY_MULTIPLIER,
+} from '../data/gear';
 import { getGearStatsAtTier } from '../data/gear-effects';
-import { getToolsByTag, ToolDefinition, getToolEffectDescriptionAllTiers, getToolStatsAtTier } from '../game/entities/items';
+import {
+  getToolsByTag,
+  ToolDefinition,
+  getToolEffectDescriptionAllTiers,
+  getToolStatsAtTier,
+} from '../game/entities/items';
 import { ItemTag, ItemStats, ItemRarity, GearId, ToolId } from '../game/engine/types';
 import {
   BITMASK_SIZE,
@@ -226,7 +238,7 @@ function getGearStatTiers(id: GearId, baseStats: ItemStats): StatTiers {
     } else if (baseVal !== undefined) {
       // Permanent stat only (no BattleStart effect) — scale with rarity multiplier
       result[key] = formatTiered(
-        ...mults.map((m) => Math.floor(baseVal * m)) as [number, number, number]
+        ...(mults.map((m) => Math.floor(baseVal * m)) as [number, number, number])
       );
     }
   }
@@ -290,6 +302,7 @@ const getAllItems = (): DisplayItem[] => {
 
 export function ItemsScreen({ navigation }: ItemsScreenProps) {
   const { isItemUnlocked, updateActiveItemPool, profile, mode } = useProfile();
+  const { disconnect } = useWallet();
   const isGuest = mode === 'guest';
   const screenVariant = useScreenVariant();
   const isCompact = screenVariant === 'compact';
@@ -410,6 +423,14 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
     navigation.goBack();
   }, [navigation]);
 
+  const handleDisconnect = useCallback(() => {
+    disconnect();
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'Account' }],
+    });
+  }, [disconnect, navigation]);
+
   const selectedItemPoolIndex = selectedItem ? getItemPoolIndex(selectedItem.id) : -1;
   const selectedItemInPool =
     selectedItemPoolIndex >= 0 && draftPoolIndices.has(selectedItemPoolIndex);
@@ -418,6 +439,7 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
   // --- Controller navigation ---
   const inputMode = useInputMode();
   const isController = inputMode === 'controller';
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
   const allItems = useMemo(() => getAllItems(), []);
   const itemsPerRow = isCompact ? 5 : 5;
 
@@ -477,6 +499,7 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
   useControllerAction(
     {
       onB: handleBack,
+      onStart: () => setShowSettingsModal(true),
       onA:
         activeTab === 'items' && !isGuest
           ? () => {
@@ -505,7 +528,7 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
         else setItemsetCursorIdx((p) => Math.min(allItemsets.length - 1, p + itemsPerRow));
       },
     },
-    isController
+    isController && !showSettingsModal
   );
 
   const controllerHints: ButtonHint[] = [
@@ -637,7 +660,8 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                           const unlocked = checkItemUnlocked(item.id);
                           const isSelected = selectedItem?.id === item.id;
                           const poolIndex = getItemPoolIndex(item.id);
-                          const isInPool = !isGuest && poolIndex >= 0 && draftPoolIndices.has(poolIndex);
+                          const isInPool =
+                            !isGuest && poolIndex >= 0 && draftPoolIndices.has(poolIndex);
                           const isCursorItem = isController && idx === cursorIdx;
                           const cell = (
                             <TouchableOpacity
@@ -814,10 +838,7 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                             const item = allItemsById[itemId as string];
                             if (!item) return null;
                             return (
-                              <View
-                                key={itemId as string}
-                                style={styles.itemsetMemberRow}
-                              >
+                              <View key={itemId as string} style={styles.itemsetMemberRow}>
                                 <ImageBackground
                                   source={squareFrameSource}
                                   style={[
@@ -956,35 +977,42 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                   {(() => {
                     const tiers = getItemStatTiers(selectedItem);
                     const statEntries: { label: string; icon: any; value: string }[] = [];
-                    if (tiers.atk) statEntries.push({ label: 'ATK', icon: statIconATK, value: tiers.atk });
-                    if (tiers.arm) statEntries.push({ label: 'ARM', icon: statIconARM, value: tiers.arm });
-                    if (tiers.spd) statEntries.push({ label: 'SPD', icon: statIconSPD, value: tiers.spd });
-                    if (tiers.dig) statEntries.push({ label: 'DIG', icon: statIconDIG, value: tiers.dig });
-                    if (tiers.hp) statEntries.push({ label: 'HP', icon: statIconHP, value: tiers.hp });
+                    if (tiers.atk)
+                      statEntries.push({ label: 'ATK', icon: statIconATK, value: tiers.atk });
+                    if (tiers.arm)
+                      statEntries.push({ label: 'ARM', icon: statIconARM, value: tiers.arm });
+                    if (tiers.spd)
+                      statEntries.push({ label: 'SPD', icon: statIconSPD, value: tiers.spd });
+                    if (tiers.dig)
+                      statEntries.push({ label: 'DIG', icon: statIconDIG, value: tiers.dig });
+                    if (tiers.hp)
+                      statEntries.push({ label: 'HP', icon: statIconHP, value: tiers.hp });
                     if (statEntries.length === 0) return null;
                     return (
-                    <View style={styles.statsContainer}>
-                      <Text style={[styles.statsHeader, isCompact && compactStyles.statsHeader]}>
-                        Stats
-                      </Text>
-                      {statEntries.map((stat) => (
-                        <View key={stat.label} style={styles.statRow}>
-                          <View style={styles.statLabelRow}>
-                            <Image
-                              source={stat.icon}
-                              style={[styles.statIcon, isCompact && compactStyles.statIcon]}
-                              resizeMode="contain"
-                            />
-                            <Text style={[styles.statLabel, isCompact && compactStyles.statLabel]}>
-                              {stat.label}
+                      <View style={styles.statsContainer}>
+                        <Text style={[styles.statsHeader, isCompact && compactStyles.statsHeader]}>
+                          Stats
+                        </Text>
+                        {statEntries.map((stat) => (
+                          <View key={stat.label} style={styles.statRow}>
+                            <View style={styles.statLabelRow}>
+                              <Image
+                                source={stat.icon}
+                                style={[styles.statIcon, isCompact && compactStyles.statIcon]}
+                                resizeMode="contain"
+                              />
+                              <Text
+                                style={[styles.statLabel, isCompact && compactStyles.statLabel]}
+                              >
+                                {stat.label}
+                              </Text>
+                            </View>
+                            <Text style={[styles.statValue, isCompact && compactStyles.statValue]}>
+                              {stat.value}
                             </Text>
                           </View>
-                          <Text style={[styles.statValue, isCompact && compactStyles.statValue]}>
-                            {stat.value}
-                          </Text>
-                        </View>
-                      ))}
-                    </View>
+                        ))}
+                      </View>
                     );
                   })()}
 
@@ -1031,6 +1059,11 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
           </View>
         </View>
       </View>
+      <HubSettingsModal
+        visible={showSettingsModal}
+        onClose={() => setShowSettingsModal(false)}
+        onDisconnect={handleDisconnect}
+      />
       <ControllerHints hints={controllerHints} horizontal />
     </Animated.View>
   );

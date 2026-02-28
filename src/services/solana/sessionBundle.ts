@@ -28,10 +28,10 @@ import {
   deriveMapVrfStatePda,
   derivePoiVrfStatePda,
   deriveGameplayVrfStatePda,
+  deriveDuelSessionPda,
   DEFAULT_SESSION_SIGNER_FUNDING,
 } from './constants';
 import { SOLANA_CONFIG } from './config';
-import { deriveDuelSessionPda } from './constants';
 import { buildResetDuelEntryInstruction, deriveDuelEntryPda } from './duels';
 import { createGameplayStateProgram } from './programs';
 
@@ -75,10 +75,11 @@ export async function createSessionBundle(
   programs: SessionPrograms,
   mainWallet: PublicKey,
   sessionSigner: PublicKey,
-  campaignLevel: number
+  campaignLevel: number,
+  nonce: bigint | number = 0
 ): Promise<SessionBundleResult> {
   // Derive all PDAs
-  const [sessionPda] = deriveSessionPda(mainWallet, campaignLevel);
+  const [sessionPda] = deriveSessionPda(mainWallet, campaignLevel, nonce);
   const [sessionCounterPda] = deriveSessionCounterPda();
   const [profilePda] = derivePlayerProfilePda(mainWallet);
   const [gameStatePda] = deriveGameStatePda(sessionPda);
@@ -211,7 +212,8 @@ export async function abandonSession(
   inventoryPda: PublicKey,
   playerPubkey: PublicKey,
   sessionSignerPubkey: PublicKey,
-  campaignLevel: number
+  campaignLevel: number,
+  duelNonce: bigint | number = 0
 ): Promise<Transaction> {
   // Derive all PDAs that need to be closed
   const [gameStatePda] = deriveGameStatePda(sessionPda);
@@ -222,7 +224,7 @@ export async function abandonSession(
   const transaction = new Transaction();
 
   // Auto-detect duel sessions and prepend reset_duel_entry to refund and clean up
-  const [duelPda] = deriveDuelSessionPda(playerPubkey);
+  const [duelPda] = deriveDuelSessionPda(playerPubkey, duelNonce);
   const isDuelSession = sessionPda.equals(duelPda);
   if (isDuelSession) {
     const [duelEntryPda] = deriveDuelEntryPda(sessionPda);
@@ -268,7 +270,7 @@ export async function abandonSession(
       gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
       mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
       poiSystemProgram: SOLANA_CONFIG.programs.poiSystem,
-    })
+    } as any)
     .instruction();
   transaction.add(abandonSessionIx);
 
@@ -287,7 +289,8 @@ export async function validateSessionCreation(
   connection: Connection,
   mainWallet: PublicKey,
   campaignLevel: number,
-  profile: { availableRuns: number; highestLevelUnlocked: number }
+  profile: { availableRuns: number; highestLevelUnlocked: number },
+  nonce: bigint | number = 0
 ): Promise<{ valid: boolean; error?: string }> {
   if (profile.availableRuns <= 0) {
     return { valid: false, error: 'No available sessions remaining' };
@@ -301,7 +304,7 @@ export async function validateSessionCreation(
     return { valid: false, error: 'Invalid campaign level' };
   }
 
-  const [sessionPda] = deriveSessionPda(mainWallet, campaignLevel);
+  const [sessionPda] = deriveSessionPda(mainWallet, campaignLevel, nonce);
   const existingSession = await connection.getAccountInfo(sessionPda);
   if (existingSession) {
     return { valid: false, error: 'Session already exists for this level' };

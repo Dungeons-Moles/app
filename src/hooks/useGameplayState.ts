@@ -133,7 +133,7 @@ export function useGameplayState(): UseGameplayStateReturn {
   const { wallet } = useWallet();
 
   const [gameState, setGameState] = useState<GameState | null>(null);
-  const [gameStatePda, setGameStatePda] = useState<PublicKey | null>(null);
+  const [gameStatePda, setGameStatePdaState] = useState<PublicKey | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('synced');
@@ -213,6 +213,13 @@ export function useGameplayState(): UseGameplayStateReturn {
     refreshInFlightRef.current = refreshPromise;
     return refreshPromise;
   }, [gameStatePda, program]);
+
+  const setGameStatePda = useCallback((pda: PublicKey | null) => {
+    // Clear stale on-chain snapshot immediately when switching sessions.
+    setGameState(null);
+    setGameStatePdaState(pda);
+    setSyncStatus(pda ? 'syncing' : 'synced');
+  }, []);
 
   /**
    * Initialize a new game state for a session.

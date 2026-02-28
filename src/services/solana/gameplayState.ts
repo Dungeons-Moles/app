@@ -132,7 +132,7 @@ export async function movePlayer(
   // Some local flows can leave the PDA allocated but not initialized, which
   // triggers Anchor 3012 (AccountNotInitialized) if passed.
   // Must pass null explicitly for Anchor to skip optional accounts — omitting
-  // the key causes validateAccounts to error with "not provided".
+  // the key or passing undefined can trigger validateAccounts "not provided".
   const gameplayVrfStateAccount = await (program.account as any)?.gameplayVrfState
     ?.fetchNullable(gameplayVrfStatePda)
     .catch(() => null);
@@ -152,7 +152,7 @@ export async function movePlayer(
       poiSystemProgram: SOLANA_CONFIG.programs.poiSystem,
       gameplayVrfState: gameplayVrfStateAccount ? gameplayVrfStatePda : null,
       player: sessionSignerKeypair.publicKey,
-    })
+    } as any)
     .transaction();
 
   // move_player can resolve boss fights / gauntlet echoes inline on the last

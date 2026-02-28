@@ -23,6 +23,7 @@ import { useControllerAction } from '../hooks/useControllerAction';
 import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHints';
 import { useInputMode } from '../hooks/useInputMode';
 import { FocusGlow } from '../components/ui/FocusGlow';
+import { HubSettingsModal } from '../components/ui/HubSettingsModal';
 
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.png');
 const STAINS_BACKGROUND = require('../../assets/ui/backgrounds/stains-background.png');
@@ -61,7 +62,7 @@ function isMissingAccountError(err: unknown): boolean {
 
 export function GauntletRankingScreen({ navigation, route }: GauntletRankingScreenProps) {
   const returnTo = route.params?.returnTo;
-  const { wallet } = useWallet();
+  const { wallet, disconnect } = useWallet();
   const { connection } = useSolanaConnection();
   const isCompact = useScreenVariant() === 'compact';
   const [isLoading, setIsLoading] = useState(false);
@@ -193,6 +194,7 @@ export function GauntletRankingScreen({ navigation, route }: GauntletRankingScre
   const inputMode = useInputMode();
   const isController = inputMode === 'controller';
   const [actionFocus, setActionFocus] = useState(0); // 0 = Refresh, 1 = Prev, 2 = Next
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
 
   const handleBack = useCallback(() => {
     if (returnTo) {
@@ -202,9 +204,18 @@ export function GauntletRankingScreen({ navigation, route }: GauntletRankingScre
     }
   }, [navigation, returnTo]);
 
+  const handleDisconnect = useCallback(() => {
+    disconnect();
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'Account' }],
+    });
+  }, [disconnect, navigation]);
+
   useControllerAction(
     {
       onB: handleBack,
+      onStart: () => setShowSettingsModal(true),
       onA: () => {
         if (actionFocus === 0) void loadRanking();
         else if (actionFocus === 1) setPage((p) => Math.max(0, p - 1));
@@ -213,7 +224,7 @@ export function GauntletRankingScreen({ navigation, route }: GauntletRankingScre
       onDPadLeft: () => setActionFocus((f) => Math.max(0, f - 1)),
       onDPadRight: () => setActionFocus((f) => Math.min(totalPages > 1 ? 2 : 0, f + 1)),
     },
-    isController
+    isController && !showSettingsModal
   );
 
   const controllerHints: ButtonHint[] = [
@@ -401,6 +412,11 @@ export function GauntletRankingScreen({ navigation, route }: GauntletRankingScre
           </View>
         )}
       </View>
+      <HubSettingsModal
+        visible={showSettingsModal}
+        onClose={() => setShowSettingsModal(false)}
+        onDisconnect={handleDisconnect}
+      />
       <ControllerHints hints={controllerHints} horizontal />
     </View>
   );

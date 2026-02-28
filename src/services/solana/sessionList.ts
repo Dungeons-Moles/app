@@ -28,9 +28,10 @@ function isSupportedOwner(owner: PublicKey, primaryProgramId: PublicKey): boolea
 async function hasCompatibleSessionRuntime(
   connection: Connection,
   playerPubkey: PublicKey,
-  onChainLevel: number
+  onChainLevel: number,
+  campaignNonce: bigint | number = 0
 ): Promise<boolean> {
-  const [sessionPda] = deriveSessionPda(playerPubkey, onChainLevel);
+  const [sessionPda] = deriveSessionPda(playerPubkey, onChainLevel, campaignNonce);
   const [gameStatePda] = deriveGameStatePda(sessionPda);
   const [sessionInfo, gameStateInfo] = await connection.getMultipleAccountsInfo([sessionPda, gameStatePda]);
   if (!sessionInfo || !gameStateInfo) {
@@ -169,18 +170,20 @@ export interface InventoryItem {
  * @param sessionProgram - Session manager program
  * @param gameplayProgram - Gameplay state program
  * @param playerPubkey - Player's main wallet
+ * @param campaignNonce - Current campaign nonce from SessionNonces (default 0)
  * @returns Array of active sessions sorted by level
  */
 export async function fetchSessionList(
   connection: Connection,
   sessionProgram: Program,
   gameplayProgram: Program,
-  playerPubkey: PublicKey
+  playerPubkey: PublicKey,
+  campaignNonce: bigint | number = 0
 ): Promise<ActiveSession[]> {
   const sessions: ActiveSession[] = [];
   const candidatePdas: PublicKey[] = [];
   for (let onChainLevel = 1; onChainLevel <= 40; onChainLevel += 1) {
-    const [sessionPda] = deriveSessionPda(playerPubkey, onChainLevel);
+    const [sessionPda] = deriveSessionPda(playerPubkey, onChainLevel, campaignNonce);
     candidatePdas.push(sessionPda);
   }
 
@@ -262,10 +265,11 @@ export async function fetchSessionList(
 export async function checkSessionExists(
   connection: Connection,
   playerPubkey: PublicKey,
-  level: number
+  level: number,
+  campaignNonce: bigint | number = 0
 ): Promise<boolean> {
   const onChainLevel = level + 1; // Convert 0-indexed frontend to 1-indexed on-chain
-  return hasCompatibleSessionRuntime(connection, playerPubkey, onChainLevel);
+  return hasCompatibleSessionRuntime(connection, playerPubkey, onChainLevel, campaignNonce);
 }
 
 /**
@@ -279,14 +283,15 @@ export async function checkSessionExists(
 export async function getSessionForLevel(
   connection: Connection,
   playerPubkey: PublicKey,
-  level: number
+  level: number,
+  campaignNonce: bigint | number = 0
 ): Promise<PublicKey | null> {
   const onChainLevel = level + 1; // Convert 0-indexed frontend to 1-indexed on-chain
-  const isCompatible = await hasCompatibleSessionRuntime(connection, playerPubkey, onChainLevel);
+  const isCompatible = await hasCompatibleSessionRuntime(connection, playerPubkey, onChainLevel, campaignNonce);
   if (!isCompatible) {
     return null;
   }
-  const [sessionPda] = deriveSessionPda(playerPubkey, onChainLevel);
+  const [sessionPda] = deriveSessionPda(playerPubkey, onChainLevel, campaignNonce);
   return sessionPda;
 }
 
@@ -425,11 +430,12 @@ export async function fetchSessionRawData(
  */
 export async function getSessionCount(
   connection: Connection,
-  playerPubkey: PublicKey
+  playerPubkey: PublicKey,
+  campaignNonce: bigint | number = 0
 ): Promise<number> {
   const checks: PublicKey[] = [];
   for (let onChainLevel = 1; onChainLevel <= 40; onChainLevel += 1) {
-    const [sessionPda] = deriveSessionPda(playerPubkey, onChainLevel);
+    const [sessionPda] = deriveSessionPda(playerPubkey, onChainLevel, campaignNonce);
     checks.push(sessionPda);
   }
   const infos = await connection.getMultipleAccountsInfo(checks);
@@ -445,11 +451,12 @@ export async function getSessionCount(
  */
 export async function getActiveLevels(
   connection: Connection,
-  playerPubkey: PublicKey
+  playerPubkey: PublicKey,
+  campaignNonce: bigint | number = 0
 ): Promise<number[]> {
   const active: number[] = [];
   for (let onChainLevel = 1; onChainLevel <= 40; onChainLevel += 1) {
-    const [sessionPda] = deriveSessionPda(playerPubkey, onChainLevel);
+    const [sessionPda] = deriveSessionPda(playerPubkey, onChainLevel, campaignNonce);
     const account = await connection.getAccountInfo(sessionPda, 'processed');
     if (account) {
       active.push(onChainLevel);

@@ -25,6 +25,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation';
 import { CombatProvider, useCombat } from '../contexts/CombatContext';
 import { useProfile } from '../contexts/ProfileContext';
+import { useWallet } from '../contexts/WalletContext';
 import { useIsFocused } from '@react-navigation/native';
 import { useScreenVariant } from '../contexts/ScreenVariantContext';
 import { usePitDraft } from '../hooks/usePitDraft';
@@ -36,6 +37,7 @@ import { useControllerAction } from '../hooks/useControllerAction';
 import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHints';
 import { useInputMode } from '../hooks/useInputMode';
 import { FocusGlow } from '../components/ui/FocusGlow';
+import { HubSettingsModal } from '../components/ui/HubSettingsModal';
 import { useEquippedSkinImage } from '../hooks/useEquippedSkinImage';
 import { useAudio } from '../contexts/AudioContext';
 import { usePaymentToken } from '@/hooks/usePaymentToken';
@@ -97,9 +99,11 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
   const isFocused = useIsFocused();
   const isCompact = useScreenVariant() === 'compact';
   const { playBgm } = useAudio();
+  const { disconnect } = useWallet();
 
   const payment = usePaymentToken(BigInt(PIT_DRAFT_ENTRY_LAMPORTS));
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
 
   // Play victory/defeat music on result phase
   useEffect(() => {
@@ -153,6 +157,14 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
     navigation.goBack();
   }, [navigation, pitDraft]);
 
+  const handleDisconnect = useCallback(() => {
+    disconnect();
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'Account' }],
+    });
+  }, [disconnect, navigation]);
+
   // --- Controller navigation ---
   const inputMode = useInputMode();
   const isController = inputMode === 'controller';
@@ -192,10 +204,11 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
   );
 
   useControllerAction(
-    showPaymentModal
+    showPaymentModal || showSettingsModal
       ? {}
       : {
           onB: handleBack,
+          onStart: () => setShowSettingsModal(true),
           onA: panelFocus === 0 ? handleHistory : !pitDraft.isLoading ? handleEnter : undefined,
           onDPadLeft: () => setPanelFocus(0),
           onDPadRight: () => setPanelFocus(1),
@@ -208,15 +221,28 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
   // Controller for result/error phases
   useControllerAction(
     {
-      onA: pitDraft.phase === 'result' ? handleBack : pitDraft.phase === 'error' ? pitDraft.reset : undefined,
+      onA:
+        pitDraft.phase === 'result'
+          ? handleBack
+          : pitDraft.phase === 'error'
+            ? pitDraft.reset
+            : undefined,
       onB: pitDraft.phase === 'error' ? handleBack : undefined,
+      onStart: () => setShowSettingsModal(true),
     },
-    isController && isFocused && (pitDraft.phase === 'result' || pitDraft.phase === 'error'),
+    isController &&
+      isFocused &&
+      (pitDraft.phase === 'result' || pitDraft.phase === 'error') &&
+      !showSettingsModal
   );
 
-  const resultHints: ButtonHint[] = pitDraft.phase === 'error'
-    ? [{ button: 'A', label: 'Try Again' }, { button: 'B', label: 'Back' }]
-    : [{ button: 'A', label: 'Back to Hub' }];
+  const resultHints: ButtonHint[] =
+    pitDraft.phase === 'error'
+      ? [
+          { button: 'A', label: 'Try Again' },
+          { button: 'B', label: 'Back' },
+        ]
+      : [{ button: 'A', label: 'Back to Hub' }];
 
   const controllerHints: ButtonHint[] = [
     { button: 'L1R1', label: 'Currency' },
@@ -235,7 +261,11 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
 
     return (
       <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
-        <ImageBackground source={BACKGROUND_IMAGE} style={styles.backgroundImage} resizeMode="cover">
+        <ImageBackground
+          source={BACKGROUND_IMAGE}
+          style={styles.backgroundImage}
+          resizeMode="cover"
+        >
           <Image source={STAINS_BACKGROUND} style={styles.stainsOverlay} resizeMode="cover" />
           <View style={styles.resultOverlay}>
             <View style={styles.centerContent}>
@@ -281,13 +311,21 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
                   )}
 
                   <View style={styles.resultStatFrameCompact}>
-                    <Image source={SQUARE_FRAME} style={styles.resultStatFrameBg} resizeMode="stretch" />
+                    <Image
+                      source={SQUARE_FRAME}
+                      style={styles.resultStatFrameBg}
+                      resizeMode="stretch"
+                    />
                     <Text style={styles.resultStatValueCompact}>{turns}</Text>
                     <Text style={styles.resultStatLabelCompact}>Turns</Text>
                   </View>
 
                   <View style={styles.resultButtonSlotCompact}>
-                    <TouchableOpacity onPress={handleBack} activeOpacity={0.7} style={styles.resultButtonPressable}>
+                    <TouchableOpacity
+                      onPress={handleBack}
+                      activeOpacity={0.7}
+                      style={styles.resultButtonPressable}
+                    >
                       <ImageBackground
                         source={isWinner ? BUTTON_GREEN : BUTTON_BG}
                         style={styles.resultButtonImage}
@@ -340,18 +378,24 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
                   </View>
 
                   <View style={styles.resultRightColumn}>
-                    {isWinner && (
-                      <Text style={styles.payoutText}>+{payoutSOL} SOL</Text>
-                    )}
+                    {isWinner && <Text style={styles.payoutText}>+{payoutSOL} SOL</Text>}
 
                     <View style={styles.resultStatFrame}>
-                      <Image source={SQUARE_FRAME} style={styles.resultStatFrameBg} resizeMode="stretch" />
+                      <Image
+                        source={SQUARE_FRAME}
+                        style={styles.resultStatFrameBg}
+                        resizeMode="stretch"
+                      />
                       <Text style={styles.resultStatValue}>{turns}</Text>
                       <Text style={styles.resultStatLabel}>Turns</Text>
                     </View>
 
                     <View style={styles.resultButtonSlot}>
-                      <TouchableOpacity onPress={handleBack} activeOpacity={0.7} style={styles.resultButtonPressable}>
+                      <TouchableOpacity
+                        onPress={handleBack}
+                        activeOpacity={0.7}
+                        style={styles.resultButtonPressable}
+                      >
                         <ImageBackground
                           source={isWinner ? BUTTON_GREEN : BUTTON_BG}
                           style={styles.resultButtonImage}
@@ -367,6 +411,11 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
             </View>
           </View>
         </ImageBackground>
+        <HubSettingsModal
+          visible={showSettingsModal}
+          onClose={() => setShowSettingsModal(false)}
+          onDisconnect={handleDisconnect}
+        />
         <ControllerHints hints={resultHints} horizontal />
       </Animated.View>
     );
@@ -376,7 +425,11 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
   if (pitDraft.phase === 'confirm') {
     return (
       <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
-        <ImageBackground source={BACKGROUND_IMAGE} style={styles.backgroundImage} resizeMode="cover">
+        <ImageBackground
+          source={BACKGROUND_IMAGE}
+          style={styles.backgroundImage}
+          resizeMode="cover"
+        >
           <Image source={STAINS_BACKGROUND} style={styles.stainsOverlay} resizeMode="cover" />
           <View style={styles.confirmContent}>
             {/* Header */}
@@ -414,36 +467,58 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
             {/* Panel with all content overlaid */}
             <View style={styles.confirmCenterContent}>
               <View style={[styles.panelWrapper, isCompact && compactStyles.panelWrapper]}>
-                <Image
-                  source={PVP_MODES_PANEL}
-                  style={styles.pvpModesPanel}
-                  resizeMode="contain"
-                />
-                <View
-                  style={[styles.panelOverlay, isCompact && compactStyles.panelOverlay]}
-                >
-                  <View style={[styles.panelRow, styles.panelRowFee, isCompact && compactStyles.panelRowFee]}>
+                <Image source={PVP_MODES_PANEL} style={styles.pvpModesPanel} resizeMode="contain" />
+                <View style={[styles.panelOverlay, isCompact && compactStyles.panelOverlay]}>
+                  <View
+                    style={[
+                      styles.panelRow,
+                      styles.panelRowFee,
+                      isCompact && compactStyles.panelRowFee,
+                    ]}
+                  >
                     <Text style={[styles.panelTextFee, isCompact && compactStyles.panelText]}>
                       Entry fee: {entryFeeSOL} SOL
                     </Text>
-                    <Image source={SOL_PILE} style={[styles.panelIcon, isCompact && compactStyles.panelIcon]} resizeMode="contain" />
+                    <Image
+                      source={SOL_PILE}
+                      style={[styles.panelIcon, isCompact && compactStyles.panelIcon]}
+                      resizeMode="contain"
+                    />
                   </View>
-                  <View style={[styles.panelRow, styles.panelRowPot, isCompact && compactStyles.panelRowPot]}>
+                  <View
+                    style={[
+                      styles.panelRow,
+                      styles.panelRowPot,
+                      isCompact && compactStyles.panelRowPot,
+                    ]}
+                  >
                     <Text style={[styles.panelTextBody, isCompact && compactStyles.panelText]}>
                       Winner takes{'\n'}it all
                     </Text>
-                    <Image source={CHEST} style={[styles.panelIcon, isCompact && compactStyles.panelIcon]} resizeMode="contain" />
+                    <Image
+                      source={CHEST}
+                      style={[styles.panelIcon, isCompact && compactStyles.panelIcon]}
+                      resizeMode="contain"
+                    />
                   </View>
-                  <View style={[styles.panelRow, styles.panelRowItems, isCompact && compactStyles.panelRowItems]}>
+                  <View
+                    style={[
+                      styles.panelRow,
+                      styles.panelRowItems,
+                      isCompact && compactStyles.panelRowItems,
+                    ]}
+                  >
                     <Text style={[styles.panelTextBody, isCompact && compactStyles.panelText]}>
                       Items drafted from{'\n'}your unlocked pool
                     </Text>
-                    <Image source={ITEMS} style={[styles.panelIcon, isCompact && compactStyles.panelIcon]} resizeMode="contain" />
+                    <Image
+                      source={ITEMS}
+                      style={[styles.panelIcon, isCompact && compactStyles.panelIcon]}
+                      resizeMode="contain"
+                    />
                   </View>
 
-                  <View
-                    style={[styles.panelButtons, isCompact && compactStyles.panelButtons]}
-                  >
+                  <View style={[styles.panelButtons, isCompact && compactStyles.panelButtons]}>
                     <FocusGlow active={isController && panelFocus === 0}>
                       <TouchableOpacity
                         onPress={() => navigation.navigate('PitDraftHistory')}
@@ -491,7 +566,9 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
               </View>
 
               {/* Token selector — below the panel */}
-              <View style={[styles.tokenSelectorWrap, isCompact && compactStyles.tokenSelectorWrap]}>
+              <View
+                style={[styles.tokenSelectorWrap, isCompact && compactStyles.tokenSelectorWrap]}
+              >
                 <PaymentTokenSelector
                   tokens={payment.supportedTokens}
                   selectedToken={payment.selectedToken}
@@ -517,6 +594,11 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
             onCancel={() => setShowPaymentModal(false)}
           />
         )}
+        <HubSettingsModal
+          visible={showSettingsModal}
+          onClose={() => setShowSettingsModal(false)}
+          onDisconnect={handleDisconnect}
+        />
         <ControllerHints hints={controllerHints} />
       </Animated.View>
     );
@@ -528,7 +610,11 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
 
     return (
       <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
-        <ImageBackground source={BACKGROUND_IMAGE} style={styles.backgroundImage} resizeMode="cover">
+        <ImageBackground
+          source={BACKGROUND_IMAGE}
+          style={styles.backgroundImage}
+          resizeMode="cover"
+        >
           <Image source={STAINS_BACKGROUND} style={styles.stainsOverlay} resizeMode="cover" />
           <View style={styles.confirmContent}>
             {/* Header */}
@@ -581,6 +667,11 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
             </View>
           </View>
         </ImageBackground>
+        <HubSettingsModal
+          visible={showSettingsModal}
+          onClose={() => setShowSettingsModal(false)}
+          onDisconnect={handleDisconnect}
+        />
         <ControllerHints hints={queuingHints} horizontal />
       </Animated.View>
     );
@@ -632,9 +723,12 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
           </View>
         </View>
       </ImageBackground>
-      {pitDraft.phase === 'error' && (
-        <ControllerHints hints={resultHints} horizontal />
-      )}
+      <HubSettingsModal
+        visible={showSettingsModal}
+        onClose={() => setShowSettingsModal(false)}
+        onDisconnect={handleDisconnect}
+      />
+      {pitDraft.phase === 'error' && <ControllerHints hints={resultHints} horizontal />}
     </Animated.View>
   );
 }
@@ -1021,7 +1115,12 @@ const styles = StyleSheet.create({
   buttonRow: { flexDirection: 'row', gap: 12, marginTop: 8 },
   actionButton: { width: 140, height: 52, justifyContent: 'center', alignItems: 'center' },
   buttonText: { fontFamily: Typography.button, fontSize: 14, color: '#3d2b1f', marginBottom: 4 },
-  buttonTextPrimary: { fontFamily: Typography.button, fontSize: 14, color: '#1a1a1a', marginBottom: 4 },
+  buttonTextPrimary: {
+    fontFamily: Typography.button,
+    fontSize: 14,
+    color: '#1a1a1a',
+    marginBottom: 4,
+  },
   payoutText: {
     fontFamily: Typography.number,
     fontSize: 24,
@@ -1029,8 +1128,13 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontWeight: 'bold',
   },
-  errorText: { fontFamily: Typography.body, fontSize: 14, color: '#F44336', textAlign: 'center', lineHeight: 20 },
-
+  errorText: {
+    fontFamily: Typography.body,
+    fontSize: 14,
+    color: '#F44336',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
 });
 
 const compactStyles = StyleSheet.create({

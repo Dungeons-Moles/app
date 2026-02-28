@@ -95,8 +95,8 @@ import {
   getDiscoveredWaypoints,
   canFastTravel,
 } from '../entities/pois';
-import { moveEnemiesNight, isWithinSightRange } from '../map/pathfinding';
-import { SIGHT_RADIUS } from './constants';
+import { canInteractWithPOI } from '../../data/pois';
+import { moveEnemiesNight } from '../map/pathfinding';
 import { getTierFromRarity } from '../../data/gear';
 import { BOSSES } from '../../data/bosses';
 import { ENEMY_DEFINITIONS } from '../entities/enemies';
@@ -583,6 +583,7 @@ function handleMove(state: GameState, direction: Direction): GameState {
 
   // Check for POI at target position (T099)
   const poiAtTarget = findPOIAtPosition(newState.map, targetPos);
+  const isNight = newState.time.phase === TimePhase.Night;
   if (poiAtTarget && !poiAtTarget.visited) {
     // Special case: Survey Beacon (L6) auto-activates on step
     if (poiAtTarget.definitionId === 'L6') {
@@ -591,8 +592,9 @@ function handleMove(state: GameState, direction: Direction): GameState {
         ...newState,
         map: markPOIVisited(newState.map, poiAtTarget.id),
       };
-    } else {
-      // Create POI interaction if valid
+    } else if (canInteractWithPOI(poiAtTarget.definitionId, isNight)) {
+      // Auto-open POI on step (skip night-only POIs during day;
+      // manual 'A' button still opens them with disabled options)
       const interaction = createPOIInteraction(poiAtTarget, newState);
       if (interaction) {
         // Mark Rail Waypoints as discovered
@@ -611,8 +613,9 @@ function handleMove(state: GameState, direction: Direction): GameState {
   }
 
   // T133: Move enemies during Night phase
+  // On-chain: detection uses OLD position, chase uses NEW position
   if (newState.time.phase === TimePhase.Night) {
-    newState = handleNightEnemyMovement(newState);
+    newState = handleNightEnemyMovement(newState, state.player.position);
   }
 
   return newState;
@@ -745,8 +748,9 @@ function handleBreakWall(state: GameState): GameState {
     };
   }
 
+  // On-chain: detection uses OLD position, chase uses NEW position
   if (newState.time.phase === TimePhase.Night) {
-    newState = handleNightEnemyMovement(newState);
+    newState = handleNightEnemyMovement(newState, state.player.position);
   }
 
   return newState;
@@ -1185,7 +1189,6 @@ function handleInteractPOI(state: GameState, poiId: string): GameState {
   // Create the POI interaction state
   const interaction = createPOIInteraction(poi, state);
   if (!interaction) {
-    // POI cannot be interacted with (e.g., night-only during day)
     return state;
   }
 
@@ -1406,34 +1409,25 @@ function handleReturnToMenu(state: GameState): GameState {
 
 /**
  * Handle enemy movement during Night phase.
- * Enemies within sight range move toward the player.
+ * Matches on-chain behavior: enemies within Chebyshev distance 1-3 of the
+ * OLD player position move one step toward the NEW player position.
  * If an enemy reaches the player tile, combat triggers.
+ *
+ * @param state - Current game state (player already at NEW position)
+ * @param oldPlayerPosition - Player's position BEFORE this move (for detection range)
  */
-function handleNightEnemyMovement(state: GameState): GameState {
-  const playerPos = state.player.position;
+function handleNightEnemyMovement(state: GameState, oldPlayerPosition: Position): GameState {
+  const chasePosition = state.player.position;
 
-  // Filter enemies within Night sight range
-  const enemiesInRange = state.map.enemies.filter((enemy) =>
-    isWithinSightRange(enemy.position, playerPos, SIGHT_RADIUS.night)
+  // Pass ALL enemies to moveEnemiesNight (matching on-chain which iterates all enemies).
+  // Detection range (Chebyshev distance 1-3) is checked inside moveEnemiesNight.
+  const { updatedEnemies, combatTriggered } = moveEnemiesNight(
+    state.map,
+    oldPlayerPosition,
+    chasePosition
   );
 
-  // If no enemies in range, no movement needed
-  if (enemiesInRange.length === 0) {
-    return state;
-  }
-
-  // Create a map with only enemies in range for movement
-  const mapForPathfinding = {
-    ...state.map,
-    enemies: enemiesInRange,
-  };
-
-  // Move enemies toward player
-  const { updatedEnemies, combatTriggered } = moveEnemiesNight(mapForPathfinding, playerPos);
-
-  // Merge updated enemy positions back into full enemy list
-  const updatedEnemyMap = new Map(updatedEnemies.map((e) => [e.id, e]));
-  const finalEnemies = state.map.enemies.map((enemy) => updatedEnemyMap.get(enemy.id) || enemy);
+  const finalEnemies = updatedEnemies;
 
   // Create new state with updated enemies
   const newState: GameState = {
