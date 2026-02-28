@@ -449,6 +449,86 @@ export function useSessionManager() {
     }
   }, [baseConnection, fetchSession, signAndSendTransaction, wallet.publicKey, baseWriteProgram]);
 
+  const overrideDuelSession = useCallback(async (): Promise<TransactionResult> => {
+    if (!wallet.publicKey || !baseWriteProgram) {
+      return { success: false, error: 'Wallet not connected' };
+    }
+
+    if (isMountedRef.current) {
+      setIsLoading(true);
+      setError(null);
+    }
+
+    try {
+      const [sessionNoncesPda] = deriveSessionNoncesPda(wallet.publicKey);
+      const transaction = await baseWriteProgram.methods
+        .overrideDuelSession()
+        .accounts({
+          sessionNonces: sessionNoncesPda,
+          player: wallet.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .transaction();
+
+      const signature = await signAndSendTransaction(transaction, {
+        connection: baseConnection,
+      });
+      await baseConnection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
+
+      activeSessionPdaRef.current = null;
+      setActiveSessionPdaState(null);
+      await fetchSession();
+
+      return { success: true, signature };
+    } catch (txError) {
+      const message = getUserErrorMessage(txError, 'session_manager');
+      if (isMountedRef.current) setError(message);
+      return { success: false, error: message };
+    } finally {
+      if (isMountedRef.current) setIsLoading(false);
+    }
+  }, [baseConnection, fetchSession, signAndSendTransaction, wallet.publicKey, baseWriteProgram]);
+
+  const overrideGauntletSession = useCallback(async (): Promise<TransactionResult> => {
+    if (!wallet.publicKey || !baseWriteProgram) {
+      return { success: false, error: 'Wallet not connected' };
+    }
+
+    if (isMountedRef.current) {
+      setIsLoading(true);
+      setError(null);
+    }
+
+    try {
+      const [sessionNoncesPda] = deriveSessionNoncesPda(wallet.publicKey);
+      const transaction = await baseWriteProgram.methods
+        .overrideGauntletSession()
+        .accounts({
+          sessionNonces: sessionNoncesPda,
+          player: wallet.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .transaction();
+
+      const signature = await signAndSendTransaction(transaction, {
+        connection: baseConnection,
+      });
+      await baseConnection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
+
+      activeSessionPdaRef.current = null;
+      setActiveSessionPdaState(null);
+      await fetchSession();
+
+      return { success: true, signature };
+    } catch (txError) {
+      const message = getUserErrorMessage(txError, 'session_manager');
+      if (isMountedRef.current) setError(message);
+      return { success: false, error: message };
+    } finally {
+      if (isMountedRef.current) setIsLoading(false);
+    }
+  }, [baseConnection, fetchSession, signAndSendTransaction, wallet.publicKey, baseWriteProgram]);
+
   const buildStartDuelSessionTransaction = useCallback(
     async (
       sessionSignerPublicKey: PublicKey
@@ -2047,6 +2127,8 @@ export function useSessionManager() {
     fetchSession,
     startSession,
     overrideCampaignSession,
+    overrideDuelSession,
+    overrideGauntletSession,
     buildStartDuelSessionTransaction,
     buildStartGauntletSessionTransaction,
     buildStartSessionTransaction,

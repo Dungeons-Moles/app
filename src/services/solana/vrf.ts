@@ -10,15 +10,10 @@
  * signer and providing crypto.getRandomValues() randomness.
  */
 
-import { ComputeBudgetProgram, PublicKey, Transaction, SystemProgram } from '@solana/web3.js';
+import { PublicKey, Transaction, TransactionInstruction, SystemProgram } from '@solana/web3.js';
 import type { Connection, Keypair } from '@solana/web3.js';
 import type { Program } from '@coral-xyz/anchor';
-import {
-  deriveMapVrfStatePda,
-  derivePoiVrfStatePda,
-  deriveGameplayVrfStatePda,
-  deriveGeneratedMapPda,
-} from './constants';
+import { deriveMapVrfStatePda, derivePoiVrfStatePda, deriveGameplayVrfStatePda } from './constants';
 
 // ============================================================================
 // Randomness Generation
@@ -40,35 +35,25 @@ export function generateRandomness(): number[] {
 }
 
 // ============================================================================
-// All-VRF Request + Fulfill (Duel / Gauntlet)
+// VRF Request + Fulfill (Duel / Gauntlet)
 // ============================================================================
 
 /**
- * Build a transaction that requests and fulfills VRF for all three programs.
- * Bundles 6 instructions: request+fulfill pairs for map, poi, and gameplay.
- *
- * Used for PvP modes (duel/gauntlet) that need all three VRF states.
+ * Build request+fulfill instructions for map VRF.
+ * Intended to run before start_duel_session/start_gauntlet_session so map seed
+ * is available during start_* initialization.
  */
-export async function buildRequestAndFulfillAllVrfTransaction(
-  programs: {
-    mapGenerator: Program;
-    poiSystem: Program;
-    gameplayState: Program;
-  },
+export async function buildRequestAndFulfillMapVrfInstructions(
+  mapGeneratorProgram: Program,
   sessionPda: PublicKey,
   payer: PublicKey,
   sessionSigner: PublicKey
-): Promise<Transaction> {
+): Promise<TransactionInstruction[]> {
   const [mapVrfStatePda] = deriveMapVrfStatePda(sessionPda);
-  const [poiVrfStatePda] = derivePoiVrfStatePda(sessionPda);
-  const [gameplayVrfStatePda] = deriveGameplayVrfStatePda(sessionPda);
-
   const mapRandomness = generateRandomness();
-  const poiRandomness = generateRandomness();
-  const gameplayRandomness = generateRandomness();
 
   // Map VRF: request + fulfill
-  const requestMapVrfIx = await programs.mapGenerator.methods
+  const requestMapVrfIx = await mapGeneratorProgram.methods
     .requestMapVrf()
     .accounts({
       payer,
@@ -78,13 +63,35 @@ export async function buildRequestAndFulfillAllVrfTransaction(
     })
     .instruction();
 
-  const fulfillMapVrfIx = await programs.mapGenerator.methods
+  const fulfillMapVrfIx = await mapGeneratorProgram.methods
     .fulfillMapVrf(mapRandomness)
     .accounts({
       oracle: sessionSigner,
       vrfState: mapVrfStatePda,
     })
     .instruction();
+
+  return [requestMapVrfIx, fulfillMapVrfIx];
+}
+
+/**
+ * Build a transaction that requests and fulfills POI+gameplay VRF.
+ * Map VRF is intentionally excluded and should be handled pre-start.
+ */
+export async function buildRequestAndFulfillPoiAndGameplayVrfTransaction(
+  programs: {
+    poiSystem: Program;
+    gameplayState: Program;
+  },
+  sessionPda: PublicKey,
+  payer: PublicKey,
+  sessionSigner: PublicKey
+): Promise<Transaction> {
+  const [poiVrfStatePda] = derivePoiVrfStatePda(sessionPda);
+  const [gameplayVrfStatePda] = deriveGameplayVrfStatePda(sessionPda);
+
+  const poiRandomness = generateRandomness();
+  const gameplayRandomness = generateRandomness();
 
   // POI VRF: request + fulfill
   const requestPoiVrfIx = await programs.poiSystem.methods
@@ -125,50 +132,8 @@ export async function buildRequestAndFulfillAllVrfTransaction(
     .instruction();
 
   const tx = new Transaction();
-  tx.add(
-    requestMapVrfIx,
-    fulfillMapVrfIx,
-    requestPoiVrfIx,
-    fulfillPoiVrfIx,
-    requestGameplayVrfIx,
-    fulfillGameplayVrfIx
-  );
+  tx.add(requestPoiVrfIx, fulfillPoiVrfIx, requestGameplayVrfIx, fulfillGameplayVrfIx);
   return tx;
-}
-
-// ============================================================================
-// Map Regeneration with VRF Seed
-// ============================================================================
-
-/**
- * Build a transaction to regenerate the map using VRF-derived seed.
- * Called after VRF fulfill to replace the fallback-seeded map.
- */
-export async function buildRegenerateMapTransaction(
-  mapGeneratorProgram: Program,
-  sessionPda: PublicKey,
-  sessionSigner: PublicKey,
-  campaignLevel: number
-): Promise<Transaction> {
-  const [mapVrfStatePda] = deriveMapVrfStatePda(sessionPda);
-  const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
-
-  const ix = await mapGeneratorProgram.methods
-    .regenerateMap(campaignLevel)
-    .accounts({
-      sessionSigner,
-      session: sessionPda,
-      generatedMap: generatedMapPda,
-      vrfState: mapVrfStatePda,
-    })
-    .instruction();
-
-  return new Transaction().add(
-    // Regeneration at duel/gauntlet level (20) can exceed 1M CU.
-    // Use the higher budget already used by session-start flows.
-    ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }),
-    ix
-  );
 }
 
 // ============================================================================

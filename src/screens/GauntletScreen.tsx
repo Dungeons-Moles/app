@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Image,
@@ -8,6 +8,7 @@ import {
   ImageBackground,
   Animated,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation';
@@ -28,6 +29,7 @@ import { HubSettingsModal } from '../components/ui/HubSettingsModal';
 import { useGame } from '@/contexts/GameContext';
 import { usePaymentToken } from '@/hooks/usePaymentToken';
 import { PaymentTokenSelector, PaymentConfirmationModal } from '@/components/payment';
+import { InlineModal } from '@/components/InlineModal';
 
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.png');
 const STAINS_BACKGROUND = require('../../assets/ui/backgrounds/stains-background.png');
@@ -38,6 +40,9 @@ const buttonV2Source = require('../../assets/ui/buttons/button-v2.png');
 const SOL_PILE = require('../../assets/ui/illustrations/sol-pile.png');
 const CHEST = require('../../assets/ui/illustrations/chest.png');
 const ECHO_FIGHT = require('../../assets/ui/illustrations/echo-fight.png');
+const iconASource = require('../../assets/ui/control-buttons/a.png');
+const iconBSource = require('../../assets/ui/control-buttons/b.png');
+const iconXSource = require('../../assets/ui/control-buttons/x.png');
 
 type GauntletScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Gauntlet'>;
@@ -45,7 +50,7 @@ type GauntletScreenProps = {
 
 export function GauntletScreen({ navigation }: GauntletScreenProps) {
   const gauntlet = useGauntlet();
-  const { activeSessions } = useSessionIdentity();
+  const { overrideGauntletSession, fetchSessionNonces } = useSessionIdentity();
   const { dispatch } = useGame();
   const { wallet, disconnect } = useWallet();
   const { connection } = useSolanaConnection();
@@ -57,18 +62,10 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
   const payment = usePaymentToken(BigInt(GAUNTLET_ENTRY_LAMPORTS));
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showSessionExistsModal, setShowSessionExistsModal] = useState(false);
+  const [isEntryTransitioning, setIsEntryTransitioning] = useState(false);
 
-  const gauntletPdaBase58 = useMemo(() => {
-    if (!wallet.publicKey) return null;
-    const [pda] = deriveGauntletSessionPda(wallet.publicKey);
-    return pda.toBase58();
-  }, [wallet.publicKey]);
-
-  const hasExistingGauntletSessionInList = activeSessions.some(
-    (session) => session.sessionPda === gauntletPdaBase58
-  );
-  const hasExistingGauntletSession =
-    hasExistingGauntletSessionOnChain || hasExistingGauntletSessionInList;
+  const hasExistingGauntletSession = hasExistingGauntletSessionOnChain;
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -86,7 +83,8 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
         return;
       }
       try {
-        const [gauntletPda] = deriveGauntletSessionPda(wallet.publicKey);
+        const nonces = await fetchSessionNonces();
+        const [gauntletPda] = deriveGauntletSessionPda(wallet.publicKey, nonces.gauntlet);
         const account = await connection.getAccountInfo(gauntletPda);
         if (!cancelled) setHasExistingGauntletSessionOnChain(account !== null);
       } catch {
@@ -97,7 +95,7 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
     return () => {
       cancelled = true;
     };
-  }, [connection, wallet.publicKey, activeSessions.length]);
+  }, [connection, wallet.publicKey, fetchSessionNonces]);
 
   const handleBack = useCallback(() => {
     gauntlet.reset();
@@ -113,20 +111,47 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
   }, [disconnect, navigation]);
 
   const handleEnterDirect = useCallback(async () => {
+    setIsEntryTransitioning(true);
     const ok = await gauntlet.enterGauntlet();
     if (ok) {
       dispatch({ type: 'RESET_GAME' });
       navigation.navigate('Game');
+      return;
     }
+    setIsEntryTransitioning(false);
   }, [dispatch, gauntlet, navigation]);
 
   const handleEnter = useCallback(async () => {
+    if (hasExistingGauntletSession) {
+      setShowSessionExistsModal(true);
+      return;
+    }
     if (!payment.selectedToken.isNative && payment.quote) {
       setShowPaymentModal(true);
       return;
     }
     await handleEnterDirect();
-  }, [payment.selectedToken, payment.quote, handleEnterDirect]);
+  }, [hasExistingGauntletSession, payment.selectedToken, payment.quote, handleEnterDirect]);
+
+  const handleResumeExistingSession = useCallback(async () => {
+    setShowSessionExistsModal(false);
+    await handleEnterDirect();
+  }, [handleEnterDirect]);
+
+  const handleOverrideExistingSession = useCallback(async () => {
+    setIsEntryTransitioning(true);
+    setShowSessionExistsModal(false);
+    const overrideResult = await overrideGauntletSession();
+    if (!overrideResult.success) {
+      setIsEntryTransitioning(false);
+      Alert.alert(
+        'Override Failed',
+        overrideResult.error ?? 'Failed to override gauntlet session.'
+      );
+      return;
+    }
+    await handleEnterDirect();
+  }, [overrideGauntletSession, handleEnterDirect]);
 
   const handlePaymentConfirm = useCallback(async () => {
     setShowPaymentModal(false);
@@ -163,12 +188,23 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
   );
 
   useControllerAction(
-    showPaymentModal || showSettingsModal
+    showSessionExistsModal
+      ? {
+          onA: !isEntryTransitioning ? handleResumeExistingSession : undefined,
+          onB: !isEntryTransitioning ? () => setShowSessionExistsModal(false) : undefined,
+          onX: !isEntryTransitioning ? handleOverrideExistingSession : undefined,
+        }
+      : showPaymentModal || showSettingsModal
       ? {} // Modal has its own controller handler
       : {
           onB: handleBack,
           onStart: () => setShowSettingsModal(true),
-          onA: panelFocus === 0 ? handleHistory : !gauntlet.isLoading ? handleEnter : undefined,
+          onA:
+            panelFocus === 0
+              ? handleHistory
+              : !gauntlet.isLoading && !isEntryTransitioning
+                ? handleEnter
+                : undefined,
           onDPadLeft: () => setPanelFocus(0),
           onDPadRight: () => setPanelFocus(1),
           onL1: () => cycleToken(-1),
@@ -178,13 +214,19 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
     isController && isFocused
   );
 
-  const controllerHints: ButtonHint[] = [
-    { button: 'L1R1', label: 'Currency' },
-    { button: 'DPadLeftRight', label: 'Switch' },
-    { button: 'A', label: 'Select' },
-    { button: 'Y', label: 'Ranking' },
-    { button: 'B', label: 'Back' },
-  ];
+  const controllerHints: ButtonHint[] = showSessionExistsModal
+    ? [
+        { button: 'A', label: 'Resume' },
+        { button: 'B', label: 'Cancel' },
+        { button: 'X', label: 'Override' },
+      ]
+    : [
+        { button: 'L1R1', label: 'Currency' },
+        { button: 'DPadLeftRight', label: 'Switch' },
+        { button: 'A', label: 'Select' },
+        { button: 'Y', label: 'Ranking' },
+        { button: 'B', label: 'Back' },
+      ];
 
   return (
     <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
@@ -316,19 +358,19 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
                     <TouchableOpacity
                       onPress={handleEnter}
                       activeOpacity={0.7}
-                      disabled={gauntlet.isLoading}
+                      disabled={gauntlet.isLoading || isEntryTransitioning}
                     >
                       <View>
                         <Text
                           style={[
                             styles.panelButtonText,
                             isCompact && compactStyles.panelButtonText,
-                            gauntlet.isLoading && { opacity: 0 },
+                            (gauntlet.isLoading || isEntryTransitioning) && { opacity: 0 },
                           ]}
                         >
                           {hasExistingGauntletSession ? 'Resume Session' : 'Enter Gauntlet'}
                         </Text>
-                        {gauntlet.isLoading && (
+                        {(gauntlet.isLoading || isEntryTransitioning) && (
                           <ActivityIndicator
                             color="#3d2b1f"
                             size={isCompact ? 'large' : 'small'}
@@ -369,6 +411,69 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
           onCancel={() => setShowPaymentModal(false)}
         />
       )}
+      <InlineModal
+        visible={showSessionExistsModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowSessionExistsModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, isCompact && compactStyles.modalContent]}>
+            <Text style={[styles.modalTitle, isCompact && compactStyles.modalTitle]}>
+              Session Already Exists
+            </Text>
+            <Text style={[styles.modalText, isCompact && compactStyles.modalText]}>
+              You already have an active gauntlet session. Resume it to continue your run.
+            </Text>
+            {isCompact ? (
+              <View style={compactStyles.modalHintRow}>
+                <View style={compactStyles.modalHintItem}>
+                  <Image
+                    source={iconBSource}
+                    style={compactStyles.modalHintIcon}
+                    resizeMode="contain"
+                  />
+                  <Text style={compactStyles.modalHintLabel}>Cancel</Text>
+                </View>
+                <View style={compactStyles.modalHintItem}>
+                  <Image
+                    source={iconXSource}
+                    style={compactStyles.modalHintIcon}
+                    resizeMode="contain"
+                  />
+                  <Text style={compactStyles.modalHintLabel}>Override</Text>
+                </View>
+                <View style={compactStyles.modalHintItem}>
+                  <Image
+                    source={iconASource}
+                    style={compactStyles.modalHintIcon}
+                    resizeMode="contain"
+                  />
+                  <Text style={compactStyles.modalHintLabel}>Resume</Text>
+                </View>
+              </View>
+            ) : (
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={styles.modalButtonSecondary}
+                  onPress={() => setShowSessionExistsModal(false)}
+                >
+                  <Text style={styles.modalButtonTextSecondary}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.modalButtonSecondary}
+                  onPress={handleOverrideExistingSession}
+                >
+                  <Text style={styles.modalButtonTextSecondary}>Override (X)</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.modalButtonPrimary} onPress={handleResumeExistingSession}>
+                  <Text style={styles.modalButtonTextPrimary}>Resume</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        </View>
+      </InlineModal>
       <HubSettingsModal
         visible={showSettingsModal}
         onClose={() => setShowSettingsModal(false)}
@@ -487,6 +592,71 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: '#3d2b1f',
   },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(25, 15, 10, 0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  modalContent: {
+    width: '92%',
+    maxWidth: 460,
+    backgroundColor: '#f4dec2',
+    borderWidth: 2,
+    borderColor: '#7f5539',
+    borderRadius: 12,
+    paddingVertical: 20,
+    paddingHorizontal: 18,
+  },
+  modalTitle: {
+    fontFamily: Typography.header,
+    fontSize: 24,
+    color: '#3d2b1f',
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+  modalText: {
+    fontFamily: Typography.body,
+    fontSize: 15,
+    color: '#3d2b1f',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 18,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  modalButtonPrimary: {
+    flex: 1,
+    backgroundColor: '#8ad66f',
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: '#5f8f4d',
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  modalButtonSecondary: {
+    flex: 1,
+    backgroundColor: '#e6c7a7',
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: '#7f5539',
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  modalButtonTextPrimary: {
+    fontFamily: Typography.button,
+    fontSize: 14,
+    color: '#1f2f1a',
+  },
+  modalButtonTextSecondary: {
+    fontFamily: Typography.button,
+    fontSize: 14,
+    color: '#3d2b1f',
+  },
 });
 
 const compactStyles = StyleSheet.create({
@@ -546,5 +716,41 @@ const compactStyles = StyleSheet.create({
   },
   panelButtonText: {
     fontSize: 52,
+  },
+  modalContent: {
+    maxWidth: 860,
+    paddingVertical: 36,
+    paddingHorizontal: 34,
+    borderRadius: 16,
+  },
+  modalTitle: {
+    fontSize: 52,
+    marginBottom: 16,
+  },
+  modalText: {
+    fontSize: 34,
+    lineHeight: 46,
+    marginBottom: 22,
+  },
+  modalHintRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 30,
+    marginTop: 8,
+  },
+  modalHintItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  modalHintIcon: {
+    width: 72,
+    height: 72,
+  },
+  modalHintLabel: {
+    fontFamily: Typography.button,
+    fontSize: 28,
+    color: '#3d2b1f',
   },
 });

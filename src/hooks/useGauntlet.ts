@@ -57,6 +57,7 @@ export function useGauntlet() {
     forceAbandonCurrentSession,
     processPendingCleanups,
     hasPendingCleanups,
+    fetchSessionNonces,
   } = useSession();
   const { connection } = useSolanaConnection();
 
@@ -231,7 +232,8 @@ export function useGauntlet() {
 
       let seed: bigint | null = null;
 
-      const [gauntletSessionPda] = deriveGauntletSessionPda(wallet.publicKey);
+      const nonces = await fetchSessionNonces();
+      const [gauntletSessionPda] = deriveGauntletSessionPda(wallet.publicKey, nonces.gauntlet);
       if (hasPendingCleanups) {
         const waitStartedAt = Date.now();
         while (Date.now() - waitStartedAt < GAUNTLET_CLEANUP_WAIT_TIMEOUT_MS) {
@@ -402,6 +404,7 @@ export function useGauntlet() {
     connection,
     processPendingCleanups,
     hasPendingCleanups,
+    fetchSessionNonces,
   ]);
 
   const reset = useCallback(() => {

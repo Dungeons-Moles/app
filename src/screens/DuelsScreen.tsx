@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Image,
@@ -8,6 +8,7 @@ import {
   ImageBackground,
   Animated,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation';
@@ -28,6 +29,7 @@ import { HubSettingsModal } from '../components/ui/HubSettingsModal';
 import { useGame } from '@/contexts/GameContext';
 import { usePaymentToken } from '@/hooks/usePaymentToken';
 import { PaymentTokenSelector, PaymentConfirmationModal } from '@/components/payment';
+import { InlineModal } from '@/components/InlineModal';
 
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.png');
 const STAINS_BACKGROUND = require('../../assets/ui/backgrounds/stains-background.png');
@@ -38,6 +40,9 @@ const buttonV4Source = require('../../assets/ui/buttons/button-v4.png');
 const SOL_PILE = require('../../assets/ui/illustrations/sol-pile.png');
 const CHEST = require('../../assets/ui/illustrations/chest.png');
 const ECHO_FIGHT = require('../../assets/ui/illustrations/echo-fight.png');
+const iconASource = require('../../assets/ui/control-buttons/a.png');
+const iconBSource = require('../../assets/ui/control-buttons/b.png');
+const iconXSource = require('../../assets/ui/control-buttons/x.png');
 
 type DuelsScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Duels'>;
@@ -45,7 +50,7 @@ type DuelsScreenProps = {
 
 export function DuelsScreen({ navigation }: DuelsScreenProps) {
   const duels = useDuels();
-  const { activeSessions } = useSessionIdentity();
+  const { overrideDuelSession, fetchSessionNonces } = useSessionIdentity();
   const { dispatch } = useGame();
   const { wallet, disconnect } = useWallet();
   const { connection } = useSolanaConnection();
@@ -57,17 +62,9 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
   const payment = usePaymentToken(BigInt(DUEL_ENTRY_LAMPORTS));
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showSessionExistsModal, setShowSessionExistsModal] = useState(false);
 
-  const duelPdaBase58 = useMemo(() => {
-    if (!wallet.publicKey) return null;
-    const [pda] = deriveDuelSessionPda(wallet.publicKey);
-    return pda.toBase58();
-  }, [wallet.publicKey]);
-
-  const hasExistingDuelSessionInList = activeSessions.some(
-    (session) => session.sessionPda === duelPdaBase58
-  );
-  const hasExistingDuelSession = hasExistingDuelSessionOnChain || hasExistingDuelSessionInList;
+  const hasExistingDuelSession = hasExistingDuelSessionOnChain;
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -85,7 +82,8 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
         return;
       }
       try {
-        const [duelPda] = deriveDuelSessionPda(wallet.publicKey);
+        const nonces = await fetchSessionNonces();
+        const [duelPda] = deriveDuelSessionPda(wallet.publicKey, nonces.duel);
         const account = await connection.getAccountInfo(duelPda);
         if (!cancelled) setHasExistingDuelSessionOnChain(account !== null);
       } catch {
@@ -96,7 +94,7 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
     return () => {
       cancelled = true;
     };
-  }, [connection, wallet.publicKey, activeSessions.length]);
+  }, [connection, wallet.publicKey, fetchSessionNonces]);
 
   useEffect(() => {
     if (duels.phase === 'queued') {
@@ -127,12 +125,31 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
   }, [dispatch, duels, navigation]);
 
   const handleEnter = useCallback(async () => {
+    if (hasExistingDuelSession) {
+      setShowSessionExistsModal(true);
+      return;
+    }
     if (!payment.selectedToken.isNative && payment.quote) {
       setShowPaymentModal(true);
       return;
     }
     await handleEnterDirect();
-  }, [payment.selectedToken, payment.quote, handleEnterDirect]);
+  }, [hasExistingDuelSession, payment.selectedToken, payment.quote, handleEnterDirect]);
+
+  const handleResumeExistingSession = useCallback(async () => {
+    setShowSessionExistsModal(false);
+    await handleEnterDirect();
+  }, [handleEnterDirect]);
+
+  const handleOverrideExistingSession = useCallback(async () => {
+    setShowSessionExistsModal(false);
+    const overrideResult = await overrideDuelSession();
+    if (!overrideResult.success) {
+      Alert.alert('Override Failed', overrideResult.error ?? 'Failed to override duel session.');
+      return;
+    }
+    await handleEnterDirect();
+  }, [overrideDuelSession, handleEnterDirect]);
 
   const handlePaymentConfirm = useCallback(async () => {
     setShowPaymentModal(false);
@@ -163,7 +180,13 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
   );
 
   useControllerAction(
-    showPaymentModal || showSettingsModal
+    showSessionExistsModal
+      ? {
+          onA: handleResumeExistingSession,
+          onB: () => setShowSessionExistsModal(false),
+          onX: handleOverrideExistingSession,
+        }
+      : showPaymentModal || showSettingsModal
       ? {}
       : {
           onB: handleBack,
@@ -186,12 +209,18 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
     isController && isFocused && duels.phase === 'error' && !showSettingsModal
   );
 
-  const controllerHints: ButtonHint[] = [
-    { button: 'L1R1', label: 'Currency' },
-    { button: 'DPadLeftRight', label: 'Switch' },
-    { button: 'A', label: 'Select' },
-    { button: 'B', label: 'Back' },
-  ];
+  const controllerHints: ButtonHint[] = showSessionExistsModal
+    ? [
+        { button: 'A', label: 'Resume' },
+        { button: 'B', label: 'Cancel' },
+        { button: 'X', label: 'Override' },
+      ]
+    : [
+        { button: 'L1R1', label: 'Currency' },
+        { button: 'DPadLeftRight', label: 'Switch' },
+        { button: 'A', label: 'Select' },
+        { button: 'B', label: 'Back' },
+      ];
   const errorHints: ButtonHint[] = [
     { button: 'A', label: 'Try Again' },
     { button: 'B', label: 'Back' },
@@ -419,6 +448,69 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
           onCancel={() => setShowPaymentModal(false)}
         />
       )}
+      <InlineModal
+        visible={showSessionExistsModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowSessionExistsModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, isCompact && compactStyles.modalContent]}>
+            <Text style={[styles.modalTitle, isCompact && compactStyles.modalTitle]}>
+              Session Already Exists
+            </Text>
+            <Text style={[styles.modalText, isCompact && compactStyles.modalText]}>
+              You already have an active duel session. Resume it to continue your run.
+            </Text>
+            {isCompact ? (
+              <View style={compactStyles.modalHintRow}>
+                <View style={compactStyles.modalHintItem}>
+                  <Image
+                    source={iconBSource}
+                    style={compactStyles.modalHintIcon}
+                    resizeMode="contain"
+                  />
+                  <Text style={compactStyles.modalHintLabel}>Cancel</Text>
+                </View>
+                <View style={compactStyles.modalHintItem}>
+                  <Image
+                    source={iconXSource}
+                    style={compactStyles.modalHintIcon}
+                    resizeMode="contain"
+                  />
+                  <Text style={compactStyles.modalHintLabel}>Override</Text>
+                </View>
+                <View style={compactStyles.modalHintItem}>
+                  <Image
+                    source={iconASource}
+                    style={compactStyles.modalHintIcon}
+                    resizeMode="contain"
+                  />
+                  <Text style={compactStyles.modalHintLabel}>Resume</Text>
+                </View>
+              </View>
+            ) : (
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={styles.modalButtonSecondary}
+                  onPress={() => setShowSessionExistsModal(false)}
+                >
+                  <Text style={styles.modalButtonTextSecondary}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.modalButtonSecondary}
+                  onPress={handleOverrideExistingSession}
+                >
+                  <Text style={styles.modalButtonTextSecondary}>Override (X)</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.modalButtonPrimary} onPress={handleResumeExistingSession}>
+                  <Text style={styles.modalButtonTextPrimary}>Resume</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        </View>
+      </InlineModal>
       <HubSettingsModal
         visible={showSettingsModal}
         onClose={() => setShowSettingsModal(false)}
@@ -584,6 +676,71 @@ const styles = StyleSheet.create({
     color: '#1a1a1a',
     marginBottom: 4,
   },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(25, 15, 10, 0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  modalContent: {
+    width: '92%',
+    maxWidth: 460,
+    backgroundColor: '#f4dec2',
+    borderWidth: 2,
+    borderColor: '#7f5539',
+    borderRadius: 12,
+    paddingVertical: 20,
+    paddingHorizontal: 18,
+  },
+  modalTitle: {
+    fontFamily: Typography.header,
+    fontSize: 24,
+    color: '#3d2b1f',
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+  modalText: {
+    fontFamily: Typography.body,
+    fontSize: 15,
+    color: '#3d2b1f',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 18,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  modalButtonPrimary: {
+    flex: 1,
+    backgroundColor: '#8ad66f',
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: '#5f8f4d',
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  modalButtonSecondary: {
+    flex: 1,
+    backgroundColor: '#e6c7a7',
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: '#7f5539',
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  modalButtonTextPrimary: {
+    fontFamily: Typography.button,
+    fontSize: 14,
+    color: '#1f2f1a',
+  },
+  modalButtonTextSecondary: {
+    fontFamily: Typography.button,
+    fontSize: 14,
+    color: '#3d2b1f',
+  },
 });
 
 const compactStyles = StyleSheet.create({
@@ -662,5 +819,41 @@ const compactStyles = StyleSheet.create({
   errorButtonTextPrimary: {
     fontSize: 30,
     marginBottom: 6,
+  },
+  modalContent: {
+    maxWidth: 860,
+    paddingVertical: 36,
+    paddingHorizontal: 34,
+    borderRadius: 16,
+  },
+  modalTitle: {
+    fontSize: 52,
+    marginBottom: 16,
+  },
+  modalText: {
+    fontSize: 34,
+    lineHeight: 46,
+    marginBottom: 22,
+  },
+  modalHintRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 30,
+    marginTop: 8,
+  },
+  modalHintItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  modalHintIcon: {
+    width: 72,
+    height: 72,
+  },
+  modalHintLabel: {
+    fontFamily: Typography.button,
+    fontSize: 28,
+    color: '#3d2b1f',
   },
 });

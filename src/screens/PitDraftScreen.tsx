@@ -649,7 +649,7 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
             </View>
 
             {/* Waiting content */}
-            <View style={styles.confirmCenterContent}>
+            <View style={styles.queuingCenterContent}>
               <Animated.View style={[styles.queuingContent, { opacity: pulseAnim }]}>
                 <Text style={[styles.queuingText, isCompact && compactStyles.queuingText]}>
                   Waiting for opponent...
@@ -925,6 +925,11 @@ const styles = StyleSheet.create({
   // Queuing phase
   queuingContent: {
     alignItems: 'center',
+  },
+  queuingCenterContent: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   queuingText: {
     fontFamily: Typography.header,

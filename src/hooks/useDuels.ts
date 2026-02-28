@@ -38,8 +38,14 @@ const DUEL_CLEANUP_POLL_MS = 1000;
 
 export function useDuels() {
   const { wallet, signAndSendTransaction, checkBalance } = useWallet();
-  const { mapSeed, startDuelGame, switchToSession, processPendingCleanups, hasPendingCleanups } =
-    useSession();
+  const {
+    mapSeed,
+    startDuelGame,
+    switchToSession,
+    processPendingCleanups,
+    hasPendingCleanups,
+    fetchSessionNonces,
+  } = useSession();
   const { connection } = useSolanaConnection();
 
   const [phase, setPhase] = useState<DuelsPhase>('confirm');
@@ -164,7 +170,8 @@ export function useDuels() {
         return false;
       }
 
-      const [duelSessionPda] = deriveDuelSessionPda(wallet.publicKey);
+      const nonces = await fetchSessionNonces();
+      const [duelSessionPda] = deriveDuelSessionPda(wallet.publicKey, nonces.duel);
 
       // If a previous duel run is still being undelegated/closed in background,
       // wait for the duel session PDA to disappear before starting a new one.
@@ -336,6 +343,7 @@ export function useDuels() {
     isRecoverableDuelStartError,
     processPendingCleanups,
     hasPendingCleanups,
+    fetchSessionNonces,
   ]);
 
   const loadHistory = useCallback(

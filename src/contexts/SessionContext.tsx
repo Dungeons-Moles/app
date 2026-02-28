@@ -46,7 +46,8 @@ import {
   createPoiSystemProgramWithProvider,
 } from '@/services/solana/programs';
 import {
-  buildRequestAndFulfillAllVrfTransaction,
+  buildRequestAndFulfillMapVrfInstructions,
+  buildRequestAndFulfillPoiAndGameplayVrfTransaction,
   buildRequestAndFulfillPoiVrfTransaction,
 } from '@/services/solana/vrf';
 import { fetchGeneratedMap } from '@/services/solana/mapGeneratorClient';
@@ -102,6 +103,8 @@ const COMMIT_INTERVAL_MS = 30_000;
 const DELEGATION_PROGRAM_ID = new PublicKey('DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh');
 const ER_PROPAGATION_WAIT_MS = 15_000;
 const ER_PROPAGATION_POLL_MS = 1_500;
+const ENABLE_START_MAP_VRF = process.env.EXPO_PUBLIC_ENABLE_START_MAP_VRF !== 'false';
+const MAX_SERIALIZED_TX_BYTES = 1232;
 
 // ============================================================================
 // Types
@@ -147,6 +150,10 @@ interface SessionContextType extends SessionState {
   startGame: (campaignLevel: number) => Promise<TransactionResult>;
   /** Override campaign session slot by bumping campaign nonce */
   overrideCampaignSession: () => Promise<TransactionResult>;
+  /** Override duel session slot by bumping duel nonce */
+  overrideDuelSession: () => Promise<TransactionResult>;
+  /** Override gauntlet session slot by bumping gauntlet nonce */
+  overrideGauntletSession: () => Promise<TransactionResult>;
   /** Start a new duel session */
   startDuelGame: () => Promise<TransactionResult>;
   /** Start a new gauntlet session */
@@ -227,6 +234,8 @@ interface SessionContextType extends SessionState {
   setGameStatePda: (pda: PublicKey | null) => void;
   /** Refresh on-chain gameplay state (re-fetches from chain) */
   refreshGameplayState: () => Promise<GameState | null>;
+  /** Fetch current per-mode session nonces for the connected player */
+  fetchSessionNonces: () => Promise<{ campaign: bigint; duel: bigint; gauntlet: bigint }>;
 }
 
 const SessionContext = createContext<SessionContextType | undefined>(undefined);
@@ -254,6 +263,8 @@ interface SessionIdentityContextType {
   // Actions (stable callbacks)
   startGame: SessionContextType['startGame'];
   overrideCampaignSession: SessionContextType['overrideCampaignSession'];
+  overrideDuelSession: SessionContextType['overrideDuelSession'];
+  overrideGauntletSession: SessionContextType['overrideGauntletSession'];
   startDuelGame: SessionContextType['startDuelGame'];
   startGauntletGame: SessionContextType['startGauntletGame'];
   endGame: SessionContextType['endGame'];
@@ -277,6 +288,7 @@ interface SessionIdentityContextType {
   hasSessionForLevel: SessionContextType['hasSessionForLevel'];
   getSessionPdaForLevel: SessionContextType['getSessionPdaForLevel'];
   setGameStatePda: SessionContextType['setGameStatePda'];
+  fetchSessionNonces: SessionContextType['fetchSessionNonces'];
 }
 
 /** Frequently-changing gameplay state (updates during active gameplay) */
@@ -589,6 +601,22 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     },
     [connection]
   );
+
+  const getSerializedTransactionSize = useCallback((transaction: Transaction): number | null => {
+    try {
+      return transaction.serialize({
+        requireAllSignatures: false,
+        verifySignatures: false,
+      }).length;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const match = message.match(/Transaction too large:\s*(\d+)\s*>\s*(\d+)/i);
+      if (match) {
+        return Number(match[1]);
+      }
+      return null;
+    }
+  }, []);
 
   const isAccountNotInitializedError = useCallback((err: unknown): boolean => {
     const message = err instanceof Error ? err.message : String(err);
@@ -1286,25 +1314,62 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       gameStatePda,
       sessionPda
     );
+    const mapGenProgram = createMapGeneratorProgram(connection);
 
     // Combine: fund_session_signer + start_duel_session + enter_duel in a single TX
-    const combinedTransaction = new Transaction();
-    combinedTransaction.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }));
-    combinedTransaction.add(...fundTransaction.instructions);
-
     const COMPUTE_BUDGET_PROGRAM_ID = 'ComputeBudget111111111111111111111111111111';
     const sessionInstructions = sessionTransaction.instructions.filter(
       (ix) => ix.programId.toBase58() !== COMPUTE_BUDGET_PROGRAM_ID
     );
-    combinedTransaction.add(...sessionInstructions);
-    combinedTransaction.add(enterDuelIx);
-
-    const { blockhash } = await connection.getLatestBlockhash('confirmed');
-    combinedTransaction.recentBlockhash = blockhash;
-    combinedTransaction.feePayer = wallet.publicKey ?? undefined;
-    combinedTransaction.partialSign(newSessionSignerKeypair);
+    let mapVrfIxs: TransactionInstruction[] = [];
+    if (ENABLE_START_MAP_VRF) {
+      try {
+        mapVrfIxs = await buildRequestAndFulfillMapVrfInstructions(
+          mapGenProgram,
+          sessionPda,
+          wallet.publicKey,
+          newSessionSignerKeypair.publicKey
+        );
+        console.log('[SessionContext] startDuelGame:map_vrf_seeded_pre_start');
+      } catch (mapVrfBuildError) {
+        console.warn(
+          '[SessionContext] startDuelGame:map_vrf_build_failed_falling_back_to_deterministic_seed',
+          mapVrfBuildError
+        );
+      }
+    } else {
+      console.log('[SessionContext] startDuelGame:map_vrf_disabled_pre_start');
+    }
+    const buildCombinedTransaction = async (includeMapVrf: boolean): Promise<Transaction> => {
+      const tx = new Transaction();
+      tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }));
+      tx.add(...fundTransaction.instructions);
+      if (includeMapVrf && mapVrfIxs.length > 0) {
+        tx.add(...mapVrfIxs);
+      }
+      tx.add(...sessionInstructions);
+      tx.add(enterDuelIx);
+      const { blockhash } = await connection.getLatestBlockhash('confirmed');
+      tx.recentBlockhash = blockhash;
+      tx.feePayer = wallet.publicKey ?? undefined;
+      tx.partialSign(newSessionSignerKeypair);
+      return tx;
+    };
 
     let signature: string;
+    let shouldTryMapVrf = ENABLE_START_MAP_VRF && mapVrfIxs.length > 0;
+    let combinedTransaction = await buildCombinedTransaction(shouldTryMapVrf);
+    if (shouldTryMapVrf) {
+      const txSize = getSerializedTransactionSize(combinedTransaction);
+      if (txSize !== null && txSize > MAX_SERIALIZED_TX_BYTES) {
+        console.log('[SessionContext] startDuelGame:skip_prestart_map_vrf_tx_too_large', {
+          txSize,
+          limit: MAX_SERIALIZED_TX_BYTES,
+        });
+        shouldTryMapVrf = false;
+        combinedTransaction = await buildCombinedTransaction(false);
+      }
+    }
     await debugSimulateTransaction('startDuelGame:combined_tx', combinedTransaction);
     try {
       signature = await signAndSendTransaction(combinedTransaction);
@@ -1317,6 +1382,32 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       await sessionManager.fetchSession();
       console.log('[SessionContext] startDuelGame:session_fetched');
     } catch (txError: unknown) {
+      if (shouldTryMapVrf) {
+        console.warn(
+          '[SessionContext] startDuelGame:combined_tx_failed_with_prestart_map_vrf_retrying_without_map_vrf',
+          txError
+        );
+        combinedTransaction = await buildCombinedTransaction(false);
+        await debugSimulateTransaction('startDuelGame:combined_tx_retry_no_map_vrf', combinedTransaction);
+        try {
+          signature = await signAndSendTransaction(combinedTransaction);
+          console.log('[SessionContext] startDuelGame:combined_tx_retry_sent', { signature });
+          await confirmSignatureWithTimeout(signature);
+          console.log('[SessionContext] startDuelGame:combined_tx_retry_confirmed', { signature });
+          await sessionSigner.markAsActive(newSessionSignerKeypair);
+          await sessionSigner.associateWithSession(newSessionSignerKeypair, sessionPda.toBase58());
+          console.log('[SessionContext] startDuelGame:sessionSigner_marked_active_after_retry');
+          await sessionManager.fetchSession();
+          console.log('[SessionContext] startDuelGame:session_fetched_after_retry');
+        } catch (retryError: unknown) {
+          logTxDebugError('startDuelGame:combined_tx_retry_no_map_vrf', retryError);
+          return {
+            success: false,
+            error:
+              retryError instanceof Error ? retryError.message : 'Duel session transaction failed',
+          };
+        }
+      } else {
       logTxDebugError('startDuelGame:combined_tx', txError);
       if (isAccountNotInitializedError(txError)) {
         return {
@@ -1329,6 +1420,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         success: false,
         error: txError instanceof Error ? txError.message : 'Duel session transaction failed',
       };
+      }
     }
 
     // Parse DuelQueued event from the combined TX
@@ -1338,10 +1430,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       duelQueued = { seed: events.queued.seed, slot: events.queued.slot };
     }
 
-      // VRF: Request + fulfill all VRF states, then regenerate map with VRF seed
-      console.log('[SessionContext] startDuelGame:vrf_request_fulfill');
+      // Request/fulfill POI + gameplay VRF after start.
+      // Map VRF is handled pre-start and consumed by start_duel_session.
+      console.log('[SessionContext] startDuelGame:poi_gameplay_vrf_request_fulfill');
       try {
-        const mapGenProg = createMapGeneratorProgram(connection);
         const poiSysProg = createPoiSystemProgramWithProvider(
           new (await import('@coral-xyz/anchor')).AnchorProvider(
             connection,
@@ -1351,21 +1443,19 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         );
         const gameplayProg = createGameplayStateProgram(connection);
 
-        const vrfTx = await buildRequestAndFulfillAllVrfTransaction(
-          { mapGenerator: mapGenProg, poiSystem: poiSysProg, gameplayState: gameplayProg },
+        const vrfTx = await buildRequestAndFulfillPoiAndGameplayVrfTransaction(
+          { poiSystem: poiSysProg, gameplayState: gameplayProg },
           sessionPda,
           newSessionSignerKeypair.publicKey,
           newSessionSignerKeypair.publicKey
         );
         await sendSessionSignerTransaction(connection, vrfTx, newSessionSignerKeypair);
-        console.log('[SessionContext] startDuelGame:vrf_fulfilled');
-
-        // Do NOT regenerate map after start_session.
-        // start_duel_session already generated map + initialized game_state/enemies/pois
-        // from that map. Regenerating only generated_map here can desync spawn/layout.
-        console.log('[SessionContext] startDuelGame:map_regen_skipped_post_start');
+        console.log('[SessionContext] startDuelGame:poi_gameplay_vrf_fulfilled');
       } catch (vrfError) {
-        console.warn('[SessionContext] startDuelGame:vrf_failed, continuing with fallback seed', vrfError);
+        console.warn(
+          '[SessionContext] startDuelGame:poi_gameplay_vrf_failed, continuing without post-start VRF',
+          vrfError
+        );
       }
 
       const generatedSeed = await fetchSessionGeneratedSeed(sessionPda);
@@ -1398,6 +1488,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     fetchSessionGeneratedSeed,
     confirmSignatureWithTimeout,
     debugSimulateTransaction,
+    getSerializedTransactionSize,
     ensureDelegatedToRollup,
     isAccountNotInitializedError,
     logTxDebugError,
@@ -1455,24 +1546,61 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       epochIdBN,
       epochIdBigInt
     );
+    const mapGenProgram = createMapGeneratorProgram(connection);
 
     // Combine: fund_session_signer + start_gauntlet_session + enter_gauntlet in a single TX
-    const combinedTransaction = new Transaction();
-    combinedTransaction.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }));
-    combinedTransaction.add(...fundTransaction.instructions);
-
     const COMPUTE_BUDGET_PROGRAM_ID = 'ComputeBudget111111111111111111111111111111';
     const sessionInstructions = sessionTransaction.instructions.filter(
       (ix) => ix.programId.toBase58() !== COMPUTE_BUDGET_PROGRAM_ID
     );
-    combinedTransaction.add(...sessionInstructions);
-    combinedTransaction.add(enterGauntletIx);
+    let mapVrfIxs: TransactionInstruction[] = [];
+    if (ENABLE_START_MAP_VRF) {
+      try {
+        mapVrfIxs = await buildRequestAndFulfillMapVrfInstructions(
+          mapGenProgram,
+          sessionPda,
+          wallet.publicKey,
+          newSessionSignerKeypair.publicKey
+        );
+        console.log('[SessionContext] startGauntletGame:map_vrf_seeded_pre_start');
+      } catch (mapVrfBuildError) {
+        console.warn(
+          '[SessionContext] startGauntletGame:map_vrf_build_failed_falling_back_to_deterministic_seed',
+          mapVrfBuildError
+        );
+      }
+    } else {
+      console.log('[SessionContext] startGauntletGame:map_vrf_disabled_pre_start');
+    }
+    const buildCombinedTransaction = async (includeMapVrf: boolean): Promise<Transaction> => {
+      const tx = new Transaction();
+      tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }));
+      tx.add(...fundTransaction.instructions);
+      if (includeMapVrf && mapVrfIxs.length > 0) {
+        tx.add(...mapVrfIxs);
+      }
+      tx.add(...sessionInstructions);
+      tx.add(enterGauntletIx);
+      const { blockhash } = await connection.getLatestBlockhash('confirmed');
+      tx.recentBlockhash = blockhash;
+      tx.feePayer = wallet.publicKey ?? undefined;
+      tx.partialSign(newSessionSignerKeypair);
+      return tx;
+    };
 
-    const { blockhash } = await connection.getLatestBlockhash('confirmed');
-    combinedTransaction.recentBlockhash = blockhash;
-    combinedTransaction.feePayer = wallet.publicKey ?? undefined;
-    combinedTransaction.partialSign(newSessionSignerKeypair);
-
+    let shouldTryMapVrf = ENABLE_START_MAP_VRF && mapVrfIxs.length > 0;
+    let combinedTransaction = await buildCombinedTransaction(shouldTryMapVrf);
+    if (shouldTryMapVrf) {
+      const txSize = getSerializedTransactionSize(combinedTransaction);
+      if (txSize !== null && txSize > MAX_SERIALIZED_TX_BYTES) {
+        console.log('[SessionContext] startGauntletGame:skip_prestart_map_vrf_tx_too_large', {
+          txSize,
+          limit: MAX_SERIALIZED_TX_BYTES,
+        });
+        shouldTryMapVrf = false;
+        combinedTransaction = await buildCombinedTransaction(false);
+      }
+    }
     await debugSimulateTransaction('startGauntletGame:combined_tx', combinedTransaction);
     try {
       const signature = await signAndSendTransaction(combinedTransaction);
@@ -1485,6 +1613,41 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       await sessionManager.fetchSession();
       console.log('[SessionContext] startGauntletGame:session_fetched');
     } catch (txError: unknown) {
+      if (shouldTryMapVrf) {
+        console.warn(
+          '[SessionContext] startGauntletGame:combined_tx_failed_with_prestart_map_vrf_retrying_without_map_vrf',
+          txError
+        );
+        combinedTransaction = await buildCombinedTransaction(false);
+        await debugSimulateTransaction(
+          'startGauntletGame:combined_tx_retry_no_map_vrf',
+          combinedTransaction
+        );
+        try {
+          const retrySig = await signAndSendTransaction(combinedTransaction);
+          console.log('[SessionContext] startGauntletGame:combined_tx_retry_sent', {
+            signature: retrySig,
+          });
+          await confirmSignatureWithTimeout(retrySig);
+          console.log('[SessionContext] startGauntletGame:combined_tx_retry_confirmed', {
+            signature: retrySig,
+          });
+          await sessionSigner.markAsActive(newSessionSignerKeypair);
+          await sessionSigner.associateWithSession(newSessionSignerKeypair, sessionPda.toBase58());
+          console.log('[SessionContext] startGauntletGame:sessionSigner_marked_active_after_retry');
+          await sessionManager.fetchSession();
+          console.log('[SessionContext] startGauntletGame:session_fetched_after_retry');
+        } catch (retryError: unknown) {
+          logTxDebugError('startGauntletGame:combined_tx_retry_no_map_vrf', retryError);
+          return {
+            success: false,
+            error:
+              retryError instanceof Error
+                ? retryError.message
+                : 'Gauntlet session transaction failed',
+          };
+        }
+      } else {
       logTxDebugError('startGauntletGame:combined_tx', txError);
       if (isAccountNotInitializedError(txError)) {
         return {
@@ -1497,12 +1660,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         success: false,
         error: txError instanceof Error ? txError.message : 'Gauntlet session transaction failed',
       };
+      }
     }
 
-      // VRF: Request + fulfill all VRF states, then regenerate map with VRF seed
-      console.log('[SessionContext] startGauntletGame:vrf_request_fulfill');
+      // Request/fulfill POI + gameplay VRF after start.
+      // Map VRF is handled pre-start and consumed by start_gauntlet_session.
+      console.log('[SessionContext] startGauntletGame:poi_gameplay_vrf_request_fulfill');
       try {
-        const mapGenProg = createMapGeneratorProgram(connection);
         const poiSysProg = createPoiSystemProgramWithProvider(
           new (await import('@coral-xyz/anchor')).AnchorProvider(
             connection,
@@ -1512,21 +1676,19 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         );
         const gameplayProg = createGameplayStateProgram(connection);
 
-        const vrfTx = await buildRequestAndFulfillAllVrfTransaction(
-          { mapGenerator: mapGenProg, poiSystem: poiSysProg, gameplayState: gameplayProg },
+        const vrfTx = await buildRequestAndFulfillPoiAndGameplayVrfTransaction(
+          { poiSystem: poiSysProg, gameplayState: gameplayProg },
           sessionPda,
           newSessionSignerKeypair.publicKey,
           newSessionSignerKeypair.publicKey
         );
         await sendSessionSignerTransaction(connection, vrfTx, newSessionSignerKeypair);
-        console.log('[SessionContext] startGauntletGame:vrf_fulfilled');
-
-        // Do NOT regenerate map after start_session.
-        // start_gauntlet_session already generated map + initialized game_state/enemies/pois
-        // from that map. Regenerating only generated_map here can desync spawn/layout.
-        console.log('[SessionContext] startGauntletGame:map_regen_skipped_post_start');
+        console.log('[SessionContext] startGauntletGame:poi_gameplay_vrf_fulfilled');
       } catch (vrfError) {
-        console.warn('[SessionContext] startGauntletGame:vrf_failed, continuing with fallback seed', vrfError);
+        console.warn(
+          '[SessionContext] startGauntletGame:poi_gameplay_vrf_failed, continuing without post-start VRF',
+          vrfError
+        );
       }
 
       const generatedSeed = await fetchSessionGeneratedSeed(sessionPda);
@@ -1559,6 +1721,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     fetchSessionGeneratedSeed,
     confirmSignatureWithTimeout,
     debugSimulateTransaction,
+    getSerializedTransactionSize,
     ensureDelegatedToRollup,
     isAccountNotInitializedError,
     logTxDebugError,
@@ -2304,8 +2467,37 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     [connection, wallet.publicKey, sessionManager]
   );
 
+  const fetchSessionNonces = useCallback(async (): Promise<{
+    campaign: bigint;
+    duel: bigint;
+    gauntlet: bigint;
+  }> => {
+    if (!wallet.publicKey) {
+      return { campaign: 0n, duel: 0n, gauntlet: 0n };
+    }
+    return sessionManager.fetchSessionNonces(wallet.publicKey);
+  }, [wallet.publicKey, sessionManager]);
+
   const overrideCampaignSession = useCallback(async (): Promise<TransactionResult> => {
     const result = await sessionManager.overrideCampaignSession();
+    if (!result.success) {
+      return result;
+    }
+    await refreshSessionList();
+    return result;
+  }, [sessionManager, refreshSessionList]);
+
+  const overrideDuelSession = useCallback(async (): Promise<TransactionResult> => {
+    const result = await sessionManager.overrideDuelSession();
+    if (!result.success) {
+      return result;
+    }
+    await refreshSessionList();
+    return result;
+  }, [sessionManager, refreshSessionList]);
+
+  const overrideGauntletSession = useCallback(async (): Promise<TransactionResult> => {
+    const result = await sessionManager.overrideGauntletSession();
     if (!result.success) {
       return result;
     }
@@ -3524,6 +3716,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       isAutoCommitActive,
       startGame,
       overrideCampaignSession,
+      overrideDuelSession,
+      overrideGauntletSession,
       startDuelGame,
       startGauntletGame,
       endGame,
@@ -3547,6 +3741,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       hasSessionForLevel,
       getSessionPdaForLevel,
       setGameStatePda: gameplayState.setGameStatePda,
+      fetchSessionNonces,
     }),
     [
       sessionManager.session,
@@ -3565,6 +3760,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       isAutoCommitActive,
       startGame,
       overrideCampaignSession,
+      overrideDuelSession,
+      overrideGauntletSession,
       startDuelGame,
       startGauntletGame,
       endGame,
@@ -3588,6 +3785,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       hasSessionForLevel,
       getSessionPdaForLevel,
       gameplayState.setGameStatePda,
+      fetchSessionNonces,
     ]
   );
 
