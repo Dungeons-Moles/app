@@ -26,6 +26,7 @@ import { useIsFocused } from '@react-navigation/native';
 import { useControllerAction } from '../hooks/useControllerAction';
 import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHints';
 import { useInputMode } from '../hooks/useInputMode';
+import { useAudio } from '../contexts/AudioContext';
 import { FocusGlow } from '../components/ui/FocusGlow';
 import { HubSettingsModal } from '../components/ui/HubSettingsModal';
 import { Skeleton } from '../components/common/Skeleton';
@@ -107,6 +108,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
     }).start();
   }, []);
 
+  const { playSfx } = useAudio();
   const screenVariant = useScreenVariant();
   const isCompact = screenVariant === 'compact';
   const isGuestMode = mode === 'guest';
@@ -299,6 +301,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
 
   const handleLevelSelect = useCallback(
     async (level: CampaignLevel) => {
+      playSfx('ui_click');
       console.log('[CampaignSelect] handleLevelSelect called', {
         level: level.level,
         isUnlocked: level.isUnlocked,
@@ -550,8 +553,9 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
   );
 
   const handleBack = useCallback(() => {
+    playSfx('ui_back');
     navigation.goBack();
-  }, [navigation]);
+  }, [navigation, playSfx]);
 
   const handleDisconnect = useCallback(() => {
     disconnect();
@@ -656,6 +660,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
               setShowErrorModal(false);
             },
         onB: () => {
+          playSfx('ui_back');
           setShowNoRunsModal(false);
           setShowLockedModal(false);
           setShowSessionExistsModal(false);

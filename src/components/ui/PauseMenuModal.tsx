@@ -104,10 +104,7 @@ export function PauseMenuModal({
               ? () => { playSfx('ui_click'); setAutoOpenPOI(!autoOpenPOI); }
               : undefined,
       onA: handleSelect,
-      onB: () => {
-        playSfx('ui_click');
-        onClose();
-      },
+      onB: () => { playSfx('ui_back'); onClose(); },
     },
     isController && visible
   );

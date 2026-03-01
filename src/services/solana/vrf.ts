@@ -14,6 +14,7 @@ import { PublicKey, Transaction, TransactionInstruction, SystemProgram } from '@
 import type { Connection, Keypair } from '@solana/web3.js';
 import type { Program } from '@coral-xyz/anchor';
 import { deriveMapVrfStatePda, derivePoiVrfStatePda, deriveGameplayVrfStatePda } from './constants';
+import { SOLANA_CONFIG } from './config';
 
 // ============================================================================
 // Randomness Generation
@@ -34,6 +35,13 @@ export function generateRandomness(): number[] {
   return Array.from(bytes);
 }
 
+function pickMethod(program: Program, preferred: string, fallback: string) {
+  const methods = (program.methods ?? {}) as Record<string, (...args: any[]) => any>;
+  if (typeof methods[preferred] === 'function') return methods[preferred].bind(methods);
+  if (typeof methods[fallback] === 'function') return methods[fallback].bind(methods);
+  throw new Error(`Neither ${preferred} nor ${fallback} exists on program`);
+}
+
 // ============================================================================
 // VRF Request + Fulfill (Duel / Gauntlet)
 // ============================================================================
@@ -50,11 +58,11 @@ export async function buildRequestAndFulfillMapVrfInstructions(
   sessionSigner: PublicKey
 ): Promise<TransactionInstruction[]> {
   const [mapVrfStatePda] = deriveMapVrfStatePda(sessionPda);
-  const mapRandomness = generateRandomness();
+  const localMode = SOLANA_CONFIG.isLocalValidator;
+  const mapRandomness = localMode ? generateRandomness() : null;
 
-  // Map VRF: request + fulfill
-  const requestMapVrfIx = await mapGeneratorProgram.methods
-    .requestMapVrf()
+  const requestMap = pickMethod(mapGeneratorProgram, 'requestMapRng', 'requestMapVrf');
+  const requestMapVrfIx = await requestMap()
     .accounts({
       payer,
       session: sessionPda,
@@ -63,8 +71,12 @@ export async function buildRequestAndFulfillMapVrfInstructions(
     })
     .instruction();
 
-  const fulfillMapVrfIx = await mapGeneratorProgram.methods
-    .fulfillMapVrf(mapRandomness)
+  if (!localMode) {
+    return [requestMapVrfIx];
+  }
+
+  const fulfillMap = pickMethod(mapGeneratorProgram, 'fulfillMapRng', 'fulfillMapVrf');
+  const fulfillMapVrfIx = await fulfillMap(mapRandomness)
     .accounts({
       oracle: sessionSigner,
       vrfState: mapVrfStatePda,
@@ -89,13 +101,13 @@ export async function buildRequestAndFulfillPoiAndGameplayVrfTransaction(
 ): Promise<Transaction> {
   const [poiVrfStatePda] = derivePoiVrfStatePda(sessionPda);
   const [gameplayVrfStatePda] = deriveGameplayVrfStatePda(sessionPda);
+  const localMode = SOLANA_CONFIG.isLocalValidator;
 
-  const poiRandomness = generateRandomness();
-  const gameplayRandomness = generateRandomness();
+  const poiRandomness = localMode ? generateRandomness() : null;
+  const gameplayRandomness = localMode ? generateRandomness() : null;
 
-  // POI VRF: request + fulfill
-  const requestPoiVrfIx = await programs.poiSystem.methods
-    .requestPoiVrf()
+  const requestPoi = pickMethod(programs.poiSystem, 'requestPoiRng', 'requestPoiVrf');
+  const requestPoiVrfIx = await requestPoi()
     .accounts({
       payer,
       session: sessionPda,
@@ -104,35 +116,43 @@ export async function buildRequestAndFulfillPoiAndGameplayVrfTransaction(
     })
     .instruction();
 
-  const fulfillPoiVrfIx = await programs.poiSystem.methods
-    .fulfillPoiVrf(poiRandomness)
-    .accounts({
-      oracle: sessionSigner,
-      vrfState: poiVrfStatePda,
-    })
-    .instruction();
-
-  // Gameplay VRF: request + fulfill
-  const requestGameplayVrfIx = await programs.gameplayState.methods
-    .requestGameplayVrf()
+  const requestGameplay = pickMethod(
+    programs.gameplayState,
+    'requestGameplayRng',
+    'requestGameplayVrf'
+  );
+  const requestGameplayVrfIx = await requestGameplay()
     .accounts({
       payer,
       session: sessionPda,
       vrfState: gameplayVrfStatePda,
       systemProgram: SystemProgram.programId,
-    })
-    .instruction();
-
-  const fulfillGameplayVrfIx = await programs.gameplayState.methods
-    .fulfillGameplayVrf(gameplayRandomness)
-    .accounts({
-      vrfProgramIdentity: sessionSigner,
-      vrfState: gameplayVrfStatePda,
     })
     .instruction();
 
   const tx = new Transaction();
-  tx.add(requestPoiVrfIx, fulfillPoiVrfIx, requestGameplayVrfIx, fulfillGameplayVrfIx);
+  tx.add(requestPoiVrfIx, requestGameplayVrfIx);
+  if (localMode) {
+    const fulfillPoi = pickMethod(programs.poiSystem, 'fulfillPoiRng', 'fulfillPoiVrf');
+    const fulfillPoiVrfIx = await fulfillPoi(poiRandomness)
+      .accounts({
+        oracle: sessionSigner,
+        vrfState: poiVrfStatePda,
+      })
+      .instruction();
+    const fulfillGameplay = pickMethod(
+      programs.gameplayState,
+      'fulfillGameplayRng',
+      'fulfillGameplayVrf'
+    );
+    const fulfillGameplayVrfIx = await fulfillGameplay(gameplayRandomness)
+      .accounts({
+        vrfProgramIdentity: sessionSigner,
+        vrfState: gameplayVrfStatePda,
+      })
+      .instruction();
+    tx.add(fulfillPoiVrfIx, fulfillGameplayVrfIx);
+  }
   return tx;
 }
 
@@ -152,10 +172,11 @@ export async function buildRequestAndFulfillPoiVrfTransaction(
   sessionSigner: PublicKey
 ): Promise<Transaction> {
   const [poiVrfStatePda] = derivePoiVrfStatePda(sessionPda);
-  const poiRandomness = generateRandomness();
+  const localMode = SOLANA_CONFIG.isLocalValidator;
+  const poiRandomness = localMode ? generateRandomness() : null;
 
-  const requestIx = await poiSystemProgram.methods
-    .requestPoiVrf()
+  const requestPoi = pickMethod(poiSystemProgram, 'requestPoiRng', 'requestPoiVrf');
+  const requestIx = await requestPoi()
     .accounts({
       payer,
       session: sessionPda,
@@ -164,8 +185,12 @@ export async function buildRequestAndFulfillPoiVrfTransaction(
     })
     .instruction();
 
-  const fulfillIx = await poiSystemProgram.methods
-    .fulfillPoiVrf(poiRandomness)
+  if (!localMode) {
+    return new Transaction().add(requestIx);
+  }
+
+  const fulfillPoi = pickMethod(poiSystemProgram, 'fulfillPoiRng', 'fulfillPoiVrf');
+  const fulfillIx = await fulfillPoi(poiRandomness)
     .accounts({
       oracle: sessionSigner,
       vrfState: poiVrfStatePda,

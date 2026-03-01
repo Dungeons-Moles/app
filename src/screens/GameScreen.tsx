@@ -1960,6 +1960,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
         }
       },
       onB: () => {
+        playSfx('ui_back');
         if (isItemsetTooltipVisible) {
           handleCloseItemsetTooltip();
           return;
@@ -1983,6 +1984,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
         const isCompact = variant === 'compact';
         if (isCompact && !isCompactSidebarVisible) return;
 
+        playSfx('ui_hover');
         if (inventoryFocus === 'player') {
           setInventoryFocus('none');
         } else {
@@ -1996,6 +1998,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
         const isCompact = variant === 'compact';
         if (isCompact && !isCompactSidebarVisible) return;
 
+        playSfx('ui_hover');
         if (inventoryFocus === 'enemy') {
           setInventoryFocus('none');
         } else {
@@ -2003,8 +2006,14 @@ export function GameScreen({ navigation }: GameScreenProps) {
           setFocusedSlotIndex(0);
         }
       },
-      onStart: () => setShowPauseMenu(true),
-      onSelect: () => setShowTutorial(true),
+      onStart: () => {
+        playSfx('ui_click');
+        setShowPauseMenu(true);
+      },
+      onSelect: () => {
+        playSfx('ui_click');
+        setShowTutorial(true);
+      },
     },
     controllerEnabled
   );

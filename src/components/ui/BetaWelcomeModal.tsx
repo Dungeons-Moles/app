@@ -21,8 +21,8 @@ import { Typography } from '../../theme/typography';
 import { useScreenVariant } from '../../contexts/ScreenVariantContext';
 import { useInputMode } from '../../hooks/useInputMode';
 import { useControllerAction } from '../../hooks/useControllerAction';
-import { FocusGlow } from './FocusGlow';
 import { useAudio } from '../../contexts/AudioContext';
+import { FocusGlow } from './FocusGlow';
 
 const paperPanelSource = require('../../../assets/ui/panels/paper-panel.png');
 const buttonBgSource = require('../../../assets/ui/buttons/button.png');
@@ -40,12 +40,11 @@ export function BetaWelcomeModal({ visible, onClose }: BetaWelcomeModalProps) {
   const inputMode = useInputMode();
   const isController = inputMode === 'controller';
   const { playSfx } = useAudio();
-
   const handleClose = useCallback(async () => {
-    playSfx('ui_click');
+    playSfx('ui_back');
     await AsyncStorage.setItem(BETA_WELCOME_KEY, 'true');
     onClose();
-  }, [playSfx, onClose]);
+  }, [onClose, playSfx]);
 
   useControllerAction(
     {

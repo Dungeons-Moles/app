@@ -75,10 +75,11 @@ export function TutorialModal({ visible, onClose }: TutorialModalProps) {
   const { playSfx } = useAudio();
 
   const handleClose = useCallback(() => {
+    playSfx('ui_back');
     AsyncStorage.setItem(TUTORIAL_SEEN_KEY, '1').catch(() => {});
     setCurrentPage(0);
     onClose();
-  }, [onClose]);
+  }, [onClose, playSfx]);
 
   const turnPage = useCallback(
     (delta: number) => {

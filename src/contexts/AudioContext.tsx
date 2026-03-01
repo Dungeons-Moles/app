@@ -50,7 +50,8 @@ export type SfxTrack =
   | 'poi_geode'
   | 'poi_scrap'
   | 'phase_night'
-  | 'ui_page_turn';
+  | 'ui_page_turn'
+  | 'ui_back';
 
 interface AudioVolumes {
   music: number;
@@ -108,6 +109,7 @@ const SFX_FILES: Record<SfxTrack, number> = {
   poi_scrap: require('../../assets/audio/sfx/poi_scrap.wav'),
   phase_night: require('../../assets/audio/sfx/phase_night.wav'),
   ui_page_turn: require('../../assets/audio/sfx/ui_page_turn.wav'),
+  ui_back: require('../../assets/audio/sfx/ui_back.wav'),
 };
 
 // Custom event names for cross-tree mute bridge (web only).
@@ -459,10 +461,22 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // --- SFX Management ---
+  // When a modal closes or a navigation action fires (ui_back / ui_click),
+  // suppress the ui_hover that FocusGlow emits when the underlying buttons regain focus.
+  const lastNavigationSfxTs = useRef(0);
+
   const playSfx = useCallback(
     async (track: SfxTrack) => {
       // Optimization: don't load and play if volume is 0
       if (sfxVolume <= 0) return;
+
+      // Suppress ui_hover triggered by FocusGlow refocus after a modal close / navigation
+      if (track === 'ui_hover' && Date.now() - lastNavigationSfxTs.current < 150) {
+        return;
+      }
+      if (track === 'ui_back' || track === 'ui_click') {
+        lastNavigationSfxTs.current = Date.now();
+      }
 
       try {
         const { sound } = await Audio.Sound.createAsync(SFX_FILES[track], {

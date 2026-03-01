@@ -426,7 +426,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
   };
 
   const closeAnyModal = () => {
-    playSfx('ui_click');
+    playSfx('ui_back');
     if (showBetaWelcome) setShowBetaWelcome(false);
     else if (showResetWarning) setShowResetWarning(false);
     else if (showPvP) setShowPvP(false);
@@ -497,7 +497,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
             : resetWarningFocus === 0 && !resetInProgress
               ? () => setShowResetWarning(false)
               : undefined,
-        onB: resetInProgress ? undefined : () => setShowResetWarning(false),
+        onB: resetInProgress ? undefined : () => { playSfx('ui_back'); setShowResetWarning(false); },
         onDPadLeft: () => setResetWarningFocus((p) => Math.max(0, p - 1)),
         onDPadRight: () => setResetWarningFocus((p) => Math.min(1, p + 1)),
       }
@@ -521,7 +521,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
   const pvpActions = showPvP
     ? {
         onA: () => [handleGauntlet, handleDuels, handlePitDraft][pvpFocus]?.(),
-        onB: () => setShowPvP(false),
+        onB: () => { playSfx('ui_back'); setShowPvP(false); },
         onDPadUp: () => setPvpFocus((p) => Math.max(0, p - 1)),
         onDPadDown: () => setPvpFocus((p) => Math.min(2, p + 1)),
       }

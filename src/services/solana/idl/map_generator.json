@@ -369,6 +369,64 @@
       ]
     },
     {
+      "name": "fulfill_map_rng",
+      "docs": [
+        "LOCALNET ONLY: self-fulfill local RNG (same lifecycle as fulfill_map_vrf)."
+      ],
+      "discriminator": [
+        99,
+        239,
+        218,
+        17,
+        72,
+        5,
+        70,
+        171
+      ],
+      "accounts": [
+        {
+          "name": "oracle",
+          "signer": true
+        },
+        {
+          "name": "vrf_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  112,
+                  95,
+                  118,
+                  114,
+                  102
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "vrf_state.session",
+                "account": "MapVrfState"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "randomness",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ]
+    },
+    {
       "name": "fulfill_map_vrf",
       "docs": [
         "Oracle callback: receives VRF randomness and writes it to state.",
@@ -883,6 +941,61 @@
       ]
     },
     {
+      "name": "request_map_rng",
+      "docs": [
+        "LOCALNET ONLY: request local RNG (same lifecycle as request_map_vrf)."
+      ],
+      "discriminator": [
+        180,
+        84,
+        114,
+        109,
+        30,
+        32,
+        210,
+        223
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "session"
+        },
+        {
+          "name": "vrf_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  112,
+                  95,
+                  118,
+                  114,
+                  102
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "session"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "request_map_vrf",
       "docs": [
         "Requests VRF randomness for map generation.",
@@ -906,7 +1019,10 @@
           "signer": true
         },
         {
-          "name": "session"
+          "name": "session",
+          "docs": [
+            "This may be called before session account initialization."
+          ]
         },
         {
           "name": "vrf_state",

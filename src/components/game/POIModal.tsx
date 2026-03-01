@@ -524,7 +524,7 @@ export const POIModal = React.memo(function POIModal({
           }
         }
       },
-      onB: onClose,
+      onB: () => { playSfx('ui_back'); onClose(); },
     },
     isController && visible
   );

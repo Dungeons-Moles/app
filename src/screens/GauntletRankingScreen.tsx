@@ -11,6 +11,7 @@ import {
 import { PublicKey } from '@solana/web3.js';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
+import { useIsFocused } from '@react-navigation/native';
 import { RootStackParamList } from '../navigation';
 import { useWallet } from '@/contexts/WalletContext';
 import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
@@ -19,6 +20,7 @@ import { createGameplayStateProgram, createPlayerProfileProgram } from '@/servic
 import { deriveGauntletConfigPda } from '@/services/solana/gauntlet';
 import { derivePlayerProfilePda } from '@/services/solana/types';
 import { Typography } from '@/theme/typography';
+import { useAudio } from '../contexts/AudioContext';
 import { useControllerAction } from '../hooks/useControllerAction';
 import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHints';
 import { useInputMode } from '../hooks/useInputMode';
@@ -193,16 +195,19 @@ export function GauntletRankingScreen({ navigation, route }: GauntletRankingScre
   // --- Controller navigation ---
   const inputMode = useInputMode();
   const isController = inputMode === 'controller';
+  const isFocused = useIsFocused();
   const [actionFocus, setActionFocus] = useState(0); // 0 = Refresh, 1 = Prev, 2 = Next
   const [showSettingsModal, setShowSettingsModal] = useState(false);
 
+  const { playSfx } = useAudio();
   const handleBack = useCallback(() => {
+    playSfx('ui_back');
     if (returnTo) {
       navigation.navigate(returnTo);
     } else {
       navigation.goBack();
     }
-  }, [navigation, returnTo]);
+  }, [navigation, returnTo, playSfx]);
 
   const handleDisconnect = useCallback(() => {
     disconnect();
@@ -224,7 +229,7 @@ export function GauntletRankingScreen({ navigation, route }: GauntletRankingScre
       onDPadLeft: () => setActionFocus((f) => Math.max(0, f - 1)),
       onDPadRight: () => setActionFocus((f) => Math.min(totalPages > 1 ? 2 : 0, f + 1)),
     },
-    isController && !showSettingsModal
+    isController && isFocused && !showSettingsModal
   );
 
   const controllerHints: ButtonHint[] = [

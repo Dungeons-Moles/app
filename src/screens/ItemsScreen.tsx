@@ -12,6 +12,7 @@ import {
   Animated,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useIsFocused } from '@react-navigation/native';
 import { useProfile } from '../contexts/ProfileContext';
 import { useWallet } from '../contexts/WalletContext';
 import { RootStackParamList } from '../navigation';
@@ -21,6 +22,7 @@ import { useControllerAction } from '../hooks/useControllerAction';
 import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHints';
 import { useInputMode } from '../hooks/useInputMode';
 import { FocusGlow } from '../components/ui/FocusGlow';
+import { useAudio } from '../contexts/AudioContext';
 import { HubSettingsModal } from '../components/ui/HubSettingsModal';
 import {
   getGearByTag,
@@ -301,6 +303,7 @@ const getAllItems = (): DisplayItem[] => {
 };
 
 export function ItemsScreen({ navigation }: ItemsScreenProps) {
+  const { playSfx } = useAudio();
   const { isItemUnlocked, updateActiveItemPool, profile, mode } = useProfile();
   const { disconnect } = useWallet();
   const isGuest = mode === 'guest';
@@ -420,8 +423,9 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
   }, [draftPoolIndices, updateActiveItemPool]);
 
   const handleBack = useCallback(() => {
+    playSfx('ui_back');
     navigation.goBack();
-  }, [navigation]);
+  }, [navigation, playSfx]);
 
   const handleDisconnect = useCallback(() => {
     disconnect();
@@ -439,6 +443,7 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
   // --- Controller navigation ---
   const inputMode = useInputMode();
   const isController = inputMode === 'controller';
+  const isFocused = useIsFocused();
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const allItems = useMemo(() => getAllItems(), []);
   const itemsPerRow = isCompact ? 5 : 5;
@@ -484,6 +489,7 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
   const cursorRef = useRef<View>(null);
 
   const toggleTab = useCallback(() => {
+    playSfx('ui_page_turn');
     setActiveTab((prev) => {
       if (prev === 'items') {
         setItemsetCursorIdx(0);
@@ -494,7 +500,7 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
         return 'items';
       }
     });
-  }, []);
+  }, [playSfx]);
 
   useControllerAction(
     {
@@ -528,7 +534,7 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
         else setItemsetCursorIdx((p) => Math.min(allItemsets.length - 1, p + itemsPerRow));
       },
     },
-    isController && !showSettingsModal
+    isController && isFocused && !showSettingsModal
   );
 
   const controllerHints: ButtonHint[] = [

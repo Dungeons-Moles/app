@@ -25,6 +25,7 @@ import { useControllerAction } from '../hooks/useControllerAction';
 import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHints';
 import { useInputMode } from '../hooks/useInputMode';
 import { FocusGlow } from '../components/ui/FocusGlow';
+import { useAudio } from '../contexts/AudioContext';
 import { HubSettingsModal } from '../components/ui/HubSettingsModal';
 import { useGame } from '@/contexts/GameContext';
 import { usePaymentToken } from '@/hooks/usePaymentToken';
@@ -59,6 +60,7 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
   const isCompact = useScreenVariant() === 'compact';
   const [hasExistingDuelSessionOnChain, setHasExistingDuelSessionOnChain] = useState(false);
 
+  const { playSfx } = useAudio();
   const payment = usePaymentToken(BigInt(DUEL_ENTRY_LAMPORTS));
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
@@ -104,9 +106,10 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
   }, [dispatch, duels.phase, navigation]);
 
   const handleBack = useCallback(() => {
+    playSfx('ui_back');
     duels.reset();
     navigation.goBack();
-  }, [duels, navigation]);
+  }, [duels, navigation, playSfx]);
 
   const handleDisconnect = useCallback(() => {
     disconnect();
@@ -125,6 +128,7 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
   }, [dispatch, duels, navigation]);
 
   const handleEnter = useCallback(async () => {
+    playSfx('ui_click');
     if (hasExistingDuelSession) {
       setShowSessionExistsModal(true);
       return;
@@ -134,7 +138,7 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
       return;
     }
     await handleEnterDirect();
-  }, [hasExistingDuelSession, payment.selectedToken, payment.quote, handleEnterDirect]);
+  }, [hasExistingDuelSession, payment.selectedToken, payment.quote, handleEnterDirect, playSfx]);
 
   const handleResumeExistingSession = useCallback(async () => {
     setShowSessionExistsModal(false);
@@ -164,8 +168,9 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
   const [panelFocus, setPanelFocus] = useState(1); // 0 = History, 1 = Enter
 
   const handleHistory = useCallback(() => {
+    playSfx('ui_click');
     navigation.navigate('DuelsHistory');
-  }, [navigation]);
+  }, [navigation, playSfx]);
 
   const cycleToken = useCallback(
     (dir: -1 | 1) => {
@@ -173,6 +178,7 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
       const idx = tokens.findIndex((t) => t.symbol === payment.selectedToken.symbol);
       const next = idx + dir;
       if (next >= 0 && next < tokens.length) {
+        playSfx('ui_hover');
         payment.setSelectedToken(tokens[next]);
       }
     },
@@ -183,7 +189,7 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
     showSessionExistsModal
       ? {
           onA: handleResumeExistingSession,
-          onB: () => setShowSessionExistsModal(false),
+          onB: () => { playSfx('ui_back'); setShowSessionExistsModal(false); },
           onX: handleOverrideExistingSession,
         }
       : showPaymentModal || showSettingsModal

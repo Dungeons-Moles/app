@@ -40,6 +40,13 @@ const TOOL_OIL_FLAG_ARM = 0x08;
 const PIT_DRAFT_MAX_START_GOLD = 30;
 const U64_MASK = (1n << 64n) - 1n;
 
+function pickMethod(program: Program, preferred: string, fallback: string) {
+  const methods = (program.methods ?? {}) as Record<string, (...args: any[]) => any>;
+  if (typeof methods[preferred] === 'function') return methods[preferred].bind(methods);
+  if (typeof methods[fallback] === 'function') return methods[fallback].bind(methods);
+  throw new Error(`Neither ${preferred} nor ${fallback} exists on gameplay-state program`);
+}
+
 // ============================================================================
 // PDA Derivation
 // ============================================================================
@@ -117,10 +124,11 @@ export async function buildEnterPitDraftTransaction(
   // The session field in RequestGameplayVrf is an UncheckedAccount used only for PDA derivation.
   const vrfSessionKey = Keypair.generate().publicKey;
   const [gameplayVrfStatePda] = deriveGameplayVrfStatePda(vrfSessionKey);
-  const randomness = generateRandomness();
+  const localMode = SOLANA_CONFIG.isLocalValidator;
+  const randomness = localMode ? generateRandomness() : null;
 
-  const requestVrfIx = await program.methods
-    .requestGameplayVrf()
+  const requestGameplay = pickMethod(program, 'requestGameplayRng', 'requestGameplayVrf');
+  const requestVrfIx = await requestGameplay()
     .accounts({
       payer: playerPublicKey,
       session: vrfSessionKey,
@@ -129,15 +137,14 @@ export async function buildEnterPitDraftTransaction(
     })
     .instruction();
 
-  // Use accountsPartial to avoid Anchor trying to auto-resolve
-  // the self-referential VRF PDA (seeds include vrf_state.session).
-  const fulfillVrfIx = await program.methods
-    .fulfillGameplayVrf(randomness)
-    .accountsPartial({
-      vrfProgramIdentity: playerPublicKey,
-      vrfState: gameplayVrfStatePda,
-    })
-    .instruction();
+  const fulfillVrfIx = localMode
+    ? await pickMethod(program, 'fulfillGameplayRng', 'fulfillGameplayVrf')(randomness)
+        .accountsPartial({
+          vrfProgramIdentity: playerPublicKey,
+          vrfState: gameplayVrfStatePda,
+        })
+        .instruction()
+    : null;
 
   // Use accountsPartial — gameplayVrfState PDA is self-referential
   // (seeds include gameplay_vrf_state.session) so Anchor can't auto-resolve it.
@@ -168,10 +175,10 @@ export async function buildEnterPitDraftTransaction(
     ComputeBudgetProgram.setComputeUnitPrice({
       microLamports: PIT_DRAFT_CU_PRICE_MICROLAMPORTS,
     }),
-    requestVrfIx,
-    fulfillVrfIx,
-    enterPitDraftIx
+    requestVrfIx
   );
+  if (fulfillVrfIx) transaction.add(fulfillVrfIx);
+  transaction.add(enterPitDraftIx);
 
   const { blockhash } = await connection.getLatestBlockhash(SOLANA_CONFIG.commitment);
   transaction.recentBlockhash = blockhash;

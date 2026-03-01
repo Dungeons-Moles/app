@@ -65,7 +65,7 @@ export function HubSettingsModal({ visible, onClose, onDisconnect }: HubSettings
   useControllerAction(
     {
       onA: settingsFocus === 3 ? toggleAutoOpenPOI : settingsFocus === 4 ? onDisconnect : undefined,
-      onB: onClose,
+      onB: () => { playSfx('ui_back'); onClose(); },
       onDPadUp: () => setSettingsFocus((p) => Math.max(0, p - 1)),
       onDPadDown: () => setSettingsFocus((p) => Math.min(4, p + 1)),
       onDPadLeft:

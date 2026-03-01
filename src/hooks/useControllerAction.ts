@@ -6,10 +6,15 @@
  * a fast button tap produces buttonDown→buttonUp before React renders,
  * causing the store's lastEvent to be overwritten with buttonUp and the
  * buttonDown to be silently lost.
+ *
+ * Uses event-reference deduplication instead of timestamps to avoid the
+ * Date.now() collision bug: when the gamepad polling loop emits multiple
+ * buttonDown events in the same millisecond (e.g. two buttons change state
+ * in the same frame), timestamp-based dedup would silently drop the second
+ * event. Comparing object references is immune to this.
  */
 import { useEffect, useRef, useContext } from 'react';
-import { Psg1Button, Psg1InputContext } from 'psg1-sim';
-import { useAudio } from '../contexts/AudioContext';
+import { Psg1Button, Psg1InputContext, type GamepadEvent } from 'psg1-sim';
 
 export interface ControllerActions {
   onA?: () => void;
@@ -28,7 +33,6 @@ export interface ControllerActions {
 
 export function useControllerAction(actions: ControllerActions, enabled = true) {
   const store = useContext(Psg1InputContext);
-  const { playSfx } = useAudio();
 
   const actionsRef = useRef(actions);
   actionsRef.current = actions;
@@ -36,16 +40,16 @@ export function useControllerAction(actions: ControllerActions, enabled = true) 
   const enabledRef = useRef(enabled);
   enabledRef.current = enabled;
 
-  const playSfxRef = useRef(playSfx);
-  playSfxRef.current = playSfx;
+  // Track the last event we processed by object reference.
+  // Each store.emit() creates a unique event object, so reference equality
+  // correctly deduplicates without relying on Date.now() precision.
+  const lastHandledEventRef = useRef<GamepadEvent | undefined>(undefined);
 
-  const lastHandledTs = useRef(0);
-
-  // Set initial timestamp to skip any pre-existing event in the store at mount
+  // Capture the pre-existing event at mount so we don't replay it
   useEffect(() => {
     if (!store) return;
     const snapshot = store.getSnapshot();
-    lastHandledTs.current = snapshot.lastEvent?.ts ?? 0;
+    lastHandledEventRef.current = snapshot.lastEvent;
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -56,21 +60,14 @@ export function useControllerAction(actions: ControllerActions, enabled = true) 
 
       const event = store.getSnapshot().lastEvent;
       if (!event || event.type !== 'buttonDown') return;
-      if (event.ts <= lastHandledTs.current) return;
-      lastHandledTs.current = event.ts;
+      if (event === lastHandledEventRef.current) return;
+      lastHandledEventRef.current = event;
 
       const a = actionsRef.current;
       const btn = event.button;
 
-      // Play hover SFX on navigation buttons (DPad + L1/R1)
-      const isNavButton =
-        btn === Psg1Button.DPadUp ||
-        btn === Psg1Button.DPadDown ||
-        btn === Psg1Button.DPadLeft ||
-        btn === Psg1Button.DPadRight ||
-        btn === Psg1Button.L1 ||
-        btn === Psg1Button.R1;
-      if (isNavButton) playSfxRef.current('ui_hover');
+      // No global SFX on any buttons. Each screen plays its own
+      // contextual sound (e.g. move_floor/move_dig, ui_hover, ui_page_turn, ui_back).
 
       switch (btn) {
         case Psg1Button.Cross:

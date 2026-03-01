@@ -98,7 +98,7 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const isFocused = useIsFocused();
   const isCompact = useScreenVariant() === 'compact';
-  const { playBgm } = useAudio();
+  const { playBgm, playSfx } = useAudio();
   const { disconnect } = useWallet();
 
   const payment = usePaymentToken(BigInt(PIT_DRAFT_ENTRY_LAMPORTS));
@@ -153,9 +153,10 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
   }, [pitDraft.phase]);
 
   const handleBack = useCallback(() => {
+    playSfx('ui_back');
     pitDraft.reset();
     navigation.goBack();
-  }, [navigation, pitDraft]);
+  }, [navigation, pitDraft, playSfx]);
 
   const handleDisconnect = useCallback(() => {
     disconnect();
@@ -171,20 +172,22 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
   const [panelFocus, setPanelFocus] = useState(1); // 0 = History, 1 = Enter
 
   const handleHistory = useCallback(() => {
+    playSfx('ui_click');
     navigation.navigate('PitDraftHistory');
-  }, [navigation]);
+  }, [navigation, playSfx]);
 
   const handleEnterDirect = useCallback(() => {
     pitDraft.enterPitDraft();
   }, [pitDraft]);
 
   const handleEnter = useCallback(async () => {
+    playSfx('ui_click');
     if (!payment.selectedToken.isNative && payment.quote) {
       setShowPaymentModal(true);
       return;
     }
     handleEnterDirect();
-  }, [payment.selectedToken, payment.quote, handleEnterDirect]);
+  }, [payment.selectedToken, payment.quote, handleEnterDirect, playSfx]);
 
   const handlePaymentConfirm = useCallback(() => {
     setShowPaymentModal(false);
@@ -197,10 +200,11 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
       const idx = tokens.findIndex((t) => t.symbol === payment.selectedToken.symbol);
       const next = idx + dir;
       if (next >= 0 && next < tokens.length) {
+        playSfx('ui_hover');
         payment.setSelectedToken(tokens[next]);
       }
     },
-    [payment]
+    [payment, playSfx]
   );
 
   useControllerAction(

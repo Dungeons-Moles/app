@@ -36,7 +36,9 @@ import {
   deriveSessionPdas,
   deriveSessionPda,
   deriveSessionNoncesPda,
+  deriveMapVrfStatePda,
   derivePoiVrfStatePda,
+  deriveGameplayVrfStatePda,
 } from '@/services/solana/constants';
 import { SOLANA_CONFIG } from '@/services/solana/config';
 import {
@@ -49,6 +51,7 @@ import {
   buildRequestAndFulfillMapVrfInstructions,
   buildRequestAndFulfillPoiAndGameplayVrfTransaction,
   buildRequestAndFulfillPoiVrfTransaction,
+  waitForVrfFulfillment,
 } from '@/services/solana/vrf';
 import { fetchGeneratedMap } from '@/services/solana/mapGeneratorClient';
 import {
@@ -1175,9 +1178,21 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           newSessionSignerKeypair.publicKey
         );
         await sendSessionSignerTransaction(connection, poiVrfTx, newSessionSignerKeypair);
-        console.log('[SessionContext] startGame:poi_vrf_fulfilled');
+        if (!SOLANA_CONFIG.isLocalValidator) {
+          const [poiVrfStatePda] = derivePoiVrfStatePda(sessionPda);
+          const fulfilled = await waitForVrfFulfillment(connection, poiVrfStatePda, 30_000);
+          if (!fulfilled) {
+            throw new Error('POI VRF request submitted but not fulfilled within timeout');
+          }
+        }
+        console.log('[SessionContext] startGame:poi_vrf_ready');
       } catch (vrfError) {
-        console.warn('[SessionContext] startGame:poi_vrf_failed, continuing without VRF', vrfError);
+        logTxDebugError('startGame:poi_vrf', vrfError);
+        await sessionSigner.clear();
+        return {
+          success: false,
+          error: vrfError instanceof Error ? vrfError.message : 'Failed to initialize POI randomness',
+        };
       }
 
       // Step 7: Delegate all runtime accounts after session creation.
@@ -1322,7 +1337,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       (ix) => ix.programId.toBase58() !== COMPUTE_BUDGET_PROGRAM_ID
     );
     let mapVrfIxs: TransactionInstruction[] = [];
-    if (ENABLE_START_MAP_VRF) {
+    if (ENABLE_START_MAP_VRF && SOLANA_CONFIG.isLocalValidator) {
       try {
         mapVrfIxs = await buildRequestAndFulfillMapVrfInstructions(
           mapGenProgram,
@@ -1450,12 +1465,27 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           newSessionSignerKeypair.publicKey
         );
         await sendSessionSignerTransaction(connection, vrfTx, newSessionSignerKeypair);
-        console.log('[SessionContext] startDuelGame:poi_gameplay_vrf_fulfilled');
+        if (!SOLANA_CONFIG.isLocalValidator) {
+          const [poiVrfStatePda] = derivePoiVrfStatePda(sessionPda);
+          const [gameplayVrfStatePda] = deriveGameplayVrfStatePda(sessionPda);
+          const [poiReady, gameplayReady] = await Promise.all([
+            waitForVrfFulfillment(connection, poiVrfStatePda, 30_000),
+            waitForVrfFulfillment(connection, gameplayVrfStatePda, 30_000),
+          ]);
+          if (!poiReady || !gameplayReady) {
+            throw new Error('Duel VRF request submitted but not fulfilled within timeout');
+          }
+        }
+        console.log('[SessionContext] startDuelGame:poi_gameplay_vrf_ready');
       } catch (vrfError) {
-        console.warn(
-          '[SessionContext] startDuelGame:poi_gameplay_vrf_failed, continuing without post-start VRF',
-          vrfError
-        );
+        logTxDebugError('startDuelGame:poi_gameplay_vrf', vrfError);
+        return {
+          success: false,
+          error:
+            vrfError instanceof Error
+              ? vrfError.message
+              : 'Failed to initialize duel randomness',
+        };
       }
 
       const generatedSeed = await fetchSessionGeneratedSeed(sessionPda);
@@ -1554,7 +1584,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       (ix) => ix.programId.toBase58() !== COMPUTE_BUDGET_PROGRAM_ID
     );
     let mapVrfIxs: TransactionInstruction[] = [];
-    if (ENABLE_START_MAP_VRF) {
+    if (ENABLE_START_MAP_VRF && SOLANA_CONFIG.isLocalValidator) {
       try {
         mapVrfIxs = await buildRequestAndFulfillMapVrfInstructions(
           mapGenProgram,
@@ -1683,12 +1713,27 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           newSessionSignerKeypair.publicKey
         );
         await sendSessionSignerTransaction(connection, vrfTx, newSessionSignerKeypair);
-        console.log('[SessionContext] startGauntletGame:poi_gameplay_vrf_fulfilled');
+        if (!SOLANA_CONFIG.isLocalValidator) {
+          const [poiVrfStatePda] = derivePoiVrfStatePda(sessionPda);
+          const [gameplayVrfStatePda] = deriveGameplayVrfStatePda(sessionPda);
+          const [poiReady, gameplayReady] = await Promise.all([
+            waitForVrfFulfillment(connection, poiVrfStatePda, 30_000),
+            waitForVrfFulfillment(connection, gameplayVrfStatePda, 30_000),
+          ]);
+          if (!poiReady || !gameplayReady) {
+            throw new Error('Gauntlet VRF request submitted but not fulfilled within timeout');
+          }
+        }
+        console.log('[SessionContext] startGauntletGame:poi_gameplay_vrf_ready');
       } catch (vrfError) {
-        console.warn(
-          '[SessionContext] startGauntletGame:poi_gameplay_vrf_failed, continuing without post-start VRF',
-          vrfError
-        );
+        logTxDebugError('startGauntletGame:poi_gameplay_vrf', vrfError);
+        return {
+          success: false,
+          error:
+            vrfError instanceof Error
+              ? vrfError.message
+              : 'Failed to initialize gauntlet randomness',
+        };
       }
 
       const generatedSeed = await fetchSessionGeneratedSeed(sessionPda);

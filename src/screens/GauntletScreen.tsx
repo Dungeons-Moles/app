@@ -25,6 +25,7 @@ import { useControllerAction } from '../hooks/useControllerAction';
 import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHints';
 import { useInputMode } from '../hooks/useInputMode';
 import { FocusGlow } from '../components/ui/FocusGlow';
+import { useAudio } from '../contexts/AudioContext';
 import { HubSettingsModal } from '../components/ui/HubSettingsModal';
 import { useGame } from '@/contexts/GameContext';
 import { usePaymentToken } from '@/hooks/usePaymentToken';
@@ -59,6 +60,7 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
   const isCompact = useScreenVariant() === 'compact';
   const [hasExistingGauntletSessionOnChain, setHasExistingGauntletSessionOnChain] = useState(false);
 
+  const { playSfx } = useAudio();
   const payment = usePaymentToken(BigInt(GAUNTLET_ENTRY_LAMPORTS));
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
@@ -98,9 +100,10 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
   }, [connection, wallet.publicKey, fetchSessionNonces]);
 
   const handleBack = useCallback(() => {
+    playSfx('ui_back');
     gauntlet.reset();
     navigation.goBack();
-  }, [gauntlet, navigation]);
+  }, [gauntlet, navigation, playSfx]);
 
   const handleDisconnect = useCallback(() => {
     disconnect();
@@ -122,6 +125,7 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
   }, [dispatch, gauntlet, navigation]);
 
   const handleEnter = useCallback(async () => {
+    playSfx('ui_click');
     if (hasExistingGauntletSession) {
       setShowSessionExistsModal(true);
       return;
@@ -131,7 +135,7 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
       return;
     }
     await handleEnterDirect();
-  }, [hasExistingGauntletSession, payment.selectedToken, payment.quote, handleEnterDirect]);
+  }, [hasExistingGauntletSession, payment.selectedToken, payment.quote, handleEnterDirect, playSfx]);
 
   const handleResumeExistingSession = useCallback(async () => {
     setShowSessionExistsModal(false);
@@ -168,12 +172,14 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
   const [panelFocus, setPanelFocus] = useState(1); // 0 = History, 1 = Enter
 
   const handleHistory = useCallback(() => {
+    playSfx('ui_click');
     navigation.navigate('GauntletHistory');
-  }, [navigation]);
+  }, [navigation, playSfx]);
 
   const handleRanking = useCallback(() => {
+    playSfx('ui_click');
     navigation.navigate('GauntletRanking');
-  }, [navigation]);
+  }, [navigation, playSfx]);
 
   const cycleToken = useCallback(
     (dir: -1 | 1) => {
@@ -181,6 +187,7 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
       const idx = tokens.findIndex((t) => t.symbol === payment.selectedToken.symbol);
       const next = idx + dir;
       if (next >= 0 && next < tokens.length) {
+        playSfx('ui_hover');
         payment.setSelectedToken(tokens[next]);
       }
     },
@@ -191,7 +198,7 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
     showSessionExistsModal
       ? {
           onA: !isEntryTransitioning ? handleResumeExistingSession : undefined,
-          onB: !isEntryTransitioning ? () => setShowSessionExistsModal(false) : undefined,
+          onB: !isEntryTransitioning ? () => { playSfx('ui_back'); setShowSessionExistsModal(false); } : undefined,
           onX: !isEntryTransitioning ? handleOverrideExistingSession : undefined,
         }
       : showPaymentModal || showSettingsModal

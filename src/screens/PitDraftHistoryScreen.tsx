@@ -144,7 +144,7 @@ export function PitDraftHistoryScreen({ navigation }: PitDraftHistoryScreenProps
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [isLoadingReplay, setIsLoadingReplay] = useState(false);
   const flatListRef = useRef<FlatList<PitDraftHistoryItem>>(null);
-  const { playBgm } = useAudio();
+  const { playBgm, playSfx } = useAudio();
   const isFocused = useIsFocused();
 
   // Resume hub music when returning from combat replay
@@ -364,8 +364,9 @@ export function PitDraftHistoryScreen({ navigation }: PitDraftHistoryScreenProps
   const [showSettingsModal, setShowSettingsModal] = useState(false);
 
   const handleBack = useCallback(() => {
+    playSfx('ui_back');
     navigation.goBack();
-  }, [navigation]);
+  }, [navigation, playSfx]);
 
   const handleDisconnect = useCallback(() => {
     disconnect();
@@ -407,7 +408,7 @@ export function PitDraftHistoryScreen({ navigation }: PitDraftHistoryScreenProps
       onDPadUp: handleDPadUp,
       onDPadDown: handleDPadDown,
     },
-    isController && !showSettingsModal
+    isController && isFocused && !showSettingsModal
   );
 
   const controllerHints: ButtonHint[] = [

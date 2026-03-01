@@ -11,7 +11,7 @@ import {
   Animated,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { useProfile } from '../contexts/ProfileContext';
 import { useScreenVariant } from '../contexts/ScreenVariantContext';
 import { useWallet, type SupportedWallet } from '../contexts/WalletContext';
@@ -22,6 +22,7 @@ import { BackpackIcon } from '../components/wallet/BackpackIcon';
 import { useControllerAction } from '../hooks/useControllerAction';
 import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHints';
 import { ControllerKeyboard } from '../components/ui/ControllerKeyboard';
+import { useInputMode } from '../hooks/useInputMode';
 import { useAudio } from '../contexts/AudioContext';
 import { APP_VERSION } from '../constants/app';
 
@@ -47,6 +48,8 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
   const { playBgm, playSfx, isInitialLoading } = useAudio();
   const screenVariant = useScreenVariant();
   const isCompact = screenVariant === 'compact';
+  const isFocused = useIsFocused();
+  const isController = useInputMode() === 'controller';
   const [selectedWallet, setSelectedWallet] = useState<SupportedWallet>('Jupiter');
   const [profileName, setProfileName] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
@@ -171,7 +174,7 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
   }, [playSfx]);
 
   const handleClearName = useCallback(() => {
-    playSfx('ui_click');
+    playSfx('ui_back');
     setProfileName('');
   }, [playSfx]);
 
@@ -189,7 +192,7 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
       onDPadRight: showWalletSelection ? handleDPadRight : undefined,
       onSelect: showWalletSelection ? handlePlayAsGuest : undefined,
     },
-    !showLoading && !showKeyboard
+    isController && isFocused && !showLoading && !showKeyboard
   );
 
   const controllerHints: ButtonHint[] = showWalletSelection

@@ -85,7 +85,7 @@ export function PriceInput({ onConfirm, onCancel, isCompact }: PriceInputProps) 
       ? {}
       : {
           onA: handleControllerA,
-          onB: onCancel,
+          onB: () => { playSfx('ui_back'); onCancel(); },
           onDPadUp: handleUp,
           onDPadDown: handleDown,
           onDPadLeft: handleLeft,

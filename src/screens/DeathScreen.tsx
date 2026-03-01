@@ -44,7 +44,7 @@ export function DeathScreen({ navigation, route }: DeathScreenProps) {
   const { height } = useWindowDimensions();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
-  const { playBgm } = useAudio();
+  const { playBgm, playSfx } = useAudio();
 
   const isOutOfRuns = mode !== 'guest' && availableRuns === 0;
   // Use vertical layout for taller screens (portrait or large tablets)
@@ -68,11 +68,12 @@ export function DeathScreen({ navigation, route }: DeathScreenProps) {
   }, [fadeAnim, slideAnim, playBgm]);
 
   const handleReturnToHub = useCallback(() => {
+    playSfx('ui_back');
     navigation.reset({
       index: 0,
       routes: [{ name: 'Hub' }],
     });
-  }, [navigation]);
+  }, [navigation, playSfx]);
 
   // --- Controller navigation ---
   const inputMode = useInputMode();

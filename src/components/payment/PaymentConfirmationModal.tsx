@@ -18,6 +18,7 @@ import { InlineModal } from '@/components/InlineModal';
 import { FocusGlow } from '@/components/ui/FocusGlow';
 import { useControllerAction } from '@/hooks/useControllerAction';
 import { useInputMode } from '@/hooks/useInputMode';
+import { useAudio } from '@/contexts/AudioContext';
 import type { SwapQuote } from '@/services/solana/jupiter';
 
 const paperPanelSource = require('../../../assets/ui/panels/paper-panel.png');
@@ -43,6 +44,7 @@ export function PaymentConfirmationModal({
   const [buttonFocus, setButtonFocus] = useState(0); // 0 = Confirm, 1 = Cancel
   const inputMode = useInputMode();
   const isController = inputMode === 'controller';
+  const { playSfx } = useAudio();
 
   const handleConfirm = useCallback(async () => {
     setIsProcessing(true);
@@ -56,7 +58,7 @@ export function PaymentConfirmationModal({
   useControllerAction(
     {
       onA: buttonFocus === 0 ? (!isProcessing ? handleConfirm : undefined) : onCancel,
-      onB: onCancel,
+      onB: () => { playSfx('ui_back'); onCancel(); },
       onDPadLeft: () => setButtonFocus(0),
       onDPadRight: () => setButtonFocus(1),
     },

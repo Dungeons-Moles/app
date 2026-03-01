@@ -2060,6 +2060,69 @@
       ]
     },
     {
+      "name": "fulfill_gameplay_rng",
+      "docs": [
+        "LOCALNET ONLY: self-fulfill local RNG (same lifecycle as fulfill_gameplay_vrf)."
+      ],
+      "discriminator": [
+        169,
+        159,
+        197,
+        22,
+        254,
+        234,
+        150,
+        101
+      ],
+      "accounts": [
+        {
+          "name": "vrf_program_identity",
+          "signer": true
+        },
+        {
+          "name": "vrf_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  112,
+                  108,
+                  97,
+                  121,
+                  95,
+                  118,
+                  114,
+                  102
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "vrf_state.session",
+                "account": "GameplayVrfState"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "randomness",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ]
+    },
+    {
       "name": "fulfill_gameplay_vrf",
       "docs": [
         "Oracle callback: writes randomness into VrfState and sets status = Fulfilled.",
@@ -3335,6 +3398,66 @@
           "type": "i16"
         }
       ]
+    },
+    {
+      "name": "request_gameplay_rng",
+      "docs": [
+        "LOCALNET ONLY: request local RNG (same lifecycle as request_gameplay_vrf)."
+      ],
+      "discriminator": [
+        106,
+        199,
+        219,
+        176,
+        116,
+        27,
+        136,
+        73
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "session"
+        },
+        {
+          "name": "vrf_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  112,
+                  108,
+                  97,
+                  121,
+                  95,
+                  118,
+                  114,
+                  102
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "session"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
     },
     {
       "name": "request_gameplay_vrf",

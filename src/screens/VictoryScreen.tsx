@@ -42,7 +42,7 @@ export function VictoryScreen({ navigation, route }: VictoryScreenProps) {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
   const glowAnim = useRef(new Animated.Value(0)).current;
-  const { playBgm } = useAudio();
+  const { playBgm, playSfx } = useAudio();
   const [showUnlock, setShowUnlock] = useState(false);
 
   const isVerticalLayout = height > 768;
@@ -87,11 +87,12 @@ export function VictoryScreen({ navigation, route }: VictoryScreenProps) {
   }, [fadeAnim, slideAnim, glowAnim, levelUnlocked, itemUnlocked, playBgm]);
 
   const handleReturnToHub = useCallback(() => {
+    playSfx('ui_back');
     navigation.reset({
       index: 0,
       routes: [{ name: 'Hub' }],
     });
-  }, [navigation]);
+  }, [navigation, playSfx]);
 
   // --- Controller navigation ---
   const inputMode = useInputMode();

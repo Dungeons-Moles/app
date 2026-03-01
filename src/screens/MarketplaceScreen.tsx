@@ -12,6 +12,7 @@ import {
   TouchableWithoutFeedback,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useIsFocused } from '@react-navigation/native';
 import { useProfile } from '../contexts/ProfileContext';
 import { useWallet } from '../contexts/WalletContext';
 import { RootStackParamList } from '../navigation';
@@ -100,7 +101,7 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
   }, [activeTab]);
 
   const handleBack = useCallback(() => {
-    playSfx('ui_click');
+    playSfx('ui_back');
     navigation.goBack();
   }, [navigation, playSfx]);
 
@@ -181,6 +182,7 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
   // --- Controller navigation ---
   const inputMode = useInputMode();
   const isController = inputMode === 'controller';
+  const isFocused = useIsFocused();
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const TABS: Tab[] = ['skins', 'items', 'pve'];
   const [nftFocus, setNftFocus] = useState(0);
@@ -188,7 +190,7 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
 
   const cycleTab = useCallback(
     (dir: -1 | 1) => {
-      playSfx('ui_click');
+      playSfx('ui_hover');
       setActiveTab((prev) => {
         const idx = TABS.indexOf(prev);
         const next = idx + dir;
@@ -343,7 +345,7 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
                 ? () => setNftFocus((p) => Math.min(activeSectionCount - 1, p + 1))
                 : undefined,
         },
-    isController
+    isController && isFocused
   );
 
   const controllerHints: ButtonHint[] = [

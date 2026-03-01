@@ -11,6 +11,7 @@ import {
   FlatList,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useIsFocused } from '@react-navigation/native';
 import { RootStackParamList } from '../navigation';
 import { useWallet } from '@/contexts/WalletContext';
 import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
@@ -19,6 +20,7 @@ import { parseGauntletEvents } from '@/services/solana/gauntlet';
 import { convertItemInstanceToTool, convertItemInstanceToGear } from '@/services/solana/pitDraft';
 import { GAMEPLAY_STATE_PROGRAM_ID } from '@/services/solana/constants';
 import { Typography } from '@/theme/typography';
+import { useAudio } from '../contexts/AudioContext';
 import { useControllerAction } from '../hooks/useControllerAction';
 import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHints';
 import { useInputMode } from '../hooks/useInputMode';
@@ -260,11 +262,14 @@ export function GauntletHistoryScreen({ navigation }: GauntletHistoryScreenProps
   // --- Controller navigation ---
   const inputMode = useInputMode();
   const isController = inputMode === 'controller';
+  const isFocused = useIsFocused();
   const [showSettingsModal, setShowSettingsModal] = useState(false);
 
+  const { playSfx } = useAudio();
   const handleBack = useCallback(() => {
+    playSfx('ui_back');
     navigation.goBack();
-  }, [navigation]);
+  }, [navigation, playSfx]);
 
   const handleDisconnect = useCallback(() => {
     disconnect();
@@ -306,7 +311,7 @@ export function GauntletHistoryScreen({ navigation }: GauntletHistoryScreenProps
       onDPadUp: handleDPadUp,
       onDPadDown: handleDPadDown,
     },
-    isController && !showSettingsModal
+    isController && isFocused && !showSettingsModal
   );
 
   const controllerHints: ButtonHint[] = [
