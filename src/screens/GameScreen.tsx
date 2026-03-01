@@ -78,6 +78,7 @@ import {
 } from '../game/entities/enemies';
 import { BOSSES } from '../data/bosses';
 import type { BossId } from '../game/engine/types';
+import { GAME_CONSTANTS } from '../game/engine/constants';
 import Svg, { Path } from 'react-native-svg';
 
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.png');
@@ -1753,8 +1754,13 @@ export function GameScreen({ navigation }: GameScreenProps) {
     showWallBreakFeedback,
   ]);
 
-  const maxGearSlots = onChainState?.runMode === RunMode.Gauntlet ? 12 : 8;
-  const isGauntletLayout = onChainState?.runMode === RunMode.Gauntlet;
+  // Derive max gear slots from the session's maxWeeks (3 for campaign/duel/guest, 5 for gauntlet).
+  // Guest mode has no onChainState, so defaults to TOTAL_WEEKS (3) → 8 slots.
+  const sessionMaxWeeks = onChainState?.maxWeeks ?? GAME_CONSTANTS.TOTAL_WEEKS;
+  const maxGearSlots =
+    GAME_CONSTANTS.INITIAL_INVENTORY_SLOTS +
+    (sessionMaxWeeks - 1) * GAME_CONSTANTS.INVENTORY_SLOTS_PER_WEEK;
+  const isGauntletLayout = sessionMaxWeeks > GAME_CONSTANTS.TOTAL_WEEKS;
   const activeItemsetsCount = state?.player?.activeItemsets?.length ?? 0;
   const totalPlayerSlots = maxGearSlots + 1 + activeItemsetsCount; // gear slots + weapon slot + itemset slots
 
@@ -2746,7 +2752,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
                 visible={true}
                 onClose={handlePauseClose}
                 onReturnToHub={handleReturnToHub}
-                onAbandonSession={handleDebugExitSession}
+                onAbandonSession={mode !== 'guest' ? handleDebugExitSession : undefined}
                 isAbandoning={isExitingSession}
               />
             )}

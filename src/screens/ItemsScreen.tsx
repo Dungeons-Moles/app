@@ -468,6 +468,7 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
   useEffect(() => {
     if (isController && allItems[cursorIdx]) {
       setSelectedItem(allItems[cursorIdx]);
+      playSfx('ui_hover');
       // Scroll the focused item into view on web
       requestAnimationFrame(() => {
         const el = cursorRef.current as unknown as HTMLElement;
@@ -482,6 +483,7 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
   useEffect(() => {
     if (isController && activeTab === 'itemsets' && allItemsets[itemsetCursorIdx]) {
       setSelectedItemset(allItemsets[itemsetCursorIdx]);
+      playSfx('ui_hover');
     }
   }, [itemsetCursorIdx, isController, activeTab]);
 
@@ -678,7 +680,7 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                                 isInPool && styles.itemGridCellInPool,
                                 isSelected && styles.itemGridCellSelected,
                               ]}
-                              onPress={() => setSelectedItem(item)}
+                              onPress={() => { playSfx('ui_hover'); setSelectedItem(item); }}
                               activeOpacity={0.7}
                             >
                               <ImageBackground
@@ -746,7 +748,7 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                           isCompact && compactStyles.itemGridCell,
                           isSelected && styles.itemGridCellSelected,
                         ]}
-                        onPress={() => setSelectedItemset(itemset)}
+                        onPress={() => { playSfx('ui_hover'); setSelectedItemset(itemset); }}
                         activeOpacity={0.7}
                       >
                         <ImageBackground
