@@ -55,6 +55,28 @@ Base-layer wallet transactions are only for **out-of-session** actions:
 
 **Implication:** Settlement, point crediting, echo insertion, and any other post-game bookkeeping that touches global/shared accounts must either (a) be deferred to session end and signed by the session key, or (b) be handled by a PDA authority so the session key can invoke it via CPI. Never require the player wallet mid-session or at session teardown.
 
+### Rule 3: All VRF must be on the Ephemeral Rollup (MANDATORY)
+
+This rule is non-negotiable for both frontend and programs.
+
+- **Localnet:** It is valid to use `*Rng` methods with randomness generated in the local client for deterministic/dev testing.
+- **Devnet/Mainnet:** It is forbidden to use client-generated randomness for gameplay/session-critical randomness. Use `*Vrf` methods only.
+- **VRF oracle queue:** All VRF requests must use the ER oracle queue (`VRF_EPHEMERAL_QUEUE`). Never use the base-layer `DEFAULT_QUEUE`.
+- **VRF timing:** `init_*_vrf_state` and `request_*_vrf` MUST run on the Ephemeral Rollup **after** delegation, via `sendRoutedErTransaction`. Never call them on the base chain (`connection`).
+- **Gameplay gate:** A session may be created on-chain before VRF completes, but gameplay must remain blocked until required VRF states are fulfilled on ER.
+- **Frontend behavior:** If VRF is not fulfilled, the app must not navigate to `src/screens/GameScreen.tsx` for active gameplay and must retry/fetch/request until fulfilled or surface a blocking error.
+- **Movement/POI gate:** The frontend must not send gameplay actions (movement/POI progression) that rely on VRF when VRF fulfillment is missing.
+
+### Rule 4: No offline mode fallback for on-chain sessions (MANDATORY)
+
+When a player is connected (non-guest mode), the frontend must NEVER fall back to "offline mode" or use locally generated seeds (`getVrfSeed()`, `getLocalSecureSeed()`, `Math.random()`, `Date.now()`) to start gameplay. If the on-chain session creation or delegation fails, the frontend must either:
+- **Retry** the on-chain operation, or
+- **Show an error** and block the user from proceeding.
+
+It must NEVER silently start the game with a local seed and pretend the session is active. The `START_GAME` reducer dispatch with a locally generated seed is only valid in **guest mode**.
+
+`getVrfSeed()` / `getLocalSecureSeed()` are for guest mode only — they generate non-VRF local randomness. On-chain sessions must use VRF seeds from the chain.
+
 ### On-Chain Instruction Map
 
 | Action            | Program         | Instruction                                       | Notes                                                                             |

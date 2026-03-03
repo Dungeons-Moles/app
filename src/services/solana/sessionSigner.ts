@@ -41,8 +41,15 @@ const ER_SEND_MAX_RETRIES = 12;
 const ER_RETRY_BASE_DELAY_MS = 500;
 
 const normalizeEndpoint = (url: string): string => url.replace(/\/+$/, '');
-const isErConnection = (connection: Connection): boolean =>
-  normalizeEndpoint(connection.rpcEndpoint) === normalizeEndpoint(SOLANA_CONFIG.erRpcUrl);
+const directErRpcUrl =
+  process.env.EXPO_PUBLIC_EPHEMERAL_PROVIDER_ENDPOINT ?? 'https://devnet.magicblock.app/';
+const isErConnection = (connection: Connection): boolean => {
+  const endpoint = normalizeEndpoint(connection.rpcEndpoint);
+  return (
+    endpoint === normalizeEndpoint(SOLANA_CONFIG.erRpcUrl) ||
+    endpoint === normalizeEndpoint(directErRpcUrl)
+  );
+};
 const isMagicRouterConnection = (connection: Connection): boolean =>
   normalizeEndpoint(connection.rpcEndpoint).includes('router.magicblock.app');
 const isRetriableErWriteLockError = (err: unknown): boolean => {

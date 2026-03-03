@@ -13,6 +13,7 @@ import {
   ImageBackground,
   TouchableOpacity,
   ActivityIndicator,
+  Pressable,
 } from 'react-native';
 import { useInputMode } from '../../hooks/useInputMode';
 import { useControllerAction } from '../../hooks/useControllerAction';
@@ -28,6 +29,7 @@ import { Checkbox } from './Checkbox';
 const paperPanelSource = require('../../../assets/ui/panels/paper-panel.png');
 const buttonV1Source = require('../../../assets/ui/buttons/button-v1.png');
 const buttonV2Source = require('../../../assets/ui/buttons/button-v2.png');
+const buttonV3Source = require('../../../assets/ui/buttons/button-v3.png');
 
 export interface PauseMenuModalProps {
   visible: boolean;
@@ -35,6 +37,7 @@ export interface PauseMenuModalProps {
   onReturnToHub: () => void;
   onAbandonSession?: () => void;
   isAbandoning?: boolean;
+  onOpenTutorial?: () => void;
 }
 
 export function PauseMenuModal({
@@ -43,6 +46,7 @@ export function PauseMenuModal({
   onReturnToHub,
   onAbandonSession,
   isAbandoning = false,
+  onOpenTutorial,
 }: PauseMenuModalProps) {
   const inputMode = useInputMode();
   const isController = inputMode === 'controller';
@@ -51,7 +55,7 @@ export function PauseMenuModal({
   const { autoOpenPOI, setAutoOpenPOI } = useSettings();
   const [focusIndex, setFocusIndex] = useState(0);
 
-  // focusIndex layout: 0=music, 1=sfx, 2=checkbox, 3=return to hub, 4=abandon (if present)
+  // focusIndex layout: 0=music, 1=sfx, 2=checkbox, 3=return to hub, 4=abandon (if present) | touch: tutorial shown above return to hub
   const totalItems = 3 + 1 + (onAbandonSession ? 1 : 0);
 
   // Reset focus when opening
@@ -117,129 +121,161 @@ export function PauseMenuModal({
   ];
 
   return (
-    <View style={styles.overlay}>
-      <View style={[styles.scaleWrapper, isCompact && compactStyles.scaleWrapper]}>
-        <View style={[styles.container, isCompact && compactStyles.container]}>
-          <Image source={paperPanelSource} style={styles.paperBg} resizeMode="stretch" />
-          <View style={[styles.content, isCompact && compactStyles.content]}>
-            <Text style={[styles.title, isCompact && compactStyles.title]}>PAUSED</Text>
+    <Pressable style={styles.overlay} onPress={() => { playSfx('ui_back'); onClose(); }}>
+      <Pressable style={styles.innerContainer} onPress={() => {}}>
+        <View style={[styles.scaleWrapper, isCompact && compactStyles.scaleWrapper]}>
+          <View style={[styles.container, isCompact && compactStyles.container]}>
+            <Image source={paperPanelSource} style={styles.paperBg} resizeMode="stretch" />
+            <View style={[styles.content, isCompact && compactStyles.content]}>
+              <Text style={[styles.title, isCompact && compactStyles.title]}>PAUSED</Text>
 
-            <View style={[styles.volumeSection, isCompact && compactStyles.volumeSection]}>
-              <FocusGlow active={isController && focusIndex === 0}>
-                <View style={styles.volumeRow}>
-                  <Text style={[styles.volumeLabel, isCompact && compactStyles.volumeLabel]}>
-                    Music
-                  </Text>
-                  <VolumeControls
-                    currentVolume={musicVolume}
-                    onVolumeChange={setMusicVolume}
-                    scale={isCompact ? 1 : 0.8}
+              <View style={[styles.volumeSection, isCompact && compactStyles.volumeSection]}>
+                <FocusGlow active={isController && focusIndex === 0}>
+                  <View style={styles.volumeRow}>
+                    <Text style={[styles.volumeLabel, isCompact && compactStyles.volumeLabel]}>
+                      Music
+                    </Text>
+                    <VolumeControls
+                      currentVolume={musicVolume}
+                      onVolumeChange={setMusicVolume}
+                      scale={isCompact ? 1 : 0.8}
+                      buttonTextOffset={8}
+                    />
+                  </View>
+                </FocusGlow>
+                <FocusGlow active={isController && focusIndex === 1}>
+                  <View style={styles.volumeRow}>
+                    <Text style={[styles.volumeLabel, isCompact && compactStyles.volumeLabel]}>
+                      SFX
+                    </Text>
+                    <VolumeControls
+                      currentVolume={sfxVolume}
+                      onVolumeChange={setSfxVolume}
+                      scale={isCompact ? 1 : 0.8}
+                      buttonTextOffset={8}
+                    />
+                  </View>
+                </FocusGlow>
+              </View>
+
+              <View style={[styles.checkboxRow, isCompact && compactStyles.checkboxRow]}>
+                <FocusGlow active={isController && focusIndex === 2}>
+                  <Checkbox
+                    label="Auto-open POI"
+                    checked={autoOpenPOI}
+                    onToggle={() => {
+                      playSfx('ui_click');
+                      setAutoOpenPOI(!autoOpenPOI);
+                    }}
+                    size={isCompact ? 32 : 20}
+                    labelStyle={isCompact ? compactStyles.volumeLabel : undefined}
                   />
-                </View>
-              </FocusGlow>
-              <FocusGlow active={isController && focusIndex === 1}>
-                <View style={styles.volumeRow}>
-                  <Text style={[styles.volumeLabel, isCompact && compactStyles.volumeLabel]}>
-                    SFX
-                  </Text>
-                  <VolumeControls
-                    currentVolume={sfxVolume}
-                    onVolumeChange={setSfxVolume}
-                    scale={isCompact ? 1 : 0.8}
-                  />
-                </View>
-              </FocusGlow>
-            </View>
+                </FocusGlow>
+              </View>
 
-            <View style={[styles.checkboxRow, isCompact && compactStyles.checkboxRow]}>
-              <FocusGlow active={isController && focusIndex === 2}>
-                <Checkbox
-                  label="Auto-open POI"
-                  checked={autoOpenPOI}
-                  onToggle={() => {
-                    playSfx('ui_click');
-                    setAutoOpenPOI(!autoOpenPOI);
-                  }}
-                  size={isCompact ? 32 : 20}
-                  labelStyle={isCompact ? compactStyles.volumeLabel : undefined}
-                />
-              </FocusGlow>
-            </View>
+              <View style={[styles.menuList, isCompact && compactStyles.menuList]}>
+                <View style={styles.menuRow}>
+                  {!isController && onOpenTutorial && (
+                    <TouchableOpacity
+                      onPress={() => {
+                        playSfx('ui_click');
+                        onOpenTutorial();
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <ImageBackground
+                        source={buttonV3Source}
+                        style={[
+                          styles.menuButtonImageSmall,
+                          isCompact && compactStyles.menuButtonImageSmall,
+                        ]}
+                        resizeMode="stretch"
+                      >
+                        <Text style={[styles.menuButtonText, isCompact && compactStyles.menuButtonText]}>
+                          Tutorial
+                        </Text>
+                      </ImageBackground>
+                    </TouchableOpacity>
+                  )}
 
-            <View style={[styles.menuList, isCompact && compactStyles.menuList]}>
-              <FocusGlow active={isController && focusIndex === 3}>
+                  <FocusGlow active={isController && focusIndex === 3}>
+                    <TouchableOpacity
+                      onPress={() => {
+                        playSfx('ui_click');
+                        onReturnToHub();
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <ImageBackground
+                        source={buttonV1Source}
+                        style={[
+                          styles.menuButtonImageSmall,
+                          isCompact && compactStyles.menuButtonImageSmall,
+                        ]}
+                        resizeMode="stretch"
+                      >
+                        <Text style={[styles.menuButtonText, isCompact && compactStyles.menuButtonText]}>
+                          Return to Hub
+                        </Text>
+                      </ImageBackground>
+                    </TouchableOpacity>
+                  </FocusGlow>
+                </View>
+
+                {onAbandonSession && (
+                  <FocusGlow active={isController && focusIndex === 4}>
+                    <TouchableOpacity
+                      onPress={() => {
+                        playSfx('ui_click');
+                        onAbandonSession();
+                      }}
+                      disabled={isAbandoning}
+                      activeOpacity={0.7}
+                    >
+                      <ImageBackground
+                        source={buttonV2Source}
+                        style={[styles.menuButtonImage, isCompact && compactStyles.menuButtonImage]}
+                        resizeMode="stretch"
+                      >
+                        {isAbandoning ? (
+                          <ActivityIndicator size="small" color="#5c4033" />
+                        ) : (
+                          <Text
+                            style={[
+                              styles.menuButtonText,
+                              styles.menuButtonTextDanger,
+                              isCompact && compactStyles.menuButtonText,
+                            ]}
+                          >
+                            Abandon Session
+                          </Text>
+                        )}
+                      </ImageBackground>
+                    </TouchableOpacity>
+                  </FocusGlow>
+                )}
+              </View>
+
+              {!isController && (
                 <TouchableOpacity
+                  style={styles.resumeButton}
                   onPress={() => {
                     playSfx('ui_click');
-                    onReturnToHub();
+                    onClose();
                   }}
                   activeOpacity={0.7}
                 >
-                  <ImageBackground
-                    source={buttonV1Source}
-                    style={[styles.menuButtonImage, isCompact && compactStyles.menuButtonImage]}
-                    resizeMode="stretch"
-                  >
-                    <Text style={[styles.menuButtonText, isCompact && compactStyles.menuButtonText]}>
-                      Return to Hub
-                    </Text>
-                  </ImageBackground>
+                  <Text style={[styles.resumeButtonText, isCompact && compactStyles.resumeButtonText]}>
+                    Tap anywhere to close
+                  </Text>
                 </TouchableOpacity>
-              </FocusGlow>
-
-              {onAbandonSession && (
-                <FocusGlow active={isController && focusIndex === 4}>
-                  <TouchableOpacity
-                    onPress={() => {
-                      playSfx('ui_click');
-                      onAbandonSession();
-                    }}
-                    disabled={isAbandoning}
-                    activeOpacity={0.7}
-                  >
-                    <ImageBackground
-                      source={buttonV2Source}
-                      style={[styles.menuButtonImage, isCompact && compactStyles.menuButtonImage]}
-                      resizeMode="stretch"
-                    >
-                      {isAbandoning ? (
-                        <ActivityIndicator size="small" color="#5c4033" />
-                      ) : (
-                        <Text
-                          style={[
-                            styles.menuButtonText,
-                            styles.menuButtonTextDanger,
-                            isCompact && compactStyles.menuButtonText,
-                          ]}
-                        >
-                          Abandon Session
-                        </Text>
-                      )}
-                    </ImageBackground>
-                  </TouchableOpacity>
-                </FocusGlow>
               )}
             </View>
-
-            {!isController && (
-              <TouchableOpacity
-                style={styles.resumeButton}
-                onPress={() => {
-                  playSfx('ui_click');
-                  onClose();
-                }}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.resumeButtonText, isCompact && compactStyles.resumeButtonText]}>
-                  Resume
-                </Text>
-              </TouchableOpacity>
-            )}
           </View>
         </View>
-      </View>
+      </Pressable>
       {isController && <ControllerHints hints={controllerHints} horizontal />}
-    </View>
+    </Pressable>
   );
 }
 
@@ -251,11 +287,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
   },
+  innerContainer: {
+    alignItems: 'center',
+  },
   scaleWrapper: {
-    transform: [{ scale: 1.4 }],
+    transform: [{ scale: 1 }],
   },
   container: {
-    width: 220,
+    width: 280,
     alignItems: 'center',
   },
   paperBg: {
@@ -304,8 +343,20 @@ const styles = StyleSheet.create({
     gap: 10,
     alignItems: 'center',
   },
+  menuRow: {
+    flexDirection: 'row',
+    gap: 8,
+    width: '100%',
+    justifyContent: 'center',
+  },
   menuButtonImage: {
     width: 180,
+    height: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  menuButtonImageSmall: {
+    width: 126,
     height: 44,
     justifyContent: 'center',
     alignItems: 'center',
@@ -337,7 +388,7 @@ const compactStyles = StyleSheet.create({
     transform: [{ scale: 1.4 }],
   },
   container: {
-    width: 260,
+    width: 320,
   },
   content: {
     padding: 20,
@@ -362,6 +413,10 @@ const compactStyles = StyleSheet.create({
   },
   menuButtonImage: {
     width: 210,
+    height: 50,
+  },
+  menuButtonImageSmall: {
+    width: 146,
     height: 50,
   },
   menuButtonText: {

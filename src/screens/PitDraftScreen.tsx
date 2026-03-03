@@ -271,6 +271,7 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
           resizeMode="cover"
         >
           <Image source={STAINS_BACKGROUND} style={styles.stainsOverlay} resizeMode="cover" />
+          {!isCompact && <View pointerEvents="none" style={styles.mobileResultBackgroundDim} />}
           <View style={styles.resultOverlay}>
             <View style={styles.centerContent}>
               {isCompact ? (
@@ -961,6 +962,10 @@ const styles = StyleSheet.create({
   // Result phase — shared
   resultOverlay: {
     flex: 1,
+  },
+  mobileResultBackgroundDim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.18)',
   },
   resultStatFrameBg: {
     position: 'absolute' as const,

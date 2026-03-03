@@ -45,6 +45,7 @@ export function useDuels() {
     processPendingCleanups,
     hasPendingCleanups,
     fetchSessionNonces,
+    retryErVrfForSession,
   } = useSession();
   const { connection } = useSolanaConnection();
 
@@ -102,7 +103,8 @@ export function useDuels() {
       if (isMountedRef.current) {
         setQueuedSeed(mapSeed);
         setQueuedSlot(queue.playerA?.player.toBase58() === ourKey ? 1 : 2);
-        setPhase('queued');
+        // Do not override 'error' phase — user must explicitly retry after a failed start
+        setPhase((current) => (current === 'error' ? current : 'queued'));
       }
     }
   }, [wallet.publicKey, mapSeed, connection]);
@@ -116,6 +118,7 @@ export function useDuels() {
     return (
       message.includes('session key signer not available for delegation') ||
       message.includes('failed to delegate session to rollup') ||
+      message.includes('delegation not fully propagated') ||
       message.includes('no active session to delegate') ||
       message.includes('delegatesession') ||
       message.includes('access violation') ||
@@ -133,6 +136,7 @@ export function useDuels() {
       const nonBlocking =
         message.includes('session key signer not available for delegation') ||
         message.includes('failed to delegate session to rollup') ||
+        message.includes('delegation not fully propagated') ||
         message.includes('delegatesession') ||
         message.includes('access violation') ||
         message.includes('failed to complete');
@@ -257,6 +261,15 @@ export function useDuels() {
           setPhase('error');
           return false;
         }
+        // Ensure ER VRF (map + gameplay) is fulfilled before proceeding.
+        // On localnet this is a no-op. On devnet/mainnet, re-requests VRF if needed
+        // so we never proceed with the fallback seed (Rule 3: no non-VRF randomness).
+        const vrfResult = await retryErVrfForSession(duelSessionPda.toBase58());
+        if (!vrfResult.success) {
+          setError(vrfResult.error ?? 'Randomness (VRF) not received from oracle — please try again');
+          setPhase('error');
+          return false;
+        }
         setQueuedSeed(existingEntry.seed);
         setPhase('queued');
         return true;
@@ -344,6 +357,7 @@ export function useDuels() {
     processPendingCleanups,
     hasPendingCleanups,
     fetchSessionNonces,
+    retryErVrfForSession,
   ]);
 
   const loadHistory = useCallback(

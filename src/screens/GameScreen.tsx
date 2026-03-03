@@ -17,6 +17,7 @@ import { useAudio } from '../contexts/AudioContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { useSolanaConnection } from '../contexts/SolanaConnectionContext';
 import { RunMode } from '../services/solana/types/gameplay_state';
+import { POI_TYPES } from '../services/solana/types/poi_system';
 import { convertItemInstanceToGear, convertItemInstanceToTool } from '../services/solana/pitDraft';
 import { fetchFullSessionState } from '../services/solana/sessionRestore';
 import { useNightMovement } from '../hooks/useNightMovement';
@@ -56,6 +57,7 @@ import { Typography } from '../theme/typography';
 import { useEquippedSkinImage } from '../hooks/useEquippedSkinImage';
 import { promptTransactionRetry } from '../utils/transaction-alerts';
 import { getPhaseLabel } from '../utils/phase-labels';
+import { TimePhase } from '../game/engine/types';
 import type {
   Gear,
   GearId,
@@ -86,6 +88,8 @@ const COIN_ICON = require('../../assets/icons/ui/coin.png');
 const MAP_ICON = require('../../assets/icons/ui/map.png');
 const SIDEBAR_BG = require('../../assets/ui/panels/sidebar.png');
 const ICON_Y = require('../../assets/ui/control-buttons/y.png');
+const BUTTON_V5 = require('../../assets/ui/buttons/button-v5.png');
+const ENGINE_ICON = require('../../assets/ui/illustrations/engine.png');
 
 const SIDEBAR_WIDTH = 230;
 const COMPACT_SIDEBAR_WIDTH = 280;
@@ -517,6 +521,12 @@ export function GameScreen({ navigation }: GameScreenProps) {
   stateRef.current = state;
   const onChainStateRef = useRef(onChainState);
   onChainStateRef.current = onChainState;
+  const isGuestDayNightOnlyPoi =
+    mode === 'guest' &&
+    state?.time.phase === TimePhase.Day &&
+    (poiInteraction.currentPoi?.poiType === POI_TYPES.MOLE_DEN ||
+      poiInteraction.currentPoi?.poiType === POI_TYPES.REST_ALCOVE);
+  const canTriggerCurrentPoiByPhase = poiInteraction.canInteract && !isGuestDayNightOnlyPoi;
 
   // Persist fog of war state to AsyncStorage for session restore
   useFogPersistence({
@@ -1092,6 +1102,17 @@ export function GameScreen({ navigation }: GameScreenProps) {
   }, [state?.map, onChainPois]);
 
   const isFastTravelActive = isFastTravelMode && fastTravelDestinations.length > 0;
+  const hasOtherDiscoveredWaypoints = useMemo(() => {
+    if (!state?.player?.position) return false;
+    return discoveredWaypoints.some(
+      (wp) =>
+        wp.position.x !== state.player.position.x || wp.position.y !== state.player.position.y
+    );
+  }, [discoveredWaypoints, state?.player?.position]);
+  const isRailWaypointWithoutDestinations =
+    poiInteraction.currentPoi?.poiType === POI_TYPES.RAIL_WAYPOINT && !hasOtherDiscoveredWaypoints;
+  const canTriggerCurrentPoiInteraction =
+    canTriggerCurrentPoiByPhase && !isRailWaypointWithoutDestinations;
 
   useEffect(() => {
     if (!isFastTravelActive) {
@@ -1961,8 +1982,8 @@ export function GameScreen({ navigation }: GameScreenProps) {
         }
         if (isFastTravelActive) {
           handleFastTravelConfirm();
-        } else if (poiInteraction.canInteract && state?.phase === GamePhase.Exploration) {
-          poiInteraction.interact();
+        } else if (canTriggerCurrentPoiInteraction && state?.phase === GamePhase.Exploration) {
+          tryOpenCurrentPoiInteraction();
         }
       },
       onB: () => {
@@ -2052,6 +2073,24 @@ export function GameScreen({ navigation }: GameScreenProps) {
     return disabled;
   }, [state, overviewMode.active, isFastTravelActive]);
 
+  const tryOpenCurrentPoiInteraction = useCallback(() => {
+    if (!state || state.phase !== GamePhase.Exploration) return;
+    if (!poiInteraction.canInteract) return;
+    if (isGuestDayNightOnlyPoi) return;
+    if (isRailWaypointWithoutDestinations) {
+      showWallBreakFeedback('No other waypoints discovered');
+      return;
+    }
+    poiInteraction.interact();
+  }, [
+    state,
+    poiInteraction.canInteract,
+    poiInteraction.interact,
+    isGuestDayNightOnlyPoi,
+    isRailWaypointWithoutDestinations,
+    showWallBreakFeedback,
+  ]);
+
   // Navigate to CombatScreen when game phase transitions to Combat or BossFight.
   // In on-chain mode, combat navigation is handled directly by handleDirection.
   // This effect only applies to guest mode where the local reducer triggers combat.
@@ -2088,7 +2127,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
     const alreadyTriggeredHere =
       lastAutoPos && lastAutoPos.x === currentPos.x && lastAutoPos.y === currentPos.y;
 
-    if (shouldAutoOpen && !isInteracting && !alreadyTriggeredHere) {
+    if (shouldAutoOpen && !isInteracting && !alreadyTriggeredHere && canTriggerCurrentPoiInteraction) {
       debugLog('[GameScreen] Auto-triggering POI interaction at', currentPos.x, currentPos.y);
       lastAutoTriggeredPosRef.current = { x: currentPos.x, y: currentPos.y };
       poiInteractRef.current();
@@ -2105,6 +2144,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
     shouldAutoOpen,
     isInteracting,
     isFocused,
+    canTriggerCurrentPoiInteraction,
   ]);
 
   const handleFastTravel = useCallback(() => {
@@ -2549,7 +2589,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
     if (isFastTravelActive) {
       return handleFastTravelConfirm;
     }
-    if (state && poiInteraction.canInteract && state.phase === GamePhase.Exploration) {
+    if (state && canTriggerCurrentPoiInteraction && state.phase === GamePhase.Exploration) {
       return () => {
         debugLog(
           '[GameScreen] A button pressed | currentPoi:',
@@ -2561,16 +2601,16 @@ export function GameScreen({ navigation }: GameScreenProps) {
               }
             : null
         );
-        poiInteraction.interact();
+        tryOpenCurrentPoiInteraction();
       };
     }
     return undefined;
   }, [
     isFastTravelActive,
     handleFastTravelConfirm,
-    poiInteraction.canInteract,
+    canTriggerCurrentPoiInteraction,
     poiInteraction.currentPoi,
-    poiInteraction.interact,
+    tryOpenCurrentPoiInteraction,
     state,
   ]);
 
@@ -2653,8 +2693,27 @@ export function GameScreen({ navigation }: GameScreenProps) {
                 </View>
               </View>
               {!isCompact && (
-                <View style={styles.bossTopContainer}>
-                  <Sidebar {...sharedSidebarProps} onlyBoss={true} />
+                <View style={[styles.bossTopContainer, { flexDirection: 'row', alignItems: 'center' }]}>
+                  <View style={{ flex: 1 }}>
+                    <Sidebar {...sharedSidebarProps} onlyBoss={true} />
+                  </View>
+                  {!isController && (
+                    <Pressable
+                      style={styles.pauseButtonOverlay}
+                      onPress={() => {
+                        playSfx('ui_click');
+                        setShowPauseMenu(true);
+                      }}
+                    >
+                      <ImageBackground
+                        source={BUTTON_V5}
+                        style={styles.pauseButtonBg}
+                        resizeMode="stretch"
+                      >
+                        <Image source={ENGINE_ICON} style={styles.pauseButtonIcon} resizeMode="contain" />
+                      </ImageBackground>
+                    </Pressable>
+                  )}
                 </View>
               )}
             </View>
@@ -2754,6 +2813,10 @@ export function GameScreen({ navigation }: GameScreenProps) {
                 onReturnToHub={handleReturnToHub}
                 onAbandonSession={mode !== 'guest' ? handleDebugExitSession : undefined}
                 isAbandoning={isExitingSession}
+                onOpenTutorial={() => {
+                  setShowPauseMenu(false);
+                  setShowTutorial(true);
+                }}
               />
             )}
           </View>
@@ -2853,6 +2916,9 @@ const styles = StyleSheet.create({
   loading: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   loadingText: { fontFamily: Typography.header, fontSize: 20, color: '#666666' },
   dpadOverlay: { position: 'absolute', bottom: 24, left: 24 },
+  pauseButtonOverlay: { marginLeft: 3, marginRight: 6 },
+  pauseButtonBg: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
+  pauseButtonIcon: { width: 28, height: 28, marginBottom: 6 },
   goldDisplay: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   coinIcon: { width: 28, height: 28 },
   goldValue: { fontFamily: Typography.number, fontSize: 24, fontWeight: 'bold', color: '#000000' },

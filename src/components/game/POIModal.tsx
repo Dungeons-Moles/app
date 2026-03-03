@@ -181,6 +181,20 @@ interface ListOptionButtonProps {
   onPress: (index: number) => void;
 }
 
+function isToolOption(option: POIOption): boolean {
+  if (!option.item) return false;
+  return option.item.id.startsWith('T');
+}
+
+function orderSmugglerShopItems<T extends { option: POIOption; index: number }>(items: T[]): T[] {
+  return [...items].sort((a, b) => {
+    const aTool = isToolOption(a.option);
+    const bTool = isToolOption(b.option);
+    if (aTool === bTool) return a.index - b.index;
+    return aTool ? -1 : 1;
+  });
+}
+
 function ListOptionButton({ option, index, onPress }: ListOptionButtonProps) {
   const { playSfx } = useAudio();
   const handlePress = useCallback(() => {
@@ -345,6 +359,15 @@ export const POIModal = React.memo(function POIModal({
     () => indexedOptions.filter(({ option }) => option.label !== 'Leave'),
     [indexedOptions]
   );
+  const smugglerShopItems = useMemo(() => {
+    const ordered = orderSmugglerShopItems(displayOptions.filter(({ option }) => option.item));
+    const firstTool = ordered.find(({ option }) => isToolOption(option));
+    if (!firstTool) {
+      return ordered.slice(0, 6);
+    }
+    const gears = ordered.filter(({ option }) => !isToolOption(option)).slice(0, 5);
+    return [firstTool, ...gears];
+  }, [displayOptions]);
 
   const isThreeChoicePOI = THREE_CHOICE_POIS.includes(poiId);
   const hasValidOptions = options.length > 0 && !options[0]?.disabled;
@@ -371,9 +394,8 @@ export const POIModal = React.memo(function POIModal({
   const selectableCount = useMemo(() => {
     if (isThreeChoicePOI && hasValidOptions) return Math.min(options.length, 3);
     if (isSmugglerHatch) {
-      const shopItems = displayOptions.filter(({ option }) => option.item);
       const rerollOption = indexedOptions.find(({ option }) => option.label.includes('Reroll'));
-      return shopItems.length + (rerollOption ? 1 : 0);
+      return smugglerShopItems.length + (rerollOption ? 1 : 0);
     }
     if (isSeismicScanner) {
       return displayOptions.filter(({ option }) => !option.disabled).length;
@@ -384,6 +406,7 @@ export const POIModal = React.memo(function POIModal({
     hasValidOptions,
     options.length,
     isSmugglerHatch,
+    smugglerShopItems.length,
     isSeismicScanner,
     displayOptions,
     indexedOptions,
@@ -419,14 +442,20 @@ export const POIModal = React.memo(function POIModal({
   // Sync controller focus with shop description panel
   useEffect(() => {
     if (isSmugglerHatch && isController) {
-      const shopItems = displayOptions.filter(({ option }) => option.item);
-      if (focusedIndex < shopItems.length) {
+      if (focusedIndex < smugglerShopItems.length) {
         setSelectedShopIndex(focusedIndex);
       } else {
         setSelectedShopIndex(null);
       }
     }
-  }, [focusedIndex, isSmugglerHatch, isController, displayOptions]);
+  }, [focusedIndex, isSmugglerHatch, isController, smugglerShopItems]);
+
+  useEffect(() => {
+    if (visible && isSmugglerHatch && !isController) {
+      const hasAnyShopItem = displayOptions.some(({ option }) => !!option.item);
+      setSelectedShopIndex(hasAnyShopItem ? 0 : null);
+    }
+  }, [visible, isSmugglerHatch, isController, displayOptions]);
 
   // Controller: D-pad to cycle, A to select, B to close
   useControllerAction(
@@ -495,10 +524,9 @@ export const POIModal = React.memo(function POIModal({
           const opt = options[focusedIndex];
           if (opt && !opt.disabled) handleOptionSelect(focusedIndex);
         } else if (isSmugglerHatch) {
-          const shopItems = displayOptions.filter(({ option }) => option.item);
           const rerollOption = indexedOptions.find(({ option }) => option.label.includes('Reroll'));
-          if (focusedIndex < shopItems.length) {
-            const { option, index } = shopItems[focusedIndex];
+          if (focusedIndex < smugglerShopItems.length) {
+            const { option, index } = smugglerShopItems[focusedIndex];
             if (!option.disabled) onSelectOption(index);
           } else if (rerollOption && !rerollOption.option.disabled) {
             onSelectOption(rerollOption.index);
@@ -605,6 +633,7 @@ export const POIModal = React.memo(function POIModal({
 
   const variant = useScreenVariant();
   const isCompact = variant === 'compact';
+  const isMobileWide = !isCompact;
 
   if (isRuneKiln) {
     if (!visible) {
@@ -641,9 +670,23 @@ export const POIModal = React.memo(function POIModal({
               </TouchableOpacity>
             )}
 
-            <Text style={styles.threeChoiceTitle}>{poiDef.name}</Text>
+            <Text
+              style={[
+                styles.threeChoiceTitle,
+                !isCompact && styles.threeChoiceTitleMobile,
+              ]}
+            >
+              {poiDef.name}
+            </Text>
             {poiDef.description ? (
-              <Text style={styles.description}>{poiDef.description}</Text>
+              <Text
+                style={[
+                  styles.description,
+                  !isCompact && styles.descriptionMobile,
+                ]}
+              >
+                {poiDef.description}
+              </Text>
             ) : null}
 
             <View style={styles.fuseRow}>
@@ -935,16 +978,20 @@ export const POIModal = React.memo(function POIModal({
             resizeMode="stretch"
           />
 
-          <View style={{ padding: 24, paddingTop: 32 }}>
+          <View style={!isCompact ? styles.threeChoiceContentMobile : { padding: 24, paddingTop: 32 }}>
             {!isController && (
               <TouchableOpacity style={styles.closeButtonTop} onPress={onClose} activeOpacity={0.7}>
                 <Text style={styles.closeButtonTopText}>X</Text>
               </TouchableOpacity>
             )}
 
-            <Text style={styles.threeChoiceTitle}>{poiDef.name}</Text>
+            <Text style={[styles.threeChoiceTitle, !isCompact && styles.threeChoiceTitleMobile]}>
+              {poiDef.name}
+            </Text>
             {poiDef.description ? (
-              <Text style={styles.description}>{poiDef.description}</Text>
+              <Text style={[styles.description, !isCompact && styles.descriptionMobile]}>
+                {poiDef.description}
+              </Text>
             ) : null}
 
             <View style={styles.cardsContainer}>
@@ -1068,7 +1115,7 @@ export const POIModal = React.memo(function POIModal({
       return null;
     }
 
-    const shopItems = displayOptions.filter(({ option }) => option.item);
+    const shopItems = smugglerShopItems;
     const rerollOption = indexedOptions.find(({ option }) => option.label.includes('Reroll'));
     const rerollDisabled = !rerollOption || rerollOption.option.disabled;
     const gridItems = shopItems.slice(0, 6);
@@ -1083,7 +1130,10 @@ export const POIModal = React.memo(function POIModal({
       <ModalWrapper visible={visible} isCompact={isCompact} onClose={onClose}>
         <View style={styles.standardModal} pointerEvents="auto">
           {selectedItem && (
-            <View style={styles.shopDescPanel} pointerEvents="auto">
+            <View
+              style={[styles.shopDescPanel, isMobileWide && styles.shopDescPanelMobile]}
+              pointerEvents="auto"
+            >
               <Image
                 source={paperPanelSource}
                 style={{
@@ -1127,13 +1177,17 @@ export const POIModal = React.memo(function POIModal({
               </TouchableOpacity>
             )}
 
-            <Text style={styles.threeChoiceTitle}>{poiDef.name}</Text>
+            <Text style={[styles.threeChoiceTitle, isMobileWide && styles.shopTitleMobile]}>
+              {poiDef.name}
+            </Text>
             {poiDef.description ? (
-              <Text style={styles.description}>{poiDef.description}</Text>
+              <Text style={[styles.description, isMobileWide && styles.shopDescriptionMobile]}>
+                {poiDef.description}
+              </Text>
             ) : null}
 
             <View style={styles.gridWrapper}>
-              <View style={styles.shopGrid}>
+              <View style={[styles.shopGrid, isMobileWide && styles.shopGridMobile]}>
                 {gridItems.map(({ option, index: optionIndex }, gridIdx) => {
                   const disabled = option.disabled;
                   const isSelected = selectedShopIndex === gridIdx;
@@ -1145,18 +1199,23 @@ export const POIModal = React.memo(function POIModal({
                       <TouchableOpacity
                         style={[
                           styles.shopCell,
+                          isMobileWide && styles.shopCellMobile,
                           disabled && styles.shopCellDisabled,
                           isSelected && styles.shopCellSelected,
                         ]}
                         onPress={() => {
-                          if (selectedShopIndex === gridIdx) {
-                            onSelectOption(optionIndex);
-                          } else {
+                          if (selectedShopIndex !== gridIdx) {
                             setSelectedShopIndex(gridIdx);
+                            return;
                           }
+                          if (disabled) {
+                            playSfx('ui_error');
+                            return;
+                          }
+                          onSelectOption(optionIndex);
                         }}
                         activeOpacity={0.7}
-                        disabled={disabled}
+                        disabled={false}
                       >
                         <Image
                           source={squareSource}
@@ -1170,7 +1229,7 @@ export const POIModal = React.memo(function POIModal({
                         {option.item?.image ? (
                           <Image
                             source={option.item.image}
-                            style={styles.shopImage}
+                            style={[styles.shopImage, isMobileWide && styles.shopImageMobile]}
                             resizeMode="contain"
                           />
                         ) : (
@@ -1622,6 +1681,10 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     fontWeight: 'bold',
   },
+  threeChoiceTitleMobile: {
+    fontSize: 19,
+    marginBottom: 6,
+  },
   description: {
     fontFamily: Typography.body,
     fontSize: 12,
@@ -1629,6 +1692,15 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     lineHeight: 16,
     textAlign: 'center',
+  },
+  descriptionMobile: {
+    fontSize: 11,
+    lineHeight: 14,
+    marginBottom: 8,
+  },
+  threeChoiceContentMobile: {
+    padding: 18,
+    paddingTop: 24,
   },
   cardsContainer: {
     flexDirection: 'row',
@@ -1742,11 +1814,20 @@ const styles = StyleSheet.create({
     width: 300, // Increased to fit larger cells
     alignSelf: 'center',
   },
+  shopGridMobile: {
+    gap: 8,
+    width: 270,
+    marginBottom: 8,
+  },
   shopCell: {
     width: 90, // Increased size
     height: 90, // Increased size
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  shopCellMobile: {
+    width: 82,
+    height: 82,
   },
   shopCellEmpty: {
     // backgroundColor: '#1a1a20', // Removed
@@ -1767,6 +1848,11 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     overflow: 'visible',
     zIndex: 10,
+  },
+  shopDescPanelMobile: {
+    width: 132,
+    right: '90%',
+    marginRight: 2,
   },
   shopDescContent: {
     padding: 12,
@@ -1807,6 +1893,10 @@ const styles = StyleSheet.create({
     width: 48, // Increased size
     height: 48, // Increased size
   },
+  shopImageMobile: {
+    width: 40,
+    height: 40,
+  },
   shopCost: {
     fontFamily: Typography.number,
     fontSize: 14, // Increased size
@@ -1829,6 +1919,15 @@ const styles = StyleSheet.create({
     fontFamily: Typography.button,
     fontSize: 14,
     color: '#ffffff',
+  },
+  shopTitleMobile: {
+    fontSize: 20,
+    marginBottom: 8,
+  },
+  shopDescriptionMobile: {
+    fontSize: 11,
+    lineHeight: 14,
+    marginBottom: 8,
   },
 
   // ============================================================================

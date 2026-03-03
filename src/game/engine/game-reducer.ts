@@ -304,6 +304,11 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       return {
         ...state,
         player: movePlayer(state.player, action.destination),
+        map: updateFogOfWar(
+          state.map,
+          action.destination,
+          state.time.phase === TimePhase.Day
+        ),
       };
 
     default: {
@@ -585,6 +590,15 @@ function handleMove(state: GameState, direction: Direction): GameState {
   const poiAtTarget = findPOIAtPosition(newState.map, targetPos);
   const isNight = newState.time.phase === TimePhase.Night;
   if (poiAtTarget && !poiAtTarget.visited) {
+    if (!canOpenPOIModal(newState, poiAtTarget.definitionId)) {
+      return newState;
+    }
+
+    // Tool Oil Rack (L4): if tool already has oil, do not auto-open in guest mode.
+    if (poiAtTarget.definitionId === 'L4' && newState.player.equippedTool?.oil) {
+      return newState;
+    }
+
     // Special case: Survey Beacon (L6) auto-activates on step
     if (poiAtTarget.definitionId === 'L6') {
       newState = activateSurveyBeacon(newState);
@@ -593,6 +607,20 @@ function handleMove(state: GameState, direction: Direction): GameState {
         map: markPOIVisited(newState.map, poiAtTarget.id),
       };
     } else if (canInteractWithPOI(poiAtTarget.definitionId, isNight)) {
+      // Rail Waypoint (L8): discover on step, but only open modal if there is
+      // at least one other discovered waypoint to travel to.
+      if (poiAtTarget.definitionId === 'L8') {
+        let updatedMap = newState.map;
+        if (!poiAtTarget.discovered) {
+          updatedMap = markPOIDiscovered(newState.map, poiAtTarget.id);
+        }
+        if (!canFastTravel(updatedMap)) {
+          return {
+            ...newState,
+            map: updatedMap,
+          };
+        }
+      }
       // Auto-open POI on step (skip night-only POIs during day;
       // manual 'A' button still opens them with disabled options)
       const interaction = createPOIInteraction(poiAtTarget, newState);
@@ -870,9 +898,12 @@ function handleConfirmFastTravel(state: GameState): GameState {
     };
   }
 
+  const destination = selectedWaypoint.position;
+  const isDay = state.time.phase === TimePhase.Day;
   return {
     ...state,
-    player: movePlayer(state.player, selectedWaypoint.position),
+    player: movePlayer(state.player, destination),
+    map: updateFogOfWar(state.map, destination, isDay),
     fastTravel: null,
   };
 }
@@ -1169,6 +1200,53 @@ function findEnemyAtPlayerPosition(state: GameState): MapEnemy | undefined {
   );
 }
 
+function hasFuseCandidate(state: GameState): boolean {
+  const counts = new Map<string, number>();
+  for (const slot of state.player.inventory) {
+    const gear = slot.item;
+    if (gear.currentRarity === 'DIAMOND') {
+      continue;
+    }
+    const key = `${gear.id}:${gear.currentRarity}`;
+    const next = (counts.get(key) ?? 0) + 1;
+    counts.set(key, next);
+    if (next >= 2) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function canOpenPOIModal(state: GameState, poiDefId: string): boolean {
+  switch (poiDefId) {
+    case 'L2':
+    case 'L12':
+    case 'L13':
+      return state.player.inventory.length < state.player.inventoryCapacity;
+    case 'L9':
+      return state.player.stats.gold >= 8;
+    case 'L10': {
+      const tool = state.player.equippedTool;
+      if (!tool) {
+        return false;
+      }
+      if (tool.rarity === 'COMMON') {
+        return state.player.stats.gold >= 10;
+      }
+      if (tool.rarity === 'GILDED') {
+        return state.player.stats.gold >= 20;
+      }
+      return false;
+    }
+    case 'L11':
+      return hasFuseCandidate(state);
+    case 'L14':
+      return state.player.inventory.length > 0;
+    default:
+      return true;
+  }
+}
+
 /**
  * T099: Handles INTERACT_POI action.
  * Transitions to POIInteraction phase with specified POI.
@@ -1186,6 +1264,15 @@ function handleInteractPOI(state: GameState, poiId: string): GameState {
     throw new Error(`POI not found: ${poiId}`);
   }
 
+  if (!canOpenPOIModal(state, poi.definitionId)) {
+    return state;
+  }
+
+  // Tool Oil Rack (L4): if tool already has oil, do not open modal in guest mode.
+  if (poi.definitionId === 'L4' && state.player.equippedTool?.oil) {
+    return state;
+  }
+
   // Create the POI interaction state
   const interaction = createPOIInteraction(poi, state);
   if (!interaction) {
@@ -1196,6 +1283,14 @@ function handleInteractPOI(state: GameState, poiId: string): GameState {
   let updatedMap = state.map;
   if (poi.definitionId === 'L8' && !poi.discovered) {
     updatedMap = markPOIDiscovered(state.map, poiId);
+  }
+
+  // Rail Waypoint (L8): do not open modal when no destination exists.
+  if (poi.definitionId === 'L8' && !canFastTravel(updatedMap)) {
+    return {
+      ...state,
+      map: updatedMap,
+    };
   }
 
   return {
@@ -1244,6 +1339,16 @@ function handleSelectPOIOption(state: GameState, optionIndex: number): GameState
     return state;
   }
 
+  // If a POI advanced/changed time phase (e.g., Rest Alcove/Mole Den night -> day),
+  // recompute fog immediately so visibility matches the new phase radius.
+  if (newState.time.phase !== state.time.phase) {
+    const isDay = newState.time.phase === TimePhase.Day;
+    newState = {
+      ...newState,
+      map: updateFogOfWar(newState.map, newState.player.position, isDay),
+    };
+  }
+
   // Update the selected option
   newState = {
     ...newState,
@@ -1284,10 +1389,18 @@ function handleClosePOI(state: GameState): GameState {
     return state;
   }
 
-  const closedState: GameState = {
+  let closedState: GameState = {
     ...state,
     phase: GamePhase.Exploration,
     activePOI: null,
+  };
+
+  // Keep fog visibility in sync with the current time phase when leaving any POI.
+  // This guarantees night->day rests reveal with day radius immediately.
+  const isDay = closedState.time.phase === TimePhase.Day;
+  closedState = {
+    ...closedState,
+    map: updateFogOfWar(closedState.map, closedState.player.position, isDay),
   };
 
   // If the POI effect advanced time to Boss phase (e.g. Mole Den/Rest Alcove on Night 3),

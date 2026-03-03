@@ -31,6 +31,7 @@ function isNonBlockingDelegationError(errorMessage: string | undefined): boolean
   const message = (errorMessage ?? '').toLowerCase();
   return (
     message.includes('failed to delegate session to rollup') ||
+    message.includes('delegation not fully propagated') ||
     message.includes('delegategameplayaccounts') ||
     message.includes('access violation') ||
     message.includes('failed to complete')
@@ -41,6 +42,7 @@ function isRecoverableStartError(errorMessage: string | undefined): boolean {
   const message = (errorMessage ?? '').toLowerCase();
   return (
     message.includes('failed to delegate session to rollup') ||
+    message.includes('delegation not fully propagated') ||
     message.includes('no active session to delegate') ||
     message.includes('delegategameplayaccounts') ||
     message.includes('access violation') ||
@@ -58,6 +60,7 @@ export function useGauntlet() {
     processPendingCleanups,
     hasPendingCleanups,
     fetchSessionNonces,
+    retryErVrfForSession,
   } = useSession();
   const { connection } = useSolanaConnection();
 
@@ -301,6 +304,15 @@ export function useGauntlet() {
             setPhase('error');
             return false;
           }
+          // Ensure ER VRF (map + gameplay) is fulfilled before proceeding.
+          // On localnet this is a no-op. On devnet/mainnet, re-requests VRF if needed
+          // so we never proceed with the fallback seed (Rule 3: no non-VRF randomness).
+          const vrfResult = await retryErVrfForSession(gauntletSessionPda.toBase58());
+          if (!vrfResult.success) {
+            setError(vrfResult.error ?? 'Randomness (VRF) not received from oracle — please try again');
+            setPhase('error');
+            return false;
+          }
           seed = await resolveSessionGeneratedSeed(gauntletSessionPda);
         }
       }
@@ -321,11 +333,11 @@ export function useGauntlet() {
           return false;
         }
         seed = startResult.mapSeed ?? (await resolveSessionGeneratedSeed(gauntletSessionPda));
-      } else if (!existingGauntletSessionInfo) {
-        console.log('[useGauntlet] enterGauntlet:starting_new_gauntlet_session');
-        const startResult = await startGauntletGame();
-        console.log('[useGauntlet] enterGauntlet:startGauntletGame_result', startResult);
-        if (!startResult.success) {
+        } else if (!existingGauntletSessionInfo) {
+          console.log('[useGauntlet] enterGauntlet:starting_new_gauntlet_session');
+          const startResult = await startGauntletGame();
+          console.log('[useGauntlet] enterGauntlet:startGauntletGame_result', startResult);
+          if (!startResult.success) {
           const canRecoverViaResume = isRecoverableStartError(startResult.error);
           if (!canRecoverViaResume) {
             setError(startResult.error ?? 'Failed to start gauntlet session');
@@ -353,6 +365,12 @@ export function useGauntlet() {
           const switchResult = await switchToGauntletSessionWithRetry(gauntletSessionPda);
           if (!switchResult.success) {
             setError(switchResult.error ?? 'Failed to resume gauntlet session');
+            setPhase('error');
+            return false;
+          }
+          const vrfResult = await retryErVrfForSession(gauntletSessionPda.toBase58());
+          if (!vrfResult.success) {
+            setError(vrfResult.error ?? 'Randomness (VRF) not received from oracle — please try again');
             setPhase('error');
             return false;
           }
@@ -405,6 +423,7 @@ export function useGauntlet() {
     processPendingCleanups,
     hasPendingCleanups,
     fetchSessionNonces,
+    retryErVrfForSession,
   ]);
 
   const reset = useCallback(() => {

@@ -1068,6 +1068,186 @@
       ]
     },
     {
+      "name": "delegate_gameplay_vrf_state",
+      "docs": [
+        "Delegates GameplayVrfState PDA to MagicBlock from its owning program."
+      ],
+      "discriminator": [
+        193,
+        167,
+        220,
+        51,
+        175,
+        197,
+        10,
+        28
+      ],
+      "accounts": [
+        {
+          "name": "buffer_gameplay_vrf_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "gameplay_vrf_state"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                165,
+                105,
+                51,
+                195,
+                50,
+                68,
+                93,
+                183,
+                82,
+                141,
+                122,
+                107,
+                195,
+                1,
+                86,
+                30,
+                104,
+                80,
+                170,
+                150,
+                122,
+                133,
+                234,
+                98,
+                181,
+                121,
+                227,
+                35,
+                228,
+                168,
+                136,
+                54
+              ]
+            }
+          }
+        },
+        {
+          "name": "delegation_record_gameplay_vrf_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "gameplay_vrf_state"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "delegation_metadata_gameplay_vrf_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "gameplay_vrf_state"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "gameplay_vrf_state",
+          "writable": true
+        },
+        {
+          "name": "game_session"
+        },
+        {
+          "name": "player",
+          "signer": true
+        },
+        {
+          "name": "owner_program",
+          "address": "C8hK4qsqsSYQeqyXuTPTUUS3T7N74WnZCuzvChTpK1Mo"
+        },
+        {
+          "name": "delegation_program",
+          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "validator",
+          "type": {
+            "option": "pubkey"
+          }
+        }
+      ]
+    },
+    {
       "name": "enter_duel",
       "docs": [
         "Pays duel entry and registers this run in async duel matchmaking."
@@ -1613,36 +1793,11 @@
         {
           "name": "gameplay_vrf_state",
           "docs": [
-            "VRF state for fair pit draft randomness (gold + inventory).",
-            "Required — pit draft involves real SOL stakes."
+            "Optional VRF state. If provided and fulfilled, uses VRF randomness.",
+            "If absent or unfulfilled, falls back to slot-based deterministic randomness."
           ],
           "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  103,
-                  97,
-                  109,
-                  101,
-                  112,
-                  108,
-                  97,
-                  121,
-                  95,
-                  118,
-                  114,
-                  102
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "gameplay_vrf_state.session",
-                "account": "GameplayVrfState"
-              }
-            ]
-          }
+          "optional": true
         },
         {
           "name": "system_program",
@@ -2060,69 +2215,6 @@
       ]
     },
     {
-      "name": "fulfill_gameplay_rng",
-      "docs": [
-        "LOCALNET ONLY: self-fulfill local RNG (same lifecycle as fulfill_gameplay_vrf)."
-      ],
-      "discriminator": [
-        169,
-        159,
-        197,
-        22,
-        254,
-        234,
-        150,
-        101
-      ],
-      "accounts": [
-        {
-          "name": "vrf_program_identity",
-          "signer": true
-        },
-        {
-          "name": "vrf_state",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  103,
-                  97,
-                  109,
-                  101,
-                  112,
-                  108,
-                  97,
-                  121,
-                  95,
-                  118,
-                  114,
-                  102
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "vrf_state.session",
-                "account": "GameplayVrfState"
-              }
-            ]
-          }
-        }
-      ],
-      "args": [
-        {
-          "name": "randomness",
-          "type": {
-            "array": [
-              "u8",
-              32
-            ]
-          }
-        }
-      ]
-    },
-    {
       "name": "fulfill_gameplay_vrf",
       "docs": [
         "Oracle callback: writes randomness into VrfState and sets status = Fulfilled.",
@@ -2146,7 +2238,8 @@
             "In production: oracle program identity signer.",
             "Under `mock-vrf`: any signer accepted."
           ],
-          "signer": true
+          "signer": true,
+          "address": "9irBy75QS2BN81FUgXuHcjqceJJRuc9oDkAe8TKVvvAw"
         },
         {
           "name": "vrf_state",
@@ -2356,6 +2449,68 @@
           "type": "u16"
         }
       ]
+    },
+    {
+      "name": "init_gameplay_vrf_state",
+      "docs": [
+        "Pre-creates GameplayVrfState PDA on base chain without requesting randomness.",
+        "Used to initialize the account before delegation to ER, so VRF requests",
+        "on the Ephemeral Rollup don't need to create new accounts inline."
+      ],
+      "discriminator": [
+        254,
+        188,
+        17,
+        13,
+        101,
+        239,
+        248,
+        232
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "session"
+        },
+        {
+          "name": "vrf_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  112,
+                  108,
+                  97,
+                  121,
+                  95,
+                  118,
+                  114,
+                  102
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "session"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
     },
     {
       "name": "initialize_duel_queue",
@@ -3400,71 +3555,10 @@
       ]
     },
     {
-      "name": "request_gameplay_rng",
-      "docs": [
-        "LOCALNET ONLY: request local RNG (same lifecycle as request_gameplay_vrf)."
-      ],
-      "discriminator": [
-        106,
-        199,
-        219,
-        176,
-        116,
-        27,
-        136,
-        73
-      ],
-      "accounts": [
-        {
-          "name": "payer",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "session"
-        },
-        {
-          "name": "vrf_state",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  103,
-                  97,
-                  109,
-                  101,
-                  112,
-                  108,
-                  97,
-                  121,
-                  95,
-                  118,
-                  114,
-                  102
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "session"
-              }
-            ]
-          }
-        },
-        {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
-        }
-      ],
-      "args": []
-    },
-    {
       "name": "request_gameplay_vrf",
       "docs": [
         "Request VRF randomness for gameplay (pit draft, gauntlet echo, duel boss).",
-        "Inits the VrfState account (status = Requested, nonce = 1).",
-        "Oracle CPI is stubbed — will be wired to ephemeral-vrf-sdk when available."
+        "Inits the VrfState account (status = Requested, nonce = 1)."
       ],
       "discriminator": [
         29,
@@ -3513,6 +3607,38 @@
               }
             ]
           }
+        },
+        {
+          "name": "program_identity",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  100,
+                  101,
+                  110,
+                  116,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "oracle_queue",
+          "writable": true
+        },
+        {
+          "name": "slot_hashes",
+          "address": "SysvarS1otHashes111111111111111111111111111"
+        },
+        {
+          "name": "vrf_program",
+          "address": "Vrf1RNUjXmQGjmQrQLvJHs9SNkvDJEsRVFPkfSQUwGz"
         },
         {
           "name": "system_program",
@@ -4377,6 +4503,175 @@
             "Optional GameplayVrfState for VRF-backed duel boss selection in skip_to_day."
           ],
           "optional": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "sync_map_enemies",
+      "docs": [
+        "Syncs enemies and game position from GeneratedMap after ER map generation.",
+        "",
+        "Called on the Ephemeral Rollup immediately after fill_map_with_seed or",
+        "generate_map_with_vrf populates the GeneratedMap. Updates:",
+        "- map_enemies.enemies from generated_map.enemies",
+        "- game_state map dimensions and spawn position (was set to placeholder 50x50/0,0 at init)"
+      ],
+      "discriminator": [
+        90,
+        117,
+        152,
+        66,
+        188,
+        1,
+        164,
+        190
+      ],
+      "accounts": [
+        {
+          "name": "session_signer",
+          "signer": true,
+          "relations": [
+            "game_state"
+          ]
+        },
+        {
+          "name": "session",
+          "relations": [
+            "generated_map",
+            "map_enemies",
+            "game_state"
+          ]
+        },
+        {
+          "name": "generated_map",
+          "docs": [
+            "Generated map (read-only) owned by map-generator program."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  101,
+                  110,
+                  101,
+                  114,
+                  97,
+                  116,
+                  101,
+                  100,
+                  95,
+                  109,
+                  97,
+                  112
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "session"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                225,
+                240,
+                24,
+                114,
+                207,
+                78,
+                29,
+                234,
+                224,
+                47,
+                10,
+                176,
+                232,
+                191,
+                75,
+                12,
+                245,
+                178,
+                5,
+                197,
+                71,
+                97,
+                18,
+                45,
+                73,
+                218,
+                84,
+                193,
+                245,
+                208,
+                172,
+                110
+              ]
+            }
+          }
+        },
+        {
+          "name": "map_enemies",
+          "docs": [
+            "Enemy instances to populate from generated map."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  112,
+                  95,
+                  101,
+                  110,
+                  101,
+                  109,
+                  105,
+                  101,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "session"
+              }
+            ]
+          }
+        },
+        {
+          "name": "game_state",
+          "docs": [
+            "Game state to update with actual map dimensions and spawn position."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "session"
+              }
+            ]
+          }
         }
       ],
       "args": []

@@ -531,7 +531,8 @@ export function useSessionManager() {
 
   const buildStartDuelSessionTransaction = useCallback(
     async (
-      sessionSignerPublicKey: PublicKey
+      sessionSignerPublicKey: PublicKey,
+      mapVrfStatePda?: PublicKey | null
     ): Promise<{ transaction: Transaction; sessionPda: PublicKey } | null> => {
       if (
         !wallet.publicKey ||
@@ -605,7 +606,7 @@ export function useSessionManager() {
           mapEnemies: enemiesPda,
           mapPois: poisPda,
           inventory: inventoryPda,
-          mapVrfState: null,
+          mapVrfState: mapVrfStatePda ?? null,
           mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
           gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
           poiSystemProgram: SOLANA_CONFIG.programs.poiSystem,
@@ -621,7 +622,8 @@ export function useSessionManager() {
 
   const buildStartGauntletSessionTransaction = useCallback(
     async (
-      sessionSignerPublicKey: PublicKey
+      sessionSignerPublicKey: PublicKey,
+      mapVrfStatePda?: PublicKey | null
     ): Promise<{ transaction: Transaction; sessionPda: PublicKey } | null> => {
       if (!wallet.publicKey || !baseWriteProgram) {
         return null;
@@ -682,7 +684,7 @@ export function useSessionManager() {
           mapEnemies: enemiesPda,
           mapPois: poisPda,
           inventory: inventoryPda,
-          mapVrfState: null,
+          mapVrfState: mapVrfStatePda ?? null,
           mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
           gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
           poiSystemProgram: SOLANA_CONFIG.programs.poiSystem,
@@ -807,6 +809,8 @@ export function useSessionManager() {
       options?: {
         sessionPda?: PublicKey;
         onChainLevel?: number;
+        /** VRF state types to delegate (pre-init'd on base). */
+        delegateVrf?: ('poi' | 'map' | 'gameplay')[];
       }
     ): Promise<TransactionResult> => {
       if (!wallet.publicKey || !baseWriteProgram) {
@@ -946,10 +950,11 @@ export function useSessionManager() {
           } as any)
           .instruction();
 
-        // Split delegation into 2-3 transactions to stay under the 1232-byte tx size limit.
+        // Split delegation into 2+ transactions to stay under the 1232-byte tx size limit.
         // Tx1: gameplay (gameState + mapEnemies) + session
         // Tx2: generatedMap + inventory + mapPois
-        // Tx3 (conditional): poiVrfState (only if VRF was used)
+        // Tx3 (optional): VRF state accounts (poi, map, gameplay) — pre-initialized on base,
+        //   delegated here so CPI-based VRF requests on ER can write to them.
         const delegationTx1 = new Transaction().add(
           ComputeBudgetProgram.setComputeUnitLimit({ units: 600_000 }),
           delegateGameplayIx,
@@ -962,15 +967,83 @@ export function useSessionManager() {
           delegateMapPoisIx
         );
         await sendSessionSignerTransaction(baseConnection, delegationTx1, sessionSignerKeypair);
-        let signature = await sendSessionSignerTransaction(
-          baseConnection,
-          delegationTx2,
-          sessionSignerKeypair
-        );
+        await sendSessionSignerTransaction(baseConnection, delegationTx2, sessionSignerKeypair);
 
-        // Skip PoiVrfState delegation here. This account is POI-system-owned and
-        // delegating it from session-manager can fail with runtime access violations.
-        // TODO: Perform this delegation from POI-system when/if required.
+        // Tx3: Delegate VRF state accounts if requested.
+        // VRF states must be pre-initialized on base before this step.
+        const vrfTypes = options?.delegateVrf ?? [];
+        let signature: string | undefined;
+        if (vrfTypes.length > 0) {
+          const delegationTx3 = new Transaction().add(
+            ComputeBudgetProgram.setComputeUnitLimit({ units: 600_000 })
+          );
+
+          if (vrfTypes.includes('poi')) {
+            const [poiVrfStatePda] = derivePoiVrfStatePda(sessionPda);
+            const poiVrfDelegate = deriveDelegatePdas(poiVrfStatePda, SOLANA_CONFIG.programs.poiSystem);
+            const delegatePoiVrfIx = await poiSystemWriteProgram.methods
+              .delegatePoiVrfState(delegationValidator)
+              .accountsStrict({
+                poiVrfState: poiVrfStatePda,
+                gameSession: sessionPda,
+                player: sessionSignerKeypair.publicKey,
+                bufferPoiVrfState: poiVrfDelegate.buffer,
+                delegationRecordPoiVrfState: poiVrfDelegate.delegationRecord,
+                delegationMetadataPoiVrfState: poiVrfDelegate.delegationMetadata,
+                ownerProgram: SOLANA_CONFIG.programs.poiSystem,
+                delegationProgram: DELEGATION_PROGRAM_ID,
+                systemProgram: SystemProgram.programId,
+              } as any)
+              .instruction();
+            delegationTx3.add(delegatePoiVrfIx);
+          }
+
+          if (vrfTypes.includes('map')) {
+            const [mapVrfStatePda] = deriveMapVrfStatePda(sessionPda);
+            const mapVrfDelegate = deriveDelegatePdas(mapVrfStatePda, SOLANA_CONFIG.programs.mapGenerator);
+            const delegateMapVrfIx = await mapGeneratorWriteProgram.methods
+              .delegateMapVrfState(delegationValidator)
+              .accountsStrict({
+                mapVrfState: mapVrfStatePda,
+                session: sessionPda,
+                player: sessionSignerKeypair.publicKey,
+                bufferMapVrfState: mapVrfDelegate.buffer,
+                delegationRecordMapVrfState: mapVrfDelegate.delegationRecord,
+                delegationMetadataMapVrfState: mapVrfDelegate.delegationMetadata,
+                ownerProgram: SOLANA_CONFIG.programs.mapGenerator,
+                delegationProgram: DELEGATION_PROGRAM_ID,
+                systemProgram: SystemProgram.programId,
+              } as any)
+              .instruction();
+            delegationTx3.add(delegateMapVrfIx);
+          }
+
+          if (vrfTypes.includes('gameplay')) {
+            const [gameplayVrfStatePda] = deriveGameplayVrfStatePda(sessionPda);
+            const gameplayVrfDelegate = deriveDelegatePdas(gameplayVrfStatePda, SOLANA_CONFIG.programs.gameplayState);
+            const delegateGameplayVrfIx = await gameplayStateWriteProgram.methods
+              .delegateGameplayVrfState(delegationValidator)
+              .accountsStrict({
+                gameplayVrfState: gameplayVrfStatePda,
+                gameSession: sessionPda,
+                player: sessionSignerKeypair.publicKey,
+                bufferGameplayVrfState: gameplayVrfDelegate.buffer,
+                delegationRecordGameplayVrfState: gameplayVrfDelegate.delegationRecord,
+                delegationMetadataGameplayVrfState: gameplayVrfDelegate.delegationMetadata,
+                ownerProgram: SOLANA_CONFIG.programs.gameplayState,
+                delegationProgram: DELEGATION_PROGRAM_ID,
+                systemProgram: SystemProgram.programId,
+              } as any)
+              .instruction();
+            delegationTx3.add(delegateGameplayVrfIx);
+          }
+
+          signature = await sendSessionSignerTransaction(
+            baseConnection,
+            delegationTx3,
+            sessionSignerKeypair
+          );
+        }
 
         // Refresh session state
         await fetchSession();

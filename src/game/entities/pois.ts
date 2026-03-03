@@ -465,21 +465,113 @@ function filterGearByPool<T extends { id: string }>(
 
 // ============================================================================
 // T094: Smuggler Hatch (L9)
-// Shop: 5 Rare + 1 Heroic items (filtered by active item pool)
+// Shop: 1 Tool + 5 Gear (filtered by active item pool)
 // ============================================================================
 
+const SMUGGLER_GEAR_RARITY: ReadonlyArray<readonly [number, number, number, number]> = [
+  [35, 45, 10, 10], // Act 1
+  [45, 40, 10, 5], // Act 2
+  [55, 30, 12, 3], // Act 3
+  [65, 25, 8, 2], // Act 4
+];
+
+const SMUGGLER_TOOL_RARITY: ReadonlyArray<readonly [number, number, number, number]> = [
+  [45, 40, 15, 0], // Act 1
+  [55, 35, 10, 0], // Act 2
+  [65, 30, 5, 0], // Act 3
+  [80, 15, 5, 0], // Act 4
+];
+
+function rollShopRarity(
+  rng: SeededRNG,
+  table: ReadonlyArray<readonly [number, number, number, number]>,
+  act: number
+): ItemRarity {
+  const actIndex = Math.max(0, Math.min(3, act - 1));
+  const [common, rare, heroic] = table[actIndex];
+  const roll = rng.nextInt(0, 99);
+  if (roll < common) return 'COMMON';
+  if (roll < common + rare) return 'RARE';
+  if (roll < common + rare + heroic) return 'HEROIC';
+  return 'MYTHIC';
+}
+
+function smugglerRarityFallbackOrder(target: ItemRarity): ItemRarity[] {
+  const all: ItemRarity[] = ['COMMON', 'RARE', 'HEROIC', 'MYTHIC'];
+  return [target, ...all.filter((r) => r !== target)];
+}
+
 function generateSmugglerHatchOptions(state: GameState, rng: SeededRNG, rerollCount: number): POIOption[] {
-  // T040: Filter gear by active item pool
-  const allRareGear = getGearByRarity('RARE');
-  const allHeroicGear = getGearByRarity('HEROIC');
-  const rareGear = filterGearByPool(allRareGear, state.activeItemPool);
-  const heroicGear = filterGearByPool(allHeroicGear, state.activeItemPool);
+  const weaknessTags = getBossWeaknessTags(state.time.weekBoss);
+  const selectedIds = new Set<string>();
   const options: POIOption[] = [];
 
-  // Generate 5 unique rare items from filtered pool
-  const pickedRareGear = pickUniqueById(rng, rareGear, 5, (gearDef) => gearDef.id);
-  for (const gearDef of pickedRareGear) {
-    const gear = createGearInstance(gearDef.id);
+  // Slot 0: exactly one tool
+  const rolledToolRarity = rollShopRarity(rng, SMUGGLER_TOOL_RARITY, state.time.week);
+  let pickedToolDef: ReturnType<typeof getToolsByRarity>[number] | null = null;
+  for (const rarity of smugglerRarityFallbackOrder(rolledToolRarity)) {
+    const toolPool = filterGearByPool(getToolsByRarity(rarity), state.activeItemPool).filter(
+      (toolDef) => toolDef.id !== 'T0' && toolDef.id !== 'T9'
+    );
+    const picked = pickUniqueWeighted(rng, toolPool, 1, weaknessTags, selectedIds)[0];
+    if (picked) {
+      pickedToolDef = picked;
+      break;
+    }
+  }
+  if (pickedToolDef) {
+    selectedIds.add(pickedToolDef.id);
+    const tool = createToolInstance(pickedToolDef.id);
+    const cost = calculateItemCost(tool);
+    const canAfford = state.player.stats.gold >= cost;
+    options.push({
+      label: `${tool.emoji} ${tool.name} (${cost}g)`,
+      item: tool,
+      cost,
+      disabled: !canAfford,
+      disabledReason: canAfford ? undefined : 'Not enough gold',
+    });
+  } else {
+    // Defensive fallback: guarantee one tool slot in guest mode.
+    const anyTool = getToolsByRarity('COMMON')
+      .concat(getToolsByRarity('RARE'), getToolsByRarity('HEROIC'))
+      .filter((toolDef) => toolDef.id !== 'T0' && toolDef.id !== 'T9');
+    const fallbackTool = pickUniqueWeighted(rng, anyTool, 1, weaknessTags, selectedIds)[0];
+    if (fallbackTool) {
+      selectedIds.add(fallbackTool.id);
+      const tool = createToolInstance(fallbackTool.id);
+      const cost = calculateItemCost(tool);
+      const canAfford = state.player.stats.gold >= cost;
+      options.push({
+        label: `${tool.emoji} ${tool.name} (${cost}g)`,
+        item: tool,
+        cost,
+        disabled: !canAfford,
+        disabledReason: canAfford ? undefined : 'Not enough gold',
+      });
+    }
+  }
+
+  // Slots 1..5: exactly five gear
+  for (let i = 0; i < 5; i += 1) {
+    const rolledGearRarity = rollShopRarity(rng, SMUGGLER_GEAR_RARITY, state.time.week);
+    let pickedGearDef: ReturnType<typeof getGearByRarity>[number] | null = null;
+    for (const rarity of smugglerRarityFallbackOrder(rolledGearRarity)) {
+      const gearPool = filterGearByPool(getGearByRarity(rarity), state.activeItemPool);
+      const picked = pickUniqueWeighted(rng, gearPool, 1, weaknessTags, selectedIds)[0];
+      if (picked) {
+        pickedGearDef = picked;
+        break;
+      }
+    }
+    if (!pickedGearDef) {
+      // Defensive fallback: guarantee gear slots in guest mode.
+      const fallbackGearPool = Object.values(GEAR_DEFINITIONS);
+      pickedGearDef = pickUniqueWeighted(rng, fallbackGearPool, 1, weaknessTags, selectedIds)[0] ?? null;
+      if (!pickedGearDef) break;
+    }
+    selectedIds.add(pickedGearDef.id);
+    const gear = createGearInstance(pickedGearDef.id);
     const cost = calculateItemCost(gear);
     const canAfford = state.player.stats.gold >= cost;
     options.push({
@@ -488,21 +580,6 @@ function generateSmugglerHatchOptions(state: GameState, rng: SeededRNG, rerollCo
       cost,
       disabled: !canAfford,
       disabledReason: canAfford ? undefined : 'Not enough gold',
-    });
-  }
-
-  // Generate 1 heroic item
-  if (heroicGear.length > 0) {
-    const heroicDef = rng.pick(heroicGear);
-    const heroicItem = createGearInstance(heroicDef.id);
-    const heroicCost = calculateItemCost(heroicItem);
-    const canAffordHeroic = state.player.stats.gold >= heroicCost;
-    options.push({
-      label: `${heroicItem.emoji} ${heroicItem.name} (${heroicCost}g)`,
-      item: heroicItem,
-      cost: heroicCost,
-      disabled: !canAffordHeroic,
-      disabledReason: canAffordHeroic ? undefined : 'Not enough gold',
     });
   }
 
@@ -533,21 +610,22 @@ function generateSmugglerHatchOptions(state: GameState, rng: SeededRNG, rerollCo
  */
 function calculateItemCost(item: Gear | Tool): number {
   const rarity = 'currentRarity' in item ? item.currentRarity : item.rarity;
+  const isTool = !('currentRarity' in item);
   switch (rarity) {
     case 'COMMON':
-      return 5;
-    case 'GILDED':
-      return 10;
-    case 'DIAMOND':
-      return 20;
+      return isTool ? 10 : 8;
     case 'RARE':
-      return 15;
+      return isTool ? 16 : 14;
     case 'HEROIC':
-      return 30;
+      return isTool ? 24 : 22;
     case 'MYTHIC':
-      return 50;
+      return isTool ? 38 : 34;
+    case 'GILDED':
+      return isTool ? 16 : 14;
+    case 'DIAMOND':
+      return isTool ? 24 : 22;
     default:
-      return 10;
+      return isTool ? 10 : 8;
   }
 }
 

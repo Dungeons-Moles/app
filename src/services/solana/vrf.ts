@@ -5,16 +5,30 @@
  * (map-generator, poi-system, gameplay-state) has its own VRF state account
  * with request/fulfill/close lifecycle.
  *
- * Since the oracle signer is currently stubbed (no address constraint),
- * the frontend acts as the oracle by signing fulfill calls with the session
- * signer and providing crypto.getRandomValues() randomness.
+ * Localnet uses request_*_rng + fulfill_*_rng for deterministic local testing.
+ * Devnet/mainnet use request_*_vrf and wait for MagicBlock VRF callbacks.
  */
 
 import { PublicKey, Transaction, TransactionInstruction, SystemProgram } from '@solana/web3.js';
 import type { Connection, Keypair } from '@solana/web3.js';
 import type { Program } from '@coral-xyz/anchor';
-import { deriveMapVrfStatePda, derivePoiVrfStatePda, deriveGameplayVrfStatePda } from './constants';
+import {
+  deriveMapVrfStatePda,
+  derivePoiVrfStatePda,
+  deriveGameplayVrfStatePda,
+  deriveGeneratedMapPda,
+  deriveMapEnemiesPda,
+  deriveGameStatePda,
+} from './constants';
 import { SOLANA_CONFIG } from './config';
+
+const IDENTITY_SEED = Buffer.from('identity');
+/** ER oracle queue. All VRF requests must go through this queue on the Ephemeral Rollup. */
+const VRF_EPHEMERAL_QUEUE = new PublicKey(
+  process.env.EXPO_PUBLIC_VRF_ORACLE_QUEUE ?? '5hBR571xnXppuCPveTrctfTU7tJLSN94nq7kv7FRK5Tc'
+);
+const SLOT_HASHES_SYSVAR = new PublicKey('SysvarS1otHashes111111111111111111111111111');
+const VRF_PROGRAM_ID = new PublicKey('Vrf1RNUjXmQGjmQrQLvJHs9SNkvDJEsRVFPkfSQUwGz');
 
 // ============================================================================
 // Randomness Generation
@@ -35,11 +49,140 @@ export function generateRandomness(): number[] {
   return Array.from(bytes);
 }
 
-function pickMethod(program: Program, preferred: string, fallback: string) {
+function pickMethod(
+  program: Program,
+  preferred: string,
+  fallback: string,
+  options?: { strictPreferred?: boolean }
+) {
   const methods = (program.methods ?? {}) as Record<string, (...args: any[]) => any>;
   if (typeof methods[preferred] === 'function') return methods[preferred].bind(methods);
+  if (options?.strictPreferred) {
+    throw new Error(`Missing required method ${preferred} on program for current mode`);
+  }
   if (typeof methods[fallback] === 'function') return methods[fallback].bind(methods);
   throw new Error(`Neither ${preferred} nor ${fallback} exists on program`);
+}
+
+function chooseMethod(
+  program: Program,
+  preferred: string,
+  fallback: string,
+  options?: { strictPreferred?: boolean }
+) {
+  const methods = (program.methods ?? {}) as Record<string, (...args: any[]) => any>;
+  if (typeof methods[preferred] === 'function') {
+    return { name: preferred, fn: methods[preferred].bind(methods) };
+  }
+  if (options?.strictPreferred) {
+    throw new Error(`Missing required method ${preferred} on program for current mode`);
+  }
+  if (typeof methods[fallback] === 'function') {
+    return { name: fallback, fn: methods[fallback].bind(methods) };
+  }
+  throw new Error(`Neither ${preferred} nor ${fallback} exists on program`);
+}
+
+/** Anchor discriminator for poi-system's fulfill_poi_vrf instruction. */
+const FULFILL_POI_VRF_DISCRIMINATOR = Buffer.from([166, 31, 37, 201, 6, 212, 250, 168]);
+/** Anchor discriminator for map-generator's fulfill_map_vrf instruction. */
+const FULFILL_MAP_VRF_DISCRIMINATOR = Buffer.from([16, 129, 66, 174, 79, 226, 145, 92]);
+/** Anchor discriminator for gameplay-state's fulfill_gameplay_vrf instruction. */
+const FULFILL_GAMEPLAY_VRF_DISCRIMINATOR = Buffer.from([237, 45, 86, 168, 79, 105, 52, 69]);
+
+/**
+ * Build a raw `request_randomness` instruction for the ER VRF program.
+ * Replicates ephemeral-vrf-sdk's `create_request_randomness_ix` in TypeScript
+ * so the frontend can send it as a top-level instruction (avoiding CPI
+ * writable-account restrictions on the ER).
+ */
+function buildRawVrfRequestInstruction(params: {
+  payer: PublicKey;
+  callbackProgramId: PublicKey;
+  callbackDiscriminator: Buffer;
+  vrfStatePda: PublicKey;
+  sessionPda: PublicKey;
+}): TransactionInstruction {
+  const { payer, callbackProgramId, callbackDiscriminator, vrfStatePda, sessionPda } = params;
+  const [programIdentity] = PublicKey.findProgramAddressSync([IDENTITY_SEED], callbackProgramId);
+
+  // Build caller_seed: first 8 bytes = nonce (1 as u64 LE), rest from session key
+  const callerSeed = Buffer.alloc(32);
+  Buffer.from(sessionPda.toBytes()).copy(callerSeed);
+  const nonceBuf = Buffer.alloc(8);
+  nonceBuf.writeBigUInt64LE(1n);
+  nonceBuf.copy(callerSeed, 0);
+
+  // Borsh-serialize the RequestRandomness data
+  // Format: caller_seed [u8;32] | callback_program_id [u8;32] |
+  //   callback_discriminator (vec: u32 len + bytes) |
+  //   callback_accounts_metas (vec: u32 len + items) |
+  //   callback_args (vec: u32 len + bytes)
+  const parts: Buffer[] = [];
+
+  // caller_seed: [u8; 32]
+  parts.push(callerSeed);
+
+  // callback_program_id: Pubkey (32 bytes)
+  parts.push(Buffer.from(callbackProgramId.toBytes()));
+
+  // callback_discriminator: Vec<u8> (4-byte LE length + bytes)
+  const discLenBuf = Buffer.alloc(4);
+  discLenBuf.writeUInt32LE(callbackDiscriminator.length);
+  parts.push(discLenBuf);
+  parts.push(callbackDiscriminator);
+
+  // callback_accounts_metas: Vec<SerializableAccountMeta> (4-byte LE count + items)
+  // Each item: pubkey (32) + is_signer (1) + is_writable (1) = 34 bytes
+  const accountsCountBuf = Buffer.alloc(4);
+  accountsCountBuf.writeUInt32LE(1); // one callback account: vrf_state
+  parts.push(accountsCountBuf);
+  // vrf_state: writable, not signer
+  parts.push(Buffer.from(vrfStatePda.toBytes())); // pubkey
+  parts.push(Buffer.from([0])); // is_signer = false
+  parts.push(Buffer.from([1])); // is_writable = true
+
+  // callback_args: Vec<u8> (empty)
+  const emptyVecBuf = Buffer.alloc(4);
+  emptyVecBuf.writeUInt32LE(0);
+  parts.push(emptyVecBuf);
+
+  // Prepend 8-byte discriminator [3, 0, 0, 0, 0, 0, 0, 0]
+  const discriminator = Buffer.from([3, 0, 0, 0, 0, 0, 0, 0]);
+  const data = Buffer.concat([discriminator, ...parts]);
+
+  return new TransactionInstruction({
+    programId: VRF_PROGRAM_ID,
+    keys: [
+      { pubkey: payer, isSigner: true, isWritable: true },
+      { pubkey: programIdentity, isSigner: false, isWritable: false },
+      { pubkey: VRF_EPHEMERAL_QUEUE, isSigner: false, isWritable: true },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      { pubkey: SLOT_HASHES_SYSVAR, isSigner: false, isWritable: false },
+    ],
+    data,
+  });
+}
+
+function vrfRequestAccounts(
+  programId: PublicKey,
+  payer: PublicKey,
+  sessionPda: PublicKey,
+  vrfStatePda: PublicKey,
+) {
+  const [programIdentity] = PublicKey.findProgramAddressSync([IDENTITY_SEED], programId);
+  return {
+    payer,
+    session: sessionPda,
+    vrfState: vrfStatePda,
+    programIdentity,
+    // All VRF requests go to the ER oracle queue. poi-system's oracle_queue
+    // is now unconstrained (matching map_generator / gameplay_state pattern).
+    oracleQueue: VRF_EPHEMERAL_QUEUE,
+    slotHashes: SLOT_HASHES_SYSVAR,
+    vrfProgram: VRF_PROGRAM_ID,
+    systemProgram: SystemProgram.programId,
+  };
 }
 
 // ============================================================================
@@ -61,21 +204,33 @@ export async function buildRequestAndFulfillMapVrfInstructions(
   const localMode = SOLANA_CONFIG.isLocalValidator;
   const mapRandomness = localMode ? generateRandomness() : null;
 
-  const requestMap = pickMethod(mapGeneratorProgram, 'requestMapRng', 'requestMapVrf');
-  const requestMapVrfIx = await requestMap()
-    .accounts({
-      payer,
-      session: sessionPda,
-      vrfState: mapVrfStatePda,
-      systemProgram: SystemProgram.programId,
-    })
+  const requestMap = localMode
+    ? chooseMethod(mapGeneratorProgram, 'requestMapRng', 'requestMapVrf', {
+        strictPreferred: true,
+      })
+    : chooseMethod(mapGeneratorProgram, 'requestMapVrf', 'requestMapRng', {
+        strictPreferred: true,
+      });
+  const requestMapVrfIx = await requestMap.fn()
+    .accounts(
+      requestMap.name === 'requestMapVrf'
+        ? vrfRequestAccounts(mapGeneratorProgram.programId, payer, sessionPda, mapVrfStatePda)
+        : {
+            payer,
+            session: sessionPda,
+            vrfState: mapVrfStatePda,
+            systemProgram: SystemProgram.programId,
+          }
+    )
     .instruction();
 
   if (!localMode) {
     return [requestMapVrfIx];
   }
 
-  const fulfillMap = pickMethod(mapGeneratorProgram, 'fulfillMapRng', 'fulfillMapVrf');
+  const fulfillMap = pickMethod(mapGeneratorProgram, 'fulfillMapRng', 'fulfillMapVrf', {
+    strictPreferred: localMode,
+  });
   const fulfillMapVrfIx = await fulfillMap(mapRandomness)
     .accounts({
       oracle: sessionSigner,
@@ -84,6 +239,143 @@ export async function buildRequestAndFulfillMapVrfInstructions(
     .instruction();
 
   return [requestMapVrfIx, fulfillMapVrfIx];
+}
+
+/**
+ * Build a transaction that calls `generate_map_with_vrf` on the ER after map VRF fulfillment.
+ * Generates the full maze using VRF-derived randomness.
+ * Used for duel/gauntlet flows where map VRF is requested post-delegation on the ER.
+ */
+export async function buildFillMapWithVrfTransaction(
+  mapGeneratorProgram: Program,
+  sessionPda: PublicKey,
+  sessionSigner: PublicKey,
+  campaignLevel: number
+): Promise<Transaction> {
+  const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
+  const [mapVrfStatePda] = deriveMapVrfStatePda(sessionPda);
+
+  const method = pickMethod(mapGeneratorProgram, 'generateMapWithVrf', 'generateMapWithVrf');
+  const ix = await method(campaignLevel)
+    .accounts({
+      sessionSigner,
+      session: sessionPda,
+      generatedMap: generatedMapPda,
+      vrfState: mapVrfStatePda,
+    })
+    .instruction();
+
+  return new Transaction().add(ix);
+}
+
+/**
+ * Build a transaction that calls `fill_map_with_seed` on the ER.
+ * Generates the full maze using a deterministic seed (PvE campaign sessions).
+ */
+export async function buildFillMapWithSeedTransaction(
+  mapGeneratorProgram: Program,
+  sessionPda: PublicKey,
+  sessionSigner: PublicKey,
+  seed: bigint,
+  campaignLevel: number
+): Promise<Transaction> {
+  const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
+
+  const method = pickMethod(mapGeneratorProgram, 'fillMapWithSeed', 'fillMapWithSeed');
+  // Anchor BN for u64 seed
+  const BN = (await import('bn.js')).default;
+  const ix = await method(new BN(seed.toString()), campaignLevel)
+    .accounts({
+      sessionSigner,
+      session: sessionPda,
+      generatedMap: generatedMapPda,
+    })
+    .instruction();
+
+  return new Transaction().add(ix);
+}
+
+/**
+ * Build a `sync_map_enemies` instruction from gameplay-state.
+ * Populates map_enemies from generated_map and updates game_state position/dims.
+ * Must be called on ER immediately after map generation (fill_map_with_seed or generate_map_with_vrf).
+ */
+export async function buildSyncMapEnemiesInstruction(
+  gameplayStateProgram: Program,
+  sessionPda: PublicKey,
+  sessionSigner: PublicKey
+): Promise<TransactionInstruction> {
+  const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
+  const [mapEnemiesPda] = deriveMapEnemiesPda(sessionPda);
+  const [gameStatePda] = deriveGameStatePda(sessionPda);
+
+  const method = pickMethod(gameplayStateProgram, 'syncMapEnemies', 'syncMapEnemies');
+  return method()
+    .accounts({
+      sessionSigner,
+      session: sessionPda,
+      generatedMap: generatedMapPda,
+      mapEnemies: mapEnemiesPda,
+      gameState: gameStatePda,
+    })
+    .instruction();
+}
+
+/**
+ * Build a single transaction combining map generation and enemy sync.
+ * - mode 'vrf': uses generate_map_with_vrf (Gauntlet/Duel on ER)
+ * - mode 'seed': uses fill_map_with_seed (PvE campaign on ER)
+ *
+ * Both modes append a sync_map_enemies instruction to populate enemies
+ * and fix game_state position/dimensions after map generation.
+ */
+export async function buildMapAndSyncTransaction(
+  mode: 'vrf' | 'seed',
+  mapGeneratorProgram: Program,
+  gameplayStateProgram: Program,
+  sessionPda: PublicKey,
+  sessionSigner: PublicKey,
+  opts: { campaignLevel: number; seed?: bigint }
+): Promise<Transaction> {
+  const tx = new Transaction();
+
+  if (mode === 'vrf') {
+    const mapTx = await buildFillMapWithVrfTransaction(
+      mapGeneratorProgram,
+      sessionPda,
+      sessionSigner,
+      opts.campaignLevel
+    );
+    tx.add(...mapTx.instructions);
+  } else {
+    const seed = opts.seed ?? BigInt(opts.campaignLevel);
+    const mapTx = await buildFillMapWithSeedTransaction(
+      mapGeneratorProgram,
+      sessionPda,
+      sessionSigner,
+      seed,
+      opts.campaignLevel
+    );
+    tx.add(...mapTx.instructions);
+  }
+
+  const syncIx = await buildSyncMapEnemiesInstruction(gameplayStateProgram, sessionPda, sessionSigner);
+  tx.add(syncIx);
+
+  return tx;
+}
+
+/**
+ * @deprecated Use buildFillMapWithVrfTransaction instead.
+ * Kept for backward compatibility during transition.
+ */
+export async function buildRegenerateMapTransaction(
+  mapGeneratorProgram: Program,
+  sessionPda: PublicKey,
+  sessionSigner: PublicKey,
+  campaignLevel: number
+): Promise<Transaction> {
+  return buildFillMapWithVrfTransaction(mapGeneratorProgram, sessionPda, sessionSigner, campaignLevel);
 }
 
 /**
@@ -106,34 +398,63 @@ export async function buildRequestAndFulfillPoiAndGameplayVrfTransaction(
   const poiRandomness = localMode ? generateRandomness() : null;
   const gameplayRandomness = localMode ? generateRandomness() : null;
 
-  const requestPoi = pickMethod(programs.poiSystem, 'requestPoiRng', 'requestPoiVrf');
-  const requestPoiVrfIx = await requestPoi()
-    .accounts({
-      payer,
-      session: sessionPda,
-      vrfState: poiVrfStatePda,
-      systemProgram: SystemProgram.programId,
-    })
+  const requestPoi = localMode
+    ? chooseMethod(programs.poiSystem, 'requestPoiRng', 'requestPoiVrf', {
+        strictPreferred: true,
+      })
+    : chooseMethod(programs.poiSystem, 'requestPoiVrf', 'requestPoiRng', {
+        strictPreferred: true,
+      });
+  const requestPoiVrfIx = await requestPoi.fn()
+    .accounts(
+      requestPoi.name === 'requestPoiVrf'
+        ? vrfRequestAccounts(programs.poiSystem.programId, payer, sessionPda, poiVrfStatePda)
+        : {
+            payer,
+            session: sessionPda,
+            vrfState: poiVrfStatePda,
+            systemProgram: SystemProgram.programId,
+          }
+    )
     .instruction();
 
-  const requestGameplay = pickMethod(
-    programs.gameplayState,
-    'requestGameplayRng',
-    'requestGameplayVrf'
-  );
-  const requestGameplayVrfIx = await requestGameplay()
-    .accounts({
-      payer,
-      session: sessionPda,
-      vrfState: gameplayVrfStatePda,
-      systemProgram: SystemProgram.programId,
-    })
+  const requestGameplay = localMode
+    ? chooseMethod(
+        programs.gameplayState,
+        'requestGameplayRng',
+        'requestGameplayVrf',
+        { strictPreferred: true }
+      )
+    : chooseMethod(
+        programs.gameplayState,
+        'requestGameplayVrf',
+        'requestGameplayRng',
+        { strictPreferred: true }
+      );
+  const requestGameplayVrfIx = await requestGameplay.fn()
+    .accounts(
+      requestGameplay.name === 'requestGameplayVrf'
+        ? vrfRequestAccounts(
+            programs.gameplayState.programId,
+            payer,
+            sessionPda,
+            gameplayVrfStatePda
+          )
+        : {
+            payer,
+            session: sessionPda,
+            vrfState: gameplayVrfStatePda,
+            systemProgram: SystemProgram.programId,
+          }
+    )
     .instruction();
 
   const tx = new Transaction();
   tx.add(requestPoiVrfIx, requestGameplayVrfIx);
   if (localMode) {
-    const fulfillPoi = pickMethod(programs.poiSystem, 'fulfillPoiRng', 'fulfillPoiVrf');
+    const fulfillPoi = pickMethod(programs.poiSystem, 'fulfillPoiRng', 'fulfillPoiVrf', {
+      strictPreferred: localMode,
+    });
     const fulfillPoiVrfIx = await fulfillPoi(poiRandomness)
       .accounts({
         oracle: sessionSigner,
@@ -143,7 +464,8 @@ export async function buildRequestAndFulfillPoiAndGameplayVrfTransaction(
     const fulfillGameplay = pickMethod(
       programs.gameplayState,
       'fulfillGameplayRng',
-      'fulfillGameplayVrf'
+      'fulfillGameplayVrf',
+      { strictPreferred: localMode }
     );
     const fulfillGameplayVrfIx = await fulfillGameplay(gameplayRandomness)
       .accounts({
@@ -161,9 +483,98 @@ export async function buildRequestAndFulfillPoiAndGameplayVrfTransaction(
 // ============================================================================
 
 /**
+ * Build a transaction that sends a RAW VRF request directly to the VRF program
+ * on the Ephemeral Rollup, bypassing poi-system's requestPoiVrf CPI.
+ *
+ * Why this is needed:
+ *   poi-system's requestPoiVrf CPI marks PoiVrfState as writable in the request
+ *   transaction. The ER's post-execution validation rejects any write to a
+ *   delegated account that was not written by an oracle callback — even if the
+ *   delegation record exists. The raw approach puts PoiVrfState only in the
+ *   callback_accounts_metas serialized data; it is NOT a writable key in the
+ *   request tx. The oracle calls fulfill_poi_vrf as an ER-side callback and
+ *   handles delegation transparently.
+ *
+ * Requires:
+ *   - PoiVrfState must already be initialized (init_poi_vrf_state on base)
+ *   - PoiVrfState must be delegated to ER
+ *   - Must be sent to the Ephemeral Rollup (directErConnection)
+ */
+export function buildRawPoiVrfRequestTransaction(
+  sessionPda: PublicKey,
+  payer: PublicKey,
+  poiSystemProgramId: PublicKey,
+): Transaction {
+  const [poiVrfStatePda] = derivePoiVrfStatePda(sessionPda);
+  const ix = buildRawVrfRequestInstruction({
+    payer,
+    callbackProgramId: poiSystemProgramId,
+    callbackDiscriminator: FULFILL_POI_VRF_DISCRIMINATOR,
+    vrfStatePda: poiVrfStatePda,
+    sessionPda,
+  });
+  return new Transaction().add(ix);
+}
+
+/**
+ * Build a raw VRF request for map generation on the ER.
+ * Same approach as buildRawPoiVrfRequestTransaction — bypasses CPI to avoid
+ * ER post-execution validation rejecting non-delegated account writes.
+ *
+ * Requires:
+ *   - MapVrfState must already be initialized (init_map_vrf_state on base)
+ *   - MapVrfState must be delegated to ER
+ */
+export function buildRawMapVrfRequestTransaction(
+  sessionPda: PublicKey,
+  payer: PublicKey,
+  mapGeneratorProgramId: PublicKey,
+): Transaction {
+  const [mapVrfStatePda] = deriveMapVrfStatePda(sessionPda);
+  const ix = buildRawVrfRequestInstruction({
+    payer,
+    callbackProgramId: mapGeneratorProgramId,
+    callbackDiscriminator: FULFILL_MAP_VRF_DISCRIMINATOR,
+    vrfStatePda: mapVrfStatePda,
+    sessionPda,
+  });
+  return new Transaction().add(ix);
+}
+
+/**
+ * Build a raw VRF request for gameplay on the ER.
+ * Same approach as buildRawPoiVrfRequestTransaction — bypasses CPI to avoid
+ * ER post-execution validation rejecting non-delegated account writes.
+ *
+ * Requires:
+ *   - GameplayVrfState must already be initialized (init_gameplay_vrf_state on base)
+ *   - GameplayVrfState must be delegated to ER
+ */
+export function buildRawGameplayVrfRequestTransaction(
+  sessionPda: PublicKey,
+  payer: PublicKey,
+  gameplayStateProgramId: PublicKey,
+): Transaction {
+  const [gameplayVrfStatePda] = deriveGameplayVrfStatePda(sessionPda);
+  const ix = buildRawVrfRequestInstruction({
+    payer,
+    callbackProgramId: gameplayStateProgramId,
+    callbackDiscriminator: FULFILL_GAMEPLAY_VRF_DISCRIMINATOR,
+    vrfStatePda: gameplayVrfStatePda,
+    sessionPda,
+  });
+  return new Transaction().add(ix);
+}
+
+/**
  * Build a transaction that requests and fulfills POI VRF only.
  * Used for campaign sessions where the map seed is deterministic
  * but POI offers need VRF for fairness.
+ *
+ * Must be sent to the Ephemeral Rollup after delegation.
+ * request_poi_vrf now inits the VrfState account inline (matching map/gameplay pattern).
+ * On devnet/mainnet, send and wait for oracle fulfillment.
+ * On localnet, returns request+fulfill in a single transaction (instant, no oracle).
  */
 export async function buildRequestAndFulfillPoiVrfTransaction(
   poiSystemProgram: Program,
@@ -175,21 +586,36 @@ export async function buildRequestAndFulfillPoiVrfTransaction(
   const localMode = SOLANA_CONFIG.isLocalValidator;
   const poiRandomness = localMode ? generateRandomness() : null;
 
-  const requestPoi = pickMethod(poiSystemProgram, 'requestPoiRng', 'requestPoiVrf');
-  const requestIx = await requestPoi()
-    .accounts({
-      payer,
-      session: sessionPda,
-      vrfState: poiVrfStatePda,
-      systemProgram: SystemProgram.programId,
-    })
+  const requestPoi = localMode
+    ? chooseMethod(poiSystemProgram, 'requestPoiRng', 'requestPoiVrf', {
+        strictPreferred: true,
+      })
+    : chooseMethod(poiSystemProgram, 'requestPoiVrf', 'requestPoiRng', {
+        strictPreferred: true,
+      });
+
+  // Devnet VRF: requestPoiVrf includes CPI to VRF program, needs all VRF accounts.
+  // Localnet RNG: requestPoiRng only needs payer + session + vrfState + systemProgram.
+  const requestIx = await requestPoi.fn()
+    .accounts(
+      requestPoi.name === 'requestPoiVrf'
+        ? vrfRequestAccounts(poiSystemProgram.programId, payer, sessionPda, poiVrfStatePda)
+        : {
+            payer,
+            session: sessionPda,
+            vrfState: poiVrfStatePda,
+            systemProgram: SystemProgram.programId,
+          }
+    )
     .instruction();
 
   if (!localMode) {
     return new Transaction().add(requestIx);
   }
 
-  const fulfillPoi = pickMethod(poiSystemProgram, 'fulfillPoiRng', 'fulfillPoiVrf');
+  const fulfillPoi = pickMethod(poiSystemProgram, 'fulfillPoiRng', 'fulfillPoiVrf', {
+    strictPreferred: localMode,
+  });
   const fulfillIx = await fulfillPoi(poiRandomness)
     .accounts({
       oracle: sessionSigner,
@@ -200,34 +626,228 @@ export async function buildRequestAndFulfillPoiVrfTransaction(
   return new Transaction().add(requestIx, fulfillIx);
 }
 
+/**
+ * Build a transaction that requests gameplay VRF only (no poi VRF).
+ * Used on the ER after delegation when poi VRF was already handled on base.
+ * On localnet, also includes the fulfill instruction for deterministic testing.
+ */
+export async function buildRequestGameplayVrfTransaction(
+  gameplayStateProgram: Program,
+  sessionPda: PublicKey,
+  payer: PublicKey,
+  sessionSigner: PublicKey
+): Promise<Transaction> {
+  const [gameplayVrfStatePda] = deriveGameplayVrfStatePda(sessionPda);
+  const localMode = SOLANA_CONFIG.isLocalValidator;
+  const gameplayRandomness = localMode ? generateRandomness() : null;
+
+  const requestGameplay = localMode
+    ? chooseMethod(gameplayStateProgram, 'requestGameplayRng', 'requestGameplayVrf', {
+        strictPreferred: true,
+      })
+    : chooseMethod(gameplayStateProgram, 'requestGameplayVrf', 'requestGameplayRng', {
+        strictPreferred: true,
+      });
+  const requestGameplayVrfIx = await requestGameplay
+    .fn()
+    .accounts(
+      requestGameplay.name === 'requestGameplayVrf'
+        ? vrfRequestAccounts(
+            gameplayStateProgram.programId,
+            payer,
+            sessionPda,
+            gameplayVrfStatePda
+          )
+        : {
+            payer,
+            session: sessionPda,
+            vrfState: gameplayVrfStatePda,
+            systemProgram: SystemProgram.programId,
+          }
+    )
+    .instruction();
+
+  const tx = new Transaction().add(requestGameplayVrfIx);
+  if (localMode) {
+    const fulfillGameplay = pickMethod(
+      gameplayStateProgram,
+      'fulfillGameplayRng',
+      'fulfillGameplayVrf',
+      { strictPreferred: localMode }
+    );
+    const fulfillIx = await fulfillGameplay(gameplayRandomness)
+      .accounts({ oracle: sessionSigner, vrfState: gameplayVrfStatePda })
+      .instruction();
+    tx.add(fulfillIx);
+  }
+  return tx;
+}
+
+/**
+ * Pre-creates PoiVrfState on base chain before delegation to ER.
+ * Must be called on the base layer so the account exists for delegation.
+ * After delegation, use buildRawPoiVrfRequestTransaction on ER.
+ */
+export async function buildInitPoiVrfStateTransaction(
+  poiSystemProgram: Program,
+  sessionPda: PublicKey,
+  payer: PublicKey
+): Promise<Transaction> {
+  const [poiVrfStatePda] = derivePoiVrfStatePda(sessionPda);
+  const method = pickMethod(poiSystemProgram, 'initPoiVrfState', 'initPoiVrfState');
+  const ix = await method()
+    .accounts({
+      payer,
+      session: sessionPda,
+      vrfState: poiVrfStatePda,
+      systemProgram: SystemProgram.programId,
+    })
+    .instruction();
+  return new Transaction().add(ix);
+}
+
+/**
+ * Pre-creates MapVrfState on base chain before delegation to ER.
+ * Must be called on the base layer so the account exists for delegation.
+ * After delegation, use buildRawMapVrfRequestTransaction on ER.
+ */
+export async function buildInitMapVrfStateTransaction(
+  mapGeneratorProgram: Program,
+  sessionPda: PublicKey,
+  payer: PublicKey
+): Promise<Transaction> {
+  const [mapVrfStatePda] = deriveMapVrfStatePda(sessionPda);
+  const method = pickMethod(mapGeneratorProgram, 'initMapVrfState', 'initMapVrfState');
+  const ix = await method()
+    .accounts({
+      payer,
+      session: sessionPda,
+      vrfState: mapVrfStatePda,
+      systemProgram: SystemProgram.programId,
+    })
+    .instruction();
+  return new Transaction().add(ix);
+}
+
+/**
+ * Pre-creates GameplayVrfState on base chain before delegation to ER.
+ * Must be called on the base layer so the account exists for delegation.
+ * After delegation, use buildRawGameplayVrfRequestTransaction on ER.
+ */
+export async function buildInitGameplayVrfStateTransaction(
+  gameplayStateProgram: Program,
+  sessionPda: PublicKey,
+  payer: PublicKey
+): Promise<Transaction> {
+  const [gameplayVrfStatePda] = deriveGameplayVrfStatePda(sessionPda);
+  const method = pickMethod(gameplayStateProgram, 'initGameplayVrfState', 'initGameplayVrfState');
+  const ix = await method()
+    .accounts({
+      payer,
+      session: sessionPda,
+      vrfState: gameplayVrfStatePda,
+      systemProgram: SystemProgram.programId,
+    })
+    .instruction();
+  return new Transaction().add(ix);
+}
+
 // ============================================================================
 // VRF State Polling (for future oracle integration)
 // ============================================================================
 
 /**
- * Poll a VRF state account until its status indicates fulfillment.
- * For future use when a real oracle provides randomness asynchronously.
+ * Wait for a VRF state account to reach fulfilled status.
+ *
+ * Runs a WebSocket subscription and a polling loop in parallel — whichever
+ * detects fulfillment first wins. This avoids the old sequential bug where
+ * the WebSocket consumed the full timeout budget, leaving the polling fallback
+ * with zero time remaining (and thus never running a single iteration).
+ *
+ * On Ephemeral Rollup endpoints the WebSocket may never fire for oracle writes,
+ * so the polling loop is the reliable path; the WebSocket is a fast-path bonus.
  */
 export async function waitForVrfFulfillment(
   connection: Connection,
   vrfStatePda: PublicKey,
   timeoutMs = 30_000
 ): Promise<boolean> {
-  const startTime = Date.now();
   const VRF_STATUS_OFFSET = 8 + 32 + 32 + 8; // discriminator + session + randomness + nonce
   const VRF_STATUS_FULFILLED = 1;
+  const POLL_INTERVAL_MS = 500;
+  const startTime = Date.now();
 
-  while (Date.now() - startTime < timeoutMs) {
-    const info = await connection.getAccountInfo(vrfStatePda);
-    if (info?.data && info.data.length > VRF_STATUS_OFFSET) {
-      const status = info.data[VRF_STATUS_OFFSET];
-      if (status >= VRF_STATUS_FULFILLED) {
-        return true;
+  const isFulfilled = (data?: Buffer | Uint8Array | null): boolean => {
+    if (!data || data.length <= VRF_STATUS_OFFSET) return false;
+    return data[VRF_STATUS_OFFSET] >= VRF_STATUS_FULFILLED;
+  };
+
+  // Fast path: already fulfilled before we start.
+  const initialInfo = await connection.getAccountInfo(vrfStatePda);
+  if (isFulfilled(initialInfo?.data)) {
+    return true;
+  }
+
+  const remainingMs = Math.max(0, timeoutMs - (Date.now() - startTime));
+  if (remainingMs === 0) return false;
+
+  // Shared resolve — first of the two racers to call this wins.
+  let resolveRace!: (value: boolean) => void;
+  const racePromise = new Promise<boolean>((resolve) => {
+    resolveRace = resolve;
+  });
+
+  // ── Racer 1: WebSocket subscription ──────────────────────────────────────
+  let subId: number | null = null;
+  const cleanupSub = () => {
+    if (subId !== null) {
+      void connection.removeAccountChangeListener(subId).catch(() => {});
+      subId = null;
+    }
+  };
+  try {
+    subId = connection.onAccountChange(
+      vrfStatePda,
+      (accountInfo) => {
+        if (isFulfilled(accountInfo?.data)) {
+          cleanupSub();
+          resolveRace(true);
+        }
+      },
+      SOLANA_CONFIG.commitment
+    );
+  } catch {
+    // WebSocket setup failed — polling will cover it.
+  }
+
+  // ── Racer 2: polling loop ─────────────────────────────────────────────────
+  const pollRacer = (async () => {
+    while (Date.now() - startTime < timeoutMs) {
+      await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+      try {
+        const info = await connection.getAccountInfo(vrfStatePda);
+        if (isFulfilled(info?.data)) {
+          resolveRace(true);
+          return;
+        }
+      } catch {
+        // transient RPC error — keep polling
       }
     }
-    await new Promise((resolve) => setTimeout(resolve, 500));
-  }
-  return false;
+    resolveRace(false); // timeout
+  })();
+
+  // ── Timeout safety net ────────────────────────────────────────────────────
+  const timeoutHandle = setTimeout(() => resolveRace(false), remainingMs);
+
+  const result = await racePromise;
+
+  // Cleanup whatever is still running.
+  clearTimeout(timeoutHandle);
+  cleanupSub();
+  await pollRacer.catch(() => {}); // let the poll loop exit naturally
+
+  return result;
 }
 
 // ============================================================================

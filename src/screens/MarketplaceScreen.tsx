@@ -665,52 +665,56 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
                 {payment.solUsdPrice ? ` (~$${(0.05 * payment.solUsdPrice).toFixed(2)})` : ''}
               </Text>
 
-              <PaymentTokenSelector
-                tokens={payment.supportedTokens}
-                selectedToken={payment.selectedToken}
-                onSelectToken={payment.setSelectedToken}
-                quote={payment.quote}
-                isQuoteLoading={payment.isQuoteLoading}
-                solUsdPrice={payment.solUsdPrice}
-                requiredLamports={BigInt(RUN_PRICE_LAMPORTS)}
-                isCompact={isCompact}
-                isController={isController}
-              />
+              <View style={[styles.purchaseArea, isCompact && compactStyles.purchaseArea]}>
+                <TouchableOpacity
+                  onPress={handlePurchase}
+                  activeOpacity={0.7}
+                  disabled={isPurchasing}
+                >
+                  <ImageBackground
+                    source={buttonV3Source}
+                    style={[
+                      styles.purchaseButton,
+                      isCompact && compactStyles.purchaseButton,
+                      isPurchasing && { opacity: 0.6 },
+                    ]}
+                    resizeMode="stretch"
+                  >
+                    {isPurchasing ? (
+                      <ActivityIndicator color="#1a1a1a" size={isCompact ? 'large' : 'small'} />
+                    ) : (
+                      <Text
+                        style={[
+                          styles.purchaseButtonText,
+                          isCompact && compactStyles.purchaseButtonText,
+                        ]}
+                      >
+                        Purchase
+                      </Text>
+                    )}
+                  </ImageBackground>
+                </TouchableOpacity>
+
+                <View style={[styles.purchaseTokenLeft, isCompact && compactStyles.purchaseTokenLeft]}>
+                  <PaymentTokenSelector
+                    tokens={payment.supportedTokens}
+                    selectedToken={payment.selectedToken}
+                    onSelectToken={payment.setSelectedToken}
+                    quote={payment.quote}
+                    isQuoteLoading={payment.isQuoteLoading}
+                    solUsdPrice={payment.solUsdPrice}
+                    requiredLamports={BigInt(RUN_PRICE_LAMPORTS)}
+                    isCompact={isCompact}
+                    isController={isController}
+                  />
+                </View>
+              </View>
 
               {purchaseError && (
                 <Text style={[styles.errorText, isCompact && compactStyles.errorText]}>
                   {purchaseError}
                 </Text>
               )}
-
-              <TouchableOpacity
-                onPress={handlePurchase}
-                activeOpacity={0.7}
-                disabled={isPurchasing}
-              >
-                <ImageBackground
-                  source={buttonV3Source}
-                  style={[
-                    styles.purchaseButton,
-                    isCompact && compactStyles.purchaseButton,
-                    isPurchasing && { opacity: 0.6 },
-                  ]}
-                  resizeMode="stretch"
-                >
-                  {isPurchasing ? (
-                    <ActivityIndicator color="#1a1a1a" size={isCompact ? 'large' : 'small'} />
-                  ) : (
-                    <Text
-                      style={[
-                        styles.purchaseButtonText,
-                        isCompact && compactStyles.purchaseButtonText,
-                      ]}
-                    >
-                      Purchase
-                    </Text>
-                  )}
-                </ImageBackground>
-              </TouchableOpacity>
             </View>
           )}
         </View>
@@ -881,9 +885,23 @@ const styles = StyleSheet.create({
     gap: 12,
     marginTop: -40,
   },
+  purchaseArea: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 96,
+  },
+  purchaseTokenLeft: {
+    position: 'absolute',
+    right: '50%',
+    marginRight: 92,
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+  },
   sessionImage: {
     width: 175,
     height: 112,
+    marginTop: 32,
   },
   priceText: {
     fontFamily: Typography.number,
@@ -1013,6 +1031,13 @@ const compactStyles = StyleSheet.create({
   },
   comingSoonText: {
     fontSize: 38,
+  },
+  purchaseArea: {
+    minHeight: 150,
+  },
+  purchaseTokenLeft: {
+    marginRight: 156,
+    transform: [{ scale: 1.05 }],
   },
   sessionImage: {
     width: 620,

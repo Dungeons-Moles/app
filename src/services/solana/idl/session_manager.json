@@ -3126,9 +3126,6 @@
           }
         },
         {
-          "name": "map_config"
-        },
-        {
           "name": "generated_map",
           "writable": true
         },
@@ -3151,8 +3148,7 @@
         {
           "name": "map_vrf_state",
           "docs": [
-            "Optional MapVrfState for VRF-derived map/POI seeds.",
-            "When provided, seeds are derived from VRF randomness instead of derive_pvp_seed."
+            "Optional MapVrfState for VRF-derived map/POI seeds."
           ],
           "writable": true,
           "optional": true
@@ -3400,9 +3396,6 @@
           }
         },
         {
-          "name": "map_config"
-        },
-        {
           "name": "generated_map",
           "writable": true
         },
@@ -3622,12 +3615,6 @@
           "signer": true
         },
         {
-          "name": "map_config",
-          "docs": [
-            "Map configuration for map generation"
-          ]
-        },
-        {
           "name": "generated_map",
           "writable": true
         },
@@ -3747,19 +3734,6 @@
         121,
         220,
         240
-      ]
-    },
-    {
-      "name": "MapConfig",
-      "discriminator": [
-        186,
-        3,
-        214,
-        68,
-        161,
-        115,
-        92,
-        173
       ]
     },
     {
@@ -4090,50 +4064,6 @@
               "Unix timestamp when settlement happened."
             ],
             "type": "i64"
-          }
-        ]
-      }
-    },
-    {
-      "name": "MapConfig",
-      "docs": [
-        "Configuration for map generation, storing seed values for each level."
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "admin",
-            "docs": [
-              "Authority that can update seed mappings"
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "seeds",
-            "docs": [
-              "Seed values for campaign levels 1-40 (index = level - 1)"
-            ],
-            "type": {
-              "array": [
-                "u64",
-                40
-              ]
-            }
-          },
-          {
-            "name": "version",
-            "docs": [
-              "Config version for migrations"
-            ],
-            "type": "u8"
-          },
-          {
-            "name": "bump",
-            "docs": [
-              "PDA bump seed"
-            ],
-            "type": "u8"
           }
         ]
       }

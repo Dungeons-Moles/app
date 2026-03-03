@@ -2,7 +2,7 @@
 
 React Native + Expo frontend for Dungeons & Moles.
 
-This client connects to the on-chain programs in `../solana-programs` and supports PvE runs plus PvP modes (Pit Draft, Duels, Gauntlet), including combat replay visualization and mode-specific history/ranking screens.
+This client connects to the on-chain programs in `solana-programs` and supports PvE runs plus PvP modes (Pit Draft, Duels, Gauntlet), including combat replay visualization and mode-specific history/ranking screens.
 
 ## Features
 
@@ -38,67 +38,88 @@ This client connects to the on-chain programs in `../solana-programs` and suppor
 
 - Node.js 18+
 - npm
-- Running Solana programs from `../solana-programs`
+- Running Solana programs from `solana-programs`
 
 Optional for mobile wallet flow:
 
 - Android/iOS device or emulator
 - Solana wallet app compatible with Mobile Wallet Adapter
 
-## Environment Variables
+## Environment Files
 
-Copy `.env.example` to `.env` and fill in your values:
+This app uses two explicit env templates:
+
+- `.env.localnet`
+- `.env.devnet`
+
+To switch mode, copy one of them to `.env`:
 
 ```bash
-cp .env.example .env
+cp .env.localnet .env
+# or
+cp .env.devnet .env
 ```
 
-Required variables:
+Program ID values in the env file must match what you deployed from `solana-programs`.
+
+## Localnet Setup (MagicBlock ER + local RNG flow)
+
+From the `solana-programs` repo, start both validators in separate terminals:
 
 ```bash
-# Solana cluster
-EXPO_PUBLIC_SOLANA_CLUSTER=devnet
-EXPO_PUBLIC_SOLANA_RPC_URL=http://127.0.0.1:8899
-
-# MagicBlock Ephemeral Rollup endpoints
-EXPO_PUBLIC_EPHEMERAL_PROVIDER_ENDPOINT=http://127.0.0.1:7799
-EXPO_PUBLIC_EPHEMERAL_WS_ENDPOINT=ws://127.0.0.1:7800
-
-# Program IDs (must match deployed programs from ../solana-programs)
-EXPO_PUBLIC_PLAYER_PROFILE_PROGRAM_ID=<pubkey>
-EXPO_PUBLIC_SESSION_MANAGER_PROGRAM_ID=<pubkey>
-EXPO_PUBLIC_MAP_GENERATOR_PROGRAM_ID=<pubkey>
-EXPO_PUBLIC_GAMEPLAY_STATE_PROGRAM_ID=<pubkey>
-EXPO_PUBLIC_PLAYER_INVENTORY_PROGRAM_ID=<pubkey>
-EXPO_PUBLIC_POI_SYSTEM_PROGRAM_ID=<pubkey>
-EXPO_PUBLIC_FIELD_ENEMIES_PROGRAM_ID=<pubkey>
-EXPO_PUBLIC_NFT_MARKETPLACE_PROGRAM_ID=<pubkey>
-EXPO_PUBLIC_TREASURY_PUBKEY=<pubkey>
+mb-test-validator --reset --ledger .mb-ledger --rpc-port 8899 --faucet-port 9901
 ```
 
-Optional:
+```bash
+ephemeral-validator \
+    --remotes http://127.0.0.1:8899 \
+    --remotes ws://127.0.0.1:8900 \
+    --listen 127.0.0.1:7799 \
+    --storage /tmp/mb-er-storage \
+    --reset
+```
+
+Build/deploy/init the programs:
 
 ```bash
-# VRF randomness endpoint (seed/value/randomness payloads)
-EXPO_PUBLIC_MAGICBLOCK_VRF_ENDPOINT=
+solana config set --url http://127.0.0.1:8899
+anchor build -- --features local-rng
+anchor deploy --provider.cluster localnet --skip-build
+anchor run init
+```
+
+Then run the app in localnet mode:
+
+```bash
+cd ../app
+cp .env.localnet .env
+npm start
+```
+
+## Devnet Setup (real VRF callback flow)
+
+Build/deploy/init on devnet:
+
+```bash
+solana config set --url devnet
+anchor build
+anchor deploy --provider.cluster devnet
+anchor run init
+```
+
+Then run the app in devnet mode:
+
+```bash
+cd ../app
+cp .env.devnet .env
+npm start
 ```
 
 Notes:
 
-- Program IDs must match your deployed programs from `../solana-programs`.
-- For local development, point `EXPO_PUBLIC_SOLANA_RPC_URL` to your local validator.
-- ER endpoints default to `https://devnet.magicblock.app/` if not set.
-
-## Backend Initialization Dependency
-
-Before using PvP/PvE flows in the app, initialize accounts in `../solana-programs`:
-
-```bash
-cd ../solana-programs
-anchor run init
-```
-
-If this is not done, some instructions fail with `AccountNotInitialized` errors.
+- Localnet uses `request_*_rng` + `fulfill_*_rng` (enabled by `local-rng` feature).
+- Devnet uses `request_*_vrf` and waits for MagicBlock VRF fulfill callbacks.
+- If you change on-chain instruction/account layouts, re-copy fresh IDLs from `solana-programs/target/idl` into `src/services/solana/idl`.
 
 ## Install and Run
 

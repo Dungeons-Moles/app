@@ -17,7 +17,6 @@ const playerProfileProgramId = process.env.EXPO_PUBLIC_PLAYER_PROFILE_PROGRAM_ID
 const sessionManagerProgramId = process.env.EXPO_PUBLIC_SESSION_MANAGER_PROGRAM_ID;
 const mapGeneratorProgramId = process.env.EXPO_PUBLIC_MAP_GENERATOR_PROGRAM_ID;
 const gameplayStateProgramId = process.env.EXPO_PUBLIC_GAMEPLAY_STATE_PROGRAM_ID;
-const fieldEnemiesProgramId = process.env.EXPO_PUBLIC_FIELD_ENEMIES_PROGRAM_ID;
 const poiSystemProgramId = process.env.EXPO_PUBLIC_POI_SYSTEM_PROGRAM_ID;
 const inventoryProgramId = process.env.EXPO_PUBLIC_PLAYER_INVENTORY_PROGRAM_ID;
 
@@ -52,10 +51,6 @@ export const MAP_GENERATOR_PROGRAM_ID = mapGeneratorProgramId
 
 export const GAMEPLAY_STATE_PROGRAM_ID = gameplayStateProgramId
   ? new PublicKey(gameplayStateProgramId)
-  : PublicKey.default;
-
-export const FIELD_ENEMIES_PROGRAM_ID = fieldEnemiesProgramId
-  ? new PublicKey(fieldEnemiesProgramId)
   : PublicKey.default;
 
 export const POI_SYSTEM_PROGRAM_ID = poiSystemProgramId

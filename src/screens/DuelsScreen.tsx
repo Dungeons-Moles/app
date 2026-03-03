@@ -461,7 +461,13 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
         onRequestClose={() => setShowSessionExistsModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, isCompact && compactStyles.modalContent]}>
+          <View
+            style={[
+              styles.modalContent,
+              !isCompact && styles.sessionExistsModalContentMobile,
+              isCompact && compactStyles.modalContent,
+            ]}
+          >
             <Text style={[styles.modalTitle, isCompact && compactStyles.modalTitle]}>
               Session Already Exists
             </Text>
@@ -507,7 +513,7 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
                   style={styles.modalButtonSecondary}
                   onPress={handleOverrideExistingSession}
                 >
-                  <Text style={styles.modalButtonTextSecondary}>Override (X)</Text>
+                  <Text style={styles.modalButtonTextSecondary}>Override</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.modalButtonPrimary} onPress={handleResumeExistingSession}>
                   <Text style={styles.modalButtonTextPrimary}>Resume</Text>
@@ -698,6 +704,10 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingVertical: 20,
     paddingHorizontal: 18,
+  },
+  sessionExistsModalContentMobile: {
+    width: '94%',
+    maxWidth: 520,
   },
   modalTitle: {
     fontFamily: Typography.header,

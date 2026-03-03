@@ -59,6 +59,7 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
   const isFocused = useIsFocused();
   const isCompact = useScreenVariant() === 'compact';
   const [hasExistingGauntletSessionOnChain, setHasExistingGauntletSessionOnChain] = useState(false);
+  const lastShownErrorRef = useRef<string | null>(null);
 
   const { playSfx } = useAudio();
   const payment = usePaymentToken(BigInt(GAUNTLET_ENTRY_LAMPORTS));
@@ -66,6 +67,25 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showSessionExistsModal, setShowSessionExistsModal] = useState(false);
   const [isEntryTransitioning, setIsEntryTransitioning] = useState(false);
+
+  // Reset transitioning state if user returns to this screen (e.g. Game screen navigated back)
+  const prevIsFocusedRef = useRef(false);
+  useEffect(() => {
+    if (isFocused && !prevIsFocusedRef.current) {
+      setIsEntryTransitioning(false);
+      gauntlet.reset();
+      lastShownErrorRef.current = null;
+    }
+    prevIsFocusedRef.current = isFocused;
+  }, [isFocused, gauntlet]);
+
+  // Show alert when gauntlet entry fails (e.g. VRF timeout)
+  useEffect(() => {
+    if (gauntlet.phase === 'error' && gauntlet.error && gauntlet.error !== lastShownErrorRef.current) {
+      lastShownErrorRef.current = gauntlet.error;
+      Alert.alert('Entry Failed', gauntlet.error);
+    }
+  }, [gauntlet.phase, gauntlet.error]);
 
   const hasExistingGauntletSession = hasExistingGauntletSessionOnChain;
 
@@ -425,7 +445,13 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
         onRequestClose={() => setShowSessionExistsModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, isCompact && compactStyles.modalContent]}>
+          <View
+            style={[
+              styles.modalContent,
+              !isCompact && styles.sessionExistsModalContentMobile,
+              isCompact && compactStyles.modalContent,
+            ]}
+          >
             <Text style={[styles.modalTitle, isCompact && compactStyles.modalTitle]}>
               Session Already Exists
             </Text>
@@ -471,7 +497,7 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
                   style={styles.modalButtonSecondary}
                   onPress={handleOverrideExistingSession}
                 >
-                  <Text style={styles.modalButtonTextSecondary}>Override (X)</Text>
+                  <Text style={styles.modalButtonTextSecondary}>Override</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.modalButtonPrimary} onPress={handleResumeExistingSession}>
                   <Text style={styles.modalButtonTextPrimary}>Resume</Text>
@@ -615,6 +641,10 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingVertical: 20,
     paddingHorizontal: 18,
+  },
+  sessionExistsModalContentMobile: {
+    width: '94%',
+    maxWidth: 520,
   },
   modalTitle: {
     fontFamily: Typography.header,

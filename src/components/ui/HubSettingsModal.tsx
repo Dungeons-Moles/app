@@ -7,6 +7,7 @@ import {
   ImageBackground,
   TouchableOpacity,
   TouchableWithoutFeedback,
+  useWindowDimensions,
 } from 'react-native';
 import { InlineModal } from '../InlineModal';
 import { Typography } from '../../theme/typography';
@@ -32,16 +33,30 @@ export interface HubSettingsModalProps {
   visible: boolean;
   onClose: () => void;
   onDisconnect: () => void;
+  onResetProfile?: () => void;
+  controllerEnabled?: boolean;
 }
 
-export function HubSettingsModal({ visible, onClose, onDisconnect }: HubSettingsModalProps) {
+export function HubSettingsModal({
+  visible,
+  onClose,
+  onDisconnect,
+  onResetProfile,
+  controllerEnabled = true,
+}: HubSettingsModalProps) {
   const inputMode = useInputMode();
   const isController = inputMode === 'controller';
   const isCompact = useScreenVariant() === 'compact';
+  const { height } = useWindowDimensions();
   const { musicVolume, setMusicVolume, sfxVolume, setSfxVolume, playSfx } = useAudio();
   const { autoOpenPOI, setAutoOpenPOI } = useSettings();
   const { defaultCombatSpeed, updateDefaultCombatSpeed } = useProfile();
   const [settingsFocus, setSettingsFocus] = useState(0);
+  const hasResetProfileAction = typeof onResetProfile === 'function';
+  const maxSettingsFocus = hasResetProfileAction ? 5 : 4;
+  const baseModalHeight = isCompact ? 840 : 420;
+  const maxModalHeight = Math.max(320, height - 48);
+  const modalScale = Math.min(1, maxModalHeight / baseModalHeight);
 
   useEffect(() => {
     if (visible) setSettingsFocus(0);
@@ -64,10 +79,17 @@ export function HubSettingsModal({ visible, onClose, onDisconnect }: HubSettings
 
   useControllerAction(
     {
-      onA: settingsFocus === 3 ? toggleAutoOpenPOI : settingsFocus === 4 ? onDisconnect : undefined,
+      onA:
+        settingsFocus === 3
+          ? toggleAutoOpenPOI
+          : settingsFocus === 4
+            ? onDisconnect
+            : settingsFocus === 5 && hasResetProfileAction
+              ? onResetProfile
+              : undefined,
       onB: () => { playSfx('ui_back'); onClose(); },
       onDPadUp: () => setSettingsFocus((p) => Math.max(0, p - 1)),
-      onDPadDown: () => setSettingsFocus((p) => Math.min(4, p + 1)),
+      onDPadDown: () => setSettingsFocus((p) => Math.min(maxSettingsFocus, p + 1)),
       onDPadLeft:
         settingsFocus === 0
           ? () => setMusicVolume(Math.round(Math.max(0, musicVolume - 0.1) * 10) / 10)
@@ -89,7 +111,7 @@ export function HubSettingsModal({ visible, onClose, onDisconnect }: HubSettings
                 ? toggleAutoOpenPOI
                 : undefined,
     },
-    isController && visible
+    isController && visible && controllerEnabled
   );
 
   return (
@@ -97,170 +119,225 @@ export function HubSettingsModal({ visible, onClose, onDisconnect }: HubSettings
       <TouchableWithoutFeedback onPress={onClose}>
         <View style={styles.modalOverlay}>
           <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
-            <ImageBackground
-              source={paperPanelSource}
-              style={[styles.modalContent, isCompact && compactStyles.settingsModalContent]}
-              resizeMode="stretch"
+            <View
+              style={[
+                styles.modalScaleWrapper,
+                modalScale < 1 && { transform: [{ scale: modalScale }] },
+              ]}
             >
-              <View style={styles.modalHeader}>
-                <Text style={[styles.modalTitle, isCompact && compactStyles.modalTitle]}>
-                  Settings
-                </Text>
-                {!isController && (
-                  <TouchableOpacity
-                    onPress={() => {
-                      playSfx('ui_click');
-                      onClose();
-                    }}
-                    style={styles.closeButton}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                  >
-                    <Text
-                      style={[styles.closeButtonText, isCompact && compactStyles.closeButtonText]}
-                    >
-                      ✕
-                    </Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-
-              <View style={[styles.modalBody, isCompact && compactStyles.settingsModalBody]}>
-                <FocusGlow active={isController && settingsFocus === 0} style={styles.settingGlow}>
-                  <View style={styles.settingRow}>
-                    <Text style={[styles.settingLabel, isCompact && compactStyles.settingLabel]}>
-                      Music volume
-                    </Text>
-                    <VolumeControls
-                      currentVolume={musicVolume}
-                      onVolumeChange={setMusicVolume}
-                      scale={isCompact ? 2 : 1}
-                    />
-                  </View>
-                </FocusGlow>
-
-                <FocusGlow active={isController && settingsFocus === 1} style={styles.settingGlow}>
-                  <View style={styles.settingRow}>
-                    <Text style={[styles.settingLabel, isCompact && compactStyles.settingLabel]}>
-                      SFX volume
-                    </Text>
-                    <VolumeControls
-                      currentVolume={sfxVolume}
-                      onVolumeChange={setSfxVolume}
-                      scale={isCompact ? 2 : 1}
-                    />
-                  </View>
-                </FocusGlow>
-
-                <FocusGlow active={isController && settingsFocus === 2} style={styles.settingGlow}>
-                  <View style={styles.settingRow}>
-                    <Text style={[styles.settingLabel, isCompact && compactStyles.settingLabel]}>
-                      Combat speed
-                    </Text>
-                    <SpeedControls
-                      currentSpeed={defaultCombatSpeed}
-                      onSpeedChange={updateDefaultCombatSpeed}
-                      scale={isCompact ? 1.4 : 0.7}
-                    />
-                  </View>
-                </FocusGlow>
-
-                <FocusGlow active={isController && settingsFocus === 3} style={styles.settingGlow}>
-                  <Checkbox
-                    label="Auto-open POI"
-                    checked={autoOpenPOI}
-                    onToggle={toggleAutoOpenPOI}
-                    size={isCompact ? 44 : 20}
-                    labelStyle={isCompact ? { fontSize: 26 } : undefined}
-                  />
-                </FocusGlow>
-
-                <FocusGlow active={isController && settingsFocus === 4}>
-                  <TouchableOpacity
-                    style={[styles.resetButton, isCompact && compactStyles.resetButton]}
-                    onPress={onDisconnect}
-                    activeOpacity={0.7}
-                  >
-                    <ImageBackground
-                      source={buttonV1Source}
-                      style={styles.buttonImage}
-                      resizeMode="stretch"
+              <ImageBackground
+                source={paperPanelSource}
+                style={[styles.modalContent, isCompact && compactStyles.settingsModalContent]}
+                resizeMode="stretch"
+              >
+                <View style={styles.modalHeader}>
+                  <Text style={[styles.modalTitle, isCompact && compactStyles.modalTitle]}>
+                    Settings
+                  </Text>
+                  {!isController && (
+                    <TouchableOpacity
+                      onPress={() => {
+                        playSfx('ui_click');
+                        onClose();
+                      }}
+                      style={styles.closeButton}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                     >
                       <Text
-                        style={[styles.disconnectText, isCompact && compactStyles.disconnectText]}
+                        style={[styles.closeButtonText, isCompact && compactStyles.closeButtonText]}
                       >
-                        Disconnect
+                        ✕
                       </Text>
-                    </ImageBackground>
-                  </TouchableOpacity>
-                </FocusGlow>
-              </View>
-
-              {isController && (
-                <View style={[styles.settingsHints, isCompact && compactStyles.settingsHints]}>
-                  {settingsFocus <= 2 ? (
-                    <View style={styles.settingsHintRow}>
-                      <Image
-                        source={iconDirSource}
-                        style={[
-                          styles.settingsHintIcon,
-                          isCompact && compactStyles.settingsHintIcon,
-                          { transform: [{ rotate: '-90deg' }] },
-                        ]}
-                        resizeMode="contain"
-                      />
-                      <Image
-                        source={iconDirSource}
-                        style={[
-                          styles.settingsHintIcon,
-                          isCompact && compactStyles.settingsHintIcon,
-                          { transform: [{ rotate: '90deg' }] },
-                        ]}
-                        resizeMode="contain"
-                      />
-                      <Text
-                        style={[
-                          styles.settingsHintText,
-                          isCompact && compactStyles.settingsHintText,
-                        ]}
-                      >
-                        {settingsFocus === 2 ? 'Change speed' : 'Change volume'}
-                      </Text>
-                    </View>
-                  ) : (
-                    <View style={styles.settingsHintRow}>
-                      <Image
-                        source={iconASource}
-                        style={[
-                          styles.settingsHintIcon,
-                          isCompact && compactStyles.settingsHintIcon,
-                        ]}
-                        resizeMode="contain"
-                      />
-                      <Text
-                        style={[
-                          styles.settingsHintText,
-                          isCompact && compactStyles.settingsHintText,
-                        ]}
-                      >
-                        {settingsFocus === 3 ? 'Toggle' : 'Confirm'}
-                      </Text>
-                    </View>
+                    </TouchableOpacity>
                   )}
-                  <View style={styles.settingsHintRow}>
-                    <Image
-                      source={iconBSource}
-                      style={[styles.settingsHintIcon, isCompact && compactStyles.settingsHintIcon]}
-                      resizeMode="contain"
-                    />
-                    <Text
-                      style={[styles.settingsHintText, isCompact && compactStyles.settingsHintText]}
-                    >
-                      Close
-                    </Text>
-                  </View>
                 </View>
-              )}
-            </ImageBackground>
+
+                <View
+                  style={[
+                    styles.modalBody,
+                    !isCompact && styles.mobileModalBody,
+                    isCompact && compactStyles.settingsModalBody,
+                  ]}
+                >
+                  <FocusGlow active={isController && settingsFocus === 0} style={styles.settingGlow}>
+                    <View style={styles.settingRow}>
+                      <Text style={[styles.settingLabel, isCompact && compactStyles.settingLabel]}>
+                        Music volume
+                      </Text>
+                      <VolumeControls
+                        currentVolume={musicVolume}
+                        onVolumeChange={setMusicVolume}
+                        scale={isCompact ? 2 : 0.8}
+                      />
+                    </View>
+                  </FocusGlow>
+
+                  <FocusGlow active={isController && settingsFocus === 1} style={styles.settingGlow}>
+                    <View style={styles.settingRow}>
+                      <Text style={[styles.settingLabel, isCompact && compactStyles.settingLabel]}>
+                        SFX volume
+                      </Text>
+                      <VolumeControls
+                        currentVolume={sfxVolume}
+                        onVolumeChange={setSfxVolume}
+                        scale={isCompact ? 2 : 0.8}
+                      />
+                    </View>
+                  </FocusGlow>
+
+                  <FocusGlow active={isController && settingsFocus === 2} style={styles.settingGlow}>
+                    <View style={styles.settingRow}>
+                      <Text style={[styles.settingLabel, isCompact && compactStyles.settingLabel]}>
+                        Combat speed
+                      </Text>
+                      <SpeedControls
+                        currentSpeed={defaultCombatSpeed}
+                        onSpeedChange={updateDefaultCombatSpeed}
+                        scale={isCompact ? 1.4 : 0.55}
+                      />
+                    </View>
+                  </FocusGlow>
+
+                  <FocusGlow active={isController && settingsFocus === 3} style={styles.settingGlow}>
+                    <Checkbox
+                      label="Auto-open POI"
+                      checked={autoOpenPOI}
+                      onToggle={toggleAutoOpenPOI}
+                      size={isCompact ? 44 : 20}
+                      labelStyle={isCompact ? { fontSize: 26 } : undefined}
+                    />
+                  </FocusGlow>
+
+                  <FocusGlow
+                    active={isController && settingsFocus === 4}
+                    style={!isCompact && styles.mobileDisconnectGroup}
+                  >
+                    <TouchableOpacity
+                      style={[
+                        styles.resetButton,
+                        !isCompact && styles.mobileResetButton,
+                        isCompact && compactStyles.resetButton,
+                      ]}
+                      onPress={onDisconnect}
+                      activeOpacity={0.7}
+                    >
+                      <ImageBackground
+                        source={buttonV1Source}
+                        style={styles.buttonImage}
+                        resizeMode="stretch"
+                      >
+                        <Text
+                          style={[styles.disconnectText, isCompact && compactStyles.disconnectText]}
+                        >
+                          Disconnect
+                        </Text>
+                      </ImageBackground>
+                    </TouchableOpacity>
+                  </FocusGlow>
+
+                  {hasResetProfileAction && (
+                    <FocusGlow
+                      active={isController && settingsFocus === 5}
+                      style={!isCompact && styles.mobileResetProfileGroup}
+                    >
+                      <TouchableOpacity
+                        style={[
+                          styles.resetButton,
+                          !isCompact && styles.mobileResetButton,
+                          isCompact && compactStyles.resetButton,
+                        ]}
+                        onPress={onResetProfile}
+                        activeOpacity={0.7}
+                      >
+                        <ImageBackground
+                          source={buttonV1Source}
+                          style={styles.buttonImage}
+                          resizeMode="stretch"
+                        >
+                          <Text
+                            style={[styles.disconnectText, isCompact && compactStyles.disconnectText]}
+                          >
+                            Reset Profile
+                          </Text>
+                        </ImageBackground>
+                      </TouchableOpacity>
+                    </FocusGlow>
+                  )}
+                </View>
+
+                {isController && (
+                  <View style={[styles.settingsHints, isCompact && compactStyles.settingsHints]}>
+                    {settingsFocus <= 2 ? (
+                      <View style={styles.settingsHintRow}>
+                        <Image
+                          source={iconDirSource}
+                          style={[
+                            styles.settingsHintIcon,
+                            isCompact && compactStyles.settingsHintIcon,
+                            { transform: [{ rotate: '-90deg' }] },
+                          ]}
+                          resizeMode="contain"
+                        />
+                        <Image
+                          source={iconDirSource}
+                          style={[
+                            styles.settingsHintIcon,
+                            isCompact && compactStyles.settingsHintIcon,
+                            { transform: [{ rotate: '90deg' }] },
+                          ]}
+                          resizeMode="contain"
+                        />
+                        <Text
+                          style={[
+                            styles.settingsHintText,
+                            isCompact && compactStyles.settingsHintText,
+                          ]}
+                        >
+                          {settingsFocus === 2 ? 'Change speed' : 'Change volume'}
+                        </Text>
+                      </View>
+                    ) : (
+                      <View style={styles.settingsHintRow}>
+                        <Image
+                          source={iconASource}
+                          style={[
+                            styles.settingsHintIcon,
+                            isCompact && compactStyles.settingsHintIcon,
+                          ]}
+                          resizeMode="contain"
+                        />
+                        <Text
+                          style={[
+                            styles.settingsHintText,
+                            isCompact && compactStyles.settingsHintText,
+                          ]}
+                        >
+                          {settingsFocus === 3 ? 'Toggle' : 'Confirm'}
+                        </Text>
+                      </View>
+                    )}
+                    <View style={styles.settingsHintRow}>
+                      <Image
+                        source={iconBSource}
+                        style={[styles.settingsHintIcon, isCompact && compactStyles.settingsHintIcon]}
+                        resizeMode="contain"
+                      />
+                      <Text
+                        style={[styles.settingsHintText, isCompact && compactStyles.settingsHintText]}
+                      >
+                        Close
+                      </Text>
+                    </View>
+                  </View>
+                )}
+
+                {!isController && (
+                  <Text style={[styles.tapToCloseText, isCompact && compactStyles.tapToCloseText]}>
+                    Tap anywhere to close
+                  </Text>
+                )}
+              </ImageBackground>
+            </View>
           </TouchableWithoutFeedback>
         </View>
       </TouchableWithoutFeedback>
@@ -282,6 +359,10 @@ const styles = StyleSheet.create({
     padding: 40,
     alignItems: 'center',
     justifyContent: 'flex-start',
+  },
+  modalScaleWrapper: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   modalHeader: {
     width: '100%',
@@ -314,6 +395,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 20,
   },
+  mobileModalBody: {
+    marginTop: -10,
+    gap: 14,
+  },
   settingGlow: {
     width: '100%',
   },
@@ -334,6 +419,15 @@ const styles = StyleSheet.create({
     width: 180,
     height: 48,
     marginTop: 10,
+  },
+  mobileResetButton: {
+    marginTop: 0,
+  },
+  mobileDisconnectGroup: {
+    marginTop: -2,
+  },
+  mobileResetProfileGroup: {
+    marginTop: -4,
   },
   buttonImage: {
     width: '100%',
@@ -371,6 +465,15 @@ const styles = StyleSheet.create({
     fontFamily: Typography.body,
     fontSize: 11,
     color: '#5c4033',
+  },
+  tapToCloseText: {
+    position: 'absolute',
+    bottom: 20,
+    alignSelf: 'center',
+    fontFamily: Typography.header,
+    fontSize: 13,
+    color: '#8b7355',
+    letterSpacing: 0.3,
   },
 });
 
@@ -415,6 +518,10 @@ const compactStyles = StyleSheet.create({
     height: 36,
   },
   settingsHintText: {
+    fontSize: 22,
+  },
+  tapToCloseText: {
+    bottom: 36,
     fontSize: 22,
   },
 });

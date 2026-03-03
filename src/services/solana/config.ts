@@ -13,7 +13,6 @@ const routerWsUrl =
   process.env.EXPO_PUBLIC_WS_ROUTER_ENDPOINT ?? 'wss://devnet-router.magicblock.app/';
 const erRpcUrl = useMagicRouter ? routerRpcUrl : directErRpcUrl;
 const erWsUrl = useMagicRouter ? routerWsUrl : directErWsUrl;
-const vrfEndpoint = process.env.EXPO_PUBLIC_MAGICBLOCK_VRF_ENDPOINT;
 const delegateValidatorOverride = process.env.EXPO_PUBLIC_DELEGATION_VALIDATOR;
 const delegateRegionRaw = (process.env.EXPO_PUBLIC_DELEGATION_REGION ?? 'auto').toLowerCase();
 
@@ -107,7 +106,6 @@ export const SOLANA_CONFIG = {
   erRpcUrl,
   erWsUrl,
   useMagicRouter,
-  vrfEndpoint,
   commitment: baseCommitment,
   baseCommitment,
   erCommitment,

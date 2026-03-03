@@ -22,6 +22,7 @@ import { useInputMode } from '../hooks/useInputMode';
 import { useControllerAction } from '../hooks/useControllerAction';
 import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHints';
 import { useAudio } from '../contexts/AudioContext';
+import { useScreenVariant } from '../contexts/ScreenVariantContext';
 
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.png');
 const STAINS_BACKGROUND = require('../../assets/ui/backgrounds/stains-background.png');
@@ -44,6 +45,7 @@ export function VictoryScreen({ navigation, route }: VictoryScreenProps) {
   const glowAnim = useRef(new Animated.Value(0)).current;
   const { playBgm, playSfx } = useAudio();
   const [showUnlock, setShowUnlock] = useState(false);
+  const isCompact = useScreenVariant() === 'compact';
 
   const isVerticalLayout = height > 768;
 
@@ -230,6 +232,7 @@ export function VictoryScreen({ navigation, route }: VictoryScreenProps) {
     <View style={styles.container}>
       <ImageBackground source={BACKGROUND_IMAGE} style={styles.backgroundImage} resizeMode="cover">
         <Image source={STAINS_BACKGROUND} style={styles.stainsOverlay} resizeMode="cover" />
+        {!isCompact && <View pointerEvents="none" style={styles.mobileBackgroundDim} />}
         <View style={styles.mainContent}>
           <Animated.View
             style={[
@@ -282,6 +285,10 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     width: '100%',
     height: '100%',
+  },
+  mobileBackgroundDim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.18)',
   },
   mainContent: {
     flex: 1,

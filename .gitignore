@@ -46,9 +46,13 @@ Thumbs.db
 # temp files
 *.tmp
 *.swp
+.dev-wallet/
 
 # local env files
-.env*
+.env
+.env.*
+!.env.localnet
+!.env.devnet
 
 # typescript
 *.tsbuildinfo

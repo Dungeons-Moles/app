@@ -105,7 +105,7 @@ export async function interactRest(ctx: PoiTransactionContext, poiIndex: number)
   // Some local flows can leave the PDA allocated but not initialized, which
   // triggers Anchor 3012 (AccountNotInitialized) if passed.
   // Must pass null explicitly for Anchor to skip optional accounts.
-  let vrfState: PublicKey | undefined;
+  let vrfState: PublicKey | null = null;
   if (ctx.gameplayVrfStatePda) {
     const gpProgram = createGameplayStateProgram(ctx.connection);
     const vrfAccount = await (gpProgram.account as any)?.gameplayVrfState
@@ -114,20 +114,22 @@ export async function interactRest(ctx: PoiTransactionContext, poiIndex: number)
     if (vrfAccount) vrfState = ctx.gameplayVrfStatePda;
   }
 
+  const restAccounts: any = {
+    mapPois: ctx.mapPoisPda,
+    gameState: ctx.gameStatePda,
+    inventory: inventoryPda,
+    generatedMap: generatedMapPda,
+    poiAuthority: poiAuthorityPda,
+    gameplayAuthority: gameplayAuthorityPda,
+    gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
+    playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
+    gameplayVrfState: vrfState,
+    player: ctx.sessionSignerKeypair.publicKey,
+  };
+
   const transaction = await ctx.program.methods
     .interactRest(poiIndex)
-    .accountsPartial({
-      mapPois: ctx.mapPoisPda,
-      gameState: ctx.gameStatePda,
-      inventory: inventoryPda,
-      generatedMap: generatedMapPda,
-      poiAuthority: poiAuthorityPda,
-      gameplayAuthority: gameplayAuthorityPda,
-      gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
-      playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
-      gameplayVrfState: vrfState,
-      player: ctx.sessionSignerKeypair.publicKey,
-    })
+    .accountsPartial(restAccounts)
     .transaction();
 
   return sendPoiTx(ctx, transaction);

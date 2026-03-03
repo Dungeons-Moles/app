@@ -44,7 +44,7 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
     loginAsGuest,
     mode,
   } = useProfile();
-  const { wallet, connect, isConnecting, error: walletError } = useWallet();
+  const { wallet, connect, disconnect, isConnecting, error: walletError } = useWallet();
   const { playBgm, playSfx, isInitialLoading } = useAudio();
   const screenVariant = useScreenVariant();
   const isCompact = screenVariant === 'compact';
@@ -178,6 +178,13 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
     setProfileName('');
   }, [playSfx]);
 
+  const handleGoBackToSignIn = useCallback(() => {
+    playSfx('ui_back');
+    setProfileName('');
+    setLocalError(null);
+    disconnect();
+  }, [playSfx, disconnect]);
+
   useControllerAction(
     {
       onA: showWalletSelection
@@ -187,7 +194,7 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
             ? handleCreateProfile
             : handleOpenKeyboard
           : undefined,
-      onB: showCreateProfile && hasName ? handleClearName : undefined,
+      onB: showCreateProfile ? (hasName ? handleClearName : handleGoBackToSignIn) : undefined,
       onDPadLeft: showWalletSelection ? handleDPadLeft : undefined,
       onDPadRight: showWalletSelection ? handleDPadRight : undefined,
       onSelect: showWalletSelection ? handlePlayAsGuest : undefined,
@@ -208,7 +215,10 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
           { button: 'A', label: 'Create Profile' },
           { button: 'B', label: 'Clear Name' },
         ]
-      : [{ button: 'A', label: 'Enter Name' }];
+      : [
+          { button: 'A', label: 'Enter Name' },
+          { button: 'B', label: 'Back' },
+        ];
 
   // --- Effects ---
 

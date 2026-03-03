@@ -1029,6 +1029,27 @@ export function usePoiInteraction(): UsePoiInteractionResult {
         return { success: false };
       }
 
+      // Rail Waypoint: do not open modal unless another discovered waypoint exists.
+      // Applies to both guest and on-chain paths to keep behavior consistent.
+      if (currentPoi.poiType === POI_TYPES.RAIL_WAYPOINT) {
+        const hasOtherLocalWaypoint = !!gameState?.map?.pois?.some(
+          (p) =>
+            p.definitionId === 'L8' &&
+            p.discovered &&
+            (p.position.x !== currentPoi.x || p.position.y !== currentPoi.y)
+        );
+        const hasOtherOnChainWaypoint = pois.some(
+          (p) =>
+            p.poiType === POI_TYPES.RAIL_WAYPOINT &&
+            p.consumed &&
+            (p.x !== currentPoi.x || p.y !== currentPoi.y)
+        );
+        if (!hasOtherLocalWaypoint && !hasOtherOnChainWaypoint) {
+          setError('No other waypoints discovered');
+          return { success: false };
+        }
+      }
+
       // Guest mode: dispatch INTERACT_POI to the local reducer (no on-chain interaction)
       if (!hasActiveSession) {
         const localPoi = gameState?.map?.pois?.find(

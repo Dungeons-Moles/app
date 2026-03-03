@@ -369,46 +369,238 @@
       ]
     },
     {
-      "name": "fulfill_map_rng",
+      "name": "delegate_map_vrf_state",
       "docs": [
-        "LOCALNET ONLY: self-fulfill local RNG (same lifecycle as fulfill_map_vrf)."
+        "Delegates MapVrfState PDA to MagicBlock from its owning program."
       ],
       "discriminator": [
-        99,
-        239,
-        218,
-        17,
-        72,
-        5,
-        70,
+        167,
+        93,
+        125,
+        83,
+        153,
+        165,
+        236,
         171
       ],
       "accounts": [
         {
-          "name": "oracle",
-          "signer": true
-        },
-        {
-          "name": "vrf_state",
+          "name": "buffer_map_vrf_state",
           "writable": true,
           "pda": {
             "seeds": [
               {
                 "kind": "const",
                 "value": [
-                  109,
-                  97,
-                  112,
-                  95,
-                  118,
-                  114,
-                  102
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114
                 ]
               },
               {
                 "kind": "account",
-                "path": "vrf_state.session",
-                "account": "MapVrfState"
+                "path": "map_vrf_state"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                225,
+                240,
+                24,
+                114,
+                207,
+                78,
+                29,
+                234,
+                224,
+                47,
+                10,
+                176,
+                232,
+                191,
+                75,
+                12,
+                245,
+                178,
+                5,
+                197,
+                71,
+                97,
+                18,
+                45,
+                73,
+                218,
+                84,
+                193,
+                245,
+                208,
+                172,
+                110
+              ]
+            }
+          }
+        },
+        {
+          "name": "delegation_record_map_vrf_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_vrf_state"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "delegation_metadata_map_vrf_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_vrf_state"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "map_vrf_state",
+          "writable": true
+        },
+        {
+          "name": "session"
+        },
+        {
+          "name": "player",
+          "signer": true
+        },
+        {
+          "name": "owner_program",
+          "address": "GCy5GqvnJN99rgGtV6fMn8NtL9E7RoAyHDGzQv8me65j"
+        },
+        {
+          "name": "delegation_program",
+          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "validator",
+          "type": {
+            "option": "pubkey"
+          }
+        }
+      ]
+    },
+    {
+      "name": "fill_map_with_seed",
+      "docs": [
+        "Fills the map with a deterministic seed. Used for PvE campaign sessions on ER.",
+        "Must be called after init_map_account and delegation (runs on Ephemeral Rollup)."
+      ],
+      "discriminator": [
+        245,
+        138,
+        54,
+        132,
+        80,
+        41,
+        0,
+        250
+      ],
+      "accounts": [
+        {
+          "name": "session_signer",
+          "signer": true
+        },
+        {
+          "name": "session",
+          "relations": [
+            "generated_map"
+          ]
+        },
+        {
+          "name": "generated_map",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  101,
+                  110,
+                  101,
+                  114,
+                  97,
+                  116,
+                  101,
+                  100,
+                  95,
+                  109,
+                  97,
+                  112
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "session"
               }
             ]
           }
@@ -416,13 +608,12 @@
       ],
       "args": [
         {
-          "name": "randomness",
-          "type": {
-            "array": [
-              "u8",
-              32
-            ]
-          }
+          "name": "seed",
+          "type": "u64"
+        },
+        {
+          "name": "campaign_level",
+          "type": "u8"
         }
       ]
     },
@@ -446,10 +637,10 @@
         {
           "name": "oracle",
           "docs": [
-            "Oracle identity signer.",
-            "TODO: Constrain to VRF_PROGRAM_IDENTITY when ephemeral-vrf-sdk is available."
+            "Oracle identity signer."
           ],
-          "signer": true
+          "signer": true,
+          "address": "9irBy75QS2BN81FUgXuHcjqceJJRuc9oDkAe8TKVvvAw"
         },
         {
           "name": "vrf_state",
@@ -696,6 +887,231 @@
       ]
     },
     {
+      "name": "generate_map_with_vrf",
+      "docs": [
+        "Generates the map using VRF-derived randomness. Used for Gauntlet/Duel sessions on ER.",
+        "Must be called after VRF fulfillment on the Ephemeral Rollup."
+      ],
+      "discriminator": [
+        139,
+        38,
+        145,
+        220,
+        75,
+        131,
+        16,
+        31
+      ],
+      "accounts": [
+        {
+          "name": "session_signer",
+          "signer": true
+        },
+        {
+          "name": "session",
+          "relations": [
+            "generated_map",
+            "vrf_state"
+          ]
+        },
+        {
+          "name": "generated_map",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  101,
+                  110,
+                  101,
+                  114,
+                  97,
+                  116,
+                  101,
+                  100,
+                  95,
+                  109,
+                  97,
+                  112
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "session"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vrf_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  112,
+                  95,
+                  118,
+                  114,
+                  102
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "session"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "campaign_level",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "init_map_account",
+      "docs": [
+        "Allocates an empty GeneratedMap account without generating any maze content.",
+        "Called via CPI from session-manager during session start so the account",
+        "exists and can be delegated to ER. Actual maze generation happens on ER",
+        "via fill_map_with_seed (PvE) or generate_map_with_vrf (Gauntlet/Duel)."
+      ],
+      "discriminator": [
+        27,
+        62,
+        204,
+        46,
+        135,
+        253,
+        128,
+        223
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "docs": [
+            "Payer for rent"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "session",
+          "docs": [
+            "Game session PDA reference"
+          ]
+        },
+        {
+          "name": "generated_map",
+          "docs": [
+            "Generated map output (allocated empty, filled on ER)"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  101,
+                  110,
+                  101,
+                  114,
+                  97,
+                  116,
+                  101,
+                  100,
+                  95,
+                  109,
+                  97,
+                  112
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "session"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "campaign_level",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "init_map_vrf_state",
+      "docs": [
+        "Pre-creates MapVrfState PDA on base chain without requesting randomness.",
+        "Used to initialize the account before delegation to ER, so VRF requests",
+        "on the Ephemeral Rollup don't need to create new accounts inline."
+      ],
+      "discriminator": [
+        223,
+        173,
+        254,
+        83,
+        203,
+        48,
+        176,
+        170
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "session"
+        },
+        {
+          "name": "vrf_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  112,
+                  95,
+                  118,
+                  114,
+                  102
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "session"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "initialize_map_config",
       "docs": [
         "Initializes the map configuration with default seed mappings.",
@@ -851,156 +1267,10 @@
       ]
     },
     {
-      "name": "regenerate_map",
-      "docs": [
-        "Re-generates the map using VRF-derived randomness.",
-        "Must be called after fulfill_map_vrf and before delegation."
-      ],
-      "discriminator": [
-        40,
-        37,
-        165,
-        216,
-        99,
-        87,
-        231,
-        146
-      ],
-      "accounts": [
-        {
-          "name": "session_signer",
-          "signer": true
-        },
-        {
-          "name": "session",
-          "relations": [
-            "generated_map",
-            "vrf_state"
-          ]
-        },
-        {
-          "name": "generated_map",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  103,
-                  101,
-                  110,
-                  101,
-                  114,
-                  97,
-                  116,
-                  101,
-                  100,
-                  95,
-                  109,
-                  97,
-                  112
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "session"
-              }
-            ]
-          }
-        },
-        {
-          "name": "vrf_state",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  109,
-                  97,
-                  112,
-                  95,
-                  118,
-                  114,
-                  102
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "session"
-              }
-            ]
-          }
-        }
-      ],
-      "args": [
-        {
-          "name": "campaign_level",
-          "type": "u8"
-        }
-      ]
-    },
-    {
-      "name": "request_map_rng",
-      "docs": [
-        "LOCALNET ONLY: request local RNG (same lifecycle as request_map_vrf)."
-      ],
-      "discriminator": [
-        180,
-        84,
-        114,
-        109,
-        30,
-        32,
-        210,
-        223
-      ],
-      "accounts": [
-        {
-          "name": "payer",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "session"
-        },
-        {
-          "name": "vrf_state",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  109,
-                  97,
-                  112,
-                  95,
-                  118,
-                  114,
-                  102
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "session"
-              }
-            ]
-          }
-        },
-        {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
-        }
-      ],
-      "args": []
-    },
-    {
       "name": "request_map_vrf",
       "docs": [
         "Requests VRF randomness for map generation.",
-        "Initializes a MapVrfState account with status=Requested.",
-        "Oracle CPI will be added when ephemeral-vrf-sdk is available."
+        "Initializes a MapVrfState account with status=Requested."
       ],
       "discriminator": [
         209,
@@ -1047,6 +1317,38 @@
               }
             ]
           }
+        },
+        {
+          "name": "program_identity",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  100,
+                  101,
+                  110,
+                  116,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "oracle_queue",
+          "writable": true
+        },
+        {
+          "name": "slot_hashes",
+          "address": "SysvarS1otHashes111111111111111111111111111"
+        },
+        {
+          "name": "vrf_program",
+          "address": "Vrf1RNUjXmQGjmQrQLvJHs9SNkvDJEsRVFPkfSQUwGz"
         },
         {
           "name": "system_program",

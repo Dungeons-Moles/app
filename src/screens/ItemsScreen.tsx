@@ -563,45 +563,53 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
       <View style={[styles.content, isCompact && compactStyles.content]}>
         {/* Header */}
         <View style={[styles.header, isCompact && compactStyles.header]}>
-          {!isController && (
-            <TouchableOpacity onPress={handleBack} activeOpacity={0.7}>
-              <ImageBackground
-                source={buttonV1Source}
-                style={[styles.backButton, isCompact && compactStyles.backButton]}
-                resizeMode="stretch"
-              >
-                <Text style={[styles.backButtonText, isCompact && compactStyles.backButtonText]}>
-                  Back
-                </Text>
-              </ImageBackground>
-            </TouchableOpacity>
-          )}
-
-          <View style={styles.titleGroup}>
-            <TouchableOpacity onPress={toggleTab} activeOpacity={0.8}>
-              <ImageBackground
-                source={buttonV4Source}
-                style={[styles.titlePanel, isCompact && compactStyles.titlePanel]}
-                resizeMode="stretch"
-              >
-                <Text style={[styles.title, isCompact && compactStyles.title]}>
-                  {activeTab === 'items' ? 'Items' : 'Itemsets'}
-                </Text>
-              </ImageBackground>
-            </TouchableOpacity>
-            {activeTab === 'items' && !isGuest && (
-              <Text
-                numberOfLines={1}
-                style={[
-                  styles.poolCountText,
-                  isCompact && compactStyles.poolCountText,
-                  styles.poolCountAbsolute,
-                ]}
-              >
-                Pool: {draftPoolIndices.size} (min {ITEM_POOL_MIN_SIZE})
-              </Text>
-            )}
-          </View>
+          {/* In mobile view, Back and the tab toggle sit side-by-side on the left.
+              In compact view they remain separate siblings for the 3-way space-between spread. */}
+          {(() => {
+            const inner = (
+              <>
+                {!isController && (
+                  <TouchableOpacity onPress={handleBack} activeOpacity={0.7}>
+                    <ImageBackground
+                      source={buttonV1Source}
+                      style={[styles.backButton, isCompact && compactStyles.backButton]}
+                      resizeMode="stretch"
+                    >
+                      <Text style={[styles.backButtonText, isCompact && compactStyles.backButtonText]}>
+                        Back
+                      </Text>
+                    </ImageBackground>
+                  </TouchableOpacity>
+                )}
+                <View style={styles.titleGroup}>
+                  <TouchableOpacity onPress={toggleTab} activeOpacity={0.8}>
+                    <ImageBackground
+                      source={buttonV4Source}
+                      style={[styles.titlePanel, isCompact && compactStyles.titlePanel]}
+                      resizeMode="stretch"
+                    >
+                      <Text style={[styles.title, isCompact && compactStyles.title]}>
+                        {activeTab === 'items' ? 'Items' : 'Itemsets'}
+                      </Text>
+                    </ImageBackground>
+                  </TouchableOpacity>
+                  {activeTab === 'items' && !isGuest && (
+                    <Text
+                      numberOfLines={1}
+                      style={[
+                        styles.poolCountText,
+                        isCompact && compactStyles.poolCountText,
+                        styles.poolCountAbsolute,
+                      ]}
+                    >
+                      Pool: {draftPoolIndices.size} (min {ITEM_POOL_MIN_SIZE})
+                    </Text>
+                  )}
+                </View>
+              </>
+            );
+            return isCompact ? inner : <View style={styles.headerLeft}>{inner}</View>;
+          })()}
 
           {/* Save button in header right — only on items tab, hidden for guests */}
           {activeTab === 'items' && !isGuest ? (
@@ -628,7 +636,7 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                   <ActivityIndicator size="small" color="#1a1a1a" />
                 ) : (
                   <Text style={[styles.saveButtonText, isCompact && compactStyles.saveButtonText]}>
-                    Press X to Save
+                    {isCompact ? 'Press X to Save' : 'Save'}
                   </Text>
                 )}
               </ImageBackground>
@@ -1125,7 +1133,7 @@ const styles = StyleSheet.create({
     fontSize: 20,
   },
   saveButton: {
-    width: 130,
+    width: 90,
     height: 45,
     justifyContent: 'center',
     alignItems: 'center',
@@ -1138,6 +1146,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#1a1a1a',
     marginBottom: 4,
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   titleGroup: {
     alignItems: 'center',
@@ -1224,7 +1237,7 @@ const styles = StyleSheet.create({
   itemDetailsColumn: {
     flex: 1,
     padding: 8,
-    paddingLeft: 40,
+    paddingLeft: 64,
     alignItems: 'center',
     position: 'relative',
   },
@@ -1470,7 +1483,7 @@ const compactStyles = StyleSheet.create({
   },
   itemDetailsColumn: {
     padding: 16,
-    paddingLeft: 60,
+    paddingLeft: 90,
   },
   lockedBanner: {
     width: 150,

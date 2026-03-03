@@ -15,7 +15,7 @@ import {
 import { InlineModal } from '../components/InlineModal';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useProfile } from '../contexts/ProfileContext';
-import { useSessionIdentity } from '../contexts/SessionContext';
+import { useSessionIdentity, type SessionStartupState } from '../contexts/SessionContext';
 import { useGame, GamePhase } from '../contexts/GameContext';
 import { useSolanaConnection } from '../contexts/SolanaConnectionContext';
 import { useMapGenerator, MAX_CAMPAIGN_LEVEL } from '../hooks/useMapGenerator';
@@ -72,6 +72,8 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
     processPendingCleanups,
     getMapSeedForLevel,
     switchToSession,
+    ensureSessionVrfReady,
+    getSessionStartupState,
     getSessionPdaForLevel,
     refreshSessionList,
     setGameStatePda,
@@ -91,10 +93,14 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
   const [showNoRunsModal, setShowNoRunsModal] = useState(false);
   const [showLockedModal, setShowLockedModal] = useState(false);
   const [showSessionExistsModal, setShowSessionExistsModal] = useState(false);
+  const [showSessionInitializingModal, setShowSessionInitializingModal] = useState(false);
   const [attemptedLevel, setAttemptedLevel] = useState<number | null>(null);
   const [pendingLevelWithSession, setPendingLevelWithSession] = useState<CampaignLevel | null>(
     null
   );
+  const [pendingSessionStartupState, setPendingSessionStartupState] =
+    useState<SessionStartupState | null>(null);
+  const [sessionInitStatusMessage, setSessionInitStatusMessage] = useState<string | null>(null);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -168,10 +174,25 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
           console.log('[CampaignSelect] Switching to existing session...');
           const switchResult = await switchToSession(sessionPda);
           if (!switchResult.success) {
-            console.warn('[CampaignSelect] switchToSession failed:', switchResult.error);
-            setErrorMessage(switchResult.error ?? 'Failed to resume session.');
-            setShowErrorModal(true);
-            return;
+            // Delegation-propagation errors are non-blocking: session exists on-chain,
+            // ER just hasn't replicated accounts yet. Continue to GameScreen.
+            const switchErrMsg = (switchResult.error ?? '').toLowerCase();
+            const isDelegationPropagationError =
+              switchErrMsg.includes('delegation not fully propagated') ||
+              switchErrMsg.includes('failed to delegate session to rollup') ||
+              switchErrMsg.includes('delegategameplayaccounts') ||
+              switchErrMsg.includes('access violation');
+            if (isDelegationPropagationError) {
+              console.warn(
+                '[CampaignSelect] switchToSession delegation propagation slow — continuing:',
+                switchResult.error
+              );
+            } else {
+              console.warn('[CampaignSelect] switchToSession failed:', switchResult.error);
+              setErrorMessage(switchResult.error ?? 'Failed to resume session.');
+              setShowErrorModal(true);
+              return;
+            }
           }
         }
 
@@ -195,7 +216,17 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
         }
         const sessionPdaKey = new PublicKey(sessionPdaBase58);
 
-        // Determine seed
+        const vrfReady = await ensureSessionVrfReady(sessionPdaBase58);
+        if (!vrfReady.success) {
+          setErrorMessage(
+            vrfReady.error ??
+              'Session VRF is not fulfilled yet. Gameplay is blocked on devnet until VRF is ready.'
+          );
+          setShowErrorModal(true);
+          return;
+        }
+
+        // Determine seed — must come from chain, never a local fallback.
         const seedFromChain = await getMapSeedForLevel(level.level);
         let seed: number;
         if (seedFromChain !== null) {
@@ -203,7 +234,9 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
         } else if (level.seed !== null) {
           seed = Number(level.seed % BigInt(2147483647));
         } else {
-          seed = await getVrfSeed();
+          // No seed available — fetchFullSessionState will read it from chain.
+          seed = 0;
+          console.log('[CampaignSelect] Resume: seed not yet available, will fetch from chain');
         }
 
         // Full on-chain restore: fetch all accounts and build complete GameState.
@@ -258,6 +291,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
       setGameStatePda,
       startSessionOnChain,
       switchToSession,
+      ensureSessionVrfReady,
       wallet.publicKey,
     ]
   );
@@ -379,7 +413,21 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
 
         if (hasExistingSession) {
           setPendingLevelWithSession(level);
-          setShowSessionExistsModal(true);
+          const existingSessionPda = await getSessionPdaForLevel(level.level);
+          const startupState = existingSessionPda
+            ? await getSessionStartupState(existingSessionPda)
+            : null;
+          setPendingSessionStartupState(startupState);
+          setSessionInitStatusMessage(null);
+          if (
+            startupState === 'created' ||
+            startupState === 'delegated' ||
+            startupState === 'vrf_pending'
+          ) {
+            setShowSessionInitializingModal(true);
+          } else {
+            setShowSessionExistsModal(true);
+          }
           return;
         }
       }
@@ -400,7 +448,10 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
           // Start on-chain session for this level
           try {
             result = await startSessionOnChain(level.level);
-            console.log('[CampaignSelect] startSessionOnChain result:', result);
+            console.log('[CampaignSelect] startSessionOnChain result:', {
+              ...result,
+              mapSeed: result?.mapSeed?.toString() ?? null,
+            });
           } catch (error) {
             const message = error instanceof Error ? error.message : 'Failed to start session.';
             setErrorMessage(message);
@@ -409,35 +460,41 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
           }
 
           if (!result?.success) {
-            setErrorMessage(result?.error ?? 'Failed to start session.');
-            setShowErrorModal(true);
-            return;
+            // Delegation-propagation errors are non-blocking: the session was created
+            // on-chain and delegated to ER, but ER hasn't replicated the accounts yet.
+            // Continue to on-chain state fetch — it will wait for ER to propagate.
+            const errMsg = (result?.error ?? '').toLowerCase();
+            const isDelegationPropagationError =
+              errMsg.includes('delegation not fully propagated') ||
+              errMsg.includes('failed to delegate session to rollup') ||
+              errMsg.includes('delegategameplayaccounts') ||
+              errMsg.includes('access violation');
+            if (!isDelegationPropagationError) {
+              setErrorMessage(result?.error ?? 'Failed to start session.');
+              setShowErrorModal(true);
+              return;
+            }
+            console.warn(
+              '[CampaignSelect] Delegation propagation slow — continuing with on-chain fetch:',
+              result?.error
+            );
           }
 
           // Determine seed to use — prefer the seed returned directly from startGame
-          // (React state via mapSeed may not have updated yet)
+          // (React state via mapSeed may not have updated yet).
+          // NEVER fall back to offline mode — the on-chain session is the source of truth.
           const returnedSeed = result?.mapSeed ?? null;
-          if (result?.success && returnedSeed !== null) {
-            // Convert BigInt seed to a 32-bit number for the game engine
+          if (returnedSeed !== null) {
             seed = Number(returnedSeed % BigInt(2147483647));
             console.log('[CampaignSelect] Using on-chain seed:', seed);
           } else if (level.seed !== null) {
-            // Use the level's seed from getCampaignLevels
             seed = Number(level.seed % BigInt(2147483647));
             console.log('[CampaignSelect] Using level seed:', seed);
           } else {
-            // Fallback to secure/VRF-backed seed if on-chain session fails
-            seed = await getVrfSeed();
-            console.log('[CampaignSelect] Fallback to secure seed:', seed);
-            if (result && !result.success && result.error) {
-              if (result.error === 'Session counter not initialized') {
-                console.log(
-                  '[CampaignSelect] Falling back to offline mode (Session counter missing)'
-                );
-              } else {
-                console.warn('On-chain session start failed, using offline mode:', result.error);
-              }
-            }
+            // No seed available yet — the on-chain state fetch below will provide it.
+            // Use 0 as placeholder; fetchFullSessionState reads the real seed from chain.
+            seed = 0;
+            console.log('[CampaignSelect] Seed not yet available, will fetch from chain');
           }
         }
 
@@ -450,7 +507,9 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
         // Use erConnection directly: delegated accounts are on the ER, and
         // gameplayConnection may still be stale (base chain) in this closure.
         // Fall back to base connection if ER hasn't received the accounts yet.
-        if (!isGuestMode && result?.success && connection && wallet.publicKey) {
+        // NOTE: We check result exists (not result.success) because delegation-propagation
+        // errors still mean the session was created on-chain — we must fetch from chain.
+        if (!isGuestMode && result && connection && wallet.publicKey) {
           console.log(
             '[CampaignSelect] On-chain session active, fetching full state from chain...'
           );
@@ -477,6 +536,15 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
             return;
           }
           const sessionPda = new PublicKey(sessionPdaBase58);
+          const vrfReady = await ensureSessionVrfReady(sessionPdaBase58);
+          if (!vrfReady.success) {
+            setErrorMessage(
+              vrfReady.error ??
+                'Session VRF is not fulfilled yet. Gameplay is blocked on devnet until VRF is ready.'
+            );
+            setShowErrorModal(true);
+            return;
+          }
           let restoredState: Awaited<ReturnType<typeof fetchFullSessionState>> | null = null;
           while (Date.now() < propagationDeadline && !restoredState) {
             restoredState =
@@ -506,7 +574,16 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
           return;
         }
 
-        // Guest mode only: start with frontend-generated map
+        // Guest mode only: start with frontend-generated map.
+        // Non-guest flows MUST go through the on-chain state fetch above — never offline.
+        if (!isGuestMode) {
+          console.error(
+            '[CampaignSelect] BUG: non-guest flow reached offline dispatch. This should never happen.'
+          );
+          setErrorMessage('Failed to load on-chain session state. Please try again.');
+          setShowErrorModal(true);
+          return;
+        }
         if (gameState?.phase !== GamePhase.MainMenu) {
           dispatch({ type: 'RETURN_TO_MENU' });
         }
@@ -516,7 +593,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
         });
 
         // Navigate to the game screen
-        console.log('[CampaignSelect] Navigating to Game screen...');
+        console.log('[CampaignSelect] Guest mode — navigating to Game screen...');
         navigation.navigate('Game');
       } catch (error) {
         console.error('[CampaignSelect] Error starting game:', error);
@@ -541,10 +618,13 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
       hasSessionForLevel,
       highestLevelUnlocked,
       isCachedMode,
+      getSessionStartupState,
+      getSessionPdaForLevel,
       processPendingCleanups,
       refreshSessionList,
       setGameStatePda,
       startSessionOnChain,
+      ensureSessionVrfReady,
       isStartingGame,
       isGuestMode,
       mode,
@@ -574,7 +654,11 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
   const didRunCleanupThisFocusRef = useRef(false);
 
   const anyModalOpen =
-    showNoRunsModal || showLockedModal || showSessionExistsModal || showErrorModal;
+    showNoRunsModal ||
+    showLockedModal ||
+    showSessionExistsModal ||
+    showSessionInitializingModal ||
+    showErrorModal;
 
   useEffect(() => {
     if (!isScreenFocused) {
@@ -623,50 +707,103 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
     if (!pendingLevelWithSession) {
       return;
     }
+    setSessionInitStatusMessage(null);
     setShowSessionExistsModal(false);
     await resumeSession(pendingLevelWithSession);
   }, [pendingLevelWithSession, resumeSession]);
 
-  const handleOverrideExistingSession = useCallback(async () => {
+  const handleRetryPendingSessionVrf = useCallback(async () => {
     if (!pendingLevelWithSession) {
       return;
     }
+    setIsStartingGame(true);
+    try {
+      const sessionPda = await getSessionPdaForLevel(pendingLevelWithSession.level);
+      if (!sessionPda) {
+        setSessionInitStatusMessage('Session not found. Try creating a new one.');
+        return;
+      }
+      const vrfReady = await ensureSessionVrfReady(sessionPda);
+      if (!vrfReady.success) {
+        setSessionInitStatusMessage(
+          vrfReady.error ?? 'VRF is still pending for this session. Please try again shortly.'
+        );
+        return;
+      }
+      setSessionInitStatusMessage(null);
+      setShowSessionInitializingModal(false);
+      await resumeSession(pendingLevelWithSession);
+    } catch (error) {
+      setSessionInitStatusMessage(
+        error instanceof Error ? error.message : 'Failed to retry VRF for this session.'
+      );
+    } finally {
+      setIsStartingGame(false);
+    }
+  }, [ensureSessionVrfReady, getSessionPdaForLevel, pendingLevelWithSession, resumeSession]);
 
-    setShowSessionExistsModal(false);
+  const handleOverrideExistingSession = useCallback(async () => {
+    const targetLevel = pendingLevelWithSession;
+    console.log('[CampaignSelect] handleOverrideExistingSession called', {
+      hasPendingLevel: !!targetLevel,
+      pendingLevel: targetLevel?.level ?? null,
+    });
 
-    const overrideResult = await overrideCampaignSession();
-    if (!overrideResult.success) {
-      setErrorMessage(overrideResult.error ?? 'Failed to override session slot.');
+    if (!targetLevel) {
+      setErrorMessage('No pending session level selected for override. Select the level again.');
       setShowErrorModal(true);
       return;
     }
 
-    await refreshSessionList();
-    await handleLevelSelect(pendingLevelWithSession);
+    setIsStartingGame(true);
+
+    try {
+      const overrideResult = await overrideCampaignSession();
+      console.log('[CampaignSelect] overrideCampaignSession result', overrideResult);
+      if (!overrideResult.success) {
+        setErrorMessage(overrideResult.error ?? 'Failed to override session slot.');
+        setShowErrorModal(true);
+        return;
+      }
+
+      setShowSessionExistsModal(false);
+      setShowSessionInitializingModal(false);
+      setSessionInitStatusMessage(null);
+      await refreshSessionList();
+      await handleLevelSelect(targetLevel);
+    } finally {
+      setIsStartingGame(false);
+    }
   }, [pendingLevelWithSession, overrideCampaignSession, refreshSessionList, handleLevelSelect]);
 
   const modalActions = anyModalOpen
     ? {
-        onA: showSessionExistsModal
-          ? () => {
-              if (pendingLevelWithSession) {
-                setShowSessionExistsModal(false);
-                resumeSession(pendingLevelWithSession);
+        onA: showSessionInitializingModal
+          ? handleRetryPendingSessionVrf
+          : showSessionExistsModal
+            ? () => {
+                if (pendingLevelWithSession) {
+                  setShowSessionExistsModal(false);
+                  resumeSession(pendingLevelWithSession);
+                }
               }
-            }
-          : () => {
-              setShowNoRunsModal(false);
-              setShowLockedModal(false);
-              setShowErrorModal(false);
-            },
+            : () => {
+                setShowNoRunsModal(false);
+                setShowLockedModal(false);
+                setShowErrorModal(false);
+              },
         onB: () => {
           playSfx('ui_back');
           setShowNoRunsModal(false);
           setShowLockedModal(false);
           setShowSessionExistsModal(false);
+          setShowSessionInitializingModal(false);
           setShowErrorModal(false);
         },
-        onX: showSessionExistsModal ? handleOverrideExistingSession : undefined,
+        onX:
+          showSessionExistsModal || showSessionInitializingModal
+            ? handleOverrideExistingSession
+            : undefined,
       }
     : undefined;
 
@@ -687,9 +824,18 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
 
   const controllerHints: ButtonHint[] = anyModalOpen
     ? [
-        { button: 'A', label: showSessionExistsModal ? 'Resume' : 'OK' },
+        {
+          button: 'A',
+          label: showSessionInitializingModal
+            ? 'Retry VRF'
+            : showSessionExistsModal
+              ? 'Resume'
+              : 'OK',
+        },
         { button: 'B', label: 'Cancel' },
-        ...(showSessionExistsModal ? [{ button: 'X' as const, label: 'Override' }] : []),
+        ...(showSessionExistsModal || showSessionInitializingModal
+          ? [{ button: 'X' as const, label: 'Override' }]
+          : []),
       ]
     : [
         { button: 'DPad', label: 'Navigate' },
@@ -932,6 +1078,89 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
         </View>
       </InlineModal>
 
+      <InlineModal
+        visible={showSessionInitializingModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowSessionInitializingModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View
+            style={[
+              styles.modalContent,
+              styles.sessionExistsModalContent,
+              !isCompact && styles.sessionExistsModalContentMobile,
+              isCompact && compactStyles.modalContent,
+            ]}
+          >
+            <Text style={[styles.modalTitle, isCompact && compactStyles.modalTitle]}>
+              Session Initializing Randomness
+            </Text>
+            <Text style={[styles.modalText, isCompact && compactStyles.modalText]}>
+              {pendingSessionStartupState === 'created'
+                ? 'Your session exists but has not finished delegation to the rollup yet.'
+                : pendingSessionStartupState === 'delegated'
+                  ? 'Your session is delegated but not fully propagated on ER yet.'
+                  : 'Your session exists, but POI VRF is still pending. You cannot enter gameplay until VRF is fulfilled.'}
+            </Text>
+            {sessionInitStatusMessage ? (
+              <Text style={[styles.modalText, isCompact && compactStyles.modalText]}>
+                {sessionInitStatusMessage}
+              </Text>
+            ) : null}
+            {isCompact ? (
+              <View style={compactStyles.modalHintRow}>
+                <View style={compactStyles.modalHintItem}>
+                  <Image
+                    source={iconBSource}
+                    style={compactStyles.modalHintIcon}
+                    resizeMode="contain"
+                  />
+                  <Text style={compactStyles.modalHintLabel}>Cancel</Text>
+                </View>
+                <View style={compactStyles.modalHintItem}>
+                  <Image
+                    source={iconXSource}
+                    style={compactStyles.modalHintIcon}
+                    resizeMode="contain"
+                  />
+                  <Text style={compactStyles.modalHintLabel}>Override</Text>
+                </View>
+                <View style={compactStyles.modalHintItem}>
+                  <Image
+                    source={iconASource}
+                    style={compactStyles.modalHintIcon}
+                    resizeMode="contain"
+                  />
+                  <Text style={compactStyles.modalHintLabel}>Retry VRF</Text>
+                </View>
+              </View>
+            ) : (
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={styles.modalButtonSecondary}
+                  onPress={() => setShowSessionInitializingModal(false)}
+                >
+                  <Text style={styles.modalButtonTextSecondary}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.modalButtonSecondary}
+                  onPress={handleOverrideExistingSession}
+                >
+                  <Text style={styles.modalButtonTextSecondary}>Override</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.modalButtonPrimary}
+                  onPress={handleRetryPendingSessionVrf}
+                >
+                  <Text style={styles.modalButtonTextPrimary}>Retry VRF</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        </View>
+      </InlineModal>
+
       {/* T065: Session Already Exists Modal */}
       <InlineModal
         visible={showSessionExistsModal}
@@ -944,6 +1173,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
             style={[
               styles.modalContent,
               styles.sessionExistsModalContent,
+              !isCompact && styles.sessionExistsModalContentMobile,
               isCompact && compactStyles.modalContent,
             ]}
           >
@@ -993,7 +1223,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
                   style={styles.modalButtonSecondary}
                   onPress={handleOverrideExistingSession}
                 >
-                  <Text style={styles.modalButtonTextSecondary}>Override (X)</Text>
+                  <Text style={styles.modalButtonTextSecondary}>Override</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.modalButtonPrimary}
@@ -1322,6 +1552,10 @@ const styles = StyleSheet.create({
   sessionExistsModalContent: {
     backgroundColor: '#5a4030',
     borderColor: '#7a5a44',
+  },
+  sessionExistsModalContentMobile: {
+    width: '92%',
+    maxWidth: 440,
   },
   modalTitle: {
     fontFamily: Typography.header,

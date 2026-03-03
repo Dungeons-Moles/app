@@ -10,6 +10,7 @@ import {
 import type { ItemRarity } from '@/game/engine/types';
 import { ITEM_RARITY_COLORS } from '@/utils/rarity-colors';
 import { Typography } from '@/theme/typography';
+import { useScreenVariant } from '@/contexts/ScreenVariantContext';
 
 const squareSource = require('../../../assets/ui/frames/square.png');
 
@@ -38,11 +39,18 @@ export function SimplifiedItemOption({
   onSelect,
   onLongPress,
 }: SimplifiedItemOptionProps) {
+  const isCompact = useScreenVariant() === 'compact';
+  const isMobileWide = !isCompact;
   const rarityColor = ITEM_RARITY_COLORS[rarity] ?? '#9ca3af';
 
   const containerStyle = useMemo(
-    () => [styles.container, selected && styles.selected, disabled && styles.disabled],
-    [selected, disabled]
+    () => [
+      styles.container,
+      isMobileWide && styles.containerMobile,
+      selected && styles.selected,
+      disabled && styles.disabled,
+    ],
+    [selected, disabled, isMobileWide]
   );
 
   const textStyle = useMemo(
@@ -76,18 +84,27 @@ export function SimplifiedItemOption({
           resizeMode: 'stretch',
         }}
       />
-      <View style={styles.contentContainer}>
+      <View style={[styles.contentContainer, isMobileWide && styles.contentContainerMobile]}>
         {image ? (
-          <Image source={image} style={styles.image} resizeMode="contain" />
+          <Image
+            source={image}
+            style={[styles.image, isMobileWide && styles.imageMobile]}
+            resizeMode="contain"
+          />
         ) : (
-          emoji && <Text style={styles.emoji}>{emoji}</Text>
+          emoji && <Text style={[styles.emoji, isMobileWide && styles.emojiMobile]}>{emoji}</Text>
         )}
-        <Text style={styles.itemName} numberOfLines={2}>
+        <Text style={[styles.itemName, isMobileWide && styles.itemNameMobile]} numberOfLines={2}>
           {itemName}
         </Text>
-        {statDisplay ? <Text style={textStyle}>{statDisplay}</Text> : null}
+        {statDisplay ? (
+          <Text style={[textStyle, isMobileWide && styles.statTextMobile]}>{statDisplay}</Text>
+        ) : null}
         {effectDescription && (
-          <Text style={styles.effectText} numberOfLines={6}>
+          <Text
+            style={[styles.effectText, isMobileWide && styles.effectTextMobile]}
+            numberOfLines={6}
+          >
             {effectDescription}
           </Text>
         )}
@@ -106,10 +123,18 @@ const styles = StyleSheet.create({
     minHeight: 230,
     position: 'relative',
   },
+  containerMobile: {
+    minHeight: 214,
+    paddingVertical: 10,
+    paddingHorizontal: 6,
+  },
   contentContainer: {
     width: '100%',
     alignItems: 'center',
     padding: 8,
+  },
+  contentContainerMobile: {
+    padding: 6,
   },
   selected: {
     transform: [{ scale: 1.08 }],
@@ -126,6 +151,11 @@ const styles = StyleSheet.create({
     height: 40,
     marginBottom: 6,
   },
+  imageMobile: {
+    width: 36,
+    height: 36,
+    marginBottom: 5,
+  },
   itemName: {
     fontFamily: Typography.header,
     fontSize: 14,
@@ -134,12 +164,19 @@ const styles = StyleSheet.create({
     marginBottom: 4,
     fontWeight: 'bold',
   },
+  itemNameMobile: {
+    fontSize: 13,
+    marginBottom: 3,
+  },
   statText: {
     fontFamily: Typography.number,
     fontSize: 14,
     fontWeight: 'bold',
     color: '#3d2b1f',
     textAlign: 'center',
+  },
+  statTextMobile: {
+    fontSize: 13,
   },
   statTextDisabled: {
     color: '#6b7280',
@@ -151,5 +188,13 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 4,
     fontStyle: 'italic',
+  },
+  effectTextMobile: {
+    fontSize: 10,
+    marginTop: 3,
+  },
+  emojiMobile: {
+    fontSize: 24,
+    marginBottom: 5,
   },
 });

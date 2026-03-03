@@ -68,7 +68,8 @@ export function FastTravelOverlay({
   // Match MapRenderer's dynamic zoom so markers align with map tiles
   const variant = useScreenVariant();
   const targetVerticalTiles = variant === 'compact' ? 9 : 7;
-  const dynamicZoom = dimensions.height / (targetVerticalTiles * TILE_SIZE);
+  const baseDynamicZoom = dimensions.height / (targetVerticalTiles * TILE_SIZE);
+  const dynamicZoom = variant === 'compact' ? baseDynamicZoom : baseDynamicZoom * 1.11;
   const zoom = overview.active ? overview.zoom : dynamicZoom;
 
   const selectableWaypoints = useMemo(

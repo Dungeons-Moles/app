@@ -8,7 +8,7 @@
  * - On-chain item instance to frontend item conversion
  */
 
-import { ComputeBudgetProgram, Connection, Keypair, PublicKey, SystemProgram, Transaction } from '@solana/web3.js';
+import { ComputeBudgetProgram, Connection, Keypair, PublicKey, SystemProgram, Transaction, TransactionInstruction } from '@solana/web3.js';
 import type { Program } from '@coral-xyz/anchor';
 import { SOLANA_CONFIG } from './config';
 import { GAMEPLAY_STATE_PROGRAM_ID, deriveGameplayVrfStatePda, derivePlayerProfilePda } from './constants';
@@ -40,10 +40,22 @@ const TOOL_OIL_FLAG_ARM = 0x08;
 const PIT_DRAFT_MAX_START_GOLD = 30;
 const U64_MASK = (1n << 64n) - 1n;
 
-function pickMethod(program: Program, preferred: string, fallback: string) {
+function pickMethod(
+  program: Program,
+  preferred: string,
+  fallback: string,
+  options?: { strictPreferred?: boolean }
+) {
   const methods = (program.methods ?? {}) as Record<string, (...args: any[]) => any>;
-  if (typeof methods[preferred] === 'function') return methods[preferred].bind(methods);
-  if (typeof methods[fallback] === 'function') return methods[fallback].bind(methods);
+  if (typeof methods[preferred] === 'function') {
+    return { name: preferred, fn: methods[preferred].bind(methods) };
+  }
+  if (options?.strictPreferred) {
+    throw new Error(`Missing required method ${preferred} on gameplay-state program for current mode`);
+  }
+  if (typeof methods[fallback] === 'function') {
+    return { name: fallback, fn: methods[fallback].bind(methods) };
+  }
   throw new Error(`Neither ${preferred} nor ${fallback} exists on gameplay-state program`);
 }
 
@@ -119,36 +131,44 @@ export async function buildEnterPitDraftTransaction(
   const [gauntletPoolVaultPda] = deriveGauntletPoolVaultPda();
   const [playerProfilePda] = derivePlayerProfilePda(playerPublicKey);
 
-  // Pit draft requires a fulfilled VRF state for fair randomness.
-  // Use a unique random key as the "session" seed so each entry gets a fresh VRF state.
-  // The session field in RequestGameplayVrf is an UncheckedAccount used only for PDA derivation.
-  const vrfSessionKey = Keypair.generate().publicKey;
-  const [gameplayVrfStatePda] = deriveGameplayVrfStatePda(vrfSessionKey);
   const localMode = SOLANA_CONFIG.isLocalValidator;
-  const randomness = localMode ? generateRandomness() : null;
 
-  const requestGameplay = pickMethod(program, 'requestGameplayRng', 'requestGameplayVrf');
-  const requestVrfIx = await requestGameplay()
-    .accounts({
-      payer: playerPublicKey,
-      session: vrfSessionKey,
-      vrfState: gameplayVrfStatePda,
-      systemProgram: SystemProgram.programId,
-    })
-    .instruction();
+  // On localnet: request + self-fulfill VRF in same TX for deterministic testing.
+  // On devnet/mainnet: VRF is optional — gameplay-state falls back to slot-based randomness.
+  let gameplayVrfStatePda: PublicKey | null = null;
+  const vrfInstructions: TransactionInstruction[] = [];
 
-  const fulfillVrfIx = localMode
-    ? await pickMethod(program, 'fulfillGameplayRng', 'fulfillGameplayVrf')(randomness)
-        .accountsPartial({
-          vrfProgramIdentity: playerPublicKey,
-          vrfState: gameplayVrfStatePda,
-        })
-        .instruction()
-    : null;
+  if (localMode) {
+    const vrfSessionKey = Keypair.generate().publicKey;
+    const [localVrfPda] = deriveGameplayVrfStatePda(vrfSessionKey);
+    gameplayVrfStatePda = localVrfPda;
+    const randomness = generateRandomness();
 
-  // Use accountsPartial — gameplayVrfState PDA is self-referential
-  // (seeds include gameplay_vrf_state.session) so Anchor can't auto-resolve it.
-  // Optional accounts must use null (not undefined) so Anchor substitutes the program ID.
+    const requestRng = pickMethod(program, 'requestGameplayRng', 'requestGameplayVrf', {
+      strictPreferred: true,
+    });
+    const requestIx = await requestRng.fn()
+      .accounts({
+        payer: playerPublicKey,
+        session: vrfSessionKey,
+        vrfState: localVrfPda,
+        systemProgram: SystemProgram.programId,
+      })
+      .instruction();
+
+    const fulfillIx = await pickMethod(program, 'fulfillGameplayRng', 'fulfillGameplayVrf', {
+      strictPreferred: true,
+    }).fn(randomness)
+      .accountsPartial({
+        vrfProgramIdentity: playerPublicKey,
+        vrfState: localVrfPda,
+      })
+      .instruction();
+
+    vrfInstructions.push(requestIx, fulfillIx);
+  }
+
+  // Optional accounts must use null so Anchor substitutes the program ID.
   const enterPitDraftIx = await program.methods
     .enterPitDraft()
     .accountsPartial({
@@ -169,16 +189,14 @@ export async function buildEnterPitDraftTransaction(
   const transaction = new Transaction();
 
   // Pit Draft matching + combat preparation can exceed default 200k CU.
-  // Request a higher budget to avoid intermittent "exceeded CUs meter" failures.
   transaction.add(
     ComputeBudgetProgram.setComputeUnitLimit({ units: PIT_DRAFT_CU_LIMIT }),
     ComputeBudgetProgram.setComputeUnitPrice({
       microLamports: PIT_DRAFT_CU_PRICE_MICROLAMPORTS,
     }),
-    requestVrfIx
+    ...vrfInstructions,
+    enterPitDraftIx
   );
-  if (fulfillVrfIx) transaction.add(fulfillVrfIx);
-  transaction.add(enterPitDraftIx);
 
   const { blockhash } = await connection.getLatestBlockhash(SOLANA_CONFIG.commitment);
   transaction.recentBlockhash = blockhash;

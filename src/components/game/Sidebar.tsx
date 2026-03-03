@@ -546,7 +546,9 @@ export function BossPanel({
                 resizeMode={displayedBoss ? 'contain' : 'cover'}
               />
               <View>
-                <Text style={[styles.bossName, { fontSize: 16 * scale }]}>{panelTitle}</Text>
+                <Text style={[styles.bossName, { fontSize: 16 * scale }]}>
+                  {panelTitle.length > 10 ? `${panelTitle.slice(0, 10)}...` : panelTitle}
+                </Text>
                 <Text style={[styles.bossDetailsText, { fontSize: 10 * scale }]}>
                   {panelSubtitle}
                 </Text>
@@ -581,6 +583,10 @@ export const Sidebar = React.memo(function Sidebar(props: SidebarProps) {
   }
 
   const isFloating = props.floatingCompact;
+  const handleItemTap = props.isRuneKilnActive
+    ? props.handleInventoryItemPress
+    : props.onItemInspect;
+  const handleToolTap = props.isRuneKilnActive ? undefined : props.onToolInspect;
   const content = (
     <View
       style={[
@@ -602,7 +608,8 @@ export const Sidebar = React.memo(function Sidebar(props: SidebarProps) {
           maxGearSlots={props.maxGearSlots ?? 8}
           isGauntletLayout={props.isGauntletLayout}
           activeItemsets={props.activeItemsets}
-          onItemPress={props.isRuneKilnActive ? props.handleInventoryItemPress : undefined}
+          onItemPress={handleItemTap}
+          onToolPress={handleToolTap}
           onItemInspect={props.onItemInspect}
           onToolInspect={props.onToolInspect}
           onItemsetPress={props.onItemsetPress}

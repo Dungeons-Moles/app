@@ -1,14 +1,18 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, Image, StyleSheet } from 'react-native';
+import { View, Text, Image, ImageBackground, StyleSheet, TouchableOpacity } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useScreenVariant } from '../../contexts/ScreenVariantContext';
 import { useControllerAction } from '../../hooks/useControllerAction';
+import { useInputMode } from '../../hooks/useInputMode';
 import { useAudio } from '../../contexts/AudioContext';
 import { ControllerHints, type ButtonHint } from './ControllerHints';
 import { Typography } from '../../theme/typography';
 import { TUTORIAL_SEEN_KEY, TOTAL_PAGES } from './tutorialPages';
 
 const BOOK_BG = require('../../../assets/ui/backgrounds/book-compact.png');
+const BUTTON_V1 = require('../../../assets/ui/buttons/button-v1.png');
+const ICON_NORMAL_SPEED = require('../../../assets/icons/ui/normal-speed.png');
+const BOSS_PANEL_BG = require('../../../assets/ui/panels/boss-panel.png');
 
 // Character / entity images
 const IMG_MOLE = require('../../../assets/entities/characters/default-mole.png');
@@ -47,6 +51,7 @@ const ICON_SCRAP_CHUTE = require('../../../assets/world/pois/scrap-chute.png');
 const ICON_RAIL = require('../../../assets/world/pois/rail-waypoint.png');
 const ICON_OIL_RACK = require('../../../assets/world/pois/tool-oil-rack.png');
 const ICON_SURVEY = require('../../../assets/world/pois/survey-beacon.png');
+const ICON_SEISMIC = require('../../../assets/world/pois/seismic-scanner.png');
 
 // Controller button icons
 const ICON_DPAD = require('../../../assets/ui/control-buttons/d-pad.png');
@@ -72,6 +77,7 @@ export function TutorialModal({ visible, onClose }: TutorialModalProps) {
   const [currentPage, setCurrentPage] = useState(0);
   const variant = useScreenVariant();
   const isCompact = variant === 'compact';
+  const isController = useInputMode() === 'controller';
   const { playSfx } = useAudio();
 
   const handleClose = useCallback(() => {
@@ -144,8 +150,8 @@ export function TutorialModal({ visible, onClose }: TutorialModalProps) {
         return (
           <>
             <View style={pageStyles.page}>
-              <Text style={titleStyle}>Welcome, Mole!</Text>
-              <View style={pageStyles.centeredImage}>
+              <Text style={[titleStyle, !isCompact && { marginBottom: 0 }]}>Welcome, Mole!</Text>
+              <View style={[pageStyles.centeredImage, !isCompact && { marginVertical: 0 }]}>
                 <Image source={IMG_MOLE} style={iconLg} resizeMode="contain" />
               </View>
               <Text style={bodyStyle}>
@@ -166,17 +172,27 @@ export function TutorialModal({ visible, onClose }: TutorialModalProps) {
               <View style={[pageStyles.row, { marginTop: gap }]}>
                 <Image source={IMG_ROCK} style={iconMd} resizeMode="contain" />
                 <Text style={[bodyStyle, { flex: 1 }]}>
-                  Wall: press twice to dig. Cost: max(2, 6-DIG) moves.
+                  Wall: press twice to dig. Cost: 6-DIG moves (minimum 2).
                 </Text>
               </View>
               <View style={[pageStyles.row, { marginTop: gap }]}>
-                <Image
-                  source={ICON_BTN_SELECT}
-                  style={{ width: 36 * s, height: 16 * s }}
-                  resizeMode="contain"
-                />
+                {isCompact ? (
+                  <Image
+                    source={ICON_BTN_SELECT}
+                    style={{ width: 36 * s, height: 16 * s }}
+                    resizeMode="contain"
+                  />
+                ) : (
+                  <Image
+                    source={require('../../../assets/ui/illustrations/engine.png')}
+                    style={{ width: 32, height: 32 }}
+                    resizeMode="contain"
+                  />
+                )}
                 <Text style={[smallStyle, { flex: 1, fontStyle: 'italic' }]}>
-                  Press Select anytime to reopen this tutorial.
+                  {isCompact
+                    ? 'Press Select anytime to reopen this tutorial.'
+                    : 'Reopen this tutorial anytime from the pause menu.'}
                 </Text>
               </View>
             </View>
@@ -201,19 +217,27 @@ export function TutorialModal({ visible, onClose }: TutorialModalProps) {
               </View>
               <View style={[pageStyles.row, { marginTop: gap }]}>
                 <Image source={ICON_SKULL} style={iconMd} resizeMode="contain" />
-                <Text style={[bodyStyle, { flex: 1 }]}>
-                  At the end of Night 3, a Boss Fight is triggered!
-                </Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={boldBody}>Boss Phases</Text>
+                  <Text style={smallStyle}>At the end of Night 3, a Boss Fight is triggered!</Text>
+                </View>
               </View>
               <View style={[pageStyles.row, { marginTop: gap }]}>
                 <Image source={ICON_MAP} style={iconMd} resizeMode="contain" />
                 <View style={{ flex: 1 }}>
                   <Text style={boldBody}>Map Overview</Text>
-                  <View style={pageStyles.row}>
-                    <Text style={smallStyle}>Press</Text>
-                    <Image source={ICON_BTN_Y} style={{ width: 16 * s, height: 16 * s }} resizeMode="contain" />
-                    <Text style={[smallStyle, { flex: 1 }]}>to open. D-PAD to pan. Y to close.</Text>
-                  </View>
+                  {isCompact ? (
+                    <View style={pageStyles.row}>
+                      <Text style={smallStyle}>Press</Text>
+                      <Image source={ICON_BTN_Y} style={{ width: 16 * s, height: 16 * s }} resizeMode="contain" />
+                      <Text style={[smallStyle, { flex: 1 }]}>to open. D-PAD to pan. Y to close.</Text>
+                    </View>
+                  ) : (
+                    <Text style={smallStyle}>
+                      Press the map icon to open, scroll the map to pan and pinch to zoom. Press
+                      the map again to close.
+                    </Text>
+                  )}
                 </View>
               </View>
             </View>
@@ -271,16 +295,18 @@ export function TutorialModal({ visible, onClose }: TutorialModalProps) {
               </View>
             </View>
             <View style={[pageStyles.page, rightPad]}>
-              <Text style={titleStyle}>Weeks & Bosses</Text>
-              <View style={pageStyles.centeredImage}>
-                <Image source={IMG_BROODMOTHER} style={iconLg} resizeMode="contain" />
+              <Text style={[titleStyle, !isCompact && { marginBottom: 0 }]}>Weeks & Bosses</Text>
+              <View style={!isCompact && { flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <View style={[pageStyles.centeredImage, !isCompact && { marginVertical: 0 }]}>
+                  <Image source={IMG_BROODMOTHER} style={iconLg} resizeMode="contain" />
+                </View>
+                <Text style={[smallStyle, !isCompact && { flex: 1 }]}>
+                  Each week: Day 1 {'\u2192'} Night 1 {'\u2192'} Day 2 {'\u2192'} Night 2 {'\u2192'}{' '}
+                  Day 3 {'\u2192'} Night 3 {'\u2192'}{' '}
+                  <Text style={{ fontFamily: Typography.stat }}>Boss!</Text>
+                  {'\n'}3 weeks per stage. Beat all 3 bosses to win.
+                </Text>
               </View>
-              <Text style={smallStyle}>
-                Each week: Day 1 {'\u2192'} Night 1 {'\u2192'} Day 2 {'\u2192'} Night 2 {'\u2192'}{' '}
-                Day 3 {'\u2192'} Night 3 {'\u2192'}{' '}
-                <Text style={{ fontFamily: Typography.stat }}>Boss!</Text>
-                {'\n'}3 weeks per stage. Beat all 3 bosses to win.
-              </Text>
               <Text style={[smallStyle, { marginTop: smGap }]}>
                 Bosses have 2 weakness tags. Items of those tags appear more often that week.
                 Counter Caches offer items from the boss's exact weaknesses!
@@ -367,6 +393,12 @@ export function TutorialModal({ visible, onClose }: TutorialModalProps) {
               <Text style={titleStyle}>More Locations</Text>
               <View style={[pageStyles.statList, { gap: isCompact ? 7 : 4 }]}>
                 <PoiRow
+                  icon={ICON_SEISMIC}
+                  name="Seismic Scanner"
+                  desc="Choose a POI type to reveal the nearest undiscovered instance of that type."
+                  s={s}
+                />
+                <PoiRow
                   icon={ICON_SMUGGLER}
                   name="Smuggler Hatch"
                   desc="Shop: buy Gear & Tools with Gold. Reroll stock for Gold (max 3)."
@@ -403,10 +435,12 @@ export function TutorialModal({ visible, onClose }: TutorialModalProps) {
                   s={s}
                 />
               </View>
-              <Text style={[smallStyle, { marginTop: gap, fontStyle: 'italic' }]}>
-                Night-only POIs (Mole Den, Rest Alcove) skip you to the next Day phase - use them to
-                escape the dangerous night!
-              </Text>
+              {isCompact && (
+                <Text style={[smallStyle, { marginTop: gap, fontStyle: 'italic' }]}>
+                  Night-only POIs (Mole Den, Rest Alcove) skip you to the next Day phase - use them to
+                  escape the dangerous night!
+                </Text>
+              )}
             </View>
           </>
         );
@@ -431,17 +465,36 @@ export function TutorialModal({ visible, onClose }: TutorialModalProps) {
                 Anvil (tools, costs Gold).
               </Text>
               <Text style={[boldBody, { marginTop: gap }]}>Tags & Itemsets</Text>
-              <Text style={[smallStyle, { marginTop: smGap }]}>
-                Every item has a tag defining its combat style:{'\n'}
-                {'\u2022'} STONE — Armor, Shrapnel{'\n'}
-                {'\u2022'} SCOUT — DIG, multi-strike{'\n'}
-                {'\u2022'} GREED — Gold, Shard effects{'\n'}
-                {'\u2022'} BLAST — Bombs, non-weapon dmg{'\n'}
-                {'\u2022'} FROST — Chill, SPD control{'\n'}
-                {'\u2022'} RUST — Armor destruction{'\n'}
-                {'\u2022'} BLOOD — Bleed, lifesteal{'\n'}
-                {'\u2022'} TEMPO — SPD, Turn 1 burst
-              </Text>
+              {isCompact ? (
+                <Text style={[smallStyle, { marginTop: smGap }]}>
+                  Every item has a tag defining its combat style:{'\n'}
+                  {'\u2022'} STONE — Armor, Shrapnel{'\n'}
+                  {'\u2022'} SCOUT — DIG, multi-strike{'\n'}
+                  {'\u2022'} GREED — Gold, Shard effects{'\n'}
+                  {'\u2022'} BLAST — Bombs, non-weapon dmg{'\n'}
+                  {'\u2022'} FROST — Chill, SPD control{'\n'}
+                  {'\u2022'} RUST — Armor destruction{'\n'}
+                  {'\u2022'} BLOOD — Bleed, lifesteal{'\n'}
+                  {'\u2022'} TEMPO — SPD, Turn 1 burst
+                </Text>
+              ) : (
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: smGap, gap: 3 }}>
+                  {[
+                    { tag: 'STONE', desc: 'Armor, Shrapnel' },
+                    { tag: 'SCOUT', desc: 'DIG, multi-strike' },
+                    { tag: 'GREED', desc: 'Gold, Shard effects' },
+                    { tag: 'BLAST', desc: 'Bombs, non-weapon dmg' },
+                    { tag: 'FROST', desc: 'Chill, SPD control' },
+                    { tag: 'RUST', desc: 'Armor destruction' },
+                    { tag: 'BLOOD', desc: 'Bleed, lifesteal' },
+                    { tag: 'TEMPO', desc: 'SPD, Turn 1 burst' },
+                  ].map(({ tag, desc }) => (
+                    <Text key={tag} style={[smallStyle, { width: '48%' }]}>
+                      <Text style={{ fontFamily: Typography.stat }}>{tag}</Text>{': '}{desc}
+                    </Text>
+                  ))}
+                </View>
+              )}
               <View style={[pageStyles.row, { marginTop: gap }]}>
                 <Image source={ICON_UNION_STANDARD} style={iconSm} resizeMode="contain" />
                 <Image source={ICON_SHARD_CIRCUIT} style={iconSm} resizeMode="contain" />
@@ -463,12 +516,10 @@ export function TutorialModal({ visible, onClose }: TutorialModalProps) {
               <Text style={[smallStyle, { marginTop: smGap }]}>
                 {'\u2022'} Enemies move toward you at night - stay alert!{'\n'}
                 {'\u2022'} Mole Dens give a full heal and skip to Day{'\n'}
-                {'\u2022'} Rest Alcoves heal 10 HP and also skip to Day{'\n'}
-                {'\u2022'} Plan your night routes toward a den or alcove
+                {'\u2022'} Rest Alcoves heal 10 HP and also skip to Day
               </Text>
               <Text style={[boldBody, { marginTop: gap }]}>Build Planning</Text>
               <Text style={[smallStyle, { marginTop: smGap }]}>
-                {'\u2022'} Focus items around 1-2 tags for synergy{'\n'}
                 {'\u2022'} ARM resets after each fight - it's very strong!{'\n'}
                 {'\u2022'} Upgrade your Tool at the Anvil when you can{'\n'}
                 {'\u2022'} SPD Advantage adds up: 4 SPD over enemy = +2 bonus dmg/turn{'\n'}
@@ -490,37 +541,72 @@ export function TutorialModal({ visible, onClose }: TutorialModalProps) {
               <View style={[pageStyles.statList, { gap: isCompact ? 9 : 5 }]}>
                 <ControlRow icon={ICON_DPAD} label="Move / Navigate menus" s={s} />
                 <ControlRow icon={ICON_BTN_A} label="Interact with POIs / Confirm" s={s} />
-                <ControlRow icon={ICON_BTN_X} label="Toggle sidebar (compact view)" s={s} />
-                <ControlRow icon={ICON_BTN_SELECT} label="Reopen this tutorial" s={s} wide />
-                <ControlRow icon={ICON_BTN_START} label="Pause menu" s={s} wide />
-              </View>
-              <View style={[pageStyles.row, { marginTop: gap }]}>
-                <Image source={ICON_MAP} style={iconMd} resizeMode="contain" />
-                <View style={{ flex: 1 }}>
-                  <View style={pageStyles.row}>
-                    <Image source={ICON_BTN_Y} style={ctrlIcon} resizeMode="contain" />
-                    <Text style={[bodyStyle, { flex: 1 }]}>Toggle map overview</Text>
-                  </View>
-                  <Text style={[smallStyle, { marginTop: smGap }]}>
-                    Pan with D-PAD. Press Y again to close.
+                {isCompact && (
+                  <ControlRow icon={ICON_BTN_X} label="Toggle sidebar" s={s} />
+                )}
+                <ControlRow
+                  icon={isCompact ? ICON_BTN_START : require('../../../assets/ui/illustrations/engine.png')}
+                  label="Pause menu. You can reopen this tutorial from there."
+                  s={s}
+                  wide={isCompact}
+                />
+                <View style={pageStyles.statRow}>
+                  <ImageBackground
+                    source={BOSS_PANEL_BG}
+                    style={{ width: 90 * s, height: 24 * s, justifyContent: 'center', paddingHorizontal: 4 * s }}
+                    resizeMode="stretch"
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 * s }}>
+                      <Image source={IMG_BROODMOTHER} style={{ width: 22 * s, height: 22 * s }} resizeMode="contain" />
+                      <View>
+                        <Text style={{ fontFamily: Typography.header, fontSize: s === 2 ? 14 : 8, color: '#000' }}>
+                          Broodmother
+                        </Text>
+                        <Text style={{ fontFamily: Typography.body, fontSize: s === 2 ? 10 : 6, color: '#333' }}>
+                          Tap for details
+                        </Text>
+                      </View>
+                    </View>
+                  </ImageBackground>
+                  <Text style={[txtStyles.body, { fontSize: s === 2 ? 19 : 12, flex: 1 }]}>
+                    Tap boss panel to view boss info
                   </Text>
                 </View>
               </View>
               <View style={[pageStyles.row, { marginTop: gap }]}>
-                <Image source={ICON_BTN_L1} style={ctrlIcon} resizeMode="contain" />
-                <Image source={ICON_BTN_R1} style={ctrlIcon} resizeMode="contain" />
-                <Text style={[bodyStyle, { flex: 1 }]}>Focus inventory / enemy gear</Text>
+                <Image source={ICON_MAP} style={iconMd} resizeMode="contain" />
+                <View style={{ flex: 1 }}>
+                  {isCompact && (
+                    <View style={pageStyles.row}>
+                      <Image source={ICON_BTN_Y} style={ctrlIcon} resizeMode="contain" />
+                      <Text style={[bodyStyle, { flex: 1 }]}>Toggle map overview</Text>
+                    </View>
+                  )}
+                  <Text style={[smallStyle, { marginTop: isCompact ? smGap : 0 }]}>
+                    {isCompact
+                      ? 'Pan with D-PAD. Press Y again to close.'
+                      : 'Scroll to pan, pinch to zoom. Press again to close.'}
+                  </Text>
+                </View>
               </View>
+              {isCompact && (
+                <View style={[pageStyles.row, { marginTop: gap }]}>
+                  <Image source={ICON_BTN_L1} style={ctrlIcon} resizeMode="contain" />
+                  <Image source={ICON_BTN_R1} style={ctrlIcon} resizeMode="contain" />
+                  <Text style={[bodyStyle, { flex: 1 }]}>Focus inventory / enemy gear</Text>
+                </View>
+              )}
               <Text style={[smallStyle, { marginTop: smGap, marginLeft: isCompact ? 56 : 28 }]}>
-                Navigate items with D-PAD, press A to inspect.
+                Press inventory/enemy gear to inspect.
               </Text>
             </View>
             <View style={[pageStyles.page, rightPad]}>
               <Text style={titleStyle}>Quick Reference</Text>
               <Text style={boldBody}>Phase Moves</Text>
               <Text style={[smallStyle, { marginTop: smGap }]}>
-                Day = 50 moves, Night = 30 moves{'\n'}
-                6 phases per week, 3 weeks per stage
+                {isCompact
+                  ? `Day = 50 moves, Night = 30 moves\n6 phases per week, 3 weeks per stage`
+                  : `Day: 50 moves, Night: 50 moves . 6 phases/week, 3 weeks/stage`}
               </Text>
               <Text style={[boldBody, { marginTop: gap }]}>Visibility</Text>
               <Text style={[smallStyle, { marginTop: smGap }]}>
@@ -536,24 +622,24 @@ export function TutorialModal({ visible, onClose }: TutorialModalProps) {
               </Text>
               <Text style={[boldBody, { marginTop: gap }]}>Dig Cost</Text>
               <Text style={[smallStyle, { marginTop: smGap }]}>
-                max(2, 6 - DIG) moves per wall
+                6-DIG moves per wall (minimum 2)
               </Text>
               <Text style={[boldBody, { marginTop: gap }]}>SPD Advantage</Text>
               <Text style={[smallStyle, { marginTop: smGap }]}>
-                Every 2 SPD over enemy = +1 bonus damage on first strike each turn
+                {isCompact
+                  ? 'Every 2 SPD over enemy = +1 bonus damage on first strike each turn'
+                  : 'Every 2 SPD over enemy = +1 bonus damage on first\nstrike each turn'}
               </Text>
-              <Text
-                style={[
-                  txtStyles.title,
-                  {
-                    fontSize: isCompact ? 24 : 15,
-                    marginTop: isCompact ? 14 : 8,
-                    textAlign: 'center',
-                  },
-                ]}
-              >
-                Good luck, mole!
-              </Text>
+              {isCompact && (
+                <Text
+                  style={[
+                    txtStyles.title,
+                    { fontSize: 24, marginTop: 14, textAlign: 'center' },
+                  ]}
+                >
+                  Good luck, mole!
+                </Text>
+              )}
             </View>
           </>
         );
@@ -564,7 +650,11 @@ export function TutorialModal({ visible, onClose }: TutorialModalProps) {
   };
 
   return (
-    <View style={overlayStyles.overlay}>
+    <TouchableOpacity
+      style={overlayStyles.overlay}
+      onPress={!isCompact && !isController ? handleClose : undefined}
+      activeOpacity={1}
+    >
       <Image source={BOOK_BG} style={overlayStyles.bookImage} resizeMode="stretch" />
       <View
         style={[
@@ -582,8 +672,36 @@ export function TutorialModal({ visible, onClose }: TutorialModalProps) {
           {currentPage + 1} / {TOTAL_PAGES}
         </Text>
       </View>
+      {!isController && !isCompact && currentPage === 4 && (
+        <Text style={[txtStyles.title, { position: 'absolute', top: 60, right: 52, fontSize: 13 }]}>
+          Good luck, mole!
+        </Text>
+      )}
+      {!isController && (
+        <View style={overlayStyles.pageNavButtons}>
+          <Text style={overlayStyles.tapToClose}>Tap anywhere to close</Text>
+          <TouchableOpacity
+            onPress={() => turnPage(-1)}
+            activeOpacity={currentPage === 0 ? 1 : 0.7}
+            style={currentPage === 0 && overlayStyles.pageNavBtnDisabled}
+          >
+            <ImageBackground source={BUTTON_V1} style={overlayStyles.pageNavBtn} resizeMode="stretch">
+              <Image source={ICON_NORMAL_SPEED} style={[overlayStyles.pageNavIcon, { transform: [{ scaleX: -1 }] }]} resizeMode="contain" />
+            </ImageBackground>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => turnPage(1)}
+            activeOpacity={currentPage === TOTAL_PAGES - 1 ? 1 : 0.7}
+            style={currentPage === TOTAL_PAGES - 1 && overlayStyles.pageNavBtnDisabled}
+          >
+            <ImageBackground source={BUTTON_V1} style={overlayStyles.pageNavBtn} resizeMode="stretch">
+              <Image source={ICON_NORMAL_SPEED} style={overlayStyles.pageNavIcon} resizeMode="contain" />
+            </ImageBackground>
+          </TouchableOpacity>
+        </View>
+      )}
       <ControllerHints hints={controllerHints} horizontal />
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -705,6 +823,34 @@ const overlayStyles = StyleSheet.create({
   },
   columns: {
     flexDirection: 'row',
+  },
+  pageNavButtons: {
+    position: 'absolute',
+    bottom: 65,
+    right: 45,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 6,
+  },
+  tapToClose: {
+    fontFamily: Typography.header,
+    fontSize: 11,
+    color: '#8b7355',
+    marginRight: 4,
+  },
+  pageNavBtn: {
+    width: 44,
+    height: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  pageNavBtnDisabled: {
+    opacity: 0.3,
+  },
+  pageNavIcon: {
+    width: 18,
+    height: 18,
+    marginBottom: 3,
   },
 });
 

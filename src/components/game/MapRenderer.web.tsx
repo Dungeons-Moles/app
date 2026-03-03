@@ -295,7 +295,8 @@ export const MapRenderer = memo(function MapRenderer({
   // T142: Calculate dynamic zoom to show tiles above/below player
   const variant = useScreenVariant();
   const targetVerticalTiles = variant === 'compact' ? 9 : 7;
-  const dynamicZoom = height / (targetVerticalTiles * TILE_SIZE);
+  const baseDynamicZoom = height / (targetVerticalTiles * TILE_SIZE);
+  const dynamicZoom = variant === 'compact' ? baseDynamicZoom : baseDynamicZoom * 1.11;
   const overviewZoom = variant === 'compact' ? overview.zoom * 2 : overview.zoom;
   const zoom = overview.active ? overviewZoom : dynamicZoom;
 
