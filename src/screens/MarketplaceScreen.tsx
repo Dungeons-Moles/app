@@ -666,6 +666,22 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
               </Text>
 
               <View style={[styles.purchaseArea, isCompact && compactStyles.purchaseArea]}>
+                {isCompact && (
+                  <View style={[styles.purchaseTokenTop, compactStyles.purchaseTokenTop]}>
+                    <PaymentTokenSelector
+                      tokens={payment.supportedTokens}
+                      selectedToken={payment.selectedToken}
+                      onSelectToken={payment.setSelectedToken}
+                      quote={payment.quote}
+                      isQuoteLoading={payment.isQuoteLoading}
+                      solUsdPrice={payment.solUsdPrice}
+                      requiredLamports={BigInt(RUN_PRICE_LAMPORTS)}
+                      isCompact={isCompact}
+                      isController={isController}
+                    />
+                  </View>
+                )}
+
                 <TouchableOpacity
                   onPress={handlePurchase}
                   activeOpacity={0.7}
@@ -695,19 +711,21 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
                   </ImageBackground>
                 </TouchableOpacity>
 
-                <View style={[styles.purchaseTokenLeft, isCompact && compactStyles.purchaseTokenLeft]}>
-                  <PaymentTokenSelector
-                    tokens={payment.supportedTokens}
-                    selectedToken={payment.selectedToken}
-                    onSelectToken={payment.setSelectedToken}
-                    quote={payment.quote}
-                    isQuoteLoading={payment.isQuoteLoading}
-                    solUsdPrice={payment.solUsdPrice}
-                    requiredLamports={BigInt(RUN_PRICE_LAMPORTS)}
-                    isCompact={isCompact}
-                    isController={isController}
-                  />
-                </View>
+                {!isCompact && (
+                  <View style={styles.purchaseTokenLeft}>
+                    <PaymentTokenSelector
+                      tokens={payment.supportedTokens}
+                      selectedToken={payment.selectedToken}
+                      onSelectToken={payment.setSelectedToken}
+                      quote={payment.quote}
+                      isQuoteLoading={payment.isQuoteLoading}
+                      solUsdPrice={payment.solUsdPrice}
+                      requiredLamports={BigInt(RUN_PRICE_LAMPORTS)}
+                      isCompact={isCompact}
+                      isController={isController}
+                    />
+                  </View>
+                )}
               </View>
 
               {purchaseError && (
@@ -898,6 +916,11 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     justifyContent: 'center',
   },
+  purchaseTokenTop: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
   sessionImage: {
     width: 175,
     height: 112,
@@ -1034,14 +1057,17 @@ const compactStyles = StyleSheet.create({
   },
   purchaseArea: {
     minHeight: 150,
+    gap: 12,
   },
-  purchaseTokenLeft: {
-    marginRight: 156,
+  purchaseTokenTop: {
+    width: '100%',
+    alignItems: 'center',
     transform: [{ scale: 1.05 }],
   },
   sessionImage: {
     width: 620,
     height: 397,
+    marginTop: -12,
   },
   priceText: {
     fontSize: 28,
