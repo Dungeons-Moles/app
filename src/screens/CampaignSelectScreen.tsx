@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   Animated,
+  InteractionManager,
 } from 'react-native';
 import { InlineModal } from '../components/InlineModal';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -412,22 +413,14 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
         const hasExistingSession = !isCachedMode && (await hasSessionForLevel(level.level));
 
         if (hasExistingSession) {
+          // Resume immediately on level click when a session already exists.
+          // This keeps UX consistent with "click level -> start loading".
           setPendingLevelWithSession(level);
-          const existingSessionPda = await getSessionPdaForLevel(level.level);
-          const startupState = existingSessionPda
-            ? await getSessionStartupState(existingSessionPda)
-            : null;
-          setPendingSessionStartupState(startupState);
+          setPendingSessionStartupState(null);
           setSessionInitStatusMessage(null);
-          if (
-            startupState === 'created' ||
-            startupState === 'delegated' ||
-            startupState === 'vrf_pending'
-          ) {
-            setShowSessionInitializingModal(true);
-          } else {
-            setShowSessionExistsModal(true);
-          }
+          setShowSessionExistsModal(false);
+          setShowSessionInitializingModal(false);
+          await resumeSession(level);
           return;
         }
       }
@@ -665,15 +658,23 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
       didRunCleanupThisFocusRef.current = false;
       return;
     }
+    if (!hasPendingCleanups) {
+      return;
+    }
     if (didRunCleanupThisFocusRef.current) {
       return;
     }
     didRunCleanupThisFocusRef.current = true;
     console.log('[CampaignSelect] Screen focused -> triggering processPendingCleanups');
-    processPendingCleanups().catch((err) => {
-      console.warn('[CampaignSelect] Failed to run pending cleanup processing:', err);
+    const task = InteractionManager.runAfterInteractions(() => {
+      processPendingCleanups().catch((err) => {
+        console.warn('[CampaignSelect] Failed to run pending cleanup processing:', err);
+      });
     });
-  }, [isScreenFocused, processPendingCleanups]);
+    return () => {
+      task.cancel();
+    };
+  }, [hasPendingCleanups, isScreenFocused, processPendingCleanups]);
 
   // Auto-scroll FlatList to keep cursor visible
   const onScrollToIndexFailed = useCallback(

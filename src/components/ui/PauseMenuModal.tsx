@@ -210,7 +210,7 @@ export function PauseMenuModal({
                         source={buttonV1Source}
                         style={[
                           styles.menuButtonImageSmall,
-                          isCompact && compactStyles.menuButtonImageSmall,
+                          isCompact && compactStyles.menuButtonImage,
                         ]}
                         resizeMode="stretch"
                       >

@@ -10,6 +10,7 @@ import {
   ScrollView,
   Alert,
   Animated,
+  InteractionManager,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useIsFocused } from '@react-navigation/native';
@@ -339,12 +340,17 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
 
   // Load pool and select first unlocked item on mount
   useEffect(() => {
-    loadDraftPoolFromProfile();
-    const allItems = getAllItems();
-    const firstUnlocked = allItems.find((item) => isItemUnlocked(item.id));
-    setSelectedItem(firstUnlocked || allItems[0] || null);
-    setSelectedItemset(getAllItemsetDefinitions()[0] || null);
-  }, []);
+    const task = InteractionManager.runAfterInteractions(() => {
+      loadDraftPoolFromProfile();
+      const all = getAllItems();
+      const firstUnlocked = all.find((item) => isItemUnlocked(item.id));
+      setSelectedItem(firstUnlocked || all[0] || null);
+      setSelectedItemset(getAllItemsetDefinitions()[0] || null);
+    });
+    return () => {
+      task.cancel();
+    };
+  }, [isItemUnlocked, loadDraftPoolFromProfile]);
 
   const checkItemUnlocked = useCallback(
     (id: string): boolean => isGuest || isItemUnlocked(id),
@@ -446,6 +452,13 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
   const isFocused = useIsFocused();
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const allItems = useMemo(() => getAllItems(), []);
+  const itemsByTag = useMemo(() => {
+    const grouped = {} as Record<ItemTag, DisplayItem[]>;
+    for (const tag of ALL_TAGS) {
+      grouped[tag] = getItemsByTag(tag);
+    }
+    return grouped;
+  }, []);
   const itemsPerRow = isCompact ? 5 : 5;
 
   const [cursorIdx, setCursorIdx] = useState(0);
@@ -457,11 +470,11 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
   const allItemsets = useMemo(() => getAllItemsetDefinitions(), []);
   const allItemsById = useMemo(() => {
     const map: Record<string, DisplayItem> = {};
-    getAllItems().forEach((item) => {
+    allItems.forEach((item) => {
       map[item.id] = item;
     });
     return map;
-  }, []);
+  }, [allItems]);
   const itemsetCursorRef = useRef<View>(null);
 
   // Sync cursor → selected item + auto-scroll into view
@@ -658,7 +671,7 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
               (() => {
                 let flatIdx = 0;
                 return ALL_TAGS.map((tag) => {
-                  const tagItems = getItemsByTag(tag);
+                  const tagItems = itemsByTag[tag] ?? [];
                   return (
                     <View key={tag} style={styles.tagSection}>
                       <Text

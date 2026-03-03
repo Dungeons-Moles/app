@@ -32,9 +32,11 @@ import {
   createGearInstance,
   getGearByRarity,
   getScaledEffectDescription,
+  getTierFromRarity,
   GEAR_DEFINITIONS,
   RARITY_MULTIPLIER,
 } from '../../data/gear';
+import { getGearStatsAtTier } from '../../data/gear-effects';
 import { SeededRNG } from '../engine/rng';
 import { getBossWeaknessTags } from './bosses';
 import { isGearInActivePool, createStarterBitmask } from '../../services/solana/types/item_pool';
@@ -127,12 +129,24 @@ function formatItemStats(stats: {
   return parts.join(', ') || 'No stats';
 }
 
+function addItemStats(base: ItemStats, extra: ItemStats): ItemStats {
+  return {
+    atk: (base.atk ?? 0) + (extra.atk ?? 0) || undefined,
+    arm: (base.arm ?? 0) + (extra.arm ?? 0) || undefined,
+    spd: (base.spd ?? 0) + (extra.spd ?? 0) || undefined,
+    dig: (base.dig ?? 0) + (extra.dig ?? 0) || undefined,
+    hp: (base.hp ?? 0) + (extra.hp ?? 0) || undefined,
+  };
+}
+
 /**
  * Generates a description for a gear item including stats and effects
  */
 function getGearDescription(gear: Gear): string {
-  const gearDef = GEAR_DEFINITIONS[gear.id];
-  const statsDesc = formatItemStats(gear.stats);
+  const tier = getTierFromRarity(gear.currentRarity);
+  const battleStartStats = getGearStatsAtTier(gear.id, tier);
+  const displayStats = addItemStats(gear.stats, battleStartStats);
+  const statsDesc = formatItemStats(displayStats);
   const effectDesc = getScaledEffectDescription(gear.id, gear.currentRarity);
   if (effectDesc) {
     return `${statsDesc}\n${effectDesc}`;
