@@ -25,10 +25,13 @@ import { ControllerKeyboard } from '../components/ui/ControllerKeyboard';
 import { useInputMode } from '../hooks/useInputMode';
 import { useAudio } from '../contexts/AudioContext';
 import { APP_VERSION } from '../constants/app';
+import { Typography } from '../theme/typography';
 
 type AccountScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Account'>;
 };
+
+const backButtonSource = require('../../assets/ui/buttons/button-v1.png');
 
 const WALLET_IDS: SupportedWallet[] =
   process.env.EXPO_PUBLIC_SHOW_DEV_WALLET === 'true'
@@ -506,6 +509,24 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
         </View>
       </View>
 
+      {/* Back button - mobile only, on Create Profile screen */}
+      {showCreateProfile && !isCompact && (
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={handleGoBackToSignIn}
+          activeOpacity={0.7}
+          disabled={showLoading}
+        >
+          <ImageBackground
+            source={backButtonSource}
+            style={styles.backButtonImage}
+            resizeMode="stretch"
+          >
+            <Text style={styles.backButtonText}>Back</Text>
+          </ImageBackground>
+        </TouchableOpacity>
+      )}
+
       {/* On-screen keyboard for controller mode */}
       <ControllerKeyboard
         visible={showKeyboard}
@@ -659,7 +680,7 @@ const styles = StyleSheet.create({
   },
   topSlot: {
     position: 'absolute',
-    top: '16%',
+    top: '20%',
     width: '80%',
     alignItems: 'center',
   },
@@ -684,6 +705,22 @@ const styles = StyleSheet.create({
     bottom: '15%',
     width: '70%',
     alignItems: 'center',
+  },
+  backButton: {
+    position: 'absolute',
+    bottom: 16,
+    left: 16,
+  },
+  backButtonImage: {
+    width: 80,
+    height: 45,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  backButtonText: {
+    fontFamily: Typography.button,
+    fontSize: 16,
+    marginBottom: 4,
   },
   guestText: {
     fontSize: 14,

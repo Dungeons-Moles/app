@@ -485,17 +485,40 @@ export async function checkSessionSignerBalance(
 }
 
 /**
+ * Confirms an ER transaction by polling for processed status.
+ * Exported so callers can defer confirmation and run it in parallel with other work.
+ */
+export async function confirmErTransaction(
+  connection: Connection,
+  signature: string
+): Promise<void> {
+  const erStatus = await waitForErProcessedStatus(connection, signature);
+  if (!erStatus) {
+    throw new Error(
+      `[sessionSignerWallet] ER transaction ${signature} did not reach processed status before timeout`
+    );
+  }
+  if (erStatus.err) {
+    throw new Error(
+      `[sessionSignerWallet] Transaction ${signature} failed on-chain: ${formatErr(erStatus.err)}`
+    );
+  }
+}
+
+/**
  * Signs and sends a transaction using the sessionSigner keypair.
  *
  * @param connection - Solana connection
  * @param transaction - Transaction to send
  * @param sessionSignerKeypair - SessionSigner keypair for signing
+ * @param options - Optional: skipErConfirmation to defer confirmation to the caller
  * @returns Transaction signature
  */
 export async function sendSessionSignerTransaction(
   connection: Connection,
   transaction: Transaction,
-  sessionSignerKeypair: Keypair
+  sessionSignerKeypair: Keypair,
+  options?: { skipErConfirmation?: boolean }
 ): Promise<string> {
   const erConnection = isErConnection(connection);
   const baseInstructions = [...transaction.instructions];
@@ -557,21 +580,16 @@ export async function sendSessionSignerTransaction(
       console.log(`[perf] sendTransaction: ${tSent - tSend}ms (router=${isRouterPath})`);
 
       if (erConnection) {
+        if (options?.skipErConfirmation) {
+          // Caller will handle confirmation (e.g., run it in parallel with state fetch).
+          console.log(`[perf] sendOnly: ${tSent - tSend}ms (confirmation deferred)`);
+          return signature;
+        }
         // ER processes transactions in ~10-50ms. From high-latency locations,
         // the tx is already confirmed by the time the first poll arrives, so
         // a simple 40ms-interval poll finds it immediately. This is faster
         // than websocket confirmTransaction which has subscription setup overhead.
-        const erStatus = await waitForErProcessedStatus(connection, signature);
-        if (!erStatus) {
-          throw new Error(
-            `[sessionSignerWallet] ER transaction ${signature} did not reach processed status before timeout`
-          );
-        }
-        if (erStatus.err) {
-          throw new Error(
-            `[sessionSignerWallet] Transaction ${signature} failed on-chain: ${formatErr(erStatus.err)}`
-          );
-        }
+        await confirmErTransaction(connection, signature);
         console.log(`[perf] confirmTransaction: ${Date.now() - tSent}ms | total send+confirm: ${Date.now() - tSend}ms`);
         return signature;
       }

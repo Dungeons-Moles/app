@@ -16,7 +16,7 @@ import {
 } from '@solana/web3.js';
 import { Program } from '@coral-xyz/anchor';
 import { SOLANA_CONFIG } from './config';
-import { sendSessionSignerTransaction } from './sessionSigner';
+import { sendSessionSignerTransaction, confirmErTransaction } from './sessionSigner';
 import {
   deriveMapEnemiesPda,
   deriveInventoryPda,
@@ -128,7 +128,7 @@ export async function initializeGameState(
  * @param sessionPda - GameSession PDA
  * @param sessionSignerKeypair - SessionSigner wallet keypair (signer)
  * @param params - Move parameters (targetX, targetY)
- * @returns Transaction signature
+ * @returns Signature and connection for deferred confirmation
  */
 export async function movePlayer(
   connection: Connection,
@@ -137,7 +137,7 @@ export async function movePlayer(
   sessionPda: PublicKey,
   sessionSignerKeypair: Keypair,
   params: MovePlayerParams
-): Promise<string> {
+): Promise<{ signature: string; connection: Connection }> {
   const tStart = Date.now();
   const [mapEnemiesPda] = deriveMapEnemiesPda(sessionPda);
   const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
@@ -205,10 +205,13 @@ export async function movePlayer(
     ComputeBudgetProgram.setComputeUnitLimit({ units: 1_000_000 })
   );
 
-  // Await confirmation — on-chain-first principle requires confirmed state before UI update
-  const signature = await sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair);
+  // Skip ER confirmation here — caller runs it in parallel with state fetch
+  // to overlap the round trips (saves ~150ms from high-latency locations).
+  const signature = await sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair, {
+    skipErConfirmation: true,
+  });
 
-  return signature;
+  return { signature, connection };
 }
 
 /**

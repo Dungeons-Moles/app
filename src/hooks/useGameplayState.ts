@@ -38,7 +38,7 @@ import type { CombatEnemyInfo } from '@/services/solana/eventParser';
 import type { BackendCombatLogEntry } from '@/services/solana/types/combat_events';
 import { parseGauntletCombatVisualEvent } from '@/services/solana/gauntlet';
 import type { GauntletCombatVisualEvent } from '@/services/solana/gauntlet';
-import { sendSessionSignerTransaction } from '@/services/solana/sessionSigner';
+import { sendSessionSignerTransaction, confirmErTransaction } from '@/services/solana/sessionSigner';
 import { parseWithRetry } from '@/utils/retry';
 
 // ============================================================================
@@ -356,7 +356,7 @@ export function useGameplayState(): UseGameplayStateReturn {
       try {
         const t0 = Date.now();
         const sessionPda = currentGameState.session;
-        const signature = await movePlayer(
+        const moveResult = await movePlayer(
           gameplayConnection,
           program,
           gameStatePda,
@@ -364,28 +364,31 @@ export function useGameplayState(): UseGameplayStateReturn {
           sessionSignerKeypair,
           params
         );
+        const { signature, connection: moveConnection } = moveResult;
         const t1 = Date.now();
-        console.log(`[perf] movePlayer TX: ${t1 - t0}ms`);
+        console.log(`[perf] movePlayer send: ${t1 - t0}ms`);
 
-        // Fire state fetch and a single quick combat log parse in parallel.
-        // The quick parse uses 1 attempt with no delay; if combat actually occurred
-        // (HP changed), we do a follow-up retry below.
+        // Run confirmation, state fetch, and combat log parse ALL in parallel.
+        // The ER processes the tx in ~50ms, so by the time the fetch arrives
+        // (~150ms from Brazil), the state already reflects the move.
+        // Confirmation still runs — it just doesn't block the fetch.
+        const confirmPromise = confirmErTransaction(moveConnection, signature);
         const statePromise = fetchGameState(program, gameStatePda);
-        const combatPromise =
-          signature
-            ? parseCombatLogWithRetry(gameplayConnection, program, signature, 'move', {
-                maxAttempts: 1,
-                delayMs: 0,
-                quiet: true,
-              })
-            : Promise.resolve({ combatLog: undefined, combatEnemyInfo: undefined });
+        const combatPromise = parseCombatLogWithRetry(
+          gameplayConnection,
+          program,
+          signature,
+          'move',
+          { maxAttempts: 1, delayMs: 0, quiet: true }
+        );
 
-        const [confirmedState, combatResult] = await Promise.all([
+        const [, confirmedState, combatResult] = await Promise.all([
+          confirmPromise,
           statePromise,
           combatPromise,
         ]);
         const t2 = Date.now();
-        console.log(`[perf] fetchState+parseCombat (parallel): ${t2 - t1}ms | total so far: ${t2 - t0}ms`);
+        console.log(`[perf] confirm+fetch+parse (parallel): ${t2 - t1}ms | total so far: ${t2 - t0}ms`);
 
         // Debug: Log fetched HP to track sync issues
         console.log('[useGameplayState] move() fetched state:', {
