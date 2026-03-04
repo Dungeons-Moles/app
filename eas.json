@@ -1,7 +1,26 @@
 {
     "build": {
         "preview": {
-            "android": { "buildType": "apk" }
+            "android": { "buildType": "apk" },
+            "env": {
+                "EXPO_PUBLIC_SOLANA_CLUSTER": "devnet",
+                "EXPO_PUBLIC_SOLANA_RPC_URL": "https://api.devnet.solana.com",
+                "EXPO_PUBLIC_USE_MAGIC_ROUTER": "true",
+                "EXPO_PUBLIC_ROUTER_ENDPOINT": "https://devnet-router.magicblock.app/",
+                "EXPO_PUBLIC_WS_ROUTER_ENDPOINT": "wss://devnet-router.magicblock.app/",
+                "EXPO_PUBLIC_DELEGATION_REGION": "auto",
+                "EXPO_PUBLIC_SHOW_DEV_WALLET": "false",
+                "EXPO_PUBLIC_DISABLE_CONSOLE_LOGS": "false",
+                "EXPO_PUBLIC_KEEP_CONSOLE_ERRORS": "true",
+                "EXPO_PUBLIC_PLAYER_PROFILE_PROGRAM_ID": "Ch3bbL1oQk2z5rX1jiun3KuSWZqnXZ1MnrfrtKj4MKun",
+                "EXPO_PUBLIC_SESSION_MANAGER_PROGRAM_ID": "6w1XVMSTRmZU9AWCKVvKohGAHSFMENhda7vqhKPQ8TPn",
+                "EXPO_PUBLIC_MAP_GENERATOR_PROGRAM_ID": "GCy5GqvnJN99rgGtV6fMn8NtL9E7RoAyHDGzQv8me65j",
+                "EXPO_PUBLIC_GAMEPLAY_STATE_PROGRAM_ID": "C8hK4qsqsSYQeqyXuTPTUUS3T7N74WnZCuzvChTpK1Mo",
+                "EXPO_PUBLIC_PLAYER_INVENTORY_PROGRAM_ID": "APRnvp41jEYnT1EnrdBTim7bodqE6v2RSgzv1CG7Qv7u",
+                "EXPO_PUBLIC_POI_SYSTEM_PROGRAM_ID": "KiT25b86BSAF8yErcWwyuuWNaoXMpNf859NjH41TpSj",
+                "EXPO_PUBLIC_NFT_MARKETPLACE_PROGRAM_ID": "ApUAEEKYsRMjxoMA65WV2xiG8xGwWzFhHjTMGGefcumK",
+                "EXPO_PUBLIC_TREASURY_PUBKEY": "5LvEA4tH5H5DtWCxa3FcauokxAycvafX9ruvcT2mEXt8"
+            }
         }
     }
 }
