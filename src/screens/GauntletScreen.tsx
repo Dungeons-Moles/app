@@ -36,6 +36,7 @@ import {
 } from '@/utils/sessionSetupSignal';
 import { PaymentTokenSelector, PaymentConfirmationModal } from '@/components/payment';
 import { InlineModal } from '@/components/InlineModal';
+import { BlurView } from 'expo-blur';
 
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.png');
 const STAINS_BACKGROUND = require('../../assets/ui/backgrounds/stains-background.png');
@@ -49,6 +50,7 @@ const ECHO_FIGHT = require('../../assets/ui/illustrations/echo-fight.png');
 const PAPER_PANEL = require('../../assets/ui/panels/paper-panel.png');
 const iconASource = require('../../assets/ui/control-buttons/a.png');
 const iconBSource = require('../../assets/ui/control-buttons/b.png');
+const engineImageSource = require('../../assets/ui/illustrations/engine.png');
 const iconXSource = require('../../assets/ui/control-buttons/x.png');
 
 type GauntletScreenProps = {
@@ -278,53 +280,102 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
     <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
       <ImageBackground source={BACKGROUND_IMAGE} style={styles.backgroundImage} resizeMode="cover">
         <Image source={STAINS_BACKGROUND} style={styles.stainsOverlay} resizeMode="cover" />
+        {!isCompact && !isController && (
+          <View style={styles.topRight}>
+            <TouchableOpacity
+              onPress={() => {
+                playSfx('ui_click');
+                navigation.navigate('GauntletRanking');
+              }}
+              activeOpacity={0.7}
+            >
+              <ImageBackground
+                source={buttonV2Source}
+                style={[styles.headerButton]}
+                resizeMode="stretch"
+              >
+                <Text style={[styles.headerButtonText]}>Ranking</Text>
+              </ImageBackground>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => {
+                playSfx('ui_click');
+                setShowSettingsModal(true);
+              }}
+              activeOpacity={0.7}
+            >
+              <ImageBackground
+                source={buttonV1Source}
+                style={styles.settingsBtn}
+                resizeMode="stretch"
+              >
+                <Image
+                  source={engineImageSource}
+                  style={styles.settingsIconImage}
+                  resizeMode="contain"
+                />
+              </ImageBackground>
+            </TouchableOpacity>
+          </View>
+        )}
+        {!isCompact && !isController && (
+          <TouchableOpacity onPress={handleBack} activeOpacity={0.7} style={styles.backButtonAbsolute}>
+            <ImageBackground source={buttonV1Source} style={styles.backButtonMobile} resizeMode="stretch">
+              <Text style={styles.backButtonTextMobile}>Back</Text>
+            </ImageBackground>
+          </TouchableOpacity>
+        )}
         <View style={styles.content}>
           {/* Header */}
           <View style={[styles.header, isCompact && compactStyles.header]}>
-            {isController ? (
-              <View style={[styles.headerButton, isCompact && compactStyles.headerButton]} />
-            ) : (
-              <TouchableOpacity onPress={handleBack} activeOpacity={0.7}>
-                <ImageBackground
-                  source={buttonV1Source}
-                  style={[styles.headerButton, isCompact && compactStyles.headerButton]}
-                  resizeMode="stretch"
-                >
-                  <Text
-                    style={[styles.headerButtonText, isCompact && compactStyles.headerButtonText]}
+            {isCompact ? (
+              isController ? (
+                <View style={[styles.headerButton, compactStyles.headerButton]} />
+              ) : (
+                <TouchableOpacity onPress={handleBack} activeOpacity={0.7}>
+                  <ImageBackground
+                    source={buttonV1Source}
+                    style={[styles.headerButton, compactStyles.headerButton]}
+                    resizeMode="stretch"
                   >
-                    Back
-                  </Text>
-                </ImageBackground>
-              </TouchableOpacity>
+                    <Text style={[styles.headerButtonText, compactStyles.headerButtonText]}>
+                      Back
+                    </Text>
+                  </ImageBackground>
+                </TouchableOpacity>
+              )
+            ) : (
+              <View style={styles.headerButton} />
             )}
 
             <View style={styles.headerSpacer} />
 
-            {isController ? (
-              <View style={[styles.headerButton, isCompact && compactStyles.headerButton]} />
-            ) : (
-              <TouchableOpacity
-                onPress={() => navigation.navigate('GauntletRanking')}
-                activeOpacity={0.7}
-              >
-                <ImageBackground
-                  source={buttonV2Source}
-                  style={[styles.headerButton, isCompact && compactStyles.headerButton]}
-                  resizeMode="stretch"
+            {isCompact && (
+              isController ? (
+                <View style={[styles.headerButton, compactStyles.headerButton]} />
+              ) : (
+                <TouchableOpacity
+                  onPress={() => navigation.navigate('GauntletRanking')}
+                  activeOpacity={0.7}
                 >
-                  <Text
-                    style={[styles.headerButtonText, isCompact && compactStyles.headerButtonText]}
+                  <ImageBackground
+                    source={buttonV2Source}
+                    style={[styles.headerButton, compactStyles.headerButton]}
+                    resizeMode="stretch"
                   >
-                    Ranking
-                  </Text>
-                </ImageBackground>
-              </TouchableOpacity>
+                    <Text
+                      style={[styles.headerButtonText, compactStyles.headerButtonText]}
+                    >
+                      Ranking
+                    </Text>
+                  </ImageBackground>
+                </TouchableOpacity>
+              )
             )}
           </View>
 
           {/* Title */}
-          <View style={styles.titleRow}>
+          <View style={[styles.titleRow, isCompact && compactStyles.titleRow]}>
             <Image
               source={GAUNTLET_TITLE}
               style={[styles.titleImage, isCompact && compactStyles.titleImage]}
@@ -333,8 +384,11 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
           </View>
 
           {/* Panel with all content overlaid */}
-          <View style={styles.centerContent}>
-            <View style={[styles.panelWrapper, isCompact && compactStyles.panelWrapper]}>
+          <View style={[styles.centerContent, isCompact && compactStyles.centerContent]}>
+            <View style={[
+              styles.panelWrapper,
+              isCompact && compactStyles.panelWrapper,
+            ]}>
               <Image source={PVP_MODES_PANEL} style={styles.pvpModesPanel} resizeMode="contain" />
               <View style={[styles.panelOverlay, isCompact && compactStyles.panelOverlay]}>
                 <View
@@ -431,19 +485,41 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
             </View>
 
             {/* Token selector — below the panel */}
-            <View style={[styles.tokenSelectorWrap, isCompact && compactStyles.tokenSelectorWrap]}>
-              <PaymentTokenSelector
-                tokens={payment.supportedTokens}
-                selectedToken={payment.selectedToken}
-                onSelectToken={payment.setSelectedToken}
-                quote={payment.quote}
-                isQuoteLoading={payment.isQuoteLoading}
-                solUsdPrice={payment.solUsdPrice}
-                requiredLamports={BigInt(GAUNTLET_ENTRY_LAMPORTS)}
-                isCompact={isCompact}
-                isController={isController}
-              />
-            </View>
+            {isCompact ? (
+              <View style={compactStyles.tokenSelectorWrap}>
+                <PaymentTokenSelector
+                  tokens={payment.supportedTokens}
+                  selectedToken={payment.selectedToken}
+                  onSelectToken={payment.setSelectedToken}
+                  quote={payment.quote}
+                  isQuoteLoading={payment.isQuoteLoading}
+                  solUsdPrice={payment.solUsdPrice}
+                  requiredLamports={BigInt(GAUNTLET_ENTRY_LAMPORTS)}
+                  isCompact={isCompact}
+                  isController={isController}
+                />
+              </View>
+            ) : (
+              <BlurView
+                intensity={40}
+                tint="light"
+                experimentalBlurMethod="dimezisBlurView"
+                style={[styles.tokenSelectorWrap, styles.tokenSelectorBlur]}
+              >
+                <PaymentTokenSelector
+                  tokens={payment.supportedTokens}
+                  selectedToken={payment.selectedToken}
+                  onSelectToken={payment.setSelectedToken}
+                  quote={payment.quote}
+                  isQuoteLoading={payment.isQuoteLoading}
+                  solUsdPrice={payment.solUsdPrice}
+                  requiredLamports={BigInt(GAUNTLET_ENTRY_LAMPORTS)}
+                  isCompact={false}
+                  isController={isController}
+                  grid
+                />
+              </BlurView>
+            )}
           </View>
         </View>
       </ImageBackground>
@@ -554,10 +630,28 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginTop: 0,
   },
+  backButtonAbsolute: {
+    position: 'absolute',
+    top: 24,
+    left: 16,
+    zIndex: 10,
+  },
+  backButtonMobile: {
+    width: 90,
+    height: 45,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  backButtonTextMobile: {
+    fontFamily: Typography.button,
+    fontSize: 14,
+    color: '#3d2b1f',
+    marginBottom: 4,
+  },
   headerSpacer: { flex: 1 },
   headerButton: {
     width: 90,
-    height: 36,
+    height: 45,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -569,18 +663,19 @@ const styles = StyleSheet.create({
   },
   titleRow: {
     alignItems: 'center',
+    marginTop: -8,
   },
   titleImage: {
-    width: 265,
-    height: 58,
+    width: 220,
+    height: 48,
   },
   centerContent: {
     flex: 1,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   panelWrapper: {
-    width: '75%',
-    maxWidth: 300,
+    width: 300,
     aspectRatio: 1.2,
   },
   pvpModesPanel: {
@@ -611,6 +706,16 @@ const styles = StyleSheet.create({
     marginLeft: 34,
     marginTop: 9,
   },
+  panelIcon: {
+    width: 40,
+    height: 40,
+  },
+  panelButtons: {
+    flexDirection: 'row',
+    gap: 62,
+    marginTop: 53,
+    marginLeft: 32,
+  },
   panelTextFee: {
     fontFamily: Typography.number,
     fontSize: 14,
@@ -622,25 +727,57 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#3d2b1f',
   },
-  panelIcon: {
-    width: 40,
-    height: 40,
-  },
   tokenSelectorWrap: {
+    position: 'absolute',
+    right: 32,
+    top: '36%',
+    transform: [{ translateY: -40 }],
     alignItems: 'center',
-    marginTop: 0,
   },
-  panelButtons: {
-    flexDirection: 'row',
-    gap: 62,
-    marginTop: 53,
-    marginLeft: 32,
+  tokenSelectorBlur: {
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: 'rgba(61, 43, 31, 0.2)',
+    padding: 10,
+    overflow: 'hidden',
   },
   panelButtonText: {
     fontFamily: Typography.button,
     fontWeight: 'bold',
     fontSize: 18,
     color: '#3d2b1f',
+  },
+  topRight: {
+    position: 'absolute',
+    top: 24,
+    right: 24,
+    zIndex: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  topRightButton: {
+    width: 120,
+    height: 48,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  topRightButtonText: {
+    fontFamily: Typography.button,
+    fontSize: 14,
+    color: '#3d2b1f',
+    marginBottom: 4,
+  },
+  settingsBtn: {
+    width: 60,
+    height: 60,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  settingsIconImage: {
+    width: 30,
+    height: 30,
+    marginBottom: 6,
   },
   modalOverlay: {
     flex: 1,
@@ -718,17 +855,22 @@ const compactStyles = StyleSheet.create({
     fontSize: 28,
     marginBottom: 6,
   },
+  titleRow: {
+    marginTop: 0,
+  },
   titleImage: {
     width: 510,
     height: 105,
     marginBottom: 12,
   },
+  centerContent: {},
   panelWrapper: {
     width: '95%',
     maxWidth: 900,
     aspectRatio: 1.2,
   },
   panelOverlay: {
+    ...StyleSheet.absoluteFillObject,
     padding: 0,
   },
   panelRowFee: {
@@ -739,6 +881,7 @@ const compactStyles = StyleSheet.create({
   panelRowPrizes: {
     marginTop: -20,
     marginRight: 112,
+    alignSelf: 'flex-end',
     gap: 72,
   },
   panelRowEcho: {
@@ -753,16 +896,18 @@ const compactStyles = StyleSheet.create({
     width: 162,
     height: 162,
   },
-  tokenSelectorWrap: {
-    marginTop: 10,
-  },
   panelButtons: {
+    flexDirection: 'row',
     marginTop: 150,
     marginLeft: 146,
     gap: 190,
   },
   panelButtonText: {
     fontSize: 52,
+  },
+  tokenSelectorWrap: {
+    alignItems: 'center',
+    marginTop: 10,
   },
   modalContent: {
     width: 860,

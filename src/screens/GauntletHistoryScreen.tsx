@@ -39,6 +39,7 @@ const RECTANGLE_FRAME = require('../../assets/ui/frames/rectangle.png');
 const GREEN_BRUSH = require('../../assets/ui/illustrations/green-brush.png');
 const RED_BRUSH = require('../../assets/ui/illustrations/red-brush.png');
 const buttonV1Source = require('../../assets/ui/buttons/button-v1.png');
+const engineImageSource = require('../../assets/ui/illustrations/engine.png');
 
 // On-chain base values (ATK/ARM/SPD start at 0; bonuses come from BattleStart log entries)
 const PVP_BASE_HP = 20;
@@ -79,6 +80,7 @@ function buildPvpCombatant(
 const PAGE_SIZE = 60;
 const MAX_PAGES = 8;
 const DEFAULT_MATCHES = 25;
+
 
 type GauntletHistoryScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'GauntletHistory'>;
@@ -324,25 +326,34 @@ export function GauntletHistoryScreen({ navigation }: GauntletHistoryScreenProps
     <View style={styles.container}>
       <ImageBackground source={BACKGROUND_IMAGE} style={styles.backgroundImage} resizeMode="cover">
         <Image source={STAINS_BACKGROUND} style={styles.stainsOverlay} resizeMode="cover" />
+        {!isCompact && !isController && (
+          <TouchableOpacity onPress={() => { playSfx('ui_back'); navigation.goBack(); }} activeOpacity={0.7} style={styles.backButtonAbsolute}>
+            <ImageBackground source={buttonV1Source} style={styles.backButtonMobile} resizeMode="stretch">
+              <Text style={styles.backButtonTextMobile}>Back</Text>
+            </ImageBackground>
+          </TouchableOpacity>
+        )}
         <View style={styles.content}>
           {/* Header */}
           <View style={[styles.header, isCompact && compactStyles.header]}>
-            {isController ? (
-              <View style={[styles.headerButton, isCompact && compactStyles.headerButton]} />
-            ) : (
-              <TouchableOpacity onPress={() => navigation.goBack()} activeOpacity={0.7}>
-                <ImageBackground
-                  source={buttonV1Source}
-                  style={[styles.headerButton, isCompact && compactStyles.headerButton]}
-                  resizeMode="stretch"
-                >
-                  <Text
-                    style={[styles.headerButtonText, isCompact && compactStyles.headerButtonText]}
+            {isCompact ? (
+              isController ? (
+                <View style={[styles.headerButton, compactStyles.headerButton]} />
+              ) : (
+                <TouchableOpacity onPress={() => navigation.goBack()} activeOpacity={0.7}>
+                  <ImageBackground
+                    source={buttonV1Source}
+                    style={[styles.headerButton, compactStyles.headerButton]}
+                    resizeMode="stretch"
                   >
-                    Back
-                  </Text>
-                </ImageBackground>
-              </TouchableOpacity>
+                    <Text style={[styles.headerButtonText, compactStyles.headerButtonText]}>
+                      Back
+                    </Text>
+                  </ImageBackground>
+                </TouchableOpacity>
+              )
+            ) : (
+              <View style={styles.headerButton} />
             )}
             {!isCompact && (
               <View style={styles.titleRow}>
@@ -354,7 +365,28 @@ export function GauntletHistoryScreen({ navigation }: GauntletHistoryScreenProps
                 />
               </View>
             )}
-            {!isCompact && <View style={styles.headerButtonPlaceholder} />}
+            {!isCompact && !isController && (
+              <TouchableOpacity
+                onPress={() => {
+                  playSfx('ui_click');
+                  setShowSettingsModal(true);
+                }}
+                activeOpacity={0.7}
+              >
+                <ImageBackground
+                  source={buttonV1Source}
+                  style={styles.settingsBtn}
+                  resizeMode="stretch"
+                >
+                  <Image
+                    source={engineImageSource}
+                    style={styles.settingsIconImage}
+                    resizeMode="contain"
+                  />
+                </ImageBackground>
+              </TouchableOpacity>
+            )}
+            {!isCompact && isController && <View style={styles.headerButtonPlaceholder} />}
             {isCompact && <View style={styles.headerSpacer} />}
           </View>
 
@@ -516,8 +548,37 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  backButtonAbsolute: {
+    position: 'absolute',
+    top: 24,
+    left: 16,
+    zIndex: 10,
+  },
+  backButtonMobile: {
+    width: 90,
+    height: 45,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  backButtonTextMobile: {
+    fontFamily: Typography.button,
+    fontSize: 14,
+    color: '#3d2b1f',
+    marginBottom: 4,
+  },
   headerButtonPlaceholder: {
     width: 90,
+  },
+  settingsBtn: {
+    width: 60,
+    height: 60,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  settingsIconImage: {
+    width: 30,
+    height: 30,
+    marginBottom: 6,
   },
   headerSpacer: { flex: 1 },
   headerButtonText: {

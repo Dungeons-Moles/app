@@ -9,6 +9,7 @@ import {
   ImageBackground,
   TextInput,
   Animated,
+  Platform,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
@@ -51,6 +52,7 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
   const { playBgm, playSfx, isInitialLoading } = useAudio();
   const screenVariant = useScreenVariant();
   const isCompact = screenVariant === 'compact';
+  const isNative = Platform.OS !== 'web';
   const isFocused = useIsFocused();
   const isController = useInputMode() === 'controller';
   const [selectedWallet, setSelectedWallet] = useState<SupportedWallet>('Jupiter');
@@ -338,7 +340,7 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
             ]}
             resizeMode="contain"
           >
-            <View style={[styles.topSlot, isCompact && { top: '19%' }]}>
+            <View style={[styles.topSlot, isCompact ? { top: '19%' } : { top: '15%' }]}>
               {showWalletSelection ? (
                 <>
                   <Text style={[styles.profileLabel, isCompact && { fontSize: 22 }]}>
@@ -357,20 +359,26 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
                         style={[
                           styles.walletOption,
                           isCompact && { width: 96, height: 96 },
-                          id === selectedWallet && styles.walletOptionSelected,
+                          !isNative && id === selectedWallet && styles.walletOptionSelected,
                         ]}
-                        onPress={() => {
-                          playSfx('ui_click');
-                          setSelectedWallet(id);
-                        }}
-                        activeOpacity={0.7}
+                        onPress={
+                          !isNative
+                            ? () => {
+                                playSfx('ui_click');
+                                setSelectedWallet(id);
+                              }
+                            : undefined
+                        }
+                        activeOpacity={!isNative ? 0.7 : 1}
                         disabled={showLoading}
                       >
                         <Icon
                           color={
-                            id === selectedWallet
-                              ? styles.walletIconActive.color
-                              : styles.walletIconInactive.color
+                            !isNative
+                              ? id === selectedWallet
+                                ? styles.walletIconActive.color
+                                : styles.walletIconInactive.color
+                              : styles.walletIconActive.color
                           }
                           size={isCompact ? 64 : 36}
                         />
@@ -381,13 +389,19 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
                         style={[
                           styles.walletOption,
                           isCompact && { width: 96, height: 96 },
-                          'DevKeypair' === selectedWallet && styles.walletOptionSelected,
+                          !isNative &&
+                            'DevKeypair' === selectedWallet &&
+                            styles.walletOptionSelected,
                         ]}
-                        onPress={() => {
-                          playSfx('ui_click');
-                          setSelectedWallet('DevKeypair');
-                        }}
-                        activeOpacity={0.7}
+                        onPress={
+                          !isNative
+                            ? () => {
+                                playSfx('ui_click');
+                                setSelectedWallet('DevKeypair');
+                              }
+                            : undefined
+                        }
+                        activeOpacity={!isNative ? 0.7 : 1}
                         disabled={showLoading}
                       >
                         <Text
@@ -395,9 +409,11 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
                             fontSize: isCompact ? 18 : 10,
                             fontWeight: 'bold',
                             color:
-                              'DevKeypair' === selectedWallet
-                                ? styles.walletIconActive.color
-                                : styles.walletIconInactive.color,
+                              !isNative
+                                ? 'DevKeypair' === selectedWallet
+                                  ? styles.walletIconActive.color
+                                  : styles.walletIconInactive.color
+                                : styles.walletIconActive.color,
                             textAlign: 'center',
                           }}
                         >
@@ -406,9 +422,11 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
                       </TouchableOpacity>
                     )}
                   </View>
-                  <Text style={[styles.walletHint, isCompact && { fontSize: 20 }]}>
-                    Select a wallet to sign in
-                  </Text>
+                  {!isNative && (
+                    <Text style={[styles.walletHint, isCompact && { fontSize: 20 }]}>
+                      Select a wallet to sign in
+                    </Text>
+                  )}
                 </>
               ) : isCheckingExistingProfile ? (
                 <View style={{ marginTop: 32 }}>
@@ -419,7 +437,7 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
                     Verifying account...
                   </Text>
                 </View>
-              ) : (
+              ) : profile ? null : (
                 <>
                   <Text
                     style={[styles.profileLabel, isCompact && { fontSize: 22, marginBottom: 20 }]}
@@ -686,7 +704,7 @@ const styles = StyleSheet.create({
   },
   buttonSlot: {
     position: 'absolute',
-    bottom: '20%',
+    bottom: '23%',
     width: '50%',
     aspectRatio: 3.2,
   },
@@ -702,7 +720,7 @@ const styles = StyleSheet.create({
   },
   guestSlot: {
     position: 'absolute',
-    bottom: '15%',
+    bottom: '14%',
     width: '70%',
     alignItems: 'center',
   },

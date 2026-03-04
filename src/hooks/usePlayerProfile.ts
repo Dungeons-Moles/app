@@ -95,10 +95,22 @@ export function usePlayerProfile() {
       }
 
       const highestLevel = account.highestLevelUnlocked ?? account.currentLevel ?? 1;
+      console.log('[usePlayerProfile] account.name raw:', JSON.stringify(account.name), typeof account.name);
       // On-chain is 1-indexed (level 1 = first level), frontend is 0-indexed
       const profileData: OnChainPlayerProfile = {
         owner: account.owner,
-        name: account.name,
+        name: (() => {
+          const raw = account.name;
+          if (typeof raw !== 'string') {
+            return Buffer.from(raw).toString('utf-8').replace(/\0/g, '');
+          }
+          // Anchor on Android may serialize byte arrays as comma-separated numbers
+          if (/^\d+(,\d+)*$/.test(raw)) {
+            const bytes = raw.split(',').map(Number);
+            return Buffer.from(bytes).toString('utf-8').replace(/\0/g, '');
+          }
+          return raw;
+        })(),
         totalRuns: account.totalRuns,
         currentLevel: highestLevel - 1,
         highestLevelUnlocked: highestLevel,
@@ -197,7 +209,17 @@ export function usePlayerProfile() {
         // On-chain is 1-indexed (level 1 = first level), frontend is 0-indexed
         const profileData: OnChainPlayerProfile = {
           owner: account.owner,
-          name: account.name,
+          name: (() => {
+            const raw = account.name;
+            if (typeof raw !== 'string') {
+              return Buffer.from(raw).toString('utf-8').replace(/\0/g, '');
+            }
+            if (/^\d+(,\d+)*$/.test(raw)) {
+              const bytes = raw.split(',').map(Number);
+              return Buffer.from(bytes).toString('utf-8').replace(/\0/g, '');
+            }
+            return raw;
+          })(),
           totalRuns: account.totalRuns,
           currentLevel: createHighestLevel - 1,
           highestLevelUnlocked: createHighestLevel,

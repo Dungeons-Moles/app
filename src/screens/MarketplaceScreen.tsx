@@ -10,6 +10,7 @@ import {
   Animated,
   ScrollView,
   TouchableWithoutFeedback,
+  useWindowDimensions,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useIsFocused } from '@react-navigation/native';
@@ -45,6 +46,8 @@ const rectangleSource = require('../../assets/ui/frames/rectangle.png');
 const paperPanelSource = require('../../assets/ui/panels/paper-panel.png');
 const iconL1Source = require('../../assets/ui/control-buttons/l1.png');
 const iconR1Source = require('../../assets/ui/control-buttons/r1.png');
+const arrowIcon = require('../../assets/icons/ui/normal-speed.png');
+const engineImageSource = require('../../assets/ui/illustrations/engine.png');
 
 type MarketplaceScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Marketplace'>;
@@ -57,6 +60,11 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
   const { disconnect } = useWallet();
   const screenVariant = useScreenVariant();
   const isCompact = screenVariant === 'compact';
+  const { height: windowHeight } = useWindowDimensions();
+  // Scale session image based on screen height — full size at 412dp (Seeker), smaller on shorter screens
+  const sessionImageScale = isCompact ? 1 : Math.min(1, windowHeight / 412);
+  const sessionImageWidth = Math.round(262 * sessionImageScale);
+  const sessionImageHeight = Math.round(168 * sessionImageScale);
   const [activeTab, setActiveTab] = useState<Tab>('pve');
   const [isPurchasing, setIsPurchasing] = useState(false);
   const [purchaseError, setPurchaseError] = useState<string | null>(null);
@@ -371,45 +379,103 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
     <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
       <Image source={backgroundImage} style={styles.backgroundImage} resizeMode="stretch" />
 
+      {!isCompact && !isController && (
+        <View style={styles.topRight}>
+          <TouchableOpacity
+            onPress={() => {
+              playSfx('ui_click');
+              setShowSettingsModal(true);
+            }}
+            activeOpacity={0.7}
+          >
+            <ImageBackground
+              source={buttonV1Source}
+              style={styles.settingsBtn}
+              resizeMode="stretch"
+            >
+              <Image
+                source={engineImageSource}
+                style={styles.settingsIconImage}
+                resizeMode="contain"
+              />
+            </ImageBackground>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {!isCompact && !isController && (
+        <TouchableOpacity onPress={handleBack} activeOpacity={0.7} style={styles.backButtonAbsolute}>
+          <ImageBackground source={buttonV1Source} style={styles.backButtonMobileSized} resizeMode="stretch">
+            <Text style={styles.backButtonTextMobile}>Back</Text>
+          </ImageBackground>
+        </TouchableOpacity>
+      )}
+
       <View style={[styles.content, isCompact && compactStyles.content]}>
         {/* Header */}
         <View style={[styles.header, isCompact && compactStyles.header]}>
-          {isController ? (
-            <View style={[styles.backButton, isCompact && compactStyles.backButton]} />
-          ) : (
-            <TouchableOpacity onPress={handleBack} activeOpacity={0.7}>
+          {isCompact ? (
+            <>
+              {isController ? (
+                <View style={[styles.backButton, compactStyles.backButton]} />
+              ) : (
+                <TouchableOpacity onPress={handleBack} activeOpacity={0.7}>
+                  <ImageBackground
+                    source={buttonV1Source}
+                    style={[styles.backButton, compactStyles.backButton]}
+                    resizeMode="stretch"
+                  >
+                    <Text style={[styles.backButtonText, compactStyles.backButtonText]}>
+                      Back
+                    </Text>
+                  </ImageBackground>
+                </TouchableOpacity>
+              )}
+
               <ImageBackground
-                source={buttonV1Source}
-                style={[styles.backButton, isCompact && compactStyles.backButton]}
+                source={buttonV4Source}
+                style={[styles.titlePanel, compactStyles.titlePanel]}
                 resizeMode="stretch"
               >
-                <Text style={[styles.backButtonText, isCompact && compactStyles.backButtonText]}>
-                  Back
-                </Text>
+                <Text style={[styles.title, compactStyles.title]}>Marketplace</Text>
               </ImageBackground>
-            </TouchableOpacity>
+
+              <View style={[styles.headerSpacer, compactStyles.headerSpacer]} />
+            </>
+          ) : (
+            <>
+              <View style={styles.backButton} />
+
+              <ImageBackground
+                source={buttonV4Source}
+                style={styles.titlePanel}
+                resizeMode="stretch"
+              >
+                <Text style={styles.title}>Marketplace</Text>
+              </ImageBackground>
+
+              <View style={styles.headerSpacer} />
+            </>
           )}
-
-          <ImageBackground
-            source={buttonV4Source}
-            style={[styles.titlePanel, isCompact && compactStyles.titlePanel]}
-            resizeMode="stretch"
-          >
-            <Text style={[styles.title, isCompact && compactStyles.title]}>Marketplace</Text>
-          </ImageBackground>
-
-          <View style={[styles.headerSpacer, isCompact && compactStyles.headerSpacer]} />
         </View>
 
         {/* Tabs */}
         <View style={[styles.tabs, isCompact && compactStyles.tabs]}>
-          {isController && (
+          {isController ? (
             <Image
               source={iconL1Source}
               style={[styles.tabShoulderIcon, isCompact && compactStyles.tabShoulderIcon]}
               resizeMode="contain"
             />
-          )}
+          ) : !isCompact ? (
+            <TouchableOpacity onPress={() => cycleTab(-1)} activeOpacity={0.7}>
+              <Image
+                source={arrowIcon}
+                style={[styles.tabArrowIcon, styles.tabArrowLeft]}
+                resizeMode="contain"
+              />
+            </TouchableOpacity>
+          ) : null}
           {(['skins', 'items', 'pve'] as const).map((tab) => {
             const tabEl = (
               <TouchableOpacity
@@ -441,21 +507,29 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
               tabEl
             );
           })}
-          {isController && (
+          {isController ? (
             <Image
               source={iconR1Source}
               style={[styles.tabShoulderIcon, isCompact && compactStyles.tabShoulderIcon]}
               resizeMode="contain"
             />
-          )}
+          ) : !isCompact ? (
+            <TouchableOpacity onPress={() => cycleTab(1)} activeOpacity={0.7}>
+              <Image
+                source={arrowIcon}
+                style={styles.tabArrowIcon}
+                resizeMode="contain"
+              />
+            </TouchableOpacity>
+          ) : null}
         </View>
 
         {/* Tab Content */}
-        <View style={styles.tabContent}>
+        <View style={[styles.tabContent, isCompact && compactStyles.tabContent]}>
           {activeTab === 'skins' && (
             <ScrollView
               style={styles.nftScrollView}
-              contentContainerStyle={styles.nftScrollContent}
+              contentContainerStyle={[styles.nftScrollContent, isCompact && compactStyles.nftScrollContent]}
             >
               {marketplaceLoading && (
                 <ActivityIndicator color="#3d2b1f" size={isCompact ? 'large' : 'small'} />
@@ -653,34 +727,35 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
             </ScrollView>
           )}
           {activeTab === 'pve' && (
-            <View style={styles.pveContent}>
-              <Image
-                source={sessionPapersSource}
-                style={[styles.sessionImage, isCompact && compactStyles.sessionImage]}
-                resizeMode="contain"
-              />
+            <View style={[styles.pveContent, isCompact && compactStyles.pveContent]}>
+              {/* Left side: image + price */}
+              <View style={[styles.pveLeft, isCompact && compactStyles.pveLeft]}>
+                <Image
+                  source={sessionPapersSource}
+                  style={[styles.sessionImage, isCompact && compactStyles.sessionImage, !isCompact && { width: sessionImageWidth, height: sessionImageHeight }]}
+                  resizeMode="contain"
+                />
+                <Text style={[styles.priceText, isCompact && compactStyles.priceText]}>
+                  Price: 0.05 SOL
+                  {payment.solUsdPrice ? ` (~$${(0.05 * payment.solUsdPrice).toFixed(2)})` : ''}
+                </Text>
+              </View>
 
-              <Text style={[styles.priceText, isCompact && compactStyles.priceText]}>
-                Price: 0.05 SOL
-                {payment.solUsdPrice ? ` (~$${(0.05 * payment.solUsdPrice).toFixed(2)})` : ''}
-              </Text>
-
-              <View style={[styles.purchaseArea, isCompact && compactStyles.purchaseArea]}>
-                {isCompact && (
-                  <View style={[styles.purchaseTokenTop, compactStyles.purchaseTokenTop]}>
-                    <PaymentTokenSelector
-                      tokens={payment.supportedTokens}
-                      selectedToken={payment.selectedToken}
-                      onSelectToken={payment.setSelectedToken}
-                      quote={payment.quote}
-                      isQuoteLoading={payment.isQuoteLoading}
-                      solUsdPrice={payment.solUsdPrice}
-                      requiredLamports={BigInt(RUN_PRICE_LAMPORTS)}
-                      isCompact={isCompact}
-                      isController={isController}
-                    />
-                  </View>
-                )}
+              {/* Right side: payment selector + purchase button */}
+              <View style={[styles.pveRight, isCompact && compactStyles.pveRight]}>
+                <View style={[styles.purchaseTokenTop, isCompact && compactStyles.purchaseTokenTop]}>
+                  <PaymentTokenSelector
+                    tokens={payment.supportedTokens}
+                    selectedToken={payment.selectedToken}
+                    onSelectToken={payment.setSelectedToken}
+                    quote={payment.quote}
+                    isQuoteLoading={payment.isQuoteLoading}
+                    solUsdPrice={payment.solUsdPrice}
+                    requiredLamports={BigInt(RUN_PRICE_LAMPORTS)}
+                    isCompact={isCompact}
+                    isController={isController}
+                  />
+                </View>
 
                 <TouchableOpacity
                   onPress={handlePurchase}
@@ -711,32 +786,48 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
                   </ImageBackground>
                 </TouchableOpacity>
 
-                {!isCompact && (
-                  <View style={styles.purchaseTokenLeft}>
-                    <PaymentTokenSelector
-                      tokens={payment.supportedTokens}
-                      selectedToken={payment.selectedToken}
-                      onSelectToken={payment.setSelectedToken}
-                      quote={payment.quote}
-                      isQuoteLoading={payment.isQuoteLoading}
-                      solUsdPrice={payment.solUsdPrice}
-                      requiredLamports={BigInt(RUN_PRICE_LAMPORTS)}
-                      isCompact={isCompact}
-                      isController={isController}
-                    />
-                  </View>
+                {purchaseError && (
+                  <Text style={[styles.errorText, isCompact && compactStyles.errorText]}>
+                    {purchaseError}
+                  </Text>
                 )}
               </View>
-
-              {purchaseError && (
-                <Text style={[styles.errorText, isCompact && compactStyles.errorText]}>
-                  {purchaseError}
-                </Text>
-              )}
             </View>
           )}
         </View>
       </View>
+
+      {/* Side navigation arrows — mobile only */}
+      {!isCompact && !isController && (
+        <>
+          {activeTab !== 'skins' && (
+            <TouchableOpacity
+              style={styles.sideArrowLeft}
+              onPress={() => cycleTab(-1)}
+              activeOpacity={0.7}
+            >
+              <Image
+                source={arrowIcon}
+                style={[styles.sideArrowIcon, styles.sideArrowIconLeft]}
+                resizeMode="contain"
+              />
+            </TouchableOpacity>
+          )}
+          {activeTab !== 'pve' && (
+            <TouchableOpacity
+              style={styles.sideArrowRight}
+              onPress={() => cycleTab(1)}
+              activeOpacity={0.7}
+            >
+              <Image
+                source={arrowIcon}
+                style={styles.sideArrowIcon}
+                resizeMode="contain"
+              />
+            </TouchableOpacity>
+          )}
+        </>
+      )}
 
       {/* Bottom-right sessions counter — PvE tab only */}
       {activeTab === 'pve' && (
@@ -821,16 +912,75 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
+  topRight: {
+    position: 'absolute',
+    top: 24,
+    right: 24,
+    zIndex: 10,
+  },
+  settingsBtn: {
+    width: 60,
+    height: 60,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  settingsIconImage: {
+    width: 30,
+    height: 30,
+    marginBottom: 4,
+  },
+  sideArrowLeft: {
+    position: 'absolute',
+    left: 40,
+    top: '50%',
+    transform: [{ translateY: -16 }],
+    zIndex: 10,
+    padding: 8,
+  },
+  sideArrowRight: {
+    position: 'absolute',
+    right: 8,
+    top: '50%',
+    transform: [{ translateY: -16 }],
+    zIndex: 10,
+    padding: 8,
+  },
+  sideArrowIcon: {
+    width: 36,
+    height: 36,
+    opacity: 0.5,
+  },
+  sideArrowIconLeft: {
+    transform: [{ rotate: '180deg' }],
+  },
   content: {
     flex: 1,
-    paddingTop: 24,
+    paddingTop: 8,
     paddingHorizontal: 16,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 20,
+    marginBottom: 4,
+  },
+  backButtonAbsolute: {
+    position: 'absolute',
+    top: 24,
+    left: 16,
+    zIndex: 10,
+  },
+  backButtonMobileSized: {
+    width: 90,
+    height: 45,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  backButtonTextMobile: {
+    fontFamily: Typography.button,
+    fontSize: 14,
+    color: '#3d2b1f',
+    marginBottom: 4,
   },
   backButton: {
     width: 80,
@@ -863,12 +1013,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     gap: 6,
-    marginBottom: 20,
+    marginBottom: 4,
   },
   tabShoulderIcon: {
     width: 22,
     height: 22,
     opacity: 0.6,
+  },
+  tabArrowIcon: {
+    width: 18,
+    height: 18,
+    opacity: 0.5,
+  },
+  tabArrowLeft: {
+    transform: [{ rotate: '180deg' }],
   },
   tab: {
     paddingVertical: 6,
@@ -891,7 +1049,6 @@ const styles = StyleSheet.create({
   tabContent: {
     flex: 1,
     alignItems: 'center',
-    justifyContent: 'center',
   },
   comingSoonText: {
     fontFamily: Typography.header,
@@ -899,32 +1056,28 @@ const styles = StyleSheet.create({
     color: '#8a7a6a',
   },
   pveContent: {
-    alignItems: 'center',
-    gap: 12,
-    marginTop: -40,
-  },
-  purchaseArea: {
-    width: '100%',
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 96,
+    gap: 24,
+    marginTop: 16,
   },
-  purchaseTokenLeft: {
-    position: 'absolute',
-    right: '50%',
-    marginRight: 92,
-    alignItems: 'flex-start',
-    justifyContent: 'center',
+  pveLeft: {
+    alignItems: 'center',
+    gap: 4,
+  },
+  pveRight: {
+    alignItems: 'center',
+    gap: 8,
   },
   purchaseTokenTop: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 12,
+    marginBottom: 4,
   },
   sessionImage: {
-    width: 175,
-    height: 112,
-    marginTop: 32,
+    width: 262,
+    height: 168,
   },
   priceText: {
     fontFamily: Typography.number,
@@ -972,6 +1125,7 @@ const styles = StyleSheet.create({
   },
   nftScrollContent: {
     paddingBottom: 20,
+    paddingLeft: 44,
     gap: 12,
   },
   nftGrid: {
@@ -985,6 +1139,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#3d2b1f',
     marginTop: 8,
+    marginLeft: 24,
   },
   sectionTitleActive: {
     color: '#b8860b',
@@ -1041,6 +1196,9 @@ const compactStyles = StyleSheet.create({
   headerSpacer: {
     width: 140,
   },
+  tabContent: {
+    justifyContent: 'center',
+  },
   tabs: {
     gap: 12,
     marginBottom: 32,
@@ -1055,8 +1213,16 @@ const compactStyles = StyleSheet.create({
   comingSoonText: {
     fontSize: 38,
   },
-  purchaseArea: {
-    minHeight: 150,
+  pveContent: {
+    flexDirection: 'column',
+    gap: 12,
+    marginTop: -40,
+  },
+  pveLeft: {
+    alignItems: 'center',
+  },
+  pveRight: {
+    alignItems: 'center',
     gap: 12,
   },
   purchaseTokenTop: {
@@ -1096,6 +1262,7 @@ const compactStyles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 28,
+    marginLeft: 0,
   },
   emptyText: {
     fontSize: 22,

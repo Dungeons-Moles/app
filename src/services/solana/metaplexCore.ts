@@ -32,13 +32,13 @@ export function parseMetaplexCoreAsset(address: PublicKey, data: Buffer): Metapl
   // Name (4 byte length prefix + string)
   const nameLen = data.readUInt32LE(offset);
   offset += 4;
-  const name = data.subarray(offset, offset + nameLen).toString('utf8');
+  const name = Buffer.from(data.subarray(offset, offset + nameLen)).toString('utf8');
   offset += nameLen;
 
   // URI (4 byte length prefix + string)
   const uriLen = data.readUInt32LE(offset);
   offset += 4;
-  const uri = data.subarray(offset, offset + uriLen).toString('utf8');
+  const uri = Buffer.from(data.subarray(offset, offset + uriLen)).toString('utf8');
 
   return { address, owner, name, uri, collection };
 }

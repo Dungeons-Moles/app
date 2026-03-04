@@ -55,8 +55,9 @@ export function HubSettingsModal({
   const hasResetProfileAction = typeof onResetProfile === 'function';
   const maxSettingsFocus = hasResetProfileAction ? 5 : 4;
   const baseModalHeight = isCompact ? 840 : 420;
-  const maxModalHeight = Math.max(320, height - 48);
+  const maxModalHeight = Math.max(320, height * 0.95);
   const modalScale = Math.min(1, maxModalHeight / baseModalHeight);
+  const isTightFit = !isCompact && height < 420;
 
   useEffect(() => {
     if (visible) setSettingsFocus(0);
@@ -119,25 +120,25 @@ export function HubSettingsModal({
       <TouchableWithoutFeedback onPress={onClose}>
         <View style={styles.modalOverlay}>
           <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
-            <View
-              style={[
-                styles.modalScaleWrapper,
-                modalScale < 1 && { transform: [{ scale: modalScale }] },
-              ]}
-            >
+            <View style={styles.modalScaleWrapper}>
               <ImageBackground
                 source={paperPanelSource}
-                style={[styles.modalContent, isCompact && compactStyles.settingsModalContent]}
+                style={[
+                  styles.modalContent,
+                  isCompact && compactStyles.settingsModalContent,
+                  isCompact && modalScale < 1 && { transform: [{ scale: modalScale }] },
+                  isTightFit && { height: maxModalHeight, padding: 24, paddingTop: 16 },
+                ]}
                 resizeMode="stretch"
               >
-                <View style={styles.modalHeader}>
+                <View style={[styles.modalHeader, isTightFit && { marginBottom: 12 }]}>
                   <Text style={[styles.modalTitle, isCompact && compactStyles.modalTitle]}>
                     Settings
                   </Text>
                   {!isController && (
                     <TouchableOpacity
                       onPress={() => {
-                        playSfx('ui_click');
+                        playSfx('ui_back');
                         onClose();
                       }}
                       style={styles.closeButton}
@@ -157,6 +158,7 @@ export function HubSettingsModal({
                     styles.modalBody,
                     !isCompact && styles.mobileModalBody,
                     isCompact && compactStyles.settingsModalBody,
+                    !isCompact && { gap: Math.min(14, (maxModalHeight - 200) / 12) },
                   ]}
                 >
                   <FocusGlow active={isController && settingsFocus === 0} style={styles.settingGlow}>
@@ -194,6 +196,7 @@ export function HubSettingsModal({
                         currentSpeed={defaultCombatSpeed}
                         onSpeedChange={updateDefaultCombatSpeed}
                         scale={isCompact ? 1.4 : 0.55}
+                        onPress={() => playSfx('ui_click')}
                       />
                     </View>
                   </FocusGlow>
@@ -210,7 +213,10 @@ export function HubSettingsModal({
 
                   <FocusGlow
                     active={isController && settingsFocus === 4}
-                    style={!isCompact ? styles.mobileDisconnectGroup : undefined}
+                    style={[
+                      !isCompact && styles.mobileDisconnectGroup,
+                      !hasResetProfileAction && { marginTop: 20 },
+                    ]}
                   >
                     <TouchableOpacity
                       style={[
@@ -218,7 +224,7 @@ export function HubSettingsModal({
                         !isCompact && styles.mobileResetButton,
                         isCompact && compactStyles.resetButton,
                       ]}
-                      onPress={onDisconnect}
+                      onPress={() => { playSfx('ui_click'); onDisconnect(); }}
                       activeOpacity={0.7}
                     >
                       <ImageBackground
@@ -246,7 +252,7 @@ export function HubSettingsModal({
                           !isCompact && styles.mobileResetButton,
                           isCompact && compactStyles.resetButton,
                         ]}
-                        onPress={onResetProfile}
+                        onPress={() => { playSfx('ui_click'); onResetProfile?.(); }}
                         activeOpacity={0.7}
                       >
                         <ImageBackground
@@ -331,11 +337,6 @@ export function HubSettingsModal({
                   </View>
                 )}
 
-                {!isController && (
-                  <Text style={[styles.tapToCloseText, isCompact && compactStyles.tapToCloseText]}>
-                    Tap anywhere to close
-                  </Text>
-                )}
               </ImageBackground>
             </View>
           </TouchableWithoutFeedback>

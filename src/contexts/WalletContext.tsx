@@ -394,16 +394,21 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
         if (result && result.accounts.length > 0) {
           const account = result.accounts[0];
+          // Mobile Wallet Adapter returns address as Base64-encoded bytes,
+          // not base58. Decode to bytes first, then create PublicKey.
+          const publicKey = new PublicKey(Buffer.from(account.address, 'base64'));
+          const base58Address = publicKey.toBase58();
+
           const authResult: AuthorizationResult = {
-            address: account.address,
+            address: base58Address,
             label: account.label,
             authToken: result.auth_token,
           };
 
           setWallet({
             isConnected: true,
-            address: account.address,
-            publicKey: new PublicKey(account.address),
+            address: base58Address,
+            publicKey,
             authToken: result.auth_token,
           });
 
@@ -503,18 +508,45 @@ export function WalletProvider({ children }: { children: ReactNode }) {
           throw new Error('Wallet not connected');
         }
 
+        // Mobile wallet path: ensure blockhash and feePayer are set
+        if (transaction instanceof VersionedTransaction) {
+          if (!transaction.message.recentBlockhash) {
+            const latestBlockhash = await targetConnection.getLatestBlockhash(
+              SOLANA_CONFIG.commitment
+            );
+            transaction.message.recentBlockhash = latestBlockhash.blockhash;
+          }
+        } else {
+          if (!transaction.recentBlockhash) {
+            const latestBlockhash = await targetConnection.getLatestBlockhash(
+              SOLANA_CONFIG.commitment
+            );
+            transaction.recentBlockhash = latestBlockhash.blockhash;
+          }
+          if (!transaction.feePayer) {
+            transaction.feePayer = wallet.publicKey ?? undefined;
+          }
+        }
+
         return transact(async (walletAdapter: Web3MobileWallet) => {
-          await walletAdapter.authorize({
+          console.log('[WalletContext] Mobile: authorizing...');
+          const authResult = await walletAdapter.authorize({
             chain: SOLANA_CONFIG.mobileChain,
             identity: APP_IDENTITY,
             auth_token: wallet.authToken ?? undefined,
           });
+          console.log('[WalletContext] Mobile: authorized, signing tx...');
 
-          const signatures = await walletAdapter.signAndSendTransactions({
+          const signed = await walletAdapter.signTransactions({
             transactions: [transaction],
           });
+          console.log('[WalletContext] Mobile: signed, sending to RPC...');
 
-          return signatures[0];
+          const serialized = signed[0].serialize();
+          const signature = await targetConnection.sendRawTransaction(serialized, sendOptions);
+          console.log('[WalletContext] Mobile: sent, signature:', signature);
+
+          return signature;
         });
       } catch (err) {
         const e = err as

@@ -55,6 +55,7 @@ const PAPER_PANEL = require('../../assets/ui/panels/paper-panel.png');
 const iconASource = require('../../assets/ui/control-buttons/a.png');
 const iconBSource = require('../../assets/ui/control-buttons/b.png');
 const iconXSource = require('../../assets/ui/control-buttons/x.png');
+const engineImageSource = require('../../assets/ui/illustrations/engine.png');
 
 type CampaignSelectScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'CampaignSelect'>;
@@ -962,23 +963,59 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
         resizeMode="stretch"
       />
 
+      {!isCompact && !isController && (
+        <View style={styles.topRight}>
+          <TouchableOpacity
+            onPress={() => {
+              playSfx('ui_click');
+              setShowSettingsModal(true);
+            }}
+            activeOpacity={0.7}
+          >
+            <ImageBackground
+              source={buttonV1Source}
+              style={styles.settingsBtn}
+              resizeMode="stretch"
+            >
+              <Image
+                source={engineImageSource}
+                style={styles.settingsIconImage}
+                resizeMode="contain"
+              />
+            </ImageBackground>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {!isCompact && !isController && (
+        <TouchableOpacity onPress={handleBack} activeOpacity={0.7} style={styles.backButtonAbsolute}>
+          <ImageBackground source={buttonV1Source} style={styles.backButtonMobile} resizeMode="stretch">
+            <Text style={styles.backButtonTextMobile}>Back</Text>
+          </ImageBackground>
+        </TouchableOpacity>
+      )}
+
       <View style={[styles.content, isCompact && compactStyles.content]}>
         {/* Header */}
         <View style={[styles.header, isCompact && compactStyles.header]}>
-          {isController ? (
-            <View style={[styles.backButton, isCompact && compactStyles.backButton]} />
+          {isCompact ? (
+            isController ? (
+              <View style={[styles.backButton, compactStyles.backButton]} />
+            ) : (
+              <TouchableOpacity onPress={handleBack} activeOpacity={0.7}>
+                <ImageBackground
+                  source={buttonV1Source}
+                  style={[styles.backButton, compactStyles.backButton]}
+                  resizeMode="stretch"
+                >
+                  <Text style={[styles.backButtonText, compactStyles.backButtonText]}>
+                    Back
+                  </Text>
+                </ImageBackground>
+              </TouchableOpacity>
+            )
           ) : (
-            <TouchableOpacity onPress={handleBack} activeOpacity={0.7}>
-              <ImageBackground
-                source={buttonV1Source}
-                style={[styles.backButton, isCompact && compactStyles.backButton]}
-                resizeMode="stretch"
-              >
-                <Text style={[styles.backButtonText, isCompact && compactStyles.backButtonText]}>
-                  Back
-                </Text>
-              </ImageBackground>
-            </TouchableOpacity>
+            <View style={styles.backButton} />
           )}
 
           <ImageBackground
@@ -1372,6 +1409,23 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
+  topRight: {
+    position: 'absolute',
+    top: 24,
+    right: 24,
+    zIndex: 10,
+  },
+  settingsBtn: {
+    width: 60,
+    height: 60,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  settingsIconImage: {
+    width: 30,
+    height: 30,
+    marginBottom: 4,
+  },
   content: {
     flex: 1,
     paddingTop: 24,
@@ -1382,6 +1436,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 20,
+  },
+  backButtonAbsolute: {
+    position: 'absolute',
+    top: 24,
+    left: 16,
+    zIndex: 10,
+  },
+  backButtonMobile: {
+    width: 90,
+    height: 45,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  backButtonTextMobile: {
+    fontFamily: Typography.button,
+    fontSize: 14,
+    color: '#3d2b1f',
+    marginBottom: 4,
   },
   backButton: {
     width: 80,

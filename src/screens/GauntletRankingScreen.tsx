@@ -35,6 +35,7 @@ const GAUNTLET_TITLE = require('../../assets/ui/text/gauntlet.png');
 const RANKING_TITLE = require('../../assets/ui/text/ranking.png');
 const buttonV1Source = require('../../assets/ui/buttons/button-v1.png');
 const buttonV4Source = require('../../assets/ui/buttons/button-v4.png');
+const engineImageSource = require('../../assets/ui/illustrations/engine.png');
 const MAX_RANK_ROWS = 100;
 const PAGE_SIZE = 10;
 const HALF_PAGE = 5;
@@ -299,9 +300,32 @@ export function GauntletRankingScreen({ navigation, route }: GauntletRankingScre
             />
           </View>
 
-          <Text style={[styles.epochText, isCompact && compactStyles.epochText]}>
-            Epoch: {epochId !== null ? epochId.toString() : '-'}
-          </Text>
+          <View style={styles.headerRight}>
+            <Text style={[styles.epochText, isCompact && compactStyles.epochText]}>
+              Epoch: {epochId !== null ? epochId.toString() : '-'}
+            </Text>
+            {!isCompact && !isController && (
+              <TouchableOpacity
+                onPress={() => {
+                  playSfx('ui_click');
+                  setShowSettingsModal(true);
+                }}
+                activeOpacity={0.7}
+              >
+                <ImageBackground
+                  source={buttonV1Source}
+                  style={styles.settingsBtn}
+                  resizeMode="stretch"
+                >
+                  <Image
+                    source={engineImageSource}
+                    style={styles.settingsIconImage}
+                    resizeMode="contain"
+                  />
+                </ImageBackground>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
 
         {/* Two-column book layout */}
@@ -463,12 +487,28 @@ const styles = StyleSheet.create({
     color: '#3d2b1f',
     marginBottom: 4,
   },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   epochText: {
     fontFamily: Typography.body,
     fontSize: 11,
     color: '#5c4033',
     minWidth: 80,
     textAlign: 'right',
+  },
+  settingsBtn: {
+    width: 45,
+    height: 45,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  settingsIconImage: {
+    width: 22,
+    height: 22,
+    marginBottom: 4,
   },
   titleRow: {
     flexDirection: 'row',

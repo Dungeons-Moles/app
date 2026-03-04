@@ -26,6 +26,8 @@ export interface SpeedControlsProps {
   disabled?: boolean;
   /** Scale factor for compact/mobile views (default 1) */
   scale?: number;
+  /** Optional callback fired on button press (e.g. for SFX) */
+  onPress?: () => void;
 }
 
 export function SpeedControls({
@@ -33,6 +35,7 @@ export function SpeedControls({
   onSpeedChange,
   disabled = false,
   scale = 1,
+  onPress,
 }: SpeedControlsProps) {
   const renderButton = (speed: CombatSpeed, iconSource: ImageSourcePropType) => {
     const isActive = currentSpeed === speed;
@@ -44,7 +47,7 @@ export function SpeedControls({
           { width: 60 * scale, height: 48 * scale },
           disabled && styles.buttonDisabled,
         ]}
-        onPress={() => onSpeedChange(speed)}
+        onPress={() => { onPress?.(); onSpeedChange(speed); }}
         disabled={disabled}
         activeOpacity={0.7}
       >

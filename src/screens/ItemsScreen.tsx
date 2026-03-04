@@ -66,6 +66,7 @@ const statIconSPD = require('../../assets/icons/stats/speed.png');
 const statIconDIG = require('../../assets/icons/stats/DIG.png');
 const statIconHP = require('../../assets/icons/stats/HP.png');
 const squareFrameSource = require('../../assets/ui/frames/square.png');
+const engineImageSource = require('../../assets/ui/illustrations/engine.png');
 
 const ITEMSET_ICONS: Record<string, any> = {
   UNION_STANDARD: require('../../assets/icons/itemsets/union_standard.png'),
@@ -310,6 +311,16 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
   const isGuest = mode === 'guest';
   const screenVariant = useScreenVariant();
   const isCompact = screenVariant === 'compact';
+  const [leftColumnWidth, setLeftColumnWidth] = useState(0);
+  const gridColumns = 5;
+  const gridGap = isCompact ? 11 : 10;
+  const cellSize = isCompact
+    ? 84
+    : leftColumnWidth > 0
+      ? Math.floor((leftColumnWidth - gridGap * (gridColumns - 1)) / gridColumns)
+      : 54;
+  const gridWidth = isCompact ? 484 : cellSize * gridColumns + gridGap * (gridColumns - 1);
+  const imageSize = isCompact ? 65 : Math.floor(cellSize * 0.85);
   const [selectedItem, setSelectedItem] = useState<DisplayItem | null>(null);
   const [draftPoolIndices, setDraftPoolIndices] = useState<Set<number>>(new Set());
   const [isSavingItemPool, setIsSavingItemPool] = useState(false);
@@ -604,14 +615,22 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                       <Text style={[styles.title, isCompact && compactStyles.title]}>
                         {activeTab === 'items' ? 'Items' : 'Itemsets'}
                       </Text>
+                      {!isCompact && activeTab === 'items' && !isGuest && (
+                        <Text
+                          numberOfLines={1}
+                          style={styles.poolCountInButton}
+                        >
+                          Pool: {draftPoolIndices.size} (min {ITEM_POOL_MIN_SIZE})
+                        </Text>
+                      )}
                     </ImageBackground>
                   </TouchableOpacity>
-                  {activeTab === 'items' && !isGuest && (
+                  {isCompact && activeTab === 'items' && !isGuest && (
                     <Text
                       numberOfLines={1}
                       style={[
                         styles.poolCountText,
-                        isCompact && compactStyles.poolCountText,
+                        compactStyles.poolCountText,
                         styles.poolCountAbsolute,
                       ]}
                     >
@@ -624,39 +643,62 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
             return isCompact ? inner : <View style={styles.headerLeft}>{inner}</View>;
           })()}
 
-          {/* Save button in header right — only on items tab, hidden for guests */}
-          {activeTab === 'items' && !isGuest ? (
-            <TouchableOpacity
-              disabled={
-                isSavingItemPool || !hasPoolChanges || draftPoolIndices.size < ITEM_POOL_MIN_SIZE
-              }
-              onPress={handleSaveItemPool}
-              activeOpacity={0.7}
-            >
-              <ImageBackground
-                source={buttonV3Source}
-                style={[
-                  styles.saveButton,
-                  isCompact && compactStyles.saveButton,
-                  (isSavingItemPool ||
-                    !hasPoolChanges ||
-                    draftPoolIndices.size < ITEM_POOL_MIN_SIZE) &&
-                    styles.saveButtonDisabled,
-                ]}
-                resizeMode="stretch"
+          {/* Header right: save + settings */}
+          <View style={styles.headerRight}>
+            {activeTab === 'items' && !isGuest ? (
+              <TouchableOpacity
+                disabled={
+                  isSavingItemPool || !hasPoolChanges || draftPoolIndices.size < ITEM_POOL_MIN_SIZE
+                }
+                onPress={handleSaveItemPool}
+                activeOpacity={0.7}
               >
-                {isSavingItemPool ? (
-                  <ActivityIndicator size="small" color="#1a1a1a" />
-                ) : (
-                  <Text style={[styles.saveButtonText, isCompact && compactStyles.saveButtonText]}>
-                    {isCompact ? 'Press X to Save' : 'Save'}
-                  </Text>
-                )}
-              </ImageBackground>
-            </TouchableOpacity>
-          ) : (
-            <View style={[styles.saveButton, isCompact && compactStyles.saveButton]} />
-          )}
+                <ImageBackground
+                  source={buttonV3Source}
+                  style={[
+                    styles.saveButton,
+                    isCompact && compactStyles.saveButton,
+                    (isSavingItemPool ||
+                      !hasPoolChanges ||
+                      draftPoolIndices.size < ITEM_POOL_MIN_SIZE) &&
+                      styles.saveButtonDisabled,
+                  ]}
+                  resizeMode="stretch"
+                >
+                  {isSavingItemPool ? (
+                    <ActivityIndicator size="small" color="#1a1a1a" />
+                  ) : (
+                    <Text style={[styles.saveButtonText, isCompact && compactStyles.saveButtonText]}>
+                      {isCompact ? 'Press X to Save' : 'Save'}
+                    </Text>
+                  )}
+                </ImageBackground>
+              </TouchableOpacity>
+            ) : (
+              <View style={[styles.saveButton, isCompact && compactStyles.saveButton]} />
+            )}
+            {!isCompact && !isController && (
+              <TouchableOpacity
+                onPress={() => {
+                  playSfx('ui_click');
+                  setShowSettingsModal(true);
+                }}
+                activeOpacity={0.7}
+              >
+                <ImageBackground
+                  source={buttonV1Source}
+                  style={styles.settingsBtn}
+                  resizeMode="stretch"
+                >
+                  <Image
+                    source={engineImageSource}
+                    style={styles.settingsIconImage}
+                    resizeMode="contain"
+                  />
+                </ImageBackground>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
 
         {/* Two-column layout */}
@@ -666,6 +708,7 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
             ref={scrollViewRef}
             style={styles.itemsListColumn}
             showsVerticalScrollIndicator={false}
+            onLayout={(e) => setLeftColumnWidth(e.nativeEvent.layout.width)}
           >
             {activeTab === 'items' ? (
               (() => {
@@ -683,7 +726,7 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                       >
                         {TAG_DISPLAY_NAMES[tag]}
                       </Text>
-                      <View style={[styles.itemsGrid, isCompact && compactStyles.itemsGrid]}>
+                      <View style={[styles.itemsGrid, isCompact && compactStyles.itemsGrid, !isCompact && { width: gridWidth, gap: gridGap }]}>
                         {tagItems.map((item) => {
                           const idx = flatIdx++;
                           const unlocked = checkItemUnlocked(item.id);
@@ -698,6 +741,7 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                               style={[
                                 styles.itemGridCell,
                                 isCompact && compactStyles.itemGridCell,
+                                !isCompact && { width: cellSize, height: cellSize },
                                 isInPool && styles.itemGridCellInPool,
                                 isSelected && styles.itemGridCellSelected,
                               ]}
@@ -706,7 +750,7 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                             >
                               <ImageBackground
                                 source={squareFrameSource}
-                                style={[styles.itemFrame, isCompact && compactStyles.itemFrame]}
+                                style={[styles.itemFrame, isCompact && compactStyles.itemFrame, !isCompact && { width: cellSize, height: cellSize }]}
                                 resizeMode="stretch"
                               >
                                 <Image
@@ -714,6 +758,7 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                                   style={[
                                     styles.itemImage,
                                     isCompact && compactStyles.itemImage,
+                                    !isCompact && { width: imageSize, height: imageSize },
                                     !unlocked && styles.itemImageLocked,
                                   ]}
                                   resizeMode="contain"
@@ -757,7 +802,7 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                 >
                   ITEMSETS
                 </Text>
-                <View style={[styles.itemsGrid, isCompact && compactStyles.itemsGrid]}>
+                <View style={[styles.itemsGrid, isCompact && compactStyles.itemsGrid, !isCompact && { width: gridWidth, gap: gridGap }]}>
                   {allItemsets.map((itemset, idx) => {
                     const isSelected = selectedItemset?.id === itemset.id;
                     const isCursorItem = isController && idx === itemsetCursorIdx;
@@ -767,6 +812,7 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                         style={[
                           styles.itemGridCell,
                           isCompact && compactStyles.itemGridCell,
+                          !isCompact && { width: cellSize, height: cellSize },
                           isSelected && styles.itemGridCellSelected,
                         ]}
                         onPress={() => { playSfx('ui_hover'); setSelectedItemset(itemset); }}
@@ -774,12 +820,12 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                       >
                         <ImageBackground
                           source={squareFrameSource}
-                          style={[styles.itemFrame, isCompact && compactStyles.itemFrame]}
+                          style={[styles.itemFrame, isCompact && compactStyles.itemFrame, !isCompact && { width: cellSize, height: cellSize }]}
                           resizeMode="stretch"
                         >
                           <Image
                             source={ITEMSET_ICONS[itemset.id]}
-                            style={[styles.itemImage, isCompact && compactStyles.itemImage]}
+                            style={[styles.itemImage, isCompact && compactStyles.itemImage, !isCompact && { width: imageSize, height: imageSize }]}
                             resizeMode="contain"
                           />
                         </ImageBackground>
@@ -1120,7 +1166,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 16,
+    marginBottom: -4,
   },
   backButton: {
     width: 80,
@@ -1165,6 +1211,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  settingsBtn: {
+    width: 45,
+    height: 45,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  settingsIconImage: {
+    width: 22,
+    height: 22,
+    marginBottom: 4,
+  },
   titleGroup: {
     alignItems: 'center',
   },
@@ -1180,6 +1242,15 @@ const styles = StyleSheet.create({
     width: 150,
     top: '50%',
     transform: [{ translateY: '-50%' }],
+  },
+  poolCountInButton: {
+    position: 'absolute',
+    bottom: 10,
+    right: 14,
+    fontFamily: Typography.header,
+    fontSize: 11,
+    color: '#3d2b1f',
+    opacity: 0.7,
   },
   columnsContainer: {
     flex: 1,
@@ -1257,7 +1328,7 @@ const styles = StyleSheet.create({
   lockedBanner: {
     position: 'absolute',
     top: 8,
-    right: 8,
+    right: 0,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1281,15 +1352,15 @@ const styles = StyleSheet.create({
   },
   selectedItemHeader: {
     alignItems: 'center',
-    marginBottom: 6,
-    marginTop: 40,
+    marginBottom: 4,
+    marginTop: 24,
   },
   itemsetDetailHeader: {
     marginTop: 16,
   },
   selectedItemImage: {
-    width: 80,
-    height: 80,
+    width: 72,
+    height: 72,
     marginBottom: 4,
   },
   selectedItemName: {
@@ -1313,7 +1384,7 @@ const styles = StyleSheet.create({
   poolToggleButton: {
     position: 'absolute',
     top: 8,
-    right: 8,
+    right: 0,
     zIndex: 10,
   },
   poolToggleButtonBg: {

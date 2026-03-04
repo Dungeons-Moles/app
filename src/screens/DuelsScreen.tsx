@@ -36,6 +36,7 @@ import {
 } from '@/utils/sessionSetupSignal';
 import { PaymentTokenSelector, PaymentConfirmationModal } from '@/components/payment';
 import { InlineModal } from '@/components/InlineModal';
+import { BlurView } from 'expo-blur';
 
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.png');
 const STAINS_BACKGROUND = require('../../assets/ui/backgrounds/stains-background.png');
@@ -49,6 +50,7 @@ const ECHO_FIGHT = require('../../assets/ui/illustrations/echo-fight.png');
 const PAPER_PANEL = require('../../assets/ui/panels/paper-panel.png');
 const iconASource = require('../../assets/ui/control-buttons/a.png');
 const iconBSource = require('../../assets/ui/control-buttons/b.png');
+const engineImageSource = require('../../assets/ui/illustrations/engine.png');
 const iconXSource = require('../../assets/ui/control-buttons/x.png');
 
 type DuelsScreenProps = {
@@ -308,32 +310,64 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
     <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
       <ImageBackground source={BACKGROUND_IMAGE} style={styles.backgroundImage} resizeMode="cover">
         <Image source={STAINS_BACKGROUND} style={styles.stainsOverlay} resizeMode="cover" />
+        {!isCompact && !isController && (
+          <View style={styles.topRight}>
+            <TouchableOpacity
+              onPress={() => {
+                playSfx('ui_click');
+                setShowSettingsModal(true);
+              }}
+              activeOpacity={0.7}
+            >
+              <ImageBackground
+                source={buttonV1Source}
+                style={styles.settingsBtn}
+                resizeMode="stretch"
+              >
+                <Image
+                  source={engineImageSource}
+                  style={styles.settingsIconImage}
+                  resizeMode="contain"
+                />
+              </ImageBackground>
+            </TouchableOpacity>
+          </View>
+        )}
+        {!isCompact && !isController && (
+          <TouchableOpacity onPress={handleBack} activeOpacity={0.7} style={styles.backButtonAbsolute}>
+            <ImageBackground source={buttonV1Source} style={styles.backButtonMobile} resizeMode="stretch">
+              <Text style={styles.backButtonTextMobile}>Back</Text>
+            </ImageBackground>
+          </TouchableOpacity>
+        )}
         <View style={styles.content}>
           {/* Header */}
           <View style={[styles.header, isCompact && compactStyles.header]}>
-            {isController ? (
-              <View style={[styles.headerButton, isCompact && compactStyles.headerButton]} />
-            ) : (
-              <TouchableOpacity onPress={handleBack} activeOpacity={0.7}>
-                <ImageBackground
-                  source={buttonV1Source}
-                  style={[styles.headerButton, isCompact && compactStyles.headerButton]}
-                  resizeMode="stretch"
-                >
-                  <Text
-                    style={[styles.headerButtonText, isCompact && compactStyles.headerButtonText]}
+            {isCompact ? (
+              isController ? (
+                <View style={[styles.headerButton, compactStyles.headerButton]} />
+              ) : (
+                <TouchableOpacity onPress={handleBack} activeOpacity={0.7}>
+                  <ImageBackground
+                    source={buttonV1Source}
+                    style={[styles.headerButton, compactStyles.headerButton]}
+                    resizeMode="stretch"
                   >
-                    Back
-                  </Text>
-                </ImageBackground>
-              </TouchableOpacity>
+                    <Text style={[styles.headerButtonText, compactStyles.headerButtonText]}>
+                      Back
+                    </Text>
+                  </ImageBackground>
+                </TouchableOpacity>
+              )
+            ) : (
+              <View style={styles.headerButton} />
             )}
 
             <View style={styles.headerSpacer} />
           </View>
 
           {/* Title */}
-          <View style={styles.titleRow}>
+          <View style={[styles.titleRow, isCompact && compactStyles.titleRow]}>
             <Image
               source={DUELS_TITLE}
               style={[styles.titleImage, isCompact && compactStyles.titleImage]}
@@ -441,19 +475,41 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
             </View>
 
             {/* Token selector — below the panel */}
-            <View style={[styles.tokenSelectorWrap, isCompact && compactStyles.tokenSelectorWrap]}>
-              <PaymentTokenSelector
-                tokens={payment.supportedTokens}
-                selectedToken={payment.selectedToken}
-                onSelectToken={payment.setSelectedToken}
-                quote={payment.quote}
-                isQuoteLoading={payment.isQuoteLoading}
-                solUsdPrice={payment.solUsdPrice}
-                requiredLamports={BigInt(DUEL_ENTRY_LAMPORTS)}
-                isCompact={isCompact}
-                isController={isController}
-              />
-            </View>
+            {isCompact ? (
+              <View style={compactStyles.tokenSelectorWrap}>
+                <PaymentTokenSelector
+                  tokens={payment.supportedTokens}
+                  selectedToken={payment.selectedToken}
+                  onSelectToken={payment.setSelectedToken}
+                  quote={payment.quote}
+                  isQuoteLoading={payment.isQuoteLoading}
+                  solUsdPrice={payment.solUsdPrice}
+                  requiredLamports={BigInt(DUEL_ENTRY_LAMPORTS)}
+                  isCompact={isCompact}
+                  isController={isController}
+                />
+              </View>
+            ) : (
+              <BlurView
+                intensity={40}
+                tint="light"
+                experimentalBlurMethod="dimezisBlurView"
+                style={[styles.tokenSelectorWrap, styles.tokenSelectorBlur]}
+              >
+                <PaymentTokenSelector
+                  tokens={payment.supportedTokens}
+                  selectedToken={payment.selectedToken}
+                  onSelectToken={payment.setSelectedToken}
+                  quote={payment.quote}
+                  isQuoteLoading={payment.isQuoteLoading}
+                  solUsdPrice={payment.solUsdPrice}
+                  requiredLamports={BigInt(DUEL_ENTRY_LAMPORTS)}
+                  isCompact={false}
+                  isController={isController}
+                  grid
+                />
+              </BlurView>
+            )}
           </View>
         </View>
       </ImageBackground>
@@ -564,10 +620,28 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginTop: 0,
   },
+  backButtonAbsolute: {
+    position: 'absolute',
+    top: 24,
+    left: 16,
+    zIndex: 10,
+  },
+  backButtonMobile: {
+    width: 90,
+    height: 45,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  backButtonTextMobile: {
+    fontFamily: Typography.button,
+    fontSize: 14,
+    color: '#3d2b1f',
+    marginBottom: 4,
+  },
   headerSpacer: { flex: 1 },
   headerButton: {
     width: 90,
-    height: 36,
+    height: 45,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -579,18 +653,18 @@ const styles = StyleSheet.create({
   },
   titleRow: {
     alignItems: 'center',
+    marginTop: -8,
   },
   titleImage: {
-    width: 265,
-    height: 58,
+    width: 220,
+    height: 48,
   },
   centerContent: {
     flex: 1,
     alignItems: 'center',
   },
   panelWrapper: {
-    width: '75%',
-    maxWidth: 300,
+    width: 300,
     aspectRatio: 1.2,
   },
   pvpModesPanel: {
@@ -618,7 +692,7 @@ const styles = StyleSheet.create({
   },
   panelRowOpponent: {
     alignSelf: 'flex-start',
-    marginLeft: 34,
+    marginLeft: 29,
     marginTop: 9,
   },
   panelTextFee: {
@@ -637,20 +711,50 @@ const styles = StyleSheet.create({
     height: 40,
   },
   tokenSelectorWrap: {
+    position: 'absolute',
+    right: 32,
+    top: '36%',
+    transform: [{ translateY: -40 }],
     alignItems: 'center',
-    marginTop: 0,
+  },
+  tokenSelectorBlur: {
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: 'rgba(61, 43, 31, 0.2)',
+    padding: 10,
+    overflow: 'hidden',
   },
   panelButtons: {
     flexDirection: 'row',
     gap: 76,
     marginTop: 53,
-    marginLeft: 32,
+    marginLeft: 28,
   },
   panelButtonText: {
     fontFamily: Typography.button,
     fontWeight: 'bold',
     fontSize: 18,
     color: '#3d2b1f',
+  },
+  topRight: {
+    position: 'absolute',
+    top: 24,
+    right: 24,
+    zIndex: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  settingsBtn: {
+    width: 60,
+    height: 60,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  settingsIconImage: {
+    width: 30,
+    height: 30,
+    marginBottom: 6,
   },
   // Error phase styles
   errorOverlay: {
@@ -775,6 +879,9 @@ const compactStyles = StyleSheet.create({
     fontSize: 28,
     marginBottom: 6,
   },
+  titleRow: {
+    marginTop: 0,
+  },
   titleImage: {
     width: 510,
     height: 105,
@@ -811,6 +918,7 @@ const compactStyles = StyleSheet.create({
     height: 162,
   },
   tokenSelectorWrap: {
+    alignItems: 'center',
     marginTop: 10,
   },
   panelButtons: {

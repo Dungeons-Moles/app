@@ -34,6 +34,7 @@ interface PaymentTokenSelectorProps {
   isController?: boolean;
   focusedIndex?: number;
   vertical?: boolean;
+  grid?: boolean;
 }
 
 export function PaymentTokenSelector({
@@ -48,6 +49,7 @@ export function PaymentTokenSelector({
   isController = false,
   focusedIndex,
   vertical = false,
+  grid = false,
 }: PaymentTokenSelectorProps) {
   const iconSize = isCompact ? 36 : 22;
 
@@ -81,7 +83,7 @@ export function PaymentTokenSelector({
   return (
     <View style={[styles.container, vertical && styles.containerVertical]}>
       <Text style={[styles.label, isCompact && compactStyles.label]}>Pay with (Powered by Jupiter):</Text>
-      <View style={[styles.pillRow, vertical && styles.pillColumn]}>
+      <View style={[styles.pillRow, vertical && styles.pillColumn, grid && styles.pillGrid]}>
         {tokens.map((token, idx) => {
           const isSelected = token.symbol === selectedToken.symbol;
           const isFocused = isController && focusedIndex === idx;
@@ -143,6 +145,10 @@ const styles = StyleSheet.create({
   },
   pillColumn: {
     flexDirection: 'column',
+  },
+  pillGrid: {
+    flexWrap: 'wrap',
+    width: 160,
   },
   pill: {
     flexDirection: 'row',

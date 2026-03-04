@@ -13,6 +13,7 @@ import {
   Animated,
   TextInput,
   ActivityIndicator,
+  useWindowDimensions,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useIsFocused } from '@react-navigation/native';
@@ -81,6 +82,11 @@ export function HubScreen({ navigation }: HubScreenProps) {
   const isScreenFocused = useIsFocused();
   const screenVariant = useScreenVariant();
   const isCompact = screenVariant === 'compact';
+  const { height: windowHeight } = useWindowDimensions();
+  // Scale modals to fit 95% of screen height on small mobile screens
+  const modalBaseHeight = isCompact ? 760 : 380;
+  const modalMaxHeight = windowHeight * 0.95;
+  const modalScale = modalMaxHeight < modalBaseHeight ? modalMaxHeight / modalBaseHeight : 1;
   const inputMode = useInputMode();
   const { state: gameState, dispatch } = useGame();
   const { playBgm, playSfx } = useAudio();
@@ -1181,7 +1187,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
         <TouchableWithoutFeedback onPress={() => setShowSkins(false)}>
           <View style={styles.modalOverlay}>
             <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
-              <View style={[styles.marketplaceModal, isCompact && compactStyles.marketplaceModal]}>
+              <View style={[styles.marketplaceModal, isCompact && compactStyles.marketplaceModal, modalScale < 1 && { transform: [{ scale: modalScale }] }]}>
                 <ImageBackground
                   source={paperPanelSource}
                   style={[styles.marketplaceBg, isCompact && compactStyles.marketplaceBg]}
@@ -1197,7 +1203,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
                     {!isController && (
                       <TouchableOpacity
                         onPress={() => {
-                          playSfx('ui_click');
+                          playSfx('ui_back');
                           setShowSkins(false);
                         }}
                         style={styles.closeButton}
@@ -1361,7 +1367,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
         <TouchableWithoutFeedback onPress={() => setShowQuests(false)}>
           <View style={styles.modalOverlay}>
             <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
-              <View style={[styles.marketplaceModal, isCompact && compactStyles.marketplaceModal]}>
+              <View style={[styles.marketplaceModal, isCompact && compactStyles.marketplaceModal, modalScale < 1 && { transform: [{ scale: modalScale }] }]}>
                 <ImageBackground
                   source={paperPanelSource}
                   style={[styles.marketplaceBg, isCompact && compactStyles.marketplaceBg]}
@@ -1377,7 +1383,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
                     {!isController && (
                       <TouchableOpacity
                         onPress={() => {
-                          playSfx('ui_click');
+                          playSfx('ui_back');
                           setShowQuests(false);
                         }}
                         style={styles.closeButton}
@@ -1534,7 +1540,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
         <TouchableWithoutFeedback onPress={() => setShowProfile(false)}>
           <View style={styles.modalOverlay}>
             <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
-              <View style={[styles.marketplaceModal, isCompact && compactStyles.marketplaceModal]}>
+              <View style={[styles.marketplaceModal, isCompact && compactStyles.marketplaceModal, modalScale < 1 && { transform: [{ scale: modalScale }] }]}>
                 <ImageBackground
                   source={paperPanelSource}
                   style={[styles.marketplaceBg, isCompact && compactStyles.marketplaceBg]}
@@ -1550,7 +1556,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
                     {!isController && (
                       <TouchableOpacity
                         onPress={() => {
-                          playSfx('ui_click');
+                          playSfx('ui_back');
                           setShowProfile(false);
                         }}
                         style={styles.closeButton}
