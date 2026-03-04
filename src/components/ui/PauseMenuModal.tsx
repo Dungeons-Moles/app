@@ -139,7 +139,6 @@ export function PauseMenuModal({
                       currentVolume={musicVolume}
                       onVolumeChange={setMusicVolume}
                       scale={isCompact ? 1 : 0.8}
-                      buttonTextOffset={8}
                     />
                   </View>
                 </FocusGlow>
@@ -152,7 +151,6 @@ export function PauseMenuModal({
                       currentVolume={sfxVolume}
                       onVolumeChange={setSfxVolume}
                       scale={isCompact ? 1 : 0.8}
-                      buttonTextOffset={8}
                     />
                   </View>
                 </FocusGlow>

@@ -210,7 +210,7 @@ export function HubSettingsModal({
 
                   <FocusGlow
                     active={isController && settingsFocus === 4}
-                    style={!isCompact && styles.mobileDisconnectGroup}
+                    style={!isCompact ? styles.mobileDisconnectGroup : undefined}
                   >
                     <TouchableOpacity
                       style={[
@@ -238,7 +238,7 @@ export function HubSettingsModal({
                   {hasResetProfileAction && (
                     <FocusGlow
                       active={isController && settingsFocus === 5}
-                      style={!isCompact && styles.mobileResetProfileGroup}
+                      style={!isCompact ? styles.mobileResetProfileGroup : undefined}
                     >
                       <TouchableOpacity
                         style={[

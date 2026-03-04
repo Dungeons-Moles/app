@@ -413,14 +413,11 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
         const hasExistingSession = !isCachedMode && (await hasSessionForLevel(level.level));
 
         if (hasExistingSession) {
-          // Resume immediately on level click when a session already exists.
-          // This keeps UX consistent with "click level -> start loading".
           setPendingLevelWithSession(level);
           setPendingSessionStartupState(null);
           setSessionInitStatusMessage(null);
-          setShowSessionExistsModal(false);
+          setShowSessionExistsModal(true);
           setShowSessionInitializingModal(false);
-          await resumeSession(level);
           return;
         }
       }
