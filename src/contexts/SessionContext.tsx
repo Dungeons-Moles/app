@@ -112,7 +112,7 @@ import {
 const COMMIT_INTERVAL_MS = 30_000;
 const DELEGATION_PROGRAM_ID = new PublicKey('DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh');
 const ER_PROPAGATION_WAIT_MS = 30_000;
-const ER_PROPAGATION_POLL_MS = 1_500;
+const ER_PROPAGATION_POLL_MS = 300;
 const UNKNOWN_ER_NODE = '11111111111111111111111111111111';
 const DIRECT_ER_RPC_URL =
   process.env.EXPO_PUBLIC_EPHEMERAL_PROVIDER_ENDPOINT ?? 'https://devnet.magicblock.app/';
@@ -420,8 +420,23 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const waitForErSignature = async (
         signature: string,
         statusConnection: Connection,
-        timeoutMs = 20_000
+        blockhashInfo?: { blockhash: string; lastValidBlockHeight: number }
       ): Promise<void> => {
+        if (blockhashInfo) {
+          // Use confirmTransaction (websocket-based) — avoids repeated polling
+          // round trips which are expensive from high-latency locations.
+          const result = await statusConnection.confirmTransaction(
+            { signature, ...blockhashInfo },
+            'processed'
+          );
+          const err = (result as { value?: { err?: unknown } })?.value?.err;
+          if (err) {
+            throw new Error(`ER transaction failed on-chain: ${JSON.stringify(err)}`);
+          }
+          return;
+        }
+        // Fallback: poll when blockhash info is unavailable (e.g., router path).
+        const timeoutMs = 20_000;
         const startedAt = Date.now();
         while (Date.now() - startedAt < timeoutMs) {
           const statuses = await statusConnection
@@ -442,7 +457,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
               return;
             }
           }
-          await new Promise((resolve) => setTimeout(resolve, 250));
+          await new Promise((resolve) => setTimeout(resolve, 50));
         }
 
         const historyStatus = await statusConnection
@@ -502,7 +517,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                 skipPreflight: true,
                 maxRetries: 2,
               });
-              await waitForErSignature(sig, directValidatorConnection);
+              await waitForErSignature(sig, directValidatorConnection, directLatest);
               console.log('[SessionContext] sendRoutedErTransaction:direct_validator_ok', {
                 attempt,
                 signature: sig,
@@ -525,7 +540,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                 skipPreflight: true,
                 maxRetries: 2,
               });
-              await waitForErSignature(sig, erConnection);
+              await waitForErSignature(sig, erConnection, latest);
               console.log('[SessionContext] sendRoutedErTransaction:router_ok', {
                 attempt,
                 signature: sig,
@@ -557,7 +572,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             skipPreflight: true,
             maxRetries: 2,
           });
-          await waitForErSignature(sig, directErConnection);
+          await waitForErSignature(sig, directErConnection, latest);
           console.log('[SessionContext] sendRoutedErTransaction:direct_ok', {
             attempt,
             signature: sig,

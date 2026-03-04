@@ -354,6 +354,7 @@ export function useGameplayState(): UseGameplayStateReturn {
       }
 
       try {
+        const t0 = Date.now();
         const sessionPda = currentGameState.session;
         const signature = await movePlayer(
           gameplayConnection,
@@ -363,9 +364,28 @@ export function useGameplayState(): UseGameplayStateReturn {
           sessionSignerKeypair,
           params
         );
+        const t1 = Date.now();
+        console.log(`[perf] movePlayer TX: ${t1 - t0}ms`);
 
-        // Fetch confirmed state after on-chain confirmation
-        const confirmedState = await fetchGameState(program, gameStatePda);
+        // Fire state fetch and a single quick combat log parse in parallel.
+        // The quick parse uses 1 attempt with no delay; if combat actually occurred
+        // (HP changed), we do a follow-up retry below.
+        const statePromise = fetchGameState(program, gameStatePda);
+        const combatPromise =
+          signature
+            ? parseCombatLogWithRetry(gameplayConnection, program, signature, 'move', {
+                maxAttempts: 1,
+                delayMs: 0,
+                quiet: true,
+              })
+            : Promise.resolve({ combatLog: undefined, combatEnemyInfo: undefined });
+
+        const [confirmedState, combatResult] = await Promise.all([
+          statePromise,
+          combatPromise,
+        ]);
+        const t2 = Date.now();
+        console.log(`[perf] fetchState+parseCombat (parallel): ${t2 - t1}ms | total so far: ${t2 - t0}ms`);
 
         // Debug: Log fetched HP to track sync issues
         console.log('[useGameplayState] move() fetched state:', {
@@ -382,7 +402,6 @@ export function useGameplayState(): UseGameplayStateReturn {
         }
 
         // Heuristic combat indicator: HP loss or death strongly suggests combat.
-        // Used to pick parse aggressiveness for combat event extraction below.
         const hpOrDeathChanged =
           confirmedState != null && (confirmedState.hp < previousState.hp || confirmedState.isDead);
 
@@ -410,23 +429,26 @@ export function useGameplayState(): UseGameplayStateReturn {
         const isGauntletEchoResolution =
           bossResolvedIndicator && previousState.runMode === RunMode.Gauntlet;
 
-        // Always attempt to parse combat logs from the move transaction.
-        // This catches zero-damage combat wins where HP doesn't change.
-        // Parse aggressiveness varies: HP/death → retry twice, otherwise → single quick attempt.
+        // Use pre-fetched combat result from the quick parallel parse.
+        // If the quick attempt missed and HP actually changed, do a follow-up retry.
         let combatLog: BackendCombatLogEntry[] | undefined;
         let combatEnemyInfo: CombatEnemyInfo | undefined;
-        if (signature && !isGauntletEchoResolution) {
-          const parsed = await parseCombatLogWithRetry(
-            gameplayConnection,
-            program,
-            signature,
-            'move',
-            hpOrDeathChanged
-              ? { maxAttempts: 2, delayMs: 120 }
-              : { maxAttempts: 1, delayMs: 0, quiet: true }
-          );
-          combatLog = parsed.combatLog;
-          combatEnemyInfo = parsed.combatEnemyInfo;
+        if (!isGauntletEchoResolution) {
+          if (combatResult.combatLog || combatResult.combatEnemyInfo) {
+            combatLog = combatResult.combatLog;
+            combatEnemyInfo = combatResult.combatEnemyInfo;
+          } else if (hpOrDeathChanged && signature) {
+            // Quick attempt missed — retry once more for combat data.
+            const retryResult = await parseCombatLogWithRetry(
+              gameplayConnection,
+              program,
+              signature,
+              'move',
+              { maxAttempts: 1, delayMs: 80 }
+            );
+            combatLog = retryResult.combatLog;
+            combatEnemyInfo = retryResult.combatEnemyInfo;
+          }
         }
 
         const parsedCombatDetected = !!combatLog?.length || !!combatEnemyInfo;
@@ -464,7 +486,7 @@ export function useGameplayState(): UseGameplayStateReturn {
             signature!,
             {
               maxAttempts: 2,
-              delayMs: 120,
+              delayMs: 80,
             }
           );
           console.log('[useGameplayState] Inline gauntlet echo resolution detected:', {
@@ -599,8 +621,19 @@ export function useGameplayState(): UseGameplayStateReturn {
           sessionPda,
           sessionSignerKeypair
         );
-        // Fetch confirmed state after on-chain confirmation
-        const confirmedState = await fetchGameState(prog, gameStatePda);
+        // Fire state fetch and combat log parse in parallel
+        const statePromise = fetchGameState(prog, gameStatePda);
+        const combatPromise = signature
+          ? parseCombatLogWithRetry(conn, prog, signature, 'boss', {
+              maxAttempts: 2,
+              delayMs: 80,
+            })
+          : Promise.resolve({ combatLog: undefined, combatEnemyInfo: undefined });
+
+        const [confirmedState, combatResult] = await Promise.all([
+          statePromise,
+          combatPromise,
+        ]);
 
         console.log('[useGameplayState] triggerBoss() fetched state:', {
           previousHp: previousState.hp,
@@ -614,21 +647,7 @@ export function useGameplayState(): UseGameplayStateReturn {
           setLastSyncAt(Date.now());
         }
 
-        // Parse combat log from transaction
-        let combatLog: BackendCombatLogEntry[] | undefined;
-        if (signature) {
-          const parsed = await parseCombatLogWithRetry(
-            conn,
-            prog,
-            signature,
-            'boss',
-            {
-              maxAttempts: 2,
-              delayMs: 120,
-            }
-          );
-          combatLog = parsed.combatLog;
-        }
+        const combatLog = combatResult.combatLog;
 
         return {
           success: true,

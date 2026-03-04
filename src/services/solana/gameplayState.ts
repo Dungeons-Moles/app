@@ -5,7 +5,15 @@
  * Uses sessionSigner wallet for signing all gameplay transactions.
  */
 
-import { Keypair, PublicKey, SystemProgram, Connection, Transaction, ComputeBudgetProgram } from '@solana/web3.js';
+import {
+  Keypair,
+  PublicKey,
+  SystemProgram,
+  Connection,
+  Transaction,
+  TransactionInstruction,
+  ComputeBudgetProgram,
+} from '@solana/web3.js';
 import { Program } from '@coral-xyz/anchor';
 import { SOLANA_CONFIG } from './config';
 import { sendSessionSignerTransaction } from './sessionSigner';
@@ -28,6 +36,14 @@ import {
   ModifyStatParams,
   deriveGameStatePda,
 } from './types/gameplay_state';
+
+// Cache for gameplayVrfState existence per session — avoids a round trip on every move.
+// Caches both positive (exists) and negative (doesn't exist) results.
+const vrfStateExistsCache = new Map<string, boolean>();
+
+// Pre-computed Anchor discriminator for move_player: sha256("global:move_player")[0..8]
+// Avoids going through Anchor's MethodsBuilder which adds ~120ms of async overhead.
+const MOVE_PLAYER_DISCRIMINATOR = Buffer.from([17, 58, 68, 221, 186, 117, 140, 231]);
 
 // ============================================================================
 // PDA Derivation (T014)
@@ -122,6 +138,7 @@ export async function movePlayer(
   sessionSignerKeypair: Keypair,
   params: MovePlayerParams
 ): Promise<string> {
+  const tStart = Date.now();
   const [mapEnemiesPda] = deriveMapEnemiesPda(sessionPda);
   const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
   const [inventoryPda] = deriveInventoryPda(sessionPda);
@@ -129,31 +146,57 @@ export async function movePlayer(
   const [mapPoisPda] = deriveMapPoisPda(sessionPda);
   const [gameplayVrfStatePda] = deriveGameplayVrfStatePda(sessionPda);
   // Optional account: include only when fully initialized/deserializable.
-  // Some local flows can leave the PDA allocated but not initialized, which
-  // triggers Anchor 3012 (AccountNotInitialized) if passed.
-  // Must pass null explicitly for Anchor to skip optional accounts — omitting
-  // the key or passing undefined can trigger validateAccounts "not provided".
-  const gameplayVrfStateAccount = await (program.account as any)?.gameplayVrfState
-    ?.fetchNullable(gameplayVrfStatePda)
-    .catch(() => null);
+  // Cache both positive and negative results per session to avoid a round trip on every move.
+  const sessionKey = sessionPda.toBase58();
+  let vrfStateExists: boolean;
+  if (vrfStateExistsCache.has(sessionKey)) {
+    vrfStateExists = vrfStateExistsCache.get(sessionKey)!;
+  } else {
+    const vrfAccount = await (program.account as any)?.gameplayVrfState
+      ?.fetchNullable(gameplayVrfStatePda)
+      .catch(() => null);
+    vrfStateExists = !!vrfAccount;
+    vrfStateExistsCache.set(sessionKey, vrfStateExists);
+  }
+  const tVrf = Date.now();
 
-  const transaction = await program.methods
-    .movePlayer(params.targetX, params.targetY)
-    .accountsPartial({
-      gameState: gameStatePda,
-      gameSession: sessionPda,
-      mapEnemies: mapEnemiesPda,
-      generatedMap: generatedMapPda,
-      inventory: inventoryPda,
-      gameplayAuthority: gameplayAuthorityPda,
-      playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
-      mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
-      mapPois: mapPoisPda,
-      poiSystemProgram: SOLANA_CONFIG.programs.poiSystem,
-      gameplayVrfState: gameplayVrfStateAccount ? gameplayVrfStatePda : null,
-      player: sessionSignerKeypair.publicKey,
-    } as any)
-    .transaction();
+  // Build instruction manually instead of using Anchor's MethodsBuilder.
+  // Anchor's async account resolution loop adds ~120ms of overhead even when
+  // all accounts are provided, due to Promise chains and IDL traversal.
+  const data = Buffer.alloc(10); // 8 discriminator + 1 targetX (u8) + 1 targetY (u8)
+  data.set(MOVE_PLAYER_DISCRIMINATOR, 0);
+  data.writeUInt8(params.targetX, 8);
+  data.writeUInt8(params.targetY, 9);
+
+  const keys = [
+    { pubkey: gameStatePda, isSigner: false, isWritable: true },
+    { pubkey: sessionPda, isSigner: false, isWritable: false },
+    { pubkey: mapEnemiesPda, isSigner: false, isWritable: true },
+    { pubkey: generatedMapPda, isSigner: false, isWritable: true },
+    { pubkey: inventoryPda, isSigner: false, isWritable: true },
+    { pubkey: gameplayAuthorityPda, isSigner: false, isWritable: false },
+    { pubkey: SOLANA_CONFIG.programs.playerInventory, isSigner: false, isWritable: false },
+    { pubkey: SOLANA_CONFIG.programs.mapGenerator, isSigner: false, isWritable: false },
+    { pubkey: mapPoisPda, isSigner: false, isWritable: true },
+    { pubkey: SOLANA_CONFIG.programs.poiSystem, isSigner: false, isWritable: false },
+    // Optional: when null, Anchor uses program_id as sentinel
+    {
+      pubkey: vrfStateExists ? gameplayVrfStatePda : SOLANA_CONFIG.programs.gameplayState,
+      isSigner: false,
+      isWritable: false,
+    },
+    { pubkey: sessionSignerKeypair.publicKey, isSigner: true, isWritable: false },
+  ];
+
+  const transaction = new Transaction().add(
+    new TransactionInstruction({
+      keys,
+      programId: SOLANA_CONFIG.programs.gameplayState,
+      data,
+    })
+  );
+  const tBuild = Date.now();
+  console.log(`[perf] movePlayer breakdown: vrfCheck=${tVrf - tStart}ms, txBuild=${tBuild - tVrf}ms`);
 
   // move_player can resolve boss fights / gauntlet echoes inline on the last
   // move of night3 (up to 50-turn combat + CPIs), which far exceeds the

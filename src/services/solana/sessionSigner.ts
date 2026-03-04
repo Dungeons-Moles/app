@@ -40,6 +40,28 @@ const ESTIMATED_TX_FEE = 5_000; // lamports
 const ER_SEND_MAX_RETRIES = 12;
 const ER_RETRY_BASE_DELAY_MS = 500;
 
+// ER blockhash cache — avoids a full round trip per transaction.
+// ER blockhashes are valid for ~60-90s; we use a conservative 15s TTL.
+const ER_BLOCKHASH_CACHE_TTL_MS = 15_000;
+let erBlockhashCache: {
+  blockhash: string;
+  lastValidBlockHeight: number;
+  fetchedAt: number;
+} | null = null;
+
+const getCachedErBlockhash = async (
+  connection: Connection,
+  commitment: import('@solana/web3.js').Commitment
+): Promise<{ blockhash: string; lastValidBlockHeight: number }> => {
+  const now = Date.now();
+  if (erBlockhashCache && now - erBlockhashCache.fetchedAt < ER_BLOCKHASH_CACHE_TTL_MS) {
+    return erBlockhashCache;
+  }
+  const latest = await connection.getLatestBlockhash(commitment);
+  erBlockhashCache = { ...latest, fetchedAt: now };
+  return latest;
+};
+
 const normalizeEndpoint = (url: string): string => url.replace(/\/+$/, '');
 const directErRpcUrl =
   process.env.EXPO_PUBLIC_EPHEMERAL_PROVIDER_ENDPOINT ?? 'https://devnet.magicblock.app/';
@@ -509,10 +531,14 @@ export async function sendSessionSignerTransaction(
     let blockhash = '';
     let lastValidBlockHeight = 0;
 
-    if (!isRouterPath) {
-      // Direct ER/base path: build + sign locally.
-      const blockhashCommitment = erConnection ? 'confirmed' : confirmationCommitment;
-      const latest = await connection.getLatestBlockhash(blockhashCommitment);
+    {
+      // Always set blockhash + sign locally. For ER, use the cached blockhash
+      // to avoid a round trip per transaction. For the router path, this also
+      // prevents web3.js sendTransaction from doing a hidden internal fetch.
+      const blockhashCommitment = erConnection ? 'processed' : confirmationCommitment;
+      const latest = erConnection
+        ? await getCachedErBlockhash(connection, blockhashCommitment)
+        : await connection.getLatestBlockhash(blockhashCommitment);
       blockhash = latest.blockhash;
       lastValidBlockHeight = latest.lastValidBlockHeight;
       tx.recentBlockhash = blockhash;
@@ -520,21 +546,21 @@ export async function sendSessionSignerTransaction(
     }
 
     try {
-      const signature = isRouterPath
-        ? await connection.sendTransaction(tx, [sessionSignerKeypair], {
-            // Let router choose blockhash/routing internally.
-            skipPreflight: true,
-            maxRetries: 2,
-            preflightCommitment: confirmationCommitment,
-          })
-        : await connection.sendRawTransaction(tx.serialize(), {
-            // MagicBlock ER recommends skipping preflight; preflight can fail with
-            // transient writable-account verification errors before ER state settles.
-            skipPreflight: erConnection,
-            maxRetries: 2,
-          });
+      const tSend = Date.now();
+      const signature = await connection.sendRawTransaction(tx.serialize(), {
+        // MagicBlock ER recommends skipping preflight; preflight can fail with
+        // transient writable-account verification errors before ER state settles.
+        skipPreflight: erConnection,
+        maxRetries: 2,
+      });
+      const tSent = Date.now();
+      console.log(`[perf] sendTransaction: ${tSent - tSend}ms (router=${isRouterPath})`);
 
       if (erConnection) {
+        // ER processes transactions in ~10-50ms. From high-latency locations,
+        // the tx is already confirmed by the time the first poll arrives, so
+        // a simple 40ms-interval poll finds it immediately. This is faster
+        // than websocket confirmTransaction which has subscription setup overhead.
         const erStatus = await waitForErProcessedStatus(connection, signature);
         if (!erStatus) {
           throw new Error(
@@ -546,6 +572,7 @@ export async function sendSessionSignerTransaction(
             `[sessionSignerWallet] Transaction ${signature} failed on-chain: ${formatErr(erStatus.err)}`
           );
         }
+        console.log(`[perf] confirmTransaction: ${Date.now() - tSent}ms | total send+confirm: ${Date.now() - tSend}ms`);
         return signature;
       }
 
