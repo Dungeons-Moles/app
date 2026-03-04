@@ -152,7 +152,7 @@ export function useDuels() {
     [switchToSession]
   );
 
-  const enterCurrentSessionDuel = useCallback(async (): Promise<boolean> => {
+  const enterCurrentSessionDuel = useCallback(async (onCommitted?: () => void): Promise<boolean> => {
     if (!wallet.publicKey) {
       setError('Wallet not connected');
       setPhase('error');
@@ -216,7 +216,7 @@ export function useDuels() {
       if (!existingDuelSessionInfo) {
         // ─── NEW GAME ───
         // startDuelGame now calls enter_duel on base chain before delegation.
-        const startResult = await startDuelGame();
+        const startResult = await startDuelGame(onCommitted);
         if (!startResult.success) {
           const canRecoverViaResume = isRecoverableDuelStartError(startResult.error);
           if (!canRecoverViaResume) {
@@ -255,6 +255,7 @@ export function useDuels() {
       if (existingEntry) {
         // Already queued — just switch to the session and proceed
         console.log('[useDuels] Already queued, skipping enterDuel tx');
+        onCommitted?.();
         const switchResult = await switchToDuelSessionOrTolerateDelegation(duelSessionPda);
         if (!switchResult.success) {
           setError(switchResult.error ?? 'Failed to resume duel session');
@@ -327,6 +328,7 @@ export function useDuels() {
       }
 
       // enter_duel succeeded on base chain — now switch to session (which delegates)
+      onCommitted?.();
       const switchResult = await switchToDuelSessionOrTolerateDelegation(duelSessionPda);
       if (!switchResult.success) {
         console.warn('[useDuels] enterCurrentSessionDuel:post_queue_switch_failed', switchResult.error);

@@ -57,7 +57,6 @@ import { Typography } from '../theme/typography';
 import { useEquippedSkinImage } from '../hooks/useEquippedSkinImage';
 import { promptTransactionRetry } from '../utils/transaction-alerts';
 import { getPhaseLabel } from '../utils/phase-labels';
-import { TimePhase } from '../game/engine/types';
 import type {
   Gear,
   GearId,
@@ -521,12 +520,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
   stateRef.current = state;
   const onChainStateRef = useRef(onChainState);
   onChainStateRef.current = onChainState;
-  const isGuestDayNightOnlyPoi =
-    mode === 'guest' &&
-    state?.time.phase === TimePhase.Day &&
-    (poiInteraction.currentPoi?.poiType === POI_TYPES.MOLE_DEN ||
-      poiInteraction.currentPoi?.poiType === POI_TYPES.REST_ALCOVE);
-  const canTriggerCurrentPoiByPhase = poiInteraction.canInteract && !isGuestDayNightOnlyPoi;
+  const canTriggerCurrentPoiByPhase = poiInteraction.canInteract;
 
   // Persist fog of war state to AsyncStorage for session restore
   useFogPersistence({
@@ -2076,7 +2070,6 @@ export function GameScreen({ navigation }: GameScreenProps) {
   const tryOpenCurrentPoiInteraction = useCallback(() => {
     if (!state || state.phase !== GamePhase.Exploration) return;
     if (!poiInteraction.canInteract) return;
-    if (isGuestDayNightOnlyPoi) return;
     if (isRailWaypointWithoutDestinations) {
       showWallBreakFeedback('No other waypoints discovered');
       return;
@@ -2086,7 +2079,6 @@ export function GameScreen({ navigation }: GameScreenProps) {
     state,
     poiInteraction.canInteract,
     poiInteraction.interact,
-    isGuestDayNightOnlyPoi,
     isRailWaypointWithoutDestinations,
     showWallBreakFeedback,
   ]);

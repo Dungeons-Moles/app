@@ -465,6 +465,11 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   // suppress the ui_hover that FocusGlow emits when the underlying buttons regain focus.
   const lastNavigationSfxTs = useRef(0);
 
+  // Per-track cooldown to prevent overlapping instances of the same SFX
+  // (concurrent instances stack volumes and sound much louder than intended)
+  const sfxLastPlayedRef = useRef<Partial<Record<SfxTrack, number>>>({});
+  const SFX_COOLDOWN_MS = 80;
+
   const playSfx = useCallback(
     async (track: SfxTrack) => {
       // Optimization: don't load and play if volume is 0
@@ -478,9 +483,15 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         lastNavigationSfxTs.current = Date.now();
       }
 
+      // Prevent overlapping instances of the same SFX track
+      const now = Date.now();
+      const lastPlayed = sfxLastPlayedRef.current[track] ?? 0;
+      if (now - lastPlayed < SFX_COOLDOWN_MS) return;
+      sfxLastPlayedRef.current[track] = now;
+
       try {
         const { sound } = await Audio.Sound.createAsync(SFX_FILES[track], {
-          shouldPlay: true,
+          shouldPlay: false,
           volume: sfxVolume,
         });
 
@@ -490,6 +501,8 @@ export function AudioProvider({ children }: { children: ReactNode }) {
             sound.unloadAsync().catch(() => {});
           }
         });
+
+        await sound.playAsync();
       } catch (err) {
         console.warn(`[AudioContext] Failed to play SFX ${track}:`, err);
       }

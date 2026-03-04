@@ -208,7 +208,7 @@ export function useGauntlet() {
     [switchToSession]
   );
 
-  const enterGauntlet = useCallback(async (): Promise<boolean> => {
+  const enterGauntlet = useCallback(async (onCommitted?: () => void): Promise<boolean> => {
     if (!wallet.publicKey) {
       setError('Wallet not connected');
       setPhase('error');
@@ -298,6 +298,7 @@ export function useGauntlet() {
           shouldSkipEnterTx = false;
         } else {
           console.log('[useGauntlet] enterGauntlet:resuming_existing_session');
+          onCommitted?.();
           const switchResult = await switchToGauntletSessionWithRetry(gauntletSessionPda);
           if (!switchResult.success) {
             setError(switchResult.error ?? 'Failed to resume gauntlet session');
@@ -320,7 +321,7 @@ export function useGauntlet() {
       if (needsFreshStart) {
         // Dead/stuck session was cleaned up — start a fresh gauntlet
         console.log('[useGauntlet] enterGauntlet:starting_fresh_after_cleanup');
-        const startResult = await startGauntletGame();
+        const startResult = await startGauntletGame(onCommitted);
         if (!startResult.success) {
           setError(startResult.error ?? 'Failed to start gauntlet session after cleanup');
           setPhase('error');
@@ -335,7 +336,7 @@ export function useGauntlet() {
         seed = startResult.mapSeed ?? (await resolveSessionGeneratedSeed(gauntletSessionPda));
         } else if (!existingGauntletSessionInfo) {
           console.log('[useGauntlet] enterGauntlet:starting_new_gauntlet_session');
-          const startResult = await startGauntletGame();
+          const startResult = await startGauntletGame(onCommitted);
           console.log('[useGauntlet] enterGauntlet:startGauntletGame_result', startResult);
           if (!startResult.success) {
           const canRecoverViaResume = isRecoverableStartError(startResult.error);

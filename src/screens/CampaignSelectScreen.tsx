@@ -37,6 +37,11 @@ import { fetchGameState, getGameStatePda } from '../services/solana/gameplayStat
 import { fetchFullSessionState } from '../services/solana/sessionRestore';
 import { useWallet } from '../contexts/WalletContext';
 import { getVrfSeed } from '../services/solana/vrf';
+import {
+  createSessionSetup,
+  resolveSessionSetup,
+  rejectSessionSetup,
+} from '../utils/sessionSetupSignal';
 import type { CampaignLevel } from '../types/solana';
 import type { GameState as OnChainGameState } from '../services/solana/types/gameplay_state';
 
@@ -46,6 +51,7 @@ const buttonV1Source = require('../../assets/ui/buttons/button-v1.png');
 const buttonV4Source = require('../../assets/ui/buttons/button-v4.png');
 const squareSource = require('../../assets/ui/frames/square.png');
 const lockSource = require('../../assets/icons/ui/lock.png');
+const PAPER_PANEL = require('../../assets/ui/panels/paper-panel.png');
 const iconASource = require('../../assets/ui/control-buttons/a.png');
 const iconBSource = require('../../assets/ui/control-buttons/b.png');
 const iconXSource = require('../../assets/ui/control-buttons/x.png');
@@ -159,10 +165,14 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
       setIsStartingGame(true);
       setSelectedLevel(level.level);
 
+      // Navigate to loading screen immediately
+      createSessionSetup();
+      navigation.navigate('SessionLoading', { mode: 'campaign' });
+      let navigatedToLoading = true;
+
       try {
         if (!connection || !wallet.publicKey) {
-          setErrorMessage('Wallet or connection not available.');
-          setShowErrorModal(true);
+          rejectSessionSetup('Wallet or connection not available.');
           return;
         }
 
@@ -190,8 +200,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
               );
             } else {
               console.warn('[CampaignSelect] switchToSession failed:', switchResult.error);
-              setErrorMessage(switchResult.error ?? 'Failed to resume session.');
-              setShowErrorModal(true);
+              rejectSessionSetup(switchResult.error ?? 'Failed to resume session.');
               return;
             }
           }
@@ -203,27 +212,24 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
           console.log('[CampaignSelect] No session PDA found, trying startSessionOnChain...');
           const result = await startSessionOnChain(level.level);
           if (result && !result.success) {
-            setErrorMessage(result.error ?? 'Failed to resume session.');
-            setShowErrorModal(true);
+            rejectSessionSetup(result.error ?? 'Failed to resume session.');
             return;
           }
         }
 
         const sessionPdaBase58 = await getSessionPdaForLevel(level.level);
         if (!sessionPdaBase58) {
-          setErrorMessage('No session found for this level.');
-          setShowErrorModal(true);
+          rejectSessionSetup('No session found for this level.');
           return;
         }
         const sessionPdaKey = new PublicKey(sessionPdaBase58);
 
         const vrfReady = await ensureSessionVrfReady(sessionPdaBase58);
         if (!vrfReady.success) {
-          setErrorMessage(
+          rejectSessionSetup(
             vrfReady.error ??
               'Session VRF is not fulfilled yet. Gameplay is blocked on devnet until VRF is ready.'
           );
-          setShowErrorModal(true);
           return;
         }
 
@@ -252,7 +258,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
           const [derivedGameStatePda] = getGameStatePda(sessionPdaKey);
           setGameStatePda(derivedGameStatePda);
           dispatch({ type: 'RESTORE_GAME', state: restoredState });
-          navigation.navigate('Game');
+          resolveSessionSetup();
           return;
         }
 
@@ -270,11 +276,15 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
           restore: restorePayload,
         });
 
-        navigation.navigate('Game');
+        resolveSessionSetup();
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to resume the session.';
-        setErrorMessage(message);
-        setShowErrorModal(true);
+        if (navigatedToLoading) {
+          rejectSessionSetup(message);
+        } else {
+          setErrorMessage(message);
+          setShowErrorModal(true);
+        }
       } finally {
         setIsStartingGame(false);
         setSelectedLevel(null);
@@ -424,6 +434,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
 
       setSelectedLevel(level.level);
       setIsStartingGame(true);
+      let navigatedToLoading = false;
 
       try {
         let seed: number;
@@ -436,16 +447,26 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
         } else {
           console.log('[CampaignSelect] Online mode - calling startSessionOnChain...');
           // Start on-chain session for this level
+          // onCommitted callback fires right after wallet tx confirms (before delegation/VRF)
           try {
-            result = await startSessionOnChain(level.level);
+            result = await startSessionOnChain(level.level, () => {
+              if (navigatedToLoading) return;
+              createSessionSetup();
+              navigation.navigate('SessionLoading', { mode: 'campaign' });
+              navigatedToLoading = true;
+            });
             console.log('[CampaignSelect] startSessionOnChain result:', {
               ...result,
               mapSeed: result?.mapSeed?.toString() ?? null,
             });
           } catch (error) {
             const message = error instanceof Error ? error.message : 'Failed to start session.';
-            setErrorMessage(message);
-            setShowErrorModal(true);
+            if (navigatedToLoading) {
+              rejectSessionSetup(message);
+            } else {
+              setErrorMessage(message);
+              setShowErrorModal(true);
+            }
             return;
           }
 
@@ -460,8 +481,12 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
               errMsg.includes('delegategameplayaccounts') ||
               errMsg.includes('access violation');
             if (!isDelegationPropagationError) {
-              setErrorMessage(result?.error ?? 'Failed to start session.');
-              setShowErrorModal(true);
+              if (navigatedToLoading) {
+                rejectSessionSetup(result?.error ?? 'Failed to start session.');
+              } else {
+                setErrorMessage(result?.error ?? 'Failed to start session.');
+                setShowErrorModal(true);
+              }
               return;
             }
             console.warn(
@@ -519,20 +544,18 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
             sessionPdaBase58 = await getSessionPdaForLevel(level.level);
           }
           if (!sessionPdaBase58) {
-            setErrorMessage(
+            rejectSessionSetup(
               'Session started but did not propagate in time. Please try again.'
             );
-            setShowErrorModal(true);
             return;
           }
           const sessionPda = new PublicKey(sessionPdaBase58);
           const vrfReady = await ensureSessionVrfReady(sessionPdaBase58);
           if (!vrfReady.success) {
-            setErrorMessage(
+            rejectSessionSetup(
               vrfReady.error ??
                 'Session VRF is not fulfilled yet. Gameplay is blocked on devnet until VRF is ready.'
             );
-            setShowErrorModal(true);
             return;
           }
           let restoredState: Awaited<ReturnType<typeof fetchFullSessionState>> | null = null;
@@ -554,13 +577,12 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
             const [derivedPda] = getGameStatePda(sessionPda);
             setGameStatePda(derivedPda);
             dispatch({ type: 'RESTORE_GAME', state: restoredState });
-            navigation.navigate('Game');
+            resolveSessionSetup();
             return;
           }
-          setErrorMessage(
+          rejectSessionSetup(
             'Session was created but on-chain state is not readable yet. Please try opening the level again.'
           );
-          setShowErrorModal(true);
           return;
         }
 
@@ -588,8 +610,12 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
       } catch (error) {
         console.error('[CampaignSelect] Error starting game:', error);
         const message = error instanceof Error ? error.message : 'Failed to start game.';
-        setErrorMessage(message);
-        setShowErrorModal(true);
+        if (navigatedToLoading) {
+          rejectSessionSetup(message);
+        } else {
+          setErrorMessage(message);
+          setShowErrorModal(true);
+        }
       } finally {
         setIsStartingGame(false);
         setSelectedLevel(null);
@@ -1043,7 +1069,11 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
         onRequestClose={() => setShowNoRunsModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, isCompact && compactStyles.modalContent]}>
+          <ImageBackground
+            source={PAPER_PANEL}
+            resizeMode="stretch"
+            style={[styles.modalContent, isCompact && compactStyles.modalContent]}
+          >
             <Text style={[styles.modalTitle, isCompact && compactStyles.modalTitle]}>
               No Sessions Available
             </Text>
@@ -1072,7 +1102,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
                 </TouchableOpacity>
               </View>
             )}
-          </View>
+          </ImageBackground>
         </View>
       </InlineModal>
 
@@ -1083,10 +1113,11 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
         onRequestClose={() => setShowSessionInitializingModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <View
+          <ImageBackground
+            source={PAPER_PANEL}
+            resizeMode="stretch"
             style={[
               styles.modalContent,
-              styles.sessionExistsModalContent,
               !isCompact && styles.sessionExistsModalContentMobile,
               isCompact && compactStyles.modalContent,
             ]}
@@ -1155,7 +1186,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
                 </TouchableOpacity>
               </View>
             )}
-          </View>
+          </ImageBackground>
         </View>
       </InlineModal>
 
@@ -1167,10 +1198,11 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
         onRequestClose={handleOverrideExistingSession}
       >
         <View style={styles.modalOverlay}>
-          <View
+          <ImageBackground
+            source={PAPER_PANEL}
+            resizeMode="stretch"
             style={[
               styles.modalContent,
-              styles.sessionExistsModalContent,
               !isCompact && styles.sessionExistsModalContentMobile,
               isCompact && compactStyles.modalContent,
             ]}
@@ -1231,7 +1263,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
                 </TouchableOpacity>
               </View>
             )}
-          </View>
+          </ImageBackground>
         </View>
       </InlineModal>
 
@@ -1243,7 +1275,11 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
         onRequestClose={() => setShowLockedModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, isCompact && compactStyles.modalContent]}>
+          <ImageBackground
+            source={PAPER_PANEL}
+            resizeMode="stretch"
+            style={[styles.modalContent, isCompact && compactStyles.modalContent]}
+          >
             <Text style={[styles.modalTitle, isCompact && compactStyles.modalTitle]}>
               Level Locked
             </Text>
@@ -1270,7 +1306,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
                 <Text style={styles.modalButtonTextPrimary}>OK</Text>
               </TouchableOpacity>
             )}
-          </View>
+          </ImageBackground>
         </View>
       </InlineModal>
       {/* Error Modal */}
@@ -1281,7 +1317,11 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
         onRequestClose={() => setShowErrorModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, isCompact && compactStyles.modalContent]}>
+          <ImageBackground
+            source={PAPER_PANEL}
+            resizeMode="stretch"
+            style={[styles.modalContent, isCompact && compactStyles.modalContent]}
+          >
             <Text style={[styles.modalTitle, isCompact && compactStyles.modalTitle]}>
               Request Failed
             </Text>
@@ -1307,7 +1347,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
                 <Text style={styles.modalButtonTextPrimary}>OK</Text>
               </TouchableOpacity>
             )}
-          </View>
+          </ImageBackground>
         </View>
       </InlineModal>
       <HubSettingsModal
@@ -1538,34 +1578,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalContent: {
-    backgroundColor: '#3d2b1f',
-    borderRadius: 12,
-    padding: 24,
-    width: '80%',
-    maxWidth: 320,
+    width: 360,
+    height: 300,
+    padding: 36,
     alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#5c4033',
-  },
-  sessionExistsModalContent: {
-    backgroundColor: '#5a4030',
-    borderColor: '#7a5a44',
+    justifyContent: 'flex-start',
   },
   sessionExistsModalContentMobile: {
-    width: '92%',
-    maxWidth: 440,
+    height: 340,
   },
   modalTitle: {
     fontFamily: Typography.header,
     fontSize: 20,
-    color: '#FABC0F',
+    color: '#3d2b1f',
     marginBottom: 12,
     textAlign: 'center',
   },
   modalText: {
     fontFamily: Typography.body,
     fontSize: 14,
-    color: '#c8c8c8',
+    color: '#3d2b1f',
     textAlign: 'center',
     marginBottom: 20,
     lineHeight: 20,
@@ -1575,31 +1607,33 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   modalButtonPrimary: {
-    backgroundColor: '#FABC0F',
+    backgroundColor: '#8ad66f',
     paddingVertical: 10,
     paddingHorizontal: 20,
     borderRadius: 8,
+    borderWidth: 2,
+    borderColor: '#5f8f4d',
     minWidth: 100,
   },
   modalButtonSecondary: {
-    backgroundColor: 'transparent',
+    backgroundColor: '#e6c7a7',
     paddingVertical: 10,
     paddingHorizontal: 20,
     borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#5c4033',
+    borderWidth: 2,
+    borderColor: '#7f5539',
     minWidth: 100,
   },
   modalButtonTextPrimary: {
     fontFamily: Typography.button,
     fontSize: 14,
-    color: '#3d2b1f',
+    color: '#1f2f1a',
     textAlign: 'center',
   },
   modalButtonTextSecondary: {
     fontFamily: Typography.button,
     fontSize: 14,
-    color: '#c8c8c8',
+    color: '#3d2b1f',
     textAlign: 'center',
   },
 });
@@ -1689,24 +1723,25 @@ const compactStyles = StyleSheet.create({
     right: 28,
   },
   modalContent: {
-    maxWidth: 560,
-    padding: 40,
-    borderRadius: 16,
-    borderWidth: 3,
+    width: 860,
+    height: 380,
+    padding: 50,
   },
   modalTitle: {
-    fontSize: 36,
-    marginBottom: 20,
+    fontSize: 52,
+    marginBottom: 16,
   },
   modalText: {
-    fontSize: 24,
-    lineHeight: 34,
-    marginBottom: 28,
+    fontSize: 34,
+    lineHeight: 46,
+    marginBottom: 22,
   },
   modalHintRow: {
     flexDirection: 'row',
-    gap: 32,
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 30,
+    marginTop: 8,
   },
   modalHintItem: {
     flexDirection: 'row',
@@ -1714,12 +1749,12 @@ const compactStyles = StyleSheet.create({
     gap: 10,
   },
   modalHintIcon: {
-    width: 40,
-    height: 40,
+    width: 72,
+    height: 72,
   },
   modalHintLabel: {
     fontFamily: Typography.button,
-    fontSize: 24,
-    color: '#c8c8c8',
+    fontSize: 28,
+    color: '#3d2b1f',
   },
 });

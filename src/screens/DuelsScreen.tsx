@@ -29,6 +29,11 @@ import { useAudio } from '../contexts/AudioContext';
 import { HubSettingsModal } from '../components/ui/HubSettingsModal';
 import { useGame } from '@/contexts/GameContext';
 import { usePaymentToken } from '@/hooks/usePaymentToken';
+import {
+  createSessionSetup,
+  resolveSessionSetup,
+  rejectSessionSetup,
+} from '@/utils/sessionSetupSignal';
 import { PaymentTokenSelector, PaymentConfirmationModal } from '@/components/payment';
 import { InlineModal } from '@/components/InlineModal';
 
@@ -41,6 +46,7 @@ const buttonV4Source = require('../../assets/ui/buttons/button-v4.png');
 const SOL_PILE = require('../../assets/ui/illustrations/sol-pile.png');
 const CHEST = require('../../assets/ui/illustrations/chest.png');
 const ECHO_FIGHT = require('../../assets/ui/illustrations/echo-fight.png');
+const PAPER_PANEL = require('../../assets/ui/panels/paper-panel.png');
 const iconASource = require('../../assets/ui/control-buttons/a.png');
 const iconBSource = require('../../assets/ui/control-buttons/b.png');
 const iconXSource = require('../../assets/ui/control-buttons/x.png');
@@ -98,13 +104,6 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
     };
   }, [connection, wallet.publicKey, fetchSessionNonces]);
 
-  useEffect(() => {
-    if (duels.phase === 'queued') {
-      dispatch({ type: 'RESET_GAME' });
-      navigation.replace('Game');
-    }
-  }, [dispatch, duels.phase, navigation]);
-
   const handleBack = useCallback(() => {
     playSfx('ui_back');
     duels.reset();
@@ -120,10 +119,24 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
   }, [disconnect, navigation]);
 
   const handleEnterDirect = useCallback(async () => {
-    const ok = await duels.enterCurrentSessionDuel();
+    let navigatedToLoading = false;
+    const ok = await duels.enterCurrentSessionDuel(() => {
+      if (navigatedToLoading) return;
+      createSessionSetup();
+      navigation.navigate('SessionLoading', { mode: 'duel' });
+      navigatedToLoading = true;
+    });
     if (ok) {
       dispatch({ type: 'RESET_GAME' });
-      navigation.navigate('Game');
+      if (navigatedToLoading) {
+        resolveSessionSetup();
+      } else {
+        navigation.navigate('Game');
+      }
+      return;
+    }
+    if (navigatedToLoading) {
+      rejectSessionSetup(duels.error ?? 'Failed to enter duel.');
     }
   }, [dispatch, duels, navigation]);
 
@@ -461,12 +474,10 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
         onRequestClose={() => setShowSessionExistsModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <View
-            style={[
-              styles.modalContent,
-              !isCompact && styles.sessionExistsModalContentMobile,
-              isCompact && compactStyles.modalContent,
-            ]}
+          <ImageBackground
+            source={PAPER_PANEL}
+            resizeMode="stretch"
+            style={[styles.modalContent, isCompact && compactStyles.modalContent]}
           >
             <Text style={[styles.modalTitle, isCompact && compactStyles.modalTitle]}>
               Session Already Exists
@@ -520,7 +531,7 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
                 </TouchableOpacity>
               </View>
             )}
-          </View>
+          </ImageBackground>
         </View>
       </InlineModal>
       <HubSettingsModal
@@ -696,18 +707,11 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   modalContent: {
-    width: '92%',
-    maxWidth: 460,
-    backgroundColor: '#f4dec2',
-    borderWidth: 2,
-    borderColor: '#7f5539',
-    borderRadius: 12,
-    paddingVertical: 20,
-    paddingHorizontal: 18,
-  },
-  sessionExistsModalContentMobile: {
-    width: '94%',
-    maxWidth: 520,
+    width: 360,
+    height: 300,
+    padding: 36,
+    alignItems: 'center',
+    justifyContent: 'flex-start',
   },
   modalTitle: {
     fontFamily: Typography.header,
@@ -837,10 +841,9 @@ const compactStyles = StyleSheet.create({
     marginBottom: 6,
   },
   modalContent: {
-    maxWidth: 860,
-    paddingVertical: 36,
-    paddingHorizontal: 34,
-    borderRadius: 16,
+    width: 860,
+    height: 380,
+    padding: 50,
   },
   modalTitle: {
     fontSize: 52,

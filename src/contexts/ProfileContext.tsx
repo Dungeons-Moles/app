@@ -28,6 +28,7 @@ import type { TransactionResult } from '@/types/solana';
 interface ProfileContextType {
   profile: ReturnType<typeof usePlayerProfile>['profile'];
   isLoading: boolean;
+  isInitialLoadComplete: boolean;
   error: string | null;
   exists: boolean;
   isCached: boolean;
@@ -73,6 +74,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
   const [mode, setMode] = React.useState<'online' | 'cached' | 'guest'>('guest');
   const [error, setError] = React.useState<string | null>(null);
   const [isPurchasing, setIsPurchasing] = useState(false);
+  const [isInitialLoadComplete, setIsInitialLoadComplete] = useState(false);
   const [localUnlockedIndices, setLocalUnlockedIndices] = useState<Set<number>>(new Set());
   const [defaultCombatSpeed, setDefaultCombatSpeed] = useState<CombatSpeed>('normal');
   const hasFetchedRef = useRef(false);
@@ -157,15 +159,19 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
         if (isMounted) {
           setMode('guest');
           hasFetchedRef.current = false;
+          setIsInitialLoadComplete(true);
         }
         return;
       }
 
       // Prevent duplicate fetches for the same wallet
       if (hasFetchedRef.current) {
+        if (isMounted) setIsInitialLoadComplete(true);
         return;
       }
       hasFetchedRef.current = true;
+
+      if (isMounted) setIsInitialLoadComplete(false);
 
       try {
         const connectivity = await detectConnectivity(connection, wallet.address);
@@ -180,6 +186,8 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
         if (isMounted) {
           setError(getUserErrorMessage(loadError));
         }
+      } finally {
+        if (isMounted) setIsInitialLoadComplete(true);
       }
     }
 
@@ -409,6 +417,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     () => ({
       profile: profileApi.profile,
       isLoading: profileApi.isLoading,
+      isInitialLoadComplete,
       error: error ?? profileApi.error,
       exists: profileApi.exists,
       isCached: profileApi.isCached,
@@ -439,6 +448,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       clearProfile,
       defaultCombatSpeed,
       error,
+      isInitialLoadComplete,
       handleCreateProfile,
       handleRecordRunResult,
       handleUpdateActiveItemPool,

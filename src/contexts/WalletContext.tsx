@@ -187,6 +187,7 @@ interface WalletContextType {
   connect: (walletName?: SupportedWallet) => Promise<AuthorizationResult | null>;
   disconnect: () => void;
   isConnecting: boolean;
+  isRestoringConnection: boolean;
   error: string | null;
   signAndSendTransaction: (
     transaction: Transaction | VersionedTransaction,
@@ -210,6 +211,11 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     authToken: null,
   });
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isRestoringConnection, setIsRestoringConnection] = useState(() => {
+    // Only true on web when there's a stored wallet preference to restore
+    if (!IS_WEB || typeof window === 'undefined') return false;
+    return loadPreferredWebWallet() !== null;
+  });
   const [error, setError] = useState<string | null>(null);
   const [devWebWallet] = useState<Keypair | null>(() => (IS_WEB ? loadDevWebWallet() : null));
   const [preferredWebWallet, setPreferredWebWallet] = useState<SupportedWallet | null>(() =>
@@ -241,10 +247,10 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!IS_WEB || typeof window === 'undefined') return;
 
-    const checkExistingConnection = () => {
-      // Allow auto-connect for DevKeypair
+    const restoreConnection = async () => {
       const targetWallet = preferredWebWallet ?? loadPreferredWebWallet();
 
+      // DevKeypair: synchronous restore
       if (targetWallet === 'DevKeypair' && devWebWallet) {
         setWallet({
           isConnected: true,
@@ -252,38 +258,53 @@ export function WalletProvider({ children }: { children: ReactNode }) {
           publicKey: devWebWallet.publicKey,
           authToken: 'dev-web-wallet',
         });
+        setIsRestoringConnection(false);
         return;
       }
 
-      if (!targetWallet) return;
-      const webWallet = getWebWalletProvider(targetWallet);
-      if (!webWallet) return;
+      if (!targetWallet) {
+        setIsRestoringConnection(false);
+        return;
+      }
 
-      const publicKey = webWallet.publicKey;
-      if (!publicKey) return;
-      const address = publicKey.toBase58();
-      setWallet({
-        isConnected: true,
-        address,
-        publicKey,
-        authToken: 'web-wallet',
-      });
+      const webWallet = getWebWalletProvider(targetWallet);
+      if (!webWallet) {
+        setIsRestoringConnection(false);
+        return;
+      }
+
+      // If the provider already has a publicKey, use it directly
+      if (webWallet.publicKey) {
+        setWallet({
+          isConnected: true,
+          address: webWallet.publicKey.toBase58(),
+          publicKey: webWallet.publicKey,
+          authToken: 'web-wallet',
+        });
+        setIsRestoringConnection(false);
+        return;
+      }
+
+      // Silent reconnect: onlyIfTrusted avoids showing a popup
+      try {
+        const response = await webWallet.connect({ onlyIfTrusted: true });
+        const publicKey = response.publicKey ?? webWallet.publicKey;
+        if (publicKey) {
+          setWallet({
+            isConnected: true,
+            address: publicKey.toBase58(),
+            publicKey,
+            authToken: 'web-wallet',
+          });
+        }
+      } catch {
+        // User hasn't previously approved this app, or extension not ready — stay disconnected
+      } finally {
+        setIsRestoringConnection(false);
+      }
     };
 
-    checkExistingConnection();
-
-    // Also listen for wallet connect events in case extension finishes initialization later
-    const targetWallet = preferredWebWallet ?? loadPreferredWebWallet();
-    if (!targetWallet) return;
-    const webWallet = getWebWalletProvider(targetWallet);
-    if (webWallet && 'on' in webWallet) {
-      const provider = webWallet as WebWalletProvider & {
-        on: (event: string, handler: () => void) => void;
-      };
-      provider.on('connect', () => {
-        checkExistingConnection();
-      });
-    }
+    restoreConnection();
   }, [preferredWebWallet]);
 
   const connect = useCallback(
@@ -630,6 +651,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         connect,
         disconnect,
         isConnecting,
+        isRestoringConnection,
         error,
         signAndSendTransaction,
         signAndSendTransactions,

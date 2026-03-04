@@ -20,6 +20,7 @@ import { GauntletHistoryScreen } from '../screens/GauntletHistoryScreen';
 import { GauntletRankingScreen } from '../screens/GauntletRankingScreen';
 import { MarketplaceScreen } from '../screens/MarketplaceScreen';
 import { ItemsScreen } from '../screens/ItemsScreen';
+import { SessionLoadingScreen } from '../screens/SessionLoadingScreen';
 import type { CombatReplay, BackendCombatLogEntry } from '../services/solana/types/combat_events';
 import type {
   ItemStats,
@@ -135,6 +136,7 @@ export type RootStackParamList = {
   Gauntlet: undefined;
   GauntletHistory: undefined;
   GauntletRanking: { returnTo?: 'Hub' | 'Gauntlet' } | undefined;
+  SessionLoading: { mode: 'campaign' | 'gauntlet' | 'duel' } | undefined;
   Marketplace: undefined;
   Items: undefined;
 };
@@ -157,6 +159,7 @@ const SCREEN_TITLES: Record<string, string> = {
   Gauntlet: 'Gauntlet',
   GauntletHistory: 'Gauntlet History',
   GauntletRanking: 'Gauntlet Ranking',
+  SessionLoading: 'Loading Session',
   Marketplace: 'Marketplace',
   Items: 'Items',
 };
@@ -201,6 +204,7 @@ export function AppNavigator() {
         <Stack.Screen name="Gauntlet" component={GauntletScreen} />
         <Stack.Screen name="GauntletHistory" component={GauntletHistoryScreen} />
         <Stack.Screen name="GauntletRanking" component={GauntletRankingScreen} />
+        <Stack.Screen name="SessionLoading" component={SessionLoadingScreen} />
         <Stack.Screen name="Marketplace" component={MarketplaceScreen} />
         <Stack.Screen name="Items" component={ItemsScreen} />
       </Stack.Navigator>

@@ -546,7 +546,7 @@ export function TutorialModal({ visible, onClose }: TutorialModalProps) {
                 )}
                 <ControlRow
                   icon={isCompact ? ICON_BTN_START : require('../../../assets/ui/illustrations/engine.png')}
-                  label="Pause menu. You can reopen this tutorial from there."
+                  label={isCompact ? "Pause menu." : "Pause menu. You can reopen this tutorial from there."}
                   s={s}
                   wide={isCompact}
                 />

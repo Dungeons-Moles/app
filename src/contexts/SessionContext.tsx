@@ -167,7 +167,7 @@ export type SessionStartupState = 'created' | 'delegated' | 'vrf_pending' | 'vrf
 
 interface SessionContextType extends SessionState {
   /** Start a new game session for a campaign level */
-  startGame: (campaignLevel: number) => Promise<TransactionResult>;
+  startGame: (campaignLevel: number, onCommitted?: () => void) => Promise<TransactionResult>;
   /** Override campaign session slot by bumping campaign nonce */
   overrideCampaignSession: () => Promise<TransactionResult>;
   /** Override duel session slot by bumping duel nonce */
@@ -175,9 +175,9 @@ interface SessionContextType extends SessionState {
   /** Override gauntlet session slot by bumping gauntlet nonce */
   overrideGauntletSession: () => Promise<TransactionResult>;
   /** Start a new duel session */
-  startDuelGame: () => Promise<TransactionResult>;
+  startDuelGame: (onCommitted?: () => void) => Promise<TransactionResult>;
   /** Start a new gauntlet session */
-  startGauntletGame: () => Promise<TransactionResult>;
+  startGauntletGame: (onCommitted?: () => void) => Promise<TransactionResult>;
   /** End the current session (after game over or victory) */
   endGame: () => Promise<TransactionResult>;
   /** End session immediately with session key signer (called after combat death/victory) */
@@ -1065,7 +1065,18 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
       if (mapReadyQuick && gameplayReadyQuick) {
         console.log('[SessionContext] retryErVrfForSession: already fulfilled (oracle was slow)');
-        // VRF fulfilled but map may not have been generated — try map+sync (idempotent)
+        // VRF fulfilled/consumed but map may not have been generated yet.
+        // Check if generated_map already exists (e.g. resuming a session where
+        // VRF was consumed by a prior generate_map_with_vrf call). If it does,
+        // skip rebuild — calling generate_map_with_vrf on a Consumed VRF state
+        // would fail with VrfNotFulfilled (error 6011).
+        const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
+        const erMapProgram = createMapGeneratorProgram(directErConnection);
+        const existingMap = await fetchGeneratedMap(erMapProgram, generatedMapPda);
+        if (existingMap?.seed != null) {
+          console.log('[SessionContext] retryErVrfForSession: map already exists, skipping rebuild');
+          return { success: true };
+        }
         try {
           const walletAddr = wallet.publicKey?.toBase58() ?? '';
           const sessionSignerKeypair = await loadSessionSignerForSession(walletAddr, sessionPdaStr);
@@ -1454,7 +1465,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   );
 
   const startGame = useCallback(
-    async (campaignLevel: number): Promise<TransactionResult> => {
+    async (campaignLevel: number, onCommitted?: () => void): Promise<TransactionResult> => {
       console.log('[SessionContext] startGame called', {
         campaignLevel,
         hasProfile: !!profile,
@@ -1845,6 +1856,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         console.log('[SessionContext] startGame:start_tx_confirmed', {
           signature: startSignature,
         });
+        onCommitted?.();
 
         // Mark sessionSigner as active now that funding is confirmed
         console.log(
@@ -2156,7 +2168,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     ]
   );
 
-  const startDuelGame = useCallback(async (): Promise<TransactionResult> => {
+  const startDuelGame = useCallback(async (onCommitted?: () => void): Promise<TransactionResult> => {
     console.log('[SessionContext] startDuelGame called');
 
     if (!wallet.publicKey) {
@@ -2246,6 +2258,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       console.log('[SessionContext] startDuelGame:combined_tx_sent', { signature });
       await confirmSignatureWithTimeout(signature);
       console.log('[SessionContext] startDuelGame:combined_tx_confirmed', { signature });
+      onCommitted?.();
       await sessionSigner.markAsActive(newSessionSignerKeypair);
       await sessionSigner.associateWithSession(newSessionSignerKeypair, sessionPda.toBase58());
       console.log('[SessionContext] startDuelGame:sessionSigner_marked_active');
@@ -2505,7 +2518,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     waitForSessionSignerOnEr,
   ]);
 
-  const startGauntletGame = useCallback(async (): Promise<TransactionResult> => {
+  const startGauntletGame = useCallback(async (onCommitted?: () => void): Promise<TransactionResult> => {
     console.log('[SessionContext] startGauntletGame called');
 
     if (!wallet.publicKey) {
@@ -2611,6 +2624,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       console.log('[SessionContext] startGauntletGame:combined_tx_sent', { signature });
       await confirmSignatureWithTimeout(signature);
       console.log('[SessionContext] startGauntletGame:combined_tx_confirmed', { signature });
+      onCommitted?.();
       await sessionSigner.markAsActive(newSessionSignerKeypair);
       await sessionSigner.associateWithSession(newSessionSignerKeypair, sessionPda.toBase58());
       console.log('[SessionContext] startGauntletGame:sessionSigner_marked_active');

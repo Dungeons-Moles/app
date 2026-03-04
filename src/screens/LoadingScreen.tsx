@@ -11,8 +11,8 @@ type LoadingScreenProps = {
 };
 
 export function LoadingScreen({ navigation }: LoadingScreenProps) {
-  const { wallet } = useWallet();
-  const { profile, isLoading: isProfileLoading } = useProfile();
+  const { wallet, isRestoringConnection } = useWallet();
+  const { profile, isInitialLoadComplete } = useProfile();
   const isCompact = useScreenVariant() === 'compact';
   const pulseAnim = useRef(new Animated.Value(0.6)).current;
   const progressAnim = useRef(new Animated.Value(0)).current;
@@ -53,10 +53,10 @@ export function LoadingScreen({ navigation }: LoadingScreenProps) {
     }).start();
   }, [progressAnim]);
 
-  // Wait for initial load or timeout
+  // Wait for wallet restoration + profile load, or timeout
   useEffect(() => {
-    // If profile is not loading, we're ready
-    if (!isProfileLoading) {
+    // Wait for both wallet restoration and initial profile load to finish
+    if (!isRestoringConnection && isInitialLoadComplete) {
       setIsReady(true);
       return;
     }
@@ -67,7 +67,7 @@ export function LoadingScreen({ navigation }: LoadingScreenProps) {
     }, 3000);
 
     return () => clearTimeout(fallback);
-  }, [isProfileLoading]);
+  }, [isRestoringConnection, isInitialLoadComplete]);
 
   // Navigate once ready
   useEffect(() => {

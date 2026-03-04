@@ -29,6 +29,11 @@ import { useAudio } from '../contexts/AudioContext';
 import { HubSettingsModal } from '../components/ui/HubSettingsModal';
 import { useGame } from '@/contexts/GameContext';
 import { usePaymentToken } from '@/hooks/usePaymentToken';
+import {
+  createSessionSetup,
+  resolveSessionSetup,
+  rejectSessionSetup,
+} from '@/utils/sessionSetupSignal';
 import { PaymentTokenSelector, PaymentConfirmationModal } from '@/components/payment';
 import { InlineModal } from '@/components/InlineModal';
 
@@ -41,6 +46,7 @@ const buttonV2Source = require('../../assets/ui/buttons/button-v2.png');
 const SOL_PILE = require('../../assets/ui/illustrations/sol-pile.png');
 const CHEST = require('../../assets/ui/illustrations/chest.png');
 const ECHO_FIGHT = require('../../assets/ui/illustrations/echo-fight.png');
+const PAPER_PANEL = require('../../assets/ui/panels/paper-panel.png');
 const iconASource = require('../../assets/ui/control-buttons/a.png');
 const iconBSource = require('../../assets/ui/control-buttons/b.png');
 const iconXSource = require('../../assets/ui/control-buttons/x.png');
@@ -135,11 +141,24 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
 
   const handleEnterDirect = useCallback(async () => {
     setIsEntryTransitioning(true);
-    const ok = await gauntlet.enterGauntlet();
+    let navigatedToLoading = false;
+    const ok = await gauntlet.enterGauntlet(() => {
+      if (navigatedToLoading) return;
+      createSessionSetup();
+      navigation.navigate('SessionLoading', { mode: 'gauntlet' });
+      navigatedToLoading = true;
+    });
     if (ok) {
       dispatch({ type: 'RESET_GAME' });
-      navigation.navigate('Game');
+      if (navigatedToLoading) {
+        resolveSessionSetup();
+      } else {
+        navigation.navigate('Game');
+      }
       return;
+    }
+    if (navigatedToLoading) {
+      rejectSessionSetup(gauntlet.error ?? 'Failed to enter gauntlet.');
     }
     setIsEntryTransitioning(false);
   }, [dispatch, gauntlet, navigation]);
@@ -445,12 +464,10 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
         onRequestClose={() => setShowSessionExistsModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <View
-            style={[
-              styles.modalContent,
-              !isCompact && styles.sessionExistsModalContentMobile,
-              isCompact && compactStyles.modalContent,
-            ]}
+          <ImageBackground
+            source={PAPER_PANEL}
+            resizeMode="stretch"
+            style={[styles.modalContent, isCompact && compactStyles.modalContent]}
           >
             <Text style={[styles.modalTitle, isCompact && compactStyles.modalTitle]}>
               Session Already Exists
@@ -504,7 +521,7 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
                 </TouchableOpacity>
               </View>
             )}
-          </View>
+          </ImageBackground>
         </View>
       </InlineModal>
       <HubSettingsModal
@@ -633,18 +650,11 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   modalContent: {
-    width: '92%',
-    maxWidth: 460,
-    backgroundColor: '#f4dec2',
-    borderWidth: 2,
-    borderColor: '#7f5539',
-    borderRadius: 12,
-    paddingVertical: 20,
-    paddingHorizontal: 18,
-  },
-  sessionExistsModalContentMobile: {
-    width: '94%',
-    maxWidth: 520,
+    width: 360,
+    height: 300,
+    padding: 36,
+    alignItems: 'center',
+    justifyContent: 'flex-start',
   },
   modalTitle: {
     fontFamily: Typography.header,
@@ -755,10 +765,9 @@ const compactStyles = StyleSheet.create({
     fontSize: 52,
   },
   modalContent: {
-    maxWidth: 860,
-    paddingVertical: 36,
-    paddingHorizontal: 34,
-    borderRadius: 16,
+    width: 860,
+    height: 380,
+    padding: 50,
   },
   modalTitle: {
     fontSize: 52,

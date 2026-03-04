@@ -10,6 +10,7 @@
 
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useGame, GamePhase } from '@/contexts/GameContext';
+import { TimePhase } from '@/game/engine/types';
 import { useSession } from '@/contexts/SessionContext';
 import { useGameplayStateContext, type PoiData } from '@/contexts/GameplayStateContext';
 import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
@@ -284,6 +285,7 @@ const NIGHT_ONLY_POIS: Set<number> = new Set([POI_TYPES.MOLE_DEN, POI_TYPES.REST
 
 /** One-time use POI types */
 const ONE_TIME_POIS: Set<number> = new Set([
+  POI_TYPES.MOLE_DEN,
   POI_TYPES.SUPPLY_CACHE,
   POI_TYPES.TOOL_CRATE,
   POI_TYPES.TOOL_OIL_RACK,
@@ -814,13 +816,16 @@ export function usePoiInteraction(): UsePoiInteractionResult {
   // 1. Player is in exploration phase
   // 2. There's a non-consumed POI at current position
   // 3. One-time POIs haven't been used
-  // Note: Night-only POIs (Mole Den, Rest Alcove) still show canInteract=true during day.
-  // The modal will show with the "Rest" option disabled, explaining "Night only".
+  // Night-only POIs (Mole Den, Rest Alcove) are not interactable during the day.
   const canInteract = useMemo((): boolean => {
     if (!gameState || gameState.phase !== GamePhase.Exploration) {
       return false;
     }
     if (!currentPoi || currentPoi.consumed) {
+      return false;
+    }
+    // Block night-only POIs during the day (no modal at all)
+    if (NIGHT_ONLY_POIS.has(currentPoi.poiType) && gameState.time.phase === TimePhase.Day) {
       return false;
     }
 
