@@ -18,6 +18,7 @@ import { useSession } from '../contexts/SessionContext';
 import { useWallet } from '../contexts/WalletContext';
 import { useSolanaConnection } from '../contexts/SolanaConnectionContext';
 import { useLandscapeLock } from '../hooks/useOrientationLock';
+import { useKeepAwake } from 'expo-keep-awake';
 import { CombatLayout } from '../components/combat';
 import { DebugOverlay } from '../components/game';
 import { ENEMY_TRAITS, type EnemyId } from '../game/combat/traits';
@@ -141,6 +142,7 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
 
   // Lock to landscape orientation (FR-044)
   useLandscapeLock();
+  useKeepAwake();
 
   // Start combat when screen loads
   useEffect(() => {

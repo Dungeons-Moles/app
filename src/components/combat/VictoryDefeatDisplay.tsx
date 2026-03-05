@@ -8,9 +8,13 @@
  */
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, Animated, Easing } from 'react-native';
-import { GAME_CONSTANTS } from '../../game/engine/constants';
+import { View, Text, Image, StyleSheet, Animated, Easing, useWindowDimensions } from 'react-native';
 import { Typography } from '../../theme/typography';
+
+const skullIcon = require('../../../assets/icons/ui/skull.png');
+const trophyIcon = require('../../../assets/icons/ui/trophy.png');
+const crownIcon = require('../../../assets/icons/ui/crown.png');
+const coinIcon = require('../../../assets/icons/ui/coin-yellow.png');
 
 export interface VictoryDefeatDisplayProps {
   result: 'VICTORY' | 'DEFEAT';
@@ -44,9 +48,22 @@ export function VictoryDefeatDisplay({
   const goldCountAnim = useRef(new Animated.Value(0)).current;
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const didCompleteRef = useRef(false);
+  const { height: windowHeight } = useWindowDimensions();
 
   const isVictory = result === 'VICTORY';
   const showGoldReward = isVictory && goldReward !== undefined && goldReward > 0;
+
+  // Scale down if the card would overflow screen height
+  // Estimated card height at scale=1: ~350px, at scale=2: ~700px
+  const baseCardHeight = showGoldReward ? 380 : 300;
+  const estimatedHeight = baseCardHeight * scale;
+  const fitScale = estimatedHeight > windowHeight * 0.85
+    ? (windowHeight * 0.85) / estimatedHeight
+    : 1;
+  const s = scale * fitScale;
+
+  const iconSource = isVictory ? (isFinalVictory ? crownIcon : trophyIcon) : skullIcon;
+  const iconSize = 100 * s;
 
   // Animate in on mount
   useEffect(() => {
@@ -66,9 +83,6 @@ export function VictoryDefeatDisplay({
   }, []);
 
   // T076: Gold reward animation sequence
-  // 1. Short delay (300ms) after result appears
-  // 2. Gold icon and amount animate in
-  // 3. Gold counter animates from 0 to reward amount via Animated.timing
   useEffect(() => {
     if (!showGoldReward) return;
 
@@ -134,78 +148,86 @@ export function VictoryDefeatDisplay({
     };
   }, [scheduleCountdown]);
 
-  return (
-    <View style={styles.container}>
-      <Animated.View
+  const cardPadding = 40 * s;
+  const cardBorderRadius = 20 * s;
+
+  const cardInnerContent = (
+    <>
+      {/* Result icon */}
+      <Image
+        source={iconSource}
+        style={{
+          width: iconSize,
+          height: iconSize,
+          marginBottom: 16 * s,
+          tintColor: '#888888',
+        }}
+        resizeMode="contain"
+      />
+
+      {/* Result text */}
+      <Text
         style={[
-          styles.content,
+          styles.resultText,
           {
-            transform: [{ scale: scaleAnim }],
-            opacity: opacityAnim,
-            padding: 40 * scale,
-            borderRadius: 20 * scale,
+            color: isVictory ? '#22c55e' : '#dc2626',
+            fontSize: 48 * s,
+            letterSpacing: 4 * s,
+            marginBottom: 8 * s,
           },
         ]}
       >
-        {/* Result emoji */}
-        <Text style={[styles.emoji, { fontSize: 64 * scale, marginBottom: 16 * scale }]}>
-          {isVictory ? (isFinalVictory ? '👑' : '🏆') : '💀'}
-        </Text>
+        {isFinalVictory && isVictory ? 'YOU WIN!' : result}
+      </Text>
 
-        {/* Result text */}
-        <Text
+      {/* Subtext */}
+      <Text style={[styles.subtext, { fontSize: 18 * s, marginBottom: 16 * s }]}>
+        {isVictory
+          ? isFinalVictory
+            ? 'Level Complete!'
+            : 'Enemy defeated!'
+          : 'You have fallen...'}
+      </Text>
+
+      {/* T075: Gold reward display (only on victory) */}
+      {showGoldReward && (
+        <Animated.View
           style={[
-            styles.resultText,
+            styles.goldRewardContainer,
             {
-              color: isVictory ? '#22c55e' : '#dc2626',
-              fontSize: 48 * scale,
-              letterSpacing: 4 * scale,
-              marginBottom: 8 * scale,
+              opacity: goldOpacityAnim,
+              transform: [{ scale: goldScaleAnim }],
+              paddingHorizontal: 20 * s,
+              paddingVertical: 10 * s,
+              borderRadius: 12 * s,
+              marginBottom: 16 * s,
             },
           ]}
         >
-          {isFinalVictory && isVictory ? 'YOU WIN!' : result}
-        </Text>
+          <Text style={[styles.goldAmount, { fontSize: 24 * s }]}>
+            +{displayedGold}
+          </Text>
+          <Image
+            source={coinIcon}
+            style={{
+              width: 24 * s,
+              height: 24 * s,
+              marginLeft: 6 * s,
+            }}
+            resizeMode="contain"
+          />
+        </Animated.View>
+      )}
 
-        {/* Subtext */}
-        <Text style={[styles.subtext, { fontSize: 18 * scale, marginBottom: 16 * scale }]}>
-          {isVictory
-            ? isFinalVictory
-              ? 'Level Complete!'
-              : 'Enemy defeated!'
-            : 'You have fallen...'}
-        </Text>
+      {/* Countdown */}
+      <Text style={[styles.countdown, { fontSize: 14 * s }]}>
+        Returning in {countdown}...
+      </Text>
+    </>
+  );
 
-        {/* T075: Gold reward display (only on victory) */}
-        {showGoldReward && (
-          <Animated.View
-            style={[
-              styles.goldRewardContainer,
-              {
-                opacity: goldOpacityAnim,
-                transform: [{ scale: goldScaleAnim }],
-                paddingHorizontal: 20 * scale,
-                paddingVertical: 10 * scale,
-                borderRadius: 12 * scale,
-                marginBottom: 16 * scale,
-              },
-            ]}
-          >
-            <Text style={[styles.goldIcon, { fontSize: 24 * scale, marginRight: 8 * scale }]}>
-              💰
-            </Text>
-            <Text style={[styles.goldAmount, { fontSize: 24 * scale }]}>
-              +{displayedGold} Gold
-            </Text>
-          </Animated.View>
-        )}
-
-        {/* Countdown */}
-        <Text style={[styles.countdown, { fontSize: 14 * scale }]}>
-          Returning in {countdown}...
-        </Text>
-      </Animated.View>
-
+  return (
+    <View style={styles.container}>
       {/* Background overlay */}
       <View
         style={[
@@ -213,6 +235,21 @@ export function VictoryDefeatDisplay({
           { backgroundColor: isVictory ? 'rgba(34, 197, 94, 0.1)' : 'rgba(220, 38, 38, 0.1)' },
         ]}
       />
+
+      {/* Animated card content */}
+      <Animated.View
+        style={[
+          styles.cardWrapper,
+          {
+            transform: [{ scale: scaleAnim }],
+            opacity: opacityAnim,
+            padding: cardPadding,
+            borderRadius: cardBorderRadius,
+          },
+        ]}
+      >
+        {cardInnerContent}
+      </Animated.View>
     </View>
   );
 }
@@ -228,13 +265,13 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     zIndex: -1,
   },
-  content: {
+  cardWrapper: {
     alignItems: 'center',
     backgroundColor: 'rgba(0, 0, 0, 0.85)',
+    overflow: 'hidden',
     borderWidth: 2,
     borderColor: 'rgba(255, 255, 255, 0.1)',
   },
-  emoji: {},
   resultText: {
     fontFamily: Typography.header,
   },
@@ -242,7 +279,6 @@ const styles = StyleSheet.create({
     fontFamily: Typography.body,
     color: '#888888',
   },
-  // T075/T076: Gold reward styles
   goldRewardContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -250,7 +286,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(234, 179, 8, 0.3)',
   },
-  goldIcon: {},
+  goldIcon: {
+    fontFamily: Typography.number,
+    fontWeight: 'bold',
+    color: '#eab308',
+  },
   goldAmount: {
     fontFamily: Typography.number,
     fontWeight: 'bold',

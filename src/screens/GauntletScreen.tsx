@@ -20,7 +20,8 @@ import { useSessionIdentity } from '@/contexts/SessionContext';
 import { useWallet } from '@/contexts/WalletContext';
 import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
 import { deriveGauntletSessionPda } from '@/services/solana/constants';
-import { GAUNTLET_ENTRY_LAMPORTS } from '@/services/solana/gauntlet';
+import { GAUNTLET_ENTRY_LAMPORTS, deriveGauntletPoolVaultPda } from '@/services/solana/gauntlet';
+import { GauntletPoolBadge } from '../components/ui/GauntletPoolBadge';
 import { useControllerAction } from '../hooks/useControllerAction';
 import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHints';
 import { useInputMode } from '../hooks/useInputMode';
@@ -75,6 +76,7 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showSessionExistsModal, setShowSessionExistsModal] = useState(false);
   const [isEntryTransitioning, setIsEntryTransitioning] = useState(false);
+  const [poolLamports, setPoolLamports] = useState<bigint | null>(null);
 
   // Reset transitioning state if user returns to this screen (e.g. Game screen navigated back)
   const prevIsFocusedRef = useRef(false);
@@ -126,6 +128,22 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
       cancelled = true;
     };
   }, [connection, wallet.publicKey, fetchSessionNonces]);
+
+  useEffect(() => {
+    if (!isFocused) return;
+    let cancelled = false;
+    const fetchPool = async () => {
+      try {
+        const [vaultPda] = deriveGauntletPoolVaultPda();
+        const balance = await connection.getBalance(vaultPda);
+        if (!cancelled) setPoolLamports(BigInt(balance));
+      } catch {
+        if (!cancelled) setPoolLamports(null);
+      }
+    };
+    fetchPool();
+    return () => { cancelled = true; };
+  }, [isFocused, connection]);
 
   const handleBack = useCallback(() => {
     playSfx('ui_back');
@@ -282,21 +300,7 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
         <Image source={STAINS_BACKGROUND} style={styles.stainsOverlay} resizeMode="cover" />
         {!isCompact && !isController && (
           <View style={styles.topRight}>
-            <TouchableOpacity
-              onPress={() => {
-                playSfx('ui_click');
-                navigation.navigate('GauntletRanking');
-              }}
-              activeOpacity={0.7}
-            >
-              <ImageBackground
-                source={buttonV2Source}
-                style={[styles.headerButton]}
-                resizeMode="stretch"
-              >
-                <Text style={[styles.headerButtonText]}>Ranking</Text>
-              </ImageBackground>
-            </TouchableOpacity>
+            <GauntletPoolBadge poolLamports={poolLamports} />
             <TouchableOpacity
               onPress={() => {
                 playSfx('ui_click');
@@ -317,6 +321,24 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
               </ImageBackground>
             </TouchableOpacity>
           </View>
+        )}
+        {!isCompact && !isController && (
+          <TouchableOpacity
+            onPress={() => {
+              playSfx('ui_click');
+              navigation.navigate('GauntletRanking');
+            }}
+            activeOpacity={0.7}
+            style={styles.rankingButtonAbsolute}
+          >
+            <ImageBackground
+              source={buttonV2Source}
+              style={styles.backButtonMobile}
+              resizeMode="stretch"
+            >
+              <Text style={styles.backButtonTextMobile}>Ranking</Text>
+            </ImageBackground>
+          </TouchableOpacity>
         )}
         {!isCompact && !isController && (
           <TouchableOpacity onPress={handleBack} activeOpacity={0.7} style={styles.backButtonAbsolute}>
@@ -373,6 +395,13 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
               )
             )}
           </View>
+
+          {/* Pool badge (compact only — wide has it in topRight) */}
+          {isCompact && (
+            <View style={compactStyles.poolBadge}>
+              <GauntletPoolBadge poolLamports={poolLamports} size="lg" />
+            </View>
+          )}
 
           {/* Title */}
           <View style={[styles.titleRow, isCompact && compactStyles.titleRow]}>
@@ -636,6 +665,12 @@ const styles = StyleSheet.create({
     left: 16,
     zIndex: 10,
   },
+  rankingButtonAbsolute: {
+    position: 'absolute',
+    bottom: 24,
+    left: 16,
+    zIndex: 10,
+  },
   backButtonMobile: {
     width: 90,
     height: 45,
@@ -844,6 +879,12 @@ const styles = StyleSheet.create({
 });
 
 const compactStyles = StyleSheet.create({
+  poolBadge: {
+    position: 'absolute' as const,
+    top: 24,
+    right: 8,
+    zIndex: 15,
+  },
   header: {
     marginTop: 0,
   },

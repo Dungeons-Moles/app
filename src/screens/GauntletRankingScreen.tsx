@@ -17,7 +17,7 @@ import { useWallet } from '@/contexts/WalletContext';
 import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
 import { useScreenVariant } from '@/contexts/ScreenVariantContext';
 import { createGameplayStateProgram, createPlayerProfileProgram } from '@/services/solana/programs';
-import { deriveGauntletConfigPda } from '@/services/solana/gauntlet';
+import { deriveGauntletConfigPda, deriveGauntletPoolVaultPda } from '@/services/solana/gauntlet';
 import { derivePlayerProfilePda } from '@/services/solana/types';
 import { Typography } from '@/theme/typography';
 import { useAudio } from '../contexts/AudioContext';
@@ -26,6 +26,7 @@ import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHin
 import { useInputMode } from '../hooks/useInputMode';
 import { FocusGlow } from '../components/ui/FocusGlow';
 import { HubSettingsModal } from '../components/ui/HubSettingsModal';
+import { GauntletPoolBadge } from '../components/ui/GauntletPoolBadge';
 
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.png');
 const STAINS_BACKGROUND = require('../../assets/ui/backgrounds/stains-background.png');
@@ -71,6 +72,7 @@ export function GauntletRankingScreen({ navigation, route }: GauntletRankingScre
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [epochId, setEpochId] = useState<bigint | null>(null);
+  const [poolLamports, setPoolLamports] = useState<bigint | null>(null);
   const [items, setItems] = useState<RankingItem[]>([]);
 
   const loadRanking = useCallback(async () => {
@@ -81,6 +83,15 @@ export function GauntletRankingScreen({ navigation, route }: GauntletRankingScre
       const gameplayProgram = createGameplayStateProgram(connection);
       const profileProgram = createPlayerProfileProgram(connection);
       const [gauntletConfigPda] = deriveGauntletConfigPda();
+
+      // Fetch pool vault balance
+      try {
+        const [vaultPda] = deriveGauntletPoolVaultPda();
+        const balance = await connection.getBalance(vaultPda);
+        setPoolLamports(BigInt(balance));
+      } catch {
+        setPoolLamports(null);
+      }
 
       let currentEpoch: bigint | null = null;
       try {
@@ -266,26 +277,42 @@ export function GauntletRankingScreen({ navigation, route }: GauntletRankingScre
         resizeMode="stretch"
       />
 
+      {/* Pool badge - top right, outside book (compact only) */}
+      {isCompact && (
+        <View style={[styles.poolBadgeContainer, compactStyles.poolBadgeContainer]}>
+          <GauntletPoolBadge poolLamports={poolLamports} size="lg" />
+        </View>
+      )}
+
+      {/* Epoch - left side of book (compact only) */}
+      {isCompact && (
+        <Text style={[styles.epochText, compactStyles.epochTextAbsolute]}>
+          Epoch: {epochId !== null ? epochId.toString() : '-'}
+        </Text>
+      )}
+
       <View style={[styles.content, isCompact && compactStyles.content]}>
         {/* Header */}
         <View style={[styles.header, isCompact && compactStyles.header]}>
-          {isController ? (
-            <View style={[styles.headerButton, isCompact && compactStyles.headerButton]} />
-          ) : (
-            <TouchableOpacity onPress={() => navigation.goBack()} activeOpacity={0.7}>
-              <ImageBackground
-                source={buttonV1Source}
-                style={[styles.headerButton, isCompact && compactStyles.headerButton]}
-                resizeMode="stretch"
-              >
-                <Text
-                  style={[styles.headerButtonText, isCompact && compactStyles.headerButtonText]}
+          <View style={styles.headerLeft}>
+            {isController ? (
+              <View style={[styles.headerButton, isCompact && compactStyles.headerButton]} />
+            ) : (
+              <TouchableOpacity onPress={() => navigation.goBack()} activeOpacity={0.7}>
+                <ImageBackground
+                  source={buttonV1Source}
+                  style={[styles.headerButton, isCompact && compactStyles.headerButton]}
+                  resizeMode="stretch"
                 >
-                  Back
-                </Text>
-              </ImageBackground>
-            </TouchableOpacity>
-          )}
+                  <Text
+                    style={[styles.headerButtonText, isCompact && compactStyles.headerButtonText]}
+                  >
+                    Back
+                  </Text>
+                </ImageBackground>
+              </TouchableOpacity>
+            )}
+          </View>
 
           <View style={[styles.titleRow, isCompact && compactStyles.titleRow]}>
             <Image
@@ -301,32 +328,38 @@ export function GauntletRankingScreen({ navigation, route }: GauntletRankingScre
           </View>
 
           <View style={styles.headerRight}>
-            <Text style={[styles.epochText, isCompact && compactStyles.epochText]}>
-              Epoch: {epochId !== null ? epochId.toString() : '-'}
-            </Text>
             {!isCompact && !isController && (
-              <TouchableOpacity
-                onPress={() => {
-                  playSfx('ui_click');
-                  setShowSettingsModal(true);
-                }}
-                activeOpacity={0.7}
-              >
-                <ImageBackground
-                  source={buttonV1Source}
-                  style={styles.settingsBtn}
-                  resizeMode="stretch"
+              <>
+                <GauntletPoolBadge poolLamports={poolLamports} />
+                <TouchableOpacity
+                  onPress={() => {
+                    playSfx('ui_click');
+                    setShowSettingsModal(true);
+                  }}
+                  activeOpacity={0.7}
                 >
-                  <Image
-                    source={engineImageSource}
-                    style={styles.settingsIconImage}
-                    resizeMode="contain"
-                  />
-                </ImageBackground>
-              </TouchableOpacity>
+                  <ImageBackground
+                    source={buttonV1Source}
+                    style={styles.settingsBtn}
+                    resizeMode="stretch"
+                  >
+                    <Image
+                      source={engineImageSource}
+                      style={styles.settingsIconImage}
+                      resizeMode="contain"
+                    />
+                  </ImageBackground>
+                </TouchableOpacity>
+              </>
             )}
           </View>
         </View>
+
+        {!isCompact && (
+          <Text style={[styles.epochText, { marginTop: 6 }]}>
+            Epoch: {epochId !== null ? epochId.toString() : '-'}
+          </Text>
+        )}
 
         {/* Two-column book layout */}
         {isLoading ? (
@@ -487,17 +520,26 @@ const styles = StyleSheet.create({
     color: '#3d2b1f',
     marginBottom: 4,
   },
+  headerLeft: {
+    flex: 1,
+    alignItems: 'flex-start',
+  },
   headerRight: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'flex-end',
     gap: 8,
   },
   epochText: {
     fontFamily: Typography.body,
-    fontSize: 11,
+    fontSize: 14,
     color: '#5c4033',
-    minWidth: 80,
-    textAlign: 'right',
+    textAlign: 'left',
+  },
+  poolBadgeContainer: {
+    position: 'absolute',
+    zIndex: 20,
   },
   settingsBtn: {
     width: 45,
@@ -643,6 +685,17 @@ const styles = StyleSheet.create({
 });
 
 const compactStyles = StyleSheet.create({
+  poolBadgeContainer: {
+    top: 24,
+    right: 8,
+  },
+  epochTextAbsolute: {
+    position: 'absolute' as const,
+    top: 145,
+    left: 80,
+    fontSize: 26,
+    zIndex: 20,
+  },
   content: {
     paddingTop: 130,
     paddingHorizontal: 88,
@@ -658,10 +711,6 @@ const compactStyles = StyleSheet.create({
   headerButtonText: {
     fontSize: 28,
     marginBottom: 6,
-  },
-  epochText: {
-    fontSize: 20,
-    minWidth: 140,
   },
   titleRow: {
     gap: 0,

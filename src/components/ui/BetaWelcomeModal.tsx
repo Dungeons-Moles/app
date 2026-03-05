@@ -14,6 +14,7 @@ import {
   TouchableOpacity,
   TouchableWithoutFeedback,
   ImageBackground,
+  useWindowDimensions,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { InlineModal } from '../InlineModal';
@@ -37,6 +38,10 @@ export interface BetaWelcomeModalProps {
 
 export function BetaWelcomeModal({ visible, onClose }: BetaWelcomeModalProps) {
   const isCompact = useScreenVariant() === 'compact';
+  const { height: windowHeight } = useWindowDimensions();
+  const baseHeight = isCompact ? 740 : 380;
+  const maxHeight = windowHeight * 0.95;
+  const modalScale = maxHeight < baseHeight ? maxHeight / baseHeight : 1;
   const inputMode = useInputMode();
   const isController = inputMode === 'controller';
   const { playSfx } = useAudio();
@@ -63,7 +68,11 @@ export function BetaWelcomeModal({ visible, onClose }: BetaWelcomeModalProps) {
           <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
             <ImageBackground
               source={paperPanelSource}
-              style={[styles.modalContent, isCompact && compactStyles.modalContent]}
+              style={[
+                styles.modalContent,
+                isCompact && compactStyles.modalContent,
+                modalScale < 1 && { transform: [{ scale: modalScale }] },
+              ]}
               resizeMode="stretch"
             >
               <View style={styles.modalHeader}>

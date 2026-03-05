@@ -123,14 +123,22 @@ function dispatchMuteState(muted: boolean) {
   window.dispatchEvent(new CustomEvent(MUTE_STATE_EVENT, { detail: { muted } }));
 }
 
+type BgmKey = Exclude<BgmTrack, 'none'>;
+
 export function AudioProvider({ children }: { children: ReactNode }) {
   const [musicVolume, setMusicVolumeState] = useState<number>(DEFAULT_MUSIC_VOLUME);
   const [sfxVolume, setSfxVolumeState] = useState<number>(DEFAULT_SFX_VOLUME);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
 
-  // Active BGMs. We use an object to allow crossfading (old track fading out while new fades in).
-  const activeBgmRef = useRef<{ sound: Audio.Sound; track: BgmTrack } | null>(null);
-  const fadingOutBgmRef = useRef<{ sound: Audio.Sound } | null>(null);
+  // Preloaded BGM pool — each track has exactly one Sound that lives for the app's lifetime.
+  // This prevents orphaned sounds and eliminates native load delay.
+  const bgmPoolRef = useRef<Map<BgmKey, Audio.Sound>>(new Map());
+  const bgmPoolReady = useRef(false);
+
+  // Currently playing track name (null = nothing playing)
+  const activeTrackRef = useRef<BgmKey | null>(null);
+  // Track that is fading out (null = no fade in progress)
+  const fadingOutTrackRef = useRef<BgmKey | null>(null);
 
   // Store playback positions to resume exploration tracks
   const playbackPositions = useRef<Partial<Record<BgmTrack, number>>>({});
@@ -147,6 +155,10 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   const userHasInteracted = useRef(Platform.OS !== 'web');
   const pendingBgmRef = useRef<{ track: BgmTrack; options: PlayBgmOptions } | null>(null);
 
+  // Ref to hold latest musicVolume so callbacks always see current value
+  const musicVolumeRef = useRef(musicVolume);
+  musicVolumeRef.current = musicVolume;
+
   // --- Initialization ---
   useEffect(() => {
     let mounted = true;
@@ -161,6 +173,28 @@ export function AudioProvider({ children }: { children: ReactNode }) {
           shouldDuckAndroid: true,
           playThroughEarpieceAndroid: false,
         });
+
+        // Preload all BGM tracks in parallel
+        const entries = Object.entries(BGM_FILES) as [BgmKey, number][];
+        const results = await Promise.allSettled(
+          entries.map(async ([key, asset]) => {
+            const { sound } = await Audio.Sound.createAsync(asset, {
+              shouldPlay: false,
+              isLooping: true,
+              volume: 0,
+            });
+            return [key, sound] as const;
+          })
+        );
+
+        if (mounted) {
+          for (const result of results) {
+            if (result.status === 'fulfilled') {
+              bgmPoolRef.current.set(result.value[0], result.value[1]);
+            }
+          }
+          bgmPoolReady.current = true;
+        }
 
         const stored = await AsyncStorage.getItem(VOLUME_STORAGE_KEY);
         if (stored && mounted) {
@@ -180,8 +214,10 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     return () => {
       mounted = false;
       if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
-      if (activeBgmRef.current?.sound) activeBgmRef.current.sound.unloadAsync();
-      if (fadingOutBgmRef.current?.sound) fadingOutBgmRef.current.sound.unloadAsync();
+      for (const sound of bgmPoolRef.current.values()) {
+        sound.unloadAsync().catch(() => {});
+      }
+      bgmPoolRef.current.clear();
     };
   }, []);
 
@@ -203,8 +239,11 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         setMusicVolumeState(saved.music);
         setSfxVolumeState(saved.sfx);
         saveVolumes(saved.music, saved.sfx);
-        if (activeBgmRef.current?.sound && !fadeIntervalRef.current) {
-          activeBgmRef.current.sound.setVolumeAsync(saved.music).catch(() => {});
+        const activeSound = activeTrackRef.current
+          ? bgmPoolRef.current.get(activeTrackRef.current)
+          : null;
+        if (activeSound && !fadeIntervalRef.current) {
+          activeSound.setVolumeAsync(saved.music).catch(() => {});
         }
       } else {
         // Mute — save current volumes, set to 0
@@ -213,8 +252,11 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         setMusicVolumeState(0);
         setSfxVolumeState(0);
         saveVolumes(0, 0);
-        if (activeBgmRef.current?.sound) {
-          activeBgmRef.current.sound.setVolumeAsync(0).catch(() => {});
+        const activeSound = activeTrackRef.current
+          ? bgmPoolRef.current.get(activeTrackRef.current)
+          : null;
+        if (activeSound) {
+          activeSound.setVolumeAsync(0).catch(() => {});
         }
       }
       dispatchMuteState(isMutedRef.current);
@@ -272,12 +314,10 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     await saveVolumes(clamped, sfxVolume);
 
     // Immediately update active BGM volume if not currently crossfading.
-    // (If crossfading, the interval will dynamically update it anyway).
-    if (activeBgmRef.current?.sound && !fadeIntervalRef.current) {
-      try {
-        await activeBgmRef.current.sound.setVolumeAsync(clamped);
-      } catch (e) {
-        // Ignored
+    if (activeTrackRef.current && !fadeIntervalRef.current) {
+      const activeSound = bgmPoolRef.current.get(activeTrackRef.current);
+      if (activeSound) {
+        activeSound.setVolumeAsync(clamped).catch(() => {});
       }
     }
   };
@@ -290,10 +330,6 @@ export function AudioProvider({ children }: { children: ReactNode }) {
 
   // --- BGM Management ---
 
-  /**
-   * Helper to fade tracks.
-   * Modifies volumes incrementally over CROSSFADE_DURATION_MS.
-   */
   const startCrossfade = (
     fadeInCb: (vol: number) => void,
     fadeOutCb: (vol: number) => void,
@@ -319,27 +355,18 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     }, FADE_INTERVAL_MS);
   };
 
-  const stopCurrentBgmInternal = async (savePositionForTrack?: BgmTrack) => {
-    if (activeBgmRef.current) {
-      const { sound, track } = activeBgmRef.current;
-      if (savePositionForTrack) {
-        try {
-          const status = await sound.getStatusAsync();
-          if (status.isLoaded) {
-            playbackPositions.current[track] = status.positionMillis;
-          }
-        } catch (e) {
-          // Ignored
-        }
+  /** Save position and pause a pool sound (does NOT unload — pool sounds live forever). */
+  const pausePoolSound = async (trackKey: BgmKey) => {
+    const sound = bgmPoolRef.current.get(trackKey);
+    if (!sound) return;
+    try {
+      const status = await sound.getStatusAsync();
+      if (status.isLoaded && status.isPlaying) {
+        playbackPositions.current[trackKey] = status.positionMillis;
+        await sound.pauseAsync();
       }
-
-      try {
-        await sound.stopAsync();
-        await sound.unloadAsync();
-      } catch (e) {
-        // Ignored
-      }
-      activeBgmRef.current = null;
+    } catch {
+      // Ignored — sound may already be stopped
     }
   };
 
@@ -352,97 +379,92 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       }
 
       // Don't restart if it's already playing the requested track.
-      if (activeBgmRef.current?.track === track) {
+      if (activeTrackRef.current === (track === 'none' ? null : track)) {
         return;
       }
 
+      if (!bgmPoolReady.current) return;
+
+      const vol = musicVolumeRef.current;
+
+      // Handle fade-to-silence
       if (track === 'none') {
-        const toSave = activeBgmRef.current?.track;
-        if (options.crossfade && activeBgmRef.current) {
-          const oldBgm = activeBgmRef.current;
-          activeBgmRef.current = null;
+        const oldTrack = activeTrackRef.current;
+        activeTrackRef.current = null;
 
-          if (toSave) {
-            try {
-              const status = await oldBgm.sound.getStatusAsync();
-              if (status.isLoaded) playbackPositions.current[toSave] = status.positionMillis;
-            } catch (e) {}
-          }
-
-          startCrossfade(
-            () => {}, // No new track to fade in
-            (vol) => {
-              oldBgm.sound.setVolumeAsync(vol * musicVolume).catch(() => {});
-            },
-            async () => {
-              await oldBgm.sound.stopAsync().catch(() => {});
-              await oldBgm.sound.unloadAsync().catch(() => {});
+        if (oldTrack) {
+          const oldSound = bgmPoolRef.current.get(oldTrack);
+          if (oldSound && options.crossfade) {
+            // Cancel any in-progress fadeout
+            if (fadingOutTrackRef.current && fadingOutTrackRef.current !== oldTrack) {
+              await pausePoolSound(fadingOutTrackRef.current);
+              fadingOutTrackRef.current = null;
             }
-          );
-        } else {
-          await stopCurrentBgmInternal(toSave);
+            fadingOutTrackRef.current = oldTrack;
+
+            startCrossfade(
+              () => {},
+              (progress) => {
+                oldSound.setVolumeAsync(progress * vol).catch(() => {});
+              },
+              async () => {
+                await pausePoolSound(oldTrack);
+                if (fadingOutTrackRef.current === oldTrack) fadingOutTrackRef.current = null;
+              }
+            );
+          } else {
+            await pausePoolSound(oldTrack);
+          }
         }
         return;
       }
+
+      const newSound = bgmPoolRef.current.get(track);
+      if (!newSound) return;
 
       try {
-        // Stop any existing fadeout track to clean up dangling sounds
-        if (fadingOutBgmRef.current?.sound) {
-          await fadingOutBgmRef.current.sound.stopAsync().catch(() => {});
-          await fadingOutBgmRef.current.sound.unloadAsync().catch(() => {});
-          fadingOutBgmRef.current = null;
+        // Stop any in-progress fadeout immediately
+        if (fadingOutTrackRef.current) {
+          await pausePoolSound(fadingOutTrackRef.current);
+          fadingOutTrackRef.current = null;
         }
 
-        const hasOldBgm = !!activeBgmRef.current;
-        const { sound: newSound } = await Audio.Sound.createAsync(
-          BGM_FILES[track as Exclude<BgmTrack, 'none'>],
-          {
-            shouldPlay: false,
-            isLooping: true,
-            volume: options.crossfade && hasOldBgm ? 0 : musicVolume,
-          }
-        );
-
-        // Resume position if requested and available
+        // Prepare the new sound
         if (options.resume && playbackPositions.current[track]) {
           await newSound.setPositionAsync(playbackPositions.current[track]!);
         } else {
-          playbackPositions.current[track] = 0; // reset
+          await newSound.setPositionAsync(0);
+          playbackPositions.current[track] = 0;
         }
 
-        const oldBgm = activeBgmRef.current;
-        const previousTrack = oldBgm?.track;
+        const oldTrack = activeTrackRef.current;
+        const hasOldBgm = !!oldTrack;
 
-        activeBgmRef.current = { sound: newSound, track };
+        // Set initial volume for new track
+        await newSound.setVolumeAsync(options.crossfade && hasOldBgm ? 0 : vol);
+        activeTrackRef.current = track;
         await newSound.playAsync();
 
-        if (options.crossfade && oldBgm) {
-          fadingOutBgmRef.current = oldBgm;
+        if (options.crossfade && oldTrack) {
+          const oldSound = bgmPoolRef.current.get(oldTrack);
+          if (oldSound) {
+            fadingOutTrackRef.current = oldTrack;
 
-          if (previousTrack) {
-            try {
-              const status = await oldBgm.sound.getStatusAsync();
-              if (status.isLoaded) playbackPositions.current[previousTrack] = status.positionMillis;
-            } catch (e) {}
+            startCrossfade(
+              (progress) => {
+                newSound.setVolumeAsync(progress * vol).catch(() => {});
+              },
+              (progress) => {
+                oldSound.setVolumeAsync(progress * vol).catch(() => {});
+              },
+              async () => {
+                await pausePoolSound(oldTrack);
+                if (fadingOutTrackRef.current === oldTrack) fadingOutTrackRef.current = null;
+              }
+            );
           }
-
-          startCrossfade(
-            (progress) => {
-              newSound.setVolumeAsync(progress * musicVolume).catch(() => {});
-            },
-            (progress) => {
-              oldBgm.sound.setVolumeAsync(progress * musicVolume).catch(() => {});
-            },
-            async () => {
-              await oldBgm.sound.stopAsync().catch(() => {});
-              await oldBgm.sound.unloadAsync().catch(() => {});
-              if (fadingOutBgmRef.current?.sound === oldBgm.sound) fadingOutBgmRef.current = null;
-            }
-          );
-        } else {
-          if (oldBgm) {
-            await stopCurrentBgmInternal(previousTrack);
-          }
+        } else if (oldTrack) {
+          await pausePoolSound(oldTrack);
         }
       } catch (err) {
         console.warn(`[AudioContext] Failed to play BGM ${track}:`, err);
@@ -457,7 +479,17 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   }, [playBgm]);
 
   const stopBgm = useCallback(async () => {
-    await stopCurrentBgmInternal(activeBgmRef.current?.track);
+    const current = activeTrackRef.current;
+    activeTrackRef.current = null;
+    if (current) await pausePoolSound(current);
+    if (fadingOutTrackRef.current) {
+      await pausePoolSound(fadingOutTrackRef.current);
+      fadingOutTrackRef.current = null;
+    }
+    if (fadeIntervalRef.current) {
+      clearInterval(fadeIntervalRef.current);
+      fadeIntervalRef.current = null;
+    }
   }, []);
 
   // --- SFX Management ---

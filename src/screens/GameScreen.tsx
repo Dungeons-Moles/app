@@ -41,6 +41,7 @@ import { TUTORIAL_SEEN_KEY } from '../components/ui/tutorialPages';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useDirectionInput } from '../hooks/useInput';
 import { useLandscapeLock } from '../hooks/useOrientationLock';
+import { useKeepAwake } from 'expo-keep-awake';
 import { useScreenVariant } from '../contexts/ScreenVariantContext';
 import { useInputMode } from '../hooks/useInputMode';
 import { useControllerAction } from '../hooks/useControllerAction';
@@ -1172,6 +1173,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
   }, [state?.player?.position, discoveredWaypoints, isFastTravelActive, fastTravelDestinations]);
 
   useLandscapeLock();
+  useKeepAwake();
 
   const handleDirection = useCallback(
     (direction: Direction) => {

@@ -46,6 +46,15 @@ import { QuestCard } from '../components/quests/QuestCard';
 import { getSkinImage } from '../data/skinImages';
 import { useEquippedSkinImage } from '../hooks/useEquippedSkinImage';
 import { useAudio } from '../contexts/AudioContext';
+import { useSolanaConnection } from '../contexts/SolanaConnectionContext';
+import {
+  deriveGauntletPoolVaultPda,
+  deriveGauntletConfigPda,
+  deriveGauntletPlayerScorePda,
+} from '../services/solana/gauntlet';
+import { createGameplayStateProgram } from '../services/solana/programs';
+import { PublicKey } from '@solana/web3.js';
+import { GauntletPoolBadge } from '../components/ui/GauntletPoolBadge';
 
 const iconASource = require('../../assets/ui/control-buttons/a.png');
 const iconBSource = require('../../assets/ui/control-buttons/b.png');
@@ -91,6 +100,9 @@ export function HubScreen({ navigation }: HubScreenProps) {
   const { state: gameState, dispatch } = useGame();
   const { playBgm, playSfx } = useAudio();
   const { wallet, getBalance, disconnect } = useWallet();
+  const { connection } = useSolanaConnection();
+  const [gauntletPoolLamports, setGauntletPoolLamports] = useState<bigint | null>(null);
+  const [gauntletPoints, setGauntletPoints] = useState<number | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showSkins, setShowSkins] = useState(false);
   const [showQuests, setShowQuests] = useState(false);
@@ -194,6 +206,50 @@ export function HubScreen({ navigation }: HubScreenProps) {
       cancelled = true;
     };
   }, [getBalance, isGuest, isScreenFocused, wallet.publicKey]);
+
+  useEffect(() => {
+    if (!isScreenFocused || isGuest || !wallet.publicKey) return;
+    let cancelled = false;
+    const fetchGauntletData = async () => {
+      // Fetch pool vault balance
+      try {
+        const [vaultPda] = deriveGauntletPoolVaultPda();
+        const balance = await connection.getBalance(vaultPda);
+        if (!cancelled) setGauntletPoolLamports(BigInt(balance));
+      } catch {
+        if (!cancelled) setGauntletPoolLamports(null);
+      }
+
+      // Fetch player's gauntlet points for current epoch
+      try {
+        const program = createGameplayStateProgram(connection);
+        const [configPda] = deriveGauntletConfigPda();
+        const gauntletConfig = await (
+          program.account as {
+            gauntletConfig: {
+              fetch: (address: PublicKey) => Promise<{ currentEpochId: bigint | number }>;
+            };
+          }
+        ).gauntletConfig.fetch(configPda);
+        const epochId = BigInt(gauntletConfig.currentEpochId.toString());
+        const [scorePda] = deriveGauntletPlayerScorePda(epochId, wallet.publicKey!);
+        const scoreAccount = await (
+          program.account as {
+            gauntletPlayerScore: {
+              fetch: (address: PublicKey) => Promise<{ points: bigint | number }>;
+            };
+          }
+        ).gauntletPlayerScore.fetch(scorePda);
+        if (!cancelled) setGauntletPoints(Number(scoreAccount.points.toString()));
+      } catch {
+        if (!cancelled) setGauntletPoints(0);
+      }
+    };
+    fetchGauntletData();
+    return () => {
+      cancelled = true;
+    };
+  }, [isScreenFocused, isGuest, connection, wallet.publicKey]);
 
   useEffect(() => {
     if (showSkins) fetchUserAssets();
@@ -681,6 +737,13 @@ export function HubScreen({ navigation }: HubScreenProps) {
               </ImageBackground>
             </TouchableOpacity>
 
+            {/* Gauntlet Pool badge below profile (compact only) */}
+            {isCompact && !isGuest && (
+              <View style={compactStyles.poolBadge}>
+                <GauntletPoolBadge poolLamports={gauntletPoolLamports} size="lg" />
+              </View>
+            )}
+
             {/* Guest mode description */}
             {isGuest && (
               isCompact ? (
@@ -800,13 +863,15 @@ export function HubScreen({ navigation }: HubScreenProps) {
                   resizeMode="stretch"
                 >
                   <Text style={styles.pointsLabel}>GAUNTLET POINTS</Text>
-                  <Text style={[styles.pointsValue, { color: '#1a1a1a' }]}>0</Text>
+                  <Text style={[styles.pointsValue, { color: '#1a1a1a' }]}>
+                    {gauntletPoints !== null ? gauntletPoints : '—'}
+                  </Text>
                 </ImageBackground>
               )}
             </View>
           )}
 
-          {/* TOP RIGHT - Settings (wide) / Gauntlet Points (compact) */}
+          {/* TOP RIGHT - Settings + Pool (wide) / Gauntlet Points (compact) */}
           <View style={styles.topRight}>
             {isCompact ? (
               !isGuest && (
@@ -821,30 +886,35 @@ export function HubScreen({ navigation }: HubScreenProps) {
                   <Text
                     style={[styles.pointsValue, { color: '#1a1a1a' }, compactStyles.pointsValue]}
                   >
-                    0
+                    {gauntletPoints !== null ? gauntletPoints : '—'}
                   </Text>
                 </ImageBackground>
               )
             ) : (
-              <TouchableOpacity
-                onPress={() => {
-                  playSfx('ui_click');
-                  setShowSettings(true);
-                }}
-                activeOpacity={0.7}
-              >
-                <ImageBackground
-                  source={buttonV1Source}
-                  style={styles.settingsBtn}
-                  resizeMode="stretch"
+              <View style={styles.topRightRow}>
+                {!isGuest && (
+                  <GauntletPoolBadge poolLamports={gauntletPoolLamports} />
+                )}
+                <TouchableOpacity
+                  onPress={() => {
+                    playSfx('ui_click');
+                    setShowSettings(true);
+                  }}
+                  activeOpacity={0.7}
                 >
-                  <Image
-                    source={engineImageSource}
-                    style={styles.settingsIconImage}
-                    resizeMode="contain"
-                  />
-                </ImageBackground>
-              </TouchableOpacity>
+                  <ImageBackground
+                    source={buttonV1Source}
+                    style={styles.settingsBtn}
+                    resizeMode="stretch"
+                  >
+                    <Image
+                      source={engineImageSource}
+                      style={styles.settingsIconImage}
+                      resizeMode="contain"
+                    />
+                  </ImageBackground>
+                </TouchableOpacity>
+              </View>
             )}
           </View>
 
@@ -2110,13 +2180,17 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#c8c8c8',
   },
-
   // TOP RIGHT - Settings
   topRight: {
     position: 'absolute',
     top: 24,
     right: 24,
     zIndex: 10,
+  },
+  topRightRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
   settingsBtn: {
     width: 60,
@@ -2719,6 +2793,12 @@ const compactStyles = StyleSheet.create({
   },
   pointsValue: {
     fontSize: 40,
+  },
+  poolBadge: {
+    position: 'absolute' as const,
+    top: 148,
+    left: 0,
+    zIndex: 15,
   },
   // Character shifts right and down to accommodate left column
   center: {
