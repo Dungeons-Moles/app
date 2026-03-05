@@ -8,13 +8,14 @@
  */
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { View, Text, Image, StyleSheet, Animated, Easing, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, Animated, Easing, useWindowDimensions } from 'react-native';
+import { Image } from 'expo-image';
 import { Typography } from '../../theme/typography';
 
-const skullIcon = require('../../../assets/icons/ui/skull.png');
-const trophyIcon = require('../../../assets/icons/ui/trophy.png');
-const crownIcon = require('../../../assets/icons/ui/crown.png');
-const coinIcon = require('../../../assets/icons/ui/coin-yellow.png');
+const skullIcon = require('../../../assets/icons/ui/skull.webp');
+const trophyIcon = require('../../../assets/icons/ui/trophy.webp');
+const crownIcon = require('../../../assets/icons/ui/crown.webp');
+const coinIcon = require('../../../assets/icons/ui/coin-yellow.webp');
 
 export interface VictoryDefeatDisplayProps {
   result: 'VICTORY' | 'DEFEAT';
@@ -162,7 +163,7 @@ export function VictoryDefeatDisplay({
           marginBottom: 16 * s,
           tintColor: '#888888',
         }}
-        resizeMode="contain"
+        contentFit="contain"
       />
 
       {/* Result text */}
@@ -214,7 +215,7 @@ export function VictoryDefeatDisplay({
               height: 24 * s,
               marginLeft: 6 * s,
             }}
-            resizeMode="contain"
+            contentFit="contain"
           />
         </Animated.View>
       )}

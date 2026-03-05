@@ -11,23 +11,23 @@ import {
   StyleSheet,
   ScrollView,
   Image,
-  ImageBackground,
   type ImageSourcePropType,
 } from 'react-native';
+import { CachedImageBackground } from '../common/CachedImageBackground';
 import type { StatusEffects, Tool, Gear, ItemRarity } from '../../game/engine/types';
 import { getTierFromRarity } from '../../data/gear';
 import { Typography } from '../../theme/typography';
 
-const defaultMoleImageSource = require('../../../assets/entities/characters/default-mole.png');
-const COIN_ICON = require('../../../assets/icons/ui/coin.png');
+const defaultMoleImageSource = require('../../../assets/entities/characters/default-mole.webp');
+const COIN_ICON = require('../../../assets/icons/ui/coin.webp');
 
 const ICONS = {
-  ATK: require('../../../assets/icons/stats/ATK.png'),
-  SPD: require('../../../assets/icons/stats/speed.png'),
-  DIG: require('../../../assets/icons/stats/DIG.png'),
+  ATK: require('../../../assets/icons/stats/ATK.webp'),
+  SPD: require('../../../assets/icons/stats/speed.webp'),
+  DIG: require('../../../assets/icons/stats/DIG.webp'),
 };
 
-const SIDEBAR_BG = require('../../../assets/ui/panels/sidebar.png');
+const SIDEBAR_BG = require('../../../assets/ui/panels/sidebar.webp');
 
 export interface PlayerPanelProps {
   name: string;
@@ -72,7 +72,7 @@ function StatRow({ label, value, icon, scale = 1 }: StatRowProps) {
   );
 }
 
-const SQUARE_BG = require('../../../assets/ui/frames/square.png');
+const SQUARE_BG = require('../../../assets/ui/frames/square.webp');
 
 function getTierBorderColor(rarity: ItemRarity): string | null {
   const tier = getTierFromRarity(rarity);
@@ -97,7 +97,7 @@ interface ItemBadgeProps {
 function ItemBadge({ emoji, name, image, rarity, scale = 1 }: ItemBadgeProps) {
   const borderColor = rarity ? getTierBorderColor(rarity) : null;
   return (
-    <ImageBackground
+    <CachedImageBackground
       source={SQUARE_BG}
       style={[
         { width: 32 * scale, height: 32 * scale, justifyContent: 'center', alignItems: 'center' },
@@ -114,7 +114,7 @@ function ItemBadge({ emoji, name, image, rarity, scale = 1 }: ItemBadgeProps) {
       ) : (
         <Text style={{ fontSize: 16 * scale }}>{emoji}</Text>
       )}
-    </ImageBackground>
+    </CachedImageBackground>
   );
 }
 
@@ -159,7 +159,7 @@ export const PlayerPanel = React.memo(function PlayerPanel({
 
   return (
     <View style={containerStyle}>
-      <ImageBackground source={SIDEBAR_BG} style={styles.sidePanelBg} resizeMode="stretch">
+      <CachedImageBackground source={SIDEBAR_BG} style={styles.sidePanelBg} resizeMode="stretch">
         <ScrollView
           style={styles.flex1}
           contentContainerStyle={scrollContentStyle}
@@ -273,7 +273,7 @@ export const PlayerPanel = React.memo(function PlayerPanel({
             </View>
           )}
         </ScrollView>
-      </ImageBackground>
+      </CachedImageBackground>
     </View>
   );
 });

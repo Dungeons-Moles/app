@@ -42,15 +42,15 @@ const GRAYSCALE_MATRIX = [
 ];
 
 // Tile images
-const floorV1Source = require('../../../assets/world/tiles/floor-v1.png');
-const floorV2Source = require('../../../assets/world/tiles/floor-v2.png');
-const floorV3Source = require('../../../assets/world/tiles/floor-v3.png');
-const floorV4Source = require('../../../assets/world/tiles/floor-v4.png');
-const floorV5Source = require('../../../assets/world/tiles/floor-v5.png');
-const rockV1Source = require('../../../assets/world/tiles/rock-v1.png');
-const rockV2Source = require('../../../assets/world/tiles/rock-v2.png');
-const rockV3Source = require('../../../assets/world/tiles/rock-v3.png');
-const rockV4Source = require('../../../assets/world/tiles/rock-v4.png');
+const floorV1Source = require('../../../assets/world/tiles/floor-v1.webp');
+const floorV2Source = require('../../../assets/world/tiles/floor-v2.webp');
+const floorV3Source = require('../../../assets/world/tiles/floor-v3.webp');
+const floorV4Source = require('../../../assets/world/tiles/floor-v4.webp');
+const floorV5Source = require('../../../assets/world/tiles/floor-v5.webp');
+const rockV1Source = require('../../../assets/world/tiles/rock-v1.webp');
+const rockV2Source = require('../../../assets/world/tiles/rock-v2.webp');
+const rockV3Source = require('../../../assets/world/tiles/rock-v3.webp');
+const rockV4Source = require('../../../assets/world/tiles/rock-v4.webp');
 
 const SINGLE_USE_POIS = ['L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L12', 'L13'];
 

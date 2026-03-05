@@ -1,10 +1,11 @@
 import React from 'react';
-import { View, Text, StyleSheet, ImageBackground } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { CachedImageBackground } from '../common/CachedImageBackground';
 import type { OnChainPlayerProfile } from '@/types/solana';
 import { Typography } from '@/theme/typography';
 import { useScreenVariant } from '@/contexts/ScreenVariantContext';
 
-const rectangleSource = require('../../../assets/ui/frames/rectangle.png');
+const rectangleSource = require('../../../assets/ui/frames/rectangle.webp');
 
 interface ProfileCardProps {
   profile: OnChainPlayerProfile;
@@ -14,7 +15,7 @@ export function ProfileCard({ profile }: ProfileCardProps) {
   const isCompact = useScreenVariant() === 'compact';
 
   return (
-    <ImageBackground
+    <CachedImageBackground
       source={rectangleSource}
       style={[styles.card, isCompact && compactStyles.card]}
       resizeMode="stretch"
@@ -31,7 +32,7 @@ export function ProfileCard({ profile }: ProfileCardProps) {
           </Text>
         </View>
       </View>
-    </ImageBackground>
+    </CachedImageBackground>
   );
 }
 

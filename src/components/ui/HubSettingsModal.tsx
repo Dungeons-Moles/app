@@ -4,11 +4,11 @@ import {
   Text,
   StyleSheet,
   Image,
-  ImageBackground,
   TouchableOpacity,
   TouchableWithoutFeedback,
   useWindowDimensions,
 } from 'react-native';
+import { CachedImageBackground } from '../common/CachedImageBackground';
 import { InlineModal } from '../InlineModal';
 import { Typography } from '../../theme/typography';
 import { useInputMode } from '../../hooks/useInputMode';
@@ -23,11 +23,11 @@ import { Checkbox } from './Checkbox';
 import { SpeedControls } from '../combat';
 import type { CombatSpeed } from '../../types';
 
-const paperPanelSource = require('../../../assets/ui/panels/paper-panel.png');
-const buttonV1Source = require('../../../assets/ui/buttons/button-v1.png');
-const iconASource = require('../../../assets/ui/control-buttons/a.png');
-const iconBSource = require('../../../assets/ui/control-buttons/b.png');
-const iconDirSource = require('../../../assets/ui/control-buttons/direction.png');
+const paperPanelSource = require('../../../assets/ui/panels/paper-panel.webp');
+const buttonV1Source = require('../../../assets/ui/buttons/button-v1.webp');
+const iconASource = require('../../../assets/ui/control-buttons/a.webp');
+const iconBSource = require('../../../assets/ui/control-buttons/b.webp');
+const iconDirSource = require('../../../assets/ui/control-buttons/direction.webp');
 
 export interface HubSettingsModalProps {
   visible: boolean;
@@ -121,7 +121,7 @@ export function HubSettingsModal({
         <View style={styles.modalOverlay}>
           <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
             <View style={styles.modalScaleWrapper}>
-              <ImageBackground
+              <CachedImageBackground
                 source={paperPanelSource}
                 style={[
                   styles.modalContent,
@@ -227,7 +227,7 @@ export function HubSettingsModal({
                       onPress={() => { playSfx('ui_click'); onDisconnect(); }}
                       activeOpacity={0.7}
                     >
-                      <ImageBackground
+                      <CachedImageBackground
                         source={buttonV1Source}
                         style={styles.buttonImage}
                         resizeMode="stretch"
@@ -237,7 +237,7 @@ export function HubSettingsModal({
                         >
                           Disconnect
                         </Text>
-                      </ImageBackground>
+                      </CachedImageBackground>
                     </TouchableOpacity>
                   </FocusGlow>
 
@@ -255,7 +255,7 @@ export function HubSettingsModal({
                         onPress={() => { playSfx('ui_click'); onResetProfile?.(); }}
                         activeOpacity={0.7}
                       >
-                        <ImageBackground
+                        <CachedImageBackground
                           source={buttonV1Source}
                           style={styles.buttonImage}
                           resizeMode="stretch"
@@ -265,7 +265,7 @@ export function HubSettingsModal({
                           >
                             Reset Profile
                           </Text>
-                        </ImageBackground>
+                        </CachedImageBackground>
                       </TouchableOpacity>
                     </FocusGlow>
                   )}
@@ -337,7 +337,7 @@ export function HubSettingsModal({
                   </View>
                 )}
 
-              </ImageBackground>
+              </CachedImageBackground>
             </View>
           </TouchableWithoutFeedback>
         </View>

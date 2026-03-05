@@ -7,12 +7,12 @@ import {
   TouchableOpacity,
   FlatList,
   Image,
-  ImageBackground,
   ActivityIndicator,
   RefreshControl,
   Animated,
   InteractionManager,
 } from 'react-native';
+import { CachedImageBackground } from '../components/common/CachedImageBackground';
 import { InlineModal } from '../components/InlineModal';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useProfile } from '../contexts/ProfileContext';
@@ -45,17 +45,17 @@ import {
 import type { CampaignLevel } from '../types/solana';
 import type { GameState as OnChainGameState } from '../services/solana/types/gameplay_state';
 
-const backgroundImageCompact = require('../../assets/ui/backgrounds/campaign-background-compact.png');
-const backgroundImageWide = require('../../assets/ui/backgrounds/campaign-background-wide.png');
-const buttonV1Source = require('../../assets/ui/buttons/button-v1.png');
-const buttonV4Source = require('../../assets/ui/buttons/button-v4.png');
-const squareSource = require('../../assets/ui/frames/square.png');
-const lockSource = require('../../assets/icons/ui/lock.png');
-const PAPER_PANEL = require('../../assets/ui/panels/paper-panel.png');
-const iconASource = require('../../assets/ui/control-buttons/a.png');
-const iconBSource = require('../../assets/ui/control-buttons/b.png');
-const iconXSource = require('../../assets/ui/control-buttons/x.png');
-const engineImageSource = require('../../assets/ui/illustrations/engine.png');
+const backgroundImageCompact = require('../../assets/ui/backgrounds/campaign-background-compact.webp');
+const backgroundImageWide = require('../../assets/ui/backgrounds/campaign-background-wide.webp');
+const buttonV1Source = require('../../assets/ui/buttons/button-v1.webp');
+const buttonV4Source = require('../../assets/ui/buttons/button-v4.webp');
+const squareSource = require('../../assets/ui/frames/square.webp');
+const lockSource = require('../../assets/icons/ui/lock.webp');
+const PAPER_PANEL = require('../../assets/ui/panels/paper-panel.webp');
+const iconASource = require('../../assets/ui/control-buttons/a.webp');
+const iconBSource = require('../../assets/ui/control-buttons/b.webp');
+const iconXSource = require('../../assets/ui/control-buttons/x.webp');
+const engineImageSource = require('../../assets/ui/illustrations/engine.webp');
 
 type CampaignSelectScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'CampaignSelect'>;
@@ -881,7 +881,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
           disabled={!item.isUnlocked || isStartingGame}
           activeOpacity={item.isUnlocked ? 0.7 : 1}
         >
-          <ImageBackground
+          <CachedImageBackground
             source={squareSource}
             style={styles.levelCellBackground}
             resizeMode="stretch"
@@ -935,7 +935,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
                 <ActivityIndicator size={isCompact ? 'large' : 'small'} color="#ffffff" />
               </View>
             )}
-          </ImageBackground>
+          </CachedImageBackground>
         </TouchableOpacity>
       );
 
@@ -972,7 +972,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
             }}
             activeOpacity={0.7}
           >
-            <ImageBackground
+            <CachedImageBackground
               source={buttonV1Source}
               style={styles.settingsBtn}
               resizeMode="stretch"
@@ -982,16 +982,16 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
                 style={styles.settingsIconImage}
                 resizeMode="contain"
               />
-            </ImageBackground>
+            </CachedImageBackground>
           </TouchableOpacity>
         </View>
       )}
 
       {!isCompact && !isController && (
         <TouchableOpacity onPress={handleBack} activeOpacity={0.7} style={styles.backButtonAbsolute}>
-          <ImageBackground source={buttonV1Source} style={styles.backButtonMobile} resizeMode="stretch">
+          <CachedImageBackground source={buttonV1Source} style={styles.backButtonMobile} resizeMode="stretch">
             <Text style={styles.backButtonTextMobile}>Back</Text>
-          </ImageBackground>
+          </CachedImageBackground>
         </TouchableOpacity>
       )}
 
@@ -1003,7 +1003,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
               <View style={[styles.backButton, compactStyles.backButton]} />
             ) : (
               <TouchableOpacity onPress={handleBack} activeOpacity={0.7}>
-                <ImageBackground
+                <CachedImageBackground
                   source={buttonV1Source}
                   style={[styles.backButton, compactStyles.backButton]}
                   resizeMode="stretch"
@@ -1011,14 +1011,14 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
                   <Text style={[styles.backButtonText, compactStyles.backButtonText]}>
                     Back
                   </Text>
-                </ImageBackground>
+                </CachedImageBackground>
               </TouchableOpacity>
             )
           ) : (
             <View style={styles.backButton} />
           )}
 
-          <ImageBackground
+          <CachedImageBackground
             source={buttonV4Source}
             style={[styles.titlePanel, isCompact && compactStyles.titlePanel]}
             resizeMode="stretch"
@@ -1031,7 +1031,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
                   ? `Cached - Level ${(profile?.currentLevel ?? 0) + 1}`
                   : `Level ${(profile?.currentLevel ?? 0) + 1} / ${MAX_CAMPAIGN_LEVEL + 1}`}
             </Text>
-          </ImageBackground>
+          </CachedImageBackground>
 
           {/* Mode indicator */}
           {(isGuestMode || isCachedMode) && (
@@ -1106,7 +1106,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
         onRequestClose={() => setShowNoRunsModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <ImageBackground
+          <CachedImageBackground
             source={PAPER_PANEL}
             resizeMode="stretch"
             style={[styles.modalContent, isCompact && compactStyles.modalContent]}
@@ -1139,7 +1139,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
                 </TouchableOpacity>
               </View>
             )}
-          </ImageBackground>
+          </CachedImageBackground>
         </View>
       </InlineModal>
 
@@ -1150,7 +1150,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
         onRequestClose={() => setShowSessionInitializingModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <ImageBackground
+          <CachedImageBackground
             source={PAPER_PANEL}
             resizeMode="stretch"
             style={[
@@ -1223,7 +1223,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
                 </TouchableOpacity>
               </View>
             )}
-          </ImageBackground>
+          </CachedImageBackground>
         </View>
       </InlineModal>
 
@@ -1235,7 +1235,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
         onRequestClose={handleOverrideExistingSession}
       >
         <View style={styles.modalOverlay}>
-          <ImageBackground
+          <CachedImageBackground
             source={PAPER_PANEL}
             resizeMode="stretch"
             style={[
@@ -1300,7 +1300,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
                 </TouchableOpacity>
               </View>
             )}
-          </ImageBackground>
+          </CachedImageBackground>
         </View>
       </InlineModal>
 
@@ -1312,7 +1312,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
         onRequestClose={() => setShowLockedModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <ImageBackground
+          <CachedImageBackground
             source={PAPER_PANEL}
             resizeMode="stretch"
             style={[styles.modalContent, isCompact && compactStyles.modalContent]}
@@ -1343,7 +1343,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
                 <Text style={styles.modalButtonTextPrimary}>OK</Text>
               </TouchableOpacity>
             )}
-          </ImageBackground>
+          </CachedImageBackground>
         </View>
       </InlineModal>
       {/* Error Modal */}
@@ -1354,7 +1354,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
         onRequestClose={() => setShowErrorModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <ImageBackground
+          <CachedImageBackground
             source={PAPER_PANEL}
             resizeMode="stretch"
             style={[styles.modalContent, isCompact && compactStyles.modalContent]}
@@ -1384,7 +1384,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
                 <Text style={styles.modalButtonTextPrimary}>OK</Text>
               </TouchableOpacity>
             )}
-          </ImageBackground>
+          </CachedImageBackground>
         </View>
       </InlineModal>
       <HubSettingsModal

@@ -3,13 +3,13 @@ import {
   View,
   Text,
   StyleSheet,
-  ImageBackground,
   Image,
   TouchableOpacity,
   Pressable,
   ActivityIndicator,
   FlatList,
 } from 'react-native';
+import { CachedImageBackground } from '../components/common/CachedImageBackground';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useIsFocused } from '@react-navigation/native';
 import { RootStackParamList } from '../navigation';
@@ -30,16 +30,16 @@ import { calculateItemStats } from '@/game/entities/items';
 import type { CombatantState, Gear, Tool } from '@/game/engine/types';
 import type { BackendCombatLogEntry } from '@/services/solana/types/combat_events';
 
-const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.png');
-const STAINS_BACKGROUND = require('../../assets/ui/backgrounds/stains-background.png');
-const GAUNTLET_TITLE = require('../../assets/ui/text/gauntlet.png');
-const HISTORY_TITLE = require('../../assets/ui/text/history.png');
-const HISTORY_SCROLL = require('../../assets/ui/illustrations/history-scroll.png');
-const RECTANGLE_FRAME = require('../../assets/ui/frames/rectangle.png');
-const GREEN_BRUSH = require('../../assets/ui/illustrations/green-brush.png');
-const RED_BRUSH = require('../../assets/ui/illustrations/red-brush.png');
-const buttonV1Source = require('../../assets/ui/buttons/button-v1.png');
-const engineImageSource = require('../../assets/ui/illustrations/engine.png');
+const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.webp');
+const STAINS_BACKGROUND = require('../../assets/ui/backgrounds/stains-background.webp');
+const GAUNTLET_TITLE = require('../../assets/ui/text/gauntlet.webp');
+const HISTORY_TITLE = require('../../assets/ui/text/history.webp');
+const HISTORY_SCROLL = require('../../assets/ui/illustrations/history-scroll.webp');
+const RECTANGLE_FRAME = require('../../assets/ui/frames/rectangle.webp');
+const GREEN_BRUSH = require('../../assets/ui/illustrations/green-brush.webp');
+const RED_BRUSH = require('../../assets/ui/illustrations/red-brush.webp');
+const buttonV1Source = require('../../assets/ui/buttons/button-v1.webp');
+const engineImageSource = require('../../assets/ui/illustrations/engine.webp');
 
 // On-chain base values (ATK/ARM/SPD start at 0; bonuses come from BattleStart log entries)
 const PVP_BASE_HP = 20;
@@ -324,13 +324,13 @@ export function GauntletHistoryScreen({ navigation }: GauntletHistoryScreenProps
 
   return (
     <View style={styles.container}>
-      <ImageBackground source={BACKGROUND_IMAGE} style={styles.backgroundImage} resizeMode="cover">
+      <CachedImageBackground source={BACKGROUND_IMAGE} style={styles.backgroundImage} resizeMode="cover">
         <Image source={STAINS_BACKGROUND} style={styles.stainsOverlay} resizeMode="cover" />
         {!isCompact && !isController && (
           <TouchableOpacity onPress={() => { playSfx('ui_back'); navigation.goBack(); }} activeOpacity={0.7} style={styles.backButtonAbsolute}>
-            <ImageBackground source={buttonV1Source} style={styles.backButtonMobile} resizeMode="stretch">
+            <CachedImageBackground source={buttonV1Source} style={styles.backButtonMobile} resizeMode="stretch">
               <Text style={styles.backButtonTextMobile}>Back</Text>
-            </ImageBackground>
+            </CachedImageBackground>
           </TouchableOpacity>
         )}
         <View style={styles.content}>
@@ -341,7 +341,7 @@ export function GauntletHistoryScreen({ navigation }: GauntletHistoryScreenProps
                 <View style={[styles.headerButton, compactStyles.headerButton]} />
               ) : (
                 <TouchableOpacity onPress={() => navigation.goBack()} activeOpacity={0.7}>
-                  <ImageBackground
+                  <CachedImageBackground
                     source={buttonV1Source}
                     style={[styles.headerButton, compactStyles.headerButton]}
                     resizeMode="stretch"
@@ -349,7 +349,7 @@ export function GauntletHistoryScreen({ navigation }: GauntletHistoryScreenProps
                     <Text style={[styles.headerButtonText, compactStyles.headerButtonText]}>
                       Back
                     </Text>
-                  </ImageBackground>
+                  </CachedImageBackground>
                 </TouchableOpacity>
               )
             ) : (
@@ -373,7 +373,7 @@ export function GauntletHistoryScreen({ navigation }: GauntletHistoryScreenProps
                 }}
                 activeOpacity={0.7}
               >
-                <ImageBackground
+                <CachedImageBackground
                   source={buttonV1Source}
                   style={styles.settingsBtn}
                   resizeMode="stretch"
@@ -383,7 +383,7 @@ export function GauntletHistoryScreen({ navigation }: GauntletHistoryScreenProps
                     style={styles.settingsIconImage}
                     resizeMode="contain"
                   />
-                </ImageBackground>
+                </CachedImageBackground>
               </TouchableOpacity>
             )}
             {!isCompact && isController && <View style={styles.headerButtonPlaceholder} />}
@@ -513,7 +513,7 @@ export function GauntletHistoryScreen({ navigation }: GauntletHistoryScreenProps
             </View>
           )}
         </View>
-      </ImageBackground>
+      </CachedImageBackground>
       <HubSettingsModal
         visible={showSettingsModal}
         onClose={() => setShowSettingsModal(false)}

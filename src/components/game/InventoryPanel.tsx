@@ -5,7 +5,9 @@
  */
 
 import React, { useCallback, useMemo, useRef } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Image, ImageBackground, Dimensions, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Dimensions, Platform } from 'react-native';
+import { Image } from 'expo-image';
+import { CachedImageBackground } from '../common/CachedImageBackground';
 import { FocusGlow } from '../ui/FocusGlow';
 import type { Tool, Gear, InventorySlot, ItemsetId, ToolOil } from '../../game/engine/types';
 import { getTierFromRarity, type ItemTier } from '../../data/gear';
@@ -13,8 +15,8 @@ import { Typography } from '../../theme/typography';
 import { useScreenVariant } from '../../contexts/ScreenVariantContext';
 import { useAudio } from '@/contexts/AudioContext';
 
-const SLOT_BG = require('../../../assets/ui/frames/square.png');
-const LOCK_ICON = require('../../../assets/icons/ui/lock.png');
+const SLOT_BG = require('../../../assets/ui/frames/square.webp');
+const LOCK_ICON = require('../../../assets/icons/ui/lock.webp');
 const DEFAULT_TOOL_SLOT_SIZE = 52;
 const SIDEBAR_TOOL_SLOT_SIZE = 42;
 const SIDEBAR_GEAR_SLOT_SIZE = 28;
@@ -120,14 +122,14 @@ function ItemSlot({
         <Image
           source={LOCK_ICON}
           style={{ width: size * 0.6, height: size * 0.6 }}
-          resizeMode="contain"
+          contentFit="contain"
         />
       ) : item ? (
         item.image ? (
           <Image
             source={item.image}
             style={{ width: size * 0.8, height: size * 0.8 }}
-            resizeMode="contain"
+            contentFit="contain"
           />
         ) : (
           <Text style={[styles.itemEmoji, { fontSize: size * 0.5 }]}>{item.emoji}</Text>
@@ -147,9 +149,9 @@ function ItemSlot({
         delayLongPress={350}
         activeOpacity={0.7}
       >
-        <ImageBackground source={SLOT_BG} style={slotStyle} resizeMode="stretch">
+        <CachedImageBackground source={SLOT_BG} style={slotStyle} resizeMode="stretch">
           {content}
-        </ImageBackground>
+        </CachedImageBackground>
       </TouchableOpacity>
     );
   }
@@ -196,10 +198,10 @@ function getRarityColor(item: Tool | Gear): string {
 }
 
 const OIL_IMAGES: Record<ToolOil, any> = {
-  ATK: require('../../../assets/icons/oils/ATK.png'),
-  DIG: require('../../../assets/icons/oils/DIG.png'),
-  SPD: require('../../../assets/icons/oils/SPD.png'),
-  ARM: require('../../../assets/icons/oils/ARM.png'),
+  ATK: require('../../../assets/icons/oils/ATK.webp'),
+  DIG: require('../../../assets/icons/oils/DIG.webp'),
+  SPD: require('../../../assets/icons/oils/SPD.webp'),
+  ARM: require('../../../assets/icons/oils/ARM.webp'),
 };
 
 function OilSlot({
@@ -213,7 +215,7 @@ function OilSlot({
 }) {
   if (!oil) {
     return isSidebar ? (
-      <ImageBackground
+      <CachedImageBackground
         source={SLOT_BG}
         style={[styles.itemSlot, { width: size, height: size }]}
         resizeMode="stretch"
@@ -227,19 +229,19 @@ function OilSlot({
     <Image
       source={OIL_IMAGES[oil]}
       style={{ width: size * 0.8, height: size * 0.8 }}
-      resizeMode="contain"
+      contentFit="contain"
     />
   );
 
   if (isSidebar) {
     return (
-      <ImageBackground
+      <CachedImageBackground
         source={SLOT_BG}
         style={[styles.itemSlot, { width: size, height: size }]}
         resizeMode="stretch"
       >
         {content}
-      </ImageBackground>
+      </CachedImageBackground>
     );
   }
 
@@ -249,18 +251,18 @@ function OilSlot({
 }
 
 const ITEMSET_ICONS: Record<ItemsetId, any> = {
-  UNION_STANDARD: require('../../../assets/icons/itemsets/union_standard.png'),
-  SHARD_CIRCUIT: require('../../../assets/icons/itemsets/shard_circuit.png'),
-  DEMOLITION_PERMIT: require('../../../assets/icons/itemsets/demolition_permit.png'),
-  FUSE_NETWORK: require('../../../assets/icons/itemsets/fuse_network.png'),
-  SHRAPNEL_HARNESS: require('../../../assets/icons/itemsets/shrapnel_harness.png'),
-  RUST_RITUAL: require('../../../assets/icons/itemsets/rust_ritual.png'),
-  SWIFT_DIGGER_KIT: require('../../../assets/icons/itemsets/swift_digger_kit.png'),
-  ROYAL_EXTRACTION: require('../../../assets/icons/itemsets/royal_extraction.png'),
-  WHITEOUT_INITIATIVE: require('../../../assets/icons/itemsets/whiteout_initiative.png'),
-  BLOODRUSH_PROTOCOL: require('../../../assets/icons/itemsets/bloodrush_protocol.png'),
-  CORROSION_PAYLOAD: require('../../../assets/icons/itemsets/corrosion_payload.png'),
-  GOLDEN_SHRAPNEL_EXCHANGE: require('../../../assets/icons/itemsets/golden_shrapnel_exchange.png'),
+  UNION_STANDARD: require('../../../assets/icons/itemsets/union_standard.webp'),
+  SHARD_CIRCUIT: require('../../../assets/icons/itemsets/shard_circuit.webp'),
+  DEMOLITION_PERMIT: require('../../../assets/icons/itemsets/demolition_permit.webp'),
+  FUSE_NETWORK: require('../../../assets/icons/itemsets/fuse_network.webp'),
+  SHRAPNEL_HARNESS: require('../../../assets/icons/itemsets/shrapnel_harness.webp'),
+  RUST_RITUAL: require('../../../assets/icons/itemsets/rust_ritual.webp'),
+  SWIFT_DIGGER_KIT: require('../../../assets/icons/itemsets/swift_digger_kit.webp'),
+  ROYAL_EXTRACTION: require('../../../assets/icons/itemsets/royal_extraction.webp'),
+  WHITEOUT_INITIATIVE: require('../../../assets/icons/itemsets/whiteout_initiative.webp'),
+  BLOODRUSH_PROTOCOL: require('../../../assets/icons/itemsets/bloodrush_protocol.webp'),
+  CORROSION_PAYLOAD: require('../../../assets/icons/itemsets/corrosion_payload.webp'),
+  GOLDEN_SHRAPNEL_EXCHANGE: require('../../../assets/icons/itemsets/golden_shrapnel_exchange.webp'),
 };
 
 function ActiveItemsets({
@@ -307,7 +309,7 @@ function ActiveItemsets({
                   compact && { width: 22, height: 22 },
                 ]}
               >
-                <Image source={ITEMSET_ICONS[id]} style={[styles.itemsetIcon, compact && { width: 16, height: 16 }]} resizeMode="contain" />
+                <Image source={ITEMSET_ICONS[id]} style={[styles.itemsetIcon, compact && { width: 16, height: 16 }]} contentFit="contain" />
               </View>
             </TouchableOpacity>
           </FocusGlow>

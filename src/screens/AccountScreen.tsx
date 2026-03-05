@@ -6,11 +6,11 @@ import {
   StyleSheet,
   ActivityIndicator,
   Image,
-  ImageBackground,
   TextInput,
   Animated,
   Platform,
 } from 'react-native';
+import { CachedImageBackground } from '../components/common/CachedImageBackground';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { useProfile } from '../contexts/ProfileContext';
@@ -32,7 +32,7 @@ type AccountScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Account'>;
 };
 
-const backButtonSource = require('../../assets/ui/buttons/button-v1.png');
+const backButtonSource = require('../../assets/ui/buttons/button-v1.webp');
 
 const WALLET_IDS: SupportedWallet[] =
   process.env.EXPO_PUBLIC_SHOW_DEV_WALLET === 'true'
@@ -310,8 +310,8 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
       <Image
         source={
           screenVariant === 'compact'
-            ? require('../../assets/ui/backgrounds/account-background-compact.png')
-            : require('../../assets/ui/backgrounds/account-background-wide.png')
+            ? require('../../assets/ui/backgrounds/account-background-compact.webp')
+            : require('../../assets/ui/backgrounds/account-background-wide.webp')
         }
         style={styles.backgroundImage}
         resizeMode="stretch"
@@ -321,7 +321,7 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
         <View style={styles.leftPanel}>
           <View style={styles.brandingContainer}>
             <Image
-              source={require('../../assets/branding/logo.png')}
+              source={require('../../assets/branding/logo.webp')}
               style={styles.logo}
               resizeMode="contain"
             />
@@ -330,8 +330,8 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
 
         {/* Right Panel - Actions */}
         <View style={styles.rightPanel} onLayout={handlePanelLayout}>
-          <ImageBackground
-            source={require('../../assets/ui/panels/wooden-panel.png')}
+          <CachedImageBackground
+            source={require('../../assets/ui/panels/wooden-panel.webp')}
             style={[
               styles.panel,
               panelDimensions
@@ -474,8 +474,8 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
                 activeOpacity={0.7}
                 disabled={showLoading || (isConnected && !!profile) || isCheckingExistingProfile}
               >
-                <ImageBackground
-                  source={require('../../assets/ui/buttons/button.png')}
+                <CachedImageBackground
+                  source={require('../../assets/ui/buttons/button.webp')}
                   style={styles.buttonImage}
                   resizeMode="contain"
                 >
@@ -501,7 +501,7 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
                           : 'Create Profile'}
                     </Text>
                   )}
-                </ImageBackground>
+                </CachedImageBackground>
               </TouchableOpacity>
             </View>
 
@@ -523,7 +523,7 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
                 </Text>
               ) : null}
             </View>
-          </ImageBackground>
+          </CachedImageBackground>
         </View>
       </View>
 
@@ -535,13 +535,13 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
           activeOpacity={0.7}
           disabled={showLoading}
         >
-          <ImageBackground
+          <CachedImageBackground
             source={backButtonSource}
             style={styles.backButtonImage}
             resizeMode="stretch"
           >
             <Text style={styles.backButtonText}>Back</Text>
-          </ImageBackground>
+          </CachedImageBackground>
         </TouchableOpacity>
       )}
 

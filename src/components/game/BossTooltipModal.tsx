@@ -11,10 +11,10 @@ import {
   Pressable,
   TouchableOpacity,
   Image,
-  ImageBackground,
   ScrollView,
   Platform,
 } from 'react-native';
+import { CachedImageBackground } from '../common/CachedImageBackground';
 import { Typography } from '../../theme/typography';
 import { getEntityImageSource } from './entityImages';
 import { Dimensions } from 'react-native';
@@ -23,19 +23,19 @@ import type { BossDefinition } from '../../data/bosses';
 import type { Tool, Gear } from '../../game/engine/types';
 import { ItemTooltip } from './ItemTooltip';
 
-const SIDEBAR_BG = require('../../../assets/ui/panels/sidebar.png');
-const SLOT_BG = require('../../../assets/ui/frames/square.png');
-const DEFAULT_MOLE_IMAGE_SOURCE = require('../../../assets/entities/characters/default-mole.png');
-const COIN_ICON = require('../../../assets/icons/ui/coin.png');
-const HP_ICON = require('../../../assets/icons/stats/HP.png');
-const ATK_ICON = require('../../../assets/icons/stats/ATK.png');
-const ARM_ICON = require('../../../assets/icons/stats/ARM.png');
-const SPD_ICON = require('../../../assets/icons/stats/speed.png');
-const DIG_ICON = require('../../../assets/icons/stats/DIG.png');
-const OIL_ATK_ICON = require('../../../assets/icons/oils/ATK.png');
-const OIL_DIG_ICON = require('../../../assets/icons/oils/DIG.png');
-const OIL_SPD_ICON = require('../../../assets/icons/oils/SPD.png');
-const OIL_ARM_ICON = require('../../../assets/icons/oils/ARM.png');
+const SIDEBAR_BG = require('../../../assets/ui/panels/sidebar.webp');
+const SLOT_BG = require('../../../assets/ui/frames/square.webp');
+const DEFAULT_MOLE_IMAGE_SOURCE = require('../../../assets/entities/characters/default-mole.webp');
+const COIN_ICON = require('../../../assets/icons/ui/coin.webp');
+const HP_ICON = require('../../../assets/icons/stats/HP.webp');
+const ATK_ICON = require('../../../assets/icons/stats/ATK.webp');
+const ARM_ICON = require('../../../assets/icons/stats/ARM.webp');
+const SPD_ICON = require('../../../assets/icons/stats/speed.webp');
+const DIG_ICON = require('../../../assets/icons/stats/DIG.webp');
+const OIL_ATK_ICON = require('../../../assets/icons/oils/ATK.webp');
+const OIL_DIG_ICON = require('../../../assets/icons/oils/DIG.webp');
+const OIL_SPD_ICON = require('../../../assets/icons/oils/SPD.webp');
+const OIL_ARM_ICON = require('../../../assets/icons/oils/ARM.webp');
 
 interface BossTooltipModalProps {
   visible: boolean;
@@ -94,7 +94,7 @@ export function BossTooltipModal({
           styles.modalContentWrapper,
           isCompact && styles.modalContentWrapperCompact,
         ]}>
-          <ImageBackground
+          <CachedImageBackground
             source={SIDEBAR_BG}
             style={[
               styles.modalContent,
@@ -187,7 +187,7 @@ export function BossTooltipModal({
 
               <Text style={styles.closeHint}>Tap anywhere to close</Text>
             </ScrollView>
-          </ImageBackground>
+          </CachedImageBackground>
         </View>
       </Pressable>
       <ItemTooltip
@@ -208,7 +208,7 @@ function BuildItemSlot({
 }) {
   return (
     <TouchableOpacity activeOpacity={0.8} onPress={onPress} disabled={!item}>
-      <ImageBackground source={SLOT_BG} style={styles.buildSlot} resizeMode="stretch">
+      <CachedImageBackground source={SLOT_BG} style={styles.buildSlot} resizeMode="stretch">
         {item ? (
           item.image ? (
             <Image source={item.image} style={styles.buildSlotImage} resizeMode="contain" />
@@ -218,7 +218,7 @@ function BuildItemSlot({
         ) : (
           <Text style={styles.buildSlotEmpty}>-</Text>
         )}
-      </ImageBackground>
+      </CachedImageBackground>
     </TouchableOpacity>
   );
 }
@@ -236,13 +236,13 @@ function OilSlot({ oil }: { oil: Tool['oil'] | null | undefined }) {
             : null;
 
   return (
-    <ImageBackground source={SLOT_BG} style={styles.buildSlot} resizeMode="stretch">
+    <CachedImageBackground source={SLOT_BG} style={styles.buildSlot} resizeMode="stretch">
       {source ? (
         <Image source={source} style={styles.buildSlotImage} resizeMode="contain" />
       ) : (
         <Text style={styles.buildSlotEmpty}>-</Text>
       )}
-    </ImageBackground>
+    </CachedImageBackground>
   );
 }
 

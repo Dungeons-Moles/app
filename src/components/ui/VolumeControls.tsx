@@ -1,8 +1,9 @@
 import React from 'react';
-import { View, StyleSheet, TouchableOpacity, Text, ImageBackground } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Text } from 'react-native';
+import { CachedImageBackground } from '../common/CachedImageBackground';
 import { useAudio } from '../../contexts/AudioContext';
 
-const buttonBgSource = require('../../../assets/ui/buttons/button-v1.png');
+const buttonBgSource = require('../../../assets/ui/buttons/button-v1.webp');
 
 export interface VolumeControlsProps {
   currentVolume: number; // 0.0 to 1.0
@@ -32,9 +33,9 @@ export function VolumeControls({ currentVolume, onVolumeChange, scale = 1 }: Vol
         onPress={decrease}
         activeOpacity={0.7}
       >
-        <ImageBackground source={buttonBgSource} style={styles.buttonBg} resizeMode="stretch">
+        <CachedImageBackground source={buttonBgSource} style={styles.buttonBg} resizeMode="stretch">
           <Text style={[styles.btnText, { fontSize: 20 * scale }]}>-</Text>
-        </ImageBackground>
+        </CachedImageBackground>
       </TouchableOpacity>
 
       <View
@@ -50,9 +51,9 @@ export function VolumeControls({ currentVolume, onVolumeChange, scale = 1 }: Vol
         onPress={increase}
         activeOpacity={0.7}
       >
-        <ImageBackground source={buttonBgSource} style={styles.buttonBg} resizeMode="stretch">
+        <CachedImageBackground source={buttonBgSource} style={styles.buttonBg} resizeMode="stretch">
           <Text style={[styles.btnText, { fontSize: 20 * scale }]}>+</Text>
-        </ImageBackground>
+        </CachedImageBackground>
       </TouchableOpacity>
     </View>
   );

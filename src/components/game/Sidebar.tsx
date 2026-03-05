@@ -3,7 +3,9 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, StyleSheet, ImageBackground, Text, Image, Pressable, Dimensions, Platform } from 'react-native';
+import { View, StyleSheet, Text, Pressable, Dimensions, Platform } from 'react-native';
+import { Image } from 'expo-image';
+import { CachedImageBackground } from '../common/CachedImageBackground';
 import { PublicKey } from '@solana/web3.js';
 import { StatsPanel } from './StatsPanel';
 import { InventoryPanel } from './InventoryPanel';
@@ -46,20 +48,20 @@ import type {
 } from '../../game/engine/types';
 import { getTierFromRarity } from '../../data/gear';
 
-const SIDEBAR_BG = require('../../../assets/ui/panels/sidebar.png');
-const BOSS_PANEL_BG = require('../../../assets/ui/panels/boss-panel.png');
-const DEFAULT_MOLE_IMAGE_SOURCE = require('../../../assets/entities/characters/default-mole.png');
-const SLOT_BG = require('../../../assets/ui/frames/square.png');
-const HP_ICON = require('../../../assets/icons/stats/HP.png');
-const ATK_ICON = require('../../../assets/icons/stats/ATK.png');
-const ARM_ICON = require('../../../assets/icons/stats/ARM.png');
-const SPD_ICON = require('../../../assets/icons/stats/speed.png');
-const DIG_ICON = require('../../../assets/icons/stats/DIG.png');
+const SIDEBAR_BG = require('../../../assets/ui/panels/sidebar.webp');
+const BOSS_PANEL_BG = require('../../../assets/ui/panels/boss-panel.webp');
+const DEFAULT_MOLE_IMAGE_SOURCE = require('../../../assets/entities/characters/default-mole.webp');
+const SLOT_BG = require('../../../assets/ui/frames/square.webp');
+const HP_ICON = require('../../../assets/icons/stats/HP.webp');
+const ATK_ICON = require('../../../assets/icons/stats/ATK.webp');
+const ARM_ICON = require('../../../assets/icons/stats/ARM.webp');
+const SPD_ICON = require('../../../assets/icons/stats/speed.webp');
+const DIG_ICON = require('../../../assets/icons/stats/DIG.webp');
 const OIL_IMAGES: Record<ToolOil, any> = {
-  ATK: require('../../../assets/icons/oils/ATK.png'),
-  DIG: require('../../../assets/icons/oils/DIG.png'),
-  SPD: require('../../../assets/icons/oils/SPD.png'),
-  ARM: require('../../../assets/icons/oils/ARM.png'),
+  ATK: require('../../../assets/icons/oils/ATK.webp'),
+  DIG: require('../../../assets/icons/oils/DIG.webp'),
+  SPD: require('../../../assets/icons/oils/SPD.webp'),
+  ARM: require('../../../assets/icons/oils/ARM.webp'),
 };
 const SIDEBAR_DEBUG_LOGS = false;
 
@@ -114,7 +116,7 @@ const EchoGearSlot = React.memo(function EchoGearSlot({ item, size = GEAR_SLOT_S
   }, [item]);
 
   return (
-    <ImageBackground
+    <CachedImageBackground
       source={SLOT_BG}
       style={[
         styles.echoSlot,
@@ -125,11 +127,11 @@ const EchoGearSlot = React.memo(function EchoGearSlot({ item, size = GEAR_SLOT_S
     >
       {item &&
         (item.image ? (
-          <Image source={item.image} style={{ width: size * 0.8, height: size * 0.8 }} resizeMode="contain" />
+          <Image source={item.image} style={{ width: size * 0.8, height: size * 0.8 }} contentFit="contain" />
         ) : (
           <Text style={{ fontSize: size * 0.5 }}>{item.emoji}</Text>
         ))}
-    </ImageBackground>
+    </CachedImageBackground>
   );
 });
 
@@ -143,7 +145,7 @@ const EchoToolSlot = React.memo(function EchoToolSlot({ tool, size = TOOL_SLOT_S
   }, [tool]);
 
   return (
-    <ImageBackground
+    <CachedImageBackground
       source={SLOT_BG}
       style={[
         styles.echoSlot,
@@ -154,25 +156,25 @@ const EchoToolSlot = React.memo(function EchoToolSlot({ tool, size = TOOL_SLOT_S
     >
       {tool &&
         (tool.image ? (
-          <Image source={tool.image} style={{ width: size * 0.8, height: size * 0.8 }} resizeMode="contain" />
+          <Image source={tool.image} style={{ width: size * 0.8, height: size * 0.8 }} contentFit="contain" />
         ) : (
           <Text style={{ fontSize: size * 0.5 }}>{tool.emoji}</Text>
         ))}
-    </ImageBackground>
+    </CachedImageBackground>
   );
 });
 
 function EchoOilSlot({ oil, size = TOOL_SLOT_SIZE }: { oil: ToolOil | null; size?: number }) {
   return (
-    <ImageBackground
+    <CachedImageBackground
       source={SLOT_BG}
       style={[styles.echoSlot, { width: size, height: size }]}
       resizeMode="stretch"
     >
       {oil && (
-        <Image source={OIL_IMAGES[oil]} style={{ width: size * 0.8, height: size * 0.8 }} resizeMode="contain" />
+        <Image source={OIL_IMAGES[oil]} style={{ width: size * 0.8, height: size * 0.8 }} contentFit="contain" />
       )}
-    </ImageBackground>
+    </CachedImageBackground>
   );
 }
 
@@ -483,7 +485,7 @@ export function BossPanel({
               displayedBoss ? getEntityImageSource(displayedBoss.id) : DEFAULT_MOLE_IMAGE_SOURCE
             }
             style={styles.inlineBossImage}
-            resizeMode={displayedBoss ? 'contain' : 'cover'}
+            contentFit={displayedBoss ? 'contain' : 'cover'}
           />
           <Text style={styles.inlineBossName} numberOfLines={1}>
             {panelTitle}
@@ -536,7 +538,7 @@ export function BossPanel({
               displayedBoss ? getEntityImageSource(displayedBoss.id) : DEFAULT_MOLE_IMAGE_SOURCE
             }
             style={styles.bossCompactIcon}
-            resizeMode={displayedBoss ? 'contain' : 'cover'}
+            contentFit={displayedBoss ? 'contain' : 'cover'}
           />
           <Text style={styles.bossCompactName} numberOfLines={1}>
             {panelTitle}
@@ -544,7 +546,7 @@ export function BossPanel({
         </Pressable>
       ) : (
         <View style={[styles.bossContainer, fitContent && { width: undefined }, { paddingHorizontal: 6 * scale }]}>
-          <ImageBackground
+          <CachedImageBackground
             source={BOSS_PANEL_BG}
             style={[styles.bossPanel, fitContent && { width: undefined }, { height: 50 * scale, paddingHorizontal: 10 * scale }]}
             resizeMode="stretch"
@@ -555,7 +557,7 @@ export function BossPanel({
                   displayedBoss ? getEntityImageSource(displayedBoss.id) : DEFAULT_MOLE_IMAGE_SOURCE
                 }
                 style={{ width: 42 * scale, height: 42 * scale }}
-                resizeMode={displayedBoss ? 'contain' : 'cover'}
+                contentFit={displayedBoss ? 'contain' : 'cover'}
               />
               <View>
                 <Text style={[styles.bossName, { fontSize: 16 * scale }]}>
@@ -566,7 +568,7 @@ export function BossPanel({
                 </Text>
               </View>
             </Pressable>
-          </ImageBackground>
+          </CachedImageBackground>
         </View>
       )}
       <BossTooltipModal
@@ -646,17 +648,17 @@ export const Sidebar = React.memo(function Sidebar(props: SidebarProps) {
 
   if (props.onlyContent) {
     return (
-      <ImageBackground source={SIDEBAR_BG} style={styles.container} resizeMode="stretch">
+      <CachedImageBackground source={SIDEBAR_BG} style={styles.container} resizeMode="stretch">
         {content}
-      </ImageBackground>
+      </CachedImageBackground>
     );
   }
 
   return (
     <View style={styles.container}>
-      <ImageBackground source={SIDEBAR_BG} style={styles.sidebarBg} resizeMode="stretch">
+      <CachedImageBackground source={SIDEBAR_BG} style={styles.sidebarBg} resizeMode="stretch">
         {content}
-      </ImageBackground>
+      </CachedImageBackground>
     </View>
   );
 });
@@ -664,7 +666,7 @@ export const Sidebar = React.memo(function Sidebar(props: SidebarProps) {
 function InlineStatRow({ icon, label, value }: { icon: any; label: string; value: number }) {
   return (
     <View style={styles.inlineStatRow}>
-      <Image source={icon} style={styles.inlineStatIcon} resizeMode="contain" />
+      <Image source={icon} style={styles.inlineStatIcon} contentFit="contain" />
       <Text style={styles.inlineStatLabel}>{label}</Text>
       <Text style={styles.inlineStatValue}>{value}</Text>
     </View>

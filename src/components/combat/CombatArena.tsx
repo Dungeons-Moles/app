@@ -22,8 +22,8 @@ import { EffectNotifications } from './EffectNotifications';
 import type { DamageNumber, EffectNotification } from '../../contexts/CombatContext';
 import { useSkiaEntityImages } from '../../hooks/useEntityImages';
 
-const BATTLEGROUND_BG = require('../../../assets/ui/backgrounds/combat-background.png');
-const DEFAULT_MOLE = require('../../../assets/entities/characters/default-mole.png');
+const BATTLEGROUND_BG = require('../../../assets/ui/backgrounds/combat-background.webp');
+const DEFAULT_MOLE = require('../../../assets/entities/characters/default-mole.webp');
 
 interface CombatArenaProps {
   player: CombatantState | null;
@@ -212,10 +212,10 @@ interface StatusEffectsRowProps {
 }
 
 const STATUS_ICONS = {
-  chill: require('../../../assets/icons/status-effects/chill.png'),
-  shrapnel: require('../../../assets/icons/status-effects/shrapnel.png'),
-  rust: require('../../../assets/icons/status-effects/rust.png'),
-  bleed: require('../../../assets/icons/status-effects/bleed.png'),
+  chill: require('../../../assets/icons/status-effects/chill.webp'),
+  shrapnel: require('../../../assets/icons/status-effects/shrapnel.webp'),
+  rust: require('../../../assets/icons/status-effects/rust.webp'),
+  bleed: require('../../../assets/icons/status-effects/bleed.webp'),
 };
 
 function StatusEffectsRow({ statusEffects, x, y, scale = 1 }: StatusEffectsRowProps) {

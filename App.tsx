@@ -27,13 +27,13 @@ import { Psg1Wrapper } from './src/components/Psg1Wrapper';
 
 // Critical assets to preload during splash screen (first screens the user sees)
 const PRELOAD_ASSETS = [
-  require('./assets/ui/backgrounds/loading-background.png'),
-  require('./assets/ui/backgrounds/account-background-compact.png'),
-  require('./assets/ui/backgrounds/account-background-wide.png'),
-  require('./assets/ui/backgrounds/hub-background-compact.png'),
-  require('./assets/ui/backgrounds/hub-background-wide.png'),
-  require('./assets/ui/panels/paper-panel.png'),
-  require('./assets/branding/logo.png'),
+  require('./assets/ui/backgrounds/loading-background.webp'),
+  require('./assets/ui/backgrounds/account-background-compact.webp'),
+  require('./assets/ui/backgrounds/account-background-wide.webp'),
+  require('./assets/ui/backgrounds/hub-background-compact.webp'),
+  require('./assets/ui/backgrounds/hub-background-wide.webp'),
+  require('./assets/ui/panels/paper-panel.webp'),
+  require('./assets/branding/logo.webp'),
 ];
 
 function prefetchImages(images: number[]): Promise<void> {

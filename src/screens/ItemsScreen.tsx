@@ -5,13 +5,13 @@ import {
   StyleSheet,
   TouchableOpacity,
   Image,
-  ImageBackground,
   ActivityIndicator,
   ScrollView,
   Alert,
   Animated,
   InteractionManager,
 } from 'react-native';
+import { CachedImageBackground } from '../components/common/CachedImageBackground';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useIsFocused } from '@react-navigation/native';
 import { useProfile } from '../contexts/ProfileContext';
@@ -49,38 +49,38 @@ import {
 import { getAllItemsetDefinitions, getItemsetsForItem } from '../data/itemsets';
 import type { ItemsetDefinition } from '../data/itemsets';
 
-const backgroundImage = require('../../assets/ui/backgrounds/loading-background.png');
-const bookImageMobile = require('../../assets/ui/backgrounds/book-wide.png');
-const bookImageCompact = require('../../assets/ui/backgrounds/book-compact.png');
-const buttonV1Source = require('../../assets/ui/buttons/button-v1.png');
-const buttonSource = require('../../assets/ui/buttons/button.png');
-const buttonV3Source = require('../../assets/ui/buttons/button-v3.png');
-const buttonV4Source = require('../../assets/ui/buttons/button-v4.png');
-const buttonGreenSource = require('../../assets/ui/buttons/button-green.png');
-const buttonGraySource = require('../../assets/ui/buttons/button-gray.png');
-const lockIconSource = require('../../assets/icons/ui/lock.png');
-const rectangleFrameSource = require('../../assets/ui/frames/rectangle.png');
-const statIconATK = require('../../assets/icons/stats/ATK.png');
-const statIconARM = require('../../assets/icons/stats/ARM.png');
-const statIconSPD = require('../../assets/icons/stats/speed.png');
-const statIconDIG = require('../../assets/icons/stats/DIG.png');
-const statIconHP = require('../../assets/icons/stats/HP.png');
-const squareFrameSource = require('../../assets/ui/frames/square.png');
-const engineImageSource = require('../../assets/ui/illustrations/engine.png');
+const backgroundImage = require('../../assets/ui/backgrounds/loading-background.webp');
+const bookImageMobile = require('../../assets/ui/backgrounds/book-wide.webp');
+const bookImageCompact = require('../../assets/ui/backgrounds/book-compact.webp');
+const buttonV1Source = require('../../assets/ui/buttons/button-v1.webp');
+const buttonSource = require('../../assets/ui/buttons/button.webp');
+const buttonV3Source = require('../../assets/ui/buttons/button-v3.webp');
+const buttonV4Source = require('../../assets/ui/buttons/button-v4.webp');
+const buttonGreenSource = require('../../assets/ui/buttons/button-green.webp');
+const buttonGraySource = require('../../assets/ui/buttons/button-gray.webp');
+const lockIconSource = require('../../assets/icons/ui/lock.webp');
+const rectangleFrameSource = require('../../assets/ui/frames/rectangle.webp');
+const statIconATK = require('../../assets/icons/stats/ATK.webp');
+const statIconARM = require('../../assets/icons/stats/ARM.webp');
+const statIconSPD = require('../../assets/icons/stats/speed.webp');
+const statIconDIG = require('../../assets/icons/stats/DIG.webp');
+const statIconHP = require('../../assets/icons/stats/HP.webp');
+const squareFrameSource = require('../../assets/ui/frames/square.webp');
+const engineImageSource = require('../../assets/ui/illustrations/engine.webp');
 
 const ITEMSET_ICONS: Record<string, any> = {
-  UNION_STANDARD: require('../../assets/icons/itemsets/union_standard.png'),
-  SHARD_CIRCUIT: require('../../assets/icons/itemsets/shard_circuit.png'),
-  DEMOLITION_PERMIT: require('../../assets/icons/itemsets/demolition_permit.png'),
-  FUSE_NETWORK: require('../../assets/icons/itemsets/fuse_network.png'),
-  SHRAPNEL_HARNESS: require('../../assets/icons/itemsets/shrapnel_harness.png'),
-  RUST_RITUAL: require('../../assets/icons/itemsets/rust_ritual.png'),
-  SWIFT_DIGGER_KIT: require('../../assets/icons/itemsets/swift_digger_kit.png'),
-  ROYAL_EXTRACTION: require('../../assets/icons/itemsets/royal_extraction.png'),
-  WHITEOUT_INITIATIVE: require('../../assets/icons/itemsets/whiteout_initiative.png'),
-  BLOODRUSH_PROTOCOL: require('../../assets/icons/itemsets/bloodrush_protocol.png'),
-  CORROSION_PAYLOAD: require('../../assets/icons/itemsets/corrosion_payload.png'),
-  GOLDEN_SHRAPNEL_EXCHANGE: require('../../assets/icons/itemsets/golden_shrapnel_exchange.png'),
+  UNION_STANDARD: require('../../assets/icons/itemsets/union_standard.webp'),
+  SHARD_CIRCUIT: require('../../assets/icons/itemsets/shard_circuit.webp'),
+  DEMOLITION_PERMIT: require('../../assets/icons/itemsets/demolition_permit.webp'),
+  FUSE_NETWORK: require('../../assets/icons/itemsets/fuse_network.webp'),
+  SHRAPNEL_HARNESS: require('../../assets/icons/itemsets/shrapnel_harness.webp'),
+  RUST_RITUAL: require('../../assets/icons/itemsets/rust_ritual.webp'),
+  SWIFT_DIGGER_KIT: require('../../assets/icons/itemsets/swift_digger_kit.webp'),
+  ROYAL_EXTRACTION: require('../../assets/icons/itemsets/royal_extraction.webp'),
+  WHITEOUT_INITIATIVE: require('../../assets/icons/itemsets/whiteout_initiative.webp'),
+  BLOODRUSH_PROTOCOL: require('../../assets/icons/itemsets/bloodrush_protocol.webp'),
+  CORROSION_PAYLOAD: require('../../assets/icons/itemsets/corrosion_payload.webp'),
+  GOLDEN_SHRAPNEL_EXCHANGE: require('../../assets/icons/itemsets/golden_shrapnel_exchange.webp'),
 };
 
 // Item descriptions mapping
@@ -594,7 +594,7 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
               <>
                 {!isController && (
                   <TouchableOpacity onPress={handleBack} activeOpacity={0.7}>
-                    <ImageBackground
+                    <CachedImageBackground
                       source={buttonV1Source}
                       style={[styles.backButton, isCompact && compactStyles.backButton]}
                       resizeMode="stretch"
@@ -602,12 +602,12 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                       <Text style={[styles.backButtonText, isCompact && compactStyles.backButtonText]}>
                         Back
                       </Text>
-                    </ImageBackground>
+                    </CachedImageBackground>
                   </TouchableOpacity>
                 )}
                 <View style={styles.titleGroup}>
                   <TouchableOpacity onPress={toggleTab} activeOpacity={0.8}>
-                    <ImageBackground
+                    <CachedImageBackground
                       source={buttonV4Source}
                       style={[styles.titlePanel, isCompact && compactStyles.titlePanel]}
                       resizeMode="stretch"
@@ -623,7 +623,7 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                           Pool: {draftPoolIndices.size} (min {ITEM_POOL_MIN_SIZE})
                         </Text>
                       )}
-                    </ImageBackground>
+                    </CachedImageBackground>
                   </TouchableOpacity>
                   {isCompact && activeTab === 'items' && !isGuest && (
                     <Text
@@ -653,7 +653,7 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                 onPress={handleSaveItemPool}
                 activeOpacity={0.7}
               >
-                <ImageBackground
+                <CachedImageBackground
                   source={buttonV3Source}
                   style={[
                     styles.saveButton,
@@ -672,7 +672,7 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                       {isCompact ? 'Press X to Save' : 'Save'}
                     </Text>
                   )}
-                </ImageBackground>
+                </CachedImageBackground>
               </TouchableOpacity>
             ) : (
               <View style={[styles.saveButton, isCompact && compactStyles.saveButton]} />
@@ -685,7 +685,7 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                 }}
                 activeOpacity={0.7}
               >
-                <ImageBackground
+                <CachedImageBackground
                   source={buttonV1Source}
                   style={styles.settingsBtn}
                   resizeMode="stretch"
@@ -695,7 +695,7 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                     style={styles.settingsIconImage}
                     resizeMode="contain"
                   />
-                </ImageBackground>
+                </CachedImageBackground>
               </TouchableOpacity>
             )}
           </View>
@@ -748,7 +748,7 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                               onPress={() => { playSfx('ui_hover'); setSelectedItem(item); }}
                               activeOpacity={0.7}
                             >
-                              <ImageBackground
+                              <CachedImageBackground
                                 source={squareFrameSource}
                                 style={[styles.itemFrame, isCompact && compactStyles.itemFrame, !isCompact && { width: cellSize, height: cellSize }]}
                                 resizeMode="stretch"
@@ -775,7 +775,7 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                                     />
                                   </View>
                                 )}
-                              </ImageBackground>
+                              </CachedImageBackground>
                             </TouchableOpacity>
                           );
                           return isCursorItem ? (
@@ -818,7 +818,7 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                         onPress={() => { playSfx('ui_hover'); setSelectedItemset(itemset); }}
                         activeOpacity={0.7}
                       >
-                        <ImageBackground
+                        <CachedImageBackground
                           source={squareFrameSource}
                           style={[styles.itemFrame, isCompact && compactStyles.itemFrame, !isCompact && { width: cellSize, height: cellSize }]}
                           resizeMode="stretch"
@@ -828,7 +828,7 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                             style={[styles.itemImage, isCompact && compactStyles.itemImage, !isCompact && { width: imageSize, height: imageSize }]}
                             resizeMode="contain"
                           />
-                        </ImageBackground>
+                        </CachedImageBackground>
                       </TouchableOpacity>
                     );
                     return isCursorItem ? (
@@ -914,7 +914,7 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                             if (!item) return null;
                             return (
                               <View key={itemId as string} style={styles.itemsetMemberRow}>
-                                <ImageBackground
+                                <CachedImageBackground
                                   source={squareFrameSource}
                                   style={[
                                     styles.itemsetReqFrame,
@@ -930,7 +930,7 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                                     ]}
                                     resizeMode="contain"
                                   />
-                                </ImageBackground>
+                                </CachedImageBackground>
                                 <Text
                                   style={[
                                     styles.itemsetMemberName,
@@ -953,7 +953,7 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
             {activeTab === 'items' && selectedItem && (
               <>
                 {!isGuest && !checkItemUnlocked(selectedItem.id) && (
-                  <ImageBackground
+                  <CachedImageBackground
                     source={rectangleFrameSource}
                     style={[styles.lockedBanner, isCompact && compactStyles.lockedBanner]}
                     resizeMode="stretch"
@@ -968,7 +968,7 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                     >
                       LOCKED
                     </Text>
-                  </ImageBackground>
+                  </CachedImageBackground>
                 )}
 
                 {!isGuest && checkItemUnlocked(selectedItem.id) && selectedItemPoolIndex >= 0 && (
@@ -978,7 +978,7 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                     disabled={!canRemoveSelectedItem}
                     activeOpacity={0.8}
                   >
-                    <ImageBackground
+                    <CachedImageBackground
                       source={
                         !canRemoveSelectedItem
                           ? buttonGraySource
@@ -1000,7 +1000,7 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                       >
                         {selectedItemInPool ? 'Remove from Pool' : 'Add to Pool'}
                       </Text>
-                    </ImageBackground>
+                    </CachedImageBackground>
                   </TouchableOpacity>
                 )}
 

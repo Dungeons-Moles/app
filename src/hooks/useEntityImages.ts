@@ -10,10 +10,10 @@ import { Skia, type SkImage } from '@shopify/react-native-skia';
 import { ENEMY_IMAGES, BOSS_IMAGES, POI_IMAGES } from '../components/game/entityImages';
 
 // Player image
-const playerImage = require('../../assets/entities/characters/default-mole.png');
+const playerImage = require('../../assets/entities/characters/default-mole.webp');
 
 // Unknown enemy image (question mark)
-const unknownEnemyImage = require('../../assets/world/markers/question-mark.png');
+const unknownEnemyImage = require('../../assets/world/markers/question-mark.webp');
 
 // Collect all images for preloading
 const ALL_ENTITY_IMAGES = [

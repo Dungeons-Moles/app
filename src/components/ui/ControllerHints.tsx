@@ -9,16 +9,16 @@ import { View, Image, Text, StyleSheet, type ImageSourcePropType } from 'react-n
 import { useInputMode } from '../../hooks/useInputMode';
 import { useScreenVariant } from '../../contexts/ScreenVariantContext';
 
-const ICON_A = require('../../../assets/ui/control-buttons/a.png');
-const ICON_B = require('../../../assets/ui/control-buttons/b.png');
-const ICON_X = require('../../../assets/ui/control-buttons/x.png');
-const ICON_Y = require('../../../assets/ui/control-buttons/y.png');
-const ICON_L1 = require('../../../assets/ui/control-buttons/l1.png');
-const ICON_R1 = require('../../../assets/ui/control-buttons/r1.png');
-const ICON_START = require('../../../assets/ui/control-buttons/start.png');
-const ICON_SELECT = require('../../../assets/ui/control-buttons/select.png');
-const ICON_DIRECTION = require('../../../assets/ui/control-buttons/direction.png');
-const ICON_DPAD = require('../../../assets/ui/control-buttons/d-pad.png');
+const ICON_A = require('../../../assets/ui/control-buttons/a.webp');
+const ICON_B = require('../../../assets/ui/control-buttons/b.webp');
+const ICON_X = require('../../../assets/ui/control-buttons/x.webp');
+const ICON_Y = require('../../../assets/ui/control-buttons/y.webp');
+const ICON_L1 = require('../../../assets/ui/control-buttons/l1.webp');
+const ICON_R1 = require('../../../assets/ui/control-buttons/r1.webp');
+const ICON_START = require('../../../assets/ui/control-buttons/start.webp');
+const ICON_SELECT = require('../../../assets/ui/control-buttons/select.webp');
+const ICON_DIRECTION = require('../../../assets/ui/control-buttons/direction.webp');
+const ICON_DPAD = require('../../../assets/ui/control-buttons/d-pad.webp');
 
 const FACE_ICONS: Record<string, ImageSourcePropType> = {
   A: ICON_A,

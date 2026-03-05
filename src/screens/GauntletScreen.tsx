@@ -5,11 +5,11 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  ImageBackground,
   Animated,
   ActivityIndicator,
   Alert,
 } from 'react-native';
+import { CachedImageBackground } from '../components/common/CachedImageBackground';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation';
 import { Typography } from '@/theme/typography';
@@ -39,20 +39,20 @@ import { PaymentTokenSelector, PaymentConfirmationModal } from '@/components/pay
 import { InlineModal } from '@/components/InlineModal';
 import { BlurView } from 'expo-blur';
 
-const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.png');
-const STAINS_BACKGROUND = require('../../assets/ui/backgrounds/stains-background.png');
-const GAUNTLET_TITLE = require('../../assets/ui/text/gauntlet.png');
-const PVP_MODES_PANEL = require('../../assets/ui/panels/pvp-modes-panel.png');
-const buttonV1Source = require('../../assets/ui/buttons/button-v1.png');
-const buttonV2Source = require('../../assets/ui/buttons/button-v2.png');
-const SOL_PILE = require('../../assets/ui/illustrations/sol-pile.png');
-const CHEST = require('../../assets/ui/illustrations/chest.png');
-const ECHO_FIGHT = require('../../assets/ui/illustrations/echo-fight.png');
-const PAPER_PANEL = require('../../assets/ui/panels/paper-panel.png');
-const iconASource = require('../../assets/ui/control-buttons/a.png');
-const iconBSource = require('../../assets/ui/control-buttons/b.png');
-const engineImageSource = require('../../assets/ui/illustrations/engine.png');
-const iconXSource = require('../../assets/ui/control-buttons/x.png');
+const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.webp');
+const STAINS_BACKGROUND = require('../../assets/ui/backgrounds/stains-background.webp');
+const GAUNTLET_TITLE = require('../../assets/ui/text/gauntlet.webp');
+const PVP_MODES_PANEL = require('../../assets/ui/panels/pvp-modes-panel.webp');
+const buttonV1Source = require('../../assets/ui/buttons/button-v1.webp');
+const buttonV2Source = require('../../assets/ui/buttons/button-v2.webp');
+const SOL_PILE = require('../../assets/ui/illustrations/sol-pile.webp');
+const CHEST = require('../../assets/ui/illustrations/chest.webp');
+const ECHO_FIGHT = require('../../assets/ui/illustrations/echo-fight.webp');
+const PAPER_PANEL = require('../../assets/ui/panels/paper-panel.webp');
+const iconASource = require('../../assets/ui/control-buttons/a.webp');
+const iconBSource = require('../../assets/ui/control-buttons/b.webp');
+const engineImageSource = require('../../assets/ui/illustrations/engine.webp');
+const iconXSource = require('../../assets/ui/control-buttons/x.webp');
 
 type GauntletScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Gauntlet'>;
@@ -296,7 +296,7 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
 
   return (
     <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
-      <ImageBackground source={BACKGROUND_IMAGE} style={styles.backgroundImage} resizeMode="cover">
+      <CachedImageBackground source={BACKGROUND_IMAGE} style={styles.backgroundImage} resizeMode="cover">
         <Image source={STAINS_BACKGROUND} style={styles.stainsOverlay} resizeMode="cover" />
         {!isCompact && !isController && (
           <View style={styles.topRight}>
@@ -308,7 +308,7 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
               }}
               activeOpacity={0.7}
             >
-              <ImageBackground
+              <CachedImageBackground
                 source={buttonV1Source}
                 style={styles.settingsBtn}
                 resizeMode="stretch"
@@ -318,7 +318,7 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
                   style={styles.settingsIconImage}
                   resizeMode="contain"
                 />
-              </ImageBackground>
+              </CachedImageBackground>
             </TouchableOpacity>
           </View>
         )}
@@ -331,20 +331,20 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
             activeOpacity={0.7}
             style={styles.rankingButtonAbsolute}
           >
-            <ImageBackground
+            <CachedImageBackground
               source={buttonV2Source}
               style={styles.backButtonMobile}
               resizeMode="stretch"
             >
               <Text style={styles.backButtonTextMobile}>Ranking</Text>
-            </ImageBackground>
+            </CachedImageBackground>
           </TouchableOpacity>
         )}
         {!isCompact && !isController && (
           <TouchableOpacity onPress={handleBack} activeOpacity={0.7} style={styles.backButtonAbsolute}>
-            <ImageBackground source={buttonV1Source} style={styles.backButtonMobile} resizeMode="stretch">
+            <CachedImageBackground source={buttonV1Source} style={styles.backButtonMobile} resizeMode="stretch">
               <Text style={styles.backButtonTextMobile}>Back</Text>
-            </ImageBackground>
+            </CachedImageBackground>
           </TouchableOpacity>
         )}
         <View style={styles.content}>
@@ -355,7 +355,7 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
                 <View style={[styles.headerButton, compactStyles.headerButton]} />
               ) : (
                 <TouchableOpacity onPress={handleBack} activeOpacity={0.7}>
-                  <ImageBackground
+                  <CachedImageBackground
                     source={buttonV1Source}
                     style={[styles.headerButton, compactStyles.headerButton]}
                     resizeMode="stretch"
@@ -363,7 +363,7 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
                     <Text style={[styles.headerButtonText, compactStyles.headerButtonText]}>
                       Back
                     </Text>
-                  </ImageBackground>
+                  </CachedImageBackground>
                 </TouchableOpacity>
               )
             ) : (
@@ -380,7 +380,7 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
                   onPress={() => navigation.navigate('GauntletRanking')}
                   activeOpacity={0.7}
                 >
-                  <ImageBackground
+                  <CachedImageBackground
                     source={buttonV2Source}
                     style={[styles.headerButton, compactStyles.headerButton]}
                     resizeMode="stretch"
@@ -390,7 +390,7 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
                     >
                       Ranking
                     </Text>
-                  </ImageBackground>
+                  </CachedImageBackground>
                 </TouchableOpacity>
               )
             )}
@@ -551,7 +551,7 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
             )}
           </View>
         </View>
-      </ImageBackground>
+      </CachedImageBackground>
       {payment.quote && (
         <PaymentConfirmationModal
           visible={showPaymentModal}
@@ -569,7 +569,7 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
         onRequestClose={() => setShowSessionExistsModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <ImageBackground
+          <CachedImageBackground
             source={PAPER_PANEL}
             resizeMode="stretch"
             style={[styles.modalContent, isCompact && compactStyles.modalContent]}
@@ -626,7 +626,7 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
                 </TouchableOpacity>
               </View>
             )}
-          </ImageBackground>
+          </CachedImageBackground>
         </View>
       </InlineModal>
       <HubSettingsModal

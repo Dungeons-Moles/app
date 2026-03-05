@@ -1,13 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Image, Text, StyleSheet, ImageBackground, Animated, Alert } from 'react-native';
+import { View, Image, Text, StyleSheet, Animated, Alert } from 'react-native';
+import { CachedImageBackground } from '../components/common/CachedImageBackground';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation';
 import { Typography } from '@/theme/typography';
 import { useScreenVariant } from '@/contexts/ScreenVariantContext';
 import { getSessionSetupPromise, clearSessionSetup } from '@/utils/sessionSetupSignal';
 
-const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.png');
-const STAINS_BACKGROUND = require('../../assets/ui/backgrounds/stains-background.png');
+const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.webp');
+const STAINS_BACKGROUND = require('../../assets/ui/backgrounds/stains-background.webp');
 
 const FLAVOR_TEXTS = [
   'Polishing pickaxe',
@@ -114,7 +115,7 @@ export function SessionLoadingScreen({ navigation }: SessionLoadingScreenProps) 
 
   return (
     <View style={styles.container}>
-      <ImageBackground source={BACKGROUND_IMAGE} style={styles.backgroundImage} resizeMode="cover">
+      <CachedImageBackground source={BACKGROUND_IMAGE} style={styles.backgroundImage} resizeMode="cover">
         <Image source={STAINS_BACKGROUND} style={styles.stainsOverlay} resizeMode="cover" />
         <View style={styles.content}>
           <Text style={[styles.loadingText, { fontSize: 32 * scale }]}>
@@ -129,7 +130,7 @@ export function SessionLoadingScreen({ navigation }: SessionLoadingScreenProps) 
             {FLAVOR_TEXTS[flavorIndex]}...
           </Animated.Text>
         </View>
-      </ImageBackground>
+      </CachedImageBackground>
     </View>
   );
 }

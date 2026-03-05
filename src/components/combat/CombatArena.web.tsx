@@ -3,15 +3,17 @@
  */
 
 import React, { useMemo } from 'react';
-import { StyleSheet, View, useWindowDimensions, Text, Image, ImageBackground, type ImageSourcePropType } from 'react-native';
+import { StyleSheet, View, useWindowDimensions, Text } from 'react-native';
+import { Image, type ImageSource } from 'expo-image';
+import { CachedImageBackground } from '../common/CachedImageBackground';
 import type { CombatantState, StatusEffects } from '../../game/engine/types';
 import { DamageNumbers } from './DamageNumbers';
 import { EffectNotifications } from './EffectNotifications';
 import type { DamageNumber, EffectNotification } from '../../contexts/CombatContext';
 import { getEntityImageSource } from '../game/entityImages';
 
-const defaultMoleImageSource = require('../../../assets/entities/characters/default-mole.png');
-const BATTLEGROUND_BG = require('../../../assets/ui/backgrounds/combat-background.png');
+const defaultMoleImageSource = require('../../../assets/entities/characters/default-mole.webp');
+const BATTLEGROUND_BG = require('../../../assets/ui/backgrounds/combat-background.webp');
 
 interface CombatArenaProps {
   player: CombatantState | null;
@@ -24,9 +26,9 @@ interface CombatArenaProps {
   playerMaxArm?: number;
   enemyMaxArm?: number;
   /** Player skin image source (equipped skin or default mole) */
-  playerSkinSource?: ImageSourcePropType;
+  playerSkinSource?: ImageSource;
   /** PvP opponent skin image source (their equipped skin or default mole) */
-  pvpOpponentSkinSource?: ImageSourcePropType;
+  pvpOpponentSkinSource?: ImageSource;
   scale?: number;
 }
 
@@ -76,7 +78,7 @@ export const CombatArena = React.memo(function CombatArena({
 
   return (
     <View style={[styles.container, { width: arenaWidth, height: arenaHeight }]}>
-      <ImageBackground source={BATTLEGROUND_BG} style={styles.background} resizeMode="contain">
+      <CachedImageBackground source={BATTLEGROUND_BG} style={styles.background} contentFit="contain">
         {/* Enemy combatant (LEFT) */}
         {activeActor === 'enemy' ? (
           <View
@@ -95,7 +97,7 @@ export const CombatArena = React.memo(function CombatArena({
 
         {/* Enemy Image */}
         <View style={[styles.imageContainer, { left: enemyX - 40 * scale, top: combatantY - 40 * scale, width: 80 * scale, height: 80 * scale }]}>
-          <Image source={enemyImageSource} style={{ width: 120 * scale, height: 120 * scale }} resizeMode="contain" />
+          <Image source={enemyImageSource} style={{ width: 120 * scale, height: 120 * scale }} contentFit="contain" />
         </View>
 
         {/* Player combatant (RIGHT) */}
@@ -124,7 +126,7 @@ export const CombatArena = React.memo(function CombatArena({
           <Image
             source={playerSkinSource ?? defaultMoleImageSource}
             style={{ width: 120 * scale, height: 120 * scale }}
-            resizeMode="contain"
+            contentFit="contain"
           />
         </View>
 
@@ -149,7 +151,7 @@ export const CombatArena = React.memo(function CombatArena({
 
         {/* Status effects for player (below floor line) */}
         <StatusEffectsRow statusEffects={player.statusEffects} x={playerX} y={statusEffectsY} scale={scale} />
-      </ImageBackground>
+      </CachedImageBackground>
     </View>
   );
 });
@@ -163,10 +165,10 @@ interface StatusEffectsRowProps {
 }
 
 const STATUS_ICONS = {
-  chill: require('../../../assets/icons/status-effects/chill.png'),
-  shrapnel: require('../../../assets/icons/status-effects/shrapnel.png'),
-  rust: require('../../../assets/icons/status-effects/rust.png'),
-  bleed: require('../../../assets/icons/status-effects/bleed.png'),
+  chill: require('../../../assets/icons/status-effects/chill.webp'),
+  shrapnel: require('../../../assets/icons/status-effects/shrapnel.webp'),
+  rust: require('../../../assets/icons/status-effects/rust.webp'),
+  bleed: require('../../../assets/icons/status-effects/bleed.webp'),
 };
 
 function StatusEffectsRow({ statusEffects, x, y, scale = 1 }: StatusEffectsRowProps) {

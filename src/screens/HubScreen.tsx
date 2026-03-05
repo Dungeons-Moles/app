@@ -4,8 +4,6 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  Image,
-  ImageBackground,
   Platform,
   TouchableWithoutFeedback,
   ScrollView,
@@ -15,6 +13,7 @@ import {
   ActivityIndicator,
   useWindowDimensions,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useIsFocused } from '@react-navigation/native';
 import Svg, { Ellipse, Defs, Pattern, Line } from 'react-native-svg';
@@ -27,6 +26,7 @@ import { RootStackParamList } from '../navigation';
 import { InlineModal } from '../components/InlineModal';
 import { HubSettingsModal } from '../components/ui/HubSettingsModal';
 import { Skeleton } from '../components/common/Skeleton';
+import { CachedImageBackground } from '../components/common/CachedImageBackground';
 import { Typography } from '../theme/typography';
 import { useScreenVariant } from '../contexts/ScreenVariantContext';
 import { MAX_CAMPAIGN_LEVEL } from '../hooks/useMapGenerator';
@@ -56,23 +56,23 @@ import { createGameplayStateProgram } from '../services/solana/programs';
 import { PublicKey } from '@solana/web3.js';
 import { GauntletPoolBadge } from '../components/ui/GauntletPoolBadge';
 
-const iconASource = require('../../assets/ui/control-buttons/a.png');
-const iconBSource = require('../../assets/ui/control-buttons/b.png');
-const iconDirSource = require('../../assets/ui/control-buttons/direction.png');
-const backgroundImageCompact = require('../../assets/ui/backgrounds/hub-background-compact.png');
-const backgroundImageWide = require('../../assets/ui/backgrounds/hub-background-wide.png');
-const buttonV1Source = require('../../assets/ui/buttons/button-v1.png');
-const buttonV2Source = require('../../assets/ui/buttons/button-v2.png');
-const buttonV3Source = require('../../assets/ui/buttons/button-v3.png');
-const buttonV4Source = require('../../assets/ui/buttons/button-v4.png');
-const paperPanelSource = require('../../assets/ui/panels/paper-panel.png');
-const yellowBrushSource = require('../../assets/ui/illustrations/yellow-brush.png');
-const pvpPanelSource = require('../../assets/ui/panels/pvp-panel.png');
-const gauntletPaperSource = require('../../assets/ui/illustrations/gauntlet-paper.png');
-const duelsPaperSource = require('../../assets/ui/illustrations/duels-paper.png');
-const pitDraftPaperSource = require('../../assets/ui/illustrations/pit-draft-paper.png');
-const engineImageSource = require('../../assets/ui/illustrations/engine.png');
-const walletImageSource = require('../../assets/ui/illustrations/wallet.png');
+const iconASource = require('../../assets/ui/control-buttons/a.webp');
+const iconBSource = require('../../assets/ui/control-buttons/b.webp');
+const iconDirSource = require('../../assets/ui/control-buttons/direction.webp');
+const backgroundImageCompact = require('../../assets/ui/backgrounds/hub-background-compact.webp');
+const backgroundImageWide = require('../../assets/ui/backgrounds/hub-background-wide.webp');
+const buttonV1Source = require('../../assets/ui/buttons/button-v1.webp');
+const buttonV2Source = require('../../assets/ui/buttons/button-v2.webp');
+const buttonV3Source = require('../../assets/ui/buttons/button-v3.webp');
+const buttonV4Source = require('../../assets/ui/buttons/button-v4.webp');
+const paperPanelSource = require('../../assets/ui/panels/paper-panel.webp');
+const yellowBrushSource = require('../../assets/ui/illustrations/yellow-brush.webp');
+const pvpPanelSource = require('../../assets/ui/panels/pvp-panel.webp');
+const gauntletPaperSource = require('../../assets/ui/illustrations/gauntlet-paper.webp');
+const duelsPaperSource = require('../../assets/ui/illustrations/duels-paper.webp');
+const pitDraftPaperSource = require('../../assets/ui/illustrations/pit-draft-paper.webp');
+const engineImageSource = require('../../assets/ui/illustrations/engine.webp');
+const walletImageSource = require('../../assets/ui/illustrations/wallet.webp');
 
 type HubScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Hub'>;
@@ -677,7 +677,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
               activeOpacity={0.8}
               style={styles.profilePanelTouchable}
             >
-              <ImageBackground
+              <CachedImageBackground
                 source={walletImageSource}
                 style={[styles.playerPanel, isCompact && compactStyles.playerPanel]}
                 resizeMode="stretch"
@@ -734,7 +734,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
                     </>
                   )}
                 </View>
-              </ImageBackground>
+              </CachedImageBackground>
             </TouchableOpacity>
 
             {/* Gauntlet Pool badge below profile (compact only) */}
@@ -765,13 +765,13 @@ export function HubScreen({ navigation }: HubScreenProps) {
             {/* Wide: Items button directly below profile (on-chain only; guests get it bottom-left) */}
             {!isCompact && !isGuest && (
               <TouchableOpacity onPress={handleItems} activeOpacity={0.7} style={{ marginTop: 8 }}>
-                <ImageBackground
+                <CachedImageBackground
                   source={buttonV1Source}
                   style={styles.navButton}
                   resizeMode="stretch"
                 >
                   <Text style={styles.navButtonText}>Items</Text>
-                </ImageBackground>
+                </CachedImageBackground>
               </TouchableOpacity>
             )}
 
@@ -780,13 +780,13 @@ export function HubScreen({ navigation }: HubScreenProps) {
               <View style={compactStyles.leftButtonsCenter}>
                 <FocusGlow active={isFocused('left', 0)}>
                   <TouchableOpacity onPress={handleItems} activeOpacity={0.7}>
-                    <ImageBackground
+                    <CachedImageBackground
                       source={buttonV1Source}
                       style={[styles.navButton, compactStyles.navButton]}
                       resizeMode="stretch"
                     >
                       <Text style={[styles.navButtonText, compactStyles.navButtonText]}>Items</Text>
-                    </ImageBackground>
+                    </CachedImageBackground>
                   </TouchableOpacity>
                 </FocusGlow>
 
@@ -794,7 +794,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
                   <>
                     <FocusGlow active={isFocused('left', 1)}>
                       <TouchableOpacity onPress={handleQuests} activeOpacity={0.7}>
-                        <ImageBackground
+                        <CachedImageBackground
                           source={buttonV1Source}
                           style={[styles.navButton, compactStyles.navButton]}
                           resizeMode="stretch"
@@ -802,13 +802,13 @@ export function HubScreen({ navigation }: HubScreenProps) {
                           <Text style={[styles.navButtonText, compactStyles.navButtonText]}>
                             Quests
                           </Text>
-                        </ImageBackground>
+                        </CachedImageBackground>
                       </TouchableOpacity>
                     </FocusGlow>
 
                     <FocusGlow active={isFocused('left', 2)}>
                       <TouchableOpacity onPress={handleSkins} activeOpacity={0.7}>
-                        <ImageBackground
+                        <CachedImageBackground
                           source={buttonV1Source}
                           style={[styles.navButton, compactStyles.navButton]}
                           resizeMode="stretch"
@@ -816,13 +816,13 @@ export function HubScreen({ navigation }: HubScreenProps) {
                           <Text style={[styles.navButtonText, compactStyles.navButtonText]}>
                             Skins
                           </Text>
-                        </ImageBackground>
+                        </CachedImageBackground>
                       </TouchableOpacity>
                     </FocusGlow>
 
                     <FocusGlow active={isFocused('left', 3)}>
                       <TouchableOpacity onPress={handleMarketplace} activeOpacity={0.7}>
-                        <ImageBackground
+                        <CachedImageBackground
                           source={buttonV1Source}
                           style={[styles.navButton, compactStyles.navButton]}
                           resizeMode="stretch"
@@ -830,13 +830,13 @@ export function HubScreen({ navigation }: HubScreenProps) {
                           <Text style={[styles.navButtonText, compactStyles.navButtonText]}>
                             Marketplace
                           </Text>
-                        </ImageBackground>
+                        </CachedImageBackground>
                       </TouchableOpacity>
                     </FocusGlow>
 
                     <FocusGlow active={isFocused('left', 4)}>
                       <TouchableOpacity onPress={handleLeaderboard} activeOpacity={0.7}>
-                        <ImageBackground
+                        <CachedImageBackground
                           source={buttonV1Source}
                           style={[styles.navButton, compactStyles.navButton]}
                           resizeMode="stretch"
@@ -844,7 +844,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
                           <Text style={[styles.navButtonText, compactStyles.navButtonText]}>
                             PvP Ranks
                           </Text>
-                        </ImageBackground>
+                        </CachedImageBackground>
                       </TouchableOpacity>
                     </FocusGlow>
                   </>
@@ -857,7 +857,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
           {!isCompact && (
             <View style={styles.topCenter} pointerEvents="none">
               {!isGuest && (
-                <ImageBackground
+                <CachedImageBackground
                   source={yellowBrushSource}
                   style={styles.pointsPanel}
                   resizeMode="stretch"
@@ -866,7 +866,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
                   <Text style={[styles.pointsValue, { color: '#1a1a1a' }]}>
                     {gauntletPoints !== null ? gauntletPoints : '—'}
                   </Text>
-                </ImageBackground>
+                </CachedImageBackground>
               )}
             </View>
           )}
@@ -875,7 +875,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
           <View style={styles.topRight}>
             {isCompact ? (
               !isGuest && (
-                <ImageBackground
+                <CachedImageBackground
                   source={yellowBrushSource}
                   style={[styles.pointsPanel, compactStyles.pointsPanel]}
                   resizeMode="stretch"
@@ -888,7 +888,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
                   >
                     {gauntletPoints !== null ? gauntletPoints : '—'}
                   </Text>
-                </ImageBackground>
+                </CachedImageBackground>
               )
             ) : (
               <View style={styles.topRightRow}>
@@ -902,7 +902,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
                   }}
                   activeOpacity={0.7}
                 >
-                  <ImageBackground
+                  <CachedImageBackground
                     source={buttonV1Source}
                     style={styles.settingsBtn}
                     resizeMode="stretch"
@@ -912,7 +912,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
                       style={styles.settingsIconImage}
                       resizeMode="contain"
                     />
-                  </ImageBackground>
+                  </CachedImageBackground>
                 </TouchableOpacity>
               </View>
             )}
@@ -956,48 +956,48 @@ export function HubScreen({ navigation }: HubScreenProps) {
             <View style={styles.bottomLeft}>
               {!isGuest && (
                 <TouchableOpacity onPress={handleQuests} activeOpacity={0.7}>
-                  <ImageBackground
+                  <CachedImageBackground
                     source={buttonV1Source}
                     style={styles.navButton}
                     resizeMode="stretch"
                   >
                     <Text style={styles.navButtonText}>Quests</Text>
-                  </ImageBackground>
+                  </CachedImageBackground>
                 </TouchableOpacity>
               )}
 
               {isGuest && (
                 <TouchableOpacity onPress={handleItems} activeOpacity={0.7}>
-                  <ImageBackground
+                  <CachedImageBackground
                     source={buttonV1Source}
                     style={styles.navButton}
                     resizeMode="stretch"
                   >
                     <Text style={styles.navButtonText}>Items</Text>
-                  </ImageBackground>
+                  </CachedImageBackground>
                 </TouchableOpacity>
               )}
 
               {!isGuest && (
                 <View style={styles.sideBySideRow}>
                   <TouchableOpacity onPress={handleSkins} activeOpacity={0.7}>
-                    <ImageBackground
+                    <CachedImageBackground
                       source={buttonV1Source}
                       style={styles.navButton}
                       resizeMode="stretch"
                     >
                       <Text style={styles.navButtonText}>Skins</Text>
-                    </ImageBackground>
+                    </CachedImageBackground>
                   </TouchableOpacity>
 
                   <TouchableOpacity onPress={handleMarketplace} activeOpacity={0.7}>
-                    <ImageBackground
+                    <CachedImageBackground
                       source={buttonV1Source}
                       style={styles.navButton}
                       resizeMode="stretch"
                     >
                       <Text style={styles.navButtonText}>Marketplace</Text>
-                    </ImageBackground>
+                    </CachedImageBackground>
                   </TouchableOpacity>
                 </View>
               )}
@@ -1009,13 +1009,13 @@ export function HubScreen({ navigation }: HubScreenProps) {
             {/* PvP Ranks above play buttons - wide only (in compact, it's in left column) */}
             {!isCompact && !isGuest && (
               <TouchableOpacity onPress={handleLeaderboard} activeOpacity={0.7}>
-                <ImageBackground
+                <CachedImageBackground
                   source={buttonV1Source}
                   style={styles.shopButton}
                   resizeMode="stretch"
                 >
                   <Text style={styles.shopButtonText}>PvP Ranks</Text>
-                </ImageBackground>
+                </CachedImageBackground>
               </TouchableOpacity>
             )}
 
@@ -1023,7 +1023,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
             <View style={[styles.playButtonsRow, isCompact && compactStyles.playButtonsColumn]}>
               <FocusGlow active={isFocused('right', 0)}>
                 <TouchableOpacity onPress={handlePlayPvE} activeOpacity={0.7}>
-                  <ImageBackground
+                  <CachedImageBackground
                     source={buttonV4Source}
                     style={[styles.campaignButton, isCompact && compactStyles.campaignButton]}
                     resizeMode="stretch"
@@ -1045,7 +1045,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
                         </Text>
                       )
                     )}
-                  </ImageBackground>
+                  </CachedImageBackground>
                 </TouchableOpacity>
               </FocusGlow>
 
@@ -1053,7 +1053,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
               {!isGuest && (
                 <FocusGlow active={isFocused('right', 1)}>
                   <TouchableOpacity onPress={handlePlayPvP} activeOpacity={0.7}>
-                    <ImageBackground
+                    <CachedImageBackground
                       source={buttonV2Source}
                       style={[styles.gauntletButton, isCompact && compactStyles.gauntletButton]}
                       resizeMode="stretch"
@@ -1066,7 +1066,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
                       >
                         PVP
                       </Text>
-                    </ImageBackground>
+                    </CachedImageBackground>
                   </TouchableOpacity>
                 </FocusGlow>
               )}
@@ -1105,7 +1105,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
         >
           <View style={styles.modalOverlay}>
             <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
-              <ImageBackground
+              <CachedImageBackground
                 source={paperPanelSource}
                 style={[styles.warningModalContent, isCompact && compactStyles.warningModalContent]}
                 resizeMode="stretch"
@@ -1141,7 +1141,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
                       disabled={resetInProgress}
                       activeOpacity={0.7}
                     >
-                      <ImageBackground
+                      <CachedImageBackground
                         source={buttonV1Source}
                         style={styles.buttonImage}
                         resizeMode="stretch"
@@ -1154,7 +1154,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
                         >
                           Cancel
                         </Text>
-                      </ImageBackground>
+                      </CachedImageBackground>
                     </TouchableOpacity>
                   </FocusGlow>
                   <FocusGlow active={isController && resetWarningFocus === 1}>
@@ -1164,7 +1164,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
                       disabled={resetInProgress}
                       activeOpacity={0.7}
                     >
-                      <ImageBackground
+                      <CachedImageBackground
                         source={buttonV2Source}
                         style={styles.buttonImage}
                         resizeMode="stretch"
@@ -1178,7 +1178,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
                         >
                           {resetInProgress ? 'Resetting...' : 'Reset'}
                         </Text>
-                      </ImageBackground>
+                      </CachedImageBackground>
                     </TouchableOpacity>
                   </FocusGlow>
                 </View>
@@ -1241,7 +1241,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
                     </View>
                   </View>
                 )}
-              </ImageBackground>
+              </CachedImageBackground>
             </TouchableWithoutFeedback>
           </View>
         </TouchableWithoutFeedback>
@@ -1258,7 +1258,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
           <View style={styles.modalOverlay}>
             <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
               <View style={[styles.marketplaceModal, isCompact && compactStyles.marketplaceModal, modalScale < 1 && { transform: [{ scale: modalScale }] }]}>
-                <ImageBackground
+                <CachedImageBackground
                   source={paperPanelSource}
                   style={[styles.marketplaceBg, isCompact && compactStyles.marketplaceBg]}
                   resizeMode="stretch"
@@ -1438,7 +1438,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
           <View style={styles.modalOverlay}>
             <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
               <View style={[styles.marketplaceModal, isCompact && compactStyles.marketplaceModal, modalScale < 1 && { transform: [{ scale: modalScale }] }]}>
-                <ImageBackground
+                <CachedImageBackground
                   source={paperPanelSource}
                   style={[styles.marketplaceBg, isCompact && compactStyles.marketplaceBg]}
                   resizeMode="stretch"
@@ -1611,7 +1611,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
           <View style={styles.modalOverlay}>
             <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
               <View style={[styles.marketplaceModal, isCompact && compactStyles.marketplaceModal, modalScale < 1 && { transform: [{ scale: modalScale }] }]}>
-                <ImageBackground
+                <CachedImageBackground
                   source={paperPanelSource}
                   style={[styles.marketplaceBg, isCompact && compactStyles.marketplaceBg]}
                   resizeMode="stretch"
@@ -1710,7 +1710,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
                           activeOpacity={0.7}
                           style={{ alignItems: 'center', marginTop: 4 }}
                         >
-                          <ImageBackground
+                          <CachedImageBackground
                             source={buttonV3Source}
                             style={[
                               styles.profileSaveButton,
@@ -1731,7 +1731,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
                                 Save
                               </Text>
                             )}
-                          </ImageBackground>
+                          </CachedImageBackground>
                         </TouchableOpacity>
                       </FocusGlow>
                     </View>
@@ -1892,7 +1892,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
         <TouchableWithoutFeedback onPress={() => setShowPvP(false)}>
           <View style={styles.modalOverlay}>
             <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
-              <ImageBackground
+              <CachedImageBackground
                 source={pvpPanelSource}
                 style={[styles.pvpModalContent, isCompact && compactStyles.pvpModalContent]}
                 resizeMode="stretch"
@@ -2017,7 +2017,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
                     </FocusGlow>
                   </View>
                 </View>
-              </ImageBackground>
+              </CachedImageBackground>
             </TouchableWithoutFeedback>
           </View>
         </TouchableWithoutFeedback>

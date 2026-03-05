@@ -4,7 +4,8 @@
  */
 
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { Image } from 'expo-image';
 import { InlineModal } from '../InlineModal';
 import { useScreenVariant } from '../../contexts/ScreenVariantContext';
 import type { ItemsetId } from '../../game/engine/types';
@@ -12,22 +13,22 @@ import { getItemsetDefinition } from '../../data/itemsets';
 import { Typography } from '../../theme/typography';
 import { useAudio } from '@/contexts/AudioContext';
 
-const paperPanelSource = require('../../../assets/ui/panels/paper-panel.png');
-const squareSource = require('../../../assets/ui/frames/square.png');
+const paperPanelSource = require('../../../assets/ui/panels/paper-panel.webp');
+const squareSource = require('../../../assets/ui/frames/square.webp');
 
 const ITEMSET_ICONS: Record<ItemsetId, ReturnType<typeof require>> = {
-  UNION_STANDARD: require('../../../assets/icons/itemsets/union_standard.png'),
-  SHARD_CIRCUIT: require('../../../assets/icons/itemsets/shard_circuit.png'),
-  DEMOLITION_PERMIT: require('../../../assets/icons/itemsets/demolition_permit.png'),
-  FUSE_NETWORK: require('../../../assets/icons/itemsets/fuse_network.png'),
-  SHRAPNEL_HARNESS: require('../../../assets/icons/itemsets/shrapnel_harness.png'),
-  RUST_RITUAL: require('../../../assets/icons/itemsets/rust_ritual.png'),
-  SWIFT_DIGGER_KIT: require('../../../assets/icons/itemsets/swift_digger_kit.png'),
-  ROYAL_EXTRACTION: require('../../../assets/icons/itemsets/royal_extraction.png'),
-  WHITEOUT_INITIATIVE: require('../../../assets/icons/itemsets/whiteout_initiative.png'),
-  BLOODRUSH_PROTOCOL: require('../../../assets/icons/itemsets/bloodrush_protocol.png'),
-  CORROSION_PAYLOAD: require('../../../assets/icons/itemsets/corrosion_payload.png'),
-  GOLDEN_SHRAPNEL_EXCHANGE: require('../../../assets/icons/itemsets/golden_shrapnel_exchange.png'),
+  UNION_STANDARD: require('../../../assets/icons/itemsets/union_standard.webp'),
+  SHARD_CIRCUIT: require('../../../assets/icons/itemsets/shard_circuit.webp'),
+  DEMOLITION_PERMIT: require('../../../assets/icons/itemsets/demolition_permit.webp'),
+  FUSE_NETWORK: require('../../../assets/icons/itemsets/fuse_network.webp'),
+  SHRAPNEL_HARNESS: require('../../../assets/icons/itemsets/shrapnel_harness.webp'),
+  RUST_RITUAL: require('../../../assets/icons/itemsets/rust_ritual.webp'),
+  SWIFT_DIGGER_KIT: require('../../../assets/icons/itemsets/swift_digger_kit.webp'),
+  ROYAL_EXTRACTION: require('../../../assets/icons/itemsets/royal_extraction.webp'),
+  WHITEOUT_INITIATIVE: require('../../../assets/icons/itemsets/whiteout_initiative.webp'),
+  BLOODRUSH_PROTOCOL: require('../../../assets/icons/itemsets/bloodrush_protocol.webp'),
+  CORROSION_PAYLOAD: require('../../../assets/icons/itemsets/corrosion_payload.webp'),
+  GOLDEN_SHRAPNEL_EXCHANGE: require('../../../assets/icons/itemsets/golden_shrapnel_exchange.webp'),
 };
 
 interface ItemsetTooltipProps {
@@ -74,7 +75,7 @@ export function ItemsetTooltip({ itemsetId, visible, onClose }: ItemsetTooltipPr
                 left: (layout.width - layout.height) / 2,
                 transform: [{ rotate: '90deg' }],
               }}
-              resizeMode="stretch"
+              contentFit="fill"
             />
           )}
 
@@ -88,12 +89,12 @@ export function ItemsetTooltip({ itemsetId, visible, onClose }: ItemsetTooltipPr
                 <Image
                   source={squareSource}
                   style={{ position: 'absolute', width: '100%', height: '100%' }}
-                  resizeMode="stretch"
+                  contentFit="fill"
                 />
                 <Image
                   source={ITEMSET_ICONS[itemsetId]}
                   style={{ width: '70%', height: '70%' }}
-                  resizeMode="contain"
+                  contentFit="contain"
                 />
               </View>
               <View style={styles.headerText}>

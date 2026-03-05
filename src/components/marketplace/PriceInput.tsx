@@ -7,9 +7,9 @@ import { FocusGlow } from '@/components/ui/FocusGlow';
 import { ControllerNumpad } from '@/components/ui/ControllerNumpad';
 import { useAudio } from '@/contexts/AudioContext';
 
-const iconASource = require('../../../assets/ui/control-buttons/a.png');
-const iconBSource = require('../../../assets/ui/control-buttons/b.png');
-const iconDirSource = require('../../../assets/ui/control-buttons/direction.png');
+const iconASource = require('../../../assets/ui/control-buttons/a.webp');
+const iconBSource = require('../../../assets/ui/control-buttons/b.webp');
+const iconDirSource = require('../../../assets/ui/control-buttons/direction.webp');
 
 // Focus: 0 = input, 1 = cancel, 2 = confirm
 type FocusIndex = 0 | 1 | 2;

@@ -1,5 +1,6 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, Image, ImageBackground, StyleSheet, TouchableOpacity, Platform, Dimensions } from 'react-native';
+import { View, Text, Image, StyleSheet, TouchableOpacity, Platform, Dimensions } from 'react-native';
+import { CachedImageBackground } from '../common/CachedImageBackground';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useScreenVariant } from '../../contexts/ScreenVariantContext';
 import { useControllerAction } from '../../hooks/useControllerAction';
@@ -9,64 +10,64 @@ import { ControllerHints, type ButtonHint } from './ControllerHints';
 import { Typography } from '../../theme/typography';
 import { TUTORIAL_SEEN_KEY, TOTAL_PAGES } from './tutorialPages';
 
-const BOOK_BG = require('../../../assets/ui/backgrounds/book-compact.png');
-const BUTTON_V1 = require('../../../assets/ui/buttons/button-v1.png');
-const ICON_NORMAL_SPEED = require('../../../assets/icons/ui/normal-speed.png');
-const BOSS_PANEL_BG = require('../../../assets/ui/panels/boss-panel.png');
+const BOOK_BG = require('../../../assets/ui/backgrounds/book-compact.webp');
+const BUTTON_V1 = require('../../../assets/ui/buttons/button-v1.webp');
+const ICON_NORMAL_SPEED = require('../../../assets/icons/ui/normal-speed.webp');
+const BOSS_PANEL_BG = require('../../../assets/ui/panels/boss-panel.webp');
 
 // Character / entity images
-const IMG_MOLE = require('../../../assets/entities/characters/default-mole.png');
-const IMG_TUNNEL_RAT = require('../../../assets/entities/enemies/field/tunnel-rat.png');
-const IMG_BROODMOTHER = require('../../../assets/entities/enemies/bosses/broodmother.png');
+const IMG_MOLE = require('../../../assets/entities/characters/default-mole.webp');
+const IMG_TUNNEL_RAT = require('../../../assets/entities/enemies/field/tunnel-rat.webp');
+const IMG_BROODMOTHER = require('../../../assets/entities/enemies/bosses/broodmother.webp');
 
 // Tile images
-const IMG_FLOOR = require('../../../assets/world/tiles/floor-v1.png');
-const IMG_ROCK = require('../../../assets/world/tiles/rock-v1.png');
+const IMG_FLOOR = require('../../../assets/world/tiles/floor-v1.webp');
+const IMG_ROCK = require('../../../assets/world/tiles/rock-v1.webp');
 
 // Stat icons
-const ICON_HP = require('../../../assets/icons/stats/HP.png');
-const ICON_ATK = require('../../../assets/icons/stats/ATK.png');
-const ICON_ARM = require('../../../assets/icons/stats/ARM.png');
-const ICON_SPD = require('../../../assets/icons/stats/speed.png');
-const ICON_DIG = require('../../../assets/icons/stats/DIG.png');
-const ICON_COIN = require('../../../assets/icons/ui/coin.png');
+const ICON_HP = require('../../../assets/icons/stats/HP.webp');
+const ICON_ATK = require('../../../assets/icons/stats/ATK.webp');
+const ICON_ARM = require('../../../assets/icons/stats/ARM.webp');
+const ICON_SPD = require('../../../assets/icons/stats/speed.webp');
+const ICON_DIG = require('../../../assets/icons/stats/DIG.webp');
+const ICON_COIN = require('../../../assets/icons/ui/coin.webp');
 
 // UI icons
-const ICON_SUN = require('../../../assets/icons/ui/sun.png');
-const ICON_MOON = require('../../../assets/icons/ui/moon.png');
-const ICON_SKULL = require('../../../assets/icons/ui/skull.png');
-const ICON_MAP = require('../../../assets/icons/ui/map.png');
+const ICON_SUN = require('../../../assets/icons/ui/sun.webp');
+const ICON_MOON = require('../../../assets/icons/ui/moon.webp');
+const ICON_SKULL = require('../../../assets/icons/ui/skull.webp');
+const ICON_MAP = require('../../../assets/icons/ui/map.webp');
 
 // POI icons
-const ICON_MOLE_DEN = require('../../../assets/world/pois/mole-den.png');
-const ICON_SUPPLY_CACHE = require('../../../assets/world/pois/supply-cache.png');
-const ICON_TOOL_CRATE = require('../../../assets/world/pois/tool-crate.png');
-const ICON_REST_ALCOVE = require('../../../assets/world/pois/rest-alcove.png');
-const ICON_SMUGGLER = require('../../../assets/world/pois/smuggler-hatch.png');
-const ICON_ANVIL = require('../../../assets/world/pois/rusty-anvil.png');
-const ICON_RUNE_KILN = require('../../../assets/world/pois/rune-kiln.png');
-const ICON_GEODE = require('../../../assets/world/pois/geode-vault.png');
-const ICON_COUNTER_CACHE = require('../../../assets/world/pois/counter-cache.png');
-const ICON_SCRAP_CHUTE = require('../../../assets/world/pois/scrap-chute.png');
-const ICON_RAIL = require('../../../assets/world/pois/rail-waypoint.png');
-const ICON_OIL_RACK = require('../../../assets/world/pois/tool-oil-rack.png');
-const ICON_SURVEY = require('../../../assets/world/pois/survey-beacon.png');
-const ICON_SEISMIC = require('../../../assets/world/pois/seismic-scanner.png');
+const ICON_MOLE_DEN = require('../../../assets/world/pois/mole-den.webp');
+const ICON_SUPPLY_CACHE = require('../../../assets/world/pois/supply-cache.webp');
+const ICON_TOOL_CRATE = require('../../../assets/world/pois/tool-crate.webp');
+const ICON_REST_ALCOVE = require('../../../assets/world/pois/rest-alcove.webp');
+const ICON_SMUGGLER = require('../../../assets/world/pois/smuggler-hatch.webp');
+const ICON_ANVIL = require('../../../assets/world/pois/rusty-anvil.webp');
+const ICON_RUNE_KILN = require('../../../assets/world/pois/rune-kiln.webp');
+const ICON_GEODE = require('../../../assets/world/pois/geode-vault.webp');
+const ICON_COUNTER_CACHE = require('../../../assets/world/pois/counter-cache.webp');
+const ICON_SCRAP_CHUTE = require('../../../assets/world/pois/scrap-chute.webp');
+const ICON_RAIL = require('../../../assets/world/pois/rail-waypoint.webp');
+const ICON_OIL_RACK = require('../../../assets/world/pois/tool-oil-rack.webp');
+const ICON_SURVEY = require('../../../assets/world/pois/survey-beacon.webp');
+const ICON_SEISMIC = require('../../../assets/world/pois/seismic-scanner.webp');
 
 // Controller button icons
-const ICON_DPAD = require('../../../assets/ui/control-buttons/d-pad.png');
-const ICON_BTN_A = require('../../../assets/ui/control-buttons/a.png');
-const ICON_BTN_X = require('../../../assets/ui/control-buttons/x.png');
-const ICON_BTN_Y = require('../../../assets/ui/control-buttons/y.png');
-const ICON_BTN_L1 = require('../../../assets/ui/control-buttons/l1.png');
-const ICON_BTN_R1 = require('../../../assets/ui/control-buttons/r1.png');
-const ICON_BTN_SELECT = require('../../../assets/ui/control-buttons/select.png');
-const ICON_BTN_START = require('../../../assets/ui/control-buttons/start.png');
+const ICON_DPAD = require('../../../assets/ui/control-buttons/d-pad.webp');
+const ICON_BTN_A = require('../../../assets/ui/control-buttons/a.webp');
+const ICON_BTN_X = require('../../../assets/ui/control-buttons/x.webp');
+const ICON_BTN_Y = require('../../../assets/ui/control-buttons/y.webp');
+const ICON_BTN_L1 = require('../../../assets/ui/control-buttons/l1.webp');
+const ICON_BTN_R1 = require('../../../assets/ui/control-buttons/r1.webp');
+const ICON_BTN_SELECT = require('../../../assets/ui/control-buttons/select.webp');
+const ICON_BTN_START = require('../../../assets/ui/control-buttons/start.webp');
 
 // Itemset icons
-const ICON_UNION_STANDARD = require('../../../assets/icons/itemsets/union_standard.png');
-const ICON_SHARD_CIRCUIT = require('../../../assets/icons/itemsets/shard_circuit.png');
-const ICON_DEMOLITION_PERMIT = require('../../../assets/icons/itemsets/demolition_permit.png');
+const ICON_UNION_STANDARD = require('../../../assets/icons/itemsets/union_standard.webp');
+const ICON_SHARD_CIRCUIT = require('../../../assets/icons/itemsets/shard_circuit.webp');
+const ICON_DEMOLITION_PERMIT = require('../../../assets/icons/itemsets/demolition_permit.webp');
 
 interface TutorialModalProps {
   visible: boolean;
@@ -191,7 +192,7 @@ export function TutorialModal({ visible, onClose }: TutorialModalProps) {
                   />
                 ) : (
                   <Image
-                    source={require('../../../assets/ui/illustrations/engine.png')}
+                    source={require('../../../assets/ui/illustrations/engine.webp')}
                     style={{ width: 32, height: 32 }}
                     resizeMode="contain"
                   />
@@ -572,14 +573,14 @@ export function TutorialModal({ visible, onClose }: TutorialModalProps) {
                   <ControlRow icon={ICON_BTN_X} label="Toggle sidebar" s={s} ns={ns} />
                 )}
                 <ControlRow
-                  icon={isCompact ? ICON_BTN_START : require('../../../assets/ui/illustrations/engine.png')}
+                  icon={isCompact ? ICON_BTN_START : require('../../../assets/ui/illustrations/engine.webp')}
                   label={isCompact ? "Pause menu." : "Pause menu. You can reopen this tutorial from there."}
                   s={s}
                   ns={ns}
                   wide={isCompact}
                 />
                 <View style={pageStyles.statRow}>
-                  <ImageBackground
+                  <CachedImageBackground
                     source={BOSS_PANEL_BG}
                     style={{ width: 90 * s, height: 24 * s, justifyContent: 'center', paddingHorizontal: 4 * s }}
                     resizeMode="stretch"
@@ -595,7 +596,7 @@ export function TutorialModal({ visible, onClose }: TutorialModalProps) {
                         </Text>
                       </View>
                     </View>
-                  </ImageBackground>
+                  </CachedImageBackground>
                   <Text style={[txtStyles.body, { fontSize: s === 2 ? 19 : 12, flex: 1 }]}>
                     Tap boss panel to view boss info
                   </Text>
@@ -719,18 +720,18 @@ export function TutorialModal({ visible, onClose }: TutorialModalProps) {
             activeOpacity={currentPage === 0 ? 1 : 0.7}
             style={currentPage === 0 && overlayStyles.pageNavBtnDisabled}
           >
-            <ImageBackground source={BUTTON_V1} style={overlayStyles.pageNavBtn} resizeMode="stretch">
+            <CachedImageBackground source={BUTTON_V1} style={overlayStyles.pageNavBtn} resizeMode="stretch">
               <Image source={ICON_NORMAL_SPEED} style={[overlayStyles.pageNavIcon, { transform: [{ scaleX: -1 }] }]} resizeMode="contain" />
-            </ImageBackground>
+            </CachedImageBackground>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => turnPage(1)}
             activeOpacity={currentPage === TOTAL_PAGES - 1 ? 1 : 0.7}
             style={currentPage === TOTAL_PAGES - 1 && overlayStyles.pageNavBtnDisabled}
           >
-            <ImageBackground source={BUTTON_V1} style={overlayStyles.pageNavBtn} resizeMode="stretch">
+            <CachedImageBackground source={BUTTON_V1} style={overlayStyles.pageNavBtn} resizeMode="stretch">
               <Image source={ICON_NORMAL_SPEED} style={overlayStyles.pageNavIcon} resizeMode="contain" />
-            </ImageBackground>
+            </CachedImageBackground>
           </TouchableOpacity>
         </View>
       )}

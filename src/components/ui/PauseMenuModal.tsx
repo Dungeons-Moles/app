@@ -10,11 +10,11 @@ import {
   Text,
   StyleSheet,
   Image,
-  ImageBackground,
   TouchableOpacity,
   ActivityIndicator,
   Pressable,
 } from 'react-native';
+import { CachedImageBackground } from '../common/CachedImageBackground';
 import { useInputMode } from '../../hooks/useInputMode';
 import { useControllerAction } from '../../hooks/useControllerAction';
 import { ControllerHints, type ButtonHint } from './ControllerHints';
@@ -26,10 +26,10 @@ import { useScreenVariant } from '../../contexts/ScreenVariantContext';
 import { VolumeControls } from './VolumeControls';
 import { Checkbox } from './Checkbox';
 
-const paperPanelSource = require('../../../assets/ui/panels/paper-panel.png');
-const buttonV1Source = require('../../../assets/ui/buttons/button-v1.png');
-const buttonV2Source = require('../../../assets/ui/buttons/button-v2.png');
-const buttonV3Source = require('../../../assets/ui/buttons/button-v3.png');
+const paperPanelSource = require('../../../assets/ui/panels/paper-panel.webp');
+const buttonV1Source = require('../../../assets/ui/buttons/button-v1.webp');
+const buttonV2Source = require('../../../assets/ui/buttons/button-v2.webp');
+const buttonV3Source = require('../../../assets/ui/buttons/button-v3.webp');
 
 export interface PauseMenuModalProps {
   visible: boolean;
@@ -181,7 +181,7 @@ export function PauseMenuModal({
                       }}
                       activeOpacity={0.7}
                     >
-                      <ImageBackground
+                      <CachedImageBackground
                         source={buttonV3Source}
                         style={[
                           styles.menuButtonImageSmall,
@@ -192,7 +192,7 @@ export function PauseMenuModal({
                         <Text style={[styles.menuButtonText, isCompact && compactStyles.menuButtonText]}>
                           Tutorial
                         </Text>
-                      </ImageBackground>
+                      </CachedImageBackground>
                     </TouchableOpacity>
                   )}
 
@@ -204,7 +204,7 @@ export function PauseMenuModal({
                       }}
                       activeOpacity={0.7}
                     >
-                      <ImageBackground
+                      <CachedImageBackground
                         source={buttonV1Source}
                         style={[
                           styles.menuButtonImageSmall,
@@ -215,7 +215,7 @@ export function PauseMenuModal({
                         <Text style={[styles.menuButtonText, isCompact && compactStyles.menuButtonText]}>
                           Return to Hub
                         </Text>
-                      </ImageBackground>
+                      </CachedImageBackground>
                     </TouchableOpacity>
                   </FocusGlow>
                 </View>
@@ -230,7 +230,7 @@ export function PauseMenuModal({
                       disabled={isAbandoning}
                       activeOpacity={0.7}
                     >
-                      <ImageBackground
+                      <CachedImageBackground
                         source={buttonV2Source}
                         style={[styles.menuButtonImage, isCompact && compactStyles.menuButtonImage]}
                         resizeMode="stretch"
@@ -248,7 +248,7 @@ export function PauseMenuModal({
                             Abandon Session
                           </Text>
                         )}
-                      </ImageBackground>
+                      </CachedImageBackground>
                     </TouchableOpacity>
                   </FocusGlow>
                 )}

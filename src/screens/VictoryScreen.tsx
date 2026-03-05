@@ -8,13 +8,13 @@ import {
   View,
   Text,
   StyleSheet,
-  ImageBackground,
   Pressable,
   Animated,
   Image,
   Platform,
   useWindowDimensions,
 } from 'react-native';
+import { CachedImageBackground } from '../components/common/CachedImageBackground';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
 import { RootStackParamList } from '../navigation';
@@ -25,13 +25,13 @@ import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHin
 import { useAudio } from '../contexts/AudioContext';
 import { useScreenVariant } from '../contexts/ScreenVariantContext';
 
-const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.png');
-const STAINS_BACKGROUND = require('../../assets/ui/backgrounds/stains-background.png');
-const PAPER_PANEL = require('../../assets/ui/panels/paper-panel.png');
-const SQUARE_FRAME = require('../../assets/ui/frames/square.png');
-const BUTTON_GREEN = require('../../assets/ui/buttons/button-green.png');
-const VICTORY_IMAGE = require('../../assets/ui/text/victory.png');
-const TROPHY_ICON = require('../../assets/icons/ui/trophy.png');
+const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.webp');
+const STAINS_BACKGROUND = require('../../assets/ui/backgrounds/stains-background.webp');
+const PAPER_PANEL = require('../../assets/ui/panels/paper-panel.webp');
+const SQUARE_FRAME = require('../../assets/ui/frames/square.webp');
+const BUTTON_GREEN = require('../../assets/ui/buttons/button-green.webp');
+const VICTORY_IMAGE = require('../../assets/ui/text/victory.webp');
+const TROPHY_ICON = require('../../assets/icons/ui/trophy.webp');
 
 type VictoryScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Victory'>;
@@ -245,20 +245,20 @@ export function VictoryScreen({ navigation, route }: VictoryScreenProps) {
   const ReturnButton = () => (
     <View style={isVerticalLayout ? styles.buttonSlotVertical : styles.buttonSlot}>
       <Pressable style={styles.buttonPressable} onPress={handleReturnToHub}>
-        <ImageBackground source={BUTTON_GREEN} style={styles.buttonImage} resizeMode="contain">
+        <CachedImageBackground source={BUTTON_GREEN} style={styles.buttonImage} resizeMode="contain">
           <Text
             style={isVerticalLayout ? styles.returnButtonTextVertical : styles.returnButtonText}
           >
             Return to Hub
           </Text>
-        </ImageBackground>
+        </CachedImageBackground>
       </Pressable>
     </View>
   );
 
   return (
     <View style={styles.container}>
-      <ImageBackground source={BACKGROUND_IMAGE} style={styles.backgroundImage} resizeMode="cover">
+      <CachedImageBackground source={BACKGROUND_IMAGE} style={styles.backgroundImage} resizeMode="cover">
         <Image source={STAINS_BACKGROUND} style={styles.stainsOverlay} resizeMode="cover" />
         {!isCompact && <View pointerEvents="none" style={styles.mobileBackgroundDim} />}
         <View style={styles.mainContent}>
@@ -294,7 +294,7 @@ export function VictoryScreen({ navigation, route }: VictoryScreenProps) {
             )}
           </Animated.View>
         </View>
-      </ImageBackground>
+      </CachedImageBackground>
       <ControllerHints hints={controllerHints} horizontal />
     </View>
   );

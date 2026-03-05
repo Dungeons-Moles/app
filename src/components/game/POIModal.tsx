@@ -29,9 +29,9 @@ import type {
 import { POI_DEFINITIONS, type POIDefinition } from '@/data/pois';
 import { getTierFromRarity } from '@/data/gear';
 
-const paperPanelSource = require('../../../assets/ui/panels/paper-panel.png');
+const paperPanelSource = require('../../../assets/ui/panels/paper-panel.webp');
 
-const squareSource = require('../../../assets/ui/frames/square.png');
+const squareSource = require('../../../assets/ui/frames/square.webp');
 
 import { TOOL_DEFINITIONS, getToolStatsAtTier } from '@/game/entities/items';
 import { SCRAP_REFUND_BY_RARITY } from '@/game/entities/pois';
@@ -97,22 +97,22 @@ const STAT_EMOJI_MAP: Record<string, { emoji: string; name: string; image?: any 
   '+1 ATK': {
     emoji: '⚔️',
     name: 'Attack Oil',
-    image: require('../../../assets/icons/oils/ATK.png'),
+    image: require('../../../assets/icons/oils/ATK.webp'),
   },
   '+1 DIG': {
     emoji: '⛏️',
     name: 'Dig Oil',
-    image: require('../../../assets/icons/oils/DIG.png'),
+    image: require('../../../assets/icons/oils/DIG.webp'),
   },
   '+1 SPD': {
     emoji: '⚡',
     name: 'Speed Oil',
-    image: require('../../../assets/icons/oils/SPD.png'),
+    image: require('../../../assets/icons/oils/SPD.webp'),
   },
   '+1 ARM': {
     emoji: '🛡️',
     name: 'Armor Oil',
-    image: require('../../../assets/icons/oils/ARM.png'),
+    image: require('../../../assets/icons/oils/ARM.webp'),
   },
 };
 
@@ -993,7 +993,13 @@ export const POIModal = React.memo(function POIModal({
         alignLeft={true}
         centerInCompact={centerInCompact}
       >
-        <View style={[styles.threeChoiceModal, isNative && { height: nativeModalHeight * 0.9 }]} pointerEvents="auto">
+        <View
+          style={[
+            styles.threeChoiceModal,
+            isNative && nativeModalHeight !== undefined ? { height: nativeModalHeight * 0.9 } : null,
+          ]}
+          pointerEvents="auto"
+        >
           <Image
             source={paperPanelSource}
             style={isNative ? {

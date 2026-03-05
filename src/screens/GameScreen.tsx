@@ -3,7 +3,9 @@
  */
 
 import React, { useCallback, useMemo, useEffect, useState, useRef } from 'react';
-import { View, Text, StyleSheet, Animated, ImageBackground, Image, Pressable, Platform } from 'react-native';
+import { View, Text, StyleSheet, Animated, Pressable, Platform } from 'react-native';
+import { Image } from 'expo-image';
+import { CachedImageBackground } from '../components/common/CachedImageBackground';
 import { Connection, PublicKey } from '@solana/web3.js';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useIsFocused } from '@react-navigation/native';
@@ -83,18 +85,61 @@ import type { BossId } from '../game/engine/types';
 import { GAME_CONSTANTS } from '../game/engine/constants';
 import Svg, { Path } from 'react-native-svg';
 
-const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.png');
-const COIN_ICON = require('../../assets/icons/ui/coin.png');
-const MAP_ICON = require('../../assets/icons/ui/map.png');
-const SIDEBAR_BG = require('../../assets/ui/panels/sidebar.png');
-const ICON_Y = require('../../assets/ui/control-buttons/y.png');
-const BUTTON_V5 = require('../../assets/ui/buttons/button-v5.png');
-const ENGINE_ICON = require('../../assets/ui/illustrations/engine.png');
+const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.webp');
+const COIN_ICON = require('../../assets/icons/ui/coin.webp');
+const MAP_ICON = require('../../assets/icons/ui/map.webp');
+const SIDEBAR_BG = require('../../assets/ui/panels/sidebar.webp');
+const ICON_Y = require('../../assets/ui/control-buttons/y.webp');
+const BUTTON_V5 = require('../../assets/ui/buttons/button-v5.webp');
+const ENGINE_ICON = require('../../assets/ui/illustrations/engine.webp');
 
 const SIDEBAR_WIDTH = 230;
 const COMPACT_SIDEBAR_WIDTH = 280;
 const NAVBAR_HEIGHT = 60;
 const PERF_DEBUG_LOGS = false;
+
+// Critical game assets to preload before showing the map
+const PRELOAD_ASSETS = [
+  require('../../assets/world/tiles/floor-v1.webp'),
+  require('../../assets/world/tiles/floor-v2.webp'),
+  require('../../assets/world/tiles/floor-v3.webp'),
+  require('../../assets/world/tiles/floor-v4.webp'),
+  require('../../assets/world/tiles/floor-v5.webp'),
+  require('../../assets/world/tiles/rock-v1.webp'),
+  require('../../assets/world/tiles/rock-v2.webp'),
+  require('../../assets/world/tiles/rock-v3.webp'),
+  require('../../assets/world/tiles/rock-v4.webp'),
+  require('../../assets/world/markers/question-mark.webp'),
+  require('../../assets/world/pois/mole-den.webp'),
+  require('../../assets/world/pois/supply-cache.webp'),
+  require('../../assets/world/pois/tool-crate.webp'),
+  require('../../assets/world/pois/tool-oil-rack.webp'),
+  require('../../assets/world/pois/rest-alcove.webp'),
+  require('../../assets/world/pois/survey-beacon.webp'),
+  require('../../assets/world/pois/seismic-scanner.webp'),
+  require('../../assets/world/pois/rail-waypoint.webp'),
+  require('../../assets/world/pois/smuggler-hatch.webp'),
+  require('../../assets/world/pois/rusty-anvil.webp'),
+  require('../../assets/world/pois/rune-kiln.webp'),
+  require('../../assets/world/pois/geode-vault.webp'),
+  require('../../assets/world/pois/counter-cache.webp'),
+  require('../../assets/world/pois/scrap-chute.webp'),
+  require('../../assets/entities/enemies/field/tunnel-rat.webp'),
+  require('../../assets/entities/enemies/field/cave-bat.webp'),
+  require('../../assets/entities/enemies/field/spore-slime.webp'),
+  require('../../assets/entities/enemies/field/rust-mite-swarm.webp'),
+  require('../../assets/entities/enemies/field/collapsed-miner.webp'),
+  require('../../assets/entities/enemies/field/shard-beetle.webp'),
+  require('../../assets/entities/enemies/field/tunnel-warden.webp'),
+  require('../../assets/entities/enemies/field/burrow-ambusher.webp'),
+  require('../../assets/entities/enemies/field/frost-wisp.webp'),
+  require('../../assets/entities/enemies/field/powder-tick.webp'),
+  require('../../assets/entities/enemies/field/coin-slug.webp'),
+  require('../../assets/entities/enemies/field/blood-mosquito.webp'),
+  require('../../assets/entities/characters/default-mole.webp'),
+  require('../../assets/ui/panels/paper-panel.webp'),
+  require('../../assets/ui/panels/sidebar.webp'),
+];
 
 function debugLog(...args: unknown[]) {
   if (__DEV__ && PERF_DEBUG_LOGS) {
@@ -542,6 +587,10 @@ export function GameScreen({ navigation }: GameScreenProps) {
   // Use a ref for synchronous pending check to prevent race conditions with rapid clicks
   const isMovePendingRef = useRef(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const preloadOverlayAnim = useRef(new Animated.Value(1)).current;
+  const [preloadedCount, setPreloadedCount] = useState(0);
+  const assetsReady = preloadedCount >= PRELOAD_ASSETS.length;
+  const handleAssetLoaded = useCallback(() => setPreloadedCount((c) => c + 1), []);
   // Ref to skip mismatch-detection after POI interactions (updated synchronously)
   const skipMismatchDetectionRef = useRef(false);
   const skipMismatchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -553,8 +602,12 @@ export function GameScreen({ navigation }: GameScreenProps) {
   const echoEquipmentRef = useRef<{ gear: Gear[]; tool: Tool | null }>({ gear: [], tool: null });
 
   useEffect(() => {
-    Animated.timing(fadeAnim, { toValue: 1, duration: 800, useNativeDriver: true }).start();
-  }, []);
+    if (!assetsReady) return;
+    // Fade out the preload overlay, then fade in the game content
+    Animated.timing(preloadOverlayAnim, { toValue: 0, duration: 400, useNativeDriver: true }).start(() => {
+      Animated.timing(fadeAnim, { toValue: 1, duration: 400, useNativeDriver: true }).start();
+    });
+  }, [assetsReady]);
 
   // Auto-show tutorial on first session entry
   useEffect(() => {
@@ -2611,17 +2664,17 @@ export function GameScreen({ navigation }: GameScreenProps) {
   if (!state || !sharedSidebarProps) {
     return (
       <View style={styles.container}>
-        <ImageBackground
+        <CachedImageBackground
           source={BACKGROUND_IMAGE}
           style={styles.backgroundImage}
-          resizeMode="cover"
+          contentFit="cover"
         >
           <View style={styles.darkOverlay}>
             <View style={styles.loading}>
               <Text style={styles.loadingText}>Loading...</Text>
             </View>
           </View>
-        </ImageBackground>
+        </CachedImageBackground>
       </View>
     );
   }
@@ -2634,7 +2687,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
         isFastTravelActive={isFastTravelActive}
         panOverview={panOverview}
       />
-      <ImageBackground source={BACKGROUND_IMAGE} style={styles.backgroundImage} resizeMode="cover">
+      <CachedImageBackground source={BACKGROUND_IMAGE} style={styles.backgroundImage} contentFit="cover">
         <View style={styles.darkOverlay}>
           <View style={styles.fullLayout}>
             {/* Top Area */}
@@ -2655,14 +2708,14 @@ export function GameScreen({ navigation }: GameScreenProps) {
                       <Image
                         source={MAP_ICON}
                         style={{ width: 32 * navScale, height: 32 * navScale }}
-                        resizeMode="contain"
+                        contentFit="contain"
                       />
                     </Pressable>
                     {isController && (
                       <Image
                         source={ICON_Y}
                         style={{ width: 14 * navScale, height: 14 * navScale }}
-                        resizeMode="contain"
+                        contentFit="contain"
                       />
                     )}
                   </View>
@@ -2678,7 +2731,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
                     <Image
                       source={COIN_ICON}
                       style={{ width: 28 * navScale, height: 28 * navScale }}
-                      resizeMode="contain"
+                      contentFit="contain"
                     />
                     <Text style={[styles.goldValue, { fontSize: 24 * navScale }]}>
                       {state.player.stats.gold}
@@ -2699,13 +2752,13 @@ export function GameScreen({ navigation }: GameScreenProps) {
                         setShowPauseMenu(true);
                       }}
                     >
-                      <ImageBackground
+                      <CachedImageBackground
                         source={BUTTON_V5}
                         style={styles.pauseButtonBg}
-                        resizeMode="stretch"
+                        contentFit="fill"
                       >
-                        <Image source={ENGINE_ICON} style={styles.pauseButtonIcon} resizeMode="contain" />
-                      </ImageBackground>
+                        <Image source={ENGINE_ICON} style={styles.pauseButtonIcon} contentFit="contain" />
+                      </CachedImageBackground>
                     </Pressable>
                   )}
                 </View>
@@ -2820,12 +2873,12 @@ export function GameScreen({ navigation }: GameScreenProps) {
               style={[styles.floatingSidebarWrapper, { top: navbarHeight }]}
               pointerEvents="box-none"
             >
-              <ImageBackground
+              <CachedImageBackground
                 ref={sidebarEnemyRef}
                 source={SIDEBAR_BG}
                 style={styles.floatingBossPanel}
                 imageStyle={{ height: '100%' }}
-                resizeMode="stretch"
+                contentFit="fill"
               >
                 <Sidebar
                   {...sharedSidebarProps}
@@ -2834,13 +2887,13 @@ export function GameScreen({ navigation }: GameScreenProps) {
                   echoFocusIndex={inventoryFocus === 'enemy' ? focusedSlotIndex : null}
                   onEchoEquipmentLoaded={handleEchoEquipmentLoaded}
                 />
-              </ImageBackground>
-              <ImageBackground
+              </CachedImageBackground>
+              <CachedImageBackground
                 ref={sidebarPlayerRef}
                 source={SIDEBAR_BG}
                 style={styles.floatingSidebarPanel}
                 imageStyle={{ height: '100%' }}
-                resizeMode="stretch"
+                contentFit="fill"
               >
                 <Sidebar
                   {...sharedSidebarProps}
@@ -2853,7 +2906,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
                   floatingCompact={true}
                   controllerFocusIndex={inventoryFocus === 'player' ? focusedSlotIndex : null}
                 />
-              </ImageBackground>
+              </CachedImageBackground>
             </View>
           )}
 
@@ -2869,7 +2922,28 @@ export function GameScreen({ navigation }: GameScreenProps) {
           )}
         <TutorialModal visible={showTutorial} onClose={() => setShowTutorial(false)} />
         </View>
-      </ImageBackground>
+      </CachedImageBackground>
+      {/* Asset preload overlay: shows loading background until all game images are decoded */}
+      {!assetsReady && (
+        <Animated.View style={[StyleSheet.absoluteFill, { zIndex: 9999, opacity: preloadOverlayAnim }]}>
+          <CachedImageBackground source={BACKGROUND_IMAGE} style={styles.backgroundImage} contentFit="cover">
+            <View style={styles.preloadContent}>
+              <Text style={styles.preloadText}>Loading...</Text>
+            </View>
+          </CachedImageBackground>
+          <View style={styles.preloadOffscreen} pointerEvents="none">
+            {PRELOAD_ASSETS.map((source, i) => (
+              <Image
+                key={i}
+                source={source}
+                style={styles.preloadImage}
+                onLoad={handleAssetLoaded}
+                onError={handleAssetLoaded}
+              />
+            ))}
+          </View>
+        </Animated.View>
+      )}
     </Animated.View>
   );
 }
@@ -2961,5 +3035,29 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 100,
+  },
+
+  // Asset preload overlay
+  preloadContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  preloadText: {
+    fontFamily: Typography.header,
+    fontSize: 28,
+    color: '#3d2b1f',
+    textAlign: 'center',
+  },
+  preloadOffscreen: {
+    position: 'absolute',
+    width: 1,
+    height: 1,
+    overflow: 'hidden',
+    opacity: 0,
+  },
+  preloadImage: {
+    width: 1,
+    height: 1,
   },
 });

@@ -10,9 +10,9 @@ import {
   TouchableOpacity,
   TouchableWithoutFeedback,
   StyleSheet,
-  ImageBackground,
   ActivityIndicator,
 } from 'react-native';
+import { CachedImageBackground } from '../common/CachedImageBackground';
 import { Typography } from '@/theme/typography';
 import { InlineModal } from '@/components/InlineModal';
 import { FocusGlow } from '@/components/ui/FocusGlow';
@@ -21,7 +21,7 @@ import { useInputMode } from '@/hooks/useInputMode';
 import { useAudio } from '@/contexts/AudioContext';
 import type { SwapQuote } from '@/services/solana/jupiter';
 
-const paperPanelSource = require('../../../assets/ui/panels/paper-panel.png');
+const paperPanelSource = require('../../../assets/ui/panels/paper-panel.webp');
 
 interface PaymentConfirmationModalProps {
   visible: boolean;
@@ -81,7 +81,7 @@ export function PaymentConfirmationModal({
       <TouchableWithoutFeedback onPress={onCancel}>
         <View style={styles.overlay}>
           <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
-            <ImageBackground
+            <CachedImageBackground
               source={paperPanelSource}
               style={[styles.panel, isCompact && compactStyles.panel]}
               resizeMode="stretch"
@@ -205,7 +205,7 @@ export function PaymentConfirmationModal({
                   </TouchableOpacity>
                 </FocusGlow>
               </View>
-            </ImageBackground>
+            </CachedImageBackground>
           </TouchableWithoutFeedback>
         </View>
       </TouchableWithoutFeedback>

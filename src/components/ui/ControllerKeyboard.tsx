@@ -10,10 +10,10 @@ import { useControllerAction } from '../../hooks/useControllerAction';
 import { useScreenVariant } from '../../contexts/ScreenVariantContext';
 import { Typography } from '../../theme/typography';
 
-const ICON_A = require('../../../assets/ui/control-buttons/a.png');
-const ICON_B = require('../../../assets/ui/control-buttons/b.png');
-const ICON_START = require('../../../assets/ui/control-buttons/start.png');
-const ICON_SELECT = require('../../../assets/ui/control-buttons/select.png');
+const ICON_A = require('../../../assets/ui/control-buttons/a.webp');
+const ICON_B = require('../../../assets/ui/control-buttons/b.webp');
+const ICON_START = require('../../../assets/ui/control-buttons/start.webp');
+const ICON_SELECT = require('../../../assets/ui/control-buttons/select.webp');
 
 const ROWS = [
   ['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P'],

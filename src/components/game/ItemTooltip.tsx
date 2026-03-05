@@ -5,7 +5,8 @@
  */
 
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Image, ImageBackground } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { Image } from 'expo-image';
 import { InlineModal } from '../InlineModal';
 import { useScreenVariant } from '../../contexts/ScreenVariantContext';
 import type { Tool, Gear, ItemStats, ItemTag } from '../../game/engine/types';
@@ -14,30 +15,30 @@ import { GEAR_DEFINITIONS, getTierFromRarity, getScaledEffectDescription } from 
 import { getItemsetsForItem } from '../../game/entities/itemsets';
 import { useAudio } from '@/contexts/AudioContext';
 
-const paperPanelSource = require('../../../assets/ui/panels/paper-panel.png');
-const squareSource = require('../../../assets/ui/frames/square.png');
+const paperPanelSource = require('../../../assets/ui/panels/paper-panel.webp');
+const squareSource = require('../../../assets/ui/frames/square.webp');
 
 const STAT_ICONS = {
-  HP: require('../../../assets/icons/stats/HP.png'),
-  ATK: require('../../../assets/icons/stats/ATK.png'),
-  ARM: require('../../../assets/icons/stats/ARM.png'),
-  SPD: require('../../../assets/icons/stats/speed.png'),
-  DIG: require('../../../assets/icons/stats/DIG.png'),
+  HP: require('../../../assets/icons/stats/HP.webp'),
+  ATK: require('../../../assets/icons/stats/ATK.webp'),
+  ARM: require('../../../assets/icons/stats/ARM.webp'),
+  SPD: require('../../../assets/icons/stats/speed.webp'),
+  DIG: require('../../../assets/icons/stats/DIG.webp'),
 };
 
 const ITEMSET_ICONS = {
-  UNION_STANDARD: require('../../../assets/icons/itemsets/union_standard.png'),
-  SHARD_CIRCUIT: require('../../../assets/icons/itemsets/shard_circuit.png'),
-  DEMOLITION_PERMIT: require('../../../assets/icons/itemsets/demolition_permit.png'),
-  FUSE_NETWORK: require('../../../assets/icons/itemsets/fuse_network.png'),
-  SHRAPNEL_HARNESS: require('../../../assets/icons/itemsets/shrapnel_harness.png'),
-  RUST_RITUAL: require('../../../assets/icons/itemsets/rust_ritual.png'),
-  SWIFT_DIGGER_KIT: require('../../../assets/icons/itemsets/swift_digger_kit.png'),
-  ROYAL_EXTRACTION: require('../../../assets/icons/itemsets/royal_extraction.png'),
-  WHITEOUT_INITIATIVE: require('../../../assets/icons/itemsets/whiteout_initiative.png'),
-  BLOODRUSH_PROTOCOL: require('../../../assets/icons/itemsets/bloodrush_protocol.png'),
-  CORROSION_PAYLOAD: require('../../../assets/icons/itemsets/corrosion_payload.png'),
-  GOLDEN_SHRAPNEL_EXCHANGE: require('../../../assets/icons/itemsets/golden_shrapnel_exchange.png'),
+  UNION_STANDARD: require('../../../assets/icons/itemsets/union_standard.webp'),
+  SHARD_CIRCUIT: require('../../../assets/icons/itemsets/shard_circuit.webp'),
+  DEMOLITION_PERMIT: require('../../../assets/icons/itemsets/demolition_permit.webp'),
+  FUSE_NETWORK: require('../../../assets/icons/itemsets/fuse_network.webp'),
+  SHRAPNEL_HARNESS: require('../../../assets/icons/itemsets/shrapnel_harness.webp'),
+  RUST_RITUAL: require('../../../assets/icons/itemsets/rust_ritual.webp'),
+  SWIFT_DIGGER_KIT: require('../../../assets/icons/itemsets/swift_digger_kit.webp'),
+  ROYAL_EXTRACTION: require('../../../assets/icons/itemsets/royal_extraction.webp'),
+  WHITEOUT_INITIATIVE: require('../../../assets/icons/itemsets/whiteout_initiative.webp'),
+  BLOODRUSH_PROTOCOL: require('../../../assets/icons/itemsets/bloodrush_protocol.webp'),
+  CORROSION_PAYLOAD: require('../../../assets/icons/itemsets/corrosion_payload.webp'),
+  GOLDEN_SHRAPNEL_EXCHANGE: require('../../../assets/icons/itemsets/golden_shrapnel_exchange.webp'),
 };
 
 interface ItemTooltipProps {
@@ -134,7 +135,7 @@ function StatDisplay({ stats, scale = 1 }: { stats: ItemStats; scale?: number })
           <Image
             source={stat.icon}
             style={{ width: 16 * scale, height: 16 * scale }}
-            resizeMode="contain"
+            contentFit="contain"
           />
           <Text style={[styles.statValue, { fontSize: 14 * scale }]}>+{stat.value}</Text>
           <Text style={[styles.statLabel, { fontSize: 12 * scale }]}>{stat.label}</Text>
@@ -177,7 +178,7 @@ function ItemsetsDisplay({ itemId, scale = 1 }: { itemId: string; scale?: number
           <Image
             source={ITEMSET_ICONS[itemset.id as keyof typeof ITEMSET_ICONS]}
             style={{ width: 20 * scale, height: 20 * scale }}
-            resizeMode="contain"
+            contentFit="contain"
           />
           <Text style={[styles.itemsetName, { fontSize: 12 * scale }]}>{itemset.name}</Text>
         </View>
@@ -234,7 +235,7 @@ export function ItemTooltip({ item, visible, onClose }: ItemTooltipProps) {
                 left: (layout.width - layout.height) / 2,
                 transform: [{ rotate: '90deg' }],
               }}
-              resizeMode="stretch"
+              contentFit="fill"
             />
           )}
 
@@ -248,10 +249,10 @@ export function ItemTooltip({ item, visible, onClose }: ItemTooltipProps) {
                 <Image
                   source={squareSource}
                   style={{ position: 'absolute', width: '100%', height: '100%' }}
-                  resizeMode="stretch"
+                  contentFit="fill"
                 />
                 {item.image ? (
-                  <Image source={item.image} style={styles.image} resizeMode="contain" />
+                  <Image source={item.image} style={styles.image} contentFit="contain" />
                 ) : (
                   <Text style={[styles.emoji, { fontSize: 36 * s }]}>{item.emoji}</Text>
                 )}

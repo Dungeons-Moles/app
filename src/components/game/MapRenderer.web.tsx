@@ -3,7 +3,8 @@
  */
 
 import React, { useMemo, useCallback, useRef, memo } from 'react';
-import { View, StyleSheet, LayoutChangeEvent, PanResponder, Image } from 'react-native';
+import { View, StyleSheet, LayoutChangeEvent, PanResponder } from 'react-native';
+import { Image } from 'expo-image';
 import type { Position, WallHighlightState } from '../../game/engine/types';
 import { TimePhase } from '../../game/engine/types';
 import type { GameMap, MapEnemy } from '../../game/map/types';
@@ -35,19 +36,19 @@ const FOG_COLOR_HIDDEN = 'transparent';
 const FOG_COLOR_REVEALED = 'rgba(0, 0, 0, 0.35)';
 
 // Tile images
-const floorV1Source = require('../../../assets/world/tiles/floor-v1.png');
-const floorV2Source = require('../../../assets/world/tiles/floor-v2.png');
-const floorV3Source = require('../../../assets/world/tiles/floor-v3.png');
-const floorV4Source = require('../../../assets/world/tiles/floor-v4.png');
-const floorV5Source = require('../../../assets/world/tiles/floor-v5.png');
+const floorV1Source = require('../../../assets/world/tiles/floor-v1.webp');
+const floorV2Source = require('../../../assets/world/tiles/floor-v2.webp');
+const floorV3Source = require('../../../assets/world/tiles/floor-v3.webp');
+const floorV4Source = require('../../../assets/world/tiles/floor-v4.webp');
+const floorV5Source = require('../../../assets/world/tiles/floor-v5.webp');
 const floorImages = [floorV1Source, floorV2Source, floorV3Source, floorV4Source, floorV5Source];
-const rockV1Source = require('../../../assets/world/tiles/rock-v1.png');
-const rockV2Source = require('../../../assets/world/tiles/rock-v2.png');
-const rockV3Source = require('../../../assets/world/tiles/rock-v3.png');
-const rockV4Source = require('../../../assets/world/tiles/rock-v4.png');
+const rockV1Source = require('../../../assets/world/tiles/rock-v1.webp');
+const rockV2Source = require('../../../assets/world/tiles/rock-v2.webp');
+const rockV3Source = require('../../../assets/world/tiles/rock-v3.webp');
+const rockV4Source = require('../../../assets/world/tiles/rock-v4.webp');
 const rockImages = [rockV1Source, rockV2Source, rockV3Source, rockV4Source];
-const defaultMoleImageSource = require('../../../assets/entities/characters/default-mole.png');
-const unknownEnemyImageSource = require('../../../assets/world/markers/question-mark.png');
+const defaultMoleImageSource = require('../../../assets/entities/characters/default-mole.webp');
+const unknownEnemyImageSource = require('../../../assets/world/markers/question-mark.webp');
 
 // ============================================================================
 // Types
@@ -65,7 +66,7 @@ export interface MapRendererProps {
   onPanOverview?: (delta: Position) => void;
   onZoomOverview?: (zoomDelta: number) => void;
   cameraFocusOverride?: Position;
-  playerSkinSource?: import('react-native').ImageSourcePropType;
+  playerSkinSource?: import('expo-image').ImageSource;
 }
 
 interface VisibleTileRange {
@@ -255,7 +256,7 @@ const EntityView = memo(function EntityView({
         },
       ]}
     >
-      {image && <Image source={image} style={styles.entityImage} resizeMode="contain" />}
+      {image && <Image source={image} style={styles.entityImage} contentFit="contain" />}
     </View>
   );
 });

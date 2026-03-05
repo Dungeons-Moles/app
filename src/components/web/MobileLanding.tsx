@@ -15,9 +15,9 @@ function resolveAsset(src: unknown): string {
   return String(src);
 }
 
-const LOGO_URI = resolveAsset(require('../../../assets/branding/logo.png'));
-const BG_URI = resolveAsset(require('../../../assets/ui/backgrounds/loading-background.png'));
-const STAINS_URI = resolveAsset(require('../../../assets/ui/backgrounds/stains-background.png'));
+const LOGO_URI = resolveAsset(require('../../../assets/branding/logo.webp'));
+const BG_URI = resolveAsset(require('../../../assets/ui/backgrounds/loading-background.webp'));
+const STAINS_URI = resolveAsset(require('../../../assets/ui/backgrounds/stains-background.webp'));
 
 /* ── SVG Icons (ink-stroke style) ──────────────────────────── */
 

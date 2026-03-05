@@ -5,17 +5,18 @@
  */
 
 import React from 'react';
-import { View, Text, StyleSheet, Image } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { Image } from 'expo-image';
 import type { PlayerStats } from '../../game/engine/types';
 import { Typography } from '../../theme/typography';
 import { useScreenVariant } from '../../contexts/ScreenVariantContext';
 
 const ICONS = {
-  HP: require('../../../assets/icons/stats/HP.png'),
-  ATK: require('../../../assets/icons/stats/ATK.png'),
-  ARM: require('../../../assets/icons/stats/ARM.png'),
-  SPD: require('../../../assets/icons/stats/speed.png'),
-  DIG: require('../../../assets/icons/stats/DIG.png'),
+  HP: require('../../../assets/icons/stats/HP.webp'),
+  ATK: require('../../../assets/icons/stats/ATK.webp'),
+  ARM: require('../../../assets/icons/stats/ARM.webp'),
+  SPD: require('../../../assets/icons/stats/speed.webp'),
+  DIG: require('../../../assets/icons/stats/DIG.webp'),
 };
 
 interface StatsPanelProps {
@@ -45,7 +46,7 @@ const StatRow = React.memo(function StatRow({ icon, label, value, maxValue, colo
       <Image
         source={icon}
         style={[{ width: iconSize, height: iconSize }, isSidebar && { tintColor: '#000000' }]}
-        resizeMode="contain"
+        contentFit="contain"
       />
       <Text style={[styles.label, { color: textColor, fontSize, width: labelWidth }]}>{label}</Text>
       <Text style={[styles.value, { color: textColor, fontSize }]}>{displayValue}</Text>

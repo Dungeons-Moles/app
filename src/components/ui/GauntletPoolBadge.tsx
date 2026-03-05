@@ -3,7 +3,7 @@ import { View, Image, Text, StyleSheet } from 'react-native';
 import { Typography } from '../../theme/typography';
 import { LAMPORTS_PER_SOL } from '@solana/web3.js';
 
-const chestSource = require('../../../assets/ui/illustrations/chest.png');
+const chestSource = require('../../../assets/ui/illustrations/chest.webp');
 
 type BadgeSize = 'sm' | 'md' | 'lg';
 

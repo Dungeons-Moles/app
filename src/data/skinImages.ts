@@ -1,9 +1,9 @@
 import { ImageSourcePropType } from 'react-native';
 
-const defaultMoleImage = require('../../assets/entities/characters/default-mole.png');
+const defaultMoleImage = require('../../assets/entities/characters/default-mole.webp');
 
 const SKIN_IMAGES: Record<string, ImageSourcePropType> = {
-  'MagicBlock Wizard': require('../../assets/entities/characters/magicblock-wizard.png'),
+  'MagicBlock Wizard': require('../../assets/entities/characters/magicblock-wizard.webp'),
 };
 
 export function getSkinImage(name: string): ImageSourcePropType | undefined {

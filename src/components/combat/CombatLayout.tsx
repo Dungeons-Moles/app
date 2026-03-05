@@ -7,7 +7,8 @@
  */
 
 import React, { useCallback, useMemo, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, ImageBackground, Animated, type ImageSourcePropType } from 'react-native';
+import { View, Text, StyleSheet, Animated, type ImageSourcePropType } from 'react-native';
+import { CachedImageBackground } from '../common/CachedImageBackground';
 import { useCombat } from '../../contexts/CombatContext';
 import type { CombatSpeed } from '../../contexts/CombatContext';
 import { useScreenVariant } from '../../contexts/ScreenVariantContext';
@@ -21,7 +22,7 @@ import { PlayerPanel, type PlayerPanelProps } from './PlayerPanel';
 import { SpeedControls } from './SpeedControls';
 import { Typography } from '../../theme/typography';
 
-const BACKGROUND_IMAGE = require('../../../assets/ui/backgrounds/loading-background.png');
+const BACKGROUND_IMAGE = require('../../../assets/ui/backgrounds/loading-background.webp');
 
 /** Fields provided by CombatLayout from combat state — callers don't need to pass these */
 type CombatStateFields = 'hp' | 'maxHp' | 'atk' | 'arm' | 'maxArm' | 'spd' | 'statusEffects' | 'scale';
@@ -165,7 +166,7 @@ export const CombatLayout = React.memo(function CombatLayout({
   if (!player || !enemy) {
     return (
       <View style={styles.container}>
-        <ImageBackground
+        <CachedImageBackground
           source={BACKGROUND_IMAGE}
           style={styles.backgroundImage}
           resizeMode="cover"
@@ -177,14 +178,14 @@ export const CombatLayout = React.memo(function CombatLayout({
               </Text>
             </View>
           </View>
-        </ImageBackground>
+        </CachedImageBackground>
       </View>
     );
   }
 
   return (
     <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
-      <ImageBackground source={BACKGROUND_IMAGE} style={styles.backgroundImage} resizeMode="cover">
+      <CachedImageBackground source={BACKGROUND_IMAGE} style={styles.backgroundImage} resizeMode="cover">
         <View style={styles.darkOverlay}>
           {/* Optional label (e.g., "PIT DRAFT") */}
           {label && (
@@ -276,7 +277,7 @@ export const CombatLayout = React.memo(function CombatLayout({
           )}
           {!combatState.isComplete && <ControllerHints hints={controllerHints} horizontal />}
         </View>
-      </ImageBackground>
+      </CachedImageBackground>
     </Animated.View>
   );
 });

@@ -12,7 +12,7 @@ import { ITEM_RARITY_COLORS } from '@/utils/rarity-colors';
 import { Typography } from '@/theme/typography';
 import { useScreenVariant } from '@/contexts/ScreenVariantContext';
 
-const squareSource = require('../../../assets/ui/frames/square.png');
+const squareSource = require('../../../assets/ui/frames/square.webp');
 
 interface SimplifiedItemOptionProps {
   emoji?: string;

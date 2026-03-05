@@ -3,15 +3,16 @@
  */
 
 import React, { useMemo } from 'react';
-import { View, StyleSheet, Image } from 'react-native';
+import { View, StyleSheet } from 'react-native';
+import { Image } from 'expo-image';
 import type { TimeState } from '../../game/engine/types';
 import { TimePhase } from '../../game/engine/types';
 import { getWeekProgress } from '../../game/time/progression';
 
 
-const SUN_ICON = require('../../../assets/icons/ui/sun.png');
-const MOON_ICON = require('../../../assets/icons/ui/moon.png');
-const SKULL_ICON = require('../../../assets/icons/ui/skull.png');
+const SUN_ICON = require('../../../assets/icons/ui/sun.webp');
+const MOON_ICON = require('../../../assets/icons/ui/moon.webp');
+const SKULL_ICON = require('../../../assets/icons/ui/skull.webp');
 
 // Constants for tick calculation
 const DAY_TICKS = 10;
@@ -101,14 +102,14 @@ function WeekProgressTimeline({ time, scale }: WeekProgressTimelineProps) {
               <Image
                 source={segment.type === 'day' ? SUN_ICON : MOON_ICON}
                 style={{ width: iconSize, height: iconSize }}
-                resizeMode="contain"
+                contentFit="contain"
               />
             </View>
           );
         })}
         {/* Skull icon at the end */}
         <View style={{ position: 'absolute', right: -(iconSize / 2) }}>
-          <Image source={SKULL_ICON} style={{ width: iconSize, height: iconSize }} resizeMode="contain" />
+          <Image source={SKULL_ICON} style={{ width: iconSize, height: iconSize }} contentFit="contain" />
         </View>
       </View>
 

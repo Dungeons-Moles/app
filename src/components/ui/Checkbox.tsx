@@ -2,7 +2,7 @@ import React from 'react';
 import { TouchableOpacity, Image, Text, View, StyleSheet, TextStyle } from 'react-native';
 import { Typography } from '../../theme/typography';
 
-const squareFrameSource = require('../../../assets/ui/frames/square.png');
+const squareFrameSource = require('../../../assets/ui/frames/square.webp');
 
 interface CheckboxProps {
   label: string;

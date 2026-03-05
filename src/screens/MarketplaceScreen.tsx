@@ -5,13 +5,13 @@ import {
   StyleSheet,
   TouchableOpacity,
   Image,
-  ImageBackground,
   ActivityIndicator,
   Animated,
   ScrollView,
   TouchableWithoutFeedback,
   useWindowDimensions,
 } from 'react-native';
+import { CachedImageBackground } from '../components/common/CachedImageBackground';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useIsFocused } from '@react-navigation/native';
 import { useProfile } from '../contexts/ProfileContext';
@@ -37,17 +37,17 @@ import { RUN_PRICE_LAMPORTS } from '@/services/solana/constants';
 import { usePaymentToken } from '@/hooks/usePaymentToken';
 import { PaymentTokenSelector, PaymentConfirmationModal } from '@/components/payment';
 
-const backgroundImage = require('../../assets/ui/backgrounds/loading-background.png');
-const buttonV1Source = require('../../assets/ui/buttons/button-v1.png');
-const buttonV3Source = require('../../assets/ui/buttons/button-v3.png');
-const buttonV4Source = require('../../assets/ui/buttons/button-v4.png');
-const sessionPapersSource = require('../../assets/ui/illustrations/session-papers.png');
-const rectangleSource = require('../../assets/ui/frames/rectangle.png');
-const paperPanelSource = require('../../assets/ui/panels/paper-panel.png');
-const iconL1Source = require('../../assets/ui/control-buttons/l1.png');
-const iconR1Source = require('../../assets/ui/control-buttons/r1.png');
-const arrowIcon = require('../../assets/icons/ui/normal-speed.png');
-const engineImageSource = require('../../assets/ui/illustrations/engine.png');
+const backgroundImage = require('../../assets/ui/backgrounds/loading-background.webp');
+const buttonV1Source = require('../../assets/ui/buttons/button-v1.webp');
+const buttonV3Source = require('../../assets/ui/buttons/button-v3.webp');
+const buttonV4Source = require('../../assets/ui/buttons/button-v4.webp');
+const sessionPapersSource = require('../../assets/ui/illustrations/session-papers.webp');
+const rectangleSource = require('../../assets/ui/frames/rectangle.webp');
+const paperPanelSource = require('../../assets/ui/panels/paper-panel.webp');
+const iconL1Source = require('../../assets/ui/control-buttons/l1.webp');
+const iconR1Source = require('../../assets/ui/control-buttons/r1.webp');
+const arrowIcon = require('../../assets/icons/ui/normal-speed.webp');
+const engineImageSource = require('../../assets/ui/illustrations/engine.webp');
 
 type MarketplaceScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Marketplace'>;
@@ -388,7 +388,7 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
             }}
             activeOpacity={0.7}
           >
-            <ImageBackground
+            <CachedImageBackground
               source={buttonV1Source}
               style={styles.settingsBtn}
               resizeMode="stretch"
@@ -398,16 +398,16 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
                 style={styles.settingsIconImage}
                 resizeMode="contain"
               />
-            </ImageBackground>
+            </CachedImageBackground>
           </TouchableOpacity>
         </View>
       )}
 
       {!isCompact && !isController && (
         <TouchableOpacity onPress={handleBack} activeOpacity={0.7} style={styles.backButtonAbsolute}>
-          <ImageBackground source={buttonV1Source} style={styles.backButtonMobileSized} resizeMode="stretch">
+          <CachedImageBackground source={buttonV1Source} style={styles.backButtonMobileSized} resizeMode="stretch">
             <Text style={styles.backButtonTextMobile}>Back</Text>
-          </ImageBackground>
+          </CachedImageBackground>
         </TouchableOpacity>
       )}
 
@@ -420,7 +420,7 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
                 <View style={[styles.backButton, compactStyles.backButton]} />
               ) : (
                 <TouchableOpacity onPress={handleBack} activeOpacity={0.7}>
-                  <ImageBackground
+                  <CachedImageBackground
                     source={buttonV1Source}
                     style={[styles.backButton, compactStyles.backButton]}
                     resizeMode="stretch"
@@ -428,17 +428,17 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
                     <Text style={[styles.backButtonText, compactStyles.backButtonText]}>
                       Back
                     </Text>
-                  </ImageBackground>
+                  </CachedImageBackground>
                 </TouchableOpacity>
               )}
 
-              <ImageBackground
+              <CachedImageBackground
                 source={buttonV4Source}
                 style={[styles.titlePanel, compactStyles.titlePanel]}
                 resizeMode="stretch"
               >
                 <Text style={[styles.title, compactStyles.title]}>Marketplace</Text>
-              </ImageBackground>
+              </CachedImageBackground>
 
               <View style={[styles.headerSpacer, compactStyles.headerSpacer]} />
             </>
@@ -446,13 +446,13 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
             <>
               <View style={styles.backButton} />
 
-              <ImageBackground
+              <CachedImageBackground
                 source={buttonV4Source}
                 style={styles.titlePanel}
                 resizeMode="stretch"
               >
                 <Text style={styles.title}>Marketplace</Text>
-              </ImageBackground>
+              </CachedImageBackground>
 
               <View style={styles.headerSpacer} />
             </>
@@ -762,7 +762,7 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
                   activeOpacity={0.7}
                   disabled={isPurchasing}
                 >
-                  <ImageBackground
+                  <CachedImageBackground
                     source={buttonV3Source}
                     style={[
                       styles.purchaseButton,
@@ -783,7 +783,7 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
                         Purchase
                       </Text>
                     )}
-                  </ImageBackground>
+                  </CachedImageBackground>
                 </TouchableOpacity>
 
                 {purchaseError && (
@@ -832,7 +832,7 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
       {/* Bottom-right sessions counter — PvE tab only */}
       {activeTab === 'pve' && (
         <View style={[styles.sessionsContainer, isCompact && compactStyles.sessionsContainer]}>
-          <ImageBackground
+          <CachedImageBackground
             source={rectangleSource}
             style={[styles.sessionsFrame, isCompact && compactStyles.sessionsFrame]}
             resizeMode="stretch"
@@ -840,7 +840,7 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
             <Text style={[styles.sessionsText, isCompact && compactStyles.sessionsText]}>
               Current: {availableRuns} Sessions
             </Text>
-          </ImageBackground>
+          </CachedImageBackground>
         </View>
       )}
       {/* Run Payment Confirmation Modal */}
@@ -872,7 +872,7 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
         >
           <View style={styles.modalOverlay}>
             <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
-              <ImageBackground
+              <CachedImageBackground
                 source={paperPanelSource}
                 style={[styles.priceModal, isCompact && compactStyles.priceModal]}
                 resizeMode="stretch"
@@ -885,7 +885,7 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
                   }}
                   isCompact={isCompact}
                 />
-              </ImageBackground>
+              </CachedImageBackground>
             </TouchableWithoutFeedback>
           </View>
         </TouchableWithoutFeedback>
@@ -1263,6 +1263,9 @@ const compactStyles = StyleSheet.create({
   sectionTitle: {
     fontSize: 28,
     marginLeft: 0,
+  },
+  nftScrollContent: {
+    paddingBottom: 32,
   },
   emptyText: {
     fontSize: 22,

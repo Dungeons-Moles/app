@@ -16,7 +16,7 @@ export const NFT_ITEMS: Record<string, NftItemInfo> = {
     tag: 'BLAST',
     rarity: 'heroic',
     emoji: '\u{1F525}',
-    image: require('../../assets/icons/items/nft/infernal_pickaxe.png'),
+    image: require('../../assets/icons/items/nft/infernal_pickaxe.webp'),
   },
   'S-XX-02': {
     name: 'Phantom Cloak',

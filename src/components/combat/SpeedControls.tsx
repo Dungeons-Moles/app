@@ -9,16 +9,16 @@ import {
   StyleSheet,
   TouchableOpacity,
   Image,
-  ImageBackground,
   ImageSourcePropType,
 } from 'react-native';
+import { CachedImageBackground } from '../common/CachedImageBackground';
 import type { CombatSpeed } from '../../contexts/CombatContext';
 
-const buttonBgSource = require('../../../assets/ui/buttons/button-v1.png');
-const buttonBgActiveSource = require('../../../assets/ui/buttons/button-v3.png');
-const stopIconSource = require('../../../assets/icons/ui/stop.png');
-const normalIconSource = require('../../../assets/icons/ui/normal-speed.png');
-const fastIconSource = require('../../../assets/icons/ui/fast-speed.png');
+const buttonBgSource = require('../../../assets/ui/buttons/button-v1.webp');
+const buttonBgActiveSource = require('../../../assets/ui/buttons/button-v3.webp');
+const stopIconSource = require('../../../assets/icons/ui/stop.webp');
+const normalIconSource = require('../../../assets/icons/ui/normal-speed.webp');
+const fastIconSource = require('../../../assets/icons/ui/fast-speed.webp');
 
 export interface SpeedControlsProps {
   currentSpeed: CombatSpeed;
@@ -51,7 +51,7 @@ export function SpeedControls({
         disabled={disabled}
         activeOpacity={0.7}
       >
-        <ImageBackground
+        <CachedImageBackground
           source={isActive ? buttonBgActiveSource : buttonBgSource}
           style={styles.buttonBg}
           resizeMode="stretch"
@@ -65,7 +65,7 @@ export function SpeedControls({
             ]}
             resizeMode="contain"
           />
-        </ImageBackground>
+        </CachedImageBackground>
       </TouchableOpacity>
     );
   };

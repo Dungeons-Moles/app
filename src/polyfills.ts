@@ -10,7 +10,9 @@ global.Buffer = Buffer;
 // Patch: ensure Uint8Array instances created from Buffer.from(ArrayBuffer, ...)
 // retain Buffer prototype methods (readUIntLE, etc.) on React Native Android.
 // Some RN environments return plain Uint8Array from Buffer.from(arrayBuffer, offset, length).
-if (!Uint8Array.prototype.readUIntLE) {
+const uint8ArrayPrototype = Uint8Array.prototype as Uint8Array & Record<string, unknown>;
+
+if (!uint8ArrayPrototype.readUIntLE) {
   const bufferMethods = [
     'readUIntLE',
     'readUIntBE',
@@ -38,7 +40,7 @@ if (!Uint8Array.prototype.readUIntLE) {
 
   for (const method of bufferMethods) {
     if (typeof (Buffer.prototype as any)[method] === 'function') {
-      (Uint8Array.prototype as any)[method] = function (...args: any[]) {
+      (uint8ArrayPrototype as any)[method] = function (...args: any[]) {
         return (Buffer.from(this) as any)[method](...args);
       };
     }

@@ -17,10 +17,10 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  ImageBackground,
   Animated,
   ActivityIndicator,
 } from 'react-native';
+import { CachedImageBackground } from '../components/common/CachedImageBackground';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation';
 import { CombatProvider, useCombat } from '../contexts/CombatContext';
@@ -44,24 +44,24 @@ import { usePaymentToken } from '@/hooks/usePaymentToken';
 import { PaymentTokenSelector, PaymentConfirmationModal } from '@/components/payment';
 import { BlurView } from 'expo-blur';
 
-const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.png');
-const STAINS_BACKGROUND = require('../../assets/ui/backgrounds/stains-background.png');
-const PIT_DRAFT_TITLE = require('../../assets/ui/text/pit-draft.png');
-const PVP_MODES_PANEL = require('../../assets/ui/panels/pvp-modes-panel.png');
-const buttonV1Source = require('../../assets/ui/buttons/button-v1.png');
-const buttonV4Source = require('../../assets/ui/buttons/button-v4.png');
-const engineImageSource = require('../../assets/ui/illustrations/engine.png');
-const defaultMoleImageSource = require('../../assets/entities/characters/default-mole.png');
-const SOL_PILE = require('../../assets/ui/illustrations/sol-pile.png');
-const CHEST = require('../../assets/ui/illustrations/chest.png');
-const ITEMS = require('../../assets/ui/illustrations/items.png');
-const VICTORY_TEXT = require('../../assets/ui/text/victory.png');
-const DEFEAT_TEXT = require('../../assets/ui/text/defeat.png');
-const VICTORY_IMAGE = require('../../assets/ui/illustrations/victory-image.png');
-const DEFEAT_IMAGE_ILLUST = require('../../assets/ui/illustrations/defeat-image.png');
-const SQUARE_FRAME = require('../../assets/ui/frames/square.png');
-const BUTTON_BG = require('../../assets/ui/buttons/button.png');
-const BUTTON_GREEN = require('../../assets/ui/buttons/button-green.png');
+const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.webp');
+const STAINS_BACKGROUND = require('../../assets/ui/backgrounds/stains-background.webp');
+const PIT_DRAFT_TITLE = require('../../assets/ui/text/pit-draft.webp');
+const PVP_MODES_PANEL = require('../../assets/ui/panels/pvp-modes-panel.webp');
+const buttonV1Source = require('../../assets/ui/buttons/button-v1.webp');
+const buttonV4Source = require('../../assets/ui/buttons/button-v4.webp');
+const engineImageSource = require('../../assets/ui/illustrations/engine.webp');
+const defaultMoleImageSource = require('../../assets/entities/characters/default-mole.webp');
+const SOL_PILE = require('../../assets/ui/illustrations/sol-pile.webp');
+const CHEST = require('../../assets/ui/illustrations/chest.webp');
+const ITEMS = require('../../assets/ui/illustrations/items.webp');
+const VICTORY_TEXT = require('../../assets/ui/text/victory.webp');
+const DEFEAT_TEXT = require('../../assets/ui/text/defeat.webp');
+const VICTORY_IMAGE = require('../../assets/ui/illustrations/victory-image.webp');
+const DEFEAT_IMAGE_ILLUST = require('../../assets/ui/illustrations/defeat-image.webp');
+const SQUARE_FRAME = require('../../assets/ui/frames/square.webp');
+const BUTTON_BG = require('../../assets/ui/buttons/button.webp');
+const BUTTON_GREEN = require('../../assets/ui/buttons/button-green.webp');
 
 type PitDraftScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'PitDraft'>;
@@ -267,7 +267,7 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
 
     return (
       <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
-        <ImageBackground
+        <CachedImageBackground
           source={BACKGROUND_IMAGE}
           style={styles.backgroundImage}
           resizeMode="cover"
@@ -333,13 +333,13 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
                       activeOpacity={0.7}
                       style={styles.resultButtonPressable}
                     >
-                      <ImageBackground
+                      <CachedImageBackground
                         source={isWinner ? BUTTON_GREEN : BUTTON_BG}
                         style={styles.resultButtonImage}
                         resizeMode="contain"
                       >
                         <Text style={styles.resultButtonTextCompact}>Back to Hub</Text>
-                      </ImageBackground>
+                      </CachedImageBackground>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -403,13 +403,13 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
                         activeOpacity={0.7}
                         style={styles.resultButtonPressable}
                       >
-                        <ImageBackground
+                        <CachedImageBackground
                           source={isWinner ? BUTTON_GREEN : BUTTON_BG}
                           style={styles.resultButtonImage}
                           resizeMode="contain"
                         >
                           <Text style={styles.resultButtonText}>Back to Hub</Text>
-                        </ImageBackground>
+                        </CachedImageBackground>
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -417,7 +417,7 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
               )}
             </View>
           </View>
-        </ImageBackground>
+        </CachedImageBackground>
         <HubSettingsModal
           visible={showSettingsModal}
           onClose={() => setShowSettingsModal(false)}
@@ -432,7 +432,7 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
   if (pitDraft.phase === 'confirm') {
     return (
       <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
-        <ImageBackground
+        <CachedImageBackground
           source={BACKGROUND_IMAGE}
           style={styles.backgroundImage}
           resizeMode="cover"
@@ -447,7 +447,7 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
                 }}
                 activeOpacity={0.7}
               >
-                <ImageBackground
+                <CachedImageBackground
                   source={buttonV1Source}
                   style={styles.settingsBtn}
                   resizeMode="stretch"
@@ -457,15 +457,15 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
                     style={styles.settingsIconImage}
                     resizeMode="contain"
                   />
-                </ImageBackground>
+                </CachedImageBackground>
               </TouchableOpacity>
             </View>
           )}
           {!isCompact && !isController && (
             <TouchableOpacity onPress={handleBack} activeOpacity={0.7} style={styles.backButtonAbsolute}>
-              <ImageBackground source={buttonV1Source} style={styles.backButtonMobile} resizeMode="stretch">
+              <CachedImageBackground source={buttonV1Source} style={styles.backButtonMobile} resizeMode="stretch">
                 <Text style={styles.backButtonTextMobile}>Back</Text>
-              </ImageBackground>
+              </CachedImageBackground>
             </TouchableOpacity>
           )}
           <View style={styles.confirmContent}>
@@ -476,7 +476,7 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
                   <View style={[styles.headerButton, compactStyles.headerButton]} />
                 ) : (
                   <TouchableOpacity onPress={handleBack} activeOpacity={0.7}>
-                    <ImageBackground
+                    <CachedImageBackground
                       source={buttonV1Source}
                       style={[styles.headerButton, compactStyles.headerButton]}
                       resizeMode="stretch"
@@ -484,7 +484,7 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
                       <Text style={[styles.headerButtonText, compactStyles.headerButtonText]}>
                         Back
                       </Text>
-                    </ImageBackground>
+                    </CachedImageBackground>
                   </TouchableOpacity>
                 )
               ) : (
@@ -642,7 +642,7 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
               )}
             </View>
           </View>
-        </ImageBackground>
+        </CachedImageBackground>
         {payment.quote && (
           <PaymentConfirmationModal
             visible={showPaymentModal}
@@ -669,7 +669,7 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
 
     return (
       <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
-        <ImageBackground
+        <CachedImageBackground
           source={BACKGROUND_IMAGE}
           style={styles.backgroundImage}
           resizeMode="cover"
@@ -684,7 +684,7 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
                 }}
                 activeOpacity={0.7}
               >
-                <ImageBackground
+                <CachedImageBackground
                   source={buttonV1Source}
                   style={styles.settingsBtn}
                   resizeMode="stretch"
@@ -694,15 +694,15 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
                     style={styles.settingsIconImage}
                     resizeMode="contain"
                   />
-                </ImageBackground>
+                </CachedImageBackground>
               </TouchableOpacity>
             </View>
           )}
           {!isCompact && !isController && (
             <TouchableOpacity onPress={handleBack} activeOpacity={0.7} style={styles.backButtonAbsolute}>
-              <ImageBackground source={buttonV1Source} style={styles.backButtonMobile} resizeMode="stretch">
+              <CachedImageBackground source={buttonV1Source} style={styles.backButtonMobile} resizeMode="stretch">
                 <Text style={styles.backButtonTextMobile}>Back</Text>
-              </ImageBackground>
+              </CachedImageBackground>
             </TouchableOpacity>
           )}
           <View style={styles.confirmContent}>
@@ -713,7 +713,7 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
                   <View style={[styles.headerButton, compactStyles.headerButton]} />
                 ) : (
                   <TouchableOpacity onPress={handleBack} activeOpacity={0.7}>
-                    <ImageBackground
+                    <CachedImageBackground
                       source={buttonV1Source}
                       style={[styles.headerButton, compactStyles.headerButton]}
                       resizeMode="stretch"
@@ -721,7 +721,7 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
                       <Text style={[styles.headerButtonText, compactStyles.headerButtonText]}>
                         Back
                       </Text>
-                    </ImageBackground>
+                    </CachedImageBackground>
                   </TouchableOpacity>
                 )
               ) : (
@@ -757,7 +757,7 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
               </Text>
             </View>
           </View>
-        </ImageBackground>
+        </CachedImageBackground>
         <HubSettingsModal
           visible={showSettingsModal}
           onClose={() => setShowSettingsModal(false)}
@@ -771,7 +771,7 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
   // Other phases use the original dark overlay layout
   return (
     <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
-      <ImageBackground source={BACKGROUND_IMAGE} style={styles.backgroundImage} resizeMode="cover">
+      <CachedImageBackground source={BACKGROUND_IMAGE} style={styles.backgroundImage} resizeMode="cover">
         <View style={styles.darkOverlay}>
           <View style={styles.centerContent}>
             {/* Matched Phase (brief transition) */}
@@ -790,30 +790,30 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
 
                 <View style={styles.buttonRow}>
                   <TouchableOpacity onPress={handleBack} activeOpacity={0.7}>
-                    <ImageBackground
+                    <CachedImageBackground
                       source={buttonV1Source}
                       style={styles.actionButton}
                       resizeMode="stretch"
                     >
                       <Text style={styles.buttonText}>Back</Text>
-                    </ImageBackground>
+                    </CachedImageBackground>
                   </TouchableOpacity>
 
                   <TouchableOpacity onPress={pitDraft.reset} activeOpacity={0.7}>
-                    <ImageBackground
+                    <CachedImageBackground
                       source={buttonV4Source}
                       style={styles.actionButton}
                       resizeMode="stretch"
                     >
                       <Text style={styles.buttonTextPrimary}>Try Again</Text>
-                    </ImageBackground>
+                    </CachedImageBackground>
                   </TouchableOpacity>
                 </View>
               </View>
             )}
           </View>
         </View>
-      </ImageBackground>
+      </CachedImageBackground>
       <HubSettingsModal
         visible={showSettingsModal}
         onClose={() => setShowSettingsModal(false)}

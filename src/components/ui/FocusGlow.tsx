@@ -8,7 +8,7 @@
  * so the layout tree stays stable and avoids re-mount flicker.
  */
 import React, { useRef, useEffect } from 'react';
-import { View, Platform, type ViewStyle } from 'react-native';
+import { View, Platform, type StyleProp, type ViewStyle } from 'react-native';
 import { useAudio } from '../../contexts/AudioContext';
 
 /** Apply the focus glow animation directly to an existing View ref. */
@@ -70,7 +70,7 @@ export function useFocusGlow(active: boolean) {
 interface FocusGlowProps {
   active: boolean;
   children: React.ReactNode;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
 }
 
 export function FocusGlow({ active, children, style }: FocusGlowProps) {

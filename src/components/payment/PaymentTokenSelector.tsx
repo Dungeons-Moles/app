@@ -10,10 +10,10 @@ import { FocusGlow } from '@/components/ui/FocusGlow';
 import type { SupportedToken, SwapQuote } from '@/services/solana/jupiter';
 
 const TOKEN_ICONS: Record<string, ReturnType<typeof require>> = {
-  SOL: require('../../../assets/icons/tokens/solana-sol-logo.png'),
-  USDC: require('../../../assets/icons/tokens/usd-coin-usdc-logo.png'),
-  JUP: require('../../../assets/icons/tokens/jupiter-ag-jup-logo.png'),
-  BONK: require('../../../assets/icons/tokens/bonk-bonk-logo.png'),
+  SOL: require('../../../assets/icons/tokens/solana-sol-logo.webp'),
+  USDC: require('../../../assets/icons/tokens/usd-coin-usdc-logo.webp'),
+  JUP: require('../../../assets/icons/tokens/jupiter-ag-jup-logo.webp'),
+  BONK: require('../../../assets/icons/tokens/bonk-bonk-logo.webp'),
 };
 
 function TokenIcon({ symbol, size }: { symbol: string; size: number }) {

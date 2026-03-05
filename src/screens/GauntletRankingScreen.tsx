@@ -3,11 +3,11 @@ import {
   View,
   Text,
   StyleSheet,
-  ImageBackground,
   Image,
   TouchableOpacity,
   ActivityIndicator,
 } from 'react-native';
+import { CachedImageBackground } from '../components/common/CachedImageBackground';
 import { PublicKey } from '@solana/web3.js';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
@@ -28,15 +28,15 @@ import { FocusGlow } from '../components/ui/FocusGlow';
 import { HubSettingsModal } from '../components/ui/HubSettingsModal';
 import { GauntletPoolBadge } from '../components/ui/GauntletPoolBadge';
 
-const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.png');
-const STAINS_BACKGROUND = require('../../assets/ui/backgrounds/stains-background.png');
-const BOOK_IMAGE_MOBILE = require('../../assets/ui/backgrounds/book-wide.png');
-const BOOK_IMAGE_COMPACT = require('../../assets/ui/backgrounds/book-compact.png');
-const GAUNTLET_TITLE = require('../../assets/ui/text/gauntlet.png');
-const RANKING_TITLE = require('../../assets/ui/text/ranking.png');
-const buttonV1Source = require('../../assets/ui/buttons/button-v1.png');
-const buttonV4Source = require('../../assets/ui/buttons/button-v4.png');
-const engineImageSource = require('../../assets/ui/illustrations/engine.png');
+const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.webp');
+const STAINS_BACKGROUND = require('../../assets/ui/backgrounds/stains-background.webp');
+const BOOK_IMAGE_MOBILE = require('../../assets/ui/backgrounds/book-wide.webp');
+const BOOK_IMAGE_COMPACT = require('../../assets/ui/backgrounds/book-compact.webp');
+const GAUNTLET_TITLE = require('../../assets/ui/text/gauntlet.webp');
+const RANKING_TITLE = require('../../assets/ui/text/ranking.webp');
+const buttonV1Source = require('../../assets/ui/buttons/button-v1.webp');
+const buttonV4Source = require('../../assets/ui/buttons/button-v4.webp');
+const engineImageSource = require('../../assets/ui/illustrations/engine.webp');
 const MAX_RANK_ROWS = 100;
 const PAGE_SIZE = 10;
 const HALF_PAGE = 5;
@@ -299,7 +299,7 @@ export function GauntletRankingScreen({ navigation, route }: GauntletRankingScre
               <View style={[styles.headerButton, isCompact && compactStyles.headerButton]} />
             ) : (
               <TouchableOpacity onPress={() => navigation.goBack()} activeOpacity={0.7}>
-                <ImageBackground
+                <CachedImageBackground
                   source={buttonV1Source}
                   style={[styles.headerButton, isCompact && compactStyles.headerButton]}
                   resizeMode="stretch"
@@ -309,7 +309,7 @@ export function GauntletRankingScreen({ navigation, route }: GauntletRankingScre
                   >
                     Back
                   </Text>
-                </ImageBackground>
+                </CachedImageBackground>
               </TouchableOpacity>
             )}
           </View>
@@ -338,7 +338,7 @@ export function GauntletRankingScreen({ navigation, route }: GauntletRankingScre
                   }}
                   activeOpacity={0.7}
                 >
-                  <ImageBackground
+                  <CachedImageBackground
                     source={buttonV1Source}
                     style={styles.settingsBtn}
                     resizeMode="stretch"
@@ -348,7 +348,7 @@ export function GauntletRankingScreen({ navigation, route }: GauntletRankingScre
                       style={styles.settingsIconImage}
                       resizeMode="contain"
                     />
-                  </ImageBackground>
+                  </CachedImageBackground>
                 </TouchableOpacity>
               </>
             )}
@@ -391,7 +391,7 @@ export function GauntletRankingScreen({ navigation, route }: GauntletRankingScre
                     activeOpacity={0.7}
                     disabled={isLoading}
                   >
-                    <ImageBackground
+                    <CachedImageBackground
                       source={buttonV4Source}
                       style={[styles.actionButton, isCompact && compactStyles.actionButton]}
                       resizeMode="stretch"
@@ -404,7 +404,7 @@ export function GauntletRankingScreen({ navigation, route }: GauntletRankingScre
                       >
                         Refresh
                       </Text>
-                    </ImageBackground>
+                    </CachedImageBackground>
                   </TouchableOpacity>
                 </FocusGlow>
               </View>
@@ -424,7 +424,7 @@ export function GauntletRankingScreen({ navigation, route }: GauntletRankingScre
                         activeOpacity={0.7}
                         disabled={page === 0}
                       >
-                        <ImageBackground
+                        <CachedImageBackground
                           source={buttonV1Source}
                           style={[styles.pageButton, isCompact && compactStyles.pageButton]}
                           resizeMode="stretch"
@@ -438,7 +438,7 @@ export function GauntletRankingScreen({ navigation, route }: GauntletRankingScre
                           >
                             Prev
                           </Text>
-                        </ImageBackground>
+                        </CachedImageBackground>
                       </TouchableOpacity>
                     </FocusGlow>
                     <Text style={[styles.pageIndicator, isCompact && compactStyles.pageIndicator]}>
@@ -450,7 +450,7 @@ export function GauntletRankingScreen({ navigation, route }: GauntletRankingScre
                         activeOpacity={0.7}
                         disabled={page === totalPages - 1}
                       >
-                        <ImageBackground
+                        <CachedImageBackground
                           source={buttonV1Source}
                           style={[styles.pageButton, isCompact && compactStyles.pageButton]}
                           resizeMode="stretch"
@@ -464,7 +464,7 @@ export function GauntletRankingScreen({ navigation, route }: GauntletRankingScre
                           >
                             Next
                           </Text>
-                        </ImageBackground>
+                        </CachedImageBackground>
                       </TouchableOpacity>
                     </FocusGlow>
                   </View>

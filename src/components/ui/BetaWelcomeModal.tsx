@@ -13,10 +13,10 @@ import {
   Pressable,
   TouchableOpacity,
   TouchableWithoutFeedback,
-  ImageBackground,
   useWindowDimensions,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { CachedImageBackground } from '../common/CachedImageBackground';
 import { InlineModal } from '../InlineModal';
 import { Typography } from '../../theme/typography';
 import { useScreenVariant } from '../../contexts/ScreenVariantContext';
@@ -25,9 +25,9 @@ import { useControllerAction } from '../../hooks/useControllerAction';
 import { useAudio } from '../../contexts/AudioContext';
 import { FocusGlow } from './FocusGlow';
 
-const paperPanelSource = require('../../../assets/ui/panels/paper-panel.png');
-const buttonBgSource = require('../../../assets/ui/buttons/button.png');
-const iconASource = require('../../../assets/ui/control-buttons/a.png');
+const paperPanelSource = require('../../../assets/ui/panels/paper-panel.webp');
+const buttonBgSource = require('../../../assets/ui/buttons/button.webp');
+const iconASource = require('../../../assets/ui/control-buttons/a.webp');
 
 export const BETA_WELCOME_KEY = '@app:betaWelcome:shown';
 
@@ -66,7 +66,7 @@ export function BetaWelcomeModal({ visible, onClose }: BetaWelcomeModalProps) {
       <TouchableWithoutFeedback onPress={handleClose}>
         <View style={styles.modalOverlay}>
           <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
-            <ImageBackground
+            <CachedImageBackground
               source={paperPanelSource}
               style={[
                 styles.modalContent,
@@ -119,7 +119,7 @@ export function BetaWelcomeModal({ visible, onClose }: BetaWelcomeModalProps) {
                     style={[styles.buttonSlot, isCompact && compactStyles.buttonSlot]}
                     onPress={handleClose}
                   >
-                    <ImageBackground
+                    <CachedImageBackground
                       source={buttonBgSource}
                       style={styles.buttonImage}
                       resizeMode="contain"
@@ -127,7 +127,7 @@ export function BetaWelcomeModal({ visible, onClose }: BetaWelcomeModalProps) {
                       <Text style={[styles.buttonText, isCompact && compactStyles.buttonText]}>
                         Got it!
                       </Text>
-                    </ImageBackground>
+                    </CachedImageBackground>
                   </Pressable>
                 </FocusGlow>
               </View>
@@ -146,7 +146,7 @@ export function BetaWelcomeModal({ visible, onClose }: BetaWelcomeModalProps) {
                   </View>
                 </View>
               )}
-            </ImageBackground>
+            </CachedImageBackground>
           </TouchableWithoutFeedback>
         </View>
       </TouchableWithoutFeedback>
