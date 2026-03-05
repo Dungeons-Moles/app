@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, Image, ImageBackground, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, Image, ImageBackground, StyleSheet, TouchableOpacity, Platform, Dimensions } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useScreenVariant } from '../../contexts/ScreenVariantContext';
 import { useControllerAction } from '../../hooks/useControllerAction';
@@ -113,28 +113,35 @@ export function TutorialModal({ visible, onClose }: TutorialModalProps) {
 
   const s = isCompact ? 2 : 1;
 
+  // On native phones, scale down based on screen height (seeker/browser looks good as-is)
+  const isNative = Platform.OS !== 'web';
+  const screenH = Dimensions.get('window').height;
+  // Reference height where s=1 looks good (~500px landscape). Scale down for shorter screens.
+  const nativeScale = isNative && !isCompact ? Math.min(1, screenH / 500) : 1;
+  const ns = (v: number) => Math.round(v * nativeScale);
+
   // Icon sizes
-  const iconSm = { width: 22 * s, height: 22 * s };
-  const iconMd = { width: 32 * s, height: 32 * s };
-  const iconLg = { width: 48 * s, height: 48 * s };
-  const ctrlIcon = { width: 22 * s, height: 22 * s };
+  const iconSm = { width: ns(22 * s), height: ns(22 * s) };
+  const iconMd = { width: ns(32 * s), height: ns(32 * s) };
+  const iconLg = { width: ns(48 * s), height: ns(48 * s) };
+  const ctrlIcon = { width: ns(22 * s), height: ns(22 * s) };
 
   const titleStyle = [
     txtStyles.title,
-    { fontSize: isCompact ? 28 : 17, marginBottom: isCompact ? 8 : 5 },
+    { fontSize: ns(isCompact ? 28 : 17), marginBottom: ns(isCompact ? 8 : 5) },
   ];
   const bodyStyle = [
     txtStyles.body,
-    { fontSize: isCompact ? 19 : 12, lineHeight: isCompact ? 26 : 17 },
+    { fontSize: ns(isCompact ? 19 : 12), lineHeight: ns(isCompact ? 26 : 17) },
   ];
   const smallStyle = [
     txtStyles.body,
-    { fontSize: isCompact ? 17 : 11, lineHeight: isCompact ? 23 : 15 },
+    { fontSize: ns(isCompact ? 17 : 11), lineHeight: ns(isCompact ? 23 : 15) },
   ];
   const boldBody = [bodyStyle, { fontFamily: Typography.stat }].flat();
-  const gap = isCompact ? 8 : 5;
-  const smGap = isCompact ? 5 : 3;
-  const rightPad = { paddingLeft: isCompact ? 56 : 34 };
+  const gap = ns(isCompact ? 8 : 5);
+  const smGap = ns(isCompact ? 5 : 3);
+  const rightPad = { paddingLeft: ns(isCompact ? 56 : 34) };
 
   const controllerHints: ButtonHint[] = [
     { button: 'DPadLeftRight', label: 'Turn Page' },
@@ -261,36 +268,42 @@ export function TutorialModal({ visible, onClose }: TutorialModalProps) {
                   label="HP"
                   desc="Health. Reach 0 and you die. Starts at 25. Does not regenerate between fights."
                   s={s}
+                  ns={ns}
                 />
                 <StatRow
                   icon={ICON_ATK}
                   label="ATK"
                   desc="Damage per strike. Hits enemy ARM first, excess carries to HP."
                   s={s}
+                  ns={ns}
                 />
                 <StatRow
                   icon={ICON_ARM}
                   label="ARM"
                   desc="Armor. Absorbs damage before HP. Resets to full after each fight."
                   s={s}
+                  ns={ns}
                 />
                 <StatRow
                   icon={ICON_SPD}
                   label="SPD"
                   desc="Speed. Higher SPD acts first. Every 2 SPD advantage = +1 bonus damage on first strike."
                   s={s}
+                  ns={ns}
                 />
                 <StatRow
                   icon={ICON_DIG}
                   label="DIG"
                   desc="Dig efficiency. Lowers wall cost. Also used in some combat checks."
                   s={s}
+                  ns={ns}
                 />
                 <StatRow
                   icon={ICON_COIN}
                   label="Gold"
                   desc="Earned from enemies. Spent at Shops, Anvils, and POIs. Start: 10."
                   s={s}
+                  ns={ns}
                 />
               </View>
             </View>
@@ -350,42 +363,49 @@ export function TutorialModal({ visible, onClose }: TutorialModalProps) {
                   name="Mole Den"
                   desc="Full heal + skip to Day. Night only. Repeatable."
                   s={s}
+                  ns={ns}
                 />
                 <PoiRow
                   icon={ICON_REST_ALCOVE}
                   name="Rest Alcove"
                   desc="Heal 10 HP + skip to Day. Night only. One-time."
                   s={s}
+                  ns={ns}
                 />
                 <PoiRow
                   icon={ICON_SUPPLY_CACHE}
                   name="Supply Cache"
                   desc="Pick 1 of 3 Gear items. Weighted to boss weakness tags."
                   s={s}
+                  ns={ns}
                 />
                 <PoiRow
                   icon={ICON_TOOL_CRATE}
                   name="Tool Crate"
                   desc="Pick 1 of 3 Tools. One-time."
                   s={s}
+                  ns={ns}
                 />
                 <PoiRow
                   icon={ICON_OIL_RACK}
                   name="Tool Oil Rack"
                   desc="Add +1 ATK, SPD, DIG, or ARM to your Tool. Once per tool."
                   s={s}
+                  ns={ns}
                 />
                 <PoiRow
                   icon={ICON_COUNTER_CACHE}
                   name="Counter Cache"
                   desc="Pick 1 of 3 items from the current boss's weakness tags!"
                   s={s}
+                  ns={ns}
                 />
                 <PoiRow
                   icon={ICON_SURVEY}
                   name="Survey Beacon"
                   desc="Reveal tiles in a large radius around you."
                   s={s}
+                  ns={ns}
                 />
               </View>
             </View>
@@ -397,42 +417,49 @@ export function TutorialModal({ visible, onClose }: TutorialModalProps) {
                   name="Seismic Scanner"
                   desc="Choose a POI type to reveal the nearest undiscovered instance of that type."
                   s={s}
+                  ns={ns}
                 />
                 <PoiRow
                   icon={ICON_SMUGGLER}
                   name="Smuggler Hatch"
                   desc="Shop: buy Gear & Tools with Gold. Reroll stock for Gold (max 3)."
                   s={s}
+                  ns={ns}
                 />
                 <PoiRow
                   icon={ICON_ANVIL}
                   name="Rusty Anvil"
                   desc="Upgrade Tool tier: I→II (10g), II→III (20g)."
                   s={s}
+                  ns={ns}
                 />
                 <PoiRow
                   icon={ICON_RUNE_KILN}
                   name="Rune Kiln"
                   desc="Fuse 2 identical items → upgrade tier. Free!"
                   s={s}
+                  ns={ns}
                 />
                 <PoiRow
                   icon={ICON_GEODE}
                   name="Geode Vault"
                   desc="Pick 1 of 3 powerful Heroic items. One-time."
                   s={s}
+                  ns={ns}
                 />
                 <PoiRow
                   icon={ICON_SCRAP_CHUTE}
                   name="Scrap Chute"
                   desc="Destroy 1 Gear (4g cost). Refund by rarity."
                   s={s}
+                  ns={ns}
                 />
                 <PoiRow
                   icon={ICON_RAIL}
                   name="Rail Waypoint"
                   desc="Fast travel between discovered waypoints. Repeatable."
                   s={s}
+                  ns={ns}
                 />
               </View>
               {isCompact && (
@@ -539,15 +566,16 @@ export function TutorialModal({ visible, onClose }: TutorialModalProps) {
             <View style={pageStyles.page}>
               <Text style={titleStyle}>Controls</Text>
               <View style={[pageStyles.statList, { gap: isCompact ? 9 : 5 }]}>
-                <ControlRow icon={ICON_DPAD} label="Move / Navigate menus" s={s} />
-                <ControlRow icon={ICON_BTN_A} label="Interact with POIs / Confirm" s={s} />
+                <ControlRow icon={ICON_DPAD} label="Move / Navigate menus" s={s} ns={ns} />
+                <ControlRow icon={ICON_BTN_A} label="Interact with POIs / Confirm" s={s} ns={ns} />
                 {isCompact && (
-                  <ControlRow icon={ICON_BTN_X} label="Toggle sidebar" s={s} />
+                  <ControlRow icon={ICON_BTN_X} label="Toggle sidebar" s={s} ns={ns} />
                 )}
                 <ControlRow
                   icon={isCompact ? ICON_BTN_START : require('../../../assets/ui/illustrations/engine.png')}
                   label={isCompact ? "Pause menu." : "Pause menu. You can reopen this tutorial from there."}
                   s={s}
+                  ns={ns}
                   wide={isCompact}
                 />
                 <View style={pageStyles.statRow}>
@@ -660,18 +688,24 @@ export function TutorialModal({ visible, onClose }: TutorialModalProps) {
         style={[
           overlayStyles.content,
           isCompact ? overlayStyles.contentCompact : overlayStyles.contentWide,
+          isNative && !isCompact && {
+            overflow: 'hidden',
+            paddingTop: ns(24),
+            paddingHorizontal: ns(64),
+            paddingBottom: ns(28),
+          },
         ]}
       >
-        <View style={[overlayStyles.columns, { gap: isCompact ? 32 : 16 }]}>{renderSpread()}</View>
-        <Text
-          style={[
-            txtStyles.pageIndicator,
-            { fontSize: isCompact ? 20 : 13, marginTop: isCompact ? 8 : 4 },
-          ]}
-        >
-          {currentPage + 1} / {TOTAL_PAGES}
-        </Text>
+        <View style={[overlayStyles.columns, { gap: ns(isCompact ? 32 : 16) }]}>{renderSpread()}</View>
       </View>
+      <Text
+        style={[
+          overlayStyles.pageIndicatorAbsolute,
+          { fontSize: isCompact ? 20 : 18 },
+        ]}
+      >
+        {currentPage + 1} / {TOTAL_PAGES}
+      </Text>
       {!isController && !isCompact && currentPage === 4 && (
         <Text style={[txtStyles.title, { position: 'absolute', top: 60, right: 52, fontSize: 13 }]}>
           Good luck, mole!
@@ -712,23 +746,25 @@ function StatRow({
   label,
   desc,
   s,
+  ns,
 }: {
   icon: number;
   label: string;
   desc: string;
   s: number;
+  ns: (v: number) => number;
 }) {
-  const iconSize = { width: 20 * s, height: 20 * s };
+  const iconSize = { width: ns(20 * s), height: ns(20 * s) };
   return (
     <View style={pageStyles.statRow}>
       <Image source={icon} style={iconSize} resizeMode="contain" />
-      <Text style={[txtStyles.statLabel, { fontSize: s === 2 ? 18 : 11, minWidth: 28 * s }]}>
+      <Text style={[txtStyles.statLabel, { fontSize: ns(s === 2 ? 18 : 11), minWidth: ns(28 * s) }]}>
         {label}
       </Text>
       <Text
         style={[
           txtStyles.body,
-          { fontSize: s === 2 ? 16 : 10, lineHeight: s === 2 ? 21 : 14, flex: 1 },
+          { fontSize: ns(s === 2 ? 16 : 10), lineHeight: ns(s === 2 ? 21 : 14), flex: 1 },
         ]}
       >
         {desc}
@@ -742,22 +778,24 @@ function PoiRow({
   name,
   desc,
   s,
+  ns,
 }: {
   icon: number;
   name: string;
   desc: string;
   s: number;
+  ns: (v: number) => number;
 }) {
-  const iconSize = { width: 30 * s, height: 30 * s };
+  const iconSize = { width: ns(30 * s), height: ns(30 * s) };
   return (
     <View style={pageStyles.statRow}>
       <Image source={icon} style={iconSize} resizeMode="contain" />
       <View style={{ flex: 1 }}>
-        <Text style={[txtStyles.statLabel, { fontSize: s === 2 ? 18 : 11 }]}>{name}</Text>
+        <Text style={[txtStyles.statLabel, { fontSize: ns(s === 2 ? 18 : 11) }]}>{name}</Text>
         <Text
           style={[
             txtStyles.body,
-            { fontSize: s === 2 ? 16 : 10, lineHeight: s === 2 ? 20 : 13 },
+            { fontSize: ns(s === 2 ? 16 : 10), lineHeight: ns(s === 2 ? 20 : 13) },
           ]}
         >
           {desc}
@@ -772,21 +810,23 @@ function ControlRow({
   label,
   s,
   wide,
+  ns,
 }: {
   icon: number;
   label: string;
   s: number;
   wide?: boolean;
+  ns: (v: number) => number;
 }) {
   const iconSize = wide
-    ? { width: 36 * s, height: 16 * s }
-    : { width: 22 * s, height: 22 * s };
+    ? { width: ns(36 * s), height: ns(16 * s) }
+    : { width: ns(22 * s), height: ns(22 * s) };
   return (
-    <View style={[pageStyles.statRow, wide && { minHeight: 22 * s }]}>
-      <View style={{ width: 36 * s, alignItems: 'center', justifyContent: 'center' }}>
+    <View style={[pageStyles.statRow, wide && { minHeight: ns(22 * s) }]}>
+      <View style={{ width: ns(36 * s), alignItems: 'center', justifyContent: 'center' }}>
         <Image source={icon} style={iconSize} resizeMode="contain" />
       </View>
-      <Text style={[txtStyles.body, { fontSize: s === 2 ? 19 : 12, flex: 1 }]}>{label}</Text>
+      <Text style={[txtStyles.body, { fontSize: ns(s === 2 ? 19 : 12), flex: 1 }]}>{label}</Text>
     </View>
   );
 }
@@ -823,6 +863,14 @@ const overlayStyles = StyleSheet.create({
   },
   columns: {
     flexDirection: 'row',
+  },
+  pageIndicatorAbsolute: {
+    position: 'absolute',
+    bottom: 8,
+    alignSelf: 'center',
+    fontFamily: Typography.header,
+    color: '#8b7355',
+    textAlign: 'center',
   },
   pageNavButtons: {
     position: 'absolute',
