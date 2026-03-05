@@ -3,11 +3,11 @@
  */
 
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, Image } from 'react-native';
+import { View, StyleSheet, Image } from 'react-native';
 import type { TimeState } from '../../game/engine/types';
 import { TimePhase } from '../../game/engine/types';
 import { getWeekProgress } from '../../game/time/progression';
-import { Typography } from '../../theme/typography';
+
 
 const SUN_ICON = require('../../../assets/icons/ui/sun.png');
 const MOON_ICON = require('../../../assets/icons/ui/moon.png');
@@ -86,59 +86,59 @@ function WeekProgressTimeline({ time, scale }: WeekProgressTimelineProps) {
   const tickW = 2;
   const tickH = 10 * scale;
   const barH = 12 * scale;
-  const wrapperH = 20 * scale;
 
   return (
     <View style={[styles.tickBarContainer, { maxWidth: 500 * scale }]}>
       {/* Icons Row */}
-      <View style={[styles.iconsRow, { marginBottom: 4 * scale }]}>
-        {timelineSegments.map((segment, index) => (
-          <View
-            key={`icon-${index}`}
-            style={[styles.iconContainer, { flex: segment.ticks }]}
-          >
-            {segment.type === 'day' ? (
-              <Image source={SUN_ICON} style={{ width: iconSize, height: iconSize, marginLeft: -7 * scale }} resizeMode="contain" />
-            ) : (
-              <Image source={MOON_ICON} style={{ width: iconSize, height: iconSize, marginLeft: -7 * scale }} resizeMode="contain" />
-            )}
-          </View>
-        ))}
+      <View style={[styles.iconsRow, { marginBottom: 4 * scale, height: iconSize }]}>
+        {timelineSegments.map((segment, index) => {
+          const pct = (segment.startTick / (TOTAL_TICKS - 1)) * 100;
+          return (
+            <View
+              key={`icon-${index}`}
+              style={{ position: 'absolute', left: `${pct}%`, marginLeft: -(iconSize / 2) }}
+            >
+              <Image
+                source={segment.type === 'day' ? SUN_ICON : MOON_ICON}
+                style={{ width: iconSize, height: iconSize }}
+                resizeMode="contain"
+              />
+            </View>
+          );
+        })}
         {/* Skull icon at the end */}
-        <View style={[styles.skullContainer, { right: -8 * scale }]}>
+        <View style={{ position: 'absolute', right: -(iconSize / 2) }}>
           <Image source={SKULL_ICON} style={{ width: iconSize, height: iconSize }} resizeMode="contain" />
         </View>
       </View>
 
       {/* Tick Bar Row */}
-      <View style={[styles.tickBarWrapper, { height: wrapperH }]}>
-        <View style={[styles.tickBarBackground, { height: barH }]}>
-          {timelineSegments
-            .map((segment) =>
-              Array.from({ length: segment.ticks }).map((_, tickIdx) => {
-                const globalTick = segment.startTick + tickIdx;
-                const isConsumed = globalTick < currentTickPosition;
-                return (
-                  <View
-                    key={globalTick}
-                    style={[{ width: tickW, height: tickH }, isConsumed ? styles.tickConsumed : styles.tickPending]}
-                  />
-                );
-              })
-            )
-            .flat()}
-        </View>
-
-        <View style={[styles.markerRow, { height: wrapperH }]}>
-          <View
-            style={[
-              styles.positionMarker,
-              { left: `${(currentTickPosition / (TOTAL_TICKS - 1)) * 100}%`, top: -2 * scale, marginLeft: -2 * scale },
-            ]}
-          >
-            <Text style={[styles.markerLine, { fontSize: 18 * scale }]}>|</Text>
-          </View>
-        </View>
+      <View style={[styles.tickBarBackground, { height: barH }]}>
+        {timelineSegments
+          .map((segment) =>
+            Array.from({ length: segment.ticks }).map((_, tickIdx) => {
+              const globalTick = segment.startTick + tickIdx;
+              const isCurrent = globalTick === currentTickPosition;
+              const isConsumed = globalTick < currentTickPosition;
+              return (
+                <View
+                  key={globalTick}
+                  style={[
+                    {
+                      width: isCurrent ? 3 * scale : tickW,
+                      height: isCurrent ? tickH + 6 * scale : tickH,
+                      backgroundColor: isCurrent
+                        ? '#000000'
+                        : isConsumed
+                          ? 'rgba(0, 0, 0, 0.3)'
+                          : '#000000',
+                    },
+                  ]}
+                />
+              );
+            })
+          )
+          .flat()}
       </View>
     </View>
   );
@@ -181,42 +181,11 @@ const styles = StyleSheet.create({
     width: 16,
     height: 16,
   },
-  tickBarWrapper: {
-    height: 20,
-    justifyContent: 'center',
-    width: '100%',
-  },
   tickBarBackground: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     height: 12,
-  },
-  tick: {
-    width: 2,
-    height: 10,
-  },
-  tickPending: {
-    backgroundColor: '#000000',
-  },
-  tickConsumed: {
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
-  },
-  markerRow: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    height: 20,
-  },
-  positionMarker: {
-    position: 'absolute',
-    top: -2,
-    marginLeft: -2,
-  },
-  markerLine: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#000000',
   },
 });
 

@@ -3,7 +3,7 @@
  */
 
 import React, { useCallback, useMemo, useEffect, useState, useRef } from 'react';
-import { View, Text, StyleSheet, Animated, ImageBackground, Image, Pressable } from 'react-native';
+import { View, Text, StyleSheet, Animated, ImageBackground, Image, Pressable, Platform } from 'react-native';
 import { Connection, PublicKey } from '@solana/web3.js';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useIsFocused } from '@react-navigation/native';
@@ -2687,7 +2687,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
               {!isCompact && (
                 <View style={[styles.bossTopContainer, { flexDirection: 'row', alignItems: 'center' }]}>
                   <View style={{ flex: 1 }}>
-                    <Sidebar {...sharedSidebarProps} onlyBoss={true} />
+                    <Sidebar {...sharedSidebarProps} onlyBoss={true} fitContentBoss={Platform.OS !== 'web'} />
                   </View>
                   {!isController && (
                     <Pressable

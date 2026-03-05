@@ -94,6 +94,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#fbbf24',
     borderRadius: 10,
     paddingHorizontal: 6,
+    minWidth: 50,
+    alignItems: 'center',
     paddingVertical: 2,
   },
   badgeText: {

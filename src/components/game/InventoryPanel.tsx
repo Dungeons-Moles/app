@@ -5,7 +5,7 @@
  */
 
 import React, { useCallback, useMemo, useRef } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Image, ImageBackground } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Image, ImageBackground, Dimensions, Platform } from 'react-native';
 import { FocusGlow } from '../ui/FocusGlow';
 import type { Tool, Gear, InventorySlot, ItemsetId, ToolOil } from '../../game/engine/types';
 import { getTierFromRarity, type ItemTier } from '../../data/gear';
@@ -269,12 +269,14 @@ function ActiveItemsets({
   onPress,
   controllerFocusIndex,
   baseIndex,
+  compact,
 }: {
   itemsets: ItemsetId[];
   isSidebar?: boolean;
   onPress?: (id: ItemsetId) => void;
   controllerFocusIndex?: number | null;
   baseIndex?: number;
+  compact?: boolean;
 }) {
   const { playSfx } = useAudio();
   if (itemsets.length === 0) {
@@ -282,7 +284,7 @@ function ActiveItemsets({
   }
 
   return (
-    <View style={styles.itemsetsContainer}>
+    <View style={[styles.itemsetsContainer, compact && styles.itemsetsContainerCompactMobile]}>
       {itemsets.map((id, i) => {
         const slotIndex = (baseIndex ?? 0) + i;
         const isFocused = controllerFocusIndex === slotIndex;
@@ -302,9 +304,10 @@ function ActiveItemsets({
                 style={[
                   styles.itemsetBadge,
                   isSidebar && { backgroundColor: 'transparent', borderColor: '#000000' },
+                  compact && { width: 22, height: 22 },
                 ]}
               >
-                <Image source={ITEMSET_ICONS[id]} style={styles.itemsetIcon} resizeMode="contain" />
+                <Image source={ITEMSET_ICONS[id]} style={[styles.itemsetIcon, compact && { width: 16, height: 16 }]} resizeMode="contain" />
               </View>
             </TouchableOpacity>
           </FocusGlow>
@@ -376,11 +379,15 @@ export function InventoryPanel({
     : useGauntletSidebarSizing
       ? SIDEBAR_GEAR_SLOT_SIZE
       : 32;
+  const isNativeSidebar = isSidebar && Platform.OS !== 'web';
+  const nativeToolSlotSize = Math.max(36, Math.round(Dimensions.get('window').height / 10));
   const toolSlotSize = isCompactSidebar
     ? COMPACT_TOOL_SLOT_SIZE
-    : useGauntletSidebarSizing
-      ? SIDEBAR_TOOL_SLOT_SIZE
-      : DEFAULT_TOOL_SLOT_SIZE;
+    : isNativeSidebar
+      ? nativeToolSlotSize
+      : useGauntletSidebarSizing
+        ? SIDEBAR_TOOL_SLOT_SIZE
+        : DEFAULT_TOOL_SLOT_SIZE;
 
   return (
     <View
@@ -432,66 +439,104 @@ export function InventoryPanel({
         </View>
       </View>
 
-      {/* Tool Section - Center */}
-      <View
-        style={[
-          styles.toolSection,
-          (useGauntletSidebarSizing || isCompactSidebar) && styles.sidebarToolSection,
-        ]}
-      >
-        <View style={styles.toolHeaderRow}>
-          <View style={[styles.toolHeaderCell, { width: toolSlotSize }]}>
-            <Text
-              style={[
-                styles.sectionTitle,
-                isCompactSidebar && styles.sidebarSectionTitle,
-                { color: textColor, marginBottom: 0 },
-              ]}
-            >
-              WEAPON
-            </Text>
+      {/* Tool Section + Itemsets */}
+      {isNativeSidebar && activeItemsets.length > 0 ? (
+        <View style={styles.mobileToolItemsetsRow}>
+          <View style={styles.mobileToolLeft}>
+            <View style={styles.toolColumn}>
+              <Text style={[styles.sectionTitle, { color: textColor, marginBottom: 4 }]}>
+                WEAPON
+              </Text>
+              <FocusGlow active={controllerFocusIndex === maxSlots}>
+                <ItemSlot
+                  item={equippedTool}
+                  isEmpty={!equippedTool}
+                  slotIndex={-1}
+                  onPress={handleToolPress}
+                  onLongPress={handleToolInspect}
+                  isSidebar={isSidebar}
+                  size={toolSlotSize}
+                />
+              </FocusGlow>
+            </View>
+            <View style={styles.toolColumn}>
+              <Text style={[styles.sectionTitle, { color: textColor, marginBottom: 4 }]}>
+                OIL
+              </Text>
+              <OilSlot oil={equippedTool?.oil ?? null} isSidebar={isSidebar} size={toolSlotSize} />
+            </View>
           </View>
-          <View style={[styles.toolHeaderCell, { width: toolSlotSize }]}>
-            <Text
-              style={[
-                styles.sectionTitle,
-                isCompactSidebar && styles.sidebarSectionTitle,
-                { color: textColor, marginBottom: 0 },
-              ]}
-            >
-              OIL
-            </Text>
-          </View>
-        </View>
-        <View
-          style={[
-            styles.toolRow,
-            (useGauntletSidebarSizing || isCompactSidebar) && styles.sidebarToolRow,
-          ]}
-        >
-          <FocusGlow active={controllerFocusIndex === maxSlots}>
-            <ItemSlot
-              item={equippedTool}
-              isEmpty={!equippedTool}
-              slotIndex={-1}
-              onPress={handleToolPress}
-              onLongPress={handleToolInspect}
+          <View style={styles.mobileItemsetsGrid}>
+            <ActiveItemsets
+              itemsets={activeItemsets}
               isSidebar={isSidebar}
-              size={toolSlotSize}
+              onPress={onItemsetPress}
+              controllerFocusIndex={controllerFocusIndex}
+              baseIndex={maxSlots + 1}
+              compact
             />
-          </FocusGlow>
-          <OilSlot oil={equippedTool?.oil ?? null} isSidebar={isSidebar} size={toolSlotSize} />
+          </View>
         </View>
-      </View>
-
-      {/* Active Itemsets - Bottom */}
-      <ActiveItemsets
-        itemsets={activeItemsets}
-        isSidebar={isSidebar}
-        onPress={onItemsetPress}
-        controllerFocusIndex={controllerFocusIndex}
-        baseIndex={maxSlots + 1}
-      />
+      ) : (
+        <>
+          <View
+            style={[
+              styles.toolSection,
+              (useGauntletSidebarSizing || isCompactSidebar) && styles.sidebarToolSection,
+              isNativeSidebar && { borderTopWidth: 0, paddingVertical: 2 },
+            ]}
+          >
+            <View
+              style={[
+                styles.toolRow,
+                (useGauntletSidebarSizing || isCompactSidebar) && styles.sidebarToolRow,
+              ]}
+            >
+              <View style={styles.toolColumn}>
+                <Text
+                  style={[
+                    styles.sectionTitle,
+                    isCompactSidebar && styles.sidebarSectionTitle,
+                    { color: textColor, marginBottom: 4 },
+                  ]}
+                >
+                  WEAPON
+                </Text>
+                <FocusGlow active={controllerFocusIndex === maxSlots}>
+                  <ItemSlot
+                    item={equippedTool}
+                    isEmpty={!equippedTool}
+                    slotIndex={-1}
+                    onPress={handleToolPress}
+                    onLongPress={handleToolInspect}
+                    isSidebar={isSidebar}
+                    size={toolSlotSize}
+                  />
+                </FocusGlow>
+              </View>
+              <View style={styles.toolColumn}>
+                <Text
+                  style={[
+                    styles.sectionTitle,
+                    isCompactSidebar && styles.sidebarSectionTitle,
+                    { color: textColor, marginBottom: 4 },
+                  ]}
+                >
+                  OIL
+                </Text>
+                <OilSlot oil={equippedTool?.oil ?? null} isSidebar={isSidebar} size={toolSlotSize} />
+              </View>
+            </View>
+          </View>
+          <ActiveItemsets
+            itemsets={activeItemsets}
+            isSidebar={isSidebar}
+            onPress={onItemsetPress}
+            controllerFocusIndex={controllerFocusIndex}
+            baseIndex={maxSlots + 1}
+          />
+        </>
+      )}
     </View>
   );
 }
@@ -525,13 +570,6 @@ const styles = StyleSheet.create({
   sidebarToolSection: {
     paddingVertical: 4,
   },
-  toolHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    width: '100%',
-    marginBottom: 4,
-    gap: 24,
-  },
   toolRow: {
     flexDirection: 'row',
     justifyContent: 'center',
@@ -541,7 +579,7 @@ const styles = StyleSheet.create({
   sidebarToolRow: {
     gap: 16,
   },
-  toolHeaderCell: {
+  toolColumn: {
     alignItems: 'center',
   },
   sectionTitle: {
@@ -607,6 +645,20 @@ const styles = StyleSheet.create({
     height: 2,
     borderRadius: 1,
   },
+  mobileToolItemsetsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 2,
+  },
+  mobileToolLeft: {
+    flexDirection: 'row',
+    gap: 8,
+    flexShrink: 0,
+  },
+  mobileItemsetsGrid: {
+    width: 48,
+  },
   itemsetsContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -615,6 +667,11 @@ const styles = StyleSheet.create({
     paddingTop: 6,
     borderTopWidth: 1,
     borderTopColor: 'rgba(0, 0, 0, 0.1)',
+  },
+  itemsetsContainerCompactMobile: {
+    borderTopWidth: 0,
+    paddingTop: 0,
+    justifyContent: 'flex-start',
   },
   itemsetBadge: {
     width: 28,

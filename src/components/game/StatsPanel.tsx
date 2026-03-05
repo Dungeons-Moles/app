@@ -61,7 +61,7 @@ export function StatsPanel({ stats, isSidebar }: StatsPanelProps) {
     return (
       <View style={[styles.container, styles.sidebarContainer]}>
         <View style={styles.twoColumnStats}>
-          <View style={styles.column}>
+          <View style={[styles.column, styles.columnLeft]}>
             <StatRow
               icon={ICONS.HP}
               label="HP"
@@ -88,7 +88,7 @@ export function StatsPanel({ stats, isSidebar }: StatsPanelProps) {
               isCompact={isCompact}
             />
           </View>
-          <View style={styles.column}>
+          <View style={[styles.column, styles.columnRight]}>
             <StatRow
               icon={ICONS.SPD}
               label="SPD"
@@ -147,17 +147,22 @@ const styles = StyleSheet.create({
   twoColumnStats: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    gap: 10,
-    paddingHorizontal: 10,
+    gap: 4,
+    paddingHorizontal: 6,
   },
   column: {
-    flex: 1,
     gap: 6,
+  },
+  columnLeft: {
+    flex: 6,
+  },
+  columnRight: {
+    flex: 4,
   },
   statRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 4,
     marginVertical: 2,
   },
   icon: {
@@ -167,7 +172,8 @@ const styles = StyleSheet.create({
   label: {
     fontFamily: Typography.header,
     fontSize: 14,
-    width: 40, // Slightly reduced to fit 2 columns
+    width: 40,
+    flexShrink: 0,
     fontWeight: 'bold',
   },
   value: {
@@ -175,7 +181,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: 'bold',
     flex: 1,
-    textAlign: 'right',
+    textAlign: 'center',
   },
 });
 

@@ -3,7 +3,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, StyleSheet, ImageBackground, Text, Image, Pressable } from 'react-native';
+import { View, StyleSheet, ImageBackground, Text, Image, Pressable, Dimensions, Platform } from 'react-native';
 import { PublicKey } from '@solana/web3.js';
 import { StatsPanel } from './StatsPanel';
 import { InventoryPanel } from './InventoryPanel';
@@ -12,6 +12,8 @@ import { BossTooltipModal, type PvpDetails } from './BossTooltipModal';
 import { getBoss } from '../../data/bosses';
 import { getEntityImageSource } from './entityImages';
 import { Typography } from '../../theme/typography';
+import { useScreenVariant } from '../../contexts/ScreenVariantContext';
+import { useAudio } from '../../contexts/AudioContext';
 import { useGameplayStateContext } from '../../contexts/GameplayStateContext';
 import { useWallet } from '../../contexts/WalletContext';
 import { useSolanaConnection } from '../../contexts/SolanaConnectionContext';
@@ -93,6 +95,7 @@ interface SidebarProps {
   floatingCompact?: boolean;
   compactBoss?: boolean;
   inlineBoss?: boolean;
+  fitContentBoss?: boolean;
   controllerFocusIndex?: number | null;
   echoFocusIndex?: number | null;
   onEchoEquipmentLoaded?: (gear: Gear[], tool: Tool | null, slotCount: number) => void;
@@ -232,6 +235,7 @@ export function BossPanel({
   scale = 1,
   compact = false,
   inline = false,
+  fitContent = false,
   echoFocusIndex,
   onEchoEquipmentLoaded,
 }: {
@@ -239,12 +243,14 @@ export function BossPanel({
   scale?: number;
   compact?: boolean;
   inline?: boolean;
+  fitContent?: boolean;
   echoFocusIndex?: number | null;
   onEchoEquipmentLoaded?: (gear: Gear[], tool: Tool | null, slotCount: number) => void;
 }) {
   const [modalVisible, setModalVisible] = useState(false);
   const [pvpDetails, setPvpDetails] = useState<PvpDetails | null>(null);
   const [pvpLoading, setPvpLoading] = useState(false);
+  const { playSfx } = useAudio();
   const { gameState } = useGameplayStateContext();
   const { mapSeed, gameplayState: sessionGameState } = useSession();
   const { wallet } = useWallet();
@@ -410,11 +416,17 @@ export function BossPanel({
     if (!displayedBoss && !shouldShowGauntletEcho) {
       return;
     }
+    playSfx('ui_click');
     setModalVisible(true);
     if (!displayedBoss && shouldShowGauntletEcho) {
       void loadPvpDetails();
     }
-  }, [displayedBoss, shouldShowGauntletEcho, loadPvpDetails]);
+  }, [displayedBoss, shouldShowGauntletEcho, loadPvpDetails, playSfx]);
+
+  const handleBossClose = useCallback(() => {
+    playSfx('ui_back');
+    setModalVisible(false);
+  }, [playSfx]);
 
   // Auto-load echo details for inline gauntlet view so stats render immediately
   const inlineLoadedWeekRef = useRef<number | null>(null);
@@ -531,10 +543,10 @@ export function BossPanel({
           </Text>
         </Pressable>
       ) : (
-        <View style={[styles.bossContainer, { paddingHorizontal: 6 * scale }]}>
+        <View style={[styles.bossContainer, fitContent && { width: undefined }, { paddingHorizontal: 6 * scale }]}>
           <ImageBackground
             source={BOSS_PANEL_BG}
-            style={[styles.bossPanel, { height: 50 * scale, paddingHorizontal: 10 * scale }]}
+            style={[styles.bossPanel, fitContent && { width: undefined }, { height: 50 * scale, paddingHorizontal: 10 * scale }]}
             resizeMode="stretch"
           >
             <Pressable style={[styles.bossContent, { gap: 8 * scale }]} onPress={handleBossPress}>
@@ -562,13 +574,16 @@ export function BossPanel({
         boss={displayedBoss ?? null}
         pvpDetails={pvpDetails}
         pvpLoading={pvpLoading}
-        onClose={() => setModalVisible(false)}
+        onClose={handleBossClose}
       />
     </>
   );
 }
 
 export const Sidebar = React.memo(function Sidebar(props: SidebarProps) {
+  const variant = useScreenVariant();
+  const isCompact = variant === 'compact';
+
   if (props.onlyBoss) {
     return (
       <BossPanel
@@ -576,6 +591,7 @@ export const Sidebar = React.memo(function Sidebar(props: SidebarProps) {
         scale={props.scale}
         compact={props.compactBoss}
         inline={props.inlineBoss}
+        fitContent={props.fitContentBoss}
         echoFocusIndex={props.echoFocusIndex}
         onEchoEquipmentLoaded={props.onEchoEquipmentLoaded}
       />
@@ -583,6 +599,9 @@ export const Sidebar = React.memo(function Sidebar(props: SidebarProps) {
   }
 
   const isFloating = props.floatingCompact;
+  const isWeb = Platform.OS === 'web';
+  const screenH = Dimensions.get('window').height;
+  const sidebarGap = isWeb ? 20 : Math.max(1, Math.round(screenH / 150));
   const handleItemTap = props.isRuneKilnActive
     ? props.handleInventoryItemPress
     : props.onItemInspect;
@@ -591,6 +610,7 @@ export const Sidebar = React.memo(function Sidebar(props: SidebarProps) {
     <View
       style={[
         styles.innerContainer,
+        { gap: sidebarGap },
         isFloating && { flex: 0, flexGrow: 0, padding: 14, paddingTop: 16, gap: 16 },
       ]}
     >
@@ -668,7 +688,6 @@ const styles = StyleSheet.create({
   },
   bossContainer: {
     width: '100%',
-    height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 6,

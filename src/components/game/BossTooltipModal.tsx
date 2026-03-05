@@ -13,9 +13,11 @@ import {
   Image,
   ImageBackground,
   ScrollView,
+  Platform,
 } from 'react-native';
 import { Typography } from '../../theme/typography';
 import { getEntityImageSource } from './entityImages';
+import { Dimensions } from 'react-native';
 import { useScreenVariant } from '../../contexts/ScreenVariantContext';
 import type { BossDefinition } from '../../data/bosses';
 import type { Tool, Gear } from '../../game/engine/types';
@@ -88,8 +90,19 @@ export function BossTooltipModal({
   return (
     <Modal visible={visible} transparent={true} animationType="fade" onRequestClose={onClose}>
       <Pressable style={styles.modalBackdrop} onPress={onClose}>
-        <View style={[styles.modalContentWrapper, isCompact && styles.modalContentWrapperCompact]}>
-          <ImageBackground source={SIDEBAR_BG} style={[styles.modalContent, isCompact && styles.modalContentCompact]} resizeMode="stretch">
+        <View style={[
+          styles.modalContentWrapper,
+          isCompact && styles.modalContentWrapperCompact,
+        ]}>
+          <ImageBackground
+            source={SIDEBAR_BG}
+            style={[
+              styles.modalContent,
+              isCompact && styles.modalContentCompact,
+              Platform.OS !== 'web' && { height: Dimensions.get('window').height * 0.95, flex: undefined },
+            ]}
+            resizeMode="stretch"
+          >
             <ScrollView
               style={styles.contentScroll}
               contentContainerStyle={[styles.innerContent, isCompact && styles.innerContentCompact]}
@@ -253,9 +266,11 @@ const styles = StyleSheet.create({
   modalContentWrapper: {
     width: '88%',
     maxWidth: 360,
-    height: '86%',
+    height: '95%',
     minHeight: 360,
     overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   modalContent: {
     flex: 1,
@@ -408,7 +423,7 @@ const styles = StyleSheet.create({
     fontFamily: Typography.body,
     fontSize: 12,
     color: '#666666',
-    marginTop: 8,
+    marginTop: 2,
   },
 
   // Compact overrides

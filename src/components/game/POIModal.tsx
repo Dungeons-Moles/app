@@ -14,6 +14,8 @@ import {
   Image,
   Modal,
   Pressable,
+  Platform,
+  Dimensions,
 } from 'react-native';
 import type {
   POIInteraction,
@@ -286,6 +288,20 @@ function ModalWrapper({
       </View>
     );
   }
+  if (Platform.OS !== 'web') {
+    if (!visible) return null;
+    return (
+      <View style={styles.nativeModalOverlay}>
+        {/* Dark overlay — covers game area only (not sidebar) */}
+        <View style={styles.nativeModalDarkBg} pointerEvents="none" />
+        {/* Modal content — positioned above the dark overlay */}
+        <View style={styles.nativeModalContentLayer}>
+          <View style={styles.nativeModalCenter}>{children}</View>
+          <View style={styles.modalSidebarArea} pointerEvents="none" />
+        </View>
+      </View>
+    );
+  }
   return (
     <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
       <View style={styles.modalContainer}>
@@ -308,6 +324,17 @@ function OverlayWrapper({ children, visible, isCompact }: OverlayWrapperProps) {
     return (
       <View style={styles.compactModalOverlay}>
         <View style={styles.compactModalScale}>{children}</View>
+      </View>
+    );
+  }
+  if (Platform.OS !== 'web') {
+    return (
+      <View style={styles.nativeModalOverlay} pointerEvents="box-none">
+        <View style={styles.nativeModalDarkBg} pointerEvents="none" />
+        <View style={styles.nativeModalContentLayer} pointerEvents="box-none">
+          <View style={styles.nativeModalCenter} pointerEvents="box-none">{children}</View>
+          <View style={styles.modalSidebarArea} pointerEvents="box-none" />
+        </View>
       </View>
     );
   }
@@ -634,6 +661,8 @@ export const POIModal = React.memo(function POIModal({
   const variant = useScreenVariant();
   const isCompact = variant === 'compact';
   const isMobileWide = !isCompact;
+  const isNative = Platform.OS !== 'web';
+  const nativeModalHeight = isNative ? Dimensions.get('window').height * 0.98 : undefined;
 
   if (isRuneKiln) {
     if (!visible) {
@@ -964,15 +993,22 @@ export const POIModal = React.memo(function POIModal({
         alignLeft={true}
         centerInCompact={centerInCompact}
       >
-        <View style={styles.threeChoiceModal} pointerEvents="auto">
+        <View style={[styles.threeChoiceModal, isNative && { height: nativeModalHeight * 0.9 }]} pointerEvents="auto">
           <Image
             source={paperPanelSource}
-            style={{
+            style={isNative ? {
               position: 'absolute',
-              width: '110%', // Increased from 100%
-              height: '115%', // Increased from 100%
-              top: '-7.5%', // Centering adjustment
-              left: '-5%', // Centering adjustment
+              width: '100%',
+              height: '100%',
+              top: 0,
+              left: 0,
+              zIndex: -1,
+            } : {
+              position: 'absolute',
+              width: '110%',
+              height: '115%',
+              top: '-7.5%',
+              left: '-5%',
               zIndex: -1,
             }}
             resizeMode="stretch"
@@ -1128,10 +1164,10 @@ export const POIModal = React.memo(function POIModal({
 
     return (
       <ModalWrapper visible={visible} isCompact={isCompact} onClose={onClose}>
-        <View style={styles.standardModal} pointerEvents="auto">
+        <View style={[styles.standardModal, isNative && { marginLeft: 60 }]} pointerEvents="auto">
           {selectedItem && (
             <View
-              style={[styles.shopDescPanel, isMobileWide && styles.shopDescPanelMobile]}
+              style={[styles.shopDescPanel, isMobileWide && styles.shopDescPanelMobile, isNative && { right: '87%' }]}
               pointerEvents="auto"
             >
               <Image
@@ -1634,6 +1670,37 @@ const styles = StyleSheet.create({
   compactModalScaleCenter: {
     width: '80%',
     maxWidth: 580,
+  },
+  nativeModalOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 100,
+  },
+  nativeModalDarkBg: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    bottom: 0,
+    right: 230,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    zIndex: 0,
+  },
+  nativeModalContentLayer: {
+    ...StyleSheet.absoluteFillObject,
+    flexDirection: 'row',
+    zIndex: 1,
+  },
+  nativeModalRow: {
+    flex: 1,
+    flexDirection: 'row',
+  },
+  nativeModalCenter: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  nativeModalContent: {
+    width: '98%',
+    flex: undefined,
   },
   modalDarkArea: {
     flex: 1,
