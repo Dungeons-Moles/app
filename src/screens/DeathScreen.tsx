@@ -4,7 +4,7 @@
  * T051: Show "Purchase Runs" prompt if player has 0 runs after death
  */
 
-import React, { useEffect, useRef, useCallback } from 'react';
+import React, { useEffect, useRef, useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import {
   Pressable,
   Animated,
   Image,
+  Platform,
   useWindowDimensions,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -47,6 +48,7 @@ export function DeathScreen({ navigation, route }: DeathScreenProps) {
   const { playBgm, playSfx } = useAudio();
 
   const isOutOfRuns = mode !== 'guest' && availableRuns === 0;
+  const [summarySize, setSummarySize] = useState({ width: 0, height: 0 });
   // Use vertical layout for taller screens (portrait or large tablets)
   const isVerticalLayout = height > 768;
 
@@ -131,8 +133,34 @@ export function DeathScreen({ navigation, route }: DeathScreenProps) {
   );
 
   const RunSummary = () => (
-    <View style={isVerticalLayout ? styles.summaryContainerVertical : styles.summaryContainer}>
-      <Image source={PAPER_PANEL} style={styles.summaryPanelBg} resizeMode="stretch" />
+    <View
+      style={isVerticalLayout ? styles.summaryContainerVertical : styles.summaryContainer}
+      onLayout={(e) => {
+        const { width, height } = e.nativeEvent.layout;
+        setSummarySize((prev) =>
+          prev.width === Math.round(width) && prev.height === Math.round(height)
+            ? prev
+            : { width: Math.round(width), height: Math.round(height) }
+        );
+      }}
+    >
+      <Image
+        source={PAPER_PANEL}
+        style={
+          Platform.OS === 'web'
+            ? styles.summaryPanelBg
+            : summarySize.width > 0
+              ? {
+                  position: 'absolute' as const,
+                  width: summarySize.width * 1.2,
+                  height: summarySize.height * 1.3,
+                  left: -(summarySize.width * 0.1),
+                  top: -(summarySize.height * 0.15),
+                }
+              : styles.summaryPanelBg
+        }
+        resizeMode="stretch"
+      />
       <Text style={isVerticalLayout ? styles.summaryTitleVertical : styles.summaryTitle}>
         Run Summary
       </Text>
@@ -151,13 +179,11 @@ export function DeathScreen({ navigation, route }: DeathScreenProps) {
         </>
       ) : (
         <>
-          {/* First row: Level, Week, Phase */}
           <View style={styles.statsRow}>
             <StatFrame label="Level" value={level ?? 1} />
             <StatFrame label="Week" value={week ?? 1} />
             <StatFrame label="Phase" value={phase ?? 'Day 1'} />
           </View>
-          {/* Second row: Moves, Turns (centered) */}
           <View style={styles.statsRowCentered}>
             <StatFrame label="Total Moves" value={totalMoves ?? 0} />
             <StatFrame label="Combat Turns" value={turnsTaken} />
@@ -273,6 +299,8 @@ const styles = StyleSheet.create({
   rightColumn: {
     flex: 1,
     maxWidth: 320,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   iconContainer: {
     width: 64,
@@ -307,13 +335,14 @@ const styles = StyleSheet.create({
     padding: 16,
     width: '100%',
     marginBottom: 12,
+    overflow: 'visible',
   },
   summaryPanelBg: {
     position: 'absolute',
-    width: '110%',
-    height: '120%',
-    top: '-10%',
-    left: '-5%',
+    width: '120%',
+    height: '130%',
+    top: '-15%',
+    left: '-10%',
   },
   summaryTitle: {
     fontFamily: Typography.header,
@@ -326,21 +355,19 @@ const styles = StyleSheet.create({
   statsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 8,
-    gap: 8,
+    marginBottom: 6,
+    gap: 6,
   },
   statsRowCentered: {
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 8,
+    gap: 6,
   },
   statItem: {
     alignItems: 'center',
     justifyContent: 'center',
     minWidth: 60,
     flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 8,
   },
   statFrameBg: {
     position: 'absolute',

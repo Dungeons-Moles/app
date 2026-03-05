@@ -65,7 +65,9 @@ export const CombatArena = React.memo(function CombatArena({
   const arenaWidth = scale > 1
     ? Math.min(screenWidth * 0.5, 900)
     : Math.min(screenWidth * 0.5, 400);
-  const arenaHeight = scale > 1 ? Math.min(screenHeight * 0.85, 800) : 300;
+  const arenaHeight = scale > 1
+    ? Math.min(screenHeight * 0.85, 800)
+    : Math.min(screenHeight * 0.75, 300);
   const entityImages = useSkiaEntityImages(playerSkinSource, pvpOpponentSkinSource);
   const bgImage = useImage(BATTLEGROUND_BG);
   const moleImage = useImage(DEFAULT_MOLE);
