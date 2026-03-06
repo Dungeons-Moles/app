@@ -103,6 +103,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
   const {
     startGame: startSessionOnChain,
     overrideCampaignSession,
+    overrideAndStartGame,
     hasSessionForLevel,
     activeSessions,
     hasPendingCleanups,
@@ -826,23 +827,37 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
     setIsStartingGame(true);
 
     try {
-      const overrideResult = await overrideCampaignSession();
-      console.log('[CampaignSelect] overrideCampaignSession result', overrideResult);
+      let navigatedToLoading = false;
+      const overrideResult = await overrideAndStartGame(targetLevel.level, () => {
+        if (navigatedToLoading) return;
+        createSessionSetup();
+        navigation.navigate('SessionLoading', { mode: 'campaign' });
+        navigatedToLoading = true;
+      });
+      console.log('[CampaignSelect] overrideAndStartGame result', overrideResult);
       if (!overrideResult.success) {
-        setErrorMessage(overrideResult.error ?? 'Failed to override session slot.');
-        setShowErrorModal(true);
+        if (navigatedToLoading) {
+          rejectSessionSetup(overrideResult.error ?? 'Failed to override session slot.');
+        } else {
+          setErrorMessage(overrideResult.error ?? 'Failed to override session slot.');
+          setShowErrorModal(true);
+        }
         return;
       }
 
       setShowSessionExistsModal(false);
       setShowSessionInitializingModal(false);
       setSessionInitStatusMessage(null);
-      await refreshSessionList();
-      await handleLevelSelect(targetLevel);
+      if (!navigatedToLoading) {
+        createSessionSetup();
+        navigation.navigate('SessionLoading', { mode: 'campaign' });
+      }
+      dispatch({ type: 'RESET_GAME' });
+      resolveSessionSetup();
     } finally {
       setIsStartingGame(false);
     }
-  }, [pendingLevelWithSession, overrideCampaignSession, refreshSessionList, handleLevelSelect]);
+  }, [pendingLevelWithSession, navigation, overrideAndStartGame, dispatch]);
 
   const modalActions = anyModalOpen
     ? {

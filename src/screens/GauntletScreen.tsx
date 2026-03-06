@@ -61,7 +61,7 @@ type GauntletScreenProps = {
 
 export function GauntletScreen({ navigation }: GauntletScreenProps) {
   const gauntlet = useGauntlet();
-  const { overrideGauntletSession, fetchSessionNonces } = useSessionIdentity();
+  const { overrideAndStartGauntletGame, fetchSessionNonces } = useSessionIdentity();
   const { dispatch } = useGame();
   const { wallet, disconnect } = useWallet();
   const { connection } = useSolanaConnection();
@@ -212,17 +212,32 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
   const handleOverrideExistingSession = useCallback(async () => {
     setIsEntryTransitioning(true);
     setShowSessionExistsModal(false);
-    const overrideResult = await overrideGauntletSession();
+    let navigatedToLoading = false;
+    const overrideResult = await overrideAndStartGauntletGame(() => {
+      if (navigatedToLoading) return;
+      createSessionSetup();
+      navigation.navigate('SessionLoading', { mode: 'gauntlet' });
+      navigatedToLoading = true;
+    });
     if (!overrideResult.success) {
       setIsEntryTransitioning(false);
-      Alert.alert(
-        'Override Failed',
-        overrideResult.error ?? 'Failed to override gauntlet session.'
-      );
+      if (navigatedToLoading) {
+        rejectSessionSetup(overrideResult.error ?? 'Failed to override gauntlet session.');
+      } else {
+        Alert.alert(
+          'Override Failed',
+          overrideResult.error ?? 'Failed to override gauntlet session.'
+        );
+      }
       return;
     }
-    await handleEnterDirect();
-  }, [overrideGauntletSession, handleEnterDirect]);
+    if (!navigatedToLoading) {
+      createSessionSetup();
+      navigation.navigate('SessionLoading', { mode: 'gauntlet' });
+    }
+    dispatch({ type: 'RESET_GAME' });
+    resolveSessionSetup();
+  }, [overrideAndStartGauntletGame, navigation, dispatch]);
 
   const handlePaymentConfirm = useCallback(async () => {
     setShowPaymentModal(false);

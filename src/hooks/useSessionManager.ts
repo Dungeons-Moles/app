@@ -529,10 +529,59 @@ export function useSessionManager() {
     }
   }, [baseConnection, fetchSession, signAndSendTransaction, wallet.publicKey, baseWriteProgram]);
 
+  const buildOverrideCampaignSessionTransaction = useCallback(
+    async (): Promise<Transaction | null> => {
+      if (!wallet.publicKey || !baseWriteProgram) return null;
+      const [sessionNoncesPda] = deriveSessionNoncesPda(wallet.publicKey);
+      return baseWriteProgram.methods
+        .overrideCampaignSession()
+        .accounts({
+          sessionNonces: sessionNoncesPda,
+          player: wallet.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .transaction();
+    },
+    [wallet.publicKey, baseWriteProgram]
+  );
+
+  const buildOverrideDuelSessionTransaction = useCallback(
+    async (): Promise<Transaction | null> => {
+      if (!wallet.publicKey || !baseWriteProgram) return null;
+      const [sessionNoncesPda] = deriveSessionNoncesPda(wallet.publicKey);
+      return baseWriteProgram.methods
+        .overrideDuelSession()
+        .accounts({
+          sessionNonces: sessionNoncesPda,
+          player: wallet.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .transaction();
+    },
+    [wallet.publicKey, baseWriteProgram]
+  );
+
+  const buildOverrideGauntletSessionTransaction = useCallback(
+    async (): Promise<Transaction | null> => {
+      if (!wallet.publicKey || !baseWriteProgram) return null;
+      const [sessionNoncesPda] = deriveSessionNoncesPda(wallet.publicKey);
+      return baseWriteProgram.methods
+        .overrideGauntletSession()
+        .accounts({
+          sessionNonces: sessionNoncesPda,
+          player: wallet.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .transaction();
+    },
+    [wallet.publicKey, baseWriteProgram]
+  );
+
   const buildStartDuelSessionTransaction = useCallback(
     async (
       sessionSignerPublicKey: PublicKey,
-      mapVrfStatePda?: PublicKey | null
+      mapVrfStatePda?: PublicKey | null,
+      nonceOverride?: bigint
     ): Promise<{ transaction: Transaction; sessionPda: PublicKey } | null> => {
       if (
         !wallet.publicKey ||
@@ -552,8 +601,8 @@ export function useSessionManager() {
       const DUEL_ONCHAIN_LEVEL = 20;
       activeOnChainLevelRef.current = DUEL_ONCHAIN_LEVEL;
 
-      const nonces = await fetchSessionNonces(wallet.publicKey);
-      const [sessionPda] = deriveDuelSessionPda(wallet.publicKey, nonces.duel);
+      const nonce = nonceOverride ?? (await fetchSessionNonces(wallet.publicKey)).duel;
+      const [sessionPda] = deriveDuelSessionPda(wallet.publicKey, nonce);
       activeSessionPdaRef.current = sessionPda;
       setActiveSessionPdaState(sessionPda);
       const [counterPda] = deriveSessionCounterPda();
@@ -623,7 +672,8 @@ export function useSessionManager() {
   const buildStartGauntletSessionTransaction = useCallback(
     async (
       sessionSignerPublicKey: PublicKey,
-      mapVrfStatePda?: PublicKey | null
+      mapVrfStatePda?: PublicKey | null,
+      nonceOverride?: bigint
     ): Promise<{ transaction: Transaction; sessionPda: PublicKey } | null> => {
       if (!wallet.publicKey || !baseWriteProgram) {
         return null;
@@ -632,8 +682,8 @@ export function useSessionManager() {
       const GAUNTLET_ONCHAIN_LEVEL = 20;
       activeOnChainLevelRef.current = GAUNTLET_ONCHAIN_LEVEL;
 
-      const nonces = await fetchSessionNonces(wallet.publicKey);
-      const [sessionPda] = deriveGauntletSessionPda(wallet.publicKey, nonces.gauntlet);
+      const nonce = nonceOverride ?? (await fetchSessionNonces(wallet.publicKey)).gauntlet;
+      const [sessionPda] = deriveGauntletSessionPda(wallet.publicKey, nonce);
       activeSessionPdaRef.current = sessionPda;
       setActiveSessionPdaState(sessionPda);
       const [counterPda] = deriveSessionCounterPda();
@@ -705,7 +755,8 @@ export function useSessionManager() {
   const buildStartSessionTransaction = useCallback(
     async (
       campaignLevel: number,
-      sessionSignerPublicKey: PublicKey
+      sessionSignerPublicKey: PublicKey,
+      nonceOverride?: bigint
     ): Promise<{ transaction: Transaction; sessionPda: PublicKey } | null> => {
       if (!wallet.publicKey || !baseWriteProgram) {
         return null;
@@ -719,8 +770,8 @@ export function useSessionManager() {
       const onChainLevel = campaignLevel + 1;
       activeOnChainLevelRef.current = onChainLevel;
 
-      const nonces = await fetchSessionNonces(wallet.publicKey);
-      const [sessionPda] = deriveSessionPda(wallet.publicKey, onChainLevel, nonces.campaign);
+      const nonce = nonceOverride ?? (await fetchSessionNonces(wallet.publicKey)).campaign;
+      const [sessionPda] = deriveSessionPda(wallet.publicKey, onChainLevel, nonce);
       activeSessionPdaRef.current = sessionPda;
       setActiveSessionPdaState(sessionPda);
       const [counterPda] = deriveSessionCounterPda();
@@ -2202,6 +2253,9 @@ export function useSessionManager() {
     overrideCampaignSession,
     overrideDuelSession,
     overrideGauntletSession,
+    buildOverrideCampaignSessionTransaction,
+    buildOverrideDuelSessionTransaction,
+    buildOverrideGauntletSessionTransaction,
     buildStartDuelSessionTransaction,
     buildStartGauntletSessionTransaction,
     buildStartSessionTransaction,

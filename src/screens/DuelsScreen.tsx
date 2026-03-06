@@ -59,7 +59,7 @@ type DuelsScreenProps = {
 
 export function DuelsScreen({ navigation }: DuelsScreenProps) {
   const duels = useDuels();
-  const { overrideDuelSession, fetchSessionNonces } = useSessionIdentity();
+  const { overrideAndStartDuelGame, fetchSessionNonces } = useSessionIdentity();
   const { dispatch } = useGame();
   const { wallet, disconnect } = useWallet();
   const { connection } = useSolanaConnection();
@@ -171,13 +171,28 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
 
   const handleOverrideExistingSession = useCallback(async () => {
     setShowSessionExistsModal(false);
-    const overrideResult = await overrideDuelSession();
+    let navigatedToLoading = false;
+    const overrideResult = await overrideAndStartDuelGame(() => {
+      if (navigatedToLoading) return;
+      createSessionSetup();
+      navigation.navigate('SessionLoading', { mode: 'duel' });
+      navigatedToLoading = true;
+    });
     if (!overrideResult.success) {
-      Alert.alert('Override Failed', overrideResult.error ?? 'Failed to override duel session.');
+      if (navigatedToLoading) {
+        rejectSessionSetup(overrideResult.error ?? 'Failed to override duel session.');
+      } else {
+        Alert.alert('Override Failed', overrideResult.error ?? 'Failed to override duel session.');
+      }
       return;
     }
-    await handleEnterDirect();
-  }, [overrideDuelSession, handleEnterDirect]);
+    if (!navigatedToLoading) {
+      createSessionSetup();
+      navigation.navigate('SessionLoading', { mode: 'duel' });
+    }
+    dispatch({ type: 'RESET_GAME' });
+    resolveSessionSetup();
+  }, [overrideAndStartDuelGame, navigation, dispatch]);
 
   const handlePaymentConfirm = useCallback(async () => {
     setShowPaymentModal(false);

@@ -348,12 +348,6 @@ export function InventoryPanel({
     }
   }
 
-  // Create rows of 4 items each (4 columns x 2 rows = 8 slots)
-  const rows: (InventorySlot | null)[][] = [];
-  for (let i = 0; i < slots.length; i += 4) {
-    rows.push(slots.slice(i, i + 4));
-  }
-
   const handleToolPress = useCallback(
     (tool: Tool | Gear, _slotIndex: number) => {
       if (tool && 'rarity' in tool) {
@@ -373,6 +367,13 @@ export function InventoryPanel({
   );
 
   const variant = useScreenVariant();
+
+  // Create rows: 6 columns for gauntlet wide sidebar, 4 columns otherwise
+  const columnsPerRow = isGauntletLayout && isSidebar && variant !== 'compact' ? 6 : 4;
+  const rows: (InventorySlot | null)[][] = [];
+  for (let i = 0; i < slots.length; i += columnsPerRow) {
+    rows.push(slots.slice(i, i + columnsPerRow));
+  }
   const isCompactSidebar = !!isSidebar && variant === 'compact';
   const textColor = isSidebar ? '#000000' : '#FFFFFF';
   const useGauntletSidebarSizing = !!isSidebar && isGauntletLayout;
@@ -419,7 +420,7 @@ export function InventoryPanel({
           {rows.map((row, rowIndex) => (
             <View key={rowIndex} style={styles.gearRow}>
               {row.map((slot, colIndex) => {
-                const slotIndex = rowIndex * 4 + colIndex;
+                const slotIndex = rowIndex * columnsPerRow + colIndex;
                 const isLocked = slotIndex >= inventoryCapacity;
                 return (
                   <FocusGlow key={slotIndex} active={controllerFocusIndex === slotIndex}>

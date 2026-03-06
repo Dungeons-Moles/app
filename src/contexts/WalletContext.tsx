@@ -235,6 +235,7 @@ type WebWalletProvider = {
   signAllTransactions?: (
     transactions: Array<Transaction | VersionedTransaction>
   ) => Promise<Array<Transaction | VersionedTransaction>>;
+  signMessage?: (message: Uint8Array) => Promise<{ signature: Uint8Array }>;
   publicKey?: PublicKey;
 };
 
@@ -245,6 +246,7 @@ interface WalletContextType {
   isConnecting: boolean;
   isRestoringConnection: boolean;
   error: string | null;
+  signMessage: (message: Uint8Array) => Promise<Uint8Array>;
   signAndSendTransaction: (
     transaction: Transaction | VersionedTransaction,
     options?: { connection?: Connection; skipPreflight?: boolean }
@@ -562,6 +564,56 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     void clearMobileWalletSession();
   }, []);
 
+  const signMessage = useCallback(
+    async (message: Uint8Array): Promise<Uint8Array> => {
+      // DevKeypair: sign locally with ed25519
+      if (wallet.authToken === 'dev-web-wallet' && devWebWallet) {
+        const { ed25519 } = await import('@noble/curves/ed25519');
+        return ed25519.sign(message, devWebWallet.secretKey.slice(0, 32));
+      }
+
+      // Web wallet (Phantom/Backpack/Jupiter)
+      const webWallet = preferredWebWallet ? getWebWalletProvider(preferredWebWallet) : null;
+      if (webWallet?.signMessage) {
+        const result = await webWallet.signMessage(message);
+        return result.signature;
+      }
+
+      if (IS_WEB) {
+        throw new Error('Connected web wallet does not support signMessage');
+      }
+
+      // Mobile (MWA): sign via transact session
+      const authToken = wallet.authToken;
+      if (!authToken) {
+        throw new Error('Wallet not connected');
+      }
+
+      return transact(async (walletAdapter: Web3MobileWallet) => {
+        try {
+          await walletAdapter.reauthorize({
+            identity: APP_IDENTITY,
+            auth_token: authToken,
+          });
+        } catch {
+          await walletAdapter.authorize({
+            chain: SOLANA_CONFIG.mobileChain,
+            identity: APP_IDENTITY,
+          });
+        }
+
+        const address = wallet.address;
+        if (!address) throw new Error('No wallet address for signMessage');
+        const result = await walletAdapter.signMessages({
+          addresses: [address],
+          payloads: [message],
+        });
+        return result[0];
+      });
+    },
+    [devWebWallet, preferredWebWallet, wallet.authToken, wallet.address]
+  );
+
   const signAndSendTransaction = useCallback(
     async (
       transaction: Transaction | VersionedTransaction,
@@ -861,6 +913,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         isConnecting,
         isRestoringConnection,
         error,
+        signMessage,
         signAndSendTransaction,
         signAndSendTransactions,
         getBalance,

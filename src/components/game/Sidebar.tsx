@@ -180,11 +180,13 @@ function EchoOilSlot({ oil, size = TOOL_SLOT_SIZE }: { oil: ToolOil | null; size
 
 function EchoEquipmentGrid({ tool, gear, week, focusIndex }: { tool: Tool | null; gear: Gear[]; week: number; focusIndex?: number | null }) {
   const maxSlots = gauntletGearCapacity(week);
-  // Build rows of 4
+  // Build rows: 6 columns on wide (mobile) layout, 4 on compact
+  const variant = useScreenVariant();
+  const columnsPerRow = variant !== 'compact' ? 6 : 4;
   const rows: (Gear | null)[][] = [];
-  for (let i = 0; i < maxSlots; i += 4) {
+  for (let i = 0; i < maxSlots; i += columnsPerRow) {
     const row: (Gear | null)[] = [];
-    for (let j = 0; j < 4; j++) {
+    for (let j = 0; j < columnsPerRow; j++) {
       row.push(gear[i + j] ?? null);
     }
     rows.push(row);
@@ -200,7 +202,7 @@ function EchoEquipmentGrid({ tool, gear, week, focusIndex }: { tool: Tool | null
         {rows.map((row, ri) => (
           <View key={ri} style={styles.echoGearRow}>
             {row.map((g, ci) => {
-              const slotIndex = ri * 4 + ci;
+              const slotIndex = ri * columnsPerRow + ci;
               return (
                 <FocusGlow key={ci} active={focusIndex === slotIndex}>
                   <EchoGearSlot item={g} />

@@ -47,6 +47,11 @@ export interface UseSessionSignerReturn {
   createWithoutFunding: (
     amount?: number
   ) => Promise<{ keypair: Keypair; fundTransaction: Transaction } | null>;
+  /** Create a sessionSigner from a pre-derived keypair without funding */
+  createWithoutFundingFromKeypair: (
+    derivedKeypair: Keypair,
+    amount?: number
+  ) => Promise<{ keypair: Keypair; fundTransaction: Transaction } | null>;
   /** Mark sessionSigner as active after external funding transaction confirms */
   markAsActive: (sessionSignerKeypair: Keypair) => Promise<void>;
   /** Top up the sessionSigner with additional SOL */
@@ -361,6 +366,50 @@ export function useSessionSigner(): UseSessionSignerReturn {
     [walletAddress, wallet.publicKey]
   );
 
+  const createWithoutFundingFromKeypair = useCallback(
+    async (
+      derivedKeypair: Keypair,
+      amount: number = DEFAULT_FUND_AMOUNT
+    ): Promise<{
+      keypair: Keypair;
+      fundTransaction: ReturnType<typeof createFundSessionSignerTransaction>;
+    } | null> => {
+      if (!walletAddress || !wallet.publicKey) {
+        console.log('[useSessionSigner] createWithoutFundingFromKeypair: No wallet connected');
+        return null;
+      }
+
+      try {
+        await storeSessionSignerWallet(walletAddress, derivedKeypair, Date.now(), true);
+        console.log(
+          '[useSessionSigner] Derived sessionSigner persisted (pending):',
+          derivedKeypair.publicKey.toBase58()
+        );
+
+        const fundTx = createFundSessionSignerTransaction(
+          wallet.publicKey,
+          derivedKeypair.publicKey,
+          amount
+        );
+
+        if (isMountedRef.current) {
+          setKeypair(derivedKeypair);
+          setState('funding');
+        }
+
+        return { keypair: derivedKeypair, fundTransaction: fundTx };
+      } catch (err) {
+        console.error('[useSessionSigner] Failed to persist derived sessionSigner:', err);
+        if (isMountedRef.current) {
+          setError(err instanceof Error ? err.message : 'Failed to create sessionSigner wallet');
+          setState('failed');
+        }
+        return null;
+      }
+    },
+    [walletAddress, wallet.publicKey]
+  );
+
   /**
    * Mark sessionSigner as active after external funding transaction confirms.
    * Called after a combined transaction that includes the fund instruction.
@@ -443,6 +492,7 @@ export function useSessionSigner(): UseSessionSignerReturn {
     error,
     createAndFund,
     createWithoutFunding,
+    createWithoutFundingFromKeypair,
     markAsActive,
     topUp,
     drain,

@@ -35,6 +35,8 @@ export interface TransactionResult {
   duelQueued?: { seed: bigint; slot: number };
   /** Resolved ER connection (specific validator, not generic router). */
   resolvedErConnection?: import('@solana/web3.js').Connection;
+  /** VRF fulfillment was not confirmed yet — caller should retry via retryErVrfForSession. */
+  vrfPending?: boolean;
 }
 
 /**

@@ -137,6 +137,18 @@ const waitForErProcessedStatus = async (
 };
 
 // ============================================================================
+// Deterministic Session Key Derivation
+// ============================================================================
+
+export function buildSessionDerivationMessage(mode: string, nonce: bigint | number): Uint8Array {
+  return new TextEncoder().encode(`DnM-session-${mode}-${nonce}`);
+}
+
+export function deriveSessionSignerFromSignature(signature: Uint8Array): Keypair {
+  return Keypair.fromSeed(signature.slice(0, 32));
+}
+
+// ============================================================================
 // Types
 // ============================================================================
 
