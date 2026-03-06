@@ -4,7 +4,6 @@
             "android": { "buildType": "apk" },
             "env": {
                 "EXPO_PUBLIC_SOLANA_CLUSTER": "devnet",
-                "EXPO_PUBLIC_SOLANA_RPC_URL": "https://api.devnet.solana.com",
                 "EXPO_PUBLIC_USE_MAGIC_ROUTER": "true",
                 "EXPO_PUBLIC_ROUTER_ENDPOINT": "https://devnet-router.magicblock.app/",
                 "EXPO_PUBLIC_WS_ROUTER_ENDPOINT": "wss://devnet-router.magicblock.app/",

@@ -25,6 +25,7 @@ import { SettingsProvider } from './src/contexts/SettingsContext';
 import { AppNavigator } from './src/navigation';
 import { Psg1Wrapper } from './src/components/Psg1Wrapper';
 import { preloadCriticalImages } from './src/utils/preloadCriticalImages';
+import { Analytics } from '@vercel/analytics/react';
 
 // Critical assets to preload during splash screen (first screens the user sees)
 const PRELOAD_ASSETS = [
@@ -90,6 +91,7 @@ export default function App() {
                     <GameProvider>
                         <StatusBar style="light" hidden />
                         <AppNavigator />
+                        {Platform.OS === 'web' && <Analytics />}
                     </GameProvider>
                   </GameplayStateProvider>
                 </SessionProvider>

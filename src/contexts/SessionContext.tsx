@@ -608,11 +608,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     if (sessionManager.hasActiveSession && !wallet.isConnected) {
       setIsWalletDisconnected(true);
       stopAutoCommit();
-      Alert.alert(
-        'Wallet Disconnected',
-        'Your wallet has disconnected during an active session. Please reconnect to save your progress.',
-        [{ text: 'OK' }]
-      );
     } else if (wallet.isConnected) {
       setIsWalletDisconnected(false);
     }

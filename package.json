@@ -29,6 +29,7 @@
     "@solana-mobile/mobile-wallet-adapter-protocol": "^2.2.5",
     "@solana-mobile/mobile-wallet-adapter-protocol-web3js": "^2.2.5",
     "@solana/web3.js": "^1.98.4",
+    "@vercel/analytics": "^1.6.1",
     "buffer": "^6.0.3",
     "expo": "~54.0.30",
     "expo-av": "~16.0.8",
