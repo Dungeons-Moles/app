@@ -9,11 +9,11 @@ import {
   View,
   Text,
   StyleSheet,
-  Image,
   TouchableOpacity,
   ActivityIndicator,
   Pressable,
 } from 'react-native';
+import { CachedImage as Image } from '../common/CachedImage';
 import { CachedImageBackground } from '../common/CachedImageBackground';
 import { useInputMode } from '../../hooks/useInputMode';
 import { useControllerAction } from '../../hooks/useControllerAction';

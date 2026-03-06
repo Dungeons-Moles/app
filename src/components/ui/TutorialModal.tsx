@@ -1,5 +1,5 @@
-import React, { useState, useCallback } from 'react';
-import { View, Text, Image, StyleSheet, TouchableOpacity, Platform, Dimensions } from 'react-native';
+import React, { useState, useCallback, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Platform, Dimensions } from 'react-native';
 import { CachedImageBackground } from '../common/CachedImageBackground';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useScreenVariant } from '../../contexts/ScreenVariantContext';
@@ -9,6 +9,8 @@ import { useAudio } from '../../contexts/AudioContext';
 import { ControllerHints, type ButtonHint } from './ControllerHints';
 import { Typography } from '../../theme/typography';
 import { TUTORIAL_SEEN_KEY, TOTAL_PAGES } from './tutorialPages';
+import { CachedImage as Image } from '../common/CachedImage';
+import { preloadCriticalImages } from '../../utils/preloadCriticalImages';
 
 const BOOK_BG = require('../../../assets/ui/backgrounds/book-compact.webp');
 const BUTTON_V1 = require('../../../assets/ui/buttons/button-v1.webp');
@@ -69,6 +71,53 @@ const ICON_UNION_STANDARD = require('../../../assets/icons/itemsets/union_standa
 const ICON_SHARD_CIRCUIT = require('../../../assets/icons/itemsets/shard_circuit.webp');
 const ICON_DEMOLITION_PERMIT = require('../../../assets/icons/itemsets/demolition_permit.webp');
 
+const TUTORIAL_CRITICAL_IMAGES = [
+  BOOK_BG,
+  BUTTON_V1,
+  ICON_NORMAL_SPEED,
+  BOSS_PANEL_BG,
+  IMG_MOLE,
+  IMG_TUNNEL_RAT,
+  IMG_BROODMOTHER,
+  IMG_FLOOR,
+  IMG_ROCK,
+  ICON_HP,
+  ICON_ATK,
+  ICON_ARM,
+  ICON_SPD,
+  ICON_DIG,
+  ICON_COIN,
+  ICON_SUN,
+  ICON_MOON,
+  ICON_SKULL,
+  ICON_MAP,
+  ICON_MOLE_DEN,
+  ICON_SUPPLY_CACHE,
+  ICON_TOOL_CRATE,
+  ICON_REST_ALCOVE,
+  ICON_SMUGGLER,
+  ICON_ANVIL,
+  ICON_RUNE_KILN,
+  ICON_GEODE,
+  ICON_COUNTER_CACHE,
+  ICON_SCRAP_CHUTE,
+  ICON_RAIL,
+  ICON_OIL_RACK,
+  ICON_SURVEY,
+  ICON_SEISMIC,
+  ICON_DPAD,
+  ICON_BTN_A,
+  ICON_BTN_X,
+  ICON_BTN_Y,
+  ICON_BTN_L1,
+  ICON_BTN_R1,
+  ICON_BTN_SELECT,
+  ICON_BTN_START,
+  ICON_UNION_STANDARD,
+  ICON_SHARD_CIRCUIT,
+  ICON_DEMOLITION_PERMIT,
+] as const;
+
 interface TutorialModalProps {
   visible: boolean;
   onClose: () => void;
@@ -80,6 +129,11 @@ export function TutorialModal({ visible, onClose }: TutorialModalProps) {
   const isCompact = variant === 'compact';
   const isController = useInputMode() === 'controller';
   const { playSfx } = useAudio();
+
+  useEffect(() => {
+    if (!visible) return;
+    preloadCriticalImages(TUTORIAL_CRITICAL_IMAGES);
+  }, [visible]);
 
   const handleClose = useCallback(() => {
     playSfx('ui_back');

@@ -172,6 +172,8 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
   const inputMode = useInputMode();
   const isController = inputMode === 'controller';
   const [panelFocus, setPanelFocus] = useState(1); // 0 = History, 1 = Enter
+  const [panelWidth, setPanelWidth] = useState(300);
+  const buttonFontSize = isCompact ? 52 : panelWidth * 0.06;
 
   const handleHistory = useCallback(() => {
     playSfx('ui_click');
@@ -505,7 +507,10 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
 
             {/* Panel with all content overlaid */}
             <View style={styles.confirmCenterContent}>
-              <View style={[styles.panelWrapper, isCompact && compactStyles.panelWrapper]}>
+              <View
+                style={[styles.panelWrapper, isCompact && compactStyles.panelWrapper]}
+                onLayout={(e) => setPanelWidth(e.nativeEvent.layout.width)}
+              >
                 <Image source={PVP_MODES_PANEL} style={styles.pvpModesPanel} resizeMode="contain" />
                 <View style={[styles.panelOverlay, isCompact && compactStyles.panelOverlay]}>
                   <View
@@ -558,23 +563,20 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
                   </View>
 
                   <View style={[styles.panelButtons, isCompact && compactStyles.panelButtons]}>
-                    <FocusGlow active={isController && panelFocus === 0}>
+                    <FocusGlow style={{ flex: 1 }} active={isController && panelFocus === 0}>
                       <TouchableOpacity
                         onPress={() => navigation.navigate('PitDraftHistory')}
                         activeOpacity={0.7}
                       >
                         <Text
-                          style={[
-                            styles.panelButtonText,
-                            isCompact && compactStyles.panelButtonText,
-                          ]}
+                          style={[styles.panelButtonText, { fontSize: buttonFontSize }]}
                         >
                           History
                         </Text>
                       </TouchableOpacity>
                     </FocusGlow>
 
-                    <FocusGlow active={isController && panelFocus === 1}>
+                    <FocusGlow style={{ flex: 1 }} active={isController && panelFocus === 1}>
                       <TouchableOpacity
                         onPress={handleEnter}
                         activeOpacity={0.7}
@@ -584,11 +586,11 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
                           <Text
                             style={[
                               styles.panelButtonText,
-                              isCompact && compactStyles.panelButtonText,
+                              { fontSize: buttonFontSize },
                               pitDraft.isLoading && { opacity: 0 },
                             ]}
                           >
-                            Enter Pit Draft
+                            Enter
                           </Text>
                           {pitDraft.isLoading && (
                             <ActivityIndicator
@@ -978,6 +980,7 @@ const styles = StyleSheet.create({
   panelOverlay: {
     ...StyleSheet.absoluteFillObject,
     padding: 16,
+    flexDirection: 'column',
   },
   panelRow: {
     flexDirection: 'row',
@@ -1030,15 +1033,16 @@ const styles = StyleSheet.create({
   },
   panelButtons: {
     flexDirection: 'row',
-    gap: 62,
-    marginTop: 53,
-    marginLeft: 32,
+    marginTop: 'auto',
+    marginBottom: '-2%',
+    marginHorizontal: -16,
   },
   panelButtonText: {
     fontFamily: Typography.button,
     fontWeight: 'bold',
     fontSize: 18,
     color: '#3d2b1f',
+    textAlign: 'center',
   },
   topRight: {
     position: 'absolute',
@@ -1340,12 +1344,9 @@ const compactStyles = StyleSheet.create({
     marginTop: 10,
   },
   panelButtons: {
+    marginHorizontal: 0,
     marginTop: 150,
-    marginLeft: 146,
-    gap: 190,
-  },
-  panelButtonText: {
-    fontSize: 52,
+    marginBottom: 0,
   },
   queuingText: {
     fontSize: 44,

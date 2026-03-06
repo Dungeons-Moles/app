@@ -1,5 +1,6 @@
 import React from 'react';
-import { TouchableOpacity, Image, Text, View, StyleSheet, TextStyle } from 'react-native';
+import { TouchableOpacity, Text, View, StyleSheet, TextStyle } from 'react-native';
+import { CachedImage as Image } from '../common/CachedImage';
 import { Typography } from '../../theme/typography';
 
 const squareFrameSource = require('../../../assets/ui/frames/square.webp');

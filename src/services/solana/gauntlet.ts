@@ -500,8 +500,8 @@ export async function parseGauntletEvents(
     if (!logLine.startsWith('Program data: ')) continue;
     const buf = Buffer.from(logLine.slice('Program data: '.length), 'base64');
     if (buf.length < 8) continue;
-    const disc = buf.subarray(0, 8);
-    const data = buf.subarray(8);
+    const disc = Buffer.from(buf.subarray(0, 8));
+    const data = Buffer.from(buf.subarray(8));
 
     if (!result.combatVisual && disc.equals(GAUNTLET_COMBAT_VISUAL_DISC)) {
       result.combatVisual = decodeGauntletCombatVisual(data);

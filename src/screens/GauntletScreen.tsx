@@ -45,6 +45,7 @@ const GAUNTLET_TITLE = require('../../assets/ui/text/gauntlet.webp');
 const PVP_MODES_PANEL = require('../../assets/ui/panels/pvp-modes-panel.webp');
 const buttonV1Source = require('../../assets/ui/buttons/button-v1.webp');
 const buttonV2Source = require('../../assets/ui/buttons/button-v2.webp');
+const buttonV4Source = require('../../assets/ui/buttons/button-v4.webp');
 const SOL_PILE = require('../../assets/ui/illustrations/sol-pile.webp');
 const CHEST = require('../../assets/ui/illustrations/chest.webp');
 const ECHO_FIGHT = require('../../assets/ui/illustrations/echo-fight.webp');
@@ -68,6 +69,7 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
   const isFocused = useIsFocused();
   const isCompact = useScreenVariant() === 'compact';
   const [hasExistingGauntletSessionOnChain, setHasExistingGauntletSessionOnChain] = useState(false);
+  const [isCheckingSession, setIsCheckingSession] = useState(true);
   const lastShownErrorRef = useRef<string | null>(null);
 
   const { playSfx } = useAudio();
@@ -110,8 +112,12 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
   useEffect(() => {
     let cancelled = false;
     const checkGauntletSession = async () => {
+      if (!cancelled) setIsCheckingSession(true);
       if (!wallet.publicKey) {
-        if (!cancelled) setHasExistingGauntletSessionOnChain(false);
+        if (!cancelled) {
+          setHasExistingGauntletSessionOnChain(false);
+          setIsCheckingSession(false);
+        }
         return;
       }
       try {
@@ -121,6 +127,8 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
         if (!cancelled) setHasExistingGauntletSessionOnChain(account !== null);
       } catch {
         if (!cancelled) setHasExistingGauntletSessionOnChain(false);
+      } finally {
+        if (!cancelled) setIsCheckingSession(false);
       }
     };
     checkGauntletSession();
@@ -170,11 +178,11 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
     });
     if (ok) {
       dispatch({ type: 'RESET_GAME' });
-      if (navigatedToLoading) {
-        resolveSessionSetup();
-      } else {
-        navigation.navigate('Game');
+      if (!navigatedToLoading) {
+        createSessionSetup();
+        navigation.navigate('SessionLoading', { mode: 'gauntlet' });
       }
+      resolveSessionSetup();
       return;
     }
     if (navigatedToLoading) {
@@ -229,6 +237,8 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
   const inputMode = useInputMode();
   const isController = inputMode === 'controller';
   const [panelFocus, setPanelFocus] = useState(1); // 0 = History, 1 = Enter
+  const [panelWidth, setPanelWidth] = useState(300);
+  const buttonFontSize = isCompact ? 52 : panelWidth * 0.06;
 
   const handleHistory = useCallback(() => {
     playSfx('ui_click');
@@ -414,10 +424,10 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
 
           {/* Panel with all content overlaid */}
           <View style={[styles.centerContent, isCompact && compactStyles.centerContent]}>
-            <View style={[
-              styles.panelWrapper,
-              isCompact && compactStyles.panelWrapper,
-            ]}>
+            <View
+              style={[styles.panelWrapper, isCompact && compactStyles.panelWrapper]}
+              onLayout={(e) => setPanelWidth(e.nativeEvent.layout.width)}
+            >
               <Image source={PVP_MODES_PANEL} style={styles.pvpModesPanel} resizeMode="contain" />
               <View style={[styles.panelOverlay, isCompact && compactStyles.panelOverlay]}>
                 <View
@@ -470,36 +480,36 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
                 </View>
 
                 <View style={[styles.panelButtons, isCompact && compactStyles.panelButtons]}>
-                  <FocusGlow active={isController && panelFocus === 0}>
+                  <FocusGlow style={{ flex: 1 }} active={isController && panelFocus === 0}>
                     <TouchableOpacity
                       onPress={() => navigation.navigate('GauntletHistory')}
                       activeOpacity={0.7}
                     >
                       <Text
-                        style={[styles.panelButtonText, isCompact && compactStyles.panelButtonText]}
+                        style={[styles.panelButtonText, { fontSize: buttonFontSize }]}
                       >
                         History
                       </Text>
                     </TouchableOpacity>
                   </FocusGlow>
 
-                  <FocusGlow active={isController && panelFocus === 1}>
+                  <FocusGlow style={{ flex: 1 }} active={isController && panelFocus === 1}>
                     <TouchableOpacity
                       onPress={handleEnter}
                       activeOpacity={0.7}
-                      disabled={gauntlet.isLoading || isEntryTransitioning}
+                      disabled={gauntlet.isLoading || isEntryTransitioning || isCheckingSession}
                     >
                       <View>
                         <Text
                           style={[
                             styles.panelButtonText,
-                            isCompact && compactStyles.panelButtonText,
-                            (gauntlet.isLoading || isEntryTransitioning) && { opacity: 0 },
+                            { fontSize: buttonFontSize },
+                            (gauntlet.isLoading || isEntryTransitioning || isCheckingSession) && { opacity: 0 },
                           ]}
                         >
-                          {hasExistingGauntletSession ? 'Resume Session' : 'Enter Gauntlet'}
+                          {hasExistingGauntletSession ? 'Resume' : 'Enter'}
                         </Text>
-                        {(gauntlet.isLoading || isEntryTransitioning) && (
+                        {(gauntlet.isLoading || isEntryTransitioning || isCheckingSession) && (
                           <ActivityIndicator
                             color="#3d2b1f"
                             size={isCompact ? 'large' : 'small'}
@@ -609,20 +619,32 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
               </View>
             ) : (
               <View style={styles.modalButtons}>
-                <TouchableOpacity
-                  style={styles.modalButtonSecondary}
-                  onPress={() => setShowSessionExistsModal(false)}
-                >
-                  <Text style={styles.modalButtonTextSecondary}>Cancel</Text>
+                <TouchableOpacity onPress={() => setShowSessionExistsModal(false)}>
+                  <CachedImageBackground
+                    source={buttonV1Source}
+                    resizeMode="stretch"
+                    style={styles.modalButtonBg}
+                  >
+                    <Text style={styles.modalButtonTextSecondary}>Cancel</Text>
+                  </CachedImageBackground>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.modalButtonSecondary}
-                  onPress={handleOverrideExistingSession}
-                >
-                  <Text style={styles.modalButtonTextSecondary}>Override</Text>
+                <TouchableOpacity onPress={handleOverrideExistingSession}>
+                  <CachedImageBackground
+                    source={buttonV1Source}
+                    resizeMode="stretch"
+                    style={styles.modalButtonBg}
+                  >
+                    <Text style={styles.modalButtonTextSecondary}>Override</Text>
+                  </CachedImageBackground>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.modalButtonPrimary} onPress={handleResumeExistingSession}>
-                  <Text style={styles.modalButtonTextPrimary}>Resume</Text>
+                <TouchableOpacity onPress={handleResumeExistingSession}>
+                  <CachedImageBackground
+                    source={buttonV4Source}
+                    resizeMode="stretch"
+                    style={styles.modalButtonBg}
+                  >
+                    <Text style={styles.modalButtonTextPrimary}>Resume</Text>
+                  </CachedImageBackground>
                 </TouchableOpacity>
               </View>
             )}
@@ -720,6 +742,7 @@ const styles = StyleSheet.create({
   panelOverlay: {
     ...StyleSheet.absoluteFillObject,
     padding: 16,
+    flexDirection: 'column',
   },
   panelRow: {
     flexDirection: 'row',
@@ -747,9 +770,9 @@ const styles = StyleSheet.create({
   },
   panelButtons: {
     flexDirection: 'row',
-    gap: 62,
-    marginTop: 53,
-    marginLeft: 32,
+    marginTop: 'auto',
+    marginBottom: '-2%',
+    marginHorizontal: -16,
   },
   panelTextFee: {
     fontFamily: Typography.number,
@@ -781,6 +804,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 18,
     color: '#3d2b1f',
+    textAlign: 'center',
   },
   topRight: {
     position: 'absolute',
@@ -823,7 +847,6 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     width: 360,
-    height: 300,
     padding: 36,
     alignItems: 'center',
     justifyContent: 'flex-start',
@@ -848,23 +871,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 10,
   },
-  modalButtonPrimary: {
-    flex: 1,
-    backgroundColor: '#8ad66f',
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: '#5f8f4d',
+  modalButtonBg: {
     paddingVertical: 10,
+    paddingHorizontal: 20,
+    minWidth: 100,
     alignItems: 'center',
-  },
-  modalButtonSecondary: {
-    flex: 1,
-    backgroundColor: '#e6c7a7',
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: '#7f5539',
-    paddingVertical: 10,
-    alignItems: 'center',
+    justifyContent: 'center',
   },
   modalButtonTextPrimary: {
     fontFamily: Typography.button,
@@ -938,13 +950,9 @@ const compactStyles = StyleSheet.create({
     height: 162,
   },
   panelButtons: {
-    flexDirection: 'row',
+    marginHorizontal: 0,
     marginTop: 150,
-    marginLeft: 146,
-    gap: 190,
-  },
-  panelButtonText: {
-    fontSize: 52,
+    marginBottom: 0,
   },
   tokenSelectorWrap: {
     alignItems: 'center',
@@ -952,7 +960,6 @@ const compactStyles = StyleSheet.create({
   },
   modalContent: {
     width: 860,
-    height: 380,
     padding: 50,
   },
   modalTitle: {

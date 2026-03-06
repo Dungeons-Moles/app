@@ -5,7 +5,8 @@
  * buttons perform which actions on the current screen.
  */
 import React from 'react';
-import { View, Image, Text, StyleSheet, type ImageSourcePropType } from 'react-native';
+import { View, Text, StyleSheet, type ImageSourcePropType } from 'react-native';
+import { CachedImage as Image } from '../common/CachedImage';
 import { useInputMode } from '../../hooks/useInputMode';
 import { useScreenVariant } from '../../contexts/ScreenVariantContext';
 

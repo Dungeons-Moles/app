@@ -242,15 +242,21 @@ export async function abandonSession(
     }
   }
 
-  // Check which VRF accounts exist (only for sessions that used VRF)
+  // Check which VRF accounts exist and are closeable (owned by the program, not delegated).
+  // Delegated accounts are owned by the delegation program and cannot be closed on base layer.
+  const DELEGATION_PROGRAM_ID = new PublicKey('DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh');
   const [mapVrfStatePda] = deriveMapVrfStatePda(sessionPda);
   const [poiVrfStatePda] = derivePoiVrfStatePda(sessionPda);
   const [gameplayVrfStatePda] = deriveGameplayVrfStatePda(sessionPda);
-  const [mapVrfInfo, poiVrfInfo, gameplayVrfInfo] = await Promise.all([
+  const [mapVrfInfoRaw, poiVrfInfoRaw, gameplayVrfInfoRaw] = await Promise.all([
     connection.getAccountInfo(mapVrfStatePda).catch(() => null),
     connection.getAccountInfo(poiVrfStatePda).catch(() => null),
     connection.getAccountInfo(gameplayVrfStatePda).catch(() => null),
   ]);
+  // Only include VRF accounts that are NOT still delegated
+  const mapVrfInfo = mapVrfInfoRaw && !mapVrfInfoRaw.owner.equals(DELEGATION_PROGRAM_ID) ? mapVrfInfoRaw : null;
+  const poiVrfInfo = poiVrfInfoRaw && !poiVrfInfoRaw.owner.equals(DELEGATION_PROGRAM_ID) ? poiVrfInfoRaw : null;
+  const gameplayVrfInfo = gameplayVrfInfoRaw && !gameplayVrfInfoRaw.owner.equals(DELEGATION_PROGRAM_ID) ? gameplayVrfInfoRaw : null;
 
   const abandonSessionIx = await program.methods
     .abandonSession(campaignLevel)

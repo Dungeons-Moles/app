@@ -1,7 +1,8 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Image, ImageSourcePropType } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ImageSourcePropType } from 'react-native';
 import { Typography } from '@/theme/typography';
 import { useAudio } from '@/contexts/AudioContext';
+import { CachedImage as Image } from '@/components/common/CachedImage';
 
 interface QuestCardProps {
   objectiveText: string;

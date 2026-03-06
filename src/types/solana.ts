@@ -33,6 +33,8 @@ export interface TransactionResult {
   sessionPda?: string;
   isResumed?: boolean;
   duelQueued?: { seed: bigint; slot: number };
+  /** Resolved ER connection (specific validator, not generic router). */
+  resolvedErConnection?: import('@solana/web3.js').Connection;
 }
 
 /**

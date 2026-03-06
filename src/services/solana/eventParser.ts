@@ -323,14 +323,15 @@ export async function parseCombatLog(
     try {
       const buf = Buffer.from(base64Data, 'base64');
       if (buf.length >= 8) {
-        const disc = buf.subarray(0, 8);
+        const disc = Buffer.from(buf.subarray(0, 8));
+        const data = Buffer.from(buf.subarray(8));
         if (!log && disc.equals(COMBAT_LOG_DISCRIMINATOR)) {
-          const result = decodeCombatLogManually(buf.subarray(8));
+          const result = decodeCombatLogManually(data);
           if (result && result.entries.length > 0) {
             log = result;
           }
         } else if (!enemyInfo && disc.equals(COMBAT_STARTED_DISCRIMINATOR)) {
-          enemyInfo = decodeCombatStartedEnemyInfo(buf.subarray(8));
+          enemyInfo = decodeCombatStartedEnemyInfo(data);
           if (enemyInfo) {
             console.log('[parseCombatLog] Extracted enemy info: archetype=', enemyInfo.archetype, 'hp=', enemyInfo.hp);
           }
@@ -414,15 +415,15 @@ export async function parseBossCombatFromMoveTx(
       }
 
       if (buf.length >= 8) {
-        const disc = buf.subarray(0, 8);
+        const disc = Buffer.from(buf.subarray(0, 8));
         if (disc.equals(COMBAT_LOG_DISCRIMINATOR)) {
-          const result = decodeCombatLogManually(buf.subarray(8));
+          const result = decodeCombatLogManually(Buffer.from(buf.subarray(8)));
           if (result && result.entries.length > 0) {
             lastLog = result; // Keep scanning — we want the LAST match
           }
         } else if (disc.equals(COMBAT_STARTED_DISCRIMINATOR)) {
           const PUBKEY_LEN = 32;
-          const data = buf.subarray(8);
+          const data = Buffer.from(buf.subarray(8));
           if (data.length >= PUBKEY_LEN + 2) {
             lastPlayerHp = data.readInt16LE(PUBKEY_LEN); // player_hp at offset 32
           }

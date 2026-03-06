@@ -2,7 +2,7 @@
 import './src/polyfills';
 
 import React, { useEffect, useState } from 'react';
-import { Image, Platform } from 'react-native';
+import { Platform } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as ScreenOrientation from 'expo-screen-orientation';
@@ -24,6 +24,7 @@ import { AudioProvider } from './src/contexts/AudioContext';
 import { SettingsProvider } from './src/contexts/SettingsContext';
 import { AppNavigator } from './src/navigation';
 import { Psg1Wrapper } from './src/components/Psg1Wrapper';
+import { preloadCriticalImages } from './src/utils/preloadCriticalImages';
 
 // Critical assets to preload during splash screen (first screens the user sees)
 const PRELOAD_ASSETS = [
@@ -34,23 +35,7 @@ const PRELOAD_ASSETS = [
   require('./assets/ui/backgrounds/hub-background-wide.webp'),
   require('./assets/ui/panels/paper-panel.webp'),
   require('./assets/branding/logo.webp'),
-];
-
-function prefetchImages(images: number[]): Promise<void> {
-  if (Platform.OS === 'web') {
-    // Image.resolveAssetSource is not available on web; skip prefetch
-    return Promise.resolve();
-  }
-  return Promise.all(
-    images.map((source) => {
-      const resolved = Image.resolveAssetSource(source);
-      if (resolved?.uri) {
-        return Image.prefetch(resolved.uri).catch(() => {});
-      }
-      return Promise.resolve();
-    })
-  ).then(() => {});
-}
+] as const;
 
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
@@ -66,7 +51,9 @@ export default function App() {
   const [assetsLoaded, setAssetsLoaded] = useState(false);
 
   useEffect(() => {
-    ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
+    ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE).catch(() => {
+      // Some mobile browsers do not support orientation locking.
+    });
 
     if (Platform.OS === 'android') {
       NavigationBar.setVisibilityAsync('hidden');
@@ -75,7 +62,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    prefetchImages(PRELOAD_ASSETS).then(() => setAssetsLoaded(true));
+    preloadCriticalImages(PRELOAD_ASSETS).then(() => setAssetsLoaded(true));
   }, []);
 
   const isReady = (fontsLoaded || fontError) && assetsLoaded;

@@ -650,7 +650,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
     refreshMapEntities,
     refresh: refreshGameplayState,
   } = useGameplayStateContext();
-  const { gameplayConnection } = useSolanaConnection();
+  const { gameplayConnection, gameplayReadConnection } = useSolanaConnection();
   const { wallet } = useWallet();
   const { playSfx } = useAudio();
 
@@ -1728,7 +1728,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
 
         await refreshGameplayState();
 
-        const gameplayProgram = createGameplayStateProgram(gameplayConnection);
+        const gameplayProgram = createGameplayStateProgram(gameplayReadConnection);
         const updatedState = await fetchGameState(gameplayProgram, ctx.gameStatePda);
 
         return { success: true, newState: updatedState };
@@ -1742,7 +1742,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
     },
     [
       createPoiCtx,
-      gameplayConnection,
+      gameplayReadConnection,
       findPoiIndex,
       refreshGameplayState,
     ]
@@ -2035,7 +2035,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
 
             // Parse inline boss combat (if Night3 triggered resolution in the same tx).
             // We do this before syncing local state so navigation can use authoritative logs.
-            const gameplayProgram = createGameplayStateProgram(gameplayConnection);
+            const gameplayProgram = createGameplayStateProgram(gameplayReadConnection);
             let parsedBossCombat:
               | Awaited<ReturnType<typeof parseBossCombatFromMoveTx>>
               | undefined;
@@ -2166,7 +2166,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             debugLog('[usePoiInteraction] Tool oil applied on-chain:', modification);
 
             // Update tool from confirmed on-chain inventory (not optimistic)
-            const oilInventoryProgram = createPlayerInventoryProgram(gameplayConnection);
+            const oilInventoryProgram = createPlayerInventoryProgram(gameplayReadConnection);
             const [oilInventoryPda] = deriveInventoryPda(ctx.sessionPda);
             const oilInventoryData = await fetchInventory(oilInventoryProgram, oilInventoryPda);
 
@@ -2276,7 +2276,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
                 // Refresh gameplay state to sync position
                 await refreshGameplayState();
 
-                const gameplayProgram = createGameplayStateProgram(gameplayConnection);
+                const gameplayProgram = createGameplayStateProgram(gameplayReadConnection);
                 const updatedState = await fetchGameState(gameplayProgram, ctx.gameStatePda);
                 if (updatedState) {
                   dispatch({ type: 'SYNC_MOVE', confirmedState: updatedState });
@@ -2311,7 +2311,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
 
               // Sync gold from on-chain state after reroll
               await refreshGameplayState();
-              const rerollGameplayProgram = createGameplayStateProgram(gameplayConnection);
+              const rerollGameplayProgram = createGameplayStateProgram(gameplayReadConnection);
               const updatedRerollState = await fetchGameState(
                 rerollGameplayProgram,
                 ctx.gameStatePda
@@ -2350,7 +2350,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
 
             // Sync gold + inventory from on-chain state after purchase
             await refreshGameplayState();
-            const gameplayProgram = createGameplayStateProgram(gameplayConnection);
+            const gameplayProgram = createGameplayStateProgram(gameplayReadConnection);
             const updatedShopState = await fetchGameState(gameplayProgram, ctx.gameStatePda);
             if (updatedShopState) {
               debugLog(
@@ -2361,7 +2361,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             }
 
             // Sync inventory so newly purchased gear is available to other POIs (e.g. Rune Kiln)
-            const shopInventoryProgram = createPlayerInventoryProgram(gameplayConnection);
+            const shopInventoryProgram = createPlayerInventoryProgram(gameplayReadConnection);
             const [shopInventoryPda] = deriveInventoryPda(ctx.sessionPda);
             const shopInventoryData = await fetchInventory(
               shopInventoryProgram,
@@ -2450,7 +2450,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             playSfx('poi_kiln');
 
             // Sync inventory from confirmed on-chain state (not optimistic)
-            const kilnInventoryProgram = createPlayerInventoryProgram(gameplayConnection);
+            const kilnInventoryProgram = createPlayerInventoryProgram(gameplayReadConnection);
             const [kilnInventoryPda] = deriveInventoryPda(ctx.sessionPda);
             const kilnInventoryData = await fetchInventory(
               kilnInventoryProgram,
@@ -2564,8 +2564,8 @@ export function usePoiInteraction(): UsePoiInteractionResult {
 
             // Fetch confirmed on-chain state (gameplay + inventory) to verify the upgrade
             const [gameplayProgram, inventoryProgram] = [
-              createGameplayStateProgram(gameplayConnection),
-              createPlayerInventoryProgram(gameplayConnection),
+              createGameplayStateProgram(gameplayReadConnection),
+              createPlayerInventoryProgram(gameplayReadConnection),
             ];
             const [inventoryPda] = deriveInventoryPda(ctx.sessionPda);
 
@@ -2676,8 +2676,8 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             playSfx('gold_pickup');
 
             // Fetch confirmed on-chain state (gameplay + inventory)
-            const scrapGameplayProgram = createGameplayStateProgram(gameplayConnection);
-            const scrapInventoryProgram = createPlayerInventoryProgram(gameplayConnection);
+            const scrapGameplayProgram = createGameplayStateProgram(gameplayReadConnection);
+            const scrapInventoryProgram = createPlayerInventoryProgram(gameplayReadConnection);
             const [scrapInventoryPda] = deriveInventoryPda(ctx.sessionPda);
 
             const [updatedScrapState, scrapInventoryData] = await Promise.all([

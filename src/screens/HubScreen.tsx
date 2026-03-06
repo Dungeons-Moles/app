@@ -38,6 +38,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BetaWelcomeModal, BETA_WELCOME_KEY } from '../components/ui/BetaWelcomeModal';
 import { ControllerKeyboard } from '../components/ui/ControllerKeyboard';
 import { getVrfSeed } from '../services/solana/vrf';
+import {
+  createSessionSetup,
+  resolveSessionSetup,
+  rejectSessionSetup,
+} from '../utils/sessionSetupSignal';
 import { useNftMarketplace } from '../hooks/useNftMarketplace';
 import { useQuests } from '../hooks/useQuests';
 import { useEquipSkin } from '../hooks/useEquipSkin';
@@ -55,6 +60,8 @@ import {
 import { createGameplayStateProgram } from '../services/solana/programs';
 import { PublicKey } from '@solana/web3.js';
 import { GauntletPoolBadge } from '../components/ui/GauntletPoolBadge';
+import { preloadCriticalImages } from '../utils/preloadCriticalImages';
+import { GAME_SCREEN_CRITICAL_IMAGES } from '../constants/criticalImages';
 
 const iconASource = require('../../assets/ui/control-buttons/a.webp');
 const iconBSource = require('../../assets/ui/control-buttons/b.webp');
@@ -208,6 +215,11 @@ export function HubScreen({ navigation }: HubScreenProps) {
   }, [getBalance, isGuest, isScreenFocused, wallet.publicKey]);
 
   useEffect(() => {
+    if (!isGuest) return;
+    preloadCriticalImages(GAME_SCREEN_CRITICAL_IMAGES);
+  }, [isGuest]);
+
+  useEffect(() => {
     if (!isScreenFocused || isGuest || !wallet.publicKey) return;
     let cancelled = false;
     const fetchGauntletData = async () => {
@@ -310,16 +322,18 @@ export function HubScreen({ navigation }: HubScreenProps) {
   const handlePlayPvE = useCallback(async () => {
     playSfx('ui_click');
     if (isGuest) {
-      // Guest mode: Start game directly with secure/VRF-backed seed
-      const seed = await getVrfSeed();
-
-      // Reset any existing game state before starting a new one
-      if (gameState) {
-        dispatch({ type: 'RESET_GAME' });
+      createSessionSetup();
+      navigation.navigate('SessionLoading', { mode: 'campaign' });
+      try {
+        const seed = await getVrfSeed();
+        if (gameState) {
+          dispatch({ type: 'RESET_GAME' });
+        }
+        dispatch({ type: 'START_GAME', seed });
+        resolveSessionSetup();
+      } catch (err) {
+        rejectSessionSetup(err instanceof Error ? err.message : 'Failed to start game.');
       }
-
-      dispatch({ type: 'START_GAME', seed });
-      navigation.navigate('Game');
     } else {
       // Navigate to campaign selection screen
       navigation.navigate('CampaignSelect');

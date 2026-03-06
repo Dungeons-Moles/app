@@ -6,6 +6,7 @@ import { RootStackParamList } from '../navigation';
 import { useWallet } from '../contexts/WalletContext';
 import { useProfile } from '../contexts/ProfileContext';
 import { useScreenVariant } from '../contexts/ScreenVariantContext';
+import { ITEM_AND_OIL_PRELOAD_IMAGES } from '../constants/preloadAssets';
 
 // All images to prefetch during loading — grouped by screen
 const PREFETCH_IMAGES = [
@@ -78,6 +79,7 @@ const PREFETCH_IMAGES = [
   require('../../assets/ui/buttons/button-v2.webp'),
   require('../../assets/ui/buttons/button-v3.webp'),
   require('../../assets/ui/buttons/button-v4.webp'),
+  ...ITEM_AND_OIL_PRELOAD_IMAGES,
 ];
 
 type LoadingScreenProps = {

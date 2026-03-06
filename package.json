@@ -10,6 +10,7 @@
     "lint": "eslint . --ext .ts,.tsx",
     "lint:fix": "eslint . --ext .ts,.tsx --fix",
     "format": "prettier --write \"src/**/*.{ts,tsx}\"",
+    "optimize:images": "node scripts/optimize-runtime-images.mjs",
     "typecheck": "tsc --noEmit",
     "test": "jest",
     "test:watch": "jest --watch",

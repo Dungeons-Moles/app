@@ -71,14 +71,19 @@ export const CombatLayout = React.memo(function CombatLayout({
   const isCompact = variant === 'compact';
   const scale = isCompact ? 2 : 1;
 
+  // Start hidden and fade in after a short delay so Skia images
+  // (combat background, character sprites) have time to decode.
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 800,
-      useNativeDriver: true,
-    }).start();
+    const timer = setTimeout(() => {
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 400,
+        useNativeDriver: true,
+      }).start();
+    }, 350);
+    return () => clearTimeout(timer);
   }, []);
 
   // --- Controller: speed cycling ---
@@ -285,6 +290,7 @@ export const CombatLayout = React.memo(function CombatLayout({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#F5F0DD',
   },
   backgroundImage: {
     flex: 1,

@@ -129,7 +129,7 @@ export interface UseGameplayStateReturn {
 // ============================================================================
 
 export function useGameplayState(): UseGameplayStateReturn {
-  const { gameplayConnection } = useSolanaConnection();
+  const { gameplayConnection, gameplayReadConnection } = useSolanaConnection();
   const { wallet } = useWallet();
 
   const [gameState, setGameState] = useState<GameState | null>(null);
@@ -149,7 +149,9 @@ export function useGameplayState(): UseGameplayStateReturn {
     };
   }, []);
 
-  // Create a minimal provider for read operations
+  // Create a minimal provider for read operations.
+  // Uses gameplayReadConnection (resolved ER validator) instead of gameplayConnection
+  // (router) because the router returns zeroed data for delegated account reads.
   const provider = useMemo(() => {
     if (!wallet.publicKey) {
       return null;
@@ -161,8 +163,8 @@ export function useGameplayState(): UseGameplayStateReturn {
       signAllTransactions: async (transactions) => transactions,
     } as AnchorProvider['wallet'];
 
-    return createAnchorProvider(gameplayConnection, walletAdapter);
-  }, [gameplayConnection, wallet.publicKey]);
+    return createAnchorProvider(gameplayReadConnection, walletAdapter);
+  }, [gameplayReadConnection, wallet.publicKey]);
 
   const program = useMemo(() => {
     if (!provider) {

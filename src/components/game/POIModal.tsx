@@ -11,7 +11,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   type GestureResponderEvent,
-  Image,
   Modal,
   Pressable,
   Platform,
@@ -46,6 +45,8 @@ import { useInputMode } from '../../hooks/useInputMode';
 import { useControllerAction } from '../../hooks/useControllerAction';
 import { FocusGlow } from '../ui/FocusGlow';
 import { useAudio, type SfxTrack } from '@/contexts/AudioContext';
+import { CachedImage as Image } from '../common/CachedImage';
+import { preloadCriticalImages } from '@/utils/preloadCriticalImages';
 
 const POI_SFX_MAP: Partial<Record<string, SfxTrack>> = {
   L1: 'poi_rest',
@@ -405,6 +406,34 @@ export const POIModal = React.memo(function POIModal({
   const isRestAlcove = poiId === 'L5';
   const isSeismicScanner = poiId === 'L7';
   const isScrapChute = poiId === 'L14';
+  const modalImageSources = useMemo(() => {
+    const sources: Array<ReturnType<typeof require>> = [paperPanelSource, squareSource];
+
+    for (const { option } of indexedOptions) {
+      if (option.item?.image) {
+        sources.push(option.item.image);
+      }
+    }
+
+    for (const { image } of Object.values(STAT_EMOJI_MAP)) {
+      if (image) {
+        sources.push(image);
+      }
+    }
+
+    if (kilnSelection?.gearId) {
+      const gearImage = getGearImage(kilnSelection.gearId);
+      if (gearImage) {
+        sources.push(gearImage);
+      }
+    }
+
+    if (scrapSelection?.image) {
+      sources.push(scrapSelection.image);
+    }
+
+    return sources;
+  }, [indexedOptions, kilnSelection?.gearId, scrapSelection?.image]);
 
   // --- Controller support ---
   const inputMode = useInputMode();
@@ -449,6 +478,11 @@ export const POIModal = React.memo(function POIModal({
       setSelectedThreeChoiceIndex(null);
     }
   }, [visible]);
+
+  useEffect(() => {
+    if (!visible) return;
+    preloadCriticalImages(modalImageSources);
+  }, [visible, modalImageSources]);
 
   // Play POI SFX when modal opens
   useEffect(() => {

@@ -105,6 +105,8 @@ export const SOLANA_CONFIG = {
   rpcUrl,
   erRpcUrl,
   erWsUrl,
+  directErRpcUrl,
+  directErWsUrl,
   useMagicRouter,
   commitment: baseCommitment,
   baseCommitment,

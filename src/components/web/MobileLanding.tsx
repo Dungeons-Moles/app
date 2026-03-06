@@ -4,6 +4,12 @@
  */
 import React, { useState } from 'react';
 import { APP_VERSION } from '../../constants/app';
+import {
+  VideoOverlay,
+  isDemoRoute,
+  navigateFromDemo,
+  navigateToDemo,
+} from './SocialSidebar';
 
 const APK_RELEASE_URL = `https://github.com/Dungeons-Moles/app/releases/download/v${APP_VERSION}/dungeons-and-moles.apk`;
 
@@ -62,12 +68,14 @@ function InkButton({
   icon,
   label,
   href,
+  onClick,
   sublabel,
   delay,
 }: {
   icon: React.ReactNode;
   label: string;
-  href: string;
+  href?: string;
+  onClick?: () => void;
   sublabel?: string;
   delay: number;
 }) {
@@ -76,8 +84,13 @@ function InkButton({
   return (
     <a
       href={href}
-      target="_blank"
-      rel="noopener noreferrer"
+      target={href ? '_blank' : undefined}
+      rel={href ? 'noopener noreferrer' : undefined}
+      onClick={(event) => {
+        if (!onClick) return;
+        event.preventDefault();
+        onClick();
+      }}
       onTouchStart={() => setPressed(true)}
       onTouchEnd={() => setPressed(false)}
       onMouseDown={() => setPressed(true)}
@@ -153,6 +166,14 @@ function InkDivider({ delay }: { delay: number }) {
 /* ── Main Component ────────────────────────────────────────── */
 
 export function MobileLanding() {
+  const [demoOpen, setDemoOpen] = useState(isDemoRoute);
+
+  React.useEffect(() => {
+    const onPopState = () => setDemoOpen(isDemoRoute());
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
   return (
     <>
       {/* Google Fonts link for IM Fell English */}
@@ -233,8 +254,8 @@ export function MobileLanding() {
             src={LOGO_URI}
             alt="Dungeons & Moles"
             style={{
-              width: '88%',
-              maxWidth: 340,
+              width: '94%',
+              maxWidth: 372,
               height: 'auto',
               marginBottom: 14,
               animation: 'dm-ink-fadeUp 0.6s ease 0.1s both',
@@ -269,6 +290,8 @@ export function MobileLanding() {
             }}
           >
             Play on desktop or download the APK.
+            <br />
+            Soon on Solana Seeker and PlaySolana PSG1.
           </p>
 
           <InkDivider delay={0.35} />
@@ -294,7 +317,7 @@ export function MobileLanding() {
             <InkButton
               icon={<TvIcon />}
               label="Watch Demo"
-              href="https://dungeonsandmoles.com/video"
+              onClick={navigateToDemo}
               delay={0.5}
             />
             <InkButton
@@ -327,6 +350,8 @@ export function MobileLanding() {
           </p>
         </div>
       </div>
+
+      {demoOpen && <VideoOverlay onClose={navigateFromDemo} />}
 
       <style>{`
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }

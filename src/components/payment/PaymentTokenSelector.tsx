@@ -4,10 +4,11 @@
  * Selected token gets golden border matching parchment theme.
  */
 import React, { useMemo } from 'react';
-import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Typography } from '@/theme/typography';
 import { FocusGlow } from '@/components/ui/FocusGlow';
 import type { SupportedToken, SwapQuote } from '@/services/solana/jupiter';
+import { CachedImage as Image } from '@/components/common/CachedImage';
 
 const TOKEN_ICONS: Record<string, ReturnType<typeof require>> = {
   SOL: require('../../../assets/icons/tokens/solana-sol-logo.webp'),

@@ -521,8 +521,8 @@ export async function parseDuelEvents(
       const buf = Buffer.from(base64Data, 'base64');
       if (buf.length < 8) continue;
 
-      const disc = buf.subarray(0, 8);
-      const data = buf.subarray(8);
+      const disc = Buffer.from(buf.subarray(0, 8));
+      const data = Buffer.from(buf.subarray(8));
 
       if (!result.queued && disc.equals(DUEL_QUEUED_DISC)) {
         result.queued = decodeDuelQueued(data);

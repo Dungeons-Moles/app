@@ -4,11 +4,12 @@
  * Used when psg1-sim intercepts physical keys (j→A, k→B, arrows→DPad).
  */
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, Image } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { InlineModal } from '../InlineModal';
 import { useControllerAction } from '../../hooks/useControllerAction';
 import { useScreenVariant } from '../../contexts/ScreenVariantContext';
 import { Typography } from '../../theme/typography';
+import { CachedImage as Image } from '../common/CachedImage';
 
 const ICON_A = require('../../../assets/ui/control-buttons/a.webp');
 const ICON_B = require('../../../assets/ui/control-buttons/b.webp');

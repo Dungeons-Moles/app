@@ -153,10 +153,11 @@ function ChannelButton({
 
 /* ── Video Overlay ─────────────────────────────────────────── */
 
-function VideoOverlay({ onClose }: { onClose: () => void }) {
+export function VideoOverlay({ onClose }: { onClose: () => void }) {
   const [activeVideo, setActiveVideo] = useState<'pitch' | 'demo'>('demo');
   const [isStatic, setIsStatic] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
+  const isMobile = window.innerWidth <= 768;
 
   const switchChannel = useCallback(
     (channel: 'pitch' | 'demo') => {
@@ -207,52 +208,56 @@ function VideoOverlay({ onClose }: { onClose: () => void }) {
         style={{
           position: 'relative',
           background: 'linear-gradient(145deg, #1e1a30, #141025)',
-          borderRadius: 20,
-          padding: '24px 28px 28px',
+          borderRadius: isMobile ? 18 : 20,
+          padding: isMobile ? '20px 14px 16px' : '24px 28px 28px',
           border: '2px solid #2a2555',
           boxShadow:
             '0 0 80px rgba(42, 37, 85, 0.4), 0 20px 60px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.04)',
-          maxWidth: '90vw',
+          width: isMobile ? 'calc(100vw - 24px)' : 'auto',
+          maxWidth: isMobile ? 'calc(100vw - 24px)' : '90vw',
+          boxSizing: 'border-box',
           animation: isClosing ? undefined : 'dm-tv-slideUp 0.45s cubic-bezier(0.16, 1, 0.3, 1)',
           transform: isClosing ? 'translateY(20px)' : 'translateY(0)',
           transition: 'transform 0.28s ease',
         }}
       >
         {/* Close button */}
-        <button
-          onClick={handleClose}
-          style={{
-            position: 'absolute',
-            top: -14,
-            right: -14,
-            width: 32,
-            height: 32,
-            borderRadius: 16,
-            border: '1.5px solid #3d3a9e',
-            background: '#1a1625',
-            color: '#8b85b0',
-            fontSize: 18,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 0,
-            outline: 'none',
-            transition: 'all 0.2s ease',
-            lineHeight: 1,
-            zIndex: 2,
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.color = '#d4a843';
-            e.currentTarget.style.borderColor = '#d4a843';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.color = '#8b85b0';
-            e.currentTarget.style.borderColor = '#3d3a9e';
-          }}
-        >
-          &times;
-        </button>
+        {!isMobile && (
+          <button
+            onClick={handleClose}
+            style={{
+              position: 'absolute',
+              top: -14,
+              right: -14,
+              width: 32,
+              height: 32,
+              borderRadius: 16,
+              border: '1.5px solid #3d3a9e',
+              background: '#1a1625',
+              color: '#8b85b0',
+              fontSize: 18,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 0,
+              outline: 'none',
+              transition: 'all 0.2s ease',
+              lineHeight: 1,
+              zIndex: 2,
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = '#d4a843';
+              e.currentTarget.style.borderColor = '#d4a843';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = '#8b85b0';
+              e.currentTarget.style.borderColor = '#3d3a9e';
+            }}
+          >
+            &times;
+          </button>
+        )}
 
         {/* Channel switcher */}
         <div
@@ -261,6 +266,7 @@ function VideoOverlay({ onClose }: { onClose: () => void }) {
             gap: 12,
             marginBottom: 16,
             justifyContent: 'center',
+            width: '100%',
           }}
         >
           <ChannelButton
@@ -279,12 +285,14 @@ function VideoOverlay({ onClose }: { onClose: () => void }) {
         <div
           style={{
             position: 'relative',
-            width: Math.min(800, window.innerWidth * 0.85),
+            width: isMobile ? '100%' : Math.min(800, window.innerWidth * 0.85),
+            maxWidth: '100%',
             aspectRatio: '16/9',
             background: '#050510',
             borderRadius: 8,
             overflow: 'hidden',
             border: '2px solid #0f0e1a',
+            boxSizing: 'border-box',
             boxShadow: 'inset 0 0 50px rgba(0,0,0,0.8), 0 0 30px rgba(42, 37, 85, 0.15)',
           }}
         >
@@ -359,18 +367,18 @@ function VideoOverlay({ onClose }: { onClose: () => void }) {
 
 /* ── URL helpers ───────────────────────────────────────────── */
 
-const DEMO_PATH = '/video';
+export const DEMO_PATH = '/video';
 
-function isDemoRoute() {
+export function isDemoRoute() {
   return window.location.pathname === DEMO_PATH;
 }
 
-function navigateToDemo() {
+export function navigateToDemo() {
   window.history.pushState({ demo: true }, '', DEMO_PATH);
   window.dispatchEvent(new PopStateEvent('popstate'));
 }
 
-function navigateFromDemo() {
+export function navigateFromDemo() {
   if (window.history.state?.demo) {
     window.history.back();
   } else {

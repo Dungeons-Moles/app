@@ -16,9 +16,9 @@
       "width": 1024
     },
     "logo.webp": {
-      "height": 1536,
+      "height": 893,
       "path": "assets/branding/logo.webp",
-      "width": 2752
+      "width": 1600
     },
     "splash-icon.webp": {
       "height": 1024,
@@ -29,9 +29,9 @@
   "entities": {
     "characters": {
       "default-mole.webp": {
-        "height": 2000,
+        "height": 640,
         "path": "assets/entities/characters/default-mole.webp",
-        "width": 2000
+        "width": 640
       }
     },
     "enemies": {
@@ -175,641 +175,641 @@
     "items": {
       "blast": {
         "blast_suit.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/blast/blast_suit.webp",
-          "width": 450
+          "width": 256
         },
         "bomb_satchel.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/blast/bomb_satchel.webp",
-          "width": 450
+          "width": 256
         },
         "double_detonation.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/blast/double_detonation.webp",
-          "width": 450
+          "width": 256
         },
         "explosive_powder.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/blast/explosive_powder.webp",
-          "width": 450
+          "width": 256
         },
         "fuse_pick.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/blast/fuse_pick.webp",
-          "width": 450
+          "width": 256
         },
         "kindling_charge.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/blast/kindling_charge.webp",
-          "width": 450
+          "width": 256
         },
         "small_charge.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/blast/small_charge.webp",
-          "width": 450
+          "width": 256
         },
         "spark_pick.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/blast/spark_pick.webp",
-          "width": 450
+          "width": 256
         },
         "time_charge.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/blast/time_charge.webp",
-          "width": 450
+          "width": 256
         },
         "twin-fuse_knot.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/blast/twin-fuse_knot.webp",
-          "width": 450
+          "width": 256
         }
       },
       "blood": {
         "blood_chalice.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/blood/blood_chalice.webp",
-          "width": 450
+          "width": 256
         },
         "bloodletting_fang.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/blood/bloodletting_fang.webp",
-          "width": 450
+          "width": 256
         },
         "execution_emblem.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/blood/execution_emblem.webp",
-          "width": 450
+          "width": 256
         },
         "gore_mantle.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/blood/gore_mantle.webp",
-          "width": 450
+          "width": 256
         },
         "hemorrhage_hook.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/blood/hemorrhage_hook.webp",
-          "width": 450
+          "width": 256
         },
         "last_breath_sigil.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/blood/last_breath_sigil.webp",
-          "width": 450
+          "width": 256
         },
         "leech_wraps.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/blood/leech_wraps.webp",
-          "width": 450
+          "width": 256
         },
         "reaper_pick.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/blood/reaper_pick.webp",
-          "width": 450
+          "width": 256
         },
         "serrated_drill.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/blood/serrated_drill.webp",
-          "width": 450
+          "width": 256
         },
         "vampiric_tooth.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/blood/vampiric_tooth.webp",
-          "width": 450
+          "width": 256
         }
       },
       "frost": {
         "cold_front_idol.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/frost/cold_front_idol.webp",
-          "width": 450
+          "width": 256
         },
         "cold_snap_charm.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/frost/cold_snap_charm.webp",
-          "width": 450
+          "width": 256
         },
         "deep_freeze_charm.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/frost/deep_freeze_charm.webp",
-          "width": 450
+          "width": 256
         },
         "frost_lantern.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/frost/frost_lantern.webp",
-          "width": 450
+          "width": 256
         },
         "frostguard_buckler.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/frost/frostguard_buckler.webp",
-          "width": 450
+          "width": 256
         },
         "glacier_fang.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/frost/glacier_fang.webp",
-          "width": 450
+          "width": 256
         },
         "ice_skates.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/frost/ice_skates.webp",
-          "width": 450
+          "width": 256
         },
         "permafrost_core.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/frost/permafrost_core.webp",
-          "width": 450
+          "width": 256
         },
         "rime_cloak.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/frost/rime_cloak.webp",
-          "width": 450
+          "width": 256
         },
         "rime_pike.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/frost/rime_pike.webp",
-          "width": 450
+          "width": 256
         }
       },
       "greed": {
         "citrine_shard.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/greed/citrine_shard.webp",
-          "width": 450
+          "width": 256
         },
         "emerald_shard.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/greed/emerald_shard.webp",
-          "width": 450
+          "width": 256
         },
         "gemfinder_staff.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/greed/gemfinder_staff.webp",
-          "width": 450
+          "width": 256
         },
         "gilded_band.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/greed/gilded_band.webp",
-          "width": 450
+          "width": 256
         },
         "glittering_pick.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/greed/glittering_pick.webp",
-          "width": 450
+          "width": 256
         },
         "loose_nuggets.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/greed/loose_nuggets.webp",
-          "width": 450
+          "width": 256
         },
         "lucky_coin.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/greed/lucky_coin.webp",
-          "width": 450
+          "width": 256
         },
         "royal_bracer.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/greed/royal_bracer.webp",
-          "width": 450
+          "width": 256
         },
         "ruby_shard.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/greed/ruby_shard.webp",
-          "width": 450
+          "width": 256
         },
         "sapphire_shard.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/greed/sapphire_shard.webp",
-          "width": 450
+          "width": 256
         }
       },
       "rust": {
         "acid_phial.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/rust/acid_phial.webp",
-          "width": 450
+          "width": 256
         },
         "corroded_greaves.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/rust/corroded_greaves.webp",
-          "width": 450
+          "width": 256
         },
         "corrosion_loop.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/rust/corrosion_loop.webp",
-          "width": 450
+          "width": 256
         },
         "corrosive_pick.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/rust/corrosive_pick.webp",
-          "width": 450
+          "width": 256
         },
         "etched_burrowblade.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/rust/etched_burrowblade.webp",
-          "width": 450
+          "width": 256
         },
         "flaking_plating.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/rust/flaking_plating.webp",
-          "width": 450
+          "width": 256
         },
         "oxidizer_vial.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/rust/oxidizer_vial.webp",
-          "width": 450
+          "width": 256
         },
         "rust_engine.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/rust/rust_engine.webp",
-          "width": 450
+          "width": 256
         },
         "rust_spike.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/rust/rust_spike.webp",
-          "width": 450
+          "width": 256
         },
         "salvage_clamp.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/rust/salvage_clamp.webp",
-          "width": 450
+          "width": 256
         }
       },
       "scout": {
         "drill_servo.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/scout/drill_servo.webp",
-          "width": 450
+          "width": 256
         },
         "gear-link_medallion.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/scout/gear-link_medallion.webp",
-          "width": 450
+          "width": 256
         },
         "leather_gloves.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/scout/leather_gloves.webp",
-          "width": 450
+          "width": 256
         },
         "miner_boots.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/scout/miner_boots.webp",
-          "width": 450
+          "width": 256
         },
         "pneumatic_drill.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/scout/pneumatic_drill.webp",
-          "width": 450
+          "width": 256
         },
         "tunnel_instinct.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/scout/tunnel_instinct.webp",
-          "width": 450
+          "width": 256
         },
         "tunneler_spurs.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/scout/tunneler_spurs.webp",
-          "width": 450
+          "width": 256
         },
         "twin_picks.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/scout/twin_picks.webp",
-          "width": 450
+          "width": 256
         },
         "wall-sense_visor.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/scout/wall-sense_visor.webp",
-          "width": 450
+          "width": 256
         },
         "weak-point_manual.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/scout/weak-point_manual.webp",
-          "width": 450
+          "width": 256
         }
       },
       "stone": {
         "bulwark_shovel.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/stone/bulwark_shovel.webp",
-          "width": 450
+          "width": 256
         },
         "cragbreaker_hammer.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/stone/cragbreaker_hammer.webp",
-          "width": 450
+          "width": 256
         },
         "crystal_crown.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/stone/crystal_crown.webp",
-          "width": 450
+          "width": 256
         },
         "miner_helmet.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/stone/miner_helmet.webp",
-          "width": 450
+          "width": 256
         },
         "rebar_carapace.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/stone/rebar_carapace.webp",
-          "width": 450
+          "width": 256
         },
         "reinforcement_plate.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/stone/reinforcement_plate.webp",
-          "width": 450
+          "width": 256
         },
         "shrapnel_talisman.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/stone/shrapnel_talisman.webp",
-          "width": 450
+          "width": 256
         },
         "spiked_bracers.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/stone/spiked_bracers.webp",
-          "width": 450
+          "width": 256
         },
         "stone_sigil.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/stone/stone_sigil.webp",
-          "width": 450
+          "width": 256
         },
         "work_vest.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/stone/work_vest.webp",
-          "width": 450
+          "width": 256
         }
       },
       "tempo": {
         "ambush_charm.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/tempo/ambush_charm.webp",
-          "width": 450
+          "width": 256
         },
         "backstep_buckle.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/tempo/backstep_buckle.webp",
-          "width": 450
+          "width": 256
         },
         "chrono_rapier.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/tempo/chrono_rapier.webp",
-          "width": 450
+          "width": 256
         },
         "counterweight_buckle.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/tempo/counterweight_buckle.webp",
-          "width": 450
+          "width": 256
         },
         "hourglass_charge.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/tempo/hourglass_charge.webp",
-          "width": 450
+          "width": 256
         },
         "initiative_lens.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/tempo/initiative_lens.webp",
-          "width": 450
+          "width": 256
         },
         "quickpick.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/tempo/quickpick.webp",
-          "width": 450
+          "width": 256
         },
         "second_wind_clock.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/tempo/second_wind_clock.webp",
-          "width": 450
+          "width": 256
         },
         "tempo_battery.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/tempo/tempo_battery.webp",
-          "width": 450
+          "width": 256
         },
         "wind-up_spring.webp": {
-          "height": 450,
+          "height": 256,
           "path": "assets/icons/items/tempo/wind-up_spring.webp",
-          "width": 450
+          "width": 256
         }
       }
     },
     "itemsets": {
       "bloodrush_protocol.webp": {
-        "height": 420,
+        "height": 256,
         "path": "assets/icons/itemsets/bloodrush_protocol.webp",
-        "width": 420
+        "width": 256
       },
       "corrosion_payload.webp": {
-        "height": 420,
+        "height": 256,
         "path": "assets/icons/itemsets/corrosion_payload.webp",
-        "width": 420
+        "width": 256
       },
       "demolition_permit.webp": {
-        "height": 420,
+        "height": 256,
         "path": "assets/icons/itemsets/demolition_permit.webp",
-        "width": 420
+        "width": 256
       },
       "fuse_network.webp": {
-        "height": 420,
+        "height": 256,
         "path": "assets/icons/itemsets/fuse_network.webp",
-        "width": 420
+        "width": 256
       },
       "golden_shrapnel_exchange.webp": {
-        "height": 420,
+        "height": 256,
         "path": "assets/icons/itemsets/golden_shrapnel_exchange.webp",
-        "width": 420
+        "width": 256
       },
       "royal_extraction.webp": {
-        "height": 420,
+        "height": 256,
         "path": "assets/icons/itemsets/royal_extraction.webp",
-        "width": 420
+        "width": 256
       },
       "rust_ritual.webp": {
-        "height": 420,
+        "height": 256,
         "path": "assets/icons/itemsets/rust_ritual.webp",
-        "width": 420
+        "width": 256
       },
       "shard_circuit.webp": {
-        "height": 420,
+        "height": 256,
         "path": "assets/icons/itemsets/shard_circuit.webp",
-        "width": 420
+        "width": 256
       },
       "shrapnel_harness.webp": {
-        "height": 420,
+        "height": 256,
         "path": "assets/icons/itemsets/shrapnel_harness.webp",
-        "width": 420
+        "width": 256
       },
       "swift_digger_kit.webp": {
-        "height": 420,
+        "height": 256,
         "path": "assets/icons/itemsets/swift_digger_kit.webp",
-        "width": 420
+        "width": 256
       },
       "union_standard.webp": {
-        "height": 420,
+        "height": 256,
         "path": "assets/icons/itemsets/union_standard.webp",
-        "width": 420
+        "width": 256
       },
       "whiteout_initiative.webp": {
-        "height": 420,
+        "height": 256,
         "path": "assets/icons/itemsets/whiteout_initiative.webp",
-        "width": 420
+        "width": 256
       }
     },
     "oils": {
       "ARM.webp": {
-        "height": 600,
+        "height": 256,
         "path": "assets/icons/oils/ARM.webp",
-        "width": 500
+        "width": 256
       },
       "ATK.webp": {
-        "height": 600,
+        "height": 256,
         "path": "assets/icons/oils/ATK.webp",
-        "width": 500
+        "width": 256
       },
       "DIG.webp": {
-        "height": 600,
+        "height": 256,
         "path": "assets/icons/oils/DIG.webp",
-        "width": 500
+        "width": 256
       },
       "SPD.webp": {
-        "height": 600,
+        "height": 256,
         "path": "assets/icons/oils/SPD.webp",
-        "width": 500
+        "width": 256
       }
     },
     "stats": {
       "ARM.webp": {
-        "height": 330,
+        "height": 168,
         "path": "assets/icons/stats/ARM.webp",
-        "width": 330
+        "width": 168
       },
       "ATK.webp": {
-        "height": 330,
+        "height": 168,
         "path": "assets/icons/stats/ATK.webp",
-        "width": 330
+        "width": 168
       },
       "DIG.webp": {
-        "height": 330,
+        "height": 168,
         "path": "assets/icons/stats/DIG.webp",
-        "width": 330
+        "width": 168
       },
       "HP.webp": {
-        "height": 330,
+        "height": 168,
         "path": "assets/icons/stats/HP.webp",
-        "width": 330
+        "width": 168
       },
       "speed.webp": {
-        "height": 330,
+        "height": 168,
         "path": "assets/icons/stats/speed.webp",
-        "width": 330
+        "width": 168
       }
     },
     "ui": {
       "coin.webp": {
-        "height": 330,
+        "height": 168,
         "path": "assets/icons/ui/coin.webp",
-        "width": 330
+        "width": 168
       },
       "fast-speed.webp": {
-        "height": 350,
+        "height": 256,
         "path": "assets/icons/ui/fast-speed.webp",
-        "width": 350
+        "width": 256
       },
       "lock.webp": {
-        "height": 291,
+        "height": 256,
         "path": "assets/icons/ui/lock.webp",
-        "width": 229
+        "width": 256
       },
       "map.webp": {
-        "height": 1278,
+        "height": 214,
         "path": "assets/icons/ui/map.webp",
-        "width": 1526
+        "width": 256
       },
       "moon.webp": {
-        "height": 1176,
+        "height": 256,
         "path": "assets/icons/ui/moon.webp",
-        "width": 1176
+        "width": 256
       },
       "normal-speed.webp": {
-        "height": 350,
+        "height": 256,
         "path": "assets/icons/ui/normal-speed.webp",
-        "width": 350
+        "width": 256
       },
       "skull.webp": {
-        "height": 1216,
+        "height": 256,
         "path": "assets/icons/ui/skull.webp",
-        "width": 987
+        "width": 256
       },
       "stop.webp": {
-        "height": 350,
+        "height": 256,
         "path": "assets/icons/ui/stop.webp",
-        "width": 350
+        "width": 256
       },
       "sun.webp": {
-        "height": 1176,
+        "height": 256,
         "path": "assets/icons/ui/sun.webp",
-        "width": 1176
+        "width": 256
       },
       "trophy.webp": {
-        "height": 301,
+        "height": 256,
         "path": "assets/icons/ui/trophy.webp",
-        "width": 301
+        "width": 256
       }
     }
   },
   "ui": {
     "backgrounds": {
       "account-background-compact.webp": {
-        "height": 1920,
+        "height": 1113,
         "path": "assets/ui/backgrounds/account-background-compact.webp",
-        "width": 2208
+        "width": 1280
       },
       "account-background-wide.webp": {
-        "height": 1536,
+        "height": 893,
         "path": "assets/ui/backgrounds/account-background-wide.webp",
-        "width": 2752
+        "width": 1600
       },
       "campaign-background-compact.webp": {
-        "height": 3712,
+        "height": 1115,
         "path": "assets/ui/backgrounds/campaign-background-compact.webp",
-        "width": 4262
+        "width": 1280
       },
       "campaign-background-wide.webp": {
-        "height": 1536,
+        "height": 899,
         "path": "assets/ui/backgrounds/campaign-background-wide.webp",
-        "width": 2731
+        "width": 1600
       },
       "combat-background.webp": {
-        "height": 936,
+        "height": 860,
         "path": "assets/ui/backgrounds/combat-background.webp",
-        "width": 1198
+        "width": 1100
       },
       "hub-background-compact.webp": {
-        "height": 3712,
+        "height": 1114,
         "path": "assets/ui/backgrounds/hub-background-compact.webp",
-        "width": 4262
+        "width": 1280
       },
       "hub-background-wide.webp": {
-        "height": 1342,
+        "height": 899,
         "path": "assets/ui/backgrounds/hub-background-wide.webp",
-        "width": 2386
+        "width": 1600
       },
       "loading-background.webp": {
-        "height": 1342,
+        "height": 899,
         "path": "assets/ui/backgrounds/loading-background.webp",
-        "width": 2386
+        "width": 1600
       },
       "book-compact.webp": {
-        "height": 3014,
+        "height": 1134,
         "path": "assets/ui/backgrounds/book-compact.webp",
-        "width": 3400
+        "width": 1280
       },
       "book-wide.webp": {
-        "height": 768,
+        "height": 914,
         "path": "assets/ui/backgrounds/book-wide.webp",
-        "width": 1344
+        "width": 1600
       },
       "stains-background.webp": {
-        "height": 1342,
+        "height": 900,
         "path": "assets/ui/backgrounds/stains-background.webp",
-        "width": 2386
+        "width": 1600
       }
     },
     "buttons": {
@@ -851,64 +851,64 @@
     },
     "control-buttons": {
       "a.webp": {
-        "height": 192,
+        "height": 256,
         "path": "assets/ui/control-buttons/a.webp",
-        "width": 192
+        "width": 256
       },
       "b.webp": {
-        "height": 192,
+        "height": 256,
         "path": "assets/ui/control-buttons/b.webp",
-        "width": 192
+        "width": 256
       },
       "d-pad.webp": {
-        "height": 300,
+        "height": 256,
         "path": "assets/ui/control-buttons/d-pad.webp",
-        "width": 300
+        "width": 256
       },
       "direction.webp": {
-        "height": 192,
+        "height": 256,
         "path": "assets/ui/control-buttons/direction.webp",
-        "width": 192
+        "width": 256
       },
       "l1-circular.webp": {
-        "height": 192,
+        "height": 256,
         "path": "assets/ui/control-buttons/l1-circular.webp",
-        "width": 192
+        "width": 256
       },
       "l1.webp": {
-        "height": 105,
+        "height": 155,
         "path": "assets/ui/control-buttons/l1.webp",
-        "width": 191
+        "width": 256
       },
       "r1-circular.webp": {
-        "height": 192,
+        "height": 256,
         "path": "assets/ui/control-buttons/r1-circular.webp",
-        "width": 192
+        "width": 256
       },
       "r1.webp": {
-        "height": 105,
+        "height": 155,
         "path": "assets/ui/control-buttons/r1.webp",
-        "width": 191
+        "width": 256
       },
       "select.webp": {
-        "height": 114,
+        "height": 117,
         "path": "assets/ui/control-buttons/select.webp",
-        "width": 262
+        "width": 256
       },
       "start.webp": {
-        "height": 114,
+        "height": 117,
         "path": "assets/ui/control-buttons/start.webp",
-        "width": 262
+        "width": 256
       },
       "x.webp": {
-        "height": 192,
+        "height": 256,
         "path": "assets/ui/control-buttons/x.webp",
-        "width": 192
+        "width": 256
       },
       "y.webp": {
-        "height": 192,
+        "height": 256,
         "path": "assets/ui/control-buttons/y.webp",
-        "width": 192
+        "width": 256
       }
     },
     "frames": {
@@ -925,84 +925,84 @@
     },
     "illustrations": {
       "engine.webp": {
-        "height": 350,
+        "height": 384,
         "path": "assets/ui/illustrations/engine.webp",
-        "width": 350
+        "width": 384
       },
       "wallet.webp": {
-        "height": 783,
+        "height": 403,
         "path": "assets/ui/illustrations/wallet.webp",
-        "width": 2329
+        "width": 1200
       },
       "chest.webp": {
-        "height": 250,
+        "height": 384,
         "path": "assets/ui/illustrations/chest.webp",
-        "width": 250
+        "width": 384
       },
       "defeat-image.webp": {
-        "height": 292,
+        "height": 264,
         "path": "assets/ui/illustrations/defeat-image.webp",
-        "width": 533
+        "width": 384
       },
       "duels-paper.webp": {
-        "height": 233,
+        "height": 260,
         "path": "assets/ui/illustrations/duels-paper.webp",
-        "width": 343
+        "width": 384
       },
       "echo-fight.webp": {
-        "height": 250,
+        "height": 271,
         "path": "assets/ui/illustrations/echo-fight.webp",
-        "width": 355
+        "width": 384
       },
       "gauntlet-paper.webp": {
-        "height": 240,
+        "height": 284,
         "path": "assets/ui/illustrations/gauntlet-paper.webp",
-        "width": 354
+        "width": 384
       },
       "green-brush.webp": {
-        "height": 322,
+        "height": 218,
         "path": "assets/ui/illustrations/green-brush.webp",
-        "width": 567
+        "width": 384
       },
       "history-scroll.webp": {
-        "height": 555,
+        "height": 216,
         "path": "assets/ui/illustrations/history-scroll.webp",
-        "width": 1002
+        "width": 384
       },
       "items.webp": {
-        "height": 250,
+        "height": 384,
         "path": "assets/ui/illustrations/items.webp",
-        "width": 250
+        "width": 384
       },
       "pit-draft-paper.webp": {
-        "height": 194,
+        "height": 251,
         "path": "assets/ui/illustrations/pit-draft-paper.webp",
-        "width": 339
+        "width": 384
       },
       "red-brush.webp": {
-        "height": 322,
+        "height": 218,
         "path": "assets/ui/illustrations/red-brush.webp",
-        "width": 567
+        "width": 384
       },
       "session-papers.webp": {
-        "height": 335,
+        "height": 290,
         "path": "assets/ui/illustrations/session-papers.webp",
-        "width": 524
+        "width": 384
       },
       "sol-pile.webp": {
-        "height": 250,
+        "height": 384,
         "path": "assets/ui/illustrations/sol-pile.webp",
-        "width": 250
+        "width": 384
       },
       "victory-image.webp": {
-        "height": 292,
+        "height": 248,
         "path": "assets/ui/illustrations/victory-image.webp",
-        "width": 533
+        "width": 384
       },
       "yellow-brush.webp": {
-        "height": 322,
+        "height": 218,
         "path": "assets/ui/illustrations/yellow-brush.webp",
-        "width": 567
+        "width": 384
       }
     },
     "panels": {
@@ -1085,74 +1085,74 @@
     },
     "pois": {
       "counter-cache.webp": {
-        "height": 465,
+        "height": 256,
         "path": "assets/world/pois/counter-cache.webp",
-        "width": 465
+        "width": 256
       },
       "geode-vault.webp": {
-        "height": 465,
+        "height": 256,
         "path": "assets/world/pois/geode-vault.webp",
-        "width": 465
+        "width": 256
       },
       "mole-den.webp": {
-        "height": 465,
+        "height": 256,
         "path": "assets/world/pois/mole-den.webp",
-        "width": 465
+        "width": 256
       },
       "rail-waypoint.webp": {
-        "height": 465,
+        "height": 256,
         "path": "assets/world/pois/rail-waypoint.webp",
-        "width": 465
+        "width": 256
       },
       "rest-alcove.webp": {
-        "height": 465,
+        "height": 256,
         "path": "assets/world/pois/rest-alcove.webp",
-        "width": 465
+        "width": 256
       },
       "rune-kiln.webp": {
-        "height": 465,
+        "height": 256,
         "path": "assets/world/pois/rune-kiln.webp",
-        "width": 465
+        "width": 256
       },
       "rusty-anvil.webp": {
-        "height": 465,
+        "height": 256,
         "path": "assets/world/pois/rusty-anvil.webp",
-        "width": 465
+        "width": 256
       },
       "scrap-chute.webp": {
-        "height": 465,
+        "height": 256,
         "path": "assets/world/pois/scrap-chute.webp",
-        "width": 465
+        "width": 256
       },
       "seismic-scanner.webp": {
-        "height": 465,
+        "height": 256,
         "path": "assets/world/pois/seismic-scanner.webp",
-        "width": 465
+        "width": 256
       },
       "smuggler-hatch.webp": {
-        "height": 465,
+        "height": 256,
         "path": "assets/world/pois/smuggler-hatch.webp",
-        "width": 465
+        "width": 256
       },
       "supply-cache.webp": {
-        "height": 465,
+        "height": 256,
         "path": "assets/world/pois/supply-cache.webp",
-        "width": 465
+        "width": 256
       },
       "survey-beacon.webp": {
-        "height": 465,
+        "height": 256,
         "path": "assets/world/pois/survey-beacon.webp",
-        "width": 465
+        "width": 256
       },
       "tool-crate.webp": {
-        "height": 465,
+        "height": 256,
         "path": "assets/world/pois/tool-crate.webp",
-        "width": 465
+        "width": 256
       },
       "tool-oil-rack.webp": {
-        "height": 465,
+        "height": 256,
         "path": "assets/world/pois/tool-oil-rack.webp",
-        "width": 465
+        "width": 256
       }
     },
     "tiles": {

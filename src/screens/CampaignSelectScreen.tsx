@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { PublicKey } from '@solana/web3.js';
+import { Connection, PublicKey } from '@solana/web3.js';
 import {
   View,
   Text,
@@ -42,8 +42,37 @@ import {
   resolveSessionSetup,
   rejectSessionSetup,
 } from '../utils/sessionSetupSignal';
+import { SOLANA_CONFIG } from '../services/solana/config';
 import type { CampaignLevel } from '../types/solana';
 import type { GameState as OnChainGameState } from '../services/solana/types/gameplay_state';
+
+/**
+ * Resolve the specific ER validator endpoint for a delegated account.
+ * The generic router (devnet.magicblock.app) returns zeroed data for delegated
+ * accounts; the actual state lives on the assigned validator node.
+ */
+async function resolveErConnectionForAccount(
+  routerConnection: Connection,
+  account: PublicKey,
+  fallback: Connection
+): Promise<Connection> {
+  try {
+    const router = routerConnection as Connection & {
+      getDelegationStatus?: (
+        account: string | PublicKey
+      ) => Promise<{ isDelegated: boolean; fqdn?: string }>;
+    };
+    if (typeof router.getDelegationStatus !== 'function') return fallback;
+    const status = await router.getDelegationStatus(account);
+    if (!status?.fqdn) return fallback;
+    return new Connection(status.fqdn, {
+      commitment: SOLANA_CONFIG.erCommitment,
+      wsEndpoint: status.fqdn.replace(/^https:\/\//, 'wss://').replace(/^http:\/\//, 'ws://'),
+    });
+  } catch {
+    return fallback;
+  }
+}
 
 const backgroundImageCompact = require('../../assets/ui/backgrounds/campaign-background-compact.webp');
 const backgroundImageWide = require('../../assets/ui/backgrounds/campaign-background-wide.webp');
@@ -70,7 +99,7 @@ const SESSION_PROPAGATION_POLL_MS = 300;
 export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) {
   const { profile, mode, availableRuns, highestLevelUnlocked } = useProfile();
   const { wallet, disconnect } = useWallet();
-  const { connection, gameplayConnection, erConnection } = useSolanaConnection();
+  const { connection, gameplayConnection, erConnection, directErConnection } = useSolanaConnection();
   const {
     startGame: startSessionOnChain,
     overrideCampaignSession,
@@ -248,10 +277,11 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
         }
 
         // Full on-chain restore: fetch all accounts and build complete GameState.
-        // Use erConnection directly because delegated accounts live on the ER,
-        // and the gameplayConnection closure may still point to base chain.
+        // Resolve the specific ER validator endpoint — the generic router returns
+        // zeroed data for delegated accounts.
         console.log('[CampaignSelect] Restoring session from on-chain data...');
-        const restoredState = await fetchFullSessionState(erConnection, sessionPdaKey, seed);
+        const resolvedErConn = await resolveErConnectionForAccount(erConnection, sessionPdaKey, directErConnection);
+        const restoredState = await fetchFullSessionState(resolvedErConn, sessionPdaKey, seed);
 
         if (restoredState) {
           console.log('[CampaignSelect] Full session restore successful');
@@ -265,7 +295,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
 
         // Fallback: partial restore from GameState only
         console.warn('[CampaignSelect] Full restore failed, falling back to partial restore');
-        const program = createGameplayStateProgram(erConnection);
+        const program = createGameplayStateProgram(resolvedErConn);
         const [gameStatePdaFallback] = getGameStatePda(sessionPdaKey);
         setGameStatePda(gameStatePdaFallback);
         const stateToRestore = await fetchGameState(program, gameStatePdaFallback);
@@ -407,10 +437,13 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
 
             const stillExistsAfterWait = await hasSessionForLevel(level.level);
             if (stillExistsAfterWait) {
-              setErrorMessage(
-                'Previous session cleanup is still in progress. Please wait a few seconds and try again.'
-              );
-              setShowErrorModal(true);
+              // Cleanup couldn't clear the session (e.g. session signer lost).
+              // Show the override modal so the user can force-override with wallet signature.
+              setPendingLevelWithSession(level);
+              setPendingSessionStartupState(null);
+              setSessionInitStatusMessage(null);
+              setShowSessionExistsModal(true);
+              setShowSessionInitializingModal(false);
               return;
             }
           } finally {
@@ -559,10 +592,15 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
             );
             return;
           }
+          // Resolve the specific ER validator endpoint — the generic router returns
+          // zeroed data for delegated accounts. Use the connection returned by startGame
+          // if available, otherwise resolve it now.
+          const erConnForFetch = result?.resolvedErConnection
+            ?? await resolveErConnectionForAccount(erConnection, sessionPda, directErConnection);
           let restoredState: Awaited<ReturnType<typeof fetchFullSessionState>> | null = null;
           while (Date.now() < propagationDeadline && !restoredState) {
             restoredState =
-              (await fetchFullSessionState(erConnection, sessionPda, seed, {
+              (await fetchFullSessionState(erConnForFetch, sessionPda, seed, {
                 silentMissingData: true,
               })) ??
               (await fetchFullSessionState(connection, sessionPda, seed, {
@@ -605,9 +643,14 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
           seed,
         });
 
-        // Navigate to the game screen
-        console.log('[CampaignSelect] Guest mode — navigating to Game screen...');
-        navigation.navigate('Game');
+        // Route through SessionLoadingScreen so game assets get preloaded
+        console.log('[CampaignSelect] Guest mode — navigating through SessionLoadingScreen...');
+        if (!navigatedToLoading) {
+          createSessionSetup();
+          navigation.navigate('SessionLoading', { mode: 'campaign' });
+          navigatedToLoading = true;
+        }
+        resolveSessionSetup();
       } catch (error) {
         console.error('[CampaignSelect] Error starting game:', error);
         const message = error instanceof Error ? error.message : 'Failed to start game.';
@@ -1131,11 +1174,14 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
               </View>
             ) : (
               <View style={styles.modalButtons}>
-                <TouchableOpacity
-                  style={styles.modalButtonSecondary}
-                  onPress={() => setShowNoRunsModal(false)}
-                >
-                  <Text style={styles.modalButtonTextSecondary}>Cancel</Text>
+                <TouchableOpacity onPress={() => setShowNoRunsModal(false)}>
+                  <CachedImageBackground
+                    source={buttonV1Source}
+                    resizeMode="stretch"
+                    style={styles.modalButtonBg}
+                  >
+                    <Text style={styles.modalButtonTextSecondary}>Cancel</Text>
+                  </CachedImageBackground>
                 </TouchableOpacity>
               </View>
             )}
@@ -1155,7 +1201,6 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
             resizeMode="stretch"
             style={[
               styles.modalContent,
-              !isCompact && styles.sessionExistsModalContentMobile,
               isCompact && compactStyles.modalContent,
             ]}
           >
@@ -1203,23 +1248,32 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
               </View>
             ) : (
               <View style={styles.modalButtons}>
-                <TouchableOpacity
-                  style={styles.modalButtonSecondary}
-                  onPress={() => setShowSessionInitializingModal(false)}
-                >
-                  <Text style={styles.modalButtonTextSecondary}>Cancel</Text>
+                <TouchableOpacity onPress={() => setShowSessionInitializingModal(false)}>
+                  <CachedImageBackground
+                    source={buttonV1Source}
+                    resizeMode="stretch"
+                    style={styles.modalButtonBg}
+                  >
+                    <Text style={styles.modalButtonTextSecondary}>Cancel</Text>
+                  </CachedImageBackground>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.modalButtonSecondary}
-                  onPress={handleOverrideExistingSession}
-                >
-                  <Text style={styles.modalButtonTextSecondary}>Override</Text>
+                <TouchableOpacity onPress={handleOverrideExistingSession}>
+                  <CachedImageBackground
+                    source={buttonV1Source}
+                    resizeMode="stretch"
+                    style={styles.modalButtonBg}
+                  >
+                    <Text style={styles.modalButtonTextSecondary}>Override</Text>
+                  </CachedImageBackground>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.modalButtonPrimary}
-                  onPress={handleRetryPendingSessionVrf}
-                >
-                  <Text style={styles.modalButtonTextPrimary}>Retry VRF</Text>
+                <TouchableOpacity onPress={handleRetryPendingSessionVrf}>
+                  <CachedImageBackground
+                    source={buttonV4Source}
+                    resizeMode="stretch"
+                    style={styles.modalButtonBg}
+                  >
+                    <Text style={styles.modalButtonTextPrimary}>Retry VRF</Text>
+                  </CachedImageBackground>
                 </TouchableOpacity>
               </View>
             )}
@@ -1240,7 +1294,6 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
             resizeMode="stretch"
             style={[
               styles.modalContent,
-              !isCompact && styles.sessionExistsModalContentMobile,
               isCompact && compactStyles.modalContent,
             ]}
           >
@@ -1280,23 +1333,32 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
               </View>
             ) : (
               <View style={styles.modalButtons}>
-                <TouchableOpacity
-                  style={styles.modalButtonSecondary}
-                  onPress={() => setShowSessionExistsModal(false)}
-                >
-                  <Text style={styles.modalButtonTextSecondary}>Cancel</Text>
+                <TouchableOpacity onPress={() => setShowSessionExistsModal(false)}>
+                  <CachedImageBackground
+                    source={buttonV1Source}
+                    resizeMode="stretch"
+                    style={styles.modalButtonBg}
+                  >
+                    <Text style={styles.modalButtonTextSecondary}>Cancel</Text>
+                  </CachedImageBackground>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.modalButtonSecondary}
-                  onPress={handleOverrideExistingSession}
-                >
-                  <Text style={styles.modalButtonTextSecondary}>Override</Text>
+                <TouchableOpacity onPress={handleOverrideExistingSession}>
+                  <CachedImageBackground
+                    source={buttonV1Source}
+                    resizeMode="stretch"
+                    style={styles.modalButtonBg}
+                  >
+                    <Text style={styles.modalButtonTextSecondary}>Override</Text>
+                  </CachedImageBackground>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.modalButtonPrimary}
-                  onPress={handleResumeExistingSession}
-                >
-                  <Text style={styles.modalButtonTextPrimary}>Resume</Text>
+                <TouchableOpacity onPress={handleResumeExistingSession}>
+                  <CachedImageBackground
+                    source={buttonV4Source}
+                    resizeMode="stretch"
+                    style={styles.modalButtonBg}
+                  >
+                    <Text style={styles.modalButtonTextPrimary}>Resume</Text>
+                  </CachedImageBackground>
                 </TouchableOpacity>
               </View>
             )}
@@ -1336,11 +1398,14 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
                 </View>
               </View>
             ) : (
-              <TouchableOpacity
-                style={styles.modalButtonPrimary}
-                onPress={() => setShowLockedModal(false)}
-              >
-                <Text style={styles.modalButtonTextPrimary}>OK</Text>
+              <TouchableOpacity onPress={() => setShowLockedModal(false)}>
+                <CachedImageBackground
+                  source={buttonV4Source}
+                  resizeMode="stretch"
+                  style={styles.modalButtonBg}
+                >
+                  <Text style={styles.modalButtonTextPrimary}>OK</Text>
+                </CachedImageBackground>
               </TouchableOpacity>
             )}
           </CachedImageBackground>
@@ -1377,11 +1442,14 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
                 </View>
               </View>
             ) : (
-              <TouchableOpacity
-                style={styles.modalButtonPrimary}
-                onPress={() => setShowErrorModal(false)}
-              >
-                <Text style={styles.modalButtonTextPrimary}>OK</Text>
+              <TouchableOpacity onPress={() => setShowErrorModal(false)}>
+                <CachedImageBackground
+                  source={buttonV4Source}
+                  resizeMode="stretch"
+                  style={styles.modalButtonBg}
+                >
+                  <Text style={styles.modalButtonTextPrimary}>OK</Text>
+                </CachedImageBackground>
               </TouchableOpacity>
             )}
           </CachedImageBackground>
@@ -1651,13 +1719,9 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     width: 360,
-    height: 300,
     padding: 36,
     alignItems: 'center',
     justifyContent: 'flex-start',
-  },
-  sessionExistsModalContentMobile: {
-    height: 340,
   },
   modalTitle: {
     fontFamily: Typography.header,
@@ -1678,23 +1742,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
   },
-  modalButtonPrimary: {
-    backgroundColor: '#8ad66f',
+  modalButtonBg: {
     paddingVertical: 10,
     paddingHorizontal: 20,
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: '#5f8f4d',
     minWidth: 100,
-  },
-  modalButtonSecondary: {
-    backgroundColor: '#e6c7a7',
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: '#7f5539',
-    minWidth: 100,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   modalButtonTextPrimary: {
     fontFamily: Typography.button,
@@ -1796,7 +1849,6 @@ const compactStyles = StyleSheet.create({
   },
   modalContent: {
     width: 860,
-    height: 380,
     padding: 50,
   },
   modalTitle: {

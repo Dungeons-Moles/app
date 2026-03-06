@@ -1,14 +1,18 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Image, Text, StyleSheet, Animated, Alert } from 'react-native';
+import { View, Text, StyleSheet, Animated, Alert } from 'react-native';
 import { CachedImageBackground } from '../components/common/CachedImageBackground';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation';
 import { Typography } from '@/theme/typography';
 import { useScreenVariant } from '@/contexts/ScreenVariantContext';
 import { getSessionSetupPromise, clearSessionSetup } from '@/utils/sessionSetupSignal';
+import { CachedImage as Image } from '../components/common/CachedImage';
+import { preloadCriticalImages } from '@/utils/preloadCriticalImages';
+import { GAME_PRELOAD_ASSETS } from '@/constants/criticalImages';
 
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.webp');
 const STAINS_BACKGROUND = require('../../assets/ui/backgrounds/stains-background.webp');
+const SESSION_LOADING_IMAGES = [BACKGROUND_IMAGE, STAINS_BACKGROUND] as const;
 
 const FLAVOR_TEXTS = [
   'Polishing pickaxe',
@@ -38,6 +42,15 @@ export function SessionLoadingScreen({ navigation }: SessionLoadingScreenProps) 
   const [flavorIndex, setFlavorIndex] = useState(() => Math.floor(Math.random() * FLAVOR_TEXTS.length));
   const flavorOpacity = useRef(new Animated.Value(1)).current;
 
+  // Preload game assets in parallel with session setup so they're cached
+  // when GameScreen mounts — no secondary loading overlay needed.
+  // Initialized eagerly (not inside useEffect) so it's available immediately
+  // when the session setup promise effect reads it in the same render cycle.
+  const assetPreloadRef = useRef<Promise<void>>(preloadCriticalImages(GAME_PRELOAD_ASSETS));
+  useEffect(() => {
+    preloadCriticalImages(SESSION_LOADING_IMAGES);
+  }, []);
+
   // Animated dots: cycle 0 → 1 → 2 → 3 → 0 every 500ms
   useEffect(() => {
     const interval = setInterval(() => {
@@ -65,7 +78,7 @@ export function SessionLoadingScreen({ navigation }: SessionLoadingScreenProps) 
     return () => clearInterval(interval);
   }, [flavorOpacity]);
 
-  // Await the session setup promise with a safety timeout
+  // Await the session setup promise AND asset preloading with a safety timeout
   useEffect(() => {
     let cancelled = false;
     const promise = getSessionSetupPromise();
@@ -84,7 +97,8 @@ export function SessionLoadingScreen({ navigation }: SessionLoadingScreenProps) 
       }
     }, 60_000);
 
-    promise
+    // Wait for BOTH session setup and asset preloading before navigating
+    Promise.all([promise, assetPreloadRef.current])
       .then(() => {
         if (!cancelled) {
           cancelled = true;

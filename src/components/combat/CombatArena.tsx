@@ -115,7 +115,7 @@ export const CombatArena = React.memo(function CombatArena({
             fit="contain"
           />
         ) : (
-          <Rect x={0} y={0} width={arenaWidth} height={arenaHeight} color="#1a1a2e" />
+          <Rect x={0} y={0} width={arenaWidth} height={arenaHeight} color="#F5F0DD" />
         )}
 
         {/* Combat arena floor - Removed line as image provides it */}

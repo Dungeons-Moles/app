@@ -345,7 +345,7 @@ const SessionGameplayContext = createContext<SessionGameplayContextType | undefi
 
 export function SessionProvider({ children }: { children: ReactNode }) {
   const { wallet, signAndSendTransaction, signAndSendTransactions } = useWallet();
-  const { connection, gameplayConnection, erConnection, setUseErForGameplay } =
+  const { connection, gameplayConnection, erConnection, setUseErForGameplay, setResolvedErEndpoint } =
     useSolanaConnection();
   const { profile } = useProfile();
   const sessionManager = useSessionManager();
@@ -815,6 +815,23 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     [erConnection]
   );
 
+  const resolveAndSetErEndpoint = useCallback(
+    async (sessionPda: PublicKey): Promise<Connection | null> => {
+      try {
+        const conn = await getRoutedErConnectionForAccount(sessionPda);
+        if (conn) {
+          console.log('[SessionContext] Resolved ER validator endpoint:', conn.rpcEndpoint);
+          setResolvedErEndpoint(conn.rpcEndpoint);
+          return conn;
+        }
+      } catch {
+        // Non-fatal: reads will fall back to generic endpoint
+      }
+      return null;
+    },
+    [getRoutedErConnectionForAccount, setResolvedErEndpoint]
+  );
+
   /**
    * Wait for the session signer's passthrough account to become visible on the ER.
    * The session signer is funded on the base chain but the ER needs time to sync
@@ -823,8 +840,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
    * payer account it hasn't seen yet.
    */
   const waitForSessionSignerOnEr = useCallback(
-    async (signerPublicKey: PublicKey, routeAccount?: PublicKey): Promise<boolean> => {
-      if (SOLANA_CONFIG.isLocalValidator) return true;
+    async (signerPublicKey: PublicKey, routeAccount?: PublicKey): Promise<{ ready: boolean; endpoint?: string }> => {
+      if (SOLANA_CONFIG.isLocalValidator) return { ready: true };
 
       const WAIT_MS = 15_000;
       const POLL_MS = 1_000;
@@ -846,7 +863,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                 elapsed: Date.now() - startedAt,
                 endpoint: conn.rpcEndpoint,
               });
-              return true;
+              return { ready: true, endpoint: conn.rpcEndpoint };
             }
           }
         } catch {
@@ -855,7 +872,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         await new Promise((resolve) => setTimeout(resolve, POLL_MS));
       }
       console.warn('[SessionContext] waitForSessionSignerOnEr: timed out waiting for signer on ER');
-      return false;
+      return { ready: false };
     },
     [directErConnection, getRoutedErConnectionForAccount]
   );
@@ -1400,9 +1417,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             );
           }
           setUseErForGameplay(erReady);
-          return erReady
-            ? { success: true }
-            : { success: false, error: 'Delegation not fully propagated to ER yet. Please retry.' };
+          if (erReady) {
+            await resolveAndSetErEndpoint(targetSessionPda);
+            return { success: true };
+          }
+          return { success: false, error: 'Delegation not fully propagated to ER yet. Please retry.' };
         }
       } else if (sessionManager.session?.isDelegated) {
         setUseErForGameplay(true);
@@ -1439,6 +1458,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
               error: 'Delegation not fully propagated to ER yet. Please retry.',
             };
           }
+          await resolveAndSetErEndpoint(targetSessionPda);
         }
         setUseErForGameplay(true);
         return result;
@@ -1446,6 +1466,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
       const message = result.error?.toLowerCase() ?? '';
       if (message.includes('already delegated')) {
+        if (targetSessionPda) await resolveAndSetErEndpoint(targetSessionPda);
         setUseErForGameplay(true);
         return { success: true, signature: result.signature };
       }
@@ -1460,6 +1481,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       sessionSigner.keypair,
       setUseErForGameplay,
       erConnection,
+      resolveAndSetErEndpoint,
       waitForErSessionAccounts,
     ]
   );
@@ -1905,31 +1927,42 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
 
       // Step 6b: Pre-init POI VRF state on base chain so it can be delegated.
-      // The account must exist before delegation; on ER, init_if_needed will skip creation.
+      // Check ownership first: skip init if already exists, skip delegation if already delegated.
+      let campaignVrfToDelegate: ('poi')[] | undefined = ['poi'];
       console.log('[SessionContext] Step 6b: Pre-init POI VRF state on base chain...');
-      try {
-        const basePoiSysProg = createPoiSystemProgram(connection);
-        const initPoiVrfTx = await buildInitPoiVrfStateTransaction(
-          basePoiSysProg,
-          sessionPda,
-          newSessionSignerKeypair.publicKey
-        );
-        await sendSessionSignerTransaction(connection, initPoiVrfTx, newSessionSignerKeypair);
-        console.log('[SessionContext] Step 6b: POI VRF state pre-initialized on base');
-      } catch (initErr) {
-        logTxDebugError('startGame:init_poi_vrf', initErr);
-        // Non-fatal if account already exists (idempotent)
-        console.warn(
-          '[SessionContext] Step 6b: init_poi_vrf failed (may already exist):',
-          initErr instanceof Error ? initErr.message : initErr
-        );
+      {
+        const [poiVrfPda] = derivePoiVrfStatePda(sessionPda);
+        const poiVrfInfo = await connection.getAccountInfo(poiVrfPda).catch(() => null);
+        if (poiVrfInfo && poiVrfInfo.owner.equals(DELEGATION_PROGRAM_ID)) {
+          console.log('[SessionContext] Step 6b: POI VRF already delegated, skipping init+delegation');
+          campaignVrfToDelegate = undefined;
+        } else if (poiVrfInfo) {
+          console.log('[SessionContext] Step 6b: POI VRF already exists, skipping init');
+        } else {
+          try {
+            const basePoiSysProg = createPoiSystemProgram(connection);
+            const initPoiVrfTx = await buildInitPoiVrfStateTransaction(
+              basePoiSysProg,
+              sessionPda,
+              newSessionSignerKeypair.publicKey
+            );
+            await sendSessionSignerTransaction(connection, initPoiVrfTx, newSessionSignerKeypair);
+            console.log('[SessionContext] Step 6b: POI VRF state pre-initialized on base');
+          } catch (initErr) {
+            logTxDebugError('startGame:init_poi_vrf', initErr);
+            console.warn(
+              '[SessionContext] Step 6b: init_poi_vrf failed (may already exist):',
+              initErr instanceof Error ? initErr.message : initErr
+            );
+          }
+        }
       }
 
       // Step 7: Delegate all runtime accounts + VRF states after session creation.
       const delegateResult = await sessionManager.delegateSession(newSessionSignerKeypair, {
         sessionPda,
         onChainLevel: campaignLevel + 1,
-        delegateVrf: ['poi'],
+        delegateVrf: campaignVrfToDelegate,
       });
       if (!delegateResult.success) {
         logTxDebugError('startGame:delegate_tx', delegateResult.error);
@@ -1984,16 +2017,38 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         };
       }
 
+      // Resolve the specific ER validator endpoint for reads.
+      // The generic endpoint (devnet.magicblock.app) returns stale/zeroed data for
+      // delegated accounts; the actual state lives on the assigned validator node.
+      let resolvedConn = await resolveAndSetErEndpoint(sessionPda);
+
       // Step 7c: Wait for session signer to be visible on ER before sending VRF.
       // The session signer was funded on the base chain; ER needs to sync passthrough account.
       if (!SOLANA_CONFIG.isLocalValidator) {
         console.log('[SessionContext] startGame:wait_signer_on_er');
-        const signerReady = await waitForSessionSignerOnEr(
+        const signerResult = await waitForSessionSignerOnEr(
           newSessionSignerKeypair.publicKey,
           sessionPda
         );
-        if (!signerReady) {
+        if (!signerResult.ready) {
           console.warn('[SessionContext] startGame:signer_not_on_er — proceeding anyway (may retry)');
+        }
+        // Retry endpoint resolution if it failed earlier — the router's delegation
+        // index may lag behind account propagation to ER.
+        if (!resolvedConn) {
+          resolvedConn = await resolveAndSetErEndpoint(sessionPda);
+        }
+        // Last resort: use the endpoint discovered by the signer wait (which
+        // polls getRoutedErConnectionForAccount internally).
+        if (!resolvedConn && signerResult.endpoint) {
+          console.log('[SessionContext] Using signer-wait endpoint as fallback:', signerResult.endpoint);
+          setResolvedErEndpoint(signerResult.endpoint);
+          resolvedConn = new Connection(signerResult.endpoint, {
+            commitment: SOLANA_CONFIG.erCommitment,
+            wsEndpoint: signerResult.endpoint
+              .replace(/^https:\/\//, 'wss://')
+              .replace(/^http:\/\//, 'ws://'),
+          });
         }
       }
 
@@ -2140,7 +2195,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
 
       console.log('[SessionContext] startGame complete');
-      return { success: true, mapSeed: seed, sessionPda: sessionPda.toBase58() };
+      return { success: true, mapSeed: seed, sessionPda: sessionPda.toBase58(), resolvedErConnection: resolvedConn ?? undefined };
     },
     [
       sessionSigner,
@@ -2162,6 +2217,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       logErSignatureDiagnostics,
       logTxDebugError,
       readPoiVrfStatus,
+      resolveAndSetErEndpoint,
       sendRoutedErTransaction,
       waitForSessionSignerOnEr,
       wallet.publicKey,
@@ -2320,33 +2376,66 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
 
     // Pre-init VRF states on base chain so they can be delegated.
+    // Check ownership first: skip init for existing accounts, skip delegation for already-delegated ones.
+    let duelVrfTypesToDelegate: ('poi' | 'map' | 'gameplay')[] = ['poi', 'map', 'gameplay'];
     if (!SOLANA_CONFIG.isLocalValidator) {
       console.log('[SessionContext] startDuelGame:pre_init_vrf_states');
-      try {
-        const basePoiSysProg = createPoiSystemProgram(connection);
-        const baseMapGenProg = createMapGeneratorProgram(connection);
-        const baseGameplayProg = createGameplayStateProgram(connection);
-        const initPoiVrfTx = await buildInitPoiVrfStateTransaction(basePoiSysProg, sessionPda, newSessionSignerKeypair.publicKey);
-        const initMapVrfTx = await buildInitMapVrfStateTransaction(baseMapGenProg, sessionPda, newSessionSignerKeypair.publicKey);
-        const initGameplayVrfTx = await buildInitGameplayVrfStateTransaction(baseGameplayProg, sessionPda, newSessionSignerKeypair.publicKey);
-        // Bundle all 3 inits into one TX
-        const initAllVrfTx = new Transaction();
-        initAllVrfTx.add(...initPoiVrfTx.instructions);
-        initAllVrfTx.add(...initMapVrfTx.instructions);
-        initAllVrfTx.add(...initGameplayVrfTx.instructions);
-        await sendSessionSignerTransaction(connection, initAllVrfTx, newSessionSignerKeypair);
-        console.log('[SessionContext] startDuelGame:vrf_states_pre_initialized');
-      } catch (initErr) {
-        console.warn('[SessionContext] startDuelGame:init_vrf_failed (may already exist):', initErr instanceof Error ? initErr.message : initErr);
+      const [poiVrfPda] = derivePoiVrfStatePda(sessionPda);
+      const [mapVrfPda] = deriveMapVrfStatePda(sessionPda);
+      const [gameplayVrfPda] = deriveGameplayVrfStatePda(sessionPda);
+      const [poiVrfInfo, mapVrfInfo, gameplayVrfInfo] = await Promise.all([
+        connection.getAccountInfo(poiVrfPda).catch(() => null),
+        connection.getAccountInfo(mapVrfPda).catch(() => null),
+        connection.getAccountInfo(gameplayVrfPda).catch(() => null),
+      ]);
+
+      const needsInit: { poi: boolean; map: boolean; gameplay: boolean } = {
+        poi: !poiVrfInfo,
+        map: !mapVrfInfo,
+        gameplay: !gameplayVrfInfo,
+      };
+      duelVrfTypesToDelegate = (['poi', 'map', 'gameplay'] as const).filter((type) => {
+        const info = type === 'poi' ? poiVrfInfo : type === 'map' ? mapVrfInfo : gameplayVrfInfo;
+        return !info || !info.owner.equals(DELEGATION_PROGRAM_ID);
+      });
+
+      console.log('[SessionContext] startDuelGame:vrf_ownership_check', {
+        needsInit,
+        duelVrfTypesToDelegate,
+      });
+
+      if (needsInit.poi || needsInit.map || needsInit.gameplay) {
+        try {
+          const basePoiSysProg = createPoiSystemProgram(connection);
+          const baseMapGenProg = createMapGeneratorProgram(connection);
+          const baseGameplayProg = createGameplayStateProgram(connection);
+          const initAllVrfTx = new Transaction();
+          if (needsInit.poi) {
+            const initPoiVrfTx = await buildInitPoiVrfStateTransaction(basePoiSysProg, sessionPda, newSessionSignerKeypair.publicKey);
+            initAllVrfTx.add(...initPoiVrfTx.instructions);
+          }
+          if (needsInit.map) {
+            const initMapVrfTx = await buildInitMapVrfStateTransaction(baseMapGenProg, sessionPda, newSessionSignerKeypair.publicKey);
+            initAllVrfTx.add(...initMapVrfTx.instructions);
+          }
+          if (needsInit.gameplay) {
+            const initGameplayVrfTx = await buildInitGameplayVrfStateTransaction(baseGameplayProg, sessionPda, newSessionSignerKeypair.publicKey);
+            initAllVrfTx.add(...initGameplayVrfTx.instructions);
+          }
+          await sendSessionSignerTransaction(connection, initAllVrfTx, newSessionSignerKeypair);
+          console.log('[SessionContext] startDuelGame:vrf_states_pre_initialized');
+        } catch (initErr) {
+          console.warn('[SessionContext] startDuelGame:init_vrf_failed (may already exist):', initErr instanceof Error ? initErr.message : initErr);
+        }
       }
     }
 
-    // Delegate to ER including VRF states.
+    // Delegate to ER including VRF states (only those not already delegated).
     const delegateResult = await ensureDelegatedToRollup({
       sessionPda,
       onChainLevel: 20,
       sessionSignerKeypair: newSessionSignerKeypair,
-      delegateVrf: SOLANA_CONFIG.isLocalValidator ? undefined : ['poi', 'map', 'gameplay'],
+      delegateVrf: SOLANA_CONFIG.isLocalValidator ? undefined : duelVrfTypesToDelegate.length > 0 ? duelVrfTypesToDelegate : undefined,
     });
     if (!delegateResult.success) {
       return {
@@ -2358,8 +2447,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     // Wait for session signer to be visible on ER before sending VRF.
     if (!SOLANA_CONFIG.isLocalValidator) {
       console.log('[SessionContext] startDuelGame:wait_signer_on_er');
-      const signerReady = await waitForSessionSignerOnEr(newSessionSignerKeypair.publicKey);
-      if (!signerReady) {
+      const signerResult = await waitForSessionSignerOnEr(newSessionSignerKeypair.publicKey);
+      if (!signerResult.ready) {
         console.warn('[SessionContext] startDuelGame:signer_not_on_er — proceeding anyway (may retry)');
       }
     }
@@ -2679,32 +2768,69 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
 
     // Pre-init VRF states on base chain so they can be delegated.
+    // Check ownership first: skip init for existing accounts, skip delegation for already-delegated ones.
+    let vrfTypesToDelegate: ('poi' | 'map' | 'gameplay')[] = ['poi', 'map', 'gameplay'];
     if (!SOLANA_CONFIG.isLocalValidator) {
       console.log('[SessionContext] startGauntletGame:pre_init_vrf_states');
-      try {
-        const basePoiSysProg = createPoiSystemProgram(connection);
-        const baseMapGenProg = createMapGeneratorProgram(connection);
-        const baseGameplayProg = createGameplayStateProgram(connection);
-        const initPoiVrfTx = await buildInitPoiVrfStateTransaction(basePoiSysProg, sessionPda, newSessionSignerKeypair.publicKey);
-        const initMapVrfTx = await buildInitMapVrfStateTransaction(baseMapGenProg, sessionPda, newSessionSignerKeypair.publicKey);
-        const initGameplayVrfTx = await buildInitGameplayVrfStateTransaction(baseGameplayProg, sessionPda, newSessionSignerKeypair.publicKey);
-        const initAllVrfTx = new Transaction();
-        initAllVrfTx.add(...initPoiVrfTx.instructions);
-        initAllVrfTx.add(...initMapVrfTx.instructions);
-        initAllVrfTx.add(...initGameplayVrfTx.instructions);
-        await sendSessionSignerTransaction(connection, initAllVrfTx, newSessionSignerKeypair);
-        console.log('[SessionContext] startGauntletGame:vrf_states_pre_initialized');
-      } catch (initErr) {
-        console.warn('[SessionContext] startGauntletGame:init_vrf_failed (may already exist):', initErr instanceof Error ? initErr.message : initErr);
+      const [poiVrfPda] = derivePoiVrfStatePda(sessionPda);
+      const [mapVrfPda] = deriveMapVrfStatePda(sessionPda);
+      const [gameplayVrfPda] = deriveGameplayVrfStatePda(sessionPda);
+      const [poiVrfInfo, mapVrfInfo, gameplayVrfInfo] = await Promise.all([
+        connection.getAccountInfo(poiVrfPda).catch(() => null),
+        connection.getAccountInfo(mapVrfPda).catch(() => null),
+        connection.getAccountInfo(gameplayVrfPda).catch(() => null),
+      ]);
+
+      // Determine which VRF states need init (don't exist yet) and which need delegation (not already delegated)
+      const needsInit: { poi: boolean; map: boolean; gameplay: boolean } = {
+        poi: !poiVrfInfo,
+        map: !mapVrfInfo,
+        gameplay: !gameplayVrfInfo,
+      };
+      vrfTypesToDelegate = (['poi', 'map', 'gameplay'] as const).filter((type) => {
+        const info = type === 'poi' ? poiVrfInfo : type === 'map' ? mapVrfInfo : gameplayVrfInfo;
+        // Skip delegation if already owned by delegation program
+        return !info || !info.owner.equals(DELEGATION_PROGRAM_ID);
+      });
+
+      console.log('[SessionContext] startGauntletGame:vrf_ownership_check', {
+        needsInit,
+        vrfTypesToDelegate,
+      });
+
+      // Only init VRF states that don't exist yet
+      if (needsInit.poi || needsInit.map || needsInit.gameplay) {
+        try {
+          const basePoiSysProg = createPoiSystemProgram(connection);
+          const baseMapGenProg = createMapGeneratorProgram(connection);
+          const baseGameplayProg = createGameplayStateProgram(connection);
+          const initAllVrfTx = new Transaction();
+          if (needsInit.poi) {
+            const initPoiVrfTx = await buildInitPoiVrfStateTransaction(basePoiSysProg, sessionPda, newSessionSignerKeypair.publicKey);
+            initAllVrfTx.add(...initPoiVrfTx.instructions);
+          }
+          if (needsInit.map) {
+            const initMapVrfTx = await buildInitMapVrfStateTransaction(baseMapGenProg, sessionPda, newSessionSignerKeypair.publicKey);
+            initAllVrfTx.add(...initMapVrfTx.instructions);
+          }
+          if (needsInit.gameplay) {
+            const initGameplayVrfTx = await buildInitGameplayVrfStateTransaction(baseGameplayProg, sessionPda, newSessionSignerKeypair.publicKey);
+            initAllVrfTx.add(...initGameplayVrfTx.instructions);
+          }
+          await sendSessionSignerTransaction(connection, initAllVrfTx, newSessionSignerKeypair);
+          console.log('[SessionContext] startGauntletGame:vrf_states_pre_initialized');
+        } catch (initErr) {
+          console.warn('[SessionContext] startGauntletGame:init_vrf_failed (may already exist):', initErr instanceof Error ? initErr.message : initErr);
+        }
       }
     }
 
-    // Delegate to ER including VRF states.
+    // Delegate to ER including VRF states (only those not already delegated).
     const delegateResult = await ensureDelegatedToRollup({
       sessionPda,
       onChainLevel: 20,
       sessionSignerKeypair: newSessionSignerKeypair,
-      delegateVrf: SOLANA_CONFIG.isLocalValidator ? undefined : ['poi', 'map', 'gameplay'],
+      delegateVrf: SOLANA_CONFIG.isLocalValidator ? undefined : vrfTypesToDelegate.length > 0 ? vrfTypesToDelegate : undefined,
     });
     if (!delegateResult.success) {
       return {
@@ -2716,8 +2842,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     // Wait for session signer to be visible on ER before sending VRF.
     if (!SOLANA_CONFIG.isLocalValidator) {
       console.log('[SessionContext] startGauntletGame:wait_signer_on_er');
-      const signerReady = await waitForSessionSignerOnEr(newSessionSignerKeypair.publicKey);
-      if (!signerReady) {
+      const signerResult = await waitForSessionSignerOnEr(newSessionSignerKeypair.publicKey);
+      if (!signerResult.ready) {
         console.warn('[SessionContext] startGauntletGame:signer_not_on_er — proceeding anyway (may retry)');
       }
     }
@@ -3735,6 +3861,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                   'Delegation not fully propagated to ER yet. Please retry in a moment.',
               };
             }
+            await resolveAndSetErEndpoint(sessionPubkey);
             setUseErForGameplay(true);
             console.warn(
               '[SessionContext] switchToSession: delegation tx failed but session accounts are delegated; continuing in ER mode',
@@ -4208,12 +4335,25 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             );
 
             if (!cleanupSigner) {
+              // Session signer is lost — increment retry and drop after 3 attempts.
+              // Without the signer we can never end the session via deferred cleanup;
+              // the user must use the wallet-signed override flow instead.
+              const retryCount = await incrementRetryCount(cleanup.id);
+              if (retryCount >= 3) {
+                console.warn(
+                  '[SessionContext] Deferred cleanup: dropping — session signer permanently lost',
+                  { cleanupId: cleanup.id, retryCount }
+                );
+                await removeCleanup(cleanup.id);
+                continue;
+              }
               allComplete = false;
               console.warn(
                 '[SessionContext] Deferred cleanup waiting for matching session signer:',
                 {
                   cleanupId: cleanup.id,
                   expectedSessionSigner: expectedSessionSigner?.toBase58() ?? null,
+                  retryCount,
                 }
               );
             } else {

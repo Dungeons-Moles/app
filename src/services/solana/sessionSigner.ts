@@ -69,7 +69,9 @@ const isErConnection = (connection: Connection): boolean => {
   const endpoint = normalizeEndpoint(connection.rpcEndpoint);
   return (
     endpoint === normalizeEndpoint(SOLANA_CONFIG.erRpcUrl) ||
-    endpoint === normalizeEndpoint(directErRpcUrl)
+    endpoint === normalizeEndpoint(directErRpcUrl) ||
+    // Resolved validator endpoints (e.g. devnet-us.magicblock.app)
+    endpoint.includes('magicblock.app')
   );
 };
 const isMagicRouterConnection = (connection: Connection): boolean =>
@@ -284,7 +286,7 @@ export async function clearSessionSignerWallet(): Promise<void> {
 
 /** Returns the SecureStorage key for a specific session's signer keypair. */
 function sessionSignerKeyForSession(sessionPda: string): string {
-  return `${SESSION_SIGNER_STORAGE_KEY}:${sessionPda}`;
+  return `${SESSION_SIGNER_STORAGE_KEY}.${sessionPda}`;
 }
 
 /**

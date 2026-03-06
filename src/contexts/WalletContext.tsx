@@ -11,6 +11,11 @@ import { transact, Web3MobileWallet } from '@solana-mobile/mobile-wallet-adapter
 import { Connection, Keypair, PublicKey, Transaction, VersionedTransaction } from '@solana/web3.js';
 import { WalletState, AuthorizationResult } from '../types';
 import { SOLANA_CONFIG } from '@/services/solana/config';
+import {
+  deleteItemAsync as deleteSecureItemAsync,
+  getItemAsync as getSecureItemAsync,
+  setItemAsync as setSecureItemAsync,
+} from '@/services/storage/secureStorage';
 
 const APP_IDENTITY = {
   name: 'Dungeons & Moles',
@@ -20,7 +25,58 @@ const APP_IDENTITY = {
 
 const DEV_WEB_WALLET_KEY = 'dm_dev_web_wallet_secret';
 const WEB_WALLET_CHOICE_KEY = 'dm_web_wallet_choice';
+const MOBILE_WALLET_SESSION_KEY = 'dm_mobile_wallet_session';
 const IS_WEB = Platform.OS === 'web';
+
+type StoredMobileWalletSession = {
+  address: string;
+  authToken: string;
+  label?: string;
+};
+
+function isStoredMobileWalletSession(value: unknown): value is StoredMobileWalletSession {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const session = value as Partial<StoredMobileWalletSession>;
+  return typeof session.address === 'string' && typeof session.authToken === 'string';
+}
+
+async function persistMobileWalletSession(session: StoredMobileWalletSession): Promise<void> {
+  if (IS_WEB) {
+    return;
+  }
+
+  await setSecureItemAsync(MOBILE_WALLET_SESSION_KEY, JSON.stringify(session));
+}
+
+async function loadMobileWalletSession(): Promise<StoredMobileWalletSession | null> {
+  if (IS_WEB) {
+    return null;
+  }
+
+  try {
+    const raw = await getSecureItemAsync(MOBILE_WALLET_SESSION_KEY);
+    if (!raw) {
+      return null;
+    }
+
+    const parsed: unknown = JSON.parse(raw);
+    return isStoredMobileWalletSession(parsed) ? parsed : null;
+  } catch (error) {
+    console.warn('[WalletContext] Failed to load stored mobile wallet session:', error);
+    return null;
+  }
+}
+
+async function clearMobileWalletSession(): Promise<void> {
+  if (IS_WEB) {
+    return;
+  }
+
+  await deleteSecureItemAsync(MOBILE_WALLET_SESSION_KEY);
+}
 
 function isPersistedWebWallet(value: string): value is SupportedWallet {
   return (
@@ -212,9 +268,11 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   });
   const [isConnecting, setIsConnecting] = useState(false);
   const [isRestoringConnection, setIsRestoringConnection] = useState(() => {
-    // Only true on web when there's a stored wallet preference to restore
-    if (!IS_WEB || typeof window === 'undefined') return false;
-    return loadPreferredWebWallet() !== null;
+    if (IS_WEB) {
+      if (typeof window === 'undefined') return false;
+      return loadPreferredWebWallet() !== null;
+    }
+    return true;
   });
   const [error, setError] = useState<string | null>(null);
   const [devWebWallet] = useState<Keypair | null>(() => (IS_WEB ? loadDevWebWallet() : null));
@@ -243,11 +301,68 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     airdropIfNeeded();
   }, [devWebWallet, wallet.authToken]);
 
-  // Eagerly restore existing wallet connection on mount (web only)
+  // Eagerly restore existing wallet connection on mount.
   useEffect(() => {
-    if (!IS_WEB || typeof window === 'undefined') return;
-
     const restoreConnection = async () => {
+      if (!IS_WEB) {
+        try {
+          const storedSession = await loadMobileWalletSession();
+          if (!storedSession) {
+            return;
+          }
+
+          const result = await transact(async (walletAdapter: Web3MobileWallet) => {
+            return walletAdapter.reauthorize({
+              identity: APP_IDENTITY,
+              auth_token: storedSession.authToken,
+            });
+          });
+
+          if (!result || result.accounts.length === 0) {
+            await clearMobileWalletSession();
+            return;
+          }
+
+          const matchingAccount =
+            result.accounts.find((account) => {
+              try {
+                const address = new PublicKey(Buffer.from(account.address, 'base64')).toBase58();
+                return address === storedSession.address;
+              } catch (error) {
+                return false;
+              }
+            }) ?? result.accounts[0];
+
+          const publicKey = new PublicKey(Buffer.from(matchingAccount.address, 'base64'));
+          const base58Address = publicKey.toBase58();
+          const authToken = result.auth_token ?? storedSession.authToken;
+
+          setWallet({
+            isConnected: true,
+            address: base58Address,
+            publicKey,
+            authToken,
+          });
+
+          await persistMobileWalletSession({
+            address: base58Address,
+            authToken,
+            label: matchingAccount.label,
+          });
+          return;
+        } catch (error) {
+          console.warn('[WalletContext] Mobile wallet restore failed:', error);
+          await clearMobileWalletSession();
+          return;
+        } finally {
+          setIsRestoringConnection(false);
+        }
+      }
+
+      if (typeof window === 'undefined') {
+        return;
+      }
+
       const targetWallet = preferredWebWallet ?? loadPreferredWebWallet();
 
       // DevKeypair: synchronous restore
@@ -305,7 +420,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     };
 
     restoreConnection();
-  }, [preferredWebWallet]);
+  }, [devWebWallet, preferredWebWallet]);
 
   const connect = useCallback(
     async (walletName?: SupportedWallet): Promise<AuthorizationResult | null> => {
@@ -412,6 +527,12 @@ export function WalletProvider({ children }: { children: ReactNode }) {
             authToken: result.auth_token,
           });
 
+          await persistMobileWalletSession({
+            address: base58Address,
+            authToken: result.auth_token,
+            label: account.label,
+          });
+
           return authResult;
         }
 
@@ -438,6 +559,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     setPreferredWebWallet(null);
     storePreferredWebWallet(null);
     setError(null);
+    void clearMobileWalletSession();
   }, []);
 
   const signAndSendTransaction = useCallback(
@@ -504,7 +626,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
           throw new Error('Selected web wallet not available. Please reconnect your wallet.');
         }
 
-        if (!wallet.authToken) {
+        const authToken = wallet.authToken;
+        if (!authToken) {
           throw new Error('Wallet not connected');
         }
 
@@ -529,13 +652,33 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         }
 
         return transact(async (walletAdapter: Web3MobileWallet) => {
-          console.log('[WalletContext] Mobile: authorizing...');
-          const authResult = await walletAdapter.authorize({
-            chain: SOLANA_CONFIG.mobileChain,
-            identity: APP_IDENTITY,
-            auth_token: wallet.authToken ?? undefined,
-          });
-          console.log('[WalletContext] Mobile: authorized, signing tx...');
+          // Try reauthorize first; fall back to fresh authorize if token is stale
+          try {
+            console.log('[WalletContext] Mobile: reauthorizing...');
+            await walletAdapter.reauthorize({
+              identity: APP_IDENTITY,
+              auth_token: authToken,
+            });
+          } catch (reauthorizeError) {
+            console.warn('[WalletContext] Mobile: reauthorize failed, falling back to authorize...', reauthorizeError);
+            const freshAuth = await walletAdapter.authorize({
+              chain: SOLANA_CONFIG.mobileChain,
+              identity: APP_IDENTITY,
+            });
+            if (freshAuth && freshAuth.accounts.length > 0) {
+              const newToken = freshAuth.auth_token;
+              const account = freshAuth.accounts[0];
+              const pubkey = new PublicKey(Buffer.from(account.address, 'base64'));
+              setWallet((prev) => ({ ...prev, authToken: newToken }));
+              await persistMobileWalletSession({
+                address: pubkey.toBase58(),
+                authToken: newToken,
+                label: account.label,
+              });
+              console.log('[WalletContext] Mobile: re-authorized with fresh token');
+            }
+          }
+          console.log('[WalletContext] Mobile: signing tx...');
 
           const signed = await walletAdapter.signTransactions({
             transactions: [transaction],
@@ -642,17 +785,50 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         throw new Error('Selected web wallet does not support batched signing. Please reconnect.');
       }
 
-      if (!wallet.authToken) {
+      const authToken = wallet.authToken;
+      if (!authToken) {
         throw new Error('Wallet not connected');
       }
 
       return transact(async (walletAdapter: Web3MobileWallet) => {
-        await walletAdapter.authorize({
-          chain: SOLANA_CONFIG.mobileChain,
-          identity: APP_IDENTITY,
-          auth_token: wallet.authToken ?? undefined,
-        });
-        return walletAdapter.signAndSendTransactions({ transactions });
+        // Try reauthorize first; fall back to fresh authorize if token is stale
+        try {
+          await walletAdapter.reauthorize({
+            identity: APP_IDENTITY,
+            auth_token: authToken,
+          });
+        } catch (reauthorizeError) {
+          console.warn('[WalletContext] Mobile: reauthorize failed (batch), falling back to authorize...', reauthorizeError);
+          const freshAuth = await walletAdapter.authorize({
+            chain: SOLANA_CONFIG.mobileChain,
+            identity: APP_IDENTITY,
+          });
+          if (freshAuth && freshAuth.accounts.length > 0) {
+            const newToken = freshAuth.auth_token;
+            const account = freshAuth.accounts[0];
+            const pubkey = new PublicKey(Buffer.from(account.address, 'base64'));
+            setWallet((prev) => ({ ...prev, authToken: newToken }));
+            await persistMobileWalletSession({
+              address: pubkey.toBase58(),
+              authToken: newToken,
+              label: account.label,
+            });
+            console.log('[WalletContext] Mobile: re-authorized with fresh token (batch)');
+          }
+        }
+
+        // Use signTransactions + manual send instead of signAndSendTransactions
+        // to properly handle partially-signed transactions (e.g. session signer).
+        // MWA's signAndSendTransactions can fail to show the approval UI when
+        // transactions already carry partial signatures.
+        const signed = await walletAdapter.signTransactions({ transactions });
+        const signatures: string[] = [];
+        for (const tx of signed) {
+          const serialized = tx.serialize();
+          const signature = await targetConnection.sendRawTransaction(serialized, sendOptions);
+          signatures.push(signature);
+        }
+        return signatures;
       });
     },
     [devWebWallet, preferredWebWallet, wallet.authToken, wallet.publicKey]

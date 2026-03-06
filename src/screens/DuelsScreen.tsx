@@ -67,6 +67,7 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
   const isFocused = useIsFocused();
   const isCompact = useScreenVariant() === 'compact';
   const [hasExistingDuelSessionOnChain, setHasExistingDuelSessionOnChain] = useState(false);
+  const [isCheckingSession, setIsCheckingSession] = useState(true);
 
   const { playSfx } = useAudio();
   const payment = usePaymentToken(BigInt(DUEL_ENTRY_LAMPORTS));
@@ -87,8 +88,12 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
   useEffect(() => {
     let cancelled = false;
     const checkDuelSession = async () => {
+      if (!cancelled) setIsCheckingSession(true);
       if (!wallet.publicKey) {
-        if (!cancelled) setHasExistingDuelSessionOnChain(false);
+        if (!cancelled) {
+          setHasExistingDuelSessionOnChain(false);
+          setIsCheckingSession(false);
+        }
         return;
       }
       try {
@@ -98,6 +103,8 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
         if (!cancelled) setHasExistingDuelSessionOnChain(account !== null);
       } catch {
         if (!cancelled) setHasExistingDuelSessionOnChain(false);
+      } finally {
+        if (!cancelled) setIsCheckingSession(false);
       }
     };
     checkDuelSession();
@@ -130,11 +137,13 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
     });
     if (ok) {
       dispatch({ type: 'RESET_GAME' });
-      if (navigatedToLoading) {
-        resolveSessionSetup();
-      } else {
-        navigation.navigate('Game');
+      if (!navigatedToLoading) {
+        // Setup completed before the onCommitted callback fired — navigate
+        // through SessionLoadingScreen anyway so assets get preloaded.
+        createSessionSetup();
+        navigation.navigate('SessionLoading', { mode: 'duel' });
       }
+      resolveSessionSetup();
       return;
     }
     if (navigatedToLoading) {
@@ -181,6 +190,8 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
   const inputMode = useInputMode();
   const isController = inputMode === 'controller';
   const [panelFocus, setPanelFocus] = useState(1); // 0 = History, 1 = Enter
+  const [panelWidth, setPanelWidth] = useState(300);
+  const buttonFontSize = isCompact ? 52 : panelWidth * 0.06;
 
   const handleHistory = useCallback(() => {
     playSfx('ui_click');
@@ -377,7 +388,10 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
 
           {/* Panel with all content overlaid */}
           <View style={styles.centerContent}>
-            <View style={[styles.panelWrapper, isCompact && compactStyles.panelWrapper]}>
+            <View
+              style={[styles.panelWrapper, isCompact && compactStyles.panelWrapper]}
+              onLayout={(e) => setPanelWidth(e.nativeEvent.layout.width)}
+            >
               <Image source={PVP_MODES_PANEL} style={styles.pvpModesPanel} resizeMode="contain" />
               <View style={[styles.panelOverlay, isCompact && compactStyles.panelOverlay]}>
                 <View
@@ -430,37 +444,36 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
                 </View>
 
                 <View style={[styles.panelButtons, isCompact && compactStyles.panelButtons]}>
-                  <FocusGlow active={isController && panelFocus === 0}>
+                  <FocusGlow style={{ flex: 1 }} active={isController && panelFocus === 0}>
                     <TouchableOpacity
                       onPress={() => navigation.navigate('DuelsHistory')}
                       activeOpacity={0.7}
                     >
                       <Text
-                        style={[styles.panelButtonText, isCompact && compactStyles.panelButtonText]}
+                        style={[styles.panelButtonText, { fontSize: buttonFontSize }]}
                       >
                         History
                       </Text>
                     </TouchableOpacity>
                   </FocusGlow>
 
-                  <FocusGlow active={isController && panelFocus === 1}>
+                  <FocusGlow style={{ flex: 1 }} active={isController && panelFocus === 1}>
                     <TouchableOpacity
                       onPress={handleEnter}
                       activeOpacity={0.7}
-                      disabled={duels.isLoading}
+                      disabled={duels.isLoading || isCheckingSession}
                     >
                       <View>
                         <Text
                           style={[
                             styles.panelButtonText,
-                            isCompact && compactStyles.panelButtonText,
-                            duels.isLoading && { opacity: 0 },
-                            hasExistingDuelSession && { marginLeft: -30 },
+                            { fontSize: buttonFontSize },
+                            (duels.isLoading || isCheckingSession) && { opacity: 0 },
                           ]}
                         >
-                          {hasExistingDuelSession ? 'Resume Session' : 'Enter Duels'}
+                          {hasExistingDuelSession ? 'Resume' : 'Enter'}
                         </Text>
-                        {duels.isLoading && (
+                        {(duels.isLoading || isCheckingSession) && (
                           <ActivityIndicator
                             color="#3d2b1f"
                             size={isCompact ? 'large' : 'small'}
@@ -570,20 +583,32 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
               </View>
             ) : (
               <View style={styles.modalButtons}>
-                <TouchableOpacity
-                  style={styles.modalButtonSecondary}
-                  onPress={() => setShowSessionExistsModal(false)}
-                >
-                  <Text style={styles.modalButtonTextSecondary}>Cancel</Text>
+                <TouchableOpacity onPress={() => setShowSessionExistsModal(false)}>
+                  <CachedImageBackground
+                    source={buttonV1Source}
+                    resizeMode="stretch"
+                    style={styles.modalButtonBg}
+                  >
+                    <Text style={styles.modalButtonTextSecondary}>Cancel</Text>
+                  </CachedImageBackground>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.modalButtonSecondary}
-                  onPress={handleOverrideExistingSession}
-                >
-                  <Text style={styles.modalButtonTextSecondary}>Override</Text>
+                <TouchableOpacity onPress={handleOverrideExistingSession}>
+                  <CachedImageBackground
+                    source={buttonV1Source}
+                    resizeMode="stretch"
+                    style={styles.modalButtonBg}
+                  >
+                    <Text style={styles.modalButtonTextSecondary}>Override</Text>
+                  </CachedImageBackground>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.modalButtonPrimary} onPress={handleResumeExistingSession}>
-                  <Text style={styles.modalButtonTextPrimary}>Resume</Text>
+                <TouchableOpacity onPress={handleResumeExistingSession}>
+                  <CachedImageBackground
+                    source={buttonV4Source}
+                    resizeMode="stretch"
+                    style={styles.modalButtonBg}
+                  >
+                    <Text style={styles.modalButtonTextPrimary}>Resume</Text>
+                  </CachedImageBackground>
                 </TouchableOpacity>
               </View>
             )}
@@ -674,6 +699,7 @@ const styles = StyleSheet.create({
   panelOverlay: {
     ...StyleSheet.absoluteFillObject,
     padding: 16,
+    flexDirection: 'column',
   },
   panelRow: {
     flexDirection: 'row',
@@ -726,15 +752,16 @@ const styles = StyleSheet.create({
   },
   panelButtons: {
     flexDirection: 'row',
-    gap: 76,
-    marginTop: 53,
-    marginLeft: 28,
+    marginTop: 'auto',
+    marginBottom: '-2%',
+    marginHorizontal: -16, // cancel panelOverlay padding so buttons align with image edges
   },
   panelButtonText: {
     fontFamily: Typography.button,
     fontWeight: 'bold',
     fontSize: 18,
     color: '#3d2b1f',
+    textAlign: 'center',
   },
   topRight: {
     position: 'absolute',
@@ -812,7 +839,6 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     width: 360,
-    height: 300,
     padding: 36,
     alignItems: 'center',
     justifyContent: 'flex-start',
@@ -837,23 +863,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 10,
   },
-  modalButtonPrimary: {
-    flex: 1,
-    backgroundColor: '#8ad66f',
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: '#5f8f4d',
+  modalButtonBg: {
     paddingVertical: 10,
+    paddingHorizontal: 20,
+    minWidth: 100,
     alignItems: 'center',
-  },
-  modalButtonSecondary: {
-    flex: 1,
-    backgroundColor: '#e6c7a7',
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: '#7f5539',
-    paddingVertical: 10,
-    alignItems: 'center',
+    justifyContent: 'center',
   },
   modalButtonTextPrimary: {
     fontFamily: Typography.button,
@@ -922,12 +937,9 @@ const compactStyles = StyleSheet.create({
     marginTop: 10,
   },
   panelButtons: {
+    marginHorizontal: 0,
     marginTop: 150,
-    marginLeft: 146,
-    gap: 220,
-  },
-  panelButtonText: {
-    fontSize: 52,
+    marginBottom: 0,
   },
   errorTitle: {
     fontSize: 64,
@@ -950,7 +962,6 @@ const compactStyles = StyleSheet.create({
   },
   modalContent: {
     width: 860,
-    height: 380,
     padding: 50,
   },
   modalTitle: {

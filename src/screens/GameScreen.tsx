@@ -6,6 +6,7 @@ import React, { useCallback, useMemo, useEffect, useState, useRef } from 'react'
 import { View, Text, StyleSheet, Animated, Pressable, Platform } from 'react-native';
 import { Image } from 'expo-image';
 import { CachedImageBackground } from '../components/common/CachedImageBackground';
+import { InstantImageBackground } from '../components/common/InstantImageBackground';
 import { Connection, PublicKey } from '@solana/web3.js';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useIsFocused } from '@react-navigation/native';
@@ -60,6 +61,10 @@ import { Typography } from '../theme/typography';
 import { useEquippedSkinImage } from '../hooks/useEquippedSkinImage';
 import { promptTransactionRetry } from '../utils/transaction-alerts';
 import { getPhaseLabel } from '../utils/phase-labels';
+import {
+  GAME_SCREEN_BACKGROUND_IMAGE,
+  GAME_SCREEN_STAINS_BACKGROUND,
+} from '../constants/criticalImages';
 import type {
   Gear,
   GearId,
@@ -85,7 +90,8 @@ import type { BossId } from '../game/engine/types';
 import { GAME_CONSTANTS } from '../game/engine/constants';
 import Svg, { Path } from 'react-native-svg';
 
-const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.webp');
+const BACKGROUND_IMAGE = GAME_SCREEN_BACKGROUND_IMAGE;
+const STAINS_BACKGROUND = GAME_SCREEN_STAINS_BACKGROUND;
 const COIN_ICON = require('../../assets/icons/ui/coin.webp');
 const MAP_ICON = require('../../assets/icons/ui/map.webp');
 const SIDEBAR_BG = require('../../assets/ui/panels/sidebar.webp');
@@ -98,48 +104,6 @@ const COMPACT_SIDEBAR_WIDTH = 280;
 const NAVBAR_HEIGHT = 60;
 const PERF_DEBUG_LOGS = false;
 
-// Critical game assets to preload before showing the map
-const PRELOAD_ASSETS = [
-  require('../../assets/world/tiles/floor-v1.webp'),
-  require('../../assets/world/tiles/floor-v2.webp'),
-  require('../../assets/world/tiles/floor-v3.webp'),
-  require('../../assets/world/tiles/floor-v4.webp'),
-  require('../../assets/world/tiles/floor-v5.webp'),
-  require('../../assets/world/tiles/rock-v1.webp'),
-  require('../../assets/world/tiles/rock-v2.webp'),
-  require('../../assets/world/tiles/rock-v3.webp'),
-  require('../../assets/world/tiles/rock-v4.webp'),
-  require('../../assets/world/markers/question-mark.webp'),
-  require('../../assets/world/pois/mole-den.webp'),
-  require('../../assets/world/pois/supply-cache.webp'),
-  require('../../assets/world/pois/tool-crate.webp'),
-  require('../../assets/world/pois/tool-oil-rack.webp'),
-  require('../../assets/world/pois/rest-alcove.webp'),
-  require('../../assets/world/pois/survey-beacon.webp'),
-  require('../../assets/world/pois/seismic-scanner.webp'),
-  require('../../assets/world/pois/rail-waypoint.webp'),
-  require('../../assets/world/pois/smuggler-hatch.webp'),
-  require('../../assets/world/pois/rusty-anvil.webp'),
-  require('../../assets/world/pois/rune-kiln.webp'),
-  require('../../assets/world/pois/geode-vault.webp'),
-  require('../../assets/world/pois/counter-cache.webp'),
-  require('../../assets/world/pois/scrap-chute.webp'),
-  require('../../assets/entities/enemies/field/tunnel-rat.webp'),
-  require('../../assets/entities/enemies/field/cave-bat.webp'),
-  require('../../assets/entities/enemies/field/spore-slime.webp'),
-  require('../../assets/entities/enemies/field/rust-mite-swarm.webp'),
-  require('../../assets/entities/enemies/field/collapsed-miner.webp'),
-  require('../../assets/entities/enemies/field/shard-beetle.webp'),
-  require('../../assets/entities/enemies/field/tunnel-warden.webp'),
-  require('../../assets/entities/enemies/field/burrow-ambusher.webp'),
-  require('../../assets/entities/enemies/field/frost-wisp.webp'),
-  require('../../assets/entities/enemies/field/powder-tick.webp'),
-  require('../../assets/entities/enemies/field/coin-slug.webp'),
-  require('../../assets/entities/enemies/field/blood-mosquito.webp'),
-  require('../../assets/entities/characters/default-mole.webp'),
-  require('../../assets/ui/panels/paper-panel.webp'),
-  require('../../assets/ui/panels/sidebar.webp'),
-];
 
 function debugLog(...args: unknown[]) {
   if (__DEV__ && PERF_DEBUG_LOGS) {
@@ -552,7 +516,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
     forceAbandonCurrentSession,
   } = useSession();
   const { wallet } = useWallet();
-  const { gameplayConnection } = useSolanaConnection();
+  const { gameplayReadConnection } = useSolanaConnection();
   const { refreshMapEntities, pois: onChainPois } = useGameplayStateContext();
   const variant = useScreenVariant();
   const nightMovement = useNightMovement();
@@ -586,11 +550,9 @@ export function GameScreen({ navigation }: GameScreenProps) {
   const [fastTravelSelectedIndex, setFastTravelSelectedIndex] = useState(0);
   // Use a ref for synchronous pending check to prevent race conditions with rapid clicks
   const isMovePendingRef = useRef(false);
+  // Start hidden and fade in once the component tree has mounted + rendered,
+  // covering the brief flash where tiles/enemies/POIs haven't painted yet.
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const preloadOverlayAnim = useRef(new Animated.Value(1)).current;
-  const [preloadedCount, setPreloadedCount] = useState(0);
-  const assetsReady = preloadedCount >= PRELOAD_ASSETS.length;
-  const handleAssetLoaded = useCallback(() => setPreloadedCount((c) => c + 1), []);
   // Ref to skip mismatch-detection after POI interactions (updated synchronously)
   const skipMismatchDetectionRef = useRef(false);
   const skipMismatchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -601,13 +563,22 @@ export function GameScreen({ navigation }: GameScreenProps) {
   const [totalEchoSlots, setTotalEchoSlots] = useState(0);
   const echoEquipmentRef = useRef<{ gear: Gear[]; tool: Tool | null }>({ gear: [], tool: null });
 
+  // Fade in once game state is ready, giving expo-image time to render
+  // cached assets into the component tree. On mobile, even cached images
+  // load asynchronously so we need a short delay before revealing.
+  const hasFadedInRef = useRef(false);
   useEffect(() => {
-    if (!assetsReady) return;
-    // Fade out the preload overlay, then fade in the game content
-    Animated.timing(preloadOverlayAnim, { toValue: 0, duration: 400, useNativeDriver: true }).start(() => {
-      Animated.timing(fadeAnim, { toValue: 1, duration: 400, useNativeDriver: true }).start();
-    });
-  }, [assetsReady]);
+    if (!state || hasFadedInRef.current) return;
+    hasFadedInRef.current = true;
+    const timer = setTimeout(() => {
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }).start();
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [state, fadeAnim]);
 
   // Auto-show tutorial on first session entry
   useEffect(() => {
@@ -758,7 +729,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
       currentLevel,
     });
 
-    fetchFullSessionState(gameplayConnection, sessionPda)
+    fetchFullSessionState(gameplayReadConnection, sessionPda)
       .then((restored) => {
         if (!restored) {
           console.warn('[GameScreen] Auto-restore failed: fetchFullSessionState returned null');
@@ -773,7 +744,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
       .finally(() => {
         isRestoringSessionRef.current = false;
       });
-  }, [isFocused, state, hasActiveSession, sessionPda, currentLevel, gameplayConnection, dispatch]);
+  }, [isFocused, state, hasActiveSession, sessionPda, currentLevel, gameplayReadConnection, dispatch]);
 
   useEffect(() => {
     if (
@@ -799,7 +770,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
         if (sessionPda && state) {
           const [gsPda] = getGameStatePda(sessionPda);
           buildFallbackGauntletCombatParams(
-            gameplayConnection,
+            gameplayReadConnection,
             gsPda,
             onChainState.week,
             { hp: onChainState.hp, gold: onChainState.gold, isDead: true },
@@ -1050,7 +1021,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
     triggerBoss,
     navigation,
     sessionPda,
-    gameplayConnection,
+    gameplayReadConnection,
   ]);
 
   // Dead gauntlet session recovery: when a gauntlet player is dead but no
@@ -1501,7 +1472,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
                 if (sessionPda) {
                   const [gsPda] = getGameStatePda(sessionPda);
                   const fallback = await buildFallbackGauntletCombatParams(
-                    gameplayConnection,
+                    gameplayReadConnection,
                     gsPda,
                     currentWeek,
                     { hp: result.newState.hp, gold: result.newState.gold, isDead: !!result.isDead },
@@ -2662,24 +2633,12 @@ export function GameScreen({ navigation }: GameScreenProps) {
   ]);
 
   if (!state || !sharedSidebarProps) {
-    return (
-      <View style={styles.container}>
-        <CachedImageBackground
-          source={BACKGROUND_IMAGE}
-          style={styles.backgroundImage}
-          contentFit="cover"
-        >
-          <View style={styles.darkOverlay}>
-            <View style={styles.loading}>
-              <Text style={styles.loadingText}>Loading...</Text>
-            </View>
-          </View>
-        </CachedImageBackground>
-      </View>
-    );
+    // No game state yet — show same background as SessionLoadingScreen.
+    return <View style={styles.fadeContainer} />;
   }
 
   return (
+    <View style={styles.fadeContainer}>
     <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
       <OverviewPanController
         isController={isController}
@@ -2687,7 +2646,11 @@ export function GameScreen({ navigation }: GameScreenProps) {
         isFastTravelActive={isFastTravelActive}
         panOverview={panOverview}
       />
-      <CachedImageBackground source={BACKGROUND_IMAGE} style={styles.backgroundImage} contentFit="cover">
+      <InstantImageBackground
+        source={BACKGROUND_IMAGE}
+        style={styles.backgroundImage}
+        contentFit="cover"
+      >
         <View style={styles.darkOverlay}>
           <View style={styles.fullLayout}>
             {/* Top Area */}
@@ -2922,33 +2885,14 @@ export function GameScreen({ navigation }: GameScreenProps) {
           )}
         <TutorialModal visible={showTutorial} onClose={() => setShowTutorial(false)} />
         </View>
-      </CachedImageBackground>
-      {/* Asset preload overlay: shows loading background until all game images are decoded */}
-      {!assetsReady && (
-        <Animated.View style={[StyleSheet.absoluteFill, { zIndex: 9999, opacity: preloadOverlayAnim }]}>
-          <CachedImageBackground source={BACKGROUND_IMAGE} style={styles.backgroundImage} contentFit="cover">
-            <View style={styles.preloadContent}>
-              <Text style={styles.preloadText}>Loading...</Text>
-            </View>
-          </CachedImageBackground>
-          <View style={styles.preloadOffscreen} pointerEvents="none">
-            {PRELOAD_ASSETS.map((source, i) => (
-              <Image
-                key={i}
-                source={source}
-                style={styles.preloadImage}
-                onLoad={handleAssetLoaded}
-                onError={handleAssetLoaded}
-              />
-            ))}
-          </View>
-        </Animated.View>
-      )}
+      </InstantImageBackground>
     </Animated.View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  fadeContainer: { flex: 1, backgroundColor: '#F5F0DD' },
   container: { flex: 1 },
   backgroundImage: { flex: 1, width: '100%', height: '100%' },
   darkOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.15)' },
@@ -3037,27 +2981,4 @@ const styles = StyleSheet.create({
     zIndex: 100,
   },
 
-  // Asset preload overlay
-  preloadContent: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  preloadText: {
-    fontFamily: Typography.header,
-    fontSize: 28,
-    color: '#3d2b1f',
-    textAlign: 'center',
-  },
-  preloadOffscreen: {
-    position: 'absolute',
-    width: 1,
-    height: 1,
-    overflow: 'hidden',
-    opacity: 0,
-  },
-  preloadImage: {
-    width: 1,
-    height: 1,
-  },
 });

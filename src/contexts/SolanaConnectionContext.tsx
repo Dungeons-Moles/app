@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useMemo, useEffect, ReactNode, useState, useCallback } from 'react';
-import type { Connection } from '@solana/web3.js';
+import { Connection } from '@solana/web3.js';
 import { createErConnection, createSolanaConnection } from '@/services/solana/programs';
 import { checkValidatorFingerprint } from '@/services/solana/validatorFingerprint';
+import { SOLANA_CONFIG } from '@/services/solana/config';
 
 interface SolanaConnectionContextValue {
   /** Base layer Solana connection (L1). */
@@ -10,12 +11,18 @@ interface SolanaConnectionContextValue {
   baseConnection: Connection;
   /** Ephemeral rollup connection (MagicBlock). */
   erConnection: Connection;
-  /** Connection to use for in-session gameplay writes. */
+  /** Direct ER connection (bypasses router, for reads). */
+  directErConnection: Connection;
+  /** Connection to use for in-session gameplay writes (router). */
   gameplayConnection: Connection;
+  /** Connection to use for in-session gameplay reads (resolved validator). */
+  gameplayReadConnection: Connection;
   /** Whether gameplay writes are currently routed to ER. */
   useErForGameplay: boolean;
   /** Toggle routing of gameplay writes to ER. */
   setUseErForGameplay: (enabled: boolean) => void;
+  /** Set the resolved ER validator endpoint (discovered after delegation). */
+  setResolvedErEndpoint: (endpoint: string | null) => void;
 }
 
 const SolanaConnectionContext = createContext<SolanaConnectionContextValue | undefined>(undefined);
@@ -23,10 +30,32 @@ const SolanaConnectionContext = createContext<SolanaConnectionContextValue | und
 export function SolanaConnectionProvider({ children }: { children: ReactNode }) {
   const baseConnection = useMemo(() => createSolanaConnection(), []);
   const erConnection = useMemo(() => createErConnection(), []);
+  const directErConnection = useMemo(
+    () =>
+      new Connection(SOLANA_CONFIG.directErRpcUrl, {
+        commitment: SOLANA_CONFIG.erCommitment,
+        wsEndpoint: SOLANA_CONFIG.directErWsUrl,
+      }),
+    []
+  );
   const [useErForGameplay, setUseErForGameplayState] = useState(false);
   const setUseErForGameplay = useCallback((enabled: boolean) => {
     setUseErForGameplayState(enabled);
+    if (!enabled) setResolvedErEndpointState(null);
   }, []);
+  const [resolvedErEndpoint, setResolvedErEndpointState] = useState<string | null>(null);
+  const setResolvedErEndpoint = useCallback((endpoint: string | null) => {
+    setResolvedErEndpointState(endpoint);
+  }, []);
+  const resolvedErConnection = useMemo(() => {
+    if (!resolvedErEndpoint) return directErConnection;
+    return new Connection(resolvedErEndpoint, {
+      commitment: SOLANA_CONFIG.erCommitment,
+      wsEndpoint: resolvedErEndpoint
+        .replace(/^https:\/\//, 'wss://')
+        .replace(/^http:\/\//, 'ws://'),
+    });
+  }, [resolvedErEndpoint, directErConnection]);
 
   // Check for validator reset on startup (local dev only).
   // Clears stale caches when genesis hash changes.
@@ -37,17 +66,27 @@ export function SolanaConnectionProvider({ children }: { children: ReactNode }) 
       }
     });
   }, [baseConnection]);
+  // Gameplay writes go through the router (erConnection) which has optimized
+  // routing and is geographically distributed. The resolvedErConnection is only
+  // for reads — it points directly to the specific validator node which has the
+  // actual account data (the router returns zeroed data for reads).
   const gameplayConnection = useErForGameplay ? erConnection : baseConnection;
+  // Read connection for fetching on-chain state during gameplay.
+  // Uses the resolved validator endpoint when available, falls back to router.
+  const gameplayReadConnection = useErForGameplay ? resolvedErConnection : baseConnection;
   const contextValue = useMemo(
     () => ({
       connection: baseConnection,
       baseConnection,
       erConnection,
+      directErConnection: resolvedErConnection,
       gameplayConnection,
+      gameplayReadConnection,
       useErForGameplay,
       setUseErForGameplay,
+      setResolvedErEndpoint,
     }),
-    [baseConnection, erConnection, gameplayConnection, useErForGameplay, setUseErForGameplay]
+    [baseConnection, erConnection, resolvedErConnection, gameplayConnection, gameplayReadConnection, useErForGameplay, setUseErForGameplay, setResolvedErEndpoint]
   );
 
   return (
