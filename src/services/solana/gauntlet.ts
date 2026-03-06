@@ -476,15 +476,9 @@ export async function parseGauntletCombatVisualEvent(
   return parsed.combatVisual;
 }
 
-export async function parseGauntletEvents(
-  connection: Connection,
-  signature: string
-): Promise<GauntletEventParseResult> {
-  const tx = await connection.getTransaction(signature, {
-    commitment: 'confirmed',
-    maxSupportedTransactionVersion: 0,
-  });
-
+export function parseGauntletEventsFromLogs(
+  logMessages: string[]
+): GauntletEventParseResult {
   const result: GauntletEventParseResult = {
     combatVisual: null,
     runEnded: null,
@@ -492,11 +486,7 @@ export async function parseGauntletEvents(
     weekEchoSelected: null,
   };
 
-  if (!tx?.meta?.logMessages) {
-    return result;
-  }
-
-  for (const logLine of tx.meta.logMessages) {
+  for (const logLine of logMessages) {
     if (!logLine.startsWith('Program data: ')) continue;
     const buf = Buffer.from(logLine.slice('Program data: '.length), 'base64');
     if (buf.length < 8) continue;
@@ -522,6 +512,22 @@ export async function parseGauntletEvents(
   }
 
   return result;
+}
+
+export async function parseGauntletEvents(
+  connection: Connection,
+  signature: string
+): Promise<GauntletEventParseResult> {
+  const tx = await connection.getTransaction(signature, {
+    commitment: 'confirmed',
+    maxSupportedTransactionVersion: 0,
+  });
+
+  if (!tx?.meta?.logMessages) {
+    return { combatVisual: null, runEnded: null, weekAdvanced: null, weekEchoSelected: null };
+  }
+
+  return parseGauntletEventsFromLogs(tx.meta.logMessages);
 }
 
 export async function buildEnterGauntletInstruction(

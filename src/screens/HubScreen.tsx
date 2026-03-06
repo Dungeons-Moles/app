@@ -758,23 +758,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
               </View>
             )}
 
-            {/* Guest mode description */}
-            {isGuest && (
-              isCompact ? (
-                <Text style={[styles.guestModeDescription, compactStyles.guestModeDescription]}>
-                  {"Guest mode — explore freely with no strings attached.\nYour progress won't be saved."}
-                </Text>
-              ) : (
-                <>
-                  <Text style={[styles.guestModeDescription, styles.guestModeDescriptionTight]}>
-                    {"Guest mode —\nexplore freely with\nno strings attached."}
-                  </Text>
-                  <Text style={[styles.guestModeDescription, styles.guestModeDescriptionTight, { marginTop: 4 }]}>
-                    {"Your progress won't\nbe saved."}
-                  </Text>
-                </>
-              )
-            )}
+            {/* Guest mode description — moved to bottom center */}
 
             {/* Wide: Items button directly below profile (on-chain only; guests get it bottom-left) */}
             {!isCompact && !isGuest && (
@@ -1088,6 +1072,18 @@ export function HubScreen({ navigation }: HubScreenProps) {
           </View>
         </View>
       </ScrollView>
+
+      {/* Guest mode description — bottom center */}
+      {isGuest && (
+        <View style={[styles.guestModeBottomCenter, isCompact && compactStyles.guestModeBottomCenter]}>
+          <Text style={[styles.guestModeBottomText, isCompact && compactStyles.guestModeBottomText]}>
+            Guest mode — explore freely with no strings attached.
+          </Text>
+          <Text style={[styles.guestModeBottomText, isCompact && compactStyles.guestModeBottomText]}>
+            Your progress won't be saved.
+          </Text>
+        </View>
+      )}
 
       <HubSettingsModal
         visible={showSettings}
@@ -2165,6 +2161,20 @@ const styles = StyleSheet.create({
     marginTop: 6,
     textAlign: 'left',
   },
+  guestModeBottomCenter: {
+    position: 'absolute',
+    bottom: 16,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  guestModeBottomText: {
+    fontFamily: Typography.body,
+    fontSize: 12,
+    color: '#888888',
+    lineHeight: 16,
+    textAlign: 'center',
+  },
 
   // TOP CENTER - Points
   topCenter: {
@@ -2787,6 +2797,13 @@ const compactStyles = StyleSheet.create({
     fontSize: 20,
     lineHeight: 26,
     marginTop: 12,
+  },
+  guestModeBottomCenter: {
+    bottom: 30,
+  },
+  guestModeBottomText: {
+    fontSize: 20,
+    lineHeight: 26,
   },
   navButton: {
     width: 300,

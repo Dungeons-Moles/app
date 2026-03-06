@@ -161,8 +161,9 @@ export function VictoryDefeatDisplay({
           width: iconSize,
           height: iconSize,
           marginBottom: 16 * s,
-          tintColor: '#888888',
         }}
+        // @ts-ignore – expo-image tintColor prop
+        tintColor={isVictory ? '#FFD700' : '#FF4444'}
         contentFit="contain"
       />
 

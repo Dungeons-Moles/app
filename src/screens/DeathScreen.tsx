@@ -165,10 +165,9 @@ export function DeathScreen({ navigation, route }: DeathScreenProps) {
         Run Summary
       </Text>
 
-      {isVerticalLayout ? (
+      {mode === 'guest' ? (
         <>
           <View style={styles.statsRow}>
-            <StatFrame label="Level" value={level ?? 1} />
             <StatFrame label="Week" value={week ?? 1} />
             <StatFrame label="Phase" value={phase ?? 'Day 1'} />
           </View>
@@ -454,38 +453,38 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   iconContainerVertical: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 130,
+    height: 130,
+    borderRadius: 65,
     backgroundColor: 'rgba(139, 0, 0, 0.3)',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 20,
     borderWidth: 2,
     borderColor: '#8B0000',
   },
   skullIconVertical: {
-    width: 48,
-    height: 48,
+    width: 80,
+    height: 80,
     tintColor: '#FF4444',
   },
   defeatImageVertical: {
-    width: 240,
-    height: 100,
-    marginBottom: 8,
+    width: 300,
+    height: 120,
+    marginBottom: 12,
     tintColor: '#CC4444',
   },
   deathCauseVertical: {
     fontFamily: Typography.body,
     fontSize: 22,
     color: '#CCCCCC',
-    marginBottom: 32,
+    marginBottom: 80,
     textAlign: 'center',
   },
   summaryContainerVertical: {
     padding: 20,
     width: '100%',
-    marginBottom: 32,
+    marginBottom: 80,
   },
   summaryTitleVertical: {
     fontFamily: Typography.header,

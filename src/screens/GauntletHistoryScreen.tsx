@@ -16,9 +16,8 @@ import { RootStackParamList } from '../navigation';
 import { useWallet } from '@/contexts/WalletContext';
 import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
 import { useScreenVariant } from '@/contexts/ScreenVariantContext';
-import { parseGauntletEvents } from '@/services/solana/gauntlet';
+import { parseGauntletEvents, parseGauntletEventsFromLogs } from '@/services/solana/gauntlet';
 import { convertItemInstanceToTool, convertItemInstanceToGear } from '@/services/solana/pitDraft';
-import { GAMEPLAY_STATE_PROGRAM_ID } from '@/services/solana/constants';
 import { Typography } from '@/theme/typography';
 import { useAudio } from '../contexts/AudioContext';
 import { useControllerAction } from '../hooks/useControllerAction';
@@ -77,8 +76,7 @@ function buildPvpCombatant(
   };
 }
 
-const PAGE_SIZE = 60;
-const MAX_PAGES = 8;
+const SIG_LIMIT = 30;
 const DEFAULT_MATCHES = 25;
 
 
@@ -127,34 +125,32 @@ export function GauntletHistoryScreen({ navigation }: GauntletHistoryScreenProps
 
     try {
       const ourKey = wallet.publicKey.toBase58();
-      const signaturesById = new Map<
-        string,
-        { signature: string; slot: number; blockTime: number | null }
-      >();
-      const [walletSigs, programSigs] = await Promise.all([
-        connection.getSignaturesForAddress(wallet.publicKey, { limit: PAGE_SIZE }, 'confirmed'),
-        connection.getSignaturesForAddress(
-          GAMEPLAY_STATE_PROGRAM_ID,
-          { limit: PAGE_SIZE * MAX_PAGES },
-          'confirmed'
-        ),
-      ]);
 
-      for (const sig of [...walletSigs, ...programSigs]) {
-        if (!signaturesById.has(sig.signature)) {
-          signaturesById.set(sig.signature, {
-            signature: sig.signature,
-            slot: sig.slot ?? 0,
-            blockTime: sig.blockTime ?? null,
-          });
-        }
-      }
+      // 1. Fetch recent wallet signatures (user-scoped)
+      const signatures = await connection.getSignaturesForAddress(
+        wallet.publicKey,
+        { limit: SIG_LIMIT },
+        'confirmed'
+      );
 
-      const ordered = Array.from(signaturesById.values()).sort((a, b) => b.slot - a.slot);
+      // 2. Fetch all transactions in parallel
+      const txs = await Promise.all(
+        signatures.map((s) =>
+          connection
+            .getTransaction(s.signature, {
+              commitment: 'confirmed',
+              maxSupportedTransactionVersion: 0,
+            })
+            .catch(() => null)
+        )
+      );
+
+      // 3. Parse gauntlet matches from results
       const history: GauntletHistoryItem[] = [];
-
-      for (const sigInfo of ordered) {
-        const events = await parseGauntletEvents(connection, sigInfo.signature);
+      for (let i = 0; i < txs.length && history.length < DEFAULT_MATCHES; i++) {
+        const tx = txs[i];
+        if (!tx?.meta?.logMessages) continue;
+        const events = parseGauntletEventsFromLogs(tx.meta.logMessages);
         const visual = events.combatVisual;
         if (!visual) continue;
         if (visual.player.toBase58() !== ourKey) continue;
@@ -166,16 +162,14 @@ export function GauntletHistoryScreen({ navigation }: GauntletHistoryScreenProps
         const completedRun = Boolean(events.weekAdvanced?.completed || events.runEnded?.completed);
 
         history.push({
-          signature: sigInfo.signature,
-          playedAtUnix: sigInfo.blockTime ?? null,
+          signature: signatures[i].signature,
+          playedAtUnix: signatures[i].blockTime ?? null,
           week: visual.week,
           result: visual.playerWon ? 'WIN' : 'LOSS',
           turnsTaken: visual.turnsTaken,
           sourceLabel: source,
           completedRun,
         });
-
-        if (history.length >= DEFAULT_MATCHES) break;
       }
 
       setItems(history);
@@ -458,7 +452,7 @@ export function GauntletHistoryScreen({ navigation }: GauntletHistoryScreenProps
                             />
                             <View style={[styles.rowInner, isCompact && compactStyles.rowInner]}>
                               <View style={styles.resultRow}>
-                                <View style={styles.brushWrapper}>
+                                <View style={[styles.brushWrapper, isCompact && compactStyles.brushWrapper]}>
                                   <Image
                                     source={item.result === 'WIN' ? GREEN_BRUSH : RED_BRUSH}
                                     style={styles.brushImage}
@@ -655,7 +649,7 @@ const styles = StyleSheet.create({
     position: 'relative',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 10,
+    width: 54,
     paddingVertical: 2,
   },
   brushImage: {
@@ -760,6 +754,9 @@ const compactStyles = StyleSheet.create({
   },
   resultText: {
     fontSize: 32,
+  },
+  brushWrapper: {
+    width: 108,
   },
   resultLabel: {
     fontSize: 36,

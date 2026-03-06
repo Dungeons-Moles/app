@@ -18,8 +18,8 @@ import { useScreenVariant } from '@/contexts/ScreenVariantContext';
 import { createGameplayStateProgram, createPlayerProfileProgram } from '@/services/solana/programs';
 import { derivePlayerProfilePda } from '@/services/solana/types';
 import {
-  derivePitDraftQueuePda,
   parsePitDraftEvents,
+  parsePitDraftEventsFromLogs,
   convertItemInstanceToTool,
   convertItemInstanceToGear,
 } from '@/services/solana/pitDraft';
@@ -85,8 +85,7 @@ function buildPvpCombatant(
   };
 }
 
-const PAGE_SIZE = 50;
-const MAX_PAGES = 10;
+const SIG_LIMIT = 30;
 const DEFAULT_MATCHES = 20;
 
 type PitDraftHistoryScreenProps = {
@@ -160,7 +159,7 @@ export function PitDraftHistoryScreen({ navigation }: PitDraftHistoryScreenProps
     return new Date(unixTs * 1000).toLocaleString();
   }, []);
 
-  const formatSol = useCallback((lamports: number) => (lamports / 1_000_000_000).toFixed(3), []);
+  const formatSol = useCallback((lamports: number) => (lamports / 1_000_000_000).toFixed(2), []);
 
   const loadHistory = useCallback(async () => {
     if (!wallet.publicKey) {
@@ -173,94 +172,108 @@ export function PitDraftHistoryScreen({ navigation }: PitDraftHistoryScreenProps
 
     try {
       const ourKey = wallet.publicKey.toBase58();
-      const gameplayProgram = createGameplayStateProgram(connection);
       const profileProgram = createPlayerProfileProgram(connection);
-      const [queuePda] = derivePitDraftQueuePda();
-      const profileNameCache = new Map<string, string>();
-      const profileSkinCache = new Map<string, PublicKey | null>();
-      const blockTimeCache = new Map<number, number | null>();
-      const history: PitDraftHistoryItem[] = [];
-      let before: string | undefined;
-      let pages = 0;
 
-      while (history.length < DEFAULT_MATCHES && pages < MAX_PAGES) {
-        const signatures = await connection.getSignaturesForAddress(
-          queuePda,
-          { limit: PAGE_SIZE, before },
-          'confirmed'
-        );
-        if (signatures.length === 0) break;
+      // 1. Fetch recent wallet signatures (user-scoped, not the global queue)
+      const signatures = await connection.getSignaturesForAddress(
+        wallet.publicKey,
+        { limit: SIG_LIMIT },
+        'confirmed'
+      );
 
-        for (const sigInfo of signatures) {
-          const events = await parsePitDraftEvents(connection, gameplayProgram, sigInfo.signature);
-          if (!events.resolved) continue;
+      // 2. Fetch all transactions in parallel
+      const txs = await Promise.all(
+        signatures.map((s) =>
+          connection
+            .getTransaction(s.signature, {
+              commitment: 'confirmed',
+              maxSupportedTransactionVersion: 0,
+            })
+            .catch(() => null)
+        )
+      );
 
-          const playerA = events.resolved.playerA.toBase58();
-          const playerB = events.resolved.playerB.toBase58();
-          if (playerA !== ourKey && playerB !== ourKey) continue;
+      // 3. Parse pit draft matches from results
+      const matches: {
+        sigInfo: (typeof signatures)[0];
+        resolved: NonNullable<ReturnType<typeof parsePitDraftEventsFromLogs>['resolved']>;
+        opponentWallet: string;
+      }[] = [];
 
-          const opponentWallet = playerA === ourKey ? playerB : playerA;
-          let opponentName = profileNameCache.get(opponentWallet);
-          let opponentSkinPubkey: PublicKey | null = profileSkinCache.get(opponentWallet) ?? null;
+      for (let i = 0; i < txs.length && matches.length < DEFAULT_MATCHES; i++) {
+        const tx = txs[i];
+        if (!tx?.meta?.logMessages) continue;
+        const events = parsePitDraftEventsFromLogs(tx.meta.logMessages, tx.slot ?? 0);
+        if (!events.resolved) continue;
 
-          if (!opponentName) {
+        const playerA = events.resolved.playerA.toBase58();
+        const playerB = events.resolved.playerB.toBase58();
+        if (playerA !== ourKey && playerB !== ourKey) continue;
+
+        matches.push({
+          sigInfo: signatures[i],
+          resolved: events.resolved,
+          opponentWallet: playerA === ourKey ? playerB : playerA,
+        });
+      }
+
+      // 4. Fetch opponent profiles in parallel
+      const uniqueOpponents = [...new Set(matches.map((m) => m.opponentWallet))];
+      const profileMap = new Map<string, { name: string; skin: PublicKey | null }>();
+      if (uniqueOpponents.length > 0) {
+        const profileResults = await Promise.all(
+          uniqueOpponents.map(async (w) => {
             try {
-              const [profilePda] = derivePlayerProfilePda(new PublicKey(opponentWallet));
+              const [profilePda] = derivePlayerProfilePda(new PublicKey(w));
               const account = await (
                 profileProgram.account as {
                   playerProfile: {
                     fetchNullable: (
                       address: PublicKey
-                    ) => Promise<{ name?: unknown; equippedSkin?: PublicKey | null } | null>;
+                    ) => Promise<{
+                      name?: unknown;
+                      equippedSkin?: PublicKey | null;
+                    } | null>;
                   };
                 }
               ).playerProfile.fetchNullable(profilePda);
-              const fetched = typeof account?.name === 'string' ? account.name.trim() : '';
-              opponentName =
-                fetched.length > 0
-                  ? fetched
-                  : `${opponentWallet.slice(0, 4)}..${opponentWallet.slice(-4)}`;
-              opponentSkinPubkey = account?.equippedSkin ?? null;
+              const fetched =
+                (() => {
+                    const raw = account?.name;
+                    if (raw == null) return '';
+                    if (typeof raw !== 'string') return Buffer.from(raw as ArrayLike<number>).toString('utf-8').replace(/\0/g, '').trim();
+                    if (/^\d+(,\d+)*$/.test(raw)) return Buffer.from(raw.split(',').map(Number)).toString('utf-8').replace(/\0/g, '').trim();
+                    return raw.replace(/\0/g, '').trim();
+                  })();
+              return {
+                name:
+                  fetched.length > 0 ? fetched : `${w.slice(0, 4)}..${w.slice(-4)}`,
+                skin: account?.equippedSkin ?? null,
+              };
             } catch {
-              opponentName = `${opponentWallet.slice(0, 4)}..${opponentWallet.slice(-4)}`;
+              return { name: `${w.slice(0, 4)}..${w.slice(-4)}`, skin: null };
             }
-            profileNameCache.set(opponentWallet, opponentName);
-            profileSkinCache.set(opponentWallet, opponentSkinPubkey);
-          } else {
-            opponentSkinPubkey = profileSkinCache.get(opponentWallet) ?? null;
-          }
-
-          let playedAtUnix = sigInfo.blockTime ?? null;
-          if (playedAtUnix === null && typeof sigInfo.slot === 'number') {
-            const cachedTime = blockTimeCache.get(sigInfo.slot);
-            if (cachedTime !== undefined) {
-              playedAtUnix = cachedTime;
-            } else {
-              try {
-                playedAtUnix = await connection.getBlockTime(sigInfo.slot);
-              } catch {
-                playedAtUnix = null;
-              }
-              blockTimeCache.set(sigInfo.slot, playedAtUnix);
-            }
-          }
-
-          history.push({
-            signature: sigInfo.signature,
-            playedAtUnix,
-            opponentWallet,
-            opponentName,
-            opponentSkinPubkey,
-            isWinner: events.resolved.winner.toBase58() === ourKey,
-            winnerPayoutLamports: events.resolved.winnerPayout,
-            turnsTaken: events.resolved.turnsTaken,
-          });
-          if (history.length >= DEFAULT_MATCHES) break;
+          })
+        );
+        for (let k = 0; k < uniqueOpponents.length; k++) {
+          profileMap.set(uniqueOpponents[k], profileResults[k]);
         }
-
-        before = signatures[signatures.length - 1]?.signature;
-        pages += 1;
       }
+
+      // 5. Build history items
+      const history: PitDraftHistoryItem[] = matches.map((m) => {
+        const profile = profileMap.get(m.opponentWallet);
+        return {
+          signature: m.sigInfo.signature,
+          playedAtUnix: m.sigInfo.blockTime ?? null,
+          opponentWallet: m.opponentWallet,
+          opponentName: profile?.name ?? 'Opponent',
+          opponentSkinPubkey: profile?.skin ?? null,
+          isWinner: m.resolved.winner.toBase58() === ourKey,
+          winnerPayoutLamports: m.resolved.winnerPayout,
+          turnsTaken: m.resolved.turnsTaken,
+        };
+      });
 
       setItems(history);
     } catch (err) {
@@ -554,7 +567,7 @@ export function PitDraftHistoryScreen({ navigation }: PitDraftHistoryScreenProps
                             />
                             <View style={[styles.rowInner, isCompact && compactStyles.rowInner]}>
                               <View style={styles.resultRow}>
-                                <View style={styles.brushWrapper}>
+                                <View style={[styles.brushWrapper, isCompact && compactStyles.brushWrapper]}>
                                   <Image
                                     source={item.isWinner ? GREEN_BRUSH : RED_BRUSH}
                                     style={styles.brushImage}
@@ -758,7 +771,7 @@ const styles = StyleSheet.create({
     position: 'relative',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 10,
+    width: 54,
     paddingVertical: 2,
   },
   brushImage: {
@@ -863,6 +876,9 @@ const compactStyles = StyleSheet.create({
   },
   resultText: {
     fontSize: 32,
+  },
+  brushWrapper: {
+    width: 108,
   },
   resultLabel: {
     fontSize: 36,

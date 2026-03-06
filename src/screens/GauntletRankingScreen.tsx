@@ -163,7 +163,13 @@ export function GauntletRankingScreen({ navigation, route }: GauntletRankingScre
               }
             ).playerProfile.fetchNullable(profilePda);
 
-            const fetched = typeof account?.name === 'string' ? account.name.trim() : '';
+            const fetched = (() => {
+              const raw = account?.name;
+              if (raw == null) return '';
+              if (typeof raw !== 'string') return Buffer.from(raw as ArrayLike<number>).toString('utf-8').replace(/\0/g, '').trim();
+              if (/^\d+(,\d+)*$/.test(raw)) return Buffer.from(raw.split(',').map(Number)).toString('utf-8').replace(/\0/g, '').trim();
+              return raw.replace(/\0/g, '').trim();
+            })();
             profileName = fetched.length > 0 ? fetched : shortWallet(walletStr);
           } catch {
             profileName = shortWallet(walletStr);

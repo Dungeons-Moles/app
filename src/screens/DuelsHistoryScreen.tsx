@@ -243,7 +243,7 @@ export function DuelsHistoryScreen({ navigation }: DuelsHistoryScreenProps) {
     return new Date(unixTs * 1000).toLocaleString();
   };
 
-  const formatSol = (lamports: number) => (lamports / 1_000_000_000).toFixed(3);
+  const formatSol = (lamports: number) => (lamports / 1_000_000_000).toFixed(2);
 
   return (
     <View style={styles.container}>
@@ -377,7 +377,7 @@ export function DuelsHistoryScreen({ navigation }: DuelsHistoryScreenProps) {
                             />
                             <View style={[styles.rowInner, isCompact && compactStyles.rowInner]}>
                               <View style={styles.resultRow}>
-                                <View style={styles.brushWrapper}>
+                                <View style={[styles.brushWrapper, isCompact && compactStyles.brushWrapper]}>
                                   <Image
                                     source={item.isWinner ? GREEN_BRUSH : RED_BRUSH}
                                     style={styles.brushImage}
@@ -566,7 +566,7 @@ const styles = StyleSheet.create({
     position: 'relative',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 10,
+    width: 54,
     paddingVertical: 2,
   },
   brushImage: {
@@ -676,6 +676,9 @@ const compactStyles = StyleSheet.create({
   },
   resultText: {
     fontSize: 32,
+  },
+  brushWrapper: {
+    width: 108,
   },
   resultLabel: {
     fontSize: 36,

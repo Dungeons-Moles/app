@@ -12,6 +12,7 @@ import {
   fetchDuelQueue,
   fetchDuelEntry,
   parseDuelEvents,
+  parseDuelEventsFromLogs,
   getDuelsErrorMessage,
   DUEL_ENTRY_LAMPORTS,
   type DuelResolvedEvent,
@@ -81,8 +82,17 @@ export function useDuels() {
           }
         ).playerProfile.fetchNullable(profilePda);
 
-        if (!account || typeof account.name !== 'string') return null;
-        const trimmed = account.name.trim();
+        if (!account) return null;
+        const raw = account.name;
+        let decoded: string;
+        if (typeof raw !== 'string') {
+          decoded = Buffer.from(raw as ArrayLike<number>).toString('utf-8').replace(/\0/g, '').trim();
+        } else if (/^\d+(,\d+)*$/.test(raw)) {
+          decoded = Buffer.from(raw.split(',').map(Number)).toString('utf-8').replace(/\0/g, '').trim();
+        } else {
+          decoded = raw.replace(/\0/g, '').trim();
+        }
+        const trimmed = decoded;
         return trimmed.length > 0 ? trimmed : null;
       } catch {
         return null;
@@ -373,68 +383,88 @@ export function useDuels() {
       setHistoryError(null);
 
       try {
-        const gameplayProgram = createGameplayStateProgram(connection);
         const ourKey = wallet.publicKey.toBase58();
+        const SIG_LIMIT = 30;
 
-        const profileNameCache = new Map<string, string>();
-        const signaturesById = new Map<string, { signature: string; slot: number; blockTime: number | null }>();
+        // 1. Fetch recent wallet signatures (user-scoped)
+        const signatures = await connection.getSignaturesForAddress(
+          wallet.publicKey,
+          { limit: SIG_LIMIT },
+          'confirmed'
+        );
 
-        const [walletSigs, programSigs] = await Promise.all([
-          connection.getSignaturesForAddress(wallet.publicKey, { limit: 100 }, 'confirmed'),
-          connection.getSignaturesForAddress(GAMEPLAY_STATE_PROGRAM_ID, { limit: 150 }, 'confirmed'),
-        ]);
+        // 2. Fetch all transactions in parallel
+        const txs = await Promise.all(
+          signatures.map((s) =>
+            connection
+              .getTransaction(s.signature, {
+                commitment: 'confirmed',
+                maxSupportedTransactionVersion: 0,
+              })
+              .catch(() => null)
+          )
+        );
 
-        for (const sig of [...walletSigs, ...programSigs]) {
-          if (!signaturesById.has(sig.signature)) {
-            signaturesById.set(sig.signature, {
-              signature: sig.signature,
-              slot: sig.slot ?? 0,
-              blockTime: sig.blockTime ?? null,
-            });
-          }
-        }
+        // 3. Parse duel matches from results
+        const duelMatches: {
+          sigInfo: (typeof signatures)[0];
+          resolved: NonNullable<ReturnType<typeof parseDuelEventsFromLogs>['resolved']>;
+          opponentWallet: string | null;
+        }[] = [];
 
-        const ordered = Array.from(signaturesById.values()).sort((a, b) => b.slot - a.slot);
-        const matches: DuelHistoryItem[] = [];
-
-        for (const sigInfo of ordered) {
-          const events = await parseDuelEvents(connection, gameplayProgram, sigInfo.signature);
+        for (let i = 0; i < txs.length && duelMatches.length < maxMatches; i++) {
+          const tx = txs[i];
+          if (!tx?.meta?.logMessages) continue;
+          const events = parseDuelEventsFromLogs(tx.meta.logMessages);
           if (!events.resolved) continue;
 
           const playerA = events.resolved.playerA.toBase58();
           const playerB = events.resolved.playerB?.toBase58() ?? null;
           if (playerA !== ourKey && playerB !== ourKey) continue;
 
-          const opponentWallet = playerA === ourKey ? playerB : playerA;
-
-          let opponentProfileName = 'Opponent';
-          if (opponentWallet) {
-            const cached = profileNameCache.get(opponentWallet);
-            if (cached) {
-              opponentProfileName = cached;
-            } else {
-              const fetched = await fetchProfileNameByWallet(new PublicKey(opponentWallet));
-              opponentProfileName =
-                fetched ?? `${opponentWallet.slice(0, 4)}..${opponentWallet.slice(-4)}`;
-              profileNameCache.set(opponentWallet, opponentProfileName);
-            }
-          }
-
-          matches.push({
-            signature: sigInfo.signature,
-            slot: sigInfo.slot,
-            playedAtUnix: sigInfo.blockTime,
-            seed: events.resolved.seed,
-            opponentWallet,
-            opponentProfileName,
-            isWinner: events.resolved.winner?.toBase58() === ourKey,
-            winnerPayoutLamports: events.resolved.winnerPayout,
-            resolution: events.resolved.resolution,
-            turnsTaken: events.resolved.turnsTaken,
+          duelMatches.push({
+            sigInfo: signatures[i],
+            resolved: events.resolved,
+            opponentWallet: playerA === ourKey ? playerB : playerA,
           });
-
-          if (matches.length >= maxMatches) break;
         }
+
+        // 4. Fetch opponent profile names in parallel
+        const uniqueOpponents = [
+          ...new Set(
+            duelMatches
+              .map((m) => m.opponentWallet)
+              .filter((w): w is string => w !== null)
+          ),
+        ];
+        const profileNameMap = new Map<string, string>();
+        if (uniqueOpponents.length > 0) {
+          const profileResults = await Promise.all(
+            uniqueOpponents.map((w) =>
+              fetchProfileNameByWallet(new PublicKey(w)).catch(() => null)
+            )
+          );
+          for (let k = 0; k < uniqueOpponents.length; k++) {
+            const w = uniqueOpponents[k];
+            profileNameMap.set(w, profileResults[k] ?? `${w.slice(0, 4)}..${w.slice(-4)}`);
+          }
+        }
+
+        // 5. Build history items
+        const matches: DuelHistoryItem[] = duelMatches.map((m) => ({
+          signature: m.sigInfo.signature,
+          slot: m.sigInfo.slot ?? 0,
+          playedAtUnix: m.sigInfo.blockTime ?? null,
+          seed: m.resolved.seed,
+          opponentWallet: m.opponentWallet,
+          opponentProfileName: m.opponentWallet
+            ? profileNameMap.get(m.opponentWallet) ?? 'Opponent'
+            : 'Opponent',
+          isWinner: m.resolved.winner?.toBase58() === ourKey,
+          winnerPayoutLamports: m.resolved.winnerPayout,
+          resolution: m.resolved.resolution,
+          turnsTaken: m.resolved.turnsTaken,
+        }));
 
         if (isMountedRef.current) {
           setHistory(matches);

@@ -215,7 +215,12 @@ export function usePitDraft() {
         ).playerProfile.fetchNullable(profilePda);
 
         if (!account) return { name: null, equippedSkin: null };
-        const name = typeof account.name === 'string' ? account.name.trim() || null : null;
+        const name = (() => {
+          const raw = account.name;
+          if (typeof raw !== 'string') return Buffer.from(raw as ArrayLike<number>).toString('utf-8').replace(/\0/g, '').trim() || null;
+          if (/^\d+(,\d+)*$/.test(raw)) return Buffer.from(raw.split(',').map(Number)).toString('utf-8').replace(/\0/g, '').trim() || null;
+          return raw.replace(/\0/g, '').trim() || null;
+        })();
         const equippedSkin = account.equippedSkin instanceof PublicKey && !PublicKey.default.equals(account.equippedSkin)
           ? account.equippedSkin
           : null;
@@ -285,7 +290,13 @@ export function usePitDraft() {
         : combatVisual.playerA.toBase58();
       const opponentWalletKey = isPlayerA ? combatVisual.playerB : combatVisual.playerA;
 
-      const localProfileName = profile?.name?.trim();
+      const localProfileName = (() => {
+        const raw = profile?.name;
+        if (raw == null) return undefined;
+        if (typeof raw !== 'string') return Buffer.from(raw as ArrayLike<number>).toString('utf-8').replace(/\0/g, '').trim();
+        if (/^\d+(,\d+)*$/.test(raw)) return Buffer.from(raw.split(',').map(Number)).toString('utf-8').replace(/\0/g, '').trim();
+        return raw.replace(/\0/g, '').trim();
+      })();
       const playerProfileName = localProfileName && localProfileName.length > 0 ? localProfileName : 'You';
       const opponentProfile = await fetchProfileByWallet(opponentWalletKey);
       const opponentProfileName = opponentProfile.name ?? 'Opponent';

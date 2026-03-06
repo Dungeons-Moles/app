@@ -98,6 +98,7 @@ interface PitDraftContentProps {
 function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  const payoutBlinkAnim = useRef(new Animated.Value(1)).current;
   const isFocused = useIsFocused();
   const isCompact = useScreenVariant() === 'compact';
   const { playBgm, playSfx } = useAudio();
@@ -113,6 +114,27 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
       playBgm(pitDraft.matchData.isWinner ? 'victory' : 'defeat', { crossfade: true });
     }
   }, [pitDraft.phase, pitDraft.matchData, playBgm]);
+
+  // Blink animation for payout text on victory
+  useEffect(() => {
+    if (pitDraft.phase !== 'result' || !pitDraft.matchData?.isWinner) return;
+    const blink = Animated.loop(
+      Animated.sequence([
+        Animated.timing(payoutBlinkAnim, {
+          toValue: 0.3,
+          duration: 600,
+          useNativeDriver: true,
+        }),
+        Animated.timing(payoutBlinkAnim, {
+          toValue: 1,
+          duration: 600,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    blink.start();
+    return () => blink.stop();
+  }, [pitDraft.phase, pitDraft.matchData?.isWinner, payoutBlinkAnim]);
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -274,7 +296,7 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
           style={styles.backgroundImage}
           resizeMode="cover"
         >
-          <Image source={STAINS_BACKGROUND} style={styles.stainsOverlay} resizeMode="cover" />
+          <Image source={STAINS_BACKGROUND} style={[styles.stainsOverlay, { opacity: 0.2 }]} resizeMode="cover" />
           {!isCompact && <View pointerEvents="none" style={styles.mobileResultBackgroundDim} />}
           <View style={styles.resultOverlay}>
             <View style={styles.centerContent}>
@@ -300,7 +322,7 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
                         style={styles.resultIllustrationCompact}
                         resizeMode="contain"
                       />
-                      <Text style={styles.payoutTextCompact}>+{payoutSOL} SOL</Text>
+                      <Animated.Text style={[styles.payoutTextCompact, { opacity: payoutBlinkAnim }]}>+{payoutSOL} SOL</Animated.Text>
                     </>
                   ) : (
                     <>
@@ -387,7 +409,7 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
                   </View>
 
                   <View style={styles.resultRightColumn}>
-                    {isWinner && <Text style={styles.payoutText}>+{payoutSOL} SOL</Text>}
+                    {isWinner && <Animated.Text style={[styles.payoutText, { opacity: payoutBlinkAnim }]}>+{payoutSOL} SOL</Animated.Text>}
 
                     <View style={styles.resultStatFrame}>
                       <Image
@@ -1215,9 +1237,12 @@ const styles = StyleSheet.create({
   payoutTextCompact: {
     fontFamily: Typography.number,
     fontSize: 48,
-    color: '#FABC0F',
+    color: '#1A0A00',
     textAlign: 'center' as const,
     fontWeight: 'bold' as const,
+    textShadowColor: '#FABC0F',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 6,
   },
   resultStatFrameCompact: {
     alignItems: 'center',
@@ -1276,9 +1301,12 @@ const styles = StyleSheet.create({
   payoutText: {
     fontFamily: Typography.number,
     fontSize: 24,
-    color: '#FABC0F',
+    color: '#1A0A00',
     textAlign: 'center',
     fontWeight: 'bold',
+    textShadowColor: '#FABC0F',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 6,
   },
   errorText: {
     fontFamily: Typography.body,

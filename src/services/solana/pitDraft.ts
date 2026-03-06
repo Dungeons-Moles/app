@@ -269,28 +269,17 @@ const PIT_DRAFT_RESOLVED_DISC = Buffer.from([200, 164, 181, 53, 37, 147, 146, 7]
  * Uses manual binary decoding for PitDraftCombatVisual (complex types with Vec + arrays).
  * Uses Anchor decoder for PitDraftQueued and PitDraftResolved.
  */
-export async function parsePitDraftEvents(
-  connection: Connection,
-  program: Program,
-  signature: string
-): Promise<PitDraftEventParseResult> {
+export function parsePitDraftEventsFromLogs(
+  logMessages: string[],
+  slot: number
+): PitDraftEventParseResult {
   const result: PitDraftEventParseResult = {
     queued: null,
     combatVisual: null,
     resolved: null,
   };
 
-  const tx = await connection.getTransaction(signature, {
-    commitment: 'confirmed',
-    maxSupportedTransactionVersion: 0,
-  });
-
-  if (!tx?.meta?.logMessages) {
-    console.warn('[pitDraft] No log messages in transaction');
-    return result;
-  }
-
-  for (const logLine of tx.meta.logMessages) {
+  for (const logLine of logMessages) {
     if (!logLine.startsWith('Program data: ')) continue;
     const base64Data = logLine.slice('Program data: '.length);
 
@@ -309,7 +298,7 @@ export async function parsePitDraftEvents(
           const { waitingGold, entrantGold } = derivePitDraftStartGold(
             decoded.playerA,
             decoded.playerB,
-            BigInt(tx.slot ?? 0)
+            BigInt(slot)
           );
           decoded.playerAGold = waitingGold;
           decoded.playerBGold = entrantGold;
@@ -326,6 +315,24 @@ export async function parsePitDraftEvents(
   }
 
   return result;
+}
+
+export async function parsePitDraftEvents(
+  connection: Connection,
+  program: Program,
+  signature: string
+): Promise<PitDraftEventParseResult> {
+  const tx = await connection.getTransaction(signature, {
+    commitment: 'confirmed',
+    maxSupportedTransactionVersion: 0,
+  });
+
+  if (!tx?.meta?.logMessages) {
+    console.warn('[pitDraft] No log messages in transaction');
+    return { queued: null, combatVisual: null, resolved: null };
+  }
+
+  return parsePitDraftEventsFromLogs(tx.meta.logMessages, tx.slot ?? 0);
 }
 
 // ============================================================================

@@ -291,7 +291,12 @@ export function BossPanel({
           }
         ).playerProfile.fetchNullable(profilePda);
         if (!profile || typeof profile.name !== 'string') return null;
-        const trimmed = profile.name.trim();
+        const trimmed = (() => {
+          const raw = profile.name;
+          if (typeof raw !== 'string') return Buffer.from(raw as ArrayLike<number>).toString('utf-8').replace(/\0/g, '').trim();
+          if (/^\d+(,\d+)*$/.test(raw)) return Buffer.from(raw.split(',').map(Number)).toString('utf-8').replace(/\0/g, '').trim();
+          return raw.replace(/\0/g, '').trim();
+        })();
         return trimmed.length > 0 ? trimmed : null;
       } catch {
         return null;

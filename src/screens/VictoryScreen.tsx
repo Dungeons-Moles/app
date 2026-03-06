@@ -23,6 +23,7 @@ import { useInputMode } from '../hooks/useInputMode';
 import { useControllerAction } from '../hooks/useControllerAction';
 import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHints';
 import { useAudio } from '../contexts/AudioContext';
+import { useProfile } from '../contexts/ProfileContext';
 import { useScreenVariant } from '../contexts/ScreenVariantContext';
 
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.webp');
@@ -46,6 +47,7 @@ export function VictoryScreen({ navigation, route }: VictoryScreenProps) {
   const glowAnim = useRef(new Animated.Value(0)).current;
   const { playBgm, playSfx } = useAudio();
   const [showUnlock, setShowUnlock] = useState(false);
+  const { mode } = useProfile();
   const isCompact = useScreenVariant() === 'compact';
 
   const isVerticalLayout = height > 768;
@@ -174,7 +176,7 @@ export function VictoryScreen({ navigation, route }: VictoryScreenProps) {
       </Text>
 
       <View style={styles.statsRow}>
-        <StatFrame label="Level" value={level ?? 1} />
+        {mode !== 'guest' && <StatFrame label="Level" value={level ?? 1} />}
         <StatFrame label="Total Moves" value={totalMoves ?? 0} />
         <StatFrame label="Combat Turns" value={turnsTaken} />
       </View>
@@ -551,37 +553,37 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   iconContainerVertical: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 130,
+    height: 130,
+    borderRadius: 65,
     backgroundColor: 'rgba(255, 215, 0, 0.2)',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 20,
     borderWidth: 2,
     borderColor: '#FFD700',
   },
   trophyIconVertical: {
-    width: 48,
-    height: 48,
+    width: 80,
+    height: 80,
     tintColor: '#FFD700',
   },
   victoryImageVertical: {
-    width: 240,
-    height: 100,
-    marginBottom: 8,
+    width: 300,
+    height: 120,
+    marginBottom: 12,
     tintColor: '#44BB44',
   },
   subtitleVertical: {
     fontFamily: Typography.body,
     fontSize: 22,
     color: '#CCCCCC',
-    marginBottom: 24,
+    marginBottom: 80,
   },
   summaryContainerVertical: {
     padding: 20,
     width: '100%',
-    marginBottom: 24,
+    marginBottom: 80,
   },
   summaryTitleVertical: {
     fontFamily: Typography.header,

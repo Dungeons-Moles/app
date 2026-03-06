@@ -492,11 +492,9 @@ const DUEL_RESOLVED_DISC = Buffer.from([224, 245, 214, 212, 111, 151, 50, 5]);
 const DUEL_RUN_FINALIZED_DISC = Buffer.from([147, 189, 241, 126, 243, 108, 13, 76]);
 const PUBKEY_LEN = 32;
 
-export async function parseDuelEvents(
-  connection: Connection,
-  _program: Program,
-  signature: string
-): Promise<DuelEventParseResult> {
+export function parseDuelEventsFromLogs(
+  logMessages: string[]
+): DuelEventParseResult {
   const result: DuelEventParseResult = {
     queued: null,
     runFinalized: null,
@@ -504,16 +502,7 @@ export async function parseDuelEvents(
     resolved: null,
   };
 
-  const tx = await connection.getTransaction(signature, {
-    commitment: 'confirmed',
-    maxSupportedTransactionVersion: 0,
-  });
-
-  if (!tx?.meta?.logMessages) {
-    return result;
-  }
-
-  for (const logLine of tx.meta.logMessages) {
+  for (const logLine of logMessages) {
     if (!logLine.startsWith('Program data: ')) continue;
     const base64Data = logLine.slice('Program data: '.length);
 
@@ -543,6 +532,23 @@ export async function parseDuelEvents(
   }
 
   return result;
+}
+
+export async function parseDuelEvents(
+  connection: Connection,
+  _program: Program,
+  signature: string
+): Promise<DuelEventParseResult> {
+  const tx = await connection.getTransaction(signature, {
+    commitment: 'confirmed',
+    maxSupportedTransactionVersion: 0,
+  });
+
+  if (!tx?.meta?.logMessages) {
+    return { queued: null, runFinalized: null, combatVisual: null, resolved: null };
+  }
+
+  return parseDuelEventsFromLogs(tx.meta.logMessages);
 }
 
 function decodeDuelQueued(data: Buffer): DuelQueuedEvent | null {
