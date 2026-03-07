@@ -38,6 +38,7 @@ import {
 } from '../../data/gear';
 import { getGearStatsAtTier } from '../../data/gear-effects';
 import { SeededRNG } from '../engine/rng';
+import { getActForCampaignLevel } from '../engine/constants';
 import { getBossWeaknessTags } from './bosses';
 import { isGearInActivePool, createStarterBitmask } from '../../services/solana/types/item_pool';
 
@@ -517,11 +518,12 @@ function smugglerRarityFallbackOrder(target: ItemRarity): ItemRarity[] {
 
 function generateSmugglerHatchOptions(state: GameState, rng: SeededRNG, rerollCount: number): POIOption[] {
   const weaknessTags = getBossWeaknessTags(state.time.weekBoss);
+  const act = getActForCampaignLevel(state.campaignLevel);
   const selectedIds = new Set<string>();
   const options: POIOption[] = [];
 
   // Slot 0: exactly one tool
-  const rolledToolRarity = rollShopRarity(rng, SMUGGLER_TOOL_RARITY, state.time.week);
+  const rolledToolRarity = rollShopRarity(rng, SMUGGLER_TOOL_RARITY, act);
   let pickedToolDef: ReturnType<typeof getToolsByRarity>[number] | null = null;
   for (const rarity of smugglerRarityFallbackOrder(rolledToolRarity)) {
     const toolPool = filterGearByPool(getToolsByRarity(rarity), state.activeItemPool).filter(
@@ -568,7 +570,7 @@ function generateSmugglerHatchOptions(state: GameState, rng: SeededRNG, rerollCo
 
   // Slots 1..5: exactly five gear
   for (let i = 0; i < 5; i += 1) {
-    const rolledGearRarity = rollShopRarity(rng, SMUGGLER_GEAR_RARITY, state.time.week);
+    const rolledGearRarity = rollShopRarity(rng, SMUGGLER_GEAR_RARITY, act);
     let pickedGearDef: ReturnType<typeof getGearByRarity>[number] | null = null;
     for (const rarity of smugglerRarityFallbackOrder(rolledGearRarity)) {
       const gearPool = filterGearByPool(getGearByRarity(rarity), state.activeItemPool);
@@ -873,8 +875,8 @@ export function generateScrapChuteOptions(state: GameState): POIOption[] {
   const inventory = state.player.inventory;
 
   // Cost by act: 4 / 4 / 6 / 8
-  const act = Math.max(1, Math.min(4, state.time.week));
-  const scrapCost = [4, 4, 4, 4][act - 1];
+  const act = getActForCampaignLevel(state.campaignLevel);
+  const scrapCost = [4, 4, 6, 8][act - 1];
 
   if (inventory.length === 0) {
     options.push({

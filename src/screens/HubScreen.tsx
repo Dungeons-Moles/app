@@ -62,6 +62,8 @@ import { PublicKey } from '@solana/web3.js';
 import { GauntletPoolBadge } from '../components/ui/GauntletPoolBadge';
 import { preloadCriticalImages } from '../utils/preloadCriticalImages';
 import { GAME_SCREEN_CRITICAL_IMAGES } from '../constants/criticalImages';
+import { GUEST_DIFFICULTY_CONFIGS } from '../game/engine/run-config';
+import type { GuestDifficultyId } from '../game/engine/types';
 
 const iconASource = require('../../assets/ui/control-buttons/a.webp');
 const iconBSource = require('../../assets/ui/control-buttons/b.webp');
@@ -75,6 +77,10 @@ const buttonV4Source = require('../../assets/ui/buttons/button-v4.webp');
 const paperPanelSource = require('../../assets/ui/panels/paper-panel.webp');
 const yellowBrushSource = require('../../assets/ui/illustrations/yellow-brush.webp');
 const pvpPanelSource = require('../../assets/ui/panels/pvp-panel.webp');
+const guestDifficultyPanelSource = require('../../assets/ui/panels/difficulty-panel.webp');
+const easyPaperSource = require('../../assets/ui/illustrations/easy-paper.webp');
+const mediumPaperSource = require('../../assets/ui/illustrations/medium-paper.webp');
+const hardPaperSource = require('../../assets/ui/illustrations/hard-paper.webp');
 const gauntletPaperSource = require('../../assets/ui/illustrations/gauntlet-paper.webp');
 const duelsPaperSource = require('../../assets/ui/illustrations/duels-paper.webp');
 const pitDraftPaperSource = require('../../assets/ui/illustrations/pit-draft-paper.webp');
@@ -115,8 +121,10 @@ export function HubScreen({ navigation }: HubScreenProps) {
   const [showQuests, setShowQuests] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [showPvP, setShowPvP] = useState(false);
+  const [showGuestDifficulty, setShowGuestDifficulty] = useState(false);
   const [showBetaWelcome, setShowBetaWelcome] = useState(false);
   const [pvpFocus, setPvpFocus] = useState(0);
+  const [guestDifficultyFocus, setGuestDifficultyFocus] = useState(0);
   const [profileName, setProfileName] = useState(profile?.name ?? '');
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileValidationError, setProfileValidationError] = useState<string | null>(null);
@@ -319,26 +327,43 @@ export function HubScreen({ navigation }: HubScreenProps) {
     }
   }, [clearProfile, navigation, playSfx]);
 
-  const handlePlayPvE = useCallback(async () => {
-    playSfx('ui_click');
-    if (isGuest) {
+  const startGuestRun = useCallback(
+    async (difficultyId: GuestDifficultyId) => {
+      const difficulty = GUEST_DIFFICULTY_CONFIGS[difficultyId];
+      setShowGuestDifficulty(false);
       createSessionSetup();
       navigation.navigate('SessionLoading', { mode: 'campaign' });
+
       try {
         const seed = await getVrfSeed();
         if (gameState) {
           dispatch({ type: 'RESET_GAME' });
         }
-        dispatch({ type: 'START_GAME', seed });
+        dispatch({
+          type: 'START_GAME',
+          seed,
+          campaignLevel: difficulty.campaignLevel,
+          bossSelectionMode: 'random',
+          guestDifficultyId: difficulty.id,
+        });
         resolveSessionSetup();
       } catch (err) {
         rejectSessionSetup(err instanceof Error ? err.message : 'Failed to start game.');
       }
+    },
+    [dispatch, gameState, navigation]
+  );
+
+  const handlePlayPvE = useCallback(() => {
+    playSfx('ui_click');
+    if (isGuest) {
+      setGuestDifficultyFocus(0);
+      setShowGuestDifficulty(true);
     } else {
       // Navigate to campaign selection screen
       navigation.navigate('CampaignSelect');
     }
-  }, [navigation, isGuest, dispatch, gameState?.phase, playSfx]);
+  }, [navigation, isGuest, playSfx]);
 
   const handlePlayPvP = () => {
     playSfx('ui_click');
@@ -363,6 +388,21 @@ export function HubScreen({ navigation }: HubScreenProps) {
     setShowPvP(false);
     navigation.navigate('PitDraft');
   };
+
+  const handleGuestEasy = useCallback(() => {
+    playSfx('ui_click');
+    void startGuestRun('easy');
+  }, [playSfx, startGuestRun]);
+
+  const handleGuestMedium = useCallback(() => {
+    playSfx('ui_click');
+    void startGuestRun('medium');
+  }, [playSfx, startGuestRun]);
+
+  const handleGuestHard = useCallback(() => {
+    playSfx('ui_click');
+    void startGuestRun('hard');
+  }, [playSfx, startGuestRun]);
 
   const handleMarketplace = () => {
     playSfx('ui_click');
@@ -459,7 +499,14 @@ export function HubScreen({ navigation }: HubScreenProps) {
 
   // --- Controller navigation ---
   const anyModalOpen =
-    showSettings || showResetWarning || showProfile || showSkins || showQuests || showPvP || showBetaWelcome;
+    showSettings ||
+    showResetWarning ||
+    showProfile ||
+    showSkins ||
+    showQuests ||
+    showPvP ||
+    showGuestDifficulty ||
+    showBetaWelcome;
   const isController = inputMode === 'controller';
 
   const controllerCloseHint = isController ? (
@@ -497,6 +544,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
     playSfx('ui_back');
     if (showBetaWelcome) setShowBetaWelcome(false);
     else if (showResetWarning) setShowResetWarning(false);
+    else if (showGuestDifficulty) setShowGuestDifficulty(false);
     else if (showPvP) setShowPvP(false);
     else if (showSettings) setShowSettings(false);
     else if (showProfile) setShowProfile(false);
@@ -542,6 +590,18 @@ export function HubScreen({ navigation }: HubScreenProps) {
         onB: () => { playSfx('ui_back'); setShowPvP(false); },
         onDPadUp: () => setPvpFocus((p) => Math.max(0, p - 1)),
         onDPadDown: () => setPvpFocus((p) => Math.min(2, p + 1)),
+      }
+    : null;
+
+  const guestDifficultyActions = showGuestDifficulty
+    ? {
+        onA: () => [handleGuestEasy, handleGuestMedium, handleGuestHard][guestDifficultyFocus]?.(),
+        onB: () => {
+          playSfx('ui_back');
+          setShowGuestDifficulty(false);
+        },
+        onDPadUp: () => setGuestDifficultyFocus((p) => Math.max(0, p - 1)),
+        onDPadDown: () => setGuestDifficultyFocus((p) => Math.min(2, p + 1)),
       }
     : null;
 
@@ -603,6 +663,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
     !showSettings &&
     !showResetWarning &&
     !showProfile &&
+    !showGuestDifficulty &&
     !showPvP &&
     !showSkins &&
     !showQuests;
@@ -611,6 +672,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
     resetWarningActions ??
       settingsActions ??
       profileActions ??
+      guestDifficultyActions ??
       pvpActions ??
       skinsActions ??
       questsActions ?? {
@@ -2033,6 +2095,161 @@ export function HubScreen({ navigation }: HubScreenProps) {
         </TouchableWithoutFeedback>
       </InlineModal>
 
+      <InlineModal
+        visible={showGuestDifficulty}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowGuestDifficulty(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setShowGuestDifficulty(false)}>
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
+              <CachedImageBackground
+                source={guestDifficultyPanelSource}
+                style={[
+                  styles.guestDifficultyModalContent,
+                  isCompact && compactStyles.guestDifficultyModalContent,
+                ]}
+                resizeMode="stretch"
+              >
+                {!isController && (
+                  <TouchableOpacity
+                    onPress={() => {
+                      playSfx('ui_click');
+                      setShowGuestDifficulty(false);
+                    }}
+                    style={[
+                      styles.guestDifficultyCloseButton,
+                      isCompact && compactStyles.guestDifficultyCloseButton,
+                    ]}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    <Text
+                      style={[
+                        styles.guestDifficultyCloseButtonText,
+                        isCompact && compactStyles.guestDifficultyCloseButtonText,
+                      ]}
+                    >
+                      ✕
+                    </Text>
+                  </TouchableOpacity>
+                )}
+                {isController && (
+                  <View style={[styles.modalHintBar, isCompact && compactStyles.modalHintBar]}>
+                    <View style={styles.settingsHintRow}>
+                      <Image
+                        source={iconASource}
+                        style={[
+                          styles.settingsHintIcon,
+                          isCompact && compactStyles.settingsHintIcon,
+                        ]}
+                        resizeMode="contain"
+                      />
+                      <Text
+                        style={[
+                          styles.settingsHintText,
+                          isCompact && compactStyles.settingsHintText,
+                        ]}
+                      >
+                        Select
+                      </Text>
+                    </View>
+                    <View style={styles.settingsHintRow}>
+                      <Image
+                        source={iconBSource}
+                        style={[
+                          styles.settingsHintIcon,
+                          isCompact && compactStyles.settingsHintIcon,
+                        ]}
+                        resizeMode="contain"
+                      />
+                      <Text
+                        style={[
+                          styles.settingsHintText,
+                          isCompact && compactStyles.settingsHintText,
+                        ]}
+                      >
+                        Close
+                      </Text>
+                    </View>
+                  </View>
+                )}
+
+                <View
+                  style={[
+                    styles.guestDifficultyOptionsStack,
+                    isCompact && compactStyles.guestDifficultyOptionsStack,
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.guestDifficultyGauntletWrap,
+                      isCompact && compactStyles.guestDifficultyGauntletWrap,
+                      isController && { zIndex: guestDifficultyFocus === 0 ? 10 : 1 },
+                    ]}
+                  >
+                    <FocusGlow active={isController && guestDifficultyFocus === 0}>
+                      <TouchableOpacity onPress={handleGuestEasy} activeOpacity={0.7}>
+                        <Image
+                          source={easyPaperSource}
+                          style={[
+                            styles.guestDifficultyGauntlet,
+                            isCompact && compactStyles.guestDifficultyGauntlet,
+                          ]}
+                          resizeMode="contain"
+                        />
+                      </TouchableOpacity>
+                    </FocusGlow>
+                  </View>
+
+                  <View
+                    style={[
+                      styles.guestDifficultyDuelsWrap,
+                      isCompact && compactStyles.guestDifficultyDuelsWrap,
+                      isController && { zIndex: guestDifficultyFocus === 1 ? 10 : 1 },
+                    ]}
+                  >
+                    <FocusGlow active={isController && guestDifficultyFocus === 1}>
+                      <TouchableOpacity onPress={handleGuestMedium} activeOpacity={0.7}>
+                        <Image
+                          source={mediumPaperSource}
+                          style={[
+                            styles.guestDifficultyDuels,
+                            isCompact && compactStyles.guestDifficultyDuels,
+                          ]}
+                          resizeMode="contain"
+                        />
+                      </TouchableOpacity>
+                    </FocusGlow>
+                  </View>
+
+                  <View
+                    style={[
+                      styles.guestDifficultyPitDraftWrap,
+                      isCompact && compactStyles.guestDifficultyPitDraftWrap,
+                      isController && { zIndex: guestDifficultyFocus === 2 ? 10 : 1 },
+                    ]}
+                  >
+                    <FocusGlow active={isController && guestDifficultyFocus === 2}>
+                      <TouchableOpacity onPress={handleGuestHard} activeOpacity={0.7}>
+                        <Image
+                          source={hardPaperSource}
+                          style={[
+                            styles.guestDifficultyPitDraft,
+                            isCompact && compactStyles.guestDifficultyPitDraft,
+                          ]}
+                          resizeMode="contain"
+                        />
+                      </TouchableOpacity>
+                    </FocusGlow>
+                  </View>
+                </View>
+              </CachedImageBackground>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </InlineModal>
+
       <BetaWelcomeModal
         visible={showBetaWelcome}
         onClose={() => setShowBetaWelcome(false)}
@@ -2749,6 +2966,59 @@ const styles = StyleSheet.create({
     width: 149,
     height: 85,
   },
+
+  guestDifficultyCloseButton: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    zIndex: 10,
+    padding: 10,
+  },
+  guestDifficultyCloseButtonText: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#5c4033',
+  },
+  guestDifficultyModalContent: {
+    width: 300,
+    height: 359,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 36,
+    paddingBottom: 15,
+  },
+  guestDifficultyOptionsStack: {
+    width: '100%',
+    paddingHorizontal: 20,
+  },
+  guestDifficultyGauntletWrap: {
+    alignSelf: 'flex-start',
+    zIndex: 3,
+  },
+  guestDifficultyGauntlet: {
+    width: 155,
+    height: 105,
+  },
+  guestDifficultyDuelsWrap: {
+    marginTop: -52,
+    alignSelf: 'flex-end',
+    zIndex: 2,
+    transform: [{ rotate: '14deg' }],
+  },
+  guestDifficultyDuels: {
+    width: 150,
+    height: 102,
+  },
+  guestDifficultyPitDraftWrap: {
+    marginTop: -47,
+    alignSelf: 'flex-start',
+    zIndex: 1,
+    transform: [{ rotate: '-7deg' }],
+  },
+  guestDifficultyPitDraft: {
+    width: 149,
+    height: 85,
+  },
 });
 
 const compactStyles = StyleSheet.create({
@@ -2976,6 +3246,52 @@ const compactStyles = StyleSheet.create({
     transform: [{ rotate: '-7deg' }],
   },
   pvpPaperPitDraft: {
+    width: 389,
+    height: 221,
+  },
+
+  guestDifficultyCloseButton: {
+    top: 36,
+    right: 40,
+  },
+  guestDifficultyCloseButtonText: {
+    fontSize: 40,
+  },
+  guestDifficultyModalContent: {
+    width: 783,
+    height: 937,
+    paddingTop: 95,
+    paddingBottom: 40,
+  },
+  guestDifficultyOptionsStack: {
+    width: '100%',
+    paddingHorizontal: 48,
+  },
+  guestDifficultyGauntletWrap: {
+    alignSelf: 'flex-start',
+    zIndex: 3,
+  },
+  guestDifficultyGauntlet: {
+    width: 405,
+    height: 275,
+  },
+  guestDifficultyDuelsWrap: {
+    marginTop: -135,
+    alignSelf: 'flex-end',
+    zIndex: 2,
+    transform: [{ rotate: '14deg' }],
+  },
+  guestDifficultyDuels: {
+    width: 392,
+    height: 266,
+  },
+  guestDifficultyPitDraftWrap: {
+    marginTop: -122,
+    alignSelf: 'flex-start',
+    zIndex: 1,
+    transform: [{ rotate: '-7deg' }],
+  },
+  guestDifficultyPitDraft: {
     width: 389,
     height: 221,
   },

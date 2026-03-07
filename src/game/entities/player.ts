@@ -15,7 +15,7 @@ import type {
   StatusEffects,
 } from '../engine/types';
 import { DEFAULT_STATUS_EFFECTS } from '../engine/types';
-import { GAME_CONSTANTS } from '../engine/constants';
+import { GAME_CONSTANTS, getBaseGold, getBaseHp } from '../engine/constants';
 import { calculateItemStats, createToolInstance } from './items';
 import { getActiveItemsets } from './itemsets';
 
@@ -26,15 +26,17 @@ import { getActiveItemsets } from './itemsets';
 /**
  * Create a new player entity with initial stats.
  */
-export function createPlayer(spawnPosition: Position): Player {
+export function createPlayer(spawnPosition: Position, campaignLevel = 1): Player {
+  const initialHp = getBaseHp(campaignLevel);
+  const initialGold = getBaseGold(campaignLevel);
   const baseStats: PlayerStats = {
-    hp: GAME_CONSTANTS.INITIAL_HP,
-    maxHp: GAME_CONSTANTS.INITIAL_HP,
+    hp: initialHp,
+    maxHp: initialHp,
     atk: GAME_CONSTANTS.INITIAL_ATK,
     arm: GAME_CONSTANTS.INITIAL_ARM,
     spd: GAME_CONSTANTS.INITIAL_SPD,
     dig: GAME_CONSTANTS.INITIAL_DIG,
-    gold: GAME_CONSTANTS.INITIAL_GOLD,
+    gold: initialGold,
   };
 
   const player: Player = {

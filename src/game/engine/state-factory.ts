@@ -5,14 +5,22 @@
  */
 
 import type { GameState, Player, TimeState, BossId } from './types';
-import { GamePhase, TimePhase, DEFAULT_STATUS_EFFECTS, DEFAULT_DEBUG_STATE } from './types';
+import {
+  GamePhase,
+  TimePhase,
+  DEFAULT_STATUS_EFFECTS,
+  DEFAULT_DEBUG_STATE,
+  type BossSelectionMode,
+  type GuestDifficultyId,
+} from './types';
 import type { GameMap } from '../map/types';
 import { TileType, FogState } from '../map/types';
-import { GAME_CONSTANTS, BOSS_POOLS, PHASE_MOVES } from './constants';
+import { GAME_CONSTANTS, PHASE_MOVES } from './constants';
 import { SeededRNG } from './rng';
 import { generateMap, toGameMap } from '../map/generator';
 import { applyInitialVisibility } from '../map/fog-of-war';
 import { createPlayer } from '../entities/player';
+import { selectBossForRun } from './run-config';
 
 // ============================================================================
 // Initial State Creation
@@ -26,6 +34,8 @@ export function createInitialGameState(): GameState {
     phase: GamePhase.MainMenu,
     seed: 0,
     rngState: 0,
+    campaignLevel: 1,
+    bossSelectionMode: 'random',
     player: createEmptyPlayer(),
     map: createEmptyMap(),
     time: createInitialTimeState('B-A-W1-01'),
@@ -41,14 +51,25 @@ export function createInitialGameState(): GameState {
 /**
  * Initialize game state when starting a new game.
  */
-export function initializeGame(state: GameState, seed: number): GameState {
+export function initializeGame(
+  state: GameState,
+  seed: number,
+  options?: {
+    campaignLevel?: number;
+    bossSelectionMode?: BossSelectionMode;
+    guestDifficultyId?: GuestDifficultyId;
+  }
+): GameState {
   const rng = new SeededRNG(seed);
+  const campaignLevel = options?.campaignLevel ?? state.campaignLevel ?? 1;
+  const bossSelectionMode = options?.bossSelectionMode ?? state.bossSelectionMode ?? 'random';
 
   // Generate map
   const generated = generateMap({
     width: GAME_CONSTANTS.MAP_WIDTH,
     height: GAME_CONSTANTS.MAP_HEIGHT,
     seed,
+    campaignLevel,
   });
 
   // Convert to GameMap
@@ -58,10 +79,9 @@ export function initializeGame(state: GameState, seed: number): GameState {
   gameMap = applyInitialVisibility(gameMap, generated.spawn);
 
   // Create player at spawn
-  const player = createPlayer(generated.spawn);
+  const player = createPlayer(generated.spawn, campaignLevel);
 
-  // Select boss for week 1
-  const weekBoss = rng.pick(BOSS_POOLS[1]);
+  const weekBoss = selectBossForRun(1, campaignLevel, bossSelectionMode, rng);
 
   // Create time state
   const time = createInitialTimeState(weekBoss);
@@ -71,6 +91,9 @@ export function initializeGame(state: GameState, seed: number): GameState {
     phase: GamePhase.Exploration,
     seed,
     rngState: rng.getState(),
+    campaignLevel,
+    bossSelectionMode,
+    guestDifficultyId: options?.guestDifficultyId,
     player,
     map: gameMap,
     time,
@@ -217,7 +240,7 @@ export function advanceWeek(state: GameState): GameState {
   const rng = new SeededRNG(state.seed + state.time.week * 1000);
 
   const newWeek = Math.min(3, state.time.week + 1) as 1 | 2 | 3;
-  const newBoss = rng.pick(BOSS_POOLS[newWeek]);
+  const newBoss = selectBossForRun(newWeek, state.campaignLevel, state.bossSelectionMode, rng);
 
   return {
     ...state,

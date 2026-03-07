@@ -280,6 +280,10 @@ export enum TimePhase {
   Boss = 'BOSS',
 }
 
+export type BossSelectionMode = 'random' | 'campaign';
+
+export type GuestDifficultyId = 'easy' | 'medium' | 'hard';
+
 // Biome A bosses (Week 1: 5, Week 2: 5, Week 3: 2) + Biome B (Week 3: 2)
 export type BossId =
   // Biome A - Week 1
@@ -480,6 +484,9 @@ export interface GameState {
   phase: GamePhase;
   seed: number;
   rngState: number;
+  campaignLevel: number;
+  bossSelectionMode: BossSelectionMode;
+  guestDifficultyId?: GuestDifficultyId;
   player: Player;
   map: GameMap;
   time: TimeState;

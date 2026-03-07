@@ -6,10 +6,12 @@
  */
 
 import { SeededRNG } from '../engine/rng';
-import { GAME_CONSTANTS } from '../engine/constants';
+import { GAME_CONSTANTS, getActForCampaignLevel } from '../engine/constants';
 import type { Position, POIId } from '../engine/types';
 import { TileType, FogState, GameMap, MapEnemy, MapPOI, EnemyId } from './types';
 import { getSpawnZone, selectTierForZone } from './spawn-zones';
+import { ENEMY_DEFINITIONS } from '../entities/enemies';
+import { getBiomeForCampaignLevel } from '../engine/run-config';
 
 // ============================================================================
 // Types
@@ -19,6 +21,7 @@ export interface MapGenerationParams {
   width: number;
   height: number;
   seed: number;
+  campaignLevel?: number;
 }
 
 export interface GeneratedMap {
@@ -39,12 +42,6 @@ export interface GeneratedMap {
 // Cell spacing - larger = wider walls between corridors
 const CELL_SPACING = 4; // Distance between corridor intersections
 const EXTRA_CONNECTION_FACTOR = 0.15; // Adds loops to reduce maze feel
-
-const POI_DENSITY = {
-  COMMON: 0.08,
-  UNCOMMON: 0.04,
-  RARE: 0.02,
-};
 
 const POI_DEFINITIONS: Array<{ id: POIId; rarity: 'COMMON' | 'UNCOMMON' | 'RARE' }> = [
   { id: 'L2', rarity: 'COMMON' },
@@ -76,6 +73,53 @@ const ENEMY_IDS: EnemyId[] = [
   'COIN_SLUG',
   'BLOOD_MOSQUITO',
 ];
+
+const EASY_POOL: EnemyId[] = ['TUNNEL_RAT', 'CAVE_BAT', 'FROST_WISP', 'COIN_SLUG', 'BLOOD_MOSQUITO'];
+const MEDIUM_POOL: EnemyId[] = ['SPORE_SLIME', 'RUST_MITE_SWARM', 'POWDER_TICK', 'SHARD_BEETLE'];
+const HARD_POOL: EnemyId[] = ['COLLAPSED_MINER', 'TUNNEL_WARDEN', 'BURROW_AMBUSHER'];
+
+const ACT_ENEMY_COUNTS: Record<1 | 2 | 3 | 4, number> = {
+  1: 36,
+  2: 40,
+  3: 44,
+  4: 48,
+};
+
+const ACT_MID_TIER_WEIGHTS: Record<1 | 2 | 3 | 4, [number, number, number]> = {
+  1: [0.7, 0.25, 0.05],
+  2: [0.55, 0.35, 0.1],
+  3: [0.45, 0.4, 0.15],
+  4: [0.35, 0.45, 0.2],
+};
+
+const ZONE_TIER_WEIGHTS_BY_ACT: Record<0 | 1 | 2, Record<1 | 2 | 3 | 4, [number, number, number]>> = {
+  0: {
+    1: [0.8, 0.15, 0.05],
+    2: [0.8, 0.15, 0.05],
+    3: [0.8, 0.15, 0.05],
+    4: [0.8, 0.15, 0.05],
+  },
+  1: ACT_MID_TIER_WEIGHTS,
+  2: {
+    1: [0.5, 0.35, 0.15],
+    2: [0.5, 0.35, 0.15],
+    3: [0.5, 0.35, 0.15],
+    4: [0.5, 0.35, 0.15],
+  },
+};
+
+const ZONE_POOL_DISTRIBUTION: Record<0 | 1 | 2, [number, number, number]> = {
+  0: [0.6, 0.3, 0.1],
+  1: [0.4, 0.4, 0.2],
+  2: [0.3, 0.4, 0.3],
+};
+
+const ACT_POI_COUNTS: Record<1 | 2 | 3 | 4, Partial<Record<POIId, number>>> = {
+  1: { L2: 16, L3: 5, L4: 5, L5: 6, L6: 4, L7: 3, L8: 5, L9: 2, L10: 2, L11: 2, L12: 2, L13: 2, L14: 3 },
+  2: { L2: 14, L3: 4, L4: 4, L5: 5, L6: 4, L7: 3, L8: 4, L9: 2, L10: 2, L11: 1, L12: 1, L13: 2, L14: 2 },
+  3: { L2: 14, L3: 4, L4: 4, L5: 5, L6: 4, L7: 3, L8: 4, L9: 2, L10: 2, L11: 1, L12: 1, L13: 2, L14: 2 },
+  4: { L2: 10, L3: 2, L4: 3, L5: 4, L6: 3, L7: 2, L8: 2, L9: 1, L10: 1, L11: 1, L12: 1, L13: 2, L14: 1 },
+};
 
 const ENEMY_STATS: Record<EnemyId, Array<{ hp: number; atk: number; arm: number; spd: number }>> = {
   TUNNEL_RAT: [
@@ -146,6 +190,7 @@ const ENEMY_STATS: Record<EnemyId, Array<{ hp: number; atk: number; arm: number;
 
 export function generateMap(params: MapGenerationParams): GeneratedMap {
   const rng = new SeededRNG(params.seed);
+  const campaignLevel = params.campaignLevel ?? 1;
 
   // Step 1: Generate corridor maze with wide spacing
   const { tiles, walkableTiles } = generateCorridorMaze(params.width, params.height, rng);
@@ -160,10 +205,10 @@ export function generateMap(params: MapGenerationParams): GeneratedMap {
   const moleDenPosition = placeMoleDen(spawn, tiles);
 
   // Step 5: Place POIs
-  const pois = placePOIs(walkableTiles, spawn, moleDenPosition, rng);
+  const pois = placePOIs(walkableTiles, spawn, moleDenPosition, rng, campaignLevel);
 
   // Step 6: Place enemies
-  const enemies = placeEnemies(walkableTiles, spawn, moleDenPosition, pois, rng);
+  const enemies = placeEnemies(walkableTiles, spawn, moleDenPosition, pois, rng, campaignLevel);
 
   return {
     width: params.width,
@@ -443,7 +488,8 @@ function placePOIs(
   walkableTiles: Position[],
   spawn: Position,
   moleDenPos: Position,
-  rng: SeededRNG
+  rng: SeededRNG,
+  campaignLevel: number
 ): MapPOI[] {
   const pois: MapPOI[] = [];
   const usedPositions = new Set<string>();
@@ -462,26 +508,12 @@ function placePOIs(
 
   const poiTypePositions = new Map<POIId, Position[]>();
 
-  const totalWalkable = walkableTiles.length;
-  const poiCounts = {
-    COMMON: Math.floor(totalWalkable * POI_DENSITY.COMMON),
-    UNCOMMON: Math.floor(totalWalkable * POI_DENSITY.UNCOMMON),
-    RARE: Math.floor(totalWalkable * POI_DENSITY.RARE),
-  };
+  const act = getActForCampaignLevel(campaignLevel);
+  const actPoiCounts = ACT_POI_COUNTS[act];
 
-  const poiByRarity = {
-    COMMON: POI_DEFINITIONS.filter((p) => p.rarity === 'COMMON'),
-    UNCOMMON: POI_DEFINITIONS.filter((p) => p.rarity === 'UNCOMMON'),
-    RARE: POI_DEFINITIONS.filter((p) => p.rarity === 'RARE'),
-  };
-
-  for (const rarity of ['COMMON', 'UNCOMMON', 'RARE'] as const) {
-    const count = poiCounts[rarity];
-    const definitions = poiByRarity[rarity];
-
-    for (let i = 0; i < count && definitions.length > 0; i++) {
-      const poiDef = rng.pick(definitions);
-
+  for (const poiDef of POI_DEFINITIONS) {
+    const count = actPoiCounts[poiDef.id] ?? 0;
+    for (let i = 0; i < count; i++) {
       const position = findValidPOIPosition(
         walkableTiles,
         usedPositions,
@@ -489,22 +521,24 @@ function placePOIs(
         rng
       );
 
-      if (position) {
-        pois.push({
-          id: `poi_${poiDef.id}_${i}`,
-          definitionId: poiDef.id,
-          position,
-          visited: false,
-          discovered: false,
-        });
-
-        usedPositions.add(`${position.x},${position.y}`);
-
-        if (!poiTypePositions.has(poiDef.id)) {
-          poiTypePositions.set(poiDef.id, []);
-        }
-        poiTypePositions.get(poiDef.id)!.push(position);
+      if (!position) {
+        break;
       }
+
+      pois.push({
+        id: `poi_${poiDef.id}_${i}`,
+        definitionId: poiDef.id,
+        position,
+        visited: false,
+        discovered: false,
+      });
+
+      usedPositions.add(`${position.x},${position.y}`);
+
+      if (!poiTypePositions.has(poiDef.id)) {
+        poiTypePositions.set(poiDef.id, []);
+      }
+      poiTypePositions.get(poiDef.id)!.push(position);
     }
   }
 
@@ -550,10 +584,13 @@ function placeEnemies(
   spawn: Position,
   moleDenPos: Position,
   pois: MapPOI[],
-  rng: SeededRNG
+  rng: SeededRNG,
+  campaignLevel: number
 ): MapEnemy[] {
   const enemies: MapEnemy[] = [];
   const usedPositions = new Set<string>();
+  const act = getActForCampaignLevel(campaignLevel);
+  const biome = getBiomeForCampaignLevel(campaignLevel);
 
   usedPositions.add(`${spawn.x},${spawn.y}`);
   usedPositions.add(`${moleDenPos.x},${moleDenPos.y}`);
@@ -561,7 +598,7 @@ function placeEnemies(
     usedPositions.add(`${poi.position.x},${poi.position.y}`);
   }
 
-  const enemyCount = Math.floor(walkableTiles.length * 0.05);
+  const enemyCount = Math.min(ACT_ENEMY_COUNTS[act], walkableTiles.length);
 
   const shuffled = rng.shuffle([...walkableTiles]);
   let placed = 0;
@@ -573,8 +610,11 @@ function placeEnemies(
     if (usedPositions.has(key)) continue;
 
     const zone = getSpawnZone(pos, moleDenPos);
-    const enemyId = rng.pick(ENEMY_IDS);
-    const tier = selectTierForZone(zone, rng);
+    const enemyId =
+      placed < 3
+        ? pickEnemyFromPool(EASY_POOL, biome, rng)
+        : pickEnemyForZone(zone, biome, rng);
+    const tier = selectTierForZone(zone, rng, ZONE_TIER_WEIGHTS_BY_ACT[zone][act]);
     const stats = ENEMY_STATS[enemyId][tier - 1];
 
     enemies.push({
@@ -591,6 +631,31 @@ function placeEnemies(
   }
 
   return enemies;
+}
+
+function pickEnemyForZone(zone: 0 | 1 | 2, biome: 'A' | 'B', rng: SeededRNG): EnemyId {
+  const [easyWeight, mediumWeight, hardWeight] = ZONE_POOL_DISTRIBUTION[zone];
+  const roll = rng.next();
+
+  if (roll < easyWeight) {
+    return pickEnemyFromPool(EASY_POOL, biome, rng);
+  }
+
+  if (roll < easyWeight + mediumWeight) {
+    return pickEnemyFromPool(MEDIUM_POOL, biome, rng);
+  }
+
+  return pickEnemyFromPool(HARD_POOL, biome, rng);
+}
+
+function pickEnemyFromPool(pool: EnemyId[], biome: 'A' | 'B', rng: SeededRNG): EnemyId {
+  const weightedPool = pool.flatMap((enemyId) => {
+    const enemyBiome = ENEMY_DEFINITIONS[enemyId].biome;
+    const weight = enemyBiome === biome ? 3 : enemyBiome === 'BOTH' ? 2 : 1;
+    return Array.from({ length: weight }, () => enemyId);
+  });
+
+  return rng.pick(weightedPool.length > 0 ? weightedPool : ENEMY_IDS);
 }
 
 // ============================================================================

@@ -62,6 +62,23 @@ export function getBaseHp(campaignLevel: number): number {
   return 15;
 }
 
+export function getBaseGold(campaignLevel: number): number {
+  if (campaignLevel >= 1 && campaignLevel <= 9) return 10;
+  if (campaignLevel >= 10 && campaignLevel <= 19) return 5;
+  return 0;
+}
+
+export function getActForCampaignLevel(campaignLevel: number): 1 | 2 | 3 | 4 {
+  if (campaignLevel <= 10) return 1;
+  if (campaignLevel <= 20) return 2;
+  if (campaignLevel <= 30) return 3;
+  return 4;
+}
+
+export function getStageInAct(campaignLevel: number): number {
+  return ((campaignLevel - 1) % 10) + 1;
+}
+
 // ============================================================================
 // Time Phase Constants
 // ============================================================================

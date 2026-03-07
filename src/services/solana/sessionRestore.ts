@@ -416,6 +416,8 @@ export async function fetchFullSessionState(
     phase: GamePhase.Exploration,
     seed,
     rngState,
+    campaignLevel: gameStateData.campaignLevel,
+    bossSelectionMode: 'campaign',
     player,
     map,
     time,

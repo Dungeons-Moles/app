@@ -18,6 +18,8 @@ import type {
   Player,
   POIInteraction,
   ItemRarity,
+  BossSelectionMode,
+  GuestDifficultyId,
 } from './types';
 import { GamePhase, CombatPhase, DEFAULT_STATUS_EFFECTS, TimePhase } from './types';
 // On-chain types inlined to avoid importing from services/solana which requires env vars.
@@ -115,7 +117,14 @@ const SELECTION_POIS = new Set([
  * Per research.md R3: Using typed actions for state machine transitions.
  */
 export type GameAction =
-  | { type: 'START_GAME'; seed: number; restore?: Partial<GameState> }
+  | {
+      type: 'START_GAME';
+      seed: number;
+      restore?: Partial<GameState>;
+      campaignLevel?: number;
+      bossSelectionMode?: BossSelectionMode;
+      guestDifficultyId?: GuestDifficultyId;
+    }
   | { type: 'RESTORE_GAME'; state: GameState }
   | { type: 'MOVE'; direction: Direction }
   | { type: 'HIGHLIGHT_WALL'; direction: Direction; targetPosition: Position; cost: number }
@@ -166,7 +175,14 @@ export type GameAction =
 
 export function isStartGameAction(
   action: GameAction
-): action is { type: 'START_GAME'; seed: number; restore?: Partial<GameState> } {
+): action is {
+  type: 'START_GAME';
+  seed: number;
+  restore?: Partial<GameState>;
+  campaignLevel?: number;
+  bossSelectionMode?: BossSelectionMode;
+  guestDifficultyId?: GuestDifficultyId;
+} {
   return action.type === 'START_GAME';
 }
 
@@ -190,7 +206,14 @@ export function isMoveAction(action: GameAction): action is { type: 'MOVE'; dire
 export function gameReducer(state: GameState, action: GameAction): GameState {
   switch (action.type) {
     case 'START_GAME':
-      return handleStartGame(state, action.seed, action.restore);
+      return handleStartGame(
+        state,
+        action.seed,
+        action.restore,
+        action.campaignLevel,
+        action.bossSelectionMode,
+        action.guestDifficultyId
+      );
 
     case 'RESTORE_GAME':
       return handleRestoreGame(action.state);
@@ -327,13 +350,24 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
  * Handles START_GAME action.
  * Transitions from MainMenu to Exploration with initialized game state.
  */
-function handleStartGame(state: GameState, seed: number, restore?: Partial<GameState>): GameState {
+function handleStartGame(
+  state: GameState,
+  seed: number,
+  restore?: Partial<GameState>,
+  campaignLevel?: number,
+  bossSelectionMode?: BossSelectionMode,
+  guestDifficultyId?: GuestDifficultyId
+): GameState {
   if (!isValidTransition(state.phase, GamePhase.Exploration)) {
     throw new Error(`Invalid transition: cannot start game from ${state.phase}`);
   }
 
   // Initialize game with seed (map generation, player setup, etc.)
-  let newState = initializeGame(state, seed);
+  let newState = initializeGame(state, seed, {
+    campaignLevel,
+    bossSelectionMode,
+    guestDifficultyId,
+  });
 
   // Apply restored state if present (for session resumption)
   if (restore) {
