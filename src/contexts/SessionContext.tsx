@@ -252,7 +252,10 @@ interface SessionContextType extends SessionState {
   /** Refresh the list of all active sessions */
   refreshSessionList: () => Promise<void>;
   /** Switch to a different active session */
-  switchToSession: (sessionPda: string) => Promise<TransactionResult>;
+  switchToSession: (
+    sessionPda: string,
+    options?: { requirePoiVrfReady?: boolean }
+  ) => Promise<TransactionResult>;
   /** Ensure required session VRF state is fulfilled before gameplay is allowed */
   ensureSessionVrfReady: (sessionPda?: string) => Promise<TransactionResult>;
   /** Inspect current startup/readiness state for an existing session */
@@ -3705,12 +3708,29 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       bossCombatLog?: BackendCombatLogEntry[];
       preBossPlayerHp?: number;
     }> => {
-      if (!sessionSigner.keypair) {
+      const activeSessionPda = sessionManager.activeSessionPda;
+      const expectedSessionSigner = sessionManager.session?.sessionSigner ?? null;
+      const resolvedSessionSigner =
+        sessionSigner.keypair ??
+        (activeSessionPda
+          ? await resolveSessionSignerForSession(activeSessionPda, expectedSessionSigner)
+          : null);
+
+      if (!resolvedSessionSigner) {
         console.error('[SessionContext] movePlayer failed: Session key signer not available');
         return { success: false };
       }
-      if (!SOLANA_CONFIG.isLocalValidator && sessionManager.activeSessionPda) {
-        const vrfReady = await ensureSessionVrfReady(sessionManager.activeSessionPda.toBase58());
+
+      if (activeSessionPda && !sessionSigner.keypair) {
+        await sessionSigner.markAsActive(resolvedSessionSigner);
+        await sessionSigner.associateWithSession(
+          resolvedSessionSigner,
+          activeSessionPda.toBase58()
+        );
+      }
+
+      if (!SOLANA_CONFIG.isLocalValidator && activeSessionPda) {
+        const vrfReady = await ensureSessionVrfReady(activeSessionPda.toBase58());
         if (!vrfReady.success) {
           console.error('[SessionContext] movePlayer blocked: VRF not fulfilled', vrfReady.error);
           return { success: false };
@@ -3718,15 +3738,22 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
       console.log(
         '[SessionContext] movePlayer: sessionSigner =',
-        sessionSigner.keypair.publicKey.toBase58(),
+        resolvedSessionSigner.publicKey.toBase58(),
         ', gameStatePda =',
         gameplayState.gameStatePda?.toBase58() ?? 'null',
         ', gameState =',
         gameplayState.gameState ? 'set' : 'null'
       );
-      return gameplayState.move(sessionSigner.keypair, params);
+      return gameplayState.move(resolvedSessionSigner, params);
     },
-    [ensureSessionVrfReady, sessionManager.activeSessionPda, sessionSigner.keypair, gameplayState]
+    [
+      ensureSessionVrfReady,
+      gameplayState,
+      resolveSessionSignerForSession,
+      sessionManager.activeSessionPda,
+      sessionManager.session?.sessionSigner,
+      sessionSigner,
+    ]
   );
 
   /**
@@ -3743,25 +3770,67 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     gauntletVisual?: GauntletCombatVisualEvent | null;
     signature?: string;
   }> => {
-    if (!sessionSigner.keypair) {
+    const activeSessionPda = sessionManager.activeSessionPda;
+    const expectedSessionSigner = sessionManager.session?.sessionSigner ?? null;
+    const resolvedSessionSigner =
+      sessionSigner.keypair ??
+      (activeSessionPda
+        ? await resolveSessionSignerForSession(activeSessionPda, expectedSessionSigner)
+        : null);
+
+    if (!resolvedSessionSigner) {
       console.error('[SessionContext] triggerBoss failed: Session key signer not available');
       return { success: false };
     }
 
-    return gameplayState.triggerBoss(sessionSigner.keypair);
-  }, [sessionSigner.keypair, gameplayState]);
+    if (activeSessionPda && !sessionSigner.keypair) {
+      await sessionSigner.markAsActive(resolvedSessionSigner);
+      await sessionSigner.associateWithSession(resolvedSessionSigner, activeSessionPda.toBase58());
+    }
+
+    return gameplayState.triggerBoss(resolvedSessionSigner);
+  }, [
+    gameplayState,
+    resolveSessionSignerForSession,
+    sessionManager.activeSessionPda,
+    sessionManager.session?.sessionSigner,
+    sessionSigner,
+  ]);
 
   /**
    * Modify player stat on-chain via session key signer.
    */
   const modifyPlayerStat = useCallback(
     async (params: ModifyStatParams): Promise<{ success: boolean; newValue?: number }> => {
-      if (!sessionSigner.keypair) {
+      const activeSessionPda = sessionManager.activeSessionPda;
+      const expectedSessionSigner = sessionManager.session?.sessionSigner ?? null;
+      const resolvedSessionSigner =
+        sessionSigner.keypair ??
+        (activeSessionPda
+          ? await resolveSessionSignerForSession(activeSessionPda, expectedSessionSigner)
+          : null);
+
+      if (!resolvedSessionSigner) {
         return { success: false };
       }
-      return gameplayState.updateStat(sessionSigner.keypair, params);
+
+      if (activeSessionPda && !sessionSigner.keypair) {
+        await sessionSigner.markAsActive(resolvedSessionSigner);
+        await sessionSigner.associateWithSession(
+          resolvedSessionSigner,
+          activeSessionPda.toBase58()
+        );
+      }
+
+      return gameplayState.updateStat(resolvedSessionSigner, params);
     },
-    [sessionSigner.keypair, gameplayState]
+    [
+      gameplayState,
+      resolveSessionSignerForSession,
+      sessionManager.activeSessionPda,
+      sessionManager.session?.sessionSigner,
+      sessionSigner,
+    ]
   );
 
   /**
@@ -4743,7 +4812,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
    * Switch to a different active session.
    */
   const switchToSessionFn = useCallback(
-    async (sessionPda: string): Promise<TransactionResult> => {
+    async (
+      sessionPda: string,
+      options?: { requirePoiVrfReady?: boolean }
+    ): Promise<TransactionResult> => {
       if (!wallet.publicKey || !connection) {
         return { success: false, error: 'Wallet not connected' };
       }
@@ -4837,9 +4909,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         // Refresh session list to update last played time
         await refreshSessionList();
 
-        const vrfReady = await ensureSessionVrfReady(sessionPda);
-        if (!vrfReady.success) {
-          return vrfReady;
+        const requirePoiVrfReady = options?.requirePoiVrfReady ?? true;
+        if (requirePoiVrfReady) {
+          const vrfReady = await ensureSessionVrfReady(sessionPda);
+          if (!vrfReady.success) {
+            return vrfReady;
+          }
         }
 
         console.log(

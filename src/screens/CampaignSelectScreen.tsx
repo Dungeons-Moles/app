@@ -1,5 +1,4 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { Connection, PublicKey } from '@solana/web3.js';
 import {
   View,
   Text,
@@ -32,9 +31,6 @@ import { FocusGlow } from '../components/ui/FocusGlow';
 import { HubSettingsModal } from '../components/ui/HubSettingsModal';
 import { Skeleton } from '../components/common/Skeleton';
 import { ProfileCard } from '../components/profile/ProfileCard';
-import { createGameplayStateProgram } from '../services/solana/programs';
-import { fetchGameState, getGameStatePda } from '../services/solana/gameplayState';
-import { fetchFullSessionState } from '../services/solana/sessionRestore';
 import { useWallet } from '../contexts/WalletContext';
 import { getVrfSeed } from '../services/solana/vrf';
 import {
@@ -42,37 +38,7 @@ import {
   resolveSessionSetup,
   rejectSessionSetup,
 } from '../utils/sessionSetupSignal';
-import { SOLANA_CONFIG } from '../services/solana/config';
 import type { CampaignLevel } from '../types/solana';
-import type { GameState as OnChainGameState } from '../services/solana/types/gameplay_state';
-
-/**
- * Resolve the specific ER validator endpoint for a delegated account.
- * The generic router (devnet.magicblock.app) returns zeroed data for delegated
- * accounts; the actual state lives on the assigned validator node.
- */
-async function resolveErConnectionForAccount(
-  routerConnection: Connection,
-  account: PublicKey,
-  fallback: Connection
-): Promise<Connection> {
-  try {
-    const router = routerConnection as Connection & {
-      getDelegationStatus?: (
-        account: string | PublicKey
-      ) => Promise<{ isDelegated: boolean; fqdn?: string }>;
-    };
-    if (typeof router.getDelegationStatus !== 'function') return fallback;
-    const status = await router.getDelegationStatus(account);
-    if (!status?.fqdn) return fallback;
-    return new Connection(status.fqdn, {
-      commitment: SOLANA_CONFIG.erCommitment,
-      wsEndpoint: status.fqdn.replace(/^https:\/\//, 'wss://').replace(/^http:\/\//, 'ws://'),
-    });
-  } catch {
-    return fallback;
-  }
-}
 
 const backgroundImageCompact = require('../../assets/ui/backgrounds/campaign-background-compact.webp');
 const backgroundImageWide = require('../../assets/ui/backgrounds/campaign-background-wide.webp');
@@ -93,13 +59,11 @@ type CampaignSelectScreenProps = {
 const NUM_COLUMNS = 5;
 const SESSION_CLEANUP_WAIT_TIMEOUT_MS = 45000;
 const SESSION_CLEANUP_POLL_MS = 1000;
-const SESSION_PROPAGATION_TIMEOUT_MS = 25000;
-const SESSION_PROPAGATION_POLL_MS = 300;
 
 export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) {
   const { profile, mode, availableRuns, highestLevelUnlocked } = useProfile();
   const { wallet, disconnect } = useWallet();
-  const { connection, gameplayConnection, erConnection, directErConnection } = useSolanaConnection();
+  const { connection } = useSolanaConnection();
   const {
     startGame: startSessionOnChain,
     overrideCampaignSession,
@@ -108,13 +72,9 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
     activeSessions,
     hasPendingCleanups,
     processPendingCleanups,
-    getMapSeedForLevel,
     switchToSession,
     ensureSessionVrfReady,
-    getSessionStartupState,
     getSessionPdaForLevel,
-    refreshSessionList,
-    setGameStatePda,
   } = useSessionIdentity();
   const { state: gameState, dispatch } = useGame();
   const {
@@ -158,39 +118,6 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
   const isGuestMode = mode === 'guest';
   const isCachedMode = mode === 'cached';
 
-  const createRestorePayload = useCallback((stateToRestore?: OnChainGameState | null) => {
-    if (!stateToRestore) {
-      return undefined;
-    }
-
-    return {
-      player: {
-        position: {
-          x: stateToRestore.positionX,
-          y: stateToRestore.positionY,
-        },
-        stats: {
-          hp: stateToRestore.hp,
-          maxHp: stateToRestore.maxHp,
-          atk: stateToRestore.atk,
-          arm: stateToRestore.arm,
-          spd: stateToRestore.spd,
-          dig: stateToRestore.dig,
-          gold: 0,
-        },
-        baseStats: {
-          hp: stateToRestore.maxHp,
-          maxHp: stateToRestore.maxHp,
-          atk: stateToRestore.atk,
-          arm: stateToRestore.arm,
-          spd: stateToRestore.spd,
-          dig: stateToRestore.dig,
-          gold: 0,
-        },
-      } as any,
-    };
-  }, []);
-
   const resumeSession = useCallback(
     async (level: CampaignLevel) => {
       setIsStartingGame(true);
@@ -212,9 +139,12 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
         // This avoids the "SessionSigner wallet missing" error that startGame hits
         // when the sessionSigner hasn't been loaded from SecureStore yet.
         const sessionPda = await getSessionPdaForLevel(level.level);
+        let resumedSessionPda = sessionPda;
         if (sessionPda) {
           console.log('[CampaignSelect] Switching to existing session...');
-          const switchResult = await switchToSession(sessionPda);
+          const switchResult = await switchToSession(sessionPda, {
+            requirePoiVrfReady: false,
+          });
           if (!switchResult.success) {
             // Delegation-propagation errors are non-blocking: session exists on-chain,
             // ER just hasn't replicated accounts yet. Continue to GameScreen.
@@ -246,68 +176,15 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
             rejectSessionSetup(result.error ?? 'Failed to resume session.');
             return;
           }
+          resumedSessionPda = result?.sessionPda ?? null;
         }
 
-        const sessionPdaBase58 = await getSessionPdaForLevel(level.level);
+        const sessionPdaBase58 = resumedSessionPda ?? (await getSessionPdaForLevel(level.level));
         if (!sessionPdaBase58) {
           rejectSessionSetup('No session found for this level.');
           return;
         }
-        const sessionPdaKey = new PublicKey(sessionPdaBase58);
-
-        const vrfReady = await ensureSessionVrfReady(sessionPdaBase58);
-        if (!vrfReady.success) {
-          rejectSessionSetup(
-            vrfReady.error ??
-              'Session VRF is not fulfilled yet. Gameplay is blocked on devnet until VRF is ready.'
-          );
-          return;
-        }
-
-        // Determine seed — must come from chain, never a local fallback.
-        const seedFromChain = await getMapSeedForLevel(level.level);
-        let seed: number;
-        if (seedFromChain !== null) {
-          seed = Number(seedFromChain % BigInt(2147483647));
-        } else if (level.seed !== null) {
-          seed = Number(level.seed % BigInt(2147483647));
-        } else {
-          // No seed available — fetchFullSessionState will read it from chain.
-          seed = 0;
-          console.log('[CampaignSelect] Resume: seed not yet available, will fetch from chain');
-        }
-
-        // Full on-chain restore: fetch all accounts and build complete GameState.
-        // Resolve the specific ER validator endpoint — the generic router returns
-        // zeroed data for delegated accounts.
-        console.log('[CampaignSelect] Restoring session from on-chain data...');
-        const resolvedErConn = await resolveErConnectionForAccount(erConnection, sessionPdaKey, directErConnection);
-        const restoredState = await fetchFullSessionState(resolvedErConn, sessionPdaKey, seed);
-
-        if (restoredState) {
-          console.log('[CampaignSelect] Full session restore successful');
-          // Set the gameStatePda so gameplay hooks can interact with the blockchain
-          const [derivedGameStatePda] = getGameStatePda(sessionPdaKey);
-          setGameStatePda(derivedGameStatePda);
-          dispatch({ type: 'RESTORE_GAME', state: restoredState });
-          resolveSessionSetup();
-          return;
-        }
-
-        // Fallback: partial restore from GameState only
-        console.warn('[CampaignSelect] Full restore failed, falling back to partial restore');
-        const program = createGameplayStateProgram(resolvedErConn);
-        const [gameStatePdaFallback] = getGameStatePda(sessionPdaKey);
-        setGameStatePda(gameStatePdaFallback);
-        const stateToRestore = await fetchGameState(program, gameStatePdaFallback);
-        const restorePayload = createRestorePayload(stateToRestore);
-
-        dispatch({
-          type: 'START_GAME',
-          seed,
-          restore: restorePayload,
-        });
-
+        dispatch({ type: 'RESET_GAME' });
         resolveSessionSetup();
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to resume the session.';
@@ -325,16 +202,11 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
     },
     [
       connection,
-      erConnection,
-      createRestorePayload,
       dispatch,
-      getMapSeedForLevel,
       getSessionPdaForLevel,
       navigation,
-      setGameStatePda,
       startSessionOnChain,
       switchToSession,
-      ensureSessionVrfReady,
       wallet.publicKey,
     ]
   );
@@ -553,76 +425,9 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
           dispatch({ type: 'RETURN_TO_MENU' });
         }
 
-        // For on-chain sessions (resumed or new), always fetch full state from chain.
-        // Use erConnection directly: delegated accounts are on the ER, and
-        // gameplayConnection may still be stale (base chain) in this closure.
-        // Fall back to base connection if ER hasn't received the accounts yet.
-        // NOTE: We check result exists (not result.success) because delegation-propagation
-        // errors still mean the session was created on-chain — we must fetch from chain.
-        if (!isGuestMode && result && connection && wallet.publicKey) {
-          console.log(
-            '[CampaignSelect] On-chain session active, fetching full state from chain...'
-          );
-          const propagationDeadline = Date.now() + SESSION_PROPAGATION_TIMEOUT_MS;
-          // Prefer the exact PDA returned by start/resume path.
-          // Level-based lookup can lag right after nonce override.
-          let sessionPdaBase58: string | null = result?.sessionPda ?? null;
-          if (!sessionPdaBase58) {
-            while (Date.now() < propagationDeadline && !sessionPdaBase58) {
-              sessionPdaBase58 = await getSessionPdaForLevel(level.level);
-              if (sessionPdaBase58) break;
-              await new Promise((resolve) => setTimeout(resolve, SESSION_PROPAGATION_POLL_MS));
-            }
-          }
-          if (!sessionPdaBase58) {
-            await refreshSessionList();
-            sessionPdaBase58 = await getSessionPdaForLevel(level.level);
-          }
-          if (!sessionPdaBase58) {
-            rejectSessionSetup(
-              'Session started but did not propagate in time. Please try again.'
-            );
-            return;
-          }
-          const sessionPda = new PublicKey(sessionPdaBase58);
-          const vrfReady = await ensureSessionVrfReady(sessionPdaBase58);
-          if (!vrfReady.success) {
-            rejectSessionSetup(
-              vrfReady.error ??
-                'Session VRF is not fulfilled yet. Gameplay is blocked on devnet until VRF is ready.'
-            );
-            return;
-          }
-          // Resolve the specific ER validator endpoint — the generic router returns
-          // zeroed data for delegated accounts. Use the connection returned by startGame
-          // if available, otherwise resolve it now.
-          const erConnForFetch = result?.resolvedErConnection
-            ?? await resolveErConnectionForAccount(erConnection, sessionPda, directErConnection);
-          let restoredState: Awaited<ReturnType<typeof fetchFullSessionState>> | null = null;
-          while (Date.now() < propagationDeadline && !restoredState) {
-            restoredState =
-              (await fetchFullSessionState(erConnForFetch, sessionPda, seed, {
-                silentMissingData: true,
-              })) ??
-              (await fetchFullSessionState(connection, sessionPda, seed, {
-                silentMissingData: true,
-              }));
-            if (restoredState) break;
-            await new Promise((resolve) => setTimeout(resolve, SESSION_PROPAGATION_POLL_MS));
-          }
-
-          if (restoredState) {
-            console.log('[CampaignSelect] Full on-chain state fetch successful');
-            // Set the gameStatePda so gameplay hooks can interact with the blockchain
-            const [derivedPda] = getGameStatePda(sessionPda);
-            setGameStatePda(derivedPda);
-            dispatch({ type: 'RESTORE_GAME', state: restoredState });
-            resolveSessionSetup();
-            return;
-          }
-          rejectSessionSetup(
-            'Session was created but on-chain state is not readable yet. Please try opening the level again.'
-          );
+        if (!isGuestMode && result) {
+          dispatch({ type: 'RESET_GAME' });
+          resolveSessionSetup();
           return;
         }
 
@@ -670,8 +475,6 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
       activeSessions,
       availableRuns,
       connection,
-      erConnection,
-      gameplayConnection,
       hasPendingCleanups,
       dispatch,
       navigation,
@@ -679,13 +482,9 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
       hasSessionForLevel,
       highestLevelUnlocked,
       isCachedMode,
-      getSessionStartupState,
       getSessionPdaForLevel,
       processPendingCleanups,
-      refreshSessionList,
-      setGameStatePda,
       startSessionOnChain,
-      ensureSessionVrfReady,
       isStartingGame,
       isGuestMode,
       mode,

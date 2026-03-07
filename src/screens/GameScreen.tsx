@@ -103,6 +103,8 @@ const SIDEBAR_WIDTH = 230;
 const COMPACT_SIDEBAR_WIDTH = 280;
 const NAVBAR_HEIGHT = 60;
 const PERF_DEBUG_LOGS = false;
+const SESSION_RESTORE_WAIT_TIMEOUT_MS = 25_000;
+const SESSION_RESTORE_POLL_MS = 300;
 
 
 function debugLog(...args: unknown[]) {
@@ -729,21 +731,45 @@ export function GameScreen({ navigation }: GameScreenProps) {
       currentLevel,
     });
 
-    fetchFullSessionState(gameplayReadConnection, sessionPda)
-      .then((restored) => {
-        if (!restored) {
-          console.warn('[GameScreen] Auto-restore failed: fetchFullSessionState returned null');
-          return;
+    let cancelled = false;
+    (async () => {
+      const deadline = Date.now() + SESSION_RESTORE_WAIT_TIMEOUT_MS;
+      let restored = null;
+      while (!cancelled && Date.now() < deadline && !restored) {
+        restored = await fetchFullSessionState(gameplayReadConnection, sessionPda, undefined, {
+          silentMissingData: true,
+        }).catch((err) => {
+          debugLog('[GameScreen] Auto-restore fetch retry failed:', err);
+          return null;
+        });
+
+        if (restored) {
+          break;
         }
+
+        await new Promise((resolve) => setTimeout(resolve, SESSION_RESTORE_POLL_MS));
+      }
+
+      if (!restored) {
+        console.warn('[GameScreen] Auto-restore failed: session state was not readable in time');
+        return;
+      }
+
+      if (!cancelled) {
         dispatch({ type: 'RESTORE_GAME', state: restored });
         debugLog('[GameScreen] Auto-restore completed');
-      })
+      }
+    })()
       .catch((err) => {
         console.error('[GameScreen] Auto-restore failed with error:', err);
       })
       .finally(() => {
         isRestoringSessionRef.current = false;
       });
+
+    return () => {
+      cancelled = true;
+    };
   }, [isFocused, state, hasActiveSession, sessionPda, currentLevel, gameplayReadConnection, dispatch]);
 
   useEffect(() => {
