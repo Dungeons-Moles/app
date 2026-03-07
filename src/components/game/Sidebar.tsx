@@ -52,6 +52,8 @@ const SIDEBAR_BG = require('../../../assets/ui/panels/sidebar.webp');
 const BOSS_PANEL_BG = require('../../../assets/ui/panels/boss-panel.webp');
 const DEFAULT_MOLE_IMAGE_SOURCE = require('../../../assets/entities/characters/default-mole.webp');
 const SLOT_BG = require('../../../assets/ui/frames/square.webp');
+const SLOT_BG_BLUE = require('../../../assets/ui/frames/square-blue.webp');
+const SLOT_BG_YELLOW = require('../../../assets/ui/frames/square-yellow.webp');
 const HP_ICON = require('../../../assets/icons/stats/HP.webp');
 const ATK_ICON = require('../../../assets/icons/stats/ATK.webp');
 const ARM_ICON = require('../../../assets/icons/stats/ARM.webp');
@@ -107,21 +109,20 @@ const GEAR_SLOT_SIZE = 28;
 const TOOL_SLOT_SIZE = 42;
 
 const EchoGearSlot = React.memo(function EchoGearSlot({ item, size = GEAR_SLOT_SIZE }: { item: Gear | null; size?: number }) {
-  const tierBorder = useMemo(() => {
-    if (!item) return null;
+  const slotBg = useMemo(() => {
+    if (!item) return SLOT_BG;
     const tier = getTierFromRarity(item.currentRarity);
-    if (tier === 2) return '#4A90D9';
-    if (tier === 3) return '#CC9900';
-    return null;
+    if (tier === 2) return SLOT_BG_BLUE;
+    if (tier === 3) return SLOT_BG_YELLOW;
+    return SLOT_BG;
   }, [item]);
 
   return (
     <CachedImageBackground
-      source={SLOT_BG}
+      source={slotBg}
       style={[
         styles.echoSlot,
         { width: size, height: size },
-        tierBorder && { borderWidth: 2, borderColor: tierBorder },
       ]}
       resizeMode="stretch"
     >
@@ -136,21 +137,20 @@ const EchoGearSlot = React.memo(function EchoGearSlot({ item, size = GEAR_SLOT_S
 });
 
 const EchoToolSlot = React.memo(function EchoToolSlot({ tool, size = TOOL_SLOT_SIZE }: { tool: Tool | null; size?: number }) {
-  const tierBorder = useMemo(() => {
-    if (!tool) return null;
+  const slotBg = useMemo(() => {
+    if (!tool) return SLOT_BG;
     const tier = getTierFromRarity(tool.rarity);
-    if (tier === 2) return '#4A90D9';
-    if (tier === 3) return '#CC9900';
-    return null;
+    if (tier === 2) return SLOT_BG_BLUE;
+    if (tier === 3) return SLOT_BG_YELLOW;
+    return SLOT_BG;
   }, [tool]);
 
   return (
     <CachedImageBackground
-      source={SLOT_BG}
+      source={slotBg}
       style={[
         styles.echoSlot,
         { width: size, height: size },
-        tierBorder && { borderWidth: 2, borderColor: tierBorder },
       ]}
       resizeMode="stretch"
     >

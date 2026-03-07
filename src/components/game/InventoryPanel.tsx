@@ -16,6 +16,8 @@ import { useScreenVariant } from '../../contexts/ScreenVariantContext';
 import { useAudio } from '@/contexts/AudioContext';
 
 const SLOT_BG = require('../../../assets/ui/frames/square.webp');
+const SLOT_BG_BLUE = require('../../../assets/ui/frames/square-blue.webp');
+const SLOT_BG_YELLOW = require('../../../assets/ui/frames/square-yellow.webp');
 const LOCK_ICON = require('../../../assets/icons/ui/lock.webp');
 const DEFAULT_TOOL_SLOT_SIZE = 52;
 const SIDEBAR_TOOL_SLOT_SIZE = 42;
@@ -52,14 +54,14 @@ interface ItemSlotProps {
 
 const DEFAULT_RARITY_COLOR = '#4A4A4A';
 
-function getTierBorderColor(tier: ItemTier): string | null {
+function getTierSlotBg(tier: ItemTier): any {
   switch (tier) {
     case 2:
-      return '#4A90D9';
+      return SLOT_BG_BLUE;
     case 3:
-      return '#CC9900';
+      return SLOT_BG_YELLOW;
     default:
-      return null;
+      return SLOT_BG;
   }
 }
 
@@ -95,20 +97,19 @@ function ItemSlot({
   }, [item, slotIndex, onLongPress, playSfx]);
 
   const rarityColor = useMemo(() => (item ? getRarityColor(item) : DEFAULT_RARITY_COLOR), [item]);
-  const tierBorder = useMemo(() => {
-    if (!item || !isSidebar) return null;
+  const tierSlotBg = useMemo(() => {
+    if (!item || !isSidebar) return SLOT_BG;
     const rarity = 'rarity' in item ? item.rarity : item.currentRarity;
     const tier = getTierFromRarity(rarity);
-    return getTierBorderColor(tier);
+    return getTierSlotBg(tier);
   }, [item, isSidebar]);
   const slotStyle = useMemo(
     () => [
       styles.itemSlot,
       { width: size, height: size },
       !isSidebar && { borderColor: rarityColor },
-      isSidebar && tierBorder && { borderWidth: 2, borderColor: tierBorder },
     ],
-    [rarityColor, isSidebar, size, tierBorder]
+    [rarityColor, isSidebar, size]
   );
 
   const indicatorStyle = useMemo(
@@ -149,7 +150,7 @@ function ItemSlot({
         delayLongPress={350}
         activeOpacity={0.7}
       >
-        <CachedImageBackground source={SLOT_BG} style={slotStyle} resizeMode="stretch">
+        <CachedImageBackground source={tierSlotBg} style={slotStyle} resizeMode="stretch">
           {content}
         </CachedImageBackground>
       </TouchableOpacity>

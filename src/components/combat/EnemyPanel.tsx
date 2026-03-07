@@ -27,16 +27,18 @@ const COIN_ICON = require('../../../assets/icons/ui/coin.webp');
 
 const SIDEBAR_BG = require('../../../assets/ui/panels/sidebar.webp');
 const SQUARE_BG = require('../../../assets/ui/frames/square.webp');
+const SQUARE_BG_BLUE = require('../../../assets/ui/frames/square-blue.webp');
+const SQUARE_BG_YELLOW = require('../../../assets/ui/frames/square-yellow.webp');
 
-function getTierBorderColor(rarity: ItemRarity): string | null {
+function getTierSlotBg(rarity: ItemRarity): any {
   const tier = getTierFromRarity(rarity);
   switch (tier) {
     case 2:
-      return '#4A90D9';
+      return SQUARE_BG_BLUE;
     case 3:
-      return '#CC9900';
+      return SQUARE_BG_YELLOW;
     default:
-      return null;
+      return SQUARE_BG;
   }
 }
 
@@ -49,13 +51,12 @@ interface ItemBadgeProps {
 }
 
 function ItemBadge({ emoji, image, rarity, scale = 1 }: ItemBadgeProps) {
-  const borderColor = rarity ? getTierBorderColor(rarity) : null;
+  const slotBg = rarity ? getTierSlotBg(rarity) : SQUARE_BG;
   return (
     <CachedImageBackground
-      source={SQUARE_BG}
+      source={slotBg}
       style={[
         { width: 32 * scale, height: 32 * scale, justifyContent: 'center', alignItems: 'center' },
-        borderColor && { borderWidth: 2, borderColor },
       ]}
       resizeMode="stretch"
     >

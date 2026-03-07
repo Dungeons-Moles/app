@@ -66,6 +66,7 @@ const statIconSPD = require('../../assets/icons/stats/speed.webp');
 const statIconDIG = require('../../assets/icons/stats/DIG.webp');
 const statIconHP = require('../../assets/icons/stats/HP.webp');
 const squareFrameSource = require('../../assets/ui/frames/square.webp');
+const squareFrameGreenSource = require('../../assets/ui/frames/square-green.webp');
 const engineImageSource = require('../../assets/ui/illustrations/engine.webp');
 
 const ITEMSET_ICONS: Record<string, any> = {
@@ -742,14 +743,13 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                                 styles.itemGridCell,
                                 isCompact && compactStyles.itemGridCell,
                                 !isCompact && { width: cellSize, height: cellSize },
-                                isInPool && styles.itemGridCellInPool,
                                 isSelected && styles.itemGridCellSelected,
                               ]}
                               onPress={() => { playSfx('ui_hover'); setSelectedItem(item); }}
                               activeOpacity={0.7}
                             >
                               <CachedImageBackground
-                                source={squareFrameSource}
+                                source={isInPool ? squareFrameGreenSource : squareFrameSource}
                                 style={[styles.itemFrame, isCompact && compactStyles.itemFrame, !isCompact && { width: cellSize, height: cellSize }]}
                                 resizeMode="stretch"
                               >
@@ -1283,9 +1283,6 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: 'transparent',
     borderRadius: 6,
-  },
-  itemGridCellInPool: {
-    borderColor: '#16a34a',
   },
   itemGridCellSelected: {
     backgroundColor: 'rgba(250,188,15,0.14)',

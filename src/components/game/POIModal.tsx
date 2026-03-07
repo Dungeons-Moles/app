@@ -31,6 +31,8 @@ import { getTierFromRarity } from '@/data/gear';
 const paperPanelSource = require('../../../assets/ui/panels/paper-panel.webp');
 
 const squareSource = require('../../../assets/ui/frames/square.webp');
+const squareBlueSource = require('../../../assets/ui/frames/square-blue.webp');
+const squareYellowSource = require('../../../assets/ui/frames/square-yellow.webp');
 
 import { TOOL_DEFINITIONS, getToolStatsAtTier } from '@/game/entities/items';
 import { SCRAP_REFUND_BY_RARITY } from '@/game/entities/pois';
@@ -163,18 +165,16 @@ function getRarityColor(item: Tool | Gear): string {
   }
 }
 
-function getTierBorderStyle(
-  rarity: ItemRarity | null | undefined
-): { borderWidth: number; borderColor: string } | null {
-  if (!rarity) return null;
+function getTierSquareSource(rarity: ItemRarity | null | undefined): any {
+  if (!rarity) return squareSource;
   const tier = getTierFromRarity(rarity);
   switch (tier) {
     case 2:
-      return { borderWidth: 2, borderColor: '#4A90D9' };
+      return squareBlueSource;
     case 3:
-      return { borderWidth: 2, borderColor: '#CC9900' };
+      return squareYellowSource;
     default:
-      return null;
+      return squareSource;
   }
 }
 
@@ -709,7 +709,7 @@ export const POIModal = React.memo(function POIModal({
     const fuseDisabled = kilnFuseOptionIndex === null || kilnFuseOptionIndex === undefined;
     const canRemoveSlotOne = filledSlots >= 1 && !!onKilnSlotPress;
     const canRemoveSlotTwo = filledSlots >= 2 && !!onKilnSlotPress;
-    const kilnTierBorder = getTierBorderStyle(kilnSelection?.rarity);
+    const kilnSquareBg = getTierSquareSource(kilnSelection?.rarity);
 
     return (
       <OverlayWrapper visible={visible} isCompact={isCompact}>
@@ -757,7 +757,6 @@ export const POIModal = React.memo(function POIModal({
                 style={[
                   styles.fuseSlot,
                   filledSlots < 1 && styles.fuseSlotEmpty,
-                  filledSlots >= 1 && kilnTierBorder,
                 ]}
                 onPress={() => {
                   playSfx('ui_click');
@@ -767,7 +766,7 @@ export const POIModal = React.memo(function POIModal({
                 disabled={!canRemoveSlotOne}
               >
                 <Image
-                  source={squareSource}
+                  source={filledSlots >= 1 ? kilnSquareBg : squareSource}
                   style={{
                     position: 'absolute',
                     width: '100%',
@@ -790,7 +789,6 @@ export const POIModal = React.memo(function POIModal({
                 style={[
                   styles.fuseSlot,
                   filledSlots < 2 && styles.fuseSlotEmpty,
-                  filledSlots >= 2 && kilnTierBorder,
                 ]}
                 onPress={() => {
                   playSfx('ui_click');
@@ -800,7 +798,7 @@ export const POIModal = React.memo(function POIModal({
                 disabled={!canRemoveSlotTwo}
               >
                 <Image
-                  source={squareSource}
+                  source={filledSlots >= 2 ? kilnSquareBg : squareSource}
                   style={{
                     position: 'absolute',
                     width: '100%',
@@ -823,19 +821,18 @@ export const POIModal = React.memo(function POIModal({
             {isController && selectableGear && selectableGear.length > 0 && (
               <View style={styles.inlineInventoryGrid}>
                 {selectableGear.map((gear, idx) => {
-                  const gearTierBorder = getTierBorderStyle(gear.currentRarity);
+                  const gearSquareBg = getTierSquareSource(gear.currentRarity);
                   const isFocused = inventoryFocusIndex === idx;
                   return (
                     <FocusGlow key={`inv-${gear.id}-${idx}`} active={isFocused}>
                       <Pressable
                         style={[
                           styles.inlineInventoryCell,
-                          gearTierBorder,
                           isFocused && styles.inlineInventoryCellSelected,
                         ]}
                         onPress={() => onGearSelect?.(gear)}
                       >
-                        <Image source={squareSource} style={styles.inlineInventoryCellBg} />
+                        <Image source={gearSquareBg} style={styles.inlineInventoryCellBg} />
                         {gear.image ? (
                           <Image
                             source={gear.image}
@@ -917,7 +914,7 @@ export const POIModal = React.memo(function POIModal({
             ) : null}
 
             <TouchableOpacity
-              style={[styles.scrapSlot, hasSelection && getTierBorderStyle(item?.currentRarity)]}
+              style={[styles.scrapSlot]}
               onPress={() => {
                 playSfx('ui_click');
                 onScrapSlotPress?.();
@@ -926,7 +923,7 @@ export const POIModal = React.memo(function POIModal({
               disabled={!hasSelection}
             >
               <Image
-                source={squareSource}
+                source={hasSelection ? getTierSquareSource(item?.currentRarity) : squareSource}
                 style={{
                   position: 'absolute',
                   width: '100%',
@@ -962,19 +959,18 @@ export const POIModal = React.memo(function POIModal({
             {isController && selectableGear && selectableGear.length > 0 && (
               <View style={styles.inlineInventoryGrid}>
                 {selectableGear.map((gear, idx) => {
-                  const gearTierBorder = getTierBorderStyle(gear.currentRarity);
+                  const gearSquareBg = getTierSquareSource(gear.currentRarity);
                   const isFocused = inventoryFocusIndex === idx;
                   return (
                     <FocusGlow key={`inv-${gear.id}-${idx}`} active={isFocused}>
                       <Pressable
                         style={[
                           styles.inlineInventoryCell,
-                          gearTierBorder,
                           isFocused && styles.inlineInventoryCellSelected,
                         ]}
                         onPress={() => onGearSelect?.(gear)}
                       >
-                        <Image source={squareSource} style={styles.inlineInventoryCellBg} />
+                        <Image source={gearSquareBg} style={styles.inlineInventoryCellBg} />
                         {gear.image ? (
                           <Image
                             source={gear.image}
@@ -1369,7 +1365,7 @@ export const POIModal = React.memo(function POIModal({
       }
     }
     const deltaText = formatStatBonuses(statDelta);
-    const nextTierBorder = getTierBorderStyle(nextRarity);
+    const nextSquareBg = getTierSquareSource(nextRarity);
 
     return (
       <ModalWrapper visible={visible} isCompact={isCompact} onClose={onClose}>
@@ -1417,8 +1413,8 @@ export const POIModal = React.memo(function POIModal({
                   <Text style={styles.anvilArrow}>{'\u2192'}</Text>
 
                   <View style={styles.anvilUpgradedColumn}>
-                    <View style={[styles.anvilSlot, nextTierBorder]}>
-                      <Image source={squareSource} style={styles.anvilSlotBg} />
+                    <View style={[styles.anvilSlot]}>
+                      <Image source={nextSquareBg} style={styles.anvilSlotBg} />
                       {tool.image ? (
                         <Image
                           source={tool.image}

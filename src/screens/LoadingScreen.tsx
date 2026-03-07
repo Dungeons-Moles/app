@@ -68,6 +68,9 @@ const PREFETCH_IMAGES = [
   require('../../assets/entities/characters/default-mole.webp'),
   // Combat UI
   require('../../assets/ui/frames/square.webp'),
+  require('../../assets/ui/frames/square-blue.webp'),
+  require('../../assets/ui/frames/square-yellow.webp'),
+  require('../../assets/ui/frames/square-green.webp'),
   require('../../assets/icons/stats/ATK.webp'),
   require('../../assets/icons/stats/speed.webp'),
   require('../../assets/icons/stats/DIG.webp'),
