@@ -371,6 +371,12 @@ export function HubScreen({ navigation }: HubScreenProps) {
     setShowPvP(true);
   };
 
+  const handleBattleSimulator = useCallback(() => {
+    if (!__DEV__ || !isGuest) return;
+    playSfx('ui_click');
+    navigation.navigate('BattleSimulator');
+  }, [isGuest, navigation, playSfx]);
+
   const handleGauntlet = () => {
     playSfx('ui_click');
     setShowPvP(false);
@@ -527,8 +533,9 @@ export function HubScreen({ navigation }: HubScreenProps) {
   const isFocused = (group: 'left' | 'right', index: number) =>
     inputMode === 'controller' && !anyModalOpen && focus.group === group && focus.index === index;
 
+  const showBattleSimulator = __DEV__ && isGuest;
   const leftCount = isGuest ? 1 : 5;
-  const rightCount = isGuest ? 1 : 2;
+  const rightCount = isGuest ? (showBattleSimulator ? 2 : 1) : 2;
 
   const handleControllerA = () => {
     if (focus.group === 'left') {
@@ -536,7 +543,11 @@ export function HubScreen({ navigation }: HubScreenProps) {
         focus.index
       ]?.();
     } else {
-      [handlePlayPvE, handlePlayPvP][focus.index]?.();
+      (isGuest
+        ? showBattleSimulator
+          ? [handleBattleSimulator, handlePlayPvE]
+          : [handlePlayPvE]
+        : [handlePlayPvE, handlePlayPvP])[focus.index]?.();
     }
   };
 
@@ -1079,9 +1090,23 @@ export function HubScreen({ navigation }: HubScreenProps) {
               </TouchableOpacity>
             )}
 
+            {showBattleSimulator && (
+              <FocusGlow active={isFocused('right', 0)}>
+                <TouchableOpacity onPress={handleBattleSimulator} activeOpacity={0.7}>
+                  <CachedImageBackground
+                    source={buttonV1Source}
+                    style={[styles.simulatorButton, isCompact && compactStyles.simulatorButton]}
+                    resizeMode="stretch"
+                  >
+                    <Text style={styles.navButtonText}>Simulator</Text>
+                  </CachedImageBackground>
+                </TouchableOpacity>
+              </FocusGlow>
+            )}
+
             {/* Campaign/Play and PVP — side by side (wide) / stacked (compact) */}
             <View style={[styles.playButtonsRow, isCompact && compactStyles.playButtonsColumn]}>
-              <FocusGlow active={isFocused('right', 0)}>
+              <FocusGlow active={isFocused('right', showBattleSimulator ? 1 : 0)}>
                 <TouchableOpacity onPress={handlePlayPvE} activeOpacity={0.7}>
                   <CachedImageBackground
                     source={buttonV4Source}
@@ -2527,6 +2552,14 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginBottom: 4,
   },
+  simulatorButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 135,
+    height: 48,
+  },
   playButtonsRow: {
     flexDirection: 'row',
     gap: 8,
@@ -3121,6 +3154,10 @@ const compactStyles = StyleSheet.create({
   bottomRight: {
     bottom: 28,
     right: 28,
+  },
+  simulatorButton: {
+    width: 280,
+    height: 96,
   },
   playButtonsColumn: {
     flexDirection: 'column',

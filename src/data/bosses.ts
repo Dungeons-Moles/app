@@ -252,7 +252,7 @@ export const BOSSES: Record<BossId, BossDefinition> = {
       {
         name: 'Short Fuse',
         timing: 'WOUNDED',
-        description: 'When Wounded, reduce its Countdown by 1 (min 1)',
+        description: 'When Wounded, reduce its Countdown by 1',
         params: { countdownReduction: 1 },
       },
     ],
@@ -270,13 +270,13 @@ export const BOSSES: Record<BossId, BossDefinition> = {
       {
         name: 'Toll Collector',
         timing: 'BATTLE_START',
-        description: 'Battle Start: steal 8 Gold (or all)',
-        params: { goldSteal: 8 },
+        description: 'Battle Start: steal 16 Gold (or all)',
+        params: { goldSteal: 16 },
       },
       {
         name: 'Gilded Barrier',
         timing: 'BATTLE_START',
-        description: 'Gain Armor equal to floor(stolenGold/4) (cap 4)',
+        description: 'Gain Armor equal to stolenGold/4 (cap 4)',
         params: { armorPerGold: 4, armorCap: 4 },
       },
     ],
@@ -319,8 +319,8 @@ export const BOSSES: Record<BossId, BossDefinition> = {
       {
         name: 'Tax Feast',
         timing: 'BATTLE_START',
-        description: 'Battle Start: convert your Gold into Armor (+1 per 6 Gold, cap 6)',
-        params: { goldPerArmor: 6, armorCap: 6 },
+        description: 'Battle Start: convert your Gold into Armor (+1 per 3 Gold, cap 12)',
+        params: { goldPerArmor: 3, armorCap: 12 },
       },
       {
         name: 'Hunger',

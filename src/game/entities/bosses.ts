@@ -280,7 +280,7 @@ export function applyCrystalMimicReflection(
     ...state.player,
     statusEffects: {
       ...state.player.statusEffects,
-      [statusType]: state.player.statusEffects[statusType] + stacks,
+      [statusType]: (state.player.statusEffects[statusType] ?? 0) + stacks,
     },
   };
 

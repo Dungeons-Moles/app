@@ -27,6 +27,7 @@ export type TriggerType =
   | { type: 'OnApplyRust' }
   | { type: 'OnDealNonWeaponDamage' }
   | { type: 'OnGainShrapnel' }
+  | { type: 'OnGoldArmorConverted' }
   | { type: 'DayStart' }
   | { type: 'FirstTimeWounded' }
   | { type: 'FirstTimeExposed' }
@@ -53,6 +54,7 @@ export const Trigger = {
   OnApplyRust: (): TriggerType => ({ type: 'OnApplyRust' }),
   OnDealNonWeaponDamage: (): TriggerType => ({ type: 'OnDealNonWeaponDamage' }),
   OnGainShrapnel: (): TriggerType => ({ type: 'OnGainShrapnel' }),
+  OnGoldArmorConverted: (): TriggerType => ({ type: 'OnGoldArmorConverted' }),
   DayStart: (): TriggerType => ({ type: 'DayStart' }),
   FirstTimeWounded: (): TriggerType => ({ type: 'FirstTimeWounded' }),
   FirstTimeExposed: (): TriggerType => ({ type: 'FirstTimeExposed' }),
@@ -80,6 +82,7 @@ export type EffectType =
   | 'ApplyRust'
   | 'ApplyBleed'
   | 'RemoveArmor'
+  | 'RemoveOwnArmor'
   | 'GainStrikes'
   | 'StealGold'
   | 'GoldToArmor'
@@ -94,6 +97,7 @@ export type EffectType =
   | 'ArmorToMaxHp'
   | 'ReduceAllCountdowns'
   | 'AmplifyNonWeaponDamage'
+  | 'EmpowerNextNonWeaponDamage'
   | 'StoreDamage'
   | 'DoubleDetonationFirst'
   | 'DoubleDetonationSecond'
@@ -103,7 +107,9 @@ export type EffectType =
   | 'BlastImmunity'
   | 'DoubleBombTrigger'
   | 'DoubleOnHitEffects'
-  | 'TriggerAllShards';
+  | 'TriggerAllShards'
+  | 'ShardsEveryTurn'
+  | 'PreserveShrapnel';
 
 // ============================================================================
 // Status Types (matches StatusType enum in Rust)
@@ -131,6 +137,8 @@ export type Condition =
   | { type: 'EnemyGoldAtLeast'; value: number }
   | { type: 'OwnerHasStatus'; status: StatusType }
   | { type: 'EnemyHasStatusAtLeast'; status: StatusType; minStacks: number }
+  | { type: 'EnemyHasNoArmorAndStatusAtLeast'; status: StatusType; minStacks: number }
+  | { type: 'EnemyHasStatusOrNoArmor'; status: StatusType }
   | { type: 'OwnerDigGreaterThanEnemyArmor' }
   | { type: 'Or'; conditions: [Condition, Condition] };
 
@@ -154,6 +162,18 @@ export const Cond = {
     type: 'EnemyHasStatusAtLeast',
     status,
     minStacks,
+  }),
+  EnemyHasNoArmorAndStatusAtLeast: (
+    status: StatusType,
+    minStacks: number
+  ): Condition => ({
+    type: 'EnemyHasNoArmorAndStatusAtLeast',
+    status,
+    minStacks,
+  }),
+  EnemyHasStatusOrNoArmor: (status: StatusType): Condition => ({
+    type: 'EnemyHasStatusOrNoArmor',
+    status,
   }),
   OwnerDigGreaterThanEnemyArmor: (): Condition => ({ type: 'OwnerDigGreaterThanEnemyArmor' }),
   Or: (a: Condition, b: Condition): Condition => ({ type: 'Or', conditions: [a, b] }),

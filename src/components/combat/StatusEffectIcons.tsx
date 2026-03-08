@@ -98,10 +98,10 @@ export const StatusEffectsFromState = React.memo(function StatusEffectsFromState
 }: StatusEffectsFromStateProps) {
   const activeEffects = useMemo(() => {
     const effects: Array<{ type: StatusEffectType; stacks: number }> = [];
-    const types: StatusEffectType[] = ['chill', 'shrapnel', 'rust'];
+    const types: StatusEffectType[] = ['chill', 'shrapnel', 'rust', 'bleed', 'reflection'];
 
     for (const type of types) {
-      const stacks = statusEffects[type];
+      const stacks = statusEffects[type] ?? 0;
       if (stacks > 0) {
         effects.push({ type, stacks });
       }

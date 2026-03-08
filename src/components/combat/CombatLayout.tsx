@@ -156,6 +156,12 @@ export const CombatLayout = React.memo(function CombatLayout({
   // --- Turn / actor computation ---
   const activeActor = useMemo(() => {
     const entry = combatState.resolvedCombat?.log[combatState.currentLogIndex];
+    if (
+      entry?.result.source?.kind === 'status' &&
+      (entry.result.source.id === 'shrapnel' || entry.result.source.id === 'bleed')
+    ) {
+      return entry.target === 'player' || entry.target === 'enemy' ? entry.target : null;
+    }
     if (entry?.actor === 'player' || entry?.actor === 'enemy') {
       return entry.actor;
     }

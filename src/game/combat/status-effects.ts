@@ -49,6 +49,12 @@ export const STATUS_EFFECT_ICONS: Record<StatusEffectType, StatusEffectInfo> = {
     description: 'Takes damage equal to stacks at turn end. Loses 1 stack at end of turn.',
     color: '#dc2626', // Red
   },
+  reflection: {
+    emoji: '🪞',
+    name: 'Reflection',
+    description: 'Reflects status effects while stacks remain.',
+    color: '#a855f7',
+  },
 };
 
 // ============================================================================
@@ -237,7 +243,7 @@ export function applyStatus(
   type: StatusEffectType,
   stacks: number
 ): CombatantState {
-  const currentStacks = combatant.statusEffects[type];
+  const currentStacks = combatant.statusEffects[type] ?? 0;
   const newStacks = Math.max(0, currentStacks + stacks);
 
   return {
@@ -258,7 +264,7 @@ export function removeStatus(
   type: StatusEffectType,
   stacks: number
 ): CombatantState {
-  const currentStacks = combatant.statusEffects[type];
+  const currentStacks = combatant.statusEffects[type] ?? 0;
   const newStacks = Math.max(0, currentStacks - stacks);
 
   return {
@@ -293,7 +299,7 @@ export function hasActiveStatus(
   combatant: CombatantState,
   type: StatusEffectType
 ): boolean {
-  return combatant.statusEffects[type] > 0;
+  return (combatant.statusEffects[type] ?? 0) > 0;
 }
 
 /**
@@ -303,7 +309,7 @@ export function getStatusStacks(
   combatant: CombatantState,
   type: StatusEffectType
 ): number {
-  return combatant.statusEffects[type];
+  return combatant.statusEffects[type] ?? 0;
 }
 
 /**
@@ -314,10 +320,10 @@ export function getActiveStatusEffects(
 ): Array<{ type: StatusEffectType; stacks: number; info: StatusEffectInfo }> {
   const effects: Array<{ type: StatusEffectType; stacks: number; info: StatusEffectInfo }> = [];
 
-  const types: StatusEffectType[] = ['chill', 'shrapnel', 'rust', 'bleed'];
+  const types: StatusEffectType[] = ['chill', 'shrapnel', 'rust', 'bleed', 'reflection'];
 
   for (const type of types) {
-    const stacks = combatant.statusEffects[type];
+    const stacks = combatant.statusEffects[type] ?? 0;
     if (stacks > 0) {
       effects.push({
         type,
@@ -345,12 +351,21 @@ export function getActiveStatusEffects(
  *
  * @param combatant - The combatant to process
  * @param preserveShrapnelCap - Numeric cap for shrapnel preservation (0 = clear all)
+ * @param preserveFreshChill - Chill stacks applied after this combatant already acted this turn.
+ * These stacks are preserved through this turn-end so they can affect the next turn.
  */
 export function processStatusEffectsTurnEnd(
   combatant: CombatantState,
-  preserveShrapnelCap: number = 0
-): { combatant: CombatantState; bleedDamage: number; armLost: number } {
+  preserveShrapnelCap: number = 0,
+  preserveFreshChill: number = 0
+): {
+  combatant: CombatantState;
+  bleedDamage: number;
+  armLost: number;
+  statusRemoved: Partial<Record<StatusEffectType, number>>;
+} {
   let updated = combatant;
+  const before = updated.statusEffects;
   const shrapnelBefore = updated.statusEffects.shrapnel;
 
   // 1. Rust ARM decay (permanent, matches process_rust_decay on-chain)
@@ -362,13 +377,18 @@ export function processStatusEffectsTurnEnd(
   updated = bleedResult.combatant;
 
   // 3. Status decay (matches decay_status_effects on-chain: chill -1, bleed -1, shrapnel = 0)
+  const currentChill = updated.statusEffects.chill;
+  const preservedChill = Math.min(currentChill, Math.max(0, preserveFreshChill));
+  const decayingChill = Math.max(0, currentChill - preservedChill);
+
   updated = {
     ...updated,
     statusEffects: {
       ...updated.statusEffects,
-      chill: Math.max(0, updated.statusEffects.chill - 1),
+      chill: preservedChill + Math.max(0, decayingChill - 1),
       bleed: Math.max(0, updated.statusEffects.bleed - 1),
       shrapnel: 0,
+      reflection: updated.statusEffects.reflection ?? 0,
       // rust persists — no decay
     },
   };
@@ -385,5 +405,20 @@ export function processStatusEffectsTurnEnd(
     };
   }
 
-  return { combatant: updated, bleedDamage: bleedResult.damage, armLost: rustResult.armLost };
+  const after = updated.statusEffects;
+  const statusRemoved: Partial<Record<StatusEffectType, number>> = {};
+
+  for (const type of ['chill', 'shrapnel', 'rust', 'bleed', 'reflection'] as const) {
+    const removed = Math.max(0, (before[type] ?? 0) - (after[type] ?? 0));
+    if (removed > 0) {
+      statusRemoved[type] = removed;
+    }
+  }
+
+  return {
+    combatant: updated,
+    bleedDamage: bleedResult.damage,
+    armLost: rustResult.armLost,
+    statusRemoved,
+  };
 }

@@ -5,7 +5,7 @@
  * a centralized way to apply effects that matches the Solana backend behavior.
  */
 
-import type { CombatState, CombatantState, GearId } from '../engine/types';
+import type { CombatSourceRef, CombatState, CombatantState, GearId } from '../engine/types';
 import type { ItemEffect, EffectType, Condition, TriggerType } from '../../data/combat-types';
 import { applyStatus } from './status-effects';
 
@@ -22,8 +22,16 @@ export interface CombatEffectContext {
   turn: number;
   /** Player's current gold */
   playerGold: number;
+  /** Enemy's current gold */
+  enemyGold?: number;
   /** Callback to update player gold */
   updateGold: (amount: number) => void;
+  /** Callback to update enemy gold */
+  updateEnemyGold?: (amount: number) => void;
+  /** Amount stolen by the most recent StealGold effect for this owner */
+  lastGoldStolen?: number;
+  /** Update amount stolen by the most recent StealGold effect for this owner */
+  setLastGoldStolen?: (amount: number) => void;
   /** Callback to add log entry */
   addLog: (entry: EffectLogEntry) => void;
   /** Track effects that have fired this turn (for once-per-turn) */
@@ -48,20 +56,33 @@ export interface CombatEffectContext {
   setPreventDeathCharges: (value: number) => void;
   /** Countdown items state */
   countdownItems: Map<GearId, number>;
+  /** Persistent countdown acceleration for parity countdown triggers */
+  countdownTurnBonus?: number;
+  /** Update persistent countdown acceleration */
+  setCountdownTurnBonus?: (value: number) => void;
   /** First time wounded flag (for Gore Mantle) */
   firstTimeWoundedTriggered: boolean;
   /** Set first time wounded flag */
   setFirstTimeWoundedTriggered: (value: boolean) => void;
+  /** Temporary exposed override for owner this phase */
+  ownerExposedOverride?: boolean;
+  /** Temporary exposed override for enemy this phase */
+  enemyExposedOverride?: boolean;
 }
 
 export interface EffectLogEntry {
   effectName: string;
   target: 'player' | 'enemy' | 'none';
+  source?: CombatSourceRef;
+  atkGained?: number;
+  spdGained?: number;
   damage?: number;
+  nonWeaponDamage?: number;
   healing?: number;
   armorGained?: number;
   armorLost?: number;
   statusApplied?: { type: string; stacks: number };
+  statusRemoved?: { type: string; stacks: number };
   goldChange?: number;
 }
 
@@ -74,6 +95,84 @@ export interface EffectResult {
   logs: EffectLogEntry[];
 }
 
+function applyReflectableStatusToOpponent(
+  state: CombatState,
+  ctx: CombatEffectContext,
+  effectName: string,
+  source: CombatSourceRef | undefined,
+  statusType: 'chill' | 'rust' | 'bleed',
+  stacks: number
+): { state: CombatState; logs: EffectLogEntry[] } {
+  const owner = ctx.owner === 'player' ? state.player : state.enemy;
+  const enemy = ctx.owner === 'player' ? state.enemy : state.player;
+  const target = ctx.owner === 'player' ? 'enemy' : 'player';
+
+  if ((enemy.statusEffects.reflection ?? 0) > 0) {
+    const reflectionAfter = Math.max(0, (enemy.statusEffects.reflection ?? 0) - 1);
+    const updatedEnemy = {
+      ...enemy,
+      statusEffects: {
+        ...enemy.statusEffects,
+        reflection: reflectionAfter,
+      },
+    };
+    const reflectedOwner = applyStatus(owner, statusType, stacks);
+    const isCrystalMimic = enemy.definitionId === 'B-A-W2-02';
+    const triggerGlassHeart = isCrystalMimic && reflectionAfter === 0;
+    const glassHeartDamage = triggerGlassHeart ? 2 : 0;
+    const finalEnemy = triggerGlassHeart
+      ? {
+          ...updatedEnemy,
+          hp: Math.max(0, updatedEnemy.hp - glassHeartDamage),
+        }
+      : updatedEnemy;
+    const reflectionSource: CombatSourceRef = isCrystalMimic
+      ? { kind: 'boss', id: 'B-A-W2-02', name: 'Crystal Mimic' }
+      : { kind: 'status', id: 'reflection', name: 'Reflection' };
+    return {
+      state: {
+        ...state,
+        [ctx.owner]: reflectedOwner,
+        [target]: finalEnemy,
+      },
+      logs: [
+        {
+          effectName: 'Reflection',
+          target,
+          source: { kind: 'status', id: 'reflection', name: 'Reflection' },
+          statusRemoved: { type: 'reflection', stacks: 1 },
+        },
+        {
+          effectName,
+          target: ctx.owner,
+          statusApplied: { type: statusType, stacks },
+          source,
+        },
+        ...(triggerGlassHeart
+          ? [
+              {
+                effectName: 'Glass Heart',
+                target,
+                damage: glassHeartDamage,
+                nonWeaponDamage: glassHeartDamage,
+                source: reflectionSource,
+              } satisfies EffectLogEntry,
+            ]
+          : []),
+      ],
+    };
+  }
+
+  const updatedEnemy = applyStatus(enemy, statusType, stacks);
+  return {
+    state: {
+      ...state,
+      [target]: updatedEnemy,
+    },
+    logs: [{ effectName, target, statusApplied: { type: statusType, stacks }, source }],
+  };
+}
+
 // ============================================================================
 // Condition Checking
 // ============================================================================
@@ -81,7 +180,11 @@ export interface EffectResult {
 export function checkCondition(
   condition: Condition,
   owner: CombatantState,
-  enemy: CombatantState
+  enemy: CombatantState,
+  overrides?: {
+    ownerExposedOverride?: boolean;
+    enemyExposedOverride?: boolean;
+  }
 ): boolean {
   const ownerStatus = owner.statusEffects;
   const enemyStatus = enemy.statusEffects;
@@ -92,7 +195,7 @@ export function checkCondition(
 
     case 'EnemyHasStatus': {
       const statusKey = condition.status.toLowerCase() as keyof typeof enemyStatus;
-      return enemyStatus[statusKey] > 0;
+      return (enemyStatus[statusKey] ?? 0) > 0;
     }
 
     case 'EnemyHasNoArmor':
@@ -111,7 +214,7 @@ export function checkCondition(
       return owner.hp < owner.maxHp / 2;
 
     case 'OwnerExposed':
-      return owner.arm <= 0;
+      return owner.arm <= 0 || overrides?.ownerExposedOverride === true;
 
     case 'EnemyWounded':
       return enemy.hp < enemy.maxHp / 2;
@@ -124,12 +227,22 @@ export function checkCondition(
 
     case 'OwnerHasStatus': {
       const statusKey = condition.status.toLowerCase() as keyof typeof ownerStatus;
-      return ownerStatus[statusKey] > 0;
+      return (ownerStatus[statusKey] ?? 0) > 0;
     }
 
     case 'EnemyHasStatusAtLeast': {
       const statusKey = condition.status.toLowerCase() as keyof typeof enemyStatus;
-      return enemyStatus[statusKey] >= condition.minStacks;
+      return (enemyStatus[statusKey] ?? 0) >= condition.minStacks;
+    }
+
+    case 'EnemyHasNoArmorAndStatusAtLeast': {
+      const statusKey = condition.status.toLowerCase() as keyof typeof enemyStatus;
+      return enemy.arm <= 0 && (enemyStatus[statusKey] ?? 0) >= condition.minStacks;
+    }
+
+    case 'EnemyHasStatusOrNoArmor': {
+      const statusKey = condition.status.toLowerCase() as keyof typeof enemyStatus;
+      return enemy.arm <= 0 || (enemyStatus[statusKey] ?? 0) > 0;
     }
 
     case 'Or':
@@ -193,8 +306,7 @@ export function shouldTrigger(
       return !context.wasWounded && context.isWounded === true;
 
     case 'Countdown':
-      // Countdown is handled separately via countdown tracking
-      return false;
+      return phase === 'COUNTDOWN' && trigger.turns > 0 && turn > 0 && turn % trigger.turns === 0;
 
     case 'Victory':
       return phase === 'VICTORY';
@@ -223,6 +335,9 @@ export function shouldTrigger(
     case 'OnGainShrapnel':
       return context.shrapnelGained === true;
 
+    case 'OnGoldArmorConverted':
+      return phase === 'ON_GOLD_ARMOR_CONVERTED';
+
     case 'DayStart':
       return context.isDayStart === true;
 
@@ -248,7 +363,8 @@ export function executeEffect(
   effect: ItemEffect,
   ctx: CombatEffectContext,
   effectId: string,
-  effectName: string
+  effectName: string,
+  source?: CombatSourceRef
 ): EffectResult {
   const logs: EffectLogEntry[] = [];
   let { state } = ctx;
@@ -262,7 +378,12 @@ export function executeEffect(
   }
 
   // Check condition
-  if (!checkCondition(effect.condition, owner, enemy)) {
+  if (
+    !checkCondition(effect.condition, owner, enemy, {
+      ownerExposedOverride: ctx.ownerExposedOverride,
+      enemyExposedOverride: ctx.enemyExposedOverride,
+    })
+  ) {
     return { state, applied: false, logs };
   }
 
@@ -288,10 +409,10 @@ export function executeEffect(
         [target]: updatedEnemy,
       };
       if (armDamage > 0) {
-        logs.push({ effectName, target, armorLost: armDamage });
+        logs.push({ effectName, target, armorLost: armDamage, source });
       }
       if (hpDamage > 0) {
-        logs.push({ effectName, target, damage: hpDamage });
+        logs.push({ effectName, target, damage: hpDamage, source });
       }
       break;
     }
@@ -306,7 +427,7 @@ export function executeEffect(
         ...state,
         [target]: updatedEnemy,
       };
-      logs.push({ effectName, target, damage: amplifiedDamage });
+      logs.push({ effectName, target, damage: amplifiedDamage, nonWeaponDamage: amplifiedDamage, source });
       break;
     }
 
@@ -323,7 +444,13 @@ export function executeEffect(
         ...state,
         [ctx.owner]: updatedOwner,
       };
-      logs.push({ effectName, target: ctx.owner, damage: amplifiedDamage });
+      logs.push({
+        effectName,
+        target: ctx.owner,
+        damage: amplifiedDamage,
+        nonWeaponDamage: amplifiedDamage,
+        source,
+      });
       break;
     }
 
@@ -338,7 +465,7 @@ export function executeEffect(
           ...state,
           [ctx.owner]: updatedOwner,
         };
-        logs.push({ effectName, target: ctx.owner, healing: healed });
+        logs.push({ effectName, target: ctx.owner, healing: healed, source });
       }
       break;
     }
@@ -352,7 +479,7 @@ export function executeEffect(
         ...state,
         [ctx.owner]: updatedOwner,
       };
-      logs.push({ effectName, target: ctx.owner, armorGained: value });
+      logs.push({ effectName, target: ctx.owner, armorGained: value, source });
       break;
     }
 
@@ -365,7 +492,7 @@ export function executeEffect(
         ...state,
         [ctx.owner]: updatedOwner,
       };
-      logs.push({ effectName, target: ctx.owner });
+      logs.push({ effectName, target: ctx.owner, source, atkGained: value });
       break;
     }
 
@@ -378,7 +505,7 @@ export function executeEffect(
         ...state,
         [ctx.owner]: updatedOwner,
       };
-      logs.push({ effectName, target: ctx.owner });
+      logs.push({ effectName, target: ctx.owner, source, atkGained: value });
       break;
     }
 
@@ -391,7 +518,7 @@ export function executeEffect(
         ...state,
         [ctx.owner]: updatedOwner,
       };
-      logs.push({ effectName, target: ctx.owner });
+      logs.push({ effectName, target: ctx.owner, source, spdGained: value });
       break;
     }
 
@@ -404,23 +531,27 @@ export function executeEffect(
         ...state,
         [ctx.owner]: updatedOwner,
       };
-      logs.push({ effectName, target: ctx.owner });
+      logs.push({ effectName, target: ctx.owner, source });
       break;
     }
 
     case 'GainGold': {
       ctx.updateGold(ctx.playerGold + value);
-      logs.push({ effectName, target: ctx.owner, goldChange: value });
+      logs.push({ effectName, target: ctx.owner, goldChange: value, source });
       break;
     }
 
     case 'ApplyChill': {
-      const updatedEnemy = applyStatus(enemy, 'chill', value);
-      state = {
-        ...state,
-        [target]: updatedEnemy,
-      };
-      logs.push({ effectName, target, statusApplied: { type: 'chill', stacks: value } });
+      const reflected = applyReflectableStatusToOpponent(
+        state,
+        ctx,
+        effectName,
+        source,
+        'chill',
+        value
+      );
+      state = reflected.state;
+      logs.push(...reflected.logs);
       break;
     }
 
@@ -434,27 +565,51 @@ export function executeEffect(
         effectName,
         target: ctx.owner,
         statusApplied: { type: 'shrapnel', stacks: value },
+        source,
       });
       break;
     }
 
     case 'ApplyRust': {
-      const updatedEnemy = applyStatus(enemy, 'rust', value);
-      state = {
-        ...state,
-        [target]: updatedEnemy,
-      };
-      logs.push({ effectName, target, statusApplied: { type: 'rust', stacks: value } });
+      const reflected = applyReflectableStatusToOpponent(
+        state,
+        ctx,
+        effectName,
+        source,
+        'rust',
+        value
+      );
+      state = reflected.state;
+      logs.push(...reflected.logs);
       break;
     }
 
     case 'ApplyBleed': {
-      const updatedEnemy = applyStatus(enemy, 'bleed', value);
+      const reflected = applyReflectableStatusToOpponent(
+        state,
+        ctx,
+        effectName,
+        source,
+        'bleed',
+        value
+      );
+      state = reflected.state;
+      logs.push(...reflected.logs);
+      break;
+    }
+
+    case 'ApplyReflection': {
+      const updatedOwner = applyStatus(owner, 'reflection', value);
       state = {
         ...state,
-        [target]: updatedEnemy,
+        [ctx.owner]: updatedOwner,
       };
-      logs.push({ effectName, target, statusApplied: { type: 'bleed', stacks: value } });
+      logs.push({
+        effectName,
+        target: ctx.owner,
+        statusApplied: { type: 'reflection', stacks: value },
+        source,
+      });
       break;
     }
 
@@ -469,7 +624,23 @@ export function executeEffect(
           ...state,
           [target]: updatedEnemy,
         };
-        logs.push({ effectName, target, armorLost: removed });
+        logs.push({ effectName, target, armorLost: removed, source });
+      }
+      break;
+    }
+
+    case 'RemoveOwnArmor': {
+      const removed = Math.min(value, owner.arm);
+      if (removed > 0) {
+        const updatedOwner = {
+          ...owner,
+          arm: owner.arm - removed,
+        };
+        state = {
+          ...state,
+          [ctx.owner]: updatedOwner,
+        };
+        logs.push({ effectName, target: ctx.owner, armorLost: removed, source });
       }
       break;
     }
@@ -483,7 +654,43 @@ export function executeEffect(
         ...state,
         [ctx.owner]: updatedOwner,
       };
-      logs.push({ effectName, target: ctx.owner });
+      logs.push({ effectName, target: ctx.owner, source });
+      break;
+    }
+
+    case 'StealGold': {
+      const available = Math.max(0, ctx.enemyGold ?? 0);
+      const stolen = Math.min(value, available);
+      if (stolen > 0) {
+        ctx.updateEnemyGold?.(available - stolen);
+        ctx.updateGold(ctx.playerGold + stolen);
+        ctx.setLastGoldStolen?.(stolen);
+        logs.push({ effectName, target, goldChange: stolen, source });
+      }
+      break;
+    }
+
+    case 'GoldToArmor': {
+      let availableGold =
+        (ctx.lastGoldStolen ?? 0) > 0 ? (ctx.lastGoldStolen ?? 0) : ctx.playerGold;
+      if (source?.kind === 'boss' && source.id === 'B-A-W3-02') {
+        availableGold = ctx.enemyGold ?? 0;
+      }
+      let armorGained = value > 0 ? Math.floor(availableGold / value) : 0;
+      if (source?.kind === 'boss' && source.id === 'B-A-W3-02') {
+        armorGained = Math.min(armorGained, 12);
+      }
+      if (armorGained > 0) {
+        const updatedOwner = {
+          ...owner,
+          arm: owner.arm + armorGained,
+        };
+        state = {
+          ...state,
+          [ctx.owner]: updatedOwner,
+        };
+        logs.push({ effectName, target: ctx.owner, armorGained, source });
+      }
       break;
     }
 
@@ -497,7 +704,7 @@ export function executeEffect(
         ...state,
         [ctx.owner]: updatedOwner,
       };
-      logs.push({ effectName, target: ctx.owner, healing: value });
+      logs.push({ effectName, target: ctx.owner, healing: value, source });
       break;
     }
 
@@ -510,7 +717,7 @@ export function executeEffect(
         ...state,
         [target]: updatedEnemy,
       };
-      logs.push({ effectName, target });
+      logs.push({ effectName, target, source });
       break;
     }
 
@@ -526,7 +733,7 @@ export function executeEffect(
           ...state,
           [ctx.owner]: updatedOwner,
         };
-        logs.push({ effectName, target: ctx.owner, armorGained });
+        logs.push({ effectName, target: ctx.owner, armorGained, source });
       }
       break;
     }
@@ -543,7 +750,7 @@ export function executeEffect(
           ...state,
           [ctx.owner]: updatedOwner,
         };
-        logs.push({ effectName, target: ctx.owner, armorGained: value, goldChange: -1 });
+        logs.push({ effectName, target: ctx.owner, armorGained: value, goldChange: -1, source });
       }
       break;
     }
@@ -551,7 +758,7 @@ export function executeEffect(
     case 'PreventDeath': {
       // This is tracked separately, just increment charges
       ctx.setPreventDeathCharges(ctx.preventDeathCharges + 1);
-      logs.push({ effectName, target: ctx.owner });
+      logs.push({ effectName, target: ctx.owner, source });
       break;
     }
 
@@ -568,7 +775,7 @@ export function executeEffect(
           ...state,
           [ctx.owner]: updatedOwner,
         };
-        logs.push({ effectName, target: ctx.owner, healing: armorBonus });
+        logs.push({ effectName, target: ctx.owner, healing: armorBonus, source });
       }
       break;
     }
@@ -578,20 +785,30 @@ export function executeEffect(
       ctx.countdownItems.forEach((current: number, gearId: GearId) => {
         ctx.countdownItems.set(gearId, Math.max(0, current - value));
       });
-      logs.push({ effectName, target: 'none' });
+      if (ctx.setCountdownTurnBonus) {
+        ctx.setCountdownTurnBonus((ctx.countdownTurnBonus ?? 0) + value);
+      }
+      logs.push({ effectName, target: 'none', source });
       break;
     }
 
     case 'AmplifyNonWeaponDamage': {
       // This is tracked in context, just add to amplification
       // Note: This is typically set at battle start, not added
-      logs.push({ effectName, target: 'none' });
+      logs.push({ effectName, target: 'none', source });
       break;
     }
 
     case 'StoreDamage': {
       ctx.setStoredDamage(ctx.storedDamage + value);
-      logs.push({ effectName, target: 'none' });
+      logs.push({ effectName, target: 'none', source });
+      break;
+    }
+
+    case 'EmpowerNextNonWeaponDamage':
+    case 'ShardsEveryTurn':
+    case 'PreserveShrapnel': {
+      logs.push({ effectName, target: 'none', source });
       break;
     }
 
@@ -599,7 +816,7 @@ export function executeEffect(
     case 'ReduceNextBombSelfDamage':
     case 'HalfGearAtkAfterSecondStrike': {
       // Resolver-specific behavior is handled in resolver.ts.
-      logs.push({ effectName, target: 'none' });
+      logs.push({ effectName, target: 'none', source });
       break;
     }
 
@@ -613,7 +830,7 @@ export function executeEffect(
     case 'ApplyReflection':
     case 'ApplyBomb':
       // These are flag-based effects handled at battle start
-      logs.push({ effectName, target: 'none' });
+      logs.push({ effectName, target: 'none', source });
       break;
 
     default:
@@ -628,7 +845,7 @@ export function executeEffect(
 // ============================================================================
 
 export interface ProcessEffectsInput {
-  effects: Array<{ effect: ItemEffect; id: string; name: string }>;
+  effects: Array<{ effect: ItemEffect; id: string; name: string; source?: CombatSourceRef }>;
   ctx: CombatEffectContext;
   phase: string;
   triggerContext?: {
@@ -641,7 +858,7 @@ export interface ProcessEffectsInput {
     rustApplied?: boolean;
     shrapnelGained?: boolean;
     isDayStart?: boolean;
-    playerActsFirst?: boolean;
+    ownerActsFirst?: boolean;
   };
 }
 
@@ -650,7 +867,7 @@ export function processEffects(input: ProcessEffectsInput): EffectResult {
   const allLogs: EffectLogEntry[] = [];
   let anyApplied = false;
 
-  for (const { effect, id, name } of input.effects) {
+  for (const { effect, id, name, source } of input.effects) {
     // Check if this effect should trigger for the current phase
     const shouldFire = shouldTrigger(
       effect.trigger,
@@ -662,14 +879,14 @@ export function processEffects(input: ProcessEffectsInput): EffectResult {
     if (!shouldFire) continue;
 
     // Handle FirstTurnIfFaster/FirstTurnIfSlower special cases
-    if (effect.trigger.type === 'FirstTurnIfFaster' && !input.triggerContext?.playerActsFirst) {
+    if (effect.trigger.type === 'FirstTurnIfFaster' && !input.triggerContext?.ownerActsFirst) {
       continue;
     }
-    if (effect.trigger.type === 'FirstTurnIfSlower' && input.triggerContext?.playerActsFirst) {
+    if (effect.trigger.type === 'FirstTurnIfSlower' && input.triggerContext?.ownerActsFirst) {
       continue;
     }
 
-    const result = executeEffect(effect, { ...input.ctx, state }, id, name);
+    const result = executeEffect(effect, { ...input.ctx, state }, id, name, source);
     state = result.state;
     allLogs.push(...result.logs);
     if (result.applied) {

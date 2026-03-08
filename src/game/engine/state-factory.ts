@@ -21,6 +21,7 @@ import { generateMap, toGameMap } from '../map/generator';
 import { applyInitialVisibility } from '../map/fog-of-war';
 import { createPlayer } from '../entities/player';
 import { selectBossForRun } from './run-config';
+import { createStarterBitmask } from '../../services/solana/types/item_pool';
 
 // ============================================================================
 // Initial State Creation
@@ -99,6 +100,7 @@ export function initializeGame(
     time,
     combat: null,
     activePOI: null,
+    activeItemPool: state.activeItemPool ?? createStarterBitmask(),
   };
 }
 

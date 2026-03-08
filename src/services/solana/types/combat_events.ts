@@ -8,6 +8,8 @@
  */
 
 import { PublicKey } from '@solana/web3.js';
+import type { CombatContribution, CombatLogEntry, CombatSourceRef } from '@/game/engine/types';
+import type { CombatResolverInput } from '@/game/combat/resolver';
 
 // ============================================================================
 // Combat Events
@@ -398,10 +400,13 @@ export interface FrontendCombatLogEntry {
     healing?: number;
     armorGained?: number;
     armorLost?: number;
+    atkBonus?: number;
     statusApplied?: { type: string; stacks: number };
     effectName?: string;
     goldStolen?: number;
     spdBonus?: number;
+    source?: CombatSourceRef;
+    contributions?: CombatContribution[];
   };
   rngValues: number[];
 }
@@ -426,6 +431,28 @@ function getStatusName(statusId: StatusId): string {
   }
 }
 
+function getReplayAttackSource(
+  input: CombatResolverInput | undefined,
+  actor: 'player' | 'enemy'
+): CombatSourceRef | undefined {
+  if (!input) return undefined;
+  if (actor === 'player') {
+    const tool = input.playerTool;
+    return tool ? { kind: 'tool', id: tool.id, name: tool.name } : undefined;
+  }
+
+  if (input.enemyTool) {
+    return { kind: 'tool', id: input.enemyTool.id, name: input.enemyTool.name };
+  }
+  if (input.bossId) {
+    return { kind: 'boss', id: input.bossId };
+  }
+  if (input.enemyId) {
+    return { kind: 'enemy', id: input.enemyId };
+  }
+  return undefined;
+}
+
 /**
  * Convert backend combat log entries to frontend format for animation.
  *
@@ -436,7 +463,8 @@ function getStatusName(statusId: StatusId): string {
  * @returns Array of frontend log entries for combat animation
  */
 export function convertBackendLogToFrontend(
-  backendLog: BackendCombatLogEntry[]
+  backendLog: BackendCombatLogEntry[],
+  input?: CombatResolverInput
 ): FrontendCombatLogEntry[] {
   return backendLog.map((entry): FrontendCombatLogEntry => {
     // On-chain semantics: for Attack, is_player = !is_target_player (attacker).
@@ -457,9 +485,10 @@ export function convertBackendLogToFrontend(
         actor: actorAsAttacker,
         action: 'ATTACK',
         target: targetOfAttacker,
-        result: {
+          result: {
             damage: entry.value,
             spdBonus: entry.extra > 0 ? entry.extra : undefined,
+            source: getReplayAttackSource(input, actorAsAttacker),
           },
         rngValues: [],
       };
@@ -506,6 +535,11 @@ export function convertBackendLogToFrontend(
           result: {
             damage: entry.value,
             effectName: `${getStatusName(entry.extra as StatusId)} damage`,
+            source: {
+              kind: 'status',
+              id: getStatusName(entry.extra as StatusId),
+              name: getStatusName(entry.extra as StatusId),
+            },
           },
           rngValues: [],
         };
@@ -547,6 +581,7 @@ export function convertBackendLogToFrontend(
           action: 'TRIGGER_ITEM',
           target: affected,
           result: {
+            atkBonus: entry.value,
             effectName: entry.value > 0 ? `+${entry.value} ATK` : `${entry.value} ATK`,
           },
           rngValues: [],
@@ -592,6 +627,7 @@ export function convertBackendLogToFrontend(
           result: {
             damage: entry.value,
             effectName: 'Shrapnel Harness',
+            source: { kind: 'status', id: 'shrapnel', name: 'Shrapnel' },
           },
           rngValues: [],
         };
@@ -608,6 +644,7 @@ export function convertBackendLogToFrontend(
           result: {
             effectName: `Stole ${Math.abs(entry.value)} gold`,
             goldStolen: Math.abs(entry.value),
+            source: getReplayAttackSource(input, entry.isPlayer ? 'player' : 'enemy'),
           },
           rngValues: [],
         };
@@ -627,4 +664,200 @@ export function convertBackendLogToFrontend(
         };
     }
   });
+}
+
+function getStatusId(status: string): StatusId {
+  switch (status) {
+    case 'chill':
+      return StatusId.Chill;
+    case 'shrapnel':
+      return StatusId.Shrapnel;
+    case 'rust':
+      return StatusId.Rust;
+    case 'bleed':
+      return StatusId.Bleed;
+    case 'reflection':
+      return StatusId.Reflection;
+    default:
+      return StatusId.Chill;
+  }
+}
+
+function parseSignedStatDelta(effectName: string | undefined, stat: 'ATK' | 'SPD'): number | null {
+  if (!effectName) return null;
+  const match = effectName.match(new RegExp(`([+-]?\\d+)\\s+${stat}`));
+  if (!match) return null;
+  const parsed = Number.parseInt(match[1], 10);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function isStatusDamage(entry: CombatLogEntry): boolean {
+  const effectName = entry.result.effectName?.toLowerCase();
+  return entry.actor === 'system' && entry.action === 'ATTACK' && effectName?.endsWith(' damage') === true;
+}
+
+export function convertFrontendLogToBackend(
+  frontendLog: CombatLogEntry[]
+): BackendCombatLogEntry[] {
+  const backendLog: BackendCombatLogEntry[] = [];
+
+  for (const entry of frontendLog) {
+    if (!entry || entry.target === 'none') continue;
+
+    if ((entry.result.armorLost ?? 0) > 0 && entry.action !== 'LOSE_ARMOR') {
+      const armorLost = entry.result.armorLost ?? 0;
+      backendLog.push({
+        turn: entry.turn,
+        isPlayer: entry.target === 'player',
+        action: LogAction.ArmorChange,
+        value: -armorLost,
+        extra: 0,
+      });
+    }
+
+    if (entry.action === 'ATTACK' && entry.result.damage !== undefined) {
+      backendLog.push({
+        turn: entry.turn,
+        isPlayer: entry.actor === 'player',
+        action: isStatusDamage(entry) ? LogAction.StatusDamage : LogAction.Attack,
+        value: entry.result.damage,
+        extra: isStatusDamage(entry)
+          ? getStatusId((entry.result.effectName ?? '').replace(/ damage$/i, '').toLowerCase())
+          : (entry.result.spdBonus ?? 0),
+      });
+      continue;
+    }
+
+    if (entry.action === 'HEAL' && entry.result.healing !== undefined) {
+      backendLog.push({
+        turn: entry.turn,
+        isPlayer: entry.target === 'player',
+        action: LogAction.Heal,
+        value: entry.result.healing,
+        extra: 0,
+      });
+      continue;
+    }
+
+    if (entry.action === 'APPLY_STATUS' && entry.result.statusApplied) {
+      backendLog.push({
+        turn: entry.turn,
+        isPlayer: entry.target === 'player',
+        action: LogAction.ApplyStatus,
+        value: entry.result.statusApplied.stacks,
+        extra: getStatusId(entry.result.statusApplied.type),
+      });
+      continue;
+    }
+
+    if (entry.action === 'GAIN_ARMOR' && entry.result.armorGained !== undefined) {
+      backendLog.push({
+        turn: entry.turn,
+        isPlayer: entry.target === 'player',
+        action: LogAction.ArmorChange,
+        value: entry.result.armorGained,
+        extra: 0,
+      });
+      continue;
+    }
+
+    if (entry.action === 'LOSE_ARMOR' && (entry.result.armorLost ?? 0) > 0) {
+      const armorLost = entry.result.armorLost ?? 0;
+      backendLog.push({
+        turn: entry.turn,
+        isPlayer: entry.target === 'player',
+        action: LogAction.ArmorChange,
+        value: -armorLost,
+        extra: 0,
+      });
+      continue;
+    }
+
+    if (entry.result.goldStolen !== undefined) {
+      const playerGainedGold = entry.actor === 'player';
+      backendLog.push({
+        turn: entry.turn,
+        isPlayer: playerGainedGold,
+        action: LogAction.GoldStolen,
+        value: playerGainedGold ? entry.result.goldStolen : -entry.result.goldStolen,
+        extra: 0,
+      });
+      continue;
+    }
+
+    if (
+      (entry.action === 'TRIGGER_ITEM' ||
+        entry.action === 'TRIGGER_ITEMSET' ||
+        entry.action === 'TRIGGER_TRAIT') &&
+      entry.result.damage !== undefined
+    ) {
+      backendLog.push({
+        turn: entry.turn,
+        isPlayer: entry.target === 'player',
+        action: entry.result.effectName === 'Shrapnel Harness'
+          ? LogAction.ShrapnelRetaliation
+          : LogAction.NonWeaponDamage,
+        value: entry.result.damage,
+        extra: 0,
+      });
+      continue;
+    }
+
+    if (
+      (entry.action === 'TRIGGER_ITEM' ||
+        entry.action === 'TRIGGER_ITEMSET' ||
+        entry.action === 'TRIGGER_TRAIT') &&
+      entry.result.healing !== undefined
+    ) {
+      backendLog.push({
+        turn: entry.turn,
+        isPlayer: entry.target === 'player',
+        action: LogAction.Heal,
+        value: entry.result.healing,
+        extra: 0,
+      });
+      continue;
+    }
+
+    if (
+      (entry.action === 'TRIGGER_ITEM' ||
+        entry.action === 'TRIGGER_ITEMSET' ||
+        entry.action === 'TRIGGER_TRAIT') &&
+      entry.result.armorGained !== undefined
+    ) {
+      backendLog.push({
+        turn: entry.turn,
+        isPlayer: entry.target === 'player',
+        action: LogAction.ArmorChange,
+        value: entry.result.armorGained,
+        extra: 0,
+      });
+      continue;
+    }
+
+    const atkDelta = parseSignedStatDelta(entry.result.effectName, 'ATK');
+    if (atkDelta !== null) {
+      backendLog.push({
+        turn: entry.turn,
+        isPlayer: entry.target === 'player',
+        action: LogAction.AtkChange,
+        value: atkDelta,
+        extra: 0,
+      });
+      continue;
+    }
+
+    const spdDelta = parseSignedStatDelta(entry.result.effectName, 'SPD');
+    if (spdDelta !== null) {
+      backendLog.push({
+        turn: entry.turn,
+        isPlayer: entry.target === 'player',
+        action: LogAction.SpdChange,
+        value: spdDelta,
+        extra: 0,
+      });
+    }
+  }
+
+  return backendLog;
 }

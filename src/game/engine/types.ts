@@ -63,6 +63,7 @@ export interface StatusEffects {
   shrapnel: number;
   rust: number;
   bleed: number;
+  reflection?: number;
 }
 
 export const DEFAULT_STATUS_EFFECTS: StatusEffects = {
@@ -70,6 +71,7 @@ export const DEFAULT_STATUS_EFFECTS: StatusEffects = {
   shrapnel: 0,
   rust: 0,
   bleed: 0,
+  reflection: 0,
 };
 
 export type ItemsetId =
@@ -399,6 +401,7 @@ export interface CombatActionResult {
   healing?: number;
   armorGained?: number;
   armorLost?: number;
+  atkBonus?: number;
   statusApplied?: { type: keyof StatusEffects; stacks: number };
   statusRemoved?: { type: keyof StatusEffects; stacks: number };
   amount?: number;
@@ -406,6 +409,19 @@ export interface CombatActionResult {
   effectName?: string;
   goldStolen?: number;
   spdBonus?: number;
+  source?: CombatSourceRef;
+  contributions?: CombatContribution[];
+}
+
+export interface CombatSourceRef {
+  kind: 'tool' | 'gear' | 'itemset' | 'enemy' | 'boss' | 'status';
+  id: string;
+  name?: string;
+}
+
+export interface CombatContribution {
+  source: CombatSourceRef;
+  value: number;
 }
 
 export interface CombatLogEntry {

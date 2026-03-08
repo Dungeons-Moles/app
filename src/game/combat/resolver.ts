@@ -55,10 +55,18 @@ export interface CombatResolverInput {
   playerGear?: Gear[];
   /** Player tool for combat effects */
   playerTool?: Tool | null;
+  /** Enemy gear for combat effects */
+  enemyGear?: Gear[];
+  /** Enemy tool for combat effects */
+  enemyTool?: Tool | null;
   /** Player gold for combat effects */
   playerGold?: number;
   /** Enemy gold for PvP combat effects/display */
   enemyGold?: number;
+  /** Enemy active itemsets */
+  enemyActiveItemSets?: ItemsetId[];
+  /** When true, resolve local combat through the parity resolver */
+  useParityResolver?: boolean;
   /** When true, skip zeroing ARM before log replay (drafted stats already include it) */
   preserveArmor?: boolean;
 }

@@ -15,6 +15,7 @@ import type {
   Gear,
   GearId,
   CombatState,
+  CombatLogEntry,
   Player,
   POIInteraction,
   ItemRarity,
@@ -1109,7 +1110,10 @@ function handleResolveCombat(
   }
 
   const goldReward = result === 'VICTORY' ? combatState.goldReward : 0;
-  const totalGold = combatState.playerGold + goldReward;
+  const totalGold = Math.max(
+    0,
+    state.player.stats.gold + getPlayerGoldDeltaFromCombatLog(combatState.log) + goldReward
+  );
 
   const preCombatMaxHp = state.combat?.player.maxHp ?? state.player.stats.maxHp;
   const temporaryMaxHpBonus = Math.max(0, combatState.player.maxHp - preCombatMaxHp);
@@ -1223,6 +1227,23 @@ function handleResolveCombat(
     },
     combat: null,
   };
+}
+
+function getPlayerGoldDeltaFromCombatLog(log: CombatLogEntry[]): number {
+  return log.reduce((sum, entry) => {
+    const amount = entry.result.goldStolen ?? 0;
+    if (amount <= 0) return sum;
+
+    if (entry.actor === 'player') {
+      return sum + amount;
+    }
+
+    if (entry.actor === 'enemy' && entry.target === 'player') {
+      return sum - amount;
+    }
+
+    return sum;
+  }, 0);
 }
 
 /**

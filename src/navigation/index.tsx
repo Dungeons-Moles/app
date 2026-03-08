@@ -21,6 +21,7 @@ import { GauntletRankingScreen } from '../screens/GauntletRankingScreen';
 import { MarketplaceScreen } from '../screens/MarketplaceScreen';
 import { ItemsScreen } from '../screens/ItemsScreen';
 import { SessionLoadingScreen } from '../screens/SessionLoadingScreen';
+import { BattleSimulatorScreen } from '../screens/BattleSimulatorScreen';
 import type { CombatReplay, BackendCombatLogEntry } from '../services/solana/types/combat_events';
 import type {
   ItemStats,
@@ -64,6 +65,10 @@ export interface CombatParams {
   playerGear?: Gear[];
   /** Player tool */
   playerTool?: Tool | null;
+  /** Enemy active itemsets */
+  enemyActiveItemSets?: ItemsetId[];
+  /** Use the local parity resolver for guest/simulator combat */
+  useParityResolver?: boolean;
   /** Player gold */
   playerGold?: number;
   /** Enemy gold (for PvP combat display/effects) */
@@ -99,12 +104,15 @@ export interface CombatParams {
   enemyTool?: Tool | null;
   /** Opponent equipped skin pubkey (base58) for PvP replay visuals */
   pvpOpponentSkinPubkey?: string | null;
+  /** Local-only simulator flow: return to simulator instead of normal post-combat routing */
+  simulatorMode?: boolean;
 }
 
 export type RootStackParamList = {
   Loading: undefined;
   Account: undefined;
   Hub: undefined;
+  BattleSimulator: undefined;
   CampaignSelect: undefined;
   Game: undefined;
   Combat:
@@ -147,6 +155,7 @@ const SCREEN_TITLES: Record<string, string> = {
   Loading: 'Loading',
   Account: 'Sign In',
   Hub: 'Hub',
+  BattleSimulator: 'Battle Simulator',
   CampaignSelect: 'Campaign Select',
   Game: 'Game',
   Combat: 'Combat',
@@ -192,6 +201,7 @@ export function AppNavigator() {
         <Stack.Screen name="Loading" component={LoadingScreen} />
         <Stack.Screen name="Account" component={AccountScreen} />
         <Stack.Screen name="Hub" component={HubScreen} />
+        {__DEV__ ? <Stack.Screen name="BattleSimulator" component={BattleSimulatorScreen} /> : null}
         <Stack.Screen name="CampaignSelect" component={CampaignSelectScreen} />
         <Stack.Screen name="Game" component={GameScreen} />
         <Stack.Screen name="Combat" component={CombatScreen} />

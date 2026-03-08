@@ -171,8 +171,12 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
         activeItemSets: combatInput.activeItemSets,
         playerGear: combatInput.playerGear,
         playerTool: combatInput.playerTool,
+        enemyGear: combatInput.enemyGear,
+        enemyTool: combatInput.enemyTool,
         playerGold: combatInput.playerGold,
         enemyGold: combatInput.enemyGold,
+        enemyActiveItemSets: combatInput.enemyActiveItemSets,
+        useParityResolver: combatInput.useParityResolver,
         preserveArmor: combatInput.preserveArmor,
       };
 
@@ -240,6 +244,7 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
         enemyDefinitionId: gameState.combat.enemyDefinitionId,
         enemyId: gameState.combat.enemyDefinitionId as EnemyId,
         enemyTier: gameState.combat.enemyTier,
+        useParityResolver: true,
       });
     }
   }, [
@@ -260,6 +265,11 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
     try {
       const localResult = getResult();
       if (!localResult) return;
+
+      if (combatInput?.simulatorMode) {
+        navigation.goBack();
+        return;
+      }
 
       if (combatInput?.duelReplay) {
         if (combatInput.historyReplay) {

@@ -1,21 +1,12 @@
 /**
- * Map Generator for PvE Dungeon Crawler
- * Generates corridor-only maps with wide environment spacing.
- * Corridors only connect orthogonally (no diagonal connections).
- * @see specs/001-pve-dungeon-crawler/research.md R1
+ * Structural map generator for local guest runs.
+ * Mirrors the Solana map-generator maze, spawn, POI, and enemy placement rules.
  */
 
-import { SeededRNG } from '../engine/rng';
-import { GAME_CONSTANTS, getActForCampaignLevel } from '../engine/constants';
+import { GAME_CONSTANTS } from '../engine/constants';
 import type { Position, POIId } from '../engine/types';
-import { TileType, FogState, GameMap, MapEnemy, MapPOI, EnemyId } from './types';
-import { getSpawnZone, selectTierForZone } from './spawn-zones';
 import { ENEMY_DEFINITIONS } from '../entities/enemies';
-import { getBiomeForCampaignLevel } from '../engine/run-config';
-
-// ============================================================================
-// Types
-// ============================================================================
+import { FogState, GameMap, MapEnemy, MapPOI, TileType, type EnemyId } from './types';
 
 export interface MapGenerationParams {
   width: number;
@@ -35,31 +26,36 @@ export interface GeneratedMap {
   enemies: MapEnemy[];
 }
 
-// ============================================================================
-// Constants
-// ============================================================================
+const CELL_SPACING = 4;
+const CELL_GRID_WIDTH = Math.floor((GAME_CONSTANTS.MAP_WIDTH - 1) / CELL_SPACING);
+const CELL_GRID_HEIGHT = Math.floor((GAME_CONSTANTS.MAP_HEIGHT - 1) / CELL_SPACING);
+const CELL_GRID_SIZE = CELL_GRID_WIDTH * CELL_GRID_HEIGHT;
+const EXTRA_CONNECTION_COUNT = Math.floor((CELL_GRID_SIZE * 15) / 100);
+const MAX_ENEMIES = 48;
+const MAX_POIS = 64;
+const POI_MIN_SPACING = 10;
+const COUNTER_CACHE_PER_RUN = 2;
+const COUNTER_CACHE_FIRST_MAX_DISTANCE = 30;
+const SPAWN_PROTECTION_RADIUS = 5;
 
-// Cell spacing - larger = wider walls between corridors
-const CELL_SPACING = 4; // Distance between corridor intersections
-const EXTRA_CONNECTION_FACTOR = 0.15; // Adds loops to reduce maze feel
+const POI_IDS_BY_TYPE: Record<number, POIId> = {
+  1: 'L1',
+  2: 'L2',
+  3: 'L3',
+  4: 'L4',
+  5: 'L5',
+  6: 'L6',
+  7: 'L7',
+  8: 'L8',
+  9: 'L9',
+  10: 'L10',
+  11: 'L11',
+  12: 'L12',
+  13: 'L13',
+  14: 'L14',
+};
 
-const POI_DEFINITIONS: Array<{ id: POIId; rarity: 'COMMON' | 'UNCOMMON' | 'RARE' }> = [
-  { id: 'L2', rarity: 'COMMON' },
-  { id: 'L4', rarity: 'COMMON' },
-  { id: 'L5', rarity: 'COMMON' },
-  { id: 'L6', rarity: 'COMMON' },
-  { id: 'L3', rarity: 'UNCOMMON' },
-  { id: 'L7', rarity: 'UNCOMMON' },
-  { id: 'L8', rarity: 'UNCOMMON' },
-  { id: 'L9', rarity: 'UNCOMMON' },
-  { id: 'L10', rarity: 'UNCOMMON' },
-  { id: 'L11', rarity: 'RARE' },
-  { id: 'L12', rarity: 'RARE' },
-  { id: 'L13', rarity: 'UNCOMMON' },
-  { id: 'L14', rarity: 'UNCOMMON' },
-];
-
-const ENEMY_IDS: EnemyId[] = [
+const ENEMY_ID_BY_ARCHETYPE: EnemyId[] = [
   'TUNNEL_RAT',
   'CAVE_BAT',
   'SPORE_SLIME',
@@ -74,140 +70,126 @@ const ENEMY_IDS: EnemyId[] = [
   'BLOOD_MOSQUITO',
 ];
 
-const EASY_POOL: EnemyId[] = ['TUNNEL_RAT', 'CAVE_BAT', 'FROST_WISP', 'COIN_SLUG', 'BLOOD_MOSQUITO'];
-const MEDIUM_POOL: EnemyId[] = ['SPORE_SLIME', 'RUST_MITE_SWARM', 'POWDER_TICK', 'SHARD_BEETLE'];
-const HARD_POOL: EnemyId[] = ['COLLAPSED_MINER', 'TUNNEL_WARDEN', 'BURROW_AMBUSHER'];
+const BASELINE_POI_COUNTS: [number, number, number, number][] = [
+  [0, 0, 0, 0], // padding
+  [1, 1, 1, 1], // L1
+  [16, 14, 14, 10], // L2
+  [5, 4, 4, 2], // L3
+  [5, 4, 4, 3], // L4
+  [6, 5, 5, 4], // L5
+  [4, 4, 4, 3], // L6
+  [3, 3, 3, 2], // L7
+  [5, 4, 4, 2], // L8
+  [2, 2, 2, 1], // L9
+  [2, 2, 2, 1], // L10
+  [2, 1, 1, 1], // L11
+  [2, 1, 1, 1], // L12
+  [2, 2, 2, 2], // L13
+  [3, 2, 2, 1], // L14
+];
 
-const ACT_ENEMY_COUNTS: Record<1 | 2 | 3 | 4, number> = {
-  1: 36,
-  2: 40,
-  3: 44,
-  4: 48,
+const ACT_ENEMY_TARGETS = [36, 40, 44, 48] as const;
+const EASY_POOL = [0, 1, 8, 10, 11] as const;
+const MEDIUM_POOL = [2, 3, 5, 9] as const;
+const HARD_POOL = [4, 6, 7] as const;
+const DISTANCE_POOL_WEIGHTS: [number, number, number][] = [
+  [60, 30, 10],
+  [40, 40, 20],
+  [30, 40, 30],
+];
+const NEAR_TIER_WEIGHTS = [80, 15, 5] as const;
+const FAR_TIER_WEIGHTS = [50, 35, 15] as const;
+const ACT_DEFAULT_TIER_WEIGHTS: [number, number, number][] = [
+  [70, 25, 5],
+  [55, 35, 10],
+  [45, 40, 15],
+  [35, 45, 20],
+];
+const ENEMY_BIOME_WEIGHTS: [number, number][] = [
+  [2, 1],
+  [1, 1],
+  [1, 1],
+  [1, 2],
+  [2, 1],
+  [2, 1],
+  [1, 1],
+  [1, 2],
+  [1, 2],
+  [1, 2],
+  [2, 1],
+  [1, 2],
+];
+
+enum Direction {
+  North = 0,
+  South = 1,
+  East = 2,
+  West = 3,
+}
+
+type Cell = {
+  visited: boolean;
+  north: boolean;
+  south: boolean;
+  east: boolean;
+  west: boolean;
 };
 
-const ACT_MID_TIER_WEIGHTS: Record<1 | 2 | 3 | 4, [number, number, number]> = {
-  1: [0.7, 0.25, 0.05],
-  2: [0.55, 0.35, 0.1],
-  3: [0.45, 0.4, 0.15],
-  4: [0.35, 0.45, 0.2],
-};
+class XorShiftRng {
+  private state: bigint;
 
-const ZONE_TIER_WEIGHTS_BY_ACT: Record<0 | 1 | 2, Record<1 | 2 | 3 | 4, [number, number, number]>> = {
-  0: {
-    1: [0.8, 0.15, 0.05],
-    2: [0.8, 0.15, 0.05],
-    3: [0.8, 0.15, 0.05],
-    4: [0.8, 0.15, 0.05],
-  },
-  1: ACT_MID_TIER_WEIGHTS,
-  2: {
-    1: [0.5, 0.35, 0.15],
-    2: [0.5, 0.35, 0.15],
-    3: [0.5, 0.35, 0.15],
-    4: [0.5, 0.35, 0.15],
-  },
-};
+  constructor(seed: number) {
+    const normalized = BigInt(Math.max(1, Math.floor(Math.abs(seed))));
+    this.state = normalized & 0xffff_ffff_ffff_ffffn;
+    if (this.state === 0n) {
+      this.state = 1n;
+    }
+  }
 
-const ZONE_POOL_DISTRIBUTION: Record<0 | 1 | 2, [number, number, number]> = {
-  0: [0.6, 0.3, 0.1],
-  1: [0.4, 0.4, 0.2],
-  2: [0.3, 0.4, 0.3],
-};
+  nextVal(): bigint {
+    let x = this.state;
+    x ^= x << 13n;
+    x ^= x >> 7n;
+    x ^= x << 17n;
+    this.state = x & 0xffff_ffff_ffff_ffffn;
+    return this.state;
+  }
 
-const ACT_POI_COUNTS: Record<1 | 2 | 3 | 4, Partial<Record<POIId, number>>> = {
-  1: { L2: 16, L3: 5, L4: 5, L5: 6, L6: 4, L7: 3, L8: 5, L9: 2, L10: 2, L11: 2, L12: 2, L13: 2, L14: 3 },
-  2: { L2: 14, L3: 4, L4: 4, L5: 5, L6: 4, L7: 3, L8: 4, L9: 2, L10: 2, L11: 1, L12: 1, L13: 2, L14: 2 },
-  3: { L2: 14, L3: 4, L4: 4, L5: 5, L6: 4, L7: 3, L8: 4, L9: 2, L10: 2, L11: 1, L12: 1, L13: 2, L14: 2 },
-  4: { L2: 10, L3: 2, L4: 3, L5: 4, L6: 3, L7: 2, L8: 2, L9: 1, L10: 1, L11: 1, L12: 1, L13: 2, L14: 1 },
-};
+  nextBounded(max: number): number {
+    if (max <= 0) return 0;
+    return Number(this.nextVal() % BigInt(max));
+  }
 
-const ENEMY_STATS: Record<EnemyId, Array<{ hp: number; atk: number; arm: number; spd: number }>> = {
-  TUNNEL_RAT: [
-    { hp: 5, atk: 1, arm: 0, spd: 3 },
-    { hp: 7, atk: 2, arm: 0, spd: 4 },
-    { hp: 9, atk: 3, arm: 1, spd: 5 },
-  ],
-  CAVE_BAT: [
-    { hp: 6, atk: 1, arm: 0, spd: 3 },
-    { hp: 8, atk: 2, arm: 0, spd: 4 },
-    { hp: 10, atk: 3, arm: 0, spd: 5 },
-  ],
-  SPORE_SLIME: [
-    { hp: 7, atk: 1, arm: 2, spd: 0 },
-    { hp: 10, atk: 2, arm: 3, spd: 0 },
-    { hp: 13, atk: 3, arm: 4, spd: 0 },
-  ],
-  RUST_MITE_SWARM: [
-    { hp: 6, atk: 1, arm: 0, spd: 3 },
-    { hp: 9, atk: 2, arm: 0, spd: 4 },
-    { hp: 12, atk: 3, arm: 0, spd: 5 },
-  ],
-  COLLAPSED_MINER: [
-    { hp: 7, atk: 1, arm: 0, spd: 1 },
-    { hp: 11, atk: 2, arm: 0, spd: 2 },
-    { hp: 15, atk: 3, arm: 1, spd: 3 },
-  ],
-  SHARD_BEETLE: [
-    { hp: 8, atk: 1, arm: 2, spd: 1 },
-    { hp: 11, atk: 2, arm: 3, spd: 1 },
-    { hp: 14, atk: 3, arm: 4, spd: 2 },
-  ],
-  TUNNEL_WARDEN: [
-    { hp: 8, atk: 2, arm: 2, spd: 2 },
-    { hp: 11, atk: 3, arm: 4, spd: 3 },
-    { hp: 14, atk: 4, arm: 6, spd: 4 },
-  ],
-  BURROW_AMBUSHER: [
-    { hp: 6, atk: 2, arm: 0, spd: 4 },
-    { hp: 9, atk: 3, arm: 0, spd: 5 },
-    { hp: 12, atk: 4, arm: 0, spd: 6 },
-  ],
-  FROST_WISP: [
-    { hp: 7, atk: 1, arm: 0, spd: 4 },
-    { hp: 10, atk: 2, arm: 0, spd: 5 },
-    { hp: 13, atk: 3, arm: 0, spd: 6 },
-  ],
-  POWDER_TICK: [
-    { hp: 6, atk: 1, arm: 0, spd: 2 },
-    { hp: 9, atk: 2, arm: 0, spd: 3 },
-    { hp: 12, atk: 3, arm: 0, spd: 4 },
-  ],
-  COIN_SLUG: [
-    { hp: 7, atk: 1, arm: 2, spd: 1 },
-    { hp: 10, atk: 2, arm: 3, spd: 1 },
-    { hp: 13, atk: 3, arm: 4, spd: 2 },
-  ],
-  BLOOD_MOSQUITO: [
-    { hp: 6, atk: 1, arm: 0, spd: 3 },
-    { hp: 9, atk: 2, arm: 0, spd: 4 },
-    { hp: 12, atk: 3, arm: 0, spd: 5 },
-  ],
-};
+  shuffle<T>(items: T[]): T[] {
+    for (let i = items.length - 1; i > 0; i -= 1) {
+      const j = this.nextBounded(i + 1);
+      [items[i], items[j]] = [items[j], items[i]];
+    }
+    return items;
+  }
 
-// ============================================================================
-// Main Generation Function
-// ============================================================================
+  pick<T>(items: readonly T[]): T {
+    return items[this.nextBounded(items.length)];
+  }
+}
 
 export function generateMap(params: MapGenerationParams): GeneratedMap {
-  const rng = new SeededRNG(params.seed);
+  const rng = new XorShiftRng(params.seed);
   const campaignLevel = params.campaignLevel ?? 1;
+  const tiles = createWallTiles(params.width, params.height);
+  const fog = createFog(params.width, params.height);
+  const cells = createCells();
 
-  // Step 1: Generate corridor maze with wide spacing
-  const { tiles, walkableTiles } = generateCorridorMaze(params.width, params.height, rng);
+  generateMaze(cells, rng);
+  carveMazeIntoTiles(cells, tiles);
 
-  // Step 2: Initialize fog as hidden
-  const fog = initializeFog(params.width, params.height);
+  const walkableBeforeSpawn = collectWalkableTiles(tiles);
+  const spawn = findSpawnPoint(tiles, rng, walkableBeforeSpawn);
+  const moleDenPosition = { x: spawn.x, y: spawn.y - 1 };
+  tiles[moleDenPosition.y][moleDenPosition.x] = TileType.Floor;
 
-  // Step 3: Find spawn point (ensure space for house above)
-  const spawn = findSpawnPoint(tiles, walkableTiles, rng);
-
-  // Step 4: Place Mole Den above the spawn tile (house)
-  const moleDenPosition = placeMoleDen(spawn, tiles);
-
-  // Step 5: Place POIs
+  const walkableTiles = collectWalkableTiles(tiles);
   const pois = placePOIs(walkableTiles, spawn, moleDenPosition, rng, campaignLevel);
-
-  // Step 6: Place enemies
   const enemies = placeEnemies(walkableTiles, spawn, moleDenPosition, pois, rng, campaignLevel);
 
   return {
@@ -222,445 +204,456 @@ export function generateMap(params: MapGenerationParams): GeneratedMap {
   };
 }
 
-// ============================================================================
-// Corridor Maze Generation (Recursive Backtracker with Wide Spacing)
-// ============================================================================
-
-interface MazeResult {
-  tiles: TileType[][];
-  walkableTiles: Position[];
+function createWallTiles(width: number, height: number): TileType[][] {
+  return Array.from({ length: height }, () => Array.from({ length: width }, () => TileType.Wall));
 }
 
-/**
- * Generate corridor maze using recursive backtracker algorithm.
- * Uses wider cell spacing to create larger environment areas between corridors.
- * Corridors are 1 tile wide and only connect orthogonally.
- */
-function generateCorridorMaze(width: number, height: number, rng: SeededRNG): MazeResult {
-  // Initialize all as walls
-  const tiles: TileType[][] = [];
-  for (let y = 0; y < height; y++) {
-    tiles[y] = [];
-    for (let x = 0; x < width; x++) {
-      tiles[y][x] = TileType.Wall;
-    }
+function createFog(width: number, height: number): FogState[][] {
+  return Array.from({ length: height }, () => Array.from({ length: width }, () => FogState.Hidden));
+}
+
+function createCells(): Cell[] {
+  return Array.from({ length: CELL_GRID_SIZE }, () => ({
+    visited: false,
+    north: false,
+    south: false,
+    east: false,
+    west: false,
+  }));
+}
+
+function cellIndex(cx: number, cy: number): number {
+  return cy * CELL_GRID_WIDTH + cx;
+}
+
+function directionDelta(direction: Direction): [number, number] {
+  switch (direction) {
+    case Direction.North:
+      return [0, -1];
+    case Direction.South:
+      return [0, 1];
+    case Direction.East:
+      return [1, 0];
+    case Direction.West:
+      return [-1, 0];
   }
+}
 
-  // Calculate cell grid dimensions with wider spacing
-  const cellWidth = Math.floor((width - 1) / CELL_SPACING);
-  const cellHeight = Math.floor((height - 1) / CELL_SPACING);
-
-  if (cellWidth < 2 || cellHeight < 2) {
-    // Map too small - create simple corridor
-    const walkableTiles: Position[] = [];
-    for (let y = 1; y < height - 1; y++) {
-      tiles[y][1] = TileType.Floor;
-      walkableTiles.push({ x: 1, y });
-    }
-    return { tiles, walkableTiles };
+function oppositeDirection(direction: Direction): Direction {
+  switch (direction) {
+    case Direction.North:
+      return Direction.South;
+    case Direction.South:
+      return Direction.North;
+    case Direction.East:
+      return Direction.West;
+    case Direction.West:
+      return Direction.East;
   }
+}
 
-  // Track visited cells
-  const visited: boolean[][] = [];
-  for (let y = 0; y < cellHeight; y++) {
-    visited[y] = [];
-    for (let x = 0; x < cellWidth; x++) {
-      visited[y][x] = false;
-    }
-  }
+function setConnection(cell: Cell, direction: Direction): void {
+  if (direction === Direction.North) cell.north = true;
+  else if (direction === Direction.South) cell.south = true;
+  else if (direction === Direction.East) cell.east = true;
+  else cell.west = true;
+}
 
-  const stack: Position[] = [];
-  const walkableTiles: Position[] = [];
-  const walkableSet = new Set<string>();
-  const connections = new Set<string>();
+function hasConnection(cell: Cell, direction: Direction): boolean {
+  if (direction === Direction.North) return cell.north;
+  if (direction === Direction.South) return cell.south;
+  if (direction === Direction.East) return cell.east;
+  return cell.west;
+}
 
-  // Helper to mark a tile as walkable
-  const markFloor = (x: number, y: number) => {
-    if (x >= 0 && x < width && y >= 0 && y < height) {
-      const key = `${x},${y}`;
-      if (!walkableSet.has(key)) {
-        tiles[y][x] = TileType.Floor;
-        walkableTiles.push({ x, y });
-        walkableSet.add(key);
-      }
-    }
-  };
-
-  // Convert cell coords to tile coords
-  const cellToTile = (cellX: number, cellY: number): Position => ({
-    x: cellX * CELL_SPACING + 1,
-    y: cellY * CELL_SPACING + 1,
-  });
-
-  const connectionKey = (a: Position, b: Position) => {
-    const aKey = `${a.x},${a.y}`;
-    const bKey = `${b.x},${b.y}`;
-    return aKey < bKey ? `${aKey}|${bKey}` : `${bKey}|${aKey}`;
-  };
-
-  const recordConnection = (a: Position, b: Position) => {
-    connections.add(connectionKey(a, b));
-  };
-
-  const carveConnection = (from: Position, to: Position) => {
-    const fromTile = cellToTile(from.x, from.y);
-    const toTile = cellToTile(to.x, to.y);
-
-    let cx = fromTile.x;
-    let cy = fromTile.y;
-
-    while (cx !== toTile.x || cy !== toTile.y) {
-      markFloor(cx, cy);
-
-      if (cx !== toTile.x) {
-        cx += Math.sign(toTile.x - cx);
-      } else if (cy !== toTile.y) {
-        cy += Math.sign(toTile.y - cy);
-      }
-    }
-    markFloor(toTile.x, toTile.y);
-  };
-
-  // Start at a random cell
-  const startCellX = rng.nextInt(0, cellWidth - 1);
-  const startCellY = rng.nextInt(0, cellHeight - 1);
-
-  // Mark starting cell
-  visited[startCellY][startCellX] = true;
-  const startTile = cellToTile(startCellX, startCellY);
-  markFloor(startTile.x, startTile.y);
-  stack.push({ x: startCellX, y: startCellY });
-
-  // Direction vectors
-  const directions = [
-    { dx: 0, dy: -1 }, // Up
-    { dx: 0, dy: 1 }, // Down
-    { dx: -1, dy: 0 }, // Left
-    { dx: 1, dy: 0 }, // Right
-  ];
+function generateMaze(cells: Cell[], rng: XorShiftRng): void {
+  const startCx = rng.nextBounded(CELL_GRID_WIDTH);
+  const startCy = rng.nextBounded(CELL_GRID_HEIGHT);
+  const stack: Position[] = [{ x: startCx, y: startCy }];
+  cells[cellIndex(startCx, startCy)].visited = true;
 
   while (stack.length > 0) {
     const current = stack[stack.length - 1];
+    const neighbors: Array<{ x: number; y: number; direction: Direction }> = [];
 
-    // Find unvisited neighbors
-    const unvisitedNeighbors: Array<{ cell: Position; dir: { dx: number; dy: number } }> = [];
-
-    for (const dir of directions) {
-      const nx = current.x + dir.dx;
-      const ny = current.y + dir.dy;
-
-      if (nx >= 0 && nx < cellWidth && ny >= 0 && ny < cellHeight && !visited[ny][nx]) {
-        unvisitedNeighbors.push({ cell: { x: nx, y: ny }, dir });
-      }
+    for (const direction of [Direction.North, Direction.South, Direction.East, Direction.West]) {
+      const [dx, dy] = directionDelta(direction);
+      const nx = current.x + dx;
+      const ny = current.y + dy;
+      if (nx < 0 || ny < 0 || nx >= CELL_GRID_WIDTH || ny >= CELL_GRID_HEIGHT) continue;
+      if (cells[cellIndex(nx, ny)].visited) continue;
+      neighbors.push({ x: nx, y: ny, direction });
     }
 
-    if (unvisitedNeighbors.length > 0) {
-      // Pick random unvisited neighbor
-      const { cell: next } = rng.pick(unvisitedNeighbors);
-
-      carveConnection(current, next);
-      recordConnection(current, next);
-
-      // Mark next cell as visited
-      visited[next.y][next.x] = true;
-      stack.push(next);
-    } else {
-      // Backtrack
+    if (neighbors.length === 0) {
       stack.pop();
+      continue;
     }
+
+    const next = rng.pick(neighbors);
+    setConnection(cells[cellIndex(current.x, current.y)], next.direction);
+    setConnection(cells[cellIndex(next.x, next.y)], oppositeDirection(next.direction));
+    cells[cellIndex(next.x, next.y)].visited = true;
+    stack.push({ x: next.x, y: next.y });
   }
 
-  const extraConnections = Math.min(
-    Math.floor(cellWidth * cellHeight * EXTRA_CONNECTION_FACTOR),
-    (cellWidth - 1) * cellHeight + (cellHeight - 1) * cellWidth
-  );
+  for (let i = 0; i < EXTRA_CONNECTION_COUNT; i += 1) {
+    const cx = rng.nextBounded(CELL_GRID_WIDTH);
+    const cy = rng.nextBounded(CELL_GRID_HEIGHT);
+    const direction = rng.nextBounded(4) as Direction;
+    const [dx, dy] = directionDelta(direction);
+    const nx = cx + dx;
+    const ny = cy + dy;
+    if (nx < 0 || ny < 0 || nx >= CELL_GRID_WIDTH || ny >= CELL_GRID_HEIGHT) continue;
+    const currentCell = cells[cellIndex(cx, cy)];
+    if (hasConnection(currentCell, direction)) continue;
+    setConnection(currentCell, direction);
+    setConnection(cells[cellIndex(nx, ny)], oppositeDirection(direction));
+  }
+}
 
-  const candidates: Array<{ from: Position; to: Position }> = [];
-  for (let y = 0; y < cellHeight; y++) {
-    for (let x = 0; x < cellWidth; x++) {
-      const from = { x, y };
-      const right = { x: x + 1, y };
-      const down = { x, y: y + 1 };
+function carveMazeIntoTiles(cells: Cell[], tiles: TileType[][]): void {
+  for (let cy = 0; cy < CELL_GRID_HEIGHT; cy += 1) {
+    for (let cx = 0; cx < CELL_GRID_WIDTH; cx += 1) {
+      const cell = cells[cellIndex(cx, cy)];
+      const mapX = cx * CELL_SPACING;
+      const mapY = cy * CELL_SPACING;
 
-      if (right.x < cellWidth && !connections.has(connectionKey(from, right))) {
-        candidates.push({ from, to: right });
+      tiles[mapY][mapX] = TileType.Floor;
+
+      if (cell.east && cx < CELL_GRID_WIDTH - 1) {
+        for (let i = 1; i <= CELL_SPACING; i += 1) {
+          tiles[mapY][mapX + i] = TileType.Floor;
+        }
       }
 
-      if (down.y < cellHeight && !connections.has(connectionKey(from, down))) {
-        candidates.push({ from, to: down });
+      if (cell.south && cy < CELL_GRID_HEIGHT - 1) {
+        for (let i = 1; i <= CELL_SPACING; i += 1) {
+          tiles[mapY + i][mapX] = TileType.Floor;
+        }
+      }
+    }
+  }
+}
+
+function collectWalkableTiles(tiles: TileType[][]): Position[] {
+  const walkable: Position[] = [];
+  for (let y = 0; y < tiles.length; y += 1) {
+    for (let x = 0; x < tiles[y].length; x += 1) {
+      if (tiles[y][x] === TileType.Floor) {
+        walkable.push({ x, y });
+      }
+    }
+  }
+  return walkable;
+}
+
+function findSpawnPoint(tiles: TileType[][], rng: XorShiftRng, walkableTiles: Position[]): Position {
+  let result: Position | null = null;
+  let count = 0;
+
+  for (let y = 1; y < tiles.length; y += 1) {
+    for (let x = 0; x < tiles[y].length; x += 1) {
+      if (tiles[y][x] === TileType.Floor && tiles[y - 1][x] === TileType.Wall) {
+        count += 1;
+        if (rng.nextVal() % BigInt(count) === 0n) {
+          result = { x, y };
+        }
       }
     }
   }
 
-  const shuffledCandidates = rng.shuffle(candidates);
-  for (let i = 0; i < extraConnections && i < shuffledCandidates.length; i++) {
-    const { from, to } = shuffledCandidates[i];
-    carveConnection(from, to);
-    recordConnection(from, to);
-  }
-
-  return { tiles, walkableTiles };
+  return result ?? walkableTiles[0];
 }
 
-// ============================================================================
-// Fog Initialization
-// ============================================================================
-
-function initializeFog(width: number, height: number): FogState[][] {
-  const fog: FogState[][] = [];
-  for (let y = 0; y < height; y++) {
-    fog[y] = [];
-    for (let x = 0; x < width; x++) {
-      fog[y][x] = FogState.Hidden;
-    }
-  }
-  return fog;
+function actIndexFromCampaignLevel(campaignLevel: number): number {
+  return Math.max(0, Math.min(3, Math.floor((campaignLevel - 1) / 10)));
 }
 
-// ============================================================================
-// Spawn Point
-// ============================================================================
-
-function findSpawnPoint(tiles: TileType[][], walkableTiles: Position[], rng: SeededRNG): Position {
-  const candidates = walkableTiles.filter(
-    (pos) => pos.y > 0 && tiles[pos.y - 1][pos.x] === TileType.Wall
-  );
-
-  if (candidates.length > 0) {
-    return rng.pick(candidates);
-  }
-
-  // Fallback: carve a new spawn tile adjacent to a corridor, with space above
-  const origin = rng.pick(walkableTiles);
-  const directions = [
-    { x: 0, y: -1 },
-    { x: 0, y: 1 },
-    { x: -1, y: 0 },
-    { x: 1, y: 0 },
-  ];
-  const carveCandidates = directions
-    .map((dir) => ({ x: origin.x + dir.x, y: origin.y + dir.y }))
-    .filter(
-      (pos) =>
-        pos.x >= 1 &&
-        pos.x < tiles[0].length - 1 &&
-        pos.y > 0 &&
-        pos.y < tiles.length - 1 &&
-        tiles[pos.y][pos.x] === TileType.Wall &&
-        tiles[pos.y - 1][pos.x] === TileType.Wall
-    );
-
-  if (carveCandidates.length > 0) {
-    const spawn = rng.pick(carveCandidates);
-    tiles[spawn.y][spawn.x] = TileType.Floor;
-    walkableTiles.push(spawn);
-    return spawn;
-  }
-
-  const inBounds = walkableTiles.filter((pos) => pos.y > 0);
-  if (inBounds.length > 0) {
-    return rng.pick(inBounds);
-  }
-
-  return rng.pick(walkableTiles);
+function isBiomeA(campaignLevel: number): boolean {
+  const act = actIndexFromCampaignLevel(campaignLevel) + 1;
+  return act === 1 || act === 3;
 }
 
-// ============================================================================
-// Mole Den Placement
-// ============================================================================
-
-function placeMoleDen(spawn: Position, tiles: TileType[][]): Position {
-  const housePos = { x: spawn.x, y: spawn.y - 1 };
-
-  if (housePos.y < 0) {
-    return spawn;
-  }
-
-  tiles[housePos.y][housePos.x] = TileType.Floor;
-  return housePos;
+function poiTargetCountsForAct(actIndex: number): number[] {
+  return BASELINE_POI_COUNTS.map((counts) => counts[actIndex] ?? 0);
 }
 
-// ============================================================================
-// POI Placement
-// ============================================================================
+function isPositionUsed(spawn: Position, moleDen: Position, pois: MapPOI[], position: Position): boolean {
+  if (position.x === spawn.x && position.y === spawn.y) return true;
+  if (position.x === moleDen.x && position.y === moleDen.y) return true;
+  return pois.some((poi) => poi.position.x === position.x && poi.position.y === position.y);
+}
+
+function manhattanDistance(a: Position, b: Position): number {
+  return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+}
+
+function isSameTypeSpacingValid(pois: MapPOI[], position: Position, poiType: POIId): boolean {
+  return pois.every((poi) => {
+    if (poi.definitionId !== poiType) return true;
+    return manhattanDistance(position, poi.position) >= POI_MIN_SPACING;
+  });
+}
+
+function findValidPoiPosition(
+  walkableTiles: Position[],
+  spawn: Position,
+  moleDen: Position,
+  pois: MapPOI[],
+  poiType: POIId,
+  rng: XorShiftRng
+): Position | null {
+  const shuffled = rng.shuffle([...walkableTiles]);
+  for (const position of shuffled) {
+    if (isPositionUsed(spawn, moleDen, pois, position)) continue;
+    if (!isSameTypeSpacingValid(pois, position, poiType)) continue;
+    return position;
+  }
+  return null;
+}
+
+function findReachablePoiPosition(
+  walkableTiles: Position[],
+  spawn: Position,
+  moleDen: Position,
+  pois: MapPOI[],
+  poiType: POIId,
+  maxDistance: number,
+  rng: XorShiftRng
+): Position | null {
+  const shuffled = rng.shuffle([...walkableTiles]);
+  for (const position of shuffled) {
+    if (isPositionUsed(spawn, moleDen, pois, position)) continue;
+    if (manhattanDistance(position, spawn) > maxDistance) continue;
+    if (!isSameTypeSpacingValid(pois, position, poiType)) continue;
+    return position;
+  }
+  return null;
+}
+
+function findReachableWithoutSpacing(
+  walkableTiles: Position[],
+  spawn: Position,
+  moleDen: Position,
+  pois: MapPOI[],
+  maxDistance: number,
+  rng: XorShiftRng
+): Position | null {
+  const shuffled = rng.shuffle([...walkableTiles]);
+  for (const position of shuffled) {
+    if (isPositionUsed(spawn, moleDen, pois, position)) continue;
+    if (manhattanDistance(position, spawn) > maxDistance) continue;
+    return position;
+  }
+  return null;
+}
 
 function placePOIs(
   walkableTiles: Position[],
   spawn: Position,
-  moleDenPos: Position,
-  rng: SeededRNG,
+  moleDenPosition: Position,
+  rng: XorShiftRng,
   campaignLevel: number
 ): MapPOI[] {
-  const pois: MapPOI[] = [];
-  const usedPositions = new Set<string>();
+  const pois: MapPOI[] = [
+    {
+      id: 'poi_L1_0',
+      definitionId: 'L1',
+      position: moleDenPosition,
+      visited: false,
+      discovered: false,
+    },
+  ];
 
-  usedPositions.add(`${spawn.x},${spawn.y}`);
-  usedPositions.add(`${moleDenPos.x},${moleDenPos.y}`);
+  const targets = poiTargetCountsForAct(actIndexFromCampaignLevel(campaignLevel));
+  targets[1] = Math.max(0, targets[1] - 1);
+  targets[13] = COUNTER_CACHE_PER_RUN;
 
-  // Add Mole Den POI first
-  pois.push({
-    id: `poi_L1_0`,
-    definitionId: 'L1',
-    position: moleDenPos,
-    visited: false,
-    discovered: false,
-  });
+  const guaranteedPlacements: Array<{ type: number; maxDistance: number; ignoreSpacingFallback?: boolean }> = [
+    { type: 13, maxDistance: COUNTER_CACHE_FIRST_MAX_DISTANCE, ignoreSpacingFallback: true },
+    { type: 3, maxDistance: 12 },
+    { type: 2, maxDistance: 12 },
+    { type: 4, maxDistance: 12 },
+  ];
 
-  const poiTypePositions = new Map<POIId, Position[]>();
-
-  const act = getActForCampaignLevel(campaignLevel);
-  const actPoiCounts = ACT_POI_COUNTS[act];
-
-  for (const poiDef of POI_DEFINITIONS) {
-    const count = actPoiCounts[poiDef.id] ?? 0;
-    for (let i = 0; i < count; i++) {
-      const position = findValidPOIPosition(
+  for (const guarantee of guaranteedPlacements) {
+    if (targets[guarantee.type] <= 0 || pois.length >= MAX_POIS) continue;
+    const poiType = POI_IDS_BY_TYPE[guarantee.type];
+    let position = findReachablePoiPosition(
+      walkableTiles,
+      spawn,
+      moleDenPosition,
+      pois,
+      poiType,
+      guarantee.maxDistance,
+      rng
+    );
+    if (!position && guarantee.ignoreSpacingFallback) {
+      position = findReachableWithoutSpacing(
         walkableTiles,
-        usedPositions,
-        poiTypePositions.get(poiDef.id) || [],
+        spawn,
+        moleDenPosition,
+        pois,
+        guarantee.maxDistance,
         rng
       );
+    }
+    if (!position) continue;
+    pois.push({
+      id: `poi_${poiType}_${pois.filter((poi) => poi.definitionId === poiType).length}`,
+      definitionId: poiType,
+      position,
+      visited: false,
+      discovered: false,
+    });
+    targets[guarantee.type] -= 1;
+  }
 
-      if (!position) {
-        break;
-      }
-
+  const placementOrder = [12, 11, 10, 9, 8, 7, 14, 13, 3, 6, 5, 4, 2];
+  for (const type of placementOrder) {
+    const poiType = POI_IDS_BY_TYPE[type];
+    for (let count = 0; count < targets[type] && pois.length < MAX_POIS; count += 1) {
+      const position = findValidPoiPosition(walkableTiles, spawn, moleDenPosition, pois, poiType, rng);
+      if (!position) break;
       pois.push({
-        id: `poi_${poiDef.id}_${i}`,
-        definitionId: poiDef.id,
+        id: `poi_${poiType}_${pois.filter((poi) => poi.definitionId === poiType).length}`,
+        definitionId: poiType,
         position,
         visited: false,
         discovered: false,
       });
-
-      usedPositions.add(`${position.x},${position.y}`);
-
-      if (!poiTypePositions.has(poiDef.id)) {
-        poiTypePositions.set(poiDef.id, []);
-      }
-      poiTypePositions.get(poiDef.id)!.push(position);
     }
   }
 
   return pois;
 }
 
-function findValidPOIPosition(
-  walkableTiles: Position[],
-  usedPositions: Set<string>,
-  sameTypePositions: Position[],
-  rng: SeededRNG
-): Position | null {
-  const shuffled = rng.shuffle([...walkableTiles]);
-
-  for (const pos of shuffled) {
-    const key = `${pos.x},${pos.y}`;
-
-    if (usedPositions.has(key)) continue;
-
-    let validSpacing = true;
-    for (const existing of sameTypePositions) {
-      const distance = Math.abs(pos.x - existing.x) + Math.abs(pos.y - existing.y);
-      if (distance < GAME_CONSTANTS.POI_MIN_SPACING) {
-        validSpacing = false;
-        break;
-      }
-    }
-
-    if (validSpacing) {
-      return pos;
-    }
-  }
-
-  return null;
+function distancePercentFromSpawn(position: Position, spawn: Position): number {
+  const maxDistance = (GAME_CONSTANTS.MAP_WIDTH - 1) + (GAME_CONSTANTS.MAP_HEIGHT - 1);
+  const distance = Math.min(maxDistance, manhattanDistance(position, spawn));
+  return Math.floor((distance * 100) / maxDistance);
 }
 
-// ============================================================================
-// Enemy Placement
-// ============================================================================
+function distanceBand(distancePercent: number): 0 | 1 | 2 {
+  if (distancePercent <= 33) return 0;
+  if (distancePercent <= 66) return 1;
+  return 2;
+}
+
+function selectPoolForDistance(distancePercent: number, rng: XorShiftRng): readonly number[] {
+  const weights = DISTANCE_POOL_WEIGHTS[distanceBand(distancePercent)];
+  const roll = rng.nextBounded(100);
+  if (roll < weights[0]) return EASY_POOL;
+  if (roll < weights[0] + weights[1]) return MEDIUM_POOL;
+  return HARD_POOL;
+}
+
+function selectTierForDistance(distancePercent: number, campaignLevel: number, rng: XorShiftRng): 1 | 2 | 3 {
+  const weights =
+    distanceBand(distancePercent) === 0
+      ? NEAR_TIER_WEIGHTS
+      : distanceBand(distancePercent) === 2
+        ? FAR_TIER_WEIGHTS
+        : ACT_DEFAULT_TIER_WEIGHTS[actIndexFromCampaignLevel(campaignLevel)];
+  const roll = rng.nextBounded(100);
+  if (roll < weights[0]) return 1;
+  if (roll < weights[0] + weights[1]) return 2;
+  return 3;
+}
+
+function selectWeightedArchetypeFromPool(
+  rng: XorShiftRng,
+  campaignLevel: number,
+  pool: readonly number[]
+): number {
+  const biomeIndex = isBiomeA(campaignLevel) ? 0 : 1;
+  const totalWeight = pool.reduce((sum, archetypeId) => sum + ENEMY_BIOME_WEIGHTS[archetypeId][biomeIndex], 0);
+  let roll = rng.nextBounded(totalWeight);
+  for (const archetypeId of pool) {
+    roll -= ENEMY_BIOME_WEIGHTS[archetypeId][biomeIndex];
+    if (roll < 0) return archetypeId;
+  }
+  return pool[0];
+}
+
+function enforceSafeStartEasyPool(enemies: MapEnemy[], spawn: Position, rng: XorShiftRng, campaignLevel: number) {
+  const closest = [...enemies]
+    .map((enemy, index) => ({ index, distance: manhattanDistance(enemy.position, spawn) }))
+    .sort((a, b) => a.distance - b.distance)
+    .slice(0, 3);
+
+  for (const { index } of closest) {
+    const current = enemies[index];
+    const currentArchetype = ENEMY_ID_BY_ARCHETYPE.indexOf(current.definitionId);
+    if (EASY_POOL.includes(currentArchetype as (typeof EASY_POOL)[number])) continue;
+    const archetypeId = selectWeightedArchetypeFromPool(rng, campaignLevel, EASY_POOL);
+    const definitionId = ENEMY_ID_BY_ARCHETYPE[archetypeId];
+    enemies[index] = {
+      ...current,
+      definitionId,
+      stats: toEnemyStats(definitionId, current.tier),
+    };
+  }
+}
+
+function toEnemyStats(definitionId: EnemyId, tier: 1 | 2 | 3) {
+  const stats = ENEMY_DEFINITIONS[definitionId].tiers[tier - 1];
+  return {
+    hp: stats.hp,
+    atk: stats.atk,
+    arm: stats.arm,
+    spd: stats.spd,
+  };
+}
 
 function placeEnemies(
   walkableTiles: Position[],
   spawn: Position,
-  moleDenPos: Position,
+  moleDenPosition: Position,
   pois: MapPOI[],
-  rng: SeededRNG,
+  rng: XorShiftRng,
   campaignLevel: number
 ): MapEnemy[] {
   const enemies: MapEnemy[] = [];
-  const usedPositions = new Set<string>();
-  const act = getActForCampaignLevel(campaignLevel);
-  const biome = getBiomeForCampaignLevel(campaignLevel);
+  const occupied = new Set<string>([
+    `${spawn.x},${spawn.y}`,
+    `${moleDenPosition.x},${moleDenPosition.y}`,
+    ...pois.map((poi) => `${poi.position.x},${poi.position.y}`),
+  ]);
+  const shuffledTiles = rng.shuffle([...walkableTiles]);
+  const targetCount = Math.min(ACT_ENEMY_TARGETS[actIndexFromCampaignLevel(campaignLevel)], MAX_ENEMIES);
 
-  usedPositions.add(`${spawn.x},${spawn.y}`);
-  usedPositions.add(`${moleDenPos.x},${moleDenPos.y}`);
-  for (const poi of pois) {
-    usedPositions.add(`${poi.position.x},${poi.position.y}`);
-  }
+  for (const position of shuffledTiles) {
+    if (enemies.length >= targetCount) break;
+    const chebyshev = Math.max(Math.abs(position.x - spawn.x), Math.abs(position.y - spawn.y));
+    if (chebyshev <= SPAWN_PROTECTION_RADIUS) continue;
+    const key = `${position.x},${position.y}`;
+    if (occupied.has(key)) continue;
 
-  const enemyCount = Math.min(ACT_ENEMY_COUNTS[act], walkableTiles.length);
-
-  const shuffled = rng.shuffle([...walkableTiles]);
-  let placed = 0;
-
-  for (const pos of shuffled) {
-    if (placed >= enemyCount) break;
-
-    const key = `${pos.x},${pos.y}`;
-    if (usedPositions.has(key)) continue;
-
-    const zone = getSpawnZone(pos, moleDenPos);
-    const enemyId =
-      placed < 3
-        ? pickEnemyFromPool(EASY_POOL, biome, rng)
-        : pickEnemyForZone(zone, biome, rng);
-    const tier = selectTierForZone(zone, rng, ZONE_TIER_WEIGHTS_BY_ACT[zone][act]);
-    const stats = ENEMY_STATS[enemyId][tier - 1];
+    const distancePercent = distancePercentFromSpawn(position, spawn);
+    const tier = selectTierForDistance(distancePercent, campaignLevel, rng);
+    const archetypeId = selectWeightedArchetypeFromPool(
+      rng,
+      campaignLevel,
+      selectPoolForDistance(distancePercent, rng)
+    );
+    const definitionId = ENEMY_ID_BY_ARCHETYPE[archetypeId];
 
     enemies.push({
-      id: `enemy_${placed}`,
-      definitionId: enemyId,
+      id: `enemy_${enemies.length}`,
+      definitionId,
       tier,
-      position: pos,
-      stats,
+      position,
+      stats: toEnemyStats(definitionId, tier),
       discovered: false,
     });
-
-    usedPositions.add(key);
-    placed++;
+    occupied.add(key);
   }
 
+  enforceSafeStartEasyPool(enemies, spawn, rng, campaignLevel);
   return enemies;
 }
-
-function pickEnemyForZone(zone: 0 | 1 | 2, biome: 'A' | 'B', rng: SeededRNG): EnemyId {
-  const [easyWeight, mediumWeight, hardWeight] = ZONE_POOL_DISTRIBUTION[zone];
-  const roll = rng.next();
-
-  if (roll < easyWeight) {
-    return pickEnemyFromPool(EASY_POOL, biome, rng);
-  }
-
-  if (roll < easyWeight + mediumWeight) {
-    return pickEnemyFromPool(MEDIUM_POOL, biome, rng);
-  }
-
-  return pickEnemyFromPool(HARD_POOL, biome, rng);
-}
-
-function pickEnemyFromPool(pool: EnemyId[], biome: 'A' | 'B', rng: SeededRNG): EnemyId {
-  const weightedPool = pool.flatMap((enemyId) => {
-    const enemyBiome = ENEMY_DEFINITIONS[enemyId].biome;
-    const weight = enemyBiome === biome ? 3 : enemyBiome === 'BOTH' ? 2 : 1;
-    return Array.from({ length: weight }, () => enemyId);
-  });
-
-  return rng.pick(weightedPool.length > 0 ? weightedPool : ENEMY_IDS);
-}
-
-// ============================================================================
-// Helper Functions
-// ============================================================================
 
 export function toGameMap(generated: GeneratedMap): GameMap {
   return {

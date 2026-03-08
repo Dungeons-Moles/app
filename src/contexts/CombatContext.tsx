@@ -20,6 +20,7 @@ import type {
   CombatantState,
   CombatLogEntry,
   CombatResult,
+  CombatSourceRef,
 } from '../game/engine/types';
 import { CombatPhase } from '../game/engine/types';
 import {
@@ -27,9 +28,12 @@ import {
   createCombatState,
   type CombatResolverInput,
 } from '../game/combat/resolver';
+import { resolveCombatWithParity } from '../game/combat/parity-resolver';
 import type { CombatSpeed } from '../types';
 import type { BackendCombatLogEntry } from '../services/solana/types/combat_events';
-import { convertBackendLogToFrontend } from '../services/solana/types/combat_events';
+import {
+  convertBackendLogToFrontend,
+} from '../services/solana/types/combat_events';
 
 export type { CombatSpeed } from '../types';
 
@@ -45,6 +49,11 @@ export const COMBAT_SPEED_MULTIPLIER: Record<CombatSpeed, number> = {
   fast: 2,
 };
 
+const FLOATING_NUMBER_FADE_DELAY_MS = 600;
+const FLOATING_NUMBER_FADE_MS = 400;
+const CONTRIBUTION_STAGGER_MS = 1000;
+const INITIAL_COMBAT_START_DELAY_MS = 1000;
+
 const DEFAULT_COMBAT_SPEED: CombatSpeed = 'normal';
 
 export function getCombatAnimationIntervalMs(speed: CombatSpeed): number | null {
@@ -53,6 +62,39 @@ export function getCombatAnimationIntervalMs(speed: CombatSpeed): number | null 
   }
 
   return COMBAT_ANIMATION_BASE_MS / COMBAT_SPEED_MULTIPLIER[speed];
+}
+
+function entryHasFloatingNumber(entry: CombatLogEntry | undefined): boolean {
+  if (!entry || entry.target === 'none') return false;
+  const { result } = entry;
+
+  return Boolean(
+    (entry.action === 'APPLY_STATUS' && result.statusApplied) ||
+      (result.damage && result.damage > 0) ||
+      (result.healing && result.healing > 0) ||
+      (result.armorGained && result.armorGained > 0) ||
+      (result.armorLost && result.armorLost > 0) ||
+      (result.goldStolen && result.goldStolen > 0) ||
+      (result.atkBonus && result.atkBonus > 0) ||
+      (result.spdBonus && result.spdBonus > 0)
+  );
+}
+
+function entryIsStatusRemovalOnly(entry: CombatLogEntry | undefined): boolean {
+  if (!entry || entry.target === 'none') return false;
+  const { result } = entry;
+
+  return Boolean(
+    result.statusRemoved &&
+      !result.damage &&
+      !result.healing &&
+      !result.armorLost &&
+      !result.armorGained &&
+      !result.goldStolen &&
+      !result.atkBonus &&
+      !result.spdBonus &&
+      !result.statusApplied
+  );
 }
 
 // ============================================================================
@@ -79,6 +121,7 @@ export type CombatAction =
     }
   | { type: 'RESOLVE_COMBAT' }
   | { type: 'ADVANCE_LOG'; index: number }
+  | { type: 'ADVANCE_CONTRIBUTION' }
   | { type: 'COMPLETE_ANIMATION' }
   | { type: 'RESET_COMBAT' };
 
@@ -93,6 +136,8 @@ export interface CombatUIState {
   resolvedCombat: CombatState | null;
   /** Current log playback index */
   currentLogIndex: number;
+  /** Current contribution index inside the active log entry, if split */
+  currentContributionIndex: number | null;
   /** Is combat animation in progress */
   isAnimating: boolean;
   /** Is combat complete */
@@ -106,9 +151,15 @@ export interface CombatUIState {
 export interface DamageNumber {
   id: string;
   value: number;
-  type: 'damage' | 'heal' | 'armor' | 'gold';
+  type: 'damage' | 'heal' | 'armor' | 'gold' | 'split' | 'status' | 'stat';
   target: 'player' | 'enemy';
   timestamp: number;
+  source?: CombatSourceRef;
+  lane?: number;
+  splitArmorValue?: number;
+  splitDamageValue?: number;
+  statusType?: 'chill' | 'shrapnel' | 'rust' | 'bleed';
+  statType?: 'ATK' | 'SPD' | 'ARM';
 }
 
 export interface EffectNotification {
@@ -122,6 +173,7 @@ export interface EffectNotification {
   /** Type of effect for styling */
   type: 'buff' | 'debuff' | 'status' | 'item';
   timestamp: number;
+  source?: CombatSourceRef;
 }
 
 // ============================================================================
@@ -131,7 +183,8 @@ export interface EffectNotification {
 const initialState: CombatUIState = {
   combat: null,
   resolvedCombat: null,
-  currentLogIndex: 0,
+  currentLogIndex: -1,
+  currentContributionIndex: null,
   isAnimating: false,
   isComplete: false,
   damageNumbers: [],
@@ -162,64 +215,24 @@ function extractEffectNotification(
 
   // Status effect applied
   if (entry.action === 'APPLY_STATUS' && entry.result.statusApplied) {
-    const { type, stacks } = entry.result.statusApplied;
-    const emoji = STATUS_EMOJI[type] || '✨';
-    const effectName = entry.result.effectName;
-    return {
-      id: `status-${index}-${timestamp}`,
-      text: effectName ? `${effectName}` : `+${stacks} ${type}`,
-      emoji,
-      target,
-      type: entry.actor === 'enemy' ? 'debuff' : 'buff',
-      timestamp,
-    };
+    return null;
   }
 
   // Item triggered (with effect name)
   if (entry.action === 'TRIGGER_ITEM' && entry.result.effectName) {
-    const effectName = entry.result.effectName;
-    // Skip "Battle Start" system message
-    if (effectName === 'Battle Start') return null;
-
-    let text = effectName;
-    let emoji = '⚙️';
-
-    // Add context based on what the item did
-    if (entry.result.damage) {
-      text = `${effectName}`;
-      emoji = '💥';
-    } else if (entry.result.healing) {
-      text = `${effectName}`;
-      emoji = '💚';
-    } else if (entry.result.armorGained) {
-      text = `${effectName}`;
-      emoji = '🛡️';
-    }
-
-    return {
-      id: `item-${index}-${timestamp}`,
-      text,
-      emoji,
-      target,
-      type: 'item',
-      timestamp,
-    };
+    return null;
   }
 
   // Armor gained from item effect
   if (entry.action === 'GAIN_ARMOR' && entry.result.effectName && entry.result.armorGained) {
-    return {
-      id: `armor-${index}-${timestamp}`,
-      text: `${entry.result.effectName}`,
-      emoji: '🛡️',
-      target,
-      type: 'buff',
-      timestamp,
-    };
+    return null;
   }
 
   // Trait triggered
   if (entry.action === 'TRIGGER_TRAIT' && entry.result.effectName) {
+    if (entry.result.goldStolen) return null;
+    if (entry.result.atkBonus || entry.result.spdBonus) return null;
+    if (entry.result.source?.kind === 'status') return null;
     return {
       id: `trait-${index}-${timestamp}`,
       text: entry.result.effectName,
@@ -227,19 +240,13 @@ function extractEffectNotification(
       target,
       type: entry.actor === 'enemy' ? 'debuff' : 'buff',
       timestamp,
+      source: entry.result.source,
     };
   }
 
   // Healing from item
   if (entry.action === 'HEAL' && entry.result.effectName && entry.result.healing) {
-    return {
-      id: `heal-${index}-${timestamp}`,
-      text: `${entry.result.effectName}`,
-      emoji: '💚',
-      target,
-      type: 'buff',
-      timestamp,
-    };
+    return null;
   }
 
   return null;
@@ -338,6 +345,353 @@ function deriveTerminalLogIndex(combat: CombatState, log: CombatLogEntry[]): num
   return null;
 }
 
+function expandAttackContributions(
+  entry: CombatLogEntry,
+  logIndex: number
+): DamageNumber[] {
+  if (
+    entry.action !== 'ATTACK' ||
+    entry.target === 'none' ||
+    !entry.result.contributions?.length
+  ) {
+    return [];
+  }
+
+  let remainingArmor = entry.result.armorLost ?? 0;
+  let remainingDamage = entry.result.damage ?? 0;
+  const timestamp = Date.now();
+  const numbers: DamageNumber[] = [];
+  const target = entry.target as 'player' | 'enemy';
+
+  entry.result.contributions.forEach((contribution, contributionIndex) => {
+    let contributionValue = contribution.value;
+    if (contributionValue <= 0) return;
+
+    const armorPart = Math.min(contributionValue, remainingArmor);
+    if (armorPart > 0) {
+      numbers.push({
+        id: `arm-${logIndex}-${contributionIndex}-${timestamp}`,
+        value: armorPart,
+        type: 'armor',
+        target,
+        timestamp,
+        source: contribution.source,
+        lane: contributionIndex,
+      });
+      remainingArmor -= armorPart;
+      contributionValue -= armorPart;
+    }
+
+    const damagePart = Math.min(contributionValue, remainingDamage);
+    if (damagePart > 0) {
+      numbers.push({
+        id: `dmg-${logIndex}-${contributionIndex}-${timestamp}`,
+        value: damagePart,
+        type: 'damage',
+        target,
+        timestamp,
+        source: contribution.source,
+        lane: contributionIndex,
+      });
+      remainingDamage -= damagePart;
+    }
+  });
+
+  if (numbers.length === 0) {
+    if ((entry.result.damage ?? 0) > 0) {
+      numbers.push({
+        id: `dmg-${logIndex}-${timestamp}`,
+        value: entry.result.damage ?? 0,
+        type: 'damage',
+        target,
+        timestamp,
+        source: entry.result.source,
+      });
+    }
+    if ((entry.result.armorLost ?? 0) > 0) {
+      numbers.push({
+        id: `arm-${logIndex}-${timestamp}`,
+        value: entry.result.armorLost ?? 0,
+        type: 'armor',
+        target,
+        timestamp,
+        source: entry.result.source,
+      });
+    }
+  }
+
+  return numbers;
+}
+
+function createContributionDamageNumber(
+  entry: CombatLogEntry,
+  logIndex: number,
+  contributionIndex: number
+): DamageNumber[] {
+  if (
+    entry.action !== 'ATTACK' ||
+    entry.target === 'none' ||
+    !entry.result.contributions?.length ||
+    contributionIndex < 0 ||
+    contributionIndex >= entry.result.contributions.length
+  ) {
+    return [];
+  }
+
+  const target = entry.target as 'player' | 'enemy';
+  const timestamp = Date.now();
+  const contribution = entry.result.contributions[contributionIndex];
+  let remainingArmor = entry.result.armorLost ?? 0;
+  let remainingDamage = entry.result.damage ?? 0;
+
+  for (let i = 0; i < contributionIndex; i += 1) {
+    const priorValue = entry.result.contributions[i]?.value ?? 0;
+    const priorArmor = Math.min(priorValue, remainingArmor);
+    remainingArmor -= priorArmor;
+    remainingDamage -= Math.min(priorValue - priorArmor, remainingDamage);
+  }
+
+  let contributionValue = contribution.value;
+  const armorPart = Math.min(contributionValue, remainingArmor);
+  contributionValue -= armorPart;
+
+  const damagePart = Math.min(contributionValue, remainingDamage);
+  if (armorPart > 0 && damagePart > 0) {
+    return [
+      {
+        id: `split-${logIndex}-${contributionIndex}-${timestamp}`,
+        value: armorPart + damagePart,
+        type: 'split',
+        target,
+        timestamp,
+        source: contribution.source,
+        splitArmorValue: armorPart,
+        splitDamageValue: damagePart,
+      },
+    ];
+  }
+
+  if (armorPart > 0) {
+    return [
+      {
+        id: `arm-${logIndex}-${contributionIndex}-${timestamp}`,
+        value: armorPart,
+        type: 'armor',
+        target,
+        timestamp,
+        source: contribution.source,
+      },
+    ];
+  }
+
+  if (damagePart > 0) {
+    return [
+      {
+        id: `dmg-${logIndex}-${contributionIndex}-${timestamp}`,
+        value: damagePart,
+        type: 'damage',
+        target,
+        timestamp,
+        source: contribution.source,
+      },
+    ];
+  }
+
+  return [];
+}
+
+function getAttackProgressThroughContribution(
+  entry: CombatLogEntry,
+  contributionIndex?: number | null
+): { armorLost: number; damage: number } {
+  if (entry.action !== 'ATTACK' || !entry.result.contributions?.length) {
+    return {
+      armorLost: entry.result.armorLost ?? 0,
+      damage: entry.result.damage ?? 0,
+    };
+  }
+
+  if (contributionIndex === undefined) {
+    return {
+      armorLost: entry.result.armorLost ?? 0,
+      damage: entry.result.damage ?? 0,
+    };
+  }
+
+  if (contributionIndex === null || contributionIndex < 0) {
+    return { armorLost: 0, damage: 0 };
+  }
+
+  let remainingArmor = entry.result.armorLost ?? 0;
+  let remainingDamage = entry.result.damage ?? 0;
+  let appliedArmor = 0;
+  let appliedDamage = 0;
+
+  for (
+    let index = 0;
+    index <= contributionIndex && index < entry.result.contributions.length;
+    index += 1
+  ) {
+    let contributionValue = entry.result.contributions[index]?.value ?? 0;
+    if (contributionValue <= 0) continue;
+
+    const armorPart = Math.min(contributionValue, remainingArmor);
+    appliedArmor += armorPart;
+    remainingArmor -= armorPart;
+    contributionValue -= armorPart;
+
+    const damagePart = Math.min(contributionValue, remainingDamage);
+    appliedDamage += damagePart;
+    remainingDamage -= damagePart;
+  }
+
+  return {
+    armorLost: appliedArmor,
+    damage: appliedDamage,
+  };
+}
+
+function isFinalAttackEntryForActorPhase(
+  log: CombatLogEntry[] | undefined,
+  currentIndex: number
+): boolean {
+  if (!log) return true;
+  const entry = log[currentIndex];
+  if (!entry || entry.action !== 'ATTACK') return false;
+
+  for (let index = currentIndex + 1; index < log.length; index += 1) {
+    const nextEntry = log[index];
+    if (!nextEntry) break;
+    if (nextEntry.turn !== entry.turn || nextEntry.timing !== entry.timing || nextEntry.actor !== entry.actor) {
+      break;
+    }
+    if (nextEntry.action === 'ATTACK') {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function applyLogEntryToCombatants(
+  entry: CombatLogEntry,
+  log: CombatLogEntry[] | undefined,
+  entryIndex: number,
+  player: CombatantState,
+  enemy: CombatantState,
+  gold: { player: number; enemy: number },
+  contributionIndex?: number | null
+) {
+  if (!entry || entry.target === 'none') return;
+
+  const target = entry.target === 'player' ? player : enemy;
+  const { result } = entry;
+  const attackProgress =
+    entry.action === 'ATTACK'
+      ? getAttackProgressThroughContribution(entry, contributionIndex)
+      : {
+          armorLost: result.armorLost ?? 0,
+          damage: result.damage ?? 0,
+        };
+
+  if (attackProgress.armorLost > 0) {
+    target.arm = Math.max(0, target.arm - attackProgress.armorLost);
+  }
+
+  if (attackProgress.damage > 0) {
+    target.hp = Math.max(0, target.hp - attackProgress.damage);
+  }
+
+  if (result.armorGained && result.armorGained > 0) {
+    target.arm += result.armorGained;
+  }
+
+  if (result.atkBonus && result.atkBonus > 0) {
+    target.atk += result.atkBonus;
+  }
+
+  if (result.spdBonus && result.spdBonus > 0) {
+    target.spd += result.spdBonus;
+  }
+
+  if (result.healing && result.healing > 0) {
+    if (result.effectName === 'Crystal Crown') {
+      target.maxHp += result.healing;
+      target.hp += result.healing;
+    } else {
+      target.hp = Math.min(target.maxHp, target.hp + result.healing);
+    }
+  }
+
+  if (result.statusApplied) {
+    const { type, stacks } = result.statusApplied;
+    target.statusEffects = {
+      ...target.statusEffects,
+      [type]: Math.max(0, (target.statusEffects[type] ?? 0) + stacks),
+    };
+  }
+
+  if (result.statusRemoved) {
+    const { type, stacks } = result.statusRemoved;
+    if (type !== 'bleed') {
+      target.statusEffects = {
+        ...target.statusEffects,
+        [type]: Math.max(0, (target.statusEffects[type] ?? 0) - stacks),
+      };
+    }
+  }
+
+  const actorCombatant =
+    entry.actor === 'player' ? player : entry.actor === 'enemy' ? enemy : null;
+  const targetCombatant =
+    entry.target === 'player' ? player : entry.target === 'enemy' ? enemy : null;
+
+  if (actorCombatant && result.source?.kind === 'status') {
+    if (result.source.id === 'shrapnel' && (result.damage ?? 0) > 0) {
+      actorCombatant.statusEffects = {
+        ...actorCombatant.statusEffects,
+        shrapnel: 0,
+      };
+    }
+  }
+
+  if (targetCombatant && result.source?.kind === 'status') {
+    if (result.source.id === 'bleed' && (result.damage ?? 0) > 0) {
+      targetCombatant.statusEffects = {
+        ...targetCombatant.statusEffects,
+        bleed: Math.max(0, targetCombatant.statusEffects.bleed - 1),
+      };
+    }
+  }
+
+  if (
+    actorCombatant &&
+    entry.action === 'ATTACK' &&
+    isFinalAttackEntryForActorPhase(log, entryIndex)
+  ) {
+    actorCombatant.statusEffects = {
+      ...actorCombatant.statusEffects,
+      chill: Math.max(0, actorCombatant.statusEffects.chill - 1),
+    };
+  }
+
+  if (result.goldStolen && result.goldStolen > 0) {
+    if (entry.actor === 'player') {
+      gold.enemy = Math.max(0, gold.enemy - result.goldStolen);
+      gold.player += result.goldStolen;
+    } else if (entry.actor === 'enemy') {
+      gold.player = Math.max(0, gold.player - result.goldStolen);
+      gold.enemy += result.goldStolen;
+    } else if (entry.target === 'player') {
+      gold.player = Math.max(0, gold.player - result.goldStolen);
+      gold.enemy += result.goldStolen;
+    } else if (entry.target === 'enemy') {
+      gold.enemy = Math.max(0, gold.enemy - result.goldStolen);
+      gold.player += result.goldStolen;
+    }
+  }
+}
+
 // ============================================================================
 // Reducer
 // ============================================================================
@@ -345,12 +699,25 @@ function deriveTerminalLogIndex(combat: CombatState, log: CombatLogEntry[]): num
 function combatReducer(state: CombatUIState, action: CombatAction): CombatUIState {
   switch (action.type) {
     case 'START_COMBAT': {
-      // Resolve combat immediately (it's deterministic)
+      const localCombat = action.input.useParityResolver
+        ? resolveCombatWithParity(action.input)
+        : resolveCombat(action.input);
       const baseCombat = createCombatState(action.input);
-      const resolvedCombat = resolveCombat(action.input);
+      const resolvedCombat = {
+        ...baseCombat,
+        player: localCombat.player,
+        enemy: localCombat.enemy,
+        log: localCombat.log,
+        result: localCombat.result,
+        turn: localCombat.log.reduce((max, entry) => Math.max(max, entry.turn), 0),
+        playerGold: localCombat.playerGold,
+        enemyGold: localCombat.enemyGold,
+        goldReward: localCombat.goldReward,
+      };
 
       console.log('[CombatContext] START_COMBAT:', {
-        logEntries: resolvedCombat.log.length,
+        localLogEntries: localCombat.log.length,
+        replayLogEntries: resolvedCombat.log.length,
         result: resolvedCombat.result,
         playerHp: action.input.player.hp,
         enemyHp: action.input.enemy.hp,
@@ -361,7 +728,8 @@ function combatReducer(state: CombatUIState, action: CombatAction): CombatUIStat
         ...state,
         combat: baseCombat,
         resolvedCombat,
-        currentLogIndex: 0,
+        currentLogIndex: -1,
+        currentContributionIndex: null,
         isAnimating: true,
         isComplete: false,
         damageNumbers: [],
@@ -380,7 +748,7 @@ function combatReducer(state: CombatUIState, action: CombatAction): CombatUIStat
       if (!action.input.preserveArmor) {
         baseCombat.player = { ...baseCombat.player, arm: 0, bonusArm: 0 };
       }
-      const convertedLog = convertBackendLogToFrontend(action.backendLog);
+      const convertedLog = convertBackendLogToFrontend(action.backendLog, action.input);
       const typedLog = convertedLog as unknown as CombatLogEntry[];
 
       // If backend log is too short to produce a meaningful animation (< 3 entries),
@@ -393,13 +761,16 @@ function combatReducer(state: CombatUIState, action: CombatAction): CombatUIStat
           playerHp: action.input.player.hp,
           bossId: action.input.bossId,
         });
-        const localCombat = resolveCombat(action.input);
+        const localCombat = action.input.useParityResolver
+          ? resolveCombatWithParity(action.input)
+          : resolveCombat(action.input);
         console.log('[CombatContext] Local resolver produced log with', localCombat.log.length, 'entries');
         return {
           ...state,
           combat: createCombatState(action.input),
           resolvedCombat: localCombat,
-          currentLogIndex: 0,
+          currentLogIndex: -1,
+          currentContributionIndex: null,
           isAnimating: true,
           isComplete: false,
           damageNumbers: [],
@@ -436,7 +807,8 @@ function combatReducer(state: CombatUIState, action: CombatAction): CombatUIStat
         ...state,
         combat: baseCombat,
         resolvedCombat,
-        currentLogIndex: 0,
+        currentLogIndex: -1,
+        currentContributionIndex: null,
         isAnimating: true,
         isComplete: false,
         damageNumbers: [],
@@ -449,7 +821,9 @@ function combatReducer(state: CombatUIState, action: CombatAction): CombatUIStat
       // Run local resolver for the combat animation log, but override
       // the result with the authoritative on-chain outcome.
       const baseCombat = createCombatState(action.input);
-      const localCombat = resolveCombat(action.input);
+      const localCombat = action.input.useParityResolver
+        ? resolveCombatWithParity(action.input)
+        : resolveCombat(action.input);
       const onChainResult = action.outcome.playerWon
         ? ('VICTORY' as const)
         : ('DEFEAT' as const);
@@ -472,7 +846,8 @@ function combatReducer(state: CombatUIState, action: CombatAction): CombatUIStat
         ...state,
         combat: baseCombat,
         resolvedCombat,
-        currentLogIndex: 0,
+        currentLogIndex: -1,
+        currentContributionIndex: null,
         isAnimating: true,
         isComplete: false,
         damageNumbers: [],
@@ -500,24 +875,32 @@ function combatReducer(state: CombatUIState, action: CombatAction): CombatUIStat
       const newDamageNumbers = [...state.damageNumbers];
       const newEffectNotifications = [...state.effectNotifications];
 
-      if (entry?.result.damage && entry.target !== 'none') {
-        newDamageNumbers.push({
-          id: `dmg-${newIndex}-${Date.now()}`,
-          value: entry.result.damage,
-          type: 'damage',
-          target: entry.target,
-          timestamp: Date.now(),
-        });
-      }
+      if (entry) {
+        if (entry.result.contributions?.length) {
+          newDamageNumbers.push(...createContributionDamageNumber(entry, newIndex, 0));
+        } else {
+          if (entry.result.damage && entry.target !== 'none') {
+            newDamageNumbers.push({
+              id: `dmg-${newIndex}-${Date.now()}`,
+              value: entry.result.damage,
+              type: 'damage',
+              target: entry.target,
+              timestamp: Date.now(),
+              source: entry.result.source,
+            });
+          }
 
-      if (entry?.result.armorLost && entry.target !== 'none') {
-        newDamageNumbers.push({
-          id: `arm-${newIndex}-${Date.now()}`,
-          value: entry.result.armorLost,
-          type: 'armor',
-          target: entry.target,
-          timestamp: Date.now(),
-        });
+          if (entry.result.armorLost && entry.target !== 'none') {
+            newDamageNumbers.push({
+              id: `arm-${newIndex}-${Date.now()}`,
+              value: entry.result.armorLost,
+              type: 'armor',
+              target: entry.target,
+              timestamp: Date.now(),
+              source: entry.result.source,
+            });
+          }
+        }
       }
 
       if (entry?.result.healing && entry.target !== 'none') {
@@ -527,7 +910,61 @@ function combatReducer(state: CombatUIState, action: CombatAction): CombatUIStat
           type: 'heal',
           target: entry.target,
           timestamp: Date.now(),
+          source: entry.result.source,
         });
+      }
+
+      if (entry?.result.armorGained && entry.target !== 'none') {
+        newDamageNumbers.push({
+          id: `armg-${newIndex}-${Date.now()}`,
+          value: entry.result.armorGained,
+          type: 'stat',
+          statType: 'ARM',
+          target: entry.target,
+          timestamp: Date.now(),
+          source: entry.result.source,
+        });
+      }
+
+      if (entry?.result.atkBonus && entry.target !== 'none') {
+        newDamageNumbers.push({
+          id: `atk-${newIndex}-${Date.now()}`,
+          value: entry.result.atkBonus,
+          type: 'stat',
+          statType: 'ATK',
+          target: entry.target,
+          timestamp: Date.now(),
+          source: entry.result.source,
+        });
+      }
+
+      if (entry?.result.spdBonus && entry.target !== 'none') {
+        newDamageNumbers.push({
+          id: `spd-${newIndex}-${Date.now()}`,
+          value: entry.result.spdBonus,
+          type: 'stat',
+          statType: 'SPD',
+          target: entry.target,
+          timestamp: Date.now(),
+          source: entry.result.source,
+        });
+      }
+
+      if (entry?.action === 'APPLY_STATUS' && entry.result.statusApplied && entry.target !== 'none') {
+        const rawStatusType = entry.result.statusApplied.type;
+        const statusType =
+          rawStatusType === 'reflection' ? undefined : (rawStatusType as DamageNumber['statusType']);
+        if (statusType) {
+          newDamageNumbers.push({
+            id: `status-${newIndex}-${Date.now()}`,
+            value: entry.result.statusApplied.stacks,
+            type: 'status',
+            target: entry.target,
+            timestamp: Date.now(),
+            source: entry.result.source,
+            statusType,
+          });
+        }
       }
 
       if (entry?.result.goldStolen && entry.result.goldStolen > 0) {
@@ -537,6 +974,7 @@ function combatReducer(state: CombatUIState, action: CombatAction): CombatUIStat
           type: 'gold',
           target: entry.target === 'none' ? 'player' : entry.target,
           timestamp: Date.now(),
+          source: entry.result.source,
         });
       }
 
@@ -556,16 +994,42 @@ function combatReducer(state: CombatUIState, action: CombatAction): CombatUIStat
       return {
         ...state,
         currentLogIndex: newIndex,
+        currentContributionIndex: entry?.result.contributions?.length ? 0 : null,
         damageNumbers: trimmedNumbers,
         effectNotifications: trimmedNotifications,
       };
     }
 
+    case 'ADVANCE_CONTRIBUTION': {
+      if (!state.resolvedCombat) return state;
+      const entry = state.resolvedCombat.log[state.currentLogIndex];
+      if (!entry?.result.contributions?.length) return state;
+      const nextContributionIndex = (state.currentContributionIndex ?? 0) + 1;
+      if (nextContributionIndex >= entry.result.contributions.length) {
+        return state;
+      }
+
+      const newDamageNumbers = [
+        ...state.damageNumbers,
+        ...createContributionDamageNumber(entry, state.currentLogIndex, nextContributionIndex),
+      ].slice(-6);
+
+      return {
+        ...state,
+        currentContributionIndex: nextContributionIndex,
+        damageNumbers: newDamageNumbers,
+      };
+    }
+
     case 'COMPLETE_ANIMATION': {
+      const currentEntry = state.resolvedCombat?.log[state.currentLogIndex];
       return {
         ...state,
         isAnimating: false,
         isComplete: true,
+        currentContributionIndex: currentEntry?.result.contributions?.length
+          ? currentEntry.result.contributions.length - 1
+          : null,
       };
     }
 
@@ -677,8 +1141,12 @@ export function CombatProvider({ children, initialSpeed, onSpeedChange }: Combat
 
     const normalizeCombatant = (combatant: CombatantState): CombatantState => ({
       ...combatant,
+      atk: combatant.atk + combatant.bonusAtk,
       arm: combatant.arm + combatant.bonusArm,
+      spd: combatant.spd + combatant.bonusSpd,
+      bonusAtk: 0,
       bonusArm: 0,
+      bonusSpd: 0,
       statusEffects: { ...combatant.statusEffects },
     });
 
@@ -689,70 +1157,37 @@ export function CombatProvider({ children, initialSpeed, onSpeedChange }: Combat
 
     const log = state.resolvedCombat.log;
     const maxIndex = Math.min(state.currentLogIndex, log.length - 1);
+    const gold = { player: playerGold, enemy: enemyGold };
 
-    for (let index = 0; index <= maxIndex; index += 1) {
+    for (let index = 0; index < maxIndex; index += 1) {
       const entry = log[index];
-      if (!entry || entry.target === 'none') continue;
-
-      const target = entry.target === 'player' ? player : enemy;
-      const { result } = entry;
-
-      if (result.armorLost && result.armorLost > 0) {
-        target.arm = Math.max(0, target.arm - result.armorLost);
-      }
-
-      if (result.damage && result.damage > 0) {
-        target.hp = Math.max(0, target.hp - result.damage);
-      }
-
-      if (result.armorGained && result.armorGained > 0) {
-        target.arm += result.armorGained;
-      }
-
-      if (result.healing && result.healing > 0) {
-        if (result.effectName === 'Crystal Crown') {
-          target.maxHp += result.healing;
-          target.hp += result.healing;
-        } else {
-          target.hp = Math.min(target.maxHp, target.hp + result.healing);
-        }
-      }
-
-      if (result.statusApplied) {
-        const { type, stacks } = result.statusApplied;
-        target.statusEffects = {
-          ...target.statusEffects,
-          [type]: Math.max(0, target.statusEffects[type] + stacks),
-        };
-      }
-
-      if (result.statusRemoved) {
-        const { type, stacks } = result.statusRemoved;
-        target.statusEffects = {
-          ...target.statusEffects,
-          [type]: Math.max(0, target.statusEffects[type] - stacks),
-        };
-      }
-
-      if (result.goldStolen && result.goldStolen > 0) {
-        if (entry.actor === 'player') {
-          enemyGold = Math.max(0, enemyGold - result.goldStolen);
-          playerGold = playerGold + result.goldStolen;
-        } else if (entry.actor === 'enemy') {
-          playerGold = Math.max(0, playerGold - result.goldStolen);
-          enemyGold = enemyGold + result.goldStolen;
-        } else if (entry.target === 'player') {
-          playerGold = Math.max(0, playerGold - result.goldStolen);
-          enemyGold = enemyGold + result.goldStolen;
-        } else if (entry.target === 'enemy') {
-          enemyGold = Math.max(0, enemyGold - result.goldStolen);
-          playerGold = playerGold + result.goldStolen;
-        }
-      }
+      applyLogEntryToCombatants(entry, log, index, player, enemy, gold);
     }
 
-    return { player, enemy, playerGold, enemyGold };
-  }, [state.resolvedCombat, state.combat, state.currentLogIndex]);
+    if (maxIndex >= 0 && log[maxIndex]) {
+      applyLogEntryToCombatants(
+        log[maxIndex],
+        log,
+        maxIndex,
+        player,
+        enemy,
+        gold,
+        state.currentContributionIndex
+      );
+    }
+
+    return {
+      player,
+      enemy,
+      playerGold: gold.player,
+      enemyGold: gold.enemy,
+    };
+  }, [
+    state.resolvedCombat,
+    state.combat,
+    state.currentLogIndex,
+    state.currentContributionIndex,
+  ]);
 
   const getResult = useCallback(() => {
     return state.resolvedCombat?.result ?? null;
@@ -768,7 +1203,28 @@ export function CombatProvider({ children, initialSpeed, onSpeedChange }: Combat
 
     const logLength = state.resolvedCombat.log.length;
     const stopAtIndex = terminalLogIndex() ?? (logLength - 1);
-    if (state.currentLogIndex >= stopAtIndex) {
+    const currentEntry = state.resolvedCombat.log[state.currentLogIndex];
+    const activeContributionIndex = state.currentContributionIndex;
+    const isInitialDelay = state.currentLogIndex < 0;
+    const hasPendingContributions =
+      !!currentEntry?.result.contributions?.length &&
+      activeContributionIndex !== null &&
+      activeContributionIndex < currentEntry.result.contributions.length - 1;
+    const isWaitingForLastContributionToFinish =
+      !!currentEntry?.result.contributions?.length &&
+      activeContributionIndex !== null &&
+      activeContributionIndex >= currentEntry.result.contributions.length - 1;
+    const isWaitingForSinglePopupToFinish =
+      !currentEntry?.result.contributions?.length && entryHasFloatingNumber(currentEntry);
+    const isInstantStatusRemoval = entryIsStatusRemovalOnly(currentEntry);
+    const isAtTerminalEntry = !isInitialDelay && state.currentLogIndex >= stopAtIndex;
+    const shouldCompleteAfterCurrentEntry =
+      isAtTerminalEntry &&
+      !hasPendingContributions &&
+      !isWaitingForLastContributionToFinish &&
+      !isWaitingForSinglePopupToFinish;
+
+    if (shouldCompleteAfterCurrentEntry) {
       if (logLength <= 2) {
         console.warn('[CombatContext] Animation completing with very few log entries:', {
           logLength,
@@ -782,18 +1238,57 @@ export function CombatProvider({ children, initialSpeed, onSpeedChange }: Combat
       return;
     }
 
-    const intervalMs = getCombatAnimationIntervalMs(speed);
-    if (intervalMs === null) return;
+    const delayMs = isInitialDelay
+      ? speed === 'paused'
+        ? null
+        : INITIAL_COMBAT_START_DELAY_MS / COMBAT_SPEED_MULTIPLIER[speed]
+      : hasPendingContributions
+        ? speed === 'paused'
+          ? null
+          : CONTRIBUTION_STAGGER_MS / COMBAT_SPEED_MULTIPLIER[speed]
+        : isWaitingForLastContributionToFinish
+          ? speed === 'paused'
+            ? null
+            : (FLOATING_NUMBER_FADE_DELAY_MS + FLOATING_NUMBER_FADE_MS) /
+              COMBAT_SPEED_MULTIPLIER[speed]
+          : isWaitingForSinglePopupToFinish
+          ? speed === 'paused'
+            ? null
+            : (FLOATING_NUMBER_FADE_DELAY_MS + FLOATING_NUMBER_FADE_MS) /
+              COMBAT_SPEED_MULTIPLIER[speed]
+          : isInstantStatusRemoval
+            ? 0
+          : getCombatAnimationIntervalMs(speed);
+
+    if (delayMs === null) return;
 
     const timer = setTimeout(() => {
+      if (hasPendingContributions) {
+        dispatch({ type: 'ADVANCE_CONTRIBUTION' });
+        return;
+      }
+
+      if (isAtTerminalEntry) {
+        dispatch({ type: 'COMPLETE_ANIMATION' });
+        return;
+      }
+
       dispatch({
         type: 'ADVANCE_LOG',
         index: Math.min(state.currentLogIndex + 1, stopAtIndex),
       });
-    }, intervalMs);
+    }, delayMs);
 
     return () => clearTimeout(timer);
-  }, [state.currentLogIndex, state.resolvedCombat, state.isComplete, speed, dispatch, terminalLogIndex]);
+  }, [
+    state.currentLogIndex,
+    state.currentContributionIndex,
+    state.resolvedCombat,
+    state.isComplete,
+    speed,
+    dispatch,
+    terminalLogIndex,
+  ]);
 
   const value = useMemo<CombatContextType>(() => ({
     state,

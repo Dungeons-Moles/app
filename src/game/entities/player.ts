@@ -323,7 +323,7 @@ export function applyStatusEffect(
     ...player,
     statusEffects: {
       ...player.statusEffects,
-      [effect]: player.statusEffects[effect] + stacks,
+      [effect]: (player.statusEffects[effect] ?? 0) + stacks,
     },
   };
 }
@@ -340,7 +340,7 @@ export function removeStatusEffect(
     ...player,
     statusEffects: {
       ...player.statusEffects,
-      [effect]: Math.max(0, player.statusEffects[effect] - stacks),
+      [effect]: Math.max(0, (player.statusEffects[effect] ?? 0) - stacks),
     },
   };
 }

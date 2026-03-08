@@ -23,6 +23,7 @@ export interface EquippedEffect {
   id: string; // Unique identifier for once-per-turn tracking
   name: string; // Display name for logging
   sourceId: GearId | ToolId; // Item that provides this effect
+  sourceKind: 'tool' | 'gear' | 'itemset' | 'enemy' | 'boss';
 }
 
 /**
@@ -54,6 +55,7 @@ export function collectGearEffects(gear: Gear[]): EquippedEffect[] {
         id: `${item.id}-${i}-${effects.length}`, // Unique per item instance
         name: item.name,
         sourceId: item.id,
+        sourceKind: 'gear',
       });
     }
   }
@@ -78,6 +80,7 @@ export function collectToolEffects(tool: Tool | null): EquippedEffect[] {
     id: `${tool.id}-${i}`,
     name: tool.name,
     sourceId: tool.id,
+    sourceKind: 'tool',
   }));
 }
 
@@ -221,10 +224,12 @@ export function createEffectContext(
   state: CombatState,
   turn: number,
   playerGold: number,
+  enemyGold: number,
   flags: BattleFlags,
   firedThisTurn: Set<string>,
   callbacks: {
     updateGold: (amount: number) => void;
+    updateEnemyGold: (amount: number) => void;
     addLog: (entry: EffectLogEntry) => void;
     setStoredDamage: (value: number) => void;
     setPreventDeathCharges: (value: number) => void;
@@ -242,7 +247,9 @@ export function createEffectContext(
     owner: 'player',
     turn,
     playerGold,
+    enemyGold,
     updateGold: callbacks.updateGold,
+    updateEnemyGold: callbacks.updateEnemyGold,
     addLog: callbacks.addLog,
     firedThisTurn,
     storedDamage: extraState.storedDamage,
@@ -277,7 +284,7 @@ export function processPhaseEffects(
     rustApplied?: boolean;
     shrapnelGained?: boolean;
     isDayStart?: boolean;
-    playerActsFirst?: boolean;
+    ownerActsFirst?: boolean;
   }
 ): ProcessingResult {
   const result = processEffects({

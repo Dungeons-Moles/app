@@ -278,7 +278,7 @@ export const EnemyPanel = React.memo(function EnemyPanel({
                     styles.traitDescription,
                     { fontSize: descSize, lineHeight: descLine },
                   ]}
-                  numberOfLines={3}
+                  numberOfLines={4}
                 >
                   {t.description}
                 </Text>
