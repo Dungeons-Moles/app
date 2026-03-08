@@ -203,8 +203,8 @@ export function getBleedDamage(combatant: CombatantState): number {
 }
 
 /**
- * Process Bleed damage at turn end (on-chain parity: effects.rs process_bleed_damage_with_chill)
- * - Deals damage equal to Bleed stacks + Chill bonus (capped at 3)
+ * Process Bleed damage at turn end
+ * - Deals damage equal to Bleed stacks
  * - Bleed stack decay is handled separately in processStatusEffectsTurnEnd
  * Returns updated combatant and damage dealt
  */
@@ -217,8 +217,7 @@ export function processBleedDamage(combatant: CombatantState): {
     return { combatant, damage: 0 };
   }
 
-  const chillBonus = Math.min(3, combatant.statusEffects.chill);
-  const damage = bleedStacks + chillBonus;
+  const damage = bleedStacks;
   const newHp = Math.max(0, combatant.hp - damage);
 
   return {

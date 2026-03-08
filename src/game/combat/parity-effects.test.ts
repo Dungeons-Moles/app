@@ -37,7 +37,7 @@ describe('parity effect definitions', () => {
     expect(effects[0].effect).toMatchObject({
       trigger: { type: 'BattleStart' },
       effectType: 'StealGold',
-      value: 8,
+      value: 16,
     });
     expect(effects[1].effect).toMatchObject({
       trigger: { type: 'BattleStart' },

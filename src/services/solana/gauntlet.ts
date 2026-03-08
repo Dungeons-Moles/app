@@ -6,8 +6,7 @@ import {
   GAMEPLAY_STATE_PROGRAM_ID,
   deriveInventoryPda,
 } from './constants';
-import type { BackendCombatLogEntry } from './types/combat_events';
-import { LogAction } from './types/combat_events';
+import { decodeCombatLogEntryBuffer, type BackendCombatLogEntry } from './types/combat_events';
 import type { OnChainItemInstance } from './pitDraft';
 
 export const GAUNTLET_ENTRY_LAMPORTS = 10_000_000; // 0.01 SOL
@@ -24,7 +23,6 @@ const GAUNTLET_WEEK_ADVANCED_DISC = Buffer.from([19, 89, 61, 105, 33, 240, 42, 1
 const GAUNTLET_WEEK_ECHO_SELECTED_DISC = Buffer.from([205, 91, 189, 92, 175, 108, 93, 119]);
 const PUBKEY_LEN = 32;
 const ITEM_OPTION_SIZE = 11;
-const ENTRY_SIZE = 6;
 const ENTER_CU_LIMIT = 500_000;
 const INITIALIZE_CU_LIMIT = 1_400_000;
 const LOCAL_FEE_ACCOUNT_AIRDROP_LAMPORTS = 1_000_000;
@@ -397,14 +395,9 @@ function decodeGauntletCombatVisual(data: Buffer): GauntletCombatVisualEvent | n
     offset += 4;
     const combatLog: BackendCombatLogEntry[] = [];
     for (let i = 0; i < logCount; i++) {
-      combatLog.push({
-        turn: data.readUInt8(offset),
-        isPlayer: data.readUInt8(offset + 1) !== 0,
-        action: data.readUInt8(offset + 2) as LogAction,
-        value: data.readInt16LE(offset + 3),
-        extra: data.readUInt8(offset + 5),
-      });
-      offset += ENTRY_SIZE;
+      const decoded = decodeCombatLogEntryBuffer(data, offset);
+      combatLog.push(decoded.value);
+      offset += decoded.bytesRead;
     }
 
     // combat_log_truncated: bool (1 byte)

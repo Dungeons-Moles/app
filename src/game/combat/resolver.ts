@@ -949,11 +949,7 @@ export function resolveCombat(input: CombatResolverInput): CombatState {
       ? { ...effectiveAttacker, atk: effectiveAttacker.dig }
       : effectiveAttacker;
 
-    const damageResult = calculateDamage(
-      attackerForDamage,
-      defenderState,
-      attackerState.statusEffects.chill
-    );
+    const damageResult = calculateDamage(attackerForDamage, defenderState);
     const {
       combatant: updatedDefender,
       armorLost,

@@ -1,8 +1,48 @@
 # Combat Program Follow-ups
 
-This file logs structural combat/data changes made in the app that should later be ported to `../solana-programs`.
+This file logs structural combat/data changes made in the app that were ported to
+`../solana-programs`.
 
 It intentionally excludes replay-only and UI-only adjustments.
+
+## Program Status
+
+The Rust-side parity port is now implemented for the combat-rule changes below in
+`../solana-programs`.
+
+Implemented in the programs:
+
+- `combat-system`
+  - added `RemoveOwnArmor`
+  - implemented real `GoldToArmor` ratio conversion in combat execution
+  - added a real `COUNTDOWN` phase to the combat loop
+  - extended `CombatLogEntry` with authoritative `source` and `contributions`
+  - threaded source attribution through combat execution, status/reflection handling, and strike logging
+  - fixed `ApplyReflection` to be self-targeting instead of opponent-targeting
+  - implemented late-applied `Chill` preservation through turn end
+  - implemented `Crystal Mimic` reflection-depletion `Glass Heart` damage
+  - implemented `Mad Miner` temporary turn-1 exposed behavior
+  - implemented `Powder Keg Baron` `Short Fuse`
+  - implemented `Eldritch Mole` threshold-gated boss phases
+  - implemented `Rusted Chronomancer` turn-1-only extra strike
+- `boss-system`
+  - `Obsidian Golem` now maps to `OnDealNonWeaponDamage -> RemoveOwnArmor(2)`
+  - `Crystal Mimic` battle start reflection now maps to `ApplyReflection(2)` instead of a placeholder
+  - `Powder Keg Baron` countdown now has explicit self-damage and enemy non-weapon damage entries
+  - `Greedkeeper` steal amount updated from `8` to `16`
+  - `The Gilded Devourer` trait ratio constant updated from `6` to `3`
+  - `The Frostbound Leviathan` SPD gain now maps to `FirstTimeExposed`
+- `boss-system` trait conversion now maps the simple conditional cases that were previously being dropped:
+  - `PlayerDigLessThan -> DigGreaterThanEnemyDig`
+  - `PlayerExposed -> EnemyHasNoArmor`
+- `gameplay-state`
+  - boss fights now resolve through the boss-aware combat entrypoint, so these boss rules are actually used in session gameplay
+- `player-inventory`
+  - added annotated effect generators with source attribution for tool, gear, and itemset effects
+- `field-enemies`
+  - enemy combat inputs and traits now carry authoritative enemy combat sources
+
+There are no remaining program-side combat parity items pending from this document.
 
 ## Structural Changes To Port
 

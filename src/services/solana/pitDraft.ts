@@ -14,8 +14,7 @@ import { SOLANA_CONFIG } from './config';
 import { GAMEPLAY_STATE_PROGRAM_ID, deriveGameplayVrfStatePda, derivePlayerProfilePda } from './constants';
 import { generateRandomness } from './vrf';
 import { toolToFrontend, gearToFrontend } from '@/data/id-mapping';
-import type { BackendCombatLogEntry } from './types/combat_events';
-import { LogAction } from './types/combat_events';
+import { decodeCombatLogEntryBuffer, type BackendCombatLogEntry } from './types/combat_events';
 import type { Tool, Gear, ToolOil } from '@/game/engine/types';
 import { getAllToolDefinitions, getToolStatsAtTier } from '@/game/entities/items';
 import { getAllGearDefinitions, RARITY_MULTIPLIER, getTierFromRarity } from '@/data/gear';
@@ -519,18 +518,11 @@ function decodePitDraftCombatVisual(data: Buffer): PitDraftCombatVisualEvent | n
     const logCount = data.readUInt32LE(offset);
     offset += 4;
 
-    // CombatLogEntry: turn(u8) + is_player(bool/u8) + action(u8 enum) + value(i16) + extra(u8) = 6 bytes
-    const ENTRY_SIZE = 6;
     const combatLog: BackendCombatLogEntry[] = [];
     for (let i = 0; i < logCount; i++) {
-      combatLog.push({
-        turn: data.readUInt8(offset),
-        isPlayer: data.readUInt8(offset + 1) !== 0,
-        action: data.readUInt8(offset + 2) as LogAction,
-        value: data.readInt16LE(offset + 3),
-        extra: data.readUInt8(offset + 5),
-      });
-      offset += ENTRY_SIZE;
+      const decoded = decodeCombatLogEntryBuffer(data, offset);
+      combatLog.push(decoded.value);
+      offset += decoded.bytesRead;
     }
 
     // combat_log_truncated: bool (1 byte)

@@ -32,26 +32,19 @@ export interface DamageResult {
  * 3. If ignoresArmor, skip ARM absorption
  * 4. Armor damage = min(effectiveArm, effectiveAtk)
  * 5. HP damage = effectiveAtk - armorDamage (minimum 0)
- * 6. Shrapnel reflect = defender's shrapnel stacks + attacker's chill bonus (cap 3)
+ * 6. Shrapnel reflect = defender's shrapnel stacks
  *
  * Note: Chill affects strikes per turn (see getEffectiveStrikes in status-effects.ts),
  * NOT attack damage. This matches the on-chain behavior in effects.rs.
  *
  * @param attacker - The attacking combatant
  * @param defender - The defending combatant
- * @param attackerChill - Optional attacker chill stacks (for shrapnel chill bonus calculation)
  * @returns DamageResult with breakdown of damage calculation
  */
-export function calculateDamage(
-  attacker: CombatantState,
-  defender: CombatantState,
-  attackerChill: number = 0
-): DamageResult {
+export function calculateDamage(attacker: CombatantState, defender: CombatantState): DamageResult {
   // Step 1: Calculate base ATK (Chill does NOT affect ATK - it affects strikes)
   const baseAtk = attacker.atk + attacker.bonusAtk;
-  // On-chain parity: Chill adds bonus damage to all sources (capped at +3).
-  const chillBonus = Math.min(3, defender.statusEffects.chill);
-  const effectiveAtk = Math.max(0, baseAtk + chillBonus);
+  const effectiveAtk = Math.max(0, baseAtk);
 
   // Step 2: Calculate effective ARM pool
   // On-chain parity: Rust is handled by permanent ARM decay at end of each turn
@@ -71,12 +64,8 @@ export function calculateDamage(
   const hpDamage =
     effectiveAtk <= 0 || defender.hp <= 0 ? 0 : Math.max(0, effectiveAtk - armorDamage);
 
-  // Step 5: Calculate Shrapnel reflect (on-chain parity: effects.rs process_shrapnel_retaliation_with_chill)
-  // Shrapnel reflect includes attacker's chill bonus (capped at 3)
-  const shrapnelReflect =
-    defender.statusEffects.shrapnel > 0
-      ? defender.statusEffects.shrapnel + Math.min(3, attackerChill)
-      : 0;
+  // Step 5: Calculate Shrapnel reflect
+  const shrapnelReflect = defender.statusEffects.shrapnel > 0 ? defender.statusEffects.shrapnel : 0;
 
   return {
     baseAtk,

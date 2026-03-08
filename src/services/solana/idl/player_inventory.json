@@ -2666,6 +2666,9 @@
             "name": "RemoveArmor"
           },
           {
+            "name": "RemoveOwnArmor"
+          },
+          {
             "name": "GainStrikes"
           },
           {

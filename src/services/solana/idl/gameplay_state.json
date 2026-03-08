@@ -6109,6 +6109,26 @@
       }
     },
     {
+      "name": "CombatContribution",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "source",
+            "type": {
+              "defined": {
+                "name": "CombatSourceRef"
+              }
+            }
+          },
+          {
+            "name": "value",
+            "type": "i16"
+          }
+        ]
+      }
+    },
+    {
       "name": "CombatEnded",
       "docs": [
         "Emitted when combat ends"
@@ -6220,6 +6240,80 @@
               "Extra data (status_id for ApplyStatus, SPD bonus for Attack, 0 otherwise)"
             ],
             "type": "u8"
+          },
+          {
+            "name": "source",
+            "type": {
+              "option": {
+                "defined": {
+                  "name": "CombatSourceRef"
+                }
+              }
+            }
+          },
+          {
+            "name": "contributions",
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "CombatContribution"
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "CombatSourceKind",
+      "repr": {
+        "kind": "rust"
+      },
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Tool"
+          },
+          {
+            "name": "Gear"
+          },
+          {
+            "name": "Itemset"
+          },
+          {
+            "name": "Enemy"
+          },
+          {
+            "name": "Boss"
+          },
+          {
+            "name": "Status"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CombatSourceRef",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "kind",
+            "type": {
+              "defined": {
+                "name": "CombatSourceKind"
+              }
+            }
+          },
+          {
+            "name": "id",
+            "type": {
+              "array": [
+                "u8",
+                16
+              ]
+            }
           }
         ]
       }

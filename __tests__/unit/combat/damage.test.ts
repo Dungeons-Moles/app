@@ -275,19 +275,19 @@ describe('Damage Calculation', () => {
           statusEffects: { ...DEFAULT_STATUS_EFFECTS, rust: 2, shrapnel: 3 },
         });
 
-        const result = calculateDamage(attacker, defender, attacker.statusEffects.chill);
+        const result = calculateDamage(attacker, defender);
 
         // Base ATK: 12 + 2 = 14
         // Chill does NOT affect ATK (it affects strikes per turn)
         // On-chain parity: Rust reduces ARM permanently at end of turn, not during strikes
         // Defender effective ARM: (4 + 1) = 5
         // Damage: 14 - 5 = 9
-        // Shrapnel reflect: 3 + min(3, attacker chill 1) = 4
+        // Shrapnel reflect: defender shrapnel only = 3
         expect(result.baseAtk).toBe(14);
         expect(result.effectiveAtk).toBe(14); // Chill doesn't reduce ATK
         expect(result.armorDamage).toBe(5);
         expect(result.hpDamage).toBe(9);
-        expect(result.shrapnelReflect).toBe(4);
+        expect(result.shrapnelReflect).toBe(3);
       });
     });
   });

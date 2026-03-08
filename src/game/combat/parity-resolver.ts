@@ -537,29 +537,6 @@ function performStrike(
     rngValues: [],
   });
 
-  const retaliation = (defender.statusEffects.shrapnel ?? 0) > 0
-    ? (defender.statusEffects.shrapnel ?? 0) + Math.min(3, attacker.statusEffects.chill ?? 0)
-    : 0;
-  if (retaliation > 0) {
-    nextState = setCombatant(nextState, attackerSide, {
-      ...getCombatant(nextState, attackerSide),
-      hp: Math.max(0, getCombatant(nextState, attackerSide).hp - retaliation),
-    });
-    nextState = addLogEntry(nextState, {
-      turn: nextState.turn,
-      timing: attackerSide === 'player' ? CombatPhase.PlayerAttack : CombatPhase.EnemyAttack,
-      actor: defenderSide,
-      action: 'TRIGGER_ITEM',
-      target: attackerSide,
-      result: {
-        damage: retaliation,
-        effectName: 'Shrapnel',
-        source: { kind: 'status', id: 'shrapnel', name: 'Shrapnel' },
-      },
-      rngValues: [],
-    });
-  }
-
   nextState = runEffectsForSide(nextState, runtime, attackerSide, 'ON_HIT', ownerActsFirst, {
     isFirstStrike: strikeIndex === 0,
   });
@@ -581,6 +558,29 @@ function performStrike(
       isFirstStrike: true,
     });
     runtime[attackerSide].effects = shardState;
+  }
+
+  const retaliation = (defender.statusEffects.shrapnel ?? 0) > 0
+    ? (defender.statusEffects.shrapnel ?? 0)
+    : 0;
+  if (retaliation > 0) {
+    nextState = setCombatant(nextState, attackerSide, {
+      ...getCombatant(nextState, attackerSide),
+      hp: Math.max(0, getCombatant(nextState, attackerSide).hp - retaliation),
+    });
+    nextState = addLogEntry(nextState, {
+      turn: nextState.turn,
+      timing: attackerSide === 'player' ? CombatPhase.PlayerAttack : CombatPhase.EnemyAttack,
+      actor: defenderSide,
+      action: 'TRIGGER_ITEM',
+      target: attackerSide,
+      result: {
+        damage: retaliation,
+        effectName: 'Shrapnel',
+        source: { kind: 'status', id: 'shrapnel', name: 'Shrapnel' },
+      },
+      rngValues: [],
+    });
   }
 
   nextState = processTransitionEffects(nextState, runtime, input, attackerSide, ownerActsFirst);

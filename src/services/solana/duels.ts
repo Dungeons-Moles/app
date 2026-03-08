@@ -15,8 +15,7 @@ import {
   deriveGeneratedMapPda,
   deriveInventoryPda,
 } from './constants';
-import type { BackendCombatLogEntry } from './types/combat_events';
-import { LogAction } from './types/combat_events';
+import { decodeCombatLogEntryBuffer, type BackendCombatLogEntry } from './types/combat_events';
 import type { OnChainItemInstance } from './pitDraft';
 
 export const DUEL_ENTRY_LAMPORTS = 100_000_000; // 0.1 SOL
@@ -667,14 +666,9 @@ function decodeDuelCombatVisual(data: Buffer): DuelCombatVisualEvent | null {
 
     const combatLog: BackendCombatLogEntry[] = [];
     for (let i = 0; i < logCount; i++) {
-      combatLog.push({
-        turn: data.readUInt8(offset),
-        isPlayer: data.readUInt8(offset + 1) !== 0,
-        action: data.readUInt8(offset + 2) as LogAction,
-        value: data.readInt16LE(offset + 3),
-        extra: data.readUInt8(offset + 5),
-      });
-      offset += 6;
+      const decoded = decodeCombatLogEntryBuffer(data, offset);
+      combatLog.push(decoded.value);
+      offset += decoded.bytesRead;
     }
 
     // combat_log_truncated: bool (1 byte)

@@ -322,6 +322,10 @@ export interface BackendCombatLogEntry {
   value: number;
   /** Extra data (status_id for ApplyStatus, 0 otherwise) */
   extra: number;
+  /** Authoritative effect source from on-chain combat */
+  source?: CombatSourceRef;
+  /** Optional per-source breakdown for aggregated events */
+  contributions?: CombatContribution[];
 }
 
 /**
@@ -330,6 +334,111 @@ export interface BackendCombatLogEntry {
 export interface CombatLogEvent {
   player: string;
   entries: BackendCombatLogEntry[];
+}
+
+interface BufferDecodeResult<T> {
+  value: T;
+  bytesRead: number;
+}
+
+function trimSourceId(idBytes: Uint8Array): string {
+  return String.fromCharCode(...Array.from(idBytes)).replace(/\0+$/g, '').trim();
+}
+
+function parseCombatSourceKind(kind: number): CombatSourceRef['kind'] {
+  switch (kind) {
+    case 0:
+      return 'tool';
+    case 1:
+      return 'gear';
+    case 2:
+      return 'itemset';
+    case 3:
+      return 'enemy';
+    case 4:
+      return 'boss';
+    case 5:
+      return 'status';
+    default:
+      return 'status';
+  }
+}
+
+export function decodeCombatSourceRefBuffer(
+  data: Buffer,
+  offset: number
+): BufferDecodeResult<CombatSourceRef> {
+  const kind = parseCombatSourceKind(data.readUInt8(offset));
+  const id = trimSourceId(data.subarray(offset + 1, offset + 17));
+  return {
+    value: { kind, id, name: id || undefined },
+    bytesRead: 17,
+  };
+}
+
+export function decodeOptionCombatSourceRefBuffer(
+  data: Buffer,
+  offset: number
+): BufferDecodeResult<CombatSourceRef | undefined> {
+  const tag = data.readUInt8(offset);
+  if (tag === 0) {
+    return { value: undefined, bytesRead: 1 };
+  }
+  const decoded = decodeCombatSourceRefBuffer(data, offset + 1);
+  return {
+    value: decoded.value,
+    bytesRead: 1 + decoded.bytesRead,
+  };
+}
+
+export function decodeCombatContributionBuffer(
+  data: Buffer,
+  offset: number
+): BufferDecodeResult<CombatContribution> {
+  const source = decodeCombatSourceRefBuffer(data, offset);
+  const value = data.readInt16LE(offset + source.bytesRead);
+  return {
+    value: { source: source.value, value },
+    bytesRead: source.bytesRead + 2,
+  };
+}
+
+export function decodeCombatLogEntryBuffer(
+  data: Buffer,
+  offset: number
+): BufferDecodeResult<BackendCombatLogEntry> {
+  const turn = data.readUInt8(offset);
+  const isPlayer = data.readUInt8(offset + 1) !== 0;
+  const action = data.readUInt8(offset + 2) as LogAction;
+  const value = data.readInt16LE(offset + 3);
+  const extra = data.readUInt8(offset + 5);
+
+  let cursor = offset + 6;
+  const source = decodeOptionCombatSourceRefBuffer(data, cursor);
+  cursor += source.bytesRead;
+
+  const contributionCount = data.readUInt32LE(cursor);
+  cursor += 4;
+
+  const contributions: CombatContribution[] = [];
+  for (let i = 0; i < contributionCount; i++) {
+    const decoded = decodeCombatContributionBuffer(data, cursor);
+    contributions.push(decoded.value);
+    cursor += decoded.bytesRead;
+  }
+
+  return {
+    value: {
+      turn,
+      isPlayer,
+      action,
+      value,
+      extra,
+      source: source.value,
+      contributions: contributions.length > 0 ? contributions : undefined,
+    },
+    bytesRead: cursor - offset,
+  };
 }
 
 /**
@@ -431,6 +540,13 @@ function getStatusName(statusId: StatusId): string {
   }
 }
 
+function getStatusNameFromEntry(entry: BackendCombatLogEntry): string {
+  if (entry.source?.kind === 'status') {
+    return entry.source.id;
+  }
+  return getStatusName(entry.extra as StatusId);
+}
+
 function getReplayAttackSource(
   input: CombatResolverInput | undefined,
   actor: 'player' | 'enemy'
@@ -487,8 +603,8 @@ export function convertBackendLogToFrontend(
         target: targetOfAttacker,
           result: {
             damage: entry.value,
-            spdBonus: entry.extra > 0 ? entry.extra : undefined,
-            source: getReplayAttackSource(input, actorAsAttacker),
+            source: entry.source ?? getReplayAttackSource(input, actorAsAttacker),
+            contributions: entry.contributions,
           },
         rngValues: [],
       };
@@ -526,6 +642,8 @@ export function convertBackendLogToFrontend(
 
       case LogAction.StatusDamage:
         // is_player = who takes the status damage (target semantics)
+        {
+        const statusName = getStatusNameFromEntry(entry);
         return {
           turn: entry.turn,
           timing: 'TURN_START',
@@ -534,15 +652,16 @@ export function convertBackendLogToFrontend(
           target: affected, // isPlayer = who takes the damage
           result: {
             damage: entry.value,
-            effectName: `${getStatusName(entry.extra as StatusId)} damage`,
-            source: {
+            effectName: `${statusName} damage`,
+            source: entry.source ?? {
               kind: 'status',
-              id: getStatusName(entry.extra as StatusId),
-              name: getStatusName(entry.extra as StatusId),
+              id: statusName,
+              name: statusName,
             },
           },
           rngValues: [],
         };
+      }
 
       case LogAction.ArmorChange:
         // is_player = is_target_player (who gains/loses armor)
@@ -555,6 +674,7 @@ export function convertBackendLogToFrontend(
             target: affected,
             result: {
               armorGained: entry.value,
+              source: entry.source,
             },
             rngValues: [],
           };
@@ -567,6 +687,8 @@ export function convertBackendLogToFrontend(
             target: affected,
             result: {
               armorLost: Math.abs(entry.value),
+              source: entry.source,
+              contributions: entry.contributions,
             },
             rngValues: [],
           };
@@ -583,6 +705,7 @@ export function convertBackendLogToFrontend(
           result: {
             atkBonus: entry.value,
             effectName: entry.value > 0 ? `+${entry.value} ATK` : `${entry.value} ATK`,
+            source: entry.source,
           },
           rngValues: [],
         };
@@ -596,7 +719,9 @@ export function convertBackendLogToFrontend(
           action: 'TRIGGER_ITEM',
           target: affected,
           result: {
+            spdBonus: entry.value,
             effectName: entry.value > 0 ? `+${entry.value} SPD` : `${entry.value} SPD`,
+            source: entry.source,
           },
           rngValues: [],
         };
@@ -612,6 +737,7 @@ export function convertBackendLogToFrontend(
           result: {
             damage: entry.value,
             effectName: 'Item damage',
+            source: entry.source,
           },
           rngValues: [],
         };
@@ -627,7 +753,7 @@ export function convertBackendLogToFrontend(
           result: {
             damage: entry.value,
             effectName: 'Shrapnel Harness',
-            source: { kind: 'status', id: 'shrapnel', name: 'Shrapnel' },
+            source: entry.source ?? { kind: 'status', id: 'shrapnel', name: 'Shrapnel' },
           },
           rngValues: [],
         };
@@ -644,7 +770,7 @@ export function convertBackendLogToFrontend(
           result: {
             effectName: `Stole ${Math.abs(entry.value)} gold`,
             goldStolen: Math.abs(entry.value),
-            source: getReplayAttackSource(input, entry.isPlayer ? 'player' : 'enemy'),
+            source: entry.source ?? getReplayAttackSource(input, entry.isPlayer ? 'player' : 'enemy'),
           },
           rngValues: [],
         };
@@ -712,6 +838,8 @@ export function convertFrontendLogToBackend(
         action: LogAction.ArmorChange,
         value: -armorLost,
         extra: 0,
+        source: entry.result.source,
+        contributions: entry.result.contributions,
       });
     }
 
@@ -724,6 +852,8 @@ export function convertFrontendLogToBackend(
         extra: isStatusDamage(entry)
           ? getStatusId((entry.result.effectName ?? '').replace(/ damage$/i, '').toLowerCase())
           : (entry.result.spdBonus ?? 0),
+        source: entry.result.source,
+        contributions: entry.result.contributions,
       });
       continue;
     }
@@ -735,6 +865,7 @@ export function convertFrontendLogToBackend(
         action: LogAction.Heal,
         value: entry.result.healing,
         extra: 0,
+        source: entry.result.source,
       });
       continue;
     }
@@ -746,6 +877,7 @@ export function convertFrontendLogToBackend(
         action: LogAction.ApplyStatus,
         value: entry.result.statusApplied.stacks,
         extra: getStatusId(entry.result.statusApplied.type),
+        source: entry.result.source,
       });
       continue;
     }
@@ -757,6 +889,7 @@ export function convertFrontendLogToBackend(
         action: LogAction.ArmorChange,
         value: entry.result.armorGained,
         extra: 0,
+        source: entry.result.source,
       });
       continue;
     }
@@ -769,6 +902,7 @@ export function convertFrontendLogToBackend(
         action: LogAction.ArmorChange,
         value: -armorLost,
         extra: 0,
+        source: entry.result.source,
       });
       continue;
     }
@@ -781,6 +915,7 @@ export function convertFrontendLogToBackend(
         action: LogAction.GoldStolen,
         value: playerGainedGold ? entry.result.goldStolen : -entry.result.goldStolen,
         extra: 0,
+        source: entry.result.source,
       });
       continue;
     }
@@ -799,6 +934,7 @@ export function convertFrontendLogToBackend(
           : LogAction.NonWeaponDamage,
         value: entry.result.damage,
         extra: 0,
+        source: entry.result.source,
       });
       continue;
     }
@@ -815,6 +951,7 @@ export function convertFrontendLogToBackend(
         action: LogAction.Heal,
         value: entry.result.healing,
         extra: 0,
+        source: entry.result.source,
       });
       continue;
     }
@@ -831,6 +968,7 @@ export function convertFrontendLogToBackend(
         action: LogAction.ArmorChange,
         value: entry.result.armorGained,
         extra: 0,
+        source: entry.result.source,
       });
       continue;
     }
@@ -843,6 +981,7 @@ export function convertFrontendLogToBackend(
         action: LogAction.AtkChange,
         value: atkDelta,
         extra: 0,
+        source: entry.result.source,
       });
       continue;
     }
@@ -855,6 +994,7 @@ export function convertFrontendLogToBackend(
         action: LogAction.SpdChange,
         value: spdDelta,
         extra: 0,
+        source: entry.result.source,
       });
     }
   }

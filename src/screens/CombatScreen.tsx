@@ -46,11 +46,7 @@ type CombatScreenProps = {
   route: RouteProp<RootStackParamList, 'Combat'>;
 };
 
-// On-chain base values (ATK/ARM/SPD start at 0; bonuses come from BattleStart log entries)
 const DUEL_BASE_HP = 20;
-const DUEL_BASE_ATK = 0;
-const DUEL_BASE_ARM = 0;
-const DUEL_BASE_SPD = 0;
 const DUEL_BASE_DIG = 0;
 
 function buildDuelCombatant(
@@ -70,9 +66,9 @@ function buildDuelCombatant(
     isPlayer,
     maxHp,
     hp: maxHp,
-    atk: DUEL_BASE_ATK,
-    arm: DUEL_BASE_ARM,
-    spd: DUEL_BASE_SPD,
+    atk: itemStats.atk ?? 0,
+    arm: itemStats.arm ?? 0,
+    spd: itemStats.spd ?? 0,
     dig: DUEL_BASE_DIG + (itemStats.dig ?? 0),
     bonusAtk: 0,
     bonusArm: 0,
@@ -119,7 +115,6 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
   const {
     state: combatState,
     startCombat,
-    startCombatWithLog,
     startCombatWithOnchainOutcome,
     displayStates,
     getResult,
@@ -176,27 +171,14 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
         playerGold: combatInput.playerGold,
         enemyGold: combatInput.enemyGold,
         enemyActiveItemSets: combatInput.enemyActiveItemSets,
-        useParityResolver: combatInput.useParityResolver,
+        useParityResolver: true,
         preserveArmor: combatInput.preserveArmor,
       };
 
-      // Use backend log if available (ensures frontend matches on-chain)
-      if (combatInput.combatLog && combatInput.combatLog.length > 0) {
-        console.log('[CombatScreen] Starting combat with backend log (on-chain mode):', {
-          playerHp: combatInput.player.hp,
-          playerAtk: combatInput.player.atk,
-          enemyName: combatInput.enemy.name,
-          enemyHp: combatInput.enemy.hp,
-          logEntries: combatInput.combatLog.length,
-        });
-        const onChainResult = combatInput.onChainOutcome
-          ? combatInput.onChainOutcome.playerWon
-            ? ('VICTORY' as const)
-            : ('DEFEAT' as const)
-          : undefined;
-        startCombatWithLog(resolverInput, combatInput.combatLog, onChainResult);
-      } else if (combatInput.onChainOutcome) {
-        // Authoritative fallback: avoid local simulation drift when log parsing is delayed/missing.
+      // Temporary safety switch: on-chain combat currently uses the same parity resolver
+      // path as guest/simulator for visualization, while preserving the authoritative
+      // on-chain outcome when it is available.
+      if (combatInput.onChainOutcome) {
         console.log('[CombatScreen] Starting combat with on-chain outcome fallback:', {
           playerHp: combatInput.player.hp,
           enemyName: combatInput.enemy.name,
@@ -250,7 +232,6 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
   }, [
     combatInput,
     gameState?.combat,
-    startCombatWithLog,
     startCombatWithOnchainOutcome,
     gameState?.rngState,
     isBossFight,
@@ -473,20 +454,19 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
       // Note: Run result recording is now handled via CPI in end_session
       // No need to call recordRunResult separately - it's done on-chain
 
-      // Update local game state - ONLY for guest mode
-      // In on-chain mode, state was already synced via SYNC_MOVE before navigation to CombatScreen
-      // Dispatching RESOLVE_COMBAT in on-chain mode would overwrite the on-chain synced HP with
-      // the local combat replay result, causing HP desync (e.g., on-chain HP=4 but displays HP=10)
-      if (!isOnChainMode) {
-        console.log('[CombatScreen] Guest mode: Dispatching RESOLVE_COMBAT with result:', result);
-        gameDispatch({
-          type: 'RESOLVE_COMBAT',
-          result,
-          combat: combatState.resolvedCombat ?? undefined,
-        });
-      } else {
-        console.log('[CombatScreen] On-chain mode: Skipping RESOLVE_COMBAT (state already synced)');
-      }
+      // Temporary parity mode: on-chain combat visuals are resolved through the same
+      // frontend resolver path as guest/simulator, so the local exploration state must
+      // follow that same resolved combat state when returning to the map.
+      console.log('[CombatScreen] Dispatching RESOLVE_COMBAT with resolved state:', {
+        isOnChainMode,
+        result,
+        playerFinalHp: combatState.resolvedCombat?.player.hp,
+      });
+      gameDispatch({
+        type: 'RESOLVE_COMBAT',
+        result,
+        combat: combatState.resolvedCombat ?? undefined,
+      });
 
       // Navigate based on result
       const resolvedTotalMoves = combatInput?.totalMoves ?? gameState?.totalMoves ?? 0;

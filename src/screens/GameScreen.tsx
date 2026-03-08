@@ -75,6 +75,7 @@ import type {
 } from '../game/engine/types';
 import { LogAction, type BackendCombatLogEntry } from '../services/solana/types/combat_events';
 import { calculateItemStats } from '@/game/entities/items';
+import { normalizeCombatPlayerStats, type CombatPlayerStats } from './combat-player-stats';
 import type { GauntletCombatVisualEvent } from '@/services/solana/gauntlet';
 import { fetchGauntletEchoFromGameState } from '@/services/solana/gauntlet';
 import { createGameplayStateProgram } from '@/services/solana/programs';
@@ -113,15 +114,7 @@ function debugLog(...args: unknown[]) {
   }
 }
 
-type PlayerStats = {
-  hp: number;
-  maxHp: number;
-  atk: number;
-  arm: number;
-  spd: number;
-  dig: number;
-  gold: number;
-};
+type PlayerStats = CombatPlayerStats;
 
 type InventoryFocusTarget = 'none' | 'player' | 'enemy';
 
@@ -196,9 +189,10 @@ function createCombatParams(
 ): CombatParams {
   const enemyDef = ENEMY_DEFINITIONS[enemy.definitionId];
   const tierStats = enemyDef.tiers[enemy.tier - 1];
+  const normalizedPlayerStats = normalizeCombatPlayerStats(playerStats, playerGear, playerTool);
 
   return {
-    player: buildPlayerCombatant(playerStats),
+    player: buildPlayerCombatant(normalizedPlayerStats),
     enemy: buildEnemyCombatant(enemyDef.name, enemyDef.emoji, enemy.definitionId, tierStats),
     seed,
     enemyId: enemy.definitionId,
@@ -208,7 +202,7 @@ function createCombatParams(
     activeItemSets: activeItemsets as any[],
     playerGear,
     playerTool,
-    playerGold: playerStats.gold,
+    playerGold: normalizedPlayerStats.gold,
     week,
     isBossFight: false,
     combatLog,
@@ -238,9 +232,10 @@ function createBossCombatParams(
   if (!bossDef) {
     throw new Error(`Boss definition not found for ID: ${bossId}`);
   }
+  const normalizedPlayerStats = normalizeCombatPlayerStats(playerStats, playerGear, playerTool);
 
   return {
-    player: buildPlayerCombatant(playerStats),
+    player: buildPlayerCombatant(normalizedPlayerStats),
     enemy: buildEnemyCombatant(bossDef.name, bossDef.emoji, bossId, bossDef.stats),
     seed,
     bossId,
@@ -249,7 +244,7 @@ function createBossCombatParams(
     activeItemSets: activeItemsets as any[],
     playerGear,
     playerTool,
-    playerGold: playerStats.gold,
+    playerGold: normalizedPlayerStats.gold,
     week,
     isBossFight: true,
     combatLog,
@@ -278,9 +273,10 @@ function createGauntletCombatParams(
 
   const echoStats = calculateItemStats(echoTool, echoGear);
   const echoMaxHp = 15 + (echoStats.hp ?? 0);
+  const normalizedPlayerStats = normalizeCombatPlayerStats(playerStats, playerGear, playerTool);
 
   return {
-    player: buildPlayerCombatant(playerStats),
+    player: buildPlayerCombatant(normalizedPlayerStats),
     enemy: buildEnemyCombatant('Echo', '🪞', 'pvpOpponent', {
       hp: echoMaxHp,
       atk: echoStats.atk ?? 1,
@@ -294,7 +290,7 @@ function createGauntletCombatParams(
     activeItemSets: activeItemsets as any[],
     playerGear,
     playerTool,
-    playerGold,
+    playerGold: normalizedPlayerStats.gold,
     enemyTool: echoTool,
     enemyGear: echoGear,
     week: Math.min(Math.max(week, 1), 3) as 1 | 2 | 3,
@@ -639,11 +635,16 @@ export function GameScreen({ navigation }: GameScreenProps) {
       return;
     }
 
-    const hasMismatch =
+    const hasPositionalMismatch =
       localPosX !== chainPosX ||
       localPosY !== chainPosY ||
-      localHp !== chainHp ||
       localMovesRemaining !== chainMovesRemaining;
+    const hasHpMismatch = localHp !== chainHp;
+
+    // Temporary combat parity mode: on-chain combat screens currently use the frontend
+    // parity resolver for visualization and post-combat local state. While that is active,
+    // exploration safety-sync should not overwrite HP-only mismatches from chain.
+    const hasMismatch = hasPositionalMismatch || false;
 
     if (hasMismatch) {
       debugLog('[GameScreen] Mismatch detected, syncing:', {
@@ -654,6 +655,12 @@ export function GameScreen({ navigation }: GameScreenProps) {
         onChainPos: { x: chainPosX, y: chainPosY },
       });
       dispatch({ type: 'SYNC_MOVE', confirmedState: currentOnChain });
+    } else if (hasHpMismatch) {
+      debugLog('[GameScreen] Ignoring HP-only on-chain mismatch while combat uses local parity replay:', {
+        localBaseHp: currentState.player.baseStats.hp,
+        localStatsHp: localHp,
+        onChainHp: chainHp,
+      });
     }
   }, [
     dispatch,

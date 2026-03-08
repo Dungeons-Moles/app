@@ -27,7 +27,11 @@ import type {
   CombatLogEvent,
   BackendCombatLogEntry,
 } from './types/combat_events';
-import { EVENT_NAMES, LogAction } from './types/combat_events';
+import {
+  decodeCombatLogEntryBuffer,
+  EVENT_NAMES,
+  LogAction,
+} from './types/combat_events';
 import { getItemForLevel } from '@/data/items/all-items';
 import { getGearDefinition } from '@/data/gear';
 import { getToolDefinition } from '@/game/entities/items';
@@ -220,34 +224,29 @@ const COMBAT_STARTED_DISCRIMINATOR = Buffer.from([172, 94, 187, 254, 85, 115, 21
  * Binary layout (after 8-byte discriminator):
  *   - player: Pubkey (32 bytes)
  *   - entries length: u32 LE (4 bytes)
- *   - entries[]: each 6 bytes: turn(u8) + is_player(bool/u8) + action(u8) + value(i16 LE) + extra(u8)
+ *   - entries[]: Borsh CombatLogEntry with optional source and contribution vec
  */
 function decodeCombatLogManually(data: Buffer): CombatLogEvent | null {
   const PUBKEY_LEN = 32;
-  const ENTRY_SIZE = 6; // turn(1) + is_player(1) + action(1) + value(2) + extra(1)
   const HEADER_SIZE = PUBKEY_LEN + 4; // pubkey + vec length
 
   if (data.length < HEADER_SIZE) return null;
 
   const player = new PublicKey(data.subarray(0, PUBKEY_LEN)).toString();
   const entryCount = data.readUInt32LE(PUBKEY_LEN);
-  const expectedSize = HEADER_SIZE + entryCount * ENTRY_SIZE;
-
-  if (data.length < expectedSize) {
-    console.warn('[decodeCombatLogManually] Buffer too short:', data.length, 'expected:', expectedSize);
-    return null;
-  }
 
   const entries: BackendCombatLogEntry[] = [];
-  for (let i = 0; i < entryCount; i++) {
-    const offset = HEADER_SIZE + i * ENTRY_SIZE;
-    entries.push({
-      turn: data.readUInt8(offset),
-      isPlayer: data.readUInt8(offset + 1) !== 0,
-      action: data.readUInt8(offset + 2) as LogAction,
-      value: data.readInt16LE(offset + 3),
-      extra: data.readUInt8(offset + 5),
-    });
+  let offset = HEADER_SIZE;
+
+  try {
+    for (let i = 0; i < entryCount; i++) {
+      const decoded = decodeCombatLogEntryBuffer(data, offset);
+      entries.push(decoded.value);
+      offset += decoded.bytesRead;
+    }
+  } catch (error) {
+    console.warn('[decodeCombatLogManually] Failed to decode combat log:', error);
+    return null;
   }
 
   return { player, entries };
@@ -610,7 +609,83 @@ function parseCombatLogEntries(entries: unknown): BackendCombatLogEntry[] {
     action: parseLogAction(entry.action),
     value: Number(entry.value ?? 0),
     extra: Number(entry.extra ?? 0),
+    source: parseCombatSourceRef(entry.source),
+    contributions: parseCombatContributions(entry.contributions),
   }));
+}
+
+function parseCombatSourceKind(kind: unknown): 'tool' | 'gear' | 'itemset' | 'enemy' | 'boss' | 'status' {
+  if (typeof kind === 'string') {
+    const normalized = kind.toLowerCase();
+    if (
+      normalized === 'tool' ||
+      normalized === 'gear' ||
+      normalized === 'itemset' ||
+      normalized === 'enemy' ||
+      normalized === 'boss' ||
+      normalized === 'status'
+    ) {
+      return normalized;
+    }
+  }
+
+  if (typeof kind === 'object' && kind !== null) {
+    const enumKey = Object.keys(kind)[0]?.toLowerCase();
+    return parseCombatSourceKind(enumKey);
+  }
+
+  switch (Number(kind)) {
+    case 0:
+      return 'tool';
+    case 1:
+      return 'gear';
+    case 2:
+      return 'itemset';
+    case 3:
+      return 'enemy';
+    case 4:
+      return 'boss';
+    default:
+      return 'status';
+  }
+}
+
+function parseCombatSourceId(id: unknown): string {
+  if (typeof id === 'string') return id.replace(/\0+$/g, '').trim();
+  if (Array.isArray(id) || id instanceof Uint8Array) {
+    const bytes = Array.from(id as number[] | Uint8Array);
+    return String.fromCharCode(...bytes).replace(/\0+$/g, '').trim();
+  }
+  return '';
+}
+
+function parseCombatSourceRef(source: unknown): BackendCombatLogEntry['source'] {
+  if (!source || typeof source !== 'object') return undefined;
+  const raw = source as Record<string, unknown>;
+  const id = parseCombatSourceId(raw.id);
+  return {
+    kind: parseCombatSourceKind(raw.kind),
+    id,
+    name: id || undefined,
+  };
+}
+
+function parseCombatContributions(
+  contributions: unknown
+): BackendCombatLogEntry['contributions'] {
+  if (!Array.isArray(contributions) || contributions.length === 0) return undefined;
+  return contributions
+    .map((entry) => {
+      if (!entry || typeof entry !== 'object') return null;
+      const raw = entry as Record<string, unknown>;
+      const source = parseCombatSourceRef(raw.source);
+      if (!source) return null;
+      return {
+        source,
+        value: Number(raw.value ?? 0),
+      };
+    })
+    .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
 }
 
 /**
