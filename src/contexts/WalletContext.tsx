@@ -604,8 +604,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
         const address = wallet.address;
         if (!address) throw new Error('No wallet address for signMessage');
+        const base64Address = Buffer.from(new PublicKey(address).toBytes()).toString('base64');
         const result = await walletAdapter.signMessages({
-          addresses: [address],
+          addresses: [base64Address],
           payloads: [message],
         });
         return result[0];

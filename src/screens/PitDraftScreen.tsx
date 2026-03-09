@@ -862,7 +862,7 @@ function CombatPhaseContent({ pitDraft }: CombatPhaseContentProps) {
   const { playBgm } = useAudio();
   const playerSkinSource = useEquippedSkinImage(profile?.equippedSkin);
   const opponentSkinSource = useEquippedSkinImage(pitDraft.matchData?.opponentSkinPubkey ?? null);
-  const { state: combatState, startCombatWithLog } = useCombat();
+  const { state: combatState, startCombatWithOnchainOutcome } = useCombat();
 
   // Play combat music when combat phase starts
   useEffect(() => {
@@ -873,7 +873,7 @@ function CombatPhaseContent({ pitDraft }: CombatPhaseContentProps) {
   useEffect(() => {
     if (combatState.combat || !pitDraft.matchData) return;
 
-    const { player, enemy, combatLog } = pitDraft.matchData;
+    const { player, enemy } = pitDraft.matchData;
 
     const resolverInput = {
       player,
@@ -884,8 +884,20 @@ function CombatPhaseContent({ pitDraft }: CombatPhaseContentProps) {
       preserveArmor: true,
     };
 
-    startCombatWithLog(resolverInput, combatLog);
-  }, [pitDraft.matchData, combatState.combat, startCombatWithLog]);
+    const isPlayerA = pitDraft.matchData.ourSide === 'a';
+    const finalPlayerHp = isPlayerA
+      ? pitDraft.matchData.combatVisual.finalPlayerAHp
+      : pitDraft.matchData.combatVisual.finalPlayerBHp;
+    const finalEnemyHp = isPlayerA
+      ? pitDraft.matchData.combatVisual.finalPlayerBHp
+      : pitDraft.matchData.combatVisual.finalPlayerAHp;
+
+    startCombatWithOnchainOutcome(resolverInput, {
+      finalPlayerHp,
+      playerWon: pitDraft.matchData.isWinner,
+      finalEnemyHp,
+    });
+  }, [pitDraft.matchData, combatState.combat, startCombatWithOnchainOutcome]);
 
   // Handle combat completion
   const handleCombatComplete = useCallback(() => {

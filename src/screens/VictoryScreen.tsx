@@ -29,7 +29,6 @@ import { useScreenVariant } from '../contexts/ScreenVariantContext';
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.webp');
 const STAINS_BACKGROUND = require('../../assets/ui/backgrounds/stains-background.webp');
 const PAPER_PANEL = require('../../assets/ui/panels/paper-panel.webp');
-const SQUARE_FRAME = require('../../assets/ui/frames/square.webp');
 const BUTTON_GREEN = require('../../assets/ui/buttons/button-green.webp');
 const VICTORY_IMAGE = require('../../assets/ui/text/victory.webp');
 const TROPHY_ICON = require('../../assets/icons/ui/trophy.webp');
@@ -136,7 +135,6 @@ export function VictoryScreen({ navigation, route }: VictoryScreenProps) {
 
   const StatFrame = ({ label, value }: { label: string; value: string | number }) => (
     <View style={isVerticalLayout ? styles.statItemVertical : styles.statItem}>
-      <Image source={SQUARE_FRAME} style={styles.statFrameBg} resizeMode="stretch" />
       <Text style={isVerticalLayout ? styles.statValueVertical : styles.statValue}>{value}</Text>
       <Text style={isVerticalLayout ? styles.statLabelVertical : styles.statLabel}>{label}</Text>
     </View>
@@ -410,14 +408,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     minWidth: 60,
     flex: 1,
-    paddingVertical: 0,
-    paddingHorizontal: 0,
-  },
-  statFrameBg: {
-    position: 'absolute',
-    width: '100%',
-    height: '100%',
-    resizeMode: 'stretch',
+    paddingVertical: 8,
+    paddingHorizontal: 6,
+    borderRadius: 5,
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: '#000000',
   },
   statLabel: {
     fontFamily: Typography.body,
@@ -600,6 +596,10 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 14,
     paddingHorizontal: 10,
+    borderRadius: 5,
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: '#000000',
   },
   statValueVertical: {
     fontFamily: Typography.number,

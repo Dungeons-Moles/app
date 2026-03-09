@@ -268,10 +268,6 @@ export function BattleSimulatorScreen({ navigation }: BattleSimulatorScreenProps
     isController
   );
 
-  if (!__DEV__) {
-    return null;
-  }
-
   return (
     <View style={styles.container}>
       <CachedImageBackground source={BACKGROUND_IMAGE} style={styles.backgroundImage} resizeMode="cover">

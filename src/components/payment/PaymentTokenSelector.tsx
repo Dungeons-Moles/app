@@ -14,7 +14,7 @@ const TOKEN_ICONS: Record<string, ReturnType<typeof require>> = {
   SOL: require('../../../assets/icons/tokens/solana-sol-logo.webp'),
   USDC: require('../../../assets/icons/tokens/usd-coin-usdc-logo.webp'),
   JUP: require('../../../assets/icons/tokens/jupiter-ag-jup-logo.webp'),
-  BONK: require('../../../assets/icons/tokens/bonk-bonk-logo.webp'),
+  SKR: require('../../../assets/icons/tokens/seeker-logo.webp'),
 };
 
 function TokenIcon({ symbol, size }: { symbol: string; size: number }) {

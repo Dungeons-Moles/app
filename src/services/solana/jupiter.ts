@@ -26,7 +26,7 @@ export const SUPPORTED_TOKENS: SupportedToken[] = [
   { symbol: 'SOL', mint: TOKEN_MINTS.SOL, decimals: 9, isNative: true },
   { symbol: 'USDC', mint: TOKEN_MINTS.USDC, decimals: 6, isNative: false },
   { symbol: 'JUP', mint: TOKEN_MINTS.JUP, decimals: 6, isNative: false },
-  { symbol: 'BONK', mint: TOKEN_MINTS.BONK, decimals: 5, isNative: false },
+  { symbol: 'SKR', mint: TOKEN_MINTS.SKR, decimals: 6, isNative: false },
 ];
 
 // ============================================================================
