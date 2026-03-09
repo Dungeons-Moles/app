@@ -184,7 +184,7 @@ export function VideoOverlay({ onClose }: { onClose: () => void }) {
     return () => window.removeEventListener('keydown', handler);
   }, [handleClose]);
 
-  const videoId = activeVideo === 'pitch' ? '5C8us7BUpss' : 'hH4t8_unsbw';
+  const videoId = activeVideo === 'pitch' ? 'Kb2xCMSovE0' : 'iqJWPreAZZ0';
 
   return (
     <div
