@@ -64,6 +64,7 @@ import { preloadCriticalImages } from '../utils/preloadCriticalImages';
 import { GAME_SCREEN_CRITICAL_IMAGES } from '../constants/criticalImages';
 import { GUEST_DIFFICULTY_CONFIGS } from '../game/engine/run-config';
 import type { GuestDifficultyId } from '../game/engine/types';
+import type { QuestWithProgress } from '../types/solana';
 
 const iconASource = require('../../assets/ui/control-buttons/a.webp');
 const iconBSource = require('../../assets/ui/control-buttons/b.webp');
@@ -147,6 +148,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
   const { quests, isLoading: questsLoading, fetchQuests, acceptQuest, claimReward } = useQuests();
   const { equipSkin, unequipSkin, isLoading: equipLoading } = useEquipSkin();
   const { processPendingCleanups } = useSessionIdentity();
+  const effectiveQuests = quests;
 
   // Sort skins: equipped first
   const sortedSkins = useMemo(() => {
@@ -646,13 +648,14 @@ export function HubScreen({ navigation }: HubScreenProps) {
         : null;
 
   // Flatten quests into a single list for focus tracking
-  const flatQuests = quests;
+  const flatQuests = effectiveQuests;
   const questsActions =
     showQuests && flatQuests.length > 0
       ? {
           onA: () => {
             const quest = flatQuests[questsFocus];
             if (!quest || questsLoading) return;
+            if (quest.definition.questId >= 9000) return;
             if (quest.progress?.completed && !quest.progress?.claimed) {
               playSfx('ui_click');
               claimReward(quest.definition.questId);
@@ -1578,7 +1581,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
                         size={isCompact ? 'large' : 'small'}
                         style={{ marginTop: 20 }}
                       />
-                    ) : quests.length === 0 ? (
+                    ) : effectiveQuests.length === 0 ? (
                       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
                         <Text
                           style={[styles.comingSoonText, isCompact && compactStyles.comingSoonText]}
@@ -1588,7 +1591,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
                       </View>
                     ) : (
                       <>
-                        {quests.map((quest, idx) => {
+                        {effectiveQuests.map((quest, idx) => {
                           const objectiveLabel = getObjectiveLabel(quest.definition);
                           const rewardLabel = getRewardLabel(quest.definition);
                           const qt = quest.definition.questType;
@@ -1605,14 +1608,17 @@ export function HubScreen({ navigation }: HubScreenProps) {
                                 progress={quest.progress?.progress ?? 0}
                                 target={quest.definition.objectiveCount}
                                 rewardText={rewardLabel}
+                                rewardIcon={getRewardIcon(quest.definition)}
                                 isCompleted={quest.progress?.completed ?? false}
                                 isClaimed={quest.progress?.claimed ?? false}
                                 isAccepted={quest.progress !== null}
                                 onAccept={async () => {
+                                  if (quest.definition.questId >= 9000) return;
                                   playSfx('ui_click');
                                   await acceptQuest(quest.definition.questId);
                                 }}
                                 onClaim={async () => {
+                                  if (quest.definition.questId >= 9000) return;
                                   playSfx('ui_click');
                                   await claimReward(quest.definition.questId);
                                 }}
@@ -1632,7 +1638,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
                         isCompact && compactStyles.controllerCloseHint,
                       ]}
                     >
-                      {quests.length > 0 && (
+                      {effectiveQuests.length > 0 && (
                         <>
                           <Image
                             source={iconDirSource}
@@ -1662,10 +1668,10 @@ export function HubScreen({ navigation }: HubScreenProps) {
                               isCompact && compactStyles.controllerCloseHintText,
                             ]}
                           >
-                            {quests[questsFocus] && !quests[questsFocus].progress
+                            {effectiveQuests[questsFocus] && !effectiveQuests[questsFocus].progress
                               ? 'Accept'
-                              : quests[questsFocus]?.progress?.completed &&
-                                  !quests[questsFocus]?.progress?.claimed
+                              : effectiveQuests[questsFocus]?.progress?.completed &&
+                                  !effectiveQuests[questsFocus]?.progress?.claimed
                                 ? 'Claim'
                                 : 'Select'}
                           </Text>
@@ -2303,6 +2309,10 @@ function getRewardLabel(def: any): string {
   if ('skin' in rt) return 'Skin NFT';
   if ('nftItem' in rt) return 'NFT Item';
   return 'Reward';
+}
+
+function getRewardIcon(def: any) {
+  return undefined;
 }
 
 const styles = StyleSheet.create({

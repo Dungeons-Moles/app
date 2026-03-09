@@ -201,7 +201,7 @@ export function AppNavigator() {
         <Stack.Screen name="Loading" component={LoadingScreen} />
         <Stack.Screen name="Account" component={AccountScreen} />
         <Stack.Screen name="Hub" component={HubScreen} />
-        {__DEV__ ? <Stack.Screen name="BattleSimulator" component={BattleSimulatorScreen} /> : null}
+        {__DEV__ && <Stack.Screen name="BattleSimulator" component={BattleSimulatorScreen} />}
         <Stack.Screen name="CampaignSelect" component={CampaignSelectScreen} />
         <Stack.Screen name="Game" component={GameScreen} />
         <Stack.Screen name="Combat" component={CombatScreen} />
