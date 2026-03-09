@@ -73,7 +73,6 @@ import type {
   ItemRarity,
   Position,
 } from '../game/engine/types';
-import { LogAction, type BackendCombatLogEntry } from '../services/solana/types/combat_events';
 import { calculateItemStats } from '@/game/entities/items';
 import { normalizeCombatPlayerStats, type CombatPlayerStats } from './combat-player-stats';
 import type { GauntletCombatVisualEvent } from '@/services/solana/gauntlet';
@@ -180,7 +179,6 @@ function createCombatParams(
   activeItemsets: string[],
   seed: number,
   week: 1 | 2 | 3,
-  combatLog?: BackendCombatLogEntry[],
   onChainOutcome?: {
     finalPlayerHp: number;
     finalPlayerGold: number;
@@ -205,7 +203,6 @@ function createCombatParams(
     playerGold: normalizedPlayerStats.gold,
     week,
     isBossFight: false,
-    combatLog,
     onChainOutcome,
   };
 }
@@ -221,7 +218,6 @@ function createBossCombatParams(
   activeItemsets: string[],
   seed: number,
   week: 1 | 2 | 3,
-  combatLog?: BackendCombatLogEntry[],
   onChainOutcome?: {
     finalPlayerHp: number;
     finalPlayerGold: number;
@@ -247,7 +243,6 @@ function createBossCombatParams(
     playerGold: normalizedPlayerStats.gold,
     week,
     isBossFight: true,
-    combatLog,
     onChainOutcome,
   };
 }
@@ -295,7 +290,6 @@ function createGauntletCombatParams(
     enemyGear: echoGear,
     week: Math.min(Math.max(week, 1), 3) as 1 | 2 | 3,
     isBossFight: false,
-    combatLog: visual.combatLog,
     onChainOutcome: {
       finalPlayerHp: visual.finalPlayerHp,
       finalPlayerGold: playerGold,
@@ -305,53 +299,9 @@ function createGauntletCombatParams(
 }
 
 /**
- * Infer player's HP at combat start from backend combat log + final HP.
- * Uses raw on-chain final HP when available (can be negative before state clamp).
- */
-function inferPlayerStartHpFromBackendLog(
-  combatLog: BackendCombatLogEntry[] | undefined,
-  finalPlayerHp: number | undefined
-): number | null {
-  if (!combatLog?.length || finalPlayerHp == null) return null;
-
-  let playerDamageTaken = 0;
-  let playerHealing = 0;
-
-  for (const entry of combatLog) {
-    switch (entry.action) {
-      case LogAction.Attack:
-        // Attack logs attacker side. isPlayer=false means enemy attacked player.
-        if (!entry.isPlayer && entry.value > 0) playerDamageTaken += entry.value;
-        break;
-      case LogAction.StatusDamage:
-        // StatusDamage logs target side. isPlayer=true means player took it.
-        if (entry.isPlayer && entry.value > 0) playerDamageTaken += entry.value;
-        break;
-      case LogAction.NonWeaponDamage:
-        // NonWeaponDamage logs target side. isPlayer=true means player took it.
-        if (entry.isPlayer && entry.value > 0) playerDamageTaken += entry.value;
-        break;
-      case LogAction.ShrapnelRetaliation:
-        // ShrapnelRetaliation logs attacker side. isPlayer=true means player took it.
-        if (entry.isPlayer && entry.value > 0) playerDamageTaken += entry.value;
-        break;
-      case LogAction.Heal:
-        // Heal logs target side. isPlayer=true means player healed.
-        if (entry.isPlayer && entry.value > 0) playerHealing += entry.value;
-        break;
-      default:
-        break;
-    }
-  }
-
-  const inferred = finalPlayerHp + playerDamageTaken - playerHealing;
-  return inferred > 0 ? inferred : null;
-}
-
-/**
  * Build fallback gauntlet combat params from on-chain echo data when visual parsing fails.
- * CombatScreen handles missing combatLog via startCombatWithOnchainOutcome — it runs the
- * local combat resolver for animation, then overrides with the on-chain outcome (win/loss).
+ * CombatScreen replays these fights through the local parity resolver and then applies the
+ * authoritative on-chain outcome (win/loss and final HP/gold).
  */
 async function buildFallbackGauntletCombatParams(
   connection: Connection,
@@ -403,7 +353,6 @@ async function buildFallbackGauntletCombatParams(
       enemyGear: echoGear,
       week: Math.min(Math.max(week, 1), 3) as 1 | 2 | 3,
       isBossFight: false,
-      // No combatLog — CombatScreen will use local resolver + outcome override
       onChainOutcome: {
         finalPlayerHp: confirmedState.hp,
         finalPlayerGold: confirmedState.gold,
@@ -925,7 +874,6 @@ export function GameScreen({ navigation }: GameScreenProps) {
           state.player.activeItemsets ?? [],
           state.rngState,
           foughtWeek,
-          undefined, // No combat log available — local resolver will simulate
           {
             finalPlayerHp: onChainState.hp,
             finalPlayerGold: onChainState.gold,
@@ -970,7 +918,6 @@ export function GameScreen({ navigation }: GameScreenProps) {
           state.player.activeItemsets ?? [],
           state.rngState,
           state.time.week,
-          bossResult.combatLog,
           bossResult.success && bossResult.newState
             ? {
                 finalPlayerHp: bossResult.newState.hp,
@@ -986,8 +933,6 @@ export function GameScreen({ navigation }: GameScreenProps) {
           playerHp: playerStats.hp,
           week: state.time.week,
           hasOnChainOutcome: bossResult.success,
-          hasCombatLog: !!bossResult.combatLog,
-          combatLogEntries: bossResult.combatLog?.length ?? 0,
         });
 
         navigateToCombat(navigation, bossCombatParams, {
@@ -1564,7 +1509,6 @@ export function GameScreen({ navigation }: GameScreenProps) {
                   preCombatItemsets,
                   preCombatSeed,
                   currentWeek,
-                  result.bossCombatLog,
                   {
                     finalPlayerHp: result.newState.hp,
                     finalPlayerGold: result.newState.gold,
@@ -1579,8 +1523,6 @@ export function GameScreen({ navigation }: GameScreenProps) {
                     preBossHp: bossPlayerHp,
                     postBossHp: result.newState.hp,
                     playerWon: !result.isDead,
-                    hasCombatLog: !!result.bossCombatLog,
-                    combatLogEntries: result.bossCombatLog?.length ?? 0,
                   }
                 );
 
@@ -1634,7 +1576,6 @@ export function GameScreen({ navigation }: GameScreenProps) {
                   preCombatItemsets,
                   preCombatSeed,
                   currentWeek,
-                  result.combatLog,
                   {
                     finalPlayerHp: result.newState.hp,
                     finalPlayerGold: result.newState.gold,
@@ -1650,8 +1591,6 @@ export function GameScreen({ navigation }: GameScreenProps) {
                   week: combatParams.week,
                   isBossFight: combatParams.isBossFight,
                   playerDied: result.isDead,
-                  hasCombatLog: !!result.combatLog,
-                  combatLogLength: result.combatLog?.length ?? 0,
                 });
                 navigateToCombat(navigation, combatParams, result.newState);
               } else if (result.combatEnemyInfo) {
@@ -1692,7 +1631,6 @@ export function GameScreen({ navigation }: GameScreenProps) {
                     preCombatItemsets,
                     preCombatSeed,
                     currentWeek,
-                    result.combatLog,
                     {
                       finalPlayerHp: result.newState.hp,
                       finalPlayerGold: result.newState.gold,
@@ -2300,11 +2238,9 @@ export function GameScreen({ navigation }: GameScreenProps) {
                 finalPlayerGold,
                 totalMoves,
                 phase,
-                combatLog,
                 preBossPlayerHp,
                 turnsTaken,
                 finalEnemyHp,
-                rawFinalPlayerHp,
                 signature,
               } = result.bossResolved;
               // state.time.week is pre-POI (closure captures pre-dispatch value),
@@ -2322,22 +2258,13 @@ export function GameScreen({ navigation }: GameScreenProps) {
                   playerWon,
                   foughtWeek,
                   foughtBoss,
-                  hasCombatLog: !!combatLog,
-                  combatLogEntries: combatLog?.length ?? 0,
                   preBossPlayerHp,
                   turnsTaken,
                   finalEnemyHp,
-                  rawFinalPlayerHp,
                   signature,
                 });
                 const playerStats = {
-                  hp:
-                    preBossPlayerHp ??
-                    inferPlayerStartHpFromBackendLog(
-                      combatLog,
-                      rawFinalPlayerHp ?? finalPlayerHp
-                    ) ??
-                    Math.max(state.player.stats.hp, 1),
+                  hp: preBossPlayerHp ?? Math.max(state.player.stats.hp, 1),
                   maxHp: state.player.stats.maxHp,
                   atk: state.player.stats.atk,
                   arm: state.player.stats.arm,
@@ -2353,7 +2280,6 @@ export function GameScreen({ navigation }: GameScreenProps) {
                   state.player.activeItemsets ?? [],
                   state.rngState,
                   foughtWeek,
-                  combatLog,
                   { finalPlayerHp, finalPlayerGold, playerWon }
                 );
                 navigateToCombat(navigation, bossCombatParams, {

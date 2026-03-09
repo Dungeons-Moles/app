@@ -6,7 +6,6 @@ import {
   GAMEPLAY_STATE_PROGRAM_ID,
   deriveInventoryPda,
 } from './constants';
-import { decodeCombatLogEntryBuffer, type BackendCombatLogEntry } from './types/combat_events';
 import type { OnChainItemInstance } from './pitDraft';
 
 export const GAUNTLET_ENTRY_LAMPORTS = 10_000_000; // 0.01 SOL
@@ -34,7 +33,6 @@ export interface GauntletCombatVisualEvent {
   playerGear: (OnChainItemInstance | null)[];
   echoTool: OnChainItemInstance | null;
   echoGear: (OnChainItemInstance | null)[];
-  combatLog: BackendCombatLogEntry[];
   playerWon: boolean;
   finalPlayerHp: number;
   finalEchoHp: number;
@@ -391,20 +389,6 @@ function decodeGauntletCombatVisual(data: Buffer): GauntletCombatVisualEvent | n
       offset += decoded.bytesRead;
     }
 
-    const logCount = data.readUInt32LE(offset);
-    offset += 4;
-    const combatLog: BackendCombatLogEntry[] = [];
-    for (let i = 0; i < logCount; i++) {
-      const decoded = decodeCombatLogEntryBuffer(data, offset);
-      combatLog.push(decoded.value);
-      offset += decoded.bytesRead;
-    }
-
-    // combat_log_truncated: bool (1 byte)
-    offset += 1;
-    // combat_log_total_entries: u16 (2 bytes)
-    offset += 2;
-
     const playerWon = data.readUInt8(offset) !== 0;
     offset += 1;
     const finalPlayerHp = data.readInt16LE(offset);
@@ -420,7 +404,6 @@ function decodeGauntletCombatVisual(data: Buffer): GauntletCombatVisualEvent | n
       playerGear,
       echoTool: echoToolDecoded.value,
       echoGear,
-      combatLog,
       playerWon,
       finalPlayerHp,
       finalEchoHp,

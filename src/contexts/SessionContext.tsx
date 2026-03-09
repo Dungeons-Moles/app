@@ -95,7 +95,6 @@ import {
 } from '@/services/solana/types/gameplay_state';
 import type { TransactionResult } from '@/types/solana';
 import type { SessionSignerState } from '@/services/solana/sessionSigner';
-import type { BackendCombatLogEntry } from '@/services/solana/types/combat_events';
 import type { CombatEnemyInfo } from '@/services/solana/eventParser';
 import type { GauntletCombatVisualEvent } from '@/services/solana/gauntlet';
 import {
@@ -223,13 +222,11 @@ interface SessionContextType extends SessionState {
     newState?: GameState;
     previousState?: GameState;
     combatOccurred?: boolean;
-    combatLog?: BackendCombatLogEntry[];
     combatEnemyInfo?: CombatEnemyInfo;
     bossFightReady?: boolean;
     isDead?: boolean;
     signature?: string;
     bossResolvedInline?: boolean;
-    bossCombatLog?: BackendCombatLogEntry[];
     preBossPlayerHp?: number;
     gauntletCombatVisual?: GauntletCombatVisualEvent | null;
   }>;
@@ -239,7 +236,6 @@ interface SessionContextType extends SessionState {
     newState?: GameState;
     previousState?: GameState;
     isDead?: boolean;
-    combatLog?: BackendCombatLogEntry[];
     gauntletVisual?: GauntletCombatVisualEvent | null;
     signature?: string;
   }>;
@@ -3699,13 +3695,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       newState?: GameState;
       previousState?: GameState;
       combatOccurred?: boolean;
-      combatLog?: BackendCombatLogEntry[];
       combatEnemyInfo?: CombatEnemyInfo;
       bossFightReady?: boolean;
       isDead?: boolean;
       signature?: string;
       bossResolvedInline?: boolean;
-      bossCombatLog?: BackendCombatLogEntry[];
       preBossPlayerHp?: number;
     }> => {
       const activeSessionPda = sessionManager.activeSessionPda;
@@ -3766,7 +3760,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     newState?: GameState;
     previousState?: GameState;
     isDead?: boolean;
-    combatLog?: BackendCombatLogEntry[];
     gauntletVisual?: GauntletCombatVisualEvent | null;
     signature?: string;
   }> => {

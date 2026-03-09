@@ -14,7 +14,6 @@ import { SOLANA_CONFIG } from './config';
 import { GAMEPLAY_STATE_PROGRAM_ID, deriveGameplayVrfStatePda, derivePlayerProfilePda } from './constants';
 import { generateRandomness } from './vrf';
 import { toolToFrontend, gearToFrontend } from '@/data/id-mapping';
-import { decodeCombatLogEntryBuffer, type BackendCombatLogEntry } from './types/combat_events';
 import type { Tool, Gear, ToolOil } from '@/game/engine/types';
 import { getAllToolDefinitions, getToolStatsAtTier } from '@/game/entities/items';
 import { getAllGearDefinitions, RARITY_MULTIPLIER, getTierFromRarity } from '@/data/gear';
@@ -241,7 +240,6 @@ export interface PitDraftCombatVisualEvent {
   playerBGear: (OnChainItemInstance | null)[];
   playerAGold: number;
   playerBGold: number;
-  combatLog: BackendCombatLogEntry[];
   playerAWon: boolean;
   finalPlayerAHp: number;
   finalPlayerBHp: number;
@@ -469,9 +467,6 @@ function decodeOptionItemInstance(
  *   player_a_gear: [Option<ItemInstance>; 12]
  *   player_b_tool: Option<ItemInstance>
  *   player_b_gear: [Option<ItemInstance>; 12]
- *   combat_log: Vec<CombatLogEntry>
- *   combat_log_truncated: bool (1)
- *   combat_log_total_entries: u16 (2)
  *   player_a_won: bool (1)
  *   final_player_a_hp: i16 (2)
  *   final_player_b_hp: i16 (2)
@@ -513,26 +508,6 @@ function decodePitDraftCombatVisual(data: Buffer): PitDraftCombatVisualEvent | n
       offset += item.bytesRead;
     }
 
-    // combat_log: Vec<CombatLogEntry>
-    // Vec header: 4 bytes (u32 LE length)
-    const logCount = data.readUInt32LE(offset);
-    offset += 4;
-
-    const combatLog: BackendCombatLogEntry[] = [];
-    for (let i = 0; i < logCount; i++) {
-      const decoded = decodeCombatLogEntryBuffer(data, offset);
-      combatLog.push(decoded.value);
-      offset += decoded.bytesRead;
-    }
-
-    // combat_log_truncated: bool (1 byte)
-    // const combatLogTruncated = data.readUInt8(offset) !== 0;
-    offset += 1;
-
-    // combat_log_total_entries: u16 (2 bytes)
-    // const combatLogTotalEntries = data.readUInt16LE(offset);
-    offset += 2;
-
     // player_a_won: bool (1 byte)
     const playerAWon = data.readUInt8(offset) !== 0;
     offset += 1;
@@ -557,7 +532,6 @@ function decodePitDraftCombatVisual(data: Buffer): PitDraftCombatVisualEvent | n
       playerBGear: bGear,
       playerAGold: 0,
       playerBGold: 0,
-      combatLog,
       playerAWon,
       finalPlayerAHp,
       finalPlayerBHp,

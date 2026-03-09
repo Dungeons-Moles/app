@@ -50,4 +50,27 @@ describe('normalizeCombatPlayerStats', () => {
     expect(normalized.spd).toBe(3);
     expect(normalized.dig).toBe(1);
   });
+
+  it('hydrates battle-start stats that only exist in effect tables', () => {
+    const tool = createToolInstance('T9');
+    const lantern = createGearInstance('I33');
+    const engine = createGearInstance('I46');
+
+    const normalized = normalizeCombatPlayerStats(
+      {
+        hp: 25,
+        maxHp: 25,
+        atk: 0,
+        arm: 0,
+        spd: 0,
+        dig: 0,
+        gold: 10,
+      },
+      [lantern, engine],
+      tool
+    );
+
+    expect(normalized.atk).toBe(2);
+    expect(normalized.arm).toBe(4);
+  });
 });

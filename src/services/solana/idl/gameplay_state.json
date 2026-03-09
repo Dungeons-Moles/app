@@ -5377,19 +5377,6 @@
       ]
     },
     {
-      "name": "CombatLog",
-      "discriminator": [
-        84,
-        130,
-        187,
-        88,
-        94,
-        235,
-        48,
-        211
-      ]
-    },
-    {
       "name": "CombatStarted",
       "discriminator": [
         172,
@@ -6109,26 +6096,6 @@
       }
     },
     {
-      "name": "CombatContribution",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "source",
-            "type": {
-              "defined": {
-                "name": "CombatSourceRef"
-              }
-            }
-          },
-          {
-            "name": "value",
-            "type": "i16"
-          }
-        ]
-      }
-    },
-    {
       "name": "CombatEnded",
       "docs": [
         "Emitted when combat ends"
@@ -6159,161 +6126,6 @@
           {
             "name": "turns_taken",
             "type": "u8"
-          }
-        ]
-      }
-    },
-    {
-      "name": "CombatLog",
-      "docs": [
-        "Detailed combat log for turn-by-turn visualization.",
-        "Contains a serialized vector of CombatLogEntry for replay.",
-        "Note: Solana logs have ~30KB limit; this compact format allows ~300-400 actions per battle."
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "player",
-            "type": "pubkey"
-          },
-          {
-            "name": "entries",
-            "docs": [
-              "Serialized Vec<CombatLogEntry> - each entry is ~5 bytes"
-            ],
-            "type": {
-              "vec": {
-                "defined": {
-                  "name": "CombatLogEntry"
-                }
-              }
-            }
-          }
-        ]
-      }
-    },
-    {
-      "name": "CombatLogEntry",
-      "docs": [
-        "A single entry in the combat log.",
-        "Compact format to minimize data cost (~5 bytes per entry)."
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "turn",
-            "docs": [
-              "Turn number (1-50)"
-            ],
-            "type": "u8"
-          },
-          {
-            "name": "is_player",
-            "docs": [
-              "true = player action, false = enemy action"
-            ],
-            "type": "bool"
-          },
-          {
-            "name": "action",
-            "docs": [
-              "The action type"
-            ],
-            "type": {
-              "defined": {
-                "name": "LogAction"
-              }
-            }
-          },
-          {
-            "name": "value",
-            "docs": [
-              "Primary value (damage, healing, stacks, etc.)"
-            ],
-            "type": "i16"
-          },
-          {
-            "name": "extra",
-            "docs": [
-              "Extra data (status_id for ApplyStatus, SPD bonus for Attack, 0 otherwise)"
-            ],
-            "type": "u8"
-          },
-          {
-            "name": "source",
-            "type": {
-              "option": {
-                "defined": {
-                  "name": "CombatSourceRef"
-                }
-              }
-            }
-          },
-          {
-            "name": "contributions",
-            "type": {
-              "vec": {
-                "defined": {
-                  "name": "CombatContribution"
-                }
-              }
-            }
-          }
-        ]
-      }
-    },
-    {
-      "name": "CombatSourceKind",
-      "repr": {
-        "kind": "rust"
-      },
-      "type": {
-        "kind": "enum",
-        "variants": [
-          {
-            "name": "Tool"
-          },
-          {
-            "name": "Gear"
-          },
-          {
-            "name": "Itemset"
-          },
-          {
-            "name": "Enemy"
-          },
-          {
-            "name": "Boss"
-          },
-          {
-            "name": "Status"
-          }
-        ]
-      }
-    },
-    {
-      "name": "CombatSourceRef",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "kind",
-            "type": {
-              "defined": {
-                "name": "CombatSourceKind"
-              }
-            }
-          },
-          {
-            "name": "id",
-            "type": {
-              "array": [
-                "u8",
-                16
-              ]
-            }
           }
         ]
       }
@@ -6436,24 +6248,6 @@
                 12
               ]
             }
-          },
-          {
-            "name": "combat_log",
-            "type": {
-              "vec": {
-                "defined": {
-                  "name": "CombatLogEntry"
-                }
-              }
-            }
-          },
-          {
-            "name": "combat_log_truncated",
-            "type": "bool"
-          },
-          {
-            "name": "combat_log_total_entries",
-            "type": "u16"
           },
           {
             "name": "player_a_won",
@@ -7481,24 +7275,6 @@
             }
           },
           {
-            "name": "combat_log",
-            "type": {
-              "vec": {
-                "defined": {
-                  "name": "CombatLogEntry"
-                }
-              }
-            }
-          },
-          {
-            "name": "combat_log_truncated",
-            "type": "bool"
-          },
-          {
-            "name": "combat_log_total_entries",
-            "type": "u16"
-          },
-          {
             "name": "player_won",
             "type": "bool"
           },
@@ -8272,51 +8048,6 @@
       }
     },
     {
-      "name": "LogAction",
-      "docs": [
-        "Actions that can be logged during combat.",
-        "Each action type has a specific meaning for the `value` and `extra` fields."
-      ],
-      "repr": {
-        "kind": "rust"
-      },
-      "type": {
-        "kind": "enum",
-        "variants": [
-          {
-            "name": "Attack"
-          },
-          {
-            "name": "Heal"
-          },
-          {
-            "name": "ApplyStatus"
-          },
-          {
-            "name": "StatusDamage"
-          },
-          {
-            "name": "ArmorChange"
-          },
-          {
-            "name": "AtkChange"
-          },
-          {
-            "name": "SpdChange"
-          },
-          {
-            "name": "NonWeaponDamage"
-          },
-          {
-            "name": "ShrapnelRetaliation"
-          },
-          {
-            "name": "GoldStolen"
-          }
-        ]
-      }
-    },
-    {
       "name": "MapEnemies",
       "docs": [
         "On-chain account storing all enemy instances for a map",
@@ -8512,33 +8243,6 @@
                 12
               ]
             }
-          },
-          {
-            "name": "combat_log",
-            "docs": [
-              "Combat trace (same semantics as PvE CombatLog entries), truncated when very large."
-            ],
-            "type": {
-              "vec": {
-                "defined": {
-                  "name": "CombatLogEntry"
-                }
-              }
-            }
-          },
-          {
-            "name": "combat_log_truncated",
-            "docs": [
-              "True when `combat_log` is truncated to `MAX_PVP_VISUAL_LOG_ENTRIES`."
-            ],
-            "type": "bool"
-          },
-          {
-            "name": "combat_log_total_entries",
-            "docs": [
-              "Total number of log entries before truncation."
-            ],
-            "type": "u16"
           },
           {
             "name": "player_a_won",

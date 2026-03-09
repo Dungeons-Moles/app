@@ -93,7 +93,15 @@ export function getFieldEnemyTraitEffects(enemyId: EnemyId, playerGold = 0): Par
     case 'FROST_WISP':
       return wrapEffects([createEffect(Trigger.FirstTurnIfFaster(), 'ApplyChill', 1)], enemyId, 'Frost Wisp', 'enemy');
     case 'POWDER_TICK':
-      return wrapEffects([createEffect(Trigger.Countdown(3), 'DealNonWeaponDamage', 3)], enemyId, 'Powder Tick', 'enemy');
+      return wrapEffects(
+        [
+          createEffect(Trigger.Countdown(3), 'DealNonWeaponDamage', 3),
+          createEffect(Trigger.Countdown(3), 'DealSelfNonWeaponDamage', 3),
+        ],
+        enemyId,
+        'Powder Tick',
+        'enemy'
+      );
     case 'COIN_SLUG':
       return wrapEffects([createEffect(Trigger.BattleStart(), 'GainArmor', Math.min(Math.floor(playerGold / 10), 3))], enemyId, 'Coin Slug', 'enemy');
     case 'BLOOD_MOSQUITO':

@@ -29,7 +29,6 @@ import { parseDuelEvents } from '@/services/solana/duels';
 import { convertItemInstanceToTool, convertItemInstanceToGear } from '@/services/solana/pitDraft';
 import { calculateItemStats } from '@/game/entities/items';
 import type { CombatantState, Gear, Tool } from '@/game/engine/types';
-import type { BackendCombatLogEntry } from '@/services/solana/types/combat_events';
 
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.webp');
 const STAINS_BACKGROUND = require('../../assets/ui/backgrounds/stains-background.webp');
@@ -141,11 +140,6 @@ export function DuelsHistoryScreen({ navigation }: DuelsHistoryScreenProps) {
           enemyGear
         );
 
-        const combatLog: BackendCombatLogEntry[] = visual.combatLog.map((entry) => ({
-          ...entry,
-          isPlayer: isPlayerA ? entry.isPlayer : !entry.isPlayer,
-        }));
-
         navigation.navigate('Combat', {
           combatInput: {
             player,
@@ -153,7 +147,6 @@ export function DuelsHistoryScreen({ navigation }: DuelsHistoryScreenProps) {
             seed: 0,
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             enemyDefinitionId: 'pvpOpponent' as any, // PvP uses a non-EnemyId definitionId
-            combatLog,
             onChainOutcome: {
               finalPlayerHp: isPlayerA ? visual.finalPlayerAHp : visual.finalPlayerBHp,
               finalPlayerGold: 0,

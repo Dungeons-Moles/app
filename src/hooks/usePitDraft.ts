@@ -25,7 +25,6 @@ import {
   type PitDraftCombatVisualEvent,
   type PitDraftResolvedEvent,
 } from '@/services/solana/pitDraft';
-import type { BackendCombatLogEntry } from '@/services/solana/types/combat_events';
 import type { CombatantState, Tool, Gear } from '@/game/engine/types';
 import { calculateItemStats } from '@/game/entities/items';
 
@@ -48,8 +47,6 @@ export interface PitDraftMatchData {
   ourSide: 'a' | 'b';
   /** Did we win? */
   isWinner: boolean;
-  /** Combat log entries */
-  combatLog: BackendCombatLogEntry[];
   /** Our combatant state (for CombatProvider) */
   player: CombatantState;
   /** Opponent combatant state */
@@ -252,14 +249,6 @@ export function usePitDraft() {
       const ourSide = isPlayerA ? 'a' : 'b';
       const isWinner = resolved.winner.toBase58() === ourKey;
 
-      // For combat replay: map our player to "player" and opponent to "enemy"
-      // The combat log uses isPlayer=true for player_a and isPlayer=false for player_b
-      // If we are player_b, we need to invert the isPlayer flag in the log
-      const combatLog: BackendCombatLogEntry[] = combatVisual.combatLog.map((entry) => ({
-        ...entry,
-        isPlayer: isPlayerA ? entry.isPlayer : !entry.isPlayer,
-      }));
-
       // Convert on-chain item instances to frontend Tool/Gear objects
       const ourToolInstance = isPlayerA ? combatVisual.playerATool : combatVisual.playerBTool;
       const ourGearInstances = isPlayerA ? combatVisual.playerAGear : combatVisual.playerBGear;
@@ -306,7 +295,6 @@ export function usePitDraft() {
         resolved,
         ourSide,
         isWinner,
-        combatLog,
         player,
         enemy,
         playerTool,

@@ -600,8 +600,11 @@ function performSideAttacks(
   let nextState = state;
   runtime[side].actedThisTurn = true;
   const strikes = getEffectiveStrikes(getCombatant(nextState, side)) + runtime[side].extraStrikesThisTurn;
+  if (isDefeated(getCombatant(nextState, getOpposite(side)))) {
+    return nextState;
+  }
   for (let strike = 0; strike < strikes; strike += 1) {
-    if (isDefeated(getCombatant(nextState, side)) || isDefeated(getCombatant(nextState, getOpposite(side)))) {
+    if (isDefeated(getCombatant(nextState, getOpposite(side)))) {
       break;
     }
     nextState = performStrike(nextState, runtime, input, side, strike, ownerActsFirst, attackSources);
@@ -685,6 +688,22 @@ function processTurnEnd(
   return nextState;
 }
 
+function processStartOfTurnForSide(
+  state: CombatState,
+  runtime: Record<Side, SideRuntime>,
+  input: CombatResolverInput,
+  side: Side,
+  ownerActsFirst: boolean
+): CombatState {
+  let nextState = runEffectsForSide(state, runtime, side, 'TURN_START', ownerActsFirst);
+  if (side === 'enemy') {
+    nextState = processEldritchMoleTurnStart(nextState, runtime, input);
+  }
+  nextState = runEffectsForSide(nextState, runtime, side, 'COUNTDOWN', ownerActsFirst);
+  nextState = processTransitionEffects(nextState, runtime, input, side, ownerActsFirst);
+  return nextState;
+}
+
 function determineResult(state: CombatState): CombatResult | null {
   if (isDefeated(state.enemy) && isDefeated(state.player)) {
     return 'DEFEAT';
@@ -744,18 +763,34 @@ export function resolveCombatWithParity(input: CombatResolverInput): CombatState
       runtime.enemy.extraStrikesThisTurn = 1;
     }
 
-    state = runEffectsForSide(state, runtime, 'player', 'TURN_START', playerActsFirst);
-    state = runEffectsForSide(state, runtime, 'enemy', 'TURN_START', !playerActsFirst);
-    state = processEldritchMoleTurnStart(state, runtime, input);
-    state = runEffectsForSide(state, runtime, 'player', 'COUNTDOWN', playerActsFirst);
-    state = runEffectsForSide(state, runtime, 'enemy', 'COUNTDOWN', !playerActsFirst);
-    state = processTransitionEffects(state, runtime, input, 'player', playerActsFirst);
-    state = processTransitionEffects(state, runtime, input, 'enemy', !playerActsFirst);
+    if (playerActsFirst) {
+      state = processStartOfTurnForSide(state, runtime, input, 'player', true);
+      const resultAfterPlayerStart = determineResult(state);
+      if (resultAfterPlayerStart) {
+        state = { ...state, result: resultAfterPlayerStart };
+        break;
+      }
 
-    const resultAfterStart = determineResult(state);
-    if (resultAfterStart) {
-      state = { ...state, result: resultAfterStart };
-      break;
+      state = processStartOfTurnForSide(state, runtime, input, 'enemy', false);
+      const resultAfterEnemyStart = determineResult(state);
+      if (resultAfterEnemyStart) {
+        state = { ...state, result: resultAfterEnemyStart };
+        break;
+      }
+    } else {
+      state = processStartOfTurnForSide(state, runtime, input, 'enemy', true);
+      const resultAfterEnemyStart = determineResult(state);
+      if (resultAfterEnemyStart) {
+        state = { ...state, result: resultAfterEnemyStart };
+        break;
+      }
+
+      state = processStartOfTurnForSide(state, runtime, input, 'player', false);
+      const resultAfterPlayerStart = determineResult(state);
+      if (resultAfterPlayerStart) {
+        state = { ...state, result: resultAfterPlayerStart };
+        break;
+      }
     }
 
     if (playerActsFirst) {

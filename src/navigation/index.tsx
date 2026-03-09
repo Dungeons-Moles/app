@@ -22,7 +22,7 @@ import { MarketplaceScreen } from '../screens/MarketplaceScreen';
 import { ItemsScreen } from '../screens/ItemsScreen';
 import { SessionLoadingScreen } from '../screens/SessionLoadingScreen';
 import { BattleSimulatorScreen } from '../screens/BattleSimulatorScreen';
-import type { CombatReplay, BackendCombatLogEntry } from '../services/solana/types/combat_events';
+import type { CombatReplay } from '../services/solana/types/combat_events';
 import type {
   ItemStats,
   BossId,
@@ -83,8 +83,6 @@ export interface CombatParams {
   totalMoves?: number;
   /** Current phase number (on-chain Phase enum) */
   phase?: number;
-  /** Combat log entries from on-chain (skip local resolver if present) */
-  combatLog?: BackendCombatLogEntry[];
   /** Authoritative on-chain outcome (fallback when combat log is unavailable) */
   onChainOutcome?: {
     finalPlayerHp: number;

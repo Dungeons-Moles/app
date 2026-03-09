@@ -12,7 +12,13 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { CachedImageBackground } from '../components/common/CachedImageBackground';
 import type { RootStackParamList, CombatParams } from '../navigation';
 import { Typography } from '../theme/typography';
-import { TOOL_DEFINITIONS, createGearInstance, createToolInstance, getToolStatsAtTier } from '@/game/entities/items';
+import {
+  TOOL_DEFINITIONS,
+  calculateCombatBakedItemStats,
+  createGearInstance,
+  createToolInstance,
+  getToolStatsAtTier,
+} from '@/game/entities/items';
 import { GEAR_DEFINITIONS, type ItemTier } from '@/data/gear';
 import type {
   BossId,
@@ -582,26 +588,7 @@ function buildEnemyCombatant(
 }
 
 function getCombinedStats(tool: Tool | null, gear: Gear[]) {
-  const total = { atk: 0, arm: 0, spd: 0, dig: 0, hp: 0 };
-  if (tool) {
-    total.atk += tool.stats.atk ?? 0;
-    total.arm += tool.stats.arm ?? 0;
-    total.spd += tool.stats.spd ?? 0;
-    total.dig += tool.stats.dig ?? 0;
-    total.hp += tool.stats.hp ?? 0;
-    if (tool.oil === 'ATK') total.atk += 1;
-    if (tool.oil === 'ARM') total.arm += 1;
-    if (tool.oil === 'SPD') total.spd += 1;
-    if (tool.oil === 'DIG') total.dig += 1;
-  }
-  for (const item of gear) {
-    total.atk += item.stats.atk ?? 0;
-    total.arm += item.stats.arm ?? 0;
-    total.spd += item.stats.spd ?? 0;
-    total.dig += item.stats.dig ?? 0;
-    total.hp += item.stats.hp ?? 0;
-  }
-  return total;
+  return calculateCombatBakedItemStats(tool, gear);
 }
 
 function parseBossWeek(bossId: BossId): 1 | 2 | 3 {

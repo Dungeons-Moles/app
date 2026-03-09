@@ -1,4 +1,4 @@
-import { calculateItemStats } from '@/game/entities/items';
+import { calculateCombatBakedItemStats } from '@/game/entities/items';
 import type { Gear, Tool } from '@/game/engine/types';
 
 export type CombatPlayerStats = {
@@ -16,7 +16,7 @@ export function normalizeCombatPlayerStats(
   playerGear: Gear[],
   playerTool: Tool | null
 ): CombatPlayerStats {
-  const itemStats = calculateItemStats(playerTool, playerGear);
+  const itemStats = calculateCombatBakedItemStats(playerTool, playerGear);
 
   return {
     hp: stats.hp,

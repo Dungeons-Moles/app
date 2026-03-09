@@ -24,11 +24,9 @@ import type {
   ParsedEvent,
   CombatEventParseResult,
   StatusEffect,
-  CombatLogEvent,
   BackendCombatLogEntry,
 } from './types/combat_events';
 import {
-  decodeCombatLogEntryBuffer,
   EVENT_NAMES,
   LogAction,
 } from './types/combat_events';
@@ -202,55 +200,8 @@ export async function parseGameplayEvents(
   return result;
 }
 
-/**
- * Parse the CombatLog event from a transaction.
- * This contains the detailed turn-by-turn combat log entries.
- *
- * @param connection - Solana connection
- * @param program - Anchor program instance with event coder
- * @param signature - Transaction signature to parse
- * @returns CombatLogEvent if found, null otherwise
- */
-// CombatLog event discriminator from the IDL: sha256("event:CombatLog")[..8]
-const COMBAT_LOG_DISCRIMINATOR = Buffer.from([84, 130, 187, 88, 94, 235, 48, 211]);
-
 // CombatStarted event discriminator from the IDL
 const COMBAT_STARTED_DISCRIMINATOR = Buffer.from([172, 94, 187, 254, 85, 115, 217, 37]);
-
-/**
- * Manually decode a CombatLog event from raw binary data.
- * Bypasses Anchor's BorshEventCoder which fails on Vec<struct-with-enum>.
- *
- * Binary layout (after 8-byte discriminator):
- *   - player: Pubkey (32 bytes)
- *   - entries length: u32 LE (4 bytes)
- *   - entries[]: Borsh CombatLogEntry with optional source and contribution vec
- */
-function decodeCombatLogManually(data: Buffer): CombatLogEvent | null {
-  const PUBKEY_LEN = 32;
-  const HEADER_SIZE = PUBKEY_LEN + 4; // pubkey + vec length
-
-  if (data.length < HEADER_SIZE) return null;
-
-  const player = new PublicKey(data.subarray(0, PUBKEY_LEN)).toString();
-  const entryCount = data.readUInt32LE(PUBKEY_LEN);
-
-  const entries: BackendCombatLogEntry[] = [];
-  let offset = HEADER_SIZE;
-
-  try {
-    for (let i = 0; i < entryCount; i++) {
-      const decoded = decodeCombatLogEntryBuffer(data, offset);
-      entries.push(decoded.value);
-      offset += decoded.bytesRead;
-    }
-  } catch (error) {
-    console.warn('[decodeCombatLogManually] Failed to decode combat log:', error);
-    return null;
-  }
-
-  return { player, entries };
-}
 
 /**
  * Info extracted from the CombatStarted event (enemy archetype + HP for tier derivation).
@@ -264,10 +215,9 @@ export interface CombatEnemyInfo {
 
 /**
  * Combined result from parsing a combat transaction.
- * Extracts both the CombatLog entries and enemy info from CombatStarted.
+ * Extracts compact enemy info from CombatStarted.
  */
 export interface CombatTransactionInfo {
-  log: CombatLogEvent | null;
   enemyInfo: CombatEnemyInfo | null;
 }
 
@@ -304,18 +254,16 @@ export async function parseCombatLog(
 
   if (!tx) {
     console.warn('[parseCombatLog] getTransaction returned null for', signature.slice(0, 12));
-    return { log: null, enemyInfo: null };
+    return { enemyInfo: null };
   }
 
   if (!tx.meta?.logMessages) {
     console.warn('[parseCombatLog] Transaction has no log messages');
-    return { log: null, enemyInfo: null };
+    return { enemyInfo: null };
   }
 
-  let log: CombatLogEvent | null = null;
   let enemyInfo: CombatEnemyInfo | null = null;
 
-  // Scan all log lines for both CombatLog and CombatStarted events
   for (const logLine of tx.meta.logMessages) {
     if (!logLine.startsWith('Program data: ')) continue;
     const base64Data = logLine.slice('Program data: '.length);
@@ -324,12 +272,7 @@ export async function parseCombatLog(
       if (buf.length >= 8) {
         const disc = Buffer.from(buf.subarray(0, 8));
         const data = Buffer.from(buf.subarray(8));
-        if (!log && disc.equals(COMBAT_LOG_DISCRIMINATOR)) {
-          const result = decodeCombatLogManually(data);
-          if (result && result.entries.length > 0) {
-            log = result;
-          }
-        } else if (!enemyInfo && disc.equals(COMBAT_STARTED_DISCRIMINATOR)) {
+        if (!enemyInfo && disc.equals(COMBAT_STARTED_DISCRIMINATOR)) {
           enemyInfo = decodeCombatStartedEnemyInfo(data);
           if (enemyInfo) {
             console.log('[parseCombatLog] Extracted enemy info: archetype=', enemyInfo.archetype, 'hp=', enemyInfo.hp);
@@ -339,15 +282,10 @@ export async function parseCombatLog(
     } catch (err) {
       console.warn('[parseCombatLog] Manual decode error:', err);
     }
-    // Stop early if we found both
-    if (log && enemyInfo) break;
+    if (enemyInfo) break;
   }
 
-  if (!log) {
-    console.debug('[parseCombatLog] No CombatLog event found in', tx.meta.logMessages.length, 'log lines');
-  }
-
-  return { log, enemyInfo };
+  return { enemyInfo };
 }
 
 /**
@@ -363,7 +301,6 @@ export async function parseBossCombatFromMoveTx(
   signature: string,
   program?: Program
 ): Promise<{
-  combatLog?: BackendCombatLogEntry[];
   preBossPlayerHp?: number;
   combatEnded?: CombatEndedEvent;
 }> {
@@ -376,7 +313,6 @@ export async function parseBossCombatFromMoveTx(
     return {};
   }
 
-  let lastLog: CombatLogEvent | null = null;
   let lastPlayerHp: number | undefined;
   let preBossPlayerHpFromHeal: number | undefined;
   let lastCombatEnded: CombatEndedEvent | undefined;
@@ -415,12 +351,7 @@ export async function parseBossCombatFromMoveTx(
 
       if (buf.length >= 8) {
         const disc = Buffer.from(buf.subarray(0, 8));
-        if (disc.equals(COMBAT_LOG_DISCRIMINATOR)) {
-          const result = decodeCombatLogManually(Buffer.from(buf.subarray(8)));
-          if (result && result.entries.length > 0) {
-            lastLog = result; // Keep scanning — we want the LAST match
-          }
-        } else if (disc.equals(COMBAT_STARTED_DISCRIMINATOR)) {
+        if (disc.equals(COMBAT_STARTED_DISCRIMINATOR)) {
           const PUBKEY_LEN = 32;
           const data = Buffer.from(buf.subarray(8));
           if (data.length >= PUBKEY_LEN + 2) {
@@ -434,7 +365,6 @@ export async function parseBossCombatFromMoveTx(
   }
 
   return {
-    combatLog: lastLog?.entries,
     preBossPlayerHp: preBossPlayerHpFromHeal ?? lastPlayerHp,
     combatEnded: lastCombatEnded,
   };
@@ -586,7 +516,7 @@ function convertEventData(name: string, data: Record<string, unknown>): unknown 
       return {
         player: (data.player as PublicKey)?.toString() ?? '',
         entries: parseCombatLogEntries(data.entries),
-      } as CombatLogEvent;
+      } as { player: string; entries: BackendCombatLogEntry[] };
 
     default:
       return data;

@@ -53,6 +53,7 @@ const FLOATING_NUMBER_FADE_DELAY_MS = 600;
 const FLOATING_NUMBER_FADE_MS = 400;
 const CONTRIBUTION_STAGGER_MS = 1000;
 const INITIAL_COMBAT_START_DELAY_MS = 1000;
+const POST_STATUS_APPLY_BUFFER_MS = 220;
 
 const DEFAULT_COMBAT_SPEED: CombatSpeed = 'normal';
 
@@ -146,6 +147,8 @@ export interface CombatUIState {
   damageNumbers: DamageNumber[];
   /** Effect notifications to display (item triggers, status effects, etc.) */
   effectNotifications: EffectNotification[];
+  /** Whether replay should stop at the first terminal log entry */
+  respectTerminalLogIndex: boolean;
 }
 
 export interface DamageNumber {
@@ -189,6 +192,7 @@ const initialState: CombatUIState = {
   isComplete: false,
   damageNumbers: [],
   effectNotifications: [],
+  respectTerminalLogIndex: false,
 };
 
 // ============================================================================
@@ -500,6 +504,135 @@ function createContributionDamageNumber(
   return [];
 }
 
+function appendFloatingNumbersForEntry(
+  damageNumbers: DamageNumber[],
+  entry: CombatLogEntry | undefined,
+  logIndex: number
+) {
+  if (!entry) return;
+
+  if (entry.result.contributions?.length) {
+    damageNumbers.push(...createContributionDamageNumber(entry, logIndex, 0));
+  } else {
+    if (entry.result.damage && entry.target !== 'none') {
+      damageNumbers.push({
+        id: `dmg-${logIndex}-${Date.now()}`,
+        value: entry.result.damage,
+        type: 'damage',
+        target: entry.target,
+        timestamp: Date.now(),
+        source: entry.result.source,
+      });
+    }
+
+    if (entry.result.armorLost && entry.target !== 'none') {
+      damageNumbers.push({
+        id: `arm-${logIndex}-${Date.now()}`,
+        value: entry.result.armorLost,
+        type: 'armor',
+        target: entry.target,
+        timestamp: Date.now(),
+        source: entry.result.source,
+      });
+    }
+  }
+
+  if (entry.result.healing && entry.target !== 'none') {
+    damageNumbers.push({
+      id: `heal-${logIndex}-${Date.now()}`,
+      value: entry.result.healing,
+      type: 'heal',
+      target: entry.target,
+      timestamp: Date.now(),
+      source: entry.result.source,
+    });
+  }
+
+  if (entry.result.armorGained && entry.target !== 'none') {
+    damageNumbers.push({
+      id: `armg-${logIndex}-${Date.now()}`,
+      value: entry.result.armorGained,
+      type: 'stat',
+      statType: 'ARM',
+      target: entry.target,
+      timestamp: Date.now(),
+      source: entry.result.source,
+    });
+  }
+
+  if (entry.result.atkBonus && entry.target !== 'none') {
+    damageNumbers.push({
+      id: `atk-${logIndex}-${Date.now()}`,
+      value: entry.result.atkBonus,
+      type: 'stat',
+      statType: 'ATK',
+      target: entry.target,
+      timestamp: Date.now(),
+      source: entry.result.source,
+    });
+  }
+
+  if (entry.result.spdBonus && entry.target !== 'none') {
+    damageNumbers.push({
+      id: `spd-${logIndex}-${Date.now()}`,
+      value: entry.result.spdBonus,
+      type: 'stat',
+      statType: 'SPD',
+      target: entry.target,
+      timestamp: Date.now(),
+      source: entry.result.source,
+    });
+  }
+
+  if (entry.action === 'APPLY_STATUS' && entry.result.statusApplied && entry.target !== 'none') {
+    const rawStatusType = entry.result.statusApplied.type;
+    const statusType =
+      rawStatusType === 'reflection' ? undefined : (rawStatusType as DamageNumber['statusType']);
+    if (statusType) {
+      damageNumbers.push({
+        id: `status-${logIndex}-${Date.now()}`,
+        value: entry.result.statusApplied.stacks,
+        type: 'status',
+        target: entry.target,
+        timestamp: Date.now(),
+        source: entry.result.source,
+        statusType,
+      });
+    }
+  }
+
+  if (entry.result.goldStolen && entry.result.goldStolen > 0) {
+    damageNumbers.push({
+      id: `gold-${logIndex}-${Date.now()}`,
+      value: entry.result.goldStolen,
+      type: 'gold',
+      target: entry.target === 'none' ? 'player' : entry.target,
+      timestamp: Date.now(),
+      source: entry.result.source,
+    });
+  }
+}
+
+function getSimultaneousPairIndex(log: CombatLogEntry[], index: number): number | null {
+  const entry = log[index];
+  const nextEntry = log[index + 1];
+  if (!entry || !nextEntry) return null;
+  if (!entryHasFloatingNumber(entry) || !entryHasFloatingNumber(nextEntry)) return null;
+  if (entry.action === 'ATTACK' || nextEntry.action === 'ATTACK') return null;
+  if (entry.result.contributions?.length || nextEntry.result.contributions?.length) return null;
+  if (entry.turn !== nextEntry.turn || entry.timing !== nextEntry.timing || entry.actor !== nextEntry.actor) {
+    return null;
+  }
+  if (entry.target === nextEntry.target || entry.target === 'none' || nextEntry.target === 'none') return null;
+
+  const source = entry.result.source;
+  const nextSource = nextEntry.result.source;
+  if (!source || !nextSource) return null;
+  if (source.kind !== nextSource.kind || source.id !== nextSource.id) return null;
+
+  return index + 1;
+}
+
 function getAttackProgressThroughContribution(
   entry: CombatLogEntry,
   contributionIndex?: number | null
@@ -734,6 +867,7 @@ function combatReducer(state: CombatUIState, action: CombatAction): CombatUIStat
         isComplete: false,
         damageNumbers: [],
         effectNotifications: [],
+        respectTerminalLogIndex: false,
       };
     }
 
@@ -807,6 +941,7 @@ function combatReducer(state: CombatUIState, action: CombatAction): CombatUIStat
         isComplete: false,
         damageNumbers: [],
         effectNotifications: [],
+        respectTerminalLogIndex: true,
       };
     }
 
@@ -846,6 +981,7 @@ function combatReducer(state: CombatUIState, action: CombatAction): CombatUIStat
         isComplete: false,
         damageNumbers: [],
         effectNotifications: [],
+        respectTerminalLogIndex: false,
       };
     }
 
@@ -863,113 +999,18 @@ function combatReducer(state: CombatUIState, action: CombatAction): CombatUIStat
       if (!state.resolvedCombat) return state;
 
       const newIndex = Math.min(action.index, state.resolvedCombat.log.length - 1);
+      const pairedIndex = getSimultaneousPairIndex(state.resolvedCombat.log, newIndex);
+      const effectiveIndex = pairedIndex ?? newIndex;
 
       // Extract damage number from current log entry
       const entry = state.resolvedCombat.log[newIndex];
+      const pairedEntry = pairedIndex !== null ? state.resolvedCombat.log[pairedIndex] : undefined;
       const newDamageNumbers = [...state.damageNumbers];
       const newEffectNotifications = [...state.effectNotifications];
 
-      if (entry) {
-        if (entry.result.contributions?.length) {
-          newDamageNumbers.push(...createContributionDamageNumber(entry, newIndex, 0));
-        } else {
-          if (entry.result.damage && entry.target !== 'none') {
-            newDamageNumbers.push({
-              id: `dmg-${newIndex}-${Date.now()}`,
-              value: entry.result.damage,
-              type: 'damage',
-              target: entry.target,
-              timestamp: Date.now(),
-              source: entry.result.source,
-            });
-          }
-
-          if (entry.result.armorLost && entry.target !== 'none') {
-            newDamageNumbers.push({
-              id: `arm-${newIndex}-${Date.now()}`,
-              value: entry.result.armorLost,
-              type: 'armor',
-              target: entry.target,
-              timestamp: Date.now(),
-              source: entry.result.source,
-            });
-          }
-        }
-      }
-
-      if (entry?.result.healing && entry.target !== 'none') {
-        newDamageNumbers.push({
-          id: `heal-${newIndex}-${Date.now()}`,
-          value: entry.result.healing,
-          type: 'heal',
-          target: entry.target,
-          timestamp: Date.now(),
-          source: entry.result.source,
-        });
-      }
-
-      if (entry?.result.armorGained && entry.target !== 'none') {
-        newDamageNumbers.push({
-          id: `armg-${newIndex}-${Date.now()}`,
-          value: entry.result.armorGained,
-          type: 'stat',
-          statType: 'ARM',
-          target: entry.target,
-          timestamp: Date.now(),
-          source: entry.result.source,
-        });
-      }
-
-      if (entry?.result.atkBonus && entry.target !== 'none') {
-        newDamageNumbers.push({
-          id: `atk-${newIndex}-${Date.now()}`,
-          value: entry.result.atkBonus,
-          type: 'stat',
-          statType: 'ATK',
-          target: entry.target,
-          timestamp: Date.now(),
-          source: entry.result.source,
-        });
-      }
-
-      if (entry?.result.spdBonus && entry.target !== 'none') {
-        newDamageNumbers.push({
-          id: `spd-${newIndex}-${Date.now()}`,
-          value: entry.result.spdBonus,
-          type: 'stat',
-          statType: 'SPD',
-          target: entry.target,
-          timestamp: Date.now(),
-          source: entry.result.source,
-        });
-      }
-
-      if (entry?.action === 'APPLY_STATUS' && entry.result.statusApplied && entry.target !== 'none') {
-        const rawStatusType = entry.result.statusApplied.type;
-        const statusType =
-          rawStatusType === 'reflection' ? undefined : (rawStatusType as DamageNumber['statusType']);
-        if (statusType) {
-          newDamageNumbers.push({
-            id: `status-${newIndex}-${Date.now()}`,
-            value: entry.result.statusApplied.stacks,
-            type: 'status',
-            target: entry.target,
-            timestamp: Date.now(),
-            source: entry.result.source,
-            statusType,
-          });
-        }
-      }
-
-      if (entry?.result.goldStolen && entry.result.goldStolen > 0) {
-        newDamageNumbers.push({
-          id: `gold-${newIndex}-${Date.now()}`,
-          value: entry.result.goldStolen,
-          type: 'gold',
-          target: entry.target === 'none' ? 'player' : entry.target,
-          timestamp: Date.now(),
-          source: entry.result.source,
-        });
+      appendFloatingNumbersForEntry(newDamageNumbers, entry, newIndex);
+      if (pairedEntry) {
+        appendFloatingNumbersForEntry(newDamageNumbers, pairedEntry, pairedIndex!);
       }
 
       // Extract effect notification for this log entry
@@ -977,6 +1018,12 @@ function combatReducer(state: CombatUIState, action: CombatAction): CombatUIStat
         const notification = extractEffectNotification(entry, newIndex);
         if (notification) {
           newEffectNotifications.push(notification);
+        }
+      }
+      if (pairedEntry) {
+        const pairedNotification = extractEffectNotification(pairedEntry, pairedIndex!);
+        if (pairedNotification) {
+          newEffectNotifications.push(pairedNotification);
         }
       }
 
@@ -987,7 +1034,7 @@ function combatReducer(state: CombatUIState, action: CombatAction): CombatUIStat
 
       return {
         ...state,
-        currentLogIndex: newIndex,
+        currentLogIndex: effectiveIndex,
         currentContributionIndex: entry?.result.contributions?.length ? 0 : null,
         damageNumbers: trimmedNumbers,
         effectNotifications: trimmedNotifications,
@@ -1188,9 +1235,9 @@ export function CombatProvider({ children, initialSpeed, onSpeedChange }: Combat
   }, [state.resolvedCombat]);
 
   const terminalLogIndex = useCallback(() => {
-    if (!state.resolvedCombat || !state.combat) return null;
+    if (!state.resolvedCombat || !state.combat || !state.respectTerminalLogIndex) return null;
     return deriveTerminalLogIndex(state.combat, state.resolvedCombat.log);
-  }, [state.resolvedCombat, state.combat]);
+  }, [state.resolvedCombat, state.combat, state.respectTerminalLogIndex]);
 
   useEffect(() => {
     if (!state.resolvedCombat || state.isComplete) return;
@@ -1210,6 +1257,8 @@ export function CombatProvider({ children, initialSpeed, onSpeedChange }: Combat
       activeContributionIndex >= currentEntry.result.contributions.length - 1;
     const isWaitingForSinglePopupToFinish =
       !currentEntry?.result.contributions?.length && entryHasFloatingNumber(currentEntry);
+    const isStatusApplyEntry =
+      currentEntry?.action === 'APPLY_STATUS' && Boolean(currentEntry.result.statusApplied);
     const isInstantStatusRemoval = entryIsStatusRemovalOnly(currentEntry);
     const isAtTerminalEntry = !isInitialDelay && state.currentLogIndex >= stopAtIndex;
     const shouldCompleteAfterCurrentEntry =
@@ -1248,7 +1297,9 @@ export function CombatProvider({ children, initialSpeed, onSpeedChange }: Combat
           : isWaitingForSinglePopupToFinish
           ? speed === 'paused'
             ? null
-            : (FLOATING_NUMBER_FADE_DELAY_MS + FLOATING_NUMBER_FADE_MS) /
+            : (FLOATING_NUMBER_FADE_DELAY_MS +
+                FLOATING_NUMBER_FADE_MS +
+                (isStatusApplyEntry ? POST_STATUS_APPLY_BUFFER_MS : 0)) /
               COMBAT_SPEED_MULTIPLIER[speed]
           : isInstantStatusRemoval
             ? 0

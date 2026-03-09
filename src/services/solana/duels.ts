@@ -15,7 +15,6 @@ import {
   deriveGeneratedMapPda,
   deriveInventoryPda,
 } from './constants';
-import { decodeCombatLogEntryBuffer, type BackendCombatLogEntry } from './types/combat_events';
 import type { OnChainItemInstance } from './pitDraft';
 
 export const DUEL_ENTRY_LAMPORTS = 100_000_000; // 0.1 SOL
@@ -458,7 +457,6 @@ export interface DuelCombatVisualEvent {
   playerAGear: (OnChainItemInstance | null)[];
   playerBTool: OnChainItemInstance | null;
   playerBGear: (OnChainItemInstance | null)[];
-  combatLog: BackendCombatLogEntry[];
   playerAWon: boolean;
   finalPlayerAHp: number;
   finalPlayerBHp: number;
@@ -661,21 +659,6 @@ function decodeDuelCombatVisual(data: Buffer): DuelCombatVisualEvent | null {
       offset += entry.bytesRead;
     }
 
-    const logCount = data.readUInt32LE(offset);
-    offset += 4;
-
-    const combatLog: BackendCombatLogEntry[] = [];
-    for (let i = 0; i < logCount; i++) {
-      const decoded = decodeCombatLogEntryBuffer(data, offset);
-      combatLog.push(decoded.value);
-      offset += decoded.bytesRead;
-    }
-
-    // combat_log_truncated: bool (1 byte)
-    offset += 1;
-    // combat_log_total_entries: u16 (2 bytes)
-    offset += 2;
-
     const playerAWon = data.readUInt8(offset) !== 0;
     offset += 1;
     const finalPlayerAHp = data.readInt16LE(offset);
@@ -692,7 +675,6 @@ function decodeDuelCombatVisual(data: Buffer): DuelCombatVisualEvent | null {
       playerAGear: aGear,
       playerBTool: bTool.value,
       playerBGear: bGear,
-      combatLog,
       playerAWon,
       finalPlayerAHp,
       finalPlayerBHp,

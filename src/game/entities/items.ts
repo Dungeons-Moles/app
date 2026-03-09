@@ -23,6 +23,7 @@ import {
   resolveDescriptionForTier,
   resolveDescriptionAllTiers,
 } from '../../data/gear';
+import { getGearStatsAtTier } from '../../data/gear-effects';
 import { getToolEffectsAtTier, TOOL_EFFECTS } from '../../data/tool-effects';
 
 // ============================================================================
@@ -317,6 +318,7 @@ export function getToolStatsAtTier(toolId: ToolId, tier: 1 | 2 | 3): ItemStats {
 
   for (const effect of effects) {
     if (effect.trigger.type !== 'BattleStart') continue;
+    if (effect.condition.type !== 'None') continue;
 
     switch (effect.effectType) {
       case 'GainAtk':
@@ -338,6 +340,69 @@ export function getToolStatsAtTier(toolId: ToolId, tier: 1 | 2 | 3): ItemStats {
   }
 
   return stats;
+}
+
+function mergeBakedStats(primary: ItemStats, derived: ItemStats): ItemStats {
+  return {
+    atk: Math.max(primary.atk ?? 0, derived.atk ?? 0),
+    arm: Math.max(primary.arm ?? 0, derived.arm ?? 0),
+    spd: Math.max(primary.spd ?? 0, derived.spd ?? 0),
+    dig: Math.max(primary.dig ?? 0, derived.dig ?? 0),
+    hp: Math.max(primary.hp ?? 0, derived.hp ?? 0),
+  };
+}
+
+export function calculateCombatBakedItemStats(tool: Tool | null, gear: Gear[]): ItemStats {
+  const result: ItemStats = {
+    atk: 0,
+    arm: 0,
+    spd: 0,
+    dig: 0,
+    hp: 0,
+  };
+
+  if (tool) {
+    const directStats: ItemStats = {
+      atk: tool.stats.atk ?? 0,
+      arm: tool.stats.arm ?? 0,
+      spd: tool.stats.spd ?? 0,
+      dig: tool.stats.dig ?? 0,
+      hp: tool.stats.hp ?? 0,
+    };
+    const derivedStats = getToolStatsAtTier(tool.id, rarityToToolTier(tool.rarity));
+    const mergedToolStats = mergeBakedStats(directStats, derivedStats);
+
+    result.atk = (result.atk ?? 0) + (mergedToolStats.atk ?? 0);
+    result.arm = (result.arm ?? 0) + (mergedToolStats.arm ?? 0);
+    result.spd = (result.spd ?? 0) + (mergedToolStats.spd ?? 0);
+    result.dig = (result.dig ?? 0) + (mergedToolStats.dig ?? 0);
+    result.hp = (result.hp ?? 0) + (mergedToolStats.hp ?? 0);
+
+    if (tool.oil === 'ATK') result.atk = (result.atk ?? 0) + 1;
+    if (tool.oil === 'ARM') result.arm = (result.arm ?? 0) + 1;
+    if (tool.oil === 'SPD') result.spd = (result.spd ?? 0) + 1;
+    if (tool.oil === 'DIG') result.dig = (result.dig ?? 0) + 1;
+  }
+
+  for (const item of gear) {
+    const directStats: ItemStats = {
+      atk: item.stats.atk ?? 0,
+      arm: item.stats.arm ?? 0,
+      spd: item.stats.spd ?? 0,
+      dig: item.stats.dig ?? 0,
+      hp: item.stats.hp ?? 0,
+    };
+    const derivedStats = getGearStatsAtTier(item.id, getTierFromRarity(item.currentRarity));
+    const mergedGearStats = mergeBakedStats(directStats, derivedStats);
+
+    result.atk = (result.atk ?? 0) + (mergedGearStats.atk ?? 0);
+    result.arm = (result.arm ?? 0) + (mergedGearStats.arm ?? 0);
+    result.spd = (result.spd ?? 0) + (mergedGearStats.spd ?? 0);
+    result.dig = (result.dig ?? 0) + (mergedGearStats.dig ?? 0);
+    result.hp = (result.hp ?? 0) + (mergedGearStats.hp ?? 0);
+  }
+
+  return result;
 }
 
 // ============================================================================

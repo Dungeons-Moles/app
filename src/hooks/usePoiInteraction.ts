@@ -70,7 +70,6 @@ import {
 } from '@/game/entities/pois';
 import type { GameState } from '@/game/engine/types';
 import type { Position, POIOption, GearId, ToolId, Tool, Gear, ToolOil } from '@/game/engine/types';
-import type { BackendCombatLogEntry } from '@/services/solana/types/combat_events';
 
 // ============================================================================
 // ER Position Retry Helper
@@ -246,11 +245,9 @@ export interface UsePoiInteractionResult extends PoiInteractionHookState {
       finalPlayerGold: number;
       totalMoves: number;
       phase: number;
-      combatLog?: BackendCombatLogEntry[];
       preBossPlayerHp?: number;
       turnsTaken?: number;
       finalEnemyHp?: number;
-      rawFinalPlayerHp?: number;
       signature?: string;
     };
   }>;
@@ -1936,11 +1933,9 @@ export function usePoiInteraction(): UsePoiInteractionResult {
       finalPlayerGold: number;
       totalMoves: number;
       phase: number;
-      combatLog?: BackendCombatLogEntry[];
       preBossPlayerHp?: number;
       turnsTaken?: number;
       finalEnemyHp?: number;
-      rawFinalPlayerHp?: number;
       signature?: string;
     };
   }> => {
@@ -2073,11 +2068,9 @@ export function usePoiInteraction(): UsePoiInteractionResult {
                   finalPlayerGold: number;
                   totalMoves: number;
                   phase: number;
-                  combatLog?: BackendCombatLogEntry[];
                   preBossPlayerHp?: number;
                   turnsTaken?: number;
                   finalEnemyHp?: number;
-                  rawFinalPlayerHp?: number;
                   signature?: string;
                 }
               | undefined;
@@ -2094,11 +2087,9 @@ export function usePoiInteraction(): UsePoiInteractionResult {
                   finalPlayerGold: updatedState.gold,
                   totalMoves: updatedState.totalMoves,
                   phase: updatedState.phase,
-                  combatLog: parsedBossCombat?.combatLog,
                   preBossPlayerHp: parsedBossCombat?.preBossPlayerHp,
                   turnsTaken: parsedBossCombat?.combatEnded?.turnsTaken,
                   finalEnemyHp: parsedBossCombat?.combatEnded?.finalEnemyHp,
-                  rawFinalPlayerHp: parsedBossCombat?.combatEnded?.finalPlayerHp,
                   signature: restSignature,
                 };
                 debugLog(

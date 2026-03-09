@@ -27,7 +27,6 @@ import { FocusGlow } from '../components/ui/FocusGlow';
 import { HubSettingsModal } from '../components/ui/HubSettingsModal';
 import { calculateItemStats } from '@/game/entities/items';
 import type { CombatantState, Gear, Tool } from '@/game/engine/types';
-import type { BackendCombatLogEntry } from '@/services/solana/types/combat_events';
 
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.webp');
 const STAINS_BACKGROUND = require('../../assets/ui/backgrounds/stains-background.webp');
@@ -222,8 +221,6 @@ export function GauntletHistoryScreen({ navigation }: GauntletHistoryScreenProps
           echoGear
         );
 
-        const combatLog: BackendCombatLogEntry[] = visual.combatLog;
-
         navigation.navigate('Combat', {
           combatInput: {
             player,
@@ -231,7 +228,6 @@ export function GauntletHistoryScreen({ navigation }: GauntletHistoryScreenProps
             seed: 0,
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             enemyDefinitionId: 'pvpOpponent' as any, // PvP uses a non-EnemyId definitionId
-            combatLog,
             onChainOutcome: {
               finalPlayerHp: visual.finalPlayerHp,
               finalPlayerGold: 0,

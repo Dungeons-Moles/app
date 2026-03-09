@@ -37,9 +37,8 @@ import {
 } from '@/services/solana/duels';
 import { sendSessionSignerTransaction } from '@/services/solana/sessionSigner';
 import { convertItemInstanceToGear, convertItemInstanceToTool } from '@/services/solana/pitDraft';
-import type { BackendCombatLogEntry } from '@/services/solana/types/combat_events';
 import type { CombatantState, Gear, Tool } from '@/game/engine/types';
-import { calculateItemStats } from '@/game/entities/items';
+import { calculateCombatBakedItemStats } from '@/game/entities/items';
 
 type CombatScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Combat'>;
@@ -56,7 +55,7 @@ function buildDuelCombatant(
   tool: Tool | null,
   gear: Gear[]
 ): CombatantState {
-  const itemStats = calculateItemStats(tool, gear);
+  const itemStats = calculateCombatBakedItemStats(tool, gear);
   const maxHp = DUEL_BASE_HP + (itemStats.hp ?? 0);
 
   return {
@@ -383,17 +382,12 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
         const player = buildDuelCombatant('You', true, 'player', playerTool, playerGear);
         const enemy = buildDuelCombatant('Opponent', false, 'pvpOpponent', enemyTool, enemyGear);
 
-        const combatLog: BackendCombatLogEntry[] = visual.combatLog.map((entry) => ({
-          ...entry,
-          isPlayer: isPlayerA ? entry.isPlayer : !entry.isPlayer,
-        }));
         const isWinner = events.resolved.winner?.toBase58() === ourKey;
 
         duelReplayCombatInput = {
           player,
           enemy,
           seed: 0,
-          combatLog,
           onChainOutcome: {
             finalPlayerHp: isPlayerA ? visual.finalPlayerAHp : visual.finalPlayerBHp,
             finalPlayerGold: 0,

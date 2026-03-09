@@ -35,7 +35,6 @@ import {
 } from '@/services/solana/types/gameplay_state';
 import { parseCombatLog, parseBossCombatFromMoveTx } from '@/services/solana/eventParser';
 import type { CombatEnemyInfo } from '@/services/solana/eventParser';
-import type { BackendCombatLogEntry } from '@/services/solana/types/combat_events';
 import { parseGauntletCombatVisualEvent } from '@/services/solana/gauntlet';
 import type { GauntletCombatVisualEvent } from '@/services/solana/gauntlet';
 import { sendSessionSignerTransaction, confirmErTransaction } from '@/services/solana/sessionSigner';
@@ -74,14 +73,10 @@ export interface UseGameplayStateReturn {
     bossFightReady?: boolean;
     isDead?: boolean;
     signature?: string;
-    /** Combat log entries from on-chain (if combat occurred) */
-    combatLog?: BackendCombatLogEntry[];
     /** Enemy info from CombatStarted event (archetype + HP for tier derivation) */
     combatEnemyInfo?: CombatEnemyInfo;
     /** Boss fight was resolved inline in this move_player tx (Campaign, Duel weeks 1-2) */
     bossResolvedInline?: boolean;
-    /** Boss combat log (from inline resolution — last CombatLog in tx) */
-    bossCombatLog?: BackendCombatLogEntry[];
     /** Player HP at the start of the boss fight (from CombatStarted event) */
     preBossPlayerHp?: number;
     /** Gauntlet echo combat visual (from inline resolution in move_player) */
@@ -114,7 +109,6 @@ export interface UseGameplayStateReturn {
     newState?: GameState;
     previousState?: GameState;
     isDead?: boolean;
-    combatLog?: BackendCombatLogEntry[];
     gauntletVisual?: GauntletCombatVisualEvent | null;
     signature?: string;
   }>;
@@ -294,13 +288,11 @@ export function useGameplayState(): UseGameplayStateReturn {
       newState?: GameState;
       previousState?: GameState;
       combatOccurred?: boolean;
-      combatLog?: BackendCombatLogEntry[];
       combatEnemyInfo?: CombatEnemyInfo;
       bossFightReady?: boolean;
       isDead?: boolean;
       signature?: string;
       bossResolvedInline?: boolean;
-      bossCombatLog?: BackendCombatLogEntry[];
       preBossPlayerHp?: number;
       gauntletCombatVisual?: GauntletCombatVisualEvent | null;
     }> => {
@@ -376,7 +368,7 @@ export function useGameplayState(): UseGameplayStateReturn {
         // Confirmation still runs — it just doesn't block the fetch.
         const confirmPromise = confirmErTransaction(moveConnection, signature);
         const statePromise = fetchGameState(program, gameStatePda);
-        const combatPromise = parseCombatLogWithRetry(
+        const combatPromise = parseCombatInfoWithRetry(
           gameplayConnection,
           program,
           signature,
@@ -417,7 +409,6 @@ export function useGameplayState(): UseGameplayStateReturn {
         // advances, so we detect via week change / death / completion instead of
         // checking movesRemaining === 0.
         let bossResolvedInline = false;
-        let bossCombatLog: BackendCombatLogEntry[] | undefined;
         let preBossPlayerHp: number | undefined;
         let gauntletCombatVisual: GauntletCombatVisualEvent | null = null;
 
@@ -429,34 +420,31 @@ export function useGameplayState(): UseGameplayStateReturn {
             confirmedState.week > previousState.week ||
             (confirmedState.completed && !previousState.completed));
 
-        // Gauntlet echo combat emits GauntletCombatVisual (not CombatLog),
-        // so skip the CombatLog retry loop when we know it's a gauntlet echo.
+        // Gauntlet echo combat emits GauntletCombatVisual,
+        // so skip the compact combat-info retry when we know it's a gauntlet echo.
         const isGauntletEchoResolution =
           bossResolvedIndicator && previousState.runMode === RunMode.Gauntlet;
 
         // Use pre-fetched combat result from the quick parallel parse.
         // If the quick attempt missed and HP actually changed, do a follow-up retry.
-        let combatLog: BackendCombatLogEntry[] | undefined;
         let combatEnemyInfo: CombatEnemyInfo | undefined;
         if (!isGauntletEchoResolution) {
-          if (combatResult.combatLog || combatResult.combatEnemyInfo) {
-            combatLog = combatResult.combatLog;
+          if (combatResult.combatEnemyInfo) {
             combatEnemyInfo = combatResult.combatEnemyInfo;
           } else if (hpOrDeathChanged && signature) {
-            // Quick attempt missed — retry once more for combat data.
-            const retryResult = await parseCombatLogWithRetry(
+            // Quick attempt missed — retry once more for compact combat metadata.
+            const retryResult = await parseCombatInfoWithRetry(
               gameplayConnection,
               program,
               signature,
               'move',
               { maxAttempts: 1, delayMs: 80 }
             );
-            combatLog = retryResult.combatLog;
             combatEnemyInfo = retryResult.combatEnemyInfo;
           }
         }
 
-        const parsedCombatDetected = !!combatLog?.length || !!combatEnemyInfo;
+        const parsedCombatDetected = !!combatEnemyInfo;
         const combatOccurred = hpOrDeathChanged || parsedCombatDetected;
 
         if (
@@ -472,11 +460,8 @@ export function useGameplayState(): UseGameplayStateReturn {
               signature!,
               program
             );
-            bossCombatLog = bossParsed.combatLog;
             preBossPlayerHp = bossParsed.preBossPlayerHp;
             console.log('[useGameplayState] Inline boss resolution detected:', {
-              hasCombatLog: !!bossCombatLog,
-              logEntries: bossCombatLog?.length ?? 0,
               preBossPlayerHp,
             });
           } catch (err) {
@@ -505,13 +490,11 @@ export function useGameplayState(): UseGameplayStateReturn {
           newState: confirmedState ?? undefined,
           previousState,
           combatOccurred,
-          combatLog,
           combatEnemyInfo,
           bossFightReady: confirmedState?.bossFightReady ?? false,
           isDead: confirmedState?.isDead ?? false,
           signature,
           bossResolvedInline,
-          bossCombatLog,
           preBossPlayerHp,
           gauntletCombatVisual,
         };
@@ -595,7 +578,6 @@ export function useGameplayState(): UseGameplayStateReturn {
       newState?: GameState;
       previousState?: GameState;
       isDead?: boolean;
-      combatLog?: BackendCombatLogEntry[];
       gauntletVisual?: GauntletCombatVisualEvent | null;
       signature?: string;
     }> => {
@@ -626,14 +608,14 @@ export function useGameplayState(): UseGameplayStateReturn {
           sessionPda,
           sessionSignerKeypair
         );
-        // Fire state fetch and combat log parse in parallel
+        // Fire state fetch and compact combat metadata parse in parallel
         const statePromise = fetchGameState(prog, gameStatePda);
         const combatPromise = signature
-          ? parseCombatLogWithRetry(conn, prog, signature, 'boss', {
+          ? parseCombatInfoWithRetry(conn, prog, signature, 'boss', {
               maxAttempts: 2,
               delayMs: 80,
             })
-          : Promise.resolve({ combatLog: undefined, combatEnemyInfo: undefined });
+          : Promise.resolve({ combatEnemyInfo: undefined });
 
         const [confirmedState, combatResult] = await Promise.all([
           statePromise,
@@ -652,14 +634,11 @@ export function useGameplayState(): UseGameplayStateReturn {
           setLastSyncAt(Date.now());
         }
 
-        const combatLog = combatResult.combatLog;
-
         return {
           success: true,
           newState: confirmedState ?? undefined,
           previousState,
           isDead: confirmedState?.isDead ?? false,
-          combatLog,
           gauntletVisual: null,
           signature,
         };
@@ -778,39 +757,43 @@ export function useGameplayState(): UseGameplayStateReturn {
  * Returns entries and enemy info if available.
  * Uses parseWithRetry for the retry loop; accumulates enemyInfo across attempts.
  */
-async function parseCombatLogWithRetry(
+async function parseCombatInfoWithRetry(
   connection: Parameters<typeof parseCombatLog>[0],
   program: Parameters<typeof parseCombatLog>[1],
   signature: string,
   label: string,
   options?: { maxAttempts?: number; delayMs?: number; quiet?: boolean }
 ): Promise<{
-  combatLog?: BackendCombatLogEntry[];
   combatEnemyInfo?: CombatEnemyInfo;
 }> {
   const quiet = options?.quiet ?? false;
   let combatEnemyInfo: CombatEnemyInfo | undefined;
 
-  const combatLog = await parseWithRetry(
+  const foundEnemyInfo = await parseWithRetry(
     async () => {
       const result = await parseCombatLog(connection, program, signature);
       if (result.enemyInfo) combatEnemyInfo = result.enemyInfo;
-      if (result.log && result.log.entries.length > 0) {
-        console.log(`[useGameplayState] Parsed ${label} combat log:`, result.log.entries.length, 'entries');
-        return result.log.entries;
+      if (result.enemyInfo) {
+        console.log(
+          `[useGameplayState] Parsed ${label} combat metadata: archetype=`,
+          result.enemyInfo.archetype,
+          'hp=',
+          result.enemyInfo.hp
+        );
+        return true;
       }
       return null;
     },
-    { label: `${label} combat log`, ...options }
+    { label: `${label} combat metadata`, ...options }
   );
 
-  if (!combatLog && !quiet) {
+  if (!foundEnemyInfo && !quiet) {
     console.warn(
-      `[useGameplayState] Could not parse ${label} combat log after retries, using on-chain outcome fallback`
+      `[useGameplayState] Could not parse ${label} combat metadata after retries, using on-chain outcome fallback`
     );
   }
 
-  return { combatLog: combatLog ?? undefined, combatEnemyInfo };
+  return { combatEnemyInfo };
 }
 
 /**

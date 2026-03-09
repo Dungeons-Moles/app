@@ -277,7 +277,7 @@ export const ENEMY_DEFINITIONS: Record<EnemyId, EnemyDefinition> = {
     ],
     trait: {
       name: 'Explosive',
-      description: 'Countdown(3): deal 3 damage to you (non-weapon)',
+      description: 'Countdown(3): deal 3 damage to you and itself (non-weapon)',
       timing: 'COUNTDOWN',
     },
     biome: 'B',

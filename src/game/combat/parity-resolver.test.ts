@@ -1,7 +1,7 @@
 import { resolveCombatWithParity } from '@/game/combat/parity-resolver';
 import type { CombatResolverInput } from '@/game/combat/resolver';
 import type { CombatantState } from '@/game/engine/types';
-import { createGearInstance, createToolInstance } from '@/game/entities/items';
+import { calculateCombatBakedItemStats, createGearInstance, createToolInstance } from '@/game/entities/items';
 import { ENEMY_DEFINITIONS } from '@/game/entities/enemies';
 import type { GearId, ToolId } from '@/game/engine/types';
 
@@ -13,23 +13,9 @@ function buildPlayerCombatant(
 ): CombatantState {
   const tool = createToolInstance(toolId);
   const gear = gearIds.map((id) => createGearInstance(id, 'COMMON'));
+  const bonuses = calculateCombatBakedItemStats(tool, gear);
 
-  const bonuses = { atk: 0, arm: 0, spd: 0, dig: 0, hp: 0 };
-  bonuses.atk += tool.stats.atk ?? 0;
-  bonuses.arm += tool.stats.arm ?? 0;
-  bonuses.spd += tool.stats.spd ?? 0;
-  bonuses.dig += tool.stats.dig ?? 0;
-  bonuses.hp += tool.stats.hp ?? 0;
-
-  for (const item of gear) {
-    bonuses.atk += item.stats.atk ?? 0;
-    bonuses.arm += item.stats.arm ?? 0;
-    bonuses.spd += item.stats.spd ?? 0;
-    bonuses.dig += item.stats.dig ?? 0;
-    bonuses.hp += item.stats.hp ?? 0;
-  }
-
-  const maxHp = startingHp + bonuses.hp;
+  const maxHp = startingHp + (bonuses.hp ?? 0);
   return {
     name: 'Player',
     emoji: '🧑‍🔧',
@@ -37,10 +23,10 @@ function buildPlayerCombatant(
     isPlayer: true,
     maxHp,
     hp: Math.min(currentHp, maxHp),
-    atk: bonuses.atk,
-    arm: bonuses.arm,
-    spd: bonuses.spd,
-    dig: bonuses.dig,
+    atk: bonuses.atk ?? 0,
+    arm: bonuses.arm ?? 0,
+    spd: bonuses.spd ?? 0,
+    dig: bonuses.dig ?? 0,
     bonusAtk: 0,
     bonusArm: 0,
     bonusSpd: 0,
@@ -51,8 +37,8 @@ function buildPlayerCombatant(
 }
 
 function buildEnemyCombatant(
-  enemyId: 'BLOOD_MOSQUITO' | 'TUNNEL_RAT',
-  tier: 1 | 2
+  enemyId: 'BLOOD_MOSQUITO' | 'TUNNEL_RAT' | 'COIN_SLUG' | 'POWDER_TICK',
+  tier: 1 | 2 | 3
 ): CombatantState {
   const stats = ENEMY_DEFINITIONS[enemyId].tiers[tier - 1];
   return {
@@ -133,5 +119,63 @@ describe('resolveCombatWithParity', () => {
 
     expect(stealIndex).toBeGreaterThanOrEqual(0);
     expect(shrapnelIndex).toBeGreaterThan(stealIndex);
+  });
+
+  it('matches the backend result for rime pike + frost lantern + rust engine vs coin slug t1', () => {
+    const input: CombatResolverInput = {
+      player: buildPlayerCombatant(25, 25, 'T9', ['I33', 'I46']),
+      enemy: buildEnemyCombatant('COIN_SLUG', 1),
+      seed: 1,
+      enemyId: 'COIN_SLUG',
+      enemyDefinitionId: 'COIN_SLUG',
+      enemyTier: 1,
+      playerTool: createToolInstance('T9'),
+      playerGear: [createGearInstance('I33', 'COMMON'), createGearInstance('I46', 'COMMON')],
+      playerGold: 10,
+      enemyGold: 0,
+      useParityResolver: true,
+      preserveArmor: true,
+    };
+
+    const outcome = resolveCombatWithParity(input);
+
+    expect(outcome.player.hp).toBe(25);
+  });
+
+  it('resolves powder tick t3 using faster-side countdown before slower turn-start effects', () => {
+    const input: CombatResolverInput = {
+      player: buildPlayerCombatant(25, 25, 'T9', ['I33', 'I46']),
+      enemy: buildEnemyCombatant('POWDER_TICK', 3),
+      seed: 1,
+      enemyId: 'POWDER_TICK',
+      enemyDefinitionId: 'POWDER_TICK',
+      enemyTier: 3,
+      playerTool: createToolInstance('T9'),
+      playerGear: [createGearInstance('I33', 'COMMON'), createGearInstance('I46', 'COMMON')],
+      playerGold: 10,
+      enemyGold: 0,
+      useParityResolver: true,
+      preserveArmor: true,
+    };
+
+    const outcome = resolveCombatWithParity(input);
+
+    expect(outcome.player.hp).toBe(20);
+    const countdownSelfDamageIndex = outcome.log.findIndex(
+      (entry) =>
+        entry.actor === 'enemy' &&
+        entry.target === 'enemy' &&
+        entry.result.source?.id === 'POWDER_TICK' &&
+        entry.result.damage === 3
+    );
+    const postCountdownEnemyAttackIndex = outcome.log.findIndex(
+      (entry, index) =>
+        index > countdownSelfDamageIndex &&
+        entry.actor === 'enemy' &&
+        entry.action === 'ATTACK'
+    );
+
+    expect(countdownSelfDamageIndex).toBeGreaterThanOrEqual(0);
+    expect(postCountdownEnemyAttackIndex).toBe(-1);
   });
 });
