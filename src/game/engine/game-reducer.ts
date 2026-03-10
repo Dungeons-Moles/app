@@ -76,7 +76,7 @@ import {
   removeGold,
   refreshPlayerStats,
 } from '../entities/player';
-import { createCombatState } from '../combat/resolver';
+import { createCombatState } from '../combat/state';
 import {
   consumeMove,
   advanceTimePhase,

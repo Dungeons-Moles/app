@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { CachedImageBackground } from '../components/common/CachedImageBackground';
+import { CachedImage } from '../components/common/CachedImage';
 import type { RootStackParamList, CombatParams } from '../navigation';
 import { Typography } from '../theme/typography';
 import {
@@ -26,6 +27,8 @@ import type {
   Gear,
   GearId,
   ItemsetId,
+  ItemStats,
+  ItemTag,
   Tool,
   ToolId,
   ToolOil,
@@ -34,6 +37,7 @@ import { getActiveItemsets } from '@/game/entities/itemsets';
 import { BOSSES } from '@/data/bosses';
 import { ENEMY_DEFINITIONS, calculateGoldReward } from '@/game/entities/enemies';
 import type { EnemyId } from '@/game/map/types';
+import { ENEMY_IMAGES, BOSS_IMAGES } from '@/components/game/entityImages';
 import { InlineModal } from '@/components/InlineModal';
 import { useInputMode } from '@/hooks/useInputMode';
 import { useControllerAction } from '@/hooks/useControllerAction';
@@ -78,11 +82,13 @@ const TIER_LABELS: Record<ItemTier, string> = {
 
 const TOOL_OILS: Array<ToolOil | null> = [null, 'ATK', 'ARM', 'SPD', 'DIG'];
 const DEFAULT_TOOL_SELECTION: ToolSelection = { id: 'T0', tier: 1, oil: null };
+const GEAR_TAGS: ItemTag[] = ['STONE', 'SCOUT', 'GREED', 'BLAST', 'FROST', 'RUST', 'BLOOD', 'TEMPO'];
 
 export function BattleSimulatorScreen({ navigation }: BattleSimulatorScreenProps) {
   const inputMode = useInputMode();
   const isCompact = useScreenVariant() === 'compact';
   const isController = inputMode === 'controller';
+  const s = isCompact ? 1.5 : 1;
   const gearKeyRef = useRef(0);
   const [selector, setSelector] = useState<SelectorState>(null);
   const [playerStartingHpInput, setPlayerStartingHpInput] = useState('20');
@@ -100,7 +106,7 @@ export function BattleSimulatorScreen({ navigation }: BattleSimulatorScreenProps
   const [enemyGoldInput, setEnemyGoldInput] = useState('0');
   const [enemyTool, setEnemyTool] = useState<ToolSelection>(DEFAULT_TOOL_SELECTION);
   const [enemyGear, setEnemyGear] = useState<GearSelection[]>([]);
-  const [seedInput, setSeedInput] = useState('1337');
+  const [gearTagFilter, setGearTagFilter] = useState<ItemTag | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const playerStartingHp = clampNumber(playerStartingHpInput, 20, 1, 999);
@@ -109,7 +115,6 @@ export function BattleSimulatorScreen({ navigation }: BattleSimulatorScreenProps
   const enemyStartingHp = clampNumber(enemyStartingHpInput, 20, 1, 999);
   const enemyCurrentHp = clampNumber(enemyHpInput, 20, 0, 999);
   const enemyGold = clampNumber(enemyGoldInput, 0, 0, 999);
-  const seed = clampNumber(seedInput, 1337, 1, 2_147_483_647);
 
   const playerToolInstance = useMemo(() => buildToolInstance(playerTool), [playerTool]);
   const enemyToolInstance = useMemo(() => buildToolInstance(enemyTool), [enemyTool]);
@@ -123,6 +128,29 @@ export function BattleSimulatorScreen({ navigation }: BattleSimulatorScreenProps
   const enemyActiveItemsets = useMemo<ItemsetId[]>(
     () => getActiveItemsets(enemyToolInstance?.id ?? null, enemyGearInstances.map((item) => item.id)),
     [enemyToolInstance, enemyGearInstances]
+  );
+
+  // Auto-update Starting HP and Current HP when item flat HP changes
+  const playerItemHpBonus = useMemo(
+    () => getCombinedStats(playerToolInstance, playerGearInstances).hp ?? 0,
+    [playerToolInstance, playerGearInstances]
+  );
+  const prevPlayerItemHpBonusRef = useRef(playerItemHpBonus);
+  useEffect(() => {
+    const prev = prevPlayerItemHpBonusRef.current;
+    prevPlayerItemHpBonusRef.current = playerItemHpBonus;
+    const diff = playerItemHpBonus - prev;
+    if (diff === 0) return;
+    setPlayerStartingHpInput((v) => String(Math.max(1, (parseInt(v, 10) || 20) + diff)));
+    setPlayerHpInput((v) => String(Math.max(0, (parseInt(v, 10) || 20) + diff)));
+  }, [playerItemHpBonus]);
+
+  const filteredGearDefs = useMemo(
+    () =>
+      gearTagFilter
+        ? Object.values(GEAR_DEFINITIONS).filter((g) => g.tags.includes(gearTagFilter))
+        : Object.values(GEAR_DEFINITIONS),
+    [gearTagFilter]
   );
 
   const handleBack = useCallback(() => navigation.goBack(), [navigation]);
@@ -181,7 +209,7 @@ export function BattleSimulatorScreen({ navigation }: BattleSimulatorScreenProps
       combatParams = {
         player: playerCombatant,
         enemy: buildEnemyCombatant(enemyDef.name, enemyDef.emoji, fieldEnemyId, tierStats),
-        seed,
+        seed: 1337,
         enemyId: fieldEnemyId,
         enemyDefinitionId: fieldEnemyId,
         enemyTier: fieldEnemyTier,
@@ -191,7 +219,6 @@ export function BattleSimulatorScreen({ navigation }: BattleSimulatorScreenProps
         playerTool: playerToolInstance,
         playerGold,
         enemyActiveItemSets: [],
-        useParityResolver: true,
         week: 1,
         isBossFight: false,
         simulatorMode: true,
@@ -201,7 +228,7 @@ export function BattleSimulatorScreen({ navigation }: BattleSimulatorScreenProps
       combatParams = {
         player: playerCombatant,
         enemy: buildEnemyCombatant(boss.name, boss.emoji, bossId, boss.stats),
-        seed,
+        seed: 1337,
         bossId,
         enemyDefinitionId: bossId,
         goldReward: 0,
@@ -210,7 +237,6 @@ export function BattleSimulatorScreen({ navigation }: BattleSimulatorScreenProps
         playerTool: playerToolInstance,
         playerGold,
         enemyActiveItemSets: [],
-        useParityResolver: true,
         week: parseBossWeek(bossId),
         isBossFight: true,
         simulatorMode: true,
@@ -225,7 +251,7 @@ export function BattleSimulatorScreen({ navigation }: BattleSimulatorScreenProps
           enemyToolInstance,
           enemyGearInstances
         ),
-        seed,
+        seed: 1337,
         enemyDefinitionId: 'pvpOpponent',
         goldReward: 0,
         activeItemSets: playerActiveItemsets,
@@ -236,7 +262,6 @@ export function BattleSimulatorScreen({ navigation }: BattleSimulatorScreenProps
         enemyActiveItemSets: enemyActiveItemsets,
         enemyTool: enemyToolInstance,
         enemyGear: enemyGearInstances,
-        useParityResolver: true,
         week: 1,
         isBossFight: false,
         simulatorMode: true,
@@ -263,7 +288,6 @@ export function BattleSimulatorScreen({ navigation }: BattleSimulatorScreenProps
     playerCurrentHp,
     playerStartingHp,
     playerToolInstance,
-    seed,
   ]);
 
   useControllerAction(
@@ -291,35 +315,38 @@ export function BattleSimulatorScreen({ navigation }: BattleSimulatorScreenProps
                   </CachedImageBackground>
                 </TouchableOpacity>
               )}
-              <View style={styles.headerBadge}>
-                <Text style={styles.headerBadgeText}>Local Only</Text>
+              <View style={[styles.headerBadge, { paddingHorizontal: 12 * s, paddingVertical: 6 * s }]}>
+                <Text style={[styles.headerBadgeText, { fontSize: 12 * s }]}>Local Only</Text>
               </View>
             </View>
-            <Text style={styles.title}>Battle Simulator</Text>
-            <Text style={styles.subtitle}>
+            <Text style={[styles.title, { fontSize: 34 * s }]}>Battle Simulator</Text>
+            <Text style={[styles.subtitle, { fontSize: 14 * s, lineHeight: 20 * s }]}>
               Local-only tool. Mole opponent loadouts now carry symmetric tool, gear, and itemset
               data into the combat entrypoint for parity work.
             </Text>
           </View>
 
-          <Panel title="Player Setup">
-            <LabeledInput
-              label="Starting HP"
-              value={playerStartingHpInput}
-              onChangeText={(value) => setPlayerStartingHpInput(value.replace(/[^0-9]/g, ''))}
-            />
-
-            <LabeledInput
-              label="Current HP"
-              value={playerHpInput}
-              onChangeText={(value) => setPlayerHpInput(value.replace(/[^0-9]/g, ''))}
-            />
-
-            <LabeledInput
-              label="Starting Gold"
-              value={playerGoldInput}
-              onChangeText={(value) => setPlayerGoldInput(value.replace(/[^0-9]/g, ''))}
-            />
+          <Panel title="Player Setup" s={s}>
+            <View style={[styles.compactInputRow, { gap: 12 * s }]}>
+              <CompactInput
+                label="Starting HP"
+                value={playerStartingHpInput}
+                onChangeText={(value) => setPlayerStartingHpInput(value.replace(/[^0-9]/g, ''))}
+                s={s}
+              />
+              <CompactInput
+                label="Current HP"
+                value={playerHpInput}
+                onChangeText={(value) => setPlayerHpInput(value.replace(/[^0-9]/g, ''))}
+                s={s}
+              />
+              <CompactInput
+                label="Gold"
+                value={playerGoldInput}
+                onChangeText={(value) => setPlayerGoldInput(value.replace(/[^0-9]/g, ''))}
+                s={s}
+              />
+            </View>
 
             <LoadoutEditor
               label="Tool"
@@ -334,14 +361,15 @@ export function BattleSimulatorScreen({ navigation }: BattleSimulatorScreenProps
                 setPlayerGear((prev) => prev.map((item) => (item.key === key ? { ...item, tier } : item)))
               }
               onRemoveGear={(key) => setPlayerGear((prev) => prev.filter((item) => item.key !== key))}
+              s={s}
             />
 
-            <Text style={styles.metaText}>
+            <Text style={[styles.metaText, { fontSize: 13 * s }]}>
               Active itemsets: {playerActiveItemsets.length > 0 ? playerActiveItemsets.join(', ') : 'None'}
             </Text>
           </Panel>
 
-          <Panel title="Enemy Setup">
+          <Panel title="Enemy Setup" s={s}>
             <ChipRow
               label="Enemy Type"
               options={[
@@ -349,6 +377,7 @@ export function BattleSimulatorScreen({ navigation }: BattleSimulatorScreenProps
                 { label: 'Boss', active: enemyMode === 'boss', onPress: () => setEnemyMode('boss') },
                 { label: 'Mole', active: enemyMode === 'mole', onPress: () => setEnemyMode('mole') },
               ]}
+              s={s}
             />
 
             {enemyMode === 'field' && (
@@ -356,7 +385,9 @@ export function BattleSimulatorScreen({ navigation }: BattleSimulatorScreenProps
                 <SelectionRow
                   label="Field Enemy"
                   value={ENEMY_DEFINITIONS[fieldEnemyId].name}
+                  image={ENEMY_IMAGES[fieldEnemyId]}
                   onPress={() => setSelector({ kind: 'fieldEnemy' })}
+                  s={s}
                 />
                 <ChipRow
                   label="Tier"
@@ -365,6 +396,7 @@ export function BattleSimulatorScreen({ navigation }: BattleSimulatorScreenProps
                     { label: 'II', active: fieldEnemyTier === 2, onPress: () => setFieldEnemyTier(2) },
                     { label: 'III', active: fieldEnemyTier === 3, onPress: () => setFieldEnemyTier(3) },
                   ]}
+                  s={s}
                 />
               </>
             )}
@@ -373,27 +405,34 @@ export function BattleSimulatorScreen({ navigation }: BattleSimulatorScreenProps
               <SelectionRow
                 label="Boss"
                 value={BOSSES[bossId].name}
+                image={BOSS_IMAGES[bossId]}
                 onPress={() => setSelector({ kind: 'boss' })}
+                s={s}
               />
             )}
 
             {enemyMode === 'mole' && (
               <>
-                <LabeledInput
-                  label="Starting HP"
-                  value={enemyStartingHpInput}
-                  onChangeText={(value) => setEnemyStartingHpInput(value.replace(/[^0-9]/g, ''))}
-                />
-                <LabeledInput
-                  label="Current HP"
-                  value={enemyHpInput}
-                  onChangeText={(value) => setEnemyHpInput(value.replace(/[^0-9]/g, ''))}
-                />
-                <LabeledInput
-                  label="Enemy Gold"
-                  value={enemyGoldInput}
-                  onChangeText={(value) => setEnemyGoldInput(value.replace(/[^0-9]/g, ''))}
-                />
+                <View style={[styles.compactInputRow, { gap: 12 * s }]}>
+                  <CompactInput
+                    label="Starting HP"
+                    value={enemyStartingHpInput}
+                    onChangeText={(value) => setEnemyStartingHpInput(value.replace(/[^0-9]/g, ''))}
+                    s={s}
+                  />
+                  <CompactInput
+                    label="Current HP"
+                    value={enemyHpInput}
+                    onChangeText={(value) => setEnemyHpInput(value.replace(/[^0-9]/g, ''))}
+                    s={s}
+                  />
+                  <CompactInput
+                    label="Gold"
+                    value={enemyGoldInput}
+                    onChangeText={(value) => setEnemyGoldInput(value.replace(/[^0-9]/g, ''))}
+                    s={s}
+                  />
+                </View>
                 <LoadoutEditor
                   label="Tool"
                   tool={enemyTool}
@@ -407,27 +446,21 @@ export function BattleSimulatorScreen({ navigation }: BattleSimulatorScreenProps
                     setEnemyGear((prev) => prev.map((item) => (item.key === key ? { ...item, tier } : item)))
                   }
                   onRemoveGear={(key) => setEnemyGear((prev) => prev.filter((item) => item.key !== key))}
+                  s={s}
                 />
               </>
             )}
           </Panel>
 
-          <Panel title="Simulation">
-            <LabeledInput
-              label="Seed"
-              value={seedInput}
-              onChangeText={(value) => setSeedInput(value.replace(/[^0-9]/g, ''))}
-            />
-            {error && <Text style={styles.errorText}>{error}</Text>}
-            <View style={styles.actionRow}>
-              <TouchableOpacity onPress={handleBack} activeOpacity={0.85} style={styles.secondaryButton}>
-                <Text style={styles.secondaryButtonText}>Back</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={simulateCombat} activeOpacity={0.85} style={styles.primaryButton}>
-                <Text style={styles.primaryButtonText}>Simulate</Text>
-              </TouchableOpacity>
-            </View>
-          </Panel>
+          {error && <Text style={[styles.errorText, { fontSize: 13 * s }]}>{error}</Text>}
+          <View style={[styles.actionRow, { gap: 12 * s }]}>
+            <TouchableOpacity onPress={handleBack} activeOpacity={0.85} style={[styles.secondaryButton, { minWidth: 136 * s, minHeight: 52 * s, paddingHorizontal: 18 * s, paddingVertical: 12 * s, borderRadius: 14 * s }]}>
+              <Text style={[styles.secondaryButtonText, { fontSize: 16 * s }]}>Back</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={simulateCombat} activeOpacity={0.85} style={[styles.primaryButton, { minWidth: 180 * s, minHeight: 56 * s, paddingHorizontal: 18 * s, paddingVertical: 12 * s, borderRadius: 14 * s }]}>
+              <Text style={[styles.primaryButtonText, { fontSize: 18 * s }]}>Simulate</Text>
+            </TouchableOpacity>
+          </View>
         </ScrollView>
         {isController && <ControllerHints hints={controllerHints} horizontal />}
       </CachedImageBackground>
@@ -435,26 +468,56 @@ export function BattleSimulatorScreen({ navigation }: BattleSimulatorScreenProps
       <SelectorModal
         visible={selector !== null}
         title={getSelectorTitle(selector)}
-        onClose={() => setSelector(null)}
+        onClose={() => {
+          setSelector(null);
+          setGearTagFilter(null);
+        }}
       >
         {selector?.kind === 'playerTool' || selector?.kind === 'enemyTool' ? (
           Object.values(TOOL_DEFINITIONS).map((tool) => (
             <SelectorButton
               key={tool.id}
               label={`${tool.name} (${tool.id})`}
+              image={tool.image}
+              subtitle={formatItemStats(getToolStatsAtTier(tool.id, 1))}
               onPress={() => handleChangeTool(selector.kind === 'playerTool' ? 'player' : 'enemy', tool.id)}
             />
           ))
         ) : null}
 
         {selector?.kind === 'playerGear' || selector?.kind === 'enemyGear' ? (
-          Object.values(GEAR_DEFINITIONS).map((gear) => (
-            <SelectorButton
-              key={gear.id}
-              label={`${gear.name} (${gear.id})`}
-              onPress={() => handleAddGear(selector.kind === 'playerGear' ? 'player' : 'enemy', gear.id)}
-            />
-          ))
+          <>
+            <View style={styles.gearFilterRow}>
+              <TouchableOpacity
+                onPress={() => setGearTagFilter(null)}
+                style={[styles.chip, !gearTagFilter && styles.chipActive]}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.chipText, !gearTagFilter && styles.chipTextActive]}>All</Text>
+              </TouchableOpacity>
+              {GEAR_TAGS.map((tag) => (
+                <TouchableOpacity
+                  key={tag}
+                  onPress={() => setGearTagFilter(tag)}
+                  style={[styles.chip, gearTagFilter === tag && styles.chipActive]}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.chipText, gearTagFilter === tag && styles.chipTextActive]}>
+                    {tag}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            {filteredGearDefs.map((gear) => (
+              <SelectorButton
+                key={gear.id}
+                label={`${gear.name} (${gear.id})`}
+                image={gear.image}
+                subtitle={formatItemStats(gear.stats)}
+                onPress={() => handleAddGear(selector.kind === 'playerGear' ? 'player' : 'enemy', gear.id)}
+              />
+            ))}
+          </>
         ) : null}
 
         {selector?.kind === 'fieldEnemy' ? (
@@ -462,6 +525,8 @@ export function BattleSimulatorScreen({ navigation }: BattleSimulatorScreenProps
             <SelectorButton
               key={enemy.id}
               label={`${enemy.name} (${enemy.id})`}
+              image={ENEMY_IMAGES[enemy.id]}
+              subtitle={enemy.tiers.map((t, i) => `T${i + 1}: ${formatCombatStats(t)}`).join('  ')}
               onPress={() => {
                 setFieldEnemyId(enemy.id);
                 setSelector(null);
@@ -475,6 +540,8 @@ export function BattleSimulatorScreen({ navigation }: BattleSimulatorScreenProps
             <SelectorButton
               key={id}
               label={`${boss.name} (${id})`}
+              image={BOSS_IMAGES[id as BossId]}
+              subtitle={formatCombatStats(boss.stats)}
               onPress={() => {
                 setBossId(id as BossId);
                 setSelector(null);
@@ -591,6 +658,20 @@ function getCombinedStats(tool: Tool | null, gear: Gear[]) {
   return calculateCombatBakedItemStats(tool, gear);
 }
 
+function formatCombatStats(s: { hp: number; atk: number; arm: number; spd: number; dig: number }) {
+  return `${s.hp}/${s.atk}/${s.arm}/${s.spd}/${s.dig}`;
+}
+
+function formatItemStats(s: ItemStats) {
+  const parts: string[] = [];
+  if (s.hp) parts.push(`HP ${s.hp}`);
+  if (s.atk) parts.push(`ATK ${s.atk}`);
+  if (s.arm) parts.push(`ARM ${s.arm}`);
+  if (s.spd) parts.push(`SPD ${s.spd}`);
+  if (s.dig) parts.push(`DIG ${s.dig}`);
+  return parts.length > 0 ? parts.join(' ') : '—';
+}
+
 function parseBossWeek(bossId: BossId): 1 | 2 | 3 {
   if (bossId.includes('-W1-')) return 1;
   if (bossId.includes('-W2-')) return 2;
@@ -622,11 +703,11 @@ function getSelectorTitle(selector: SelectorState): string {
   }
 }
 
-function Panel({ title, children }: { title: string; children: React.ReactNode }) {
+function Panel({ title, children, s = 1 }: { title: string; children: React.ReactNode; s?: number }) {
   return (
-    <View style={styles.panel}>
-      <Text style={styles.panelTitle}>{title}</Text>
-      <View style={styles.panelBody}>{children}</View>
+    <View style={[styles.panel, { paddingHorizontal: 18 * s, paddingTop: 18 * s, paddingBottom: 16 * s, borderRadius: 20 * s }]}>
+      <Text style={[styles.panelTitle, { fontSize: 22 * s, marginBottom: 12 * s }]}>{title}</Text>
+      <View style={[styles.panelBody, { gap: 12 * s }]}>{children}</View>
     </View>
   );
 }
@@ -634,17 +715,26 @@ function Panel({ title, children }: { title: string; children: React.ReactNode }
 function SelectionRow({
   label,
   value,
+  image,
   onPress,
+  s = 1,
 }: {
   label: string;
   value: string;
+  image?: any;
   onPress: () => void;
+  s?: number;
 }) {
   return (
-    <View style={styles.row}>
-      <Text style={styles.label}>{label}</Text>
-      <TouchableOpacity style={styles.selectorButton} onPress={onPress} activeOpacity={0.8}>
-        <Text style={styles.selectorButtonText}>{value}</Text>
+    <View style={[styles.row, { gap: 12 * s }]}>
+      <Text style={[styles.label, { fontSize: 14 * s }]}>{label}</Text>
+      <TouchableOpacity style={[styles.selectorButton, { paddingHorizontal: 12 * s, paddingVertical: 8 * s, borderRadius: 12 * s }]} onPress={onPress} activeOpacity={0.8}>
+        <View style={[styles.selectorButtonRow, { gap: 8 * s }]}>
+          {image && (
+            <CachedImage source={image} style={{ width: 24 * s, height: 24 * s, borderRadius: 4 * s }} contentFit="contain" />
+          )}
+          <Text style={[styles.selectorButtonText, { fontSize: 14 * s }]}>{value}</Text>
+        </View>
       </TouchableOpacity>
     </View>
   );
@@ -673,25 +763,52 @@ function LabeledInput({
   );
 }
 
+function CompactInput({
+  label,
+  value,
+  onChangeText,
+  s = 1,
+}: {
+  label: string;
+  value: string;
+  onChangeText: (value: string) => void;
+  s?: number;
+}) {
+  return (
+    <View style={[styles.compactInputCell, { gap: 4 * s }]}>
+      <Text style={[styles.compactInputLabel, { fontSize: 12 * s }]}>{label}</Text>
+      <TextInput
+        value={value}
+        onChangeText={onChangeText}
+        style={[styles.compactInputField, { paddingHorizontal: 10 * s, paddingVertical: 7 * s, borderRadius: 10 * s, fontSize: 14 * s }]}
+        keyboardType="number-pad"
+        placeholderTextColor="#8a7a6a"
+      />
+    </View>
+  );
+}
+
 function ChipRow({
   label,
   options,
+  s = 1,
 }: {
   label: string;
   options: Array<{ label: string; active: boolean; onPress: () => void }>;
+  s?: number;
 }) {
   return (
-    <View style={styles.rowTop}>
-      <Text style={styles.label}>{label}</Text>
-      <View style={styles.chipWrap}>
+    <View style={[styles.rowTop, { gap: 8 * s }]}>
+      <Text style={[styles.label, { fontSize: 14 * s }]}>{label}</Text>
+      <View style={[styles.chipWrap, { gap: 8 * s }]}>
         {options.map((option) => (
           <TouchableOpacity
             key={option.label}
             onPress={option.onPress}
-            style={[styles.chip, option.active && styles.chipActive]}
+            style={[styles.chip, { paddingHorizontal: 10 * s, paddingVertical: 6 * s }, option.active && styles.chipActive]}
             activeOpacity={0.8}
           >
-            <Text style={[styles.chipText, option.active && styles.chipTextActive]}>
+            <Text style={[styles.chipText, { fontSize: 13 * s }, option.active && styles.chipTextActive]}>
               {option.label}
             </Text>
           </TouchableOpacity>
@@ -712,6 +829,7 @@ function LoadoutEditor({
   onAddGear,
   onGearTierChange,
   onRemoveGear,
+  s = 1,
 }: {
   label: string;
   tool: ToolSelection;
@@ -723,13 +841,16 @@ function LoadoutEditor({
   onAddGear: () => void;
   onGearTierChange: (key: string, tier: ItemTier) => void;
   onRemoveGear: (key: string) => void;
+  s?: number;
 }) {
   return (
-    <View style={styles.loadoutBlock}>
+    <View style={[styles.loadoutBlock, { gap: 10 * s }]}>
       <SelectionRow
         label={label}
         value={tool ? TOOL_DEFINITIONS[tool.id].name : 'None'}
+        image={tool ? TOOL_DEFINITIONS[tool.id].image : undefined}
         onPress={onPickTool}
+        s={s}
       />
       {tool ? (
         <>
@@ -740,6 +861,7 @@ function LoadoutEditor({
               { label: 'II', active: tool.tier === 2, onPress: () => onToolTierChange(2) },
               { label: 'III', active: tool.tier === 3, onPress: () => onToolTierChange(3) },
             ]}
+            s={s}
           />
           <ChipRow
             label="Oil"
@@ -748,41 +870,51 @@ function LoadoutEditor({
               active: tool.oil === oil,
               onPress: () => onToolOilChange(oil),
             }))}
+            s={s}
           />
           <TouchableOpacity onPress={onClearTool} activeOpacity={0.8} style={styles.clearLink}>
-            <Text style={styles.clearLinkText}>Clear tool</Text>
+            <Text style={[styles.clearLinkText, { fontSize: 13 * s }]}>Clear tool</Text>
           </TouchableOpacity>
         </>
       ) : null}
 
-      <View style={styles.rowTop}>
-        <Text style={styles.label}>Gear ({gear.length}/12)</Text>
-        <TouchableOpacity style={styles.selectorButton} onPress={onAddGear} activeOpacity={0.8}>
-          <Text style={styles.selectorButtonText}>Add Gear</Text>
+      <View style={[styles.rowTop, { gap: 8 * s }]}>
+        <Text style={[styles.label, { fontSize: 14 * s }]}>Gear ({gear.length}/12)</Text>
+        <TouchableOpacity style={[styles.selectorButton, { paddingHorizontal: 12 * s, paddingVertical: 8 * s, borderRadius: 12 * s }]} onPress={onAddGear} activeOpacity={0.8}>
+          <Text style={[styles.selectorButtonText, { fontSize: 14 * s }]}>Add Gear</Text>
         </TouchableOpacity>
       </View>
 
       {gear.length === 0 ? (
-        <Text style={styles.metaText}>No gear selected.</Text>
+        <Text style={[styles.metaText, { fontSize: 13 * s }]}>No gear selected.</Text>
       ) : (
         gear.map((item) => (
-          <View key={item.key} style={styles.gearRow}>
-            <Text style={styles.gearName}>{GEAR_DEFINITIONS[item.id].name}</Text>
-            <View style={styles.gearControls}>
+          <View key={item.key} style={[styles.gearRow, { gap: 6 * s, paddingVertical: 6 * s }]}>
+            <View style={[styles.gearNameRow, { gap: 8 * s }]}>
+              {GEAR_DEFINITIONS[item.id].image && (
+                <CachedImage
+                  source={GEAR_DEFINITIONS[item.id].image}
+                  style={{ width: 24 * s, height: 24 * s, borderRadius: 4 * s }}
+                  contentFit="contain"
+                />
+              )}
+              <Text style={[styles.gearName, { fontSize: 14 * s }]}>{GEAR_DEFINITIONS[item.id].name}</Text>
+            </View>
+            <View style={[styles.gearControls, { gap: 8 * s }]}>
               {[1, 2, 3].map((tier) => (
                 <TouchableOpacity
                   key={tier}
                   onPress={() => onGearTierChange(item.key, tier as ItemTier)}
-                  style={[styles.tierChip, item.tier === tier && styles.chipActive]}
+                  style={[styles.tierChip, { paddingHorizontal: 8 * s, paddingVertical: 4 * s }, item.tier === tier && styles.chipActive]}
                   activeOpacity={0.8}
                 >
-                  <Text style={[styles.tierChipText, item.tier === tier && styles.chipTextActive]}>
+                  <Text style={[styles.tierChipText, { fontSize: 12 * s }, item.tier === tier && styles.chipTextActive]}>
                     {TIER_LABELS[tier as ItemTier]}
                   </Text>
                 </TouchableOpacity>
               ))}
               <TouchableOpacity onPress={() => onRemoveGear(item.key)} activeOpacity={0.8}>
-                <Text style={styles.removeText}>Remove</Text>
+                <Text style={[styles.removeText, { fontSize: 12 * s }]}>Remove</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -819,10 +951,26 @@ function SelectorModal({
   );
 }
 
-function SelectorButton({ label, onPress }: { label: string; onPress: () => void }) {
+function SelectorButton({
+  label,
+  image,
+  subtitle,
+  onPress,
+}: {
+  label: string;
+  image?: any;
+  subtitle?: string;
+  onPress: () => void;
+}) {
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.8} style={styles.modalOption}>
-      <Text style={styles.modalOptionText}>{label}</Text>
+      <View style={styles.modalOptionRow}>
+        {image && (
+          <CachedImage source={image} style={styles.modalOptionIcon} contentFit="contain" />
+        )}
+        <Text style={styles.modalOptionText}>{label}</Text>
+        {subtitle ? <Text style={styles.modalOptionStats}>{subtitle}</Text> : null}
+      </View>
     </TouchableOpacity>
   );
 }
@@ -840,6 +988,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 28,
     paddingTop: 24,
     paddingBottom: 36,
+    gap: 27,
   },
   header: {
     gap: 10,
@@ -1114,9 +1263,76 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255,255,255,0.08)',
   },
+  modalOptionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  modalOptionIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 6,
+  },
   modalOptionText: {
     fontFamily: Typography.body,
     fontSize: 14,
     color: '#f5e4c4',
+    flexShrink: 1,
+  },
+  modalOptionStats: {
+    fontFamily: Typography.number,
+    fontSize: 11,
+    color: '#a89b84',
+    marginLeft: 'auto',
+    flexShrink: 0,
+  },
+  selectorButtonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  inlineIcon: {
+    width: 24,
+    height: 24,
+    borderRadius: 4,
+  },
+  gearNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  compactInputRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  compactInputCell: {
+    flex: 1,
+    gap: 4,
+  },
+  compactInputLabel: {
+    fontFamily: Typography.body,
+    fontSize: 12,
+    color: '#b8a993',
+  },
+  compactInputField: {
+    borderWidth: 1,
+    borderColor: 'rgba(214, 189, 148, 0.32)',
+    backgroundColor: 'rgba(244, 237, 222, 0.08)',
+    color: '#f6ead8',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    fontFamily: Typography.body,
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  gearFilterRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.08)',
+    marginBottom: 4,
   },
 });

@@ -1,39 +1,24 @@
-/**
- * Combat types for PvE Dungeon Crawler
- * Re-exports from engine/types.ts with additional combat-specific types
- * @see specs/001-pve-dungeon-crawler/data-model.md
- */
+import type { BossId, CombatantState, Gear, ItemsetId, Tool } from '../engine/types';
+import type { EnemyId } from './traits';
 
-// Re-export combat types from engine
-export {
-  CombatPhase,
-  CombatState,
-  CombatantState,
-  CombatResult,
-  CombatLogEntry,
-  CombatAction,
-  CombatActionResult,
-  EffectTiming,
-} from '../engine/types';
-
-export type { StatusEffects } from '../engine/types';
-
-// ============================================================================
-// Effect Context (combat-specific additions)
-// ============================================================================
-
-import type { CombatState as CombatStateType, EffectTiming as EffectTimingType } from '../engine/types';
-
-export interface EffectContext {
-  source: 'player' | 'enemy';
-  target: 'player' | 'enemy';
-  timing: EffectTimingType;
-}
-
-export interface Effect {
-  id: string;
-  source: 'item' | 'trait' | 'itemset' | 'status';
-  sourceId: string;
-  timing: EffectTimingType;
-  execute: (state: CombatStateType, context: EffectContext) => CombatStateType;
+export interface CombatResolverInput {
+  player: CombatantState;
+  enemy: CombatantState;
+  seed: number;
+  bossId?: BossId;
+  enemyId?: EnemyId;
+  enemyDefinitionId?: string;
+  enemyTier?: 1 | 2 | 3;
+  goldReward?: number;
+  hasShrapnelHarness?: boolean;
+  activeItemSets?: ItemsetId[];
+  playerGear?: Gear[];
+  playerTool?: Tool | null;
+  enemyGear?: Gear[];
+  enemyTool?: Tool | null;
+  playerGold?: number;
+  enemyGold?: number;
+  enemyActiveItemSets?: ItemsetId[];
+  preserveArmor?: boolean;
+  pvpTieBreakerFavorPlayer?: boolean;
 }

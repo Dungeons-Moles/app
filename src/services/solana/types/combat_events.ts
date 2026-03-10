@@ -9,7 +9,7 @@
 
 import { PublicKey } from '@solana/web3.js';
 import type { CombatContribution, CombatLogEntry, CombatSourceRef } from '@/game/engine/types';
-import type { CombatResolverInput } from '@/game/combat/resolver';
+import type { CombatResolverInput } from '@/game/combat/types';
 
 // ============================================================================
 // Combat Events

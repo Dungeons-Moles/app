@@ -5,7 +5,7 @@
 import { gameReducer } from '../../src/game/engine/game-reducer';
 import { createInitialGameState, initializeGame } from '../../src/game/engine/state-factory';
 import { GamePhase, type CombatantState } from '../../src/game/engine/types';
-import { createCombatState } from '../../src/game/combat/resolver';
+import { createCombatState } from '../../src/game/combat/state';
 
 function createTestEnemy(): CombatantState {
   return {
@@ -62,6 +62,19 @@ describe('Post-combat HP', () => {
     const stateInCombat = {
       ...seeded,
       phase: GamePhase.Combat,
+      player: {
+        ...seeded.player,
+        baseStats: {
+          ...seeded.player.baseStats,
+          hp: 10,
+          maxHp: 10,
+        },
+        stats: {
+          ...seeded.player.stats,
+          hp: 10,
+          maxHp: 10,
+        },
+      },
       combat,
     };
 

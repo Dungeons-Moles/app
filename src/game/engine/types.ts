@@ -402,12 +402,15 @@ export interface CombatActionResult {
   armorGained?: number;
   armorLost?: number;
   atkBonus?: number;
+  digBonus?: number;
   statusApplied?: { type: keyof StatusEffects; stacks: number };
   statusRemoved?: { type: keyof StatusEffects; stacks: number };
   amount?: number;
   totalGold?: number;
   effectName?: string;
   goldStolen?: number;
+  goldGained?: number;
+  goldSpent?: number;
   spdBonus?: number;
   source?: CombatSourceRef;
   contributions?: CombatContribution[];

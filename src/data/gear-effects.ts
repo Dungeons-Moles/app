@@ -293,7 +293,7 @@ export const GEAR_EFFECTS: Record<GearId, GearEffects> = {
     ],
   },
 
-  // G-BL-04: Double Detonation - First non-weapon damage per turn: +1/2/4; second non-weapon damage: +3/6/12
+  // G-BL-04: Double Detonation - First bomb detonation per turn: +1/2/4 to enemy and self; second: +3/6/12 to enemy and self
   I28: {
     effects: [
       E(Trigger.BattleStart(), 'DoubleDetonationFirst', [1, 2, 4]),
@@ -410,13 +410,16 @@ export const GEAR_EFFECTS: Record<GearId, GearEffects> = {
     ],
   },
 
-  // G-FR-08: Deep Freeze Charm - Battle Start: +3/6/12 Armor; Wounded: apply 3/6/12 Chill, reduce enemy SPD by 1/2/4, and increase non-weapon damage by 1/2/4
+  // G-FR-08: Deep Freeze Charm - Battle Start: +3/6/12 Armor; Wounded: apply 3/6/12 Chill, reduce enemy SPD by 1/2/4, and while enemy is chilled your non-weapon damage gets +1/2/4
   I40: {
     effects: [
       E(Trigger.BattleStart(), 'GainArmor', [3, 6, 12]),
       E(Trigger.Wounded(), 'ApplyChill', [3, 6, 12], { oncePerTurn: true }),
       E(Trigger.Wounded(), 'ReduceEnemySpd', [1, 2, 4], { oncePerTurn: true }),
-      E(Trigger.Wounded(), 'AmplifyNonWeaponDamage', [1, 2, 4], { oncePerTurn: true }),
+      E(Trigger.Wounded(), 'AmplifyNonWeaponDamage', [1, 2, 4], {
+        oncePerTurn: true,
+        condition: Cond.EnemyHasStatus('Chill'),
+      }),
     ],
   },
 
@@ -577,11 +580,11 @@ export const GEAR_EFFECTS: Record<GearId, GearEffects> = {
   // TEMPO (I57-I64)
   // ===========================================================================
 
-  // G-TE-01: Wind-Up Spring - FirstTurn: +1/2/4 SPD, +2/4/8 ATK
+  // G-TE-01: Wind-Up Spring - Battle Start: +1/2/4 SPD, +2/4/8 ATK
   I57: {
     effects: [
-      E(Trigger.FirstTurn(), 'GainSpd', [1, 2, 4]),
-      E(Trigger.FirstTurn(), 'GainAtk', [2, 4, 8]),
+      E(Trigger.BattleStart(), 'GainSpd', [1, 2, 4]),
+      E(Trigger.BattleStart(), 'GainAtk', [2, 4, 8]),
     ],
   },
 

@@ -69,3 +69,79 @@ export function getPOIImage(id: POIId) {
 export function getEntityImageSource(id: string) {
   return ENEMY_IMAGES[id as EnemyId] || BOSS_IMAGES[id as BossId] || POI_IMAGES[id as POIId];
 }
+
+/** Per-entity scale overrides for the combat arena (default 1.0). */
+export const ENTITY_COMBAT_SCALE: Partial<Record<string, number>> = {
+  TUNNEL_RAT: 0.7,
+  CAVE_BAT: 0.7,
+  SPORE_SLIME: 0.7,
+  RUST_MITE_SWARM: 0.9,
+  SHARD_BEETLE: 0.7,
+  BURROW_AMBUSHER: 0.9,
+  POWDER_TICK: 0.6,
+  COIN_SLUG: 0.7,
+  BLOOD_MOSQUITO: 0.7,
+  'B-A-W1-02': 1.4,
+  'B-A-W1-03': 1.2,
+  'B-A-W1-04': 1.23,
+  'B-A-W2-01': 1.4,
+  'B-A-W2-03': 1.3,
+  'B-A-W2-05': 1.2,
+  'B-A-W3-01': 1.4,
+  'B-A-W3-02': 1.4,
+  'B-B-W3-01': 1.4,
+  'B-B-W3-02': 1.1,
+};
+
+/** Per-entity vertical offset in the combat arena (positive = down, default 0). */
+export const ENTITY_COMBAT_Y_OFFSET: Partial<Record<string, number>> = {
+  TUNNEL_RAT: 38,
+  CAVE_BAT: -25,
+  SPORE_SLIME: 30,
+  COLLAPSED_MINER: 30,
+  SHARD_BEETLE: 30,
+  BURROW_AMBUSHER: 20,
+  POWDER_TICK: 30,
+  COIN_SLUG: 25,
+  BLOOD_MOSQUITO: 25,
+  'B-A-W1-01': 20,
+  'B-A-W1-02': 2,
+  'B-A-W1-04': 15,
+  'B-A-W1-05': 15,
+  'B-A-W2-01': -8,
+  'B-A-W2-02': 15,
+  'B-A-W2-03': -8,
+  'B-A-W2-04': 15,
+  'B-A-W2-05': 15,
+  'B-A-W3-01': -5,
+  'B-A-W3-02': -5,
+  'B-B-W3-01': -5,
+};
+
+/** Per-entity horizontal offset in the combat arena (positive = right, default 0). */
+export const ENTITY_COMBAT_X_OFFSET: Partial<Record<string, number>> = {
+  COLLAPSED_MINER: 15,
+  'B-A-W1-01': 15,
+  'B-A-W1-02': 10,
+  'B-A-W2-01': 15,
+  'B-A-W2-02': 12,
+  'B-A-W3-01': 6,
+  'B-A-W3-02': 8,
+  'B-B-W3-01': 8,
+  'B-B-W3-02': 10,
+};
+
+export function getEntityCombatScale(id: string | undefined): number {
+  if (!id) return 1;
+  return ENTITY_COMBAT_SCALE[id] ?? 1;
+}
+
+export function getEntityCombatYOffset(id: string | undefined): number {
+  if (!id) return 0;
+  return ENTITY_COMBAT_Y_OFFSET[id] ?? 0;
+}
+
+export function getEntityCombatXOffset(id: string | undefined): number {
+  if (!id) return 0;
+  return ENTITY_COMBAT_X_OFFSET[id] ?? 0;
+}

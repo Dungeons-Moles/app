@@ -154,8 +154,10 @@ export const CombatLayout = React.memo(function CombatLayout({
     : 0;
 
   // --- Turn / actor computation ---
+  // Use activeActorLogIndex (which can lead currentLogIndex) so the glow
+  // animation starts before the combat action effects are applied.
   const activeActor = useMemo(() => {
-    const entry = combatState.resolvedCombat?.log[combatState.currentLogIndex];
+    const entry = combatState.resolvedCombat?.log[combatState.activeActorLogIndex];
     if (
       entry?.timing !== 'PLAYER_ATTACK' &&
       entry?.timing !== 'ENEMY_ATTACK'
@@ -166,7 +168,7 @@ export const CombatLayout = React.memo(function CombatLayout({
       return entry.actor;
     }
     return null;
-  }, [combatState.currentLogIndex, combatState.resolvedCombat]);
+  }, [combatState.activeActorLogIndex, combatState.resolvedCombat]);
 
   const currentTurn = useMemo(() => {
     const entry = combatState.resolvedCombat?.log[combatState.currentLogIndex];

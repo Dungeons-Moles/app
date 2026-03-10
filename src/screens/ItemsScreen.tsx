@@ -179,14 +179,14 @@ const TAG_DISPLAY_NAMES: Record<ItemTag, string> = {
 };
 
 const TAG_COLORS: Record<ItemTag, string> = {
-  STONE: '#8B7355',
-  SCOUT: '#4682B4',
-  GREED: '#DAA520',
-  FROST: '#5F9EA0',
-  BLAST: '#f97316',
-  RUST: '#a16207',
-  BLOOD: '#dc2626',
-  TEMPO: '#9333ea',
+  STONE: '#6E7784',
+  SCOUT: '#7E8B4C',
+  GREED: '#D2A106',
+  FROST: '#5CAEC8',
+  BLAST: '#E06A3A',
+  RUST: '#A4542A',
+  BLOOD: '#B33A3F',
+  TEMPO: '#6A57B7',
 };
 
 const ALL_TAGS: ItemTag[] = ['STONE', 'SCOUT', 'GREED', 'BLAST', 'FROST', 'RUST', 'BLOOD', 'TEMPO'];

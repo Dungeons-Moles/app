@@ -23,12 +23,9 @@ import type {
   CombatSourceRef,
 } from '../game/engine/types';
 import { CombatPhase } from '../game/engine/types';
-import {
-  resolveCombat,
-  createCombatState,
-  type CombatResolverInput,
-} from '../game/combat/resolver';
+import { createCombatState } from '../game/combat/state';
 import { resolveCombatWithParity } from '../game/combat/parity-resolver';
+import type { CombatResolverInput } from '../game/combat/types';
 import type { CombatSpeed } from '../types';
 import type { BackendCombatLogEntry } from '../services/solana/types/combat_events';
 import {
@@ -51,9 +48,11 @@ export const COMBAT_SPEED_MULTIPLIER: Record<CombatSpeed, number> = {
 
 const FLOATING_NUMBER_FADE_DELAY_MS = 600;
 const FLOATING_NUMBER_FADE_MS = 400;
+const FLOATING_NUMBER_LIFETIME_MS = FLOATING_NUMBER_FADE_DELAY_MS + FLOATING_NUMBER_FADE_MS;
 const CONTRIBUTION_STAGGER_MS = 1000;
 const INITIAL_COMBAT_START_DELAY_MS = 1000;
 const POST_STATUS_APPLY_BUFFER_MS = 220;
+const GLOW_LEAD_MS = 700;
 
 const DEFAULT_COMBAT_SPEED: CombatSpeed = 'normal';
 
@@ -63,6 +62,13 @@ export function getCombatAnimationIntervalMs(speed: CombatSpeed): number | null 
   }
 
   return COMBAT_ANIMATION_BASE_MS / COMBAT_SPEED_MULTIPLIER[speed];
+}
+
+function getEntryActiveActor(entry: CombatLogEntry | undefined): 'player' | 'enemy' | null {
+  if (!entry) return null;
+  if (entry.timing !== 'PLAYER_ATTACK' && entry.timing !== 'ENEMY_ATTACK') return null;
+  if (entry.actor === 'player' || entry.actor === 'enemy') return entry.actor;
+  return null;
 }
 
 function entryHasFloatingNumber(entry: CombatLogEntry | undefined): boolean {
@@ -76,9 +82,35 @@ function entryHasFloatingNumber(entry: CombatLogEntry | undefined): boolean {
       (result.armorGained && result.armorGained > 0) ||
       (result.armorLost && result.armorLost > 0) ||
       (result.goldStolen && result.goldStolen > 0) ||
+      (result.goldSpent && result.goldSpent > 0) ||
+      (result.goldGained && result.goldGained > 0) ||
       (result.atkBonus && result.atkBonus > 0) ||
-      (result.spdBonus && result.spdBonus > 0)
+      (result.spdBonus && result.spdBonus !== 0) ||
+      (result.digBonus && result.digBonus > 0)
   );
+}
+
+function getEntryFloatingNumberCount(entry: CombatLogEntry | undefined): number {
+  if (!entry || entry.target === 'none') return 0;
+  const { result } = entry;
+  let count = 0;
+
+  if (!result.contributions?.length) {
+    if (result.damage && result.damage > 0) count += 1;
+    if (result.armorLost && result.armorLost > 0) count += 1;
+  }
+
+  if (result.healing && result.healing > 0) count += 1;
+  if (result.armorGained && result.armorGained > 0) count += 1;
+  if (result.atkBonus && result.atkBonus > 0) count += 1;
+  if (result.spdBonus && result.spdBonus !== 0) count += 1;
+  if (result.digBonus && result.digBonus > 0) count += 1;
+  if (entry.action === 'APPLY_STATUS' && result.statusApplied) count += 1;
+  if (result.goldStolen && result.goldStolen > 0) count += 1;
+  if (result.goldSpent && result.goldSpent > 0) count += 1;
+  if (result.goldGained && result.goldGained > 0) count += 1;
+
+  return count;
 }
 
 function entryIsStatusRemovalOnly(entry: CombatLogEntry | undefined): boolean {
@@ -92,8 +124,11 @@ function entryIsStatusRemovalOnly(entry: CombatLogEntry | undefined): boolean {
       !result.armorLost &&
       !result.armorGained &&
       !result.goldStolen &&
+      !result.goldSpent &&
+      !result.goldGained &&
       !result.atkBonus &&
       !result.spdBonus &&
+      !result.digBonus &&
       !result.statusApplied
   );
 }
@@ -123,6 +158,7 @@ export type CombatAction =
   | { type: 'RESOLVE_COMBAT' }
   | { type: 'ADVANCE_LOG'; index: number }
   | { type: 'ADVANCE_CONTRIBUTION' }
+  | { type: 'SET_ACTOR_LEAD'; index: number }
   | { type: 'COMPLETE_ANIMATION' }
   | { type: 'RESET_COMBAT' };
 
@@ -149,20 +185,23 @@ export interface CombatUIState {
   effectNotifications: EffectNotification[];
   /** Whether replay should stop at the first terminal log entry */
   respectTerminalLogIndex: boolean;
+  /** Log index for active-actor glow lead (can be ahead of currentLogIndex) */
+  activeActorLogIndex: number;
 }
 
 export interface DamageNumber {
   id: string;
   value: number;
-  type: 'damage' | 'heal' | 'armor' | 'gold' | 'split' | 'status' | 'stat';
+  type: 'damage' | 'heal' | 'armor' | 'gold' | 'goldGain' | 'split' | 'status' | 'stat';
   target: 'player' | 'enemy';
   timestamp: number;
+  delayMs?: number;
   source?: CombatSourceRef;
   lane?: number;
   splitArmorValue?: number;
   splitDamageValue?: number;
   statusType?: 'chill' | 'shrapnel' | 'rust' | 'bleed';
-  statType?: 'ATK' | 'SPD' | 'ARM';
+  statType?: 'ATK' | 'SPD' | 'ARM' | 'DIG';
 }
 
 export interface EffectNotification {
@@ -193,6 +232,7 @@ const initialState: CombatUIState = {
   damageNumbers: [],
   effectNotifications: [],
   respectTerminalLogIndex: false,
+  activeActorLogIndex: -1,
 };
 
 // ============================================================================
@@ -234,8 +274,8 @@ function extractEffectNotification(
 
   // Trait triggered
   if (entry.action === 'TRIGGER_TRAIT' && entry.result.effectName) {
-    if (entry.result.goldStolen) return null;
-    if (entry.result.atkBonus || entry.result.spdBonus) return null;
+    if (entry.result.goldStolen || entry.result.goldSpent || entry.result.goldGained) return null;
+    if (entry.result.atkBonus || entry.result.spdBonus || entry.result.digBonus) return null;
     if (entry.result.source?.kind === 'status') return null;
     return {
       id: `trait-${index}-${timestamp}`,
@@ -349,6 +389,51 @@ function deriveTerminalLogIndex(combat: CombatState, log: CombatLogEntry[]): num
   return null;
 }
 
+function allocateContributionResolution(
+  entry: CombatLogEntry
+): Array<{ armor: number; damage: number }> {
+  const contributions = entry.result.contributions ?? [];
+  const allocations = contributions.map(() => ({ armor: 0, damage: 0 }));
+  let remainingArmor = entry.result.armorLost ?? 0;
+  const damageWeights = contributions.map((contribution, index) => {
+    let contributionValue = contribution.value ?? 0;
+    if (contributionValue <= 0) return 0;
+
+    const armorPart = Math.min(contributionValue, remainingArmor);
+    allocations[index].armor = armorPart;
+    remainingArmor -= armorPart;
+    contributionValue -= armorPart;
+    return Math.max(0, contributionValue);
+  });
+
+  const totalDamage = entry.result.damage ?? 0;
+  const totalWeight = damageWeights.reduce((sum, value) => sum + value, 0);
+  if (totalDamage <= 0 || totalWeight <= 0) {
+    return allocations;
+  }
+
+  let assignedDamage = 0;
+  const fractionalRanks = damageWeights.map((weight, index) => {
+    if (weight <= 0) return { index, remainder: -1 };
+    const scaled = (weight * totalDamage) / totalWeight;
+    const base = Math.floor(scaled);
+    allocations[index].damage = base;
+    assignedDamage += base;
+    return { index, remainder: scaled - base };
+  });
+
+  let remainder = totalDamage - assignedDamage;
+  fractionalRanks
+    .sort((a, b) => b.remainder - a.remainder)
+    .forEach(({ index, remainder: fractional }) => {
+      if (remainder <= 0 || fractional < 0) return;
+      allocations[index].damage += 1;
+      remainder -= 1;
+    });
+
+  return allocations;
+}
+
 function expandAttackContributions(
   entry: CombatLogEntry,
   logIndex: number
@@ -361,17 +446,15 @@ function expandAttackContributions(
     return [];
   }
 
-  let remainingArmor = entry.result.armorLost ?? 0;
-  let remainingDamage = entry.result.damage ?? 0;
+  const allocations = allocateContributionResolution(entry);
   const timestamp = Date.now();
   const numbers: DamageNumber[] = [];
   const target = entry.target as 'player' | 'enemy';
 
   entry.result.contributions.forEach((contribution, contributionIndex) => {
-    let contributionValue = contribution.value;
-    if (contributionValue <= 0) return;
-
-    const armorPart = Math.min(contributionValue, remainingArmor);
+    const allocation = allocations[contributionIndex];
+    if (!allocation) return;
+    const armorPart = allocation.armor;
     if (armorPart > 0) {
       numbers.push({
         id: `arm-${logIndex}-${contributionIndex}-${timestamp}`,
@@ -382,11 +465,9 @@ function expandAttackContributions(
         source: contribution.source,
         lane: contributionIndex,
       });
-      remainingArmor -= armorPart;
-      contributionValue -= armorPart;
     }
 
-    const damagePart = Math.min(contributionValue, remainingDamage);
+    const damagePart = allocation.damage;
     if (damagePart > 0) {
       numbers.push({
         id: `dmg-${logIndex}-${contributionIndex}-${timestamp}`,
@@ -397,7 +478,6 @@ function expandAttackContributions(
         source: contribution.source,
         lane: contributionIndex,
       });
-      remainingDamage -= damagePart;
     }
   });
 
@@ -445,21 +525,9 @@ function createContributionDamageNumber(
   const target = entry.target as 'player' | 'enemy';
   const timestamp = Date.now();
   const contribution = entry.result.contributions[contributionIndex];
-  let remainingArmor = entry.result.armorLost ?? 0;
-  let remainingDamage = entry.result.damage ?? 0;
-
-  for (let i = 0; i < contributionIndex; i += 1) {
-    const priorValue = entry.result.contributions[i]?.value ?? 0;
-    const priorArmor = Math.min(priorValue, remainingArmor);
-    remainingArmor -= priorArmor;
-    remainingDamage -= Math.min(priorValue - priorArmor, remainingDamage);
-  }
-
-  let contributionValue = contribution.value;
-  const armorPart = Math.min(contributionValue, remainingArmor);
-  contributionValue -= armorPart;
-
-  const damagePart = Math.min(contributionValue, remainingDamage);
+  const allocation = allocateContributionResolution(entry)[contributionIndex];
+  const armorPart = allocation?.armor ?? 0;
+  const damagePart = allocation?.damage ?? 0;
   if (armorPart > 0 && damagePart > 0) {
     return [
       {
@@ -504,18 +572,53 @@ function createContributionDamageNumber(
   return [];
 }
 
+function shouldAggregateContributionPopup(entry: CombatLogEntry | undefined): boolean {
+  return Boolean(
+    entry?.action === 'ATTACK' &&
+      entry.result.contributions?.length &&
+      (entry.result.armorLost ?? 0) > 0 &&
+      (entry.result.damage ?? 0) > 0
+  );
+}
+
 function appendFloatingNumbersForEntry(
   damageNumbers: DamageNumber[],
   entry: CombatLogEntry | undefined,
   logIndex: number
 ) {
   if (!entry) return;
+  const createdNumbers: DamageNumber[] = [];
+  const pushNumber = (number: DamageNumber) => {
+    createdNumbers.push(number);
+  };
 
-  if (entry.result.contributions?.length) {
-    damageNumbers.push(...createContributionDamageNumber(entry, logIndex, 0));
+  if (shouldAggregateContributionPopup(entry)) {
+    createdNumbers.push({
+      id: `split-${logIndex}-${Date.now()}`,
+      value: (entry.result.damage ?? 0) + (entry.result.armorLost ?? 0),
+      type: 'split',
+      target: entry.target as 'player' | 'enemy',
+      timestamp: Date.now(),
+      source: entry.result.source,
+      splitArmorValue: entry.result.armorLost,
+      splitDamageValue: entry.result.damage,
+    });
+  } else if (entry.result.contributions?.length) {
+    createdNumbers.push(...createContributionDamageNumber(entry, logIndex, 0));
   } else {
-    if (entry.result.damage && entry.target !== 'none') {
-      damageNumbers.push({
+    if (entry.result.damage && entry.result.armorLost && entry.target !== 'none') {
+      pushNumber({
+        id: `split-${logIndex}-${Date.now()}`,
+        value: entry.result.damage + entry.result.armorLost,
+        type: 'split',
+        target: entry.target,
+        timestamp: Date.now(),
+        source: entry.result.source,
+        splitArmorValue: entry.result.armorLost,
+        splitDamageValue: entry.result.damage,
+      });
+    } else if (entry.result.damage && entry.target !== 'none') {
+      pushNumber({
         id: `dmg-${logIndex}-${Date.now()}`,
         value: entry.result.damage,
         type: 'damage',
@@ -525,8 +628,12 @@ function appendFloatingNumbersForEntry(
       });
     }
 
-    if (entry.result.armorLost && entry.target !== 'none') {
-      damageNumbers.push({
+    if (
+      entry.result.armorLost &&
+      entry.target !== 'none' &&
+      !entry.result.damage
+    ) {
+      pushNumber({
         id: `arm-${logIndex}-${Date.now()}`,
         value: entry.result.armorLost,
         type: 'armor',
@@ -538,7 +645,7 @@ function appendFloatingNumbersForEntry(
   }
 
   if (entry.result.healing && entry.target !== 'none') {
-    damageNumbers.push({
+    pushNumber({
       id: `heal-${logIndex}-${Date.now()}`,
       value: entry.result.healing,
       type: 'heal',
@@ -549,7 +656,7 @@ function appendFloatingNumbersForEntry(
   }
 
   if (entry.result.armorGained && entry.target !== 'none') {
-    damageNumbers.push({
+    pushNumber({
       id: `armg-${logIndex}-${Date.now()}`,
       value: entry.result.armorGained,
       type: 'stat',
@@ -561,7 +668,7 @@ function appendFloatingNumbersForEntry(
   }
 
   if (entry.result.atkBonus && entry.target !== 'none') {
-    damageNumbers.push({
+    pushNumber({
       id: `atk-${logIndex}-${Date.now()}`,
       value: entry.result.atkBonus,
       type: 'stat',
@@ -573,11 +680,23 @@ function appendFloatingNumbersForEntry(
   }
 
   if (entry.result.spdBonus && entry.target !== 'none') {
-    damageNumbers.push({
+    pushNumber({
       id: `spd-${logIndex}-${Date.now()}`,
       value: entry.result.spdBonus,
       type: 'stat',
       statType: 'SPD',
+      target: entry.target,
+      timestamp: Date.now(),
+      source: entry.result.source,
+    });
+  }
+
+  if (entry.result.digBonus && entry.target !== 'none') {
+    pushNumber({
+      id: `dig-${logIndex}-${Date.now()}`,
+      value: entry.result.digBonus,
+      type: 'stat',
+      statType: 'DIG',
       target: entry.target,
       timestamp: Date.now(),
       source: entry.result.source,
@@ -589,7 +708,7 @@ function appendFloatingNumbersForEntry(
     const statusType =
       rawStatusType === 'reflection' ? undefined : (rawStatusType as DamageNumber['statusType']);
     if (statusType) {
-      damageNumbers.push({
+      pushNumber({
         id: `status-${logIndex}-${Date.now()}`,
         value: entry.result.statusApplied.stacks,
         type: 'status',
@@ -602,7 +721,7 @@ function appendFloatingNumbersForEntry(
   }
 
   if (entry.result.goldStolen && entry.result.goldStolen > 0) {
-    damageNumbers.push({
+    pushNumber({
       id: `gold-${logIndex}-${Date.now()}`,
       value: entry.result.goldStolen,
       type: 'gold',
@@ -611,6 +730,74 @@ function appendFloatingNumbersForEntry(
       source: entry.result.source,
     });
   }
+
+  if (entry.result.goldSpent && entry.result.goldSpent > 0) {
+    pushNumber({
+      id: `goldspent-${logIndex}-${Date.now()}`,
+      value: entry.result.goldSpent,
+      type: 'gold',
+      target: entry.target === 'none' ? (entry.actor === 'enemy' ? 'enemy' : 'player') : entry.target,
+      timestamp: Date.now(),
+      source: entry.result.source,
+    });
+  }
+
+  if (entry.result.goldGained && entry.result.goldGained > 0) {
+    pushNumber({
+      id: `goldgain-${logIndex}-${Date.now()}`,
+      value: entry.result.goldGained,
+      type: 'goldGain',
+      target: entry.target === 'none' ? 'player' : entry.target,
+      timestamp: Date.now(),
+      source: entry.result.source,
+    });
+  }
+
+  createdNumbers.forEach((number, index) => {
+    damageNumbers.push({
+      ...number,
+      delayMs: index * FLOATING_NUMBER_LIFETIME_MS,
+    });
+  });
+}
+
+function appendFloatingNumbersForPairedEntries(
+  damageNumbers: DamageNumber[],
+  entry: CombatLogEntry | undefined,
+  pairedEntry: CombatLogEntry | undefined,
+  logIndex: number
+) {
+  if (!entry || !pairedEntry || entry.target === 'none' || pairedEntry.target === 'none') {
+    return;
+  }
+
+  const sameTarget = entry.target === pairedEntry.target;
+  const armorEntry =
+    (entry.result.armorLost ?? 0) > 0 && !(entry.result.damage ?? 0) ? entry :
+    (pairedEntry.result.armorLost ?? 0) > 0 && !(pairedEntry.result.damage ?? 0) ? pairedEntry :
+    null;
+  const damageEntry =
+    (entry.result.damage ?? 0) > 0 && !(entry.result.armorLost ?? 0) ? entry :
+    (pairedEntry.result.damage ?? 0) > 0 && !(pairedEntry.result.armorLost ?? 0) ? pairedEntry :
+    null;
+
+  if (!sameTarget || !armorEntry || !damageEntry) {
+    appendFloatingNumbersForEntry(damageNumbers, entry, logIndex);
+    appendFloatingNumbersForEntry(damageNumbers, pairedEntry, logIndex + 1);
+    return;
+  }
+
+  damageNumbers.push({
+    id: `split-pair-${logIndex}-${Date.now()}`,
+    value: (armorEntry.result.armorLost ?? 0) + (damageEntry.result.damage ?? 0),
+    type: 'split',
+    target: entry.target,
+    timestamp: Date.now(),
+    source: damageEntry.result.source ?? armorEntry.result.source,
+    splitArmorValue: armorEntry.result.armorLost,
+    splitDamageValue: damageEntry.result.damage,
+    delayMs: 0,
+  });
 }
 
 function getSimultaneousPairIndex(log: CombatLogEntry[], index: number): number | null {
@@ -623,12 +810,46 @@ function getSimultaneousPairIndex(log: CombatLogEntry[], index: number): number 
   if (entry.turn !== nextEntry.turn || entry.timing !== nextEntry.timing || entry.actor !== nextEntry.actor) {
     return null;
   }
-  if (entry.target === nextEntry.target || entry.target === 'none' || nextEntry.target === 'none') return null;
+  if (entry.target === 'none' || nextEntry.target === 'none') return null;
 
   const source = entry.result.source;
   const nextSource = nextEntry.result.source;
   if (!source || !nextSource) return null;
   if (source.kind !== nextSource.kind || source.id !== nextSource.id) return null;
+
+  const hasStatDelta = (candidate: CombatLogEntry): boolean =>
+    Boolean(
+      candidate.result.armorGained ||
+        candidate.result.atkBonus ||
+        candidate.result.spdBonus ||
+        candidate.result.digBonus
+    );
+  const hasDamageLikeDelta = (candidate: CombatLogEntry): boolean =>
+    Boolean(
+      candidate.result.damage ||
+        candidate.result.armorLost ||
+        candidate.result.healing ||
+        candidate.result.statusApplied
+    );
+
+  if (
+    (hasStatDelta(entry) && hasDamageLikeDelta(nextEntry)) ||
+    (hasStatDelta(nextEntry) && hasDamageLikeDelta(entry))
+  ) {
+    return null;
+  }
+
+  const isVampiricToothBleedIntoHeal =
+    entry.result.source?.id === 'I56' &&
+    nextEntry.result.source?.id === 'I56' &&
+    entry.action === 'APPLY_STATUS' &&
+    entry.result.statusApplied?.type === 'bleed' &&
+    nextEntry.action === 'HEAL' &&
+    Boolean(nextEntry.result.healing);
+
+  if (isVampiricToothBleedIntoHeal) {
+    return null;
+  }
 
   return index + 1;
 }
@@ -637,6 +858,13 @@ function getAttackProgressThroughContribution(
   entry: CombatLogEntry,
   contributionIndex?: number | null
 ): { armorLost: number; damage: number } {
+  if (shouldAggregateContributionPopup(entry)) {
+    return {
+      armorLost: entry.result.armorLost ?? 0,
+      damage: entry.result.damage ?? 0,
+    };
+  }
+
   if (entry.action !== 'ATTACK' || !entry.result.contributions?.length) {
     return {
       armorLost: entry.result.armorLost ?? 0,
@@ -655,27 +883,21 @@ function getAttackProgressThroughContribution(
     return { armorLost: 0, damage: 0 };
   }
 
-  let remainingArmor = entry.result.armorLost ?? 0;
-  let remainingDamage = entry.result.damage ?? 0;
   let appliedArmor = 0;
   let appliedDamage = 0;
+  const allocations = allocateContributionResolution(entry);
 
   for (
     let index = 0;
     index <= contributionIndex && index < entry.result.contributions.length;
     index += 1
   ) {
-    let contributionValue = entry.result.contributions[index]?.value ?? 0;
-    if (contributionValue <= 0) continue;
-
-    const armorPart = Math.min(contributionValue, remainingArmor);
+    const allocation = allocations[index];
+    if (!allocation) continue;
+    const armorPart = allocation.armor;
+    const damagePart = allocation.damage;
     appliedArmor += armorPart;
-    remainingArmor -= armorPart;
-    contributionValue -= armorPart;
-
-    const damagePart = Math.min(contributionValue, remainingDamage);
     appliedDamage += damagePart;
-    remainingDamage -= damagePart;
   }
 
   return {
@@ -743,8 +965,12 @@ function applyLogEntryToCombatants(
     target.atk += result.atkBonus;
   }
 
-  if (result.spdBonus && result.spdBonus > 0) {
+  if (result.spdBonus && result.spdBonus !== 0) {
     target.spd += result.spdBonus;
+  }
+
+  if (result.digBonus && result.digBonus > 0) {
+    target.dig += result.digBonus;
   }
 
   if (result.healing && result.healing > 0) {
@@ -823,6 +1049,22 @@ function applyLogEntryToCombatants(
       gold.player += result.goldStolen;
     }
   }
+
+  if (result.goldSpent && result.goldSpent > 0) {
+    if (entry.actor === 'player' || entry.target === 'player') {
+      gold.player = Math.max(0, gold.player - result.goldSpent);
+    } else if (entry.actor === 'enemy' || entry.target === 'enemy') {
+      gold.enemy = Math.max(0, gold.enemy - result.goldSpent);
+    }
+  }
+
+  if (result.goldGained && result.goldGained > 0) {
+    if (entry.target === 'player') {
+      gold.player += result.goldGained;
+    } else if (entry.target === 'enemy') {
+      gold.enemy += result.goldGained;
+    }
+  }
 }
 
 // ============================================================================
@@ -832,9 +1074,7 @@ function applyLogEntryToCombatants(
 function combatReducer(state: CombatUIState, action: CombatAction): CombatUIState {
   switch (action.type) {
     case 'START_COMBAT': {
-      const localCombat = action.input.useParityResolver
-        ? resolveCombatWithParity(action.input)
-        : resolveCombat(action.input);
+      const localCombat = resolveCombatWithParity(action.input);
       const baseCombat = createCombatState(action.input);
       const resolvedCombat = {
         ...baseCombat,
@@ -863,6 +1103,7 @@ function combatReducer(state: CombatUIState, action: CombatAction): CombatUIStat
         resolvedCombat,
         currentLogIndex: -1,
         currentContributionIndex: null,
+        activeActorLogIndex: -1,
         isAnimating: true,
         isComplete: false,
         damageNumbers: [],
@@ -889,9 +1130,7 @@ function combatReducer(state: CombatUIState, action: CombatAction): CombatUIStat
           playerHp: action.input.player.hp,
           bossId: action.input.bossId,
         });
-        const localCombat = action.input.useParityResolver
-          ? resolveCombatWithParity(action.input)
-          : resolveCombat(action.input);
+        const localCombat = resolveCombatWithParity(action.input);
         console.log('[CombatContext] Local resolver produced log with', localCombat.log.length, 'entries');
         return {
           ...state,
@@ -899,6 +1138,7 @@ function combatReducer(state: CombatUIState, action: CombatAction): CombatUIStat
           resolvedCombat: localCombat,
           currentLogIndex: -1,
           currentContributionIndex: null,
+          activeActorLogIndex: -1,
           isAnimating: true,
           isComplete: false,
           damageNumbers: [],
@@ -937,6 +1177,7 @@ function combatReducer(state: CombatUIState, action: CombatAction): CombatUIStat
         resolvedCombat,
         currentLogIndex: -1,
         currentContributionIndex: null,
+        activeActorLogIndex: -1,
         isAnimating: true,
         isComplete: false,
         damageNumbers: [],
@@ -950,9 +1191,7 @@ function combatReducer(state: CombatUIState, action: CombatAction): CombatUIStat
       // Run local resolver for the combat animation log, but override
       // the result with the authoritative on-chain outcome.
       const baseCombat = createCombatState(action.input);
-      const localCombat = action.input.useParityResolver
-        ? resolveCombatWithParity(action.input)
-        : resolveCombat(action.input);
+      const localCombat = resolveCombatWithParity(action.input);
       const onChainResult = action.outcome.playerWon
         ? ('VICTORY' as const)
         : ('DEFEAT' as const);
@@ -977,6 +1216,7 @@ function combatReducer(state: CombatUIState, action: CombatAction): CombatUIStat
         resolvedCombat,
         currentLogIndex: -1,
         currentContributionIndex: null,
+        activeActorLogIndex: -1,
         isAnimating: true,
         isComplete: false,
         damageNumbers: [],
@@ -1008,9 +1248,10 @@ function combatReducer(state: CombatUIState, action: CombatAction): CombatUIStat
       const newDamageNumbers = [...state.damageNumbers];
       const newEffectNotifications = [...state.effectNotifications];
 
-      appendFloatingNumbersForEntry(newDamageNumbers, entry, newIndex);
       if (pairedEntry) {
-        appendFloatingNumbersForEntry(newDamageNumbers, pairedEntry, pairedIndex!);
+        appendFloatingNumbersForPairedEntries(newDamageNumbers, entry, pairedEntry, newIndex);
+      } else {
+        appendFloatingNumbersForEntry(newDamageNumbers, entry, newIndex);
       }
 
       // Extract effect notification for this log entry
@@ -1035,16 +1276,28 @@ function combatReducer(state: CombatUIState, action: CombatAction): CombatUIStat
       return {
         ...state,
         currentLogIndex: effectiveIndex,
-        currentContributionIndex: entry?.result.contributions?.length ? 0 : null,
+        activeActorLogIndex: effectiveIndex,
+        currentContributionIndex:
+          entry?.result.contributions?.length && !shouldAggregateContributionPopup(entry) ? 0 : null,
         damageNumbers: trimmedNumbers,
         effectNotifications: trimmedNotifications,
+      };
+    }
+
+    case 'SET_ACTOR_LEAD': {
+      if (!state.resolvedCombat) return state;
+      return {
+        ...state,
+        activeActorLogIndex: Math.min(action.index, state.resolvedCombat.log.length - 1),
       };
     }
 
     case 'ADVANCE_CONTRIBUTION': {
       if (!state.resolvedCombat) return state;
       const entry = state.resolvedCombat.log[state.currentLogIndex];
-      if (!entry?.result.contributions?.length) return state;
+      if (!entry?.result.contributions?.length || shouldAggregateContributionPopup(entry)) {
+        return state;
+      }
       const nextContributionIndex = (state.currentContributionIndex ?? 0) + 1;
       if (nextContributionIndex >= entry.result.contributions.length) {
         return state;
@@ -1249,14 +1502,18 @@ export function CombatProvider({ children, initialSpeed, onSpeedChange }: Combat
     const isInitialDelay = state.currentLogIndex < 0;
     const hasPendingContributions =
       !!currentEntry?.result.contributions?.length &&
+      !shouldAggregateContributionPopup(currentEntry) &&
       activeContributionIndex !== null &&
       activeContributionIndex < currentEntry.result.contributions.length - 1;
     const isWaitingForLastContributionToFinish =
       !!currentEntry?.result.contributions?.length &&
+      !shouldAggregateContributionPopup(currentEntry) &&
       activeContributionIndex !== null &&
       activeContributionIndex >= currentEntry.result.contributions.length - 1;
     const isWaitingForSinglePopupToFinish =
-      !currentEntry?.result.contributions?.length && entryHasFloatingNumber(currentEntry);
+      ((!currentEntry?.result.contributions?.length || shouldAggregateContributionPopup(currentEntry)) &&
+        entryHasFloatingNumber(currentEntry));
+    const floatingNumberCount = getEntryFloatingNumberCount(currentEntry);
     const isStatusApplyEntry =
       currentEntry?.action === 'APPLY_STATUS' && Boolean(currentEntry.result.statusApplied);
     const isInstantStatusRemoval = entryIsStatusRemovalOnly(currentEntry);
@@ -1281,6 +1538,27 @@ export function CombatProvider({ children, initialSpeed, onSpeedChange }: Combat
       return;
     }
 
+    // Glow lead: when the next entry triggers a new active actor, show the glow
+    // first and delay the actual log advance so the glow animation completes.
+    const nextIndex = Math.min(state.currentLogIndex + 1, stopAtIndex);
+    const nextEntry = state.resolvedCombat.log[nextIndex];
+    const currentActor = getEntryActiveActor(currentEntry);
+    const nextActor = getEntryActiveActor(nextEntry);
+    const isNewActorAttack = nextActor !== null && nextActor !== currentActor;
+    const isInGlowLeadPhase = state.activeActorLogIndex > state.currentLogIndex;
+
+    // Glow lead phase: activeActorLogIndex is ahead of currentLogIndex.
+    // The glow animation is already playing. Wait for it to finish, then advance.
+    // This bypasses all other delay logic since the current entry's effects
+    // have already been displayed before we entered the lead phase.
+    if (isInGlowLeadPhase) {
+      if (speed === 'paused') return;
+      const glowTimer = setTimeout(() => {
+        dispatch({ type: 'ADVANCE_LOG', index: state.activeActorLogIndex });
+      }, GLOW_LEAD_MS / COMBAT_SPEED_MULTIPLIER[speed]);
+      return () => clearTimeout(glowTimer);
+    }
+
     const delayMs = isInitialDelay
       ? speed === 'paused'
         ? null
@@ -1294,11 +1572,10 @@ export function CombatProvider({ children, initialSpeed, onSpeedChange }: Combat
             ? null
             : (FLOATING_NUMBER_FADE_DELAY_MS + FLOATING_NUMBER_FADE_MS) /
               COMBAT_SPEED_MULTIPLIER[speed]
-          : isWaitingForSinglePopupToFinish
+        : isWaitingForSinglePopupToFinish
           ? speed === 'paused'
             ? null
-            : (FLOATING_NUMBER_FADE_DELAY_MS +
-                FLOATING_NUMBER_FADE_MS +
+            : (Math.max(1, floatingNumberCount) * FLOATING_NUMBER_LIFETIME_MS +
                 (isStatusApplyEntry ? POST_STATUS_APPLY_BUFFER_MS : 0)) /
               COMBAT_SPEED_MULTIPLIER[speed]
           : isInstantStatusRemoval
@@ -1318,9 +1595,16 @@ export function CombatProvider({ children, initialSpeed, onSpeedChange }: Combat
         return;
       }
 
+      // If the next entry triggers a new active actor, start the glow first
+      // before advancing the log. The effect will re-run in the lead phase.
+      if (isNewActorAttack) {
+        dispatch({ type: 'SET_ACTOR_LEAD', index: nextIndex });
+        return;
+      }
+
       dispatch({
         type: 'ADVANCE_LOG',
-        index: Math.min(state.currentLogIndex + 1, stopAtIndex),
+        index: nextIndex,
       });
     }, delayMs);
 
@@ -1328,6 +1612,7 @@ export function CombatProvider({ children, initialSpeed, onSpeedChange }: Combat
   }, [
     state.currentLogIndex,
     state.currentContributionIndex,
+    state.activeActorLogIndex,
     state.resolvedCombat,
     state.isComplete,
     speed,

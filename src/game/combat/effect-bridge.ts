@@ -23,6 +23,7 @@ export interface EquippedEffect {
   id: string; // Unique identifier for once-per-turn tracking
   name: string; // Display name for logging
   sourceId: GearId | ToolId; // Item that provides this effect
+  sourceInstanceId: string; // Unique per equipped source instance
   sourceKind: 'tool' | 'gear' | 'itemset' | 'enemy' | 'boss';
 }
 
@@ -42,7 +43,7 @@ export function getGearTier(gear: Gear): 1 | 2 | 3 {
 export function collectGearEffects(gear: Gear[]): EquippedEffect[] {
   const effects: EquippedEffect[] = [];
 
-  for (const item of gear) {
+  for (const [itemIndex, item] of gear.entries()) {
     const gearEffects = GEAR_EFFECTS[item.id];
     if (!gearEffects) continue;
 
@@ -55,6 +56,7 @@ export function collectGearEffects(gear: Gear[]): EquippedEffect[] {
         id: `${item.id}-${i}-${effects.length}`, // Unique per item instance
         name: item.name,
         sourceId: item.id,
+        sourceInstanceId: `${item.id}-${itemIndex}`,
         sourceKind: 'gear',
       });
     }
@@ -80,6 +82,7 @@ export function collectToolEffects(tool: Tool | null): EquippedEffect[] {
     id: `${tool.id}-${i}`,
     name: tool.name,
     sourceId: tool.id,
+    sourceInstanceId: tool.id,
     sourceKind: 'tool',
   }));
 }
@@ -100,12 +103,18 @@ export interface BattleFlags {
   blastImmunity: boolean;
   /** Double bomb triggers (G-BL-08: Twin-Fuse Knot) */
   doubleBombTrigger: boolean;
+  /** Bonus added to the first opponent-targeted non-weapon hit each turn */
+  doubleDetonationFirst: number;
+  /** Bonus added to the second opponent-targeted non-weapon hit each turn */
+  doubleDetonationSecond: number;
   /** Double on-hit effects (G-SC-08: Gear-Link Medallion) */
   doubleOnHitEffects: boolean;
   /** Non-weapon damage amplification total */
   nonWeaponAmplify: number;
   /** Armor piercing amount */
   armorPiercing: number;
+  /** Heal amount when prevent-death triggers */
+  preventDeathHeal: number;
   /** Prevent death charges */
   preventDeathCharges: number;
   /** Has Trigger All Shards effect (T-GR-02: Gemfinder Staff) */
@@ -119,9 +128,12 @@ export function extractBattleFlags(effects: EquippedEffect[]): BattleFlags {
   const flags: BattleFlags = {
     blastImmunity: false,
     doubleBombTrigger: false,
+    doubleDetonationFirst: 0,
+    doubleDetonationSecond: 0,
     doubleOnHitEffects: false,
     nonWeaponAmplify: 0,
     armorPiercing: 0,
+    preventDeathHeal: 0,
     preventDeathCharges: 0,
     triggerAllShards: false,
   };
@@ -139,17 +151,20 @@ export function extractBattleFlags(effects: EquippedEffect[]): BattleFlags {
       case 'DoubleBombTrigger':
         flags.doubleBombTrigger = true;
         break;
+      case 'DoubleDetonationFirst':
+        flags.doubleDetonationFirst = Math.max(flags.doubleDetonationFirst, effect.value);
+        break;
+      case 'DoubleDetonationSecond':
+        flags.doubleDetonationSecond = Math.max(flags.doubleDetonationSecond, effect.value);
+        break;
       case 'DoubleOnHitEffects':
         flags.doubleOnHitEffects = true;
         break;
       case 'AmplifyNonWeaponDamage':
         flags.nonWeaponAmplify += effect.value;
         break;
-      case 'SetArmorPiercing':
-        flags.armorPiercing = Math.max(flags.armorPiercing, effect.value);
-        break;
       case 'PreventDeath':
-        flags.preventDeathCharges += 1;
+        flags.preventDeathHeal = Math.max(flags.preventDeathHeal, effect.value);
         break;
       case 'TriggerAllShards':
         flags.triggerAllShards = true;
@@ -245,6 +260,7 @@ export function createEffectContext(
   return {
     state,
     owner: 'player',
+    phase: 'TURN_START',
     turn,
     playerGold,
     enemyGold,
@@ -255,15 +271,31 @@ export function createEffectContext(
     storedDamage: extraState.storedDamage,
     setStoredDamage: callbacks.setStoredDamage,
     nonWeaponAmplify: flags.nonWeaponAmplify,
+    setNonWeaponAmplify: () => {},
     blastImmunity: flags.blastImmunity,
     doubleBombTrigger: flags.doubleBombTrigger,
+    doubleDetonationFirst: flags.doubleDetonationFirst,
+    doubleDetonationSecond: flags.doubleDetonationSecond,
+    nonWeaponHitsThisTurn: 0,
+    setNonWeaponHitsThisTurn: () => {},
+    pendingSelfNonWeaponBonus: 0,
+    setPendingSelfNonWeaponBonus: () => {},
+    nextBombDamageBonus: 0,
+    setNextBombDamageBonus: () => {},
+    nextBombSelfDamageReduction: 0,
+    setNextBombSelfDamageReduction: () => {},
+    activeBombSelfDamageReduction: 0,
+    setActiveBombSelfDamageReduction: () => {},
     doubleOnHitEffects: flags.doubleOnHitEffects,
     armorPiercing: flags.armorPiercing,
+    preventDeathHeal: flags.preventDeathHeal,
+    setArmorPiercing: () => {},
     preventDeathCharges: extraState.preventDeathCharges,
     setPreventDeathCharges: callbacks.setPreventDeathCharges,
     countdownItems: extraState.countdownItems,
     firstTimeWoundedTriggered: extraState.firstTimeWoundedTriggered,
     setFirstTimeWoundedTriggered: callbacks.setFirstTimeWoundedTriggered,
+    enemyBleedBeforeHit: 0,
   };
 }
 

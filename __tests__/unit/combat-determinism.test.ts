@@ -3,10 +3,8 @@
  * Ensures speed changes do not affect combat outcomes.
  */
 
-import {
-  resolveCombat,
-  type CombatResolverInput,
-} from '../../src/game/combat/resolver';
+import { resolveCombatWithParity } from '../../src/game/combat/parity-resolver';
+import type { CombatResolverInput } from '../../src/game/combat/types';
 import type { CombatantState } from '../../src/game/engine/types';
 import { DEFAULT_STATUS_EFFECTS } from '../../src/game/engine/types';
 import type { CombatSpeed } from '../../src/contexts/CombatContext';
@@ -61,10 +59,10 @@ function createTestInput(overrides: Partial<CombatResolverInput> = {}): CombatRe
 describe('Combat Determinism Across Speed Settings', () => {
   it('produces identical outcomes regardless of speed', () => {
     const speeds: CombatSpeed[] = ['paused', 'normal', 'fast'];
-    const results = {} as Record<CombatSpeed, ReturnType<typeof resolveCombat>>;
+    const results = {} as Record<CombatSpeed, ReturnType<typeof resolveCombatWithParity>>;
 
     for (const speed of speeds) {
-      results[speed] = resolveCombat(createTestInput());
+      results[speed] = resolveCombatWithParity(createTestInput());
     }
 
     const baseline = results.normal;

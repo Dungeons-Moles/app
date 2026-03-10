@@ -4,26 +4,31 @@
  * @see specs/001-pve-dungeon-crawler/spec.md FR-015, FR-048, FR-049
  */
 
-import React, { useEffect } from 'react';
+import React from 'react';
 import {
   Canvas,
-  Circle,
-  Group,
-  Text as SkiaText,
-  useFont,
   Rect,
   Image,
   useImage,
 } from '@shopify/react-native-skia';
-import { StyleSheet, View, useWindowDimensions, Image as RNImage, Text, type ImageSourcePropType } from 'react-native';
+import { Animated, StyleSheet, View, useWindowDimensions, Image as RNImage, Text, type ImageSourcePropType } from 'react-native';
 import type { CombatantState, StatusEffects } from '../../game/engine/types';
 import { DamageNumbers } from './DamageNumbers';
 import { EffectNotifications } from './EffectNotifications';
 import type { DamageNumber, EffectNotification } from '../../contexts/CombatContext';
-import { useSkiaEntityImages } from '../../hooks/useEntityImages';
+import { getEntityImageSource, getEntityCombatScale, getEntityCombatYOffset, getEntityCombatXOffset } from '../game/entityImages';
+import { useHitAnimation, useStatusFlashes, useStatGainFlashes, useActiveGlow } from '../../hooks/useHitAnimation';
 
 const BATTLEGROUND_BG = require('../../../assets/ui/backgrounds/combat-background.webp');
 const DEFAULT_MOLE = require('../../../assets/entities/characters/default-mole.webp');
+
+// Layered glow: outer layers are larger and more transparent, inner layers are tighter and brighter.
+const GLOW_LAYERS = [
+  { size: 1.25, opacity: 0.12 },
+  { size: 1.18, opacity: 0.2 },
+  { size: 1.12, opacity: 0.35 },
+  { size: 1.06, opacity: 0.55 },
+];
 
 interface CombatArenaProps {
   player: CombatantState | null;
@@ -68,9 +73,16 @@ export const CombatArena = React.memo(function CombatArena({
   const arenaHeight = scale > 1
     ? Math.min(screenHeight * 0.85, 800)
     : Math.min(screenHeight * 0.75, 300);
-  const entityImages = useSkiaEntityImages(playerSkinSource, pvpOpponentSkinSource);
   const bgImage = useImage(BATTLEGROUND_BG);
-  const moleImage = useImage(DEFAULT_MOLE);
+
+  const enemyHit = useHitAnimation(enemy?.hp, enemy != null ? enemy.arm + enemy.bonusArm : undefined);
+  const playerHit = useHitAnimation(player?.hp, player != null ? player.arm + player.bonusArm : undefined);
+  const enemyStatusFlashes = useStatusFlashes(enemy?.statusEffects);
+  const playerStatusFlashes = useStatusFlashes(player?.statusEffects);
+  const enemyStatFlashes = useStatGainFlashes(enemy);
+  const playerStatFlashes = useStatGainFlashes(player);
+  const enemyGlow = useActiveGlow(activeActor === 'enemy');
+  const playerGlow = useActiveGlow(activeActor === 'player');
 
   if (!player || !enemy) {
     return (
@@ -87,24 +99,25 @@ export const CombatArena = React.memo(function CombatArena({
   const playerX = arenaWidth * 0.75;
   const combatantY = arenaHeight * 0.4;
 
-  // Resolve enemy Skia image.
-  // PvP: use pvpOpponent from useSkiaEntityImages (their equipped skin, or default mole).
-  // PvE: use entityImages lookup (each enemy type has its own unique image).
-  const enemySkiaImage =
-    enemy.definitionId === 'pvpOpponent'
-      ? (entityImages.pvpOpponent ?? moleImage ?? null)
-      : (entityImages[enemy.definitionId ?? ''] ?? moleImage ?? entityImages.player ?? null);
+  const enemyEntityScale = getEntityCombatScale(enemy.definitionId);
+  const enemyRadius = combatantRadius * enemyEntityScale;
+  const enemyYOffset = getEntityCombatYOffset(enemy.definitionId) * scale;
+  const enemyXOffset = getEntityCombatXOffset(enemy.definitionId) * scale;
 
-  const ringColor = '#333355';
-  const ringStrokeWidth = 4;
+  const enemyImageSource =
+    enemy.definitionId === 'pvpOpponent'
+      ? (pvpOpponentSkinSource ?? DEFAULT_MOLE)
+      : enemy.definitionId
+        ? (getEntityImageSource(enemy.definitionId) ?? DEFAULT_MOLE)
+        : DEFAULT_MOLE;
 
   // Status effects position (below the floor line)
   const statusEffectsY = arenaHeight * 0.75;
 
   return (
     <View style={[styles.container, { width: arenaWidth, height: arenaHeight }]}>
+      {/* Background only in Canvas */}
       <Canvas style={{ width: arenaWidth, height: arenaHeight }}>
-        {/* Background */}
         {bgImage ? (
           <Image
             image={bgImage}
@@ -117,78 +130,147 @@ export const CombatArena = React.memo(function CombatArena({
         ) : (
           <Rect x={0} y={0} width={arenaWidth} height={arenaHeight} color="#F5F0DD" />
         )}
-
-        {/* Combat arena floor - Removed line as image provides it */}
-        {/* <Line ... /> */}
-
-        {/* Enemy combatant (LEFT) */}
-        <Group>
-          {activeActor === 'enemy' ? (
-            <Circle
-              cx={enemyX}
-              cy={combatantY}
-              r={combatantRadius}
-              color={ringColor}
-              style="stroke"
-              strokeWidth={ringStrokeWidth}
-            />
-          ) : null}
-
-          {/* Enemy Image */}
-          {enemySkiaImage && (
-            <Image
-              image={enemySkiaImage}
-              x={enemyX - combatantRadius}
-              y={combatantY - combatantRadius}
-              width={combatantRadius * 2}
-              height={combatantRadius * 2}
-              fit="contain"
-            />
-          )}
-
-        </Group>
-
-        {/* Player combatant (RIGHT) */}
-        <Group>
-          {activeActor === 'player' ? (
-            <Circle
-              cx={playerX}
-              cy={combatantY}
-              r={combatantRadius}
-              color={ringColor}
-              style="stroke"
-              strokeWidth={ringStrokeWidth}
-            />
-          ) : null}
-
-          {/* Player Image */}
-          {entityImages.player && (
-            <Group origin={{ x: playerX, y: combatantY }} transform={[{ scaleX: -1 }]}>
-              <Image
-                image={entityImages.player}
-                x={playerX - combatantRadius}
-                y={combatantY - combatantRadius}
-                width={combatantRadius * 2}
-                height={combatantRadius * 2}
-                fit="contain"
-              />
-            </Group>
-          )}
-
-        </Group>
       </Canvas>
 
-      {/* Overlay damage numbers using separate component */}
+      {/* Enemy active glow (layered tinted silhouettes for soft glow) */}
+      {GLOW_LAYERS.map((layer, i) => (
+        <Animated.View
+          key={`eg${i}`}
+          style={[
+            styles.imageContainer,
+            {
+              left: enemyX - enemyRadius * layer.size + enemyXOffset,
+              top: combatantY - enemyRadius * layer.size + enemyYOffset,
+              width: enemyRadius * 2 * layer.size,
+              height: enemyRadius * 2 * layer.size,
+              opacity: Animated.multiply(enemyGlow.opacity, layer.opacity),
+              transform: [{ scale: enemyGlow.scale }],
+            },
+          ]}
+        >
+          <RNImage
+            source={enemyImageSource}
+            style={{
+              width: enemyRadius * 2 * layer.size,
+              height: enemyRadius * 2 * layer.size,
+              tintColor: '#D4A84B',
+            }}
+            resizeMode="contain"
+          />
+        </Animated.View>
+      ))}
+      {/* Enemy combatant (LEFT) */}
+      <Animated.View
+        style={[
+          styles.imageContainer,
+          {
+            left: enemyX - enemyRadius + enemyXOffset,
+            top: combatantY - enemyRadius + enemyYOffset,
+            width: enemyRadius * 2,
+            height: enemyRadius * 2,
+            opacity: enemyHit.flashOpacity,
+            transform: [{ translateX: enemyHit.shakeX }],
+          },
+        ]}
+      >
+        <RNImage
+          source={enemyImageSource}
+          style={{ width: enemyRadius * 2, height: enemyRadius * 2 }}
+          resizeMode="contain"
+        />
+        {[...enemyStatusFlashes, ...enemyStatFlashes, { color: '#a855f7', opacity: enemyHit.armorFlashOpacity }].map((flash, i) => (
+          <Animated.Image
+            key={i}
+            source={enemyImageSource}
+            style={[
+              styles.tintOverlay,
+              {
+                width: enemyRadius * 2,
+                height: enemyRadius * 2,
+                tintColor: flash.color,
+                opacity: flash.opacity,
+              },
+            ]}
+            resizeMode="contain"
+          />
+        ))}
+      </Animated.View>
+
+      {/* Player active glow (layered tinted silhouettes for soft glow) */}
+      {GLOW_LAYERS.map((layer, i) => (
+        <Animated.View
+          key={`pg${i}`}
+          style={[
+            styles.imageContainer,
+            {
+              left: playerX - combatantRadius * layer.size,
+              top: combatantY - combatantRadius * layer.size,
+              width: combatantRadius * 2 * layer.size,
+              height: combatantRadius * 2 * layer.size,
+              opacity: Animated.multiply(playerGlow.opacity, layer.opacity),
+              transform: [{ scaleX: -1 }, { scale: playerGlow.scale }],
+            },
+          ]}
+        >
+          <RNImage
+            source={playerSkinSource ?? DEFAULT_MOLE}
+            style={{
+              width: combatantRadius * 2 * layer.size,
+              height: combatantRadius * 2 * layer.size,
+              tintColor: '#D4A84B',
+            }}
+            resizeMode="contain"
+          />
+        </Animated.View>
+      ))}
+      {/* Player combatant (RIGHT) */}
+      <Animated.View
+        style={[
+          styles.imageContainer,
+          {
+            left: playerX - combatantRadius,
+            top: combatantY - combatantRadius,
+            width: combatantRadius * 2,
+            height: combatantRadius * 2,
+            opacity: playerHit.flashOpacity,
+            transform: [{ scaleX: -1 }, { translateX: playerHit.shakeX }],
+          },
+        ]}
+      >
+        <RNImage
+          source={playerSkinSource ?? DEFAULT_MOLE}
+          style={{ width: combatantRadius * 2, height: combatantRadius * 2 }}
+          resizeMode="contain"
+        />
+        {[...playerStatusFlashes, ...playerStatFlashes, { color: '#a855f7', opacity: playerHit.armorFlashOpacity }].map((flash, i) => (
+          <Animated.Image
+            key={i}
+            source={playerSkinSource ?? DEFAULT_MOLE}
+            style={[
+              styles.tintOverlay,
+              {
+                width: combatantRadius * 2,
+                height: combatantRadius * 2,
+                tintColor: flash.color,
+                opacity: flash.opacity,
+              },
+            ]}
+            resizeMode="contain"
+          />
+        ))}
+      </Animated.View>
+
+      {/* Overlay damage numbers */}
       <View style={styles.overlay}>
         <DamageNumbers
           damageNumbers={damageNumbers}
-          enemyPosition={{ x: enemyX, y: combatantY - combatantRadius - 20 }}
+          enemyPosition={{ x: enemyX, y: combatantY - enemyRadius + enemyYOffset - 20 }}
           playerPosition={{ x: playerX, y: combatantY - combatantRadius - 20 }}
           scale={scale}
         />
         <EffectNotifications
           notifications={effectNotifications}
-          enemyPosition={{ x: enemyX, y: combatantY - combatantRadius - 40 }}
+          enemyPosition={{ x: enemyX, y: combatantY - enemyRadius + enemyYOffset - 40 }}
           playerPosition={{ x: playerX, y: combatantY - combatantRadius - 40 }}
           scale={scale}
         />
@@ -282,6 +364,16 @@ const styles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
     pointerEvents: 'none',
+  },
+  imageContainer: {
+    position: 'absolute',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tintOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
   },
   statusGrid: {
     position: 'absolute',

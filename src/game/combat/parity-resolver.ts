@@ -2,10 +2,15 @@ import type { CombatAction, CombatActionResult, CombatContribution, CombatLogEnt
 import { CombatPhase } from '@/game/engine/types';
 import { getEffectiveStrikes, processStatusEffectsTurnEnd } from '@/game/combat/status-effects';
 import { applyDamage, isDefeated, isExposed, isWounded } from './damage';
-import type { CombatResolverInput } from './resolver';
-import { createCombatState } from './resolver';
-import { getShardEffects } from './effect-bridge';
-import { processEffects, type CombatEffectContext, type EffectLogEntry } from './effect-executor';
+import { createCombatState } from './state';
+import type { CombatResolverInput } from './types';
+import { collectGearEffects, collectToolEffects } from './effect-bridge';
+import {
+  checkCondition,
+  processEffects,
+  type CombatEffectContext,
+  type EffectLogEntry,
+} from './effect-executor';
 import { extractBattleFlags } from './effect-bridge';
 import {
   collectLoadoutEffects,
@@ -20,6 +25,14 @@ interface SideRuntime {
   effects: EquippedEffect[];
   firedThisTurn: Set<string>;
   battleFlags: ReturnType<typeof extractBattleFlags>;
+  preventDeathHeal: number;
+  nonWeaponAmplify: number;
+  storedDamage: number;
+  nonWeaponHitsThisTurn: number;
+  pendingSelfNonWeaponBonus: number;
+  nextBombDamageBonus: number;
+  nextBombSelfDamageReduction: number;
+  activeBombSelfDamageReduction: number;
   preserveShrapnelCap: number;
   preserveFreshChill: number;
   countdownTurnBonus: number;
@@ -28,6 +41,9 @@ interface SideRuntime {
   wasWounded: boolean;
   wasExposed: boolean;
   hadShrapnel: boolean;
+  firstTimeWoundedTriggered: boolean;
+  firstTimeExposedTriggered: boolean;
+  firstTimeShrapnelTriggered: boolean;
   actedThisTurn: boolean;
   forcedExposedThisTurn: boolean;
   extraStrikesThisTurn: number;
@@ -68,14 +84,37 @@ function buildInitialAtkContributionMap(
   const gear = side === 'player' ? input.playerGear ?? [] : input.enemyGear ?? [];
 
   const addTool = (item: Tool | null) => {
-    const oilAtk = item?.oil === 'ATK' ? 1 : 0;
-    const atk = (item?.stats.atk ?? 0) + oilAtk;
-    if (!item || atk <= 0) return;
+    if (!item) return;
+    const oilAtk = item.oil === 'ATK' ? 1 : 0;
+    let bakedAtk = 0;
+    for (const entry of collectToolEffects(item)) {
+      if (
+        entry.effect.trigger.type === 'BattleStart' &&
+        entry.effect.condition.type === 'None' &&
+        entry.effect.effectType === 'GainAtk' &&
+        entry.effect.value > 0
+      ) {
+        bakedAtk = Math.max(bakedAtk, entry.effect.value);
+      }
+    }
+    const atk = Math.max(item.stats.atk ?? 0, bakedAtk) + oilAtk;
+    if (atk <= 0) return;
     addContribution(map, { kind: 'tool', id: item.id, name: item.name }, atk);
   };
   const addGear = (items: Gear[]) => {
     for (const item of items) {
-      const atk = item.stats.atk ?? 0;
+      let bakedAtk = 0;
+      for (const entry of collectGearEffects([item])) {
+        if (
+          entry.effect.trigger.type === 'BattleStart' &&
+          entry.effect.condition.type === 'None' &&
+          entry.effect.effectType === 'GainAtk' &&
+          entry.effect.value > 0
+        ) {
+          bakedAtk = Math.max(bakedAtk, entry.effect.value);
+        }
+      }
+      const atk = Math.max(item.stats.atk ?? 0, bakedAtk);
       if (atk <= 0) continue;
       addContribution(map, { kind: 'gear', id: item.id, name: item.name }, atk);
     }
@@ -142,13 +181,22 @@ function toCombatLogEntry(
     result.armorLost = effectLog.armorLost;
   }
   if (effectLog.goldChange) {
-    result.goldStolen = Math.abs(effectLog.goldChange);
+    if (effectLog.isGoldGain) {
+      result.goldGained = effectLog.goldChange;
+    } else if (effectLog.target === actor && effectLog.goldChange < 0) {
+      result.goldSpent = Math.abs(effectLog.goldChange);
+    } else {
+      result.goldStolen = Math.abs(effectLog.goldChange);
+    }
   }
   if (effectLog.atkGained) {
     result.atkBonus = effectLog.atkGained;
   }
   if (effectLog.spdGained) {
     result.spdBonus = effectLog.spdGained;
+  }
+  if (effectLog.digGained) {
+    result.digBonus = effectLog.digGained;
   }
 
   return {
@@ -222,11 +270,20 @@ function buildSideRuntime(input: CombatResolverInput, side: Side): SideRuntime {
     .filter((entry) => entry.effect.effectType === 'PreserveShrapnel')
     .reduce((sum, entry) => sum + entry.effect.value, 0);
   const shardsEveryTurn = effects.some((entry) => entry.effect.effectType === 'ShardsEveryTurn');
+  const battleFlags = extractBattleFlags(effects);
 
   return {
     effects,
     firedThisTurn: new Set(),
-    battleFlags: extractBattleFlags(effects),
+    battleFlags,
+    preventDeathHeal: battleFlags.preventDeathHeal,
+    nonWeaponAmplify: battleFlags.nonWeaponAmplify,
+    storedDamage: 0,
+    nonWeaponHitsThisTurn: 0,
+    pendingSelfNonWeaponBonus: 0,
+    nextBombDamageBonus: 0,
+    nextBombSelfDamageReduction: 0,
+    activeBombSelfDamageReduction: 0,
     preserveShrapnelCap,
     preserveFreshChill: 0,
     countdownTurnBonus: 0,
@@ -235,6 +292,9 @@ function buildSideRuntime(input: CombatResolverInput, side: Side): SideRuntime {
     wasWounded: false,
     wasExposed: false,
     hadShrapnel: false,
+    firstTimeWoundedTriggered: false,
+    firstTimeExposedTriggered: false,
+    firstTimeShrapnelTriggered: false,
     actedThisTurn: false,
     forcedExposedThisTurn: false,
     extraStrikesThisTurn: 0,
@@ -254,10 +314,14 @@ function buildSideRuntime(input: CombatResolverInput, side: Side): SideRuntime {
 function runEffectsForSide(
   state: CombatState,
   runtime: Record<Side, SideRuntime>,
+  input: CombatResolverInput,
   owner: Side,
   phase: string,
   ownerActsFirst: boolean,
-  extra?: Partial<Parameters<typeof processEffects>[0]['triggerContext']>
+  extra?: Partial<Parameters<typeof processEffects>[0]['triggerContext']>,
+  options?: {
+    allowRepeatEffectIds?: Set<string>;
+  }
 ): CombatState {
   const sideRuntime = runtime[owner];
   const enemy = getOpposite(owner);
@@ -265,6 +329,7 @@ function runEffectsForSide(
   const ctx: CombatEffectContext = {
     state: nextState,
     owner,
+    phase,
     turn: phase === 'COUNTDOWN' ? nextState.turn + sideRuntime.countdownTurnBonus : nextState.turn,
     playerGold: getGold(nextState, owner),
     enemyGold: getGold(nextState, enemy),
@@ -281,71 +346,162 @@ function runEffectsForSide(
     },
     addLog: () => {},
     firedThisTurn: sideRuntime.firedThisTurn,
-    storedDamage: 0,
-    setStoredDamage: () => {},
-    nonWeaponAmplify: sideRuntime.battleFlags.nonWeaponAmplify,
+    storedDamage: sideRuntime.storedDamage,
+    setStoredDamage: (value: number) => {
+      sideRuntime.storedDamage = Math.max(0, value);
+      ctx.storedDamage = sideRuntime.storedDamage;
+    },
+    nonWeaponAmplify: sideRuntime.nonWeaponAmplify,
+    setNonWeaponAmplify: (value: number) => {
+      sideRuntime.nonWeaponAmplify = Math.max(0, value);
+      ctx.nonWeaponAmplify = sideRuntime.nonWeaponAmplify;
+    },
     blastImmunity: sideRuntime.battleFlags.blastImmunity,
     doubleBombTrigger: sideRuntime.battleFlags.doubleBombTrigger,
+    doubleDetonationFirst: sideRuntime.battleFlags.doubleDetonationFirst,
+    doubleDetonationSecond: sideRuntime.battleFlags.doubleDetonationSecond,
+    nonWeaponHitsThisTurn: sideRuntime.nonWeaponHitsThisTurn,
+    setNonWeaponHitsThisTurn: (value: number) => {
+      sideRuntime.nonWeaponHitsThisTurn = Math.max(0, value);
+      ctx.nonWeaponHitsThisTurn = sideRuntime.nonWeaponHitsThisTurn;
+    },
+    pendingSelfNonWeaponBonus: sideRuntime.pendingSelfNonWeaponBonus,
+    setPendingSelfNonWeaponBonus: (value: number) => {
+      sideRuntime.pendingSelfNonWeaponBonus = Math.max(0, value);
+      ctx.pendingSelfNonWeaponBonus = sideRuntime.pendingSelfNonWeaponBonus;
+    },
+    nextBombDamageBonus: sideRuntime.nextBombDamageBonus,
+    setNextBombDamageBonus: (value: number) => {
+      sideRuntime.nextBombDamageBonus = Math.max(0, value);
+      ctx.nextBombDamageBonus = sideRuntime.nextBombDamageBonus;
+    },
+    nextBombSelfDamageReduction: sideRuntime.nextBombSelfDamageReduction,
+    setNextBombSelfDamageReduction: (value: number) => {
+      sideRuntime.nextBombSelfDamageReduction = Math.max(0, value);
+      ctx.nextBombSelfDamageReduction = sideRuntime.nextBombSelfDamageReduction;
+    },
+    activeBombSelfDamageReduction: sideRuntime.activeBombSelfDamageReduction,
+    setActiveBombSelfDamageReduction: (value: number) => {
+      sideRuntime.activeBombSelfDamageReduction = Math.max(0, value);
+      ctx.activeBombSelfDamageReduction = sideRuntime.activeBombSelfDamageReduction;
+    },
     doubleOnHitEffects: sideRuntime.battleFlags.doubleOnHitEffects,
     armorPiercing: sideRuntime.battleFlags.armorPiercing,
+    setArmorPiercing: (value: number) => {
+      sideRuntime.battleFlags.armorPiercing = Math.max(0, value);
+      ctx.armorPiercing = sideRuntime.battleFlags.armorPiercing;
+    },
+    preventDeathHeal: sideRuntime.preventDeathHeal,
     preventDeathCharges: sideRuntime.battleFlags.preventDeathCharges,
-    setPreventDeathCharges: () => {},
+    setPreventDeathCharges: (value: number) => {
+      sideRuntime.battleFlags.preventDeathCharges = Math.max(0, value);
+      ctx.preventDeathCharges = sideRuntime.battleFlags.preventDeathCharges;
+    },
     countdownItems: new Map(),
     countdownTurnBonus: sideRuntime.countdownTurnBonus,
     setCountdownTurnBonus: (value: number) => {
       sideRuntime.countdownTurnBonus = Math.max(0, value);
     },
-    firstTimeWoundedTriggered: sideRuntime.wasWounded,
+    firstTimeWoundedTriggered: sideRuntime.firstTimeWoundedTriggered,
     setFirstTimeWoundedTriggered: () => {},
     ownerExposedOverride: sideRuntime.forcedExposedThisTurn,
     enemyExposedOverride: runtime[enemy].forcedExposedThisTurn,
+    enemyBleedBeforeHit: extra?.enemyBleedBeforeHit ?? 0,
+    allowRepeatEffectIds: options?.allowRepeatEffectIds,
   };
 
-  const result = processEffects({
-    effects: sideRuntime.effects.map((entry) => ({
-      effect: entry.effect,
-      id: entry.id,
+  const effectEntries = sideRuntime.effects.map((entry) => ({
+    effect: entry.effect,
+    id: entry.id,
+    name: entry.name,
+    sourceInstanceId: entry.sourceInstanceId,
+    source: {
+      kind: entry.sourceKind,
+      id: String(entry.sourceId),
       name: entry.name,
-      source: {
-        kind: entry.sourceKind,
-        id: String(entry.sourceId),
-        name: entry.name,
-      } as CombatSourceRef,
-    })),
-    ctx,
-    phase,
-    triggerContext: {
-      ownerActsFirst,
-      ...extra,
-    },
-  });
-  nextState = result.state;
-  for (const logEntry of result.logs) {
-    if (logEntry.atkGained && logEntry.source && logEntry.target === owner) {
-      addContribution(sideRuntime.atkContributions, logEntry.source, logEntry.atkGained);
+    } as CombatSourceRef,
+  }));
+  const passCount = phase === 'COUNTDOWN' && sideRuntime.battleFlags.doubleBombTrigger ? 2 : 1;
+
+  for (let pass = 0; pass < passCount; pass += 1) {
+    ctx.state = nextState;
+    const result = processEffects({
+      effects: effectEntries,
+      ctx,
+      phase,
+      triggerContext: {
+        ownerActsFirst,
+        shardsEveryTurn: sideRuntime.shardsEveryTurn,
+        firstTimeWoundedTriggered: sideRuntime.firstTimeWoundedTriggered,
+        firstTimeExposedTriggered: sideRuntime.firstTimeExposedTriggered,
+        firstTimeShrapnelTriggered: sideRuntime.firstTimeShrapnelTriggered,
+        ...extra,
+      },
+    });
+    nextState = result.state;
+    for (const logEntry of result.logs) {
+      if (logEntry.atkGained && logEntry.source && logEntry.target === owner) {
+        addContribution(sideRuntime.atkContributions, logEntry.source, logEntry.atkGained);
+      }
+      if (logEntry.statusApplied?.type === 'chill') {
+        const targetSide =
+          logEntry.target === 'player' ? 'player' : logEntry.target === 'enemy' ? 'enemy' : null;
+        if (targetSide && runtime[targetSide].actedThisTurn) {
+          runtime[targetSide].preserveFreshChill += logEntry.statusApplied.stacks;
+        }
+      }
     }
-    if (logEntry.statusApplied?.type === 'chill') {
-      const targetSide = logEntry.target === 'player' ? 'player' : logEntry.target === 'enemy' ? 'enemy' : null;
-      if (targetSide && runtime[targetSide].actedThisTurn) {
-        runtime[targetSide].preserveFreshChill += logEntry.statusApplied.stacks;
+    for (const logEntry of result.logs) {
+      nextState = addLogEntry(
+        nextState,
+        toCombatLogEntry(nextState, owner, logEntry, phase as CombatLogEntry['timing'])
+      );
+    }
+    nextState = finalizeImmediateLethal(
+      nextState,
+      runtime,
+      phase as CombatLogEntry['timing'],
+      input,
+      result.lethalStartState
+    );
+    if (nextState.result) {
+      return nextState;
+    }
+    for (const logEntry of result.logs) {
+      if (!logEntry.nonWeaponDamage || logEntry.target === 'none') continue;
+      const targetSide = logEntry.target === 'player' ? 'player' : 'enemy';
+      nextState = runEffectsForSide(
+        nextState,
+        runtime,
+        input,
+        targetSide,
+        'ON_DEAL_NON_WEAPON_DAMAGE',
+        targetSide === owner ? ownerActsFirst : !ownerActsFirst
+      );
+      if (nextState.result) {
+        return nextState;
+      }
+    }
+    for (const logEntry of result.logs) {
+      if (logEntry.statusApplied?.type !== 'rust') continue;
+      if (logEntry.target !== getOpposite(owner)) continue;
+      nextState = runEffectsForSide(
+        nextState,
+        runtime,
+        input,
+        owner,
+        'ON_APPLY_RUST',
+        ownerActsFirst,
+        {
+          rustApplied: true,
+        }
+      );
+      if (nextState.result) {
+        return nextState;
       }
     }
   }
-  for (const logEntry of result.logs) {
-    nextState = addLogEntry(nextState, toCombatLogEntry(nextState, owner, logEntry, phase as CombatLogEntry['timing']));
-  }
-  for (const logEntry of result.logs) {
-    if (!logEntry.nonWeaponDamage || logEntry.target === 'none') continue;
-    const targetSide = logEntry.target === 'player' ? 'player' : 'enemy';
-    nextState = runEffectsForSide(
-      nextState,
-      runtime,
-      targetSide,
-      'ON_DEAL_NON_WEAPON_DAMAGE',
-      targetSide === owner ? ownerActsFirst : !ownerActsFirst
-    );
-  }
-  return nextState;
+  return finalizeImmediateLethal(nextState, runtime, phase as CombatLogEntry['timing'], input);
 }
 
 function processTransitionEffects(
@@ -360,13 +516,46 @@ function processTransitionEffects(
   const nextWounded = isWounded(combatant);
   const nextExposed = isExposed(combatant) || sideRuntime.forcedExposedThisTurn;
   const hasShrapnel = (combatant.statusEffects.shrapnel ?? 0) > 0;
-  let nextState = runEffectsForSide(state, runtime, owner, 'TRANSITION', ownerActsFirst, {
+  let nextState = runEffectsForSide(state, runtime, input, owner, 'TRANSITION', ownerActsFirst, {
     wasWounded: sideRuntime.wasWounded,
     isWounded: nextWounded,
     wasExposed: sideRuntime.wasExposed,
     isExposed: nextExposed,
     shrapnelGained: !sideRuntime.hadShrapnel && hasShrapnel,
+    firstTimeWoundedTriggered: sideRuntime.firstTimeWoundedTriggered,
+    firstTimeExposedTriggered: sideRuntime.firstTimeExposedTriggered,
+    firstTimeShrapnelTriggered: sideRuntime.firstTimeShrapnelTriggered,
   });
+  if (nextState.result) {
+    return nextState;
+  }
+  if (!sideRuntime.wasExposed && nextExposed && sideRuntime.storedDamage > 0) {
+    const target = getOpposite(owner);
+    const storedDamage = sideRuntime.storedDamage;
+    const targetCombatant = getCombatant(nextState, target);
+    nextState = setCombatant(nextState, target, {
+      ...targetCombatant,
+      hp: Math.max(0, targetCombatant.hp - storedDamage),
+    });
+    sideRuntime.storedDamage = 0;
+    nextState = addLogEntry(nextState, {
+      turn: nextState.turn,
+      timing: CombatPhase.TurnStart,
+      actor: owner,
+      action: 'TRIGGER_ITEM',
+      target,
+      result: {
+        damage: storedDamage,
+        effectName: 'Time Charge',
+        source: { kind: 'gear', id: 'I31', name: 'Time Charge' },
+      },
+      rngValues: [],
+    });
+    nextState = finalizeImmediateLethal(nextState, runtime, CombatPhase.TurnStart, input, state);
+    if (nextState.result) {
+      return nextState;
+    }
+  }
   if (
     input.bossId === 'B-B-W3-01' &&
     owner === 'enemy' &&
@@ -400,15 +589,81 @@ function processTransitionEffects(
   sideRuntime.wasWounded = nextWounded;
   sideRuntime.wasExposed = nextExposed;
   sideRuntime.hadShrapnel = hasShrapnel;
+  if (nextWounded) {
+    sideRuntime.firstTimeWoundedTriggered = true;
+  }
+  if (nextExposed) {
+    sideRuntime.firstTimeExposedTriggered = true;
+  }
+  if (hasShrapnel) {
+    sideRuntime.firstTimeShrapnelTriggered = true;
+  }
   return nextState;
+}
+
+function finalizeImmediateLethal(
+  state: CombatState,
+  runtime: Record<Side, SideRuntime>,
+  timing: CombatLogEntry['timing'],
+  input: CombatResolverInput,
+  preExchangeState?: CombatState
+): CombatState {
+  let nextState = applyPreventDeathIfNeeded(state, runtime, 'player', timing);
+  nextState = applyPreventDeathIfNeeded(nextState, runtime, 'enemy', timing);
+  const result = determineResult(nextState, input, preExchangeState);
+  if (!result) {
+    return nextState;
+  }
+  return {
+    ...nextState,
+    result,
+  };
 }
 
 function processVictoryEffects(
   state: CombatState,
   runtime: Record<Side, SideRuntime>,
+  input: CombatResolverInput,
   winner: Side
 ): CombatState {
-  return runEffectsForSide(state, runtime, winner, 'VICTORY', true);
+  const resolvedResult = state.result;
+  const nextState = runEffectsForSide(state, runtime, input, winner, 'VICTORY', true);
+  return resolvedResult ? { ...nextState, result: resolvedResult } : nextState;
+}
+
+function applyPreventDeathIfNeeded(
+  state: CombatState,
+  runtime: Record<Side, SideRuntime>,
+  side: Side,
+  timing: CombatLogEntry['timing']
+): CombatState {
+  const combatant = getCombatant(state, side);
+  const sideRuntime = runtime[side];
+  if (combatant.hp > 0 || sideRuntime.battleFlags.preventDeathCharges <= 0) {
+    return state;
+  }
+
+  const healAmount = Math.max(1, sideRuntime.preventDeathHeal);
+  sideRuntime.battleFlags.preventDeathCharges -= 1;
+
+  let nextState = setCombatant(state, side, {
+    ...combatant,
+    hp: Math.min(combatant.maxHp, healAmount),
+  });
+  nextState = addLogEntry(nextState, {
+    turn: nextState.turn,
+    timing,
+    actor: side,
+    action: 'TRIGGER_ITEM',
+    target: side,
+    result: {
+      healing: healAmount,
+      effectName: 'Last Breath Sigil',
+      source: { kind: 'gear', id: 'I49', name: 'Last Breath Sigil' },
+    },
+    rngValues: [],
+  });
+  return nextState;
 }
 
 function processEldritchMolePhases(
@@ -507,8 +762,20 @@ function performStrike(
   attackSources: Record<Side, CombatSourceRef | undefined>
 ): CombatState {
   const defenderSide = getOpposite(attackerSide);
+
+  refreshBattleStartArmorPiercing(state, runtime, attackerSide);
+
+  // Run BEFORE_STRIKE effects (e.g. RemoveArmor before damage)
+  state = runEffectsForSide(state, runtime, input, attackerSide, 'BEFORE_STRIKE', ownerActsFirst, {
+    isFirstStrike: strikeIndex === 0,
+  });
+  if (state.result) {
+    return state;
+  }
+
   const attacker = getCombatant(state, attackerSide);
   const defender = getCombatant(state, defenderSide);
+  const defenderBleedBeforeHit = defender.statusEffects.bleed ?? 0;
   const piercing = runtime[attackerSide].battleFlags.armorPiercing;
   const attackPower = Math.max(0, attacker.atk + attacker.bonusAtk);
   const totalArmor = runtime[defenderSide].forcedExposedThisTurn
@@ -536,28 +803,69 @@ function performStrike(
     },
     rngValues: [],
   });
-
-  nextState = runEffectsForSide(nextState, runtime, attackerSide, 'ON_HIT', ownerActsFirst, {
-    isFirstStrike: strikeIndex === 0,
-  });
-  if (runtime[attackerSide].battleFlags.doubleOnHitEffects) {
-    nextState = runEffectsForSide(nextState, runtime, attackerSide, 'ON_HIT', ownerActsFirst, {
-      isFirstStrike: strikeIndex === 0,
-    });
+  nextState = finalizeImmediateLethal(
+    nextState,
+    runtime,
+    attackerSide === 'player' ? CombatPhase.PlayerAttack : CombatPhase.EnemyAttack,
+    input,
+    state
+  );
+  if (nextState.result) {
+    return nextState;
   }
-  nextState = runEffectsForSide(nextState, runtime, defenderSide, 'ON_STRUCK', !ownerActsFirst, {
-    isFirstStrike: strikeIndex === 0,
-  });
 
-  const attackerHasShardTrigger = runtime[attackerSide].battleFlags.triggerAllShards;
-  if (attackerHasShardTrigger && strikeIndex === 0) {
-    const shardEffects = getShardEffects(runtime[attackerSide].effects);
-    const shardState = runtime[attackerSide].effects;
-    runtime[attackerSide].effects = shardEffects;
-    nextState = runEffectsForSide(nextState, runtime, attackerSide, 'ON_HIT', ownerActsFirst, {
-      isFirstStrike: true,
-    });
-    runtime[attackerSide].effects = shardState;
+  const firedBeforeOnHit = new Set(runtime[attackerSide].firedThisTurn);
+  nextState = runEffectsForSide(nextState, runtime, input, attackerSide, 'ON_HIT', ownerActsFirst, {
+    isFirstStrike: strikeIndex === 0,
+    enemyBleedBeforeHit: defenderBleedBeforeHit,
+  });
+  if (nextState.result) {
+    return nextState;
+  }
+  if (runtime[attackerSide].battleFlags.doubleOnHitEffects) {
+    const firedByFirstOnHitPass = new Set<string>();
+    for (const entry of runtime[attackerSide].effects) {
+      if (
+        entry.effect.trigger.type === 'OnHit' &&
+        entry.effect.oncePerTurn &&
+        !firedBeforeOnHit.has(entry.id) &&
+        runtime[attackerSide].firedThisTurn.has(entry.id)
+      ) {
+        firedByFirstOnHitPass.add(entry.id);
+      }
+    }
+    nextState = runEffectsForSide(
+      nextState,
+      runtime,
+      input,
+      attackerSide,
+      'ON_HIT',
+      ownerActsFirst,
+      {
+        isFirstStrike: strikeIndex === 0,
+        enemyBleedBeforeHit: defenderBleedBeforeHit,
+      },
+      {
+        allowRepeatEffectIds: firedByFirstOnHitPass,
+      }
+    );
+    if (nextState.result) {
+      return nextState;
+    }
+  }
+  nextState = runEffectsForSide(
+    nextState,
+    runtime,
+    input,
+    defenderSide,
+    'ON_STRUCK',
+    !ownerActsFirst,
+    {
+      isFirstStrike: strikeIndex === 0,
+    }
+  );
+  if (nextState.result) {
+    return nextState;
   }
 
   const retaliation = (defender.statusEffects.shrapnel ?? 0) > 0
@@ -581,12 +889,62 @@ function performStrike(
       },
       rngValues: [],
     });
+    nextState = finalizeImmediateLethal(
+      nextState,
+      runtime,
+      attackerSide === 'player' ? CombatPhase.PlayerAttack : CombatPhase.EnemyAttack,
+      input,
+      state
+    );
+    if (nextState.result) {
+      return nextState;
+    }
   }
 
   nextState = processTransitionEffects(nextState, runtime, input, attackerSide, ownerActsFirst);
+  if (nextState.result) {
+    return nextState;
+  }
   nextState = processTransitionEffects(nextState, runtime, input, defenderSide, !ownerActsFirst);
+  if (nextState.result) {
+    return nextState;
+  }
   nextState = processEldritchMolePhases(nextState, runtime, input);
   return nextState;
+}
+
+function refreshBattleStartArmorPiercing(
+  state: CombatState,
+  runtime: Record<Side, SideRuntime>,
+  owner: Side
+) {
+  const enemy = getOpposite(owner);
+  let armorPiercing = 0;
+
+  for (const { effect } of runtime[owner].effects) {
+    if (effect.effectType !== 'SetArmorPiercing' || effect.trigger.type !== 'BattleStart') {
+      continue;
+    }
+
+    if (
+      !checkCondition(
+        effect.condition,
+        getCombatant(state, owner),
+        getCombatant(state, enemy),
+        undefined,
+        {
+          ownerGold: getGold(state, owner),
+          enemyGold: getGold(state, enemy),
+        }
+      )
+    ) {
+      continue;
+    }
+
+    armorPiercing = Math.max(armorPiercing, effect.value);
+  }
+
+  runtime[owner].battleFlags.armorPiercing = Math.max(runtime[owner].battleFlags.armorPiercing, armorPiercing);
 }
 
 function performSideAttacks(
@@ -608,6 +966,9 @@ function performSideAttacks(
       break;
     }
     nextState = performStrike(nextState, runtime, input, side, strike, ownerActsFirst, attackSources);
+    if (nextState.result) {
+      break;
+    }
   }
   return nextState;
 }
@@ -619,7 +980,10 @@ function processTurnEnd(
 ): CombatState {
   let nextState = state;
   for (const side of ['player', 'enemy'] as const) {
-    nextState = runEffectsForSide(nextState, runtime, side, 'TURN_END', side === 'player');
+    nextState = runEffectsForSide(nextState, runtime, input, side, 'TURN_END', side === 'player');
+    if (nextState.result) {
+      return nextState;
+    }
   }
 
   for (const side of ['player', 'enemy'] as const) {
@@ -630,6 +994,10 @@ function processTurnEnd(
       runtime[side].preserveFreshChill
     );
     nextState = setCombatant(nextState, side, result.combatant);
+    nextState = finalizeImmediateLethal(nextState, runtime, CombatPhase.TurnEnd, input, state);
+    if (nextState.result) {
+      return nextState;
+    }
     runtime[side].preserveFreshChill = 0;
     if (result.armLost > 0) {
       nextState = addLogEntry(nextState, {
@@ -660,9 +1028,24 @@ function processTurnEnd(
         },
         rngValues: [],
       });
-      nextState = runEffectsForSide(nextState, runtime, getOpposite(side), 'TURN_END', side !== 'player', {
-        enemyTookBleedDamage: true,
-      });
+      nextState = finalizeImmediateLethal(nextState, runtime, CombatPhase.TurnEnd, input, nextState);
+      if (nextState.result) {
+        return nextState;
+      }
+      nextState = runEffectsForSide(
+        nextState,
+        runtime,
+        input,
+        getOpposite(side),
+        'TURN_END',
+        side !== 'player',
+        {
+          enemyTookBleedDamage: true,
+        }
+      );
+      if (nextState.result) {
+        return nextState;
+      }
     }
     for (const [statusType, stacks] of Object.entries(result.statusRemoved)) {
       if (!stacks) continue;
@@ -683,6 +1066,9 @@ function processTurnEnd(
       });
     }
     nextState = processTransitionEffects(nextState, runtime, input, side, side === 'player');
+    if (nextState.result) {
+      return nextState;
+    }
   }
 
   return nextState;
@@ -695,18 +1081,92 @@ function processStartOfTurnForSide(
   side: Side,
   ownerActsFirst: boolean
 ): CombatState {
-  let nextState = runEffectsForSide(state, runtime, side, 'TURN_START', ownerActsFirst);
+  let nextState = runEffectsForSide(state, runtime, input, side, 'TURN_START', ownerActsFirst);
+  if (nextState.result) {
+    return nextState;
+  }
+  if (nextState.turn >= 5 && runtime[side].storedDamage > 0) {
+    const target = getOpposite(side);
+    const storedDamage = runtime[side].storedDamage;
+    const targetCombatant = getCombatant(nextState, target);
+    nextState = setCombatant(nextState, target, {
+      ...targetCombatant,
+      hp: Math.max(0, targetCombatant.hp - storedDamage),
+    });
+    runtime[side].storedDamage = 0;
+    nextState = addLogEntry(nextState, {
+      turn: nextState.turn,
+      timing: CombatPhase.TurnStart,
+      actor: side,
+      action: 'TRIGGER_ITEM',
+      target,
+      result: {
+        damage: storedDamage,
+        effectName: 'Time Charge',
+        source: { kind: 'gear', id: 'I31', name: 'Time Charge' },
+      },
+      rngValues: [],
+    });
+    nextState = finalizeImmediateLethal(nextState, runtime, CombatPhase.TurnStart, input, state);
+    if (nextState.result) {
+      return nextState;
+    }
+  }
   if (side === 'enemy') {
     nextState = processEldritchMoleTurnStart(nextState, runtime, input);
+    if (nextState.result) {
+      return nextState;
+    }
   }
-  nextState = runEffectsForSide(nextState, runtime, side, 'COUNTDOWN', ownerActsFirst);
+  nextState = runEffectsForSide(nextState, runtime, input, side, 'COUNTDOWN', ownerActsFirst);
+  if (nextState.result) {
+    return nextState;
+  }
   nextState = processTransitionEffects(nextState, runtime, input, side, ownerActsFirst);
   return nextState;
 }
 
-function determineResult(state: CombatState): CombatResult | null {
+function isPvpCombat(input: CombatResolverInput): boolean {
+  return input.enemyDefinitionId === 'pvpOpponent';
+}
+
+function comparePvpTieCombatants(
+  player: CombatantState,
+  enemy: CombatantState,
+  favorPlayer: boolean
+): CombatResult {
+  const comparisons: Array<[number, number]> = [
+    [Math.max(0, player.hp) + Math.max(0, player.arm + player.bonusArm), Math.max(0, enemy.hp) + Math.max(0, enemy.arm + enemy.bonusArm)],
+    [player.spd + player.bonusSpd, enemy.spd + enemy.bonusSpd],
+    [player.dig, enemy.dig],
+    [player.atk + player.bonusAtk, enemy.atk + enemy.bonusAtk],
+    [player.maxHp, enemy.maxHp],
+  ];
+
+  for (const [playerValue, enemyValue] of comparisons) {
+    if (playerValue > enemyValue) return 'VICTORY';
+    if (enemyValue > playerValue) return 'DEFEAT';
+  }
+
+  return favorPlayer ? 'VICTORY' : 'DEFEAT';
+}
+
+function determineResult(
+  state: CombatState,
+  input: CombatResolverInput,
+  preExchangeState?: CombatState
+): CombatResult | null {
   if (isDefeated(state.enemy) && isDefeated(state.player)) {
-    return 'DEFEAT';
+    if (!isPvpCombat(input)) {
+      return 'DEFEAT';
+    }
+
+    const tieState = preExchangeState ?? state;
+    return comparePvpTieCombatants(
+      tieState.player,
+      tieState.enemy,
+      input.pvpTieBreakerFavorPlayer ?? (input.seed % 2 === 0)
+    );
   }
   if (isDefeated(state.enemy)) return 'VICTORY';
   if (isDefeated(state.player)) return 'DEFEAT';
@@ -730,8 +1190,8 @@ export function resolveCombatWithParity(input: CombatResolverInput): CombatState
     enemy: getAttackSource(input, 'enemy'),
   };
 
-  state = runEffectsForSide(state, runtime, 'player', 'BATTLE_START', true);
-  state = runEffectsForSide(state, runtime, 'enemy', 'BATTLE_START', false);
+  state = runEffectsForSide(state, runtime, input, 'player', 'BATTLE_START', true);
+  state = runEffectsForSide(state, runtime, input, 'enemy', 'BATTLE_START', false);
   state = processTransitionEffects(state, runtime, input, 'player', true);
   state = processTransitionEffects(state, runtime, input, 'enemy', false);
 
@@ -744,6 +1204,12 @@ export function resolveCombatWithParity(input: CombatResolverInput): CombatState
     };
     runtime.player.firedThisTurn.clear();
     runtime.enemy.firedThisTurn.clear();
+    runtime.player.nonWeaponHitsThisTurn = 0;
+    runtime.enemy.nonWeaponHitsThisTurn = 0;
+    runtime.player.pendingSelfNonWeaponBonus = 0;
+    runtime.enemy.pendingSelfNonWeaponBonus = 0;
+    runtime.player.activeBombSelfDamageReduction = 0;
+    runtime.enemy.activeBombSelfDamageReduction = 0;
     runtime.player.actedThisTurn = false;
     runtime.enemy.actedThisTurn = false;
     runtime.player.forcedExposedThisTurn = false;
@@ -765,28 +1231,28 @@ export function resolveCombatWithParity(input: CombatResolverInput): CombatState
 
     if (playerActsFirst) {
       state = processStartOfTurnForSide(state, runtime, input, 'player', true);
-      const resultAfterPlayerStart = determineResult(state);
+      const resultAfterPlayerStart = state.result ?? determineResult(state, input);
       if (resultAfterPlayerStart) {
         state = { ...state, result: resultAfterPlayerStart };
         break;
       }
 
       state = processStartOfTurnForSide(state, runtime, input, 'enemy', false);
-      const resultAfterEnemyStart = determineResult(state);
+      const resultAfterEnemyStart = state.result ?? determineResult(state, input);
       if (resultAfterEnemyStart) {
         state = { ...state, result: resultAfterEnemyStart };
         break;
       }
     } else {
       state = processStartOfTurnForSide(state, runtime, input, 'enemy', true);
-      const resultAfterEnemyStart = determineResult(state);
+      const resultAfterEnemyStart = state.result ?? determineResult(state, input);
       if (resultAfterEnemyStart) {
         state = { ...state, result: resultAfterEnemyStart };
         break;
       }
 
       state = processStartOfTurnForSide(state, runtime, input, 'player', false);
-      const resultAfterPlayerStart = determineResult(state);
+      const resultAfterPlayerStart = state.result ?? determineResult(state, input);
       if (resultAfterPlayerStart) {
         state = { ...state, result: resultAfterPlayerStart };
         break;
@@ -795,24 +1261,24 @@ export function resolveCombatWithParity(input: CombatResolverInput): CombatState
 
     if (playerActsFirst) {
       state = performSideAttacks(state, runtime, input, 'player', true, attackSources);
-      if (!isDefeated(state.enemy)) {
+      if (!state.result && !isDefeated(state.enemy)) {
         state = performSideAttacks(state, runtime, input, 'enemy', false, attackSources);
       }
     } else {
       state = performSideAttacks(state, runtime, input, 'enemy', true, attackSources);
-      if (!isDefeated(state.player)) {
+      if (!state.result && !isDefeated(state.player)) {
         state = performSideAttacks(state, runtime, input, 'player', false, attackSources);
       }
     }
 
-    const resultAfterAttacks = determineResult(state);
+    const resultAfterAttacks = state.result ?? determineResult(state, input);
     if (resultAfterAttacks) {
       state = { ...state, result: resultAfterAttacks };
       break;
     }
 
     state = processTurnEnd(state, runtime, input);
-    const resultAfterTurnEnd = determineResult(state);
+    const resultAfterTurnEnd = state.result ?? determineResult(state, input);
     if (resultAfterTurnEnd) {
       state = { ...state, result: resultAfterTurnEnd };
       break;
@@ -820,13 +1286,13 @@ export function resolveCombatWithParity(input: CombatResolverInput): CombatState
   }
 
   if (!state.result) {
-    state = { ...state, result: determineResult(state) ?? 'DEFEAT' };
+    state = { ...state, result: determineResult(state, input) ?? 'DEFEAT' };
   }
 
   if (state.result === 'VICTORY') {
-    state = processVictoryEffects(state, runtime, 'player');
+    state = processVictoryEffects(state, runtime, input, 'player');
   } else {
-    state = processVictoryEffects(state, runtime, 'enemy');
+    state = processVictoryEffects(state, runtime, input, 'enemy');
   }
 
   return {

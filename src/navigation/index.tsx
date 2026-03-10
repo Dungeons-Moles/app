@@ -67,12 +67,12 @@ export interface CombatParams {
   playerTool?: Tool | null;
   /** Enemy active itemsets */
   enemyActiveItemSets?: ItemsetId[];
-  /** Use the local parity resolver for guest/simulator combat */
-  useParityResolver?: boolean;
   /** Player gold */
   playerGold?: number;
   /** Enemy gold (for PvP combat display/effects) */
   enemyGold?: number;
+  /** PvP-only final deterministic fallback when all tiebreak stats are identical */
+  pvpTieBreakerFavorPlayer?: boolean;
   /** Current week (for final boss detection) */
   week?: 1 | 2 | 3;
   /** Whether this is a boss fight */

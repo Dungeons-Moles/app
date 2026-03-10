@@ -141,7 +141,7 @@ export const TOOL_DEFINITIONS: Record<ToolId, ToolDefinition> = {
     tags: ['GREED'],
     effect: {
       timing: 'ON_HIT',
-      description: 'First hit each turn triggers all your Shard effects; Shard outputs are +1',
+      description: 'First hit each turn triggers all your Shard effects',
     },
   },
   // ============================================================================

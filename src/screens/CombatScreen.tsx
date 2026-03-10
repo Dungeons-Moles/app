@@ -170,7 +170,6 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
         playerGold: combatInput.playerGold,
         enemyGold: combatInput.enemyGold,
         enemyActiveItemSets: combatInput.enemyActiveItemSets,
-        useParityResolver: true,
         preserveArmor: combatInput.preserveArmor,
       };
 
@@ -225,7 +224,6 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
         enemyDefinitionId: gameState.combat.enemyDefinitionId,
         enemyId: gameState.combat.enemyDefinitionId as EnemyId,
         enemyTier: gameState.combat.enemyTier,
-        useParityResolver: true,
       });
     }
   }, [

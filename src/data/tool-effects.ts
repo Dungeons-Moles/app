@@ -78,12 +78,12 @@ export const TOOL_EFFECTS: Record<ToolId, ToolEffects> = {
     ],
   },
 
-  // T-ST-02: Cragbreaker Hammer - +2/3/4 ATK, +3/5/7 ARM, OnHit: -1/2/3 enemy ARM
+  // T-ST-02: Cragbreaker Hammer - +2/3/4 ATK, +3/5/7 ARM, BeforeStrike: -1/2/3 enemy ARM
   T2: {
     effects: [
       E(Trigger.BattleStart(), 'GainAtk', [2, 3, 4]),
       E(Trigger.BattleStart(), 'GainArmor', [3, 5, 7]),
-      E(Trigger.OnHit(), 'RemoveArmor', [1, 2, 3], { oncePerTurn: true }),
+      E(Trigger.BeforeStrike(), 'RemoveArmor', [1, 2, 3], { oncePerTurn: true }),
     ],
   },  // ===========================================================================
   // SCOUT (T3, T4)
@@ -119,13 +119,13 @@ export const TOOL_EFFECTS: Record<ToolId, ToolEffects> = {
     ],
   },
 
-  // T-GR-02: Gemfinder Staff - +2/2/3 ATK, +2/3/3 ARM, +1/2/2 DIG, OnHit: TriggerAllShards
+  // T-GR-02: Gemfinder Staff - +2/2/3 ATK, +2/3/3 ARM, +1/2/2 DIG, ShardsEveryTurn
   T6: {
     effects: [
       E(Trigger.BattleStart(), 'GainAtk', [2, 2, 3]),
       E(Trigger.BattleStart(), 'GainArmor', [2, 3, 3]),
       E(Trigger.BattleStart(), 'GainDig', [1, 2, 2]),
-      E(Trigger.OnHit(), 'TriggerAllShards', [1, 1, 1], { oncePerTurn: true }),
+      E(Trigger.BattleStart(), 'ShardsEveryTurn', [1, 1, 1]),
     ],
   },
 
@@ -196,6 +196,9 @@ export const TOOL_EFFECTS: Record<ToolId, ToolEffects> = {
     effects: [
       E(Trigger.BattleStart(), 'GainAtk', [2, 3, 4]),
       E(Trigger.BattleStart(), 'GainSpd', [2, 3, 4]),
+      E(Trigger.BattleStart(), 'SetArmorPiercing', [32767, 32767, 32767], {
+        condition: Cond.EnemyHasStatusAtLeast('Rust', 4),
+      }),
       E(Trigger.BattleStart(), 'SetArmorPiercing', [2, 3, 4], {
         condition: Cond.EnemyHasStatus('Rust'),
       }),

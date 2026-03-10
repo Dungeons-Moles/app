@@ -275,7 +275,7 @@ Format: `ID — Name (Type) [Tag] {Rarity} — Image: <path> — Effect`
 - `G-BL-01` — Small Charge (Gear) [BLAST] {Common} — Image: assets/icons/items/blast/small_charge.png — Countdown(2): deal `10/20/40` damage to enemy and `4/8/16` damage to you (non-weapon)
 - `G-BL-02` — Blast Suit (Gear) [BLAST] {Rare} — Image: assets/icons/items/blast/blast_suit.png — You ignore damage from your own BLAST items; `+4/8/16 ARM`; when you deal non-weapon damage: gain `+1/2/4` Armor (once/turn)
 - `G-BL-03` — Explosive Powder (Gear) [BLAST] {Rare} — Image: assets/icons/items/blast/explosive_powder.png — Your non-weapon damage deals `+2/4/8`; `+2/4/8 ARM`
-- `G-BL-04` — Double Detonation (Gear) [BLAST] {Rare} — Image: assets/icons/items/blast/double_detonation.png — First non-weapon damage each turn: deal `+1/2/4` more; second non-weapon damage each turn: deal `+3/6/12` more
+- `G-BL-04` — Double Detonation (Gear) [BLAST] {Rare} — Image: assets/icons/items/blast/double_detonation.png — First bomb detonation each turn: deal `+1/2/4` more to enemy and self; second detonation each turn: deal `+3/6/12` more to enemy and self
 - `G-BL-05` — Bomb Satchel (Gear) [BLAST] {Heroic} — Image: assets/icons/items/blast/bomb_satchel.png — Reduce Countdown of all your bomb items by 1 (min 0); `+4/8/16 ARM, +1/2/4 ATK`
 - `G-BL-06` — Kindling Charge (Gear) [BLAST] {Rare} — Image: assets/icons/items/blast/kindling_charge.png — Battle Start: deal `2/4/8` damage to enemy; your next bomb this battle deals `+3/6/12` and its self-damage is reduced by `2/4/8`
 - `G-BL-07` — Time Charge (Gear) [BLAST] {Heroic} — Image: assets/icons/items/blast/time_charge.png — `+2/4/8 ARM`; Turn Start: gain `+2/4/8` stored damage (this battle); when Exposed OR Turn 5+: deal stored damage to enemy
@@ -292,7 +292,7 @@ Format: `ID — Name (Type) [Tag] {Rarity} — Image: <path> — Effect`
 - `G-FR-05` — Rime Cloak (Gear) [FROST] {Rare} — Image: assets/icons/items/frost/rime_cloak.png — `+3/6/12 ARM`; when struck (once/turn): apply `1/2/4` Chill to attacker
 - `G-FR-06` — Permafrost Core (Gear) [FROST] {Mythic} — Image: assets/icons/items/frost/permafrost_core.png — Turn Start: if enemy has Chill, gain `2/4/8` Armor and deal `2/4/8` non-weapon damage; Chill on enemies decays 1 stack slower (minimum decay: 0)
 - `G-FR-07` — Cold Front Idol (Gear) [FROST] {Heroic} — Image: assets/icons/items/frost/cold_front_idol.png — Every other turn: apply `1/2/4` Chill, deal `2/4/8` non-weapon damage, and gain `1/2/4 ARM`; if enemy already has Chill, gain `+2/4/8` SPD this turn
-- `G-FR-08` — Deep Freeze Charm (Gear) [FROST] {Heroic} — Image: assets/icons/items/frost/deep_freeze_charm.png — `+3/6/12 ARM`; Wounded: apply `3/6/12` Chill, reduce enemy SPD by `1/2/4` (this battle), and enemy takes +`1/2/4` damage from all sources while Chilled (this battle)
+- `G-FR-08` — Deep Freeze Charm (Gear) [FROST] {Heroic} — Image: assets/icons/items/frost/deep_freeze_charm.png — `+3/6/12 ARM`; Wounded: apply `3/6/12` Chill, reduce enemy SPD by `1/2/4` (this battle), and your non-weapon damage gets +`1/2/4` while the enemy is Chilled
 
 #### RUST (10)
 

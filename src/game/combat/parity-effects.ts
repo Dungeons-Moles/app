@@ -24,13 +24,15 @@ function wrapEffects(
   sourceId: string,
   name: string,
   sourceKind: ParityEquippedEffect['sourceKind'],
-  sourceIndexStart = 0
+  sourceIndexStart = 0,
+  sourceInstanceId = sourceId
 ): ParityEquippedEffect[] {
   return effects.map((effect, index) => ({
     effect,
     id: `${sourceId}-${sourceIndexStart + index}`,
     name,
     sourceId: sourceId as EquippedEffect['sourceId'],
+    sourceInstanceId,
     sourceKind,
   }));
 }
@@ -87,7 +89,7 @@ export function getFieldEnemyTraitEffects(enemyId: EnemyId, playerGold = 0): Par
     case 'SHARD_BEETLE':
       return wrapEffects([createEffect(Trigger.BattleStart(), 'ApplyShrapnel', 1)], enemyId, 'Shard Beetle', 'enemy');
     case 'TUNNEL_WARDEN':
-      return wrapEffects([createEffect(Trigger.TurnStart(), 'RemoveArmor', 1, { oncePerTurn: true })], enemyId, 'Tunnel Warden', 'enemy');
+      return wrapEffects([createEffect(Trigger.BeforeStrike(), 'RemoveArmor', 1, { oncePerTurn: true })], enemyId, 'Tunnel Warden', 'enemy');
     case 'BURROW_AMBUSHER':
       return wrapEffects([createEffect(Trigger.BattleStart(), 'DealNonWeaponDamage', 1)], enemyId, 'Burrow Ambusher', 'enemy');
     case 'FROST_WISP':

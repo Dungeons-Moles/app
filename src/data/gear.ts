@@ -226,7 +226,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['SCOUT'],
     effect: {
       timing: 'ON_HIT',
-      description: 'Your On Hit effects from SCOUT items trigger twice (once/turn)',
+      description: 'Your On Hit effects trigger twice (once/turn)',
     },
   },
 
@@ -270,7 +270,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     effect: {
       timing: 'BATTLE_START',
       description:
-        'Battle Start: gain ARM equal to floor(Gold/6/12/24); if Gold ≥ 20, gain +1/2/4 SPD',
+        'Battle Start: gain ARM equal to Gold/6, rounded down, capped at 6/12/24; if Gold ≥ 20, gain +1/2/4 SPD',
     },
   },
   I20: {
@@ -393,7 +393,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     effect: {
       timing: 'PASSIVE',
       description:
-        'First non-weapon damage per turn deals +1/2/4; second non-weapon damage per turn deals +3/6/12',
+        'First bomb detonation each turn deals +1/2/4 more to enemy and self; second deals +3/6/12 more to enemy and self',
     },
   },
   I29: {
@@ -554,7 +554,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     effect: {
       timing: 'WOUNDED',
       description:
-        'Wounded: apply 3/6/12 Chill, reduce enemy SPD by 1/2/4, and non-weapon damage +1/2/4 while Chilled',
+        'Wounded: apply 3/6/12 Chill, reduce enemy SPD by 1/2/4, and your non-weapon damage +1/2/4 while enemy is Chilled',
     },
   },
   // ============================================================================
@@ -786,10 +786,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     baseRarity: 'COMMON',
     stats: {},
     tags: ['TEMPO'],
-    effect: {
-      timing: 'FIRST_TURN',
-      description: 'Turn 1: gain +1/2/4 SPD and +2/4/8 ATK (this battle)',
-    },
+    // Stats-only passive: baked Battle Start stats are shown in the Stats section
   },
   I58: {
     id: 'I58',

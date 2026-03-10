@@ -18,12 +18,12 @@ describe('parity effect definitions', () => {
     });
   });
 
-  it('maps tunnel warden to the on-chain turn-start armor removal trait', () => {
+  it('maps tunnel warden to the on-chain before-strike armor removal trait', () => {
     const effects = getFieldEnemyTraitEffects('TUNNEL_WARDEN');
 
     expect(effects).toHaveLength(1);
     expect(effects[0].effect).toMatchObject({
-      trigger: { type: 'TurnStart' },
+      trigger: { type: 'BeforeStrike' },
       effectType: 'RemoveArmor',
       value: 1,
       oncePerTurn: true,

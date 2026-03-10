@@ -31,7 +31,8 @@ export type TriggerType =
   | { type: 'DayStart' }
   | { type: 'FirstTimeWounded' }
   | { type: 'FirstTimeExposed' }
-  | { type: 'FirstTimeGainShrapnel' };
+  | { type: 'FirstTimeGainShrapnel' }
+  | { type: 'BeforeStrike' };
 
 // Helper constructors for triggers
 export const Trigger = {
@@ -59,6 +60,7 @@ export const Trigger = {
   FirstTimeWounded: (): TriggerType => ({ type: 'FirstTimeWounded' }),
   FirstTimeExposed: (): TriggerType => ({ type: 'FirstTimeExposed' }),
   FirstTimeGainShrapnel: (): TriggerType => ({ type: 'FirstTimeGainShrapnel' }),
+  BeforeStrike: (): TriggerType => ({ type: 'BeforeStrike' }),
 } as const;
 
 // ============================================================================

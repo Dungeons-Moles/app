@@ -18,6 +18,8 @@ export interface CombatEffectContext {
   state: CombatState;
   /** Who owns the effect (player or enemy) */
   owner: 'player' | 'enemy';
+  /** Current trigger phase */
+  phase: string;
   /** Current turn number */
   turn: number;
   /** Player's current gold */
@@ -42,14 +44,44 @@ export interface CombatEffectContext {
   setStoredDamage: (value: number) => void;
   /** Non-weapon damage amplification */
   nonWeaponAmplify: number;
+  /** Update non-weapon damage amplification */
+  setNonWeaponAmplify: (value: number) => void;
   /** Blast immunity active */
   blastImmunity: boolean;
   /** Double bomb triggers active */
   doubleBombTrigger: boolean;
+  /** Bonus added to the first opponent-targeted non-weapon hit each turn */
+  doubleDetonationFirst: number;
+  /** Bonus added to the second opponent-targeted non-weapon hit each turn */
+  doubleDetonationSecond: number;
+  /** Opponent-targeted non-weapon hits dealt so far this turn */
+  nonWeaponHitsThisTurn: number;
+  /** Update opponent-targeted non-weapon hits dealt so far this turn */
+  setNonWeaponHitsThisTurn: (value: number) => void;
+  /** Bonus to carry onto the paired self non-weapon damage of the current detonation */
+  pendingSelfNonWeaponBonus: number;
+  /** Update the bonus to carry onto the paired self non-weapon damage */
+  setPendingSelfNonWeaponBonus: (value: number) => void;
+  /** Bonus applied to the next countdown bomb's enemy hit */
+  nextBombDamageBonus: number;
+  /** Update the bonus applied to the next countdown bomb's enemy hit */
+  setNextBombDamageBonus: (value: number) => void;
+  /** Reduction applied to the next countdown bomb's self damage */
+  nextBombSelfDamageReduction: number;
+  /** Update the reduction applied to the next countdown bomb's self damage */
+  setNextBombSelfDamageReduction: (value: number) => void;
+  /** Active reduction carried from the current countdown bomb enemy hit to its self damage */
+  activeBombSelfDamageReduction: number;
+  /** Update the active reduction carried onto the current countdown bomb self damage */
+  setActiveBombSelfDamageReduction: (value: number) => void;
   /** Double on-hit effects active */
   doubleOnHitEffects: boolean;
   /** Armor piercing amount */
   armorPiercing: number;
+  /** Update armor piercing amount */
+  setArmorPiercing: (value: number) => void;
+  /** Heal amount when prevent-death triggers */
+  preventDeathHeal: number;
   /** Prevent death charges remaining */
   preventDeathCharges: number;
   /** Update prevent death charges */
@@ -68,6 +100,9 @@ export interface CombatEffectContext {
   ownerExposedOverride?: boolean;
   /** Temporary exposed override for enemy this phase */
   enemyExposedOverride?: boolean;
+  /** Enemy bleed stacks before the current OnHit effects started */
+  enemyBleedBeforeHit?: number;
+  allowRepeatEffectIds?: Set<string>;
 }
 
 export interface EffectLogEntry {
@@ -76,6 +111,7 @@ export interface EffectLogEntry {
   source?: CombatSourceRef;
   atkGained?: number;
   spdGained?: number;
+  digGained?: number;
   damage?: number;
   nonWeaponDamage?: number;
   healing?: number;
@@ -84,6 +120,7 @@ export interface EffectLogEntry {
   statusApplied?: { type: string; stacks: number };
   statusRemoved?: { type: string; stacks: number };
   goldChange?: number;
+  isGoldGain?: boolean;
 }
 
 export interface EffectResult {
@@ -93,6 +130,8 @@ export interface EffectResult {
   applied: boolean;
   /** Log entries generated */
   logs: EffectLogEntry[];
+  /** Combat snapshot taken before the lethal source instance started resolving */
+  lethalStartState?: CombatState;
 }
 
 function applyReflectableStatusToOpponent(
@@ -184,6 +223,10 @@ export function checkCondition(
   overrides?: {
     ownerExposedOverride?: boolean;
     enemyExposedOverride?: boolean;
+  },
+  resources?: {
+    ownerGold?: number;
+    enemyGold?: number;
   }
 ): boolean {
   const ownerStatus = owner.statusEffects;
@@ -225,6 +268,9 @@ export function checkCondition(
     case 'OwnerArmorAtLeast':
       return owner.arm >= condition.value;
 
+    case 'OwnerGoldAtLeast':
+      return (resources?.ownerGold ?? 0) >= condition.value;
+
     case 'OwnerHasStatus': {
       const statusKey = condition.status.toLowerCase() as keyof typeof ownerStatus;
       return (ownerStatus[statusKey] ?? 0) > 0;
@@ -247,8 +293,8 @@ export function checkCondition(
 
     case 'Or':
       return (
-        checkCondition(condition.conditions[0], owner, enemy) ||
-        checkCondition(condition.conditions[1], owner, enemy)
+        checkCondition(condition.conditions[0], owner, enemy, overrides, resources) ||
+        checkCondition(condition.conditions[1], owner, enemy, overrides, resources)
       );
 
     default:
@@ -273,7 +319,11 @@ export function shouldTrigger(
     enemyTookBleedDamage?: boolean;
     rustApplied?: boolean;
     shrapnelGained?: boolean;
+    firstTimeWoundedTriggered?: boolean;
+    firstTimeExposedTriggered?: boolean;
+    firstTimeShrapnelTriggered?: boolean;
     isDayStart?: boolean;
+    shardsEveryTurn?: boolean;
   }
 ): boolean {
   switch (trigger.type) {
@@ -299,6 +349,9 @@ export function shouldTrigger(
     case 'OnHit':
       return phase === 'ON_HIT';
 
+    case 'BeforeStrike':
+      return phase === 'BEFORE_STRIKE';
+
     case 'Exposed':
       return !context.wasExposed && context.isExposed === true;
 
@@ -318,7 +371,11 @@ export function shouldTrigger(
       return phase === 'TURN_START' && turn === trigger.turn;
 
     case 'EveryOtherTurnFirstHit':
-      return phase === 'ON_HIT' && turn % 2 === 0 && context.isFirstStrike === true;
+      return (
+        phase === 'ON_HIT' &&
+        context.isFirstStrike === true &&
+        (turn % 2 === 0 || context.shardsEveryTurn === true)
+      );
 
     case 'TurnEnd':
       return phase === 'TURN_END';
@@ -342,13 +399,13 @@ export function shouldTrigger(
       return context.isDayStart === true;
 
     case 'FirstTimeWounded':
-      return !context.wasWounded && context.isWounded === true;
+      return !context.firstTimeWoundedTriggered && context.isWounded === true;
 
     case 'FirstTimeExposed':
-      return !context.wasExposed && context.isExposed === true;
+      return !context.firstTimeExposedTriggered && context.isExposed === true;
 
     case 'FirstTimeGainShrapnel':
-      return context.shrapnelGained === true;
+      return context.shrapnelGained === true && !context.firstTimeShrapnelTriggered;
 
     default:
       return false;
@@ -373,17 +430,31 @@ export function executeEffect(
   const target = ctx.owner === 'player' ? 'enemy' : 'player';
 
   // Check once-per-turn
-  if (effect.oncePerTurn && ctx.firedThisTurn.has(effectId)) {
+  if (
+    effect.oncePerTurn &&
+    ctx.firedThisTurn.has(effectId) &&
+    !ctx.allowRepeatEffectIds?.has(effectId)
+  ) {
     return { state, applied: false, logs };
   }
 
   // Check condition
+  const isVampiricToothHeal =
+    source?.id === 'I56' && effect.effectType === 'Heal' && ctx.phase === 'ON_HIT';
+
   if (
     !checkCondition(effect.condition, owner, enemy, {
       ownerExposedOverride: ctx.ownerExposedOverride,
       enemyExposedOverride: ctx.enemyExposedOverride,
+    }, {
+      ownerGold: ctx.owner === 'player' ? (ctx.playerGold ?? 0) : (ctx.enemyGold ?? 0),
+      enemyGold: ctx.owner === 'player' ? (ctx.enemyGold ?? 0) : (ctx.playerGold ?? 0),
     })
   ) {
+    return { state, applied: false, logs };
+  }
+
+  if (isVampiricToothHeal && (ctx.enemyBleedBeforeHit ?? 0) <= 0) {
     return { state, applied: false, logs };
   }
 
@@ -418,7 +489,26 @@ export function executeEffect(
     }
 
     case 'DealNonWeaponDamage': {
-      const amplifiedDamage = value + ctx.nonWeaponAmplify;
+      let amplifiedDamage = value + ctx.nonWeaponAmplify;
+      let detonationBonus = 0;
+      if (ctx.nonWeaponHitsThisTurn === 0) {
+        detonationBonus = ctx.doubleDetonationFirst;
+      } else if (ctx.nonWeaponHitsThisTurn === 1) {
+        detonationBonus = ctx.doubleDetonationSecond;
+      }
+      amplifiedDamage += detonationBonus;
+      ctx.setNonWeaponHitsThisTurn(ctx.nonWeaponHitsThisTurn + 1);
+      if (ctx.phase === 'COUNTDOWN') {
+        if (ctx.nextBombDamageBonus > 0) {
+          amplifiedDamage += ctx.nextBombDamageBonus;
+          ctx.setNextBombDamageBonus(0);
+        }
+        if (ctx.nextBombSelfDamageReduction > 0) {
+          ctx.setActiveBombSelfDamageReduction(ctx.nextBombSelfDamageReduction);
+          ctx.setNextBombSelfDamageReduction(0);
+        }
+        ctx.setPendingSelfNonWeaponBonus(detonationBonus);
+      }
       const updatedEnemy = {
         ...enemy,
         hp: Math.max(0, enemy.hp - amplifiedDamage),
@@ -432,10 +522,17 @@ export function executeEffect(
     }
 
     case 'DealSelfNonWeaponDamage': {
+      const pendingBonus = ctx.phase === 'COUNTDOWN' ? ctx.pendingSelfNonWeaponBonus : 0;
+      const activeReduction = ctx.phase === 'COUNTDOWN' ? ctx.activeBombSelfDamageReduction : 0;
+      ctx.setPendingSelfNonWeaponBonus(0);
+      ctx.setActiveBombSelfDamageReduction(0);
       if (ctx.blastImmunity) {
         break; // Immune to self blast damage
       }
-      const amplifiedDamage = value + ctx.nonWeaponAmplify;
+      const amplifiedDamage = Math.max(
+        0,
+        value + ctx.nonWeaponAmplify + pendingBonus - activeReduction
+      );
       const updatedOwner = {
         ...owner,
         hp: Math.max(0, owner.hp - amplifiedDamage),
@@ -455,7 +552,10 @@ export function executeEffect(
     }
 
     case 'Heal': {
-      const healed = Math.min(value, owner.maxHp - owner.hp);
+      const healValue = isVampiricToothHeal
+        ? Math.min(value, ctx.enemyBleedBeforeHit ?? 0)
+        : value;
+      const healed = Math.min(healValue, owner.maxHp - owner.hp);
       if (healed > 0) {
         const updatedOwner = {
           ...owner,
@@ -531,13 +631,17 @@ export function executeEffect(
         ...state,
         [ctx.owner]: updatedOwner,
       };
-      logs.push({ effectName, target: ctx.owner, source });
+      logs.push({ effectName, target: ctx.owner, source, digGained: value });
       break;
     }
 
     case 'GainGold': {
-      ctx.updateGold(ctx.playerGold + value);
-      logs.push({ effectName, target: ctx.owner, goldChange: value, source });
+      const newGold = ctx.playerGold + value;
+      ctx.updateGold(newGold);
+      ctx.playerGold = newGold;
+      const goldKey = ctx.owner === 'player' ? 'playerGold' : 'enemyGold';
+      state = { ...state, [goldKey]: Math.max(0, newGold) };
+      logs.push({ effectName, target: ctx.owner, goldChange: value, isGoldGain: true, source });
       break;
     }
 
@@ -662,8 +766,15 @@ export function executeEffect(
       const available = Math.max(0, ctx.enemyGold ?? 0);
       const stolen = Math.min(value, available);
       if (stolen > 0) {
-        ctx.updateEnemyGold?.(available - stolen);
-        ctx.updateGold(ctx.playerGold + stolen);
+        const newEnemyGold = available - stolen;
+        const newOwnerGold = ctx.playerGold + stolen;
+        ctx.updateEnemyGold?.(newEnemyGold);
+        ctx.updateGold(newOwnerGold);
+        ctx.enemyGold = newEnemyGold;
+        ctx.playerGold = newOwnerGold;
+        const ownerGoldKey = ctx.owner === 'player' ? 'playerGold' : 'enemyGold';
+        const enemyGoldKey = ctx.owner === 'player' ? 'enemyGold' : 'playerGold';
+        state = { ...state, [ownerGoldKey]: Math.max(0, newOwnerGold), [enemyGoldKey]: Math.max(0, newEnemyGold) };
         ctx.setLastGoldStolen?.(stolen);
         logs.push({ effectName, target, goldChange: stolen, source });
       }
@@ -717,13 +828,14 @@ export function executeEffect(
         ...state,
         [target]: updatedEnemy,
       };
-      logs.push({ effectName, target, source });
+      logs.push({ effectName, target, source, spdGained: -value });
       break;
     }
 
     case 'GoldToArmorScaled': {
-      // Gain armor = floor(gold/10), capped at value
-      const armorGained = Math.min(Math.floor(ctx.playerGold / 10), value);
+      // Gain armor = floor(owner gold / 6), capped at the effect value.
+      const ownerGold = ctx.owner === 'player' ? (ctx.playerGold ?? 0) : (ctx.enemyGold ?? 0);
+      const armorGained = Math.min(Math.floor(ownerGold / 6), value);
       if (armorGained > 0) {
         const updatedOwner = {
           ...owner,
@@ -741,14 +853,18 @@ export function executeEffect(
     case 'ConsumeGoldForArmor': {
       // Consume 1 gold to gain [value] armor
       if (ctx.playerGold >= 1) {
-        ctx.updateGold(ctx.playerGold - 1);
+        const newGold = ctx.playerGold - 1;
+        ctx.updateGold(newGold);
+        ctx.playerGold = newGold;
         const updatedOwner = {
           ...owner,
           arm: owner.arm + value,
         };
+        const goldKey = ctx.owner === 'player' ? 'playerGold' : 'enemyGold';
         state = {
           ...state,
           [ctx.owner]: updatedOwner,
+          [goldKey]: Math.max(0, newGold),
         };
         logs.push({ effectName, target: ctx.owner, armorGained: value, goldChange: -1, source });
       }
@@ -793,8 +909,7 @@ export function executeEffect(
     }
 
     case 'AmplifyNonWeaponDamage': {
-      // This is tracked in context, just add to amplification
-      // Note: This is typically set at battle start, not added
+      ctx.setNonWeaponAmplify(ctx.nonWeaponAmplify + Math.max(0, value));
       logs.push({ effectName, target: 'none', source });
       break;
     }
@@ -807,13 +922,32 @@ export function executeEffect(
 
     case 'EmpowerNextNonWeaponDamage':
     case 'ShardsEveryTurn':
-    case 'PreserveShrapnel': {
+    case 'PreserveShrapnel':
+    case 'AmplifyGoldGain':
+    case 'DoubleDetonationFirst':
+    case 'DoubleDetonationSecond': {
       logs.push({ effectName, target: 'none', source });
       break;
     }
 
-    case 'EmpowerNextBombDamage':
-    case 'ReduceNextBombSelfDamage':
+    case 'EmpowerNextBombDamage': {
+      ctx.setNextBombDamageBonus(ctx.nextBombDamageBonus + Math.max(0, value));
+      logs.push({ effectName, target: 'none', source });
+      break;
+    }
+
+    case 'ReduceNextBombSelfDamage': {
+      if (ctx.phase === 'TURN_START') {
+        ctx.setNextBombSelfDamageReduction(
+          Math.max(ctx.nextBombSelfDamageReduction, Math.max(0, value))
+        );
+      } else {
+        ctx.setNextBombSelfDamageReduction(ctx.nextBombSelfDamageReduction + Math.max(0, value));
+      }
+      logs.push({ effectName, target: 'none', source });
+      break;
+    }
+
     case 'HalfGearAtkAfterSecondStrike': {
       // Resolver-specific behavior is handled in resolver.ts.
       logs.push({ effectName, target: 'none', source });
@@ -824,12 +958,16 @@ export function executeEffect(
     case 'DoubleBombTrigger':
     case 'DoubleOnHitEffects':
     case 'TriggerAllShards':
-    case 'SetArmorPiercing':
     case 'StealGold':
     case 'GoldToArmor':
     case 'ApplyReflection':
     case 'ApplyBomb':
       // These are flag-based effects handled at battle start
+      logs.push({ effectName, target: 'none', source });
+      break;
+
+    case 'SetArmorPiercing':
+      ctx.setArmorPiercing(Math.max(ctx.armorPiercing, value));
       logs.push({ effectName, target: 'none', source });
       break;
 
@@ -845,11 +983,18 @@ export function executeEffect(
 // ============================================================================
 
 export interface ProcessEffectsInput {
-  effects: Array<{ effect: ItemEffect; id: string; name: string; source?: CombatSourceRef }>;
+  effects: Array<{
+    effect: ItemEffect;
+    id: string;
+    name: string;
+    source?: CombatSourceRef;
+    sourceInstanceId?: string;
+  }>;
   ctx: CombatEffectContext;
   phase: string;
   triggerContext?: {
     isFirstStrike?: boolean;
+    enemyBleedBeforeHit?: number;
     wasWounded?: boolean;
     isWounded?: boolean;
     wasExposed?: boolean;
@@ -857,8 +1002,12 @@ export interface ProcessEffectsInput {
     enemyTookBleedDamage?: boolean;
     rustApplied?: boolean;
     shrapnelGained?: boolean;
+    firstTimeWoundedTriggered?: boolean;
+    firstTimeExposedTriggered?: boolean;
+    firstTimeShrapnelTriggered?: boolean;
     isDayStart?: boolean;
     ownerActsFirst?: boolean;
+    shardsEveryTurn?: boolean;
   };
 }
 
@@ -866,33 +1015,76 @@ export function processEffects(input: ProcessEffectsInput): EffectResult {
   let { state } = input.ctx;
   const allLogs: EffectLogEntry[] = [];
   let anyApplied = false;
+  const isExecutionEmblemEffect = (source?: CombatSourceRef): boolean => source?.kind === 'gear' && source.id === 'I54';
+  const hasLethalCombatant = (nextState: CombatState): boolean =>
+    nextState.player.hp <= 0 || nextState.enemy.hp <= 0;
+  let lethalSourceInstanceId: string | null = null;
+  let lethalStartState: CombatState | undefined;
+  let sourceStartState: CombatState | undefined;
+  let currentSourceInstanceId: string | undefined;
 
-  for (const { effect, id, name, source } of input.effects) {
-    // Check if this effect should trigger for the current phase
-    const shouldFire = shouldTrigger(
-      effect.trigger,
-      input.phase,
-      input.ctx.turn,
-      input.triggerContext || {}
-    );
+  const isUnconditionalStatusApply = (effect: ItemEffect): boolean =>
+    effect.condition.type === 'None' &&
+    (effect.effectType === 'ApplyChill' ||
+      effect.effectType === 'ApplyShrapnel' ||
+      effect.effectType === 'ApplyRust' ||
+      effect.effectType === 'ApplyBleed');
 
-    if (!shouldFire) continue;
+  for (const firstPass of [true, false]) {
+    for (const { effect, id, name, source, sourceInstanceId } of input.effects) {
+      if (lethalSourceInstanceId && sourceInstanceId !== lethalSourceInstanceId) {
+        break;
+      }
+      if (currentSourceInstanceId !== sourceInstanceId) {
+        currentSourceInstanceId = sourceInstanceId;
+        sourceStartState = state;
+      }
+      const shouldRunInPass = firstPass
+        ? isUnconditionalStatusApply(effect)
+        : !isUnconditionalStatusApply(effect);
+      if (!shouldRunInPass) continue;
 
-    // Handle FirstTurnIfFaster/FirstTurnIfSlower special cases
-    if (effect.trigger.type === 'FirstTurnIfFaster' && !input.triggerContext?.ownerActsFirst) {
-      continue;
+      if (
+        input.phase === 'ON_HIT' &&
+        input.triggerContext?.isFirstStrike === false &&
+        isExecutionEmblemEffect(source)
+      ) {
+        continue;
+      }
+
+      // Check if this effect should trigger for the current phase
+      const shouldFire = shouldTrigger(
+        effect.trigger,
+        input.phase,
+        input.ctx.turn,
+        input.triggerContext || {}
+      );
+
+      if (!shouldFire) continue;
+
+      // Handle FirstTurnIfFaster/FirstTurnIfSlower special cases
+      if (effect.trigger.type === 'FirstTurnIfFaster' && !input.triggerContext?.ownerActsFirst) {
+        continue;
+      }
+      if (effect.trigger.type === 'FirstTurnIfSlower' && input.triggerContext?.ownerActsFirst) {
+        continue;
+      }
+
+      const result = executeEffect(effect, { ...input.ctx, state }, id, name, source);
+      state = result.state;
+      allLogs.push(...result.logs);
+      if (result.applied) {
+        anyApplied = true;
+      }
+      if (hasLethalCombatant(state)) {
+        lethalSourceInstanceId ??= sourceInstanceId ?? null;
+        lethalStartState ??= sourceStartState;
+      }
     }
-    if (effect.trigger.type === 'FirstTurnIfSlower' && input.triggerContext?.ownerActsFirst) {
-      continue;
-    }
-
-    const result = executeEffect(effect, { ...input.ctx, state }, id, name, source);
-    state = result.state;
-    allLogs.push(...result.logs);
-    if (result.applied) {
-      anyApplied = true;
+    if (hasLethalCombatant(state)) {
+      break;
     }
   }
 
-  return { state, applied: anyApplied, logs: allLogs };
+  return { state, applied: anyApplied, logs: allLogs, lethalStartState };
 }

@@ -5,7 +5,8 @@
  */
 
 import { calculateGoldReward, TIER_GOLD_REWARDS } from '../../src/game/entities/enemies';
-import { createCombatState, type CombatResolverInput } from '../../src/game/combat/resolver';
+import { createCombatState } from '../../src/game/combat/state';
+import type { CombatResolverInput } from '../../src/game/combat/types';
 import type { CombatantState } from '../../src/game/engine/types';
 import { DEFAULT_STATUS_EFFECTS } from '../../src/game/engine/types';
 import type { EnemyId } from '../../src/game/map/types';
