@@ -18,6 +18,7 @@ import {
   deriveGeneratedMapPda,
   deriveMapEnemiesPda,
   deriveGameStatePda,
+  deriveMapPoisPda,
 } from './constants';
 import { SOLANA_CONFIG } from './config';
 
@@ -241,6 +242,7 @@ export async function buildSyncMapEnemiesInstruction(
   const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
   const [mapEnemiesPda] = deriveMapEnemiesPda(sessionPda);
   const [gameStatePda] = deriveGameStatePda(sessionPda);
+  const [mapPoisPda] = deriveMapPoisPda(sessionPda);
 
   const method = pickMethod(gameplayStateProgram, 'syncMapEnemies', 'syncMapEnemies');
   return method()
@@ -250,6 +252,8 @@ export async function buildSyncMapEnemiesInstruction(
       generatedMap: generatedMapPda,
       mapEnemies: mapEnemiesPda,
       gameState: gameStatePda,
+      mapPois: mapPoisPda,
+      poiSystemProgram: SOLANA_CONFIG.programs.poiSystem,
     })
     .instruction();
 }

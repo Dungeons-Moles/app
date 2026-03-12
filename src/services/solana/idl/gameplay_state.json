@@ -4672,6 +4672,14 @@
               }
             ]
           }
+        },
+        {
+          "name": "map_pois",
+          "writable": true
+        },
+        {
+          "name": "poi_system_program",
+          "address": "KiT25b86BSAF8yErcWwyuuWNaoXMpNf859NjH41TpSj"
         }
       ],
       "args": []
@@ -7830,6 +7838,18 @@
             "name": "packed_tiles",
             "docs": [
               "Bit-packed tiles (0=floor, 1=wall), 313 bytes for 2500 tiles"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                313
+              ]
+            }
+          },
+          {
+            "name": "discovered_tiles",
+            "docs": [
+              "Bit-packed discovered tiles (1 = discovered/revealed)"
             ],
             "type": {
               "array": [

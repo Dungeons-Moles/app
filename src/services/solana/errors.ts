@@ -130,6 +130,7 @@ const PROGRAM_ERRORS: Record<string, Record<number, string>> = {
     6032: 'Invalid week value',
     6033: 'Failed to fetch boss weaknesses',
     6034: 'Selected oil is not in the generated offer',
+    6036: 'Invalid vision radius for the current player state',
   },
 };
 

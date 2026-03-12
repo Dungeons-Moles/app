@@ -301,11 +301,15 @@ export async function interactSurveyBeacon(
   ctx: PoiTransactionContext,
   poiIndex: number
 ): Promise<string> {
+  const [generatedMapPda] = deriveGeneratedMapPda(ctx.sessionPda);
   const transaction = await ctx.program.methods
     .interactSurveyBeacon(poiIndex)
     .accounts({
       mapPois: ctx.mapPoisPda,
       gameState: ctx.gameStatePda,
+      generatedMap: generatedMapPda,
+      session: ctx.sessionPda,
+      mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
       player: ctx.sessionSignerKeypair.publicKey,
     })
     .transaction();
@@ -318,19 +322,45 @@ export async function interactSurveyBeacon(
 // ============================================================================
 
 /**
+ * Generate and persist Seismic Scanner (L7) options from on-chain VRF state.
+ */
+export async function generateScannerOffer(
+  ctx: PoiTransactionContext,
+  poiIndex: number
+): Promise<string> {
+  const [generatedMapPda] = deriveGeneratedMapPda(ctx.sessionPda);
+  const transaction = await ctx.program.methods
+    .generateScannerOffer(poiIndex)
+    .accountsPartial({
+      mapPois: ctx.mapPoisPda,
+      gameState: ctx.gameStatePda,
+      generatedMap: generatedMapPda,
+      poiVrfState: ctx.poiVrfStatePda,
+      player: ctx.sessionSignerKeypair.publicKey,
+    })
+    .transaction();
+
+  return sendPoiTx(ctx, transaction);
+}
+
+/**
  * Activate a Seismic Scanner (L7) to reveal the nearest undiscovered POI
- * of a selected category. POI is one-time use.
+ * of a selected offered type. POI is one-time use.
  */
 export async function interactSeismicScanner(
   ctx: PoiTransactionContext,
   poiIndex: number,
-  category: number
+  poiType: number
 ): Promise<string> {
+  const [generatedMapPda] = deriveGeneratedMapPda(ctx.sessionPda);
   const transaction = await ctx.program.methods
-    .interactSeismicScanner(poiIndex, category)
+    .interactSeismicScanner(poiIndex, poiType)
     .accounts({
       mapPois: ctx.mapPoisPda,
       gameState: ctx.gameStatePda,
+      generatedMap: generatedMapPda,
+      session: ctx.sessionPda,
+      mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
       player: ctx.sessionSignerKeypair.publicKey,
     })
     .transaction();
@@ -351,6 +381,7 @@ export async function fastTravel(
   toPoiIndex: number
 ): Promise<string> {
   const [poiAuthorityPda] = derivePoiAuthorityPda();
+  const [generatedMapPda] = deriveGeneratedMapPda(ctx.sessionPda);
 
   const transaction = await ctx.program.methods
     .fastTravel(fromPoiIndex, toPoiIndex)
@@ -359,6 +390,9 @@ export async function fastTravel(
       gameState: ctx.gameStatePda,
       poiAuthority: poiAuthorityPda,
       gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
+      generatedMap: generatedMapPda,
+      session: ctx.sessionPda,
+      mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
       player: ctx.sessionSignerKeypair.publicKey,
     })
     .transaction();

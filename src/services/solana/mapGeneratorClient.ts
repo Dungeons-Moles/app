@@ -36,6 +36,7 @@ export interface GeneratedMapData {
   moleDenY: number;
   walkableCount: number;
   packedTiles: number[];
+  discoveredTiles: number[];
   enemyCount: number;
   enemies: OnChainEnemySpawn[];
   poiCount: number;

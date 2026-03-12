@@ -62,7 +62,7 @@ import {
 import { refreshPlayerStats } from '@/game/entities/player';
 import { GAME_CONSTANTS, getBaseHp } from '@/game/engine/constants';
 import { selectDuelWeekBossForSeed, selectWeekBossForLevel } from '@/game/time/progression';
-import { updateFogOfWar, applyInitialVisibility } from '@/game/map/fog-of-war';
+import { updateFogOfWar } from '@/game/map/fog-of-war';
 
 // ============================================================================
 // Constants
@@ -259,6 +259,32 @@ export async function fetchFullSessionState(
     return null;
   }
 
+  const mapLooksUninitialized =
+    generatedMapData.width <= 0 ||
+    generatedMapData.height <= 0 ||
+    generatedMapData.walkableCount <= 0 ||
+    (generatedMapData.enemyCount === 0 &&
+      generatedMapData.poiCount === 0 &&
+      gameStateData.positionX === 0 &&
+      gameStateData.positionY === 0);
+
+  if (mapLooksUninitialized) {
+    if (!options?.silentMissingData) {
+      console.warn('[sessionRestore] Generated map is not initialized yet:', {
+        width: generatedMapData.width,
+        height: generatedMapData.height,
+        walkableCount: generatedMapData.walkableCount,
+        enemyCount: generatedMapData.enemyCount,
+        poiCount: generatedMapData.poiCount,
+        position: {
+          x: gameStateData.positionX,
+          y: gameStateData.positionY,
+        },
+      });
+    }
+    return null;
+  }
+
   const toSeedNumber = (raw: unknown): number => {
     if (typeof raw === 'bigint') {
       return Number(raw % BigInt(2147483647));
@@ -311,23 +337,6 @@ export async function fetchFullSessionState(
     generatedMapData.height
   );
 
-  // Apply broken walls from AsyncStorage (walls dug during gameplay are not stored on-chain).
-  // Skip for fresh sessions to prevent stale data from a previous session on the same PDA.
-  const sessionKey = sessionPda.toBase58();
-  const brokenWalls = gameStateData.totalMoves === 0 ? null : await loadBrokenWalls(sessionKey);
-  if (brokenWalls) {
-    for (const wall of brokenWalls) {
-      if (
-        wall.y >= 0 &&
-        wall.y < generatedMapData.height &&
-        wall.x >= 0 &&
-        wall.x < generatedMapData.width
-      ) {
-        tiles[wall.y][wall.x] = TileType.Floor;
-      }
-    }
-  }
-
   const enemies = convertEnemies(
     mapEnemiesData?.enemies ?? [],
     generatedMapData.enemies,
@@ -352,7 +361,11 @@ export async function fetchFullSessionState(
     width: generatedMapData.width,
     height: generatedMapData.height,
     tiles,
-    fog: buildEmptyFog(generatedMapData.width, generatedMapData.height),
+    fog: buildFogFromOnChainDiscovery(
+      generatedMapData.discoveredTiles,
+      generatedMapData.width,
+      generatedMapData.height
+    ),
     enemies,
     pois,
     moleDenPosition: {
@@ -361,33 +374,10 @@ export async function fetchFullSessionState(
     },
   };
 
-  // Restore fog from AsyncStorage or build from player position.
-  // Skip loading cached fog/walls for fresh sessions (totalMoves === 0) to prevent
-  // stale data from a previous session on the same deterministic PDA from bleeding through
-  // (e.g., after a validator reset where the same PDA is reused for a new session).
-  const isFreshSession = gameStateData.totalMoves === 0;
-  const restoredFog = isFreshSession
-    ? null
-    : await loadFogState(sessionKey, generatedMapData.width, generatedMapData.height);
-  if (restoredFog) {
-    map.fog = restoredFog;
-    // Mark enemies as discovered if they're on revealed/visible tiles
-    map.enemies = map.enemies.map((enemy) => {
-      const { x, y } = enemy.position;
-      if (x >= 0 && x < map.width && y >= 0 && y < map.height) {
-        const fogState = restoredFog[y][x];
-        if (fogState === FogState.Revealed || fogState === FogState.Visible) {
-          return { ...enemy, discovered: true };
-        }
-      }
-      return enemy;
-    });
-  } else {
-    // No saved fog or fresh session: reveal with initial sight radius (6)
-    const updatedMap = applyInitialVisibility(map, playerPos);
-    map.fog = updatedMap.fog;
-    map.enemies = updatedMap.enemies;
-  }
+  // Overlay the live visibility ring on top of persisted discovered tiles.
+  const updatedMap = updateFogOfWar(map, playerPos, time.phase === 'DAY');
+  map.fog = updatedMap.fog;
+  map.enemies = updatedMap.enemies;
 
   // Reconcile on-chain discovered POIs with fog state:
   // If a POI is marked as discovered on-chain (e.g., from a previous seismic scanner use)
@@ -401,12 +391,6 @@ export async function fetchFullSessionState(
         }
       }
     }
-  }
-
-  // Clear stale caches for fresh sessions
-  if (isFreshSession) {
-    await clearFogState(sessionKey).catch(() => {});
-    await clearBrokenWalls(sessionKey).catch(() => {});
   }
 
   // Build RNG state: seed + totalMoves for deterministic resumption
@@ -436,7 +420,7 @@ export async function fetchFullSessionState(
     movesRemaining: time.movesRemaining,
     enemyCount: enemies.length,
     poiCount: pois.length,
-    hasSavedFog: !!restoredFog,
+    hasOnChainDiscovery: generatedMapData.discoveredTiles.some((byte) => byte !== 0),
   });
 
   return state;
@@ -470,6 +454,28 @@ export function unpackTiles(packedTiles: number[], width: number, height: number
   }
 
   return tiles;
+}
+
+export function buildFogFromOnChainDiscovery(
+  discoveredTiles: number[],
+  width: number,
+  height: number
+): FogState[][] {
+  const fog = buildEmptyFog(width, height);
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const bitIndex = y * width + x;
+      const byteIndex = Math.floor(bitIndex / 8);
+      const bitOffset = bitIndex % 8;
+      const isDiscovered = ((discoveredTiles[byteIndex] ?? 0) >> bitOffset) & 1;
+      if (isDiscovered) {
+        fog[y][x] = FogState.Revealed;
+      }
+    }
+  }
+
+  return fog;
 }
 
 // ============================================================================

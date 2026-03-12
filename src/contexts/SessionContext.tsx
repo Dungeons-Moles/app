@@ -61,6 +61,7 @@ import {
   waitForVrfFulfillment,
 } from '@/services/solana/vrf';
 import { fetchGeneratedMap } from '@/services/solana/mapGeneratorClient';
+import { fetchMapPois } from '@/services/solana/poiSystem';
 import {
   queueCleanup,
   getPendingCleanups,
@@ -118,6 +119,16 @@ const ER_PROPAGATION_POLL_MS = 300;
 const UNKNOWN_ER_NODE = '11111111111111111111111111111111';
 const DIRECT_ER_RPC_URL =
   process.env.EXPO_PUBLIC_EPHEMERAL_PROVIDER_ENDPOINT ?? 'https://devnet.magicblock.app/';
+
+function isErPropagationErrorMessage(message: string): boolean {
+  return (
+    message.includes('InvalidWritableAccount') ||
+    message.includes('InvalidAccountOwner') ||
+    message.includes('AccountDidNotDeserialize') ||
+    message.includes('"Custom":3003') ||
+    message.includes('"Custom":3004')
+  );
+}
 const DIRECT_ER_WS_URL =
   process.env.EXPO_PUBLIC_EPHEMERAL_WS_ENDPOINT ?? 'wss://devnet.magicblock.app/';
 const ER_VRF_WAIT_TIMEOUT_MS = 120_000;
@@ -765,13 +776,33 @@ export function SessionProvider({ children }: { children: ReactNode }) {
               DELEGATION_PROGRAM_ID
             )[0]
           );
+      const canDecodeCoreAccounts = async (): Promise<boolean> => {
+        try {
+          const routedConn = await getRoutedErConnectionForAccount(sessionPda);
+          const conn = routedConn ?? directErConnection;
+          const poiProgram = createPoiSystemProgram(conn);
+          const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
+          const generatedMap = await fetchGeneratedMap(
+            createMapGeneratorProgram(conn),
+            generatedMapPda
+          );
+          const [mapPoisPda] = deriveMapPoisPda(sessionPda);
+          const mapPois = await fetchMapPois(poiProgram, mapPoisPda);
+          return generatedMap !== null && mapPois !== null;
+        } catch {
+          return false;
+        }
+      };
 
       while (Date.now() - startedAt < ER_PROPAGATION_WAIT_MS) {
         try {
           const infos = await Promise.all(
             targets.map(({ pda }) => directErConnection.getAccountInfo(pda, 'processed'))
           );
-          const allPresentOnEr = infos.every(Boolean);
+          const allReadyOnEr = infos.every(
+            (info, index) =>
+              Boolean(info) && info?.owner.equals(targets[index].expectedOwner)
+          );
           const allDelegationRecordsAssigned = canUseRouterStatus
             ? (
                 await Promise.all(
@@ -789,7 +820,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                 const authority = new PublicKey(recordInfo.data.slice(8, 40)).toBase58();
                 return authority !== UNKNOWN_ER_NODE;
               });
-          if (allPresentOnEr && allDelegationRecordsAssigned) {
+          if (allReadyOnEr && allDelegationRecordsAssigned && (await canDecodeCoreAccounts())) {
             return true;
           }
         } catch {
@@ -841,6 +872,46 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       return null;
     },
     [getRoutedErConnectionForAccount, setResolvedErEndpoint]
+  );
+
+  const sendErInitTransactionWithRetry = useCallback(
+    async (
+      label: string,
+      transaction: Transaction,
+      signerKeypair: Keypair,
+      sessionPda: PublicKey
+    ): Promise<string> => {
+      const MAX_ATTEMPTS = 5;
+      let lastError: unknown;
+
+      for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+        try {
+          return await sendRoutedErTransaction(transaction, signerKeypair, [sessionPda]);
+        } catch (error) {
+          lastError = error;
+          const message = error instanceof Error ? error.message : String(error);
+          const isPropagationError = isErPropagationErrorMessage(message);
+
+          if (!isPropagationError || attempt >= MAX_ATTEMPTS) {
+            throw error;
+          }
+
+          console.warn(`[SessionContext] ${label}:retry_after_er_propagation_error`, {
+            attempt,
+            error: message,
+          });
+          await waitForErSessionAccounts(sessionPda, {
+            includeVrf: !SOLANA_CONFIG.isLocalValidator,
+          });
+          await new Promise((resolve) => setTimeout(resolve, ER_PROPAGATION_POLL_MS));
+        }
+      }
+
+      throw lastError instanceof Error
+        ? lastError
+        : new Error(`Failed to send ${label} transaction on ER`);
+    },
+    [sendRoutedErTransaction, waitForErSessionAccounts]
   );
 
   /**
@@ -1181,7 +1252,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }),
           ...mapAndSyncTx.instructions
         );
-        await sendRoutedErTransaction(mapAndSyncWithBudgetTx, sessionSignerKeypair, [sessionPda]);
+        await sendErInitTransactionWithRetry(
+          'resumeGame:map_and_sync',
+          mapAndSyncWithBudgetTx,
+          sessionSignerKeypair,
+          sessionPda
+        );
 
         const generatedSeed = (await fetchSessionGeneratedSeed(sessionPda)) ?? BigInt(20);
         const refreshMapPoisIx = await erPoiSystemProgram.methods
@@ -1194,20 +1270,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             sessionSigner: sessionSignerKeypair.publicKey,
           })
           .instruction();
-        const discoverVisibleWaypointsIx = await erPoiSystemProgram.methods
-          .discoverVisibleWaypoints(6)
-          .accounts({
-            mapPois: mapPoisPda,
-            gameState: gameStatePda,
-            player: sessionSignerKeypair.publicKey,
-          })
-          .instruction();
         const rebuildMapPoisTx = new Transaction().add(
           ComputeBudgetProgram.setComputeUnitLimit({ units: 800_000 }),
-          refreshMapPoisIx,
-          discoverVisibleWaypointsIx
+          refreshMapPoisIx
         );
-        await sendRoutedErTransaction(rebuildMapPoisTx, sessionSignerKeypair, [sessionPda]);
+        await sendErInitTransactionWithRetry(
+          'resumeGame:refresh_map_pois',
+          rebuildMapPoisTx,
+          sessionSignerKeypair,
+          sessionPda
+        );
       };
 
       // Quick check — oracle may have responded since the last attempt
@@ -1317,6 +1389,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       fetchSessionGeneratedSeed,
       getRoutedErConnectionForAccount,
       sendRoutedErTransaction,
+      sendErInitTransactionWithRetry,
       wallet.publicKey,
     ]
   );
@@ -1441,6 +1514,27 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     [connection]
   );
 
+  const formatUnknownErrorMessage = useCallback((err: unknown): string => {
+    if (err instanceof Error) {
+      return err.message;
+    }
+    if (typeof err === 'string') {
+      return err;
+    }
+    if (err && typeof err === 'object') {
+      const maybeMessage = (err as { message?: unknown }).message;
+      if (typeof maybeMessage === 'string' && maybeMessage.length > 0) {
+        return maybeMessage;
+      }
+      try {
+        return JSON.stringify(err);
+      } catch {
+        return String(err);
+      }
+    }
+    return String(err);
+  }, []);
+
   const logTxDebugError = useCallback((label: string, err: unknown) => {
     const e = err as
       | Error
@@ -1464,13 +1558,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         : null;
 
     console.error(`[SessionContext] ${label}:error`, {
-      message: e?.message ?? String(err),
+      message: formatUnknownErrorMessage(err),
       logs: directLogs,
       transactionLogs: txLogs,
       causeLogs,
       raw: err,
     });
-  }, []);
+  }, [formatUnknownErrorMessage]);
 
   const debugSimulateTransaction = useCallback(
     async (label: string, transaction: Transaction): Promise<void> => {
@@ -2369,7 +2463,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }),
           ...mapAndSyncTx.instructions
         );
-        await sendRoutedErTransaction(mapAndSyncWithBudgetTx, newSessionSignerKeypair, [sessionPda]);
+        await sendErInitTransactionWithRetry(
+          'startGame:map_and_sync',
+          mapAndSyncWithBudgetTx,
+          newSessionSignerKeypair,
+          sessionPda
+        );
 
         const refreshMapPoisIx = await erPoiSystemProgram.methods
           .refreshMapPois(campaignAct, campaignWeek, new BN(levelSeed.toString()))
@@ -2381,26 +2480,22 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             sessionSigner: newSessionSignerKeypair.publicKey,
           })
           .instruction();
-        const discoverVisibleWaypointsIx = await erPoiSystemProgram.methods
-          .discoverVisibleWaypoints(6)
-          .accounts({
-            mapPois: mapPoisPda,
-            gameState: gameStatePda,
-            player: newSessionSignerKeypair.publicKey,
-          })
-          .instruction();
         const rebuildMapPoisTx = new Transaction().add(
           ComputeBudgetProgram.setComputeUnitLimit({ units: 800_000 }),
-          refreshMapPoisIx,
-          discoverVisibleWaypointsIx
+          refreshMapPoisIx
         );
-        await sendRoutedErTransaction(rebuildMapPoisTx, newSessionSignerKeypair, [sessionPda]);
+        await sendErInitTransactionWithRetry(
+          'startGame:refresh_map_pois',
+          rebuildMapPoisTx,
+          newSessionSignerKeypair,
+          sessionPda
+        );
         console.log('[SessionContext] startGame:map_and_sync_complete (ER)');
       } catch (mapErr) {
         logTxDebugError('startGame:map_and_sync', mapErr);
         return {
           success: false,
-          error: mapErr instanceof Error ? mapErr.message : 'Failed to generate map on ER',
+          error: formatUnknownErrorMessage(mapErr) || 'Failed to generate map on ER',
         };
       }
 
@@ -2438,6 +2533,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       confirmSignatureWithTimeout,
       debugSimulateTransaction,
       ensureDelegatedToRollup,
+      formatUnknownErrorMessage,
       getRoutedErConnectionForAccount,
       getSessionDelegationTargets,
       isAccountNotInitializedError,
@@ -2446,6 +2542,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       readPoiVrfStatus,
       resolveAndSetErEndpoint,
       sendRoutedErTransaction,
+      sendErInitTransactionWithRetry,
       waitForSessionSignerOnEr,
       wallet.publicKey,
     ]
@@ -2723,7 +2820,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }),
           ...mapAndSyncTx.instructions
         );
-        await sendRoutedErTransaction(mapAndSyncWithBudgetTx, newSessionSignerKeypair, [sessionPda]);
+        await sendErInitTransactionWithRetry(
+          'startDuelGame:map_and_sync',
+          mapAndSyncWithBudgetTx,
+          newSessionSignerKeypair,
+          sessionPda
+        );
         const erPoiSystemProgram = createPoiSystemProgram(directErConnection);
         const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
         const [mapPoisPda] = deriveMapPoisPda(sessionPda);
@@ -2741,20 +2843,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             sessionSigner: newSessionSignerKeypair.publicKey,
           })
           .instruction();
-        const discoverVisibleWaypointsIx = await erPoiSystemProgram.methods
-          .discoverVisibleWaypoints(6)
-          .accounts({
-            mapPois: mapPoisPda,
-            gameState: duelGameStatePda,
-            player: newSessionSignerKeypair.publicKey,
-          })
-          .instruction();
         const rebuildMapPoisTx = new Transaction().add(
           ComputeBudgetProgram.setComputeUnitLimit({ units: 800_000 }),
-          refreshMapPoisIx,
-          discoverVisibleWaypointsIx
+          refreshMapPoisIx
         );
-        await sendRoutedErTransaction(rebuildMapPoisTx, newSessionSignerKeypair, [sessionPda]);
+        await sendErInitTransactionWithRetry(
+          'startDuelGame:refresh_map_pois',
+          rebuildMapPoisTx,
+          newSessionSignerKeypair,
+          sessionPda
+        );
         console.log('[SessionContext] startDuelGame:all_vrf_ready (ER)');
     } catch (vrfError) {
       logTxDebugError('startDuelGame:map_gen', vrfError);
@@ -2792,6 +2890,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     logTxDebugError,
     getRoutedErConnectionForAccount,
     sendRoutedErTransaction,
+    sendErInitTransactionWithRetry,
     waitForSessionSignerOnEr,
   ]);
 
@@ -3076,7 +3175,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }),
           ...mapAndSyncTx.instructions
         );
-        await sendRoutedErTransaction(mapAndSyncWithBudgetTx, newSessionSignerKeypair, [sessionPda]);
+        await sendErInitTransactionWithRetry(
+          'startGauntletGame:map_and_sync',
+          mapAndSyncWithBudgetTx,
+          newSessionSignerKeypair,
+          sessionPda
+        );
         const erPoiSystemProgram = createPoiSystemProgram(directErConnection);
         const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
         const [mapPoisPda] = deriveMapPoisPda(sessionPda);
@@ -3094,20 +3198,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             sessionSigner: newSessionSignerKeypair.publicKey,
           })
           .instruction();
-        const discoverVisibleWaypointsIx = await erPoiSystemProgram.methods
-          .discoverVisibleWaypoints(6)
-          .accounts({
-            mapPois: mapPoisPda,
-            gameState: gauntletGameStatePda,
-            player: newSessionSignerKeypair.publicKey,
-          })
-          .instruction();
         const rebuildMapPoisTx = new Transaction().add(
           ComputeBudgetProgram.setComputeUnitLimit({ units: 800_000 }),
-          refreshMapPoisIx,
-          discoverVisibleWaypointsIx
+          refreshMapPoisIx
         );
-        await sendRoutedErTransaction(rebuildMapPoisTx, newSessionSignerKeypair, [sessionPda]);
+        await sendErInitTransactionWithRetry(
+          'startGauntletGame:refresh_map_pois',
+          rebuildMapPoisTx,
+          newSessionSignerKeypair,
+          sessionPda
+        );
         console.log('[SessionContext] startGauntletGame:all_vrf_ready (ER)');
     } catch (vrfError) {
       logTxDebugError('startGauntletGame:map_gen', vrfError);
@@ -3145,6 +3245,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     logTxDebugError,
     getRoutedErConnectionForAccount,
     sendRoutedErTransaction,
+    sendErInitTransactionWithRetry,
     waitForSessionSignerOnEr,
   ]);
 
@@ -4207,7 +4308,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }),
           ...mapAndSyncTx.instructions
         );
-        await sendRoutedErTransaction(mapAndSyncWithBudgetTx, newSessionSignerKeypair, [sessionPda]);
+        await sendErInitTransactionWithRetry(
+          'overrideAndStartGame:map_and_sync',
+          mapAndSyncWithBudgetTx,
+          newSessionSignerKeypair,
+          sessionPda
+        );
 
         const refreshMapPoisIx = await erPoiSystemProgram.methods
           .refreshMapPois(campaignAct, campaignWeek, new BN(levelSeed.toString()))
@@ -4219,25 +4325,21 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             sessionSigner: newSessionSignerKeypair.publicKey,
           })
           .instruction();
-        const discoverVisibleWaypointsIx = await erPoiSystemProgram.methods
-          .discoverVisibleWaypoints(6)
-          .accounts({
-            mapPois: mapPoisPda,
-            gameState: gameStatePda,
-            player: newSessionSignerKeypair.publicKey,
-          })
-          .instruction();
         const rebuildMapPoisTx = new Transaction().add(
           ComputeBudgetProgram.setComputeUnitLimit({ units: 800_000 }),
-          refreshMapPoisIx,
-          discoverVisibleWaypointsIx
+          refreshMapPoisIx
         );
-        await sendRoutedErTransaction(rebuildMapPoisTx, newSessionSignerKeypair, [sessionPda]);
+        await sendErInitTransactionWithRetry(
+          'overrideAndStartGame:refresh_map_pois',
+          rebuildMapPoisTx,
+          newSessionSignerKeypair,
+          sessionPda
+        );
       } catch (mapErr) {
         logTxDebugError('overrideAndStartGame:map_and_sync', mapErr);
         return {
           success: false,
-          error: mapErr instanceof Error ? mapErr.message : 'Failed to initialize map',
+          error: formatUnknownErrorMessage(mapErr) || 'Failed to initialize map',
         };
       }
 
@@ -4254,6 +4356,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       connection,
       signAndSendTransactions,
       confirmSignatureWithTimeout,
+      formatUnknownErrorMessage,
       refreshSessionList,
       waitForErSessionAccounts,
       setUseErForGameplay,
@@ -4264,6 +4367,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       getRoutedErConnectionForAccount,
       mapGenerator,
       sendRoutedErTransaction,
+      sendErInitTransactionWithRetry,
       fetchSessionGeneratedSeed,
       gameplayState,
       erConnection,
@@ -4498,7 +4602,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }),
             ...mapAndSyncTx.instructions
           );
-          await sendRoutedErTransaction(mapAndSyncWithBudgetTx, newSessionSignerKeypair, [sessionPda]);
+          await sendErInitTransactionWithRetry(
+            'overrideAndStartDuelGame:map_and_sync',
+            mapAndSyncWithBudgetTx,
+            newSessionSignerKeypair,
+            sessionPda
+          );
 
           const erPoiSystemProgram = createPoiSystemProgram(directErConnection);
           const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
@@ -4515,20 +4624,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
               sessionSigner: newSessionSignerKeypair.publicKey,
             })
             .instruction();
-          const discoverVisibleWaypointsIx = await erPoiSystemProgram.methods
-            .discoverVisibleWaypoints(6)
-            .accounts({
-              mapPois: mapPoisPda,
-              gameState: duelGameStatePda,
-              player: newSessionSignerKeypair.publicKey,
-            })
-            .instruction();
           const rebuildMapPoisTx = new Transaction().add(
             ComputeBudgetProgram.setComputeUnitLimit({ units: 800_000 }),
-            refreshMapPoisIx,
-            discoverVisibleWaypointsIx
+            refreshMapPoisIx
           );
-          await sendRoutedErTransaction(rebuildMapPoisTx, newSessionSignerKeypair, [sessionPda]);
+          await sendErInitTransactionWithRetry(
+            'overrideAndStartDuelGame:refresh_map_pois',
+            rebuildMapPoisTx,
+            newSessionSignerKeypair,
+            sessionPda
+          );
       } catch (vrfError) {
         return {
           success: false,
@@ -4559,6 +4664,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       gameplayState,
       getRoutedErConnectionForAccount,
       sendRoutedErTransaction,
+      sendErInitTransactionWithRetry,
       waitForSessionSignerOnEr,
     ]
   );
@@ -4798,7 +4904,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }),
             ...mapAndSyncTx.instructions
           );
-          await sendRoutedErTransaction(mapAndSyncWithBudgetTx, newSessionSignerKeypair, [sessionPda]);
+          await sendErInitTransactionWithRetry(
+            'overrideAndStartGauntletGame:map_and_sync',
+            mapAndSyncWithBudgetTx,
+            newSessionSignerKeypair,
+            sessionPda
+          );
           const erPoiSystemProgram = createPoiSystemProgram(directErConnection);
           const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
           const [mapPoisPda] = deriveMapPoisPda(sessionPda);
@@ -4815,20 +4926,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
               sessionSigner: newSessionSignerKeypair.publicKey,
             })
             .instruction();
-          const discoverVisibleWaypointsIx = await erPoiSystemProgram.methods
-            .discoverVisibleWaypoints(6)
-            .accounts({
-              mapPois: mapPoisPda,
-              gameState: gauntletGameStatePda,
-              player: newSessionSignerKeypair.publicKey,
-            })
-            .instruction();
           const rebuildMapPoisTx = new Transaction().add(
             ComputeBudgetProgram.setComputeUnitLimit({ units: 800_000 }),
-            refreshMapPoisIx,
-            discoverVisibleWaypointsIx
+            refreshMapPoisIx
           );
-          await sendRoutedErTransaction(rebuildMapPoisTx, newSessionSignerKeypair, [sessionPda]);
+          await sendErInitTransactionWithRetry(
+            'overrideAndStartGauntletGame:refresh_map_pois',
+            rebuildMapPoisTx,
+            newSessionSignerKeypair,
+            sessionPda
+          );
       } catch (vrfError) {
         return {
           success: false,
@@ -4859,6 +4966,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       gameplayState,
       getRoutedErConnectionForAccount,
       sendRoutedErTransaction,
+      sendErInitTransactionWithRetry,
       waitForSessionSignerOnEr,
     ]
   );

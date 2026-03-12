@@ -104,9 +104,9 @@ import { getTierFromRarity } from '../../data/gear';
 import { BOSSES } from '../../data/bosses';
 import { ENEMY_DEFINITIONS } from '../entities/enemies';
 
-/** Selection POIs that require on-chain interact() flow — not auto-triggered in handleSyncMove */
+/** POIs that require dedicated on-chain interact() flow — not locally auto-triggered in handleSyncMove */
 const SELECTION_POIS = new Set([
-  'L1', 'L2', 'L3', 'L4', 'L5', 'L7', 'L8', 'L9', 'L10', 'L11', 'L12', 'L13', 'L14',
+  'L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L8', 'L9', 'L10', 'L11', 'L12', 'L13', 'L14',
 ]);
 
 // ============================================================================
@@ -1795,29 +1795,13 @@ function handleSyncMove(state: GameState, confirmedState: OnChainGameState): Gam
   // Check for POI at target position
   const poiAtTarget = findPOIAtPosition(finalMap, targetPos);
   if (poiAtTarget && !poiAtTarget.visited) {
-    // Survey Beacon auto-activates
-    if (poiAtTarget.definitionId === 'L6') {
-      let newState: GameState = {
-        ...state,
-        player: updatedPlayer,
-        map: finalMap,
-        time: updatedTime,
-        wallHighlight: null,
-      };
-      newState = activateSurveyBeacon(newState);
-      newState = {
-        ...newState,
-        map: markPOIVisited(newState.map, poiAtTarget.id),
-      };
-      return newState;
-    }
-
-    // Selection POIs: stay in Exploration so "Interact" button triggers on-chain flow
+    // On-chain sync path: stay in Exploration and let usePoiInteraction send the
+    // dedicated POI transaction after the move is confirmed.
     if (SELECTION_POIS.has(poiAtTarget.definitionId)) {
       // Fall through — usePoiInteraction.canInteract will detect the POI
       // and the "Interact" button will appear in Exploration phase
     } else {
-      // Auto-trigger POIs: only L6 (Survey Beacon, handled above) is auto-triggered
+      // Auto-trigger POIs: all on-chain POI transactions are handled by usePoiInteraction.
       const tempState: GameState = {
         ...state,
         player: updatedPlayer,

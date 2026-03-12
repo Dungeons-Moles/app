@@ -1071,6 +1071,81 @@
           "address": "C8hK4qsqsSYQeqyXuTPTUUS3T7N74WnZCuzvChTpK1Mo"
         },
         {
+          "name": "generated_map",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  101,
+                  110,
+                  101,
+                  114,
+                  97,
+                  116,
+                  101,
+                  100,
+                  95,
+                  109,
+                  97,
+                  112
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois.session",
+                "account": "MapPois"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                225,
+                240,
+                24,
+                114,
+                207,
+                78,
+                29,
+                234,
+                224,
+                47,
+                10,
+                176,
+                232,
+                191,
+                75,
+                12,
+                245,
+                178,
+                5,
+                197,
+                71,
+                97,
+                18,
+                45,
+                73,
+                218,
+                84,
+                193,
+                245,
+                208,
+                172,
+                110
+              ]
+            }
+          }
+        },
+        {
+          "name": "session"
+        },
+        {
+          "name": "map_generator_program",
+          "address": "GCy5GqvnJN99rgGtV6fMn8NtL9E7RoAyHDGzQv8me65j"
+        },
+        {
           "name": "player",
           "docs": [
             "Player traveling"
@@ -1711,6 +1786,201 @@
           "relations": [
             "inventory"
           ]
+        }
+      ],
+      "args": [
+        {
+          "name": "poi_index",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "generate_scanner_offer",
+      "docs": [
+        "Generate and persist Seismic Scanner (L7) options from VRF-backed randomness."
+      ],
+      "discriminator": [
+        125,
+        104,
+        47,
+        60,
+        72,
+        194,
+        173,
+        76
+      ],
+      "accounts": [
+        {
+          "name": "map_pois",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  112,
+                  95,
+                  112,
+                  111,
+                  105,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois.session",
+                "account": "MapPois"
+              }
+            ]
+          }
+        },
+        {
+          "name": "game_state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois.session",
+                "account": "MapPois"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                165,
+                105,
+                51,
+                195,
+                50,
+                68,
+                93,
+                183,
+                82,
+                141,
+                122,
+                107,
+                195,
+                1,
+                86,
+                30,
+                104,
+                80,
+                170,
+                150,
+                122,
+                133,
+                234,
+                98,
+                181,
+                121,
+                227,
+                35,
+                228,
+                168,
+                136,
+                54
+              ]
+            }
+          }
+        },
+        {
+          "name": "generated_map",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  101,
+                  110,
+                  101,
+                  114,
+                  97,
+                  116,
+                  101,
+                  100,
+                  95,
+                  109,
+                  97,
+                  112
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois.session",
+                "account": "MapPois"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                225,
+                240,
+                24,
+                114,
+                207,
+                78,
+                29,
+                234,
+                224,
+                47,
+                10,
+                176,
+                232,
+                191,
+                75,
+                12,
+                245,
+                178,
+                5,
+                197,
+                71,
+                97,
+                18,
+                45,
+                73,
+                218,
+                84,
+                193,
+                245,
+                208,
+                172,
+                110
+              ]
+            }
+          }
+        },
+        {
+          "name": "poi_vrf_state",
+          "docs": [
+            "Optional VRF state for PvP offer generation."
+          ],
+          "optional": true
+        },
+        {
+          "name": "player",
+          "docs": [
+            "Player activating"
+          ],
+          "signer": true
         }
       ],
       "args": [
@@ -3443,7 +3713,7 @@
       "docs": [
         "Activate a Seismic Scanner (L7).",
         "",
-        "Reveals the nearest undiscovered POI of the selected category.",
+        "Reveals the nearest undiscovered POI of the selected offered type.",
         "POI is one-time use."
       ],
       "discriminator": [
@@ -3551,6 +3821,81 @@
           }
         },
         {
+          "name": "generated_map",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  101,
+                  110,
+                  101,
+                  114,
+                  97,
+                  116,
+                  101,
+                  100,
+                  95,
+                  109,
+                  97,
+                  112
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois.session",
+                "account": "MapPois"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                225,
+                240,
+                24,
+                114,
+                207,
+                78,
+                29,
+                234,
+                224,
+                47,
+                10,
+                176,
+                232,
+                191,
+                75,
+                12,
+                245,
+                178,
+                5,
+                197,
+                71,
+                97,
+                18,
+                45,
+                73,
+                218,
+                84,
+                193,
+                245,
+                208,
+                172,
+                110
+              ]
+            }
+          }
+        },
+        {
+          "name": "session"
+        },
+        {
+          "name": "map_generator_program",
+          "address": "GCy5GqvnJN99rgGtV6fMn8NtL9E7RoAyHDGzQv8me65j"
+        },
+        {
           "name": "player",
           "docs": [
             "Player activating"
@@ -3564,7 +3909,7 @@
           "type": "u8"
         },
         {
-          "name": "category",
+          "name": "poi_type",
           "type": "u8"
         }
       ]
@@ -3680,6 +4025,81 @@
               ]
             }
           }
+        },
+        {
+          "name": "generated_map",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  101,
+                  110,
+                  101,
+                  114,
+                  97,
+                  116,
+                  101,
+                  100,
+                  95,
+                  109,
+                  97,
+                  112
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois.session",
+                "account": "MapPois"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                225,
+                240,
+                24,
+                114,
+                207,
+                78,
+                29,
+                234,
+                224,
+                47,
+                10,
+                176,
+                232,
+                191,
+                75,
+                12,
+                245,
+                178,
+                5,
+                197,
+                71,
+                97,
+                18,
+                45,
+                73,
+                218,
+                84,
+                193,
+                245,
+                208,
+                172,
+                110
+              ]
+            }
+          }
+        },
+        {
+          "name": "session"
+        },
+        {
+          "name": "map_generator_program",
+          "address": "GCy5GqvnJN99rgGtV6fMn8NtL9E7RoAyHDGzQv8me65j"
         },
         {
           "name": "player",
@@ -4793,6 +5213,19 @@
       ]
     },
     {
+      "name": "GeneratedMap",
+      "discriminator": [
+        192,
+        250,
+        64,
+        211,
+        84,
+        36,
+        83,
+        95
+      ]
+    },
+    {
       "name": "MapPois",
       "discriminator": [
         96,
@@ -5000,6 +5433,19 @@
         11,
         177,
         227
+      ]
+    },
+    {
+      "name": "ScannerOfferGenerated",
+      "discriminator": [
+        0,
+        134,
+        185,
+        122,
+        141,
+        193,
+        98,
+        40
       ]
     },
     {
@@ -5384,6 +5830,45 @@
                 8
               ]
             }
+          }
+        ]
+      }
+    },
+    {
+      "name": "EnemySpawn",
+      "docs": [
+        "Initial enemy spawn position (4 bytes)"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "archetype_id",
+            "docs": [
+              "Enemy archetype ID (0-11)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "tier",
+            "docs": [
+              "Enemy tier: 0=T1, 1=T2, 2=T3"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "x",
+            "docs": [
+              "X position on map"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "y",
+            "docs": [
+              "Y position on map"
+            ],
+            "type": "u8"
           }
         ]
       }
@@ -5889,6 +6374,164 @@
       }
     },
     {
+      "name": "GeneratedMap",
+      "docs": [
+        "Generated map account storing tiles, enemies, and POI positions.",
+        "PDA seeds: [\"generated_map\", session.key()]",
+        "",
+        "**Persistence invariant:** This account is session-scoped and its layout",
+        "(including `packed_tiles`) persists unchanged across week transitions.",
+        "Week advancement in gameplay-state only modifies `GameState.week` —",
+        "`packed_tiles` is never reset. Wall-to-floor conversions via `set_floor()`",
+        "write directly to `packed_tiles` and persist for the entire session."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "session",
+            "docs": [
+              "Session this map belongs to"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "width",
+            "docs": [
+              "Map width in tiles"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "height",
+            "docs": [
+              "Map height in tiles"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "seed",
+            "docs": [
+              "Seed used for generation"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "spawn_x",
+            "docs": [
+              "Player spawn X position"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "spawn_y",
+            "docs": [
+              "Player spawn Y position"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "mole_den_x",
+            "docs": [
+              "Mole den X position (above spawn)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "mole_den_y",
+            "docs": [
+              "Mole den Y position"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "walkable_count",
+            "docs": [
+              "Number of walkable (floor) tiles"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "packed_tiles",
+            "docs": [
+              "Bit-packed tiles (0=floor, 1=wall), 313 bytes for 2500 tiles"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                313
+              ]
+            }
+          },
+          {
+            "name": "discovered_tiles",
+            "docs": [
+              "Bit-packed discovered tiles (1 = discovered/revealed)"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                313
+              ]
+            }
+          },
+          {
+            "name": "enemy_count",
+            "docs": [
+              "Number of enemies placed"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "enemies",
+            "docs": [
+              "Enemy spawn positions (max 48)"
+            ],
+            "type": {
+              "array": [
+                {
+                  "defined": {
+                    "name": "EnemySpawn"
+                  }
+                },
+                48
+              ]
+            }
+          },
+          {
+            "name": "poi_count",
+            "docs": [
+              "Number of POIs placed"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "pois",
+            "docs": [
+              "POI spawn positions (max 64)"
+            ],
+            "type": {
+              "array": [
+                {
+                  "defined": {
+                    "name": "PoiSpawn"
+                  }
+                },
+                64
+              ]
+            }
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump seed"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
       "name": "ItemInstance",
       "docs": [
         "A specific item owned by a player"
@@ -6149,6 +6792,19 @@
               "vec": {
                 "defined": {
                   "name": "OilOffer"
+                }
+              }
+            }
+          },
+          {
+            "name": "scanner_offers",
+            "docs": [
+              "Persisted scanner offers for Seismic Scanner POIs (L7)."
+            ],
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "ScannerOffer"
                 }
               }
             }
@@ -6504,6 +7160,45 @@
       }
     },
     {
+      "name": "PoiSpawn",
+      "docs": [
+        "Initial POI spawn position (4 bytes)"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "poi_type",
+            "docs": [
+              "POI definition ID (1-14)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "is_used",
+            "docs": [
+              "True if POI has been used"
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "x",
+            "docs": [
+              "X position on map"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "y",
+            "docs": [
+              "Y position on map"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
       "name": "PoiVrfState",
       "docs": [
         "Per-session VRF randomness for POI offer generation.",
@@ -6642,6 +7337,83 @@
           },
           {
             "name": "Gauntlet"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ScannerOffer",
+      "docs": [
+        "Offer for Seismic Scanner (L7).",
+        "Stores up to 3 unseen POI types generated from VRF-backed randomness."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "poi_index",
+            "docs": [
+              "Which scanner POI this offer belongs to"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "count",
+            "docs": [
+              "Number of valid entries in `poi_types`"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "poi_types",
+            "docs": [
+              "Up to 3 POI types offered to the user"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                3
+              ]
+            }
+          },
+          {
+            "name": "generated_at_seed",
+            "docs": [
+              "Seed used to generate this offer (for verification)"
+            ],
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ScannerOfferGenerated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "session",
+            "type": "pubkey"
+          },
+          {
+            "name": "poi_index",
+            "type": "u8"
+          },
+          {
+            "name": "option_count",
+            "type": "u8"
+          },
+          {
+            "name": "poi_type0",
+            "type": "u8"
+          },
+          {
+            "name": "poi_type1",
+            "type": "u8"
+          },
+          {
+            "name": "poi_type2",
+            "type": "u8"
           }
         ]
       }

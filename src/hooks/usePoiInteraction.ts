@@ -38,6 +38,7 @@ import {
   interactPickItem,
   interactToolOilCombined,
   interactSurveyBeacon,
+  generateScannerOffer,
   interactSeismicScanner,
   fastTravel,
   enterShop,
@@ -68,8 +69,9 @@ import {
   generateRustyAnvilOptions,
   generateScrapChuteOptions,
 } from '@/game/entities/pois';
+import { getPOIDefinition } from '@/data/pois';
 import type { GameState } from '@/game/engine/types';
-import type { Position, POIOption, GearId, ToolId, Tool, Gear, ToolOil } from '@/game/engine/types';
+import type { Position, POIOption, GearId, ToolId, Tool, Gear, ToolOil, POIId } from '@/game/engine/types';
 
 // ============================================================================
 // ER Position Retry Helper
@@ -349,31 +351,35 @@ function oilFlagToToolOil(
   }
 }
 
-/** Map seismic scanner option label to on-chain category (0=Items,1=Upgrades,2=Utility,3=Shop) */
-function labelToScanCategory(label: string): number {
-  if (/Supply Cache|Tool Crate|Tool Oil|Geode Vault|Counter Cache/.test(label)) return 0;
-  if (/Rusty Anvil|Rune Kiln|Scrap Chute/.test(label)) return 1;
-  if (/Mole Den|Rest Alcove|Survey Beacon|Rail Waypoint|Seismic Scanner/.test(label)) return 2;
-  if (/Smuggler Hatch/.test(label)) return 3;
-  return 0;
+function poiTypeToPoiId(poiType: number): POIId | null {
+  if (poiType >= 1 && poiType <= 14) {
+    return `L${poiType}` as POIId;
+  }
+  return null;
 }
 
-/** Map seismic scanner option label to the specific POI definition ID */
-function labelToPoiDefId(label: string): string | null {
-  if (label.includes('Supply Cache')) return 'L2';
-  if (label.includes('Tool Crate')) return 'L3';
-  if (label.includes('Tool Oil')) return 'L4';
-  if (label.includes('Rest Alcove')) return 'L5';
-  if (label.includes('Survey Beacon')) return 'L6';
-  if (label.includes('Seismic Scanner')) return 'L7';
-  if (label.includes('Rail Waypoint')) return 'L8';
-  if (label.includes('Smuggler Hatch')) return 'L9';
-  if (label.includes('Rusty Anvil')) return 'L10';
-  if (label.includes('Rune Kiln')) return 'L11';
-  if (label.includes('Geode Vault')) return 'L12';
-  if (label.includes('Counter Cache')) return 'L13';
-  if (label.includes('Scrap Chute')) return 'L14';
-  return null;
+function convertScannerOfferToOptions(poiTypes: number[]): POIOption[] {
+  const options = poiTypes
+    .map((poiType) => {
+      const poiId = poiTypeToPoiId(poiType);
+      if (!poiId) return null;
+      const def = getPOIDefinition(poiId);
+      return {
+        label: `${def.emoji} Find ${def.name}`,
+      } satisfies POIOption;
+    })
+    .filter((option): option is POIOption => option !== null);
+
+  if (options.length === 0) {
+    options.push({
+      label: 'No POIs to reveal',
+      disabled: true,
+      disabledReason: 'All POIs already discovered',
+    });
+  }
+
+  options.push({ label: 'Leave' });
+  return options;
 }
 
 function isNightPhase(phase: Phase): boolean {
@@ -1377,16 +1383,72 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             await withErPositionRetry(() =>
               interactSurveyBeacon(ctx, poiIndex)
             );
+            await Promise.all([
+              refreshMapEntities(ctx.sessionPda),
+              refreshGameplayState(),
+              refreshSessionState(),
+            ]);
+            if (playerPosition) {
+              dispatch({ type: 'REVEAL_TILES', center: playerPosition, radius: 13 });
+            }
             break;
 
-          // Seismic Scanner (L7) — Deferred: show category options first, send tx when user picks
+          // Seismic Scanner (L7) — Two-step flow: generate on-chain options, then reveal selection
           case POI_TYPES.SEISMIC_SCANNER: {
+            let mapPoisData = await fetchMapPois(ctx.program, ctx.mapPoisPda);
+            let existingScannerOffer = mapPoisData?.scannerOffers?.find(
+              (offer) => offer.poiIndex === poiIndex
+            );
+
+            if (!existingScannerOffer) {
+              debugLog('[usePoiInteraction] Sending generateScannerOffer on-chain');
+              try {
+                await withErPositionRetry(() =>
+                  generateScannerOffer(ctx, poiIndex)
+                );
+              } catch (err) {
+                if (isOfferAlreadyGeneratedError(err)) {
+                  debugLog(
+                    '[usePoiInteraction] Scanner offer already exists on-chain, re-fetching'
+                  );
+                } else if (isPoiAlreadyUsedError(err)) {
+                  await Promise.all([
+                    refreshMapEntities(ctx.sessionPda),
+                    refreshGameplayState(),
+                    refreshSessionState(),
+                  ]);
+                  syncLocalPoiAsConsumed(currentPoi);
+                  dispatch({ type: 'CLOSE_POI' });
+                  setInteractionState('complete');
+                  return { success: true };
+                } else {
+                  throw err;
+                }
+              }
+
+              mapPoisData = await fetchMapPois(ctx.program, ctx.mapPoisPda);
+              existingScannerOffer = mapPoisData?.scannerOffers?.find(
+                (offer) => offer.poiIndex === poiIndex
+              );
+            }
+
+            if (!existingScannerOffer) {
+              setError('Failed to generate scanner options');
+              setIsInteracting(false);
+              setInteractionState('idle');
+              return { success: false };
+            }
+
+            const scannerOptions = convertScannerOfferToOptions(
+              Array.from(existingScannerOffer.poiTypes).slice(0, existingScannerOffer.count)
+            );
+            setCacheOfferOptions(scannerOptions);
             setDeferredPoiIndex(poiIndex);
             setDeferredPoiType(POI_TYPES.SEISMIC_SCANNER);
             dispatchPoiModal(dispatch, gameState?.map?.pois, currentPoi, 'L7', 'LOCATE');
             setInteractionState('choosing');
             setIsInteracting(false);
-            return { success: true };
+            return { success: true, result: scannerOptions };
           }
 
           // Rail Waypoint (L8) — Deferred flow:
@@ -2198,7 +2260,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
           }
 
           case POI_TYPES.SEISMIC_SCANNER: {
-            const label = gameState?.activePOI?.options?.[optionIndex]?.label ?? '';
+            const label = cacheOfferOptions?.[optionIndex]?.label ?? gameState?.activePOI?.options?.[optionIndex]?.label ?? '';
             if (label === 'Leave' || !label) {
               // User selected Leave — no on-chain tx needed
               setDeferredPoiIndex(null);
@@ -2207,18 +2269,29 @@ export function usePoiInteraction(): UsePoiInteractionResult {
               setIsInteracting(false);
               return { success: true };
             }
-            const scanCat = labelToScanCategory(label);
-            await withErPositionRetry(() =>
-              interactSeismicScanner(ctx, validatedPoiIndex, scanCat)
+
+            const scannerData = await fetchMapPois(ctx.program, ctx.mapPoisPda);
+            const scannerOffer = scannerData?.scannerOffers?.find(
+              (offer) => offer.poiIndex === validatedPoiIndex
             );
-            // Dispatch REVEAL_POI_LOCATIONS to reveal only the nearest POI of the selected type
-            const poiDefId = labelToPoiDefId(label);
-            if (poiDefId) {
-              dispatch({ type: 'REVEAL_POI_LOCATIONS', poiDefId });
-              debugLog(
-                '[usePoiInteraction] Dispatched REVEAL_POI_LOCATIONS for poiDefId:',
-                poiDefId
-              );
+            const targetPoiType = scannerOffer?.poiTypes?.[optionIndex];
+            if (!scannerOffer || targetPoiType == null || optionIndex >= scannerOffer.count) {
+              setIsInteracting(false);
+              return { success: false, error: 'Scanner options expired. Try again.' };
+            }
+
+            await withErPositionRetry(() =>
+              interactSeismicScanner(ctx, validatedPoiIndex, targetPoiType)
+            );
+            await Promise.all([
+              refreshMapEntities(ctx.sessionPda),
+              refreshGameplayState(),
+              refreshSessionState(),
+            ]);
+
+            const poiId = poiTypeToPoiId(targetPoiType);
+            if (poiId) {
+              dispatch({ type: 'REVEAL_POI_LOCATIONS', poiDefId: poiId });
             }
             break;
           }

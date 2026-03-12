@@ -25,7 +25,6 @@ import { convertItemInstanceToGear, convertItemInstanceToTool } from '../service
 import { fetchFullSessionState } from '../services/solana/sessionRestore';
 import { useNightMovement } from '../hooks/useNightMovement';
 import { usePoiInteraction } from '../hooks/usePoiInteraction';
-import { useFogPersistence } from '../hooks/useFogPersistence';
 import { DPadControls } from '../components/game/DPadControls';
 import {
   TopBar,
@@ -456,7 +455,6 @@ export function GameScreen({ navigation }: GameScreenProps) {
     triggerBoss,
     gameplayState: onChainState,
     gameplaySyncStatus,
-    sessionKey,
     sessionPda,
     mapSeed,
     currentLevel,
@@ -483,12 +481,6 @@ export function GameScreen({ navigation }: GameScreenProps) {
   onChainStateRef.current = onChainState;
   const canTriggerCurrentPoiByPhase = poiInteraction.canInteract;
 
-  // Persist fog of war state to AsyncStorage for session restore
-  useFogPersistence({
-    sessionKey,
-    fog: state?.map.fog ?? null,
-    isActive: hasActiveSession,
-  });
   const feedbackTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [wallBreakFeedback, setWallBreakFeedback] = useState<string | null>(null);
   const [isMovePending, setIsMovePending] = useState(false);
@@ -2134,8 +2126,18 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
     if (shouldAutoOpen && !isInteracting && !alreadyTriggeredHere && canTriggerCurrentPoiInteraction) {
       debugLog('[GameScreen] Auto-triggering POI interaction at', currentPos.x, currentPos.y);
-      lastAutoTriggeredPosRef.current = { x: currentPos.x, y: currentPos.y };
-      poiInteractRef.current();
+      void (async () => {
+        const result = await poiInteractRef.current();
+        if (result?.success) {
+          lastAutoTriggeredPosRef.current = { x: currentPos.x, y: currentPos.y };
+        } else {
+          debugLog(
+            '[GameScreen] Auto-trigger POI interaction did not start successfully; will allow retry at',
+            currentPos.x,
+            currentPos.y
+          );
+        }
+      })();
     }
 
     // Clear last auto-triggered position when player moves away from it
@@ -2150,6 +2152,37 @@ export function GameScreen({ navigation }: GameScreenProps) {
     isInteracting,
     isFocused,
     canTriggerCurrentPoiInteraction,
+  ]);
+
+  useEffect(() => {
+    if (!state?.player?.position || state.phase !== GamePhase.Exploration || !isFocused) return;
+    if (!poiInteraction.currentPoi) return;
+
+    const currentPos = state.player.position;
+    const lastAutoPos = lastAutoTriggeredPosRef.current;
+    const alreadyTriggeredHere =
+      !!lastAutoPos && lastAutoPos.x === currentPos.x && lastAutoPos.y === currentPos.y;
+
+    console.warn('[GameScreen] POI auto-open gates', {
+      position: currentPos,
+      poiType: poiInteraction.currentPoi.poiType,
+      autoOpenPOI,
+      shouldAutoOpen,
+      isInteracting,
+      canTriggerCurrentPoiInteraction,
+      alreadyTriggeredHere,
+      isFocused,
+      phase: state.phase,
+    });
+  }, [
+    autoOpenPOI,
+    canTriggerCurrentPoiInteraction,
+    isFocused,
+    isInteracting,
+    poiInteraction.currentPoi,
+    shouldAutoOpen,
+    state?.phase,
+    state?.player?.position,
   ]);
 
   const handleFastTravel = useCallback(() => {

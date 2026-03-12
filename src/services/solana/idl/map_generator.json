@@ -1506,6 +1506,83 @@
       ]
     },
     {
+      "name": "reveal_radius",
+      "docs": [
+        "Persists map discovery around the provided position.",
+        "",
+        "Authorization: session_signer must match the owning session signer."
+      ],
+      "discriminator": [
+        183,
+        16,
+        141,
+        184,
+        133,
+        69,
+        63,
+        144
+      ],
+      "accounts": [
+        {
+          "name": "generated_map",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  101,
+                  110,
+                  101,
+                  114,
+                  97,
+                  116,
+                  101,
+                  100,
+                  95,
+                  109,
+                  97,
+                  112
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "session"
+              }
+            ]
+          }
+        },
+        {
+          "name": "session",
+          "docs": [
+            "Session account is validated manually against the stored session signer."
+          ],
+          "relations": [
+            "generated_map"
+          ]
+        },
+        {
+          "name": "session_signer",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "center_x",
+          "type": "u8"
+        },
+        {
+          "name": "center_y",
+          "type": "u8"
+        },
+        {
+          "name": "radius",
+          "type": "u8"
+        }
+      ]
+    },
+    {
       "name": "undelegate_generated_map",
       "docs": [
         "Commits and undelegates generated-map PDA from ER back to base layer."
@@ -1791,6 +1868,18 @@
             "name": "packed_tiles",
             "docs": [
               "Bit-packed tiles (0=floor, 1=wall), 313 bytes for 2500 tiles"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                313
+              ]
+            }
+          },
+          {
+            "name": "discovered_tiles",
+            "docs": [
+              "Bit-packed discovered tiles (1 = discovered/revealed)"
             ],
             "type": {
               "array": [
