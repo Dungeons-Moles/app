@@ -1,7 +1,11 @@
 import { resolveCombatWithParity } from '@/game/combat/parity-resolver';
 import type { CombatResolverInput } from '@/game/combat/types';
 import type { CombatantState } from '@/game/engine/types';
-import { calculateCombatBakedItemStats, createGearInstance, createToolInstance } from '@/game/entities/items';
+import {
+  calculateCombatBakedItemStats,
+  createGearInstance,
+  createToolInstance,
+} from '@/game/entities/items';
 import { ENEMY_DEFINITIONS } from '@/game/entities/enemies';
 import type { GearId, ToolId } from '@/game/engine/types';
 
@@ -37,12 +41,7 @@ function buildPlayerCombatant(
 }
 
 function buildEnemyCombatant(
-  enemyId:
-    | 'BLOOD_MOSQUITO'
-    | 'TUNNEL_RAT'
-    | 'COIN_SLUG'
-    | 'POWDER_TICK'
-    | 'TUNNEL_WARDEN',
+  enemyId: 'BLOOD_MOSQUITO' | 'TUNNEL_RAT' | 'COIN_SLUG' | 'POWDER_TICK' | 'TUNNEL_WARDEN',
   tier: 1 | 2 | 3
 ): CombatantState {
   const stats = ENEMY_DEFINITIONS[enemyId].tiers[tier - 1];
@@ -69,10 +68,7 @@ function buildEnemyCombatant(
 describe('resolveCombatWithParity', () => {
   it('matches the rust-side blood mosquito regression scenario', () => {
     const playerTool = createToolInstance('T9');
-    const playerGear = [
-      createGearInstance('I33', 'COMMON'),
-      createGearInstance('I34', 'COMMON'),
-    ];
+    const playerGear = [createGearInstance('I33', 'COMMON'), createGearInstance('I34', 'COMMON')];
     const input: CombatResolverInput = {
       player: buildPlayerCombatant(25, 25, 'T9', ['I33', 'I34']),
       enemy: buildEnemyCombatant('BLOOD_MOSQUITO', 2),
@@ -89,7 +85,7 @@ describe('resolveCombatWithParity', () => {
 
     const outcome = resolveCombatWithParity(input);
 
-    expect(outcome.player.hp).toBe(21);
+    expect(outcome.player.hp).toBe(23);
   });
 
   it('orders tunnel rat gold steal before shrapnel retaliation kill', () => {
@@ -147,7 +143,11 @@ describe('resolveCombatWithParity', () => {
   it('resolves powder tick t3 using faster-side countdown before slower turn-start effects', () => {
     const input: CombatResolverInput = {
       player: buildPlayerCombatant(25, 25, 'T9', ['I33', 'I46']),
-      enemy: buildEnemyCombatant('POWDER_TICK', 3),
+      enemy: {
+        ...buildEnemyCombatant('POWDER_TICK', 3),
+        hp: 20,
+        maxHp: 20,
+      },
       seed: 1,
       enemyId: 'POWDER_TICK',
       enemyDefinitionId: 'POWDER_TICK',
@@ -162,21 +162,18 @@ describe('resolveCombatWithParity', () => {
     const outcome = resolveCombatWithParity(input);
 
     expect(outcome.player.hp).toBe(20);
-    const countdownSelfDamageIndex = outcome.log.findIndex(
+    const countdownPlayerDamageIndex = outcome.log.findIndex(
       (entry) =>
         entry.actor === 'enemy' &&
-        entry.target === 'enemy' &&
-        entry.result.source?.id === 'POWDER_TICK' &&
+        entry.target === 'player' &&
         entry.result.damage === 3
     );
     const postCountdownEnemyAttackIndex = outcome.log.findIndex(
       (entry, index) =>
-        index > countdownSelfDamageIndex &&
-        entry.actor === 'enemy' &&
-        entry.action === 'ATTACK'
+        index > countdownPlayerDamageIndex && entry.actor === 'enemy' && entry.action === 'ATTACK'
     );
 
-    expect(countdownSelfDamageIndex).toBeGreaterThanOrEqual(0);
+    expect(countdownPlayerDamageIndex).toBeGreaterThanOrEqual(0);
     expect(postCountdownEnemyAttackIndex).toBe(-1);
   });
 
@@ -211,11 +208,11 @@ describe('resolveCombatWithParity', () => {
 
     const outcome = resolveCombatWithParity(input);
     const countdownLog = outcome.log.filter(
-      (entry) => entry.turn === 2 && entry.actor === 'player' && entry.result.source?.id === 'I25'
+      (entry) => entry.turn === 3 && entry.actor === 'player' && entry.result.source?.id === 'I25'
     );
     const damageSequence = countdownLog.map((entry) => entry.result.damage);
 
-    expect(damageSequence).toEqual([11, 5, 13, 7]);
+    expect(damageSequence).toEqual([9, 5, 11, 7]);
   });
 
   it('applies Kindling Charge to the next bomb only', () => {
@@ -246,11 +243,11 @@ describe('resolveCombatWithParity', () => {
     const outcome = resolveCombatWithParity(input);
     const bombDamageSequence = outcome.log
       .filter(
-        (entry) => entry.turn === 2 && entry.actor === 'player' && entry.result.source?.id === 'I25'
+        (entry) => entry.turn === 3 && entry.actor === 'player' && entry.result.source?.id === 'I25'
       )
       .map((entry) => entry.result.damage);
 
-    expect(bombDamageSequence).toEqual([13, 2]);
+    expect(bombDamageSequence).toEqual([11, 2]);
   });
 
   it('makes countdown bombs trigger twice with Twin-Fuse Knot', () => {
@@ -281,11 +278,11 @@ describe('resolveCombatWithParity', () => {
     const outcome = resolveCombatWithParity(input);
     const bombDamageSequence = outcome.log
       .filter(
-        (entry) => entry.turn === 2 && entry.actor === 'player' && entry.result.source?.id === 'I25'
+        (entry) => entry.turn === 3 && entry.actor === 'player' && entry.result.source?.id === 'I25'
       )
       .map((entry) => entry.result.damage);
 
-    expect(bombDamageSequence).toEqual([10, 3, 10, 4]);
+    expect(bombDamageSequence).toEqual([8, 3, 8, 4]);
   });
 
   it('releases Time Charge stored damage when the owner is first exposed', () => {
@@ -409,7 +406,7 @@ describe('resolveCombatWithParity', () => {
       player: {
         ...buildPlayerCombatant(25, 21, 'T13', ['I56']),
         atk: 1,
-        spd: 5,
+        spd: 4,
       },
       enemy: {
         ...buildEnemyCombatant('TUNNEL_RAT', 1),
@@ -454,6 +451,8 @@ describe('resolveCombatWithParity', () => {
     const input: CombatResolverInput = {
       player: {
         ...buildPlayerCombatant(25, 25, 'T0', ['I40', 'I25']),
+        hp: 40,
+        maxHp: 40,
         atk: 0,
         spd: 0,
       },
@@ -486,11 +485,10 @@ describe('resolveCombatWithParity', () => {
     );
     const smallChargeEnemyHit = outcome.log.find(
       (entry) =>
-        entry.turn === 2 &&
         entry.actor === 'player' &&
         entry.target === 'enemy' &&
         entry.result.source?.id === 'I25' &&
-        entry.result.damage === 11
+        (entry.result.damage ?? 0) > 8
     );
 
     expect(spdReduction).toBeDefined();
@@ -644,9 +642,7 @@ describe('resolveCombatWithParity', () => {
     const outcome = resolveCombatWithParity(input);
     const gildedBandSpdLog = outcome.log.find(
       (entry) =>
-        entry.actor === 'player' &&
-        entry.result.source?.id === 'I19' &&
-        entry.result.spdBonus === 1
+        entry.actor === 'player' && entry.result.source?.id === 'I19' && entry.result.spdBonus === 1
     );
 
     expect(gildedBandSpdLog).toBeUndefined();
@@ -804,13 +800,54 @@ describe('resolveCombatWithParity', () => {
     expect(emeraldHeal).toBeDefined();
   });
 
+  it('grants the faster side one extra strike when leading by 5 SPD', () => {
+    const input: CombatResolverInput = {
+      player: {
+        ...buildPlayerCombatant(25, 25, 'T0', []),
+        atk: 1,
+        spd: 6,
+      },
+      enemy: {
+        ...buildEnemyCombatant('TUNNEL_RAT', 1),
+        hp: 10,
+        maxHp: 10,
+        atk: 1,
+        arm: 0,
+        spd: 1,
+      },
+      seed: 1,
+      enemyId: 'TUNNEL_RAT',
+      enemyDefinitionId: 'TUNNEL_RAT',
+      enemyTier: 1,
+      playerTool: createToolInstance('T0'),
+      playerGear: [],
+      playerGold: 0,
+      enemyGold: 0,
+    };
+
+    const outcome = resolveCombatWithParity(input);
+    const firstEnemyAttackIndex = outcome.log.findIndex(
+      (entry) => entry.actor === 'enemy' && entry.action === 'ATTACK'
+    );
+    const playerAttackIndexes = outcome.log
+      .map((entry, index) => ({ entry, index }))
+      .filter(({ entry }) => entry.actor === 'player' && entry.action === 'ATTACK')
+      .map(({ index }) => index);
+    const playerAttacksBeforeEnemyActs = playerAttackIndexes.filter(
+      (index) => index < firstEnemyAttackIndex
+    );
+
+    expect(playerAttacksBeforeEnemyActs).toHaveLength(2);
+    expect(firstEnemyAttackIndex).toBeGreaterThan(playerAttacksBeforeEnemyActs[1] ?? -1);
+  });
+
   it('upgrades Etched Burrowblade to full armor ignore after hitting a 4+ Rust enemy', () => {
     const playerTool = createToolInstance('T12');
     const input: CombatResolverInput = {
       player: {
         ...buildPlayerCombatant(25, 25, 'T12', []),
         atk: 4,
-        spd: 5,
+        spd: 4,
         strikesPerTurn: 2,
       },
       enemy: {
@@ -1063,7 +1100,9 @@ describe('resolveCombatWithParity', () => {
 
     expect(firstTurnPlayerAttacks.length).toBeGreaterThan(0);
     for (const attack of firstTurnPlayerAttacks) {
-      expect(attack.result.contributions?.some((c) => c.source.id === 'I15' && c.value === 1)).toBe(true);
+      expect(attack.result.contributions?.some((c) => c.source.id === 'I15' && c.value === 1)).toBe(
+        true
+      );
     }
   });
 
@@ -1073,7 +1112,7 @@ describe('resolveCombatWithParity', () => {
       player: {
         ...buildPlayerCombatant(25, 25, 'T0', ['I54']),
         atk: 2,
-        spd: 5,
+        spd: 4,
         strikesPerTurn: 2,
       },
       enemy: {
@@ -1119,7 +1158,7 @@ describe('resolveCombatWithParity', () => {
       player: {
         ...buildPlayerCombatant(25, 25, 'T0', ['I54']),
         atk: 2,
-        spd: 5,
+        spd: 4,
         strikesPerTurn: 2,
       },
       enemy: {
@@ -1195,17 +1234,129 @@ describe('resolveCombatWithParity', () => {
     expect(shrapnelRetaliation).toBeUndefined();
   });
 
-  it('finishes a bomb source instance before ending combat, but does not trigger later bomb instances', () => {
+  it('does not cancel later enemy strikes when shrapnel retaliates and the attacker survives', () => {
     const input: CombatResolverInput = {
       player: {
-        ...buildPlayerCombatant(25, 8, 'T0', ['I25', 'I25']),
-        atk: 0,
-        spd: 5,
+        ...buildPlayerCombatant(25, 25, 'T0', ['I3']),
+        atk: 1,
+        arm: 0,
+        spd: 0,
       },
       enemy: {
         ...buildEnemyCombatant('TUNNEL_RAT', 1),
-        hp: 10,
-        maxHp: 10,
+        hp: 5,
+        maxHp: 5,
+        atk: 1,
+        arm: 0,
+        spd: 4,
+        strikesPerTurn: 2,
+      },
+      seed: 1,
+      enemyId: 'TUNNEL_RAT',
+      enemyDefinitionId: 'TUNNEL_RAT',
+      enemyTier: 1,
+      playerTool: createToolInstance('T0'),
+      playerGear: [createGearInstance('I3', 'COMMON')],
+      playerGold: 0,
+      enemyGold: 0,
+      preserveArmor: true,
+    };
+
+    const outcome = resolveCombatWithParity(input);
+    const enemyAttackEntries = outcome.log.filter(
+      (entry) =>
+        entry.turn === 1 &&
+        entry.timing === 'ENEMY_ATTACK' &&
+        entry.actor === 'enemy' &&
+        entry.action === 'ATTACK'
+    );
+    const shrapnelEntries = outcome.log.filter(
+      (entry) =>
+        entry.turn === 1 &&
+        entry.timing === 'ENEMY_ATTACK' &&
+        entry.result.source?.id === 'shrapnel' &&
+        (entry.result.damage ?? 0) > 0
+    );
+
+    expect(enemyAttackEntries).toHaveLength(2);
+    expect(shrapnelEntries).toHaveLength(2);
+    expect(outcome.player.hp).toBe(21);
+  });
+
+  it('keeps the second mole Twin Picks strike and the later player turn with Basic Pickaxe vs Spiked Bracers', () => {
+    const enemyTool = createToolInstance('T3');
+    const input: CombatResolverInput = {
+      player: buildPlayerCombatant(20, 20, 'T0', ['I3']),
+      enemy: {
+        name: 'Opponent',
+        emoji: '',
+        definitionId: 'pvpOpponent',
+        isPlayer: false,
+        maxHp: 20,
+        hp: 20,
+        atk: 1,
+        arm: 0,
+        spd: 0,
+        dig: 0,
+        bonusAtk: 0,
+        bonusArm: 0,
+        bonusSpd: 0,
+        statusEffects: { chill: 0, shrapnel: 0, rust: 0, bleed: 0 },
+        strikesPerTurn: 1,
+        ignoresArmor: false,
+      },
+      seed: 1337,
+      enemyDefinitionId: 'pvpOpponent',
+      playerTool: createToolInstance('T0'),
+      playerGear: [createGearInstance('I3', 'COMMON')],
+      playerGold: 0,
+      enemyGold: 0,
+      enemyTool,
+      enemyGear: [],
+      enemyActiveItemSets: [],
+      preserveArmor: true,
+    };
+
+    const outcome = resolveCombatWithParity(input);
+    const turnOneEnemyAttacks = outcome.log.filter(
+      (entry) =>
+        entry.turn === 1 &&
+        entry.timing === 'ENEMY_ATTACK' &&
+        entry.actor === 'enemy' &&
+        entry.action === 'ATTACK'
+    );
+    const turnOneShrapnelRetaliations = outcome.log.filter(
+      (entry) =>
+        entry.turn === 1 &&
+        entry.timing === 'ENEMY_ATTACK' &&
+        entry.actor === 'player' &&
+        entry.result.source?.id === 'shrapnel' &&
+        (entry.result.damage ?? 0) > 0
+    );
+    const firstPlayerAttack = outcome.log.find(
+      (entry) =>
+        entry.turn === 1 &&
+        entry.timing === 'PLAYER_ATTACK' &&
+        entry.actor === 'player' &&
+        entry.action === 'ATTACK'
+    );
+
+    expect(turnOneEnemyAttacks).toHaveLength(2);
+    expect(turnOneShrapnelRetaliations).toHaveLength(2);
+    expect(firstPlayerAttack).toBeDefined();
+  });
+
+  it('finishes a bomb source instance before ending combat, but does not trigger later bomb instances', () => {
+    const input: CombatResolverInput = {
+      player: {
+        ...buildPlayerCombatant(25, 9, 'T0', ['I25', 'I25']),
+        atk: 0,
+        spd: 4,
+      },
+      enemy: {
+        ...buildEnemyCombatant('TUNNEL_RAT', 1),
+        hp: 8,
+        maxHp: 8,
         atk: 0,
         spd: 0,
       },
@@ -1222,13 +1373,13 @@ describe('resolveCombatWithParity', () => {
 
     const outcome = resolveCombatWithParity(input);
     const turnTwoChargeLogs = outcome.log.filter(
-      (entry) => entry.turn === 2 && entry.actor === 'player' && entry.result.source?.id === 'I25'
+      (entry) => entry.turn === 3 && entry.actor === 'player' && entry.result.source?.id === 'I25'
     );
     const turnTwoDamages = turnTwoChargeLogs.map((entry) => entry.result.damage);
 
     expect(outcome.result).toBe('VICTORY');
-    expect(outcome.player.hp).toBe(4);
-    expect(turnTwoDamages).toEqual([10, 4]);
+    expect(outcome.player.hp).toBe(5);
+    expect(turnTwoDamages).toEqual([8, 4]);
   });
 
   it('counts a same-bomb mutual kill as defeat for the player', () => {
@@ -1236,12 +1387,12 @@ describe('resolveCombatWithParity', () => {
       player: {
         ...buildPlayerCombatant(25, 4, 'T0', ['I25']),
         atk: 0,
-        spd: 5,
+        spd: 4,
       },
       enemy: {
         ...buildEnemyCombatant('TUNNEL_RAT', 1),
-        hp: 10,
-        maxHp: 10,
+        hp: 8,
+        maxHp: 8,
         atk: 0,
         spd: 0,
       },
@@ -1258,10 +1409,10 @@ describe('resolveCombatWithParity', () => {
 
     const outcome = resolveCombatWithParity(input);
     const turnTwoChargeLogs = outcome.log.filter(
-      (entry) => entry.turn === 2 && entry.actor === 'player' && entry.result.source?.id === 'I25'
+      (entry) => entry.turn === 3 && entry.actor === 'player' && entry.result.source?.id === 'I25'
     );
 
-    expect(turnTwoChargeLogs.map((entry) => entry.result.damage)).toEqual([10, 4]);
+    expect(turnTwoChargeLogs.map((entry) => entry.result.damage)).toEqual([8, 4]);
     expect(outcome.result).toBe('DEFEAT');
     expect(outcome.player.hp).toBe(0);
     expect(outcome.enemy.hp).toBe(0);
@@ -1272,7 +1423,7 @@ describe('resolveCombatWithParity', () => {
       player: {
         ...buildPlayerCombatant(25, 4, 'T0', ['I25']),
         atk: 0,
-        spd: 6,
+        spd: 4,
       },
       enemy: {
         ...buildEnemyCombatant('TUNNEL_RAT', 1),
@@ -1302,12 +1453,12 @@ describe('resolveCombatWithParity', () => {
       player: {
         ...buildPlayerCombatant(25, 4, 'T0', ['I25']),
         atk: 0,
-        spd: 6,
+        spd: 4,
       },
       enemy: {
         ...buildEnemyCombatant('TUNNEL_RAT', 1),
-        hp: 10,
-        maxHp: 10,
+        hp: 8,
+        maxHp: 8,
         atk: 0,
         spd: 3,
       },

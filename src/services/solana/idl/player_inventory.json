@@ -2705,7 +2705,13 @@
             "name": "ArmorToMaxHp"
           },
           {
+            "name": "ReduceWeaponDamageWhileArmored"
+          },
+          {
             "name": "ReduceAllCountdowns"
+          },
+          {
+            "name": "BombDamageBonus"
           },
           {
             "name": "AmplifyNonWeaponDamage"
@@ -2735,10 +2741,16 @@
             "name": "BlastImmunity"
           },
           {
+            "name": "ShrapnelReflectBonus"
+          },
+          {
             "name": "DoubleBombTrigger"
           },
           {
             "name": "DoubleOnHitEffects"
+          },
+          {
+            "name": "OnHitPerStrike"
           },
           {
             "name": "TriggerAllShards"
@@ -2748,6 +2760,9 @@
           },
           {
             "name": "PreserveShrapnel"
+          },
+          {
+            "name": "LimitGoldArmorConversions"
           }
         ]
       }
@@ -3305,6 +3320,9 @@
           },
           {
             "name": "EveryOtherTurn"
+          },
+          {
+            "name": "BeforeStrike"
           },
           {
             "name": "OnHit"

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Animated, Alert } from 'react-native';
+import { View, Text, StyleSheet, Animated, Alert, Platform } from 'react-native';
 import { CachedImageBackground } from '../components/common/CachedImageBackground';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation';
@@ -41,6 +41,18 @@ export function SessionLoadingScreen({ navigation }: SessionLoadingScreenProps) 
   const [dotCount, setDotCount] = useState(0);
   const [flavorIndex, setFlavorIndex] = useState(() => Math.floor(Math.random() * FLAVOR_TEXTS.length));
   const flavorOpacity = useRef(new Animated.Value(1)).current;
+
+  const exitWithError = (title: string, message: string) => {
+    if (Platform.OS === 'web') {
+      if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+        window.alert(`${title}\n\n${message}`);
+      }
+      navigation.goBack();
+      return;
+    }
+
+    Alert.alert(title, message, [{ text: 'OK', onPress: () => navigation.goBack() }]);
+  };
 
   // Preload game assets in parallel with session setup so they're cached
   // when GameScreen mounts — no secondary loading overlay needed.
@@ -91,9 +103,10 @@ export function SessionLoadingScreen({ navigation }: SessionLoadingScreenProps) 
       if (!cancelled) {
         cancelled = true;
         clearSessionSetup();
-        Alert.alert('Session Timed Out', 'The session took too long to set up. Please try again.', [
-          { text: 'OK', onPress: () => navigation.goBack() },
-        ]);
+        exitWithError(
+          'Session Timed Out',
+          'The session took too long to set up. Please try again.'
+        );
       }
     }, 60_000);
 
@@ -112,9 +125,7 @@ export function SessionLoadingScreen({ navigation }: SessionLoadingScreenProps) 
           cancelled = true;
           clearTimeout(timeout);
           clearSessionSetup();
-          Alert.alert('Session Failed', err.message, [
-            { text: 'OK', onPress: () => navigation.goBack() },
-          ]);
+          exitWithError('Session Failed', err.message);
         }
       });
 

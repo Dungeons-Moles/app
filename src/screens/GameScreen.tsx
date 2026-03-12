@@ -464,7 +464,11 @@ export function GameScreen({ navigation }: GameScreenProps) {
   } = useSession();
   const { wallet } = useWallet();
   const { gameplayReadConnection } = useSolanaConnection();
-  const { refreshMapEntities, pois: onChainPois } = useGameplayStateContext();
+  const {
+    refreshMapEntities,
+    pois: onChainPois,
+    gameState: gameplayContextState,
+  } = useGameplayStateContext();
   const variant = useScreenVariant();
   const nightMovement = useNightMovement();
   const poiInteraction = usePoiInteraction();
@@ -495,6 +499,9 @@ export function GameScreen({ navigation }: GameScreenProps) {
   const [fastTravelCameraTarget, setFastTravelCameraTarget] = useState<Position | null>(null);
   const [fastTravelDestinations, setFastTravelDestinations] = useState<Position[]>([]);
   const [fastTravelSelectedIndex, setFastTravelSelectedIndex] = useState(0);
+  // Suppress POI auto-open on the tile we just restored onto.
+  // Resume should rebuild the screen first; the player can still interact manually.
+  const lastAutoTriggeredPosRef = useRef<{ x: number; y: number } | null>(null);
   // Use a ref for synchronous pending check to prevent race conditions with rapid clicks
   const isMovePendingRef = useRef(false);
   // Start hidden and fade in once the component tree has mounted + rendered,
@@ -712,6 +719,10 @@ export function GameScreen({ navigation }: GameScreenProps) {
       }
 
       if (!cancelled) {
+        lastAutoTriggeredPosRef.current = {
+          x: restored.player.position.x,
+          y: restored.player.position.y,
+        };
         dispatch({ type: 'RESTORE_GAME', state: restored });
         debugLog('[GameScreen] Auto-restore completed');
       }
@@ -1768,22 +1779,26 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
   // Derive max gear slots from the session's maxWeeks (3 for campaign/duel/guest, 5 for gauntlet).
   // Guest mode has no onChainState, so defaults to TOTAL_WEEKS (3) → 8 slots.
-  const sessionMaxWeeks = onChainState?.maxWeeks ?? GAME_CONSTANTS.TOTAL_WEEKS;
-  const maxGearSlots =
+  const resolvedSessionRunMode = onChainState?.runMode ?? gameplayContextState?.runMode;
+  const sessionMaxWeeks =
+    onChainState?.maxWeeks ??
+    gameplayContextState?.maxWeeks ??
+    (resolvedSessionRunMode === RunMode.Gauntlet ? 5 : GAME_CONSTANTS.TOTAL_WEEKS);
+  const runMaxGearSlots =
     GAME_CONSTANTS.INITIAL_INVENTORY_SLOTS +
     (sessionMaxWeeks - 1) * GAME_CONSTANTS.INVENTORY_SLOTS_PER_WEEK;
   const isGauntletLayout = sessionMaxWeeks > GAME_CONSTANTS.TOTAL_WEEKS;
   const activeItemsetsCount = state?.player?.activeItemsets?.length ?? 0;
-  const totalPlayerSlots = maxGearSlots + 1 + activeItemsetsCount; // gear slots + weapon slot + itemset slots
+  const totalPlayerSlots = runMaxGearSlots + 1 + activeItemsetsCount; // gear slots + weapon slot + itemset slots
 
   const getPlayerItemAtSlot = useCallback(
     (index: number): Tool | Gear | null => {
       if (!state) return null;
-      if (index === maxGearSlots) return state.player.equippedTool;
+      if (index === runMaxGearSlots) return state.player.equippedTool;
       const slot = state.player.inventory.find((s) => s.index === index);
       return slot?.item ?? null;
     },
-    [state, maxGearSlots]
+    [state, runMaxGearSlots]
   );
 
   const getEchoItemAtSlot = useCallback(
@@ -1842,11 +1857,14 @@ export function GameScreen({ navigation }: GameScreenProps) {
           setFocusedSlotIndex((prev) => {
             if (inventoryFocus === 'player') {
               // If in itemset zone, go back to weapon
-              if (prev > maxGearSlots) return maxGearSlots;
-              if (prev === maxGearSlots) {
+              if (prev > runMaxGearSlots) return runMaxGearSlots;
+              if (prev === runMaxGearSlots) {
                 // Weapon → last gear row (column 0)
-                const lastRowStart = Math.max(0, maxGearSlots - (maxGearSlots % 4 || 4));
-                return Math.min(lastRowStart, maxGearSlots - 1);
+                const lastRowStart = Math.max(
+                  0,
+                  runMaxGearSlots - (runMaxGearSlots % 4 || 4)
+                );
+                return Math.min(lastRowStart, runMaxGearSlots - 1);
               }
               if (prev >= 4) return prev - 4;
               return prev;
@@ -1869,19 +1887,19 @@ export function GameScreen({ navigation }: GameScreenProps) {
           setFocusedSlotIndex((prev) => {
             if (inventoryFocus === 'player') {
               // In itemset zone
-              if (prev > maxGearSlots) {
-                const lastItemsetIndex = maxGearSlots + activeItemsetsCount;
+              if (prev > runMaxGearSlots) {
+                const lastItemsetIndex = runMaxGearSlots + activeItemsetsCount;
                 if (prev >= lastItemsetIndex) return prev;
                 return prev + 1;
               }
               // At weapon — go to first itemset if any
-              if (prev === maxGearSlots) {
-                if (activeItemsetsCount > 0) return maxGearSlots + 1;
+              if (prev === runMaxGearSlots) {
+                if (activeItemsetsCount > 0) return runMaxGearSlots + 1;
                 return prev;
               }
               // In gear zone
               const nextRow = prev + 4;
-              if (nextRow >= maxGearSlots) return maxGearSlots;
+              if (nextRow >= runMaxGearSlots) return runMaxGearSlots;
               return nextRow;
             }
             // echo focus (no itemsets, original logic)
@@ -1900,11 +1918,11 @@ export function GameScreen({ navigation }: GameScreenProps) {
           setFocusedSlotIndex((prev) => {
             if (inventoryFocus === 'player') {
               // In itemset zone — navigate left between itemsets
-              if (prev > maxGearSlots) {
-                if (prev <= maxGearSlots + 1) return prev;
+              if (prev > runMaxGearSlots) {
+                if (prev <= runMaxGearSlots + 1) return prev;
                 return prev - 1;
               }
-              if (prev === maxGearSlots) return prev; // weapon, no left/right
+              if (prev === runMaxGearSlots) return prev; // weapon, no left/right
               if (prev % 4 === 0) return prev;
               return prev - 1;
             }
@@ -1923,14 +1941,14 @@ export function GameScreen({ navigation }: GameScreenProps) {
           setFocusedSlotIndex((prev) => {
             if (inventoryFocus === 'player') {
               // In itemset zone — navigate right between itemsets
-              if (prev > maxGearSlots) {
-                const lastItemsetIndex = maxGearSlots + activeItemsetsCount;
+              if (prev > runMaxGearSlots) {
+                const lastItemsetIndex = runMaxGearSlots + activeItemsetsCount;
                 if (prev >= lastItemsetIndex) return prev;
                 return prev + 1;
               }
-              if (prev === maxGearSlots) return prev; // weapon, no left/right
+              if (prev === runMaxGearSlots) return prev; // weapon, no left/right
               if (prev % 4 === 3) return prev;
-              if (prev + 1 >= maxGearSlots) return prev;
+              if (prev + 1 >= runMaxGearSlots) return prev;
               return prev + 1;
             }
             // echo focus
@@ -1952,13 +1970,13 @@ export function GameScreen({ navigation }: GameScreenProps) {
       },
       onA: () => {
         if (inventoryFocus === 'player') {
-          if (focusedSlotIndex > maxGearSlots) {
+          if (focusedSlotIndex > runMaxGearSlots) {
             // Itemset slot
-            const itemsetIndex = focusedSlotIndex - maxGearSlots - 1;
+            const itemsetIndex = focusedSlotIndex - runMaxGearSlots - 1;
             const itemsetId = state?.player?.activeItemsets?.[itemsetIndex];
             if (itemsetId)
               handleInspectItemset(itemsetId as import('../game/engine/types').ItemsetId);
-          } else if (focusedSlotIndex === maxGearSlots) {
+          } else if (focusedSlotIndex === runMaxGearSlots) {
             if (state?.player?.equippedTool) handleInspectTool(state.player.equippedTool);
           } else {
             const item = getPlayerItemAtSlot(focusedSlotIndex);
@@ -2098,8 +2116,6 @@ export function GameScreen({ navigation }: GameScreenProps) {
   // lastAutoTriggeredPosRef prevents re-triggering at the same position after modal close.
   // We intentionally do NOT gate on "position changed" because shouldAutoOpen can resolve
   // one render after the position update (on-chain POI data loads asynchronously).
-  const lastAutoTriggeredPosRef = useRef<{ x: number; y: number } | null>(null);
-
   // Extract stable values from poiInteraction to avoid re-triggering on every hook state change.
   // poiInteract is stored in a ref because it has 15+ deps and changes reference frequently,
   // but the effect only needs to call it — not re-run when it changes.
@@ -2532,7 +2548,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
             stats: state.player.stats,
             inventory: state.player.inventory,
             inventoryCapacity: state.player.inventoryCapacity,
-            maxGearSlots,
+            maxGearSlots: runMaxGearSlots,
             isGauntletLayout,
             equippedTool: state.player.equippedTool,
             activeItemsets: state.player.activeItemsets,
@@ -2540,7 +2556,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
         : null,
     [
       state,
-      maxGearSlots,
+      runMaxGearSlots,
       isGauntletLayout,
     ]
   );

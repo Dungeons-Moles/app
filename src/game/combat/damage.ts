@@ -7,6 +7,10 @@
 
 import type { CombatantState } from '../engine/types';
 
+export function getChillDamageBonus(chillStacks: number): number {
+  return Math.min(Math.max(0, chillStacks), 3);
+}
+
 /**
  * Result of a damage calculation
  */
@@ -34,17 +38,16 @@ export interface DamageResult {
  * 5. HP damage = effectiveAtk - armorDamage (minimum 0)
  * 6. Shrapnel reflect = defender's shrapnel stacks
  *
- * Note: Chill affects strikes per turn (see getEffectiveStrikes in status-effects.ts),
- * NOT attack damage. This matches the on-chain behavior in effects.rs.
+ * Chill increases incoming damage by 1 per stack, capped at +3.
  *
  * @param attacker - The attacking combatant
  * @param defender - The defending combatant
  * @returns DamageResult with breakdown of damage calculation
  */
 export function calculateDamage(attacker: CombatantState, defender: CombatantState): DamageResult {
-  // Step 1: Calculate base ATK (Chill does NOT affect ATK - it affects strikes)
+  // Step 1: Calculate base ATK plus defender Chill damage bonus
   const baseAtk = attacker.atk + attacker.bonusAtk;
-  const effectiveAtk = Math.max(0, baseAtk);
+  const effectiveAtk = Math.max(0, baseAtk + getChillDamageBonus(defender.statusEffects.chill ?? 0));
 
   // Step 2: Calculate effective ARM pool
   // On-chain parity: Rust is handled by permanent ARM decay at end of each turn
@@ -65,7 +68,10 @@ export function calculateDamage(attacker: CombatantState, defender: CombatantSta
     effectiveAtk <= 0 || defender.hp <= 0 ? 0 : Math.max(0, effectiveAtk - armorDamage);
 
   // Step 5: Calculate Shrapnel reflect
-  const shrapnelReflect = defender.statusEffects.shrapnel > 0 ? defender.statusEffects.shrapnel : 0;
+  const shrapnelReflect =
+    defender.statusEffects.shrapnel > 0
+      ? defender.statusEffects.shrapnel + getChillDamageBonus(attacker.statusEffects.chill ?? 0)
+      : 0;
 
   return {
     baseAtk,

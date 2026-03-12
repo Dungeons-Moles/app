@@ -503,13 +503,6 @@ function handleMove(state: GameState, direction: Direction): GameState {
     totalMoves: (clearedState.totalMoves ?? 0) + 1,
   };
 
-  // Update fog of war
-  const isDay = newState.time.phase === TimePhase.Day;
-  newState = {
-    ...newState,
-    map: updateFogOfWar(newState.map, targetPos, isDay),
-  };
-
   // Consume time using time progression system (T066)
   const newTime = consumeMove(newState.time, moveCost);
   const advancedTime = advanceTimePhase(newTime);
@@ -533,6 +526,13 @@ function handleMove(state: GameState, direction: Direction): GameState {
     ...newState,
     player: updatedPlayer,
     time: advancedTime,
+  };
+
+  // Update fog of war after phase transition so visibility radius matches the new phase
+  const isDay = newState.time.phase === TimePhase.Day;
+  newState = {
+    ...newState,
+    map: updateFogOfWar(newState.map, targetPos, isDay),
   };
 
   // Check for enemy encounter - initialize combat properly
@@ -1758,7 +1758,9 @@ function handleSyncMove(state: GameState, confirmedState: OnChainGameState): Gam
   const syncedWeek = confirmedState.week as 1 | 2 | 3;
   const syncedWeekBoss =
     syncedWeek !== state.time.week
-      ? confirmedState.runMode === 1 && (syncedWeek === 1 || syncedWeek === 2)
+      ? confirmedState.runMode === 2
+        ? state.time.weekBoss
+        : confirmedState.runMode === 1 && (syncedWeek === 1 || syncedWeek === 2)
         ? selectDuelWeekBossForSeed(state.seed, syncedWeek)
         : selectWeekBossForLevel(confirmedState.campaignLevel, syncedWeek)
       : state.time.weekBoss;
@@ -1932,7 +1934,9 @@ function handleSyncCombatResult(
   const syncedWeek2 = confirmedState.week as 1 | 2 | 3;
   const syncedWeekBoss2 =
     syncedWeek2 !== state.time.week
-      ? confirmedState.runMode === 1 && (syncedWeek2 === 1 || syncedWeek2 === 2)
+      ? confirmedState.runMode === 2
+        ? state.time.weekBoss
+        : confirmedState.runMode === 1 && (syncedWeek2 === 1 || syncedWeek2 === 2)
         ? selectDuelWeekBossForSeed(state.seed, syncedWeek2)
         : selectWeekBossForLevel(confirmedState.campaignLevel, syncedWeek2)
       : state.time.weekBoss;

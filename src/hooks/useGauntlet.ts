@@ -27,17 +27,6 @@ const SWITCH_RETRY_DELAY_MS = 250;
 const GAUNTLET_CLEANUP_WAIT_TIMEOUT_MS = 45000;
 const GAUNTLET_CLEANUP_POLL_MS = 1000;
 
-function isNonBlockingDelegationError(errorMessage: string | undefined): boolean {
-  const message = (errorMessage ?? '').toLowerCase();
-  return (
-    message.includes('failed to delegate session to rollup') ||
-    message.includes('delegation not fully propagated') ||
-    message.includes('delegategameplayaccounts') ||
-    message.includes('access violation') ||
-    message.includes('failed to complete')
-  );
-}
-
 function isRecoverableStartError(errorMessage: string | undefined): boolean {
   const message = (errorMessage ?? '').toLowerCase();
   return (
@@ -182,6 +171,67 @@ export function useGauntlet() {
     [connection]
   );
 
+  const validateResumedGauntletState = useCallback(
+    async (
+      sessionPda: PublicKey,
+      expectedState: Awaited<ReturnType<typeof fetchGameState>>
+    ): Promise<{ success: boolean; error?: string }> => {
+      if (!expectedState) {
+        return { success: false, error: 'Failed to verify existing gauntlet session state.' };
+      }
+
+      const gameplayProgram = createGameplayStateProgram(connection);
+      const [gameStatePda] = deriveGameStatePda(sessionPda);
+      const resumedState = await fetchGameState(gameplayProgram, gameStatePda);
+
+      if (!resumedState) {
+        return { success: false, error: 'Resumed gauntlet game state could not be fetched.' };
+      }
+
+      const mismatchedSession = !resumedState.session.equals(sessionPda);
+      const wrongRunMode = resumedState.runMode !== 2;
+      const mutatedDuringResume =
+        resumedState.totalMoves !== expectedState.totalMoves ||
+        resumedState.week !== expectedState.week ||
+        resumedState.phase !== expectedState.phase ||
+        resumedState.positionX !== expectedState.positionX ||
+        resumedState.positionY !== expectedState.positionY;
+
+      if (mismatchedSession || wrongRunMode || mutatedDuringResume) {
+        console.error('[useGauntlet] enterGauntlet:resume_state_validation_failed', {
+          sessionPda: sessionPda.toBase58(),
+          expected: expectedState
+            ? {
+                totalMoves: expectedState.totalMoves,
+                week: expectedState.week,
+                phase: expectedState.phase,
+                positionX: expectedState.positionX,
+                positionY: expectedState.positionY,
+                runMode: expectedState.runMode,
+              }
+            : null,
+          resumed: {
+            totalMoves: resumedState.totalMoves,
+            week: resumedState.week,
+            phase: resumedState.phase,
+            positionX: resumedState.positionX,
+            positionY: resumedState.positionY,
+            runMode: resumedState.runMode,
+            session: resumedState.session.toBase58(),
+          },
+        });
+        return {
+          success: false,
+          error:
+            'Resumed gauntlet session state was inconsistent after delegation. Please retry; if it persists, abandon the stuck session.',
+        };
+      }
+
+      return { success: true };
+    },
+    [connection]
+  );
+
   const switchToGauntletSessionWithRetry = useCallback(
     async (gauntletSessionPda: PublicKey): Promise<{ success: boolean; error?: string }> => {
       let lastError: string | undefined;
@@ -189,13 +239,6 @@ export function useGauntlet() {
         const switchResult = await switchToSession(gauntletSessionPda.toBase58());
         console.log('[useGauntlet] enterGauntlet:switch_result', { ...switchResult, attempt });
         if (switchResult.success) {
-          return { success: true };
-        }
-        if (isNonBlockingDelegationError(switchResult.error)) {
-          console.warn(
-            '[useGauntlet] enterGauntlet:continuing_despite_delegation_failure',
-            switchResult.error
-          );
           return { success: true };
         }
         lastError = switchResult.error ?? 'Failed to resume gauntlet session';
@@ -302,6 +345,15 @@ export function useGauntlet() {
           const switchResult = await switchToGauntletSessionWithRetry(gauntletSessionPda);
           if (!switchResult.success) {
             setError(switchResult.error ?? 'Failed to resume gauntlet session');
+            setPhase('error');
+            return false;
+          }
+          const resumeValidation = await validateResumedGauntletState(
+            gauntletSessionPda,
+            gameState
+          );
+          if (!resumeValidation.success) {
+            setError(resumeValidation.error ?? 'Failed to validate resumed gauntlet session');
             setPhase('error');
             return false;
           }
@@ -425,6 +477,7 @@ export function useGauntlet() {
     hasPendingCleanups,
     fetchSessionNonces,
     retryErVrfForSession,
+    validateResumedGauntletState,
   ]);
 
   const reset = useCallback(() => {

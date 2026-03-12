@@ -302,6 +302,16 @@ const FloatingNumber = memo(function FloatingNumber({ number, position, scale: s
         {renderStatIcon(number, sizScale)}
         {renderSourceItemIcon(number, sizScale)}
       </View>
+      {number.strikeLabel ? (
+        <Text
+          style={[
+            styles.strikeLabelText,
+            { fontSize: 11 * sizScale },
+          ]}
+        >
+          {number.strikeLabel}
+        </Text>
+      ) : null}
     </Animated.View>
   );
 });
@@ -341,5 +351,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginRight: 8,
+  },
+  strikeLabelText: {
+    fontFamily: Typography.number,
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#cbd5e1',
+    textShadowColor: 'rgba(0, 0, 0, 0.9)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
+    textAlign: 'center',
+    marginTop: -2,
   },
 });

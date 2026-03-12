@@ -186,7 +186,7 @@ function EchoEquipmentGrid({ tool, gear, week, focusIndex }: { tool: Tool | null
   const rows: (Gear | null)[][] = [];
   for (let i = 0; i < maxSlots; i += columnsPerRow) {
     const row: (Gear | null)[] = [];
-    for (let j = 0; j < columnsPerRow; j++) {
+    for (let j = 0; j < columnsPerRow && i + j < maxSlots; j++) {
       row.push(gear[i + j] ?? null);
     }
     rows.push(row);
@@ -276,7 +276,7 @@ export function BossPanel({
     const derivedBossId = selectDuelWeekBossForSeed(mapSeed, resolvedWeek);
     return getBoss(derivedBossId);
   }, [isDuelRun, mapSeed, resolvedWeek]);
-  const displayedBoss = isDuelFinalWeek ? null : isDuelRun ? duelWeekBoss : boss;
+  const displayedBoss = isGauntletRun ? null : isDuelFinalWeek ? null : isDuelRun ? duelWeekBoss : boss;
   const shouldShowGauntletEcho = !displayedBoss && isGauntletRun;
   const shouldShowDuelOpponent = !displayedBoss && isDuelFinalWeek;
 
@@ -307,7 +307,8 @@ export function BossPanel({
     [connection]
   );
 
-  const gameStateWeek = gameState?.week;
+  const currentGauntletWeek = resolvedWeek ?? time.week;
+  const pvpRequestIdRef = useRef(0);
   const loadPvpDetails = useCallback(async () => {
     if (!wallet.publicKey || displayedBoss || !isGauntletRun) {
       setPvpDetails({
@@ -316,25 +317,28 @@ export function BossPanel({
         tool: null,
         gear: [],
         stats: { hp: 15, atk: 1, arm: 0, spd: 0, dig: 0, gold: 0 },
-        week: gameStateWeek ?? 1,
+        week: currentGauntletWeek ?? 1,
       });
       return;
     }
 
+    const requestId = ++pvpRequestIdRef.current;
     setPvpLoading(true);
     try {
       const gameplayProgram = createGameplayStateProgram(connection);
-      const week = gameStateWeek;
+      const week = currentGauntletWeek;
 
       if (week === undefined) {
-        setPvpDetails({
-          name: 'Mole Echo',
-          sourceLabel: 'PvP Echo',
-          tool: null,
-          gear: [],
-          stats: { hp: 15, atk: 1, arm: 0, spd: 0, dig: 0, gold: 0 },
-          week: 1,
-        });
+        if (requestId === pvpRequestIdRef.current) {
+          setPvpDetails({
+            name: 'Mole Echo',
+            sourceLabel: 'PvP Echo',
+            tool: null,
+            gear: [],
+            stats: { hp: 15, atk: 1, arm: 0, spd: 0, dig: 0, gold: 0 },
+            week: 1,
+          });
+        }
         return;
       }
 
@@ -349,14 +353,16 @@ export function BossPanel({
       const preview = await fetchGauntletEchoFromGameState(gameplayProgram, gameStatePda, week);
 
       if (!preview) {
-        setPvpDetails({
-          name: 'Mole Echo',
-          sourceLabel: 'PvP Echo',
-          tool: null,
-          gear: [],
-          stats: { hp: 15, atk: 1, arm: 0, spd: 0, dig: 0, gold: 0 },
-          week,
-        });
+        if (requestId === pvpRequestIdRef.current) {
+          setPvpDetails({
+            name: 'Mole Echo',
+            sourceLabel: 'PvP Echo',
+            tool: null,
+            gear: [],
+            stats: { hp: 15, atk: 1, arm: 0, spd: 0, dig: 0, gold: 0 },
+            week,
+          });
+        }
         return;
       }
 
@@ -385,38 +391,44 @@ export function BossPanel({
         sourceLabel = 'Player Echo';
       }
 
-      setPvpDetails({
-        name,
-        sourceLabel,
-        tool,
-        gear,
-        stats: {
-          hp: 15 + (itemStats.hp ?? 0),
-          atk: 1 + (itemStats.atk ?? 0),
-          arm: itemStats.arm ?? 0,
-          spd: itemStats.spd ?? 0,
-          dig: itemStats.dig ?? 0,
-          gold: preview.goldAtBattleStart,
-        },
-        week,
-      });
+      if (requestId === pvpRequestIdRef.current) {
+        setPvpDetails({
+          name,
+          sourceLabel,
+          tool,
+          gear,
+          stats: {
+            hp: 15 + (itemStats.hp ?? 0),
+            atk: 1 + (itemStats.atk ?? 0),
+            arm: itemStats.arm ?? 0,
+            spd: itemStats.spd ?? 0,
+            dig: itemStats.dig ?? 0,
+            gold: preview.goldAtBattleStart,
+          },
+          week,
+        });
+      }
     } catch {
-      setPvpDetails({
-        name: 'Mole Echo',
-        sourceLabel: 'PvP Echo',
-        tool: null,
-        gear: [],
-        stats: { hp: 15, atk: 1, arm: 0, spd: 0, dig: 0, gold: 0 },
-        week: gameStateWeek ?? 1,
-      });
+      if (requestId === pvpRequestIdRef.current) {
+        setPvpDetails({
+          name: 'Mole Echo',
+          sourceLabel: 'PvP Echo',
+          tool: null,
+          gear: [],
+          stats: { hp: 15, atk: 1, arm: 0, spd: 0, dig: 0, gold: 0 },
+          week: currentGauntletWeek ?? 1,
+        });
+      }
     } finally {
-      setPvpLoading(false);
+      if (requestId === pvpRequestIdRef.current) {
+        setPvpLoading(false);
+      }
     }
   }, [
     displayedBoss,
     connection,
+    currentGauntletWeek,
     fetchProfileNameByWallet,
-    gameStateWeek,
     wallet.publicKey,
     isGauntletRun,
   ]);

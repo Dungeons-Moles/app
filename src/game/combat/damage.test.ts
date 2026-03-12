@@ -25,7 +25,7 @@ function makeCombatant(overrides: Partial<CombatantState> = {}): CombatantState 
 }
 
 describe('damage helpers', () => {
-  it('does not add chill to normal strike damage', () => {
+  it('adds chill bonus to normal strike damage up to +3', () => {
     const attacker = makeCombatant({ atk: 1 });
     const defender = makeCombatant({
       hp: 10,
@@ -34,11 +34,11 @@ describe('damage helpers', () => {
 
     const result = calculateDamage(attacker, defender);
 
-    expect(result.effectiveAtk).toBe(1);
-    expect(result.hpDamage).toBe(1);
+    expect(result.effectiveAtk).toBe(4);
+    expect(result.hpDamage).toBe(4);
   });
 
-  it('does not add chill to shrapnel retaliation', () => {
+  it('adds chill bonus to shrapnel retaliation up to +3', () => {
     const attacker = makeCombatant({
       statusEffects: { chill: 3, shrapnel: 0, rust: 0, bleed: 0 },
     });
@@ -48,10 +48,10 @@ describe('damage helpers', () => {
 
     const result = calculateDamage(attacker, defender);
 
-    expect(result.shrapnelReflect).toBe(3);
+    expect(result.shrapnelReflect).toBe(6);
   });
 
-  it('does not add chill to bleed damage', () => {
+  it('adds chill bonus to bleed damage up to +3', () => {
     const target = makeCombatant({
       hp: 10,
       statusEffects: { chill: 3, shrapnel: 0, rust: 0, bleed: 2 },
@@ -59,7 +59,7 @@ describe('damage helpers', () => {
 
     const result = processBleedDamage(target);
 
-    expect(result.damage).toBe(2);
-    expect(result.combatant.hp).toBe(8);
+    expect(result.damage).toBe(5);
+    expect(result.combatant.hp).toBe(5);
   });
 });

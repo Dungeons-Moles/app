@@ -6,6 +6,7 @@
  */
 
 import type { CombatantState, StatusEffects } from '../engine/types';
+import { getChillDamageBonus } from './damage';
 
 // ============================================================================
 // Types
@@ -34,7 +35,8 @@ export const STATUS_EFFECT_ICONS: Record<StatusEffectType, StatusEffectInfo> = {
   shrapnel: {
     emoji: '💥',
     name: 'Shrapnel',
-    description: 'Deals damage to attacker when struck. Clears at end of turn.',
+    description:
+      'Consumes 1 stack when struck to reflect that strike ATK back. Persists until used.',
     color: '#f97316', // Orange
   },
   rust: {
@@ -101,41 +103,29 @@ export function processChillDecay(combatant: CombatantState): CombatantState {
 
 // ============================================================================
 // T115: Shrapnel Effect
-// Deals damage equal to stacks when struck, clears at end of turn
-// (Unless Shrapnel Harness itemset is active)
+// Consumes 1 stack when struck and reflects the incoming strike's ATK.
+// Shrapnel persists between turns until consumed.
 // ============================================================================
 
 /**
  * Get Shrapnel reflect damage
  * Returns the damage that should be reflected to the attacker
  */
-export function getShrapnelDamage(combatant: CombatantState): number {
-  return combatant.statusEffects.shrapnel;
+export function getShrapnelDamage(
+  strikeAtk: number,
+  reflectBonus: number,
+  defenderHasShrapnel: boolean
+): number {
+  if (!defenderHasShrapnel) return 0;
+  return Math.max(0, strikeAtk) + Math.max(0, reflectBonus);
 }
 
 /**
  * Process Shrapnel clearing at turn end
  * Clears all Shrapnel unless Shrapnel Harness is active (keeps up to 2)
  */
-export function processShrapnelClear(
-  combatant: CombatantState,
-  hasShrapnelHarness: boolean = false
-): CombatantState {
-  if (combatant.statusEffects.shrapnel <= 0) {
-    return combatant;
-  }
-
-  const newShrapnel = hasShrapnelHarness
-    ? Math.min(combatant.statusEffects.shrapnel, 2)
-    : 0;
-
-  return {
-    ...combatant,
-    statusEffects: {
-      ...combatant.statusEffects,
-      shrapnel: newShrapnel,
-    },
-  };
+export function processShrapnelClear(combatant: CombatantState): CombatantState {
+  return combatant;
 }
 
 // ============================================================================
@@ -204,7 +194,7 @@ export function getBleedDamage(combatant: CombatantState): number {
 
 /**
  * Process Bleed damage at turn end
- * - Deals damage equal to Bleed stacks
+ * - Deals damage equal to Bleed stacks plus Chill bonus on the target
  * - Bleed stack decay is handled separately in processStatusEffectsTurnEnd
  * Returns updated combatant and damage dealt
  */
@@ -217,7 +207,7 @@ export function processBleedDamage(combatant: CombatantState): {
     return { combatant, damage: 0 };
   }
 
-  const damage = bleedStacks;
+  const damage = bleedStacks + getChillDamageBonus(combatant.statusEffects.chill ?? 0);
   const newHp = Math.max(0, combatant.hp - damage);
 
   return {
@@ -278,10 +268,7 @@ export function removeStatus(
 /**
  * Clear all stacks of a specific status effect
  */
-export function clearStatus(
-  combatant: CombatantState,
-  type: StatusEffectType
-): CombatantState {
+export function clearStatus(combatant: CombatantState, type: StatusEffectType): CombatantState {
   return {
     ...combatant,
     statusEffects: {
@@ -294,20 +281,14 @@ export function clearStatus(
 /**
  * Check if combatant has active status effect
  */
-export function hasActiveStatus(
-  combatant: CombatantState,
-  type: StatusEffectType
-): boolean {
+export function hasActiveStatus(combatant: CombatantState, type: StatusEffectType): boolean {
   return (combatant.statusEffects[type] ?? 0) > 0;
 }
 
 /**
  * Get current stack count for a status effect
  */
-export function getStatusStacks(
-  combatant: CombatantState,
-  type: StatusEffectType
-): number {
+export function getStatusStacks(combatant: CombatantState, type: StatusEffectType): number {
   return combatant.statusEffects[type] ?? 0;
 }
 
@@ -345,11 +326,10 @@ export function getActiveStatusEffects(
  * Order matches on-chain:
  * 1. Rust ARM decay (permanent)
  * 2. Bleed damage + chill bonus
- * 3. Status decay (chill -1, bleed -1, shrapnel = 0)
- * 4. Shrapnel preservation (if preserveShrapnelCap > 0)
+ * 3. Status decay (chill -1, bleed -1, shrapnel persists)
  *
  * @param combatant - The combatant to process
- * @param preserveShrapnelCap - Numeric cap for shrapnel preservation (0 = clear all)
+ * @param preserveShrapnelCap - Kept for parity compatibility; shrapnel now persists naturally.
  * @param preserveFreshChill - Chill stacks applied after this combatant already acted this turn.
  * These stacks are preserved through this turn-end so they can affect the next turn.
  */
@@ -365,7 +345,6 @@ export function processStatusEffectsTurnEnd(
 } {
   let updated = combatant;
   const before = updated.statusEffects;
-  const shrapnelBefore = updated.statusEffects.shrapnel;
 
   // 1. Rust ARM decay (permanent, matches process_rust_decay on-chain)
   const rustResult = processRustDamage(updated);
@@ -375,7 +354,7 @@ export function processStatusEffectsTurnEnd(
   const bleedResult = processBleedDamage(updated);
   updated = bleedResult.combatant;
 
-  // 3. Status decay (matches decay_status_effects on-chain: chill -1, bleed -1, shrapnel = 0)
+  // 3. Status decay (matches on-chain: chill -1, bleed -1, shrapnel persists)
   const currentChill = updated.statusEffects.chill;
   const preservedChill = Math.min(currentChill, Math.max(0, preserveFreshChill));
   const decayingChill = Math.max(0, currentChill - preservedChill);
@@ -386,23 +365,11 @@ export function processStatusEffectsTurnEnd(
       ...updated.statusEffects,
       chill: preservedChill + Math.max(0, decayingChill - 1),
       bleed: Math.max(0, updated.statusEffects.bleed - 1),
-      shrapnel: 0,
+      shrapnel: updated.statusEffects.shrapnel,
       reflection: updated.statusEffects.reflection ?? 0,
       // rust persists — no decay
     },
   };
-
-  // 4. Shrapnel preservation (matches preserve_shrapnel_cap on-chain)
-  if (preserveShrapnelCap > 0) {
-    const keep = Math.min(shrapnelBefore, preserveShrapnelCap);
-    updated = {
-      ...updated,
-      statusEffects: {
-        ...updated.statusEffects,
-        shrapnel: Math.max(updated.statusEffects.shrapnel, keep),
-      },
-    };
-  }
 
   const after = updated.statusEffects;
   const statusRemoved: Partial<Record<StatusEffectType, number>> = {};

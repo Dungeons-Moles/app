@@ -617,9 +617,12 @@ export function convertTimeState(
   const week = Math.max(1, Math.min(3, gameState.week)) as 1 | 2 | 3;
   const { phase, cycle } = convertPhase(gameState.phase);
 
+  // Gauntlet has no campaign boss; keep a stable placeholder because TimeState requires a BossId.
   // Duels: week1/week2 boss is seed-based; week3 uses campaign selector but UI hides it as opponent.
   const weekBoss =
-    gameState.runMode === RunMode.Duel && (week === 1 || week === 2)
+    gameState.runMode === RunMode.Gauntlet
+      ? selectWeekBossForLevel(campaignLevel, 1)
+      : gameState.runMode === RunMode.Duel && (week === 1 || week === 2)
       ? selectDuelWeekBossForSeed(seed, week)
       : selectWeekBossForLevel(campaignLevel, week);
 

@@ -624,9 +624,9 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
     }
 
     setIsStartingGame(true);
+    let navigatedToLoading = false;
 
     try {
-      let navigatedToLoading = false;
       const overrideResult = await overrideAndStartGame(targetLevel.level, () => {
         if (navigatedToLoading) return;
         createSessionSetup();
@@ -653,6 +653,15 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
       }
       dispatch({ type: 'RESET_GAME' });
       resolveSessionSetup();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Failed to override session slot.';
+      if (navigatedToLoading) {
+        rejectSessionSetup(message);
+      } else {
+        setErrorMessage(message);
+        setShowErrorModal(true);
+      }
     } finally {
       setIsStartingGame(false);
     }

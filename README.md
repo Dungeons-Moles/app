@@ -62,7 +62,7 @@ cp .env.devnet .env
 
 Program ID values in the env file must match what you deployed from `solana-programs`.
 
-## Localnet Setup (MagicBlock ER + local RNG flow)
+## Localnet Setup (MagicBlock ER + local VRF flow)
 
 From the `solana-programs` repo, start both validators in separate terminals:
 
@@ -83,10 +83,24 @@ Build/deploy/init the programs:
 
 ```bash
 solana config set --url http://127.0.0.1:8899
-anchor build -- --features local-rng
+anchor build
 anchor deploy --provider.cluster localnet --skip-build
 anchor run init
 ```
+
+Start the local VRF oracle in a separate terminal. Use the real binary path so logs are visible, and point it at the ER endpoints because `request_*_vrf` runs on the rollup:
+
+```bash
+REAL=/home/ailton/.local/share/mise/installs/node/24.11.1/lib/node_modules/@magicblock-labs/ephemeral-validator/node_modules/@magicblock-labs/vrf-oracle-linux-x64/bin/vrf-oracle
+
+RUST_LOG=info \
+VRF_ORACLE_SKIP_PREFLIGHT=true \
+RPC_URL=http://127.0.0.1:7799 \
+WEBSOCKET_URL=ws://127.0.0.1:7800 \
+"$REAL"
+```
+
+The local oracle only services its own queue PDA. In the packaged local dumps that queue is `GKE6d7iv8kCBrsxr78W3xVdjGLLLJnxsGiuzrsZCGEvb`, so `.env.localnet` pins `EXPO_PUBLIC_VRF_ORACLE_QUEUE` to that value.
 
 Then run the app in localnet mode:
 
@@ -117,8 +131,8 @@ npm start
 
 Notes:
 
-- Localnet uses `request_*_rng` + `fulfill_*_rng` (enabled by `local-rng` feature).
-- Devnet uses `request_*_vrf` and waits for MagicBlock VRF fulfill callbacks.
+- Localnet and devnet both use `request_*_vrf` and wait for MagicBlock VRF fulfill callbacks.
+- Localnet requires the local VRF oracle/queue to be running before session start.
 - If you change on-chain instruction/account layouts, re-copy fresh IDLs from `solana-programs/target/idl` into `src/services/solana/idl`.
 
 ## Install and Run

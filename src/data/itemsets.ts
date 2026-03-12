@@ -79,7 +79,7 @@ export const ITEMSET_DEFINITIONS: Record<ItemsetId, ItemsetDefinition> = {
   },
 
   // ============================================================================
-  // Shrapnel Harness - Shrapnel retention set
+  // Shrapnel Harness - Shrapnel amplification set
   // ============================================================================
   SHRAPNEL_HARNESS: {
     id: 'SHRAPNEL_HARNESS',
@@ -87,7 +87,7 @@ export const ITEMSET_DEFINITIONS: Record<ItemsetId, ItemsetDefinition> = {
     emoji: '🛡️',
     requiredItems: ['I3', 'I6', 'T1'], // G-ST-03 + G-ST-06 + T-ST-01
     bonus: {
-      description: 'Keep up to 2 Shrapnel at end of turn; when struck with Shrapnel, gain +1 ARM',
+      description: 'When you gain Shrapnel, gain +2 more; your Shrapnel reflects +1 damage',
       passive: true,
     },
   },
@@ -101,7 +101,8 @@ export const ITEMSET_DEFINITIONS: Record<ItemsetId, ItemsetDefinition> = {
     emoji: '☣️',
     requiredItems: ['T11', 'I42', 'I43'], // T-RU-01 + G-RU-02 + G-RU-03
     bonus: {
-      description: 'On Hit: apply +1 Rust; if enemy has no ARM, Rust applications deal 1 non-weapon',
+      description:
+        'On Hit: apply +1 Rust; if enemy has no ARM, Rust applications deal 1 non-weapon',
       timing: 'ON_HIT',
     },
   },

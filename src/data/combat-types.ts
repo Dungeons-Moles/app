@@ -97,7 +97,9 @@ export type EffectType =
   | 'PreventDeath'
   | 'SetArmorPiercing'
   | 'ArmorToMaxHp'
+  | 'ReduceWeaponDamageWhileArmored'
   | 'ReduceAllCountdowns'
+  | 'BombDamageBonus'
   | 'AmplifyNonWeaponDamage'
   | 'EmpowerNextNonWeaponDamage'
   | 'StoreDamage'
@@ -107,11 +109,14 @@ export type EffectType =
   | 'ReduceNextBombSelfDamage'
   | 'HalfGearAtkAfterSecondStrike'
   | 'BlastImmunity'
+  | 'ShrapnelReflectBonus'
   | 'DoubleBombTrigger'
   | 'DoubleOnHitEffects'
+  | 'OnHitPerStrike'
   | 'TriggerAllShards'
   | 'ShardsEveryTurn'
-  | 'PreserveShrapnel';
+  | 'PreserveShrapnel'
+  | 'LimitGoldArmorConversions';
 
 // ============================================================================
 // Status Types (matches StatusType enum in Rust)
@@ -165,10 +170,7 @@ export const Cond = {
     status,
     minStacks,
   }),
-  EnemyHasNoArmorAndStatusAtLeast: (
-    status: StatusType,
-    minStacks: number
-  ): Condition => ({
+  EnemyHasNoArmorAndStatusAtLeast: (status: StatusType, minStacks: number): Condition => ({
     type: 'EnemyHasNoArmorAndStatusAtLeast',
     status,
     minStacks,

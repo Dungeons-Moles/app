@@ -64,7 +64,7 @@ export function getCombatAnimationIntervalMs(speed: CombatSpeed): number | null 
   return COMBAT_ANIMATION_BASE_MS / COMBAT_SPEED_MULTIPLIER[speed];
 }
 
-function getEntryActiveActor(entry: CombatLogEntry | undefined): 'player' | 'enemy' | null {
+function getEntryPhaseActor(entry: CombatLogEntry | undefined): 'player' | 'enemy' | null {
   if (!entry) return null;
   if (entry.timing !== 'PLAYER_ATTACK' && entry.timing !== 'ENEMY_ATTACK') return null;
   if (entry.actor === 'player' || entry.actor === 'enemy') return entry.actor;
@@ -111,6 +111,32 @@ function getEntryFloatingNumberCount(entry: CombatLogEntry | undefined): number 
   if (result.goldGained && result.goldGained > 0) count += 1;
 
   return count;
+}
+
+/**
+ * For multi-strike attacks, returns the strike number and total for display labels.
+ * Returns null if the entry is not part of a multi-strike sequence.
+ */
+function getStrikeInfo(
+  log: CombatLogEntry[],
+  index: number
+): { number: number; total: number } | null {
+  const entry = log[index];
+  if (!entry || entry.action !== 'ATTACK') return null;
+
+  const { actor, turn, timing } = entry;
+  let total = 0;
+  let number = 0;
+  for (let i = 0; i < log.length; i++) {
+    const e = log[i];
+    if (e.action === 'ATTACK' && e.actor === actor && e.turn === turn && e.timing === timing) {
+      total++;
+      if (i <= index) number++;
+    }
+  }
+
+  if (total <= 1) return null;
+  return { number, total };
 }
 
 function entryIsStatusRemovalOnly(entry: CombatLogEntry | undefined): boolean {
@@ -202,6 +228,8 @@ export interface DamageNumber {
   splitDamageValue?: number;
   statusType?: 'chill' | 'shrapnel' | 'rust' | 'bleed';
   statType?: 'ATK' | 'SPD' | 'ARM' | 'DIG';
+  /** Strike label for multi-strike attacks (e.g., "Hit 1/2") */
+  strikeLabel?: string;
 }
 
 export interface EffectNotification {
@@ -771,6 +799,37 @@ function appendFloatingNumbersForPairedEntries(
     return;
   }
 
+  const statusType =
+    entry.action === 'APPLY_STATUS' &&
+    pairedEntry.action === 'APPLY_STATUS' &&
+    entry.result.statusApplied?.type === pairedEntry.result.statusApplied?.type &&
+    entry.result.statusApplied?.type !== 'reflection'
+      ? entry.result.statusApplied?.type
+      : null;
+  const sameStatusSource =
+    entry.result.source &&
+    pairedEntry.result.source &&
+    entry.result.source.kind === pairedEntry.result.source.kind &&
+    entry.result.source.id === pairedEntry.result.source.id;
+
+  if (
+    statusType &&
+    sameStatusSource &&
+    entry.target === pairedEntry.target
+  ) {
+    damageNumbers.push({
+      id: `status-pair-${logIndex}-${Date.now()}`,
+      value: (entry.result.statusApplied?.stacks ?? 0) + (pairedEntry.result.statusApplied?.stacks ?? 0),
+      type: 'status',
+      target: entry.target,
+      timestamp: Date.now(),
+      source: entry.result.source,
+      statusType: statusType as DamageNumber['statusType'],
+      delayMs: 0,
+    });
+    return;
+  }
+
   const sameTarget = entry.target === pairedEntry.target;
   const armorEntry =
     (entry.result.armorLost ?? 0) > 0 && !(entry.result.damage ?? 0) ? entry :
@@ -851,6 +910,17 @@ function getSimultaneousPairIndex(log: CombatLogEntry[], index: number): number 
     return null;
   }
 
+  const isSameStatusApplication =
+    entry.action === 'APPLY_STATUS' &&
+    nextEntry.action === 'APPLY_STATUS' &&
+    entry.target === nextEntry.target &&
+    entry.result.statusApplied?.type === nextEntry.result.statusApplied?.type &&
+    entry.result.statusApplied?.type !== 'reflection';
+
+  if (isSameStatusApplication) {
+    return index + 1;
+  }
+
   return index + 1;
 }
 
@@ -917,7 +987,7 @@ function isFinalAttackEntryForActorPhase(
   for (let index = currentIndex + 1; index < log.length; index += 1) {
     const nextEntry = log[index];
     if (!nextEntry) break;
-    if (nextEntry.turn !== entry.turn || nextEntry.timing !== entry.timing || nextEntry.actor !== entry.actor) {
+    if (nextEntry.turn !== entry.turn || nextEntry.timing !== entry.timing) {
       break;
     }
     if (nextEntry.action === 'ATTACK') {
@@ -1009,7 +1079,7 @@ function applyLogEntryToCombatants(
     if (result.source.id === 'shrapnel' && (result.damage ?? 0) > 0) {
       actorCombatant.statusEffects = {
         ...actorCombatant.statusEffects,
-        shrapnel: 0,
+        shrapnel: Math.max(0, actorCombatant.statusEffects.shrapnel - 1),
       };
     }
   }
@@ -1089,12 +1159,8 @@ function combatReducer(state: CombatUIState, action: CombatAction): CombatUIStat
       };
 
       console.log('[CombatContext] START_COMBAT:', {
-        localLogEntries: localCombat.log.length,
-        replayLogEntries: resolvedCombat.log.length,
+        logEntries: localCombat.log.length,
         result: resolvedCombat.result,
-        playerHp: action.input.player.hp,
-        enemyHp: action.input.enemy.hp,
-        bossId: action.input.bossId,
       });
 
       return {
@@ -1268,6 +1334,16 @@ function combatReducer(state: CombatUIState, action: CombatAction): CombatUIStat
         }
       }
 
+      // Label multi-strike attack numbers (e.g., "Hit 1/2")
+      const strikeInfo = getStrikeInfo(state.resolvedCombat.log, newIndex);
+      if (strikeInfo) {
+        const label = `Hit ${strikeInfo.number}/${strikeInfo.total}`;
+        const prevLen = state.damageNumbers.length;
+        for (let i = prevLen; i < newDamageNumbers.length; i++) {
+          newDamageNumbers[i] = { ...newDamageNumbers[i], strikeLabel: label };
+        }
+      }
+
       // Cap concurrent floating numbers to limit native-thread animation pressure
       // (each FloatingNumber creates 3 animated values: translateY, opacity, scale)
       const trimmedNumbers = newDamageNumbers.slice(-6);
@@ -1303,9 +1379,22 @@ function combatReducer(state: CombatUIState, action: CombatAction): CombatUIStat
         return state;
       }
 
+      const contribNumbers = createContributionDamageNumber(
+        entry,
+        state.currentLogIndex,
+        nextContributionIndex
+      );
+      const contribStrikeInfo = getStrikeInfo(state.resolvedCombat.log, state.currentLogIndex);
+      if (contribStrikeInfo) {
+        const label = `Hit ${contribStrikeInfo.number}/${contribStrikeInfo.total}`;
+        for (let i = 0; i < contribNumbers.length; i++) {
+          contribNumbers[i] = { ...contribNumbers[i], strikeLabel: label };
+        }
+      }
+
       const newDamageNumbers = [
         ...state.damageNumbers,
-        ...createContributionDamageNumber(entry, state.currentLogIndex, nextContributionIndex),
+        ...contribNumbers,
       ].slice(-6);
 
       return {
@@ -1542,8 +1631,8 @@ export function CombatProvider({ children, initialSpeed, onSpeedChange }: Combat
     // first and delay the actual log advance so the glow animation completes.
     const nextIndex = Math.min(state.currentLogIndex + 1, stopAtIndex);
     const nextEntry = state.resolvedCombat.log[nextIndex];
-    const currentActor = getEntryActiveActor(currentEntry);
-    const nextActor = getEntryActiveActor(nextEntry);
+    const currentActor = getEntryPhaseActor(currentEntry);
+    const nextActor = getEntryPhaseActor(nextEntry);
     const isNewActorAttack = nextActor !== null && nextActor !== currentActor;
     const isInGlowLeadPhase = state.activeActorLogIndex > state.currentLogIndex;
 
