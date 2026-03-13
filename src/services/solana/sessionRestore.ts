@@ -379,20 +379,6 @@ export async function fetchFullSessionState(
   map.fog = updatedMap.fog;
   map.enemies = updatedMap.enemies;
 
-  // Reconcile on-chain discovered POIs with fog state:
-  // If a POI is marked as discovered on-chain (e.g., from a previous seismic scanner use)
-  // but the fog tile is still Hidden (e.g., AsyncStorage fog was lost), reveal it.
-  for (const poi of map.pois) {
-    if (poi.discovered) {
-      const { x, y } = poi.position;
-      if (x >= 0 && x < map.width && y >= 0 && y < map.height) {
-        if (map.fog[y][x] === FogState.Hidden) {
-          map.fog[y][x] = FogState.Revealed;
-        }
-      }
-    }
-  }
-
   // Build RNG state: seed + totalMoves for deterministic resumption
   const rngState = seed + gameStateData.totalMoves;
 

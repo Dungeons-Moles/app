@@ -1109,10 +1109,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
         wp.position.x !== state.player.position.x || wp.position.y !== state.player.position.y
     );
   }, [discoveredWaypoints, state?.player?.position]);
-  const isRailWaypointWithoutDestinations =
-    poiInteraction.currentPoi?.poiType === POI_TYPES.RAIL_WAYPOINT && !hasOtherDiscoveredWaypoints;
-  const canTriggerCurrentPoiInteraction =
-    canTriggerCurrentPoiByPhase && !isRailWaypointWithoutDestinations;
+  const canTriggerCurrentPoiInteraction = canTriggerCurrentPoiByPhase;
 
   useEffect(() => {
     if (!isFastTravelActive) {
@@ -2077,17 +2074,11 @@ export function GameScreen({ navigation }: GameScreenProps) {
   const tryOpenCurrentPoiInteraction = useCallback(() => {
     if (!state || state.phase !== GamePhase.Exploration) return;
     if (!poiInteraction.canInteract) return;
-    if (isRailWaypointWithoutDestinations) {
-      showWallBreakFeedback('No other waypoints discovered');
-      return;
-    }
     poiInteraction.interact();
   }, [
     state,
     poiInteraction.canInteract,
     poiInteraction.interact,
-    isRailWaypointWithoutDestinations,
-    showWallBreakFeedback,
   ]);
 
   // Navigate to CombatScreen when game phase transitions to Combat or BossFight.

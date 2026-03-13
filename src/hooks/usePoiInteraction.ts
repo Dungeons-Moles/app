@@ -18,11 +18,13 @@ import {
   createPoiSystemProgramWithProvider,
   createAnchorProvider,
   createGameplayStateProgram,
+  createMapGeneratorProgram,
 } from '@/services/solana/programs';
 import { oilFlagToModification } from '@/services/solana/types/player_inventory';
 import { useWallet } from '@/contexts/WalletContext';
 import { useAudio } from '@/contexts/AudioContext';
 import { deriveMapPoisPda, derivePoiVrfStatePda, deriveGameplayVrfStatePda } from '@/services/solana/constants';
+import { deriveGeneratedMapPda } from '@/services/solana/constants';
 import { getGameStatePda, fetchGameState } from '@/services/solana/gameplayState';
 import { POI_TYPES } from '@/services/solana/types/poi_system';
 import type {
@@ -53,6 +55,7 @@ import {
   generateOilOffer,
   type PoiTransactionContext,
 } from '@/services/solana/poiSystem';
+import { fetchGeneratedMap } from '@/services/solana/mapGeneratorClient';
 import {
   decodeItemId,
   convertToolInstance,
@@ -129,6 +132,33 @@ async function withErPositionRetry<T>(fn: () => Promise<T>): Promise<T> {
     }
   }
   throw lastErr;
+}
+
+function getDiscoveredTileDiff(
+  before: number[] | undefined,
+  after: number[] | undefined,
+  width: number,
+  height: number
+): Position[] {
+  if (!before || !after) {
+    return [];
+  }
+
+  const positions: Position[] = [];
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const bitIndex = y * width + x;
+      const byteIndex = Math.floor(bitIndex / 8);
+      const bitOffset = bitIndex % 8;
+      const beforeBit = ((before[byteIndex] ?? 0) >> bitOffset) & 1;
+      const afterBit = ((after[byteIndex] ?? 0) >> bitOffset) & 1;
+      if (!beforeBit && afterBit) {
+        positions.push({ x, y });
+      }
+    }
+  }
+
+  return positions;
 }
 
 /**
@@ -1035,27 +1065,6 @@ export function usePoiInteraction(): UsePoiInteractionResult {
         );
         setError('Cannot interact with POI');
         return { success: false };
-      }
-
-      // Rail Waypoint: do not open modal unless another discovered waypoint exists.
-      // Applies to both guest and on-chain paths to keep behavior consistent.
-      if (currentPoi.poiType === POI_TYPES.RAIL_WAYPOINT) {
-        const hasOtherLocalWaypoint = !!gameState?.map?.pois?.some(
-          (p) =>
-            p.definitionId === 'L8' &&
-            p.discovered &&
-            (p.position.x !== currentPoi.x || p.position.y !== currentPoi.y)
-        );
-        const hasOtherOnChainWaypoint = pois.some(
-          (p) =>
-            p.poiType === POI_TYPES.RAIL_WAYPOINT &&
-            p.consumed &&
-            (p.x !== currentPoi.x || p.y !== currentPoi.y)
-        );
-        if (!hasOtherLocalWaypoint && !hasOtherOnChainWaypoint) {
-          setError('No other waypoints discovered');
-          return { success: false };
-        }
       }
 
       // Guest mode: dispatch INTERACT_POI to the local reducer (no on-chain interaction)
@@ -2270,7 +2279,13 @@ export function usePoiInteraction(): UsePoiInteractionResult {
               return { success: true };
             }
 
-            const scannerData = await fetchMapPois(ctx.program, ctx.mapPoisPda);
+            const [generatedMapPda] = deriveGeneratedMapPda(ctx.sessionPda);
+            const [scannerData, generatedMapBefore] = await Promise.all([
+              fetchMapPois(ctx.program, ctx.mapPoisPda),
+              fetchGeneratedMap(createMapGeneratorProgram(ctx.connection), generatedMapPda).catch(
+                () => null
+              ),
+            ]);
             const scannerOffer = scannerData?.scannerOffers?.find(
               (offer) => offer.poiIndex === validatedPoiIndex
             );
@@ -2289,9 +2304,37 @@ export function usePoiInteraction(): UsePoiInteractionResult {
               refreshSessionState(),
             ]);
 
-            const poiId = poiTypeToPoiId(targetPoiType);
-            if (poiId) {
-              dispatch({ type: 'REVEAL_POI_LOCATIONS', poiDefId: poiId });
+            const [updatedScannerData, generatedMapAfter] = await Promise.all([
+              fetchMapPois(ctx.program, ctx.mapPoisPda),
+              fetchGeneratedMap(createMapGeneratorProgram(ctx.connection), generatedMapPda).catch(
+                () => null
+              ),
+            ]);
+
+            const discoveryDiff =
+              generatedMapBefore && generatedMapAfter
+                ? getDiscoveredTileDiff(
+                    generatedMapBefore.discoveredTiles,
+                    generatedMapAfter.discoveredTiles,
+                    generatedMapAfter.width,
+                    generatedMapAfter.height
+                  )
+                : [];
+
+            if (discoveryDiff.length > 0) {
+              dispatch({ type: 'REVEAL_DISCOVERED_TILES', positions: discoveryDiff });
+            } else {
+              const newlyDiscoveredPoi = updatedScannerData?.pois.find((poi, idx) => {
+                const previousPoi = scannerData?.pois?.[idx];
+                return poi.discovered && !previousPoi?.discovered;
+              });
+
+              if (newlyDiscoveredPoi) {
+                dispatch({
+                  type: 'REVEAL_DISCOVERED_TILES',
+                  positions: [{ x: newlyDiscoveredPoi.x, y: newlyDiscoveredPoi.y }],
+                });
+              }
             }
             break;
           }

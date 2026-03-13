@@ -159,6 +159,7 @@ export type GameAction =
   | { type: 'SYNC_COMBAT_RESULT'; confirmedState: OnChainGameState; result: CombatResult }
   // POI reveal actions (Survey Beacon, Seismic Scanner)
   | { type: 'REVEAL_TILES'; center: Position; radius: number }
+  | { type: 'REVEAL_DISCOVERED_TILES'; positions: Position[] }
   | { type: 'REVEAL_POI_LOCATIONS'; poiDefId: string }
   // Enemy position sync (for night movement from on-chain)
   | {
@@ -315,6 +316,8 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     // POI reveal actions (Survey Beacon, Seismic Scanner)
     case 'REVEAL_TILES':
       return handleRevealTiles(state, action.center, action.radius);
+    case 'REVEAL_DISCOVERED_TILES':
+      return handleRevealDiscoveredTiles(state, action.positions);
 
     case 'REVEAL_POI_LOCATIONS':
       return handleRevealPoiLocations(state, action.poiDefId);
@@ -2151,6 +2154,43 @@ function handleRevealTiles(state: GameState, center: Position, radius: number): 
         }
       }
     }
+  }
+
+  const updatedEnemies = state.map.enemies.map((enemy) => {
+    const key = `${enemy.position.x},${enemy.position.y}`;
+    if (visibleKeys.has(key)) {
+      return { ...enemy, discovered: true };
+    }
+    return enemy;
+  });
+
+  return {
+    ...state,
+    map: {
+      ...state.map,
+      fog: newFog,
+      enemies: updatedEnemies,
+    },
+  };
+}
+
+function handleRevealDiscoveredTiles(state: GameState, positions: Position[]): GameState {
+  if (positions.length === 0) {
+    return state;
+  }
+
+  const newFog: FogState[][] = state.map.fog.map((row) => [...row]);
+  const visibleKeys = new Set<string>();
+
+  for (const position of positions) {
+    const { x, y } = position;
+    if (x < 0 || x >= state.map.width || y < 0 || y >= state.map.height) {
+      continue;
+    }
+    if (newFog[y][x] === FogState.Hidden) {
+      newFog[y][x] = FogState.Revealed;
+    }
+    visibleKeys.add(`${x},${y}`);
   }
 
   const updatedEnemies = state.map.enemies.map((enemy) => {
