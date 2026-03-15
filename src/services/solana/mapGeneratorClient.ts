@@ -64,6 +64,19 @@ export interface DiscoveredEnemyData {
   mapEnemiesIndex: number;
 }
 
+export interface DiscoveryShopOffer {
+  itemId: number[];
+  tier: number;
+  price: number;
+  purchased: number;
+}
+
+export interface DiscoveryOfferItem {
+  itemId: number[];
+  rarity: number;
+  tier: number;
+}
+
 export interface SessionDiscoveryData {
   session: PublicKey;
   discoveredTiles: number[];
@@ -82,6 +95,16 @@ export interface SessionDiscoveryData {
   currentBossId: number[];
   currentEchoPresent: number;
   currentEchoData: number[];
+  // Offer data (dual-written from poi_system via CPI)
+  activeOfferType: number;
+  activeOfferPoiIndex: number;
+  shopOffers: DiscoveryShopOffer[];
+  shopRerollCount: number;
+  shopActive: number;
+  cacheOfferItems: DiscoveryOfferItem[];
+  oilOfferOils: number[];
+  scannerOfferCount: number;
+  scannerOfferTypes: number[];
 }
 
 // ============================================================================

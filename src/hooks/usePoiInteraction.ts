@@ -57,7 +57,12 @@ import {
   generateOilOffer,
   type PoiTransactionContext,
 } from '@/services/solana/poiSystem';
-import { fetchSessionDiscovery } from '@/services/solana/mapGeneratorClient';
+import {
+  fetchSessionDiscovery,
+  type SessionDiscoveryData,
+  type DiscoveryShopOffer,
+  type DiscoveryOfferItem,
+} from '@/services/solana/mapGeneratorClient';
 import {
   decodeItemId,
   convertToolInstance,
@@ -173,6 +178,10 @@ function getDiscoveredTileDiff(
  * out of bounds or points to the wrong POI on-chain.
  *
  * Returns the validated (possibly re-derived) index, or -1 if not found.
+ *
+ * TODO: Replace this MapPois read with SessionDiscovery POI indices once
+ * SessionDiscovery exposes position data for all POIs (currently only stores
+ * discoveredPois which may not include the target POI before discovery).
  */
 async function validatePoiIndex(
   program: Parameters<typeof fetchMapPois>[0],
@@ -419,6 +428,56 @@ function convertScannerOfferToOptions(poiTypes: number[]): POIOption[] {
 
 function isNightPhase(phase: Phase): boolean {
   return phase === Phase.Night1 || phase === Phase.Night2 || phase === Phase.Night3;
+}
+
+// ============================================================================
+// SessionDiscovery → MapPois Offer Adapters
+// ============================================================================
+
+/**
+ * Convert DiscoveryShopOffer[] to ItemOffer[] (MapPois format).
+ * SessionDiscovery uses number[] for itemId; ItemOffer uses Uint8Array.
+ */
+function discoveryShopOffersToItemOffers(offers: DiscoveryShopOffer[]): ItemOffer[] {
+  return offers
+    .filter((o) => o.itemId.some((b) => b !== 0)) // skip empty slots
+    .map((o) => ({
+      itemId: new Uint8Array(o.itemId),
+      tier: o.tier,
+      price: o.price,
+      purchased: o.purchased !== 0,
+    }));
+}
+
+/**
+ * Convert DiscoveryOfferItem[] to CacheOffer format.
+ * SessionDiscovery stores cache items flat; CacheOffer wraps them with poiIndex.
+ */
+function discoveryCacheItemsToCacheOffer(
+  items: DiscoveryOfferItem[],
+  poiIndex: number
+): CacheOffer {
+  return {
+    poiIndex,
+    items: items.map((item) => ({
+      itemId: item.itemId,
+      rarity: item.rarity,
+      tier: item.tier,
+    })),
+    generatedAtSeed: BigInt(0),
+  };
+}
+
+/**
+ * Helper to fetch SessionDiscovery for offer reads.
+ * Requires sessionDiscoveryPda and a connection to create the map generator program.
+ */
+async function fetchDiscoveryOffers(
+  connection: import('@solana/web3.js').Connection,
+  sessionPda: import('@solana/web3.js').PublicKey
+): Promise<SessionDiscoveryData | null> {
+  const [sdPda] = deriveSessionDiscoveryPda(sessionPda);
+  return fetchSessionDiscovery(createMapGeneratorProgram(connection), sdPda);
 }
 
 function extractCustomErrorCode(error: unknown): number | null {
@@ -1000,11 +1059,29 @@ export function usePoiInteraction(): UsePoiInteractionResult {
 
   /**
    * Verifies that a one-time POI was actually consumed on-chain.
+   * Uses SessionDiscovery's discoveredPois to check the `consumed` flag.
    * This prevents local optimistic state (inventory/visited) from drifting when a tx
    * appears processed but did not persist.
    */
   const assertPoiConsumedOnChain = useCallback(
     async (poiIndex: number): Promise<void> => {
+      if (!sessionPda) {
+        throw new Error('Session not ready for verification');
+      }
+      const discovery = await fetchDiscoveryOffers(gameplayConnection, sessionPda);
+      if (!discovery) {
+        throw new Error('Failed to fetch SessionDiscovery for verification');
+      }
+      // Check discoveredPois for a matching index with consumed flag
+      const discoveredPoi = discovery.discoveredPois.find(
+        (_p, idx) => idx === poiIndex
+      );
+      // If the POI is in the discovered list and has consumed set, it's confirmed.
+      // If not found in discovered list, fall back to checking MapPois.
+      if (discoveredPoi && (discoveredPoi as any).consumed) {
+        return; // Confirmed consumed via SessionDiscovery
+      }
+      // Fallback: check MapPois (discoveredPois may not have a consumed field yet)
       if (!poiProgram || !mapPoisPda) {
         throw new Error('POI program not ready for verification');
       }
@@ -1014,7 +1091,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
         throw new Error('POI interaction not persisted on-chain');
       }
     },
-    [poiProgram, mapPoisPda]
+    [sessionPda, gameplayConnection, poiProgram, mapPoisPda]
   );
 
   /**
@@ -1170,27 +1247,17 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             // to ensure handlePOIOption routes correctly.
             setDeferredPoiType(null);
             setDeferredPoiIndex(null);
-            // Fetch current MapPois to check for existing offer
-            let mapPoisData = await fetchMapPois(ctx.program, ctx.mapPoisPda);
+            // Fetch SessionDiscovery to check for existing offer
+            let discovery = await fetchDiscoveryOffers(ctx.connection, ctx.sessionPda);
 
-            const onChainPoi = mapPoisData?.pois?.[poiIndex];
-            if (onChainPoi?.used) {
-              console.warn(
-                '[usePoiInteraction] POI already consumed on-chain before offer generation | poiIndex:',
-                poiIndex
-              );
-              syncLocalPoiAsConsumed(currentPoi);
-              dispatch({ type: 'CLOSE_POI' });
-              setInteractionState('complete');
-              return { success: true };
-            }
+            // Check if an active cache offer already exists for this POI
+            const hasExistingCacheOffer =
+              discovery &&
+              discovery.activeOfferType === 2 && // 2=cache
+              discovery.activeOfferPoiIndex === poiIndex &&
+              discovery.cacheOfferItems.some((item) => item.itemId.some((b) => b !== 0));
 
-            // Check if a saved offer already exists for this POI
-            let existingOffer = mapPoisData?.cacheOffers?.find(
-              (o) => o.poiIndex === poiIndex
-            );
-
-            if (!existingOffer) {
+            if (!hasExistingCacheOffer) {
               debugLog('[usePoiInteraction] Sending generateCacheOffer on-chain');
               try {
                 await withErPositionRetry(() =>
@@ -1220,21 +1287,28 @@ export function usePoiInteraction(): UsePoiInteractionResult {
                 }
               }
               debugLog('[usePoiInteraction] generateCacheOffer CONFIRMED, re-fetching...');
-              // Re-fetch to read the stored offer
-              mapPoisData = await fetchMapPois(ctx.program, ctx.mapPoisPda);
-              existingOffer = mapPoisData?.cacheOffers?.find(
-                (o) => o.poiIndex === poiIndex
-              );
+              // Re-fetch SessionDiscovery to read the stored offer
+              discovery = await fetchDiscoveryOffers(ctx.connection, ctx.sessionPda);
             } else {
               debugLog('[usePoiInteraction] Saved cache offer found for poiIndex:', poiIndex);
             }
 
-            if (!existingOffer) {
+            // Convert SessionDiscovery cache items to CacheOffer format
+            const existingOffer =
+              discovery &&
+              discovery.activeOfferType === 2 &&
+              discovery.activeOfferPoiIndex === poiIndex
+                ? discoveryCacheItemsToCacheOffer(discovery.cacheOfferItems, poiIndex)
+                : null;
+
+            if (!existingOffer || existingOffer.items.every((i) => i.itemId.every((b) => b === 0))) {
               console.error(
-                '[usePoiInteraction] No cache offer found for poiIndex:',
+                '[usePoiInteraction] No cache offer found in SessionDiscovery for poiIndex:',
                 poiIndex,
-                '| available:',
-                mapPoisData?.cacheOffers?.map((o) => o.poiIndex)
+                '| activeOfferType:',
+                discovery?.activeOfferType,
+                '| activeOfferPoiIndex:',
+                discovery?.activeOfferPoiIndex
               );
               setError('Failed to generate cache offers');
               setIsInteracting(false);
@@ -1274,14 +1348,16 @@ export function usePoiInteraction(): UsePoiInteractionResult {
               return { success: false };
             }
 
-            // Step 1: Check for existing saved oil offer, or generate one on-chain
-            let mapPoisData = await fetchMapPois(ctx.program, ctx.mapPoisPda);
+            // Step 1: Check SessionDiscovery for existing oil offer, or generate one on-chain
+            let oilDiscovery = await fetchDiscoveryOffers(ctx.connection, ctx.sessionPda);
 
-            let existingOilOffer = mapPoisData?.oilOffers?.find(
-              (o) => o.poiIndex === poiIndex
-            );
+            const hasExistingOilOffer =
+              oilDiscovery &&
+              oilDiscovery.activeOfferType === 3 && // 3=oil
+              oilDiscovery.activeOfferPoiIndex === poiIndex &&
+              oilDiscovery.oilOfferOils.some((o) => o !== 0);
 
-            if (!existingOilOffer) {
+            if (!hasExistingOilOffer) {
               debugLog('[usePoiInteraction] Sending generateOilOffer on-chain');
               try {
                 await withErPositionRetry(() =>
@@ -1309,20 +1385,23 @@ export function usePoiInteraction(): UsePoiInteractionResult {
                 }
               }
               debugLog('[usePoiInteraction] generateOilOffer CONFIRMED, re-fetching...');
-              mapPoisData = await fetchMapPois(ctx.program, ctx.mapPoisPda);
-              existingOilOffer = mapPoisData?.oilOffers?.find(
-                (o) => o.poiIndex === poiIndex
-              );
+              oilDiscovery = await fetchDiscoveryOffers(ctx.connection, ctx.sessionPda);
             } else {
               debugLog('[usePoiInteraction] Saved oil offer found for poiIndex:', poiIndex);
             }
 
-            if (!existingOilOffer) {
+            if (
+              !oilDiscovery ||
+              oilDiscovery.activeOfferType !== 3 ||
+              oilDiscovery.activeOfferPoiIndex !== poiIndex
+            ) {
               console.error(
-                '[usePoiInteraction] No oil offer found for poiIndex:',
+                '[usePoiInteraction] No oil offer found in SessionDiscovery for poiIndex:',
                 poiIndex,
-                '| available:',
-                mapPoisData?.oilOffers?.map((o) => o.poiIndex)
+                '| activeOfferType:',
+                oilDiscovery?.activeOfferType,
+                '| activeOfferPoiIndex:',
+                oilDiscovery?.activeOfferPoiIndex
               );
               setError('Failed to generate oil offers');
               setIsInteracting(false);
@@ -1332,7 +1411,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
 
             // Convert on-chain oils to POIOption[] for the modal
             const oilOptions = convertOilOfferToOptions(
-              Array.from(existingOilOffer.oils)
+              Array.from(oilDiscovery.oilOfferOils)
             );
             debugLog(
               '[usePoiInteraction] Oil offers ready:',
@@ -1395,12 +1474,15 @@ export function usePoiInteraction(): UsePoiInteractionResult {
 
           // Seismic Scanner (L7) — Two-step flow: generate on-chain options, then reveal selection
           case POI_TYPES.SEISMIC_SCANNER: {
-            let mapPoisData = await fetchMapPois(ctx.program, ctx.mapPoisPda);
-            let existingScannerOffer = mapPoisData?.scannerOffers?.find(
-              (offer) => offer.poiIndex === poiIndex
-            );
+            let scannerDiscovery = await fetchDiscoveryOffers(ctx.connection, ctx.sessionPda);
 
-            if (!existingScannerOffer) {
+            const hasExistingScannerOffer =
+              scannerDiscovery &&
+              scannerDiscovery.activeOfferType === 4 && // 4=scanner
+              scannerDiscovery.activeOfferPoiIndex === poiIndex &&
+              scannerDiscovery.scannerOfferCount > 0;
+
+            if (!hasExistingScannerOffer) {
               debugLog('[usePoiInteraction] Sending generateScannerOffer on-chain');
               try {
                 await withErPositionRetry(() =>
@@ -1425,13 +1507,14 @@ export function usePoiInteraction(): UsePoiInteractionResult {
                 }
               }
 
-              mapPoisData = await fetchMapPois(ctx.program, ctx.mapPoisPda);
-              existingScannerOffer = mapPoisData?.scannerOffers?.find(
-                (offer) => offer.poiIndex === poiIndex
-              );
+              scannerDiscovery = await fetchDiscoveryOffers(ctx.connection, ctx.sessionPda);
             }
 
-            if (!existingScannerOffer) {
+            if (
+              !scannerDiscovery ||
+              scannerDiscovery.activeOfferType !== 4 ||
+              scannerDiscovery.scannerOfferCount === 0
+            ) {
               setError('Failed to generate scanner options');
               setIsInteracting(false);
               setInteractionState('idle');
@@ -1439,7 +1522,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             }
 
             const scannerOptions = convertScannerOfferToOptions(
-              Array.from(existingScannerOffer.poiTypes).slice(0, existingScannerOffer.count)
+              Array.from(scannerDiscovery.scannerOfferTypes).slice(0, scannerDiscovery.scannerOfferCount)
             );
             setCacheOfferOptions(scannerOptions);
             setDeferredPoiIndex(poiIndex);
@@ -1469,25 +1552,31 @@ export function usePoiInteraction(): UsePoiInteractionResult {
           // Smuggler Hatch Shop (L9) — Enter shop on-chain, then show modal with on-chain offers
           case POI_TYPES.SMUGGLER_HATCH: {
             shopLeftRef.current = false;
-            // Check if shop is already active on-chain (e.g. reopening after closing modal)
-            let shopData = await fetchMapPois(ctx.program, ctx.mapPoisPda);
-            if (!shopData?.shopState?.active) {
+            // Check if shop is already active on-chain via SessionDiscovery
+            let shopDiscovery = await fetchDiscoveryOffers(ctx.connection, ctx.sessionPda);
+            const shopAlreadyActive =
+              shopDiscovery &&
+              shopDiscovery.activeOfferType === 1 && // 1=shop
+              shopDiscovery.shopActive !== 0;
+
+            if (!shopAlreadyActive) {
               await withErPositionRetry(() =>
                 enterShop(ctx, poiIndex)
               );
               // Re-fetch after entering
-              shopData = await fetchMapPois(ctx.program, ctx.mapPoisPda);
+              shopDiscovery = await fetchDiscoveryOffers(ctx.connection, ctx.sessionPda);
             } else {
               debugLog('[usePoiInteraction] Shop already active on-chain, skipping enterShop');
             }
-            if (shopData?.shopState?.active) {
-              setShopOffers(shopData.shopState.offers);
-              setShopRerollCount(shopData.shopState.rerollCount);
+            if (shopDiscovery && shopDiscovery.activeOfferType === 1 && shopDiscovery.shopActive !== 0) {
+              const adaptedOffers = discoveryShopOffersToItemOffers(shopDiscovery.shopOffers);
+              setShopOffers(adaptedOffers);
+              setShopRerollCount(shopDiscovery.shopRerollCount);
               const gold = gameState?.player?.stats?.gold ?? 0;
               setCacheOfferOptions(
                 convertShopOffersToOptions(
-                  shopData.shopState.offers,
-                  shopData.shopState.rerollCount,
+                  adaptedOffers,
+                  shopDiscovery.shopRerollCount,
                   gold
                 )
               );
@@ -1608,16 +1697,17 @@ export function usePoiInteraction(): UsePoiInteractionResult {
   );
 
   /**
-   * Refresh shop state from on-chain MapPois account.
+   * Refresh shop state from SessionDiscovery account.
    */
   const refreshShopState = useCallback(async () => {
-    if (!poiProgram || !mapPoisPda) return;
-    const mapPoisData = await fetchMapPois(poiProgram, mapPoisPda);
-    if (mapPoisData?.shopState?.active) {
-      setShopOffers(mapPoisData.shopState.offers);
-      setShopRerollCount(mapPoisData.shopState.rerollCount);
+    if (!sessionPda) return;
+    const discovery = await fetchDiscoveryOffers(gameplayConnection, sessionPda);
+    if (discovery && discovery.activeOfferType === 1 && discovery.shopActive !== 0) {
+      const adaptedOffers = discoveryShopOffersToItemOffers(discovery.shopOffers);
+      setShopOffers(adaptedOffers);
+      setShopRerollCount(discovery.shopRerollCount);
     }
-  }, [poiProgram, mapPoisPda]);
+  }, [sessionPda, gameplayConnection]);
 
   /**
    * Purchase an item from the active shop.
@@ -2389,18 +2479,18 @@ export function usePoiInteraction(): UsePoiInteractionResult {
               return { success: true };
             }
 
-            const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(ctx.sessionPda);
-            const [scannerData, discoveryBefore] = await Promise.all([
-              fetchMapPois(ctx.program, ctx.mapPoisPda),
-              fetchSessionDiscovery(createMapGeneratorProgram(ctx.connection), sessionDiscoveryPda).catch(
-                () => null
-              ),
-            ]);
-            const scannerOffer = scannerData?.scannerOffers?.find(
-              (offer) => offer.poiIndex === validatedPoiIndex
-            );
-            const targetPoiType = scannerOffer?.poiTypes?.[optionIndex];
-            if (!scannerOffer || targetPoiType == null || optionIndex >= scannerOffer.count) {
+            // Read scanner offer and pre-interaction discovery state from SessionDiscovery
+            const discoveryBefore = await fetchDiscoveryOffers(ctx.connection, ctx.sessionPda);
+            if (
+              !discoveryBefore ||
+              discoveryBefore.activeOfferType !== 4 ||
+              discoveryBefore.scannerOfferCount === 0
+            ) {
+              setIsInteracting(false);
+              return { success: false, error: 'Scanner options expired. Try again.' };
+            }
+            const targetPoiType = discoveryBefore.scannerOfferTypes[optionIndex];
+            if (targetPoiType == null || optionIndex >= discoveryBefore.scannerOfferCount) {
               setIsInteracting(false);
               return { success: false, error: 'Scanner options expired. Try again.' };
             }
@@ -2413,12 +2503,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
               refreshSessionState(),
             ]);
 
-            const [updatedScannerData, discoveryAfter] = await Promise.all([
-              fetchMapPois(ctx.program, ctx.mapPoisPda),
-              fetchSessionDiscovery(createMapGeneratorProgram(ctx.connection), sessionDiscoveryPda).catch(
-                () => null
-              ),
-            ]);
+            const discoveryAfter = await fetchDiscoveryOffers(ctx.connection, ctx.sessionPda);
 
             const discoveryDiff =
               discoveryBefore && discoveryAfter
@@ -2432,16 +2517,16 @@ export function usePoiInteraction(): UsePoiInteractionResult {
 
             if (discoveryDiff.length > 0) {
               dispatch({ type: 'REVEAL_DISCOVERED_TILES', positions: discoveryDiff });
-            } else {
-              const newlyDiscoveredPoi = updatedScannerData?.pois.find((poi, idx) => {
-                const previousPoi = scannerData?.pois?.[idx];
-                return poi.discovered && !previousPoi?.discovered;
-              });
-
-              if (newlyDiscoveredPoi) {
+            } else if (discoveryAfter) {
+              // Fall back to checking newly discovered POIs in SessionDiscovery
+              const beforePoiCount = discoveryBefore.discoveredPoiCount;
+              const afterPois = convertDiscoveredPois(discoveryAfter.discoveredPois, discoveryAfter.discoveredPoiCount);
+              // Any POI beyond beforePoiCount is newly discovered
+              const newPois = afterPois.slice(beforePoiCount);
+              if (newPois.length > 0) {
                 dispatch({
                   type: 'REVEAL_DISCOVERED_TILES',
-                  positions: [{ x: newlyDiscoveredPoi.x, y: newlyDiscoveredPoi.y }],
+                  positions: newPois.map((p) => ({ x: p.position.x, y: p.position.y })),
                 });
               }
             }
@@ -2614,16 +2699,17 @@ export function usePoiInteraction(): UsePoiInteractionResult {
                 dispatch({ type: 'SYNC_MOVE', confirmedState: updatedRerollState });
               }
 
-              // Re-fetch shop state and update options
-              const rerollData = await fetchMapPois(ctx.program, ctx.mapPoisPda);
-              if (rerollData?.shopState?.active) {
-                setShopOffers(rerollData.shopState.offers);
-                setShopRerollCount(rerollData.shopState.rerollCount);
+              // Re-fetch shop state from SessionDiscovery and update options
+              const rerollDiscovery = await fetchDiscoveryOffers(ctx.connection, ctx.sessionPda);
+              if (rerollDiscovery && rerollDiscovery.activeOfferType === 1 && rerollDiscovery.shopActive !== 0) {
+                const rerollAdaptedOffers = discoveryShopOffersToItemOffers(rerollDiscovery.shopOffers);
+                setShopOffers(rerollAdaptedOffers);
+                setShopRerollCount(rerollDiscovery.shopRerollCount);
                 const gold = updatedRerollState?.gold ?? gameState?.player?.stats?.gold ?? 0;
                 setCacheOfferOptions(
                   convertShopOffersToOptions(
-                    rerollData.shopState.offers,
-                    rerollData.shopState.rerollCount,
+                    rerollAdaptedOffers,
+                    rerollDiscovery.shopRerollCount,
                     gold
                   )
                 );
@@ -2675,16 +2761,17 @@ export function usePoiInteraction(): UsePoiInteractionResult {
               });
             }
 
-            // Re-fetch shop state and update options
-            const purchaseData = await fetchMapPois(ctx.program, ctx.mapPoisPda);
-            if (purchaseData?.shopState?.active) {
-              setShopOffers(purchaseData.shopState.offers);
-              setShopRerollCount(purchaseData.shopState.rerollCount);
+            // Re-fetch shop state from SessionDiscovery and update options
+            const purchaseDiscovery = await fetchDiscoveryOffers(ctx.connection, ctx.sessionPda);
+            if (purchaseDiscovery && purchaseDiscovery.activeOfferType === 1 && purchaseDiscovery.shopActive !== 0) {
+              const purchaseAdaptedOffers = discoveryShopOffersToItemOffers(purchaseDiscovery.shopOffers);
+              setShopOffers(purchaseAdaptedOffers);
+              setShopRerollCount(purchaseDiscovery.shopRerollCount);
               const gold = updatedShopState?.gold ?? gameState?.player?.stats?.gold ?? 0;
               setCacheOfferOptions(
                 convertShopOffersToOptions(
-                  purchaseData.shopState.offers,
-                  purchaseData.shopState.rerollCount,
+                  purchaseAdaptedOffers,
+                  purchaseDiscovery.shopRerollCount,
                   gold
                 )
               );

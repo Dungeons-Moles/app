@@ -2262,6 +2262,83 @@
       "args": []
     },
     {
+      "name": "update_active_offer",
+      "docs": [
+        "Updates the active offer data in SessionDiscovery.",
+        "Called via CPI from poi-system when an offer is generated, rerolled, or consumed."
+      ],
+      "discriminator": [
+        193,
+        160,
+        87,
+        198,
+        70,
+        178,
+        15,
+        2
+      ],
+      "accounts": [
+        {
+          "name": "session_discovery",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  95,
+                  100,
+                  105,
+                  115,
+                  99,
+                  111,
+                  118,
+                  101,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "session"
+              }
+            ]
+          }
+        },
+        {
+          "name": "session",
+          "relations": [
+            "session_discovery"
+          ]
+        },
+        {
+          "name": "session_signer",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "offer_type",
+          "type": "u8"
+        },
+        {
+          "name": "poi_index",
+          "type": "u8"
+        },
+        {
+          "name": "data",
+          "type": "bytes"
+        }
+      ]
+    },
+    {
       "name": "update_boss_id",
       "docs": [
         "Updates the current boss ID in SessionDiscovery.",
@@ -2839,6 +2916,11 @@
       "code": 6013,
       "name": "DiscoveredPoisFull",
       "msg": "Discovered POIs full"
+    },
+    {
+      "code": 6014,
+      "name": "InvalidOfferData",
+      "msg": "Invalid offer data"
     }
   ],
   "types": [
@@ -2936,6 +3018,66 @@
             "docs": [
               "Index into MapPois.pois[] array (needed for interaction transactions)"
             ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "DiscoveryOfferItem",
+      "docs": [
+        "An item offer entry stored in SessionDiscovery (10 bytes)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "item_id",
+            "type": {
+              "array": [
+                "u8",
+                8
+              ]
+            }
+          },
+          {
+            "name": "rarity",
+            "type": "u8"
+          },
+          {
+            "name": "tier",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "DiscoveryShopOffer",
+      "docs": [
+        "A shop offer entry stored in SessionDiscovery (12 bytes)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "item_id",
+            "type": {
+              "array": [
+                "u8",
+                8
+              ]
+            }
+          },
+          {
+            "name": "tier",
+            "type": "u8"
+          },
+          {
+            "name": "price",
+            "type": "u16"
+          },
+          {
+            "name": "purchased",
             "type": "u8"
           }
         ]
@@ -3455,6 +3597,97 @@
               "array": [
                 "u8",
                 179
+              ]
+            }
+          },
+          {
+            "name": "active_offer_type",
+            "docs": [
+              "Active offer type: 0=none, 1=shop, 2=cache, 3=oil, 4=scanner"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "active_offer_poi_index",
+            "docs": [
+              "MapPois index of the POI with the active offer"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "shop_offers",
+            "docs": [
+              "Shop offers (valid when active_offer_type == 1)"
+            ],
+            "type": {
+              "array": [
+                {
+                  "defined": {
+                    "name": "DiscoveryShopOffer"
+                  }
+                },
+                6
+              ]
+            }
+          },
+          {
+            "name": "shop_reroll_count",
+            "docs": [
+              "Shop reroll count"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "shop_active",
+            "docs": [
+              "Shop active flag"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "cache_offer_items",
+            "docs": [
+              "Cache offer items (valid when active_offer_type == 2)"
+            ],
+            "type": {
+              "array": [
+                {
+                  "defined": {
+                    "name": "DiscoveryOfferItem"
+                  }
+                },
+                3
+              ]
+            }
+          },
+          {
+            "name": "oil_offer_oils",
+            "docs": [
+              "Oil offer flags (valid when active_offer_type == 3)"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                3
+              ]
+            }
+          },
+          {
+            "name": "scanner_offer_count",
+            "docs": [
+              "Scanner offer count (valid when active_offer_type == 4)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "scanner_offer_types",
+            "docs": [
+              "Scanner offer POI types"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                3
               ]
             }
           }
