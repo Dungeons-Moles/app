@@ -52,7 +52,6 @@ import {
   interactRustyAnvil,
   interactRuneKiln,
   interactScrapChute,
-  fetchMapPois,
   generateCacheOffer,
   generateOilOffer,
   type PoiTransactionContext,
@@ -184,47 +183,41 @@ function getDiscoveredTileDiff(
  * discoveredPois which may not include the target POI before discovery).
  */
 async function validatePoiIndex(
-  program: Parameters<typeof fetchMapPois>[0],
-  mapPoisPda: Parameters<typeof fetchMapPois>[1],
+  _program: unknown,
+  _mapPoisPda: unknown,
   poiIndex: number,
   x: number,
   y: number,
-  contextLabel: string
-): Promise<{ index: number; freshPois?: Awaited<ReturnType<typeof fetchMapPois>> }> {
-  try {
-    const freshPois = await fetchMapPois(program, mapPoisPda);
-    if (!freshPois?.pois) {
-      return { index: poiIndex, freshPois: freshPois ?? undefined };
+  contextLabel: string,
+  sessionDiscoveryPda?: PublicKey,
+  connection?: Connection
+): Promise<{ index: number }> {
+  // Use SessionDiscovery's discoveredPois (public) instead of MapPois (private).
+  // Each DiscoveredPoi has a mapPoisIndex field — the on-chain MapPois array index.
+  if (sessionDiscoveryPda && connection) {
+    try {
+      const discovery = await fetchSessionDiscovery(
+        createMapGeneratorProgram(connection),
+        sessionDiscoveryPda
+      );
+      if (discovery) {
+        // Find the discovered POI at (x, y) and return its mapPoisIndex
+        for (let i = 0; i < discovery.discoveredPoiCount; i++) {
+          const dp = discovery.discoveredPois[i];
+          if (dp && dp.x === x && dp.y === y) {
+            return { index: dp.mapPoisIndex };
+          }
+        }
+        console.warn(
+          `[usePoiInteraction] ${contextLabel}: POI at (${x},${y}) not found in SessionDiscovery`
+        );
+      }
+    } catch (err) {
+      console.warn(`[usePoiInteraction] ${contextLabel}: SessionDiscovery fetch failed:`, err);
     }
-
-    const freshLen = freshPois.pois.length;
-    const isValid =
-      poiIndex >= 0 &&
-      poiIndex < freshLen &&
-      freshPois.pois[poiIndex]?.x === x &&
-      freshPois.pois[poiIndex]?.y === y;
-
-    if (isValid) {
-      return { index: poiIndex, freshPois };
-    }
-
-    // Re-derive from fresh data by position
-    const rederived = freshPois.pois.findIndex(
-      (p) => p.x === x && p.y === y && !p.used
-    );
-    console.warn(
-      `[usePoiInteraction] ${contextLabel}: poiIndex re-derived from fresh on-chain data:`,
-      poiIndex,
-      '→',
-      rederived,
-      '| fresh Vec length:',
-      freshLen
-    );
-    return { index: rederived, freshPois };
-  } catch (err) {
-    console.warn(`[usePoiInteraction] ${contextLabel}: fresh validation fetch failed:`, err);
-    return { index: poiIndex }; // Fall through with original index
   }
+  // Fallback: return hint index as-is
+  return { index: poiIndex };
 }
 
 // ============================================================================
@@ -1009,10 +1002,10 @@ export function usePoiInteraction(): UsePoiInteractionResult {
   const findPoiIndex = useCallback(
     async (x: number, y: number): Promise<number> => {
       if (!poiProgram || !mapPoisPda) return -1;
-      const validated = await validatePoiIndex(poiProgram, mapPoisPda, -1, x, y, 'findPoiIndex');
+      const validated = await validatePoiIndex(poiProgram, mapPoisPda, -1, x, y, 'findPoiIndex', sessionDiscoveryPda, gameplayConnection);
       return validated.index;
     },
-    [poiProgram, mapPoisPda]
+    [poiProgram, mapPoisPda, sessionDiscoveryPda, gameplayConnection]
   );
 
   /**
@@ -1072,26 +1065,16 @@ export function usePoiInteraction(): UsePoiInteractionResult {
       if (!discovery) {
         throw new Error('Failed to fetch SessionDiscovery for verification');
       }
-      // Check discoveredPois for a matching index with consumed flag
-      const discoveredPoi = discovery.discoveredPois.find(
-        (_p, idx) => idx === poiIndex
-      );
-      // If the POI is in the discovered list and has consumed set, it's confirmed.
-      // If not found in discovered list, fall back to checking MapPois.
-      if (discoveredPoi && (discoveredPoi as any).consumed) {
+      // Check discoveredPois for a matching mapPoisIndex with used flag
+      const discoveredPoi = discovery.discoveredPois
+        .slice(0, discovery.discoveredPoiCount)
+        .find((p) => p.mapPoisIndex === poiIndex);
+      if (discoveredPoi && discoveredPoi.used) {
         return; // Confirmed consumed via SessionDiscovery
       }
-      // Fallback: check MapPois (discoveredPois may not have a consumed field yet)
-      if (!poiProgram || !mapPoisPda) {
-        throw new Error('POI program not ready for verification');
-      }
-      const latest = await fetchMapPois(poiProgram, mapPoisPda);
-      const poi = latest?.pois?.[poiIndex];
-      if (!poi || !poi.used) {
-        throw new Error('POI interaction not persisted on-chain');
-      }
+      throw new Error('POI interaction not persisted on-chain');
     },
-    [sessionPda, gameplayConnection, poiProgram, mapPoisPda]
+    [sessionPda, gameplayConnection]
   );
 
   /**
@@ -1170,7 +1153,9 @@ export function usePoiInteraction(): UsePoiInteractionResult {
         -1,
         currentPoi.x,
         currentPoi.y,
-        'interact'
+        'interact',
+        sessionDiscoveryPda,
+        ctx.connection
       );
       let poiIndex = validated.index;
       debugLog(
@@ -1897,13 +1882,15 @@ export function usePoiInteraction(): UsePoiInteractionResult {
         ctx.program, ctx.mapPoisPda,
         -1,
         fromPos.x, fromPos.y,
-        'executeFastTravel(from)'
+        'executeFastTravel(from)',
+        sessionDiscoveryPda, ctx.connection
       );
       const toValidated = await validatePoiIndex(
         ctx.program, ctx.mapPoisPda,
         -1,
         toPos.x, toPos.y,
-        'executeFastTravel(to)'
+        'executeFastTravel(to)',
+        sessionDiscoveryPda, ctx.connection
       );
 
       if (fromValidated.index === -1 || toValidated.index === -1) {
@@ -2049,7 +2036,9 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             confirmedPoiIndex,
             currentPoi.x,
             currentPoi.y,
-            'selectCacheOffer'
+            'selectCacheOffer',
+            sessionDiscoveryPda,
+            ctx.connection
           );
           if (cacheValidated.index === -1) {
             setError('POI state changed. Please try again.');
@@ -2201,7 +2190,9 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             deferredPoiIndex,
             currentPoi.x,
             currentPoi.y,
-            'confirmPoiSelection'
+            'confirmPoiSelection',
+            sessionDiscoveryPda,
+            ctx.connection
           )
         : { index: deferredPoiIndex };
       const validatedPoiIndex = confirmValidated.index;
@@ -2581,13 +2572,15 @@ export function usePoiInteraction(): UsePoiInteractionResult {
                 ctx.program, ctx.mapPoisPda,
                 validatedPoiIndex,
                 currentX, currentY,
-                'fastTravel(from)'
+                'fastTravel(from)',
+                sessionDiscoveryPda, ctx.connection
               );
               const destValidated = await validatePoiIndex(
                 ctx.program, ctx.mapPoisPda,
                 -1,
                 destX, destY,
-                'fastTravel(to)'
+                'fastTravel(to)',
+                sessionDiscoveryPda, ctx.connection
               );
 
               if (fromValidated.index !== -1 && destValidated.index !== -1) {
