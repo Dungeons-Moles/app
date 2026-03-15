@@ -30,7 +30,7 @@ export type { MapPoisData, PoiInstance, ShopState, ItemOffer };
 
 // GameState with gauntlet echoes is large; POI instructions that CPI into
 // gameplay-state deserialize it multiple times, easily exceeding the 200K default.
-const POI_CU_LIMIT = 600_000;
+const POI_CU_LIMIT = 1_000_000;
 
 // ============================================================================
 // Transaction Context
