@@ -128,6 +128,9 @@ export async function interactRest(ctx: PoiTransactionContext, poiIndex: number)
     gameplayVrfState: vrfState,
     gauntletEchoes: null,
     player: ctx.sessionSignerKeypair.publicKey,
+    sessionDiscovery: ctx.sessionDiscoveryPda ?? null,
+    session: ctx.sessionPda,
+    mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
   };
 
   const transaction = await ctx.program.methods

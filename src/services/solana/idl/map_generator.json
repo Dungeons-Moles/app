@@ -1589,6 +1589,75 @@
       "args": []
     },
     {
+      "name": "mark_discovered_poi_used",
+      "docs": [
+        "Marks a discovered POI as used in SessionDiscovery.",
+        "Called via CPI from poi-system after a one-time POI is consumed."
+      ],
+      "discriminator": [
+        230,
+        60,
+        208,
+        97,
+        106,
+        102,
+        186,
+        35
+      ],
+      "accounts": [
+        {
+          "name": "session_discovery",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  95,
+                  100,
+                  105,
+                  115,
+                  99,
+                  111,
+                  118,
+                  101,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "session"
+              }
+            ]
+          }
+        },
+        {
+          "name": "session",
+          "relations": [
+            "session_discovery"
+          ]
+        },
+        {
+          "name": "session_signer",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "map_pois_index",
+          "type": "u8"
+        }
+      ]
+    },
+    {
       "name": "mark_poi_used",
       "docs": [
         "Marks a POI as used on the generated map."

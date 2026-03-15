@@ -3155,6 +3155,28 @@
             "Player initiating the interaction"
           ],
           "signer": true
+        },
+        {
+          "name": "session_discovery",
+          "docs": [
+            "Optional SessionDiscovery for marking POI as used."
+          ],
+          "writable": true,
+          "optional": true
+        },
+        {
+          "name": "session",
+          "docs": [
+            "Session PDA for SessionDiscovery CPI"
+          ],
+          "optional": true
+        },
+        {
+          "name": "map_generator_program",
+          "docs": [
+            "Map generator program for mark_discovered_poi_used CPI"
+          ],
+          "optional": true
         }
       ],
       "args": [
