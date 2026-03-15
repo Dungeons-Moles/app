@@ -19,6 +19,9 @@ import {
   deriveMapEnemiesPda,
   deriveGameStatePda,
   deriveMapPoisPda,
+  deriveMapConfigPda,
+  deriveGameplayAuthorityPda,
+  deriveSessionDiscoveryPda,
 } from './constants';
 import { SOLANA_CONFIG } from './config';
 
@@ -188,14 +191,45 @@ export async function buildFillMapWithVrfTransaction(
 ): Promise<Transaction> {
   const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
   const [mapVrfStatePda] = deriveMapVrfStatePda(sessionPda);
+  const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
 
   const method = pickMethod(mapGeneratorProgram, 'generateMapWithVrf', 'generateMapWithVrf');
   const ix = await method(campaignLevel)
-    .accounts({
+    .accountsPartial({
       sessionSigner,
       session: sessionPda,
       generatedMap: generatedMapPda,
       vrfState: mapVrfStatePda,
+      sessionDiscovery: sessionDiscoveryPda,
+    })
+    .instruction();
+
+  return new Transaction().add(ix);
+}
+
+/**
+ * Build a transaction that calls `fill_map_for_campaign` on the ER.
+ * The map-generator program loads the campaign seed from on-chain MapConfig,
+ * so the client never needs to know the seed.
+ */
+export async function buildFillMapForCampaignTransaction(
+  mapGeneratorProgram: Program,
+  sessionPda: PublicKey,
+  sessionSigner: PublicKey,
+  campaignLevel: number
+): Promise<Transaction> {
+  const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
+  const [mapConfigPda] = deriveMapConfigPda();
+  const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
+
+  const method = pickMethod(mapGeneratorProgram, 'fillMapForCampaign', 'fillMapForCampaign');
+  const ix = await method(campaignLevel)
+    .accountsPartial({
+      sessionSigner,
+      session: sessionPda,
+      mapConfig: mapConfigPda,
+      generatedMap: generatedMapPda,
+      sessionDiscovery: sessionDiscoveryPda,
     })
     .instruction();
 
@@ -214,15 +248,17 @@ export async function buildFillMapWithSeedTransaction(
   campaignLevel: number
 ): Promise<Transaction> {
   const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
+  const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
 
   const method = pickMethod(mapGeneratorProgram, 'fillMapWithSeed', 'fillMapWithSeed');
   // Anchor BN for u64 seed
   const BN = (await import('bn.js')).default;
   const ix = await method(new BN(seed.toString()), campaignLevel)
-    .accounts({
+    .accountsPartial({
       sessionSigner,
       session: sessionPda,
       generatedMap: generatedMapPda,
+      sessionDiscovery: sessionDiscoveryPda,
     })
     .instruction();
 
@@ -243,10 +279,12 @@ export async function buildSyncMapEnemiesInstruction(
   const [mapEnemiesPda] = deriveMapEnemiesPda(sessionPda);
   const [gameStatePda] = deriveGameStatePda(sessionPda);
   const [mapPoisPda] = deriveMapPoisPda(sessionPda);
+  const [gameplayAuthorityPda] = deriveGameplayAuthorityPda();
+  const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
 
   const method = pickMethod(gameplayStateProgram, 'syncMapEnemies', 'syncMapEnemies');
   return method()
-    .accounts({
+    .accountsPartial({
       sessionSigner,
       session: sessionPda,
       generatedMap: generatedMapPda,
@@ -254,52 +292,157 @@ export async function buildSyncMapEnemiesInstruction(
       gameState: gameStatePda,
       mapPois: mapPoisPda,
       poiSystemProgram: SOLANA_CONFIG.programs.poiSystem,
-    })
+      gameplayAuthority: gameplayAuthorityPda,
+      mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
+      sessionDiscovery: sessionDiscoveryPda,
+      gameplayVrfState: null,
+      gauntletEchoes: null,
+    } as any)
     .instruction();
 }
 
 /**
- * Build a single transaction combining map generation and enemy sync.
+ * Build a `discover_visible_waypoints` instruction to discover POIs near spawn.
+ * Called after refresh_map_pois to discover POIs that were populated after sync_map_enemies.
+ */
+export async function buildDiscoverSpawnPoisInstruction(
+  poiSystemProgram: Program,
+  sessionPda: PublicKey,
+  sessionSigner: PublicKey,
+  visibilityRadius: number
+): Promise<TransactionInstruction> {
+  const [gameStatePda] = deriveGameStatePda(sessionPda);
+  const [mapPoisPda] = deriveMapPoisPda(sessionPda);
+  const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
+
+  const method = pickMethod(
+    poiSystemProgram,
+    'discoverVisibleWaypoints',
+    'discoverVisibleWaypoints'
+  );
+  return method(visibilityRadius)
+    .accountsPartial({
+      mapPois: mapPoisPda,
+      gameState: gameStatePda,
+      player: sessionSigner,
+      sessionDiscovery: sessionDiscoveryPda,
+      session: sessionPda,
+      mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
+    } as any)
+    .instruction();
+}
+
+/**
+ * Build a `reveal_radius` instruction on map_generator.
+ * Used after phase changes (rest alcove) to reveal tiles at the new visibility radius.
+ */
+export async function buildRevealRadiusInstruction(
+  mapGeneratorProgram: Program,
+  sessionPda: PublicKey,
+  sessionSigner: PublicKey,
+  centerX: number,
+  centerY: number,
+  radius: number
+): Promise<TransactionInstruction> {
+  const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
+  const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
+
+  const method = pickMethod(mapGeneratorProgram, 'revealRadius', 'revealRadius');
+  return method(centerX, centerY, radius)
+    .accountsPartial({
+      sessionSigner,
+      session: sessionPda,
+      generatedMap: generatedMapPda,
+      sessionDiscovery: sessionDiscoveryPda,
+    } as any)
+    .instruction();
+}
+
+/**
+ * Build a `refresh_discovered_enemies` instruction.
+ * Syncs enemies from MapEnemies to SessionDiscovery based on discovered tiles.
+ * Called after tile-revealing POIs (survey beacon, seismic scanner).
+ */
+export async function buildRefreshDiscoveredEnemiesInstruction(
+  gameplayStateProgram: Program,
+  sessionPda: PublicKey,
+  sessionSigner: PublicKey
+): Promise<TransactionInstruction> {
+  const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
+  const [mapEnemiesPda] = deriveMapEnemiesPda(sessionPda);
+  const [gameStatePda] = deriveGameStatePda(sessionPda);
+  const [mapPoisPda] = deriveMapPoisPda(sessionPda);
+  const [gameplayAuthorityPda] = deriveGameplayAuthorityPda();
+  const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
+
+  const method = pickMethod(
+    gameplayStateProgram,
+    'refreshDiscoveredEnemies',
+    'refreshDiscoveredEnemies'
+  );
+  return method()
+    .accountsPartial({
+      sessionSigner,
+      session: sessionPda,
+      generatedMap: generatedMapPda,
+      mapEnemies: mapEnemiesPda,
+      gameplayAuthority: gameplayAuthorityPda,
+      mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
+      sessionDiscovery: sessionDiscoveryPda,
+    } as any)
+    .instruction();
+}
+
+/**
+ * Build two transactions: map generation and enemy sync (separate due to CU limits).
  * - mode 'vrf': uses generate_map_with_vrf (Gauntlet/Duel on ER)
- * - mode 'seed': uses fill_map_with_seed (PvE campaign on ER)
+ * - mode 'campaign': uses fill_map_for_campaign (PvE campaign on ER)
+ * - mode 'seed': uses fill_map_with_seed (legacy/local deterministic path)
  *
- * Both modes append a sync_map_enemies instruction to populate enemies
- * and fix game_state position/dimensions after map generation.
+ * Returns { mapTx, syncTx } — callers must send them sequentially.
  */
 export async function buildMapAndSyncTransaction(
-  mode: 'vrf' | 'seed',
+  mode: 'vrf' | 'campaign' | 'seed',
   mapGeneratorProgram: Program,
   gameplayStateProgram: Program,
   sessionPda: PublicKey,
   sessionSigner: PublicKey,
   opts: { campaignLevel: number; seed?: bigint }
-): Promise<Transaction> {
-  const tx = new Transaction();
+): Promise<{ mapTx: Transaction; syncTx: Transaction }> {
+  const mapTx = new Transaction();
 
   if (mode === 'vrf') {
-    const mapTx = await buildFillMapWithVrfTransaction(
+    const tx = await buildFillMapWithVrfTransaction(
       mapGeneratorProgram,
       sessionPda,
       sessionSigner,
       opts.campaignLevel
     );
-    tx.add(...mapTx.instructions);
+    mapTx.add(...tx.instructions);
+  } else if (mode === 'campaign') {
+    const tx = await buildFillMapForCampaignTransaction(
+      mapGeneratorProgram,
+      sessionPda,
+      sessionSigner,
+      opts.campaignLevel
+    );
+    mapTx.add(...tx.instructions);
   } else {
     const seed = opts.seed ?? BigInt(opts.campaignLevel);
-    const mapTx = await buildFillMapWithSeedTransaction(
+    const tx = await buildFillMapWithSeedTransaction(
       mapGeneratorProgram,
       sessionPda,
       sessionSigner,
       seed,
       opts.campaignLevel
     );
-    tx.add(...mapTx.instructions);
+    mapTx.add(...tx.instructions);
   }
 
   const syncIx = await buildSyncMapEnemiesInstruction(gameplayStateProgram, sessionPda, sessionSigner);
-  tx.add(syncIx);
+  const syncTx = new Transaction().add(syncIx);
 
-  return tx;
+  return { mapTx, syncTx };
 }
 
 /**

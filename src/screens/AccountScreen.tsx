@@ -34,10 +34,12 @@ type AccountScreenProps = {
 
 const backButtonSource = require('../../assets/ui/buttons/button-v1.webp');
 
-const WALLET_IDS: SupportedWallet[] =
-  process.env.EXPO_PUBLIC_SHOW_DEV_WALLET === 'true'
-    ? ['Jupiter', 'Phantom', 'Backpack', 'DevKeypair']
-    : ['Jupiter', 'Phantom', 'Backpack'];
+const SHOW_DEV_WALLET = process.env.EXPO_PUBLIC_SHOW_DEV_WALLET === 'true';
+
+// Jupiter is displayed but disabled (mainnet only) — excluded from selectable IDs
+const WALLET_IDS: SupportedWallet[] = SHOW_DEV_WALLET
+  ? ['DevKeypair', 'Phantom', 'Backpack']
+  : ['Phantom', 'Backpack'];
 
 export function AccountScreen({ navigation }: AccountScreenProps) {
   const {
@@ -55,7 +57,9 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
   const isNative = Platform.OS !== 'web';
   const isFocused = useIsFocused();
   const isController = useInputMode() === 'controller';
-  const [selectedWallet, setSelectedWallet] = useState<SupportedWallet>('Jupiter');
+  const [selectedWallet, setSelectedWallet] = useState<SupportedWallet>(
+    SHOW_DEV_WALLET ? 'DevKeypair' : 'Phantom'
+  );
   const [profileName, setProfileName] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
   const [isActionLoading, setIsActionLoading] = useState(false);
@@ -347,44 +351,7 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
                     SUPPORTED WALLETS
                   </Text>
                   <View style={styles.walletOptions}>
-                    {(
-                      [
-                        { id: 'Jupiter' as const, Icon: JupiterIcon },
-                        { id: 'Phantom' as const, Icon: PhantomIcon },
-                        { id: 'Backpack' as const, Icon: BackpackIcon },
-                      ] as const
-                    ).map(({ id, Icon }) => (
-                      <TouchableOpacity
-                        key={id}
-                        style={[
-                          styles.walletOption,
-                          isCompact && { width: 96, height: 96 },
-                          !isNative && id === selectedWallet && styles.walletOptionSelected,
-                        ]}
-                        onPress={
-                          !isNative
-                            ? () => {
-                                playSfx('ui_click');
-                                setSelectedWallet(id);
-                              }
-                            : undefined
-                        }
-                        activeOpacity={!isNative ? 0.7 : 1}
-                        disabled={showLoading}
-                      >
-                        <Icon
-                          color={
-                            !isNative
-                              ? id === selectedWallet
-                                ? styles.walletIconActive.color
-                                : styles.walletIconInactive.color
-                              : styles.walletIconActive.color
-                          }
-                          size={isCompact ? 64 : 36}
-                        />
-                      </TouchableOpacity>
-                    ))}
-                    {process.env.EXPO_PUBLIC_SHOW_DEV_WALLET === 'true' && (
+                    {SHOW_DEV_WALLET && (
                       <TouchableOpacity
                         style={[
                           styles.walletOption,
@@ -421,6 +388,65 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
                         </Text>
                       </TouchableOpacity>
                     )}
+                    {(
+                      [
+                        { id: 'Phantom' as const, Icon: PhantomIcon },
+                        { id: 'Backpack' as const, Icon: BackpackIcon },
+                      ] as const
+                    ).map(({ id, Icon }) => (
+                      <TouchableOpacity
+                        key={id}
+                        style={[
+                          styles.walletOption,
+                          isCompact && { width: 96, height: 96 },
+                          !isNative && id === selectedWallet && styles.walletOptionSelected,
+                        ]}
+                        onPress={
+                          !isNative
+                            ? () => {
+                                playSfx('ui_click');
+                                setSelectedWallet(id);
+                              }
+                            : undefined
+                        }
+                        activeOpacity={!isNative ? 0.7 : 1}
+                        disabled={showLoading}
+                      >
+                        <Icon
+                          color={
+                            !isNative
+                              ? id === selectedWallet
+                                ? styles.walletIconActive.color
+                                : styles.walletIconInactive.color
+                              : styles.walletIconActive.color
+                          }
+                          size={isCompact ? 64 : 36}
+                        />
+                      </TouchableOpacity>
+                    ))}
+                    {/* Jupiter — disabled, mainnet only */}
+                    <View
+                      style={[
+                        styles.walletOption,
+                        isCompact && { width: 96, height: 96 },
+                        { overflow: 'hidden' },
+                      ]}
+                    >
+                      <JupiterIcon
+                        color={styles.walletIconInactive.color}
+                        size={isCompact ? 64 : 36}
+                      />
+                      <View style={styles.mainnetBanner}>
+                        <Text
+                          style={[
+                            styles.mainnetBannerText,
+                            isCompact && { fontSize: 14 },
+                          ]}
+                        >
+                          MAINNET
+                        </Text>
+                      </View>
+                    </View>
                   </View>
                   {!isNative && (
                     <Text style={[styles.walletHint, isCompact && { fontSize: 20 }]}>
@@ -672,6 +698,19 @@ const styles = StyleSheet.create({
   },
   walletIconInactive: {
     color: 'rgba(95, 85, 72, 0.3)',
+  },
+  mainnetBanner: {
+    position: 'absolute',
+    backgroundColor: '#a33a3a',
+    paddingHorizontal: 40,
+    paddingVertical: 3,
+    transform: [{ rotate: '35deg' }],
+  },
+  mainnetBannerText: {
+    color: '#ffffff',
+    fontSize: 9,
+    fontWeight: 'bold',
+    letterSpacing: 0.5,
   },
   walletHint: {
     fontSize: 12,

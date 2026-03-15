@@ -24,6 +24,8 @@ import {
   deriveGameplayAuthorityPda,
   deriveMapPoisPda,
   deriveGameplayVrfStatePda,
+  deriveSessionDiscoveryPda,
+  deriveGauntletEchoesPda,
 } from './constants';
 
 import {
@@ -40,6 +42,12 @@ import {
 // Cache for gameplayVrfState existence per session — avoids a round trip on every move.
 // Caches both positive (exists) and negative (doesn't exist) results.
 const vrfStateExistsCache = new Map<string, boolean>();
+
+// Cache for sessionDiscovery existence per session — avoids a round trip on every move.
+const discoveryExistsCache = new Map<string, boolean>();
+
+// Cache for gauntletEchoes existence per session — avoids a round trip on every move.
+const gauntletEchoesExistsCache = new Map<string, boolean>();
 
 // Pre-computed Anchor discriminator for move_player: sha256("global:move_player")[0..8]
 // Avoids going through Anchor's MethodsBuilder which adds ~120ms of async overhead.
@@ -145,6 +153,7 @@ export async function movePlayer(
   const [gameplayAuthorityPda] = deriveGameplayAuthorityPda();
   const [mapPoisPda] = deriveMapPoisPda(sessionPda);
   const [gameplayVrfStatePda] = deriveGameplayVrfStatePda(sessionPda);
+  const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
   // Optional account: include only when fully initialized/deserializable.
   // Cache both positive and negative results per session to avoid a round trip on every move.
   const sessionKey = sessionPda.toBase58();
@@ -157,6 +166,25 @@ export async function movePlayer(
       .catch(() => null);
     vrfStateExists = !!vrfAccount;
     vrfStateExistsCache.set(sessionKey, vrfStateExists);
+  }
+  // Check if SessionDiscovery account exists (cached per session)
+  let discoveryExists: boolean;
+  if (discoveryExistsCache.has(sessionKey)) {
+    discoveryExists = discoveryExistsCache.get(sessionKey)!;
+  } else {
+    const discoveryAccount = await connection.getAccountInfo(sessionDiscoveryPda).catch(() => null);
+    discoveryExists = !!discoveryAccount;
+    discoveryExistsCache.set(sessionKey, discoveryExists);
+  }
+  // Check if GauntletEchoes account exists (cached per session)
+  const [gauntletEchoesPda] = deriveGauntletEchoesPda(sessionPda);
+  let gauntletEchoesExists: boolean;
+  if (gauntletEchoesExistsCache.has(sessionKey)) {
+    gauntletEchoesExists = gauntletEchoesExistsCache.get(sessionKey)!;
+  } else {
+    const geAccount = await connection.getAccountInfo(gauntletEchoesPda).catch(() => null);
+    gauntletEchoesExists = !!geAccount;
+    gauntletEchoesExistsCache.set(sessionKey, gauntletEchoesExists);
   }
   const tVrf = Date.now();
 
@@ -179,11 +207,23 @@ export async function movePlayer(
     { pubkey: SOLANA_CONFIG.programs.mapGenerator, isSigner: false, isWritable: false },
     { pubkey: mapPoisPda, isSigner: false, isWritable: true },
     { pubkey: SOLANA_CONFIG.programs.poiSystem, isSigner: false, isWritable: false },
+    // Optional: session_discovery — when null, Anchor uses program_id as sentinel
+    {
+      pubkey: discoveryExists ? sessionDiscoveryPda : SOLANA_CONFIG.programs.gameplayState,
+      isSigner: false,
+      isWritable: discoveryExists,
+    },
     // Optional: when null, Anchor uses program_id as sentinel
     {
       pubkey: vrfStateExists ? gameplayVrfStatePda : SOLANA_CONFIG.programs.gameplayState,
       isSigner: false,
       isWritable: false,
+    },
+    // Optional: gauntlet_echoes — when null, Anchor uses program_id as sentinel
+    {
+      pubkey: gauntletEchoesExists ? gauntletEchoesPda : SOLANA_CONFIG.programs.gameplayState,
+      isSigner: false,
+      isWritable: gauntletEchoesExists,
     },
     { pubkey: sessionSignerKeypair.publicKey, isSigner: true, isWritable: false },
   ];
@@ -275,15 +315,18 @@ export async function triggerBossFight(
 
   const transaction = await program.methods
     .triggerBossFight()
-    .accounts({
+    .accountsPartial({
       gameState: gameStatePda,
       gameSession: sessionPda,
       mapEnemies: mapEnemiesPda,
       generatedMap: generatedMapPda,
       inventory: inventoryPda,
       playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
+      gameplayVrfState: null,
+      sessionDiscovery: null,
+      mapGeneratorProgram: null,
       player: sessionSignerKeypair.publicKey,
-    })
+    } as any)
     .transaction();
 
   // Boss fight runs full combat resolution (up to 50 turns + effect processing)

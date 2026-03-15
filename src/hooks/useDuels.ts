@@ -9,7 +9,6 @@ import { GAMEPLAY_STATE_PROGRAM_ID, deriveDuelSessionPda } from '@/services/sola
 import { SOLANA_CONFIG } from '@/services/solana/config';
 import {
   buildEnterDuelTransaction,
-  fetchDuelQueue,
   fetchDuelEntry,
   parseDuelEvents,
   parseDuelEventsFromLogs,
@@ -25,7 +24,6 @@ export interface DuelHistoryItem {
   signature: string;
   slot: number;
   playedAtUnix: number | null;
-  seed: bigint;
   opponentWallet: string | null;
   opponentProfileName: string;
   isWinner: boolean;
@@ -40,7 +38,6 @@ const DUEL_CLEANUP_POLL_MS = 1000;
 export function useDuels() {
   const { wallet, signAndSendTransaction, checkBalance } = useWallet();
   const {
-    mapSeed,
     startDuelGame,
     switchToSession,
     processPendingCleanups,
@@ -102,22 +99,17 @@ export function useDuels() {
   );
 
   const refreshQueueStatus = useCallback(async () => {
-    if (!wallet.publicKey || mapSeed === null) return;
-    // Duel queue is a non-delegated base chain account
-    const program = createGameplayStateProgram(connection);
-    const queue = await fetchDuelQueue(program, mapSeed);
-    if (!queue) return;
-
-    const ourKey = wallet.publicKey.toBase58();
-    if (queue.playerA?.player.toBase58() === ourKey || queue.playerB?.player.toBase58() === ourKey) {
-      if (isMountedRef.current) {
-        setQueuedSeed(mapSeed);
-        setQueuedSlot(queue.playerA?.player.toBase58() === ourKey ? 1 : 2);
-        // Do not override 'error' phase — user must explicitly retry after a failed start
-        setPhase((current) => (current === 'error' ? current : 'queued'));
-      }
+    if (!wallet.publicKey) return;
+    const nonces = await fetchSessionNonces();
+    const [duelSessionPda] = deriveDuelSessionPda(wallet.publicKey, nonces.duel);
+    const baseProgram = createGameplayStateProgram(connection);
+    const entry = await fetchDuelEntry(baseProgram, duelSessionPda);
+    if (entry && isMountedRef.current) {
+      setQueuedSeed(null);
+      setQueuedSlot(null);
+      setPhase((current) => (current === 'error' ? current : 'queued'));
     }
-  }, [wallet.publicKey, mapSeed, connection]);
+  }, [wallet.publicKey, connection, fetchSessionNonces]);
 
   useEffect(() => {
     void refreshQueueStatus();
@@ -173,7 +165,7 @@ export function useDuels() {
     setError(null);
     console.log('[useDuels] enterCurrentSessionDuel:start', {
       wallet: wallet.publicKey.toBase58(),
-      mapSeed: mapSeed?.toString() ?? null,
+      mapSeed: null,
     });
 
     try {
@@ -245,11 +237,11 @@ export function useDuels() {
         } else if (startResult.duelQueued) {
           // Successfully queued via startDuelGame (enter_duel ran before delegation)
           console.log('[useDuels] enterCurrentSessionDuel:queued_via_startDuelGame', {
-            seed: startResult.duelQueued.seed.toString(),
-            slot: startResult.duelQueued.slot,
+            seed: null,
+            slot: null,
           });
-          setQueuedSeed(startResult.duelQueued.seed);
-          setQueuedSlot(startResult.duelQueued.slot);
+          setQueuedSeed(null);
+          setQueuedSlot(null);
           setPhase('queued');
           return true;
         }
@@ -281,7 +273,8 @@ export function useDuels() {
           setPhase('error');
           return false;
         }
-        setQueuedSeed(existingEntry.seed);
+        setQueuedSeed(null);
+        setQueuedSlot(null);
         setPhase('queued');
         return true;
       }
@@ -343,8 +336,8 @@ export function useDuels() {
       if (!switchResult.success) {
         console.warn('[useDuels] enterCurrentSessionDuel:post_queue_switch_failed', switchResult.error);
       }
-      setQueuedSeed(events.queued.seed);
-      setQueuedSlot(events.queued.slot);
+      setQueuedSeed(null);
+      setQueuedSlot(null);
       setPhase('queued');
       return true;
     } catch (err) {
@@ -359,7 +352,6 @@ export function useDuels() {
     }
   }, [
     wallet.publicKey,
-    mapSeed,
     startDuelGame,
     switchToDuelSessionOrTolerateDelegation,
     checkBalance,
@@ -455,7 +447,6 @@ export function useDuels() {
           signature: m.sigInfo.signature,
           slot: m.sigInfo.slot ?? 0,
           playedAtUnix: m.sigInfo.blockTime ?? null,
-          seed: m.resolved.seed,
           opponentWallet: m.opponentWallet,
           opponentProfileName: m.opponentWallet
             ? profileNameMap.get(m.opponentWallet) ?? 'Opponent'

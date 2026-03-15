@@ -106,7 +106,6 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
     stopAutoCommit,
     hasActiveSession,
     session,
-    mapSeed,
     gameplayState,
     getSessionSignerKeypair,
   } = useSession();
@@ -307,7 +306,7 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
         | undefined;
 
       const tryFinalizeDuelAndBuildReplay = async () => {
-        if (!wallet.publicKey || !session || !gameplayState || mapSeed === null) return;
+        if (!wallet.publicKey || !session || !gameplayState) return;
 
         // Undelegate session from ER before sending finalize_duel_run to base chain.
         // Without this, game_state is still owned by the delegation program and the
@@ -521,7 +520,6 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
     wallet.publicKey,
     session,
     gameplayState,
-    mapSeed,
     connection,
     signAndSendTransaction,
     getSessionSignerKeypair,

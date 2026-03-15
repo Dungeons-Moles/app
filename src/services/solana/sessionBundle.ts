@@ -28,6 +28,7 @@ import {
   deriveMapVrfStatePda,
   derivePoiVrfStatePda,
   deriveGameplayVrfStatePda,
+  deriveSessionDiscoveryPda,
   deriveDuelSessionPda,
   DEFAULT_SESSION_SIGNER_FUNDING,
 } from './constants';
@@ -47,6 +48,7 @@ export interface SessionBundleResult {
   poisPda: PublicKey;
   inventoryPda: PublicKey;
   generatedMapPda: PublicKey;
+  sessionDiscoveryPda: PublicKey;
 }
 
 export interface SessionPrograms {
@@ -87,6 +89,7 @@ export async function createSessionBundle(
   const [poisPda] = deriveMapPoisPda(sessionPda);
   const [inventoryPda] = deriveInventoryPda(sessionPda);
   const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
+  const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
   const [mapConfigPda] = deriveMapConfigPda();
 
   const startSessionIx = await programs.sessionManager.methods
@@ -103,6 +106,7 @@ export async function createSessionBundle(
       mapEnemies: enemiesPda,
       mapPois: poisPda,
       inventory: inventoryPda,
+      sessionDiscovery: sessionDiscoveryPda,
       mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
       gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
       poiSystemProgram: SOLANA_CONFIG.programs.poiSystem,
@@ -127,6 +131,7 @@ export async function createSessionBundle(
     poisPda,
     inventoryPda,
     generatedMapPda,
+    sessionDiscoveryPda,
   };
 }
 
@@ -163,10 +168,11 @@ export async function endSession(
   const [mapEnemiesPda] = deriveMapEnemiesPda(sessionPda);
   const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
   const [mapPoisPda] = deriveMapPoisPda(sessionPda);
+  const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
 
   const endSessionIx = await program.methods
     .endSession(campaignLevel)
-    .accounts({
+    .accountsPartial({
       gameSession: sessionPda,
       gameState: gameStatePda,
       mapEnemies: mapEnemiesPda,
@@ -177,12 +183,14 @@ export async function endSession(
       sessionSigner: sessionSignerPubkey,
       sessionManagerAuthority: deriveSessionManagerAuthorityPda()[0],
       inventory: inventoryPda,
+      sessionDiscovery: sessionDiscoveryPda,
+      gauntletEchoes: null,
       playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
       gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
       playerProfileProgram: SOLANA_CONFIG.programs.playerProfile,
       mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
       poiSystemProgram: SOLANA_CONFIG.programs.poiSystem,
-    })
+    } as any)
     .instruction();
 
   const transaction = new Transaction();
@@ -220,6 +228,7 @@ export async function abandonSession(
   const [mapEnemiesPda] = deriveMapEnemiesPda(sessionPda);
   const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
   const [mapPoisPda] = deriveMapPoisPda(sessionPda);
+  const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
 
   const transaction = new Transaction();
 
@@ -269,6 +278,8 @@ export async function abandonSession(
       player: playerPubkey,
       sessionSigner: sessionSignerPubkey,
       inventory: inventoryPda,
+      sessionDiscovery: sessionDiscoveryPda,
+      gauntletEchoes: null,
       mapVrfState: mapVrfInfo ? mapVrfStatePda : null,
       poiVrfState: poiVrfInfo ? poiVrfStatePda : null,
       gameplayVrfState: gameplayVrfInfo ? gameplayVrfStatePda : null,

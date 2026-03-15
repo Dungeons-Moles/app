@@ -12,6 +12,7 @@ import type { Position, POIId } from '../engine/types';
 export enum TileType {
   Floor = 'FLOOR', // Walkable corridor
   Wall = 'WALL', // Impassable environment (black + rock emoji)
+  Unknown = 'UNKNOWN', // Undiscovered tile with private layout
 }
 
 // ============================================================================
@@ -31,6 +32,7 @@ export enum FogState {
 export const TILE_MOVE_COST: Record<TileType, number> = {
   [TileType.Floor]: 1,
   [TileType.Wall]: Infinity,
+  [TileType.Unknown]: 1,
 };
 
 // ============================================================================

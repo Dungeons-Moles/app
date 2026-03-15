@@ -45,6 +45,46 @@ export interface GeneratedMapData {
 }
 
 // ============================================================================
+// SessionDiscovery Types
+// ============================================================================
+
+export interface DiscoveredPoiData {
+  poiType: number;
+  x: number;
+  y: number;
+  used: boolean;
+}
+
+export interface DiscoveredEnemyData {
+  archetypeId: number;
+  tier: number;
+  x: number;
+  y: number;
+  defeated: number;
+  mapEnemiesIndex: number;
+}
+
+export interface SessionDiscoveryData {
+  session: PublicKey;
+  discoveredTiles: number[];
+  revealedTileTypes: number[];
+  spawnX: number;
+  spawnY: number;
+  moleDenX: number;
+  moleDenY: number;
+  mapWidth: number;
+  mapHeight: number;
+  discoveredPoiCount: number;
+  discoveredPois: DiscoveredPoiData[];
+  bump: number;
+  discoveredEnemyCount: number;
+  discoveredEnemies: DiscoveredEnemyData[];
+  currentBossId: number[];
+  currentEchoPresent: number;
+  currentEchoData: number[];
+}
+
+// ============================================================================
 // Fetch Function
 // ============================================================================
 
@@ -71,6 +111,33 @@ export async function fetchGeneratedMap(
     return account ?? null;
   } catch (error) {
     console.error('Failed to fetch generated map:', error);
+    return null;
+  }
+}
+
+/**
+ * Fetches the SessionDiscovery account for a session.
+ *
+ * @param program - Anchor program instance for map_generator
+ * @param sessionDiscoveryPda - SessionDiscovery PDA address
+ * @returns SessionDiscoveryData or null if not found
+ */
+export async function fetchSessionDiscovery(
+  program: Program,
+  sessionDiscoveryPda: PublicKey
+): Promise<SessionDiscoveryData | null> {
+  try {
+    const account = await (
+      program.account as {
+        sessionDiscovery: {
+          fetchNullable: (address: PublicKey) => Promise<SessionDiscoveryData | null>;
+        };
+      }
+    ).sessionDiscovery.fetchNullable(sessionDiscoveryPda);
+
+    return account ?? null;
+  } catch (error) {
+    console.error('Failed to fetch session discovery:', error);
     return null;
   }
 }

@@ -38,6 +38,10 @@ import type { CombatEnemyInfo } from '@/services/solana/eventParser';
 import { parseGauntletCombatVisualEvent } from '@/services/solana/gauntlet';
 import type { GauntletCombatVisualEvent } from '@/services/solana/gauntlet';
 import { sendSessionSignerTransaction, confirmErTransaction } from '@/services/solana/sessionSigner';
+import { fetchSessionDiscovery } from '@/services/solana/mapGeneratorClient';
+import type { SessionDiscoveryData } from '@/services/solana/mapGeneratorClient';
+import { deriveSessionDiscoveryPda } from '@/services/solana/constants';
+import { createMapGeneratorProgram } from '@/services/solana/programs';
 import { parseWithRetry } from '@/utils/retry';
 
 // ============================================================================
@@ -81,6 +85,8 @@ export interface UseGameplayStateReturn {
     preBossPlayerHp?: number;
     /** Gauntlet echo combat visual (from inline resolution in move_player) */
     gauntletCombatVisual?: GauntletCombatVisualEvent | null;
+    /** Updated SessionDiscovery data (tiles, enemies, POIs) after the move */
+    discovery?: SessionDiscoveryData | null;
   }>;
   /** Modify a player stat */
   updateStat: (
@@ -295,6 +301,7 @@ export function useGameplayState(): UseGameplayStateReturn {
       bossResolvedInline?: boolean;
       preBossPlayerHp?: number;
       gauntletCombatVisual?: GauntletCombatVisualEvent | null;
+      discovery?: SessionDiscoveryData | null;
     }> => {
       console.log(
         '[useGameplayState] move() called — program:',
@@ -375,7 +382,6 @@ export function useGameplayState(): UseGameplayStateReturn {
           'move',
           { maxAttempts: 1, delayMs: 0, quiet: true }
         );
-
         const [, confirmedState, combatResult] = await Promise.all([
           confirmPromise,
           statePromise,
@@ -383,6 +389,14 @@ export function useGameplayState(): UseGameplayStateReturn {
         ]);
         const t2 = Date.now();
         console.log(`[perf] confirm+fetch+parse (parallel): ${t2 - t1}ms | total so far: ${t2 - t0}ms`);
+
+        // Fetch SessionDiscovery AFTER confirmation to avoid stale data
+        // (e.g., defeated enemies still appearing from pre-TX state)
+        const [sdPda] = deriveSessionDiscoveryPda(sessionPda);
+        const discoveryData = await fetchSessionDiscovery(
+          createMapGeneratorProgram(moveConnection),
+          sdPda
+        ).catch(() => null);
 
         // Debug: Log fetched HP to track sync issues
         console.log('[useGameplayState] move() fetched state:', {
@@ -497,6 +511,7 @@ export function useGameplayState(): UseGameplayStateReturn {
           bossResolvedInline,
           preBossPlayerHp,
           gauntletCombatVisual,
+          discovery: discoveryData,
         };
       } catch (err) {
         console.error('[useGameplayState] Failed to move player:', err);

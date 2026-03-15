@@ -31,6 +31,7 @@ const BUFFER_TILES = 2;
 const TILE_COLORS = {
   [TileType.Floor]: '#795040', // Brown corridor (fallback)
   [TileType.Wall]: '#000000', // Black environment (fallback)
+  [TileType.Unknown]: '#111111', // Hidden/private tiles
 } as const;
 
 const FOG_COLOR_HIDDEN = 'transparent'; // Fully transparent to show parchment background
@@ -164,7 +165,7 @@ const TileRect = memo(function TileRect({
   const screenY = y * TILE_SIZE * zoom + offsetY;
   const tileSize = TILE_SIZE * zoom;
 
-  if (fog === FogState.Hidden) {
+  if (fog === FogState.Hidden || type === TileType.Unknown) {
     return (
       <Rect x={screenX} y={screenY} width={tileSize} height={tileSize} color={FOG_COLOR_HIDDEN} />
     );

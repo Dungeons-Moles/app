@@ -48,6 +48,8 @@ export interface PoiTransactionContext {
   poiVrfStatePda?: PublicKey;
   /** Optional GameplayVrfState PDA for VRF-backed boss selection in skip_to_day CPI. */
   gameplayVrfStatePda?: PublicKey;
+  /** Optional SessionDiscovery PDA for discovery-aware POI interactions. */
+  sessionDiscoveryPda?: PublicKey;
 }
 
 /** Builds CU limit instruction and sends a POI transaction via session signer. */
@@ -124,6 +126,7 @@ export async function interactRest(ctx: PoiTransactionContext, poiIndex: number)
     gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
     playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
     gameplayVrfState: vrfState,
+    gauntletEchoes: null,
     player: ctx.sessionSignerKeypair.publicKey,
   };
 
@@ -304,12 +307,13 @@ export async function interactSurveyBeacon(
   const [generatedMapPda] = deriveGeneratedMapPda(ctx.sessionPda);
   const transaction = await ctx.program.methods
     .interactSurveyBeacon(poiIndex)
-    .accounts({
+    .accountsPartial({
       mapPois: ctx.mapPoisPda,
       gameState: ctx.gameStatePda,
       generatedMap: generatedMapPda,
       session: ctx.sessionPda,
       mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
+      sessionDiscovery: ctx.sessionDiscoveryPda ?? undefined,
       player: ctx.sessionSignerKeypair.publicKey,
     })
     .transaction();
@@ -355,12 +359,13 @@ export async function interactSeismicScanner(
   const [generatedMapPda] = deriveGeneratedMapPda(ctx.sessionPda);
   const transaction = await ctx.program.methods
     .interactSeismicScanner(poiIndex, poiType)
-    .accounts({
+    .accountsPartial({
       mapPois: ctx.mapPoisPda,
       gameState: ctx.gameStatePda,
       generatedMap: generatedMapPda,
       session: ctx.sessionPda,
       mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
+      sessionDiscovery: ctx.sessionDiscoveryPda ?? undefined,
       player: ctx.sessionSignerKeypair.publicKey,
     })
     .transaction();
@@ -385,7 +390,7 @@ export async function fastTravel(
 
   const transaction = await ctx.program.methods
     .fastTravel(fromPoiIndex, toPoiIndex)
-    .accounts({
+    .accountsPartial({
       mapPois: ctx.mapPoisPda,
       gameState: ctx.gameStatePda,
       poiAuthority: poiAuthorityPda,
@@ -393,6 +398,7 @@ export async function fastTravel(
       generatedMap: generatedMapPda,
       session: ctx.sessionPda,
       mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
+      sessionDiscovery: ctx.sessionDiscoveryPda ?? undefined,
       player: ctx.sessionSignerKeypair.publicKey,
     })
     .transaction();

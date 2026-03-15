@@ -409,14 +409,11 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
           if (returnedSeed !== null) {
             seed = Number(returnedSeed % BigInt(2147483647));
             console.log('[CampaignSelect] Using on-chain seed:', seed);
-          } else if (level.seed !== null) {
-            seed = Number(level.seed % BigInt(2147483647));
-            console.log('[CampaignSelect] Using level seed:', seed);
           } else {
-            // No seed available yet — the on-chain state fetch below will provide it.
-            // Use 0 as placeholder; fetchFullSessionState reads the real seed from chain.
+            // Private sessions do not expose the map seed to the client.
+            // Use a placeholder until on-chain session restore fills runtime state.
             seed = 0;
-            console.log('[CampaignSelect] Seed not yet available, will fetch from chain');
+            console.log('[CampaignSelect] Seed intentionally unavailable in private mode');
           }
         }
 

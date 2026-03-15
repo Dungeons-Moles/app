@@ -35,6 +35,7 @@ import {
   deriveInventoryPda,
   deriveMapEnemiesPda,
   deriveMapPoisPda,
+  deriveSessionDiscoveryPda,
   deriveSessionPdas,
   deriveSessionPda,
   deriveSessionNoncesPda,
@@ -58,10 +59,10 @@ import {
   buildRequestAndFulfillPoiVrfTransaction,
   buildRequestGameplayVrfTransaction,
   buildMapAndSyncTransaction,
+  buildDiscoverSpawnPoisInstruction,
   waitForVrfFulfillment,
 } from '@/services/solana/vrf';
-import { fetchGeneratedMap } from '@/services/solana/mapGeneratorClient';
-import { fetchMapPois } from '@/services/solana/poiSystem';
+import { fetchSessionDiscovery } from '@/services/solana/mapGeneratorClient';
 import {
   queueCleanup,
   getPendingCleanups,
@@ -240,6 +241,7 @@ interface SessionContextType extends SessionState {
     bossResolvedInline?: boolean;
     preBossPlayerHp?: number;
     gauntletCombatVisual?: GauntletCombatVisualEvent | null;
+    discovery?: import('@/services/solana/mapGeneratorClient').SessionDiscoveryData | null;
   }>;
   /** Trigger boss fight on-chain (via session key signer) */
   triggerBoss: () => Promise<{
@@ -669,30 +671,23 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   ]);
 
   const fetchSessionGeneratedSeed = useCallback(
-    async (sessionPda: PublicKey): Promise<bigint | null> => {
-      try {
-        const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
-        // Try base chain first
-        const mapProgram = createMapGeneratorProgram(connection);
-        const generatedMap = await fetchGeneratedMap(mapProgram, generatedMapPda);
-        if (generatedMap?.seed != null) {
-          return generatedMap.seed;
-        }
-        // Account may be delegated to ER — try ER connection
-        const erMapProgram = createMapGeneratorProgram(erConnection);
-        const erGeneratedMap = await fetchGeneratedMap(erMapProgram, generatedMapPda);
-        return erGeneratedMap?.seed ?? null;
-      } catch (err) {
-        console.warn('[SessionContext] Failed to fetch generated map seed:', err);
-        return null;
-      }
+    async (_sessionPda: PublicKey): Promise<bigint | null> => {
+      return null;
     },
-    [connection, erConnection]
+    []
   );
 
   const getSessionDelegationTargets = useCallback(
     (sessionPda: PublicKey, options?: { includeVrf?: boolean }) => {
-      const { gameStatePda, mapEnemiesPda, generatedMapPda, inventoryPda, mapPoisPda, poiVrfStatePda } =
+      const {
+        gameStatePda,
+        mapEnemiesPda,
+        generatedMapPda,
+        inventoryPda,
+        mapPoisPda,
+        poiVrfStatePda,
+        sessionDiscoveryPda,
+      } =
         deriveSessionPdas(sessionPda);
       const targets = [
         {
@@ -724,6 +719,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           label: 'map_pois',
           pda: mapPoisPda,
           expectedOwner: SOLANA_CONFIG.programs.poiSystem,
+        },
+        {
+          label: 'session_discovery',
+          pda: sessionDiscoveryPda,
+          expectedOwner: SOLANA_CONFIG.programs.mapGenerator,
         },
       ];
       if (options?.includeVrf) {
@@ -780,15 +780,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         try {
           const routedConn = await getRoutedErConnectionForAccount(sessionPda);
           const conn = routedConn ?? directErConnection;
-          const poiProgram = createPoiSystemProgram(conn);
           const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
-          const generatedMap = await fetchGeneratedMap(
-            createMapGeneratorProgram(conn),
-            generatedMapPda
-          );
+          const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
           const [mapPoisPda] = deriveMapPoisPda(sessionPda);
-          const mapPois = await fetchMapPois(poiProgram, mapPoisPda);
-          return generatedMap !== null && mapPois !== null;
+          const [generatedMapInfo, sessionDiscoveryInfo, mapPoisInfo] = await Promise.all([
+            conn.getAccountInfo(generatedMapPda, 'processed'),
+            conn.getAccountInfo(sessionDiscoveryPda, 'processed'),
+            conn.getAccountInfo(mapPoisPda, 'processed'),
+          ]);
+          return !!generatedMapInfo && !!sessionDiscoveryInfo && !!mapPoisInfo;
         } catch {
           return false;
         }
@@ -1240,7 +1240,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         const localMapSeed = SOLANA_CONFIG.isLocalValidator
           ? await readMapVrfSeedFromBase(sessionPda)
           : undefined;
-        const mapAndSyncTx = await buildMapAndSyncTransaction(
+        const { mapTx, syncTx } = await buildMapAndSyncTransaction(
           SOLANA_CONFIG.isLocalValidator ? 'seed' : 'vrf',
           erMapGenProgram,
           erGameplayProgram,
@@ -1248,13 +1248,23 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           sessionSignerKeypair.publicKey,
           { campaignLevel: 20, seed: localMapSeed }
         );
-        const mapAndSyncWithBudgetTx = new Transaction().add(
+        const mapWithBudgetTx = new Transaction().add(
           ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }),
-          ...mapAndSyncTx.instructions
+          ...mapTx.instructions
         );
         await sendErInitTransactionWithRetry(
-          'resumeGame:map_and_sync',
-          mapAndSyncWithBudgetTx,
+          'resumeGame:fill_map',
+          mapWithBudgetTx,
+          sessionSignerKeypair,
+          sessionPda
+        );
+        const syncWithBudgetTx = new Transaction().add(
+          ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+          ...syncTx.instructions
+        );
+        await sendErInitTransactionWithRetry(
+          'resumeGame:sync_map_enemies',
+          syncWithBudgetTx,
           sessionSignerKeypair,
           sessionPda
         );
@@ -1280,6 +1290,24 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           sessionSignerKeypair,
           sessionPda
         );
+
+        // Discover POIs near spawn so they appear immediately
+        const discoverPoisIx = await buildDiscoverSpawnPoisInstruction(
+          erPoiSystemProgram,
+          sessionPda,
+          sessionSignerKeypair.publicKey,
+          6 // SPAWN_VISION_RADIUS
+        );
+        const discoverPoisTx = new Transaction().add(
+          ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+          discoverPoisIx
+        );
+        await sendErInitTransactionWithRetry(
+          'resumeGame:discover_spawn_pois',
+          discoverPoisTx,
+          sessionSignerKeypair,
+          sessionPda
+        );
       };
 
       // Quick check — oracle may have responded since the last attempt
@@ -1296,9 +1324,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         // skip rebuild — calling generate_map_with_vrf on a Consumed VRF state
         // would fail with VrfNotFulfilled (error 6011).
         const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
-        const erMapProgram = createMapGeneratorProgram(directErConnection);
-        const existingMap = await fetchGeneratedMap(erMapProgram, generatedMapPda);
-        if (existingMap?.seed != null) {
+        const existingMap = await directErConnection.getAccountInfo(generatedMapPda, 'processed');
+        if (existingMap) {
           console.log('[SessionContext] retryErVrfForSession: map already exists, skipping rebuild');
           return { success: true };
         }
@@ -1815,9 +1842,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       // Check if session already exists on-chain before trying to create a new one.
       if (currentSessionInfo) {
         console.log('[SessionContext] Session already exists, signaling resume...');
-        // Just fetch map seed and ensure sessionSigner is ready
-        const seed = await mapGenerator.getMapSeed(campaignLevel);
-        setMapSeed(seed);
+        setMapSeed(null);
         const resumedSessionPda = currentNonceSessionPda;
         sessionManager.setActiveOnChainLevel(onChainLevel);
         sessionManager.setActiveSessionPda(resumedSessionPda);
@@ -1873,7 +1898,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         return {
           success: true,
           isResumed: true,
-          mapSeed: seed,
+          mapSeed: null,
           sessionPda: resumedSessionPda.toBase58(),
         };
       }
@@ -2437,9 +2462,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
 
       // Step 7d: Generate map on ER with deterministic seed and sync enemies to MapEnemies.
-      // PvE campaign uses a fixed seed from map_config (no VRF needed).
-      // This is the single map generation in the new flow — base chain only allocated
-      // an empty GeneratedMap account; actual maze generation happens here on ER.
+      // Campaign seeds are public/deterministic, but the frontend does not build the map.
+      // It only passes the seed through so ER programs remain the source of truth.
       console.log('[SessionContext] startGame:map_and_sync (ER)');
       try {
         const levelSeed = (await mapGenerator.getMapSeed(campaignLevel)) ?? BigInt(onChainLevel);
@@ -2451,7 +2475,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         const [gameStatePda] = deriveGameStatePda(sessionPda);
         const campaignAct = Math.max(1, Math.min(4, Math.floor((onChainLevel - 1) / 10) + 1));
         const campaignWeek = 1;
-        const mapAndSyncTx = await buildMapAndSyncTransaction(
+        const { mapTx, syncTx } = await buildMapAndSyncTransaction(
           'seed',
           erMapGenProgram,
           erGameplayProgram,
@@ -2459,13 +2483,23 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           newSessionSignerKeypair.publicKey,
           { campaignLevel: onChainLevel, seed: levelSeed }
         );
-        const mapAndSyncWithBudgetTx = new Transaction().add(
+        const mapWithBudgetTx = new Transaction().add(
           ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }),
-          ...mapAndSyncTx.instructions
+          ...mapTx.instructions
         );
         await sendErInitTransactionWithRetry(
-          'startGame:map_and_sync',
-          mapAndSyncWithBudgetTx,
+          'startGame:fill_map',
+          mapWithBudgetTx,
+          newSessionSignerKeypair,
+          sessionPda
+        );
+        const syncWithBudgetTx = new Transaction().add(
+          ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+          ...syncTx.instructions
+        );
+        await sendErInitTransactionWithRetry(
+          'startGame:sync_map_enemies',
+          syncWithBudgetTx,
           newSessionSignerKeypair,
           sessionPda
         );
@@ -2490,6 +2524,24 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           newSessionSignerKeypair,
           sessionPda
         );
+
+        // Discover POIs near spawn so they appear immediately
+        const discoverPoisIx = await buildDiscoverSpawnPoisInstruction(
+          erPoiSystemProgram,
+          sessionPda,
+          newSessionSignerKeypair.publicKey,
+          6 // SPAWN_VISION_RADIUS
+        );
+        const discoverPoisTx = new Transaction().add(
+          ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+          discoverPoisIx
+        );
+        await sendErInitTransactionWithRetry(
+          'startGame:discover_spawn_pois',
+          discoverPoisTx,
+          newSessionSignerKeypair,
+          sessionPda
+        );
         console.log('[SessionContext] startGame:map_and_sync_complete (ER)');
       } catch (mapErr) {
         logTxDebugError('startGame:map_and_sync', mapErr);
@@ -2503,10 +2555,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       // Note: start_session now atomically creates GameState, MapEnemies,
       // PlayerInventory, MapPois, and GeneratedMap via CPI, so no separate
       // initialization step is needed.
-      console.log('[SessionContext] Step 8: Fetching map seed...');
-      const seed = await mapGenerator.getMapSeed(campaignLevel);
-      console.log('[SessionContext] Map seed:', seed?.toString());
-      setMapSeed(seed);
+      console.log('[SessionContext] Step 8: Privacy-safe session bootstrap');
+      setMapSeed(null);
 
       // Step 9: Set GameState PDA so the gameplay hook can start working
       console.log('[SessionContext] Step 9: Setting GameState PDA...');
@@ -2517,7 +2567,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
 
       console.log('[SessionContext] startGame complete');
-      return { success: true, mapSeed: seed, sessionPda: sessionPda.toBase58(), resolvedErConnection: resolvedConn ?? undefined };
+      return { success: true, mapSeed: null, sessionPda: sessionPda.toBase58(), resolvedErConnection: resolvedConn ?? undefined };
     },
     [
       sessionSigner,
@@ -2645,7 +2695,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     let duelQueued: { seed: bigint; slot: number } | undefined;
     const events = await parseDuelEvents(connection, gameplayProgram, signature);
     if (events.queued) {
-      duelQueued = { seed: events.queued.seed, slot: events.queued.slot };
+      duelQueued = undefined;
     }
 
     // Pre-init VRF states on base chain so they can be delegated.
@@ -2808,7 +2858,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         const localMapSeed = SOLANA_CONFIG.isLocalValidator
           ? await readMapVrfSeedFromBase(sessionPda)
           : undefined;
-        const mapAndSyncTx = await buildMapAndSyncTransaction(
+        const { mapTx, syncTx } = await buildMapAndSyncTransaction(
           SOLANA_CONFIG.isLocalValidator ? 'seed' : 'vrf',
           erMapGenProgram,
           erGameplayProgram,
@@ -2816,13 +2866,23 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           newSessionSignerKeypair.publicKey,
           { campaignLevel: 20, seed: localMapSeed }
         );
-        const mapAndSyncWithBudgetTx = new Transaction().add(
+        const mapWithBudgetTx = new Transaction().add(
           ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }),
-          ...mapAndSyncTx.instructions
+          ...mapTx.instructions
         );
         await sendErInitTransactionWithRetry(
-          'startDuelGame:map_and_sync',
-          mapAndSyncWithBudgetTx,
+          'startDuelGame:fill_map',
+          mapWithBudgetTx,
+          newSessionSignerKeypair,
+          sessionPda
+        );
+        const syncWithBudgetTx = new Transaction().add(
+          ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+          ...syncTx.instructions
+        );
+        await sendErInitTransactionWithRetry(
+          'startDuelGame:sync_map_enemies',
+          syncWithBudgetTx,
           newSessionSignerKeypair,
           sessionPda
         );
@@ -2853,6 +2913,24 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           newSessionSignerKeypair,
           sessionPda
         );
+
+        // Discover POIs near spawn so they appear immediately
+        const discoverPoisIx = await buildDiscoverSpawnPoisInstruction(
+          erPoiSystemProgram,
+          sessionPda,
+          newSessionSignerKeypair.publicKey,
+          6 // SPAWN_VISION_RADIUS
+        );
+        const discoverPoisTx = new Transaction().add(
+          ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+          discoverPoisIx
+        );
+        await sendErInitTransactionWithRetry(
+          'startDuelGame:discover_spawn_pois',
+          discoverPoisTx,
+          newSessionSignerKeypair,
+          sessionPda
+        );
         console.log('[SessionContext] startDuelGame:all_vrf_ready (ER)');
     } catch (vrfError) {
       logTxDebugError('startDuelGame:map_gen', vrfError);
@@ -2869,10 +2947,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     console.log('[SessionContext] startDuelGame:generated_seed', {
       generatedSeed: generatedSeed?.toString() ?? null,
     });
-    setMapSeed(generatedSeed);
+    setMapSeed(null);
     gameplayState.setGameStatePda(gameStatePda);
 
-    return { success: true, mapSeed: generatedSeed, duelQueued };
+    return { success: true, mapSeed: null, duelQueued };
   }, [
     sessionSigner,
     connection,
@@ -2955,6 +3033,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       gameplayProgram,
       wallet.publicKey,
       gameStatePda,
+      sessionPda,
       epochIdBN,
       epochIdBigInt
     );
@@ -3163,7 +3242,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         const localMapSeed = SOLANA_CONFIG.isLocalValidator
           ? await readMapVrfSeedFromBase(sessionPda)
           : undefined;
-        const mapAndSyncTx = await buildMapAndSyncTransaction(
+        const { mapTx, syncTx } = await buildMapAndSyncTransaction(
           SOLANA_CONFIG.isLocalValidator ? 'seed' : 'vrf',
           erMapGenProgram,
           erGameplayProgram,
@@ -3171,13 +3250,23 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           newSessionSignerKeypair.publicKey,
           { campaignLevel: 20, seed: localMapSeed }
         );
-        const mapAndSyncWithBudgetTx = new Transaction().add(
+        const mapWithBudgetTx = new Transaction().add(
           ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }),
-          ...mapAndSyncTx.instructions
+          ...mapTx.instructions
         );
         await sendErInitTransactionWithRetry(
-          'startGauntletGame:map_and_sync',
-          mapAndSyncWithBudgetTx,
+          'startGauntletGame:fill_map',
+          mapWithBudgetTx,
+          newSessionSignerKeypair,
+          sessionPda
+        );
+        const syncWithBudgetTx = new Transaction().add(
+          ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+          ...syncTx.instructions
+        );
+        await sendErInitTransactionWithRetry(
+          'startGauntletGame:sync_map_enemies',
+          syncWithBudgetTx,
           newSessionSignerKeypair,
           sessionPda
         );
@@ -3208,6 +3297,24 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           newSessionSignerKeypair,
           sessionPda
         );
+
+        // Discover POIs near spawn so they appear immediately
+        const discoverPoisIx = await buildDiscoverSpawnPoisInstruction(
+          erPoiSystemProgram,
+          sessionPda,
+          newSessionSignerKeypair.publicKey,
+          6 // SPAWN_VISION_RADIUS
+        );
+        const discoverPoisTx = new Transaction().add(
+          ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+          discoverPoisIx
+        );
+        await sendErInitTransactionWithRetry(
+          'startGauntletGame:discover_spawn_pois',
+          discoverPoisTx,
+          newSessionSignerKeypair,
+          sessionPda
+        );
         console.log('[SessionContext] startGauntletGame:all_vrf_ready (ER)');
     } catch (vrfError) {
       logTxDebugError('startGauntletGame:map_gen', vrfError);
@@ -3224,10 +3331,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     console.log('[SessionContext] startGauntletGame:generated_seed', {
       generatedSeed: generatedSeed?.toString() ?? null,
     });
-    setMapSeed(generatedSeed);
+    setMapSeed(null);
     gameplayState.setGameStatePda(gameStatePda);
 
-    return { success: true, mapSeed: generatedSeed };
+    return { success: true, mapSeed: null };
   }, [
     sessionSigner,
     connection,
@@ -3734,40 +3841,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     await sessionManager.fetchSession();
   }, [sessionManager]);
 
-  const getMapSeedForLevel = useCallback(
-    async (level: number): Promise<bigint | null> => {
-      return mapGenerator.getMapSeed(level);
-    },
-    [mapGenerator]
-  );
+  const getMapSeedForLevel = useCallback(async (_level: number): Promise<bigint | null> => null, []);
 
-  /**
-   * Verifies that a given seed matches the on-chain seed for a specific level.
-   * This is used to ensure map generation integrity before starting a game.
-   *
-   * @param level - Campaign level to verify
-   * @param seed - Seed to verify against on-chain value
-   * @returns true if seed matches, false otherwise
-   */
-  const verifySeed = useCallback(
-    async (level: number, seed: bigint): Promise<boolean> => {
-      try {
-        const onChainSeed = await mapGenerator.getMapSeed(level);
-        if (onChainSeed === null) {
-          // If we can't fetch the on-chain seed, allow the game to proceed
-          // This enables offline play with cached seeds
-          console.warn('Could not fetch on-chain seed for verification, allowing game to proceed');
-          return true;
-        }
-        return onChainSeed === seed;
-      } catch (error) {
-        console.error('Seed verification failed:', error);
-        // Allow game to proceed on error to enable offline play
-        return true;
-      }
-    },
-    [mapGenerator]
-  );
+  const verifySeed = useCallback(async (_level: number, _seed: bigint): Promise<boolean> => true, []);
 
   /**
    * Stop the auto-commit timer.
@@ -4296,7 +4372,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         const [gameStatePda] = deriveGameStatePda(sessionPda);
         const campaignAct = Math.max(1, Math.min(4, Math.floor((onChainLevel - 1) / 10) + 1));
         const campaignWeek = 1;
-        const mapAndSyncTx = await buildMapAndSyncTransaction(
+        const { mapTx, syncTx } = await buildMapAndSyncTransaction(
           'seed',
           erMapGenProgram,
           erGameplayProgram,
@@ -4304,13 +4380,23 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           newSessionSignerKeypair.publicKey,
           { campaignLevel: onChainLevel, seed: levelSeed }
         );
-        const mapAndSyncWithBudgetTx = new Transaction().add(
+        const mapWithBudgetTx = new Transaction().add(
           ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }),
-          ...mapAndSyncTx.instructions
+          ...mapTx.instructions
         );
         await sendErInitTransactionWithRetry(
-          'overrideAndStartGame:map_and_sync',
-          mapAndSyncWithBudgetTx,
+          'overrideAndStartGame:fill_map',
+          mapWithBudgetTx,
+          newSessionSignerKeypair,
+          sessionPda
+        );
+        const syncWithBudgetTx = new Transaction().add(
+          ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+          ...syncTx.instructions
+        );
+        await sendErInitTransactionWithRetry(
+          'overrideAndStartGame:sync_map_enemies',
+          syncWithBudgetTx,
           newSessionSignerKeypair,
           sessionPda
         );
@@ -4335,6 +4421,24 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           newSessionSignerKeypair,
           sessionPda
         );
+
+        // Discover POIs near spawn so they appear immediately
+        const discoverPoisIx = await buildDiscoverSpawnPoisInstruction(
+          erPoiSystemProgram,
+          sessionPda,
+          newSessionSignerKeypair.publicKey,
+          6 // SPAWN_VISION_RADIUS
+        );
+        const discoverPoisTx = new Transaction().add(
+          ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+          discoverPoisIx
+        );
+        await sendErInitTransactionWithRetry(
+          'overrideAndStartGame:discover_spawn_pois',
+          discoverPoisTx,
+          newSessionSignerKeypair,
+          sessionPda
+        );
       } catch (mapErr) {
         logTxDebugError('overrideAndStartGame:map_and_sync', mapErr);
         return {
@@ -4344,9 +4448,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
 
       const generatedSeed = await fetchSessionGeneratedSeed(sessionPda);
-      setMapSeed(generatedSeed);
+      setMapSeed(null);
       gameplayState.setGameStatePda(getGameStatePda(sessionPda)[0]);
-      return { success: true, mapSeed: generatedSeed, sessionPda: sessionPda.toBase58() };
+      return { success: true, mapSeed: null, sessionPda: sessionPda.toBase58() };
     },
     [
       wallet.publicKey,
@@ -4449,7 +4553,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       let duelQueued: { seed: bigint; slot: number } | undefined;
       const events = await parseDuelEvents(connection, gameplayProgram, signature);
       if (events.queued) {
-        duelQueued = { seed: events.queued.seed, slot: events.queued.slot };
+        duelQueued = undefined;
       }
 
       let duelVrfTypesToDelegate: ('poi' | 'map' | 'gameplay')[] = ['poi', 'map', 'gameplay'];
@@ -4590,7 +4694,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           const localMapSeed = SOLANA_CONFIG.isLocalValidator
             ? await readMapVrfSeedFromBase(sessionPda)
             : undefined;
-          const mapAndSyncTx = await buildMapAndSyncTransaction(
+          const { mapTx, syncTx } = await buildMapAndSyncTransaction(
             SOLANA_CONFIG.isLocalValidator ? 'seed' : 'vrf',
             erMapGenProgram,
             erGameplayProgram,
@@ -4598,13 +4702,23 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             newSessionSignerKeypair.publicKey,
             { campaignLevel: 20, seed: localMapSeed }
           );
-          const mapAndSyncWithBudgetTx = new Transaction().add(
+          const mapWithBudgetTx = new Transaction().add(
             ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }),
-            ...mapAndSyncTx.instructions
+            ...mapTx.instructions
           );
           await sendErInitTransactionWithRetry(
-            'overrideAndStartDuelGame:map_and_sync',
-            mapAndSyncWithBudgetTx,
+            'overrideAndStartDuelGame:fill_map',
+            mapWithBudgetTx,
+            newSessionSignerKeypair,
+            sessionPda
+          );
+          const syncWithBudgetTx = new Transaction().add(
+            ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+            ...syncTx.instructions
+          );
+          await sendErInitTransactionWithRetry(
+            'overrideAndStartDuelGame:sync_map_enemies',
+            syncWithBudgetTx,
             newSessionSignerKeypair,
             sessionPda
           );
@@ -4634,6 +4748,24 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             newSessionSignerKeypair,
             sessionPda
           );
+
+          // Discover POIs near spawn so they appear immediately
+          const discoverPoisIx = await buildDiscoverSpawnPoisInstruction(
+            erPoiSystemProgram,
+            sessionPda,
+            newSessionSignerKeypair.publicKey,
+            6 // SPAWN_VISION_RADIUS
+          );
+          const discoverPoisTx = new Transaction().add(
+            ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+            discoverPoisIx
+          );
+          await sendErInitTransactionWithRetry(
+            'overrideAndStartDuelGame:discover_spawn_pois',
+            discoverPoisTx,
+            newSessionSignerKeypair,
+            sessionPda
+          );
       } catch (vrfError) {
         return {
           success: false,
@@ -4645,9 +4777,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
 
       const generatedSeed = await fetchSessionGeneratedSeed(sessionPda);
-      setMapSeed(generatedSeed);
+      setMapSeed(null);
       gameplayState.setGameStatePda(gameStatePda);
-      return { success: true, mapSeed: generatedSeed, duelQueued };
+      return { success: true, mapSeed: null, duelQueued };
     },
     [
       wallet.publicKey,
@@ -4719,6 +4851,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         gameplayProgram,
         wallet.publicKey,
         gameStatePda,
+        sessionPda,
         epochIdBN,
         epochIdBigInt
       );
@@ -4892,7 +5025,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           const localMapSeed = SOLANA_CONFIG.isLocalValidator
             ? await readMapVrfSeedFromBase(sessionPda)
             : undefined;
-          const mapAndSyncTx = await buildMapAndSyncTransaction(
+          const { mapTx, syncTx } = await buildMapAndSyncTransaction(
             SOLANA_CONFIG.isLocalValidator ? 'seed' : 'vrf',
             erMapGenProgram,
             erGameplayProgram,
@@ -4900,13 +5033,23 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             newSessionSignerKeypair.publicKey,
             { campaignLevel: 20, seed: localMapSeed }
           );
-          const mapAndSyncWithBudgetTx = new Transaction().add(
+          const mapWithBudgetTx = new Transaction().add(
             ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }),
-            ...mapAndSyncTx.instructions
+            ...mapTx.instructions
           );
           await sendErInitTransactionWithRetry(
-            'overrideAndStartGauntletGame:map_and_sync',
-            mapAndSyncWithBudgetTx,
+            'overrideAndStartGauntletGame:fill_map',
+            mapWithBudgetTx,
+            newSessionSignerKeypair,
+            sessionPda
+          );
+          const syncWithBudgetTx = new Transaction().add(
+            ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+            ...syncTx.instructions
+          );
+          await sendErInitTransactionWithRetry(
+            'overrideAndStartGauntletGame:sync_map_enemies',
+            syncWithBudgetTx,
             newSessionSignerKeypair,
             sessionPda
           );
@@ -4936,6 +5079,24 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             newSessionSignerKeypair,
             sessionPda
           );
+
+          // Discover POIs near spawn so they appear immediately
+          const discoverPoisIx = await buildDiscoverSpawnPoisInstruction(
+            erPoiSystemProgram,
+            sessionPda,
+            newSessionSignerKeypair.publicKey,
+            6 // SPAWN_VISION_RADIUS
+          );
+          const discoverPoisTx = new Transaction().add(
+            ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+            discoverPoisIx
+          );
+          await sendErInitTransactionWithRetry(
+            'overrideAndStartGauntletGame:discover_spawn_pois',
+            discoverPoisTx,
+            newSessionSignerKeypair,
+            sessionPda
+          );
       } catch (vrfError) {
         return {
           success: false,
@@ -4947,9 +5108,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
 
       const generatedSeed = await fetchSessionGeneratedSeed(sessionPda);
-      setMapSeed(generatedSeed);
+      setMapSeed(null);
       gameplayState.setGameStatePda(gameStatePda);
-      return { success: true, mapSeed: generatedSeed };
+      return { success: true, mapSeed: null };
     },
     [
       wallet.publicKey,
@@ -6304,9 +6465,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     () => ({
       gameplayState: gameplayState.gameState,
       gameplaySyncStatus: gameplayState.syncStatus,
-      isLoading: sessionManager.isLoading || mapGenerator.isLoading || gameplayState.isLoading,
-      error:
-        sessionManager.error || mapGenerator.error || gameplayState.error || sessionSigner.error,
+      isLoading: sessionManager.isLoading || gameplayState.isLoading,
+      error: sessionManager.error || gameplayState.error || sessionSigner.error,
       movePlayer,
       triggerBoss,
       modifyPlayerStat,
@@ -6320,8 +6480,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       gameplayState.refresh,
       sessionManager.isLoading,
       sessionManager.error,
-      mapGenerator.isLoading,
-      mapGenerator.error,
       sessionSigner.error,
       movePlayer,
       triggerBoss,

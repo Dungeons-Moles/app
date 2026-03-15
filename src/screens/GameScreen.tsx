@@ -7,7 +7,7 @@ import { View, Text, StyleSheet, Animated, Pressable, Platform } from 'react-nat
 import { Image } from 'expo-image';
 import { CachedImageBackground } from '../components/common/CachedImageBackground';
 import { InstantImageBackground } from '../components/common/InstantImageBackground';
-import { Connection, PublicKey } from '@solana/web3.js';
+import { Connection, PublicKey, Transaction, ComputeBudgetProgram } from '@solana/web3.js';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useIsFocused } from '@react-navigation/native';
 import { RootStackParamList, CombatParams } from '../navigation';
@@ -22,7 +22,12 @@ import { useSolanaConnection } from '../contexts/SolanaConnectionContext';
 import { RunMode } from '../services/solana/types/gameplay_state';
 import { POI_TYPES } from '../services/solana/types/poi_system';
 import { convertItemInstanceToGear, convertItemInstanceToTool } from '../services/solana/pitDraft';
-import { fetchFullSessionState } from '../services/solana/sessionRestore';
+import {
+  fetchFullSessionState,
+  unpackDiscoveryTiles,
+  convertDiscoveredEnemies,
+  convertDiscoveredPois,
+} from '../services/solana/sessionRestore';
 import { useNightMovement } from '../hooks/useNightMovement';
 import { usePoiInteraction } from '../hooks/usePoiInteraction';
 import { DPadControls } from '../components/game/DPadControls';
@@ -53,8 +58,6 @@ import { TileType, MapEnemy, MapPOI } from '../game/map/types';
 import { getDiscoveredWaypoints } from '../game/entities/pois';
 import {
   canAffordCostAcrossPhases,
-  selectDuelWeekBossForSeed,
-  selectWeekBossForLevel,
 } from '../game/time/progression';
 import { Typography } from '../theme/typography';
 import { useEquippedSkinImage } from '../hooks/useEquippedSkinImage';
@@ -75,9 +78,12 @@ import type {
 import { calculateItemStats } from '@/game/entities/items';
 import { normalizeCombatPlayerStats, type CombatPlayerStats } from './combat-player-stats';
 import type { GauntletCombatVisualEvent } from '@/services/solana/gauntlet';
-import { fetchGauntletEchoFromGameState } from '@/services/solana/gauntlet';
-import { createGameplayStateProgram } from '@/services/solana/programs';
-import { getGameStatePda } from '@/services/solana/gameplayState';
+import { fetchGauntletEchoFromDiscovery } from '@/services/solana/gauntlet';
+import { fetchSessionDiscovery } from '@/services/solana/mapGeneratorClient';
+import { createGameplayStateProgram, createMapGeneratorProgram } from '@/services/solana/programs';
+import { deriveSessionDiscoveryPda } from '@/services/solana/constants';
+import { buildRefreshDiscoveredEnemiesInstruction } from '@/services/solana/vrf';
+import { sendSessionSignerTransaction } from '@/services/solana/sessionSigner';
 import {
   ENEMY_DEFINITIONS,
   calculateGoldReward,
@@ -304,7 +310,7 @@ function createGauntletCombatParams(
  */
 async function buildFallbackGauntletCombatParams(
   connection: Connection,
-  gameStatePda: PublicKey,
+  sessionPda: PublicKey,
   week: number,
   confirmedState: { hp: number; gold: number; isDead: boolean },
   playerStats: PlayerStats,
@@ -314,8 +320,12 @@ async function buildFallbackGauntletCombatParams(
   seed: number
 ): Promise<CombatParams | null> {
   try {
-    const program = createGameplayStateProgram(connection);
-    const echoPreview = await fetchGauntletEchoFromGameState(program, gameStatePda, week);
+    const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
+    const discovery = await fetchSessionDiscovery(
+      createMapGeneratorProgram(connection),
+      sessionDiscoveryPda
+    );
+    const echoPreview = fetchGauntletEchoFromDiscovery(discovery);
     if (!echoPreview) {
       console.warn('[GameScreen] buildFallbackGauntletCombatParams: no echo data for week', week);
       return null;
@@ -456,15 +466,13 @@ export function GameScreen({ navigation }: GameScreenProps) {
     gameplayState: onChainState,
     gameplaySyncStatus,
     sessionPda,
-    mapSeed,
     currentLevel,
     forceAbandonCurrentSession,
+    getSessionSignerKeypair,
   } = useSession();
   const { wallet } = useWallet();
   const { gameplayReadConnection } = useSolanaConnection();
   const {
-    refreshMapEntities,
-    pois: onChainPois,
     gameState: gameplayContextState,
   } = useGameplayStateContext();
   const variant = useScreenVariant();
@@ -753,10 +761,9 @@ export function GameScreen({ navigation }: GameScreenProps) {
         isTriggeringBossRef.current = true;
         // Try to show echo combat with on-chain data before falling back to DeathScreen
         if (sessionPda && state) {
-          const [gsPda] = getGameStatePda(sessionPda);
           buildFallbackGauntletCombatParams(
             gameplayReadConnection,
-            gsPda,
+            sessionPda,
             onChainState.week,
             { hp: onChainState.hp, gold: onChainState.gold, isDead: true },
             {
@@ -791,11 +798,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
     }
 
     const resolvedWeekBoss: BossId | null =
-      onChainState.runMode === RunMode.Duel &&
-      (state.time.week === 1 || state.time.week === 2) &&
-      mapSeed != null
-        ? selectDuelWeekBossForSeed(mapSeed, state.time.week)
-        : (state.time.weekBoss ?? null);
+      state.time.weekBoss ?? null;
     if (!resolvedWeekBoss) {
       console.warn('[GameScreen] bossFightReady but no weekBoss defined');
       return;
@@ -839,13 +842,8 @@ export function GameScreen({ navigation }: GameScreenProps) {
         // resolvedWeekBoss points at the NEXT week's boss. Compute the
         // correct (just-fought) boss from the previous week instead.
         const playerWon = !onChainState.isDead;
-        const foughtWeek = playerWon ? ((state.time.week - 1) as 1 | 2 | 3) : state.time.week;
-        const foughtBoss: BossId | null =
-          onChainState.runMode === RunMode.Duel &&
-          (foughtWeek === 1 || foughtWeek === 2) &&
-          mapSeed != null
-            ? selectDuelWeekBossForSeed(mapSeed, foughtWeek)
-            : selectWeekBossForLevel(onChainState.campaignLevel, foughtWeek);
+        const foughtWeek = state.time.week as 1 | 2 | 3;
+        const foughtBoss: BossId | null = state.time.weekBoss ?? null;
 
         if (!foughtBoss) {
           console.warn(
@@ -998,7 +996,6 @@ export function GameScreen({ navigation }: GameScreenProps) {
     state,
     mode,
     isMovePending,
-    mapSeed,
     triggerBoss,
     navigation,
     sessionPda,
@@ -1071,35 +1068,9 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
   const discoveredWaypoints = useMemo(() => {
     if (!state?.map) return [];
-
-    // Primary source: local map discovery (same source used by rail waypoint POI options).
-    const merged = new Map<string, MapPOI>();
-    for (const poi of getDiscoveredWaypoints(state.map)) {
-      merged.set(`${poi.position.x},${poi.position.y}`, poi);
-    }
-
-    // Secondary source: on-chain consumed waypoints. Merge (don't replace), so we never
-    // lose locally discovered/visible destinations during fast-travel selection.
-    const onChainWaypoints: MapPOI[] = onChainPois
-      .map((poi, index) => ({ poi, index }))
-      .filter(({ poi }) => poi.poiType === 8 && poi.consumed)
-      .map(({ poi, index }) => ({
-        id: `chain-waypoint-${index}-${poi.x}-${poi.y}`,
-        definitionId: 'L8',
-        position: { x: poi.x, y: poi.y },
-        visited: true,
-        discovered: true,
-      }));
-
-    for (const poi of onChainWaypoints) {
-      const key = `${poi.position.x},${poi.position.y}`;
-      if (!merged.has(key)) {
-        merged.set(key, poi);
-      }
-    }
-
-    return Array.from(merged.values());
-  }, [state?.map, onChainPois]);
+    // Source waypoints from the local game reducer map (populated by SYNC_DISCOVERY).
+    return getDiscoveredWaypoints(state.map);
+  }, [state?.map]);
 
   const isFastTravelActive = isFastTravelMode && fastTravelDestinations.length > 0;
   const hasOtherDiscoveredWaypoints = useMemo(() => {
@@ -1353,10 +1324,19 @@ export function GameScreen({ navigation }: GameScreenProps) {
             // Update local state from confirmed on-chain state
             dispatch({ type: 'SYNC_MOVE', confirmedState: result.newState });
 
-            // Refresh map entities (enemies/POIs) to get updated positions
-            // During night phases, enemies move toward the player after each player move
-            // Use previousState phase: on the last night move, newState has already
-            // transitioned to the next day, but enemies moved during the night phase
+            // Sync newly revealed tiles, enemies, and POIs from SessionDiscovery
+            // (fetched in parallel with the move confirmation — no extra latency)
+            if (result.discovery) {
+              const discovery = result.discovery;
+              const tiles = unpackDiscoveryTiles(discovery, discovery.mapWidth, discovery.mapHeight);
+              const enemies = convertDiscoveredEnemies(discovery.discoveredEnemies, discovery.discoveredEnemyCount);
+              const pois = convertDiscoveredPois(discovery.discoveredPois, discovery.discoveredPoiCount);
+              dispatch({ type: 'SYNC_DISCOVERY', tiles, enemies, pois });
+            }
+
+            // During night phases, enemies move toward the player after each move.
+            // Send refresh_discovered_enemies TX to sync MapEnemies → SessionDiscovery,
+            // then fetch updated SessionDiscovery and dispatch SYNC_DISCOVERY.
             const wasNightPhase = result.previousState
               ? result.previousState.phase === 1 || // Night1
                 result.previousState.phase === 3 || // Night2
@@ -1364,20 +1344,35 @@ export function GameScreen({ navigation }: GameScreenProps) {
               : false;
 
             if (sessionPda && wasNightPhase) {
-              refreshMapEntities(sessionPda)
-                .then((data) => {
-                  if (data?.enemies && data.enemies.length > 0) {
-                    debugLog(
-                      '[GameScreen] Syncing enemy positions, count:',
-                      data.enemies.length
-                    );
-                    // Sync enemy positions from on-chain to local game state
-                    dispatch({ type: 'SYNC_ENEMY_POSITIONS', enemies: data.enemies });
+              (async () => {
+                try {
+                  const keypair = getSessionSignerKeypair();
+                  const conn = gameplayReadConnection;
+                  if (!keypair || !conn) return;
+                  const gpProg = createGameplayStateProgram(conn);
+                  const refreshIx = await buildRefreshDiscoveredEnemiesInstruction(
+                    gpProg, sessionPda, keypair.publicKey
+                  );
+                  const tx = new Transaction().add(
+                    ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+                    refreshIx
+                  );
+                  await sendSessionSignerTransaction(conn, tx, keypair);
+
+                  const [sdPda] = deriveSessionDiscoveryPda(sessionPda);
+                  const sd = await fetchSessionDiscovery(
+                    createMapGeneratorProgram(conn), sdPda
+                  ).catch(() => null);
+                  if (sd) {
+                    const sdTiles = unpackDiscoveryTiles(sd, sd.mapWidth, sd.mapHeight);
+                    const sdEnemies = convertDiscoveredEnemies(sd.discoveredEnemies, sd.discoveredEnemyCount);
+                    const sdPois = convertDiscoveredPois(sd.discoveredPois, sd.discoveredPoiCount);
+                    dispatch({ type: 'SYNC_DISCOVERY', tiles: sdTiles, enemies: sdEnemies, pois: sdPois });
                   }
-                })
-                .catch((err) =>
-                  console.warn('[GameScreen] Failed to refresh map entities after move:', err)
-                );
+                } catch (err) {
+                  console.warn('[GameScreen] Failed to refresh discovered enemies after night move:', err);
+                }
+              })();
             }
 
             // Build preCombatPlayerStats from a mix of on-chain and local state:
@@ -1448,10 +1443,9 @@ export function GameScreen({ navigation }: GameScreenProps) {
                   '[GameScreen] Gauntlet visual parsing failed, attempting fallback from on-chain echo data'
                 );
                 if (sessionPda) {
-                  const [gsPda] = getGameStatePda(sessionPda);
                   const fallback = await buildFallbackGauntletCombatParams(
                     gameplayReadConnection,
-                    gsPda,
+                    sessionPda,
                     currentWeek,
                     { hp: result.newState.hp, gold: result.newState.gold, isDead: !!result.isDead },
                     preCombatPlayerStats,
@@ -1480,11 +1474,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
               // Campaign / Duel: boss fight auto-resolved inline in move_player
               const resolvedWeekBoss: BossId | null =
-                result.newState.runMode === RunMode.Duel &&
-                (currentWeek === 1 || currentWeek === 2) &&
-                mapSeed != null
-                  ? selectDuelWeekBossForSeed(mapSeed, currentWeek)
-                  : (state.time.weekBoss ?? null);
+                state.time.weekBoss ?? null;
 
               if (resolvedWeekBoss) {
                 // Prevent the boss useEffect from also triggering
@@ -1693,8 +1683,8 @@ export function GameScreen({ navigation }: GameScreenProps) {
       isMovePending,
       navigation,
       sessionPda,
-      mapSeed,
-      refreshMapEntities,
+      getSessionSignerKeypair,
+      gameplayReadConnection,
       isFastTravelActive,
       fastTravelDestinations.length,
     ]
@@ -1729,7 +1719,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
       clearTimeout(skipMismatchTimeoutRef.current);
     }
 
-    poiInteraction.executeFastTravel(state.player.position, dest).then((result) => {
+    poiInteraction.executeFastTravel(state.player.position, dest).then(async (result) => {
       if (result.success && result.newState) {
         dispatch({
           type: 'SYNC_MOVE',
@@ -1737,10 +1727,22 @@ export function GameScreen({ navigation }: GameScreenProps) {
         });
         // Prevent auto-trigger from reopening the waypoint modal at the destination
         lastAutoTriggeredPosRef.current = { x: dest.x, y: dest.y };
-        if (sessionPda) {
-          refreshMapEntities(sessionPda).catch((err) =>
-            console.warn('[GameScreen] Failed to refresh after fast travel:', err)
-          );
+        // Fetch SessionDiscovery to sync discovery state after fast travel
+        if (sessionPda && gameplayReadConnection) {
+          try {
+            const [sdPda] = deriveSessionDiscoveryPda(sessionPda);
+            const sd = await fetchSessionDiscovery(
+              createMapGeneratorProgram(gameplayReadConnection), sdPda
+            ).catch(() => null);
+            if (sd) {
+              const sdTiles = unpackDiscoveryTiles(sd, sd.mapWidth, sd.mapHeight);
+              const sdEnemies = convertDiscoveredEnemies(sd.discoveredEnemies, sd.discoveredEnemyCount);
+              const sdPois = convertDiscoveredPois(sd.discoveredPois, sd.discoveredPoiCount);
+              dispatch({ type: 'SYNC_DISCOVERY', tiles: sdTiles, enemies: sdEnemies, pois: sdPois });
+            }
+          } catch (err) {
+            console.warn('[GameScreen] Failed to refresh discovery after fast travel:', err);
+          }
         }
       } else if (result.error) {
         showWallBreakFeedback(result.error);
@@ -1762,7 +1764,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
     poiInteraction,
     dispatch,
     sessionPda,
-    refreshMapEntities,
+    gameplayReadConnection,
     showWallBreakFeedback,
   ]);
 
@@ -2286,12 +2288,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
               // state.time.week is pre-POI (closure captures pre-dispatch value),
               // which is the correct fought week for both wins and losses.
               const foughtWeek = state.time.week as 1 | 2 | 3;
-              const foughtBoss: BossId | null =
-                onChainState?.runMode === RunMode.Duel &&
-                (foughtWeek === 1 || foughtWeek === 2) &&
-                mapSeed != null
-                  ? selectDuelWeekBossForSeed(mapSeed, foughtWeek)
-                  : selectWeekBossForLevel(onChainState?.campaignLevel ?? 0, foughtWeek);
+              const foughtBoss: BossId | null = state.time.weekBoss ?? null;
 
               if (foughtBoss) {
                 debugLog('[GameScreen] Boss resolved during POI, navigating to CombatScreen:', {

@@ -30,6 +30,7 @@ const SINGLE_USE_POIS = ['L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L12', 'L13'];
 const TILE_COLORS = {
   [TileType.Floor]: '#795040', // Brown corridor
   [TileType.Wall]: '#000000', // Black environment
+  [TileType.Unknown]: '#111111', // Hidden/private tiles
 } as const;
 
 const FOG_COLOR_HIDDEN = 'transparent';
@@ -153,7 +154,7 @@ const TileView = memo(function TileView({
     tileImage = rockImages[variation % rockImages.length];
   }
 
-  if (fog === FogState.Hidden) {
+  if (fog === FogState.Hidden || type === TileType.Unknown) {
     return (
       <View
         style={[

@@ -3,10 +3,9 @@ import { PublicKey } from '@solana/web3.js';
 import { useWallet } from '@/contexts/WalletContext';
 import { useSession } from '@/contexts/SessionContext';
 import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
-import { createGameplayStateProgram, createMapGeneratorProgram } from '@/services/solana/programs';
+import { createGameplayStateProgram } from '@/services/solana/programs';
 import {
   deriveGauntletSessionPda,
-  deriveGeneratedMapPda,
   deriveGameStatePda,
 } from '@/services/solana/constants';
 import { SOLANA_CONFIG } from '@/services/solana/config';
@@ -16,12 +15,9 @@ import {
   deriveGauntletConfigPda,
   getGauntletErrorMessage,
 } from '@/services/solana/gauntlet';
-import { fetchGeneratedMap } from '@/services/solana/mapGeneratorClient';
 import { fetchGameState } from '@/services/solana/gameplayState';
 
 export type GauntletPhase = 'confirm' | 'queued' | 'error';
-const MAX_SEED_FETCH_RETRIES = 8;
-const SEED_FETCH_RETRY_DELAY_MS = 250;
 const MAX_SWITCH_RETRIES = 3;
 const SWITCH_RETRY_DELAY_MS = 250;
 const GAUNTLET_CLEANUP_WAIT_TIMEOUT_MS = 45000;
@@ -150,25 +146,10 @@ export function useGauntlet() {
   }, [wallet.publicKey, connection, signAndSendTransaction, confirmWithTimeout]);
 
   const resolveSessionGeneratedSeed = useCallback(
-    async (sessionPda: PublicKey): Promise<bigint | null> => {
-      const mapProgram = createMapGeneratorProgram(connection);
-      for (let attempt = 1; attempt <= MAX_SEED_FETCH_RETRIES; attempt++) {
-        try {
-          const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
-          const generatedMap = await fetchGeneratedMap(mapProgram, generatedMapPda);
-          if (generatedMap?.seed !== undefined && generatedMap.seed !== null) {
-            return generatedMap.seed;
-          }
-        } catch {
-          // Retry while generated map account settles after start tx.
-        }
-        if (attempt < MAX_SEED_FETCH_RETRIES) {
-          await new Promise((resolve) => setTimeout(resolve, SEED_FETCH_RETRY_DELAY_MS));
-        }
-      }
+    async (_sessionPda: PublicKey): Promise<bigint | null> => {
       return null;
     },
-    [connection]
+    []
   );
 
   const validateResumedGauntletState = useCallback(

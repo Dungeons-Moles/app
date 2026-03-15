@@ -62,7 +62,7 @@ import { Direction, DIRECTION_DELTA } from '../input/types';
 import { isValidTransition } from './state-machine';
 import { initializeGame, consumeMoves } from './state-factory';
 import { GAME_CONSTANTS } from './constants';
-import { TileType, TILE_MOVE_COST, type MapEnemy, FogState } from '../map/types';
+import { TileType, TILE_MOVE_COST, type MapEnemy, type MapPOI, FogState } from '../map/types';
 import { updateFogOfWar } from '../map/fog-of-war';
 import { calculateDigCost, canDig, executeDig } from '../map/dig';
 import {
@@ -82,7 +82,6 @@ import {
   advanceTimePhase,
   shouldTriggerBoss,
   advanceToNextWeek,
-  selectDuelWeekBossForSeed,
   selectWeekBossForLevel,
   canAffordCostAcrossPhases,
   consumeMoveAcrossPhases,
@@ -165,6 +164,13 @@ export type GameAction =
   | {
       type: 'SYNC_ENEMY_POSITIONS';
       enemies: Array<{ x: number; y: number; archetypeId: number; tier: number }>;
+    }
+  // Merge updated SessionDiscovery data (tiles, enemies, POIs) after moves
+  | {
+      type: 'SYNC_DISCOVERY';
+      tiles: import('../map/types').TileType[][];
+      enemies: import('../map/types').MapEnemy[];
+      pois: import('../map/types').MapPOI[];
     }
   // Guest mode fast travel: teleport player to a waypoint position
   | { type: 'FAST_TRAVEL_TO'; destination: Position }
@@ -325,6 +331,9 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     // Enemy position sync (for night movement from on-chain)
     case 'SYNC_ENEMY_POSITIONS':
       return handleSyncEnemyPositions(state, action.enemies);
+
+    case 'SYNC_DISCOVERY':
+      return handleSyncDiscovery(state, action.tiles, action.enemies, action.pois);
 
     // Guest mode fast travel
     case 'FAST_TRAVEL_TO':
@@ -1763,8 +1772,8 @@ function handleSyncMove(state: GameState, confirmedState: OnChainGameState): Gam
     syncedWeek !== state.time.week
       ? confirmedState.runMode === 2
         ? state.time.weekBoss
-        : confirmedState.runMode === 1 && (syncedWeek === 1 || syncedWeek === 2)
-        ? selectDuelWeekBossForSeed(state.seed, syncedWeek)
+        : confirmedState.runMode === 1
+        ? state.time.weekBoss
         : selectWeekBossForLevel(confirmedState.campaignLevel, syncedWeek)
       : state.time.weekBoss;
   const updatedTime: TimeState = {
@@ -1923,8 +1932,8 @@ function handleSyncCombatResult(
     syncedWeek2 !== state.time.week
       ? confirmedState.runMode === 2
         ? state.time.weekBoss
-        : confirmedState.runMode === 1 && (syncedWeek2 === 1 || syncedWeek2 === 2)
-        ? selectDuelWeekBossForSeed(state.seed, syncedWeek2)
+        : confirmedState.runMode === 1
+        ? state.time.weekBoss
         : selectWeekBossForLevel(confirmedState.campaignLevel, syncedWeek2)
       : state.time.weekBoss;
   const updatedTime: TimeState = {
@@ -2280,6 +2289,64 @@ function handleRevealPoiLocations(state: GameState, poiDefId: string): GameState
  * - Only update positions for enemies that moved
  * - Keep all local enemies that don't have an on-chain match (conservative approach)
  */
+
+/**
+ * Handles SYNC_DISCOVERY action.
+ * Merges updated SessionDiscovery tile types, enemies, and POIs into the local map.
+ * Called after each on-chain move to update newly revealed tiles from Unknown to Floor/Wall.
+ */
+function handleSyncDiscovery(
+  state: GameState,
+  tiles: TileType[][],
+  enemies: MapEnemy[],
+  pois: MapPOI[]
+): GameState {
+  const newTiles = state.map.tiles.map((row, y) =>
+    row.map((current, x) => {
+      if (current === TileType.Unknown && tiles[y]?.[x] !== TileType.Unknown) {
+        return tiles[y][x];
+      }
+      return current;
+    })
+  );
+
+  // Merge enemies: replace local set with discovery set (authoritative source).
+  // Enemies in SessionDiscovery are already filtered to discovered tiles on-chain,
+  // so they are always discovered.
+  const mergedEnemies = enemies.map((e) => ({
+    ...e,
+    id: `enemy-${e.position.x}-${e.position.y}`,
+    discovered: true,
+  }));
+
+  // Merge POIs: replace local set with discovery set, but keep Mole Den (L1)
+  // which is stored in GeneratedMap, not in MapPois/SessionDiscovery.
+  // Preserve local visited state since SessionDiscovery.used may not be synced yet.
+  const localVisited = new Set(
+    state.map.pois.filter((p) => p.visited).map((p) => `${p.position.x},${p.position.y}`)
+  );
+  const moleDen = state.map.pois.find((p) => p.definitionId === 'L1');
+  const mergedPois = pois.map((p, i) => ({
+    ...p,
+    id: `poi-${i}`,
+    discovered: true,
+    visited: p.visited || localVisited.has(`${p.position.x},${p.position.y}`),
+  }));
+  if (moleDen && !mergedPois.some((p) => p.definitionId === 'L1')) {
+    mergedPois.unshift({ ...moleDen, id: 'poi-mole-den' });
+  }
+
+  return {
+    ...state,
+    map: {
+      ...state.map,
+      tiles: newTiles,
+      enemies: mergedEnemies,
+      pois: mergedPois,
+    },
+  };
+}
+
 function handleSyncEnemyPositions(
   state: GameState,
   onChainEnemies: Array<{ x: number; y: number; archetypeId: number; tier: number }>

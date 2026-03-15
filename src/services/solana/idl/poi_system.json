@@ -772,12 +772,172 @@
         {
           "name": "player",
           "docs": [
-            "Player discovering"
+            "Player discovering (also acts as session_signer for CPI)"
           ],
           "signer": true
+        },
+        {
+          "name": "session_discovery",
+          "docs": [
+            "Optional SessionDiscovery for recording waypoints (mut for CPI write)"
+          ],
+          "writable": true,
+          "optional": true
+        },
+        {
+          "name": "session",
+          "docs": [
+            "Session PDA for SessionDiscovery CPI"
+          ],
+          "optional": true
+        },
+        {
+          "name": "map_generator_program",
+          "docs": [
+            "Map generator program for record_discovered_poi CPI"
+          ],
+          "optional": true
         }
       ],
       "args": [
+        {
+          "name": "visibility_radius",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "discover_visible_waypoints_authorized",
+      "docs": [
+        "Discover visible Rail Waypoints (L8) using gameplay-state's PDA authority.",
+        "",
+        "This exists for movement flows where gameplay-state has already computed the",
+        "resulting position/phase, but those updates have not yet been serialized back",
+        "into the GameState account data visible to downstream CPIs."
+      ],
+      "discriminator": [
+        232,
+        33,
+        147,
+        156,
+        50,
+        122,
+        30,
+        143
+      ],
+      "accounts": [
+        {
+          "name": "map_pois",
+          "writable": true
+        },
+        {
+          "name": "gameplay_authority",
+          "docs": [
+            "Gameplay authority PDA from gameplay-state for internal waypoint discovery."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  112,
+                  108,
+                  97,
+                  121,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                165,
+                105,
+                51,
+                195,
+                50,
+                68,
+                93,
+                183,
+                82,
+                141,
+                122,
+                107,
+                195,
+                1,
+                86,
+                30,
+                104,
+                80,
+                170,
+                150,
+                122,
+                133,
+                234,
+                98,
+                181,
+                121,
+                227,
+                35,
+                228,
+                168,
+                136,
+                54
+              ]
+            }
+          }
+        },
+        {
+          "name": "session_discovery",
+          "docs": [
+            "Optional SessionDiscovery for recording waypoints"
+          ],
+          "optional": true
+        },
+        {
+          "name": "session",
+          "docs": [
+            "Session PDA for SessionDiscovery CPI"
+          ],
+          "optional": true
+        },
+        {
+          "name": "session_signer",
+          "docs": [
+            "Session signer for record_discovered_poi CPI"
+          ],
+          "optional": true
+        },
+        {
+          "name": "map_generator_program",
+          "docs": [
+            "Map generator program for record_discovered_poi CPI"
+          ],
+          "optional": true
+        }
+      ],
+      "args": [
+        {
+          "name": "center_x",
+          "type": "u8"
+        },
+        {
+          "name": "center_y",
+          "type": "u8"
+        },
         {
           "name": "visibility_radius",
           "type": "u8"
@@ -1144,6 +1304,14 @@
         {
           "name": "map_generator_program",
           "address": "GCy5GqvnJN99rgGtV6fMn8NtL9E7RoAyHDGzQv8me65j"
+        },
+        {
+          "name": "session_discovery",
+          "docs": [
+            "Optional SessionDiscovery for fog-of-war dual-write."
+          ],
+          "writable": true,
+          "optional": true
         },
         {
           "name": "player",
@@ -2864,6 +3032,14 @@
           "optional": true
         },
         {
+          "name": "gauntlet_echoes",
+          "docs": [
+            "Optional GauntletEchoes for gauntlet echo resolution in skip_to_day CPI."
+          ],
+          "writable": true,
+          "optional": true
+        },
+        {
           "name": "player",
           "docs": [
             "Player initiating the interaction"
@@ -3896,6 +4072,14 @@
           "address": "GCy5GqvnJN99rgGtV6fMn8NtL9E7RoAyHDGzQv8me65j"
         },
         {
+          "name": "session_discovery",
+          "docs": [
+            "Optional SessionDiscovery for fog-of-war dual-write."
+          ],
+          "writable": true,
+          "optional": true
+        },
+        {
           "name": "player",
           "docs": [
             "Player activating"
@@ -4100,6 +4284,14 @@
         {
           "name": "map_generator_program",
           "address": "GCy5GqvnJN99rgGtV6fMn8NtL9E7RoAyHDGzQv8me65j"
+        },
+        {
+          "name": "session_discovery",
+          "docs": [
+            "Optional SessionDiscovery for fog-of-war dual-write."
+          ],
+          "writable": true,
+          "optional": true
         },
         {
           "name": "player",
@@ -4535,6 +4727,104 @@
         {
           "name": "seed",
           "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "refresh_map_pois_for_campaign",
+      "docs": [
+        "Refreshes existing MapPois for a campaign run without exposing the",
+        "campaign seed to the client. The seed is loaded from map-generator's",
+        "on-chain MapConfig using the provided campaign level."
+      ],
+      "discriminator": [
+        111,
+        5,
+        74,
+        96,
+        17,
+        160,
+        90,
+        108
+      ],
+      "accounts": [
+        {
+          "name": "map_pois",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  112,
+                  95,
+                  112,
+                  111,
+                  105,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois.session",
+                "account": "MapPois"
+              }
+            ]
+          }
+        },
+        {
+          "name": "session"
+        },
+        {
+          "name": "generated_map"
+        },
+        {
+          "name": "map_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  112,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "game_state"
+        },
+        {
+          "name": "session_signer",
+          "signer": true,
+          "relations": [
+            "game_state"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "act",
+          "type": "u8"
+        },
+        {
+          "name": "week",
+          "type": "u8"
+        },
+        {
+          "name": "campaign_level",
+          "type": "u8"
         }
       ]
     },
@@ -5226,6 +5516,19 @@
       ]
     },
     {
+      "name": "MapConfig",
+      "discriminator": [
+        186,
+        3,
+        214,
+        68,
+        161,
+        115,
+        92,
+        173
+      ]
+    },
+    {
       "name": "MapPois",
       "discriminator": [
         96,
@@ -5262,6 +5565,19 @@
         13,
         103,
         75
+      ]
+    },
+    {
+      "name": "SessionDiscovery",
+      "discriminator": [
+        145,
+        31,
+        85,
+        67,
+        225,
+        59,
+        109,
+        213
       ]
     }
   ],
@@ -5548,196 +5864,201 @@
     },
     {
       "code": 6001,
+      "name": "InvalidCampaignLevel",
+      "msg": "Campaign level must be 1-40"
+    },
+    {
+      "code": 6002,
       "name": "InvalidPoiType",
       "msg": "POI type must be 1-14"
     },
     {
-      "code": 6002,
+      "code": 6003,
       "name": "PoiNotFound",
       "msg": "No POI at specified position"
     },
     {
-      "code": 6003,
+      "code": 6004,
       "name": "PoiAlreadyUsed",
       "msg": "One-time POI already used"
     },
     {
-      "code": 6004,
+      "code": 6005,
       "name": "NightOnlyPoi",
       "msg": "This POI can only be used at night"
     },
     {
-      "code": 6005,
+      "code": 6006,
       "name": "NoToolEquipped",
       "msg": "Player has no tool equipped"
     },
     {
-      "code": 6006,
+      "code": 6007,
       "name": "OilAlreadyApplied",
       "msg": "Tool oil modification already applied"
     },
     {
-      "code": 6007,
+      "code": 6008,
       "name": "InsufficientGold",
       "msg": "Not enough gold"
     },
     {
-      "code": 6008,
+      "code": 6009,
       "name": "InventoryFull",
       "msg": "No space in inventory"
     },
     {
-      "code": 6009,
+      "code": 6010,
       "name": "ItemsNotIdentical",
       "msg": "Items must be identical for fusion"
     },
     {
-      "code": 6010,
+      "code": 6011,
       "name": "AlreadyMaxTier",
       "msg": "Item is already maximum tier"
     },
     {
-      "code": 6011,
+      "code": 6012,
       "name": "ShopNotActive",
       "msg": "No active shop session"
     },
     {
-      "code": 6012,
+      "code": 6013,
       "name": "OfferAlreadyPurchased",
       "msg": "Offer already purchased"
     },
     {
-      "code": 6013,
+      "code": 6014,
       "name": "DestinationNotDiscovered",
       "msg": "Waypoint destination not discovered"
     },
     {
-      "code": 6014,
+      "code": 6015,
       "name": "NoDestinationsAvailable",
       "msg": "No other discovered waypoints"
     },
     {
-      "code": 6015,
+      "code": 6016,
       "name": "InvalidOfferIndex",
       "msg": "Offer index out of bounds"
     },
     {
-      "code": 6016,
+      "code": 6017,
       "name": "InvalidGearSlot",
       "msg": "Gear slot index out of bounds or empty"
     },
     {
-      "code": 6017,
+      "code": 6018,
       "name": "InvalidPoiIndex",
       "msg": "POI index out of bounds"
     },
     {
-      "code": 6018,
+      "code": 6019,
       "name": "Unauthorized",
       "msg": "Unauthorized: only session owner can interact"
     },
     {
-      "code": 6019,
+      "code": 6020,
       "name": "ArithmeticOverflow",
       "msg": "Arithmetic overflow"
     },
     {
-      "code": 6020,
+      "code": 6021,
       "name": "AlreadyInitialized",
       "msg": "POIs already initialized for this session"
     },
     {
-      "code": 6021,
+      "code": 6022,
       "name": "ShopAlreadyActive",
       "msg": "Shop already active"
     },
     {
-      "code": 6022,
+      "code": 6023,
       "name": "ShopRerollLimitReached",
       "msg": "Shop reroll limit reached for this visit"
     },
     {
-      "code": 6023,
+      "code": 6024,
       "name": "InvalidInteraction",
       "msg": "Invalid interaction for this POI type"
     },
     {
-      "code": 6024,
+      "code": 6025,
       "name": "NoActiveInteraction",
       "msg": "No POI interaction is currently active"
     },
     {
-      "code": 6025,
+      "code": 6026,
       "name": "OfferAlreadyGenerated",
       "msg": "An offer is already active for this interaction; resolve it before regenerating"
     },
     {
-      "code": 6026,
+      "code": 6027,
       "name": "NoItemsAvailable",
       "msg": "No items available for the selected tag and rarity"
     },
     {
-      "code": 6027,
+      "code": 6028,
       "name": "InvalidOfferContext",
       "msg": "Invalid offer context"
     },
     {
-      "code": 6028,
+      "code": 6029,
       "name": "PlayerNotOnPoiTile",
       "msg": "Player is not on the POI tile"
     },
     {
-      "code": 6029,
+      "code": 6030,
       "name": "InvalidSessionOwner",
       "msg": "Session account is not owned by session-manager program"
     },
     {
-      "code": 6030,
+      "code": 6031,
       "name": "InvalidGeneratedMap",
       "msg": "Invalid generated map account"
     },
     {
-      "code": 6031,
+      "code": 6032,
       "name": "InvalidSession",
       "msg": "Invalid game session account"
     },
     {
-      "code": 6032,
+      "code": 6033,
       "name": "InvalidWeek",
       "msg": "Week must be 1-3"
     },
     {
-      "code": 6033,
+      "code": 6034,
       "name": "InvalidBossWeek",
       "msg": "Failed to fetch boss weaknesses"
     },
     {
-      "code": 6034,
+      "code": 6035,
       "name": "InvalidOilSelection",
       "msg": "Selected oil is not in the generated offer"
     },
     {
-      "code": 6035,
+      "code": 6036,
       "name": "ItemNotInInventory",
       "msg": "Item is not currently equipped in inventory"
     },
     {
-      "code": 6036,
+      "code": 6037,
       "name": "InvalidVisionRadius",
       "msg": "Invalid vision radius for current phase/state"
     },
     {
-      "code": 6037,
+      "code": 6038,
       "name": "VrfNotFulfilled",
       "msg": "VRF not fulfilled"
     },
     {
-      "code": 6038,
+      "code": 6039,
       "name": "VrfNotRequested",
       "msg": "VRF not requested"
     },
     {
-      "code": 6039,
+      "code": 6040,
       "name": "VrfRequired",
       "msg": "VRF randomness required for PvP offer generation"
     }
@@ -5830,6 +6151,105 @@
                 8
               ]
             }
+          }
+        ]
+      }
+    },
+    {
+      "name": "DiscoveredEnemy",
+      "docs": [
+        "A discovered enemy entry visible to the player (6 bytes)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "archetype_id",
+            "docs": [
+              "Enemy archetype ID (0-11)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "tier",
+            "docs": [
+              "Enemy tier: 0=T1, 1=T2, 2=T3"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "x",
+            "docs": [
+              "X position on map"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "y",
+            "docs": [
+              "Y position on map"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "defeated",
+            "docs": [
+              "0=alive, 1=defeated"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "map_enemies_index",
+            "docs": [
+              "Index into MapEnemies.enemies[] array"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "DiscoveredPoi",
+      "docs": [
+        "A discovered POI entry visible to the player (5 bytes)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "poi_type",
+            "docs": [
+              "POI definition ID (1-14)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "x",
+            "docs": [
+              "X position on map"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "y",
+            "docs": [
+              "Y position on map"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "used",
+            "docs": [
+              "Whether the POI has been used"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "map_pois_index",
+            "docs": [
+              "Index into MapPois.pois[] array (needed for interaction transactions)"
+            ],
+            "type": "u8"
           }
         ]
       }
@@ -6186,24 +6606,6 @@
             "type": "bool"
           },
           {
-            "name": "gauntlet_echoes",
-            "docs": [
-              "Pre-drawn gauntlet echo opponents (cached at entry, resolved during ER gameplay)."
-            ],
-            "type": {
-              "array": [
-                {
-                  "option": {
-                    "defined": {
-                      "name": "GauntletEchoSnapshot"
-                    }
-                  }
-                },
-                5
-              ]
-            }
-          },
-          {
             "name": "gauntlet_epoch_id",
             "docs": [
               "Epoch ID at gauntlet entry, used for settlement validation."
@@ -6262,88 +6664,6 @@
           {
             "name": "points",
             "type": "u64"
-          }
-        ]
-      }
-    },
-    {
-      "name": "GauntletEchoSnapshot",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "week",
-            "type": "u8"
-          },
-          {
-            "name": "source",
-            "type": {
-              "defined": {
-                "name": "GauntletEchoSource"
-              }
-            }
-          },
-          {
-            "name": "loadout",
-            "type": {
-              "defined": {
-                "name": "GauntletLoadoutSnapshot"
-              }
-            }
-          }
-        ]
-      }
-    },
-    {
-      "name": "GauntletEchoSource",
-      "type": {
-        "kind": "enum",
-        "variants": [
-          {
-            "name": "Bootstrap"
-          },
-          {
-            "name": "Player",
-            "fields": [
-              "pubkey"
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "name": "GauntletLoadoutSnapshot",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "tool",
-            "type": {
-              "option": {
-                "defined": {
-                  "name": "ItemInstance"
-                }
-              }
-            }
-          },
-          {
-            "name": "gear",
-            "type": {
-              "array": [
-                {
-                  "option": {
-                    "defined": {
-                      "name": "ItemInstance"
-                    }
-                  }
-                },
-                12
-              ]
-            }
-          },
-          {
-            "name": "gold_at_battle_start",
-            "type": "u16"
           }
         ]
       }
@@ -6690,6 +7010,50 @@
           },
           {
             "name": "result_tier",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MapConfig",
+      "docs": [
+        "Configuration for map generation, storing seed values for each level."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "admin",
+            "docs": [
+              "Authority that can update seed mappings"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "seeds",
+            "docs": [
+              "Seed values for campaign levels 1-40 (index = level - 1)"
+            ],
+            "type": {
+              "array": [
+                "u64",
+                40
+              ]
+            }
+          },
+          {
+            "name": "version",
+            "docs": [
+              "Config version for migrations"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump seed"
+            ],
             "type": "u8"
           }
         ]
@@ -7414,6 +7778,178 @@
           {
             "name": "poi_type2",
             "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "SessionDiscovery",
+      "docs": [
+        "Player-readable account containing only discovered map data.",
+        "Private ER accounts (GeneratedMap, MapPois, MapEnemies) are unreadable via RPC;",
+        "the client reads this account for fog-of-war rendering.",
+        "",
+        "PDA seeds: [\"session_discovery\", session.key()]"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "session",
+            "docs": [
+              "Session this discovery belongs to"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "discovered_tiles",
+            "docs": [
+              "Bit-packed discovered tiles (1 = discovered)"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                313
+              ]
+            }
+          },
+          {
+            "name": "revealed_tile_types",
+            "docs": [
+              "Bit-packed tile types for discovered tiles (0=floor, 1=wall)"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                313
+              ]
+            }
+          },
+          {
+            "name": "spawn_x",
+            "docs": [
+              "Player spawn X"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "spawn_y",
+            "docs": [
+              "Player spawn Y"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "mole_den_x",
+            "docs": [
+              "Mole den X (objective)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "mole_den_y",
+            "docs": [
+              "Mole den Y"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "map_width",
+            "docs": [
+              "Map width in tiles"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "map_height",
+            "docs": [
+              "Map height in tiles"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "discovered_poi_count",
+            "docs": [
+              "Number of discovered POIs"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "discovered_pois",
+            "docs": [
+              "Discovered POI entries (populated as player discovers them)"
+            ],
+            "type": {
+              "array": [
+                {
+                  "defined": {
+                    "name": "DiscoveredPoi"
+                  }
+                },
+                64
+              ]
+            }
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump seed"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "discovered_enemy_count",
+            "docs": [
+              "Number of enemies in discovered tiles"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "discovered_enemies",
+            "docs": [
+              "Enemies visible to the player (max 48, 6 bytes each)"
+            ],
+            "type": {
+              "array": [
+                {
+                  "defined": {
+                    "name": "DiscoveredEnemy"
+                  }
+                },
+                48
+              ]
+            }
+          },
+          {
+            "name": "current_boss_id",
+            "docs": [
+              "Boss ID for current week only (12-byte boss_system ID)"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                12
+              ]
+            }
+          },
+          {
+            "name": "current_echo_present",
+            "docs": [
+              "0=no echo, 1=echo present"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "current_echo_data",
+            "docs": [
+              "Raw serialized GauntletEchoSnapshot bytes"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                179
+              ]
+            }
           }
         ]
       }
