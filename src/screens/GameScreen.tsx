@@ -1733,13 +1733,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
       clearTimeout(skipMismatchTimeoutRef.current);
     }
 
-    console.log('[GameScreen] handleFastTravelConfirm: fromPos=', currentPos, 'toPos=', dest);
     poiInteraction.executeFastTravel(currentPos, dest).then(async (result) => {
-      console.log('[GameScreen] executeFastTravel result:', {
-        success: result.success,
-        newStatePos: result.newState ? { x: result.newState.positionX, y: result.newState.positionY } : null,
-        error: result.error,
-      });
       if (result.success && result.newState) {
         dispatch({
           type: 'SYNC_MOVE',

@@ -297,79 +297,11 @@ export async function fetchFullSessionState(
       .filter(Boolean),
   });
 
-  // DEBUG: Inspect raw SessionDiscovery data
-  {
-    const dt = sessionDiscoveryData.discoveredTiles;
-    const rt = sessionDiscoveryData.revealedTileTypes;
-    const discoveredBits = dt.reduce((sum: number, b: number) => {
-      let count = 0;
-      for (let i = 0; i < 8; i++) count += (b >> i) & 1;
-      return sum + count;
-    }, 0);
-    const wallBits = rt.reduce((sum: number, b: number) => {
-      let count = 0;
-      for (let i = 0; i < 8; i++) count += (b >> i) & 1;
-      return sum + count;
-    }, 0);
-    console.log('[sessionRestore] DEBUG SessionDiscovery raw:', {
-      mapWidth: sessionDiscoveryData.mapWidth,
-      mapHeight: sessionDiscoveryData.mapHeight,
-      spawnX: sessionDiscoveryData.spawnX,
-      spawnY: sessionDiscoveryData.spawnY,
-      discoveredTilesNonZeroBytes: dt.filter((b: number) => b !== 0).length,
-      discoveredBitCount: discoveredBits,
-      revealedTileTypesNonZeroBytes: rt.filter((b: number) => b !== 0).length,
-      wallBitCount: wallBits,
-      discoveredEnemyCount: sessionDiscoveryData.discoveredEnemyCount,
-      discoveredPoiCount: sessionDiscoveryData.discoveredPoiCount,
-      // First 5 discovered enemies
-      enemies: sessionDiscoveryData.discoveredEnemies.slice(0, 5).map((e: any) => ({
-        archetype: e.archetypeId, x: e.x, y: e.y, defeated: e.defeated, idx: e.mapEnemiesIndex,
-      })),
-      // First 5 discovered POIs
-      pois: sessionDiscoveryData.discoveredPois.slice(0, 5).map((p: any) => ({
-        type: p.poiType, x: p.x, y: p.y, used: p.used,
-      })),
-      // Sample bytes around spawn area
-      discoveredTilesSample: dt.slice(0, 20),
-      revealedTileTypesSample: rt.slice(0, 20),
-    });
-  }
-
   const tiles = unpackDiscoveryTiles(
     sessionDiscoveryData,
     sessionDiscoveryData.mapWidth,
     sessionDiscoveryData.mapHeight
   );
-
-  // DEBUG: Count tile types and sample around player position
-  {
-    let floorCount = 0, wallCount = 0, unknownCount = 0;
-    for (let y = 0; y < sessionDiscoveryData.mapHeight; y++) {
-      for (let x = 0; x < sessionDiscoveryData.mapWidth; x++) {
-        if (tiles[y][x] === TileType.Floor) floorCount++;
-        else if (tiles[y][x] === TileType.Wall) wallCount++;
-        else unknownCount++;
-      }
-    }
-    const px = gameStateData.positionX, py = gameStateData.positionY;
-    const nearby: string[] = [];
-    for (let dy = -3; dy <= 3; dy++) {
-      let row = '';
-      for (let dx = -3; dx <= 3; dx++) {
-        const tx = px + dx, ty = py + dy;
-        if (tx >= 0 && tx < sessionDiscoveryData.mapWidth && ty >= 0 && ty < sessionDiscoveryData.mapHeight) {
-          const t = tiles[ty][tx];
-          row += t === TileType.Floor ? '.' : t === TileType.Wall ? '#' : '?';
-        } else {
-          row += ' ';
-        }
-      }
-      nearby.push(row);
-    }
-    console.log('[sessionRestore] DEBUG tiles:', { floorCount, wallCount, unknownCount });
-    console.log('[sessionRestore] DEBUG tiles near player (' + px + ',' + py + '):\n' + nearby.join('\n'));
-  }
   const enemies = convertDiscoveredEnemies(
     sessionDiscoveryData.discoveredEnemies,
     sessionDiscoveryData.discoveredEnemyCount

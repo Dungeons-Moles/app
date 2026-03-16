@@ -201,22 +201,12 @@ async function validatePoiIndex(
         sessionDiscoveryPda
       );
       if (discovery) {
-        // Find the discovered POI at (x, y) and return its mapPoisIndex
-        const allPois = discovery.discoveredPois.slice(0, discovery.discoveredPoiCount);
-        console.log(
-          `[validatePoiIndex] ${contextLabel}: searching for (${x},${y}) in ${allPois.length} discoveredPois:`,
-          allPois.map((p, i) => `[${i}] type=${p.poiType} pos=(${p.x},${p.y}) idx=${p.mapPoisIndex} used=${p.used}`)
-        );
         for (let i = 0; i < discovery.discoveredPoiCount; i++) {
           const dp = discovery.discoveredPois[i];
           if (dp && dp.x === x && dp.y === y) {
-            console.log(`[validatePoiIndex] ${contextLabel}: found mapPoisIndex=${dp.mapPoisIndex} for (${x},${y})`);
             return { index: dp.mapPoisIndex };
           }
         }
-        console.warn(
-          `[usePoiInteraction] ${contextLabel}: POI at (${x},${y}) not found in SessionDiscovery`
-        );
       }
     } catch (err) {
       console.warn(`[usePoiInteraction] ${contextLabel}: SessionDiscovery fetch failed:`, err);
