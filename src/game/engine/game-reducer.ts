@@ -408,23 +408,6 @@ function handleStartGame(
  * 2. Update fog of war centered on player position
  */
 function handleRestoreGame(restoredState: GameState): GameState {
-  // Debug: Log all POIs on the map
-  const poiCounts: Record<string, number> = {};
-  for (const poi of restoredState.map.pois) {
-    poiCounts[poi.definitionId] = (poiCounts[poi.definitionId] || 0) + 1;
-  }
-  console.log('[RESTORE_GAME] POI Summary:');
-  console.log('  Total POIs:', restoredState.map.pois.length);
-  console.log('  By type:', poiCounts);
-  console.log(
-    '  All POIs:',
-    restoredState.map.pois.map((p) => ({
-      id: p.definitionId,
-      pos: `(${p.position.x},${p.position.y})`,
-      visited: p.visited,
-    }))
-  );
-
   // 1. Refresh player stats to include gear bonuses
   // On-chain stores base stats; gear bonuses need to be recalculated
   const refreshedPlayer = refreshPlayerStats(restoredState.player);
@@ -1698,15 +1681,6 @@ function mapOnChainPhase(phase: number): { timePhase: TimePhase; cycle: 1 | 2 | 
  * This is the on-chain-first equivalent of the old MOVE action for non-guest mode.
  */
 function handleSyncMove(state: GameState, confirmedState: OnChainGameState): GameState {
-  // Debug: Log HP values to track sync issues
-  console.log('[handleSyncMove] HP sync:', {
-    previousBaseHp: state.player.baseStats.hp,
-    previousStatsHp: state.player.stats.hp,
-    onChainHp: confirmedState.hp,
-    previousGold: state.player.stats.gold,
-    onChainGold: confirmedState.gold,
-  });
-
   const { timePhase, cycle } = mapOnChainPhase(confirmedState.phase);
 
   const targetPos: Position = {
@@ -1759,12 +1733,6 @@ function handleSyncMove(state: GameState, confirmedState: OnChainGameState): Gam
   // This prevents local recalculation from drifting when HP is below gear bonus.
   const updatedPlayer = refreshPlayerStats(syncedPlayer);
   updatedPlayer.stats.hp = Math.max(0, Math.min(confirmedState.hp, updatedPlayer.stats.maxHp));
-
-  // Debug: Log final HP after recalculation
-  console.log('[handleSyncMove] HP after refresh:', {
-    finalBaseHp: updatedPlayer.baseStats.hp,
-    finalStatsHp: updatedPlayer.stats.hp,
-  });
 
   // Sync time state from on-chain
   const syncedWeek = confirmedState.week as 1 | 2 | 3;
@@ -2351,13 +2319,9 @@ function handleSyncEnemyPositions(
   state: GameState,
   onChainEnemies: Array<{ x: number; y: number; archetypeId: number; tier: number }>
 ): GameState {
-  console.log('[SYNC_ENEMY_POSITIONS] On-chain enemies:', onChainEnemies.length);
-  console.log('[SYNC_ENEMY_POSITIONS] Local enemies:', state.map.enemies.length);
-
   // Safety check: if on-chain has far fewer enemies than local, skip sync
   // (could indicate a fetch error or data mismatch)
   if (onChainEnemies.length === 0 || onChainEnemies.length < state.map.enemies.length * 0.5) {
-    console.log('[SYNC_ENEMY_POSITIONS] Skipping sync - on-chain count too low');
     return state;
   }
 
@@ -2414,9 +2378,6 @@ function handleSyncEnemyPositions(
 
     if (bestMatch) {
       matchedOnChainKeys.add(bestMatch.key);
-      console.log(
-        `[SYNC_ENEMY_POSITIONS] Enemy ${localEnemy.definitionId} moved: (${localEnemy.position.x},${localEnemy.position.y}) -> (${bestMatch.enemy.x},${bestMatch.enemy.y})`
-      );
       updatedEnemies.push({
         ...localEnemy,
         position: { x: bestMatch.enemy.x, y: bestMatch.enemy.y },
@@ -2425,9 +2386,6 @@ function handleSyncEnemyPositions(
     }
 
     // No match found — enemy was defeated on-chain and removed. Drop it from local state.
-    console.log(
-      `[SYNC_ENEMY_POSITIONS] Enemy ${localEnemy.definitionId} at (${localEnemy.position.x},${localEnemy.position.y}) not found on-chain, removing (defeated)`
-    );
   }
 
   return {

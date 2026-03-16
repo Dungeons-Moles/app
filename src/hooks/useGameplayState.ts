@@ -303,17 +303,6 @@ export function useGameplayState(): UseGameplayStateReturn {
       gauntletCombatVisual?: GauntletCombatVisualEvent | null;
       discovery?: SessionDiscoveryData | null;
     }> => {
-      console.log(
-        '[useGameplayState] move() called — program:',
-        !!program,
-        ', gameStatePda:',
-        gameStatePda?.toBase58() ?? 'null',
-        ', gameState:',
-        gameState ? 'set' : 'null',
-        ', endpoint:',
-        gameplayConnection.rpcEndpoint
-      );
-
       if (!program) {
         const msg = 'Program not available';
         console.error('[useGameplayState] move() failed:', msg);
@@ -336,7 +325,6 @@ export function useGameplayState(): UseGameplayStateReturn {
         currentGameState = await fetchGameState(program, gameStatePda);
         if (currentGameState && isMountedRef.current) {
           setGameState(currentGameState);
-          console.log('[useGameplayState] move(): on-demand fetch succeeded');
         }
       }
 
@@ -355,7 +343,6 @@ export function useGameplayState(): UseGameplayStateReturn {
       }
 
       try {
-        const t0 = Date.now();
         const sessionPda = currentGameState.session;
         const moveResult = await movePlayer(
           gameplayConnection,
@@ -366,8 +353,6 @@ export function useGameplayState(): UseGameplayStateReturn {
           params
         );
         const { signature, connection: moveConnection } = moveResult;
-        const t1 = Date.now();
-        console.log(`[perf] movePlayer send: ${t1 - t0}ms`);
 
         // Run confirmation, state fetch, and combat log parse ALL in parallel.
         // The ER processes the tx in ~50ms, so by the time the fetch arrives
@@ -387,9 +372,6 @@ export function useGameplayState(): UseGameplayStateReturn {
           statePromise,
           combatPromise,
         ]);
-        const t2 = Date.now();
-        console.log(`[perf] confirm+fetch+parse (parallel): ${t2 - t1}ms | total so far: ${t2 - t0}ms`);
-
         // Fetch SessionDiscovery AFTER confirmation to avoid stale data
         // (e.g., defeated enemies still appearing from pre-TX state)
         const [sdPda] = deriveSessionDiscoveryPda(sessionPda);
@@ -397,14 +379,6 @@ export function useGameplayState(): UseGameplayStateReturn {
           createMapGeneratorProgram(moveConnection),
           sdPda
         ).catch(() => null);
-
-        // Debug: Log fetched HP to track sync issues
-        console.log('[useGameplayState] move() fetched state:', {
-          previousHp: previousState.hp,
-          fetchedHp: confirmedState?.hp,
-          previousGold: previousState.gold,
-          fetchedGold: confirmedState?.gold,
-        });
 
         if (isMountedRef.current) {
           setGameState(confirmedState);
@@ -637,12 +611,6 @@ export function useGameplayState(): UseGameplayStateReturn {
           combatPromise,
         ]);
 
-        console.log('[useGameplayState] triggerBoss() fetched state:', {
-          previousHp: previousState.hp,
-          fetchedHp: confirmedState?.hp,
-          isDead: confirmedState?.isDead,
-        });
-
         if (isMountedRef.current) {
           setGameState(confirmedState);
           setSyncStatus('synced');
@@ -728,17 +696,14 @@ export function useGameplayState(): UseGameplayStateReturn {
   useEffect(() => {
     if (!gameStatePda || !program) return;
     let cancelled = false;
-    console.log('[useGameplayState] Auto-refresh triggered for PDA:', gameStatePda.toBase58());
     (async () => {
       const state = await refresh();
-      console.log('[useGameplayState] Auto-refresh complete, gameState:', state ? 'set' : 'null');
       if (state || cancelled) return;
       // ER propagation delay — retry up to 3 times with 800ms gaps
       for (let attempt = 1; attempt <= 3; attempt++) {
         await new Promise((r) => setTimeout(r, 800));
         if (cancelled) return;
         const retryState = await refresh();
-        console.log(`[useGameplayState] Auto-refresh retry #${attempt}, gameState:`, retryState ? 'set' : 'null');
         if (retryState || cancelled) return;
       }
     })();
