@@ -3044,37 +3044,25 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       (ix) => ix.programId.toBase58() !== COMPUTE_BUDGET_PROGRAM_ID
     );
 
-    // Split into two TXs: (1) fund + start_session (wallet signs),
-    // (2) enter_gauntlet (session signer signs on base).
-    // Combined TX exceeded the 1232-byte limit after SessionDiscovery accounts were added.
-    const sessionTx = new Transaction();
-    sessionTx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }));
-    sessionTx.add(...fundTransaction.instructions);
-    sessionTx.add(...sessionInstructions);
+    // Combined TX: fund + start_gauntlet_session (without SessionDiscovery) + enter_gauntlet.
+    // SessionDiscovery is skipped here to fit under the 1232-byte TX limit (single wallet signature).
+    // It's initialized separately before delegation.
+    const combinedTransaction = new Transaction();
+    combinedTransaction.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }));
+    combinedTransaction.add(...fundTransaction.instructions);
+    combinedTransaction.add(...sessionInstructions);
+    combinedTransaction.add(enterGauntletIx);
     const { blockhash: gauntletBh } = await connection.getLatestBlockhash('confirmed');
-    sessionTx.recentBlockhash = gauntletBh;
-    sessionTx.feePayer = wallet.publicKey ?? undefined;
-    sessionTx.partialSign(newSessionSignerKeypair);
+    combinedTransaction.recentBlockhash = gauntletBh;
+    combinedTransaction.feePayer = wallet.publicKey ?? undefined;
+    combinedTransaction.partialSign(newSessionSignerKeypair);
 
-    await debugSimulateTransaction('startGauntletGame:combined_tx', sessionTx);
+    await debugSimulateTransaction('startGauntletGame:combined_tx', combinedTransaction);
     try {
-      const signature = await signAndSendTransaction(sessionTx);
+      const signature = await signAndSendTransaction(combinedTransaction);
       console.log('[SessionContext] startGauntletGame:combined_tx_sent', { signature });
       await confirmSignatureWithTimeout(signature);
       console.log('[SessionContext] startGauntletGame:combined_tx_confirmed', { signature });
-
-      // Enter gauntlet in a separate wallet-signed TX (requires player wallet for entry fee)
-      const enterTx = new Transaction().add(
-        ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
-        enterGauntletIx
-      );
-      const { blockhash: enterBh } = await connection.getLatestBlockhash('confirmed');
-      enterTx.recentBlockhash = enterBh;
-      enterTx.feePayer = wallet.publicKey ?? undefined;
-      enterTx.partialSign(newSessionSignerKeypair);
-      const enterSig = await signAndSendTransaction(enterTx);
-      await confirmSignatureWithTimeout(enterSig);
-      console.log('[SessionContext] startGauntletGame:enter_gauntlet_confirmed', { signature: enterSig });
       onCommitted?.();
       await sessionSigner.markAsActive(newSessionSignerKeypair);
       await sessionSigner.associateWithSession(newSessionSignerKeypair, sessionPda.toBase58());
@@ -3094,6 +3082,30 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         success: false,
         error: txError instanceof Error ? txError.message : 'Gauntlet session transaction failed',
       };
+    }
+
+    // Init SessionDiscovery separately (skipped in combined TX to fit under size limit)
+    {
+      const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
+      const sdInfo = await connection.getAccountInfo(sessionDiscoveryPda).catch(() => null);
+      if (!sdInfo) {
+        try {
+          const mapGenProg = createMapGeneratorProgram(connection);
+          const initSdTx = await mapGenProg.methods
+            .initSessionDiscovery()
+            .accounts({
+              payer: newSessionSignerKeypair.publicKey,
+              session: sessionPda,
+              sessionDiscovery: sessionDiscoveryPda,
+              systemProgram: SystemProgram.programId,
+            })
+            .transaction();
+          await sendSessionSignerTransaction(connection, initSdTx, newSessionSignerKeypair);
+          console.log('[SessionContext] startGauntletGame:init_session_discovery:ok');
+        } catch (sdErr) {
+          console.warn('[SessionContext] startGauntletGame:init_session_discovery:failed', sdErr);
+        }
+      }
     }
 
     // Pre-init VRF states on base chain so they can be delegated.

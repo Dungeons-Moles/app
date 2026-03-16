@@ -739,7 +739,8 @@ export function useSessionManager() {
           sessionSigner: sessionSignerPublicKey,
           mapConfig: mapConfigPda,
           generatedMap: generatedMapPda,
-          sessionDiscovery: sessionDiscoveryPda,
+          sessionDiscovery: null, // Skipped to fit combined TX under size limit; init separately
+
           gameState: gameStatePda,
           mapEnemies: enemiesPda,
           mapPois: poisPda,

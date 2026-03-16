@@ -3168,7 +3168,8 @@
         },
         {
           "name": "session_discovery",
-          "writable": true
+          "writable": true,
+          "optional": true
         },
         {
           "name": "game_state",
@@ -3442,7 +3443,8 @@
         },
         {
           "name": "session_discovery",
-          "writable": true
+          "writable": true,
+          "optional": true
         },
         {
           "name": "game_state",
@@ -3665,7 +3667,8 @@
         },
         {
           "name": "session_discovery",
-          "writable": true
+          "writable": true,
+          "optional": true
         },
         {
           "name": "game_state",
