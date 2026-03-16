@@ -739,6 +739,29 @@ export function GameScreen({ navigation }: GameScreenProps) {
     };
   }, [isFocused, state, hasActiveSession, sessionPda, currentLevel, gameplayReadConnection, dispatch]);
 
+  /**
+   * Full resync from on-chain state. Fetches GameState, Inventory, and SessionDiscovery
+   * and dispatches RESTORE_GAME to replace the entire local state.
+   * Used when the local state may be out of sync (failed moves, multi-tab play, etc.).
+   */
+  const resyncFromChain = useCallback(async () => {
+    if (!sessionPda || !gameplayReadConnection) return;
+    debugLog('[GameScreen] resyncFromChain: fetching full state from chain...');
+    try {
+      const restored = await fetchFullSessionState(gameplayReadConnection, sessionPda, undefined, {
+        silentMissingData: true,
+      });
+      if (restored) {
+        dispatch({ type: 'RESTORE_GAME', state: restored });
+        debugLog('[GameScreen] resyncFromChain: state restored successfully');
+      } else {
+        console.warn('[GameScreen] resyncFromChain: failed to fetch session state');
+      }
+    } catch (err) {
+      console.error('[GameScreen] resyncFromChain: error:', err);
+    }
+  }, [sessionPda, gameplayReadConnection, dispatch]);
+
   useEffect(() => {
     if (
       !isFocused ||
@@ -1297,30 +1320,20 @@ export function GameScreen({ navigation }: GameScreenProps) {
           );
           if (!result.success) {
             showWallBreakFeedback('Movement failed on-chain');
-            void promptTransactionRetry({
-              title: 'Movement Failed',
-              message: 'The on-chain transaction failed.',
-            }).then((shouldRetry) => {
-              if (shouldRetry) {
-                // Retry the same move
-                isMovePendingRef.current = true;
-                setIsMovePending(true);
-                movePlayer({ targetX: targetPos.x, targetY: targetPos.y })
-                  .then((retryResult) => {
-                    if (retryResult.success && retryResult.newState) {
-                      dispatch({ type: 'SYNC_MOVE', confirmedState: retryResult.newState });
-                    }
-                  })
-                  .finally(() => {
-                    isMovePendingRef.current = false;
-                    setIsMovePending(false);
-                  });
-              }
-            });
+            // Resync full state from chain to recover from any mismatch
+            // (failed TX, multi-tab play, stale local state, etc.)
+            resyncFromChain();
             return;
           }
 
-          if (result.newState) {
+          if (!result.newState) {
+            // TX may have confirmed but state fetch failed — full resync
+            debugLog('[GameScreen] Move succeeded but newState is null, resyncing...');
+            resyncFromChain();
+            return;
+          }
+
+          {
             // Update local state from confirmed on-chain state
             dispatch({ type: 'SYNC_MOVE', confirmedState: result.newState });
 
@@ -1667,6 +1680,8 @@ export function GameScreen({ navigation }: GameScreenProps) {
         .catch((err) => {
           console.error('[GameScreen] movePlayer error:', err);
           showWallBreakFeedback('Movement sync error');
+          // Resync on unexpected errors too
+          resyncFromChain();
         })
         .finally(() => {
           isMovePendingRef.current = false;
@@ -1687,6 +1702,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
       gameplayReadConnection,
       isFastTravelActive,
       fastTravelDestinations.length,
+      resyncFromChain,
     ]
   );
 
