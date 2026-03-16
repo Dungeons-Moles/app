@@ -620,6 +620,11 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
       return;
     }
 
+    if (mode !== 'guest' && availableRuns <= 0) {
+      setShowNoRunsModal(true);
+      return;
+    }
+
     setIsStartingGame(true);
     let navigatedToLoading = false;
 
