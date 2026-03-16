@@ -621,6 +621,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
     }
 
     if (mode !== 'guest' && availableRuns <= 0) {
+      setShowSessionExistsModal(false);
       setShowNoRunsModal(true);
       return;
     }
