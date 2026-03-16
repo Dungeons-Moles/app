@@ -20,12 +20,14 @@ import { RootStackParamList } from '../navigation';
 import { JupiterIcon } from '../components/wallet/JupiterIcon';
 import { PhantomIcon } from '../components/wallet/PhantomIcon';
 import { BackpackIcon } from '../components/wallet/BackpackIcon';
+import { SolflareIcon } from '../components/wallet/SolflareIcon';
 import { useControllerAction } from '../hooks/useControllerAction';
 import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHints';
 import { ControllerKeyboard } from '../components/ui/ControllerKeyboard';
 import { useInputMode } from '../hooks/useInputMode';
 import { useAudio } from '../contexts/AudioContext';
 import { APP_VERSION } from '../constants/app';
+import { SOLANA_CONFIG } from '../services/solana/config';
 import { Typography } from '../theme/typography';
 
 type AccountScreenProps = {
@@ -38,8 +40,8 @@ const SHOW_DEV_WALLET = process.env.EXPO_PUBLIC_SHOW_DEV_WALLET === 'true';
 
 // Jupiter is displayed but disabled (mainnet only) — excluded from selectable IDs
 const WALLET_IDS: SupportedWallet[] = SHOW_DEV_WALLET
-  ? ['DevKeypair', 'Phantom', 'Backpack']
-  : ['Phantom', 'Backpack'];
+  ? ['DevKeypair', 'Phantom', 'Backpack', 'Solflare']
+  : ['Phantom', 'Backpack', 'Solflare'];
 
 export function AccountScreen({ navigation }: AccountScreenProps) {
   const {
@@ -392,6 +394,7 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
                       [
                         { id: 'Phantom' as const, Icon: PhantomIcon },
                         { id: 'Backpack' as const, Icon: BackpackIcon },
+                        { id: 'Solflare' as const, Icon: SolflareIcon },
                       ] as const
                     ).map(({ id, Icon }) => (
                       <TouchableOpacity
@@ -420,33 +423,39 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
                                 : styles.walletIconInactive.color
                               : styles.walletIconActive.color
                           }
-                          size={isCompact ? 64 : 36}
+                          size={
+                            id === 'Solflare'
+                              ? isCompact ? 52 : 28
+                              : isCompact ? 64 : 36
+                          }
                         />
                       </TouchableOpacity>
                     ))}
-                    {/* Jupiter — disabled, mainnet only */}
-                    <View
-                      style={[
-                        styles.walletOption,
-                        isCompact && { width: 96, height: 96 },
-                        { overflow: 'hidden' },
-                      ]}
-                    >
-                      <JupiterIcon
-                        color={styles.walletIconInactive.color}
-                        size={isCompact ? 64 : 36}
-                      />
-                      <View style={styles.mainnetBanner}>
-                        <Text
-                          style={[
-                            styles.mainnetBannerText,
-                            isCompact && { fontSize: 14 },
-                          ]}
-                        >
-                          MAINNET
-                        </Text>
+                    {/* Jupiter — disabled, mainnet only; hidden on localnet */}
+                    {!SOLANA_CONFIG.isLocalValidator && (
+                      <View
+                        style={[
+                          styles.walletOption,
+                          isCompact && { width: 96, height: 96 },
+                          { overflow: 'hidden' },
+                        ]}
+                      >
+                        <JupiterIcon
+                          color={styles.walletIconInactive.color}
+                          size={isCompact ? 64 : 36}
+                        />
+                        <View style={styles.mainnetBanner}>
+                          <Text
+                            style={[
+                              styles.mainnetBannerText,
+                              isCompact && { fontSize: 14 },
+                            ]}
+                          >
+                            MAINNET
+                          </Text>
+                        </View>
                       </View>
-                    </View>
+                    )}
                   </View>
                   {!isNative && (
                     <Text style={[styles.walletHint, isCompact && { fontSize: 20 }]}>

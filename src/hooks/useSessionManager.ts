@@ -731,16 +731,16 @@ export function useSessionManager() {
         }
       )
         .startGauntletSession()
-        .accounts({
+        .accountsPartial({
           gameSession: sessionPda,
+          sessionNonces: sessionNoncesPda,
           sessionCounter: counterPda,
           playerProfile: profilePda,
           player: wallet.publicKey,
           sessionSigner: sessionSignerPublicKey,
-          mapConfig: mapConfigPda,
+          sessionManagerAuthority: sessionManagerAuthorityPda,
           generatedMap: generatedMapPda,
           sessionDiscovery: null, // Skipped to fit combined TX under size limit; init separately
-
           gameState: gameStatePda,
           mapEnemies: enemiesPda,
           mapPois: poisPda,
@@ -751,7 +751,7 @@ export function useSessionManager() {
           poiSystemProgram: SOLANA_CONFIG.programs.poiSystem,
           playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
           systemProgram: SystemProgram.programId,
-        })
+        } as any)
         .transaction();
 
       return { transaction, sessionPda };

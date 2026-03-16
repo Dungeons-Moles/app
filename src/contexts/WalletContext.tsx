@@ -80,7 +80,11 @@ async function clearMobileWalletSession(): Promise<void> {
 
 function isPersistedWebWallet(value: string): value is SupportedWallet {
   return (
-    value === 'Jupiter' || value === 'Phantom' || value === 'Backpack' || value === 'DevKeypair'
+    value === 'Jupiter' ||
+    value === 'Phantom' ||
+    value === 'Backpack' ||
+    value === 'Solflare' ||
+    value === 'DevKeypair'
   );
 }
 
@@ -125,6 +129,7 @@ function getWebWalletProvider(walletName?: SupportedWallet): WebWalletProvider |
   const providers = window as typeof window & {
     solana?: unknown;
     backpack?: unknown;
+    solflare?: unknown;
   };
   const solanaWallet = providers.solana;
   const backpackProvider = providers.backpack;
@@ -142,6 +147,14 @@ function getWebWalletProvider(walletName?: SupportedWallet): WebWalletProvider |
       return backpackWallet;
     }
     return isWebWalletProvider(solanaWallet) && solanaWallet.isBackpack ? solanaWallet : null;
+  }
+
+  if (walletName === 'Solflare') {
+    const solflareProvider = providers.solflare;
+    if (isWebWalletProvider(solflareProvider)) {
+      return solflareProvider;
+    }
+    return isWebWalletProvider(solanaWallet) && solanaWallet.isSolflare ? solanaWallet : null;
   }
 
   if (walletName === 'Jupiter') {
@@ -219,11 +232,12 @@ async function signAndSendWithDevWallet(
 
 // TEMPORARY: 'DevKeypair' added to bypass Phantom issues during local development.
 // Remove 'DevKeypair' once Phantom popup behavior is resolved.
-export type SupportedWallet = 'Jupiter' | 'Phantom' | 'Backpack' | 'DevKeypair';
+export type SupportedWallet = 'Jupiter' | 'Phantom' | 'Backpack' | 'Solflare' | 'DevKeypair';
 
 type WebWalletProvider = {
   isPhantom?: boolean;
   isBackpack?: boolean;
+  isSolflare?: boolean;
   isJupiterWallet?: boolean;
   isJupiter?: boolean;
   connect: (options?: { onlyIfTrusted?: boolean; silent?: boolean }) => Promise<{
