@@ -358,17 +358,25 @@ export function useGameplayState(): UseGameplayStateReturn {
         // Run confirmation, state fetch, combat parse, AND discovery fetch ALL in parallel.
         // The ER processes the tx in ~50ms, so by the time the fetches arrive
         // (~150ms from Brazil), the state already reflects the move.
+        // Only parse combat logs during night phases (enemy-initiated combat).
+        // Day combat uses local enemy data (enemyAtTarget). Skipping the TX log
+        // parse saves one RPC call from the parallel batch.
+        const isNightPhase = previousState.phase === Phase.Night1 ||
+          previousState.phase === Phase.Night2 ||
+          previousState.phase === Phase.Night3;
         const [sdPda] = deriveSessionDiscoveryPda(sessionPda);
         const [, confirmedState, combatResult, discoveryData] = await Promise.all([
           confirmErTransaction(moveConnection, signature),
           fetchGameState(program, gameStatePda),
-          parseCombatInfoWithRetry(
-            gameplayConnection,
-            program,
-            signature,
-            'move',
-            { maxAttempts: 1, delayMs: 0, quiet: true }
-          ),
+          isNightPhase
+            ? parseCombatInfoWithRetry(
+                gameplayConnection,
+                program,
+                signature,
+                'move',
+                { maxAttempts: 1, delayMs: 0, quiet: true }
+              )
+            : Promise.resolve({ combatEnemyInfo: undefined }),
           fetchSessionDiscovery(
             createMapGeneratorProgram(moveConnection),
             sdPda
