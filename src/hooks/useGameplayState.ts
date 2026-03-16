@@ -343,6 +343,7 @@ export function useGameplayState(): UseGameplayStateReturn {
       }
 
       try {
+        const t0 = Date.now();
         const sessionPda = currentGameState.session;
         const moveResult = await movePlayer(
           gameplayConnection,
@@ -353,32 +354,29 @@ export function useGameplayState(): UseGameplayStateReturn {
           params
         );
         const { signature, connection: moveConnection } = moveResult;
+        const tSent = Date.now();
 
-        // Run confirmation, state fetch, and combat log parse ALL in parallel.
-        // The ER processes the tx in ~50ms, so by the time the fetch arrives
+        // Run confirmation, state fetch, combat parse, AND discovery fetch ALL in parallel.
+        // The ER processes the tx in ~50ms, so by the time the fetches arrive
         // (~150ms from Brazil), the state already reflects the move.
-        // Confirmation still runs — it just doesn't block the fetch.
-        const confirmPromise = confirmErTransaction(moveConnection, signature);
-        const statePromise = fetchGameState(program, gameStatePda);
-        const combatPromise = parseCombatInfoWithRetry(
-          gameplayConnection,
-          program,
-          signature,
-          'move',
-          { maxAttempts: 1, delayMs: 0, quiet: true }
-        );
-        const [, confirmedState, combatResult] = await Promise.all([
-          confirmPromise,
-          statePromise,
-          combatPromise,
-        ]);
-        // Fetch SessionDiscovery AFTER confirmation to avoid stale data
-        // (e.g., defeated enemies still appearing from pre-TX state)
         const [sdPda] = deriveSessionDiscoveryPda(sessionPda);
-        const discoveryData = await fetchSessionDiscovery(
-          createMapGeneratorProgram(moveConnection),
-          sdPda
-        ).catch(() => null);
+        const [, confirmedState, combatResult, discoveryData] = await Promise.all([
+          confirmErTransaction(moveConnection, signature),
+          fetchGameState(program, gameStatePda),
+          parseCombatInfoWithRetry(
+            gameplayConnection,
+            program,
+            signature,
+            'move',
+            { maxAttempts: 1, delayMs: 0, quiet: true }
+          ),
+          fetchSessionDiscovery(
+            createMapGeneratorProgram(moveConnection),
+            sdPda
+          ).catch(() => null),
+        ]);
+        const tDone = Date.now();
+        console.log(`[perf] move total: ${tDone - t0}ms (send: ${tSent - t0}ms, parallel: ${tDone - tSent}ms)`);
 
         if (isMountedRef.current) {
           setGameState(confirmedState);

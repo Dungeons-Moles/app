@@ -2279,13 +2279,16 @@ function handleSyncDiscovery(
   );
 
   // Merge enemies: replace local set with discovery set (authoritative source).
-  // Enemies in SessionDiscovery are already filtered to discovered tiles on-chain,
-  // so they are always discovered.
-  const mergedEnemies = enemies.map((e) => ({
-    ...e,
-    id: `enemy-${e.position.x}-${e.position.y}`,
-    discovered: true,
-  }));
+  // Filter out enemies at the player's current position — they were just defeated
+  // but the parallel SessionDiscovery fetch may return stale pre-combat data.
+  const playerPos = state.player.position;
+  const mergedEnemies = enemies
+    .filter((e) => !(e.position.x === playerPos.x && e.position.y === playerPos.y))
+    .map((e) => ({
+      ...e,
+      id: `enemy-${e.position.x}-${e.position.y}`,
+      discovered: true,
+    }));
 
   // Merge POIs: replace local set with discovery set, but keep Mole Den (L1)
   // which is stored in GeneratedMap, not in MapPois/SessionDiscovery.

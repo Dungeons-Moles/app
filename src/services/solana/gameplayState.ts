@@ -146,7 +146,6 @@ export async function movePlayer(
   sessionSignerKeypair: Keypair,
   params: MovePlayerParams
 ): Promise<{ signature: string; connection: Connection }> {
-  const tStart = Date.now();
   const [mapEnemiesPda] = deriveMapEnemiesPda(sessionPda);
   const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
   const [inventoryPda] = deriveInventoryPda(sessionPda);
@@ -186,7 +185,6 @@ export async function movePlayer(
     gauntletEchoesExists = !!geAccount;
     gauntletEchoesExistsCache.set(sessionKey, gauntletEchoesExists);
   }
-  const tVrf = Date.now();
 
   // Build instruction manually instead of using Anchor's MethodsBuilder.
   // Anchor's async account resolution loop adds ~120ms of overhead even when
@@ -235,9 +233,6 @@ export async function movePlayer(
       data,
     })
   );
-  const tBuild = Date.now();
-  console.log(`[perf] movePlayer breakdown: vrfCheck=${tVrf - tStart}ms, txBuild=${tBuild - tVrf}ms`);
-
   // move_player can resolve boss fights / gauntlet echoes inline on the last
   // move of night3 (up to 50-turn combat + CPIs), which far exceeds the
   // default 200k CU limit.
