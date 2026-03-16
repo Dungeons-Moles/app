@@ -62,6 +62,13 @@ const getCachedErBlockhash = async (
   return latest;
 };
 
+/** Pre-warm the ER blockhash cache so the first move doesn't pay a round-trip penalty. */
+export const warmErBlockhashCache = (connection: Connection): void => {
+  if (isErConnection(connection)) {
+    getCachedErBlockhash(connection, 'processed').catch(() => {});
+  }
+};
+
 const normalizeEndpoint = (url: string): string => url.replace(/\/+$/, '');
 const directErRpcUrl =
   process.env.EXPO_PUBLIC_EPHEMERAL_PROVIDER_ENDPOINT ?? 'https://devnet.magicblock.app/';

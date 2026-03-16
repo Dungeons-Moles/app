@@ -83,7 +83,7 @@ import { fetchSessionDiscovery } from '@/services/solana/mapGeneratorClient';
 import { createGameplayStateProgram, createMapGeneratorProgram } from '@/services/solana/programs';
 import { deriveSessionDiscoveryPda } from '@/services/solana/constants';
 import { buildRefreshDiscoveredEnemiesInstruction } from '@/services/solana/vrf';
-import { sendSessionSignerTransaction } from '@/services/solana/sessionSigner';
+import { sendSessionSignerTransaction, warmErBlockhashCache } from '@/services/solana/sessionSigner';
 import {
   ENEMY_DEFINITIONS,
   calculateGoldReward,
@@ -485,6 +485,13 @@ export function GameScreen({ navigation }: GameScreenProps) {
   const isController = inputMode === 'controller';
   const stateRef = useRef(state);
   stateRef.current = state;
+
+  // Pre-warm ER blockhash cache on screen focus to avoid first-move latency penalty
+  useEffect(() => {
+    if (isFocused && gameplayReadConnection) {
+      warmErBlockhashCache(gameplayReadConnection);
+    }
+  }, [isFocused, gameplayReadConnection]);
   const onChainStateRef = useRef(onChainState);
   onChainStateRef.current = onChainState;
   const canTriggerCurrentPoiByPhase = poiInteraction.canInteract;
@@ -1287,10 +1294,14 @@ export function GameScreen({ navigation }: GameScreenProps) {
       // Play appropriate movement sound immediately upon confirming the move direction
       playSfx(isWall ? 'move_dig' : 'move_floor');
 
-      // On-chain-first: send transaction, await confirmation, then sync local state
+      // Optimistic UI: move player sprite immediately for instant feedback.
+      // SYNC_MOVE will correct the state when the on-chain result arrives.
+      // If the TX fails, resyncFromChain() reverts to the actual on-chain state.
+      dispatch({ type: 'MOVE', direction });
+
+      // On-chain: send transaction, await confirmation, then sync local state
       isMovePendingRef.current = true;
       setIsMovePending(true);
-      debugLog('[GameScreen] Sending on-chain move to', targetPos.x, targetPos.y);
 
       // Store pre-combat state for potential combat replay
       // Note: HP/gold are captured inside .then() from result.previousState (on-chain truth)
