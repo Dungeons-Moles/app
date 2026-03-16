@@ -1539,7 +1539,7 @@ export function useSessionManager() {
                 .undelegateGauntletEchoes()
                 .accounts({
                   gauntletEchoes: gauntletEchoesPda,
-                  session: sessionPda,
+                  gameSession: sessionPda,
                   sessionSigner: sessionSignerKeypair.publicKey,
                   magicProgram: magicProgramId,
                   magicContext: magicContextId,
