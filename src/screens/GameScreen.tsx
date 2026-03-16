@@ -1197,7 +1197,8 @@ export function GameScreen({ navigation }: GameScreenProps) {
       if (
         !state ||
         state.phase !== GamePhase.Exploration ||
-        overviewMode.active
+        overviewMode.active ||
+        isMovePendingRef.current
       )
         return;
 
@@ -1292,16 +1293,11 @@ export function GameScreen({ navigation }: GameScreenProps) {
       // Play appropriate movement sound immediately upon confirming the move direction
       playSfx(isWall ? 'move_dig' : 'move_floor');
 
-      // Optimistic UI: move player sprite immediately for instant feedback.
-      // SYNC_MOVE will correct the state when the on-chain result arrives.
-      // If the TX fails, resyncFromChain() reverts to the actual on-chain state.
-      dispatch({ type: 'MOVE', direction });
-
-      // On-chain: send transaction in background. Don't block on isMovePending —
-      // the optimistic MOVE already advanced the local state. The on-chain TXs
-      // pipeline naturally since the ER processes them in arrival order.
+      // On-chain: send transaction, await confirmation, then sync local state
       isMovePendingRef.current = true;
-      setIsMovePending(true);
+      // Defer setIsMovePending(true) — the ref is enough for the synchronous guard.
+      // Setting state here triggers a full re-render before the TX send, adding
+      // 100-300ms of render blocking to the perceived move latency.
 
       // Store pre-combat state for potential combat replay
       // Note: HP/gold are captured inside .then() from result.previousState (on-chain truth)
