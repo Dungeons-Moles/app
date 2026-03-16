@@ -1319,10 +1319,14 @@ export function GameScreen({ navigation }: GameScreenProps) {
             })
           );
           if (!result.success) {
-            showWallBreakFeedback('Movement failed');
             // Resync full state from chain to recover from any mismatch
-            // (failed TX, multi-tab play, stale local state, etc.)
-            resyncFromChain();
+            const prevPos = stateRef.current?.player?.position;
+            resyncFromChain().then(() => {
+              const newPos = stateRef.current?.player?.position;
+              const posChanged = prevPos && newPos &&
+                (prevPos.x !== newPos.x || prevPos.y !== newPos.y);
+              showWallBreakFeedback(posChanged ? 'Synced state on-chain' : 'Movement failed');
+            });
             return;
           }
 
