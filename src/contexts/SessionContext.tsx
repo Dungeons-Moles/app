@@ -3063,12 +3063,18 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       await confirmSignatureWithTimeout(signature);
       console.log('[SessionContext] startGauntletGame:combined_tx_confirmed', { signature });
 
-      // Enter gauntlet in a separate TX (session signer signs)
+      // Enter gauntlet in a separate wallet-signed TX (requires player wallet for entry fee)
       const enterTx = new Transaction().add(
         ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
         enterGauntletIx
       );
-      await sendSessionSignerTransaction(connection, enterTx, newSessionSignerKeypair);
+      const { blockhash: enterBh } = await connection.getLatestBlockhash('confirmed');
+      enterTx.recentBlockhash = enterBh;
+      enterTx.feePayer = wallet.publicKey ?? undefined;
+      enterTx.partialSign(newSessionSignerKeypair);
+      const enterSig = await signAndSendTransaction(enterTx);
+      await confirmSignatureWithTimeout(enterSig);
+      console.log('[SessionContext] startGauntletGame:enter_gauntlet_confirmed', { signature: enterSig });
       onCommitted?.();
       await sessionSigner.markAsActive(newSessionSignerKeypair);
       await sessionSigner.associateWithSession(newSessionSignerKeypair, sessionPda.toBase58());
