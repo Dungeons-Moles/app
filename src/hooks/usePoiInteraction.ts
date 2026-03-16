@@ -202,9 +202,15 @@ async function validatePoiIndex(
       );
       if (discovery) {
         // Find the discovered POI at (x, y) and return its mapPoisIndex
+        const allPois = discovery.discoveredPois.slice(0, discovery.discoveredPoiCount);
+        console.log(
+          `[validatePoiIndex] ${contextLabel}: searching for (${x},${y}) in ${allPois.length} discoveredPois:`,
+          allPois.map((p, i) => `[${i}] type=${p.poiType} pos=(${p.x},${p.y}) idx=${p.mapPoisIndex} used=${p.used}`)
+        );
         for (let i = 0; i < discovery.discoveredPoiCount; i++) {
           const dp = discovery.discoveredPois[i];
           if (dp && dp.x === x && dp.y === y) {
+            console.log(`[validatePoiIndex] ${contextLabel}: found mapPoisIndex=${dp.mapPoisIndex} for (${x},${y})`);
             return { index: dp.mapPoisIndex };
           }
         }
@@ -2572,6 +2578,12 @@ export function usePoiInteraction(): UsePoiInteractionResult {
               );
               const currentX = freshGameState?.positionX ?? playerPosition?.x ?? 0;
               const currentY = freshGameState?.positionY ?? playerPosition?.y ?? 0;
+              console.log('[usePoiInteraction] Fast travel validation:', {
+                freshPosition: { x: currentX, y: currentY },
+                closurePosition: playerPosition,
+                destCoords: { x: destX, y: destY },
+                validatedPoiIndex,
+              });
               const fromValidated = await validatePoiIndex(
                 ctx.program, ctx.mapPoisPda,
                 validatedPoiIndex,

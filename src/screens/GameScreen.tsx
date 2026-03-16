@@ -1702,6 +1702,17 @@ export function GameScreen({ navigation }: GameScreenProps) {
       return;
     }
 
+    // Prevent fast traveling to current position (stale closure)
+    if (
+      state.player.position.x === dest.x &&
+      state.player.position.y === dest.y
+    ) {
+      console.warn('[GameScreen] Fast travel dest === current position, skipping');
+      setIsFastTravelMode(false);
+      setFastTravelDestinations([]);
+      return;
+    }
+
     playSfx('ui_click');
     // Guest mode: teleport player locally
     if (mode === 'guest' || !hasActiveSession) {
@@ -2179,7 +2190,9 @@ export function GameScreen({ navigation }: GameScreenProps) {
   ]);
 
   const handleFastTravel = useCallback(() => {
-    if (!state?.player?.position) {
+    // Use ref for latest position to avoid stale closure after fast travel
+    const currentPos = stateRef.current?.player?.position;
+    if (!currentPos) {
       return;
     }
 
@@ -2188,7 +2201,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
     // SHOW_POI_MODAL fallback (which doesn't generate options).
     const destinations = discoveredWaypoints
       .map((wp) => wp.position)
-      .filter((pos) => pos.x !== state.player.position.x || pos.y !== state.player.position.y)
+      .filter((pos) => pos.x !== currentPos.x || pos.y !== currentPos.y)
       .filter((pos, index, arr) => arr.findIndex((p) => p.x === pos.x && p.y === pos.y) === index);
 
     if (destinations.length === 0) {
@@ -2200,8 +2213,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
     let nearestDist = Infinity;
     for (let i = 0; i < destinations.length; i++) {
       const dest = destinations[i];
-      const dist =
-        Math.abs(dest.x - state.player.position.x) + Math.abs(dest.y - state.player.position.y);
+      const dist = Math.abs(dest.x - currentPos.x) + Math.abs(dest.y - currentPos.y);
       if (dist < nearestDist) {
         nearestDist = dist;
         nearestIndex = i;
@@ -2210,10 +2222,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
     // Prevent auto-open effect from immediately reopening the waypoint modal
     // after we close it to enter fast-travel selection.
-    lastAutoTriggeredPosRef.current = {
-      x: state.player.position.x,
-      y: state.player.position.y,
-    };
+    lastAutoTriggeredPosRef.current = { x: currentPos.x, y: currentPos.y };
 
     // Clear deferred POI state from the waypoint interaction before entering fast travel
     poiInteraction.clearCacheOffers();
