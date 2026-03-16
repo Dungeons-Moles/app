@@ -702,45 +702,21 @@ export function useSessionManager() {
       const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
       const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
       const [mapConfigPda] = deriveMapConfigPda();
+      const [sessionNoncesPda] = deriveSessionNoncesPda(wallet.publicKey);
       const [sessionManagerAuthorityPda] = deriveSessionManagerAuthorityPda();
 
-      const transaction = await (
-        baseWriteProgram.methods as unknown as {
-          startGauntletSession: () => {
-            accounts: (accounts: {
-              gameSession: PublicKey;
-              sessionCounter: PublicKey;
-              playerProfile: PublicKey;
-              player: PublicKey;
-              sessionSigner: PublicKey;
-              mapConfig: PublicKey;
-              generatedMap: PublicKey;
-              sessionDiscovery: PublicKey;
-              gameState: PublicKey;
-              mapEnemies: PublicKey;
-              mapPois: PublicKey;
-              inventory: PublicKey;
-              mapVrfState: PublicKey | null;
-              mapGeneratorProgram: PublicKey;
-              gameplayStateProgram: PublicKey;
-              poiSystemProgram: PublicKey;
-              playerInventoryProgram: PublicKey;
-              systemProgram: PublicKey;
-            }) => { transaction: () => Promise<Transaction> };
-          };
-        }
-      )
+      const transaction = await (baseWriteProgram.methods as any)
         .startGauntletSession()
         .accountsPartial({
-          gameSession: sessionPda,
           sessionNonces: sessionNoncesPda,
+          gameSession: sessionPda,
           sessionCounter: counterPda,
           playerProfile: profilePda,
           player: wallet.publicKey,
           sessionSigner: sessionSignerPublicKey,
           sessionManagerAuthority: sessionManagerAuthorityPda,
           generatedMap: generatedMapPda,
-          sessionDiscovery: null, // Skipped to fit combined TX under size limit; init separately
+          sessionDiscovery: null,
           gameState: gameStatePda,
           mapEnemies: enemiesPda,
           mapPois: poisPda,
@@ -751,7 +727,7 @@ export function useSessionManager() {
           poiSystemProgram: SOLANA_CONFIG.programs.poiSystem,
           playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
           systemProgram: SystemProgram.programId,
-        } as any)
+        })
         .transaction();
 
       return { transaction, sessionPda };
