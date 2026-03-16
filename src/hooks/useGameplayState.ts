@@ -42,6 +42,67 @@ import { fetchSessionDiscovery } from '@/services/solana/mapGeneratorClient';
 import type { SessionDiscoveryData } from '@/services/solana/mapGeneratorClient';
 import { deriveSessionDiscoveryPda } from '@/services/solana/constants';
 import { createMapGeneratorProgram } from '@/services/solana/programs';
+import { SOLANA_CONFIG } from '@/services/solana/config';
+
+/**
+ * Wait for a GameState account change via WebSocket, with polling fallback.
+ * Returns the updated GameState data, or null on timeout.
+ */
+async function waitForGameStateUpdate(
+  connection: Connection,
+  program: Program,
+  gameStatePda: PublicKey,
+  timeoutMs: number = 2000
+): Promise<GameState | null> {
+  return new Promise((resolve) => {
+    let resolved = false;
+    let subId: number | undefined;
+    const cleanup = () => {
+      if (subId !== undefined) {
+        connection.removeAccountChangeListener(subId).catch(() => {});
+        subId = undefined;
+      }
+    };
+    const done = (result: GameState | null) => {
+      if (resolved) return;
+      resolved = true;
+      cleanup();
+      resolve(result);
+    };
+
+    // Fast path: WebSocket subscription
+    try {
+      subId = connection.onAccountChange(
+        gameStatePda,
+        (accountInfo) => {
+          try {
+            const decoded = program.coder.accounts.decode('gameState', accountInfo.data);
+            done(decoded as GameState);
+          } catch {
+            // Decode failed — let polling handle it
+          }
+        },
+        SOLANA_CONFIG.erCommitment
+      );
+    } catch {
+      // WebSocket setup failed — polling will handle it
+    }
+
+    // Fallback: single poll after a short delay
+    setTimeout(async () => {
+      if (resolved) return;
+      try {
+        const state = await fetchGameState(program, gameStatePda);
+        done(state);
+      } catch {
+        done(null);
+      }
+    }, 200);
+
+    // Hard timeout
+    setTimeout(() => done(null), timeoutMs);
+  });
+}
 import { parseWithRetry } from '@/utils/retry';
 
 // ============================================================================
@@ -356,13 +417,12 @@ export function useGameplayState(): UseGameplayStateReturn {
         const { signature, connection: moveConnection } = moveResult;
         const tSent = Date.now();
 
-        // Run confirmation, state fetch, combat parse, AND discovery fetch ALL in parallel.
-        // The ER processes the tx in ~50ms, so by the time the fetches arrive
-        // (~150ms from Brazil), the state already reflects the move.
+        // Wait for account updates via WebSocket (fast path) or polling fallback.
+        // The ER processes the tx in ~50ms. WebSocket push arrives without an
+        // extra round trip; polling kicks in at 200ms as fallback.
         const [sdPda] = deriveSessionDiscoveryPda(sessionPda);
-        const [, confirmedState, combatResult, discoveryData] = await Promise.all([
-          confirmErTransaction(moveConnection, signature),
-          fetchGameState(program, gameStatePda),
+        const [confirmedState, combatResult, discoveryData] = await Promise.all([
+          waitForGameStateUpdate(moveConnection, program, gameStatePda),
           parseCombatInfoWithRetry(
             gameplayConnection,
             program,
@@ -376,7 +436,7 @@ export function useGameplayState(): UseGameplayStateReturn {
           ).catch(() => null),
         ]);
         const tDone = Date.now();
-        console.log(`[perf] move total: ${tDone - t0}ms (send: ${tSent - t0}ms, parallel: ${tDone - tSent}ms)`);
+        console.log(`[perf] move total: ${tDone - t0}ms (send: ${tSent - t0}ms, resolve: ${tDone - tSent}ms)`);
 
         if (isMountedRef.current) {
           setGameState(confirmedState);
