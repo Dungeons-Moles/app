@@ -4917,6 +4917,30 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         };
       }
 
+      // Init SessionDiscovery separately (skipped in combined TX to fit under size limit)
+      {
+        const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
+        const sdInfo = await connection.getAccountInfo(sessionDiscoveryPda).catch(() => null);
+        if (!sdInfo) {
+          try {
+            const mapGenProg = createMapGeneratorProgram(connection);
+            const initSdTx = await mapGenProg.methods
+              .initSessionDiscovery()
+              .accounts({
+                payer: newSessionSignerKeypair.publicKey,
+                session: sessionPda,
+                sessionDiscovery: sessionDiscoveryPda,
+                systemProgram: SystemProgram.programId,
+              })
+              .transaction();
+            await sendSessionSignerTransaction(connection, initSdTx, newSessionSignerKeypair);
+            console.log('[SessionContext] overrideAndStartGauntletGame:init_session_discovery:ok');
+          } catch (sdErr) {
+            console.warn('[SessionContext] overrideAndStartGauntletGame:init_session_discovery:failed', sdErr);
+          }
+        }
+      }
+
       let vrfTypesToDelegate: ('poi' | 'map' | 'gameplay')[] = ['poi', 'map', 'gameplay'];
       const [poiVrfPda] = derivePoiVrfStatePda(sessionPda);
       const [mapVrfPda] = deriveMapVrfStatePda(sessionPda);
