@@ -1702,10 +1702,13 @@ export function GameScreen({ navigation }: GameScreenProps) {
       return;
     }
 
+    // Use ref for latest position to avoid stale closure after fast travel
+    const currentPos = stateRef.current?.player?.position ?? state.player.position;
+
     // Prevent fast traveling to current position (stale closure)
     if (
-      state.player.position.x === dest.x &&
-      state.player.position.y === dest.y
+      currentPos.x === dest.x &&
+      currentPos.y === dest.y
     ) {
       console.warn('[GameScreen] Fast travel dest === current position, skipping');
       setIsFastTravelMode(false);
@@ -1730,7 +1733,13 @@ export function GameScreen({ navigation }: GameScreenProps) {
       clearTimeout(skipMismatchTimeoutRef.current);
     }
 
-    poiInteraction.executeFastTravel(state.player.position, dest).then(async (result) => {
+    console.log('[GameScreen] handleFastTravelConfirm: fromPos=', currentPos, 'toPos=', dest);
+    poiInteraction.executeFastTravel(currentPos, dest).then(async (result) => {
+      console.log('[GameScreen] executeFastTravel result:', {
+        success: result.success,
+        newStatePos: result.newState ? { x: result.newState.positionX, y: result.newState.positionY } : null,
+        error: result.error,
+      });
       if (result.success && result.newState) {
         dispatch({
           type: 'SYNC_MOVE',
