@@ -3663,6 +3663,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     if (result.success) {
       console.log('[SessionContext] Session ended successfully');
       removeSessionFromActiveList(sessionPda, currentOnChainLevel);
+      vrfReadySessionsRef.current.delete(sessionPda.toBase58());
 
       // Clear local state
       setMapSeed(null);
@@ -4211,6 +4212,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const { transaction: sessionTransaction, sessionPda } = sessionResult;
       await clearFogState(sessionPda.toBase58()).catch(() => {});
       await clearBrokenWalls(sessionPda.toBase58()).catch(() => {});
+      vrfReadySessionsRef.current.delete(sessionPda.toBase58());
 
       const COMPUTE_BUDGET_PROGRAM_ID = 'ComputeBudget111111111111111111111111111111';
       const sessionInstructions = sessionTransaction.instructions.filter(
@@ -4510,6 +4512,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const { transaction: sessionTransaction, sessionPda } = sessionResult;
       await clearFogState(sessionPda.toBase58()).catch(() => {});
       await clearBrokenWalls(sessionPda.toBase58()).catch(() => {});
+      vrfReadySessionsRef.current.delete(sessionPda.toBase58());
 
       const [gameStatePda] = getGameStatePda(sessionPda);
       const gameplayProgram = createGameplayStateProgram(connection);
@@ -4835,6 +4838,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const { transaction: sessionTransaction, sessionPda } = sessionResult;
       await clearFogState(sessionPda.toBase58()).catch(() => {});
       await clearBrokenWalls(sessionPda.toBase58()).catch(() => {});
+      vrfReadySessionsRef.current.delete(sessionPda.toBase58());
 
       await ensureLocalFeeAccounts(connection);
       const [gameStatePda] = getGameStatePda(sessionPda);
@@ -6288,6 +6292,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       // Clear local state
       await clearFogState(sessionKey);
       await clearBrokenWalls(sessionKey);
+      vrfReadySessionsRef.current.delete(sessionKey);
       sessionManager.resetSession();
       await sessionSigner.clear();
       setUseErForGameplay(false);
