@@ -1420,34 +1420,36 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             await withErPositionRetry(() =>
               interactSurveyBeacon(ctx, poiIndex)
             );
-            // Refresh discovered enemies on-chain (beacon reveals tiles but doesn't sync enemies)
-            try {
-              const refreshEnemiesIx = await buildRefreshDiscoveredEnemiesInstruction(
-                createGameplayStateProgram(ctx.connection),
-                ctx.sessionPda,
-                ctx.sessionSignerKeypair.publicKey
-              );
-              const refreshEnemiesTx = new Transaction().add(
-                ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
-                refreshEnemiesIx
-              );
-              await sendSessionSignerTransaction(ctx.connection, refreshEnemiesTx, ctx.sessionSignerKeypair);
-            } catch (e) {
-              console.warn('[usePoiInteraction] Failed to refresh discovered enemies after beacon:', e);
-            }
-            await Promise.all([
-              refreshGameplayState(),
-              refreshSessionState(),
+            // Fire-and-forget refresh enemies TX, then fetch everything in parallel
+            const refreshEnemiesPromise = (async () => {
+              try {
+                const refreshEnemiesIx = await buildRefreshDiscoveredEnemiesInstruction(
+                  createGameplayStateProgram(ctx.connection),
+                  ctx.sessionPda,
+                  ctx.sessionSignerKeypair.publicKey
+                );
+                const refreshEnemiesTx = new Transaction().add(
+                  ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+                  refreshEnemiesIx
+                );
+                await sendSessionSignerTransaction(ctx.connection, refreshEnemiesTx, ctx.sessionSignerKeypair);
+              } catch (e) {
+                console.warn('[usePoiInteraction] Failed to refresh discovered enemies after beacon:', e);
+              }
+            })();
+            // Run everything in parallel: refresh enemies TX, gameplay refresh, and discovery fetch
+            const [beaconSdPda] = deriveSessionDiscoveryPda(ctx.sessionPda);
+            const [, , beaconDiscovery] = await Promise.all([
+              refreshEnemiesPromise,
+              Promise.all([refreshGameplayState(), refreshSessionState()]),
+              fetchSessionDiscovery(
+                createMapGeneratorProgram(ctx.connection),
+                beaconSdPda
+              ).catch(() => null),
             ]);
             if (playerPosition) {
               dispatch({ type: 'REVEAL_TILES', center: playerPosition, radius: 13 });
             }
-            // Sync tile types, enemies, and POIs from SessionDiscovery (now includes refreshed enemies)
-            const [beaconSdPda] = deriveSessionDiscoveryPda(ctx.sessionPda);
-            const beaconDiscovery = await fetchSessionDiscovery(
-              createMapGeneratorProgram(ctx.connection),
-              beaconSdPda
-            ).catch(() => null);
             if (beaconDiscovery) {
               const sdTiles = unpackDiscoveryTiles(beaconDiscovery, beaconDiscovery.mapWidth, beaconDiscovery.mapHeight);
               const sdEnemies = convertDiscoveredEnemies(beaconDiscovery.discoveredEnemies, beaconDiscovery.discoveredEnemyCount);
@@ -2253,26 +2255,17 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             // GameplayStateContext must be updated before we dispatch to the reducer.
             // SessionContext must be updated so GameScreen's boss detection useEffect
             // sees bossFightReady=true (e.g., after rest on Night 3).
-            await Promise.all([refreshGameplayState(), refreshSessionState()]);
-
-            // Parse inline boss combat (if Night3 triggered resolution in the same tx).
-            // We do this before syncing local state so navigation can use authoritative logs.
+            // Fetch game state, refresh contexts, and parse boss combat ALL in parallel
             const gameplayProgram = createGameplayStateProgram(gameplayReadConnection);
-            let parsedBossCombat:
-              | Awaited<ReturnType<typeof parseBossCombatFromMoveTx>>
-              | undefined;
-            try {
-              parsedBossCombat = await parseBossCombatFromMoveTx(
+            const [updatedState, , parsedBossCombat] = await Promise.all([
+              fetchGameState(gameplayProgram, ctx.gameStatePda),
+              Promise.all([refreshGameplayState(), refreshSessionState()]),
+              parseBossCombatFromMoveTx(
                 gameplayConnection,
                 restSignature,
                 gameplayProgram
-              );
-            } catch (err) {
-              console.warn('[usePoiInteraction] Failed to parse rest tx boss combat:', err);
-            }
-
-            // Now fetch and sync to local reducer (healed HP, new phase)
-            const updatedState = await fetchGameState(gameplayProgram, ctx.gameStatePda);
+              ).catch(() => undefined as Awaited<ReturnType<typeof parseBossCombatFromMoveTx>> | undefined),
+            ]);
             if (updatedState) {
               debugLog(
                 '[usePoiInteraction] Syncing REST result | hp:',
@@ -2300,6 +2293,8 @@ export function usePoiInteraction(): UsePoiInteractionResult {
                   ctx.sessionPda,
                   ctx.sessionSignerKeypair.publicKey
                 );
+                // Send reveal + refresh enemies TXs, then fetch discovery — all sequential
+                // (both write to session_discovery via CPI)
                 const revealTx = new Transaction().add(
                   ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
                   revealIx
@@ -2314,6 +2309,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
                 console.warn('[usePoiInteraction] Failed to reveal/refresh after rest:', e);
               }
             }
+            // Fetch discovery after reveal/refresh
             {
               const [restSdPda] = deriveSessionDiscoveryPda(ctx.sessionPda);
               const restDiscovery = await fetchSessionDiscovery(
