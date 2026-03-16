@@ -4232,6 +4232,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       if (!wallet.publicKey) {
         return { success: false, error: 'Wallet not connected' };
       }
+      const _t0 = Date.now();
+      const _mark = (label: string) => console.log(`[perf] override: ${label} +${Date.now() - _t0}ms`);
 
       const onChainLevel = campaignLevel + 1;
       const currentNonces = await sessionManager.fetchSessionNonces(wallet.publicKey);
@@ -4285,11 +4287,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           skipPreflight: true,
         });
         await confirmSignatureWithTimeout(signature);
+        _mark('tx_confirmed');
         onCommitted?.();
         await sessionSigner.markAsActive(newSessionSignerKeypair);
         await sessionSigner.associateWithSession(newSessionSignerKeypair, sessionPda.toBase58());
-        await sessionManager.fetchSession();
-        await refreshSessionList();
+        // Defer session fetch + list refresh — not needed before delegation/gameplay
+        void sessionManager.fetchSession().then(() => refreshSessionList());
+        _mark('session_setup');
       } catch (txError: unknown) {
         await sessionSigner.clear();
         return {
@@ -4316,6 +4320,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           } catch {}
         }
       }
+      _mark('vrf_init');
 
       // On localnet, request+fulfill VRF on base layer. The VRF state is NOT delegated —
       // the ER clones it from base in replica mode, avoiding VRF CPI on ER.
@@ -4329,12 +4334,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           return { success: false, error: baseVrfResult.error! };
         }
       }
+      _mark('base_vrf');
 
       const delegateResult = await sessionManager.delegateSession(newSessionSignerKeypair, {
         sessionPda,
         onChainLevel,
         delegateVrf: SOLANA_CONFIG.isLocalValidator ? undefined : campaignVrfToDelegate,
       });
+      _mark('delegated');
       if (!delegateResult.success) {
         await sessionSigner.clear();
         return {
@@ -4344,6 +4351,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
 
       const erReady = await waitForErSessionAccounts(sessionPda, { includeVrf: !SOLANA_CONFIG.isLocalValidator });
+      _mark('er_ready');
       setUseErForGameplay(erReady);
       if (!erReady) {
         return {
@@ -4357,6 +4365,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         newSessionSignerKeypair.publicKey,
         sessionPda
       );
+      _mark('signer_on_er');
       if (!resolvedConn) {
         resolvedConn = await resolveAndSetErEndpoint(sessionPda);
       }
@@ -4413,6 +4422,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           };
         }
       }
+      _mark('vrf_done');
 
       try {
         const levelSeed = (await mapGenerator.getMapSeed(campaignLevel)) ?? BigInt(onChainLevel);
@@ -4436,23 +4446,19 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }),
           ...mapTx.instructions
         );
+        // Step 1: Fill map (must complete before sync/refresh)
         await sendErInitTransactionWithRetry(
           'overrideAndStartGame:fill_map',
           mapWithBudgetTx,
           newSessionSignerKeypair,
           sessionPda
         );
+
+        // Step 2: Sync enemies + refresh POIs in parallel (both read generated map)
         const syncWithBudgetTx = new Transaction().add(
           ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
           ...syncTx.instructions
         );
-        await sendErInitTransactionWithRetry(
-          'overrideAndStartGame:sync_map_enemies',
-          syncWithBudgetTx,
-          newSessionSignerKeypair,
-          sessionPda
-        );
-
         const refreshMapPoisIx = await erPoiSystemProgram.methods
           .refreshMapPois(campaignAct, campaignWeek, new BN(levelSeed.toString()))
           .accounts({
@@ -4467,14 +4473,22 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           ComputeBudgetProgram.setComputeUnitLimit({ units: 800_000 }),
           refreshMapPoisIx
         );
-        await sendErInitTransactionWithRetry(
-          'overrideAndStartGame:refresh_map_pois',
-          rebuildMapPoisTx,
-          newSessionSignerKeypair,
-          sessionPda
-        );
+        await Promise.all([
+          sendErInitTransactionWithRetry(
+            'overrideAndStartGame:sync_map_enemies',
+            syncWithBudgetTx,
+            newSessionSignerKeypair,
+            sessionPda
+          ),
+          sendErInitTransactionWithRetry(
+            'overrideAndStartGame:refresh_map_pois',
+            rebuildMapPoisTx,
+            newSessionSignerKeypair,
+            sessionPda
+          ),
+        ]);
 
-        // Discover POIs near spawn so they appear immediately
+        // Step 3: Discover POIs near spawn (needs refresh_map_pois)
         const discoverPoisIx = await buildDiscoverSpawnPoisInstruction(
           erPoiSystemProgram,
           sessionPda,
@@ -4502,6 +4516,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const generatedSeed = await fetchSessionGeneratedSeed(sessionPda);
       setMapSeed(null);
       gameplayState.setGameStatePda(getGameStatePda(sessionPda)[0]);
+      _mark('complete');
       return { success: true, mapSeed: null, sessionPda: sessionPda.toBase58() };
     },
     [

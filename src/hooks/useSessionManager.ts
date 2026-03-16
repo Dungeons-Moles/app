@@ -1027,8 +1027,11 @@ export function useSessionManager() {
           delegateInventoryIx,
           delegateMapPoisIx
         );
-        await sendSessionSignerTransaction(baseConnection, delegationTx1, sessionSignerKeypair);
-        await sendSessionSignerTransaction(baseConnection, delegationTx2, sessionSignerKeypair);
+        // Send delegation TXs in parallel — they delegate independent accounts.
+        const delegationPromises: Promise<string>[] = [
+          sendSessionSignerTransaction(baseConnection, delegationTx1, sessionSignerKeypair),
+          sendSessionSignerTransaction(baseConnection, delegationTx2, sessionSignerKeypair),
+        ];
 
         // Tx2b (optional): Delegate GauntletEchoes if it exists (gauntlet sessions only).
         const gauntletEchoesInfo = await baseConnection
@@ -1057,7 +1060,9 @@ export function useSessionManager() {
             ComputeBudgetProgram.setComputeUnitLimit({ units: 600_000 }),
             delegateGauntletEchoesIx
           );
-          await sendSessionSignerTransaction(baseConnection, delegationTxGe, sessionSignerKeypair);
+          delegationPromises.push(
+            sendSessionSignerTransaction(baseConnection, delegationTxGe, sessionSignerKeypair)
+          );
         }
 
         // Tx3: Delegate VRF state accounts if requested.
@@ -1129,12 +1134,14 @@ export function useSessionManager() {
             delegationTx3.add(delegateGameplayVrfIx);
           }
 
-          signature = await sendSessionSignerTransaction(
-            baseConnection,
-            delegationTx3,
-            sessionSignerKeypair
+          delegationPromises.push(
+            sendSessionSignerTransaction(baseConnection, delegationTx3, sessionSignerKeypair)
           );
         }
+
+        // Wait for all delegation TXs to complete in parallel
+        const results = await Promise.all(delegationPromises);
+        signature = results[results.length - 1];
 
         // Refresh session state
         await fetchSession();
