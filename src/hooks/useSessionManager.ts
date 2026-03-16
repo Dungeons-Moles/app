@@ -1043,7 +1043,7 @@ export function useSessionManager() {
             .delegateGauntletEchoes(delegationValidator)
             .accountsStrict({
               gauntletEchoes: gauntletEchoesPda,
-              session: sessionPda,
+              gameSession: sessionPda,
               player: sessionSignerKeypair.publicKey,
               bufferGauntletEchoes: gauntletEchoesDelegate.buffer,
               delegationRecordGauntletEchoes: gauntletEchoesDelegate.delegationRecord,
