@@ -3044,23 +3044,31 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       (ix) => ix.programId.toBase58() !== COMPUTE_BUDGET_PROGRAM_ID
     );
 
-    const combinedTransaction = new Transaction();
-    combinedTransaction.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }));
-    // fund_session_signer is now always in the combined TX (no pre-VRF TX needed).
-    combinedTransaction.add(...fundTransaction.instructions);
-    combinedTransaction.add(...sessionInstructions);
-    combinedTransaction.add(enterGauntletIx);
+    // Split into two TXs: (1) fund + start_session (wallet signs),
+    // (2) enter_gauntlet (session signer signs on base).
+    // Combined TX exceeded the 1232-byte limit after SessionDiscovery accounts were added.
+    const sessionTx = new Transaction();
+    sessionTx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }));
+    sessionTx.add(...fundTransaction.instructions);
+    sessionTx.add(...sessionInstructions);
     const { blockhash: gauntletBh } = await connection.getLatestBlockhash('confirmed');
-    combinedTransaction.recentBlockhash = gauntletBh;
-    combinedTransaction.feePayer = wallet.publicKey ?? undefined;
-    combinedTransaction.partialSign(newSessionSignerKeypair);
+    sessionTx.recentBlockhash = gauntletBh;
+    sessionTx.feePayer = wallet.publicKey ?? undefined;
+    sessionTx.partialSign(newSessionSignerKeypair);
 
-    await debugSimulateTransaction('startGauntletGame:combined_tx', combinedTransaction);
+    await debugSimulateTransaction('startGauntletGame:combined_tx', sessionTx);
     try {
-      const signature = await signAndSendTransaction(combinedTransaction);
+      const signature = await signAndSendTransaction(sessionTx);
       console.log('[SessionContext] startGauntletGame:combined_tx_sent', { signature });
       await confirmSignatureWithTimeout(signature);
       console.log('[SessionContext] startGauntletGame:combined_tx_confirmed', { signature });
+
+      // Enter gauntlet in a separate TX (session signer signs)
+      const enterTx = new Transaction().add(
+        ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+        enterGauntletIx
+      );
+      await sendSessionSignerTransaction(connection, enterTx, newSessionSignerKeypair);
       onCommitted?.();
       await sessionSigner.markAsActive(newSessionSignerKeypair);
       await sessionSigner.associateWithSession(newSessionSignerKeypair, sessionPda.toBase58());
