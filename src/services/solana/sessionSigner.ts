@@ -539,7 +539,7 @@ export async function sendSessionSignerTransaction(
   connection: Connection,
   transaction: Transaction,
   sessionSignerKeypair: Keypair,
-  options?: { skipErConfirmation?: boolean }
+  options?: { skipErConfirmation?: boolean; skipConfirmation?: boolean }
 ): Promise<string> {
   const erConnection = isErConnection(connection);
   const baseInstructions = [...transaction.instructions];
@@ -599,6 +599,12 @@ export async function sendSessionSignerTransaction(
       });
       const tSent = Date.now();
       console.log(`[perf] sendTransaction: ${tSent - tSend}ms (router=${isRouterPath})`);
+
+      // Fire-and-forget: skip all confirmation. Caller verifies via other means
+      // (e.g., waitForErSessionAccounts for delegation TXs).
+      if (options?.skipConfirmation) {
+        return signature;
+      }
 
       if (erConnection) {
         if (options?.skipErConfirmation) {

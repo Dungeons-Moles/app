@@ -1027,8 +1027,10 @@ export function useSessionManager() {
           delegateInventoryIx,
           delegateMapPoisIx
         );
-        await sendSessionSignerTransaction(baseConnection, delegationTx1, sessionSignerKeypair);
-        await sendSessionSignerTransaction(baseConnection, delegationTx2, sessionSignerKeypair);
+        // Fire-and-forget delegation TXs — skip confirmation, let waitForErSessionAccounts
+        // verify all accounts landed on the ER. Saves ~5s of sequential confirmation waits.
+        await sendSessionSignerTransaction(baseConnection, delegationTx1, sessionSignerKeypair, { skipConfirmation: true });
+        await sendSessionSignerTransaction(baseConnection, delegationTx2, sessionSignerKeypair, { skipConfirmation: true });
 
         // Tx2b (optional): Delegate GauntletEchoes if it exists (gauntlet sessions only).
         const gauntletEchoesInfo = await baseConnection
@@ -1057,7 +1059,7 @@ export function useSessionManager() {
             ComputeBudgetProgram.setComputeUnitLimit({ units: 600_000 }),
             delegateGauntletEchoesIx
           );
-          await sendSessionSignerTransaction(baseConnection, delegationTxGe, sessionSignerKeypair);
+          await sendSessionSignerTransaction(baseConnection, delegationTxGe, sessionSignerKeypair, { skipConfirmation: true });
         }
 
         // Tx3: Delegate VRF state accounts if requested.
@@ -1132,7 +1134,8 @@ export function useSessionManager() {
           signature = await sendSessionSignerTransaction(
             baseConnection,
             delegationTx3,
-            sessionSignerKeypair
+            sessionSignerKeypair,
+            { skipConfirmation: true }
           );
         }
 
