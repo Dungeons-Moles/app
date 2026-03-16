@@ -2153,18 +2153,10 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
     if (shouldAutoOpen && !isInteracting && !alreadyTriggeredHere && canTriggerCurrentPoiInteraction) {
       debugLog('[GameScreen] Auto-triggering POI interaction at', currentPos.x, currentPos.y);
-      void (async () => {
-        const result = await poiInteractRef.current();
-        if (result?.success) {
-          lastAutoTriggeredPosRef.current = { x: currentPos.x, y: currentPos.y };
-        } else {
-          debugLog(
-            '[GameScreen] Auto-trigger POI interaction did not start successfully; will allow retry at',
-            currentPos.x,
-            currentPos.y
-          );
-        }
-      })();
+      // Always mark as triggered to prevent infinite retry loops on persistent errors
+      // (e.g., VRF not fulfilled). The player can manually retry by stepping off and back.
+      lastAutoTriggeredPosRef.current = { x: currentPos.x, y: currentPos.y };
+      void poiInteractRef.current();
     }
 
     // Clear last auto-triggered position when player moves away from it
