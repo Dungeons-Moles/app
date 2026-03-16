@@ -2419,10 +2419,13 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             );
             debugLog('[usePoiInteraction] Tool oil applied on-chain:', modification);
 
-            // Update tool from confirmed on-chain inventory (not optimistic)
+            // Fetch inventory + refresh gameplay in parallel
             const oilInventoryProgram = createPlayerInventoryProgram(gameplayReadConnection);
             const [oilInventoryPda] = deriveInventoryPda(ctx.sessionPda);
-            const oilInventoryData = await fetchInventory(oilInventoryProgram, oilInventoryPda);
+            const [oilInventoryData] = await Promise.all([
+              fetchInventory(oilInventoryProgram, oilInventoryPda),
+              refreshGameplayState(),
+            ]);
 
             if (oilInventoryData?.tool) {
               const confirmedOilTool = convertToolInstance(oilInventoryData.tool);
@@ -2679,23 +2682,16 @@ export function usePoiInteraction(): UsePoiInteractionResult {
                 shopReroll(ctx)
               );
 
-              // Sync gold from on-chain state after reroll
-              await refreshGameplayState();
+              // Fetch game state + discovery + refresh in parallel after reroll
               const rerollGameplayProgram = createGameplayStateProgram(gameplayReadConnection);
-              const updatedRerollState = await fetchGameState(
-                rerollGameplayProgram,
-                ctx.gameStatePda
-              );
+              const [updatedRerollState, rerollDiscovery] = await Promise.all([
+                fetchGameState(rerollGameplayProgram, ctx.gameStatePda),
+                fetchDiscoveryOffers(ctx.connection, ctx.sessionPda),
+                refreshGameplayState(),
+              ]);
               if (updatedRerollState) {
-                debugLog(
-                  '[usePoiInteraction] Syncing SHOP reroll | gold:',
-                  updatedRerollState.gold
-                );
                 dispatch({ type: 'SYNC_MOVE', confirmedState: updatedRerollState });
               }
-
-              // Re-fetch shop state from SessionDiscovery and update options
-              const rerollDiscovery = await fetchDiscoveryOffers(ctx.connection, ctx.sessionPda);
               if (rerollDiscovery && rerollDiscovery.activeOfferType === 1 && rerollDiscovery.shopActive !== 0) {
                 const rerollAdaptedOffers = discoveryShopOffersToItemOffers(rerollDiscovery.shopOffers);
                 setShopOffers(rerollAdaptedOffers);
@@ -2721,23 +2717,18 @@ export function usePoiInteraction(): UsePoiInteractionResult {
 
             // Sync gold + inventory from on-chain state after purchase
             await refreshGameplayState();
+            // Fetch game state, inventory, and shop offers all in parallel
             const gameplayProgram = createGameplayStateProgram(gameplayReadConnection);
-            const updatedShopState = await fetchGameState(gameplayProgram, ctx.gameStatePda);
-            if (updatedShopState) {
-              debugLog(
-                '[usePoiInteraction] Syncing SHOP purchase | gold:',
-                updatedShopState.gold
-              );
-              dispatch({ type: 'SYNC_MOVE', confirmedState: updatedShopState });
-            }
-
-            // Sync inventory so newly purchased gear is available to other POIs (e.g. Rune Kiln)
             const shopInventoryProgram = createPlayerInventoryProgram(gameplayReadConnection);
             const [shopInventoryPda] = deriveInventoryPda(ctx.sessionPda);
-            const shopInventoryData = await fetchInventory(
-              shopInventoryProgram,
-              shopInventoryPda
-            );
+            const [updatedShopState, shopInventoryData, purchaseDiscovery] = await Promise.all([
+              fetchGameState(gameplayProgram, ctx.gameStatePda),
+              fetchInventory(shopInventoryProgram, shopInventoryPda),
+              fetchDiscoveryOffers(ctx.connection, ctx.sessionPda),
+            ]);
+            if (updatedShopState) {
+              dispatch({ type: 'SYNC_MOVE', confirmedState: updatedShopState });
+            }
             if (shopInventoryData) {
               const confirmedShopTool = shopInventoryData.tool
                 ? convertToolInstance(shopInventoryData.tool)
@@ -2756,8 +2747,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
               });
             }
 
-            // Re-fetch shop state from SessionDiscovery and update options
-            const purchaseDiscovery = await fetchDiscoveryOffers(ctx.connection, ctx.sessionPda);
+            // Update shop options from the parallel-fetched SessionDiscovery
             if (purchaseDiscovery && purchaseDiscovery.activeOfferType === 1 && purchaseDiscovery.shopActive !== 0) {
               const purchaseAdaptedOffers = discoveryShopOffersToItemOffers(purchaseDiscovery.shopOffers);
               setShopOffers(purchaseAdaptedOffers);
