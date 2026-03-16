@@ -1194,12 +1194,10 @@ export function GameScreen({ navigation }: GameScreenProps) {
       // Read state from ref — avoids rebuilding this callback on every state change
       const state = stateRef.current;
 
-      // Use ref for synchronous check to prevent race conditions with rapid clicks
       if (
         !state ||
         state.phase !== GamePhase.Exploration ||
-        overviewMode.active ||
-        isMovePendingRef.current
+        overviewMode.active
       )
         return;
 
@@ -1299,7 +1297,9 @@ export function GameScreen({ navigation }: GameScreenProps) {
       // If the TX fails, resyncFromChain() reverts to the actual on-chain state.
       dispatch({ type: 'MOVE', direction });
 
-      // On-chain: send transaction, await confirmation, then sync local state
+      // On-chain: send transaction in background. Don't block on isMovePending —
+      // the optimistic MOVE already advanced the local state. The on-chain TXs
+      // pipeline naturally since the ER processes them in arrival order.
       isMovePendingRef.current = true;
       setIsMovePending(true);
 
