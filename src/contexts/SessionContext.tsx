@@ -2698,6 +2698,30 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       duelQueued = undefined;
     }
 
+    // Init SessionDiscovery separately (skipped in combined TX to avoid insufficient lamports)
+    {
+      const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
+      const sdInfo = await connection.getAccountInfo(sessionDiscoveryPda).catch(() => null);
+      if (!sdInfo) {
+        try {
+          const mapGenProg = createMapGeneratorProgram(connection);
+          const initSdTx = await mapGenProg.methods
+            .initSessionDiscovery()
+            .accounts({
+              payer: newSessionSignerKeypair.publicKey,
+              session: sessionPda,
+              sessionDiscovery: sessionDiscoveryPda,
+              systemProgram: SystemProgram.programId,
+            })
+            .transaction();
+          await sendSessionSignerTransaction(connection, initSdTx, newSessionSignerKeypair);
+          console.log('[SessionContext] startDuelGame:init_session_discovery:ok');
+        } catch (sdErr) {
+          console.warn('[SessionContext] startDuelGame:init_session_discovery:failed', sdErr);
+        }
+      }
+    }
+
     // Pre-init VRF states on base chain so they can be delegated.
     // Check ownership first: skip init for existing accounts, skip delegation for already-delegated ones.
     let duelVrfTypesToDelegate: ('poi' | 'map' | 'gameplay')[] = ['poi', 'map', 'gameplay'];
@@ -4583,6 +4607,30 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const events = await parseDuelEvents(connection, gameplayProgram, signature);
       if (events.queued) {
         duelQueued = undefined;
+      }
+
+      // Init SessionDiscovery separately (skipped in combined TX)
+      {
+        const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
+        const sdInfo = await connection.getAccountInfo(sessionDiscoveryPda).catch(() => null);
+        if (!sdInfo) {
+          try {
+            const mapGenProg = createMapGeneratorProgram(connection);
+            const initSdTx = await mapGenProg.methods
+              .initSessionDiscovery()
+              .accounts({
+                payer: newSessionSignerKeypair.publicKey,
+                session: sessionPda,
+                sessionDiscovery: sessionDiscoveryPda,
+                systemProgram: SystemProgram.programId,
+              })
+              .transaction();
+            await sendSessionSignerTransaction(connection, initSdTx, newSessionSignerKeypair);
+            console.log('[SessionContext] overrideAndStartDuelGame:init_session_discovery:ok');
+          } catch (sdErr) {
+            console.warn('[SessionContext] overrideAndStartDuelGame:init_session_discovery:failed', sdErr);
+          }
+        }
       }
 
       let duelVrfTypesToDelegate: ('poi' | 'map' | 'gameplay')[] = ['poi', 'map', 'gameplay'];

@@ -657,7 +657,7 @@ export function useSessionManager() {
           sessionManagerAuthority: sessionManagerAuthorityPda,
           mapConfig: mapConfigPda,
           generatedMap: generatedMapPda,
-          sessionDiscovery: sessionDiscoveryPda,
+          sessionDiscovery: null, // Skipped — init separately to avoid insufficient lamports
           gameState: gameStatePda,
           mapEnemies: enemiesPda,
           mapPois: poisPda,
