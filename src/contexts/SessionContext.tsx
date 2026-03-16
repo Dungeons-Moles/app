@@ -4454,10 +4454,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           sessionPda
         );
 
-        // Step 2: Sync enemies + refresh POIs in parallel (both read generated map)
+        // Step 2: Sync enemies, then refresh POIs (sequential — both write to map_pois via CPI)
         const syncWithBudgetTx = new Transaction().add(
           ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
           ...syncTx.instructions
+        );
+        await sendErInitTransactionWithRetry(
+          'overrideAndStartGame:sync_map_enemies',
+          syncWithBudgetTx,
+          newSessionSignerKeypair,
+          sessionPda
         );
         const refreshMapPoisIx = await erPoiSystemProgram.methods
           .refreshMapPois(campaignAct, campaignWeek, new BN(levelSeed.toString()))
@@ -4473,20 +4479,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           ComputeBudgetProgram.setComputeUnitLimit({ units: 800_000 }),
           refreshMapPoisIx
         );
-        await Promise.all([
-          sendErInitTransactionWithRetry(
-            'overrideAndStartGame:sync_map_enemies',
-            syncWithBudgetTx,
-            newSessionSignerKeypair,
-            sessionPda
-          ),
-          sendErInitTransactionWithRetry(
-            'overrideAndStartGame:refresh_map_pois',
-            rebuildMapPoisTx,
-            newSessionSignerKeypair,
-            sessionPda
-          ),
-        ]);
+        await sendErInitTransactionWithRetry(
+          'overrideAndStartGame:refresh_map_pois',
+          rebuildMapPoisTx,
+          newSessionSignerKeypair,
+          sessionPda
+        );
 
         // Step 3: Discover POIs near spawn (needs refresh_map_pois)
         const discoverPoisIx = await buildDiscoverSpawnPoisInstruction(
