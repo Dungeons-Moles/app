@@ -7,7 +7,7 @@ import { View, Text, StyleSheet, Animated, Pressable, Platform } from 'react-nat
 import { Image } from 'expo-image';
 import { CachedImageBackground } from '../components/common/CachedImageBackground';
 import { InstantImageBackground } from '../components/common/InstantImageBackground';
-import { Connection, PublicKey, Transaction, ComputeBudgetProgram } from '@solana/web3.js';
+import { Connection, PublicKey } from '@solana/web3.js';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useIsFocused } from '@react-navigation/native';
 import { RootStackParamList, CombatParams } from '../navigation';
@@ -83,8 +83,7 @@ import { fetchSessionDiscovery } from '@/services/solana/mapGeneratorClient';
 import { createGameplayStateProgram, createMapGeneratorProgram } from '@/services/solana/programs';
 import { warmMovePlayerCaches } from '@/services/solana/gameplayState';
 import { deriveSessionDiscoveryPda } from '@/services/solana/constants';
-import { buildRefreshDiscoveredEnemiesInstruction } from '@/services/solana/vrf';
-import { sendSessionSignerTransaction, warmErBlockhashCache } from '@/services/solana/sessionSigner';
+import { warmErBlockhashCache } from '@/services/solana/sessionSigner';
 import {
   ENEMY_DEFINITIONS,
   calculateGoldReward,
@@ -1365,47 +1364,6 @@ export function GameScreen({ navigation }: GameScreenProps) {
               const enemies = convertDiscoveredEnemies(discovery.discoveredEnemies, discovery.discoveredEnemyCount);
               const pois = convertDiscoveredPois(discovery.discoveredPois, discovery.discoveredPoiCount);
               dispatch({ type: 'SYNC_DISCOVERY', tiles, enemies, pois });
-            }
-
-            // During night phases, enemies move toward the player after each move.
-            // Send refresh_discovered_enemies TX to sync MapEnemies → SessionDiscovery,
-            // then fetch updated SessionDiscovery and dispatch SYNC_DISCOVERY.
-            const wasNightPhase = result.previousState
-              ? result.previousState.phase === 1 || // Night1
-                result.previousState.phase === 3 || // Night2
-                result.previousState.phase === 5 // Night3
-              : false;
-
-            if (sessionPda && wasNightPhase) {
-              (async () => {
-                try {
-                  const keypair = getSessionSignerKeypair();
-                  const conn = gameplayReadConnection;
-                  if (!keypair || !conn) return;
-                  const gpProg = createGameplayStateProgram(conn);
-                  const refreshIx = await buildRefreshDiscoveredEnemiesInstruction(
-                    gpProg, sessionPda, keypair.publicKey
-                  );
-                  const tx = new Transaction().add(
-                    ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
-                    refreshIx
-                  );
-                  await sendSessionSignerTransaction(conn, tx, keypair);
-
-                  const [sdPda] = deriveSessionDiscoveryPda(sessionPda);
-                  const sd = await fetchSessionDiscovery(
-                    createMapGeneratorProgram(conn), sdPda
-                  ).catch(() => null);
-                  if (sd) {
-                    const sdTiles = unpackDiscoveryTiles(sd, sd.mapWidth, sd.mapHeight);
-                    const sdEnemies = convertDiscoveredEnemies(sd.discoveredEnemies, sd.discoveredEnemyCount);
-                    const sdPois = convertDiscoveredPois(sd.discoveredPois, sd.discoveredPoiCount);
-                    dispatch({ type: 'SYNC_DISCOVERY', tiles: sdTiles, enemies: sdEnemies, pois: sdPois });
-                  }
-                } catch (err) {
-                  console.warn('[GameScreen] Failed to refresh discovered enemies after night move:', err);
-                }
-              })();
             }
 
             // Build preCombatPlayerStats from a mix of on-chain and local state:

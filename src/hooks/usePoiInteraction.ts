@@ -1896,20 +1896,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
           dispatch({ type: 'SYNC_MOVE', confirmedState: ftState });
         }
 
-        // Reveal is already combined with fast travel. Refresh enemies in background.
-        try {
-          const refreshIx = await buildRefreshDiscoveredEnemiesInstruction(
-            gpProg, ctx.sessionPda, ctx.sessionSignerKeypair.publicKey
-          );
-          await sendSessionSignerTransaction(ctx.connection,
-            new Transaction().add(ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }), refreshIx),
-            ctx.sessionSignerKeypair
-          );
-        } catch (e) {
-          console.warn('[usePoiInteraction] Failed to reveal/refresh after fast travel (direct):', e);
-        }
-
-        // Fetch discovery and sync tiles/enemies/POIs
+        // Fetch discovery and sync tiles/enemies/POIs immediately after fast travel.
         const disc = await fetchSessionDiscovery(
           createMapGeneratorProgram(ctx.connection),
           deriveSessionDiscoveryPda(ctx.sessionPda)[0]
@@ -1921,6 +1908,48 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             pois: convertDiscoveredPois(disc.discoveredPois, disc.discoveredPoiCount),
           });
         }
+
+        // Enemy refresh is less latency-sensitive; do it in the background.
+        void (async () => {
+          try {
+            const refreshIx = await buildRefreshDiscoveredEnemiesInstruction(
+              gpProg, ctx.sessionPda, ctx.sessionSignerKeypair.publicKey
+            );
+            await sendSessionSignerTransaction(
+              ctx.connection,
+              new Transaction().add(
+                ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+                refreshIx
+              ),
+              ctx.sessionSignerKeypair
+            );
+
+            const refreshedDisc = await fetchSessionDiscovery(
+              createMapGeneratorProgram(ctx.connection),
+              deriveSessionDiscoveryPda(ctx.sessionPda)[0]
+            ).catch(() => null);
+            if (refreshedDisc) {
+              dispatch({
+                type: 'SYNC_DISCOVERY',
+                tiles: unpackDiscoveryTiles(
+                  refreshedDisc,
+                  refreshedDisc.mapWidth,
+                  refreshedDisc.mapHeight
+                ),
+                enemies: convertDiscoveredEnemies(
+                  refreshedDisc.discoveredEnemies,
+                  refreshedDisc.discoveredEnemyCount
+                ),
+                pois: convertDiscoveredPois(
+                  refreshedDisc.discoveredPois,
+                  refreshedDisc.discoveredPoiCount
+                ),
+              });
+            }
+          } catch (e) {
+            console.warn('[usePoiInteraction] Failed to refresh enemies after fast travel (direct):', e);
+          }
+        })();
 
         return { success: true };
       } catch (err) {
@@ -2015,21 +2044,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
           dispatch({ type: 'SYNC_MOVE', confirmedState: updatedState });
         }
 
-        // Reveal is already combined with fast travel. Refresh enemies in background.
-        try {
-          const refreshIx = await buildRefreshDiscoveredEnemiesInstruction(
-            createGameplayStateProgram(ctx.connection), ctx.sessionPda,
-            ctx.sessionSignerKeypair.publicKey
-          );
-          await sendSessionSignerTransaction(ctx.connection,
-            new Transaction().add(ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }), refreshIx),
-            ctx.sessionSignerKeypair
-          );
-        } catch (e) {
-          console.warn('[usePoiInteraction] Failed to reveal/refresh after fast travel (overlay):', e);
-        }
-
-        // Fetch discovery and sync tiles/enemies/POIs
+        // Fetch discovery and sync tiles/enemies/POIs immediately after fast travel.
         const disc = await fetchSessionDiscovery(
           createMapGeneratorProgram(ctx.connection),
           deriveSessionDiscoveryPda(ctx.sessionPda)[0]
@@ -2041,6 +2056,50 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             pois: convertDiscoveredPois(disc.discoveredPois, disc.discoveredPoiCount),
           });
         }
+
+        // Enemy refresh is less latency-sensitive; do it in the background.
+        void (async () => {
+          try {
+            const refreshIx = await buildRefreshDiscoveredEnemiesInstruction(
+              createGameplayStateProgram(ctx.connection),
+              ctx.sessionPda,
+              ctx.sessionSignerKeypair.publicKey
+            );
+            await sendSessionSignerTransaction(
+              ctx.connection,
+              new Transaction().add(
+                ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+                refreshIx
+              ),
+              ctx.sessionSignerKeypair
+            );
+
+            const refreshedDisc = await fetchSessionDiscovery(
+              createMapGeneratorProgram(ctx.connection),
+              deriveSessionDiscoveryPda(ctx.sessionPda)[0]
+            ).catch(() => null);
+            if (refreshedDisc) {
+              dispatch({
+                type: 'SYNC_DISCOVERY',
+                tiles: unpackDiscoveryTiles(
+                  refreshedDisc,
+                  refreshedDisc.mapWidth,
+                  refreshedDisc.mapHeight
+                ),
+                enemies: convertDiscoveredEnemies(
+                  refreshedDisc.discoveredEnemies,
+                  refreshedDisc.discoveredEnemyCount
+                ),
+                pois: convertDiscoveredPois(
+                  refreshedDisc.discoveredPois,
+                  refreshedDisc.discoveredPoiCount
+                ),
+              });
+            }
+          } catch (e) {
+            console.warn('[usePoiInteraction] Failed to refresh enemies after fast travel (overlay):', e);
+          }
+        })();
 
         return { success: true, newState: updatedState };
       } catch (err) {
@@ -2730,21 +2789,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
                   dispatch({ type: 'SYNC_MOVE', confirmedState: updatedState });
                 }
 
-                // Reveal is already combined with fast travel. Refresh enemies after.
-                try {
-                  const refreshEnemiesIx = await buildRefreshDiscoveredEnemiesInstruction(
-                    createGameplayStateProgram(ctx.connection),
-                    ctx.sessionPda,
-                    ctx.sessionSignerKeypair.publicKey
-                  );
-                  const refreshTx = new Transaction().add(
-                    ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
-                    refreshEnemiesIx
-                  );
-                  await sendSessionSignerTransaction(ctx.connection, refreshTx, ctx.sessionSignerKeypair);
-                } catch (e) {
-                  console.warn('[usePoiInteraction] Failed to reveal/refresh after fast travel:', e);
-                }
+                // Fetch discovery and sync tiles/enemies/POIs immediately after fast travel.
                 {
                   const [ftSdPda] = deriveSessionDiscoveryPda(ctx.sessionPda);
                   const ftDiscovery = await fetchSessionDiscovery(
@@ -2758,6 +2803,50 @@ export function usePoiInteraction(): UsePoiInteractionResult {
                     dispatch({ type: 'SYNC_DISCOVERY', tiles: sdTiles, enemies: sdEnemies, pois: sdPois });
                   }
                 }
+
+                // Enemy refresh is less latency-sensitive; do it in the background.
+                void (async () => {
+                  try {
+                    const refreshEnemiesIx = await buildRefreshDiscoveredEnemiesInstruction(
+                      createGameplayStateProgram(ctx.connection),
+                      ctx.sessionPda,
+                      ctx.sessionSignerKeypair.publicKey
+                    );
+                    const refreshTx = new Transaction().add(
+                      ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+                      refreshEnemiesIx
+                    );
+                    await sendSessionSignerTransaction(
+                      ctx.connection,
+                      refreshTx,
+                      ctx.sessionSignerKeypair
+                    );
+
+                    const [ftSdPda] = deriveSessionDiscoveryPda(ctx.sessionPda);
+                    const ftDiscovery = await fetchSessionDiscovery(
+                      createMapGeneratorProgram(ctx.connection),
+                      ftSdPda
+                    ).catch(() => null);
+                    if (ftDiscovery) {
+                      const sdTiles = unpackDiscoveryTiles(
+                        ftDiscovery,
+                        ftDiscovery.mapWidth,
+                        ftDiscovery.mapHeight
+                      );
+                      const sdEnemies = convertDiscoveredEnemies(
+                        ftDiscovery.discoveredEnemies,
+                        ftDiscovery.discoveredEnemyCount
+                      );
+                      const sdPois = convertDiscoveredPois(
+                        ftDiscovery.discoveredPois,
+                        ftDiscovery.discoveredPoiCount
+                      );
+                      dispatch({ type: 'SYNC_DISCOVERY', tiles: sdTiles, enemies: sdEnemies, pois: sdPois });
+                    }
+                  } catch (e) {
+                    console.warn('[usePoiInteraction] Failed to refresh enemies after fast travel:', e);
+                  }
+                })();
               }
             }
 
