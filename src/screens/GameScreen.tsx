@@ -1554,9 +1554,14 @@ export function GameScreen({ navigation }: GameScreenProps) {
               }
             }
 
-            // Handle combat - always go through CombatScreen for visualization
-            // This includes deaths from combat (CombatScreen will navigate to DeathScreen)
-            if (result.combatOccurred) {
+            // Handle combat - always go through CombatScreen for visualization.
+            // Day combat metadata parsing is intentionally skipped in useGameplayState.move()
+            // to save an RPC call, so zero-damage wins against an enemy on the target tile
+            // must still open CombatScreen based on the pre-move local map state.
+            const shouldShowCombat =
+              result.combatOccurred || (!!enemyAtTarget && !result.bossResolvedInline);
+
+            if (shouldShowCombat) {
               // Suppress POI auto-trigger at this position: combat takes priority.
               // After combat the player can manually open the POI with the A button.
               lastAutoTriggeredPosRef.current = { x: targetPos.x, y: targetPos.y };

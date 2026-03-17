@@ -53,6 +53,7 @@ export interface DiscoveredPoiData {
   x: number;
   y: number;
   used: boolean;
+  mapPoisIndex: number;
 }
 
 export interface DiscoveredEnemyData {

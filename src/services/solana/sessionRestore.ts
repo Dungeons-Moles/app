@@ -519,11 +519,12 @@ export function convertDiscoveredPois(
     }
 
     result.push({
-      id: `poi-${result.length}`,
+      id: `poi-${poi.mapPoisIndex}`,
       definitionId: poiId,
       position: { x: poi.x, y: poi.y },
       visited: !!poi.used,
       discovered: true,
+      mapPoisIndex: poi.mapPoisIndex,
     });
   }
 

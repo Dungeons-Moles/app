@@ -146,6 +146,7 @@ export interface PoiData {
   y: number;
   poiType: number;
   consumed: boolean;
+  mapPoisIndex?: number;
 }
 
 /** Player inventory account structure */

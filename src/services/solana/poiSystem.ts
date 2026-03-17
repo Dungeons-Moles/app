@@ -98,6 +98,14 @@ export async function fetchMapPois(
  * If used during Night3, triggers the boss fight.
  */
 export async function interactRest(ctx: PoiTransactionContext, poiIndex: number): Promise<string> {
+  const transaction = await buildInteractRestTransaction(ctx, poiIndex);
+  return sendPoiTx(ctx, transaction);
+}
+
+export async function buildInteractRestTransaction(
+  ctx: PoiTransactionContext,
+  poiIndex: number
+): Promise<Transaction> {
   const [inventoryPda] = deriveInventoryPda(ctx.sessionPda);
   const [poiAuthorityPda] = derivePoiAuthorityPda();
   const [gameplayAuthorityPda] = deriveGameplayAuthorityPda();
@@ -133,12 +141,10 @@ export async function interactRest(ctx: PoiTransactionContext, poiIndex: number)
     mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
   };
 
-  const transaction = await ctx.program.methods
+  return ctx.program.methods
     .interactRest(poiIndex)
     .accountsPartial(restAccounts)
     .transaction();
-
-  return sendPoiTx(ctx, transaction);
 }
 
 // ============================================================================
@@ -319,8 +325,16 @@ export async function interactSurveyBeacon(
   ctx: PoiTransactionContext,
   poiIndex: number
 ): Promise<string> {
+  const transaction = await buildInteractSurveyBeaconTransaction(ctx, poiIndex);
+  return sendPoiTx(ctx, transaction);
+}
+
+export async function buildInteractSurveyBeaconTransaction(
+  ctx: PoiTransactionContext,
+  poiIndex: number
+): Promise<Transaction> {
   const [generatedMapPda] = deriveGeneratedMapPda(ctx.sessionPda);
-  const transaction = await ctx.program.methods
+  return ctx.program.methods
     .interactSurveyBeacon(poiIndex)
     .accountsPartial({
       mapPois: ctx.mapPoisPda,
@@ -332,8 +346,6 @@ export async function interactSurveyBeacon(
       player: ctx.sessionSignerKeypair.publicKey,
     })
     .transaction();
-
-  return sendPoiTx(ctx, transaction);
 }
 
 // ============================================================================
@@ -402,10 +414,19 @@ export async function fastTravel(
   fromPoiIndex: number,
   toPoiIndex: number
 ): Promise<string> {
+  const transaction = await buildFastTravelTransaction(ctx, fromPoiIndex, toPoiIndex);
+  return sendPoiTx(ctx, transaction);
+}
+
+export async function buildFastTravelTransaction(
+  ctx: PoiTransactionContext,
+  fromPoiIndex: number,
+  toPoiIndex: number
+): Promise<Transaction> {
   const [poiAuthorityPda] = derivePoiAuthorityPda();
   const [generatedMapPda] = deriveGeneratedMapPda(ctx.sessionPda);
 
-  const transaction = await ctx.program.methods
+  return ctx.program.methods
     .fastTravel(fromPoiIndex, toPoiIndex)
     .accountsPartial({
       mapPois: ctx.mapPoisPda,
@@ -419,8 +440,6 @@ export async function fastTravel(
       player: ctx.sessionSignerKeypair.publicKey,
     })
     .transaction();
-
-  return sendPoiTx(ctx, transaction);
 }
 
 // ============================================================================

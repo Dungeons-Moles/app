@@ -27,7 +27,7 @@ import { deriveMapPoisPda, derivePoiVrfStatePda, deriveGameplayVrfStatePda, deri
 import { getGameStatePda, fetchGameState } from '@/services/solana/gameplayState';
 import { buildRefreshDiscoveredEnemiesInstruction, buildRevealRadiusInstruction } from '@/services/solana/vrf';
 import { sendSessionSignerTransaction } from '@/services/solana/sessionSigner';
-import { Transaction, ComputeBudgetProgram } from '@solana/web3.js';
+import { Transaction, ComputeBudgetProgram, PublicKey, Connection } from '@solana/web3.js';
 import { POI_TYPES } from '@/services/solana/types/poi_system';
 import type {
   ItemOffer,
@@ -38,12 +38,14 @@ import { Phase } from '@/services/solana/types/gameplay_state';
 import { parseBossCombatFromMoveTx } from '@/services/solana/eventParser';
 import { getUserErrorMessage } from '@/services/solana/errors';
 import {
-  interactRest,
+  buildInteractRestTransaction,
   interactPickItem,
   interactToolOilCombined,
   interactSurveyBeacon,
+  buildInteractSurveyBeaconTransaction,
   generateScannerOffer,
   interactSeismicScanner,
+  buildFastTravelTransaction,
   fastTravel,
   enterShop,
   shopPurchase,
@@ -94,6 +96,7 @@ const ER_POSITION_MISMATCH_CODE = 6028;
 const ER_POSITION_MAX_RETRIES = 3;
 const ER_POSITION_BASE_DELAY_MS = 400;
 const POI_DEBUG_LOGS = false;
+const POI_COMBINED_CU_LIMIT = 1_000_000;
 
 function debugLog(...args: unknown[]) {
   if (__DEV__ && POI_DEBUG_LOGS) {
@@ -878,6 +881,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
           y: localPoi.position.y,
           poiType,
           consumed: localPoi.visited,
+          mapPoisIndex: localPoi.mapPoisIndex,
         };
       }
     }
@@ -997,11 +1001,17 @@ export function usePoiInteraction(): UsePoiInteractionResult {
    */
   const findPoiIndex = useCallback(
     async (x: number, y: number): Promise<number> => {
+      const localPoi = gameState?.map?.pois?.find(
+        (p) => p.position.x === x && p.position.y === y
+      );
+      if (localPoi?.mapPoisIndex != null) {
+        return localPoi.mapPoisIndex;
+      }
       if (!poiProgram || !mapPoisPda) return -1;
       const validated = await validatePoiIndex(poiProgram, mapPoisPda, -1, x, y, 'findPoiIndex', sessionDiscoveryPda, gameplayConnection);
       return validated.index;
     },
-    [poiProgram, mapPoisPda, sessionDiscoveryPda, gameplayConnection]
+    [gameState?.map?.pois, poiProgram, mapPoisPda, sessionDiscoveryPda, gameplayConnection]
   );
 
   /**
@@ -1037,6 +1047,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             y: localPoi.position.y,
             poiType,
             consumed: localPoi.visited,
+            mapPoisIndex: localPoi.mapPoisIndex,
           };
         }
       }
@@ -1147,17 +1158,20 @@ export function usePoiInteraction(): UsePoiInteractionResult {
       }
 
       // Validate POI index against fresh on-chain MapPois data
-      const validated = await validatePoiIndex(
-        ctx.program,
-        ctx.mapPoisPda,
-        -1,
-        currentPoi.x,
-        currentPoi.y,
-        'interact',
-        sessionDiscoveryPda,
-        ctx.connection
-      );
-      let poiIndex = validated.index;
+      let poiIndex =
+        currentPoi.mapPoisIndex ??
+        (
+          await validatePoiIndex(
+            ctx.program,
+            ctx.mapPoisPda,
+            -1,
+            currentPoi.x,
+            currentPoi.y,
+            'interact',
+            sessionDiscoveryPda,
+            ctx.connection
+          )
+        ).index;
       debugLog(
         '[usePoiInteraction] validatePoiIndex result:',
         poiIndex
@@ -1417,44 +1431,95 @@ export function usePoiInteraction(): UsePoiInteractionResult {
 
           // Survey Beacon (L6)
           case POI_TYPES.SURVEY_BEACON: {
-            await withErPositionRetry(() =>
-              interactSurveyBeacon(ctx, poiIndex)
-            );
-            // Refresh enemies on-chain first (writes to SessionDiscovery), then fetch
+            const beaconCenter = playerPosition ?? { x: currentPoi.x, y: currentPoi.y };
+            await withErPositionRetry(() => interactSurveyBeacon(ctx, poiIndex));
+            dispatch({ type: 'REVEAL_TILES', center: beaconCenter, radius: 13 });
+            syncLocalPoiAsConsumed(currentPoi);
+
+            // Fetch revealed tile types immediately so the renderer can replace Unknown tiles.
             try {
-              const refreshEnemiesIx = await buildRefreshDiscoveredEnemiesInstruction(
-                createGameplayStateProgram(ctx.connection),
-                ctx.sessionPda,
-                ctx.sessionSignerKeypair.publicKey
-              );
-              const refreshEnemiesTx = new Transaction().add(
-                ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
-                refreshEnemiesIx
-              );
-              await sendSessionSignerTransaction(ctx.connection, refreshEnemiesTx, ctx.sessionSignerKeypair);
-            } catch (e) {
-              console.warn('[usePoiInteraction] Failed to refresh discovered enemies after beacon:', e);
-            }
-            // Now fetch discovery (after enemies are written) + refresh state in parallel
-            const [beaconSdPda] = deriveSessionDiscoveryPda(ctx.sessionPda);
-            const [beaconDiscovery] = await Promise.all([
-              fetchSessionDiscovery(
+              const [beaconSdPda] = deriveSessionDiscoveryPda(ctx.sessionPda);
+              const beaconDiscovery = await fetchSessionDiscovery(
                 createMapGeneratorProgram(ctx.connection),
                 beaconSdPda
-              ).catch(() => null),
-              refreshGameplayState(),
-              refreshSessionState(),
-            ]);
-            if (playerPosition) {
-              dispatch({ type: 'REVEAL_TILES', center: playerPosition, radius: 13 });
+              ).catch(() => null);
+              if (beaconDiscovery) {
+                const sdTiles = unpackDiscoveryTiles(
+                  beaconDiscovery,
+                  beaconDiscovery.mapWidth,
+                  beaconDiscovery.mapHeight
+                );
+                const sdEnemies = convertDiscoveredEnemies(
+                  beaconDiscovery.discoveredEnemies,
+                  beaconDiscovery.discoveredEnemyCount
+                );
+                const sdPois = convertDiscoveredPois(
+                  beaconDiscovery.discoveredPois,
+                  beaconDiscovery.discoveredPoiCount
+                );
+                dispatch({ type: 'SYNC_DISCOVERY', tiles: sdTiles, enemies: sdEnemies, pois: sdPois });
+              }
+            } catch (e) {
+              console.warn('[usePoiInteraction] Failed to reveal beacon tiles in SessionDiscovery:', e);
             }
-            if (beaconDiscovery) {
-              const sdTiles = unpackDiscoveryTiles(beaconDiscovery, beaconDiscovery.mapWidth, beaconDiscovery.mapHeight);
-              const sdEnemies = convertDiscoveredEnemies(beaconDiscovery.discoveredEnemies, beaconDiscovery.discoveredEnemyCount);
-              const sdPois = convertDiscoveredPois(beaconDiscovery.discoveredPois, beaconDiscovery.discoveredPoiCount);
-              dispatch({ type: 'SYNC_DISCOVERY', tiles: sdTiles, enemies: sdEnemies, pois: sdPois });
-            }
-            break;
+
+            // Keep the reveal responsive: do the expensive discovery/enemy sync in the background.
+            void (async () => {
+              try {
+                try {
+                  const refreshEnemiesIx = await buildRefreshDiscoveredEnemiesInstruction(
+                    createGameplayStateProgram(ctx.connection),
+                    ctx.sessionPda,
+                    ctx.sessionSignerKeypair.publicKey
+                  );
+                  const refreshEnemiesTx = new Transaction().add(
+                    ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+                    refreshEnemiesIx
+                  );
+                  await sendSessionSignerTransaction(
+                    ctx.connection,
+                    refreshEnemiesTx,
+                    ctx.sessionSignerKeypair
+                  );
+                } catch (e) {
+                  console.warn(
+                    '[usePoiInteraction] Failed to refresh discovered enemies after beacon:',
+                    e
+                  );
+                }
+                const [beaconSdPda] = deriveSessionDiscoveryPda(ctx.sessionPda);
+                const [beaconDiscovery] = await Promise.all([
+                  fetchSessionDiscovery(
+                    createMapGeneratorProgram(ctx.connection),
+                    beaconSdPda
+                  ).catch(() => null),
+                  refreshGameplayState(),
+                  refreshSessionState(),
+                ]);
+
+                if (beaconDiscovery) {
+                  const sdTiles = unpackDiscoveryTiles(
+                    beaconDiscovery,
+                    beaconDiscovery.mapWidth,
+                    beaconDiscovery.mapHeight
+                  );
+                  const sdEnemies = convertDiscoveredEnemies(
+                    beaconDiscovery.discoveredEnemies,
+                    beaconDiscovery.discoveredEnemyCount
+                  );
+                  const sdPois = convertDiscoveredPois(
+                    beaconDiscovery.discoveredPois,
+                    beaconDiscovery.discoveredPoiCount
+                  );
+                  dispatch({ type: 'SYNC_DISCOVERY', tiles: sdTiles, enemies: sdEnemies, pois: sdPois });
+                }
+              } catch (err) {
+                console.warn('[usePoiInteraction] Background beacon sync failed:', err);
+              }
+            })();
+
+            setInteractionState('complete');
+            return { success: true };
           }
 
           // Seismic Scanner (L7) — Two-step flow: generate on-chain options, then reveal selection
@@ -1638,15 +1703,15 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             return { success: false };
         }
 
-        if (isOneTimePoiType(currentPoi.poiType)) {
+        if (isOneTimePoiType(currentPoi!.poiType)) {
           await assertPoiConsumedOnChain(poiIndex);
           // Mark one-time POIs as consumed locally for immediate UI feedback.
           debugLog(
             '[usePoiInteraction] On-chain interaction complete, marking POI consumed at',
-            currentPoi.x,
-            currentPoi.y
+            currentPoi!.x,
+            currentPoi!.y
           );
-          syncLocalPoiAsConsumed(currentPoi);
+          syncLocalPoiAsConsumed(currentPoi!);
         }
 
         setInteractionState('complete');
@@ -1802,9 +1867,25 @@ export function usePoiInteraction(): UsePoiInteractionResult {
       setError(null);
 
       try {
-        await withErPositionRetry(() =>
-          fastTravel(ctx, fromPoiIndex, toPoiIndex)
-        );
+        const isNight = gameState?.time?.phase === 'NIGHT';
+        const destinationPoi = gameState?.map?.pois?.find((poi) => poi.mapPoisIndex === toPoiIndex);
+        const destination = destinationPoi?.position ?? { x: 0, y: 0 };
+        await withErPositionRetry(async () => {
+          const fastTravelTx = await buildFastTravelTransaction(ctx, fromPoiIndex, toPoiIndex);
+          const revealIx = await buildRevealRadiusInstruction(
+            createMapGeneratorProgram(ctx.connection),
+            ctx.sessionPda,
+            ctx.sessionSignerKeypair.publicKey,
+            destination.x,
+            destination.y,
+            isNight ? 2 : 4
+          );
+          fastTravelTx.instructions.unshift(
+            ComputeBudgetProgram.setComputeUnitLimit({ units: POI_COMBINED_CU_LIMIT })
+          );
+          fastTravelTx.add(revealIx);
+          await sendSessionSignerTransaction(ctx.connection, fastTravelTx, ctx.sessionSignerKeypair);
+        });
 
         await refreshGameplayState();
         const gpProg = createGameplayStateProgram(ctx.connection);
@@ -1815,19 +1896,8 @@ export function usePoiInteraction(): UsePoiInteractionResult {
           dispatch({ type: 'SYNC_MOVE', confirmedState: ftState });
         }
 
-        // Reveal tiles + sync enemies at destination
+        // Reveal is already combined with fast travel. Refresh enemies in background.
         try {
-          const isNight = gameState?.time?.phase === 'NIGHT';
-          const destX = ftState?.positionX ?? 0;
-          const destY = ftState?.positionY ?? 0;
-          const revealIx = await buildRevealRadiusInstruction(
-            createMapGeneratorProgram(ctx.connection), ctx.sessionPda,
-            ctx.sessionSignerKeypair.publicKey, destX, destY, isNight ? 2 : 4
-          );
-          await sendSessionSignerTransaction(ctx.connection,
-            new Transaction().add(ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }), revealIx),
-            ctx.sessionSignerKeypair
-          );
           const refreshIx = await buildRefreshDiscoveredEnemiesInstruction(
             gpProg, ctx.sessionPda, ctx.sessionSignerKeypair.publicKey
           );
@@ -1878,20 +1948,32 @@ export function usePoiInteraction(): UsePoiInteractionResult {
       }
 
       // Validate both waypoint indices against fresh on-chain data
-      const fromValidated = await validatePoiIndex(
-        ctx.program, ctx.mapPoisPda,
-        -1,
-        fromPos.x, fromPos.y,
-        'executeFastTravel(from)',
-        sessionDiscoveryPda, ctx.connection
+      const fromLocalPoi = gameState?.map?.pois?.find(
+        (poi) => poi.position.x === fromPos.x && poi.position.y === fromPos.y
       );
-      const toValidated = await validatePoiIndex(
-        ctx.program, ctx.mapPoisPda,
-        -1,
-        toPos.x, toPos.y,
-        'executeFastTravel(to)',
-        sessionDiscoveryPda, ctx.connection
+      const toLocalPoi = gameState?.map?.pois?.find(
+        (poi) => poi.position.x === toPos.x && poi.position.y === toPos.y
       );
+      const fromValidated =
+        fromLocalPoi?.mapPoisIndex != null
+          ? { index: fromLocalPoi.mapPoisIndex }
+          : await validatePoiIndex(
+              ctx.program, ctx.mapPoisPda,
+              -1,
+              fromPos.x, fromPos.y,
+              'executeFastTravel(from)',
+              sessionDiscoveryPda, ctx.connection
+            );
+      const toValidated =
+        toLocalPoi?.mapPoisIndex != null
+          ? { index: toLocalPoi.mapPoisIndex }
+          : await validatePoiIndex(
+              ctx.program, ctx.mapPoisPda,
+              -1,
+              toPos.x, toPos.y,
+              'executeFastTravel(to)',
+              sessionDiscoveryPda, ctx.connection
+            );
 
       if (fromValidated.index === -1 || toValidated.index === -1) {
         return { success: false, error: 'Waypoint not found' };
@@ -1901,9 +1983,27 @@ export function usePoiInteraction(): UsePoiInteractionResult {
       setError(null);
 
       try {
-        await withErPositionRetry(() =>
-          fastTravel(ctx, fromValidated.index, toValidated.index)
-        );
+        const revealRadius = gameState?.time?.phase === 'NIGHT' ? 2 : 4;
+        await withErPositionRetry(async () => {
+          const fastTravelTx = await buildFastTravelTransaction(
+            ctx,
+            fromValidated.index,
+            toValidated.index
+          );
+          const revealIx = await buildRevealRadiusInstruction(
+            createMapGeneratorProgram(ctx.connection),
+            ctx.sessionPda,
+            ctx.sessionSignerKeypair.publicKey,
+            toPos.x,
+            toPos.y,
+            revealRadius
+          );
+          fastTravelTx.instructions.unshift(
+            ComputeBudgetProgram.setComputeUnitLimit({ units: POI_COMBINED_CU_LIMIT })
+          );
+          fastTravelTx.add(revealIx);
+          await sendSessionSignerTransaction(ctx.connection, fastTravelTx, ctx.sessionSignerKeypair);
+        });
 
         await refreshGameplayState();
 
@@ -1915,17 +2015,8 @@ export function usePoiInteraction(): UsePoiInteractionResult {
           dispatch({ type: 'SYNC_MOVE', confirmedState: updatedState });
         }
 
-        // Reveal tiles + sync enemies at destination
+        // Reveal is already combined with fast travel. Refresh enemies in background.
         try {
-          const isNight = gameState?.time?.phase === 'NIGHT';
-          const revealIx = await buildRevealRadiusInstruction(
-            createMapGeneratorProgram(ctx.connection), ctx.sessionPda,
-            ctx.sessionSignerKeypair.publicKey, toPos.x, toPos.y, isNight ? 2 : 4
-          );
-          await sendSessionSignerTransaction(ctx.connection,
-            new Transaction().add(ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }), revealIx),
-            ctx.sessionSignerKeypair
-          );
           const refreshIx = await buildRefreshDiscoveredEnemiesInstruction(
             createGameplayStateProgram(ctx.connection), ctx.sessionPda,
             ctx.sessionSignerKeypair.publicKey
@@ -2029,7 +2120,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
         }
 
         // Validate the stored poiIndex against fresh on-chain data.
-        if (currentPoi) {
+        if (currentPoi && currentPoi.mapPoisIndex == null) {
           const cacheValidated = await validatePoiIndex(
             ctx.program,
             ctx.mapPoisPda,
@@ -2183,7 +2274,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
       }
 
       // Validate deferredPoiIndex against fresh on-chain data before using it.
-      const confirmValidated = currentPoi
+      const confirmValidated = currentPoi && currentPoi.mapPoisIndex == null
         ? await validatePoiIndex(
             ctx.program,
             ctx.mapPoisPda,
@@ -2194,7 +2285,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             sessionDiscoveryPda,
             ctx.connection
           )
-        : { index: deferredPoiIndex };
+        : { index: currentPoi?.mapPoisIndex ?? deferredPoiIndex };
       const validatedPoiIndex = confirmValidated.index;
       if (validatedPoiIndex === -1) {
         setError('POI state changed. Please try again.');
@@ -2243,9 +2334,23 @@ export function usePoiInteraction(): UsePoiInteractionResult {
               '[usePoiInteraction] Sending interactRest on-chain | poiIndex:',
               validatedPoiIndex
             );
-            const restSignature = await withErPositionRetry(() =>
-              interactRest(ctx, validatedPoiIndex)
-            );
+            const restCenter = playerPosition ?? { x: currentPoi?.x ?? 0, y: currentPoi?.y ?? 0 };
+            const restSignature = await withErPositionRetry(async () => {
+              const restTx = await buildInteractRestTransaction(ctx, validatedPoiIndex);
+              const revealIx = await buildRevealRadiusInstruction(
+                createMapGeneratorProgram(ctx.connection),
+                ctx.sessionPda,
+                ctx.sessionSignerKeypair.publicKey,
+                restCenter.x,
+                restCenter.y,
+                4
+              );
+              restTx.instructions.unshift(
+                ComputeBudgetProgram.setComputeUnitLimit({ units: POI_COMBINED_CU_LIMIT })
+              );
+              restTx.add(revealIx);
+              return sendSessionSignerTransaction(ctx.connection, restTx, ctx.sessionSignerKeypair);
+            });
             debugLog('[usePoiInteraction] interactRest CONFIRMED');
 
             // Refresh BOTH gameplay state contexts to prevent mismatch-detection from reverting
@@ -2274,40 +2379,8 @@ export function usePoiInteraction(): UsePoiInteractionResult {
               dispatch({ type: 'SYNC_MOVE', confirmedState: updatedState });
             }
 
-            // Phase changed (night→day): reveal tiles at new day radius + sync enemies/discovery
-            if (updatedState && playerPosition) {
-              try {
-                // Reveal tiles at day radius (4) around player — on-chain rest doesn't do this
-                const revealIx = await buildRevealRadiusInstruction(
-                  createMapGeneratorProgram(ctx.connection),
-                  ctx.sessionPda,
-                  ctx.sessionSignerKeypair.publicKey,
-                  playerPosition.x,
-                  playerPosition.y,
-                  4 // DAY_VISION_RADIUS
-                );
-                const refreshEnemiesIx = await buildRefreshDiscoveredEnemiesInstruction(
-                  createGameplayStateProgram(ctx.connection),
-                  ctx.sessionPda,
-                  ctx.sessionSignerKeypair.publicKey
-                );
-                // Send reveal + refresh enemies TXs, then fetch discovery — all sequential
-                // (both write to session_discovery via CPI)
-                const revealTx = new Transaction().add(
-                  ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
-                  revealIx
-                );
-                await sendSessionSignerTransaction(ctx.connection, revealTx, ctx.sessionSignerKeypair);
-                const refreshTx = new Transaction().add(
-                  ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
-                  refreshEnemiesIx
-                );
-                await sendSessionSignerTransaction(ctx.connection, refreshTx, ctx.sessionSignerKeypair);
-              } catch (e) {
-                console.warn('[usePoiInteraction] Failed to reveal/refresh after rest:', e);
-              }
-            }
-            // Fetch discovery after reveal/refresh
+            dispatch({ type: 'REVEAL_TILES', center: restCenter, radius: 4 });
+            // Fetch discovery after combined rest+reveal tx
             {
               const [restSdPda] = deriveSessionDiscoveryPda(ctx.sessionPda);
               const restDiscovery = await fetchSessionDiscovery(
@@ -2321,6 +2394,34 @@ export function usePoiInteraction(): UsePoiInteractionResult {
                 dispatch({ type: 'SYNC_DISCOVERY', tiles: sdTiles, enemies: sdEnemies, pois: sdPois });
               }
             }
+            // Enemy refresh is less latency-sensitive; do it in the background.
+            void (async () => {
+              try {
+                const refreshEnemiesIx = await buildRefreshDiscoveredEnemiesInstruction(
+                  createGameplayStateProgram(ctx.connection),
+                  ctx.sessionPda,
+                  ctx.sessionSignerKeypair.publicKey
+                );
+                const refreshTx = new Transaction().add(
+                  ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+                  refreshEnemiesIx
+                );
+                await sendSessionSignerTransaction(ctx.connection, refreshTx, ctx.sessionSignerKeypair);
+                const [restSdPda] = deriveSessionDiscoveryPda(ctx.sessionPda);
+                const restDiscovery = await fetchSessionDiscovery(
+                  createMapGeneratorProgram(ctx.connection),
+                  restSdPda
+                ).catch(() => null);
+                if (restDiscovery) {
+                  const sdTiles = unpackDiscoveryTiles(restDiscovery, restDiscovery.mapWidth, restDiscovery.mapHeight);
+                  const sdEnemies = convertDiscoveredEnemies(restDiscovery.discoveredEnemies, restDiscovery.discoveredEnemyCount);
+                  const sdPois = convertDiscoveredPois(restDiscovery.discoveredPois, restDiscovery.discoveredPoiCount);
+                  dispatch({ type: 'SYNC_DISCOVERY', tiles: sdTiles, enemies: sdEnemies, pois: sdPois });
+                }
+              } catch (e) {
+                console.warn('[usePoiInteraction] Failed to refresh enemies after rest:', e);
+              }
+            })();
 
             // Detect boss resolution:
             // - week advanced (typical win on week 1/2),
@@ -2593,9 +2694,31 @@ export function usePoiInteraction(): UsePoiInteractionResult {
                   '| to poiIndex:',
                   destValidated.index
                 );
-                await withErPositionRetry(() =>
-                  fastTravel(ctx, fromValidated.index, destValidated.index)
-                );
+                const ftRadius =
+                  freshGameState?.phase != null &&
+                  (freshGameState.phase === 1 || freshGameState.phase === 3 || freshGameState.phase === 5)
+                    ? 2
+                    : 4;
+                await withErPositionRetry(async () => {
+                  const fastTravelTx = await buildFastTravelTransaction(
+                    ctx,
+                    fromValidated.index,
+                    destValidated.index
+                  );
+                  const revealIx = await buildRevealRadiusInstruction(
+                    createMapGeneratorProgram(ctx.connection),
+                    ctx.sessionPda,
+                    ctx.sessionSignerKeypair.publicKey,
+                    destX,
+                    destY,
+                    ftRadius
+                  );
+                  fastTravelTx.instructions.unshift(
+                    ComputeBudgetProgram.setComputeUnitLimit({ units: POI_COMBINED_CU_LIMIT })
+                  );
+                  fastTravelTx.add(revealIx);
+                  await sendSessionSignerTransaction(ctx.connection, fastTravelTx, ctx.sessionSignerKeypair);
+                });
                 debugLog('[usePoiInteraction] fastTravel CONFIRMED');
 
                 // Refresh gameplay state to sync position
@@ -2607,25 +2730,8 @@ export function usePoiInteraction(): UsePoiInteractionResult {
                   dispatch({ type: 'SYNC_MOVE', confirmedState: updatedState });
                 }
 
-                // Reveal tiles at destination + sync enemies after fast travel
+                // Reveal is already combined with fast travel. Refresh enemies after.
                 try {
-                  const isNight = updatedState?.phase != null &&
-                    (updatedState.phase === 1 || updatedState.phase === 3 || updatedState.phase === 5);
-                  const ftRadius = isNight ? 2 : 4;
-                  const revealIx = await buildRevealRadiusInstruction(
-                    createMapGeneratorProgram(ctx.connection),
-                    ctx.sessionPda,
-                    ctx.sessionSignerKeypair.publicKey,
-                    destX,
-                    destY,
-                    ftRadius
-                  );
-                  const revealTx = new Transaction().add(
-                    ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
-                    revealIx
-                  );
-                  await sendSessionSignerTransaction(ctx.connection, revealTx, ctx.sessionSignerKeypair);
-
                   const refreshEnemiesIx = await buildRefreshDiscoveredEnemiesInstruction(
                     createGameplayStateProgram(ctx.connection),
                     ctx.sessionPda,

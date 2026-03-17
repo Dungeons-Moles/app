@@ -77,6 +77,7 @@ export interface MapPOI {
   position: Position;
   visited: boolean;
   discovered: boolean;
+  mapPoisIndex?: number;
 }
 
 // ============================================================================

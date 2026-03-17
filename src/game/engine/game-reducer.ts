@@ -2299,7 +2299,7 @@ function handleSyncDiscovery(
   const moleDen = state.map.pois.find((p) => p.definitionId === 'L1');
   const mergedPois = pois.map((p, i) => ({
     ...p,
-    id: `poi-${i}`,
+    id: p.mapPoisIndex != null ? `poi-${p.mapPoisIndex}` : `poi-${i}`,
     discovered: true,
     visited: p.visited || localVisited.has(`${p.position.x},${p.position.y}`),
   }));
