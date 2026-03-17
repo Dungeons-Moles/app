@@ -16,6 +16,7 @@ import {
   deriveGameplayAuthorityPda,
   deriveInventoryAuthorityPda,
   deriveGeneratedMapPda,
+  deriveMapEnemiesPda,
 } from './constants';
 import { SOLANA_CONFIG } from './config';
 import { createGameplayStateProgram } from './programs';
@@ -110,6 +111,7 @@ export async function buildInteractRestTransaction(
   const [poiAuthorityPda] = derivePoiAuthorityPda();
   const [gameplayAuthorityPda] = deriveGameplayAuthorityPda();
   const [generatedMapPda] = deriveGeneratedMapPda(ctx.sessionPda);
+  const [mapEnemiesPda] = deriveMapEnemiesPda(ctx.sessionPda);
 
   // Optional account: include only when fully initialized/deserializable.
   // Some local flows can leave the PDA allocated but not initialized, which
@@ -127,6 +129,7 @@ export async function buildInteractRestTransaction(
   const restAccounts: any = {
     mapPois: ctx.mapPoisPda,
     gameState: ctx.gameStatePda,
+    mapEnemies: mapEnemiesPda,
     inventory: inventoryPda,
     generatedMap: generatedMapPda,
     poiAuthority: poiAuthorityPda,
@@ -334,6 +337,9 @@ export async function buildInteractSurveyBeaconTransaction(
   poiIndex: number
 ): Promise<Transaction> {
   const [generatedMapPda] = deriveGeneratedMapPda(ctx.sessionPda);
+  const [mapEnemiesPda] = deriveMapEnemiesPda(ctx.sessionPda);
+  const [poiAuthorityPda] = derivePoiAuthorityPda();
+  const [gameplayAuthorityPda] = deriveGameplayAuthorityPda();
   return ctx.program.methods
     .interactSurveyBeacon(poiIndex)
     .accountsPartial({
@@ -341,6 +347,10 @@ export async function buildInteractSurveyBeaconTransaction(
       gameState: ctx.gameStatePda,
       generatedMap: generatedMapPda,
       session: ctx.sessionPda,
+      mapEnemies: mapEnemiesPda,
+      poiAuthority: poiAuthorityPda,
+      gameplayAuthority: gameplayAuthorityPda,
+      gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
       mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
       sessionDiscovery: ctx.sessionDiscoveryPda ?? undefined,
       player: ctx.sessionSignerKeypair.publicKey,
@@ -386,6 +396,9 @@ export async function interactSeismicScanner(
   poiType: number
 ): Promise<string> {
   const [generatedMapPda] = deriveGeneratedMapPda(ctx.sessionPda);
+  const [mapEnemiesPda] = deriveMapEnemiesPda(ctx.sessionPda);
+  const [poiAuthorityPda] = derivePoiAuthorityPda();
+  const [gameplayAuthorityPda] = deriveGameplayAuthorityPda();
   const transaction = await ctx.program.methods
     .interactSeismicScanner(poiIndex, poiType)
     .accountsPartial({
@@ -393,6 +406,10 @@ export async function interactSeismicScanner(
       gameState: ctx.gameStatePda,
       generatedMap: generatedMapPda,
       session: ctx.sessionPda,
+      mapEnemies: mapEnemiesPda,
+      poiAuthority: poiAuthorityPda,
+      gameplayAuthority: gameplayAuthorityPda,
+      gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
       mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
       sessionDiscovery: ctx.sessionDiscoveryPda ?? undefined,
       player: ctx.sessionSignerKeypair.publicKey,
@@ -425,6 +442,8 @@ export async function buildFastTravelTransaction(
 ): Promise<Transaction> {
   const [poiAuthorityPda] = derivePoiAuthorityPda();
   const [generatedMapPda] = deriveGeneratedMapPda(ctx.sessionPda);
+  const [mapEnemiesPda] = deriveMapEnemiesPda(ctx.sessionPda);
+  const [gameplayAuthorityPda] = deriveGameplayAuthorityPda();
 
   return ctx.program.methods
     .fastTravel(fromPoiIndex, toPoiIndex)
@@ -433,6 +452,8 @@ export async function buildFastTravelTransaction(
       gameState: ctx.gameStatePda,
       poiAuthority: poiAuthorityPda,
       gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
+      gameplayAuthority: gameplayAuthorityPda,
+      mapEnemies: mapEnemiesPda,
       generatedMap: generatedMapPda,
       session: ctx.sessionPda,
       mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,

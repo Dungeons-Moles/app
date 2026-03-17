@@ -2277,6 +2277,14 @@ function handleSyncDiscovery(
       return current;
     })
   );
+  const newFog = state.map.fog.map((row, y) =>
+    row.map((current, x) => {
+      if (current !== FogState.Hidden) {
+        return current;
+      }
+      return tiles[y]?.[x] !== TileType.Unknown ? FogState.Revealed : current;
+    })
+  );
 
   // Merge enemies: replace local set with discovery set (authoritative source).
   // Filter out enemies at the player's current position — they were just defeated
@@ -2312,6 +2320,7 @@ function handleSyncDiscovery(
     map: {
       ...state.map,
       tiles: newTiles,
+      fog: newFog,
       enemies: mergedEnemies,
       pois: mergedPois,
     },

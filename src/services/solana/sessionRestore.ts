@@ -294,7 +294,9 @@ export async function fetchFullSessionState(
   const playerPos = { x: gameStateData.positionX, y: gameStateData.positionY };
 
   // Build the map
-  // Add Mole Den (L1) as a synthetic POI — it's stored in GeneratedMap, not MapPois
+  // Add Mole Den (L1) if not already in discoveredPois.
+  // The mole-den is always the first POI placed in GeneratedMap (index 0),
+  // so its MapPois index is always 0 after refreshMapPois.
   const moleDenPos = { x: sessionDiscoveryData.moleDenX, y: sessionDiscoveryData.moleDenY };
   const hasMoleDen = pois.some(
     (p) => p.definitionId === 'L1' && p.position.x === moleDenPos.x && p.position.y === moleDenPos.y
@@ -306,6 +308,7 @@ export async function fetchFullSessionState(
       position: moleDenPos,
       visited: false,
       discovered: true,
+      mapPoisIndex: 0,
     });
   }
 

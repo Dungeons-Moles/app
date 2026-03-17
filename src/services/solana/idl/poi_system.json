@@ -1253,6 +1253,141 @@
           "address": "C8hK4qsqsSYQeqyXuTPTUUS3T7N74WnZCuzvChTpK1Mo"
         },
         {
+          "name": "map_enemies",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  112,
+                  95,
+                  101,
+                  110,
+                  101,
+                  109,
+                  105,
+                  101,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois.session",
+                "account": "MapPois"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                165,
+                105,
+                51,
+                195,
+                50,
+                68,
+                93,
+                183,
+                82,
+                141,
+                122,
+                107,
+                195,
+                1,
+                86,
+                30,
+                104,
+                80,
+                170,
+                150,
+                122,
+                133,
+                234,
+                98,
+                181,
+                121,
+                227,
+                35,
+                228,
+                168,
+                136,
+                54
+              ]
+            }
+          }
+        },
+        {
+          "name": "gameplay_authority",
+          "docs": [
+            "Gameplay authority PDA from gameplay-state for CPI into map-generator."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  112,
+                  108,
+                  97,
+                  121,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                165,
+                105,
+                51,
+                195,
+                50,
+                68,
+                93,
+                183,
+                82,
+                141,
+                122,
+                107,
+                195,
+                1,
+                86,
+                30,
+                104,
+                80,
+                170,
+                150,
+                122,
+                133,
+                234,
+                98,
+                181,
+                121,
+                227,
+                35,
+                228,
+                168,
+                136,
+                54
+              ]
+            }
+          }
+        },
+        {
           "name": "generated_map",
           "writable": true,
           "pda": {
@@ -2886,6 +3021,71 @@
           }
         },
         {
+          "name": "map_enemies",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  112,
+                  95,
+                  101,
+                  110,
+                  101,
+                  109,
+                  105,
+                  101,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois.session",
+                "account": "MapPois"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                165,
+                105,
+                51,
+                195,
+                50,
+                68,
+                93,
+                183,
+                82,
+                141,
+                122,
+                107,
+                195,
+                1,
+                86,
+                30,
+                104,
+                80,
+                170,
+                150,
+                122,
+                133,
+                234,
+                98,
+                181,
+                121,
+                227,
+                35,
+                228,
+                168,
+                136,
+                54
+              ]
+            }
+          }
+        },
+        {
           "name": "inventory",
           "docs": [
             "Player's inventory for deriving max_hp and boss fight resolution (mut for gear slot expansion)"
@@ -2957,6 +3157,7 @@
           "docs": [
             "Generated map account (provides seed for duel week 1/2 boss selection in skip_to_day)."
           ],
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -4200,6 +4401,176 @@
           "name": "session"
         },
         {
+          "name": "map_enemies",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  112,
+                  95,
+                  101,
+                  110,
+                  101,
+                  109,
+                  105,
+                  101,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois.session",
+                "account": "MapPois"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                165,
+                105,
+                51,
+                195,
+                50,
+                68,
+                93,
+                183,
+                82,
+                141,
+                122,
+                107,
+                195,
+                1,
+                86,
+                30,
+                104,
+                80,
+                170,
+                150,
+                122,
+                133,
+                234,
+                98,
+                181,
+                121,
+                227,
+                35,
+                228,
+                168,
+                136,
+                54
+              ]
+            }
+          }
+        },
+        {
+          "name": "poi_authority",
+          "docs": [
+            "POI authority PDA for signing CPI calls."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  105,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "gameplay_authority",
+          "docs": [
+            "Gameplay authority PDA from gameplay-state for CPI into map-generator."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  112,
+                  108,
+                  97,
+                  121,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                165,
+                105,
+                51,
+                195,
+                50,
+                68,
+                93,
+                183,
+                82,
+                141,
+                122,
+                107,
+                195,
+                1,
+                86,
+                30,
+                104,
+                80,
+                170,
+                150,
+                122,
+                133,
+                234,
+                98,
+                181,
+                121,
+                227,
+                35,
+                228,
+                168,
+                136,
+                54
+              ]
+            }
+          }
+        },
+        {
+          "name": "gameplay_state_program",
+          "docs": [
+            "Gameplay state program for CPI (refresh_discovered_enemies_authorized)"
+          ],
+          "address": "C8hK4qsqsSYQeqyXuTPTUUS3T7N74WnZCuzvChTpK1Mo"
+        },
+        {
           "name": "map_generator_program",
           "address": "GCy5GqvnJN99rgGtV6fMn8NtL9E7RoAyHDGzQv8me65j"
         },
@@ -4412,6 +4783,176 @@
         },
         {
           "name": "session"
+        },
+        {
+          "name": "map_enemies",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  112,
+                  95,
+                  101,
+                  110,
+                  101,
+                  109,
+                  105,
+                  101,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "map_pois.session",
+                "account": "MapPois"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                165,
+                105,
+                51,
+                195,
+                50,
+                68,
+                93,
+                183,
+                82,
+                141,
+                122,
+                107,
+                195,
+                1,
+                86,
+                30,
+                104,
+                80,
+                170,
+                150,
+                122,
+                133,
+                234,
+                98,
+                181,
+                121,
+                227,
+                35,
+                228,
+                168,
+                136,
+                54
+              ]
+            }
+          }
+        },
+        {
+          "name": "poi_authority",
+          "docs": [
+            "POI authority PDA for signing CPI calls."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  105,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "gameplay_authority",
+          "docs": [
+            "Gameplay authority PDA from gameplay-state for CPI into map-generator."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  112,
+                  108,
+                  97,
+                  121,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                165,
+                105,
+                51,
+                195,
+                50,
+                68,
+                93,
+                183,
+                82,
+                141,
+                122,
+                107,
+                195,
+                1,
+                86,
+                30,
+                104,
+                80,
+                170,
+                150,
+                122,
+                133,
+                234,
+                98,
+                181,
+                121,
+                227,
+                35,
+                228,
+                168,
+                136,
+                54
+              ]
+            }
+          }
+        },
+        {
+          "name": "gameplay_state_program",
+          "docs": [
+            "Gameplay state program for CPI (refresh_discovered_enemies_authorized)"
+          ],
+          "address": "C8hK4qsqsSYQeqyXuTPTUUS3T7N74WnZCuzvChTpK1Mo"
         },
         {
           "name": "map_generator_program",
@@ -5727,6 +6268,19 @@
       ]
     },
     {
+      "name": "MapEnemies",
+      "discriminator": [
+        235,
+        215,
+        210,
+        109,
+        182,
+        109,
+        178,
+        138
+      ]
+    },
+    {
       "name": "MapPois",
       "discriminator": [
         96,
@@ -5791,19 +6345,6 @@
         104,
         64,
         8
-      ]
-    },
-    {
-      "name": "FastTravelCompleted",
-      "discriminator": [
-        49,
-        147,
-        42,
-        30,
-        156,
-        194,
-        235,
-        212
       ]
     },
     {
@@ -5898,19 +6439,6 @@
       ]
     },
     {
-      "name": "PoiRevealed",
-      "discriminator": [
-        87,
-        178,
-        222,
-        31,
-        164,
-        65,
-        41,
-        161
-      ]
-    },
-    {
       "name": "PoisClosed",
       "discriminator": [
         248,
@@ -5934,19 +6462,6 @@
         33,
         108,
         66
-      ]
-    },
-    {
-      "name": "RestCompleted",
-      "discriminator": [
-        132,
-        132,
-        97,
-        150,
-        174,
-        11,
-        177,
-        227
       ]
     },
     {
@@ -6002,19 +6517,6 @@
       ]
     },
     {
-      "name": "TilesRevealed",
-      "discriminator": [
-        117,
-        235,
-        111,
-        148,
-        193,
-        196,
-        114,
-        141
-      ]
-    },
-    {
       "name": "ToolOilApplied",
       "discriminator": [
         125,
@@ -6038,19 +6540,6 @@
         91,
         49,
         151
-      ]
-    },
-    {
-      "name": "WaypointDiscovered",
-      "discriminator": [
-        157,
-        91,
-        193,
-        29,
-        216,
-        238,
-        251,
-        64
       ]
     }
   ],
@@ -6513,6 +7002,52 @@
       }
     },
     {
+      "name": "EnemyInstance",
+      "docs": [
+        "A spawned enemy instance on the map"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "archetype_id",
+            "docs": [
+              "References EnemyArchetype ID (0-11)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "tier",
+            "docs": [
+              "Tier: 0=T1, 1=T2, 2=T3"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "x",
+            "docs": [
+              "Map X coordinate"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "y",
+            "docs": [
+              "Map Y coordinate"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "defeated",
+            "docs": [
+              "True if already defeated"
+            ],
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
       "name": "EnemySpawn",
       "docs": [
         "Initial enemy spawn position (4 bytes)"
@@ -6546,34 +7081,6 @@
             "docs": [
               "Y position on map"
             ],
-            "type": "u8"
-          }
-        ]
-      }
-    },
-    {
-      "name": "FastTravelCompleted",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "session",
-            "type": "pubkey"
-          },
-          {
-            "name": "from_x",
-            "type": "u8"
-          },
-          {
-            "name": "from_y",
-            "type": "u8"
-          },
-          {
-            "name": "to_x",
-            "type": "u8"
-          },
-          {
-            "name": "to_y",
             "type": "u8"
           }
         ]
@@ -7318,6 +7825,52 @@
       }
     },
     {
+      "name": "MapEnemies",
+      "docs": [
+        "On-chain account storing all enemy instances for a map",
+        "PDA Seeds: [\"map_enemies\", session.as_ref()]"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "session",
+            "docs": [
+              "Parent session PDA"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "enemies",
+            "docs": [
+              "Enemy instances (max 48)"
+            ],
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "EnemyInstance"
+                }
+              }
+            }
+          },
+          {
+            "name": "count",
+            "docs": [
+              "Actual count of enemies"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump seed"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
       "name": "MapPois",
       "docs": [
         "Session-scoped account holding all POI instances for a map"
@@ -7758,30 +8311,6 @@
       }
     },
     {
-      "name": "PoiRevealed",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "session",
-            "type": "pubkey"
-          },
-          {
-            "name": "poi_type",
-            "type": "u8"
-          },
-          {
-            "name": "x",
-            "type": "u8"
-          },
-          {
-            "name": "y",
-            "type": "u8"
-          }
-        ]
-      }
-    },
-    {
       "name": "PoiSpawn",
       "docs": [
         "Initial POI spawn position (4 bytes)"
@@ -7904,41 +8433,6 @@
           {
             "name": "act",
             "type": "u8"
-          }
-        ]
-      }
-    },
-    {
-      "name": "RestCompleted",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "session",
-            "type": "pubkey"
-          },
-          {
-            "name": "poi_type",
-            "type": "u8"
-          },
-          {
-            "name": "x",
-            "type": "u8"
-          },
-          {
-            "name": "y",
-            "type": "u8"
-          },
-          {
-            "name": "heal_amount",
-            "docs": [
-              "Heal amount (u16 to support max_hp > 255)"
-            ],
-            "type": "u16"
-          },
-          {
-            "name": "full_heal",
-            "type": "bool"
           }
         ]
       }
@@ -8427,30 +8921,6 @@
       }
     },
     {
-      "name": "TilesRevealed",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "session",
-            "type": "pubkey"
-          },
-          {
-            "name": "count",
-            "type": "u16"
-          },
-          {
-            "name": "center_x",
-            "type": "u8"
-          },
-          {
-            "name": "center_y",
-            "type": "u8"
-          }
-        ]
-      }
-    },
-    {
       "name": "ToolOilApplied",
       "type": {
         "kind": "struct",
@@ -8518,26 +8988,6 @@
           },
           {
             "name": "Consumed"
-          }
-        ]
-      }
-    },
-    {
-      "name": "WaypointDiscovered",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "session",
-            "type": "pubkey"
-          },
-          {
-            "name": "x",
-            "type": "u8"
-          },
-          {
-            "name": "y",
-            "type": "u8"
           }
         ]
       }

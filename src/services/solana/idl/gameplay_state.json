@@ -3840,8 +3840,8 @@
       "name": "refresh_discovered_enemies",
       "docs": [
         "Refreshes discovered enemies in SessionDiscovery from MapEnemies + GeneratedMap.",
-        "Called by the frontend after tile-revealing POIs (survey beacon, seismic scanner)",
-        "since those run in poi_system and can't CPI to update_discovered_enemies."
+        "Legacy fallback for clients that have not yet moved POI reveal flows to the",
+        "inline authorized path."
       ],
       "discriminator": [
         193,
@@ -3857,6 +3857,246 @@
         {
           "name": "session_signer",
           "signer": true
+        },
+        {
+          "name": "session",
+          "relations": [
+            "generated_map",
+            "map_enemies"
+          ]
+        },
+        {
+          "name": "generated_map",
+          "docs": [
+            "Generated map (read-only) for discovered_tiles bitmap."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  101,
+                  110,
+                  101,
+                  114,
+                  97,
+                  116,
+                  101,
+                  100,
+                  95,
+                  109,
+                  97,
+                  112
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "session"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                225,
+                240,
+                24,
+                114,
+                207,
+                78,
+                29,
+                234,
+                224,
+                47,
+                10,
+                176,
+                232,
+                191,
+                75,
+                12,
+                245,
+                178,
+                5,
+                197,
+                71,
+                97,
+                18,
+                45,
+                73,
+                218,
+                84,
+                193,
+                245,
+                208,
+                172,
+                110
+              ]
+            }
+          }
+        },
+        {
+          "name": "map_enemies",
+          "docs": [
+            "Enemy instances (read-only)."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  112,
+                  95,
+                  101,
+                  110,
+                  101,
+                  109,
+                  105,
+                  101,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "session"
+              }
+            ]
+          }
+        },
+        {
+          "name": "gameplay_authority",
+          "docs": [
+            "Gameplay authority PDA for signing CPI calls to map-generator."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  112,
+                  108,
+                  97,
+                  121,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "map_generator_program",
+          "docs": [
+            "Map generator program for CPI (update_discovered_enemies)."
+          ],
+          "address": "GCy5GqvnJN99rgGtV6fMn8NtL9E7RoAyHDGzQv8me65j"
+        },
+        {
+          "name": "session_discovery",
+          "docs": [
+            "SessionDiscovery to write enemy data into."
+          ],
+          "writable": true,
+          "optional": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "refresh_discovered_enemies_authorized",
+      "docs": [
+        "Refreshes discovered enemies in SessionDiscovery, authorized by poi-system CPI.",
+        "Used by reveal-heavy POIs so the frontend does not need a follow-up tx."
+      ],
+      "discriminator": [
+        249,
+        176,
+        97,
+        30,
+        75,
+        144,
+        247,
+        227
+      ],
+      "accounts": [
+        {
+          "name": "poi_authority",
+          "docs": [
+            "POI authority PDA from poi-system that must sign."
+          ],
+          "signer": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  105,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                4,
+                203,
+                82,
+                21,
+                135,
+                25,
+                77,
+                43,
+                190,
+                36,
+                165,
+                167,
+                174,
+                199,
+                194,
+                121,
+                30,
+                168,
+                89,
+                214,
+                194,
+                123,
+                68,
+                5,
+                13,
+                83,
+                133,
+                183,
+                75,
+                139,
+                194,
+                96
+              ]
+            }
+          }
         },
         {
           "name": "session",
@@ -6224,19 +6464,6 @@
       ]
     },
     {
-      "name": "EnemyMoved",
-      "discriminator": [
-        0,
-        140,
-        109,
-        14,
-        126,
-        219,
-        253,
-        149
-      ]
-    },
-    {
       "name": "GameStateClosed",
       "discriminator": [
         230,
@@ -6520,32 +6747,6 @@
         65,
         37,
         23
-      ]
-    },
-    {
-      "name": "PlayerMoved",
-      "discriminator": [
-        167,
-        114,
-        108,
-        144,
-        204,
-        62,
-        98,
-        128
-      ]
-    },
-    {
-      "name": "PositionSetAuthorized",
-      "discriminator": [
-        170,
-        110,
-        94,
-        175,
-        251,
-        145,
-        24,
-        252
       ]
     }
   ],
@@ -7594,37 +7795,6 @@
               "True if already defeated"
             ],
             "type": "bool"
-          }
-        ]
-      }
-    },
-    {
-      "name": "EnemyMoved",
-      "docs": [
-        "Emitted when an enemy moves during night phase"
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "enemy_index",
-            "type": "u8"
-          },
-          {
-            "name": "from_x",
-            "type": "u8"
-          },
-          {
-            "name": "from_y",
-            "type": "u8"
-          },
-          {
-            "name": "to_x",
-            "type": "u8"
-          },
-          {
-            "name": "to_y",
-            "type": "u8"
           }
         ]
       }
@@ -9374,50 +9544,6 @@
       }
     },
     {
-      "name": "PlayerMoved",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "player",
-            "type": "pubkey"
-          },
-          {
-            "name": "from_x",
-            "type": "u8"
-          },
-          {
-            "name": "from_y",
-            "type": "u8"
-          },
-          {
-            "name": "to_x",
-            "type": "u8"
-          },
-          {
-            "name": "to_y",
-            "type": "u8"
-          },
-          {
-            "name": "moves_remaining",
-            "type": "u8"
-          },
-          {
-            "name": "is_dig",
-            "type": "bool"
-          },
-          {
-            "name": "combat_triggered",
-            "type": "bool"
-          },
-          {
-            "name": "enemies_moved",
-            "type": "u8"
-          }
-        ]
-      }
-    },
-    {
       "name": "PlayerProfile",
       "docs": [
         "Player profile account storing identity and progression data.",
@@ -9555,37 +9681,6 @@
             "docs": [
               "Y position on map"
             ],
-            "type": "u8"
-          }
-        ]
-      }
-    },
-    {
-      "name": "PositionSetAuthorized",
-      "docs": [
-        "Emitted when position is updated via authorized CPI from poi-system."
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "player",
-            "type": "pubkey"
-          },
-          {
-            "name": "from_x",
-            "type": "u8"
-          },
-          {
-            "name": "from_y",
-            "type": "u8"
-          },
-          {
-            "name": "to_x",
-            "type": "u8"
-          },
-          {
-            "name": "to_y",
             "type": "u8"
           }
         ]

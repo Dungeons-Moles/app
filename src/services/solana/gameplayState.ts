@@ -580,60 +580,6 @@ function getStatTypeArg(stat: StatType): { [key: string]: Record<string, never> 
 }
 
 // ============================================================================
-// MapEnemies Fetch (for session restore)
-// ============================================================================
-
-/**
- * On-chain EnemyInstance structure from Anchor.
- */
-interface OnChainEnemyInstance {
-  archetypeId: number;
-  tier: number;
-  x: number;
-  y: number;
-  defeated: boolean;
-}
-
-/**
- * On-chain MapEnemies account structure from Anchor.
- */
-interface OnChainMapEnemies {
-  session: PublicKey;
-  enemies: OnChainEnemyInstance[];
-  count: number;
-  bump: number;
-}
-
-export type { OnChainEnemyInstance, OnChainMapEnemies };
-
-/**
- * Fetches current MapEnemies account from chain.
- *
- * @param program - Anchor program instance (gameplay_state)
- * @param mapEnemiesPda - MapEnemies PDA
- * @returns OnChainMapEnemies or null if not found
- */
-export async function fetchMapEnemies(
-  program: Program,
-  mapEnemiesPda: PublicKey
-): Promise<OnChainMapEnemies | null> {
-  try {
-    const account = await (
-      program.account as {
-        mapEnemies: {
-          fetchNullable: (address: PublicKey) => Promise<OnChainMapEnemies | null>;
-        };
-      }
-    ).mapEnemies.fetchNullable(mapEnemiesPda);
-
-    return account ?? null;
-  } catch (error) {
-    console.error('Failed to fetch map enemies:', error);
-    return null;
-  }
-}
-
-// ============================================================================
 // Helper Functions
 // ============================================================================
 

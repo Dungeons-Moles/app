@@ -1261,17 +1261,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           sessionSignerKeypair,
           sessionPda
         );
-        const syncWithBudgetTx = new Transaction().add(
-          ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
-          ...syncTx.instructions
-        );
-        await sendErInitTransactionWithRetry(
-          'resumeGame:sync_map_enemies',
-          syncWithBudgetTx,
-          sessionSignerKeypair,
-          sessionPda
-        );
-
+        // Refresh MapPois BEFORE sync_map_enemies so that sync_map_enemies can
+        // read the mole-den from MapPois and record it in SessionDiscovery.
         const generatedSeed = (await fetchSessionGeneratedSeed(sessionPda)) ?? BigInt(20);
         const refreshMapPoisIx = await erPoiSystemProgram.methods
           .refreshMapPois(2, 1, new BN(generatedSeed.toString()))
@@ -1290,6 +1281,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         await sendErInitTransactionWithRetry(
           'resumeGame:refresh_map_pois',
           rebuildMapPoisTx,
+          sessionSignerKeypair,
+          sessionPda
+        );
+
+        const syncWithBudgetTx = new Transaction().add(
+          ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+          ...syncTx.instructions
+        );
+        await sendErInitTransactionWithRetry(
+          'resumeGame:sync_map_enemies',
+          syncWithBudgetTx,
           sessionSignerKeypair,
           sessionPda
         );
@@ -2464,6 +2466,29 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         }
       }
 
+      {
+        const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
+        const sdInfo = await connection.getAccountInfo(sessionDiscoveryPda).catch(() => null);
+        if (!sdInfo) {
+          try {
+            const mapGenProg = createMapGeneratorProgram(connection);
+            const initSdTx = await mapGenProg.methods
+              .initSessionDiscovery()
+              .accounts({
+                payer: newSessionSignerKeypair.publicKey,
+                session: sessionPda,
+                sessionDiscovery: sessionDiscoveryPda,
+                systemProgram: SystemProgram.programId,
+              })
+              .transaction();
+            await sendSessionSignerTransaction(connection, initSdTx, newSessionSignerKeypair);
+            console.log('[SessionContext] startGame:init_session_discovery:ok');
+          } catch (sdErr) {
+            console.warn('[SessionContext] startGame:init_session_discovery:failed', sdErr);
+          }
+        }
+      }
+
       // Step 7d: Generate map on ER with deterministic seed and sync enemies to MapEnemies.
       // Campaign seeds are public/deterministic, but the frontend does not build the map.
       // It only passes the seed through so ER programs remain the source of truth.
@@ -2496,17 +2521,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           newSessionSignerKeypair,
           sessionPda
         );
-        const syncWithBudgetTx = new Transaction().add(
-          ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
-          ...syncTx.instructions
-        );
-        await sendErInitTransactionWithRetry(
-          'startGame:sync_map_enemies',
-          syncWithBudgetTx,
-          newSessionSignerKeypair,
-          sessionPda
-        );
-
+        // Refresh MapPois BEFORE sync_map_enemies so that sync_map_enemies can
+        // read the mole-den from MapPois and record it in SessionDiscovery.
         const refreshMapPoisIx = await erPoiSystemProgram.methods
           .refreshMapPois(campaignAct, campaignWeek, new BN(levelSeed.toString()))
           .accounts({
@@ -2524,6 +2540,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         await sendErInitTransactionWithRetry(
           'startGame:refresh_map_pois',
           rebuildMapPoisTx,
+          newSessionSignerKeypair,
+          sessionPda
+        );
+
+        const syncWithBudgetTx = new Transaction().add(
+          ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+          ...syncTx.instructions
+        );
+        await sendErInitTransactionWithRetry(
+          'startGame:sync_map_enemies',
+          syncWithBudgetTx,
           newSessionSignerKeypair,
           sessionPda
         );
@@ -2907,16 +2934,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           newSessionSignerKeypair,
           sessionPda
         );
-        const syncWithBudgetTx = new Transaction().add(
-          ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
-          ...syncTx.instructions
-        );
-        await sendErInitTransactionWithRetry(
-          'startDuelGame:sync_map_enemies',
-          syncWithBudgetTx,
-          newSessionSignerKeypair,
-          sessionPda
-        );
+        // Refresh MapPois BEFORE sync_map_enemies so that sync_map_enemies can
+        // read the mole-den from MapPois and record it in SessionDiscovery.
         const erPoiSystemProgram = createPoiSystemProgram(directErConnection);
         const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
         const [mapPoisPda] = deriveMapPoisPda(sessionPda);
@@ -2941,6 +2960,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         await sendErInitTransactionWithRetry(
           'startDuelGame:refresh_map_pois',
           rebuildMapPoisTx,
+          newSessionSignerKeypair,
+          sessionPda
+        );
+
+        const syncWithBudgetTx = new Transaction().add(
+          ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+          ...syncTx.instructions
+        );
+        await sendErInitTransactionWithRetry(
+          'startDuelGame:sync_map_enemies',
+          syncWithBudgetTx,
           newSessionSignerKeypair,
           sessionPda
         );
@@ -3339,16 +3369,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           newSessionSignerKeypair,
           sessionPda
         );
-        const syncWithBudgetTx = new Transaction().add(
-          ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
-          ...syncTx.instructions
-        );
-        await sendErInitTransactionWithRetry(
-          'startGauntletGame:sync_map_enemies',
-          syncWithBudgetTx,
-          newSessionSignerKeypair,
-          sessionPda
-        );
+        // Refresh MapPois BEFORE sync_map_enemies so that sync_map_enemies can
+        // read the mole-den from MapPois and record it in SessionDiscovery.
         const erPoiSystemProgram = createPoiSystemProgram(directErConnection);
         const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
         const [mapPoisPda] = deriveMapPoisPda(sessionPda);
@@ -3373,6 +3395,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         await sendErInitTransactionWithRetry(
           'startGauntletGame:refresh_map_pois',
           rebuildMapPoisTx,
+          newSessionSignerKeypair,
+          sessionPda
+        );
+
+        const syncWithBudgetTx = new Transaction().add(
+          ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+          ...syncTx.instructions
+        );
+        await sendErInitTransactionWithRetry(
+          'startGauntletGame:sync_map_enemies',
+          syncWithBudgetTx,
           newSessionSignerKeypair,
           sessionPda
         );
@@ -4512,17 +4545,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           sessionPda
         );
 
-        // Step 2: Sync enemies, then refresh POIs (sequential — both write to map_pois via CPI)
-        const syncWithBudgetTx = new Transaction().add(
-          ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
-          ...syncTx.instructions
-        );
-        await sendErInitTransactionWithRetry(
-          'overrideAndStartGame:sync_map_enemies',
-          syncWithBudgetTx,
-          newSessionSignerKeypair,
-          sessionPda
-        );
+        // Step 2: Refresh MapPois BEFORE sync_map_enemies so that sync_map_enemies can
+        // read the mole-den from MapPois and record it in SessionDiscovery.
         const refreshMapPoisIx = await erPoiSystemProgram.methods
           .refreshMapPois(campaignAct, campaignWeek, new BN(levelSeed.toString()))
           .accounts({
@@ -4540,6 +4564,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         await sendErInitTransactionWithRetry(
           'overrideAndStartGame:refresh_map_pois',
           rebuildMapPoisTx,
+          newSessionSignerKeypair,
+          sessionPda
+        );
+
+        const syncWithBudgetTx = new Transaction().add(
+          ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+          ...syncTx.instructions
+        );
+        await sendErInitTransactionWithRetry(
+          'overrideAndStartGame:sync_map_enemies',
+          syncWithBudgetTx,
           newSessionSignerKeypair,
           sessionPda
         );
@@ -4863,17 +4898,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             newSessionSignerKeypair,
             sessionPda
           );
-          const syncWithBudgetTx = new Transaction().add(
-            ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
-            ...syncTx.instructions
-          );
-          await sendErInitTransactionWithRetry(
-            'overrideAndStartDuelGame:sync_map_enemies',
-            syncWithBudgetTx,
-            newSessionSignerKeypair,
-            sessionPda
-          );
-
+          // Refresh MapPois BEFORE sync_map_enemies so that sync_map_enemies can
+          // read the mole-den from MapPois and record it in SessionDiscovery.
           const erPoiSystemProgram = createPoiSystemProgram(directErConnection);
           const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
           const [mapPoisPda] = deriveMapPoisPda(sessionPda);
@@ -4896,6 +4922,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           await sendErInitTransactionWithRetry(
             'overrideAndStartDuelGame:refresh_map_pois',
             rebuildMapPoisTx,
+            newSessionSignerKeypair,
+            sessionPda
+          );
+
+          const syncWithBudgetTx = new Transaction().add(
+            ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+            ...syncTx.instructions
+          );
+          await sendErInitTransactionWithRetry(
+            'overrideAndStartDuelGame:sync_map_enemies',
+            syncWithBudgetTx,
             newSessionSignerKeypair,
             sessionPda
           );
@@ -5240,16 +5277,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             newSessionSignerKeypair,
             sessionPda
           );
-          const syncWithBudgetTx = new Transaction().add(
-            ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
-            ...syncTx.instructions
-          );
-          await sendErInitTransactionWithRetry(
-            'overrideAndStartGauntletGame:sync_map_enemies',
-            syncWithBudgetTx,
-            newSessionSignerKeypair,
-            sessionPda
-          );
+          // Refresh MapPois BEFORE sync_map_enemies so that sync_map_enemies can
+          // read the mole-den from MapPois and record it in SessionDiscovery.
           const erPoiSystemProgram = createPoiSystemProgram(directErConnection);
           const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
           const [mapPoisPda] = deriveMapPoisPda(sessionPda);
@@ -5273,6 +5302,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           await sendErInitTransactionWithRetry(
             'overrideAndStartGauntletGame:refresh_map_pois',
             rebuildMapPoisTx,
+            newSessionSignerKeypair,
+            sessionPda
+          );
+
+          const syncWithBudgetTx = new Transaction().add(
+            ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+            ...syncTx.instructions
+          );
+          await sendErInitTransactionWithRetry(
+            'overrideAndStartGauntletGame:sync_map_enemies',
+            syncWithBudgetTx,
             newSessionSignerKeypair,
             sessionPda
           );
