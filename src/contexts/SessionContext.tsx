@@ -1221,6 +1221,43 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     ]
   );
 
+  const ensureSessionDiscoveryInitialized = useCallback(
+    async (
+      sessionPda: PublicKey,
+      sessionSignerKeypair: Keypair,
+      flowLabel: string
+    ): Promise<void> => {
+      const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
+      const sessionDiscoveryInfo = await connection
+        .getAccountInfo(sessionDiscoveryPda)
+        .catch(() => null);
+      if (sessionDiscoveryInfo) {
+        return;
+      }
+
+      try {
+        const mapGenProg = createMapGeneratorProgram(connection);
+        const initSessionDiscoveryTx = await mapGenProg.methods
+          .initSessionDiscovery()
+          .accounts({
+            payer: sessionSignerKeypair.publicKey,
+            session: sessionPda,
+            sessionDiscovery: sessionDiscoveryPda,
+            systemProgram: SystemProgram.programId,
+          })
+          .transaction();
+        await sendSessionSignerTransaction(connection, initSessionDiscoveryTx, sessionSignerKeypair);
+        console.log(`[SessionContext] ${flowLabel}:init_session_discovery:ok`);
+      } catch (sessionDiscoveryError) {
+        console.warn(
+          `[SessionContext] ${flowLabel}:init_session_discovery:failed`,
+          sessionDiscoveryError
+        );
+      }
+    },
+    [connection]
+  );
+
   /**
    * Re-request and wait for map+gameplay VRF fulfillment on the ER for an
    * existing gauntlet/duel session. Call this when resuming after a VRF timeout.
@@ -1234,6 +1271,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         (await getRoutedErConnectionForAccount(sessionPda)) ?? directErConnection;
 
       const rebuildMapFromVrf = async (sessionSignerKeypair: Keypair): Promise<void> => {
+        await ensureSessionDiscoveryInitialized(
+          sessionPda,
+          sessionSignerKeypair,
+          'retryErVrfForSession'
+        );
         const erMapGenProgram = createMapGeneratorProgram(directErConnection);
         const erGameplayProgram = createGameplayStateProgram(directErConnection);
         const erPoiSystemProgram = createPoiSystemProgram(directErConnection);
@@ -1417,6 +1459,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       return { success: true };
     },
     [
+      ensureSessionDiscoveryInitialized,
       directErConnection,
       fetchSessionGeneratedSeed,
       getRoutedErConnectionForAccount,
@@ -2466,28 +2509,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      {
-        const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
-        const sdInfo = await connection.getAccountInfo(sessionDiscoveryPda).catch(() => null);
-        if (!sdInfo) {
-          try {
-            const mapGenProg = createMapGeneratorProgram(connection);
-            const initSdTx = await mapGenProg.methods
-              .initSessionDiscovery()
-              .accounts({
-                payer: newSessionSignerKeypair.publicKey,
-                session: sessionPda,
-                sessionDiscovery: sessionDiscoveryPda,
-                systemProgram: SystemProgram.programId,
-              })
-              .transaction();
-            await sendSessionSignerTransaction(connection, initSdTx, newSessionSignerKeypair);
-            console.log('[SessionContext] startGame:init_session_discovery:ok');
-          } catch (sdErr) {
-            console.warn('[SessionContext] startGame:init_session_discovery:failed', sdErr);
-          }
-        }
-      }
+      await ensureSessionDiscoveryInitialized(
+        sessionPda,
+        newSessionSignerKeypair,
+        'startGame'
+      );
 
       // Step 7d: Generate map on ER with deterministic seed and sync enemies to MapEnemies.
       // Campaign seeds are public/deterministic, but the frontend does not build the map.
@@ -2616,6 +2642,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       signAndSendTransactions,
       confirmSignatureWithTimeout,
       debugSimulateTransaction,
+      ensureSessionDiscoveryInitialized,
       ensureDelegatedToRollup,
       formatUnknownErrorMessage,
       getRoutedErConnectionForAccount,
@@ -2733,28 +2760,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
 
     // Init SessionDiscovery separately (skipped in combined TX to avoid insufficient lamports)
-    {
-      const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
-      const sdInfo = await connection.getAccountInfo(sessionDiscoveryPda).catch(() => null);
-      if (!sdInfo) {
-        try {
-          const mapGenProg = createMapGeneratorProgram(connection);
-          const initSdTx = await mapGenProg.methods
-            .initSessionDiscovery()
-            .accounts({
-              payer: newSessionSignerKeypair.publicKey,
-              session: sessionPda,
-              sessionDiscovery: sessionDiscoveryPda,
-              systemProgram: SystemProgram.programId,
-            })
-            .transaction();
-          await sendSessionSignerTransaction(connection, initSdTx, newSessionSignerKeypair);
-          console.log('[SessionContext] startDuelGame:init_session_discovery:ok');
-        } catch (sdErr) {
-          console.warn('[SessionContext] startDuelGame:init_session_discovery:failed', sdErr);
-        }
-      }
-    }
+    await ensureSessionDiscoveryInitialized(
+      sessionPda,
+      newSessionSignerKeypair,
+      'startDuelGame'
+    );
 
     // Pre-init VRF states on base chain so they can be delegated.
     // Check ownership first: skip init for existing accounts, skip delegation for already-delegated ones.
@@ -3025,6 +3035,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     fetchSessionGeneratedSeed,
     confirmSignatureWithTimeout,
     debugSimulateTransaction,
+    ensureSessionDiscoveryInitialized,
     ensureDelegatedToRollup,
     isAccountNotInitializedError,
     logTxDebugError,
@@ -3147,28 +3158,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
 
     // Init SessionDiscovery separately (skipped in combined TX to fit under size limit)
-    {
-      const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
-      const sdInfo = await connection.getAccountInfo(sessionDiscoveryPda).catch(() => null);
-      if (!sdInfo) {
-        try {
-          const mapGenProg = createMapGeneratorProgram(connection);
-          const initSdTx = await mapGenProg.methods
-            .initSessionDiscovery()
-            .accounts({
-              payer: newSessionSignerKeypair.publicKey,
-              session: sessionPda,
-              sessionDiscovery: sessionDiscoveryPda,
-              systemProgram: SystemProgram.programId,
-            })
-            .transaction();
-          await sendSessionSignerTransaction(connection, initSdTx, newSessionSignerKeypair);
-          console.log('[SessionContext] startGauntletGame:init_session_discovery:ok');
-        } catch (sdErr) {
-          console.warn('[SessionContext] startGauntletGame:init_session_discovery:failed', sdErr);
-        }
-      }
-    }
+    await ensureSessionDiscoveryInitialized(
+      sessionPda,
+      newSessionSignerKeypair,
+      'startGauntletGame'
+    );
 
     // Pre-init VRF states on base chain so they can be delegated.
     // Check ownership first: skip init for existing accounts, skip delegation for already-delegated ones.
@@ -3488,6 +3482,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     fetchSessionGeneratedSeed,
     confirmSignatureWithTimeout,
     debugSimulateTransaction,
+    ensureSessionDiscoveryInitialized,
     ensureDelegatedToRollup,
     isAccountNotInitializedError,
     logTxDebugError,
@@ -4515,6 +4510,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
       _mark('vrf_done');
 
+      await ensureSessionDiscoveryInitialized(
+        sessionPda,
+        newSessionSignerKeypair,
+        'overrideAndStartGame'
+      );
+
       try {
         const levelSeed = (await mapGenerator.getMapSeed(campaignLevel)) ?? BigInt(onChainLevel);
         const erMapGenProgram = createMapGeneratorProgram(directErConnection);
@@ -4631,6 +4632,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       directErConnection,
       getRoutedErConnectionForAccount,
       mapGenerator,
+      ensureSessionDiscoveryInitialized,
       sendRoutedErTransaction,
       sendErInitTransactionWithRetry,
       fetchSessionGeneratedSeed,
@@ -4719,28 +4721,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
 
       // Init SessionDiscovery separately (skipped in combined TX)
-      {
-        const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
-        const sdInfo = await connection.getAccountInfo(sessionDiscoveryPda).catch(() => null);
-        if (!sdInfo) {
-          try {
-            const mapGenProg = createMapGeneratorProgram(connection);
-            const initSdTx = await mapGenProg.methods
-              .initSessionDiscovery()
-              .accounts({
-                payer: newSessionSignerKeypair.publicKey,
-                session: sessionPda,
-                sessionDiscovery: sessionDiscoveryPda,
-                systemProgram: SystemProgram.programId,
-              })
-              .transaction();
-            await sendSessionSignerTransaction(connection, initSdTx, newSessionSignerKeypair);
-            console.log('[SessionContext] overrideAndStartDuelGame:init_session_discovery:ok');
-          } catch (sdErr) {
-            console.warn('[SessionContext] overrideAndStartDuelGame:init_session_discovery:failed', sdErr);
-          }
-        }
-      }
+      await ensureSessionDiscoveryInitialized(
+        sessionPda,
+        newSessionSignerKeypair,
+        'overrideAndStartDuelGame'
+      );
 
       let duelVrfTypesToDelegate: ('poi' | 'map' | 'gameplay')[] = ['poi', 'map', 'gameplay'];
       const [poiVrfPda] = derivePoiVrfStatePda(sessionPda);
@@ -4980,6 +4965,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       confirmSignatureWithTimeout,
       refreshSessionList,
       directErConnection,
+      ensureSessionDiscoveryInitialized,
       ensureDelegatedToRollup,
       fetchSessionGeneratedSeed,
       gameplayState,
@@ -5078,28 +5064,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
 
       // Init SessionDiscovery separately (skipped in combined TX to fit under size limit)
-      {
-        const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
-        const sdInfo = await connection.getAccountInfo(sessionDiscoveryPda).catch(() => null);
-        if (!sdInfo) {
-          try {
-            const mapGenProg = createMapGeneratorProgram(connection);
-            const initSdTx = await mapGenProg.methods
-              .initSessionDiscovery()
-              .accounts({
-                payer: newSessionSignerKeypair.publicKey,
-                session: sessionPda,
-                sessionDiscovery: sessionDiscoveryPda,
-                systemProgram: SystemProgram.programId,
-              })
-              .transaction();
-            await sendSessionSignerTransaction(connection, initSdTx, newSessionSignerKeypair);
-            console.log('[SessionContext] overrideAndStartGauntletGame:init_session_discovery:ok');
-          } catch (sdErr) {
-            console.warn('[SessionContext] overrideAndStartGauntletGame:init_session_discovery:failed', sdErr);
-          }
-        }
-      }
+      await ensureSessionDiscoveryInitialized(
+        sessionPda,
+        newSessionSignerKeypair,
+        'overrideAndStartGauntletGame'
+      );
 
       let vrfTypesToDelegate: ('poi' | 'map' | 'gameplay')[] = ['poi', 'map', 'gameplay'];
       const [poiVrfPda] = derivePoiVrfStatePda(sessionPda);
@@ -5385,6 +5354,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       confirmSignatureWithTimeout,
       refreshSessionList,
       directErConnection,
+      ensureSessionDiscoveryInitialized,
       ensureDelegatedToRollup,
       fetchSessionGeneratedSeed,
       gameplayState,
