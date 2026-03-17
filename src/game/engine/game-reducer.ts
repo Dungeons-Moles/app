@@ -156,10 +156,6 @@ export type GameAction =
   // On-chain-first sync actions
   | { type: 'SYNC_MOVE'; confirmedState: OnChainGameState }
   | { type: 'SYNC_COMBAT_RESULT'; confirmedState: OnChainGameState; result: CombatResult }
-  // POI reveal actions (Survey Beacon, Seismic Scanner)
-  | { type: 'REVEAL_TILES'; center: Position; radius: number }
-  | { type: 'REVEAL_DISCOVERED_TILES'; positions: Position[] }
-  | { type: 'REVEAL_POI_LOCATIONS'; poiDefId: string }
   // Enemy position sync (for night movement from on-chain)
   | {
       type: 'SYNC_ENEMY_POSITIONS';
@@ -318,15 +314,6 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
 
     case 'SYNC_COMBAT_RESULT':
       return handleSyncCombatResult(state, action.confirmedState, action.result);
-
-    // POI reveal actions (Survey Beacon, Seismic Scanner)
-    case 'REVEAL_TILES':
-      return handleRevealTiles(state, action.center, action.radius);
-    case 'REVEAL_DISCOVERED_TILES':
-      return handleRevealDiscoveredTiles(state, action.positions);
-
-    case 'REVEAL_POI_LOCATIONS':
-      return handleRevealPoiLocations(state, action.poiDefId);
 
     // Enemy position sync (for night movement from on-chain)
     case 'SYNC_ENEMY_POSITIONS':
@@ -2081,165 +2068,6 @@ function handleSpendGold(state: GameState, amount: number): GameState {
   return {
     ...state,
     player,
-  };
-}
-
-// ============================================================================
-// POI Reveal Action Handlers (Fog Persistence)
-// ============================================================================
-
-/** Manhattan distance between two positions */
-function manhattanDistance(a: Position, b: Position): number {
-  return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
-}
-
-/**
- * Handles REVEAL_TILES action.
- * Reveals all tiles within a radius from a center position.
- * Used by Survey Beacon (radius 13).
- */
-function handleRevealTiles(state: GameState, center: Position, radius: number): GameState {
-  // Create deep copy of fog
-  const newFog: FogState[][] = state.map.fog.map((row) => [...row]);
-
-  // Reveal all tiles within radius (using Manhattan distance like activateSurveyBeacon)
-  for (let dy = -radius; dy <= radius; dy++) {
-    for (let dx = -radius; dx <= radius; dx++) {
-      const dist = Math.abs(dx) + Math.abs(dy);
-      if (dist <= radius) {
-        const x = center.x + dx;
-        const y = center.y + dy;
-        if (x >= 0 && x < state.map.width && y >= 0 && y < state.map.height) {
-          if (newFog[y][x] === FogState.Hidden) {
-            newFog[y][x] = FogState.Revealed;
-          }
-        }
-      }
-    }
-  }
-
-  // Mark enemies in revealed area as discovered
-  const visibleKeys = new Set<string>();
-  for (let dy = -radius; dy <= radius; dy++) {
-    for (let dx = -radius; dx <= radius; dx++) {
-      const dist = Math.abs(dx) + Math.abs(dy);
-      if (dist <= radius) {
-        const x = center.x + dx;
-        const y = center.y + dy;
-        if (x >= 0 && x < state.map.width && y >= 0 && y < state.map.height) {
-          visibleKeys.add(`${x},${y}`);
-        }
-      }
-    }
-  }
-
-  const updatedEnemies = state.map.enemies.map((enemy) => {
-    const key = `${enemy.position.x},${enemy.position.y}`;
-    if (visibleKeys.has(key)) {
-      return { ...enemy, discovered: true };
-    }
-    return enemy;
-  });
-
-  return {
-    ...state,
-    map: {
-      ...state.map,
-      fog: newFog,
-      enemies: updatedEnemies,
-    },
-  };
-}
-
-function handleRevealDiscoveredTiles(state: GameState, positions: Position[]): GameState {
-  if (positions.length === 0) {
-    return state;
-  }
-
-  const newFog: FogState[][] = state.map.fog.map((row) => [...row]);
-  const visibleKeys = new Set<string>();
-
-  for (const position of positions) {
-    const { x, y } = position;
-    if (x < 0 || x >= state.map.width || y < 0 || y >= state.map.height) {
-      continue;
-    }
-    if (newFog[y][x] === FogState.Hidden) {
-      newFog[y][x] = FogState.Revealed;
-    }
-    visibleKeys.add(`${x},${y}`);
-  }
-
-  const updatedEnemies = state.map.enemies.map((enemy) => {
-    const key = `${enemy.position.x},${enemy.position.y}`;
-    if (visibleKeys.has(key)) {
-      return { ...enemy, discovered: true };
-    }
-    return enemy;
-  });
-
-  return {
-    ...state,
-    map: {
-      ...state.map,
-      fog: newFog,
-      enemies: updatedEnemies,
-    },
-  };
-}
-
-/**
- * Handles REVEAL_POI_LOCATIONS action.
- * Reveals the nearest unvisited POI of the specified type.
- * Used by Seismic Scanner — "Choose POI type, reveal nearest instance".
- */
-function handleRevealPoiLocations(state: GameState, poiDefId: string): GameState {
-  const playerPos = state.player.position;
-
-  // Find unvisited POIs of the exact type, sorted by distance
-  const matchingPois = state.map.pois.filter(
-    (poi) => poi.definitionId === poiDefId && !poi.visited
-  );
-
-  if (matchingPois.length === 0) {
-    return state;
-  }
-
-  matchingPois.sort(
-    (a, b) => manhattanDistance(a.position, playerPos) - manhattanDistance(b.position, playerPos)
-  );
-
-  // Find the nearest POI whose tile is still hidden (skip already-discovered ones)
-  const target = matchingPois.find((poi) => {
-    const { x, y } = poi.position;
-    return (
-      x >= 0 &&
-      x < state.map.width &&
-      y >= 0 &&
-      y < state.map.height &&
-      state.map.fog[y][x] === FogState.Hidden
-    );
-  });
-
-  if (!target) {
-    return state;
-  }
-
-  const newFog: FogState[][] = state.map.fog.map((row) => [...row]);
-  newFog[target.position.y][target.position.x] = FogState.Revealed;
-
-  // Mark the revealed POI as discovered (mirrors on-chain discovered flag)
-  const newPois = state.map.pois.map((poi) =>
-    poi.id === target.id ? { ...poi, discovered: true } : poi
-  );
-
-  return {
-    ...state,
-    map: {
-      ...state.map,
-      fog: newFog,
-      pois: newPois,
-    },
   };
 }
 
