@@ -133,18 +133,12 @@ const TileView = memo(function TileView({
   type,
   fog,
   showRevealOverlay,
-  offsetX,
-  offsetY,
-  zoom,
 }: TileData & {
   showRevealOverlay: boolean;
-  offsetX: number;
-  offsetY: number;
-  zoom: number;
 }) {
-  const screenX = x * TILE_SIZE * zoom + offsetX;
-  const screenY = y * TILE_SIZE * zoom + offsetY;
-  const size = TILE_SIZE * zoom;
+  const screenX = x * TILE_SIZE;
+  const screenY = y * TILE_SIZE;
+  const size = TILE_SIZE;
 
   const variation = Math.abs(x * 7 + y * 13);
   let tileImage;
@@ -215,9 +209,6 @@ const EntityView = memo(function EntityView({
   y,
   image,
   opacity,
-  offsetX,
-  offsetY,
-  zoom,
   flipX = false,
   grayscale = false,
   yOffset = 0,
@@ -226,17 +217,14 @@ const EntityView = memo(function EntityView({
   y: number;
   image?: any;
   opacity?: number;
-  offsetX: number;
-  offsetY: number;
-  zoom: number;
   flipX?: boolean;
   grayscale?: boolean;
   yOffset?: number;
 }) {
-  const size = ENTITY_SIZE * zoom;
-  const offset = ENTITY_OFFSET * zoom;
-  const screenX = x * TILE_SIZE * zoom + offsetX - offset;
-  const screenY = y * TILE_SIZE * zoom + offsetY - offset - yOffset * zoom;
+  const size = ENTITY_SIZE;
+  const offset = ENTITY_OFFSET;
+  const screenX = x * TILE_SIZE - offset;
+  const screenY = y * TILE_SIZE - offset - yOffset;
 
   const transform = [];
   if (flipX) transform.push({ scaleX: -1 });
@@ -324,9 +312,10 @@ export const MapRenderer = memo(function MapRenderer({
     [cameraCenter, width, height, zoom]
   );
   const cameraTransform = useMemo(
-    () => [{ scale: zoom }, { translateX: cameraOffset.x }, { translateY: cameraOffset.y }],
-    [zoom, cameraOffset.x, cameraOffset.y]
+    () => [{ translateX: cameraOffset.x }, { translateY: cameraOffset.y }],
+    [cameraOffset.x, cameraOffset.y]
   );
+  const cameraScaleTransform = useMemo(() => [{ scale: zoom }], [zoom]);
 
   const isNight = timePhase === TimePhase.Night;
   const showRevealOverlay = isNight;
@@ -488,19 +477,20 @@ export const MapRenderer = memo(function MapRenderer({
   return (
     <View style={styles.container} onLayout={handleLayout} {...panResponder.panHandlers}>
       <View style={styles.tileLayer}>
-        {visibleTiles.map((tile) => (
-          <TileView
-            key={`tile-${tile.x}-${tile.y}`}
-            x={tile.x}
-            y={tile.y}
-            type={tile.type}
-            fog={tile.fog}
-            showRevealOverlay={showRevealOverlay}
-            offsetX={cameraOffset.x}
-            offsetY={cameraOffset.y}
-            zoom={zoom}
-          />
-        ))}
+        <View style={[styles.cameraTranslateLayer, { transform: cameraTransform }]}>
+          <View style={[styles.cameraScaleLayer, { transform: cameraScaleTransform }]}>
+            {visibleTiles.map((tile) => (
+              <TileView
+                key={`tile-${tile.x}-${tile.y}`}
+                x={tile.x}
+                y={tile.y}
+                type={tile.type}
+                fog={tile.fog}
+                showRevealOverlay={showRevealOverlay}
+              />
+            ))}
+          </View>
+        </View>
       </View>
 
       {/* Layered View for Entities */}
@@ -515,59 +505,54 @@ export const MapRenderer = memo(function MapRenderer({
             />
           )}
 
-          {/* 1. POIs */}
-          {visiblePOIs.map((poi) => {
-            const isUsed = poi.visited && SINGLE_USE_POIS.includes(poi.definitionId);
-            const isUnusableDay = poi.definitionId === 'L5' && !isNight;
-            const shouldBeGray = isUsed || isUnusableDay;
+          <View style={[styles.cameraTranslateLayer, { transform: cameraTransform }]}>
+            <View style={[styles.cameraScaleLayer, { transform: cameraScaleTransform }]}>
+              {/* 1. POIs */}
+              {visiblePOIs.map((poi) => {
+                const isUsed = poi.visited && SINGLE_USE_POIS.includes(poi.definitionId);
+                const isUnusableDay = poi.definitionId === 'L5' && !isNight;
+                const shouldBeGray = isUsed || isUnusableDay;
 
-            const fog = map.fog[poi.position.y][poi.position.x];
-            const dimmed = isNight && fog === FogState.Revealed;
-            return (
+                const fog = map.fog[poi.position.y][poi.position.x];
+                const dimmed = isNight && fog === FogState.Revealed;
+                return (
+                  <EntityView
+                    key={`poi-${poi.id}`}
+                    x={poi.position.x}
+                    y={poi.position.y}
+                    image={getEntityImageSource(poi.definitionId)}
+                    opacity={dimmed ? 0.6 : 1}
+                    grayscale={shouldBeGray}
+                  />
+                );
+              })}
+
+              {/* 2. Enemies */}
+              {visibleEnemies.map((entry) => {
+                const { enemy, variant } = entry;
+                const isUnknown = variant === 'unknown';
+                return (
+                  <EntityView
+                    key={`enemy-${enemy.id}`}
+                    x={enemy.position.x}
+                    y={enemy.position.y}
+                    image={
+                      isUnknown ? unknownEnemyImageSource : getEntityImageSource(enemy.definitionId)
+                    }
+                  />
+                );
+              })}
+
+              {/* 3. Player (Topmost) */}
               <EntityView
-                key={`poi-${poi.id}`}
-                x={poi.position.x}
-                y={poi.position.y}
-                image={getEntityImageSource(poi.definitionId)}
-                opacity={dimmed ? 0.6 : 1}
-                grayscale={shouldBeGray}
-                offsetX={cameraOffset.x}
-                offsetY={cameraOffset.y}
-                zoom={zoom}
+                x={playerPosition.x}
+                y={playerPosition.y}
+                image={playerSkinSource ?? defaultMoleImageSource}
+                flipX={playerFacing === 'left'}
+                yOffset={4}
               />
-            );
-          })}
-
-          {/* 2. Enemies */}
-          {visibleEnemies.map((entry) => {
-            const { enemy, variant } = entry;
-            const isUnknown = variant === 'unknown';
-            return (
-              <EntityView
-                key={`enemy-${enemy.id}`}
-                x={enemy.position.x}
-                y={enemy.position.y}
-                image={
-                  isUnknown ? unknownEnemyImageSource : getEntityImageSource(enemy.definitionId)
-                }
-                offsetX={cameraOffset.x}
-                offsetY={cameraOffset.y}
-                zoom={zoom}
-              />
-            );
-          })}
-
-          {/* 3. Player (Topmost) */}
-          <EntityView
-            x={playerPosition.x}
-            y={playerPosition.y}
-            image={playerSkinSource ?? defaultMoleImageSource}
-            offsetX={cameraOffset.x}
-            offsetY={cameraOffset.y}
-            zoom={zoom}
-            flipX={playerFacing === 'left'}
-            yOffset={4}
-          />
+            </View>
+          </View>
         </View>
       </View>
     </View>
@@ -586,6 +571,14 @@ const styles = StyleSheet.create({
   },
   tileLayer: {
     ...StyleSheet.absoluteFillObject,
+  },
+  cameraTranslateLayer: {
+    ...StyleSheet.absoluteFillObject,
+    transformOrigin: '0 0',
+  },
+  cameraScaleLayer: {
+    ...StyleSheet.absoluteFillObject,
+    transformOrigin: '0 0',
   },
   tile: {
     position: 'absolute',
