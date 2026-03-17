@@ -53,6 +53,44 @@ const gauntletEchoesExistsCache = new Map<string, boolean>();
 // Avoids going through Anchor's MethodsBuilder which adds ~120ms of async overhead.
 const MOVE_PLAYER_DISCRIMINATOR = Buffer.from([17, 58, 68, 221, 186, 117, 140, 231]);
 
+/**
+ * Pre-warm the optional-account existence caches for a session so the first
+ * movePlayer call doesn't pay 3 sequential RPC round trips (~450ms).
+ * Fire-and-forget — errors are silently swallowed.
+ */
+export function warmMovePlayerCaches(
+  connection: Connection,
+  program: Program,
+  sessionPda: PublicKey
+): void {
+  const sessionKey = sessionPda.toBase58();
+  if (
+    vrfStateExistsCache.has(sessionKey) &&
+    discoveryExistsCache.has(sessionKey) &&
+    gauntletEchoesExistsCache.has(sessionKey)
+  ) {
+    return; // already warm
+  }
+  const [gameplayVrfStatePda] = deriveGameplayVrfStatePda(sessionPda);
+  const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
+  const [gauntletEchoesPda] = deriveGauntletEchoesPda(sessionPda);
+  Promise.all([
+    vrfStateExistsCache.has(sessionKey) ? null :
+      (program.account as any)?.gameplayVrfState
+        ?.fetchNullable(gameplayVrfStatePda)
+        .catch(() => null)
+        .then((r: unknown) => vrfStateExistsCache.set(sessionKey, !!r)),
+    discoveryExistsCache.has(sessionKey) ? null :
+      connection.getAccountInfo(sessionDiscoveryPda)
+        .catch(() => null)
+        .then((r: unknown) => discoveryExistsCache.set(sessionKey, !!r)),
+    gauntletEchoesExistsCache.has(sessionKey) ? null :
+      connection.getAccountInfo(gauntletEchoesPda)
+        .catch(() => null)
+        .then((r: unknown) => gauntletEchoesExistsCache.set(sessionKey, !!r)),
+  ]).catch(() => {});
+}
+
 // ============================================================================
 // PDA Derivation (T014)
 // ============================================================================
@@ -153,38 +191,35 @@ export async function movePlayer(
   const [mapPoisPda] = deriveMapPoisPda(sessionPda);
   const [gameplayVrfStatePda] = deriveGameplayVrfStatePda(sessionPda);
   const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
-  // Optional account: include only when fully initialized/deserializable.
-  // Cache both positive and negative results per session to avoid a round trip on every move.
+  // Optional accounts: include only when fully initialized/deserializable.
+  // Cache both positive and negative results per session to avoid round trips on every move.
+  // On first move (cold cache), all 3 checks run in parallel to avoid sequential latency.
   const sessionKey = sessionPda.toBase58();
-  let vrfStateExists: boolean;
-  if (vrfStateExistsCache.has(sessionKey)) {
-    vrfStateExists = vrfStateExistsCache.get(sessionKey)!;
-  } else {
-    const vrfAccount = await (program.account as any)?.gameplayVrfState
-      ?.fetchNullable(gameplayVrfStatePda)
-      .catch(() => null);
-    vrfStateExists = !!vrfAccount;
-    vrfStateExistsCache.set(sessionKey, vrfStateExists);
-  }
-  // Check if SessionDiscovery account exists (cached per session)
-  let discoveryExists: boolean;
-  if (discoveryExistsCache.has(sessionKey)) {
-    discoveryExists = discoveryExistsCache.get(sessionKey)!;
-  } else {
-    const discoveryAccount = await connection.getAccountInfo(sessionDiscoveryPda).catch(() => null);
-    discoveryExists = !!discoveryAccount;
-    discoveryExistsCache.set(sessionKey, discoveryExists);
-  }
-  // Check if GauntletEchoes account exists (cached per session)
   const [gauntletEchoesPda] = deriveGauntletEchoesPda(sessionPda);
-  let gauntletEchoesExists: boolean;
-  if (gauntletEchoesExistsCache.has(sessionKey)) {
-    gauntletEchoesExists = gauntletEchoesExistsCache.get(sessionKey)!;
-  } else {
-    const geAccount = await connection.getAccountInfo(gauntletEchoesPda).catch(() => null);
-    gauntletEchoesExists = !!geAccount;
-    gauntletEchoesExistsCache.set(sessionKey, gauntletEchoesExists);
+
+  const vrfCached = vrfStateExistsCache.has(sessionKey);
+  const discoveryCached = discoveryExistsCache.has(sessionKey);
+  const gauntletCached = gauntletEchoesExistsCache.has(sessionKey);
+
+  if (!vrfCached || !discoveryCached || !gauntletCached) {
+    const [vrfResult, discoveryResult, gauntletResult] = await Promise.all([
+      vrfCached ? Promise.resolve(null) :
+        (program.account as any)?.gameplayVrfState
+          ?.fetchNullable(gameplayVrfStatePda)
+          .catch(() => null),
+      discoveryCached ? Promise.resolve(null) :
+        connection.getAccountInfo(sessionDiscoveryPda).catch(() => null),
+      gauntletCached ? Promise.resolve(null) :
+        connection.getAccountInfo(gauntletEchoesPda).catch(() => null),
+    ]);
+    if (!vrfCached) vrfStateExistsCache.set(sessionKey, !!vrfResult);
+    if (!discoveryCached) discoveryExistsCache.set(sessionKey, !!discoveryResult);
+    if (!gauntletCached) gauntletEchoesExistsCache.set(sessionKey, !!gauntletResult);
   }
+
+  const vrfStateExists = vrfStateExistsCache.get(sessionKey)!;
+  const discoveryExists = discoveryExistsCache.get(sessionKey)!;
+  const gauntletEchoesExists = gauntletEchoesExistsCache.get(sessionKey)!;
 
   // Build instruction manually instead of using Anchor's MethodsBuilder.
   // Anchor's async account resolution loop adds ~120ms of overhead even when

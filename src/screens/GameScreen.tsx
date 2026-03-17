@@ -81,6 +81,7 @@ import type { GauntletCombatVisualEvent } from '@/services/solana/gauntlet';
 import { fetchGauntletEchoFromDiscovery } from '@/services/solana/gauntlet';
 import { fetchSessionDiscovery } from '@/services/solana/mapGeneratorClient';
 import { createGameplayStateProgram, createMapGeneratorProgram } from '@/services/solana/programs';
+import { warmMovePlayerCaches } from '@/services/solana/gameplayState';
 import { deriveSessionDiscoveryPda } from '@/services/solana/constants';
 import { buildRefreshDiscoveredEnemiesInstruction } from '@/services/solana/vrf';
 import { sendSessionSignerTransaction, warmErBlockhashCache } from '@/services/solana/sessionSigner';
@@ -486,12 +487,20 @@ export function GameScreen({ navigation }: GameScreenProps) {
   const stateRef = useRef(state);
   stateRef.current = state;
 
-  // Pre-warm ER blockhash cache on screen focus to avoid first-move latency penalty
+  // Pre-warm ER blockhash cache + move account caches on screen focus
+  // to avoid first-move latency penalty (~450ms for 3 sequential RPC calls)
   useEffect(() => {
     if (isFocused && gameplayReadConnection) {
       warmErBlockhashCache(gameplayReadConnection);
+      if (sessionPda) {
+        warmMovePlayerCaches(
+          gameplayReadConnection,
+          createGameplayStateProgram(gameplayReadConnection),
+          sessionPda
+        );
+      }
     }
-  }, [isFocused, gameplayReadConnection]);
+  }, [isFocused, gameplayReadConnection, sessionPda]);
   const onChainStateRef = useRef(onChainState);
   onChainStateRef.current = onChainState;
   const canTriggerCurrentPoiByPhase = poiInteraction.canInteract;

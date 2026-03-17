@@ -26,7 +26,7 @@ import { useSessionManager } from '@/hooks/useSessionManager';
 import { useMapGenerator } from '@/hooks/useMapGenerator';
 import { useSessionKey } from '@/hooks/useSessionKey';
 import { useGameplayState } from '@/hooks/useGameplayState';
-import { getGameStatePda, fetchGameState } from '@/services/solana/gameplayState';
+import { getGameStatePda, fetchGameState, warmMovePlayerCaches } from '@/services/solana/gameplayState';
 import {
   deriveDuelSessionPda,
   deriveGauntletSessionPda,
@@ -2567,6 +2567,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
 
       console.log('[SessionContext] startGame complete');
+      // Pre-warm move caches so the first move doesn't pay 3 RPC round trips
+      if (resolvedConn) {
+        warmMovePlayerCaches(resolvedConn, createGameplayStateProgram(resolvedConn), sessionPda);
+      }
       return { success: true, mapSeed: null, sessionPda: sessionPda.toBase58(), resolvedErConnection: resolvedConn ?? undefined };
     },
     [
@@ -2973,6 +2977,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     });
     setMapSeed(null);
     gameplayState.setGameStatePda(gameStatePda);
+    warmMovePlayerCaches(directErConnection, createGameplayStateProgram(directErConnection), sessionPda);
 
     return { success: true, mapSeed: null, duelQueued };
   }, [
@@ -3383,6 +3388,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     });
     setMapSeed(null);
     gameplayState.setGameStatePda(gameStatePda);
+    warmMovePlayerCaches(directErConnection, createGameplayStateProgram(directErConnection), sessionPda);
 
     return { success: true, mapSeed: null };
   }, [
@@ -4515,6 +4521,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setMapSeed(null);
       gameplayState.setGameStatePda(getGameStatePda(sessionPda)[0]);
       _mark('complete');
+      if (resolvedConn) {
+        warmMovePlayerCaches(resolvedConn, createGameplayStateProgram(resolvedConn), sessionPda);
+      }
       return { success: true, mapSeed: null, sessionPda: sessionPda.toBase58() };
     },
     [
@@ -4869,6 +4878,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const generatedSeed = await fetchSessionGeneratedSeed(sessionPda);
       setMapSeed(null);
       gameplayState.setGameStatePda(gameStatePda);
+      warmMovePlayerCaches(directErConnection, createGameplayStateProgram(directErConnection), sessionPda);
       return { success: true, mapSeed: null, duelQueued };
     },
     [
@@ -5225,6 +5235,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const generatedSeed = await fetchSessionGeneratedSeed(sessionPda);
       setMapSeed(null);
       gameplayState.setGameStatePda(gameStatePda);
+      warmMovePlayerCaches(directErConnection, createGameplayStateProgram(directErConnection), sessionPda);
       return { success: true, mapSeed: null };
     },
     [

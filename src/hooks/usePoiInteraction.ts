@@ -1420,32 +1420,30 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             await withErPositionRetry(() =>
               interactSurveyBeacon(ctx, poiIndex)
             );
-            // Fire-and-forget refresh enemies TX, then fetch everything in parallel
-            const refreshEnemiesPromise = (async () => {
-              try {
-                const refreshEnemiesIx = await buildRefreshDiscoveredEnemiesInstruction(
-                  createGameplayStateProgram(ctx.connection),
-                  ctx.sessionPda,
-                  ctx.sessionSignerKeypair.publicKey
-                );
-                const refreshEnemiesTx = new Transaction().add(
-                  ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
-                  refreshEnemiesIx
-                );
-                await sendSessionSignerTransaction(ctx.connection, refreshEnemiesTx, ctx.sessionSignerKeypair);
-              } catch (e) {
-                console.warn('[usePoiInteraction] Failed to refresh discovered enemies after beacon:', e);
-              }
-            })();
-            // Run everything in parallel: refresh enemies TX, gameplay refresh, and discovery fetch
+            // Refresh enemies on-chain first (writes to SessionDiscovery), then fetch
+            try {
+              const refreshEnemiesIx = await buildRefreshDiscoveredEnemiesInstruction(
+                createGameplayStateProgram(ctx.connection),
+                ctx.sessionPda,
+                ctx.sessionSignerKeypair.publicKey
+              );
+              const refreshEnemiesTx = new Transaction().add(
+                ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+                refreshEnemiesIx
+              );
+              await sendSessionSignerTransaction(ctx.connection, refreshEnemiesTx, ctx.sessionSignerKeypair);
+            } catch (e) {
+              console.warn('[usePoiInteraction] Failed to refresh discovered enemies after beacon:', e);
+            }
+            // Now fetch discovery (after enemies are written) + refresh state in parallel
             const [beaconSdPda] = deriveSessionDiscoveryPda(ctx.sessionPda);
-            const [, , beaconDiscovery] = await Promise.all([
-              refreshEnemiesPromise,
-              Promise.all([refreshGameplayState(), refreshSessionState()]),
+            const [beaconDiscovery] = await Promise.all([
               fetchSessionDiscovery(
                 createMapGeneratorProgram(ctx.connection),
                 beaconSdPda
               ).catch(() => null),
+              refreshGameplayState(),
+              refreshSessionState(),
             ]);
             if (playerPosition) {
               dispatch({ type: 'REVEAL_TILES', center: playerPosition, radius: 13 });
