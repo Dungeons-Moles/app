@@ -139,7 +139,7 @@ export async function buildInteractRestTransaction(
     gameplayVrfState: vrfState,
     gauntletEchoes: null,
     player: ctx.sessionSignerKeypair.publicKey,
-    sessionDiscovery: ctx.sessionDiscoveryPda ?? null,
+    sessionDiscovery: ctx.sessionDiscoveryPda ?? undefined,
     session: ctx.sessionPda,
     mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
   };
@@ -179,7 +179,7 @@ export async function generateCacheOffer(
       gameSession: ctx.sessionPda,
       poiVrfState: ctx.poiVrfStatePda,
       player: ctx.sessionSignerKeypair.publicKey,
-      sessionDiscovery: ctx.sessionDiscoveryPda ?? null,
+      sessionDiscovery: ctx.sessionDiscoveryPda ?? undefined,
       session: ctx.sessionPda,
       mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
     })
@@ -225,7 +225,7 @@ export async function interactPickItem(
       gameSession: ctx.sessionPda,
       poiVrfState: ctx.poiVrfStatePda,
       player: ctx.sessionSignerKeypair.publicKey,
-      sessionDiscovery: ctx.sessionDiscoveryPda ?? null,
+      sessionDiscovery: ctx.sessionDiscoveryPda ?? undefined,
       session: ctx.sessionPda,
       mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
     })
@@ -262,7 +262,7 @@ export async function interactToolOil(
       playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
       poiVrfState: ctx.poiVrfStatePda,
       player: ctx.sessionSignerKeypair.publicKey,
-      sessionDiscovery: ctx.sessionDiscoveryPda ?? null,
+      sessionDiscovery: ctx.sessionDiscoveryPda ?? undefined,
       session: ctx.sessionPda,
       mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
     })
@@ -307,7 +307,7 @@ export async function generateOilOffer(
       playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
       poiVrfState: ctx.poiVrfStatePda,
       player: ctx.sessionSignerKeypair.publicKey,
-      sessionDiscovery: ctx.sessionDiscoveryPda ?? null,
+      sessionDiscovery: ctx.sessionDiscoveryPda ?? undefined,
       session: ctx.sessionPda,
       mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
     })
@@ -483,7 +483,7 @@ export async function enterShop(
       gameSession: ctx.sessionPda,
       poiVrfState: ctx.poiVrfStatePda,
       player: ctx.sessionSignerKeypair.publicKey,
-      sessionDiscovery: ctx.sessionDiscoveryPda ?? null,
+      sessionDiscovery: ctx.sessionDiscoveryPda ?? undefined,
       session: ctx.sessionPda,
       mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
     })
@@ -515,7 +515,7 @@ export async function shopPurchase(
       playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
       gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
       player: ctx.sessionSignerKeypair.publicKey,
-      sessionDiscovery: ctx.sessionDiscoveryPda ?? null,
+      sessionDiscovery: ctx.sessionDiscoveryPda ?? undefined,
       session: ctx.sessionPda,
       mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
     })
@@ -540,7 +540,7 @@ export async function shopReroll(ctx: PoiTransactionContext): Promise<string> {
       poiAuthority: poiAuthorityPda,
       gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
       player: ctx.sessionSignerKeypair.publicKey,
-      sessionDiscovery: ctx.sessionDiscoveryPda ?? null,
+      sessionDiscovery: ctx.sessionDiscoveryPda ?? undefined,
       session: ctx.sessionPda,
       mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
     })
