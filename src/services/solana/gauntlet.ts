@@ -6,7 +6,9 @@ import {
   GAMEPLAY_STATE_PROGRAM_ID,
   deriveInventoryPda,
   deriveGauntletEchoesPda,
+  deriveGameplayVrfStatePda,
 } from './constants';
+import { deriveGameStatePda } from './types/gameplay_state';
 import type { OnChainItemInstance } from './pitDraft';
 import type { SessionDiscoveryData } from './mapGeneratorClient';
 
@@ -573,12 +575,6 @@ export async function buildEnterGauntletInstruction(
   const [playerScorePda] = deriveGauntletPlayerScorePda(epochIdBigInt, playerPublicKey);
   const [gauntletEchoesPda] = deriveGauntletEchoesPda(sessionPda);
 
-  const [week1] = deriveGauntletWeekPoolPda(1);
-  const [week2] = deriveGauntletWeekPoolPda(2);
-  const [week3] = deriveGauntletWeekPoolPda(3);
-  const [week4] = deriveGauntletWeekPoolPda(4);
-  const [week5] = deriveGauntletWeekPoolPda(5);
-
   const tx = await program.methods
     .enterGauntlet(epochIdBN)
     .accountsPartial({
@@ -590,11 +586,41 @@ export async function buildEnterGauntletInstruction(
       gauntletEpochPool: epochPoolPda,
       gauntletPlayerScore: playerScorePda,
       gauntletEchoes: gauntletEchoesPda,
-      // VRF state is optional — null means absent. The on-chain code falls back
-      // to legacy RNG. VRF is created in a separate tx after session start.
-      gameplayVrfState: null,
       systemProgram: SystemProgram.programId,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any)
+    .transaction();
+
+  return tx.instructions[0];
+}
+
+/**
+ * Build a `redraw_gauntlet_echoes` instruction to re-draw echoes using VRF.
+ * Called on ER after VRF fulfillment to replace the deterministic fallback
+ * from enter_gauntlet (which ran before VRF was available).
+ */
+export async function buildRedrawGauntletEchoesInstruction(
+  program: Program,
+  sessionPda: PublicKey,
+  sessionSigner: PublicKey
+): Promise<TransactionInstruction> {
+  const [gameStatePda] = deriveGameStatePda(sessionPda);
+  const [gauntletEchoesPda] = deriveGauntletEchoesPda(sessionPda);
+  const [gameplayVrfStatePda] = deriveGameplayVrfStatePda(sessionPda);
+
+  const [week1] = deriveGauntletWeekPoolPda(1);
+  const [week2] = deriveGauntletWeekPoolPda(2);
+  const [week3] = deriveGauntletWeekPoolPda(3);
+  const [week4] = deriveGauntletWeekPoolPda(4);
+  const [week5] = deriveGauntletWeekPoolPda(5);
+
+  const tx = await program.methods
+    .redrawGauntletEchoes()
+    .accountsPartial({
+      gameState: gameStatePda,
+      sessionSigner,
+      gauntletEchoes: gauntletEchoesPda,
+      gameplayVrfState: gameplayVrfStatePda,
     } as any)
     .remainingAccounts([
       { pubkey: week1, isSigner: false, isWritable: false },

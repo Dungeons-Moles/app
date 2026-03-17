@@ -1925,13 +1925,6 @@
           }
         },
         {
-          "name": "gameplay_vrf_state",
-          "docs": [
-            "Optional GameplayVrfState for VRF-backed echo draw (required for gauntlet)."
-          ],
-          "optional": true
-        },
-        {
           "name": "system_program",
           "address": "11111111111111111111111111111111"
         }
@@ -3771,6 +3764,77 @@
           }
         }
       ]
+    },
+    {
+      "name": "redraw_gauntlet_echoes",
+      "docs": [
+        "Draws gauntlet echoes using VRF randomness.",
+        "Called on ER after VRF fulfillment. enter_gauntlet only inits the",
+        "GauntletEchoes account — this instruction populates it with VRF-random draws."
+      ],
+      "discriminator": [
+        83,
+        56,
+        69,
+        0,
+        66,
+        50,
+        133,
+        212
+      ],
+      "accounts": [
+        {
+          "name": "game_state"
+        },
+        {
+          "name": "session_signer",
+          "signer": true,
+          "relations": [
+            "game_state"
+          ]
+        },
+        {
+          "name": "gauntlet_echoes",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  117,
+                  110,
+                  116,
+                  108,
+                  101,
+                  116,
+                  95,
+                  101,
+                  99,
+                  104,
+                  111,
+                  101,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "game_state.session",
+                "account": "GameState"
+              }
+            ]
+          }
+        },
+        {
+          "name": "gameplay_vrf_state",
+          "docs": [
+            "GameplayVrfState with fulfilled randomness (required)."
+          ],
+          "optional": true
+        }
+      ],
+      "args": []
     },
     {
       "name": "refresh_discovered_enemies",

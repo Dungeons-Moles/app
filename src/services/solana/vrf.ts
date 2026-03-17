@@ -273,7 +273,8 @@ export async function buildFillMapWithSeedTransaction(
 export async function buildSyncMapEnemiesInstruction(
   gameplayStateProgram: Program,
   sessionPda: PublicKey,
-  sessionSigner: PublicKey
+  sessionSigner: PublicKey,
+  options?: { gauntletEchoesPda?: PublicKey; gameplayVrfStatePda?: PublicKey }
 ): Promise<TransactionInstruction> {
   const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
   const [mapEnemiesPda] = deriveMapEnemiesPda(sessionPda);
@@ -295,8 +296,8 @@ export async function buildSyncMapEnemiesInstruction(
       gameplayAuthority: gameplayAuthorityPda,
       mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
       sessionDiscovery: sessionDiscoveryPda,
-      gameplayVrfState: null,
-      gauntletEchoes: null,
+      gameplayVrfState: options?.gameplayVrfStatePda ?? null,
+      gauntletEchoes: options?.gauntletEchoesPda ?? null,
     } as any)
     .instruction();
 }
@@ -407,7 +408,7 @@ export async function buildMapAndSyncTransaction(
   gameplayStateProgram: Program,
   sessionPda: PublicKey,
   sessionSigner: PublicKey,
-  opts: { campaignLevel: number; seed?: bigint }
+  opts: { campaignLevel: number; seed?: bigint; gauntletEchoesPda?: PublicKey; gameplayVrfStatePda?: PublicKey }
 ): Promise<{ mapTx: Transaction; syncTx: Transaction }> {
   const mapTx = new Transaction();
 
@@ -439,7 +440,10 @@ export async function buildMapAndSyncTransaction(
     mapTx.add(...tx.instructions);
   }
 
-  const syncIx = await buildSyncMapEnemiesInstruction(gameplayStateProgram, sessionPda, sessionSigner);
+  const syncIx = await buildSyncMapEnemiesInstruction(gameplayStateProgram, sessionPda, sessionSigner, {
+    gauntletEchoesPda: opts.gauntletEchoesPda,
+    gameplayVrfStatePda: opts.gameplayVrfStatePda,
+  });
   const syncTx = new Transaction().add(syncIx);
 
   return { mapTx, syncTx };

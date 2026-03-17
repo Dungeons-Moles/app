@@ -21,13 +21,14 @@ import { useSolanaConnection } from '../../contexts/SolanaConnectionContext';
 import { useSession } from '../../contexts/SessionContext';
 import {
   createMapGeneratorProgram,
+  createGameplayStateProgram,
 } from '../../services/solana/programs';
 import {
   deriveGauntletSessionPda,
   deriveSessionDiscoveryPda,
 } from '../../services/solana/constants';
 import { RunMode } from '../../services/solana/types/gameplay_state';
-import { fetchGauntletEchoFromDiscovery } from '../../services/solana/gauntlet';
+import { fetchGauntletEchoFromDiscovery, fetchGauntletEchoFromGameState } from '../../services/solana/gauntlet';
 import { fetchSessionDiscovery } from '../../services/solana/mapGeneratorClient';
 import { calculateItemStats } from '../../game/entities/items';
 import {
@@ -253,9 +254,9 @@ export function BossPanel({
   const [pvpLoading, setPvpLoading] = useState(false);
   const { playSfx } = useAudio();
   const { gameState } = useGameplayStateContext();
-  const { gameplayState: sessionGameState } = useSession();
+  const { gameplayState: sessionGameState, sessionPda: activeSessionPda } = useSession();
   const { wallet } = useWallet();
-  const { connection } = useSolanaConnection();
+  const { connection, gameplayReadConnection } = useSolanaConnection();
   const boss = getBoss(time.weekBoss);
   // Use either context's gameState — SessionContext's instance is populated
   // earlier (during session start) while GameplayStateContext's may still be loading.
@@ -305,13 +306,26 @@ export function BossPanel({
         return;
       }
 
-      const [gauntletSessionPda] = deriveGauntletSessionPda(wallet.publicKey);
+      // Use active session PDA (not derived with default nonce 0, which is stale after overrides)
+      const gauntletSessionPda = activeSessionPda ?? deriveGauntletSessionPda(wallet.publicKey)[0];
       const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(gauntletSessionPda);
+      // Use ER connection — SessionDiscovery and GauntletEchoes are delegated during active gameplay
+      const readConn = gameplayReadConnection ?? connection;
+
+      // Try SessionDiscovery first, fall back to reading GauntletEchoes directly
+      let preview = null;
       const discovery = await fetchSessionDiscovery(
-        createMapGeneratorProgram(connection),
+        createMapGeneratorProgram(readConn),
         sessionDiscoveryPda
-      );
-      const preview = fetchGauntletEchoFromDiscovery(discovery);
+      ).catch(() => null);
+      if (discovery) {
+        preview = fetchGauntletEchoFromDiscovery(discovery);
+      }
+      if (!preview) {
+        // SessionDiscovery echo not written yet — read directly from GauntletEchoes on ER
+        const gpProgram = createGameplayStateProgram(readConn);
+        preview = await fetchGauntletEchoFromGameState(gpProgram, gauntletSessionPda, week).catch(() => null);
+      }
 
       if (!preview) {
         if (requestId === pvpRequestIdRef.current) {
@@ -381,9 +395,11 @@ export function BossPanel({
   }, [
     displayedBoss,
     connection,
+    gameplayReadConnection,
     currentGauntletWeek,
     wallet.publicKey,
     isGauntletRun,
+    activeSessionPda,
   ]);
 
   const handleBossPress = useCallback(() => {

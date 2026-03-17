@@ -42,6 +42,7 @@ import {
   deriveMapVrfStatePda,
   derivePoiVrfStatePda,
   deriveGameplayVrfStatePda,
+  deriveGauntletEchoesPda,
 } from '@/services/solana/constants';
 import { SOLANA_CONFIG } from '@/services/solana/config';
 import {
@@ -59,6 +60,7 @@ import {
   buildRequestAndFulfillPoiVrfTransaction,
   buildRequestGameplayVrfTransaction,
   buildMapAndSyncTransaction,
+  buildSyncMapEnemiesInstruction,
   buildDiscoverSpawnPoisInstruction,
   waitForVrfFulfillment,
 } from '@/services/solana/vrf';
@@ -102,6 +104,7 @@ import type { CombatEnemyInfo } from '@/services/solana/eventParser';
 import type { GauntletCombatVisualEvent } from '@/services/solana/gauntlet';
 import {
   buildEnterGauntletInstruction,
+  buildRedrawGauntletEchoesInstruction,
   deriveGauntletConfigPda,
   buildSettleGauntletSessionTransaction,
   ensureLocalFeeAccounts,
@@ -3289,6 +3292,26 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
     } // end else (ER VRF)
 
+    // Draw gauntlet echoes using VRF on ER.
+    // enter_gauntlet only inits the GauntletEchoes account — echoes are drawn here.
+    {
+      const erGameplayProgramForRedraw = createGameplayStateProgram(directErConnection);
+      const redrawIx = await buildRedrawGauntletEchoesInstruction(
+        erGameplayProgramForRedraw, sessionPda, newSessionSignerKeypair.publicKey
+      );
+      const redrawTx = new Transaction().add(
+        ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+        redrawIx
+      );
+      await sendErInitTransactionWithRetry(
+        'startGauntletGame:draw_echoes',
+        redrawTx,
+        newSessionSignerKeypair,
+        sessionPda
+      );
+      console.log('[SessionContext] startGauntletGame:echoes_drawn_with_vrf');
+    }
+
     // Generate map with VRF-derived randomness and sync enemies in a single ER transaction
     try {
         console.log('[SessionContext] startGauntletGame:map_and_sync (ER)');
@@ -3297,6 +3320,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         const localMapSeed = SOLANA_CONFIG.isLocalValidator
           ? await readMapVrfSeedFromBase(sessionPda)
           : undefined;
+        const [gauntletEchoesPda] = deriveGauntletEchoesPda(sessionPda);
         const { mapTx, syncTx } = await buildMapAndSyncTransaction(
           SOLANA_CONFIG.isLocalValidator ? 'seed' : 'vrf',
           erMapGenProgram,
@@ -3371,6 +3395,34 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           sessionPda
         );
         console.log('[SessionContext] startGauntletGame:all_vrf_ready (ER)');
+
+        // Re-run sync_map_enemies WITH GauntletEchoes to write echo preview to SessionDiscovery.
+        // The first sync ran without it because GauntletEchoes delegation was fire-and-forget
+        // and may not have propagated to ER yet. By now (~5-10s later) it should be available.
+        try {
+          const geInfo = await directErConnection.getAccountInfo(gauntletEchoesPda, 'processed').catch(() => null);
+          if (geInfo) {
+            const echoSyncIx = await buildSyncMapEnemiesInstruction(
+              erGameplayProgram, sessionPda, newSessionSignerKeypair.publicKey,
+              { gauntletEchoesPda }
+            );
+            const echoSyncTx = new Transaction().add(
+              ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+              echoSyncIx
+            );
+            await sendErInitTransactionWithRetry(
+              'startGauntletGame:sync_echo',
+              echoSyncTx,
+              newSessionSignerKeypair,
+              sessionPda
+            );
+            console.log('[SessionContext] startGauntletGame:echo_synced_to_discovery');
+          } else {
+            console.warn('[SessionContext] startGauntletGame: GauntletEchoes still not on ER, echo preview unavailable');
+          }
+        } catch (echoErr) {
+          console.warn('[SessionContext] startGauntletGame:echo_sync_failed (non-fatal):', echoErr instanceof Error ? echoErr.message : echoErr);
+        }
     } catch (vrfError) {
       logTxDebugError('startGauntletGame:map_gen', vrfError);
       return {
@@ -5144,12 +5196,32 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
       } // end else (ER VRF)
 
+      // Draw gauntlet echoes using VRF on ER
+      {
+        const erGameplayProgramForRedraw = createGameplayStateProgram(directErConnection);
+        const redrawIx = await buildRedrawGauntletEchoesInstruction(
+          erGameplayProgramForRedraw, sessionPda, newSessionSignerKeypair.publicKey
+        );
+        const redrawTx = new Transaction().add(
+          ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+          redrawIx
+        );
+        await sendErInitTransactionWithRetry(
+          'overrideAndStartGauntletGame:draw_echoes',
+          redrawTx,
+          newSessionSignerKeypair,
+          sessionPda
+        );
+        console.log('[SessionContext] overrideAndStartGauntletGame:echoes_drawn_with_vrf');
+      }
+
       try {
           const erMapGenProgram = createMapGeneratorProgram(directErConnection);
           const erGameplayProgram = createGameplayStateProgram(directErConnection);
           const localMapSeed = SOLANA_CONFIG.isLocalValidator
             ? await readMapVrfSeedFromBase(sessionPda)
             : undefined;
+          const [gauntletEchoesPdaOverride] = deriveGauntletEchoesPda(sessionPda);
           const { mapTx, syncTx } = await buildMapAndSyncTransaction(
             SOLANA_CONFIG.isLocalValidator ? 'seed' : 'vrf',
             erMapGenProgram,
@@ -5222,6 +5294,31 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             newSessionSignerKeypair,
             sessionPda
           );
+
+          // Re-run sync_map_enemies WITH GauntletEchoes to write echo preview to SessionDiscovery
+          try {
+            const geInfo = await directErConnection.getAccountInfo(gauntletEchoesPdaOverride, 'processed').catch(() => null);
+            if (geInfo) {
+              const echoSyncIx = await buildSyncMapEnemiesInstruction(
+                erGameplayProgram, sessionPda, newSessionSignerKeypair.publicKey,
+                { gauntletEchoesPda: gauntletEchoesPdaOverride }
+              );
+              const echoSyncTx = new Transaction().add(
+                ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+                echoSyncIx
+              );
+              await sendErInitTransactionWithRetry(
+                'overrideAndStartGauntletGame:sync_echo',
+                echoSyncTx,
+                newSessionSignerKeypair,
+                sessionPda
+              );
+            } else {
+              console.warn('[SessionContext] overrideAndStartGauntletGame: GauntletEchoes still not on ER');
+            }
+          } catch (echoErr) {
+            console.warn('[SessionContext] overrideAndStartGauntletGame:echo_sync_failed (non-fatal):', echoErr instanceof Error ? echoErr.message : echoErr);
+          }
       } catch (vrfError) {
         return {
           success: false,
