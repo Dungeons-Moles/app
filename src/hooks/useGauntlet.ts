@@ -5,6 +5,7 @@ import { useSession } from '@/contexts/SessionContext';
 import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
 import { createGameplayStateProgram } from '@/services/solana/programs';
 import {
+  deriveGauntletEchoesPda,
   deriveGauntletSessionPda,
   deriveGameStatePda,
 } from '@/services/solana/constants';
@@ -144,6 +145,69 @@ export function useGauntlet() {
     await confirmWithTimeout(initSig);
     console.log('[useGauntlet] ensureGauntletInitialized:init_confirmed', { signature: initSig });
   }, [wallet.publicKey, connection, signAndSendTransaction, confirmWithTimeout]);
+
+  const closeOrphanedGauntletEchoes = useCallback(
+    async (sessionPda: PublicKey): Promise<void> => {
+      if (!wallet.publicKey) return;
+
+      const [gauntletEchoesPda] = deriveGauntletEchoesPda(sessionPda);
+      const [sessionInfo, gauntletEchoesInfo] = await Promise.all([
+        connection.getAccountInfo(sessionPda, SOLANA_CONFIG.commitment),
+        connection.getAccountInfo(gauntletEchoesPda, SOLANA_CONFIG.commitment),
+      ]);
+
+      if (sessionInfo || !gauntletEchoesInfo) {
+        return;
+      }
+
+      console.warn('[useGauntlet] closeOrphanedGauntletEchoes:found_orphan', {
+        sessionPda: sessionPda.toBase58(),
+        gauntletEchoesPda: gauntletEchoesPda.toBase58(),
+        owner: gauntletEchoesInfo.owner.toBase58(),
+      });
+
+      if (!gauntletEchoesInfo.owner.equals(SOLANA_CONFIG.programs.gameplayState)) {
+        throw new Error(
+          `Orphaned gauntlet echoes is not owned by gameplay-state: ${gauntletEchoesInfo.owner.toBase58()}`
+        );
+      }
+
+      console.log('[useGauntlet] closeOrphanedGauntletEchoes:start', {
+        sessionPda: sessionPda.toBase58(),
+        gauntletEchoesPda: gauntletEchoesPda.toBase58(),
+      });
+
+      const gameplayProgram = createGameplayStateProgram(connection);
+      const transaction = await (gameplayProgram.methods as any)
+        .closeOrphanedGauntletEchoes()
+        .accounts({
+          gauntletEchoes: gauntletEchoesPda,
+          sessionPda,
+          destination: wallet.publicKey,
+          payer: wallet.publicKey,
+        })
+        .transaction();
+
+      const signature = await signAndSendTransaction(transaction, { connection });
+      await connection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
+
+      const postCloseInfo = await connection.getAccountInfo(
+        gauntletEchoesPda,
+        SOLANA_CONFIG.commitment
+      );
+      if (postCloseInfo) {
+        throw new Error(
+          `Orphaned gauntlet echoes still exists after close attempt: ${gauntletEchoesPda.toBase58()}`
+        );
+      }
+
+      console.log('[useGauntlet] closeOrphanedGauntletEchoes:done', {
+        signature,
+        gauntletEchoesPda: gauntletEchoesPda.toBase58(),
+      });
+    },
+    [connection, signAndSendTransaction, wallet.publicKey]
+  );
 
   const resolveSessionGeneratedSeed = useCallback(
     async (_sessionPda: PublicKey): Promise<bigint | null> => {
@@ -293,6 +357,7 @@ export function useGauntlet() {
       console.log('[useGauntlet] enterGauntlet:checking_existing_session', {
         gauntletSessionPda: gauntletSessionPda.toBase58(),
       });
+      await closeOrphanedGauntletEchoes(gauntletSessionPda);
       const existingGauntletSessionInfo = await connection.getAccountInfo(
         gauntletSessionPda,
         SOLANA_CONFIG.commitment
@@ -449,6 +514,7 @@ export function useGauntlet() {
   }, [
     wallet.publicKey,
     checkBalance,
+    closeOrphanedGauntletEchoes,
     ensureGauntletInitialized,
     mapSeed,
     startGauntletGame,

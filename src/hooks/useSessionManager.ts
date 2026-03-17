@@ -1755,6 +1755,32 @@ export function useSessionManager() {
           throw new Error('Owner not restored for all accounts after undelegate');
         }
 
+        if (baseGauntletEchoesInfo || delegatedGauntletEchoes) {
+          const gauntletEchoesInfo = await baseConnection
+            .getAccountInfo(gauntletEchoesPda, 'processed')
+            .catch(() => null);
+          if (gauntletEchoesInfo?.owner.equals(SOLANA_CONFIG.programs.gameplayState)) {
+            const gameplayProgramBase = createGameplayStateProgram(baseConnection);
+            const closeGauntletEchoesTx = await gameplayProgramBase.methods
+              .closeGauntletEchoes()
+              .accounts({
+                gauntletEchoes: gauntletEchoesPda,
+                gameState: gameStatePda,
+                player: wallet.publicKey,
+                sessionSigner: sessionSignerKeypair.publicKey,
+              })
+              .transaction();
+            await sendSessionSignerTransaction(
+              baseConnection,
+              closeGauntletEchoesTx,
+              sessionSignerKeypair
+            );
+            console.log(
+              '[useSessionManager] undelegate: closed gauntlet_echoes after base restoration'
+            );
+          }
+        }
+
         await fetchSession();
 
         return { success: true, signature };

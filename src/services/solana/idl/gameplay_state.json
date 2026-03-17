@@ -649,6 +649,75 @@
       "args": []
     },
     {
+      "name": "close_orphaned_gauntlet_echoes",
+      "docs": [
+        "Closes an orphaned GauntletEchoes account whose session PDA no longer exists."
+      ],
+      "discriminator": [
+        178,
+        212,
+        126,
+        38,
+        48,
+        207,
+        34,
+        147
+      ],
+      "accounts": [
+        {
+          "name": "gauntlet_echoes",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  117,
+                  110,
+                  116,
+                  108,
+                  101,
+                  116,
+                  95,
+                  101,
+                  99,
+                  104,
+                  111,
+                  101,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "gauntlet_echoes.session",
+                "account": "GauntletEchoes"
+              }
+            ]
+          }
+        },
+        {
+          "name": "session_pda",
+          "docs": [
+            "Session PDA must not exist (proves the account is orphaned)."
+          ]
+        },
+        {
+          "name": "destination",
+          "docs": [
+            "Receives the lamports from the closed account."
+          ],
+          "writable": true
+        },
+        {
+          "name": "payer",
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "close_orphaned_map_enemies",
       "docs": [
         "Close an orphaned MapEnemies account that has valid data but whose",
