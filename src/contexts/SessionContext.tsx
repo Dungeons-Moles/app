@@ -136,6 +136,7 @@ function isErPropagationErrorMessage(message: string): boolean {
 const DIRECT_ER_WS_URL =
   process.env.EXPO_PUBLIC_EPHEMERAL_WS_ENDPOINT ?? 'wss://devnet.magicblock.app/';
 const ER_VRF_WAIT_TIMEOUT_MS = 120_000;
+const ER_SYNC_MAP_ENEMIES_CU_LIMIT = 800_000;
 const MAX_SERIALIZED_TX_BYTES = 1232;
 const VRF_STATUS_OFFSET = 8 + 32 + 32 + 8;
 const VRF_STATUS_FULFILLED = 1;
@@ -1328,7 +1329,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         );
 
         const syncWithBudgetTx = new Transaction().add(
-          ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+          ComputeBudgetProgram.setComputeUnitLimit({ units: ER_SYNC_MAP_ENEMIES_CU_LIMIT }),
           ...syncTx.instructions
         );
         await sendErInitTransactionWithRetry(
@@ -1346,7 +1347,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           6 // SPAWN_VISION_RADIUS
         );
         const discoverPoisTx = new Transaction().add(
-          ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+          ComputeBudgetProgram.setComputeUnitLimit({ units: ER_SYNC_MAP_ENEMIES_CU_LIMIT }),
           discoverPoisIx
         );
         await sendErInitTransactionWithRetry(
@@ -2571,7 +2572,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         );
 
         const syncWithBudgetTx = new Transaction().add(
-          ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+          ComputeBudgetProgram.setComputeUnitLimit({ units: ER_SYNC_MAP_ENEMIES_CU_LIMIT }),
           ...syncTx.instructions
         );
         await sendErInitTransactionWithRetry(
@@ -2589,7 +2590,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           6 // SPAWN_VISION_RADIUS
         );
         const discoverPoisTx = new Transaction().add(
-          ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+          ComputeBudgetProgram.setComputeUnitLimit({ units: ER_SYNC_MAP_ENEMIES_CU_LIMIT }),
           discoverPoisIx
         );
         await sendErInitTransactionWithRetry(
@@ -2975,7 +2976,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         );
 
         const syncWithBudgetTx = new Transaction().add(
-          ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+          ComputeBudgetProgram.setComputeUnitLimit({ units: ER_SYNC_MAP_ENEMIES_CU_LIMIT }),
           ...syncTx.instructions
         );
         await sendErInitTransactionWithRetry(
@@ -2993,7 +2994,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           6 // SPAWN_VISION_RADIUS
         );
         const discoverPoisTx = new Transaction().add(
-          ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+          ComputeBudgetProgram.setComputeUnitLimit({ units: ER_SYNC_MAP_ENEMIES_CU_LIMIT }),
           discoverPoisIx
         );
         await sendErInitTransactionWithRetry(
@@ -3394,7 +3395,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         );
 
         const syncWithBudgetTx = new Transaction().add(
-          ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+          ComputeBudgetProgram.setComputeUnitLimit({ units: ER_SYNC_MAP_ENEMIES_CU_LIMIT }),
           ...syncTx.instructions
         );
         await sendErInitTransactionWithRetry(
@@ -3434,7 +3435,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
               { gauntletEchoesPda }
             );
             const echoSyncTx = new Transaction().add(
-              ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+              ComputeBudgetProgram.setComputeUnitLimit({ units: ER_SYNC_MAP_ENEMIES_CU_LIMIT }),
               echoSyncIx
             );
             await sendErInitTransactionWithRetry(
@@ -4570,7 +4571,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         );
 
         const syncWithBudgetTx = new Transaction().add(
-          ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+          ComputeBudgetProgram.setComputeUnitLimit({ units: ER_SYNC_MAP_ENEMIES_CU_LIMIT }),
           ...syncTx.instructions
         );
         await sendErInitTransactionWithRetry(
@@ -4912,7 +4913,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           );
 
           const syncWithBudgetTx = new Transaction().add(
-            ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+            ComputeBudgetProgram.setComputeUnitLimit({ units: ER_SYNC_MAP_ENEMIES_CU_LIMIT }),
             ...syncTx.instructions
           );
           await sendErInitTransactionWithRetry(
@@ -4930,7 +4931,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             6 // SPAWN_VISION_RADIUS
           );
           const discoverPoisTx = new Transaction().add(
-            ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+            ComputeBudgetProgram.setComputeUnitLimit({ units: ER_SYNC_MAP_ENEMIES_CU_LIMIT }),
             discoverPoisIx
           );
           await sendErInitTransactionWithRetry(
@@ -5276,7 +5277,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           );
 
           const syncWithBudgetTx = new Transaction().add(
-            ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+            ComputeBudgetProgram.setComputeUnitLimit({ units: ER_SYNC_MAP_ENEMIES_CU_LIMIT }),
             ...syncTx.instructions
           );
           await sendErInitTransactionWithRetry(
@@ -5313,7 +5314,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                 { gauntletEchoesPda: gauntletEchoesPdaOverride }
               );
               const echoSyncTx = new Transaction().add(
-                ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+                ComputeBudgetProgram.setComputeUnitLimit({ units: ER_SYNC_MAP_ENEMIES_CU_LIMIT }),
                 echoSyncIx
               );
               await sendErInitTransactionWithRetry(

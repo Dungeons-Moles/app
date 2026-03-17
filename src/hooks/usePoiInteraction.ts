@@ -739,6 +739,33 @@ export function usePoiInteraction(): UsePoiInteractionResult {
     [dispatch, gameState?.map?.pois]
   );
 
+  const syncDiscoveryFromChain = useCallback(
+    async (connection: Connection, targetSessionPda: PublicKey): Promise<SessionDiscoveryData | null> => {
+      const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(targetSessionPda);
+      const discovery = await fetchSessionDiscovery(
+        createMapGeneratorProgram(connection),
+        sessionDiscoveryPda
+      ).catch(() => null);
+
+      if (!discovery) {
+        return null;
+      }
+
+      dispatch({
+        type: 'SYNC_DISCOVERY',
+        tiles: unpackDiscoveryTiles(discovery, discovery.mapWidth, discovery.mapHeight),
+        enemies: convertDiscoveredEnemies(
+          discovery.discoveredEnemies,
+          discovery.discoveredEnemyCount
+        ),
+        pois: convertDiscoveredPois(discovery.discoveredPois, discovery.discoveredPoiCount),
+      });
+
+      return discovery;
+    },
+    [dispatch]
+  );
+
   // Reset interactionState to 'idle' after a completed interaction settles.
   // This re-enables mismatch-detection in GameScreen after the POI modal closes.
   // We use a short delay to ensure all state updates have propagated first.
@@ -1402,62 +1429,16 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             await withErPositionRetry(() => interactSurveyBeacon(ctx, poiIndex));
             syncLocalPoiAsConsumed(currentPoi);
 
-            // Fetch revealed tile types immediately so the renderer can replace Unknown tiles.
             try {
-              const [beaconSdPda] = deriveSessionDiscoveryPda(ctx.sessionPda);
-              const beaconDiscovery = await fetchSessionDiscovery(
-                createMapGeneratorProgram(ctx.connection),
-                beaconSdPda
-              ).catch(() => null);
-              if (beaconDiscovery) {
-                const sdTiles = unpackDiscoveryTiles(
-                  beaconDiscovery,
-                  beaconDiscovery.mapWidth,
-                  beaconDiscovery.mapHeight
-                );
-                const sdEnemies = convertDiscoveredEnemies(
-                  beaconDiscovery.discoveredEnemies,
-                  beaconDiscovery.discoveredEnemyCount
-                );
-                const sdPois = convertDiscoveredPois(
-                  beaconDiscovery.discoveredPois,
-                  beaconDiscovery.discoveredPoiCount
-                );
-                dispatch({ type: 'SYNC_DISCOVERY', tiles: sdTiles, enemies: sdEnemies, pois: sdPois });
-              }
+              await syncDiscoveryFromChain(ctx.connection, ctx.sessionPda);
             } catch (e) {
               console.warn('[usePoiInteraction] Failed to reveal beacon tiles in SessionDiscovery:', e);
             }
 
-            // Refresh read-side contexts in the background; discovery already contains the reveal.
+            // Refresh read-side contexts in the background; discovery already contains the visible result.
             void (async () => {
               try {
-                const [beaconSdPda] = deriveSessionDiscoveryPda(ctx.sessionPda);
-                const [beaconDiscovery] = await Promise.all([
-                  fetchSessionDiscovery(
-                    createMapGeneratorProgram(ctx.connection),
-                    beaconSdPda
-                  ).catch(() => null),
-                  refreshGameplayState(),
-                  refreshSessionState(),
-                ]);
-
-                if (beaconDiscovery) {
-                  const sdTiles = unpackDiscoveryTiles(
-                    beaconDiscovery,
-                    beaconDiscovery.mapWidth,
-                    beaconDiscovery.mapHeight
-                  );
-                  const sdEnemies = convertDiscoveredEnemies(
-                    beaconDiscovery.discoveredEnemies,
-                    beaconDiscovery.discoveredEnemyCount
-                  );
-                  const sdPois = convertDiscoveredPois(
-                    beaconDiscovery.discoveredPois,
-                    beaconDiscovery.discoveredPoiCount
-                  );
-                  dispatch({ type: 'SYNC_DISCOVERY', tiles: sdTiles, enemies: sdEnemies, pois: sdPois });
-                }
+                await Promise.all([refreshGameplayState(), refreshSessionState()]);
               } catch (err) {
                 console.warn('[usePoiInteraction] Background beacon sync failed:', err);
               }
@@ -1813,28 +1794,16 @@ export function usePoiInteraction(): UsePoiInteractionResult {
 
       try {
         await withErPositionRetry(() => fastTravel(ctx, fromPoiIndex, toPoiIndex));
-
-        await refreshGameplayState();
         const gpProg = createGameplayStateProgram(ctx.connection);
-
-        // Sync position immediately so local state matches on-chain
-        const ftState = await fetchGameState(gpProg, ctx.gameStatePda);
+        const [ftState] = await Promise.all([
+          fetchGameState(gpProg, ctx.gameStatePda),
+          syncDiscoveryFromChain(ctx.connection, ctx.sessionPda),
+        ]);
         if (ftState) {
           dispatch({ type: 'SYNC_MOVE', confirmedState: ftState });
         }
 
-        // Fetch discovery and sync tiles/enemies/POIs immediately after fast travel.
-        const disc = await fetchSessionDiscovery(
-          createMapGeneratorProgram(ctx.connection),
-          deriveSessionDiscoveryPda(ctx.sessionPda)[0]
-        ).catch(() => null);
-        if (disc) {
-          dispatch({ type: 'SYNC_DISCOVERY',
-            tiles: unpackDiscoveryTiles(disc, disc.mapWidth, disc.mapHeight),
-            enemies: convertDiscoveredEnemies(disc.discoveredEnemies, disc.discoveredEnemyCount),
-            pois: convertDiscoveredPois(disc.discoveredPois, disc.discoveredPoiCount),
-          });
-        }
+        void refreshGameplayState();
 
         return { success: true };
       } catch (err) {
@@ -1844,7 +1813,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
         setIsInteracting(false);
       }
     },
-    [createPoiCtx]
+    [createPoiCtx, refreshGameplayState, syncDiscoveryFromChain]
   );
 
   /**
@@ -1900,29 +1869,16 @@ export function usePoiInteraction(): UsePoiInteractionResult {
         await withErPositionRetry(() =>
           fastTravel(ctx, fromValidated.index, toValidated.index)
         );
-
-        await refreshGameplayState();
-
         const gameplayProgram = createGameplayStateProgram(gameplayReadConnection);
-
-        // Sync position immediately so local state matches on-chain
-        const updatedState = await fetchGameState(gameplayProgram, ctx.gameStatePda);
+        const [updatedState] = await Promise.all([
+          fetchGameState(gameplayProgram, ctx.gameStatePda),
+          syncDiscoveryFromChain(ctx.connection, ctx.sessionPda),
+        ]);
         if (updatedState) {
           dispatch({ type: 'SYNC_MOVE', confirmedState: updatedState });
         }
 
-        // Fetch discovery and sync tiles/enemies/POIs immediately after fast travel.
-        const disc = await fetchSessionDiscovery(
-          createMapGeneratorProgram(ctx.connection),
-          deriveSessionDiscoveryPda(ctx.sessionPda)[0]
-        ).catch(() => null);
-        if (disc) {
-          dispatch({ type: 'SYNC_DISCOVERY',
-            tiles: unpackDiscoveryTiles(disc, disc.mapWidth, disc.mapHeight),
-            enemies: convertDiscoveredEnemies(disc.discoveredEnemies, disc.discoveredEnemyCount),
-            pois: convertDiscoveredPois(disc.discoveredPois, disc.discoveredPoiCount),
-          });
-        }
+        void refreshGameplayState();
 
         return { success: true, newState: updatedState };
       } catch (err) {
@@ -1938,6 +1894,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
       gameplayReadConnection,
       findPoiIndex,
       refreshGameplayState,
+      syncDiscoveryFromChain,
     ]
   );
 
@@ -2514,29 +2471,16 @@ export function usePoiInteraction(): UsePoiInteractionResult {
                 );
                 debugLog('[usePoiInteraction] fastTravel CONFIRMED');
 
-                // Refresh gameplay state to sync position
-                await refreshGameplayState();
-
                 const gameplayProgram = createGameplayStateProgram(gameplayReadConnection);
-                const updatedState = await fetchGameState(gameplayProgram, ctx.gameStatePda);
+                const [updatedState] = await Promise.all([
+                  fetchGameState(gameplayProgram, ctx.gameStatePda),
+                  syncDiscoveryFromChain(ctx.connection, ctx.sessionPda),
+                ]);
                 if (updatedState) {
                   dispatch({ type: 'SYNC_MOVE', confirmedState: updatedState });
                 }
 
-                // Fetch discovery and sync tiles/enemies/POIs immediately after fast travel.
-                {
-                  const [ftSdPda] = deriveSessionDiscoveryPda(ctx.sessionPda);
-                  const ftDiscovery = await fetchSessionDiscovery(
-                    createMapGeneratorProgram(ctx.connection),
-                    ftSdPda
-                  ).catch(() => null);
-                  if (ftDiscovery) {
-                    const sdTiles = unpackDiscoveryTiles(ftDiscovery, ftDiscovery.mapWidth, ftDiscovery.mapHeight);
-                    const sdEnemies = convertDiscoveredEnemies(ftDiscovery.discoveredEnemies, ftDiscovery.discoveredEnemyCount);
-                    const sdPois = convertDiscoveredPois(ftDiscovery.discoveredPois, ftDiscovery.discoveredPoiCount);
-                    dispatch({ type: 'SYNC_DISCOVERY', tiles: sdTiles, enemies: sdEnemies, pois: sdPois });
-                  }
-                }
+                void refreshGameplayState();
 
               }
             }
