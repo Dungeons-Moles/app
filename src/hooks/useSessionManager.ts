@@ -1899,6 +1899,20 @@ export function useSessionManager() {
         const program = createSessionManagerProgram(baseConnection);
         const transaction = new Transaction();
 
+        const [duelEntryPda] = deriveDuelEntryPda(sessionPda);
+        const duelEntryInfo = await baseConnection.getAccountInfo(duelEntryPda);
+        if (duelEntryInfo) {
+          const gameplayProgram = createGameplayStateProgram(baseConnection);
+          const resetIx = await buildResetDuelEntryInstruction(
+            gameplayProgram,
+            sessionPda,
+            gameStatePda,
+            wallet.publicKey,
+            sessionSignerKeypair.publicKey
+          );
+          transaction.add(resetIx);
+        }
+
         const closeIx = await program.methods
           .closeSessionOnly()
           .accounts({
@@ -1985,6 +1999,20 @@ export function useSessionManager() {
 
         const program = createSessionManagerProgram(baseConnection);
         const transaction = new Transaction();
+
+        const [duelEntryPda] = deriveDuelEntryPda(sessionPda);
+        const duelEntryInfo = await baseConnection.getAccountInfo(duelEntryPda);
+        if (duelEntryInfo) {
+          const gameplayProgram = createGameplayStateProgram(baseConnection);
+          const resetIx = await buildResetDuelEntryInstruction(
+            gameplayProgram,
+            sessionPda,
+            gameStatePda,
+            wallet.publicKey,
+            sessionSignerKeypair.publicKey
+          );
+          transaction.add(resetIx);
+        }
 
         const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
         const forceCloseIx = await program.methods
@@ -2272,23 +2300,20 @@ export function useSessionManager() {
         const program = createSessionManagerProgram(baseConnection);
         const transaction = new Transaction();
 
-        // For duel sessions, prepend reset_duel_entry to clean up duel state before closing
-        const [duelSessionPda] = deriveDuelSessionPda(wallet.publicKey);
-        const isDuelSession = sessionPda.equals(duelSessionPda);
-        if (isDuelSession) {
-          const [duelEntryPda] = deriveDuelEntryPda(sessionPda);
-          const duelEntryInfo = await baseConnection.getAccountInfo(duelEntryPda);
-          if (duelEntryInfo) {
-            const gameplayProgram = createGameplayStateProgram(baseConnection);
-            const resetIx = await buildResetDuelEntryInstruction(
-              gameplayProgram,
-              sessionPda,
-              gameStatePda,
-              wallet.publicKey,
-              sessionSignerKeypair.publicKey
-            );
-            transaction.add(resetIx);
-          }
+        // duel_entry is non-delegated and keyed by session PDA, so detect it directly
+        // instead of inferring duel mode from a possibly stale/default nonce.
+        const [duelEntryPda] = deriveDuelEntryPda(sessionPda);
+        const duelEntryInfo = await baseConnection.getAccountInfo(duelEntryPda);
+        if (duelEntryInfo) {
+          const gameplayProgram = createGameplayStateProgram(baseConnection);
+          const resetIx = await buildResetDuelEntryInstruction(
+            gameplayProgram,
+            sessionPda,
+            gameStatePda,
+            wallet.publicKey,
+            sessionSignerKeypair.publicKey
+          );
+          transaction.add(resetIx);
         }
 
         // Check which VRF accounts exist (only for sessions that used VRF)

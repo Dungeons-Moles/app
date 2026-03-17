@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { PublicKey } from '@solana/web3.js';
+import { PublicKey, Transaction } from '@solana/web3.js';
 import { useWallet } from '@/contexts/WalletContext';
 import { useSession } from '@/contexts/SessionContext';
 import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
@@ -9,6 +9,8 @@ import { GAMEPLAY_STATE_PROGRAM_ID, deriveDuelSessionPda } from '@/services/sola
 import { SOLANA_CONFIG } from '@/services/solana/config';
 import {
   buildEnterDuelTransaction,
+  buildResetOrphanedDuelEntryInstruction,
+  deriveDuelEntryPda,
   fetchDuelEntry,
   parseDuelEvents,
   parseDuelEventsFromLogs,
@@ -178,6 +180,56 @@ export function useDuels() {
 
       const nonces = await fetchSessionNonces();
       const [duelSessionPda] = deriveDuelSessionPda(wallet.publicKey, nonces.duel);
+      const [duelEntryPda] = deriveDuelEntryPda(duelSessionPda);
+
+      const [sessionInfoBeforeReset, duelEntryInfoBeforeReset] = await Promise.all([
+        connection.getAccountInfo(duelSessionPda, SOLANA_CONFIG.commitment),
+        connection.getAccountInfo(duelEntryPda, SOLANA_CONFIG.commitment),
+      ]);
+
+      if (!sessionInfoBeforeReset && duelEntryInfoBeforeReset) {
+        const gameplayProgram = createGameplayStateProgram(connection);
+        const queuedOrphanEntry = await fetchDuelEntry(gameplayProgram, duelSessionPda);
+        if (!queuedOrphanEntry) {
+          console.log('[useDuels] resetOrphanedDuelEntry:skipping_empty_entry', {
+            sessionPda: duelSessionPda.toBase58(),
+            duelEntryPda: duelEntryPda.toBase58(),
+          });
+        } else {
+        console.warn('[useDuels] resetOrphanedDuelEntry:found_orphan', {
+          sessionPda: duelSessionPda.toBase58(),
+          duelEntryPda: duelEntryPda.toBase58(),
+          owner: duelEntryInfoBeforeReset.owner.toBase58(),
+        });
+
+        if (!duelEntryInfoBeforeReset.owner.equals(SOLANA_CONFIG.programs.gameplayState)) {
+          throw new Error(
+            `Orphaned duel entry is not owned by gameplay-state: ${duelEntryInfoBeforeReset.owner.toBase58()}`
+          );
+        }
+
+        const resetIx = await buildResetOrphanedDuelEntryInstruction(
+          gameplayProgram,
+          duelSessionPda,
+          wallet.publicKey
+        );
+        const resetTx = new Transaction().add(resetIx);
+        const resetSig = await signAndSendTransaction(resetTx, { connection });
+        await connection.confirmTransaction(resetSig, SOLANA_CONFIG.commitment);
+
+        const postResetEntry = await fetchDuelEntry(gameplayProgram, duelSessionPda);
+        if (postResetEntry) {
+          throw new Error(
+            `Orphaned duel entry still queued after reset attempt: ${duelEntryPda.toBase58()}`
+          );
+        }
+
+        console.log('[useDuels] resetOrphanedDuelEntry:done', {
+          signature: resetSig,
+          duelEntryPda: duelEntryPda.toBase58(),
+        });
+        }
+      }
 
       // If a previous duel run is still being undelegated/closed in background,
       // wait for the duel session PDA to disappear before starting a new one.

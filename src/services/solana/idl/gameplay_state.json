@@ -4650,6 +4650,115 @@
       "args": []
     },
     {
+      "name": "reset_orphaned_duel_entry",
+      "docs": [
+        "Resets an orphaned duel entry whose session PDA no longer exists.",
+        "This recovers players stuck in the duel queue after an interrupted abandon flow."
+      ],
+      "discriminator": [
+        136,
+        178,
+        96,
+        28,
+        87,
+        189,
+        247,
+        162
+      ],
+      "accounts": [
+        {
+          "name": "duel_entry",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  117,
+                  101,
+                  108,
+                  95,
+                  101,
+                  110,
+                  116,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "session_pda"
+              }
+            ]
+          }
+        },
+        {
+          "name": "session_pda",
+          "docs": [
+            "Session PDA must not exist (proves the entry is orphaned)."
+          ]
+        },
+        {
+          "name": "duel_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  117,
+                  101,
+                  108,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "duel_open_queue",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  117,
+                  101,
+                  108,
+                  95,
+                  111,
+                  112,
+                  101,
+                  110,
+                  95,
+                  113,
+                  117,
+                  101,
+                  117,
+                  101
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "player",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "rotate_game_state_session_key",
       "docs": [
         "Rotates the session_signer on a GameState account.",

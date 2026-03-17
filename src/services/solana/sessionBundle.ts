@@ -29,7 +29,6 @@ import {
   derivePoiVrfStatePda,
   deriveGameplayVrfStatePda,
   deriveSessionDiscoveryPda,
-  deriveDuelSessionPda,
   DEFAULT_SESSION_SIGNER_FUNDING,
 } from './constants';
 import { SOLANA_CONFIG } from './config';
@@ -210,8 +209,8 @@ export async function endSession(
  * Used when player wants to quit a session early.
  * Closes all session-related accounts to allow starting a new session on the same level.
  *
- * For duel sessions, automatically detects and prepends a reset_duel_entry instruction
- * to refund staked SOL and clean up duel state before closing the session.
+ * If a duel_entry exists for this session PDA, prepend reset_duel_entry to refund
+ * staked SOL and clean up duel state before closing the session.
  */
 export async function abandonSession(
   connection: Connection,
@@ -232,23 +231,20 @@ export async function abandonSession(
 
   const transaction = new Transaction();
 
-  // Auto-detect duel sessions and prepend reset_duel_entry to refund and clean up
-  const [duelPda] = deriveDuelSessionPda(playerPubkey, duelNonce);
-  const isDuelSession = sessionPda.equals(duelPda);
-  if (isDuelSession) {
-    const [duelEntryPda] = deriveDuelEntryPda(sessionPda);
-    const duelEntryInfo = await connection.getAccountInfo(duelEntryPda);
-    if (duelEntryInfo) {
-      const gameplayProgram = createGameplayStateProgram(connection);
-      const resetIx = await buildResetDuelEntryInstruction(
-        gameplayProgram,
-        sessionPda,
-        gameStatePda,
-        playerPubkey,
-        sessionSignerPubkey
-      );
-      transaction.add(resetIx);
-    }
+  // duel_entry is non-delegated and keyed by session PDA, so detect it directly
+  // instead of relying on a caller-provided duel nonce.
+  const [duelEntryPda] = deriveDuelEntryPda(sessionPda);
+  const duelEntryInfo = await connection.getAccountInfo(duelEntryPda);
+  if (duelEntryInfo) {
+    const gameplayProgram = createGameplayStateProgram(connection);
+    const resetIx = await buildResetDuelEntryInstruction(
+      gameplayProgram,
+      sessionPda,
+      gameStatePda,
+      playerPubkey,
+      sessionSignerPubkey
+    );
+    transaction.add(resetIx);
   }
 
   // Check which VRF accounts exist and are closeable (owned by the program, not delegated).

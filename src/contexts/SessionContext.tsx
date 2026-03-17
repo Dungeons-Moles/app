@@ -392,6 +392,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const commitTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const getStateHashRef = useRef<(() => number[]) | null>(null);
   const vrfReadySessionsRef = useRef<Set<string>>(new Set());
+  const forceAbandonCurrentSessionRef = useRef<(() => Promise<TransactionResult>) | null>(null);
   const directErConnection = useMemo(
     () =>
       new Connection(DIRECT_ER_RPC_URL, {
@@ -6330,6 +6331,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
 
       try {
+        if (sessionManager.activeSessionPda?.toBase58() === sessionPda) {
+          const immediateAbandon = forceAbandonCurrentSessionRef.current;
+          if (!immediateAbandon) {
+            return { success: false, error: 'Immediate abandon is not available yet' };
+          }
+          return await immediateAbandon();
+        }
+
         // Find the session
         const session = activeSessions.find((s) => s.sessionPda === sessionPda);
         if (!session) {
@@ -6590,6 +6599,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     getFallbackStateHash,
     setUseErForGameplay,
   ]);
+
+  forceAbandonCurrentSessionRef.current = forceAbandonCurrentSession;
 
   // Split context: stable identity + actions (only changes on session start/end/switch)
   const identityValue = useMemo<SessionIdentityContextType>(
