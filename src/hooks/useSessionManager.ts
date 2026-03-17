@@ -632,7 +632,7 @@ export function useSessionManager() {
               sessionManagerAuthority: PublicKey;
               mapConfig: PublicKey;
               generatedMap: PublicKey;
-              sessionDiscovery: PublicKey;
+              sessionDiscovery: PublicKey | null;
               gameState: PublicKey;
               mapEnemies: PublicKey;
               mapPois: PublicKey;
@@ -1433,10 +1433,12 @@ export function useSessionManager() {
           return sig;
         };
 
-        // Undelegate child accounts via their owning programs first, then session last.
-        // Each program can only undelegate accounts it owns (delegation program validates ownership).
+        // Undelegate all child accounts in parallel, then session last.
+        // Each undelegation TX is independent (different accounts, different programs).
+        const childUndelegations: Promise<void>[] = [];
+
         if (delegatedGameplayBoth) {
-          await tryUndelegateOrSkip(
+          childUndelegations.push(tryUndelegateOrSkip(
             async () => {
               const undelegateGameplayTx = await gameplayProgramEr.methods
                 .undelegateGameplayAccounts()
@@ -1456,9 +1458,9 @@ export function useSessionManager() {
               [mapEnemiesPda, SOLANA_CONFIG.programs.gameplayState, 'map_enemies'],
             ],
             true
-          );
+          ));
         } else if (delegatedGameStateOnly) {
-          await tryUndelegateOrSkip(
+          childUndelegations.push(tryUndelegateOrSkip(
             async () => {
               const tx = await gameplayProgramEr.methods
                 .undelegateGameState()
@@ -1474,9 +1476,9 @@ export function useSessionManager() {
             },
             [[gameStatePda, SOLANA_CONFIG.programs.gameplayState, 'game_state']],
             true
-          );
+          ));
         } else if (delegatedMapEnemiesOnly) {
-          await tryUndelegateOrSkip(
+          childUndelegations.push(tryUndelegateOrSkip(
             async () => {
               const tx = await gameplayProgramEr.methods
                 .undelegateMapEnemies()
@@ -1492,11 +1494,11 @@ export function useSessionManager() {
             },
             [[mapEnemiesPda, SOLANA_CONFIG.programs.gameplayState, 'map_enemies']],
             true
-          );
+          ));
         }
 
         if (delegatedMap) {
-          await tryUndelegateOrSkip(
+          childUndelegations.push(tryUndelegateOrSkip(
             async () => {
               const undelegateMapTx = await mapGeneratorProgramEr.methods
                 .undelegateGeneratedMap()
@@ -1512,11 +1514,11 @@ export function useSessionManager() {
             },
             [[generatedMapPda, SOLANA_CONFIG.programs.mapGenerator, 'generated_map']],
             true
-          );
+          ));
         }
 
         if (delegatedSessionDiscovery) {
-          await tryUndelegateOrSkip(
+          childUndelegations.push(tryUndelegateOrSkip(
             async () => {
               const undelegateDiscoveryTx = await mapGeneratorProgramEr.methods
                 .undelegateSessionDiscovery()
@@ -1532,11 +1534,11 @@ export function useSessionManager() {
             },
             [[sessionDiscoveryPda, SOLANA_CONFIG.programs.mapGenerator, 'session_discovery']],
             true
-          );
+          ));
         }
 
         if (delegatedGauntletEchoes) {
-          await tryUndelegateOrSkip(
+          childUndelegations.push(tryUndelegateOrSkip(
             async () => {
               const undelegateGauntletEchoesTx = await gameplayProgramEr.methods
                 .undelegateGauntletEchoes()
@@ -1552,11 +1554,11 @@ export function useSessionManager() {
             },
             [[gauntletEchoesPda, SOLANA_CONFIG.programs.gameplayState, 'gauntlet_echoes']],
             true
-          );
+          ));
         }
 
         if (delegatedInventory) {
-          await tryUndelegateOrSkip(
+          childUndelegations.push(tryUndelegateOrSkip(
             async () => {
               const undelegateInventoryTx = await playerInventoryProgramEr.methods
                 .undelegateInventory()
@@ -1572,11 +1574,11 @@ export function useSessionManager() {
             },
             [[inventoryPda, SOLANA_CONFIG.programs.playerInventory, 'inventory']],
             true
-          );
+          ));
         }
 
         if (delegatedPois) {
-          await tryUndelegateOrSkip(
+          childUndelegations.push(tryUndelegateOrSkip(
             async () => {
               const undelegatePoisTx = await poiSystemProgramEr.methods
                 .undelegateMapPois()
@@ -1592,11 +1594,11 @@ export function useSessionManager() {
             },
             [[mapPoisPda, SOLANA_CONFIG.programs.poiSystem, 'map_pois']],
             true
-          );
+          ));
         }
 
         if (delegatedPoiVrf) {
-          await tryUndelegateOrSkip(
+          childUndelegations.push(tryUndelegateOrSkip(
             async () => {
               const undelegatePoiVrfTx = await poiSystemProgramEr.methods
                 .undelegatePoiVrfState()
@@ -1616,9 +1618,13 @@ export function useSessionManager() {
             },
             [[poiVrfStatePda, SOLANA_CONFIG.programs.poiSystem, 'poi_vrf_state']],
             true
-          );
+          ));
         }
 
+        // Send all child undelegations in parallel
+        await Promise.all(childUndelegations);
+
+        // Undelegate the session account last (parent)
         let signature = 'undelegate_partial';
         if (delegatedSession) {
           await tryUndelegateOrSkip(
@@ -1671,11 +1677,12 @@ export function useSessionManager() {
         }
 
         let allRestored = false;
-        // E2e test uses a fixed 5s wait for ER→base commit propagation before checking.
-        // Match that behavior: wait 5s upfront, then poll for up to 55s more.
-        console.log('[useSessionManager] undelegate: waiting 5s for base layer restoration...');
-        await new Promise((resolve) => setTimeout(resolve, 5000));
-        for (let i = 0; i < 55; i += 1) {
+        // Wait for ER→base commit propagation, then poll.
+        // With parallel undelegation TXs already confirmed on ER, base restoration
+        // typically completes within 2-3s.
+        console.log('[useSessionManager] undelegate: waiting 2s for base layer restoration...');
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        for (let i = 0; i < 30; i += 1) {
           const infos = await Promise.all(
             allChecks.map(([pda]) => baseConnection.getAccountInfo(pda, 'processed'))
           );
