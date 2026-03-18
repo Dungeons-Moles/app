@@ -52,6 +52,7 @@ import {
   interactScrapChute,
   generateCacheOffer,
   generateOilOffer,
+  fetchMapPois,
   type PoiTransactionContext,
 } from '@/services/solana/poiSystem';
 import {
@@ -472,7 +473,7 @@ function isInvalidPoiIndexError(error: unknown): boolean {
 function isOfferAlreadyGeneratedError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error ?? '');
   return (
-    extractCustomErrorCode(error) === 6025 ||
+    extractCustomErrorCode(error) === 6026 ||
     message.includes('OfferAlreadyGenerated')
   );
 }
@@ -1334,17 +1335,32 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             // to ensure handlePOIOption routes correctly.
             setDeferredPoiType(null);
             setDeferredPoiIndex(null);
-            // Fetch SessionDiscovery to check for existing offer
+
+            // Check both SessionDiscovery and MapPois for an existing offer before
+            // attempting to generate. SessionDiscovery only tracks the *latest* offer,
+            // so a previously generated offer for this POI may only exist in MapPois.
             let discovery = await fetchDiscoveryOffers(ctx.connection, ctx.sessionPda);
 
-            // Check if an active cache offer already exists for this POI
-            const hasExistingCacheOffer =
+            let existingOffer =
               discovery &&
-              discovery.activeOfferType === 2 && // 2=cache
+              discovery.activeOfferType === 2 &&
               discovery.activeOfferPoiIndex === poiIndex &&
-              discovery.cacheOfferItems.some((item) => item.itemId.some((b) => b !== 0));
+              discovery.cacheOfferItems.some((item) => item.itemId.some((b) => b !== 0))
+                ? discoveryCacheItemsToCacheOffer(discovery.cacheOfferItems, poiIndex)
+                : null;
 
-            if (!hasExistingCacheOffer) {
+            // SessionDiscovery miss — check MapPois which stores all generated offers
+            if (!existingOffer && mapPoisPda && poiProgram) {
+              const mapPoisData = await fetchMapPois(poiProgram, mapPoisPda);
+              const mapPoiOffer = mapPoisData?.cacheOffers?.find((o) => o.poiIndex === poiIndex);
+              if (mapPoiOffer && mapPoiOffer.items.some((i) => i.itemId.some((b) => b !== 0))) {
+                debugLog('[usePoiInteraction] Cache offer found in MapPois for poiIndex:', poiIndex);
+                existingOffer = mapPoiOffer;
+              }
+            }
+
+            // No existing offer — generate one on-chain
+            if (!existingOffer) {
               debugLog('[usePoiInteraction] Sending generateCacheOffer on-chain');
               try {
                 await withErPositionRetry(() =>
@@ -1355,8 +1371,6 @@ export function usePoiInteraction(): UsePoiInteractionResult {
                   debugLog(
                     '[usePoiInteraction] Offer already exists on-chain, re-fetching existing offer'
                   );
-                  // Offer already generated (e.g., previous attempt succeeded on-chain
-                  // but frontend didn't complete the flow). Just re-fetch and use it.
                 } else if (isPoiAlreadyUsedError(err)) {
                   console.warn(
                     '[usePoiInteraction] generateCacheOffer hit PoiAlreadyUsed; syncing local state'
@@ -1373,24 +1387,29 @@ export function usePoiInteraction(): UsePoiInteractionResult {
                   throw err;
                 }
               }
-              debugLog('[usePoiInteraction] generateCacheOffer CONFIRMED, re-fetching...');
-              // Re-fetch SessionDiscovery to read the stored offer
+              // Read the newly generated offer — try SessionDiscovery first, then MapPois
               discovery = await fetchDiscoveryOffers(ctx.connection, ctx.sessionPda);
-            } else {
-              debugLog('[usePoiInteraction] Saved cache offer found for poiIndex:', poiIndex);
-            }
+              existingOffer =
+                discovery &&
+                discovery.activeOfferType === 2 &&
+                discovery.activeOfferPoiIndex === poiIndex
+                  ? discoveryCacheItemsToCacheOffer(discovery.cacheOfferItems, poiIndex)
+                  : null;
 
-            // Convert SessionDiscovery cache items to CacheOffer format
-            const existingOffer =
-              discovery &&
-              discovery.activeOfferType === 2 &&
-              discovery.activeOfferPoiIndex === poiIndex
-                ? discoveryCacheItemsToCacheOffer(discovery.cacheOfferItems, poiIndex)
-                : null;
+              if (!existingOffer && mapPoisPda && poiProgram) {
+                const mapPoisData = await fetchMapPois(poiProgram, mapPoisPda);
+                const mapPoiOffer = mapPoisData?.cacheOffers?.find((o) => o.poiIndex === poiIndex);
+                if (mapPoiOffer && mapPoiOffer.items.some((i) => i.itemId.some((b) => b !== 0))) {
+                  existingOffer = mapPoiOffer;
+                }
+              }
+            } else {
+              debugLog('[usePoiInteraction] Using existing cache offer for poiIndex:', poiIndex);
+            }
 
             if (!existingOffer || existingOffer.items.every((i) => i.itemId.every((b) => b === 0))) {
               console.error(
-                '[usePoiInteraction] No cache offer found in SessionDiscovery for poiIndex:',
+                '[usePoiInteraction] No cache offer found for poiIndex:',
                 poiIndex,
                 '| activeOfferType:',
                 discovery?.activeOfferType,
@@ -1621,12 +1640,21 @@ export function usePoiInteraction(): UsePoiInteractionResult {
           // Smuggler Hatch Shop (L9) — Enter shop on-chain, then show modal with on-chain offers
           case POI_TYPES.SMUGGLER_HATCH: {
             shopLeftRef.current = false;
-            // Check if shop is already active on-chain via SessionDiscovery
+            // Check if shop is already active — SessionDiscovery only tracks the latest
+            // offer type, so also check MapPois.shopState as the authoritative source.
             let shopDiscovery = await fetchDiscoveryOffers(ctx.connection, ctx.sessionPda);
-            const shopAlreadyActive =
+            let shopAlreadyActive =
               shopDiscovery &&
               shopDiscovery.activeOfferType === 1 && // 1=shop
               shopDiscovery.shopActive !== 0;
+
+            if (!shopAlreadyActive && mapPoisPda && poiProgram) {
+              const mapPoisData = await fetchMapPois(poiProgram, mapPoisPda);
+              if (mapPoisData?.shopState?.active) {
+                debugLog('[usePoiInteraction] Shop active in MapPois but not in SessionDiscovery');
+                shopAlreadyActive = true;
+              }
+            }
 
             if (!shopAlreadyActive) {
               await withErPositionRetry(() =>
@@ -1637,6 +1665,8 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             } else {
               debugLog('[usePoiInteraction] Shop already active on-chain, skipping enterShop');
             }
+
+            // Read shop offers — prefer SessionDiscovery, fall back to MapPois
             if (shopDiscovery && shopDiscovery.activeOfferType === 1 && shopDiscovery.shopActive !== 0) {
               const adaptedOffers = discoveryShopOffersToItemOffers(shopDiscovery.shopOffers);
               setShopOffers(adaptedOffers);
@@ -1649,6 +1679,22 @@ export function usePoiInteraction(): UsePoiInteractionResult {
                   gold
                 )
               );
+            } else if (mapPoisPda && poiProgram) {
+              // SessionDiscovery was overwritten by another offer type — read from MapPois
+              const mapPoisData = await fetchMapPois(poiProgram, mapPoisPda);
+              if (mapPoisData?.shopState?.active) {
+                const adaptedOffers = mapPoisData.shopState.offers;
+                setShopOffers(adaptedOffers);
+                setShopRerollCount(mapPoisData.shopState.rerollCount);
+                const gold = gameState?.player?.stats?.gold ?? 0;
+                setCacheOfferOptions(
+                  convertShopOffersToOptions(
+                    adaptedOffers,
+                    mapPoisData.shopState.rerollCount,
+                    gold
+                  )
+                );
+              }
             }
 
             setDeferredPoiIndex(poiIndex);
@@ -2132,26 +2178,15 @@ export function usePoiInteraction(): UsePoiInteractionResult {
 
   /**
    * Clear cache offers and deferred selection state.
-   * If in a shop, also sends leaveShop on-chain (fire-and-forget).
    * Also resets interactionState to 'idle' to re-enable mismatch-detection.
+   * Note: shop is NOT closed on-chain here — it stays active on MapPois so
+   * re-entering the same Smuggler Hatch reuses the existing offers.
+   * Only the explicit "Leave" button calls leaveShop to reset reroll count.
    */
   const clearCacheOffers = useCallback(() => {
     setCacheOfferOptions(null);
     setCacheOfferParams(null);
-    // If in shop, close on-chain (fire-and-forget) — skip if already left
     if (deferredPoiType === POI_TYPES.SMUGGLER_HATCH) {
-      if (!shopLeftRef.current) {
-        const ctx = createPoiCtx();
-        if (ctx) {
-          leaveShop(ctx).catch((err) => {
-            if (!isIgnorableLeaveShopCloseError(err)) {
-              console.error('[usePoiInteraction] leaveShop on close:', err);
-            } else {
-              console.warn('[usePoiInteraction] leaveShop on close ignored:', err);
-            }
-          });
-        }
-      }
       shopLeftRef.current = false;
       setShopOffers([]);
       setShopRerollCount(0);

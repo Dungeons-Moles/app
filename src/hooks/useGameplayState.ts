@@ -413,15 +413,15 @@ export function useGameplayState(): UseGameplayStateReturn {
             confirmedState.week > previousState.week ||
             (confirmedState.completed && !previousState.completed));
 
-        // Gauntlet echo combat emits GauntletCombatVisual,
-        // so skip the compact combat-info retry when we know it's a gauntlet echo.
-        const isGauntletEchoResolution =
-          bossResolvedIndicator && previousState.runMode === RunMode.Gauntlet;
+        // Skip the compact combat-info retry when we know the HP change came from
+        // a boss/echo resolution, not a field enemy fight. The retry would waste
+        // ~80ms looking for field enemy events that don't exist.
+        const isBossOrEchoResolution = !!bossResolvedIndicator;
 
         // Use pre-fetched combat result from the quick parallel parse.
         // If the quick attempt missed and HP actually changed, do a follow-up retry.
         let combatEnemyInfo: CombatEnemyInfo | undefined;
-        if (!isGauntletEchoResolution) {
+        if (!isBossOrEchoResolution) {
           if (combatResult.combatEnemyInfo) {
             combatEnemyInfo = combatResult.combatEnemyInfo;
           } else if (hpOrDeathChanged && signature) {

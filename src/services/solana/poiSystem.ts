@@ -380,6 +380,7 @@ export async function generateScannerOffer(
       player: ctx.sessionSignerKeypair.publicKey,
       sessionDiscovery: ctx.sessionDiscoveryPda ?? undefined,
       session: ctx.sessionPda,
+      mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
     })
     .transaction();
 

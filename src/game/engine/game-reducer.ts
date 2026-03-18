@@ -1256,23 +1256,20 @@ function hasFuseCandidate(state: GameState): boolean {
 
 function canOpenPOIModal(state: GameState, poiDefId: string): boolean {
   switch (poiDefId) {
+    // L2, L3, L12, L13: Always open — user can browse items even with full inventory.
+    // The pick step (selectCacheOffer / equipTool) enforces the space check.
     case 'L2':
+    case 'L3':
     case 'L12':
     case 'L13':
-      return state.player.inventory.length < state.player.inventoryCapacity;
+      return true;
     case 'L9':
-      return state.player.stats.gold >= 8;
+      return state.player.stats.gold >= 4;
     case 'L10': {
       const tool = state.player.equippedTool;
-      if (!tool) {
-        return false;
-      }
-      if (tool.rarity === 'COMMON') {
-        return state.player.stats.gold >= 10;
-      }
-      if (tool.rarity === 'GILDED') {
-        return state.player.stats.gold >= 20;
-      }
+      if (!tool) return false;
+      if (tool.rarity === 'COMMON') return state.player.stats.gold >= 10;
+      if (tool.rarity === 'GILDED') return state.player.stats.gold >= 20;
       return false;
     }
     case 'L11':

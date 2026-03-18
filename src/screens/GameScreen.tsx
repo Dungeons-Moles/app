@@ -890,6 +890,12 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
     const resolvedWeekBoss: BossId | null =
       state.time.weekBoss ?? null;
+    console.log('[GameScreen] Boss useEffect fired:', {
+      weekBoss: resolvedWeekBoss,
+      localWeek: state.time.week,
+      onChainWeek: onChainState.week,
+      isTriggeringBoss: isTriggeringBossRef.current,
+    });
     if (!resolvedWeekBoss) {
       console.warn('[GameScreen] bossFightReady but no weekBoss defined');
       return;
@@ -1387,6 +1393,8 @@ export function GameScreen({ navigation }: GameScreenProps) {
             })
           );
           if (!result.success) {
+            console.warn('[GameScreen] Move failed, resyncing. bossFightReady:', result.bossFightReady,
+              'bossResolvedInline:', result.bossResolvedInline);
             // Resync full state from chain to recover from any mismatch
             const prevPos = stateRef.current?.player?.position;
             resyncFromChain().then(() => {
@@ -1451,6 +1459,16 @@ export function GameScreen({ navigation }: GameScreenProps) {
             // Handle inline boss resolution (Campaign, Duel weeks 1-2, Gauntlet).
             // The boss fight was already resolved inside move_player on-chain —
             // no separate trigger_boss_fight transaction is needed.
+            if (result.bossResolvedInline || result.bossFightReady) {
+              console.log('[GameScreen] Boss check:', {
+                bossResolvedInline: result.bossResolvedInline,
+                previousPhase: result.previousState?.phase,
+                previousWeek: result.previousState?.week,
+                newWeek: result.newState?.week,
+                isDead: result.isDead,
+                weekBoss: state.time.weekBoss,
+              });
+            }
             if (result.bossResolvedInline && result.newState) {
               // Gauntlet: echo combat auto-resolved inline in move_player
               if (result.newState.runMode === RunMode.Gauntlet) {
