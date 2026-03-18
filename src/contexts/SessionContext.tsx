@@ -2758,7 +2758,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     let duelQueued: { seed: bigint; slot: number } | undefined;
     const events = await parseDuelEvents(connection, gameplayProgram, signature);
     if (events.queued) {
-      duelQueued = undefined;
+      duelQueued = {
+        seed: events.queued.seed,
+        slot: events.queued.slot,
+      };
     }
 
     // Init SessionDiscovery separately (skipped in combined TX to avoid insufficient lamports)
@@ -4719,7 +4722,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       let duelQueued: { seed: bigint; slot: number } | undefined;
       const events = await parseDuelEvents(connection, gameplayProgram, signature);
       if (events.queued) {
-        duelQueued = undefined;
+        duelQueued = {
+          seed: events.queued.seed,
+          slot: events.queued.slot,
+        };
       }
 
       // Init SessionDiscovery separately (skipped in combined TX)

@@ -88,17 +88,24 @@ anchor deploy --provider.cluster localnet --skip-build
 anchor run init
 ```
 
-Start the local VRF oracle in a separate terminal. Use the real binary path so logs are visible, and point it at the ER endpoints because `request_*_vrf` runs on the rollup:
+Start the local VRF oracle in a separate terminal. Use the real binary path so logs are visible.
+
+For this app's current localnet flow, the fallback VRF requests are sent on the base layer and
+the client waits for fulfillment on base-layer VRF state PDAs. That means the local oracle must
+watch the base validator, not the ER.
 
 ```bash
 REAL=/home/ailton/.local/share/mise/installs/node/24.11.1/lib/node_modules/@magicblock-labs/ephemeral-validator/node_modules/@magicblock-labs/vrf-oracle-linux-x64/bin/vrf-oracle
 
 RUST_LOG=info \
 VRF_ORACLE_SKIP_PREFLIGHT=true \
-RPC_URL=http://127.0.0.1:7799 \
-WEBSOCKET_URL=ws://127.0.0.1:7800 \
+RPC_URL=http://127.0.0.1:8899 \
+WEBSOCKET_URL=ws://127.0.0.1:8999 \
 "$REAL"
 ```
+
+If the oracle is pointed at ER (`7799/7800`) while the app is using the base-layer localnet
+fallback VRF path, fulfillment will time out because the oracle will never see those requests.
 
 The local oracle only services its own queue PDA. In the packaged local dumps that queue is `GKE6d7iv8kCBrsxr78W3xVdjGLLLJnxsGiuzrsZCGEvb`, so `.env.localnet` pins `EXPO_PUBLIC_VRF_ORACLE_QUEUE` to that value.
 

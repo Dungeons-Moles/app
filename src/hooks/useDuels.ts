@@ -289,11 +289,11 @@ export function useDuels() {
         } else if (startResult.duelQueued) {
           // Successfully queued via startDuelGame (enter_duel ran before delegation)
           console.log('[useDuels] enterCurrentSessionDuel:queued_via_startDuelGame', {
-            seed: null,
-            slot: null,
+            seed: startResult.duelQueued.seed.toString(),
+            slot: startResult.duelQueued.slot,
           });
-          setQueuedSeed(null);
-          setQueuedSlot(null);
+          setQueuedSeed(startResult.duelQueued.seed);
+          setQueuedSlot(startResult.duelQueued.slot);
           setPhase('queued');
           return true;
         }

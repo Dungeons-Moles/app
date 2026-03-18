@@ -910,17 +910,6 @@ function getSimultaneousPairIndex(log: CombatLogEntry[], index: number): number 
     return null;
   }
 
-  const isSameStatusApplication =
-    entry.action === 'APPLY_STATUS' &&
-    nextEntry.action === 'APPLY_STATUS' &&
-    entry.target === nextEntry.target &&
-    entry.result.statusApplied?.type === nextEntry.result.statusApplied?.type &&
-    entry.result.statusApplied?.type !== 'reflection';
-
-  if (isSameStatusApplication) {
-    return index + 1;
-  }
-
   return index + 1;
 }
 
@@ -987,7 +976,11 @@ function isFinalAttackEntryForActorPhase(
   for (let index = currentIndex + 1; index < log.length; index += 1) {
     const nextEntry = log[index];
     if (!nextEntry) break;
-    if (nextEntry.turn !== entry.turn || nextEntry.timing !== entry.timing) {
+    if (
+      nextEntry.turn !== entry.turn ||
+      nextEntry.timing !== entry.timing ||
+      nextEntry.actor !== entry.actor
+    ) {
       break;
     }
     if (nextEntry.action === 'ATTACK') {
