@@ -832,7 +832,7 @@ const compactStyles = StyleSheet.create({
     marginBottom: 6,
   },
   titleRow: {
-    marginTop: 0,
+    marginTop: 40,
   },
   titleImage: {
     width: 510,
