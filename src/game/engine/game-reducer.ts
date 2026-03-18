@@ -62,7 +62,7 @@ import { Direction, DIRECTION_DELTA } from '../input/types';
 import { isValidTransition } from './state-machine';
 import { initializeGame, consumeMoves } from './state-factory';
 import { GAME_CONSTANTS } from './constants';
-import { TileType, TILE_MOVE_COST, type MapEnemy, FogState } from '../map/types';
+import { TileType, TILE_MOVE_COST, type MapEnemy, type MapPOI, FogState } from '../map/types';
 import { updateFogOfWar } from '../map/fog-of-war';
 import { calculateDigCost, canDig, executeDig } from '../map/dig';
 import {
@@ -82,7 +82,6 @@ import {
   advanceTimePhase,
   shouldTriggerBoss,
   advanceToNextWeek,
-  selectDuelWeekBossForSeed,
   selectWeekBossForLevel,
   canAffordCostAcrossPhases,
   consumeMoveAcrossPhases,
@@ -104,9 +103,9 @@ import { getTierFromRarity } from '../../data/gear';
 import { BOSSES } from '../../data/bosses';
 import { ENEMY_DEFINITIONS } from '../entities/enemies';
 
-/** Selection POIs that require on-chain interact() flow — not auto-triggered in handleSyncMove */
+/** POIs that require dedicated on-chain interact() flow — not locally auto-triggered in handleSyncMove */
 const SELECTION_POIS = new Set([
-  'L1', 'L2', 'L3', 'L4', 'L5', 'L7', 'L8', 'L9', 'L10', 'L11', 'L12', 'L13', 'L14',
+  'L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L8', 'L9', 'L10', 'L11', 'L12', 'L13', 'L14',
 ]);
 
 // ============================================================================
@@ -157,13 +156,17 @@ export type GameAction =
   // On-chain-first sync actions
   | { type: 'SYNC_MOVE'; confirmedState: OnChainGameState }
   | { type: 'SYNC_COMBAT_RESULT'; confirmedState: OnChainGameState; result: CombatResult }
-  // POI reveal actions (Survey Beacon, Seismic Scanner)
-  | { type: 'REVEAL_TILES'; center: Position; radius: number }
-  | { type: 'REVEAL_POI_LOCATIONS'; poiDefId: string }
   // Enemy position sync (for night movement from on-chain)
   | {
       type: 'SYNC_ENEMY_POSITIONS';
       enemies: Array<{ x: number; y: number; archetypeId: number; tier: number }>;
+    }
+  // Merge updated SessionDiscovery data (tiles, enemies, POIs) after moves
+  | {
+      type: 'SYNC_DISCOVERY';
+      tiles: import('../map/types').TileType[][];
+      enemies: import('../map/types').MapEnemy[];
+      pois: import('../map/types').MapPOI[];
     }
   // Guest mode fast travel: teleport player to a waypoint position
   | { type: 'FAST_TRAVEL_TO'; destination: Position }
@@ -312,16 +315,12 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     case 'SYNC_COMBAT_RESULT':
       return handleSyncCombatResult(state, action.confirmedState, action.result);
 
-    // POI reveal actions (Survey Beacon, Seismic Scanner)
-    case 'REVEAL_TILES':
-      return handleRevealTiles(state, action.center, action.radius);
-
-    case 'REVEAL_POI_LOCATIONS':
-      return handleRevealPoiLocations(state, action.poiDefId);
-
     // Enemy position sync (for night movement from on-chain)
     case 'SYNC_ENEMY_POSITIONS':
       return handleSyncEnemyPositions(state, action.enemies);
+
+    case 'SYNC_DISCOVERY':
+      return handleSyncDiscovery(state, action.tiles, action.enemies, action.pois);
 
     // Guest mode fast travel
     case 'FAST_TRAVEL_TO':
@@ -396,23 +395,6 @@ function handleStartGame(
  * 2. Update fog of war centered on player position
  */
 function handleRestoreGame(restoredState: GameState): GameState {
-  // Debug: Log all POIs on the map
-  const poiCounts: Record<string, number> = {};
-  for (const poi of restoredState.map.pois) {
-    poiCounts[poi.definitionId] = (poiCounts[poi.definitionId] || 0) + 1;
-  }
-  console.log('[RESTORE_GAME] POI Summary:');
-  console.log('  Total POIs:', restoredState.map.pois.length);
-  console.log('  By type:', poiCounts);
-  console.log(
-    '  All POIs:',
-    restoredState.map.pois.map((p) => ({
-      id: p.definitionId,
-      pos: `(${p.position.x},${p.position.y})`,
-      visited: p.visited,
-    }))
-  );
-
   // 1. Refresh player stats to include gear bonuses
   // On-chain stores base stats; gear bonuses need to be recalculated
   const refreshedPlayer = refreshPlayerStats(restoredState.player);
@@ -503,13 +485,6 @@ function handleMove(state: GameState, direction: Direction): GameState {
     totalMoves: (clearedState.totalMoves ?? 0) + 1,
   };
 
-  // Update fog of war
-  const isDay = newState.time.phase === TimePhase.Day;
-  newState = {
-    ...newState,
-    map: updateFogOfWar(newState.map, targetPos, isDay),
-  };
-
   // Consume time using time progression system (T066)
   const newTime = consumeMove(newState.time, moveCost);
   const advancedTime = advanceTimePhase(newTime);
@@ -533,6 +508,13 @@ function handleMove(state: GameState, direction: Direction): GameState {
     ...newState,
     player: updatedPlayer,
     time: advancedTime,
+  };
+
+  // Update fog of war after phase transition so visibility radius matches the new phase
+  const isDay = newState.time.phase === TimePhase.Day;
+  newState = {
+    ...newState,
+    map: updateFogOfWar(newState.map, targetPos, isDay),
   };
 
   // Check for enemy encounter - initialize combat properly
@@ -1686,15 +1668,6 @@ function mapOnChainPhase(phase: number): { timePhase: TimePhase; cycle: 1 | 2 | 
  * This is the on-chain-first equivalent of the old MOVE action for non-guest mode.
  */
 function handleSyncMove(state: GameState, confirmedState: OnChainGameState): GameState {
-  // Debug: Log HP values to track sync issues
-  console.log('[handleSyncMove] HP sync:', {
-    previousBaseHp: state.player.baseStats.hp,
-    previousStatsHp: state.player.stats.hp,
-    onChainHp: confirmedState.hp,
-    previousGold: state.player.stats.gold,
-    onChainGold: confirmedState.gold,
-  });
-
   const { timePhase, cycle } = mapOnChainPhase(confirmedState.phase);
 
   const targetPos: Position = {
@@ -1748,18 +1721,14 @@ function handleSyncMove(state: GameState, confirmedState: OnChainGameState): Gam
   const updatedPlayer = refreshPlayerStats(syncedPlayer);
   updatedPlayer.stats.hp = Math.max(0, Math.min(confirmedState.hp, updatedPlayer.stats.maxHp));
 
-  // Debug: Log final HP after recalculation
-  console.log('[handleSyncMove] HP after refresh:', {
-    finalBaseHp: updatedPlayer.baseStats.hp,
-    finalStatsHp: updatedPlayer.stats.hp,
-  });
-
   // Sync time state from on-chain
   const syncedWeek = confirmedState.week as 1 | 2 | 3;
   const syncedWeekBoss =
     syncedWeek !== state.time.week
-      ? confirmedState.runMode === 1 && (syncedWeek === 1 || syncedWeek === 2)
-        ? selectDuelWeekBossForSeed(state.seed, syncedWeek)
+      ? confirmedState.runMode === 2
+        ? state.time.weekBoss
+        : confirmedState.runMode === 1
+        ? state.time.weekBoss
         : selectWeekBossForLevel(confirmedState.campaignLevel, syncedWeek)
       : state.time.weekBoss;
   const updatedTime: TimeState = {
@@ -1793,29 +1762,13 @@ function handleSyncMove(state: GameState, confirmedState: OnChainGameState): Gam
   // Check for POI at target position
   const poiAtTarget = findPOIAtPosition(finalMap, targetPos);
   if (poiAtTarget && !poiAtTarget.visited) {
-    // Survey Beacon auto-activates
-    if (poiAtTarget.definitionId === 'L6') {
-      let newState: GameState = {
-        ...state,
-        player: updatedPlayer,
-        map: finalMap,
-        time: updatedTime,
-        wallHighlight: null,
-      };
-      newState = activateSurveyBeacon(newState);
-      newState = {
-        ...newState,
-        map: markPOIVisited(newState.map, poiAtTarget.id),
-      };
-      return newState;
-    }
-
-    // Selection POIs: stay in Exploration so "Interact" button triggers on-chain flow
+    // On-chain sync path: stay in Exploration and let usePoiInteraction send the
+    // dedicated POI transaction after the move is confirmed.
     if (SELECTION_POIS.has(poiAtTarget.definitionId)) {
       // Fall through — usePoiInteraction.canInteract will detect the POI
       // and the "Interact" button will appear in Exploration phase
     } else {
-      // Auto-trigger POIs: only L6 (Survey Beacon, handled above) is auto-triggered
+      // Auto-trigger POIs: all on-chain POI transactions are handled by usePoiInteraction.
       const tempState: GameState = {
         ...state,
         player: updatedPlayer,
@@ -1932,8 +1885,10 @@ function handleSyncCombatResult(
   const syncedWeek2 = confirmedState.week as 1 | 2 | 3;
   const syncedWeekBoss2 =
     syncedWeek2 !== state.time.week
-      ? confirmedState.runMode === 1 && (syncedWeek2 === 1 || syncedWeek2 === 2)
-        ? selectDuelWeekBossForSeed(state.seed, syncedWeek2)
+      ? confirmedState.runMode === 2
+        ? state.time.weekBoss
+        : confirmedState.runMode === 1
+        ? state.time.weekBoss
         : selectWeekBossForLevel(confirmedState.campaignLevel, syncedWeek2)
       : state.time.weekBoss;
   const updatedTime: TimeState = {
@@ -2117,128 +2072,6 @@ function handleSpendGold(state: GameState, amount: number): GameState {
 }
 
 // ============================================================================
-// POI Reveal Action Handlers (Fog Persistence)
-// ============================================================================
-
-/** Manhattan distance between two positions */
-function manhattanDistance(a: Position, b: Position): number {
-  return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
-}
-
-/**
- * Handles REVEAL_TILES action.
- * Reveals all tiles within a radius from a center position.
- * Used by Survey Beacon (radius 13).
- */
-function handleRevealTiles(state: GameState, center: Position, radius: number): GameState {
-  // Create deep copy of fog
-  const newFog: FogState[][] = state.map.fog.map((row) => [...row]);
-
-  // Reveal all tiles within radius (using Manhattan distance like activateSurveyBeacon)
-  for (let dy = -radius; dy <= radius; dy++) {
-    for (let dx = -radius; dx <= radius; dx++) {
-      const dist = Math.abs(dx) + Math.abs(dy);
-      if (dist <= radius) {
-        const x = center.x + dx;
-        const y = center.y + dy;
-        if (x >= 0 && x < state.map.width && y >= 0 && y < state.map.height) {
-          if (newFog[y][x] === FogState.Hidden) {
-            newFog[y][x] = FogState.Revealed;
-          }
-        }
-      }
-    }
-  }
-
-  // Mark enemies in revealed area as discovered
-  const visibleKeys = new Set<string>();
-  for (let dy = -radius; dy <= radius; dy++) {
-    for (let dx = -radius; dx <= radius; dx++) {
-      const dist = Math.abs(dx) + Math.abs(dy);
-      if (dist <= radius) {
-        const x = center.x + dx;
-        const y = center.y + dy;
-        if (x >= 0 && x < state.map.width && y >= 0 && y < state.map.height) {
-          visibleKeys.add(`${x},${y}`);
-        }
-      }
-    }
-  }
-
-  const updatedEnemies = state.map.enemies.map((enemy) => {
-    const key = `${enemy.position.x},${enemy.position.y}`;
-    if (visibleKeys.has(key)) {
-      return { ...enemy, discovered: true };
-    }
-    return enemy;
-  });
-
-  return {
-    ...state,
-    map: {
-      ...state.map,
-      fog: newFog,
-      enemies: updatedEnemies,
-    },
-  };
-}
-
-/**
- * Handles REVEAL_POI_LOCATIONS action.
- * Reveals the nearest unvisited POI of the specified type.
- * Used by Seismic Scanner — "Choose POI type, reveal nearest instance".
- */
-function handleRevealPoiLocations(state: GameState, poiDefId: string): GameState {
-  const playerPos = state.player.position;
-
-  // Find unvisited POIs of the exact type, sorted by distance
-  const matchingPois = state.map.pois.filter(
-    (poi) => poi.definitionId === poiDefId && !poi.visited
-  );
-
-  if (matchingPois.length === 0) {
-    return state;
-  }
-
-  matchingPois.sort(
-    (a, b) => manhattanDistance(a.position, playerPos) - manhattanDistance(b.position, playerPos)
-  );
-
-  // Find the nearest POI whose tile is still hidden (skip already-discovered ones)
-  const target = matchingPois.find((poi) => {
-    const { x, y } = poi.position;
-    return (
-      x >= 0 &&
-      x < state.map.width &&
-      y >= 0 &&
-      y < state.map.height &&
-      state.map.fog[y][x] === FogState.Hidden
-    );
-  });
-
-  if (!target) {
-    return state;
-  }
-
-  const newFog: FogState[][] = state.map.fog.map((row) => [...row]);
-  newFog[target.position.y][target.position.x] = FogState.Revealed;
-
-  // Mark the revealed POI as discovered (mirrors on-chain discovered flag)
-  const newPois = state.map.pois.map((poi) =>
-    poi.id === target.id ? { ...poi, discovered: true } : poi
-  );
-
-  return {
-    ...state,
-    map: {
-      ...state.map,
-      fog: newFog,
-      pois: newPois,
-    },
-  };
-}
-
-// ============================================================================
 // Enemy Position Sync Handler (Night Movement)
 // ============================================================================
 
@@ -2252,17 +2085,83 @@ function handleRevealPoiLocations(state: GameState, poiDefId: string): GameState
  * - Only update positions for enemies that moved
  * - Keep all local enemies that don't have an on-chain match (conservative approach)
  */
+
+/**
+ * Handles SYNC_DISCOVERY action.
+ * Merges updated SessionDiscovery tile types, enemies, and POIs into the local map.
+ * Called after each on-chain move to update newly revealed tiles from Unknown to Floor/Wall.
+ */
+function handleSyncDiscovery(
+  state: GameState,
+  tiles: TileType[][],
+  enemies: MapEnemy[],
+  pois: MapPOI[]
+): GameState {
+  const newTiles = state.map.tiles.map((row, y) =>
+    row.map((current, x) => {
+      if (current === TileType.Unknown && tiles[y]?.[x] !== TileType.Unknown) {
+        return tiles[y][x];
+      }
+      return current;
+    })
+  );
+  const newFog = state.map.fog.map((row, y) =>
+    row.map((current, x) => {
+      if (current !== FogState.Hidden) {
+        return current;
+      }
+      return tiles[y]?.[x] !== TileType.Unknown ? FogState.Revealed : current;
+    })
+  );
+
+  // Merge enemies: replace local set with discovery set (authoritative source).
+  // Filter out enemies at the player's current position — they were just defeated
+  // but the parallel SessionDiscovery fetch may return stale pre-combat data.
+  const playerPos = state.player.position;
+  const mergedEnemies = enemies
+    .filter((e) => !(e.position.x === playerPos.x && e.position.y === playerPos.y))
+    .map((e) => ({
+      ...e,
+      id: `enemy-${e.position.x}-${e.position.y}`,
+      discovered: true,
+    }));
+
+  // Merge POIs: replace local set with discovery set, but keep Mole Den (L1)
+  // which is stored in GeneratedMap, not in MapPois/SessionDiscovery.
+  // Preserve local visited state since SessionDiscovery.used may not be synced yet.
+  const localVisited = new Set(
+    state.map.pois.filter((p) => p.visited).map((p) => `${p.position.x},${p.position.y}`)
+  );
+  const moleDen = state.map.pois.find((p) => p.definitionId === 'L1');
+  const mergedPois = pois.map((p, i) => ({
+    ...p,
+    id: p.mapPoisIndex != null ? `poi-${p.mapPoisIndex}` : `poi-${i}`,
+    discovered: true,
+    visited: p.visited || localVisited.has(`${p.position.x},${p.position.y}`),
+  }));
+  if (moleDen && !mergedPois.some((p) => p.definitionId === 'L1')) {
+    mergedPois.unshift({ ...moleDen, id: 'poi-mole-den' });
+  }
+
+  return {
+    ...state,
+    map: {
+      ...state.map,
+      tiles: newTiles,
+      fog: newFog,
+      enemies: mergedEnemies,
+      pois: mergedPois,
+    },
+  };
+}
+
 function handleSyncEnemyPositions(
   state: GameState,
   onChainEnemies: Array<{ x: number; y: number; archetypeId: number; tier: number }>
 ): GameState {
-  console.log('[SYNC_ENEMY_POSITIONS] On-chain enemies:', onChainEnemies.length);
-  console.log('[SYNC_ENEMY_POSITIONS] Local enemies:', state.map.enemies.length);
-
   // Safety check: if on-chain has far fewer enemies than local, skip sync
   // (could indicate a fetch error or data mismatch)
   if (onChainEnemies.length === 0 || onChainEnemies.length < state.map.enemies.length * 0.5) {
-    console.log('[SYNC_ENEMY_POSITIONS] Skipping sync - on-chain count too low');
     return state;
   }
 
@@ -2319,9 +2218,6 @@ function handleSyncEnemyPositions(
 
     if (bestMatch) {
       matchedOnChainKeys.add(bestMatch.key);
-      console.log(
-        `[SYNC_ENEMY_POSITIONS] Enemy ${localEnemy.definitionId} moved: (${localEnemy.position.x},${localEnemy.position.y}) -> (${bestMatch.enemy.x},${bestMatch.enemy.y})`
-      );
       updatedEnemies.push({
         ...localEnemy,
         position: { x: bestMatch.enemy.x, y: bestMatch.enemy.y },
@@ -2330,9 +2226,6 @@ function handleSyncEnemyPositions(
     }
 
     // No match found — enemy was defeated on-chain and removed. Drop it from local state.
-    console.log(
-      `[SYNC_ENEMY_POSITIONS] Enemy ${localEnemy.definitionId} at (${localEnemy.position.x},${localEnemy.position.y}) not found on-chain, removing (defeated)`
-    );
   }
 
   return {

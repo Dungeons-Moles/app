@@ -1,4 +1,7 @@
 import type { Gear, Tool } from '@/game/engine/types';
+import { getGearStatsAtTier } from '@/data/gear-effects';
+import { getTierFromRarity } from '@/data/gear';
+import { getToolStatsAtTier, rarityToToolTier } from '@/game/entities/items';
 
 export const STAT_ABBREV = {
   hp: 'HP',
@@ -29,10 +32,17 @@ export function formatStatBonuses(stats: Partial<Record<StatKey, number>>): stri
 
 export function extractStatBonuses(item: Gear | Tool): Partial<Record<StatKey, number>> {
   const bonuses: Partial<Record<StatKey, number>> = {};
-  const stats = item.stats as Partial<Record<StatKey, number>>;
+  const directStats = item.stats as Partial<Record<StatKey, number>>;
+  const bakedStats = 'currentRarity' in item
+    ? (getGearStatsAtTier(item.id, getTierFromRarity(item.currentRarity)) as Partial<
+        Record<StatKey, number>
+      >)
+    : (getToolStatsAtTier(item.id, rarityToToolTier(item.rarity)) as Partial<
+        Record<StatKey, number>
+      >);
 
   STAT_ORDER.forEach((key) => {
-    const value = stats[key];
+    const value = Math.max(directStats[key] ?? 0, bakedStats[key] ?? 0);
     if (value) {
       bonuses[key] = value;
     }

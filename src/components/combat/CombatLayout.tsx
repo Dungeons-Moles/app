@@ -159,14 +159,14 @@ export const CombatLayout = React.memo(function CombatLayout({
   const activeActor = useMemo(() => {
     const entry = combatState.resolvedCombat?.log[combatState.activeActorLogIndex];
     if (
-      entry?.timing !== 'PLAYER_ATTACK' &&
-      entry?.timing !== 'ENEMY_ATTACK'
+      entry?.result.source?.id === 'shrapnel' &&
+      entry.result.source.kind === 'status' &&
+      (entry.actor === 'player' || entry.actor === 'enemy')
     ) {
-      return null;
-    }
-    if (entry?.actor === 'player' || entry?.actor === 'enemy') {
       return entry.actor;
     }
+    if (entry?.timing === 'PLAYER_ATTACK') return 'player';
+    if (entry?.timing === 'ENEMY_ATTACK') return 'enemy';
     return null;
   }, [combatState.activeActorLogIndex, combatState.resolvedCombat]);
 

@@ -36,10 +36,8 @@ export const ITEMSET_EFFECTS: Record<ItemsetId, ItemsetEffectDefinition[]> = {
   ],
   FUSE_NETWORK: [E(Trigger.TurnStart(), 'EmpowerNextNonWeaponDamage', 2)],
   SHRAPNEL_HARNESS: [
-    E(Trigger.BattleStart(), 'PreserveShrapnel', 2),
-    E(Trigger.OnStruck(), 'GainArmor', 1, {
-      condition: Cond.OwnerHasStatus('Shrapnel'),
-    }),
+    E(Trigger.OnGainShrapnel(), 'ApplyShrapnel', 2),
+    E(Trigger.BattleStart(), 'ShrapnelReflectBonus', 1),
   ],
   RUST_RITUAL: [
     E(Trigger.OnHit(), 'ApplyRust', 1, { oncePerTurn: true }),

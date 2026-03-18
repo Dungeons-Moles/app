@@ -5,8 +5,12 @@ import { SOLANA_CONFIG } from './config';
 import {
   GAMEPLAY_STATE_PROGRAM_ID,
   deriveInventoryPda,
+  deriveGauntletEchoesPda,
+  deriveGameplayVrfStatePda,
 } from './constants';
+import { deriveGameStatePda } from './types/gameplay_state';
 import type { OnChainItemInstance } from './pitDraft';
+import type { SessionDiscoveryData } from './mapGeneratorClient';
 
 export const GAUNTLET_ENTRY_LAMPORTS = 10_000_000; // 0.01 SOL
 export const COMPANY_TREASURY = new PublicKey('5LvEA4tH5H5DtWCxa3FcauokxAycvafX9ruvcT2mEXt8');
@@ -285,24 +289,30 @@ export async function fetchGauntletWeekEchoPreview(
 }
 
 /**
- * Reads the echo for a given week directly from the game state's gauntletEchoes field.
- * This is the correct source of truth — the echoes are drawn at enter_gauntlet time and
- * stored in the game state. Reading from the week pool can return stale/different data
- * if the pool was reinitialized or modified after the echo was drawn.
+ * Reads the echo for a given week from the GauntletEchoes account.
+ * GauntletEchoes is a separate PDA (["gauntlet_echoes", session]) owned by gameplay-state.
+ * On PER, this account is delegated and private — use fetchGauntletEchoFromDiscovery instead.
  */
 export async function fetchGauntletEchoFromGameState(
   program: Program,
-  gameStatePda: PublicKey,
+  sessionPda: PublicKey,
   week: number
 ): Promise<GauntletWeekEchoPreview | null> {
   const clampedWeek = Math.max(1, Math.min(5, week));
-  const raw = await (
-    program.account as {
-      gameState: { fetch: (address: PublicKey) => Promise<Record<string, unknown>> };
-    }
-  ).gameState.fetch(gameStatePda);
+  const [gauntletEchoesPda] = deriveGauntletEchoesPda(sessionPda);
 
-  const echoes = raw.gauntletEchoes as unknown[] | undefined;
+  let raw: Record<string, unknown>;
+  try {
+    raw = await (
+      program.account as {
+        gauntletEchoes: { fetch: (address: PublicKey) => Promise<Record<string, unknown>> };
+      }
+    ).gauntletEchoes.fetch(gauntletEchoesPda);
+  } catch {
+    return null;
+  }
+
+  const echoes = raw.echoes as unknown[] | undefined;
   if (!Array.isArray(echoes)) return null;
 
   const echoRaw = unwrapAnchorOption(echoes[clampedWeek - 1]);
@@ -322,7 +332,7 @@ export async function fetchGauntletEchoFromGameState(
     gear.push(normalizeItemInstance(gearRaw[i] ?? null));
   }
 
-  console.log('[gauntlet] fetchGauntletEchoFromGameState', {
+  console.log('[gauntlet] fetchGauntletEchoFromGauntletEchoes', {
     week: clampedWeek,
     isBootstrap,
     sourcePlayer: sourcePlayer?.toBase58?.() ?? null,
@@ -338,6 +348,51 @@ export async function fetchGauntletEchoFromGameState(
     gear,
     goldAtBattleStart: Number(loadout.goldAtBattleStart ?? loadout.gold_at_battle_start ?? 0),
   };
+}
+
+export function fetchGauntletEchoFromDiscovery(
+  discovery: SessionDiscoveryData | null | undefined
+): GauntletWeekEchoPreview | null {
+  if (!discovery || discovery.currentEchoPresent !== 1) return null;
+
+  const data = Buffer.from(discovery.currentEchoData);
+  if (data.length === 0) return null;
+
+  try {
+    let offset = 0;
+    const week = data.readUInt8(offset);
+    offset += 1;
+
+    const sourceTag = data.readUInt8(offset);
+    offset += 1;
+    if (sourceTag === 1) {
+      offset += PUBKEY_LEN;
+    }
+
+    const toolDecoded = decodeOptionItemInstance(data, offset);
+    offset += toolDecoded.bytesRead;
+
+    const gear: (OnChainItemInstance | null)[] = [];
+    for (let i = 0; i < 12; i++) {
+      const decoded = decodeOptionItemInstance(data, offset);
+      gear.push(decoded.value);
+      offset += decoded.bytesRead;
+    }
+
+    const goldAtBattleStart = data.readUInt16LE(offset);
+
+    return {
+      week,
+      sourcePlayer: null,
+      isBootstrap: sourceTag === 0,
+      tool: toolDecoded.value,
+      gear,
+      goldAtBattleStart,
+    };
+  } catch (error) {
+    console.warn('[gauntlet] Failed to decode SessionDiscovery echo data:', error);
+    return null;
+  }
 }
 
 function decodeOptionItemInstance(
@@ -510,6 +565,7 @@ export async function buildEnterGauntletInstruction(
   program: Program,
   playerPublicKey: PublicKey,
   gameStatePda: PublicKey,
+  sessionPda: PublicKey,
   epochIdBN: BN,
   epochIdBigInt: bigint
 ): Promise<TransactionInstruction> {
@@ -517,12 +573,7 @@ export async function buildEnterGauntletInstruction(
   const [gauntletPoolVaultPda] = deriveGauntletPoolVaultPda();
   const [epochPoolPda] = deriveGauntletEpochPoolPda(epochIdBigInt);
   const [playerScorePda] = deriveGauntletPlayerScorePda(epochIdBigInt, playerPublicKey);
-
-  const [week1] = deriveGauntletWeekPoolPda(1);
-  const [week2] = deriveGauntletWeekPoolPda(2);
-  const [week3] = deriveGauntletWeekPoolPda(3);
-  const [week4] = deriveGauntletWeekPoolPda(4);
-  const [week5] = deriveGauntletWeekPoolPda(5);
+  const [gauntletEchoesPda] = deriveGauntletEchoesPda(sessionPda);
 
   const tx = await program.methods
     .enterGauntlet(epochIdBN)
@@ -534,11 +585,42 @@ export async function buildEnterGauntletInstruction(
       companyTreasury: COMPANY_TREASURY,
       gauntletEpochPool: epochPoolPda,
       gauntletPlayerScore: playerScorePda,
-      // VRF state is optional — null means absent. The on-chain code falls back
-      // to legacy RNG. VRF is created in a separate tx after session start.
-      gameplayVrfState: null,
+      gauntletEchoes: gauntletEchoesPda,
       systemProgram: SystemProgram.programId,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any)
+    .transaction();
+
+  return tx.instructions[0];
+}
+
+/**
+ * Build a `redraw_gauntlet_echoes` instruction to re-draw echoes using VRF.
+ * Called on ER after VRF fulfillment to replace the deterministic fallback
+ * from enter_gauntlet (which ran before VRF was available).
+ */
+export async function buildRedrawGauntletEchoesInstruction(
+  program: Program,
+  sessionPda: PublicKey,
+  sessionSigner: PublicKey
+): Promise<TransactionInstruction> {
+  const [gameStatePda] = deriveGameStatePda(sessionPda);
+  const [gauntletEchoesPda] = deriveGauntletEchoesPda(sessionPda);
+  const [gameplayVrfStatePda] = deriveGameplayVrfStatePda(sessionPda);
+
+  const [week1] = deriveGauntletWeekPoolPda(1);
+  const [week2] = deriveGauntletWeekPoolPda(2);
+  const [week3] = deriveGauntletWeekPoolPda(3);
+  const [week4] = deriveGauntletWeekPoolPda(4);
+  const [week5] = deriveGauntletWeekPoolPda(5);
+
+  const tx = await program.methods
+    .redrawGauntletEchoes()
+    .accountsPartial({
+      gameState: gameStatePda,
+      sessionSigner,
+      gauntletEchoes: gauntletEchoesPda,
+      gameplayVrfState: gameplayVrfStatePda,
     } as any)
     .remainingAccounts([
       { pubkey: week1, isSigner: false, isWritable: false },
@@ -556,7 +638,8 @@ export async function buildEnterGauntletTransaction(
   connection: Connection,
   program: Program,
   playerPublicKey: PublicKey,
-  gameStatePda: PublicKey
+  gameStatePda: PublicKey,
+  sessionPda: PublicKey
 ): Promise<Transaction> {
   await ensureLocalFeeAccounts(connection);
 
@@ -575,6 +658,7 @@ export async function buildEnterGauntletTransaction(
     program,
     playerPublicKey,
     gameStatePda,
+    sessionPda,
     epochIdBN,
     epochIdBigInt
   );

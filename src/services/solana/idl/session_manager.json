@@ -52,6 +52,13 @@
           "writable": true
         },
         {
+          "name": "session_discovery",
+          "docs": [
+            "SessionDiscovery account (closed via map-generator CPI)"
+          ],
+          "writable": true
+        },
+        {
           "name": "map_pois",
           "docs": [
             "Map POIs account (closed via poi-system CPI)"
@@ -207,6 +214,14 @@
           "name": "gameplay_vrf_state",
           "docs": [
             "Optional GameplayVrfState (only for sessions using VRF)"
+          ],
+          "writable": true,
+          "optional": true
+        },
+        {
+          "name": "gauntlet_echoes",
+          "docs": [
+            "Optional GauntletEchoes (only for gauntlet sessions)"
           ],
           "writable": true,
           "optional": true
@@ -1998,6 +2013,13 @@
           "writable": true
         },
         {
+          "name": "session_discovery",
+          "docs": [
+            "SessionDiscovery account (closed via map-generator CPI)"
+          ],
+          "writable": true
+        },
+        {
           "name": "map_pois",
           "docs": [
             "Map POIs account (closed via poi-system CPI)"
@@ -2157,6 +2179,14 @@
           "optional": true
         },
         {
+          "name": "gauntlet_echoes",
+          "docs": [
+            "Optional GauntletEchoes (only for gauntlet sessions)"
+          ],
+          "writable": true,
+          "optional": true
+        },
+        {
           "name": "player_inventory_program",
           "address": "APRnvp41jEYnT1EnrdBTim7bodqE6v2RSgzv1CG7Qv7u"
         },
@@ -2225,6 +2255,13 @@
           "name": "generated_map",
           "docs": [
             "Generated map account — may be delegated."
+          ],
+          "writable": true
+        },
+        {
+          "name": "session_discovery",
+          "docs": [
+            "SessionDiscovery account — may be delegated."
           ],
           "writable": true
         },
@@ -3130,6 +3167,11 @@
           "writable": true
         },
         {
+          "name": "session_discovery",
+          "writable": true,
+          "optional": true
+        },
+        {
           "name": "game_state",
           "writable": true
         },
@@ -3400,6 +3442,11 @@
           "writable": true
         },
         {
+          "name": "session_discovery",
+          "writable": true,
+          "optional": true
+        },
+        {
           "name": "game_state",
           "writable": true
         },
@@ -3617,6 +3664,11 @@
         {
           "name": "generated_map",
           "writable": true
+        },
+        {
+          "name": "session_discovery",
+          "writable": true,
+          "optional": true
         },
         {
           "name": "game_state",

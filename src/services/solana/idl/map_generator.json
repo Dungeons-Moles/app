@@ -140,6 +140,73 @@
       "args": []
     },
     {
+      "name": "close_session_discovery",
+      "docs": [
+        "Closes the SessionDiscovery account, returning rent to player."
+      ],
+      "discriminator": [
+        96,
+        246,
+        28,
+        96,
+        26,
+        169,
+        68,
+        127
+      ],
+      "accounts": [
+        {
+          "name": "session_discovery",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  95,
+                  100,
+                  105,
+                  115,
+                  99,
+                  111,
+                  118,
+                  101,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "session"
+              }
+            ]
+          }
+        },
+        {
+          "name": "session",
+          "relations": [
+            "session_discovery"
+          ]
+        },
+        {
+          "name": "player",
+          "writable": true
+        },
+        {
+          "name": "session_signer",
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "consume_map_vrf",
       "docs": [
         "Marks MapVrfState as consumed after VRF randomness has been used.",
@@ -549,6 +616,282 @@
       ]
     },
     {
+      "name": "delegate_session_discovery",
+      "docs": [
+        "Delegates SessionDiscovery PDA to MagicBlock from its owning program."
+      ],
+      "discriminator": [
+        152,
+        208,
+        47,
+        85,
+        34,
+        141,
+        178,
+        240
+      ],
+      "accounts": [
+        {
+          "name": "buffer_session_discovery",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "session_discovery"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                225,
+                240,
+                24,
+                114,
+                207,
+                78,
+                29,
+                234,
+                224,
+                47,
+                10,
+                176,
+                232,
+                191,
+                75,
+                12,
+                245,
+                178,
+                5,
+                197,
+                71,
+                97,
+                18,
+                45,
+                73,
+                218,
+                84,
+                193,
+                245,
+                208,
+                172,
+                110
+              ]
+            }
+          }
+        },
+        {
+          "name": "delegation_record_session_discovery",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "session_discovery"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "delegation_metadata_session_discovery",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "session_discovery"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "session_discovery",
+          "writable": true
+        },
+        {
+          "name": "session"
+        },
+        {
+          "name": "player",
+          "signer": true
+        },
+        {
+          "name": "owner_program",
+          "address": "GCy5GqvnJN99rgGtV6fMn8NtL9E7RoAyHDGzQv8me65j"
+        },
+        {
+          "name": "delegation_program",
+          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "validator",
+          "type": {
+            "option": "pubkey"
+          }
+        }
+      ]
+    },
+    {
+      "name": "fill_map_for_campaign",
+      "docs": [
+        "Fills the map for a campaign level using the on-chain MapConfig seed.",
+        "This keeps the campaign seed private from the client while still using",
+        "deterministic generation on the Ephemeral Rollup."
+      ],
+      "discriminator": [
+        247,
+        208,
+        93,
+        17,
+        174,
+        181,
+        185,
+        124
+      ],
+      "accounts": [
+        {
+          "name": "session_signer",
+          "signer": true
+        },
+        {
+          "name": "session",
+          "relations": [
+            "generated_map"
+          ]
+        },
+        {
+          "name": "map_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  112,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "generated_map",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  101,
+                  110,
+                  101,
+                  114,
+                  97,
+                  116,
+                  101,
+                  100,
+                  95,
+                  109,
+                  97,
+                  112
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "session"
+              }
+            ]
+          }
+        },
+        {
+          "name": "session_discovery",
+          "docs": [
+            "Optional SessionDiscovery to populate with initial map data."
+          ],
+          "writable": true,
+          "optional": true
+        }
+      ],
+      "args": [
+        {
+          "name": "campaign_level",
+          "type": "u8"
+        }
+      ]
+    },
+    {
       "name": "fill_map_with_seed",
       "docs": [
         "Fills the map with a deterministic seed. Used for PvE campaign sessions on ER.",
@@ -604,6 +947,14 @@
               }
             ]
           }
+        },
+        {
+          "name": "session_discovery",
+          "docs": [
+            "Optional SessionDiscovery to populate with initial map data."
+          ],
+          "writable": true,
+          "optional": true
         }
       ],
       "args": [
@@ -967,6 +1318,14 @@
               }
             ]
           }
+        },
+        {
+          "name": "session_discovery",
+          "docs": [
+            "Optional SessionDiscovery to populate with initial map data."
+          ],
+          "writable": true,
+          "optional": true
         }
       ],
       "args": [
@@ -1112,6 +1471,72 @@
       "args": []
     },
     {
+      "name": "init_session_discovery",
+      "docs": [
+        "Allocates an empty SessionDiscovery account.",
+        "Called via CPI from session-manager during session start."
+      ],
+      "discriminator": [
+        136,
+        199,
+        166,
+        149,
+        254,
+        34,
+        204,
+        10
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "session"
+        },
+        {
+          "name": "session_discovery",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  95,
+                  100,
+                  105,
+                  115,
+                  99,
+                  111,
+                  118,
+                  101,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "session"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "initialize_map_config",
       "docs": [
         "Initializes the map configuration with default seed mappings.",
@@ -1162,6 +1587,75 @@
         }
       ],
       "args": []
+    },
+    {
+      "name": "mark_discovered_poi_used",
+      "docs": [
+        "Marks a discovered POI as used in SessionDiscovery.",
+        "Called via CPI from poi-system after a one-time POI is consumed."
+      ],
+      "discriminator": [
+        230,
+        60,
+        208,
+        97,
+        106,
+        102,
+        186,
+        35
+      ],
+      "accounts": [
+        {
+          "name": "session_discovery",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  95,
+                  100,
+                  105,
+                  115,
+                  99,
+                  111,
+                  118,
+                  101,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "session"
+              }
+            ]
+          }
+        },
+        {
+          "name": "session",
+          "relations": [
+            "session_discovery"
+          ]
+        },
+        {
+          "name": "session_signer",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "map_pois_index",
+          "type": "u8"
+        }
+      ]
     },
     {
       "name": "mark_poi_used",
@@ -1267,6 +1761,87 @@
       ]
     },
     {
+      "name": "record_discovered_poi",
+      "docs": [
+        "Records a discovered POI in SessionDiscovery.",
+        "Called via CPI from poi-system when a POI is discovered."
+      ],
+      "discriminator": [
+        101,
+        57,
+        39,
+        0,
+        101,
+        173,
+        26,
+        76
+      ],
+      "accounts": [
+        {
+          "name": "session_discovery",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  95,
+                  100,
+                  105,
+                  115,
+                  99,
+                  111,
+                  118,
+                  101,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "session"
+              }
+            ]
+          }
+        },
+        {
+          "name": "session",
+          "relations": [
+            "session_discovery"
+          ]
+        },
+        {
+          "name": "session_signer",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "poi_type",
+          "type": "u8"
+        },
+        {
+          "name": "x",
+          "type": "u8"
+        },
+        {
+          "name": "y",
+          "type": "u8"
+        },
+        {
+          "name": "map_pois_index",
+          "type": "u8"
+        }
+      ]
+    },
+    {
       "name": "request_map_vrf",
       "docs": [
         "Requests VRF randomness for map generation.",
@@ -1356,6 +1931,168 @@
         }
       ],
       "args": []
+    },
+    {
+      "name": "reveal_manhattan_radius",
+      "docs": [
+        "Persists discovery using a Manhattan-distance diamond."
+      ],
+      "discriminator": [
+        144,
+        58,
+        220,
+        253,
+        32,
+        236,
+        109,
+        90
+      ],
+      "accounts": [
+        {
+          "name": "generated_map",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  101,
+                  110,
+                  101,
+                  114,
+                  97,
+                  116,
+                  101,
+                  100,
+                  95,
+                  109,
+                  97,
+                  112
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "session"
+              }
+            ]
+          }
+        },
+        {
+          "name": "session",
+          "relations": [
+            "generated_map"
+          ]
+        },
+        {
+          "name": "session_signer",
+          "signer": true
+        },
+        {
+          "name": "session_discovery",
+          "docs": [
+            "Optional SessionDiscovery for dual-write of discovered tile types."
+          ],
+          "writable": true,
+          "optional": true
+        }
+      ],
+      "args": [
+        {
+          "name": "center_x",
+          "type": "u8"
+        },
+        {
+          "name": "center_y",
+          "type": "u8"
+        },
+        {
+          "name": "radius",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "reveal_radius",
+      "docs": [
+        "Persists map discovery around the provided position.",
+        "",
+        "Authorization: session_signer must match the owning session signer."
+      ],
+      "discriminator": [
+        183,
+        16,
+        141,
+        184,
+        133,
+        69,
+        63,
+        144
+      ],
+      "accounts": [
+        {
+          "name": "generated_map",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  101,
+                  110,
+                  101,
+                  114,
+                  97,
+                  116,
+                  101,
+                  100,
+                  95,
+                  109,
+                  97,
+                  112
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "session"
+              }
+            ]
+          }
+        },
+        {
+          "name": "session",
+          "relations": [
+            "generated_map"
+          ]
+        },
+        {
+          "name": "session_signer",
+          "signer": true
+        },
+        {
+          "name": "session_discovery",
+          "docs": [
+            "Optional SessionDiscovery for dual-write of discovered tile types."
+          ],
+          "writable": true,
+          "optional": true
+        }
+      ],
+      "args": [
+        {
+          "name": "center_x",
+          "type": "u8"
+        },
+        {
+          "name": "center_y",
+          "type": "u8"
+        },
+        {
+          "name": "radius",
+          "type": "u8"
+        }
+      ]
     },
     {
       "name": "set_tile_floor",
@@ -1492,6 +2229,14 @@
               ]
             }
           }
+        },
+        {
+          "name": "session_discovery",
+          "docs": [
+            "Optional SessionDiscovery to update tile type when a discovered wall becomes floor."
+          ],
+          "writable": true,
+          "optional": true
         }
       ],
       "args": [
@@ -1544,6 +2289,548 @@
         }
       ],
       "args": []
+    },
+    {
+      "name": "undelegate_session_discovery",
+      "docs": [
+        "Commits and undelegates SessionDiscovery PDA from ER back to base layer."
+      ],
+      "discriminator": [
+        143,
+        140,
+        187,
+        36,
+        24,
+        77,
+        167,
+        96
+      ],
+      "accounts": [
+        {
+          "name": "session_discovery",
+          "writable": true
+        },
+        {
+          "name": "session"
+        },
+        {
+          "name": "session_signer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "magic_program",
+          "address": "Magic11111111111111111111111111111111111111"
+        },
+        {
+          "name": "magic_context",
+          "writable": true,
+          "address": "MagicContext1111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "update_active_offer",
+      "docs": [
+        "Updates the active offer data in SessionDiscovery.",
+        "Called via CPI from poi-system when an offer is generated, rerolled, or consumed."
+      ],
+      "discriminator": [
+        193,
+        160,
+        87,
+        198,
+        70,
+        178,
+        15,
+        2
+      ],
+      "accounts": [
+        {
+          "name": "session_discovery",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  95,
+                  100,
+                  105,
+                  115,
+                  99,
+                  111,
+                  118,
+                  101,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "session"
+              }
+            ]
+          }
+        },
+        {
+          "name": "session",
+          "relations": [
+            "session_discovery"
+          ]
+        },
+        {
+          "name": "session_signer",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "offer_type",
+          "type": "u8"
+        },
+        {
+          "name": "poi_index",
+          "type": "u8"
+        },
+        {
+          "name": "data",
+          "type": "bytes"
+        }
+      ]
+    },
+    {
+      "name": "update_boss_id",
+      "docs": [
+        "Updates the current boss ID in SessionDiscovery.",
+        "Called via CPI from gameplay-state at sync_map_enemies and week transitions.",
+        "",
+        "Authorization: Requires gameplay_authority PDA as signer."
+      ],
+      "discriminator": [
+        14,
+        175,
+        117,
+        181,
+        219,
+        63,
+        45,
+        239
+      ],
+      "accounts": [
+        {
+          "name": "session_discovery",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  95,
+                  100,
+                  105,
+                  115,
+                  99,
+                  111,
+                  118,
+                  101,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "session"
+              }
+            ]
+          }
+        },
+        {
+          "name": "session",
+          "relations": [
+            "session_discovery"
+          ]
+        },
+        {
+          "name": "gameplay_authority",
+          "signer": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  112,
+                  108,
+                  97,
+                  121,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                165,
+                105,
+                51,
+                195,
+                50,
+                68,
+                93,
+                183,
+                82,
+                141,
+                122,
+                107,
+                195,
+                1,
+                86,
+                30,
+                104,
+                80,
+                170,
+                150,
+                122,
+                133,
+                234,
+                98,
+                181,
+                121,
+                227,
+                35,
+                228,
+                168,
+                136,
+                54
+              ]
+            }
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "boss_id",
+          "type": {
+            "array": [
+              "u8",
+              12
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "update_current_echo",
+      "docs": [
+        "Updates the current gauntlet echo in SessionDiscovery.",
+        "Called via CPI from gameplay-state at sync_map_enemies and week transitions.",
+        "",
+        "Authorization: Requires gameplay_authority PDA as signer."
+      ],
+      "discriminator": [
+        178,
+        144,
+        16,
+        174,
+        119,
+        161,
+        28,
+        7
+      ],
+      "accounts": [
+        {
+          "name": "session_discovery",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  95,
+                  100,
+                  105,
+                  115,
+                  99,
+                  111,
+                  118,
+                  101,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "session"
+              }
+            ]
+          }
+        },
+        {
+          "name": "session",
+          "relations": [
+            "session_discovery"
+          ]
+        },
+        {
+          "name": "gameplay_authority",
+          "signer": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  112,
+                  108,
+                  97,
+                  121,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                165,
+                105,
+                51,
+                195,
+                50,
+                68,
+                93,
+                183,
+                82,
+                141,
+                122,
+                107,
+                195,
+                1,
+                86,
+                30,
+                104,
+                80,
+                170,
+                150,
+                122,
+                133,
+                234,
+                98,
+                181,
+                121,
+                227,
+                35,
+                228,
+                168,
+                136,
+                54
+              ]
+            }
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "echo_present",
+          "type": "u8"
+        },
+        {
+          "name": "echo_data",
+          "type": {
+            "array": [
+              "u8",
+              179
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "update_discovered_enemies",
+      "docs": [
+        "Overwrites discovered enemies in SessionDiscovery.",
+        "Called via CPI from gameplay-state after movement reveals new tiles.",
+        "",
+        "Authorization: Requires gameplay_authority PDA as signer."
+      ],
+      "discriminator": [
+        156,
+        8,
+        67,
+        1,
+        76,
+        177,
+        171,
+        233
+      ],
+      "accounts": [
+        {
+          "name": "session_discovery",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  95,
+                  100,
+                  105,
+                  115,
+                  99,
+                  111,
+                  118,
+                  101,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "session"
+              }
+            ]
+          }
+        },
+        {
+          "name": "session",
+          "relations": [
+            "session_discovery"
+          ]
+        },
+        {
+          "name": "gameplay_authority",
+          "signer": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  112,
+                  108,
+                  97,
+                  121,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                165,
+                105,
+                51,
+                195,
+                50,
+                68,
+                93,
+                183,
+                82,
+                141,
+                122,
+                107,
+                195,
+                1,
+                86,
+                30,
+                104,
+                80,
+                170,
+                150,
+                122,
+                133,
+                234,
+                98,
+                181,
+                121,
+                227,
+                35,
+                228,
+                168,
+                136,
+                54
+              ]
+            }
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "enemies",
+          "type": {
+            "vec": {
+              "defined": {
+                "name": "DiscoveredEnemy"
+              }
+            }
+          }
+        }
+      ]
     }
   ],
   "accounts": [
@@ -1585,6 +2872,19 @@
         98,
         37
       ]
+    },
+    {
+      "name": "SessionDiscovery",
+      "discriminator": [
+        145,
+        31,
+        85,
+        67,
+        225,
+        59,
+        109,
+        213
+      ]
     }
   ],
   "events": [
@@ -1599,6 +2899,19 @@
         136,
         40,
         170
+      ]
+    },
+    {
+      "name": "SessionDiscoveryClosed",
+      "discriminator": [
+        221,
+        141,
+        246,
+        158,
+        150,
+        5,
+        53,
+        29
       ]
     }
   ],
@@ -1667,9 +2980,178 @@
       "code": 6012,
       "name": "VrfNotRequested",
       "msg": "VRF not requested"
+    },
+    {
+      "code": 6013,
+      "name": "DiscoveredPoisFull",
+      "msg": "Discovered POIs full"
+    },
+    {
+      "code": 6014,
+      "name": "InvalidOfferData",
+      "msg": "Invalid offer data"
     }
   ],
   "types": [
+    {
+      "name": "DiscoveredEnemy",
+      "docs": [
+        "A discovered enemy entry visible to the player (6 bytes)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "archetype_id",
+            "docs": [
+              "Enemy archetype ID (0-11)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "tier",
+            "docs": [
+              "Enemy tier: 0=T1, 1=T2, 2=T3"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "x",
+            "docs": [
+              "X position on map"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "y",
+            "docs": [
+              "Y position on map"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "defeated",
+            "docs": [
+              "0=alive, 1=defeated"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "map_enemies_index",
+            "docs": [
+              "Index into MapEnemies.enemies[] array"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "DiscoveredPoi",
+      "docs": [
+        "A discovered POI entry visible to the player (5 bytes)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "poi_type",
+            "docs": [
+              "POI definition ID (1-14)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "x",
+            "docs": [
+              "X position on map"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "y",
+            "docs": [
+              "Y position on map"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "used",
+            "docs": [
+              "Whether the POI has been used"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "map_pois_index",
+            "docs": [
+              "Index into MapPois.pois[] array (needed for interaction transactions)"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "DiscoveryOfferItem",
+      "docs": [
+        "An item offer entry stored in SessionDiscovery (10 bytes)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "item_id",
+            "type": {
+              "array": [
+                "u8",
+                8
+              ]
+            }
+          },
+          {
+            "name": "rarity",
+            "type": "u8"
+          },
+          {
+            "name": "tier",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "DiscoveryShopOffer",
+      "docs": [
+        "A shop offer entry stored in SessionDiscovery (12 bytes)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "item_id",
+            "type": {
+              "array": [
+                "u8",
+                8
+              ]
+            }
+          },
+          {
+            "name": "tier",
+            "type": "u8"
+          },
+          {
+            "name": "price",
+            "type": "u16"
+          },
+          {
+            "name": "purchased",
+            "type": "u8"
+          }
+        ]
+      }
+    },
     {
       "name": "EnemySpawn",
       "docs": [
@@ -1791,6 +3273,18 @@
             "name": "packed_tiles",
             "docs": [
               "Bit-packed tiles (0=floor, 1=wall), 313 bytes for 2500 tiles"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                313
+              ]
+            }
+          },
+          {
+            "name": "discovered_tiles",
+            "docs": [
+              "Bit-packed discovered tiles (1 = discovered/revealed)"
             ],
             "type": {
               "array": [
@@ -2002,6 +3496,281 @@
               "Y position on map"
             ],
             "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "SessionDiscovery",
+      "docs": [
+        "Player-readable account containing only discovered map data.",
+        "Private ER accounts (GeneratedMap, MapPois, MapEnemies) are unreadable via RPC;",
+        "the client reads this account for fog-of-war rendering.",
+        "",
+        "PDA seeds: [\"session_discovery\", session.key()]"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "session",
+            "docs": [
+              "Session this discovery belongs to"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "discovered_tiles",
+            "docs": [
+              "Bit-packed discovered tiles (1 = discovered)"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                313
+              ]
+            }
+          },
+          {
+            "name": "revealed_tile_types",
+            "docs": [
+              "Bit-packed tile types for discovered tiles (0=floor, 1=wall)"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                313
+              ]
+            }
+          },
+          {
+            "name": "spawn_x",
+            "docs": [
+              "Player spawn X"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "spawn_y",
+            "docs": [
+              "Player spawn Y"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "mole_den_x",
+            "docs": [
+              "Mole den X (objective)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "mole_den_y",
+            "docs": [
+              "Mole den Y"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "map_width",
+            "docs": [
+              "Map width in tiles"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "map_height",
+            "docs": [
+              "Map height in tiles"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "discovered_poi_count",
+            "docs": [
+              "Number of discovered POIs"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "discovered_pois",
+            "docs": [
+              "Discovered POI entries (populated as player discovers them)"
+            ],
+            "type": {
+              "array": [
+                {
+                  "defined": {
+                    "name": "DiscoveredPoi"
+                  }
+                },
+                64
+              ]
+            }
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump seed"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "discovered_enemy_count",
+            "docs": [
+              "Number of enemies in discovered tiles"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "discovered_enemies",
+            "docs": [
+              "Enemies visible to the player (max 48, 6 bytes each)"
+            ],
+            "type": {
+              "array": [
+                {
+                  "defined": {
+                    "name": "DiscoveredEnemy"
+                  }
+                },
+                48
+              ]
+            }
+          },
+          {
+            "name": "current_boss_id",
+            "docs": [
+              "Boss ID for current week only (12-byte boss_system ID)"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                12
+              ]
+            }
+          },
+          {
+            "name": "current_echo_present",
+            "docs": [
+              "0=no echo, 1=echo present"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "current_echo_data",
+            "docs": [
+              "Raw serialized GauntletEchoSnapshot bytes"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                179
+              ]
+            }
+          },
+          {
+            "name": "active_offer_type",
+            "docs": [
+              "Active offer type: 0=none, 1=shop, 2=cache, 3=oil, 4=scanner"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "active_offer_poi_index",
+            "docs": [
+              "MapPois index of the POI with the active offer"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "shop_offers",
+            "docs": [
+              "Shop offers (valid when active_offer_type == 1)"
+            ],
+            "type": {
+              "array": [
+                {
+                  "defined": {
+                    "name": "DiscoveryShopOffer"
+                  }
+                },
+                6
+              ]
+            }
+          },
+          {
+            "name": "shop_reroll_count",
+            "docs": [
+              "Shop reroll count"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "shop_active",
+            "docs": [
+              "Shop active flag"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "cache_offer_items",
+            "docs": [
+              "Cache offer items (valid when active_offer_type == 2)"
+            ],
+            "type": {
+              "array": [
+                {
+                  "defined": {
+                    "name": "DiscoveryOfferItem"
+                  }
+                },
+                3
+              ]
+            }
+          },
+          {
+            "name": "oil_offer_oils",
+            "docs": [
+              "Oil offer flags (valid when active_offer_type == 3)"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                3
+              ]
+            }
+          },
+          {
+            "name": "scanner_offer_count",
+            "docs": [
+              "Scanner offer count (valid when active_offer_type == 4)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "scanner_offer_types",
+            "docs": [
+              "Scanner offer POI types"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                3
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "SessionDiscoveryClosed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "session",
+            "type": "pubkey"
           }
         ]
       }

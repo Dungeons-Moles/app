@@ -70,11 +70,12 @@ export const TOOL_EFFECTS: Record<ToolId, ToolEffects> = {
   // STONE (T1, T2)
   // ===========================================================================
 
-  // T-ST-01: Bulwark Shovel - +1/2/3 ATK, +4/6/8 ARM
+  // T-ST-01: Bulwark Shovel - +1/2/3 ATK, +4/6/8 ARM, reduce weapon damage by 1 while armored
   T1: {
     effects: [
       E(Trigger.BattleStart(), 'GainAtk', [1, 2, 3]),
       E(Trigger.BattleStart(), 'GainArmor', [4, 6, 8]),
+      E(Trigger.BattleStart(), 'ReduceWeaponDamageWhileArmored', [1, 1, 1]),
     ],
   },
 
@@ -85,15 +86,16 @@ export const TOOL_EFFECTS: Record<ToolId, ToolEffects> = {
       E(Trigger.BattleStart(), 'GainArmor', [3, 5, 7]),
       E(Trigger.BeforeStrike(), 'RemoveArmor', [1, 2, 3], { oncePerTurn: true }),
     ],
-  },  // ===========================================================================
+  }, // ===========================================================================
   // SCOUT (T3, T4)
   // ===========================================================================
 
-  // T-SC-01: Twin Picks - +1/2/3 ATK, +1 strike (flat)
+  // T-SC-01: Twin Picks - +1/2/3 ATK, +1 strike (flat), OnHit effects can trigger per strike
   T3: {
     effects: [
       E(Trigger.BattleStart(), 'GainAtk', [1, 2, 3]),
       E(Trigger.BattleStart(), 'GainStrikes', [1, 1, 1]),
+      E(Trigger.BattleStart(), 'OnHitPerStrike', [1, 1, 1]),
     ],
   },
 
@@ -133,11 +135,11 @@ export const TOOL_EFFECTS: Record<ToolId, ToolEffects> = {
   // BLAST (T7, T8)
   // ===========================================================================
 
-  // T-BL-01: Fuse Pick - +1/2/3 ATK, OnHit (once/turn): deal 1/2/2 non-weapon
+  // T-BL-01: Fuse Pick - +1/2/3 ATK, OnHit (once/turn): deal 1/2/3 non-weapon
   T7: {
     effects: [
       E(Trigger.BattleStart(), 'GainAtk', [1, 2, 3]),
-      E(Trigger.OnHit(), 'DealNonWeaponDamage', [1, 2, 2], { oncePerTurn: true }),
+      E(Trigger.OnHit(), 'DealNonWeaponDamage', [1, 2, 3], { oncePerTurn: true }),
     ],
   },
 
@@ -153,14 +155,14 @@ export const TOOL_EFFECTS: Record<ToolId, ToolEffects> = {
   // FROST (T9, T10)
   // ===========================================================================
 
-  // T-FR-01: Rime Pike - +1/2/3 ATK, OnHit: apply 1 Chill; if chilled, +1 damage
+  // T-FR-01: Rime Pike - +1/2/3 ATK, OnHit: apply 1 Chill; if enemy has 2+ Chill, apply 1 more
   T9: {
     effects: [
       E(Trigger.BattleStart(), 'GainAtk', [1, 2, 3]),
       E(Trigger.OnHit(), 'ApplyChill', [1, 1, 1], { oncePerTurn: true }),
-      E(Trigger.OnHit(), 'DealDamage', [1, 1, 1], {
+      E(Trigger.OnHit(), 'ApplyChill', [1, 1, 1], {
         oncePerTurn: true,
-        condition: Cond.EnemyHasStatus('Chill'),
+        condition: Cond.EnemyHasStatusAtLeast('Chill', 2),
       }),
     ],
   },
@@ -179,15 +181,15 @@ export const TOOL_EFFECTS: Record<ToolId, ToolEffects> = {
         condition: Cond.EnemyHasStatus('Chill'),
       }),
     ],
-  },  // ===========================================================================
+  }, // ===========================================================================
   // RUST (T11, T12)
   // ===========================================================================
 
-  // T-RU-01: Corrosive Pick - +1/2/3 ATK, OnHit (once/turn): apply 1 Rust
+  // T-RU-01: Corrosive Pick - +1/2/3 ATK, OnHit (once/turn): apply 2 Rust
   T11: {
     effects: [
       E(Trigger.BattleStart(), 'GainAtk', [1, 2, 3]),
-      E(Trigger.OnHit(), 'ApplyRust', [1, 1, 1], { oncePerTurn: true }),
+      E(Trigger.OnHit(), 'ApplyRust', [2, 2, 2], { oncePerTurn: true }),
     ],
   },
 
@@ -207,15 +209,16 @@ export const TOOL_EFFECTS: Record<ToolId, ToolEffects> = {
         condition: Cond.EnemyHasStatusAtLeast('Rust', 4),
       }),
     ],
-  },  // ===========================================================================
+  }, // ===========================================================================
   // BLOOD (T13, T14)
   // ===========================================================================
 
-  // T-BO-01: Serrated Drill - +1/2/3 ATK, OnHit (once/turn): apply 1 Bleed
+  // T-BO-01: Serrated Drill - +1/2/3 ATK, OnHit (once/turn): apply 1 Bleed; bleed ticks heal you 1/2/4
   T13: {
     effects: [
       E(Trigger.BattleStart(), 'GainAtk', [1, 2, 3]),
       E(Trigger.OnHit(), 'ApplyBleed', [1, 1, 1], { oncePerTurn: true }),
+      E(Trigger.OnEnemyBleedDamage(), 'Heal', [1, 2, 4]),
     ],
   },
 
@@ -235,11 +238,12 @@ export const TOOL_EFFECTS: Record<ToolId, ToolEffects> = {
   // TEMPO (T15, T16)
   // ===========================================================================
 
-  // T-TE-01: Quickpick - +1/2/3 ATK, +2/3/4 SPD
+  // T-TE-01: Quickpick - +1/2/3 ATK, +2/3/4 SPD, every other turn gain +1/2/4 SPD
   T15: {
     effects: [
       E(Trigger.BattleStart(), 'GainAtk', [1, 2, 3]),
       E(Trigger.BattleStart(), 'GainSpd', [2, 3, 4]),
+      E(Trigger.EveryOtherTurn(), 'GainSpd', [1, 2, 4]),
     ],
   },
 

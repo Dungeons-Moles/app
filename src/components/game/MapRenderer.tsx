@@ -9,7 +9,7 @@ import { View, StyleSheet, LayoutChangeEvent, PanResponder } from 'react-native'
 import { Canvas, Rect, Group, Image, useImage, ColorMatrix } from '@shopify/react-native-skia';
 import type { Position, WallHighlightState } from '../../game/engine/types';
 import { TimePhase } from '../../game/engine/types';
-import type { GameMap, MapEnemy } from '../../game/map/types';
+import type { GameMap, MapEnemy, MapPOI } from '../../game/map/types';
 import { TileType, FogState } from '../../game/map/types';
 import { getPOIDefinition } from '../../data/pois';
 import type { OverviewModeState } from '../../contexts/GameContext';
@@ -31,6 +31,7 @@ const BUFFER_TILES = 2;
 const TILE_COLORS = {
   [TileType.Floor]: '#795040', // Brown corridor (fallback)
   [TileType.Wall]: '#000000', // Black environment (fallback)
+  [TileType.Unknown]: '#111111', // Hidden/private tiles
 } as const;
 
 const FOG_COLOR_HIDDEN = 'transparent'; // Fully transparent to show parchment background
@@ -83,10 +84,26 @@ interface VisibleTileRange {
 interface TileData {
   x: number;
   y: number;
-  type: TileType;
-  fog: FogState;
   floorVariation: number;
   rockVariation: number;
+}
+
+interface VisibleTile extends TileData {
+  type: TileType;
+  fog: FogState;
+}
+
+interface TileRowProps {
+  y: number;
+  startX: number;
+  endX: number;
+  tileDescriptors: TileData[];
+  tileRow: TileType[];
+  fogRow: FogState[];
+  zoom: number;
+  showRevealOverlay: boolean;
+  floorImages: Array<ReturnType<typeof useImage>>;
+  rockImages: Array<ReturnType<typeof useImage>>;
 }
 
 // ============================================================================
@@ -128,6 +145,43 @@ function getCameraOffset(
   };
 }
 
+function getMapCellKey(x: number, y: number, mapWidth: number): number {
+  return y * mapWidth + x;
+}
+
+function buildCoordinateBuckets<T extends { position: Position }>(
+  entries: T[],
+  mapWidth: number
+): Map<number, T[]> {
+  const buckets = new Map<number, T[]>();
+  for (const entry of entries) {
+    const key = getMapCellKey(entry.position.x, entry.position.y, mapWidth);
+    const existing = buckets.get(key);
+    if (existing) {
+      existing.push(entry);
+      continue;
+    }
+    buckets.set(key, [entry]);
+  }
+  return buckets;
+}
+
+function buildTileDescriptorGrid(mapWidth: number, mapHeight: number): TileData[][] {
+  const floorCount = 5;
+  const rockCount = 4;
+  return Array.from({ length: mapHeight }, (_, y) =>
+    Array.from({ length: mapWidth }, (_, x) => {
+      const variation = Math.abs(x * 7 + y * 13);
+      return {
+        x,
+        y,
+        floorVariation: variation % floorCount,
+        rockVariation: variation % rockCount,
+      };
+    })
+  );
+}
+
 // ============================================================================
 // Memoized Render Components
 // ============================================================================
@@ -138,8 +192,6 @@ interface TileRectProps {
   type: TileType;
   fog: FogState;
   showRevealOverlay: boolean;
-  offsetX: number;
-  offsetY: number;
   zoom: number;
   floorImage: ReturnType<typeof useImage>;
   rockImage: ReturnType<typeof useImage>;
@@ -152,19 +204,16 @@ const TileRect = memo(function TileRect({
   type,
   fog,
   showRevealOverlay,
-  offsetX,
-  offsetY,
   zoom,
   floorImage,
   rockImage,
   opacity = 0.7, // More transparent to show background
 }: TileRectProps) {
-  // Calculate screen position with camera offset applied directly
-  const screenX = x * TILE_SIZE * zoom + offsetX;
-  const screenY = y * TILE_SIZE * zoom + offsetY;
+  const screenX = x * TILE_SIZE * zoom;
+  const screenY = y * TILE_SIZE * zoom;
   const tileSize = TILE_SIZE * zoom;
 
-  if (fog === FogState.Hidden) {
+  if (fog === FogState.Hidden || type === TileType.Unknown) {
     return (
       <Rect x={screenX} y={screenY} width={tileSize} height={tileSize} color={FOG_COLOR_HIDDEN} />
     );
@@ -230,13 +279,43 @@ const TileRect = memo(function TileRect({
   );
 });
 
+const TileRow = memo(function TileRow({
+  y,
+  startX,
+  endX,
+  tileDescriptors,
+  tileRow,
+  fogRow,
+  zoom,
+  showRevealOverlay,
+  floorImages,
+  rockImages,
+}: TileRowProps) {
+  const tiles = [];
+  for (let x = startX; x <= endX; x++) {
+    const descriptor = tileDescriptors[x];
+    tiles.push(
+      <TileRect
+        key={`tile-${descriptor.x}-${descriptor.y}`}
+        x={descriptor.x}
+        y={descriptor.y}
+        type={tileRow[x]}
+        fog={fogRow[x]}
+        showRevealOverlay={showRevealOverlay}
+        zoom={zoom}
+        floorImage={floorImages[descriptor.floorVariation]}
+        rockImage={rockImages[descriptor.rockVariation]}
+      />
+    );
+  }
+  return <>{tiles}</>;
+});
+
 interface SkiaEntityProps {
   x: number;
   y: number;
   image?: any;
   opacity?: number;
-  offsetX: number;
-  offsetY: number;
   zoom: number;
   flipX?: boolean;
   grayscale?: boolean;
@@ -248,8 +327,6 @@ const SkiaEntity = memo(function SkiaEntity({
   y,
   image,
   opacity = 1,
-  offsetX,
-  offsetY,
   zoom,
   flipX = false,
   grayscale = false,
@@ -257,8 +334,8 @@ const SkiaEntity = memo(function SkiaEntity({
 }: SkiaEntityProps) {
   const size = ENTITY_SIZE * zoom;
   const offset = ENTITY_OFFSET * zoom;
-  const drawX = x * TILE_SIZE * zoom + offsetX - offset;
-  const drawY = y * TILE_SIZE * zoom + offsetY - offset - yOffset * zoom;
+  const drawX = x * TILE_SIZE * zoom - offset;
+  const drawY = y * TILE_SIZE * zoom - offset - yOffset * zoom;
 
   if (image) {
     const ImageComponent = (
@@ -372,80 +449,81 @@ export const MapRenderer = memo(function MapRenderer({
     () => getCameraOffset(cameraCenter, width, height, zoom),
     [cameraCenter, width, height, zoom]
   );
+  const cameraTranslateTransform = useMemo(
+    () => [{ translateX: cameraOffset.x }, { translateY: cameraOffset.y }],
+    [cameraOffset.x, cameraOffset.y]
+  );
 
   const isNight = timePhase === TimePhase.Night;
   const showRevealOverlay = isNight;
 
-  const visibleTiles = useMemo(() => {
-    const tiles: TileData[] = [];
-    const floorCount = 5; // number of floor image variants
-    const rockCount = 4;  // number of rock image variants
+  const tileDescriptorGrid = useMemo(
+    () => buildTileDescriptorGrid(map.width, map.height),
+    [map.width, map.height]
+  );
+
+  const visibleRows = useMemo(() => {
+    const rows: number[] = [];
     for (let y = visibleRange.startY; y <= visibleRange.endY; y++) {
-      for (let x = visibleRange.startX; x <= visibleRange.endX; x++) {
-        const variation = Math.abs(x * 7 + y * 13);
-        tiles.push({
-          x,
-          y,
-          type: map.tiles[y][x],
-          fog: map.fog[y][x],
-          floorVariation: variation % floorCount,
-          rockVariation: variation % rockCount,
-        });
-      }
+      rows.push(y);
     }
-    return tiles;
-  }, [visibleRange, map.tiles, map.fog]);
+    return rows;
+  }, [visibleRange.startY, visibleRange.endY]);
+
+  const poiBuckets = useMemo(() => buildCoordinateBuckets(map.pois, map.width), [map.pois, map.width]);
+  const enemyBuckets = useMemo(
+    () => buildCoordinateBuckets(map.enemies, map.width),
+    [map.enemies, map.width]
+  );
 
   const visiblePOIs = useMemo(() => {
-    return map.pois.filter(
-      (poi) =>
-        poi.position.x >= visibleRange.startX &&
-        poi.position.x <= visibleRange.endX &&
-        poi.position.y >= visibleRange.startY &&
-        poi.position.y <= visibleRange.endY &&
-        map.fog[poi.position.y][poi.position.x] !== FogState.Hidden
-    );
-  }, [map.pois, visibleRange, map.fog]);
+    const pois: MapPOI[] = [];
+    for (let y = visibleRange.startY; y <= visibleRange.endY; y++) {
+      for (let x = visibleRange.startX; x <= visibleRange.endX; x++) {
+        if (map.fog[y][x] === FogState.Hidden) {
+          continue;
+        }
+        const bucket = poiBuckets.get(getMapCellKey(x, y, map.width));
+        if (!bucket) {
+          continue;
+        }
+        pois.push(...bucket);
+      }
+    }
+    return pois;
+  }, [poiBuckets, visibleRange, map.fog, map.width]);
 
   const visibleEnemies = useMemo(() => {
-    return map.enemies
-      .map((enemy) => {
-        if (
-          enemy.position.x < visibleRange.startX ||
-          enemy.position.x > visibleRange.endX ||
-          enemy.position.y < visibleRange.startY ||
-          enemy.position.y > visibleRange.endY
-        ) {
-          return null;
+    const enemies: Array<{ enemy: MapEnemy; variant: 'known' | 'unknown' }> = [];
+    for (let y = visibleRange.startY; y <= visibleRange.endY; y++) {
+      for (let x = visibleRange.startX; x <= visibleRange.endX; x++) {
+        const bucket = enemyBuckets.get(getMapCellKey(x, y, map.width));
+        if (!bucket) {
+          continue;
         }
 
-        const fog = map.fog[enemy.position.y][enemy.position.x];
+        const fog = map.fog[y][x];
         const isVisible = fog === FogState.Visible;
         const isRevealed = fog === FogState.Revealed;
 
-        if (isNight) {
-          // At night: show all enemies on non-hidden tiles
-          // - Visible tiles (in sight range): show actual enemy
-          // - Revealed tiles (outside sight range): show question mark
-          if (isVisible) {
-            return { enemy, variant: 'known' as const };
-          } else if (isRevealed) {
-            return { enemy, variant: 'unknown' as const };
+        for (const enemy of bucket) {
+          if (isNight) {
+            if (isVisible) {
+              enemies.push({ enemy, variant: 'known' });
+            } else if (isRevealed) {
+              enemies.push({ enemy, variant: 'unknown' });
+            }
+            continue;
           }
-          return null;
-        } else {
-          // During day: only show discovered or visible enemies
-          const isKnown = enemy.discovered || isVisible;
-          if (!isKnown) {
-            return null;
+
+          if (enemy.discovered || isVisible) {
+            enemies.push({ enemy, variant: 'known' });
           }
-          return { enemy, variant: 'known' as const };
         }
-      })
-      .filter(
-        (entry): entry is { enemy: MapEnemy; variant: 'known' | 'unknown' } => entry !== null
-      );
-  }, [map.enemies, map.fog, visibleRange, isNight]);
+      }
+    }
+    return enemies;
+  }, [enemyBuckets, visibleRange, map.fog, map.width, isNight]);
 
   const highlightVisible = useMemo(() => {
     if (!wallHighlight) {
@@ -543,76 +621,72 @@ export const MapRenderer = memo(function MapRenderer({
   return (
     <View style={styles.container} onLayout={handleLayout} {...panResponder.panHandlers}>
       <Canvas style={styles.canvas}>
-        {/* 1. Tiles */}
-        {visibleTiles.map((tile) => (
-          <TileRect
-            key={`tile-${tile.x}-${tile.y}`}
-            x={tile.x}
-            y={tile.y}
-            type={tile.type}
-            fog={tile.fog}
-            showRevealOverlay={showRevealOverlay}
-            offsetX={cameraOffset.x}
-            offsetY={cameraOffset.y}
+        <Group origin={{ x: 0, y: 0 }} transform={cameraTranslateTransform}>
+          {/* 1. Tiles */}
+          {visibleRows.map((y) => (
+            <TileRow
+              key={`tile-row-${y}`}
+              y={y}
+              startX={visibleRange.startX}
+              endX={visibleRange.endX}
+              tileDescriptors={tileDescriptorGrid[y]}
+              tileRow={map.tiles[y]}
+              fogRow={map.fog[y]}
+              zoom={zoom}
+              showRevealOverlay={showRevealOverlay}
+              floorImages={floorImages}
+              rockImages={rockImages}
+            />
+          ))}
+
+          {/* 3. POIs */}
+          {visiblePOIs.map((poi) => {
+            const isUsed = poi.visited && SINGLE_USE_POIS.includes(poi.definitionId);
+            const isUnusableDay = poi.definitionId === 'L5' && !isNight;
+            const shouldBeGray = isUsed || isUnusableDay;
+
+            const fog = map.fog[poi.position.y][poi.position.x];
+            const dimmed = isNight && fog === FogState.Revealed;
+
+            return (
+              <SkiaEntity
+                key={`poi-${poi.id}`}
+                x={poi.position.x}
+                y={poi.position.y}
+                image={entityImages[poi.definitionId]}
+                opacity={dimmed ? 0.6 : 1}
+                zoom={zoom}
+                grayscale={shouldBeGray}
+              />
+            );
+          })}
+
+          {/* 4. Enemies */}
+          {visibleEnemies.map((entry) => {
+            const { enemy, variant } = entry;
+            const isUnknown = variant === 'unknown';
+            return (
+              <SkiaEntity
+                key={`enemy-${enemy.id}`}
+                x={enemy.position.x}
+                y={enemy.position.y}
+                image={isUnknown ? entityImages.unknownEnemy : entityImages[enemy.definitionId]}
+                opacity={1}
+                zoom={zoom}
+              />
+            );
+          })}
+
+          {/* 5. Player */}
+          <SkiaEntity
+            x={playerPosition.x}
+            y={playerPosition.y}
+            image={entityImages.player}
             zoom={zoom}
-            floorImage={floorImages[tile.floorVariation]}
-            rockImage={rockImages[tile.rockVariation]}
+            flipX={playerFacing === 'left'}
+            yOffset={4}
           />
-        ))}
-
-        {/* 3. POIs */}
-        {visiblePOIs.map((poi) => {
-          const isUsed = poi.visited && SINGLE_USE_POIS.includes(poi.definitionId);
-          const isUnusableDay = poi.definitionId === 'L5' && !isNight;
-          const shouldBeGray = isUsed || isUnusableDay;
-
-          const fog = map.fog[poi.position.y][poi.position.x];
-          const dimmed = isNight && fog === FogState.Revealed;
-
-          return (
-            <SkiaEntity
-              key={`poi-${poi.id}`}
-              x={poi.position.x}
-              y={poi.position.y}
-              image={entityImages[poi.definitionId]}
-              opacity={dimmed ? 0.6 : 1}
-              grayscale={shouldBeGray}
-              offsetX={cameraOffset.x}
-              offsetY={cameraOffset.y}
-              zoom={zoom}
-            />
-          );
-        })}
-
-        {/* 4. Enemies */}
-        {visibleEnemies.map((entry) => {
-          const { enemy, variant } = entry;
-          const isUnknown = variant === 'unknown';
-          return (
-            <SkiaEntity
-              key={`enemy-${enemy.id}`}
-              x={enemy.position.x}
-              y={enemy.position.y}
-              image={isUnknown ? entityImages.unknownEnemy : entityImages[enemy.definitionId]}
-              opacity={1}
-              offsetX={cameraOffset.x}
-              offsetY={cameraOffset.y}
-              zoom={zoom}
-            />
-          );
-        })}
-
-        {/* 5. Player */}
-        <SkiaEntity
-          x={playerPosition.x}
-          y={playerPosition.y}
-          image={entityImages.player}
-          offsetX={cameraOffset.x}
-          offsetY={cameraOffset.y}
-          zoom={zoom}
-          flipX={playerFacing === 'left'}
-          yOffset={4}
-        />
+        </Group>
       </Canvas>
 
       {/* 2. Wall Highlight (UI Overlay) */}

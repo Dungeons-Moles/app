@@ -499,6 +499,83 @@
       "args": []
     },
     {
+      "name": "close_gauntlet_echoes",
+      "docs": [
+        "Closes the GauntletEchoes account via session key signer authorization.",
+        "Used by session-manager CPI during end_session to clean up.",
+        "Rent is returned to the player wallet."
+      ],
+      "discriminator": [
+        133,
+        162,
+        225,
+        238,
+        51,
+        13,
+        191,
+        178
+      ],
+      "accounts": [
+        {
+          "name": "gauntlet_echoes",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  117,
+                  110,
+                  116,
+                  108,
+                  101,
+                  116,
+                  95,
+                  101,
+                  99,
+                  104,
+                  111,
+                  101,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "game_state.session",
+                "account": "GameState"
+              }
+            ]
+          }
+        },
+        {
+          "name": "game_state",
+          "docs": [
+            "GameState to verify session_signer authorization"
+          ]
+        },
+        {
+          "name": "player",
+          "docs": [
+            "Player wallet receives the rent refund (not a signer)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "session_signer",
+          "docs": [
+            "Session key signer must sign to authorize closure"
+          ],
+          "signer": true,
+          "relations": [
+            "game_state"
+          ]
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "close_map_enemies",
       "docs": [
         "Closes the MapEnemies account via session key signer authorization.",
@@ -567,6 +644,75 @@
           "relations": [
             "game_state"
           ]
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "close_orphaned_gauntlet_echoes",
+      "docs": [
+        "Closes an orphaned GauntletEchoes account whose session PDA no longer exists."
+      ],
+      "discriminator": [
+        178,
+        212,
+        126,
+        38,
+        48,
+        207,
+        34,
+        147
+      ],
+      "accounts": [
+        {
+          "name": "gauntlet_echoes",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  117,
+                  110,
+                  116,
+                  108,
+                  101,
+                  116,
+                  95,
+                  101,
+                  99,
+                  104,
+                  111,
+                  101,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "gauntlet_echoes.session",
+                "account": "GauntletEchoes"
+              }
+            ]
+          }
+        },
+        {
+          "name": "session_pda",
+          "docs": [
+            "Session PDA must not exist (proves the account is orphaned)."
+          ]
+        },
+        {
+          "name": "destination",
+          "docs": [
+            "Receives the lamports from the closed account."
+          ],
+          "writable": true
+        },
+        {
+          "name": "payer",
+          "signer": true
         }
       ],
       "args": []
@@ -1248,6 +1394,186 @@
       ]
     },
     {
+      "name": "delegate_gauntlet_echoes",
+      "docs": [
+        "Delegates GauntletEchoes PDA to MagicBlock (gauntlet sessions only)."
+      ],
+      "discriminator": [
+        238,
+        238,
+        199,
+        111,
+        55,
+        12,
+        10,
+        76
+      ],
+      "accounts": [
+        {
+          "name": "buffer_gauntlet_echoes",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "gauntlet_echoes"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                165,
+                105,
+                51,
+                195,
+                50,
+                68,
+                93,
+                183,
+                82,
+                141,
+                122,
+                107,
+                195,
+                1,
+                86,
+                30,
+                104,
+                80,
+                170,
+                150,
+                122,
+                133,
+                234,
+                98,
+                181,
+                121,
+                227,
+                35,
+                228,
+                168,
+                136,
+                54
+              ]
+            }
+          }
+        },
+        {
+          "name": "delegation_record_gauntlet_echoes",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "gauntlet_echoes"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "delegation_metadata_gauntlet_echoes",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "gauntlet_echoes"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "gauntlet_echoes",
+          "writable": true
+        },
+        {
+          "name": "game_session"
+        },
+        {
+          "name": "player",
+          "signer": true
+        },
+        {
+          "name": "owner_program",
+          "address": "C8hK4qsqsSYQeqyXuTPTUUS3T7N74WnZCuzvChTpK1Mo"
+        },
+        {
+          "name": "delegation_program",
+          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "validator",
+          "type": {
+            "option": "pubkey"
+          }
+        }
+      ]
+    },
+    {
       "name": "enter_duel",
       "docs": [
         "Pays duel entry and registers this run in async duel matchmaking."
@@ -1635,11 +1961,37 @@
           }
         },
         {
-          "name": "gameplay_vrf_state",
-          "docs": [
-            "Optional GameplayVrfState for VRF-backed echo draw (required for gauntlet)."
-          ],
-          "optional": true
+          "name": "gauntlet_echoes",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  117,
+                  110,
+                  116,
+                  108,
+                  101,
+                  116,
+                  95,
+                  101,
+                  99,
+                  104,
+                  111,
+                  101,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "game_state.session",
+                "account": "GameState"
+              }
+            ]
+          }
         },
         {
           "name": "system_program",
@@ -3378,11 +3730,56 @@
           "address": "KiT25b86BSAF8yErcWwyuuWNaoXMpNf859NjH41TpSj"
         },
         {
+          "name": "session_discovery",
+          "docs": [
+            "Optional SessionDiscovery for fog-of-war dual-write."
+          ],
+          "writable": true,
+          "optional": true
+        },
+        {
           "name": "gameplay_vrf_state",
           "docs": [
             "Optional GameplayVrfState for VRF-backed duel boss selection during movement."
           ],
           "optional": true
+        },
+        {
+          "name": "gauntlet_echoes",
+          "docs": [
+            "Optional GauntletEchoes for gauntlet echo resolution."
+          ],
+          "writable": true,
+          "optional": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  117,
+                  110,
+                  116,
+                  108,
+                  101,
+                  116,
+                  95,
+                  101,
+                  99,
+                  104,
+                  111,
+                  101,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "game_state.session",
+                "account": "GameState"
+              }
+            ]
+          }
         },
         {
           "name": "player",
@@ -3436,6 +3833,496 @@
           }
         }
       ]
+    },
+    {
+      "name": "redraw_gauntlet_echoes",
+      "docs": [
+        "Draws gauntlet echoes using VRF randomness.",
+        "Called on ER after VRF fulfillment. enter_gauntlet only inits the",
+        "GauntletEchoes account — this instruction populates it with VRF-random draws."
+      ],
+      "discriminator": [
+        83,
+        56,
+        69,
+        0,
+        66,
+        50,
+        133,
+        212
+      ],
+      "accounts": [
+        {
+          "name": "game_state"
+        },
+        {
+          "name": "session_signer",
+          "signer": true,
+          "relations": [
+            "game_state"
+          ]
+        },
+        {
+          "name": "gauntlet_echoes",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  117,
+                  110,
+                  116,
+                  108,
+                  101,
+                  116,
+                  95,
+                  101,
+                  99,
+                  104,
+                  111,
+                  101,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "game_state.session",
+                "account": "GameState"
+              }
+            ]
+          }
+        },
+        {
+          "name": "gameplay_vrf_state",
+          "docs": [
+            "GameplayVrfState with fulfilled randomness (required)."
+          ],
+          "optional": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "refresh_discovered_enemies",
+      "docs": [
+        "Refreshes discovered enemies in SessionDiscovery from MapEnemies + GeneratedMap.",
+        "Legacy fallback for clients that have not yet moved POI reveal flows to the",
+        "inline authorized path."
+      ],
+      "discriminator": [
+        193,
+        108,
+        91,
+        41,
+        86,
+        185,
+        174,
+        135
+      ],
+      "accounts": [
+        {
+          "name": "session_signer",
+          "signer": true
+        },
+        {
+          "name": "session",
+          "relations": [
+            "generated_map",
+            "map_enemies"
+          ]
+        },
+        {
+          "name": "generated_map",
+          "docs": [
+            "Generated map (read-only) for discovered_tiles bitmap."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  101,
+                  110,
+                  101,
+                  114,
+                  97,
+                  116,
+                  101,
+                  100,
+                  95,
+                  109,
+                  97,
+                  112
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "session"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                225,
+                240,
+                24,
+                114,
+                207,
+                78,
+                29,
+                234,
+                224,
+                47,
+                10,
+                176,
+                232,
+                191,
+                75,
+                12,
+                245,
+                178,
+                5,
+                197,
+                71,
+                97,
+                18,
+                45,
+                73,
+                218,
+                84,
+                193,
+                245,
+                208,
+                172,
+                110
+              ]
+            }
+          }
+        },
+        {
+          "name": "map_enemies",
+          "docs": [
+            "Enemy instances (read-only)."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  112,
+                  95,
+                  101,
+                  110,
+                  101,
+                  109,
+                  105,
+                  101,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "session"
+              }
+            ]
+          }
+        },
+        {
+          "name": "gameplay_authority",
+          "docs": [
+            "Gameplay authority PDA for signing CPI calls to map-generator."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  112,
+                  108,
+                  97,
+                  121,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "map_generator_program",
+          "docs": [
+            "Map generator program for CPI (update_discovered_enemies)."
+          ],
+          "address": "GCy5GqvnJN99rgGtV6fMn8NtL9E7RoAyHDGzQv8me65j"
+        },
+        {
+          "name": "session_discovery",
+          "docs": [
+            "SessionDiscovery to write enemy data into."
+          ],
+          "writable": true,
+          "optional": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "refresh_discovered_enemies_authorized",
+      "docs": [
+        "Refreshes discovered enemies in SessionDiscovery, authorized by poi-system CPI.",
+        "Used by reveal-heavy POIs so the frontend does not need a follow-up tx."
+      ],
+      "discriminator": [
+        249,
+        176,
+        97,
+        30,
+        75,
+        144,
+        247,
+        227
+      ],
+      "accounts": [
+        {
+          "name": "poi_authority",
+          "docs": [
+            "POI authority PDA from poi-system that must sign."
+          ],
+          "signer": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  105,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                4,
+                203,
+                82,
+                21,
+                135,
+                25,
+                77,
+                43,
+                190,
+                36,
+                165,
+                167,
+                174,
+                199,
+                194,
+                121,
+                30,
+                168,
+                89,
+                214,
+                194,
+                123,
+                68,
+                5,
+                13,
+                83,
+                133,
+                183,
+                75,
+                139,
+                194,
+                96
+              ]
+            }
+          }
+        },
+        {
+          "name": "session",
+          "relations": [
+            "generated_map",
+            "map_enemies"
+          ]
+        },
+        {
+          "name": "generated_map",
+          "docs": [
+            "Generated map (read-only) for discovered_tiles bitmap."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  101,
+                  110,
+                  101,
+                  114,
+                  97,
+                  116,
+                  101,
+                  100,
+                  95,
+                  109,
+                  97,
+                  112
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "session"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                225,
+                240,
+                24,
+                114,
+                207,
+                78,
+                29,
+                234,
+                224,
+                47,
+                10,
+                176,
+                232,
+                191,
+                75,
+                12,
+                245,
+                178,
+                5,
+                197,
+                71,
+                97,
+                18,
+                45,
+                73,
+                218,
+                84,
+                193,
+                245,
+                208,
+                172,
+                110
+              ]
+            }
+          }
+        },
+        {
+          "name": "map_enemies",
+          "docs": [
+            "Enemy instances (read-only)."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  112,
+                  95,
+                  101,
+                  110,
+                  101,
+                  109,
+                  105,
+                  101,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "session"
+              }
+            ]
+          }
+        },
+        {
+          "name": "gameplay_authority",
+          "docs": [
+            "Gameplay authority PDA for signing CPI calls to map-generator."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  112,
+                  108,
+                  97,
+                  121,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "map_generator_program",
+          "docs": [
+            "Map generator program for CPI (update_discovered_enemies)."
+          ],
+          "address": "GCy5GqvnJN99rgGtV6fMn8NtL9E7RoAyHDGzQv8me65j"
+        },
+        {
+          "name": "session_discovery",
+          "docs": [
+            "SessionDiscovery to write enemy data into."
+          ],
+          "writable": true,
+          "optional": true
+        }
+      ],
+      "args": []
     },
     {
       "name": "remove_hp_bonus_authorized",
@@ -3758,6 +4645,115 @@
           "relations": [
             "game_state"
           ]
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "reset_orphaned_duel_entry",
+      "docs": [
+        "Resets an orphaned duel entry whose session PDA no longer exists.",
+        "This recovers players stuck in the duel queue after an interrupted abandon flow."
+      ],
+      "discriminator": [
+        136,
+        178,
+        96,
+        28,
+        87,
+        189,
+        247,
+        162
+      ],
+      "accounts": [
+        {
+          "name": "duel_entry",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  117,
+                  101,
+                  108,
+                  95,
+                  101,
+                  110,
+                  116,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "session_pda"
+              }
+            ]
+          }
+        },
+        {
+          "name": "session_pda",
+          "docs": [
+            "Session PDA must not exist (proves the entry is orphaned)."
+          ]
+        },
+        {
+          "name": "duel_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  117,
+                  101,
+                  108,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "duel_open_queue",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  117,
+                  101,
+                  108,
+                  95,
+                  111,
+                  112,
+                  101,
+                  110,
+                  95,
+                  113,
+                  117,
+                  101,
+                  117,
+                  101
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "player",
+          "writable": true,
+          "signer": true
         }
       ],
       "args": []
@@ -4503,6 +5499,43 @@
             "Optional GameplayVrfState for VRF-backed duel boss selection in skip_to_day."
           ],
           "optional": true
+        },
+        {
+          "name": "gauntlet_echoes",
+          "docs": [
+            "Optional GauntletEchoes for gauntlet echo resolution in skip_to_day."
+          ],
+          "writable": true,
+          "optional": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  117,
+                  110,
+                  116,
+                  108,
+                  101,
+                  116,
+                  95,
+                  101,
+                  99,
+                  104,
+                  111,
+                  101,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "game_state.session",
+                "account": "GameState"
+              }
+            ]
+          }
         }
       ],
       "args": []
@@ -4664,6 +5697,104 @@
                   97,
                   116,
                   101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "session"
+              }
+            ]
+          }
+        },
+        {
+          "name": "map_pois",
+          "writable": true
+        },
+        {
+          "name": "poi_system_program",
+          "address": "KiT25b86BSAF8yErcWwyuuWNaoXMpNf859NjH41TpSj"
+        },
+        {
+          "name": "gameplay_authority",
+          "docs": [
+            "Gameplay authority PDA for signing CPI calls to map-generator"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  112,
+                  108,
+                  97,
+                  121,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "map_generator_program",
+          "docs": [
+            "Map generator program for CPI (update_boss_id, update_current_echo, update_discovered_enemies)"
+          ],
+          "address": "GCy5GqvnJN99rgGtV6fMn8NtL9E7RoAyHDGzQv8me65j"
+        },
+        {
+          "name": "session_discovery",
+          "docs": [
+            "Optional SessionDiscovery for boss/echo/enemy sync."
+          ],
+          "writable": true,
+          "optional": true
+        },
+        {
+          "name": "gameplay_vrf_state",
+          "docs": [
+            "Optional GameplayVrfState for VRF-backed duel boss selection."
+          ],
+          "optional": true
+        },
+        {
+          "name": "gauntlet_echoes",
+          "docs": [
+            "Optional GauntletEchoes for echo sync to SessionDiscovery."
+          ],
+          "optional": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  117,
+                  110,
+                  116,
+                  108,
+                  101,
+                  116,
+                  95,
+                  101,
+                  99,
+                  104,
+                  111,
+                  101,
+                  115
                 ]
               },
               {
@@ -4980,6 +6111,22 @@
           "optional": true
         },
         {
+          "name": "session_discovery",
+          "docs": [
+            "Optional SessionDiscovery for boss ID update at week transition."
+          ],
+          "writable": true,
+          "optional": true
+        },
+        {
+          "name": "map_generator_program",
+          "docs": [
+            "Optional map-generator program for SessionDiscovery CPI."
+          ],
+          "optional": true,
+          "address": "GCy5GqvnJN99rgGtV6fMn8NtL9E7RoAyHDGzQv8me65j"
+        },
+        {
           "name": "player",
           "signer": true
         }
@@ -5049,6 +6196,46 @@
         },
         {
           "name": "map_enemies",
+          "writable": true
+        },
+        {
+          "name": "game_session"
+        },
+        {
+          "name": "session_signer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "magic_program",
+          "address": "Magic11111111111111111111111111111111111111"
+        },
+        {
+          "name": "magic_context",
+          "writable": true,
+          "address": "MagicContext1111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "undelegate_gauntlet_echoes",
+      "docs": [
+        "Commits and undelegates GauntletEchoes from ER (gauntlet sessions only)."
+      ],
+      "discriminator": [
+        156,
+        217,
+        17,
+        244,
+        198,
+        96,
+        90,
+        214
+      ],
+      "accounts": [
+        {
+          "name": "gauntlet_echoes",
           "writable": true
         },
         {
@@ -5203,6 +6390,19 @@
         15,
         237,
         196
+      ]
+    },
+    {
+      "name": "GauntletEchoes",
+      "discriminator": [
+        119,
+        100,
+        158,
+        137,
+        243,
+        83,
+        106,
+        6
       ]
     },
     {
@@ -5442,19 +6642,6 @@
       ]
     },
     {
-      "name": "EnemyMoved",
-      "discriminator": [
-        0,
-        140,
-        109,
-        14,
-        126,
-        219,
-        253,
-        149
-      ]
-    },
-    {
       "name": "GameStateClosed",
       "discriminator": [
         230,
@@ -5491,6 +6678,19 @@
         86,
         46,
         58
+      ]
+    },
+    {
+      "name": "GauntletEchoesClosed",
+      "discriminator": [
+        169,
+        195,
+        208,
+        17,
+        105,
+        37,
+        108,
+        246
       ]
     },
     {
@@ -5725,32 +6925,6 @@
         65,
         37,
         23
-      ]
-    },
-    {
-      "name": "PlayerMoved",
-      "discriminator": [
-        167,
-        114,
-        108,
-        144,
-        204,
-        62,
-        98,
-        128
-      ]
-    },
-    {
-      "name": "PositionSetAuthorized",
-      "discriminator": [
-        170,
-        110,
-        94,
-        175,
-        251,
-        145,
-        24,
-        252
       ]
     }
   ],
@@ -6804,37 +7978,6 @@
       }
     },
     {
-      "name": "EnemyMoved",
-      "docs": [
-        "Emitted when an enemy moves during night phase"
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "enemy_index",
-            "type": "u8"
-          },
-          {
-            "name": "from_x",
-            "type": "u8"
-          },
-          {
-            "name": "from_y",
-            "type": "u8"
-          },
-          {
-            "name": "to_x",
-            "type": "u8"
-          },
-          {
-            "name": "to_y",
-            "type": "u8"
-          }
-        ]
-      }
-    },
-    {
       "name": "EnemySpawn",
       "docs": [
         "Initial enemy spawn position (4 bytes)"
@@ -7040,24 +8183,6 @@
               "Used by session_manager to validate end_session calls"
             ],
             "type": "bool"
-          },
-          {
-            "name": "gauntlet_echoes",
-            "docs": [
-              "Pre-drawn gauntlet echo opponents (cached at entry, resolved during ER gameplay)."
-            ],
-            "type": {
-              "array": [
-                {
-                  "option": {
-                    "defined": {
-                      "name": "GauntletEchoSnapshot"
-                    }
-                  }
-                },
-                5
-              ]
-            }
           },
           {
             "name": "gauntlet_epoch_id",
@@ -7396,6 +8521,63 @@
             "fields": [
               "pubkey"
             ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "GauntletEchoes",
+      "docs": [
+        "Per-session gauntlet echo opponents, separated from GameState for PER privacy.",
+        "Delegated to ER alongside GameState so echoes are hidden until each week.",
+        "PDA Seeds: [\"gauntlet_echoes\", session.key()]"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "session",
+            "docs": [
+              "Linked session PDA."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "echoes",
+            "docs": [
+              "Pre-drawn echo opponents for weeks 1-5."
+            ],
+            "type": {
+              "array": [
+                {
+                  "option": {
+                    "defined": {
+                      "name": "GauntletEchoSnapshot"
+                    }
+                  }
+                },
+                5
+              ]
+            }
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump seed."
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "GauntletEchoesClosed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "session",
+            "type": "pubkey"
           }
         ]
       }
@@ -7830,6 +9012,18 @@
             "name": "packed_tiles",
             "docs": [
               "Bit-packed tiles (0=floor, 1=wall), 313 bytes for 2500 tiles"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                313
+              ]
+            }
+          },
+          {
+            "name": "discovered_tiles",
+            "docs": [
+              "Bit-packed discovered tiles (1 = discovered/revealed)"
             ],
             "type": {
               "array": [
@@ -8528,50 +9722,6 @@
       }
     },
     {
-      "name": "PlayerMoved",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "player",
-            "type": "pubkey"
-          },
-          {
-            "name": "from_x",
-            "type": "u8"
-          },
-          {
-            "name": "from_y",
-            "type": "u8"
-          },
-          {
-            "name": "to_x",
-            "type": "u8"
-          },
-          {
-            "name": "to_y",
-            "type": "u8"
-          },
-          {
-            "name": "moves_remaining",
-            "type": "u8"
-          },
-          {
-            "name": "is_dig",
-            "type": "bool"
-          },
-          {
-            "name": "combat_triggered",
-            "type": "bool"
-          },
-          {
-            "name": "enemies_moved",
-            "type": "u8"
-          }
-        ]
-      }
-    },
-    {
       "name": "PlayerProfile",
       "docs": [
         "Player profile account storing identity and progression data.",
@@ -8709,37 +9859,6 @@
             "docs": [
               "Y position on map"
             ],
-            "type": "u8"
-          }
-        ]
-      }
-    },
-    {
-      "name": "PositionSetAuthorized",
-      "docs": [
-        "Emitted when position is updated via authorized CPI from poi-system."
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "player",
-            "type": "pubkey"
-          },
-          {
-            "name": "from_x",
-            "type": "u8"
-          },
-          {
-            "name": "from_y",
-            "type": "u8"
-          },
-          {
-            "name": "to_x",
-            "type": "u8"
-          },
-          {
-            "name": "to_y",
             "type": "u8"
           }
         ]

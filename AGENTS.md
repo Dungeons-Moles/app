@@ -59,10 +59,10 @@ Base-layer wallet transactions are only for **out-of-session** actions:
 
 This rule is non-negotiable for both frontend and programs.
 
-- **Localnet:** It is valid to use `*Rng` methods with randomness generated in the local client for deterministic/dev testing.
+- **Localnet:** use the same `*Vrf` methods as other clusters, backed by a local VRF oracle/queue when testing locally.
 - **Devnet/Mainnet:** It is forbidden to use client-generated randomness for gameplay/session-critical randomness. Use `*Vrf` methods only.
 - **VRF oracle queue:** All VRF requests must use the ER oracle queue (`VRF_EPHEMERAL_QUEUE`). Never use the base-layer `DEFAULT_QUEUE`.
-- **VRF timing:** `init_*_vrf_state` and `request_*_vrf` MUST run on the Ephemeral Rollup **after** delegation, via `sendRoutedErTransaction`. Never call them on the base chain (`connection`).
+- **VRF timing:** `request_*_vrf` MUST run on the Ephemeral Rollup **after** delegation, via `sendRoutedErTransaction`. `init_*_vrf_state` may be pre-created on base before delegation when the flow needs the PDA to exist ahead of ER requests.
 - **Gameplay gate:** A session may be created on-chain before VRF completes, but gameplay must remain blocked until required VRF states are fulfilled on ER.
 - **Frontend behavior:** If VRF is not fulfilled, the app must not navigate to `src/screens/GameScreen.tsx` for active gameplay and must retry/fetch/request until fulfilled or surface a blocking error.
 - **Movement/POI gate:** The frontend must not send gameplay actions (movement/POI progression) that rely on VRF when VRF fulfillment is missing.

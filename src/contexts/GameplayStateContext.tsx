@@ -3,15 +3,14 @@
  *
  * Provides on-chain gameplay state to UI components.
  * Acts as a bridge between the useGameplayState hook and the component tree.
- * Extended to include MapEnemies and MapPois from on-chain state.
  *
- * @see data-model.md for MapEnemies and MapPois structure
+ * Privacy-aware: does NOT read MapEnemies or MapPois directly.
+ * All entity data flows through SessionDiscovery + SYNC_DISCOVERY.
  */
 
-import React, { createContext, useContext, useState, useCallback, useMemo, useEffect, useRef, ReactNode } from 'react';
+import React, { createContext, useContext, useCallback, useMemo, useRef, ReactNode } from 'react';
 import { Keypair, PublicKey } from '@solana/web3.js';
 import { useGameplayState, SyncStatus } from '@/hooks/useGameplayState';
-import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
 import { useSessionIdentity } from '@/contexts/SessionContext';
 import { getGameStatePda } from '@/services/solana/gameplayState';
 import {
@@ -27,12 +26,6 @@ import {
   type EnemyData,
   type PoiData,
 } from '@/services/solana/sessionList';
-import { deriveMapEnemiesPda, deriveMapPoisPda } from '@/services/solana/constants';
-import {
-  createPoiSystemProgram,
-  createGameplayStateProgram,
-} from '@/services/solana/programs';
-import type { PoiInstance, MapPoisData } from '@/services/solana/types/poi_system';
 
 // ============================================================================
 // Types
@@ -51,14 +44,6 @@ interface GameplayStateContextType {
   syncStatus: SyncStatus;
   /** Last sync timestamp */
   lastSyncAt: number | null;
-
-  // Map entities from on-chain state
-  /** Enemies on the map (from MapEnemies account) */
-  enemies: EnemyData[];
-  /** POIs on the map (from MapPois account) */
-  pois: PoiData[];
-  /** Whether map entities are loading */
-  isMapEntitiesLoading: boolean;
 
   // Computed properties for UI
   /** Current position as [x, y] */
@@ -113,20 +98,6 @@ interface GameplayStateContextType {
   getMoveCost: (isWall: boolean) => number;
   /** Set the game state PDA */
   setGameStatePda: (pda: PublicKey | null) => void;
-  /** Refresh map entities (enemies and POIs), returns enemy data for sync */
-  refreshMapEntities: (sessionPda: PublicKey) => Promise<{ enemies: Array<{ x: number; y: number; archetypeId: number; tier: number }> } | null>;
-  /** Remove an enemy from the local list (after combat) */
-  removeEnemy: (x: number, y: number) => void;
-  /** Mark a POI as consumed */
-  consumePoi: (x: number, y: number) => void;
-  /** Get enemy at a specific position */
-  getEnemyAt: (x: number, y: number) => EnemyData | undefined;
-  /** Get POI at a specific position */
-  getPoiAt: (x: number, y: number) => PoiData | undefined;
-  /** Discovered waypoint POI indices */
-  discoveredWaypoints: number[];
-  /** Check if fast travel is possible between two waypoint indices */
-  canFastTravel: (fromIndex: number, toIndex: number) => boolean;
 }
 
 interface PlayerStats {
@@ -150,7 +121,6 @@ const GameplayStateContext = createContext<GameplayStateContextType | undefined>
 
 export function GameplayStateProvider({ children }: { children: ReactNode }) {
   const gameplay = useGameplayState();
-  const { gameplayConnection } = useSolanaConnection();
   const { sessionPda } = useSessionIdentity();
 
   // Sync gameStatePda from SessionContext so this context's gameState stays populated.
@@ -170,211 +140,6 @@ export function GameplayStateProvider({ children }: { children: ReactNode }) {
   } else if (gameplay.gameStatePda !== null) {
     gameplay.setGameStatePda(null);
   }
-
-  // Map entities state
-  const [enemies, setEnemies] = useState<EnemyData[]>([]);
-  const [pois, setPois] = useState<PoiData[]>([]);
-  const [isMapEntitiesLoading, setIsMapEntitiesLoading] = useState(false);
-  // Tracks the last session+connection pair used for entity fetch to avoid
-  // redundant fetches while still re-fetching when the connection switches
-  // (e.g. base chain → ER after delegation).
-  const lastEntityFetchKeyRef = useRef<string>('');
-  const decodePoiProgram = useMemo(
-    () => createPoiSystemProgram(gameplayConnection),
-    [gameplayConnection]
-  );
-  const decodeGameplayProgram = useMemo(
-    () => createGameplayStateProgram(gameplayConnection),
-    [gameplayConnection]
-  );
-
-  /**
-   * Refresh map entities (enemies and POIs) from on-chain state.
-   * Returns raw enemy data for syncing local game state.
-   */
-  const refreshMapEntities = useCallback(
-    async (sessionPda: PublicKey): Promise<{ enemies: Array<{ x: number; y: number; archetypeId: number; tier: number }> } | null> => {
-      if (!gameplayConnection) {
-        return null;
-      }
-
-      setIsMapEntitiesLoading(true);
-
-      let rawEnemyData: Array<{ x: number; y: number; archetypeId: number; tier: number }> = [];
-
-      try {
-        // Derive PDAs for enemies and POIs
-        const [enemiesPda] = deriveMapEnemiesPda(sessionPda);
-        const [poisPda] = deriveMapPoisPda(sessionPda);
-
-        // Fetch accounts in parallel
-        const [enemiesAccountInfo, poisAccountInfo] = await gameplayConnection.getMultipleAccountsInfo([
-          enemiesPda,
-          poisPda,
-        ]);
-
-        // Parse enemies using gameplay-state program coder
-        if (enemiesAccountInfo?.data) {
-          try {
-            const mapEnemies = decodeGameplayProgram.coder.accounts.decode(
-              'mapEnemies',
-              enemiesAccountInfo.data
-            ) as { enemies: Array<{ x: number; y: number; archetypeId: number; tier: number; defeated: boolean }> };
-
-            // Store raw enemy data (non-defeated) for returning to caller
-            rawEnemyData = mapEnemies.enemies
-              .filter((e) => !e.defeated)
-              .map((e) => ({
-                x: e.x,
-                y: e.y,
-                archetypeId: e.archetypeId,
-                tier: e.tier,
-              }));
-
-            const parsedEnemies: EnemyData[] = rawEnemyData.map((e) => ({
-              x: e.x,
-              y: e.y,
-              archetype: e.archetypeId,
-              currentHp: 0, // HP is computed from archetype at combat time
-              alive: true,
-            }));
-
-            setEnemies(parsedEnemies);
-            if (__DEV__) {
-              console.log('[GameplayStateContext] Decoded enemies:', parsedEnemies.length);
-              console.log('[GameplayStateContext] Raw enemy data sample:', rawEnemyData.slice(0, 3));
-            }
-          } catch (decodeError) {
-            console.error('[GameplayStateContext] Failed to decode enemies:', decodeError);
-            setEnemies([]);
-          }
-        } else {
-          setEnemies([]);
-        }
-
-        // Parse POIs using poi-system program coder
-        if (poisAccountInfo?.data) {
-          try {
-            const mapPois = decodePoiProgram.coder.accounts.decode(
-              'mapPois',
-              poisAccountInfo.data
-            ) as MapPoisData;
-
-            const parsedPois: PoiData[] = mapPois.pois.map((p: PoiInstance) => ({
-              x: p.x,
-              y: p.y,
-              poiType: p.poiType,
-              consumed: p.used,
-            }));
-
-            setPois(parsedPois);
-            if (__DEV__) {
-              console.log('[GameplayStateContext] Decoded POIs:', parsedPois.length);
-            }
-          } catch (decodeError) {
-            console.error('[GameplayStateContext] Failed to decode POIs:', decodeError);
-            setPois([]);
-          }
-        } else {
-          setPois([]);
-        }
-      } catch (error) {
-        console.error('[GameplayStateContext] Failed to fetch map entities:', error);
-        setEnemies([]);
-        setPois([]);
-        return null;
-      } finally {
-        setIsMapEntitiesLoading(false);
-      }
-
-      return { enemies: rawEnemyData };
-    },
-    [decodeGameplayProgram, decodePoiProgram, gameplayConnection]
-  );
-
-  /**
-   * Remove an enemy from the local list (after combat victory).
-   */
-  const removeEnemy = useCallback((x: number, y: number): void => {
-    setEnemies((prev) =>
-      prev.map((enemy) =>
-        enemy.x === x && enemy.y === y ? { ...enemy, alive: false } : enemy
-      )
-    );
-  }, []);
-
-  /**
-   * Mark a POI as consumed.
-   */
-  const consumePoi = useCallback((x: number, y: number): void => {
-    setPois((prev) =>
-      prev.map((poi) =>
-        poi.x === x && poi.y === y ? { ...poi, consumed: true } : poi
-      )
-    );
-  }, []);
-
-  /**
-   * Get enemy at a specific position.
-   */
-  const getEnemyAt = useCallback(
-    (x: number, y: number): EnemyData | undefined => {
-      return enemies.find((e) => e.x === x && e.y === y && e.alive);
-    },
-    [enemies]
-  );
-
-  /**
-   * Get POI at a specific position.
-   */
-  const getPoiAt = useCallback(
-    (x: number, y: number): PoiData | undefined => {
-      return pois.find((p) => p.x === x && p.y === y && !p.consumed);
-    },
-    [pois]
-  );
-
-  /**
-   * Discovered waypoint indices (POIs of type 8 / RAIL_WAYPOINT that are consumed/discovered).
-   */
-  const discoveredWaypoints = useMemo((): number[] => {
-    return pois
-      .map((p, index) => ({ ...p, index }))
-      .filter((p) => p.poiType === 8 && p.consumed)
-      .map((p) => p.index);
-  }, [pois]);
-
-  /**
-   * Check if fast travel is possible between two waypoint indices.
-   * Both waypoints must be discovered.
-   */
-  const canFastTravel = useCallback(
-    (fromIndex: number, toIndex: number): boolean => {
-      return discoveredWaypoints.includes(fromIndex) && discoveredWaypoints.includes(toIndex);
-    },
-    [discoveredWaypoints]
-  );
-
-  /**
-   * Automatically refresh map entities when the game state's session changes
-   * OR when the connection switches (e.g. base chain → ER after delegation).
-   * This ensures POIs and enemies are loaded from the correct source.
-   */
-  useEffect(() => {
-    const sessionPda = gameplay.gameState?.session;
-    if (!sessionPda || !gameplayConnection) {
-      return;
-    }
-
-    const fetchKey = `${sessionPda.toBase58()}:${gameplayConnection.rpcEndpoint}`;
-    if (lastEntityFetchKeyRef.current === fetchKey) {
-      return;
-    }
-    lastEntityFetchKeyRef.current = fetchKey;
-
-    console.log('[GameplayStateContext] Auto-refreshing map entities for session:', sessionPda.toBase58());
-    refreshMapEntities(sessionPda);
-  }, [gameplay.gameState?.session, gameplayConnection, refreshMapEntities]);
 
   // Stable refresh wrapper to avoid recreating on every render
   const refresh = useCallback(async () => { await gameplay.refresh(); }, [gameplay.refresh]);
@@ -432,11 +197,6 @@ export function GameplayStateProvider({ children }: { children: ReactNode }) {
       syncStatus: gameplay.syncStatus,
       lastSyncAt: gameplay.lastSyncAt,
 
-      // Map entities
-      enemies,
-      pois,
-      isMapEntitiesLoading,
-
       // Computed properties
       position,
       stats,
@@ -456,13 +216,6 @@ export function GameplayStateProvider({ children }: { children: ReactNode }) {
       refresh,
       getMoveCost: gameplay.getMoveCost,
       setGameStatePda: gameplay.setGameStatePda,
-      refreshMapEntities,
-      removeEnemy,
-      consumePoi,
-      getEnemyAt,
-      getPoiAt,
-      discoveredWaypoints,
-      canFastTravel,
     };
   }, [
     // Scalar fields from gameState — only recompute when these actually change
@@ -493,16 +246,6 @@ export function GameplayStateProvider({ children }: { children: ReactNode }) {
     refresh,
     gameplay.getMoveCost,
     gameplay.setGameStatePda,
-    enemies,
-    pois,
-    isMapEntitiesLoading,
-    refreshMapEntities,
-    removeEnemy,
-    consumePoi,
-    getEnemyAt,
-    getPoiAt,
-    discoveredWaypoints,
-    canFastTravel,
   ]);
 
   return <GameplayStateContext.Provider value={value}>{children}</GameplayStateContext.Provider>;

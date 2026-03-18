@@ -53,13 +53,13 @@ export const GAME_CONSTANTS = {
 /**
  * Get base HP for a campaign level.
  * Matches on-chain `base_hp()` in gameplay-state/constants.rs.
- * Levels 1-9: 25 HP, 10-19: 20 HP, 20+: 15 HP.
+ * Levels 1-9: 25 HP, 10-19: 22 HP, 20+: 18 HP.
  * PvP modes always use level 20+ (20 HP).
  */
 export function getBaseHp(campaignLevel: number): number {
   if (campaignLevel >= 1 && campaignLevel <= 9) return 25;
-  if (campaignLevel >= 10 && campaignLevel <= 19) return 20;
-  return 15;
+  if (campaignLevel >= 10 && campaignLevel <= 19) return 22;
+  return 18;
 }
 
 export function getBaseGold(campaignLevel: number): number {

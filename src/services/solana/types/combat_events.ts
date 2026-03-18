@@ -588,6 +588,7 @@ export function convertBackendLogToFrontend(
     // We derive actor/target per action type accordingly.
     const actorAsAttacker = entry.isPlayer ? 'player' : 'enemy';
     const targetOfAttacker = entry.isPlayer ? 'enemy' : 'player';
+    const attackerTiming = entry.isPlayer ? 'PLAYER_ATTACK' : 'ENEMY_ATTACK';
     // For target-semantics actions: is_player identifies who is affected
     const affected: 'player' | 'enemy' = entry.isPlayer ? 'player' : 'enemy';
     const affectedOpposite: 'player' | 'enemy' = entry.isPlayer ? 'enemy' : 'player';
@@ -595,19 +596,19 @@ export function convertBackendLogToFrontend(
     switch (entry.action) {
       case LogAction.Attack:
         // is_player = !is_target_player → isPlayer = attacker
-      return {
-        turn: entry.turn,
-        timing: 'ON_HIT',
-        actor: actorAsAttacker,
-        action: 'ATTACK',
-        target: targetOfAttacker,
+        return {
+          turn: entry.turn,
+          timing: attackerTiming,
+          actor: actorAsAttacker,
+          action: 'ATTACK',
+          target: targetOfAttacker,
           result: {
             damage: entry.value,
             source: entry.source ?? getReplayAttackSource(input, actorAsAttacker),
             contributions: entry.contributions,
           },
-        rngValues: [],
-      };
+          rngValues: [],
+        };
 
       case LogAction.Heal:
         // is_player = is_target_player → isPlayer = who is healed
@@ -746,7 +747,7 @@ export function convertBackendLogToFrontend(
         // is_player = is_player_attacking → the attacker takes shrapnel damage
         return {
           turn: entry.turn,
-          timing: 'ON_STRUCK',
+          timing: attackerTiming,
           actor: entry.isPlayer ? 'enemy' : 'player', // Defender's shrapnel triggers
           action: 'TRIGGER_ITEMSET',
           target: entry.isPlayer ? 'player' : 'enemy', // Attacker takes the damage

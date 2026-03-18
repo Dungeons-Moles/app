@@ -1,6 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, View, type ImageSourcePropType } from 'react-native';
 import type { OverviewModeState } from '../../contexts/GameContext';
+import { useScreenVariant } from '../../contexts/ScreenVariantContext';
 import type { Position, WallHighlightState } from '../../game/engine/types';
 import { TimePhase } from '../../game/engine/types';
 import type { GameMap } from '../../game/map/types';
@@ -37,6 +38,7 @@ export const GameCanvas = React.memo(function GameCanvas({
   cameraFocusOverride,
   playerSkinSource,
 }: GameCanvasProps) {
+  const isCompact = useScreenVariant() === 'compact';
   return (
     <View style={styles.container}>
       <MapRenderer
@@ -54,8 +56,8 @@ export const GameCanvas = React.memo(function GameCanvas({
         playerSkinSource={playerSkinSource}
       />
       {feedbackMessage && (
-        <View style={styles.feedbackOverlay} pointerEvents="none">
-          <Text style={styles.feedbackText}>{feedbackMessage}</Text>
+        <View style={[styles.feedbackOverlay, isCompact && styles.feedbackOverlayCompact]} pointerEvents="none">
+          <Text style={[styles.feedbackText, isCompact && styles.feedbackTextCompact]}>{feedbackMessage}</Text>
         </View>
       )}
     </View>
@@ -81,5 +83,14 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     fontSize: 12,
     fontWeight: '600',
+  },
+  feedbackOverlayCompact: {
+    top: 24,
+  },
+  feedbackTextCompact: {
+    fontSize: 22,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 16,
   },
 });

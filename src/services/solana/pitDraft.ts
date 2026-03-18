@@ -8,11 +8,10 @@
  * - On-chain item instance to frontend item conversion
  */
 
-import { ComputeBudgetProgram, Connection, Keypair, PublicKey, SystemProgram, Transaction, TransactionInstruction } from '@solana/web3.js';
+import { ComputeBudgetProgram, Connection, PublicKey, SystemProgram, Transaction } from '@solana/web3.js';
 import type { Program } from '@coral-xyz/anchor';
 import { SOLANA_CONFIG } from './config';
-import { GAMEPLAY_STATE_PROGRAM_ID, deriveGameplayVrfStatePda, derivePlayerProfilePda } from './constants';
-import { generateRandomness } from './vrf';
+import { GAMEPLAY_STATE_PROGRAM_ID, derivePlayerProfilePda } from './constants';
 import { toolToFrontend, gearToFrontend } from '@/data/id-mapping';
 import type { Tool, Gear, ToolOil } from '@/game/engine/types';
 import { getAllToolDefinitions, getToolStatsAtTier } from '@/game/entities/items';
@@ -37,25 +36,6 @@ const TOOL_OIL_FLAG_DIG = 0x04;
 const TOOL_OIL_FLAG_ARM = 0x08;
 const PIT_DRAFT_MAX_START_GOLD = 30;
 const U64_MASK = (1n << 64n) - 1n;
-
-function pickMethod(
-  program: Program,
-  preferred: string,
-  fallback: string,
-  options?: { strictPreferred?: boolean }
-) {
-  const methods = (program.methods ?? {}) as Record<string, (...args: any[]) => any>;
-  if (typeof methods[preferred] === 'function') {
-    return { name: preferred, fn: methods[preferred].bind(methods) };
-  }
-  if (options?.strictPreferred) {
-    throw new Error(`Missing required method ${preferred} on gameplay-state program for current mode`);
-  }
-  if (typeof methods[fallback] === 'function') {
-    return { name: fallback, fn: methods[fallback].bind(methods) };
-  }
-  throw new Error(`Neither ${preferred} nor ${fallback} exists on gameplay-state program`);
-}
 
 // ============================================================================
 // PDA Derivation
@@ -129,43 +109,6 @@ export async function buildEnterPitDraftTransaction(
   const [gauntletPoolVaultPda] = deriveGauntletPoolVaultPda();
   const [playerProfilePda] = derivePlayerProfilePda(playerPublicKey);
 
-  const localMode = SOLANA_CONFIG.isLocalValidator;
-
-  // On localnet: request + self-fulfill VRF in same TX for deterministic testing.
-  // On devnet/mainnet: VRF is optional — gameplay-state falls back to slot-based randomness.
-  let gameplayVrfStatePda: PublicKey | null = null;
-  const vrfInstructions: TransactionInstruction[] = [];
-
-  if (localMode) {
-    const vrfSessionKey = Keypair.generate().publicKey;
-    const [localVrfPda] = deriveGameplayVrfStatePda(vrfSessionKey);
-    gameplayVrfStatePda = localVrfPda;
-    const randomness = generateRandomness();
-
-    const requestRng = pickMethod(program, 'requestGameplayRng', 'requestGameplayVrf', {
-      strictPreferred: true,
-    });
-    const requestIx = await requestRng.fn()
-      .accounts({
-        payer: playerPublicKey,
-        session: vrfSessionKey,
-        vrfState: localVrfPda,
-        systemProgram: SystemProgram.programId,
-      })
-      .instruction();
-
-    const fulfillIx = await pickMethod(program, 'fulfillGameplayRng', 'fulfillGameplayVrf', {
-      strictPreferred: true,
-    }).fn(randomness)
-      .accountsPartial({
-        vrfProgramIdentity: playerPublicKey,
-        vrfState: localVrfPda,
-      })
-      .instruction();
-
-    vrfInstructions.push(requestIx, fulfillIx);
-  }
-
   // Optional accounts must use null so Anchor substitutes the program ID.
   const enterPitDraftIx = await program.methods
     .enterPitDraft()
@@ -178,7 +121,7 @@ export async function buildEnterPitDraftTransaction(
       waitingPlayerWallet: waitingPlayerWallet ?? null,
       companyTreasury: COMPANY_TREASURY,
       gauntletPoolVault: gauntletPoolVaultPda,
-      gameplayVrfState: gameplayVrfStatePda,
+      gameplayVrfState: null,
       systemProgram: SystemProgram.programId,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any)
@@ -192,7 +135,6 @@ export async function buildEnterPitDraftTransaction(
     ComputeBudgetProgram.setComputeUnitPrice({
       microLamports: PIT_DRAFT_CU_PRICE_MICROLAMPORTS,
     }),
-    ...vrfInstructions,
     enterPitDraftIx
   );
 

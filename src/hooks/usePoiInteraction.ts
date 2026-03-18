@@ -18,12 +18,14 @@ import {
   createPoiSystemProgramWithProvider,
   createAnchorProvider,
   createGameplayStateProgram,
+  createMapGeneratorProgram,
 } from '@/services/solana/programs';
 import { oilFlagToModification } from '@/services/solana/types/player_inventory';
 import { useWallet } from '@/contexts/WalletContext';
 import { useAudio } from '@/contexts/AudioContext';
-import { deriveMapPoisPda, derivePoiVrfStatePda, deriveGameplayVrfStatePda } from '@/services/solana/constants';
+import { deriveMapPoisPda, derivePoiVrfStatePda, deriveGameplayVrfStatePda, deriveSessionDiscoveryPda } from '@/services/solana/constants';
 import { getGameStatePda, fetchGameState } from '@/services/solana/gameplayState';
+import { PublicKey, Connection } from '@solana/web3.js';
 import { POI_TYPES } from '@/services/solana/types/poi_system';
 import type {
   ItemOffer,
@@ -38,6 +40,7 @@ import {
   interactPickItem,
   interactToolOilCombined,
   interactSurveyBeacon,
+  generateScannerOffer,
   interactSeismicScanner,
   fastTravel,
   enterShop,
@@ -47,15 +50,23 @@ import {
   interactRustyAnvil,
   interactRuneKiln,
   interactScrapChute,
-  fetchMapPois,
   generateCacheOffer,
   generateOilOffer,
   type PoiTransactionContext,
 } from '@/services/solana/poiSystem';
 import {
+  fetchSessionDiscovery,
+  type SessionDiscoveryData,
+  type DiscoveryShopOffer,
+  type DiscoveryOfferItem,
+} from '@/services/solana/mapGeneratorClient';
+import {
   decodeItemId,
   convertToolInstance,
   convertGearInstance,
+  unpackDiscoveryTiles,
+  convertDiscoveredEnemies,
+  convertDiscoveredPois,
 } from '@/services/solana/sessionRestore';
 import { fetchInventory } from '@/services/solana/playerInventory';
 import { createPlayerInventoryProgram } from '@/services/solana/programs';
@@ -68,8 +79,9 @@ import {
   generateRustyAnvilOptions,
   generateScrapChuteOptions,
 } from '@/game/entities/pois';
+import { getPOIDefinition } from '@/data/pois';
 import type { GameState } from '@/game/engine/types';
-import type { Position, POIOption, GearId, ToolId, Tool, Gear, ToolOil } from '@/game/engine/types';
+import type { Position, POIOption, GearId, ToolId, Tool, Gear, ToolOil, POIId } from '@/game/engine/types';
 
 // ============================================================================
 // ER Position Retry Helper
@@ -136,49 +148,43 @@ async function withErPositionRetry<T>(fn: () => Promise<T>): Promise<T> {
  * out of bounds or points to the wrong POI on-chain.
  *
  * Returns the validated (possibly re-derived) index, or -1 if not found.
+ *
+ * TODO: Replace this MapPois read with SessionDiscovery POI indices once
+ * SessionDiscovery exposes position data for all POIs (currently only stores
+ * discoveredPois which may not include the target POI before discovery).
  */
 async function validatePoiIndex(
-  program: Parameters<typeof fetchMapPois>[0],
-  mapPoisPda: Parameters<typeof fetchMapPois>[1],
+  _program: unknown,
+  _mapPoisPda: unknown,
   poiIndex: number,
   x: number,
   y: number,
-  contextLabel: string
-): Promise<{ index: number; freshPois?: Awaited<ReturnType<typeof fetchMapPois>> }> {
-  try {
-    const freshPois = await fetchMapPois(program, mapPoisPda);
-    if (!freshPois?.pois) {
-      return { index: poiIndex, freshPois: freshPois ?? undefined };
+  contextLabel: string,
+  sessionDiscoveryPda?: PublicKey,
+  connection?: Connection
+): Promise<{ index: number }> {
+  // Use SessionDiscovery's discoveredPois (public) instead of MapPois (private).
+  // Each DiscoveredPoi has a mapPoisIndex field — the on-chain MapPois array index.
+  if (sessionDiscoveryPda && connection) {
+    try {
+      const discovery = await fetchSessionDiscovery(
+        createMapGeneratorProgram(connection),
+        sessionDiscoveryPda
+      );
+      if (discovery) {
+        for (let i = 0; i < discovery.discoveredPoiCount; i++) {
+          const dp = discovery.discoveredPois[i];
+          if (dp && dp.x === x && dp.y === y) {
+            return { index: dp.mapPoisIndex };
+          }
+        }
+      }
+    } catch (err) {
+      console.warn(`[usePoiInteraction] ${contextLabel}: SessionDiscovery fetch failed:`, err);
     }
-
-    const freshLen = freshPois.pois.length;
-    const isValid =
-      poiIndex >= 0 &&
-      poiIndex < freshLen &&
-      freshPois.pois[poiIndex]?.x === x &&
-      freshPois.pois[poiIndex]?.y === y;
-
-    if (isValid) {
-      return { index: poiIndex, freshPois };
-    }
-
-    // Re-derive from fresh data by position
-    const rederived = freshPois.pois.findIndex(
-      (p) => p.x === x && p.y === y && !p.used
-    );
-    console.warn(
-      `[usePoiInteraction] ${contextLabel}: poiIndex re-derived from fresh on-chain data:`,
-      poiIndex,
-      '→',
-      rederived,
-      '| fresh Vec length:',
-      freshLen
-    );
-    return { index: rederived, freshPois };
-  } catch (err) {
-    console.warn(`[usePoiInteraction] ${contextLabel}: fresh validation fetch failed:`, err);
-    return { index: poiIndex }; // Fall through with original index
   }
+  // Fallback: return hint index as-is
+  return { index: poiIndex };
 }
 
 // ============================================================================
@@ -349,35 +355,89 @@ function oilFlagToToolOil(
   }
 }
 
-/** Map seismic scanner option label to on-chain category (0=Items,1=Upgrades,2=Utility,3=Shop) */
-function labelToScanCategory(label: string): number {
-  if (/Supply Cache|Tool Crate|Tool Oil|Geode Vault|Counter Cache/.test(label)) return 0;
-  if (/Rusty Anvil|Rune Kiln|Scrap Chute/.test(label)) return 1;
-  if (/Mole Den|Rest Alcove|Survey Beacon|Rail Waypoint|Seismic Scanner/.test(label)) return 2;
-  if (/Smuggler Hatch/.test(label)) return 3;
-  return 0;
+function poiTypeToPoiId(poiType: number): POIId | null {
+  if (poiType >= 1 && poiType <= 14) {
+    return `L${poiType}` as POIId;
+  }
+  return null;
 }
 
-/** Map seismic scanner option label to the specific POI definition ID */
-function labelToPoiDefId(label: string): string | null {
-  if (label.includes('Supply Cache')) return 'L2';
-  if (label.includes('Tool Crate')) return 'L3';
-  if (label.includes('Tool Oil')) return 'L4';
-  if (label.includes('Rest Alcove')) return 'L5';
-  if (label.includes('Survey Beacon')) return 'L6';
-  if (label.includes('Seismic Scanner')) return 'L7';
-  if (label.includes('Rail Waypoint')) return 'L8';
-  if (label.includes('Smuggler Hatch')) return 'L9';
-  if (label.includes('Rusty Anvil')) return 'L10';
-  if (label.includes('Rune Kiln')) return 'L11';
-  if (label.includes('Geode Vault')) return 'L12';
-  if (label.includes('Counter Cache')) return 'L13';
-  if (label.includes('Scrap Chute')) return 'L14';
-  return null;
+function convertScannerOfferToOptions(poiTypes: number[]): POIOption[] {
+  const options = poiTypes
+    .map((poiType) => {
+      const poiId = poiTypeToPoiId(poiType);
+      if (!poiId) return null;
+      const def = getPOIDefinition(poiId);
+      return {
+        label: `${def.emoji} Find ${def.name}`,
+      } satisfies POIOption;
+    })
+    .filter((option): option is POIOption => option !== null);
+
+  if (options.length === 0) {
+    options.push({
+      label: 'No POIs to reveal',
+      disabled: true,
+      disabledReason: 'All POIs already discovered',
+    });
+  }
+
+  options.push({ label: 'Leave' });
+  return options;
 }
 
 function isNightPhase(phase: Phase): boolean {
   return phase === Phase.Night1 || phase === Phase.Night2 || phase === Phase.Night3;
+}
+
+// ============================================================================
+// SessionDiscovery → MapPois Offer Adapters
+// ============================================================================
+
+/**
+ * Convert DiscoveryShopOffer[] to ItemOffer[] (MapPois format).
+ * SessionDiscovery uses number[] for itemId; ItemOffer uses Uint8Array.
+ */
+function discoveryShopOffersToItemOffers(offers: DiscoveryShopOffer[]): ItemOffer[] {
+  return offers
+    .filter((o) => o.itemId.some((b) => b !== 0)) // skip empty slots
+    .map((o) => ({
+      itemId: new Uint8Array(o.itemId),
+      tier: o.tier,
+      price: o.price,
+      purchased: o.purchased !== 0,
+    }));
+}
+
+/**
+ * Convert DiscoveryOfferItem[] to CacheOffer format.
+ * SessionDiscovery stores cache items flat; CacheOffer wraps them with poiIndex.
+ */
+function discoveryCacheItemsToCacheOffer(
+  items: DiscoveryOfferItem[],
+  poiIndex: number
+): CacheOffer {
+  return {
+    poiIndex,
+    items: items.map((item) => ({
+      itemId: item.itemId,
+      rarity: item.rarity,
+      tier: item.tier,
+    })),
+    generatedAtSeed: BigInt(0),
+  };
+}
+
+/**
+ * Helper to fetch SessionDiscovery for offer reads.
+ * Requires sessionDiscoveryPda and a connection to create the map generator program.
+ */
+async function fetchDiscoveryOffers(
+  connection: import('@solana/web3.js').Connection,
+  sessionPda: import('@solana/web3.js').PublicKey
+): Promise<SessionDiscoveryData | null> {
+  const [sdPda] = deriveSessionDiscoveryPda(sessionPda);
+  return fetchSessionDiscovery(createMapGeneratorProgram(connection), sdPda);
 }
 
 function extractCustomErrorCode(error: unknown): number | null {
@@ -640,11 +700,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
     refreshGameplayState: refreshSessionState,
   } = useSession();
   const {
-    pois,
-    getPoiAt: getOnChainPoiAt,
-    consumePoi,
     gameState: chainGameState,
-    refreshMapEntities,
     refresh: refreshGameplayState,
   } = useGameplayStateContext();
   const { gameplayConnection, gameplayReadConnection } = useSolanaConnection();
@@ -673,7 +729,6 @@ export function usePoiInteraction(): UsePoiInteractionResult {
   const syncLocalPoiAsConsumed = useCallback(
     (poi: PoiData | undefined) => {
       if (!poi) return;
-      consumePoi(poi.x, poi.y);
       const localPoi = gameState?.map?.pois?.find(
         (p) => p.position.x === poi.x && p.position.y === poi.y
       );
@@ -681,7 +736,34 @@ export function usePoiInteraction(): UsePoiInteractionResult {
         dispatch({ type: 'MARK_POI_VISITED', poiId: localPoi.id });
       }
     },
-    [consumePoi, dispatch, gameState?.map?.pois]
+    [dispatch, gameState?.map?.pois]
+  );
+
+  const syncDiscoveryFromChain = useCallback(
+    async (connection: Connection, targetSessionPda: PublicKey): Promise<SessionDiscoveryData | null> => {
+      const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(targetSessionPda);
+      const discovery = await fetchSessionDiscovery(
+        createMapGeneratorProgram(connection),
+        sessionDiscoveryPda
+      ).catch(() => null);
+
+      if (!discovery) {
+        return null;
+      }
+
+      dispatch({
+        type: 'SYNC_DISCOVERY',
+        tiles: unpackDiscoveryTiles(discovery, discovery.mapWidth, discovery.mapHeight),
+        enemies: convertDiscoveredEnemies(
+          discovery.discoveredEnemies,
+          discovery.discoveredEnemyCount
+        ),
+        pois: convertDiscoveredPois(discovery.discoveredPois, discovery.discoveredPoiCount),
+      });
+
+      return discovery;
+    },
+    [dispatch]
   );
 
   // Reset interactionState to 'idle' after a completed interaction settles.
@@ -743,6 +825,12 @@ export function usePoiInteraction(): UsePoiInteractionResult {
     return deriveGameplayVrfStatePda(sessionPda)[0];
   }, [sessionPda]);
 
+  /** Derive SessionDiscovery PDA for fog-of-war dual-write. */
+  const sessionDiscoveryPda = useMemo(() => {
+    if (!sessionPda) return undefined;
+    return deriveSessionDiscoveryPda(sessionPda)[0];
+  }, [sessionPda]);
+
   /** Creates a PoiTransactionContext or returns null if session not ready. */
   const createPoiCtx = useCallback((): PoiTransactionContext | null => {
     const keypair = getSessionSignerKeypair();
@@ -758,27 +846,15 @@ export function usePoiInteraction(): UsePoiInteractionResult {
       sessionSignerKeypair: keypair,
       poiVrfStatePda,
       gameplayVrfStatePda,
+      sessionDiscoveryPda,
     };
-  }, [getSessionSignerKeypair, poiProgram, mapPoisPda, gameStatePda, sessionPda, gameplayConnection, poiVrfStatePda, gameplayVrfStatePda]);
+  }, [getSessionSignerKeypair, poiProgram, mapPoisPda, gameStatePda, sessionPda, gameplayConnection, poiVrfStatePda, gameplayVrfStatePda, sessionDiscoveryPda]);
 
-  // Check if there's a valid POI at the player's current position
+  // Check if there's a valid POI at the player's current position.
+  // Sources from the game reducer state (populated by SYNC_DISCOVERY).
   const currentPoi = useMemo((): PoiData | undefined => {
     if (!playerPosition) return undefined;
 
-    // Check on-chain POIs
-    const onChainPoi = getOnChainPoiAt(playerPosition.x, playerPosition.y);
-    if (onChainPoi && !onChainPoi.consumed) {
-      debugLog(
-        '[usePoiInteraction] currentPoi: found on-chain POI at',
-        playerPosition.x,
-        playerPosition.y,
-        '| poiType:',
-        onChainPoi.poiType
-      );
-      return onChainPoi;
-    }
-
-    // Fall back to local game state POIs
     if (gameState?.map?.pois) {
       const localPoi = gameState.map.pois.find(
         (p) => p.position.x === playerPosition.x && p.position.y === playerPosition.y && !p.visited
@@ -787,27 +863,26 @@ export function usePoiInteraction(): UsePoiInteractionResult {
         // Derive poiType from definitionId (e.g. 'L2' → 2, 'L13' → 13)
         const poiType = parseInt(localPoi.definitionId.substring(1), 10) || 0;
         debugLog(
-          '[usePoiInteraction] currentPoi: local fallback at',
+          '[usePoiInteraction] currentPoi: found at',
           playerPosition.x,
           playerPosition.y,
           '| definitionId:',
           localPoi.definitionId,
           '| derived poiType:',
-          poiType,
-          '| on-chain pois loaded:',
-          pois.length
+          poiType
         );
         return {
           x: localPoi.position.x,
           y: localPoi.position.y,
           poiType,
           consumed: localPoi.visited,
+          mapPoisIndex: localPoi.mapPoisIndex,
         };
       }
     }
 
     return undefined;
-  }, [playerPosition, getOnChainPoiAt, gameState?.map?.pois, pois.length]);
+  }, [playerPosition, gameState?.map?.pois]);
 
   // Can interact if:
   // 1. Player is in exploration phase
@@ -916,13 +991,22 @@ export function usePoiInteraction(): UsePoiInteractionResult {
   }, [canInteract, currentPoi, gameState]);
 
   /**
-   * Find POI index in the on-chain pois array by position.
+   * Find POI index in the on-chain MapPois array by position.
+   * Always validates against fresh on-chain data since we no longer cache MapPois.
    */
   const findPoiIndex = useCallback(
-    (x: number, y: number): number => {
-      return pois.findIndex((p) => p.x === x && p.y === y);
+    async (x: number, y: number): Promise<number> => {
+      const localPoi = gameState?.map?.pois?.find(
+        (p) => p.position.x === x && p.position.y === y
+      );
+      if (localPoi?.mapPoisIndex != null) {
+        return localPoi.mapPoisIndex;
+      }
+      if (!poiProgram || !mapPoisPda) return -1;
+      const validated = await validatePoiIndex(poiProgram, mapPoisPda, -1, x, y, 'findPoiIndex', sessionDiscoveryPda, gameplayConnection);
+      return validated.index;
     },
-    [pois]
+    [gameState?.map?.pois, poiProgram, mapPoisPda, sessionDiscoveryPda, gameplayConnection]
   );
 
   /**
@@ -930,11 +1014,6 @@ export function usePoiInteraction(): UsePoiInteractionResult {
    */
   const hasPoiAt = useCallback(
     (x: number, y: number): boolean => {
-      const onChainPoi = getOnChainPoiAt(x, y);
-      if (onChainPoi && !onChainPoi.consumed) {
-        return true;
-      }
-
       if (gameState?.map?.pois) {
         const localPoi = gameState.map.pois.find(
           (p) => p.position.x === x && p.position.y === y && !p.visited
@@ -944,19 +1023,14 @@ export function usePoiInteraction(): UsePoiInteractionResult {
 
       return false;
     },
-    [getOnChainPoiAt, gameState?.map?.pois]
+    [gameState?.map?.pois]
   );
 
   /**
-   * Get POI data at a specific position.
+   * Get POI data at a specific position (from local game state).
    */
   const getPoiAt = useCallback(
     (x: number, y: number): PoiData | undefined => {
-      const onChainPoi = getOnChainPoiAt(x, y);
-      if (onChainPoi && !onChainPoi.consumed) {
-        return onChainPoi;
-      }
-
       if (gameState?.map?.pois) {
         const localPoi = gameState.map.pois.find(
           (p) => p.position.x === x && p.position.y === y && !p.visited
@@ -968,32 +1042,45 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             y: localPoi.position.y,
             poiType,
             consumed: localPoi.visited,
+            mapPoisIndex: localPoi.mapPoisIndex,
           };
         }
       }
 
       return undefined;
     },
-    [getOnChainPoiAt, gameState?.map?.pois]
+    [gameState?.map?.pois]
   );
 
   /**
    * Verifies that a one-time POI was actually consumed on-chain.
+   * Uses SessionDiscovery's discoveredPois to check the `consumed` flag.
    * This prevents local optimistic state (inventory/visited) from drifting when a tx
    * appears processed but did not persist.
    */
   const assertPoiConsumedOnChain = useCallback(
     async (poiIndex: number): Promise<void> => {
-      if (!poiProgram || !mapPoisPda) {
-        throw new Error('POI program not ready for verification');
+      if (!sessionPda) {
+        return; // Can't verify without session
       }
-      const latest = await fetchMapPois(poiProgram, mapPoisPda);
-      const poi = latest?.pois?.[poiIndex];
-      if (!poi || !poi.used) {
-        throw new Error('POI interaction not persisted on-chain');
+      const discovery = await fetchDiscoveryOffers(gameplayConnection, sessionPda).catch(() => null);
+      if (!discovery) {
+        return; // Can't verify — trust local MARK_POI_VISITED
       }
+      // Check discoveredPois for a matching mapPoisIndex with used flag
+      const discoveredPoi = discovery.discoveredPois
+        .slice(0, discovery.discoveredPoiCount)
+        .find((p) => p.mapPoisIndex === poiIndex);
+      if (discoveredPoi && discoveredPoi.used) {
+        return; // Confirmed consumed via SessionDiscovery
+      }
+      // Not all POI types dual-write the used flag to SessionDiscovery yet.
+      // Trust local MARK_POI_VISITED to prevent re-interaction.
+      console.warn(
+        `[usePoiInteraction] assertPoiConsumedOnChain: POI ${poiIndex} not confirmed used in SessionDiscovery`
+      );
     },
-    [poiProgram, mapPoisPda]
+    [sessionPda, gameplayConnection]
   );
 
   /**
@@ -1031,27 +1118,6 @@ export function usePoiInteraction(): UsePoiInteractionResult {
         return { success: false };
       }
 
-      // Rail Waypoint: do not open modal unless another discovered waypoint exists.
-      // Applies to both guest and on-chain paths to keep behavior consistent.
-      if (currentPoi.poiType === POI_TYPES.RAIL_WAYPOINT) {
-        const hasOtherLocalWaypoint = !!gameState?.map?.pois?.some(
-          (p) =>
-            p.definitionId === 'L8' &&
-            p.discovered &&
-            (p.position.x !== currentPoi.x || p.position.y !== currentPoi.y)
-        );
-        const hasOtherOnChainWaypoint = pois.some(
-          (p) =>
-            p.poiType === POI_TYPES.RAIL_WAYPOINT &&
-            p.consumed &&
-            (p.x !== currentPoi.x || p.y !== currentPoi.y)
-        );
-        if (!hasOtherLocalWaypoint && !hasOtherOnChainWaypoint) {
-          setError('No other waypoints discovered');
-          return { success: false };
-        }
-      }
-
       // Guest mode: dispatch INTERACT_POI to the local reducer (no on-chain interaction)
       if (!hasActiveSession) {
         const localPoi = gameState?.map?.pois?.find(
@@ -1086,45 +1152,31 @@ export function usePoiInteraction(): UsePoiInteractionResult {
         return { success: false };
       }
 
-      const contextPoiIndex = findPoiIndex(currentPoi.x, currentPoi.y);
+      // Validate POI index against fresh on-chain MapPois data
+      let poiIndex =
+        currentPoi.mapPoisIndex ??
+        (
+          await validatePoiIndex(
+            ctx.program,
+            ctx.mapPoisPda,
+            -1,
+            currentPoi.x,
+            currentPoi.y,
+            'interact',
+            sessionDiscoveryPda,
+            ctx.connection
+          )
+        ).index;
       debugLog(
-        '[usePoiInteraction] findPoiIndex result:',
-        contextPoiIndex,
-        '| context pois count:',
-        pois.length
+        '[usePoiInteraction] validatePoiIndex result:',
+        poiIndex
       );
-
-      // Fast path: trust the already loaded context index to avoid an extra
-      // RPC read before every POI action. Fallback to fresh validation only
-      // when local lookup misses.
-      let poiIndex = contextPoiIndex;
-      if (poiIndex === -1) {
-        const validated = await validatePoiIndex(
-          ctx.program,
-          ctx.mapPoisPda,
-          contextPoiIndex,
-          currentPoi.x,
-          currentPoi.y,
-          'interact'
-        );
-        poiIndex = validated.index;
-        if (poiIndex !== contextPoiIndex && sessionPda) {
-          // Refresh context in background so future lookups are correct
-          refreshMapEntities(sessionPda).catch((err) =>
-            console.warn('[usePoiInteraction] Background refreshMapEntities failed:', err)
-          );
-        }
-      }
 
       if (poiIndex === -1) {
         console.error(
           '[usePoiInteraction] POI NOT FOUND at',
           currentPoi.x,
-          currentPoi.y,
-          '| context pois:',
-          JSON.stringify(
-            pois.map((p) => ({ x: p.x, y: p.y, type: p.poiType, consumed: p.consumed }))
-          )
+          currentPoi.y
         );
         setError('POI not found on-chain. Try again.');
         return { success: false };
@@ -1189,27 +1241,17 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             // to ensure handlePOIOption routes correctly.
             setDeferredPoiType(null);
             setDeferredPoiIndex(null);
-            // Fetch current MapPois to check for existing offer
-            let mapPoisData = await fetchMapPois(ctx.program, ctx.mapPoisPda);
+            // Fetch SessionDiscovery to check for existing offer
+            let discovery = await fetchDiscoveryOffers(ctx.connection, ctx.sessionPda);
 
-            const onChainPoi = mapPoisData?.pois?.[poiIndex];
-            if (onChainPoi?.used) {
-              console.warn(
-                '[usePoiInteraction] POI already consumed on-chain before offer generation | poiIndex:',
-                poiIndex
-              );
-              syncLocalPoiAsConsumed(currentPoi);
-              dispatch({ type: 'CLOSE_POI' });
-              setInteractionState('complete');
-              return { success: true };
-            }
+            // Check if an active cache offer already exists for this POI
+            const hasExistingCacheOffer =
+              discovery &&
+              discovery.activeOfferType === 2 && // 2=cache
+              discovery.activeOfferPoiIndex === poiIndex &&
+              discovery.cacheOfferItems.some((item) => item.itemId.some((b) => b !== 0));
 
-            // Check if a saved offer already exists for this POI
-            let existingOffer = mapPoisData?.cacheOffers?.find(
-              (o) => o.poiIndex === poiIndex
-            );
-
-            if (!existingOffer) {
+            if (!hasExistingCacheOffer) {
               debugLog('[usePoiInteraction] Sending generateCacheOffer on-chain');
               try {
                 await withErPositionRetry(() =>
@@ -1227,7 +1269,6 @@ export function usePoiInteraction(): UsePoiInteractionResult {
                     '[usePoiInteraction] generateCacheOffer hit PoiAlreadyUsed; syncing local state'
                   );
                   await Promise.all([
-                    refreshMapEntities(ctx.sessionPda),
                     refreshGameplayState(),
                     refreshSessionState(),
                   ]);
@@ -1240,21 +1281,28 @@ export function usePoiInteraction(): UsePoiInteractionResult {
                 }
               }
               debugLog('[usePoiInteraction] generateCacheOffer CONFIRMED, re-fetching...');
-              // Re-fetch to read the stored offer
-              mapPoisData = await fetchMapPois(ctx.program, ctx.mapPoisPda);
-              existingOffer = mapPoisData?.cacheOffers?.find(
-                (o) => o.poiIndex === poiIndex
-              );
+              // Re-fetch SessionDiscovery to read the stored offer
+              discovery = await fetchDiscoveryOffers(ctx.connection, ctx.sessionPda);
             } else {
               debugLog('[usePoiInteraction] Saved cache offer found for poiIndex:', poiIndex);
             }
 
-            if (!existingOffer) {
+            // Convert SessionDiscovery cache items to CacheOffer format
+            const existingOffer =
+              discovery &&
+              discovery.activeOfferType === 2 &&
+              discovery.activeOfferPoiIndex === poiIndex
+                ? discoveryCacheItemsToCacheOffer(discovery.cacheOfferItems, poiIndex)
+                : null;
+
+            if (!existingOffer || existingOffer.items.every((i) => i.itemId.every((b) => b === 0))) {
               console.error(
-                '[usePoiInteraction] No cache offer found for poiIndex:',
+                '[usePoiInteraction] No cache offer found in SessionDiscovery for poiIndex:',
                 poiIndex,
-                '| available:',
-                mapPoisData?.cacheOffers?.map((o) => o.poiIndex)
+                '| activeOfferType:',
+                discovery?.activeOfferType,
+                '| activeOfferPoiIndex:',
+                discovery?.activeOfferPoiIndex
               );
               setError('Failed to generate cache offers');
               setIsInteracting(false);
@@ -1294,14 +1342,16 @@ export function usePoiInteraction(): UsePoiInteractionResult {
               return { success: false };
             }
 
-            // Step 1: Check for existing saved oil offer, or generate one on-chain
-            let mapPoisData = await fetchMapPois(ctx.program, ctx.mapPoisPda);
+            // Step 1: Check SessionDiscovery for existing oil offer, or generate one on-chain
+            let oilDiscovery = await fetchDiscoveryOffers(ctx.connection, ctx.sessionPda);
 
-            let existingOilOffer = mapPoisData?.oilOffers?.find(
-              (o) => o.poiIndex === poiIndex
-            );
+            const hasExistingOilOffer =
+              oilDiscovery &&
+              oilDiscovery.activeOfferType === 3 && // 3=oil
+              oilDiscovery.activeOfferPoiIndex === poiIndex &&
+              oilDiscovery.oilOfferOils.some((o) => o !== 0);
 
-            if (!existingOilOffer) {
+            if (!hasExistingOilOffer) {
               debugLog('[usePoiInteraction] Sending generateOilOffer on-chain');
               try {
                 await withErPositionRetry(() =>
@@ -1317,7 +1367,6 @@ export function usePoiInteraction(): UsePoiInteractionResult {
                     '[usePoiInteraction] generateOilOffer hit PoiAlreadyUsed; syncing local state'
                   );
                   await Promise.all([
-                    refreshMapEntities(ctx.sessionPda),
                     refreshGameplayState(),
                     refreshSessionState(),
                   ]);
@@ -1330,20 +1379,23 @@ export function usePoiInteraction(): UsePoiInteractionResult {
                 }
               }
               debugLog('[usePoiInteraction] generateOilOffer CONFIRMED, re-fetching...');
-              mapPoisData = await fetchMapPois(ctx.program, ctx.mapPoisPda);
-              existingOilOffer = mapPoisData?.oilOffers?.find(
-                (o) => o.poiIndex === poiIndex
-              );
+              oilDiscovery = await fetchDiscoveryOffers(ctx.connection, ctx.sessionPda);
             } else {
               debugLog('[usePoiInteraction] Saved oil offer found for poiIndex:', poiIndex);
             }
 
-            if (!existingOilOffer) {
+            if (
+              !oilDiscovery ||
+              oilDiscovery.activeOfferType !== 3 ||
+              oilDiscovery.activeOfferPoiIndex !== poiIndex
+            ) {
               console.error(
-                '[usePoiInteraction] No oil offer found for poiIndex:',
+                '[usePoiInteraction] No oil offer found in SessionDiscovery for poiIndex:',
                 poiIndex,
-                '| available:',
-                mapPoisData?.oilOffers?.map((o) => o.poiIndex)
+                '| activeOfferType:',
+                oilDiscovery?.activeOfferType,
+                '| activeOfferPoiIndex:',
+                oilDiscovery?.activeOfferPoiIndex
               );
               setError('Failed to generate oil offers');
               setIsInteracting(false);
@@ -1353,7 +1405,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
 
             // Convert on-chain oils to POIOption[] for the modal
             const oilOptions = convertOilOfferToOptions(
-              Array.from(existingOilOffer.oils)
+              Array.from(oilDiscovery.oilOfferOils)
             );
             debugLog(
               '[usePoiInteraction] Oil offers ready:',
@@ -1373,20 +1425,88 @@ export function usePoiInteraction(): UsePoiInteractionResult {
           }
 
           // Survey Beacon (L6)
-          case POI_TYPES.SURVEY_BEACON:
-            await withErPositionRetry(() =>
-              interactSurveyBeacon(ctx, poiIndex)
-            );
-            break;
+          case POI_TYPES.SURVEY_BEACON: {
+            await withErPositionRetry(() => interactSurveyBeacon(ctx, poiIndex));
+            syncLocalPoiAsConsumed(currentPoi);
 
-          // Seismic Scanner (L7) — Deferred: show category options first, send tx when user picks
+            try {
+              await syncDiscoveryFromChain(ctx.connection, ctx.sessionPda);
+            } catch (e) {
+              console.warn('[usePoiInteraction] Failed to reveal beacon tiles in SessionDiscovery:', e);
+            }
+
+            // Refresh read-side contexts in the background; discovery already contains the visible result.
+            void (async () => {
+              try {
+                await Promise.all([refreshGameplayState(), refreshSessionState()]);
+              } catch (err) {
+                console.warn('[usePoiInteraction] Background beacon sync failed:', err);
+              }
+            })();
+
+            setInteractionState('complete');
+            return { success: true };
+          }
+
+          // Seismic Scanner (L7) — Two-step flow: generate on-chain options, then reveal selection
           case POI_TYPES.SEISMIC_SCANNER: {
+            let scannerDiscovery = await fetchDiscoveryOffers(ctx.connection, ctx.sessionPda);
+
+            const hasExistingScannerOffer =
+              scannerDiscovery &&
+              scannerDiscovery.activeOfferType === 4 && // 4=scanner
+              scannerDiscovery.activeOfferPoiIndex === poiIndex &&
+              scannerDiscovery.scannerOfferCount > 0;
+
+            if (!hasExistingScannerOffer) {
+              debugLog('[usePoiInteraction] Sending generateScannerOffer on-chain');
+              try {
+                await withErPositionRetry(() =>
+                  generateScannerOffer(ctx, poiIndex)
+                );
+              } catch (err) {
+                if (isOfferAlreadyGeneratedError(err)) {
+                  debugLog(
+                    '[usePoiInteraction] Scanner offer already exists on-chain, re-fetching'
+                  );
+                } else if (isPoiAlreadyUsedError(err)) {
+                  await Promise.all([
+                    refreshGameplayState(),
+                    refreshSessionState(),
+                  ]);
+                  syncLocalPoiAsConsumed(currentPoi);
+                  dispatch({ type: 'CLOSE_POI' });
+                  setInteractionState('complete');
+                  return { success: true };
+                } else {
+                  throw err;
+                }
+              }
+
+              scannerDiscovery = await fetchDiscoveryOffers(ctx.connection, ctx.sessionPda);
+            }
+
+            if (
+              !scannerDiscovery ||
+              scannerDiscovery.activeOfferType !== 4 ||
+              scannerDiscovery.scannerOfferCount === 0
+            ) {
+              setError('Failed to generate scanner options');
+              setIsInteracting(false);
+              setInteractionState('idle');
+              return { success: false };
+            }
+
+            const scannerOptions = convertScannerOfferToOptions(
+              Array.from(scannerDiscovery.scannerOfferTypes).slice(0, scannerDiscovery.scannerOfferCount)
+            );
+            setCacheOfferOptions(scannerOptions);
             setDeferredPoiIndex(poiIndex);
             setDeferredPoiType(POI_TYPES.SEISMIC_SCANNER);
             dispatchPoiModal(dispatch, gameState?.map?.pois, currentPoi, 'L7', 'LOCATE');
             setInteractionState('choosing');
             setIsInteracting(false);
-            return { success: true };
+            return { success: true, result: scannerOptions };
           }
 
           // Rail Waypoint (L8) — Deferred flow:
@@ -1408,25 +1528,31 @@ export function usePoiInteraction(): UsePoiInteractionResult {
           // Smuggler Hatch Shop (L9) — Enter shop on-chain, then show modal with on-chain offers
           case POI_TYPES.SMUGGLER_HATCH: {
             shopLeftRef.current = false;
-            // Check if shop is already active on-chain (e.g. reopening after closing modal)
-            let shopData = await fetchMapPois(ctx.program, ctx.mapPoisPda);
-            if (!shopData?.shopState?.active) {
+            // Check if shop is already active on-chain via SessionDiscovery
+            let shopDiscovery = await fetchDiscoveryOffers(ctx.connection, ctx.sessionPda);
+            const shopAlreadyActive =
+              shopDiscovery &&
+              shopDiscovery.activeOfferType === 1 && // 1=shop
+              shopDiscovery.shopActive !== 0;
+
+            if (!shopAlreadyActive) {
               await withErPositionRetry(() =>
                 enterShop(ctx, poiIndex)
               );
               // Re-fetch after entering
-              shopData = await fetchMapPois(ctx.program, ctx.mapPoisPda);
+              shopDiscovery = await fetchDiscoveryOffers(ctx.connection, ctx.sessionPda);
             } else {
               debugLog('[usePoiInteraction] Shop already active on-chain, skipping enterShop');
             }
-            if (shopData?.shopState?.active) {
-              setShopOffers(shopData.shopState.offers);
-              setShopRerollCount(shopData.shopState.rerollCount);
+            if (shopDiscovery && shopDiscovery.activeOfferType === 1 && shopDiscovery.shopActive !== 0) {
+              const adaptedOffers = discoveryShopOffersToItemOffers(shopDiscovery.shopOffers);
+              setShopOffers(adaptedOffers);
+              setShopRerollCount(shopDiscovery.shopRerollCount);
               const gold = gameState?.player?.stats?.gold ?? 0;
               setCacheOfferOptions(
                 convertShopOffersToOptions(
-                  shopData.shopState.offers,
-                  shopData.shopState.rerollCount,
+                  adaptedOffers,
+                  shopDiscovery.shopRerollCount,
                   gold
                 )
               );
@@ -1503,15 +1629,15 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             return { success: false };
         }
 
-        if (isOneTimePoiType(currentPoi.poiType)) {
+        if (isOneTimePoiType(currentPoi!.poiType)) {
           await assertPoiConsumedOnChain(poiIndex);
           // Mark one-time POIs as consumed locally for immediate UI feedback.
           debugLog(
             '[usePoiInteraction] On-chain interaction complete, marking POI consumed at',
-            currentPoi.x,
-            currentPoi.y
+            currentPoi!.x,
+            currentPoi!.y
           );
-          syncLocalPoiAsConsumed(currentPoi);
+          syncLocalPoiAsConsumed(currentPoi!);
         }
 
         setInteractionState('complete');
@@ -1536,9 +1662,6 @@ export function usePoiInteraction(): UsePoiInteractionResult {
       mapPoisPda,
       sessionPda,
       findPoiIndex,
-      pois.length,
-      pois,
-      refreshMapEntities,
       refreshGameplayState,
       refreshSessionState,
       assertPoiConsumedOnChain,
@@ -1550,16 +1673,17 @@ export function usePoiInteraction(): UsePoiInteractionResult {
   );
 
   /**
-   * Refresh shop state from on-chain MapPois account.
+   * Refresh shop state from SessionDiscovery account.
    */
   const refreshShopState = useCallback(async () => {
-    if (!poiProgram || !mapPoisPda) return;
-    const mapPoisData = await fetchMapPois(poiProgram, mapPoisPda);
-    if (mapPoisData?.shopState?.active) {
-      setShopOffers(mapPoisData.shopState.offers);
-      setShopRerollCount(mapPoisData.shopState.rerollCount);
+    if (!sessionPda) return;
+    const discovery = await fetchDiscoveryOffers(gameplayConnection, sessionPda);
+    if (discovery && discovery.activeOfferType === 1 && discovery.shopActive !== 0) {
+      const adaptedOffers = discoveryShopOffersToItemOffers(discovery.shopOffers);
+      setShopOffers(adaptedOffers);
+      setShopRerollCount(discovery.shopRerollCount);
     }
-  }, [poiProgram, mapPoisPda]);
+  }, [sessionPda, gameplayConnection]);
 
   /**
    * Purchase an item from the active shop.
@@ -1669,9 +1793,18 @@ export function usePoiInteraction(): UsePoiInteractionResult {
       setError(null);
 
       try {
-        await withErPositionRetry(() =>
-          fastTravel(ctx, fromPoiIndex, toPoiIndex)
-        );
+        await withErPositionRetry(() => fastTravel(ctx, fromPoiIndex, toPoiIndex));
+        const gpProg = createGameplayStateProgram(ctx.connection);
+        const [ftState] = await Promise.all([
+          fetchGameState(gpProg, ctx.gameStatePda),
+          syncDiscoveryFromChain(ctx.connection, ctx.sessionPda),
+        ]);
+        if (ftState) {
+          dispatch({ type: 'SYNC_MOVE', confirmedState: ftState });
+        }
+
+        void refreshGameplayState();
+
         return { success: true };
       } catch (err) {
         setError(getUserErrorMessage(err, 'poi_system'));
@@ -1680,7 +1813,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
         setIsInteracting(false);
       }
     },
-    [createPoiCtx]
+    [createPoiCtx, refreshGameplayState, syncDiscoveryFromChain]
   );
 
   /**
@@ -1698,18 +1831,32 @@ export function usePoiInteraction(): UsePoiInteractionResult {
       }
 
       // Validate both waypoint indices against fresh on-chain data
-      const fromValidated = await validatePoiIndex(
-        ctx.program, ctx.mapPoisPda,
-        findPoiIndex(fromPos.x, fromPos.y),
-        fromPos.x, fromPos.y,
-        'executeFastTravel(from)'
+      const fromLocalPoi = gameState?.map?.pois?.find(
+        (poi) => poi.position.x === fromPos.x && poi.position.y === fromPos.y
       );
-      const toValidated = await validatePoiIndex(
-        ctx.program, ctx.mapPoisPda,
-        findPoiIndex(toPos.x, toPos.y),
-        toPos.x, toPos.y,
-        'executeFastTravel(to)'
+      const toLocalPoi = gameState?.map?.pois?.find(
+        (poi) => poi.position.x === toPos.x && poi.position.y === toPos.y
       );
+      const fromValidated =
+        fromLocalPoi?.mapPoisIndex != null
+          ? { index: fromLocalPoi.mapPoisIndex }
+          : await validatePoiIndex(
+              ctx.program, ctx.mapPoisPda,
+              -1,
+              fromPos.x, fromPos.y,
+              'executeFastTravel(from)',
+              sessionDiscoveryPda, ctx.connection
+            );
+      const toValidated =
+        toLocalPoi?.mapPoisIndex != null
+          ? { index: toLocalPoi.mapPoisIndex }
+          : await validatePoiIndex(
+              ctx.program, ctx.mapPoisPda,
+              -1,
+              toPos.x, toPos.y,
+              'executeFastTravel(to)',
+              sessionDiscoveryPda, ctx.connection
+            );
 
       if (fromValidated.index === -1 || toValidated.index === -1) {
         return { success: false, error: 'Waypoint not found' };
@@ -1722,11 +1869,16 @@ export function usePoiInteraction(): UsePoiInteractionResult {
         await withErPositionRetry(() =>
           fastTravel(ctx, fromValidated.index, toValidated.index)
         );
-
-        await refreshGameplayState();
-
         const gameplayProgram = createGameplayStateProgram(gameplayReadConnection);
-        const updatedState = await fetchGameState(gameplayProgram, ctx.gameStatePda);
+        const [updatedState] = await Promise.all([
+          fetchGameState(gameplayProgram, ctx.gameStatePda),
+          syncDiscoveryFromChain(ctx.connection, ctx.sessionPda),
+        ]);
+        if (updatedState) {
+          dispatch({ type: 'SYNC_MOVE', confirmedState: updatedState });
+        }
+
+        void refreshGameplayState();
 
         return { success: true, newState: updatedState };
       } catch (err) {
@@ -1742,6 +1894,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
       gameplayReadConnection,
       findPoiIndex,
       refreshGameplayState,
+      syncDiscoveryFromChain,
     ]
   );
 
@@ -1806,14 +1959,16 @@ export function usePoiInteraction(): UsePoiInteractionResult {
         }
 
         // Validate the stored poiIndex against fresh on-chain data.
-        if (currentPoi) {
+        if (currentPoi && currentPoi.mapPoisIndex == null) {
           const cacheValidated = await validatePoiIndex(
             ctx.program,
             ctx.mapPoisPda,
             confirmedPoiIndex,
             currentPoi.x,
             currentPoi.y,
-            'selectCacheOffer'
+            'selectCacheOffer',
+            sessionDiscoveryPda,
+            ctx.connection
           );
           if (cacheValidated.index === -1) {
             setError('POI state changed. Please try again.');
@@ -1958,16 +2113,18 @@ export function usePoiInteraction(): UsePoiInteractionResult {
       }
 
       // Validate deferredPoiIndex against fresh on-chain data before using it.
-      const confirmValidated = currentPoi
+      const confirmValidated = currentPoi && currentPoi.mapPoisIndex == null
         ? await validatePoiIndex(
             ctx.program,
             ctx.mapPoisPda,
             deferredPoiIndex,
             currentPoi.x,
             currentPoi.y,
-            'confirmPoiSelection'
+            'confirmPoiSelection',
+            sessionDiscoveryPda,
+            ctx.connection
           )
-        : { index: deferredPoiIndex };
+        : { index: currentPoi?.mapPoisIndex ?? deferredPoiIndex };
       const validatedPoiIndex = confirmValidated.index;
       if (validatedPoiIndex === -1) {
         setError('POI state changed. Please try again.');
@@ -2016,6 +2173,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
               '[usePoiInteraction] Sending interactRest on-chain | poiIndex:',
               validatedPoiIndex
             );
+            const restCenter = playerPosition ?? { x: currentPoi?.x ?? 0, y: currentPoi?.y ?? 0 };
             const restSignature = await withErPositionRetry(() =>
               interactRest(ctx, validatedPoiIndex)
             );
@@ -2026,26 +2184,17 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             // GameplayStateContext must be updated before we dispatch to the reducer.
             // SessionContext must be updated so GameScreen's boss detection useEffect
             // sees bossFightReady=true (e.g., after rest on Night 3).
-            await Promise.all([refreshGameplayState(), refreshSessionState()]);
-
-            // Parse inline boss combat (if Night3 triggered resolution in the same tx).
-            // We do this before syncing local state so navigation can use authoritative logs.
+            // Fetch game state, refresh contexts, and parse boss combat ALL in parallel
             const gameplayProgram = createGameplayStateProgram(gameplayReadConnection);
-            let parsedBossCombat:
-              | Awaited<ReturnType<typeof parseBossCombatFromMoveTx>>
-              | undefined;
-            try {
-              parsedBossCombat = await parseBossCombatFromMoveTx(
+            const [updatedState, , parsedBossCombat] = await Promise.all([
+              fetchGameState(gameplayProgram, ctx.gameStatePda),
+              Promise.all([refreshGameplayState(), refreshSessionState()]),
+              parseBossCombatFromMoveTx(
                 gameplayConnection,
                 restSignature,
                 gameplayProgram
-              );
-            } catch (err) {
-              console.warn('[usePoiInteraction] Failed to parse rest tx boss combat:', err);
-            }
-
-            // Now fetch and sync to local reducer (healed HP, new phase)
-            const updatedState = await fetchGameState(gameplayProgram, ctx.gameStatePda);
+              ).catch(() => undefined as Awaited<ReturnType<typeof parseBossCombatFromMoveTx>> | undefined),
+            ]);
             if (updatedState) {
               debugLog(
                 '[usePoiInteraction] Syncing REST result | hp:',
@@ -2054,6 +2203,21 @@ export function usePoiInteraction(): UsePoiInteractionResult {
                 updatedState.phase
               );
               dispatch({ type: 'SYNC_MOVE', confirmedState: updatedState });
+            }
+
+            // Fetch discovery after rest tx
+            {
+              const [restSdPda] = deriveSessionDiscoveryPda(ctx.sessionPda);
+              const restDiscovery = await fetchSessionDiscovery(
+                createMapGeneratorProgram(ctx.connection),
+                restSdPda
+              ).catch(() => null);
+              if (restDiscovery) {
+                const sdTiles = unpackDiscoveryTiles(restDiscovery, restDiscovery.mapWidth, restDiscovery.mapHeight);
+                const sdEnemies = convertDiscoveredEnemies(restDiscovery.discoveredEnemies, restDiscovery.discoveredEnemyCount);
+                const sdPois = convertDiscoveredPois(restDiscovery.discoveredPois, restDiscovery.discoveredPoiCount);
+                dispatch({ type: 'SYNC_DISCOVERY', tiles: sdTiles, enemies: sdEnemies, pois: sdPois });
+              }
             }
 
             // Detect boss resolution:
@@ -2102,13 +2266,8 @@ export function usePoiInteraction(): UsePoiInteractionResult {
               }
             }
 
-            // Only consume one-time POIs.
-            if (currentPoi && isOneTimePoiType(deferredPoiType)) {
-              consumePoi(currentPoi.x, currentPoi.y);
-            }
-
             // Mark one-time POIs as visited locally.
-            if (isOneTimePoiType(deferredPoiType)) {
+            if (currentPoi && isOneTimePoiType(deferredPoiType)) {
               const localRestPoi = gameState?.map?.pois?.find(
                 (p) => p.position.x === currentPoi?.x && p.position.y === currentPoi?.y
               );
@@ -2156,10 +2315,13 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             );
             debugLog('[usePoiInteraction] Tool oil applied on-chain:', modification);
 
-            // Update tool from confirmed on-chain inventory (not optimistic)
+            // Fetch inventory + refresh gameplay in parallel
             const oilInventoryProgram = createPlayerInventoryProgram(gameplayReadConnection);
             const [oilInventoryPda] = deriveInventoryPda(ctx.sessionPda);
-            const oilInventoryData = await fetchInventory(oilInventoryProgram, oilInventoryPda);
+            const [oilInventoryData] = await Promise.all([
+              fetchInventory(oilInventoryProgram, oilInventoryPda),
+              refreshGameplayState(),
+            ]);
 
             if (oilInventoryData?.tool) {
               const confirmedOilTool = convertToolInstance(oilInventoryData.tool);
@@ -2188,17 +2350,12 @@ export function usePoiInteraction(): UsePoiInteractionResult {
               }
             }
 
-            // Refresh map entities to reflect POI as used
-            if (sessionPda) {
-              refreshMapEntities(sessionPda).catch((err) =>
-                console.warn('[usePoiInteraction] Failed to refresh map entities:', err)
-              );
-            }
+            // POI consumed state synced via SYNC_DISCOVERY on next move
             break;
           }
 
           case POI_TYPES.SEISMIC_SCANNER: {
-            const label = gameState?.activePOI?.options?.[optionIndex]?.label ?? '';
+            const label = cacheOfferOptions?.[optionIndex]?.label ?? gameState?.activePOI?.options?.[optionIndex]?.label ?? '';
             if (label === 'Leave' || !label) {
               // User selected Leave — no on-chain tx needed
               setDeferredPoiIndex(null);
@@ -2207,18 +2364,39 @@ export function usePoiInteraction(): UsePoiInteractionResult {
               setIsInteracting(false);
               return { success: true };
             }
-            const scanCat = labelToScanCategory(label);
+
+            // Read scanner offer and pre-interaction discovery state from SessionDiscovery
+            const discoveryBefore = await fetchDiscoveryOffers(ctx.connection, ctx.sessionPda);
+            if (
+              !discoveryBefore ||
+              discoveryBefore.activeOfferType !== 4 ||
+              discoveryBefore.scannerOfferCount === 0
+            ) {
+              setIsInteracting(false);
+              return { success: false, error: 'Scanner options expired. Try again.' };
+            }
+            const targetPoiType = discoveryBefore.scannerOfferTypes[optionIndex];
+            if (targetPoiType == null || optionIndex >= discoveryBefore.scannerOfferCount) {
+              setIsInteracting(false);
+              return { success: false, error: 'Scanner options expired. Try again.' };
+            }
+
             await withErPositionRetry(() =>
-              interactSeismicScanner(ctx, validatedPoiIndex, scanCat)
+              interactSeismicScanner(ctx, validatedPoiIndex, targetPoiType)
             );
-            // Dispatch REVEAL_POI_LOCATIONS to reveal only the nearest POI of the selected type
-            const poiDefId = labelToPoiDefId(label);
-            if (poiDefId) {
-              dispatch({ type: 'REVEAL_POI_LOCATIONS', poiDefId });
-              debugLog(
-                '[usePoiInteraction] Dispatched REVEAL_POI_LOCATIONS for poiDefId:',
-                poiDefId
-              );
+            await Promise.all([
+              refreshGameplayState(),
+              refreshSessionState(),
+            ]);
+
+            const discoveryAfter = await fetchDiscoveryOffers(ctx.connection, ctx.sessionPda);
+
+            // Sync tile types, enemies, and POIs from SessionDiscovery
+            if (discoveryAfter) {
+              const sdTiles = unpackDiscoveryTiles(discoveryAfter, discoveryAfter.mapWidth, discoveryAfter.mapHeight);
+              const sdEnemies = convertDiscoveredEnemies(discoveryAfter.discoveredEnemies, discoveryAfter.discoveredEnemyCount);
+              const sdPois = convertDiscoveredPois(discoveryAfter.discoveredPois, discoveryAfter.discoveredPoiCount);
+              dispatch({ type: 'SYNC_DISCOVERY', tiles: sdTiles, enemies: sdEnemies, pois: sdPois });
             }
             break;
           }
@@ -2250,28 +2428,60 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             if (coordMatch) {
               const destX = parseInt(coordMatch[1], 10);
               const destY = parseInt(coordMatch[2], 10);
-              const destPoiIndex = pois.findIndex((p) => p.x === destX && p.y === destY);
 
-              if (destPoiIndex !== -1) {
+              // Re-validate both indices against fresh on-chain data.
+              // After SYNC_DISCOVERY, local pois may have stale indices.
+              // Fetch current on-chain position (playerPosition may be stale from closure).
+              const freshGameState = await fetchGameState(
+                createGameplayStateProgram(gameplayReadConnection),
+                ctx.gameStatePda
+              );
+              const currentX = freshGameState?.positionX ?? playerPosition?.x ?? 0;
+              const currentY = freshGameState?.positionY ?? playerPosition?.y ?? 0;
+              console.log('[usePoiInteraction] Fast travel validation:', {
+                freshPosition: { x: currentX, y: currentY },
+                closurePosition: playerPosition,
+                destCoords: { x: destX, y: destY },
+                validatedPoiIndex,
+              });
+              const fromValidated = await validatePoiIndex(
+                ctx.program, ctx.mapPoisPda,
+                validatedPoiIndex,
+                currentX, currentY,
+                'fastTravel(from)',
+                sessionDiscoveryPda, ctx.connection
+              );
+              const destValidated = await validatePoiIndex(
+                ctx.program, ctx.mapPoisPda,
+                -1,
+                destX, destY,
+                'fastTravel(to)',
+                sessionDiscoveryPda, ctx.connection
+              );
+
+              if (fromValidated.index !== -1 && destValidated.index !== -1) {
                 debugLog(
                   '[usePoiInteraction] Fast travel | from poiIndex:',
-                  validatedPoiIndex,
+                  fromValidated.index,
                   '| to poiIndex:',
-                  destPoiIndex
+                  destValidated.index
                 );
                 await withErPositionRetry(() =>
-                  fastTravel(ctx, validatedPoiIndex, destPoiIndex)
+                  fastTravel(ctx, fromValidated.index, destValidated.index)
                 );
                 debugLog('[usePoiInteraction] fastTravel CONFIRMED');
 
-                // Refresh gameplay state to sync position
-                await refreshGameplayState();
-
                 const gameplayProgram = createGameplayStateProgram(gameplayReadConnection);
-                const updatedState = await fetchGameState(gameplayProgram, ctx.gameStatePda);
+                const [updatedState] = await Promise.all([
+                  fetchGameState(gameplayProgram, ctx.gameStatePda),
+                  syncDiscoveryFromChain(ctx.connection, ctx.sessionPda),
+                ]);
                 if (updatedState) {
                   dispatch({ type: 'SYNC_MOVE', confirmedState: updatedState });
                 }
+
+                void refreshGameplayState();
+
               }
             }
 
@@ -2300,31 +2510,25 @@ export function usePoiInteraction(): UsePoiInteractionResult {
                 shopReroll(ctx)
               );
 
-              // Sync gold from on-chain state after reroll
-              await refreshGameplayState();
+              // Fetch game state + discovery + refresh in parallel after reroll
               const rerollGameplayProgram = createGameplayStateProgram(gameplayReadConnection);
-              const updatedRerollState = await fetchGameState(
-                rerollGameplayProgram,
-                ctx.gameStatePda
-              );
+              const [updatedRerollState, rerollDiscovery] = await Promise.all([
+                fetchGameState(rerollGameplayProgram, ctx.gameStatePda),
+                fetchDiscoveryOffers(ctx.connection, ctx.sessionPda),
+                refreshGameplayState(),
+              ]);
               if (updatedRerollState) {
-                debugLog(
-                  '[usePoiInteraction] Syncing SHOP reroll | gold:',
-                  updatedRerollState.gold
-                );
                 dispatch({ type: 'SYNC_MOVE', confirmedState: updatedRerollState });
               }
-
-              // Re-fetch shop state and update options
-              const rerollData = await fetchMapPois(ctx.program, ctx.mapPoisPda);
-              if (rerollData?.shopState?.active) {
-                setShopOffers(rerollData.shopState.offers);
-                setShopRerollCount(rerollData.shopState.rerollCount);
+              if (rerollDiscovery && rerollDiscovery.activeOfferType === 1 && rerollDiscovery.shopActive !== 0) {
+                const rerollAdaptedOffers = discoveryShopOffersToItemOffers(rerollDiscovery.shopOffers);
+                setShopOffers(rerollAdaptedOffers);
+                setShopRerollCount(rerollDiscovery.shopRerollCount);
                 const gold = updatedRerollState?.gold ?? gameState?.player?.stats?.gold ?? 0;
                 setCacheOfferOptions(
                   convertShopOffersToOptions(
-                    rerollData.shopState.offers,
-                    rerollData.shopState.rerollCount,
+                    rerollAdaptedOffers,
+                    rerollDiscovery.shopRerollCount,
                     gold
                   )
                 );
@@ -2341,23 +2545,18 @@ export function usePoiInteraction(): UsePoiInteractionResult {
 
             // Sync gold + inventory from on-chain state after purchase
             await refreshGameplayState();
+            // Fetch game state, inventory, and shop offers all in parallel
             const gameplayProgram = createGameplayStateProgram(gameplayReadConnection);
-            const updatedShopState = await fetchGameState(gameplayProgram, ctx.gameStatePda);
-            if (updatedShopState) {
-              debugLog(
-                '[usePoiInteraction] Syncing SHOP purchase | gold:',
-                updatedShopState.gold
-              );
-              dispatch({ type: 'SYNC_MOVE', confirmedState: updatedShopState });
-            }
-
-            // Sync inventory so newly purchased gear is available to other POIs (e.g. Rune Kiln)
             const shopInventoryProgram = createPlayerInventoryProgram(gameplayReadConnection);
             const [shopInventoryPda] = deriveInventoryPda(ctx.sessionPda);
-            const shopInventoryData = await fetchInventory(
-              shopInventoryProgram,
-              shopInventoryPda
-            );
+            const [updatedShopState, shopInventoryData, purchaseDiscovery] = await Promise.all([
+              fetchGameState(gameplayProgram, ctx.gameStatePda),
+              fetchInventory(shopInventoryProgram, shopInventoryPda),
+              fetchDiscoveryOffers(ctx.connection, ctx.sessionPda),
+            ]);
+            if (updatedShopState) {
+              dispatch({ type: 'SYNC_MOVE', confirmedState: updatedShopState });
+            }
             if (shopInventoryData) {
               const confirmedShopTool = shopInventoryData.tool
                 ? convertToolInstance(shopInventoryData.tool)
@@ -2376,16 +2575,16 @@ export function usePoiInteraction(): UsePoiInteractionResult {
               });
             }
 
-            // Re-fetch shop state and update options
-            const purchaseData = await fetchMapPois(ctx.program, ctx.mapPoisPda);
-            if (purchaseData?.shopState?.active) {
-              setShopOffers(purchaseData.shopState.offers);
-              setShopRerollCount(purchaseData.shopState.rerollCount);
+            // Update shop options from the parallel-fetched SessionDiscovery
+            if (purchaseDiscovery && purchaseDiscovery.activeOfferType === 1 && purchaseDiscovery.shopActive !== 0) {
+              const purchaseAdaptedOffers = discoveryShopOffersToItemOffers(purchaseDiscovery.shopOffers);
+              setShopOffers(purchaseAdaptedOffers);
+              setShopRerollCount(purchaseDiscovery.shopRerollCount);
               const gold = updatedShopState?.gold ?? gameState?.player?.stats?.gold ?? 0;
               setCacheOfferOptions(
                 convertShopOffersToOptions(
-                  purchaseData.shopState.offers,
-                  purchaseData.shopState.rerollCount,
+                  purchaseAdaptedOffers,
+                  purchaseDiscovery.shopRerollCount,
                   gold
                 )
               );
@@ -2754,11 +2953,10 @@ export function usePoiInteraction(): UsePoiInteractionResult {
           if (validatedPoiIndex !== null) {
             await assertPoiConsumedOnChain(validatedPoiIndex);
           }
-          consumePoi(currentPoi.x, currentPoi.y);
         }
 
         // Mark one-time POIs as visited in local game state.
-        if (isOneTimePoiType(deferredPoiType)) {
+        if (currentPoi && isOneTimePoiType(deferredPoiType)) {
           const localPoiForDeferred = gameState?.map?.pois?.find(
             (p) => p.position.x === currentPoi?.x && p.position.y === currentPoi?.y
           );
@@ -2792,17 +2990,14 @@ export function usePoiInteraction(): UsePoiInteractionResult {
       deferredPoiType,
       gameplayConnection,
       currentPoi,
-      consumePoi,
       dispatch,
       gameState?.activePOI?.options,
       gameState?.player?.stats?.gold,
       gameState?.player?.equippedTool,
       cacheOfferOptions,
-      refreshMapEntities,
       refreshGameplayState,
       refreshSessionState,
       sessionPda,
-      pois,
     ]
   );
 

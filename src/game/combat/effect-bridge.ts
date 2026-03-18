@@ -99,8 +99,8 @@ export function collectAllEffects(gear: Gear[], tool: Tool | null): EquippedEffe
 // ============================================================================
 
 export interface BattleFlags {
-  /** Blast immunity (G-BL-02: Blast Suit) */
-  blastImmunity: boolean;
+  /** Self-damage multiplier for BLAST countdowns */
+  blastSelfDamageMultiplier: number;
   /** Double bomb triggers (G-BL-08: Twin-Fuse Knot) */
   doubleBombTrigger: boolean;
   /** Bonus added to the first opponent-targeted non-weapon hit each turn */
@@ -109,14 +109,24 @@ export interface BattleFlags {
   doubleDetonationSecond: number;
   /** Double on-hit effects (G-SC-08: Gear-Link Medallion) */
   doubleOnHitEffects: boolean;
+  /** OnHit effects can trigger on each strike separately */
+  onHitPerStrike: boolean;
   /** Non-weapon damage amplification total */
   nonWeaponAmplify: number;
+  /** Bomb-only bonus damage */
+  bombDamageBonus: number;
   /** Armor piercing amount */
   armorPiercing: number;
+  /** Reduce weapon damage while armored */
+  weaponDamageReductionWhileArmored: number;
+  /** Extra shrapnel retaliation damage per consumed stack */
+  shrapnelReflectBonus: number;
   /** Heal amount when prevent-death triggers */
   preventDeathHeal: number;
   /** Prevent death charges */
   preventDeathCharges: number;
+  /** Max Gold->Armor conversions this battle */
+  goldArmorConversionLimit: number;
   /** Has Trigger All Shards effect (T-GR-02: Gemfinder Staff) */
   triggerAllShards: boolean;
 }
@@ -126,15 +136,20 @@ export interface BattleFlags {
  */
 export function extractBattleFlags(effects: EquippedEffect[]): BattleFlags {
   const flags: BattleFlags = {
-    blastImmunity: false,
+    blastSelfDamageMultiplier: 100,
     doubleBombTrigger: false,
     doubleDetonationFirst: 0,
     doubleDetonationSecond: 0,
     doubleOnHitEffects: false,
+    onHitPerStrike: false,
     nonWeaponAmplify: 0,
+    bombDamageBonus: 0,
     armorPiercing: 0,
+    weaponDamageReductionWhileArmored: 0,
+    shrapnelReflectBonus: 0,
     preventDeathHeal: 0,
     preventDeathCharges: 0,
+    goldArmorConversionLimit: 0,
     triggerAllShards: false,
   };
 
@@ -146,7 +161,7 @@ export function extractBattleFlags(effects: EquippedEffect[]): BattleFlags {
 
     switch (effect.effectType) {
       case 'BlastImmunity':
-        flags.blastImmunity = true;
+        flags.blastSelfDamageMultiplier = Math.min(flags.blastSelfDamageMultiplier, 50);
         break;
       case 'DoubleBombTrigger':
         flags.doubleBombTrigger = true;
@@ -160,11 +175,29 @@ export function extractBattleFlags(effects: EquippedEffect[]): BattleFlags {
       case 'DoubleOnHitEffects':
         flags.doubleOnHitEffects = true;
         break;
+      case 'OnHitPerStrike':
+        flags.onHitPerStrike = true;
+        break;
       case 'AmplifyNonWeaponDamage':
         flags.nonWeaponAmplify += effect.value;
         break;
+      case 'BombDamageBonus':
+        flags.bombDamageBonus += effect.value;
+        break;
+      case 'ReduceWeaponDamageWhileArmored':
+        flags.weaponDamageReductionWhileArmored = Math.max(
+          flags.weaponDamageReductionWhileArmored,
+          effect.value
+        );
+        break;
+      case 'ShrapnelReflectBonus':
+        flags.shrapnelReflectBonus += effect.value;
+        break;
       case 'PreventDeath':
         flags.preventDeathHeal = Math.max(flags.preventDeathHeal, effect.value);
+        break;
+      case 'LimitGoldArmorConversions':
+        flags.goldArmorConversionLimit = Math.max(flags.goldArmorConversionLimit, effect.value);
         break;
       case 'TriggerAllShards':
         flags.triggerAllShards = true;
@@ -272,7 +305,7 @@ export function createEffectContext(
     setStoredDamage: callbacks.setStoredDamage,
     nonWeaponAmplify: flags.nonWeaponAmplify,
     setNonWeaponAmplify: () => {},
-    blastImmunity: flags.blastImmunity,
+    blastSelfDamageMultiplier: flags.blastSelfDamageMultiplier,
     doubleBombTrigger: flags.doubleBombTrigger,
     doubleDetonationFirst: flags.doubleDetonationFirst,
     doubleDetonationSecond: flags.doubleDetonationSecond,
@@ -287,11 +320,18 @@ export function createEffectContext(
     activeBombSelfDamageReduction: 0,
     setActiveBombSelfDamageReduction: () => {},
     doubleOnHitEffects: flags.doubleOnHitEffects,
+    onHitPerStrike: flags.onHitPerStrike,
+    bombDamageBonus: flags.bombDamageBonus,
+    weaponDamageReductionWhileArmored: flags.weaponDamageReductionWhileArmored,
+    shrapnelReflectBonus: flags.shrapnelReflectBonus,
     armorPiercing: flags.armorPiercing,
     preventDeathHeal: flags.preventDeathHeal,
     setArmorPiercing: () => {},
     preventDeathCharges: extraState.preventDeathCharges,
     setPreventDeathCharges: callbacks.setPreventDeathCharges,
+    goldArmorConversionLimit: flags.goldArmorConversionLimit,
+    goldArmorConversionsUsed: 0,
+    setGoldArmorConversionsUsed: () => {},
     countdownItems: extraState.countdownItems,
     firstTimeWoundedTriggered: extraState.firstTimeWoundedTriggered,
     setFirstTimeWoundedTriggered: callbacks.setFirstTimeWoundedTriggered,

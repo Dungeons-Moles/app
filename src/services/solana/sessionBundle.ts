@@ -28,7 +28,7 @@ import {
   deriveMapVrfStatePda,
   derivePoiVrfStatePda,
   deriveGameplayVrfStatePda,
-  deriveDuelSessionPda,
+  deriveSessionDiscoveryPda,
   DEFAULT_SESSION_SIGNER_FUNDING,
 } from './constants';
 import { SOLANA_CONFIG } from './config';
@@ -47,6 +47,7 @@ export interface SessionBundleResult {
   poisPda: PublicKey;
   inventoryPda: PublicKey;
   generatedMapPda: PublicKey;
+  sessionDiscoveryPda: PublicKey;
 }
 
 export interface SessionPrograms {
@@ -87,6 +88,7 @@ export async function createSessionBundle(
   const [poisPda] = deriveMapPoisPda(sessionPda);
   const [inventoryPda] = deriveInventoryPda(sessionPda);
   const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
+  const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
   const [mapConfigPda] = deriveMapConfigPda();
 
   const startSessionIx = await programs.sessionManager.methods
@@ -103,6 +105,7 @@ export async function createSessionBundle(
       mapEnemies: enemiesPda,
       mapPois: poisPda,
       inventory: inventoryPda,
+      sessionDiscovery: sessionDiscoveryPda,
       mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
       gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
       poiSystemProgram: SOLANA_CONFIG.programs.poiSystem,
@@ -127,6 +130,7 @@ export async function createSessionBundle(
     poisPda,
     inventoryPda,
     generatedMapPda,
+    sessionDiscoveryPda,
   };
 }
 
@@ -163,10 +167,11 @@ export async function endSession(
   const [mapEnemiesPda] = deriveMapEnemiesPda(sessionPda);
   const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
   const [mapPoisPda] = deriveMapPoisPda(sessionPda);
+  const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
 
   const endSessionIx = await program.methods
     .endSession(campaignLevel)
-    .accounts({
+    .accountsPartial({
       gameSession: sessionPda,
       gameState: gameStatePda,
       mapEnemies: mapEnemiesPda,
@@ -177,12 +182,14 @@ export async function endSession(
       sessionSigner: sessionSignerPubkey,
       sessionManagerAuthority: deriveSessionManagerAuthorityPda()[0],
       inventory: inventoryPda,
+      sessionDiscovery: sessionDiscoveryPda,
+      gauntletEchoes: null,
       playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
       gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
       playerProfileProgram: SOLANA_CONFIG.programs.playerProfile,
       mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
       poiSystemProgram: SOLANA_CONFIG.programs.poiSystem,
-    })
+    } as any)
     .instruction();
 
   const transaction = new Transaction();
@@ -202,8 +209,8 @@ export async function endSession(
  * Used when player wants to quit a session early.
  * Closes all session-related accounts to allow starting a new session on the same level.
  *
- * For duel sessions, automatically detects and prepends a reset_duel_entry instruction
- * to refund staked SOL and clean up duel state before closing the session.
+ * If a duel_entry exists for this session PDA, prepend reset_duel_entry to refund
+ * staked SOL and clean up duel state before closing the session.
  */
 export async function abandonSession(
   connection: Connection,
@@ -220,26 +227,24 @@ export async function abandonSession(
   const [mapEnemiesPda] = deriveMapEnemiesPda(sessionPda);
   const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
   const [mapPoisPda] = deriveMapPoisPda(sessionPda);
+  const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
 
   const transaction = new Transaction();
 
-  // Auto-detect duel sessions and prepend reset_duel_entry to refund and clean up
-  const [duelPda] = deriveDuelSessionPda(playerPubkey, duelNonce);
-  const isDuelSession = sessionPda.equals(duelPda);
-  if (isDuelSession) {
-    const [duelEntryPda] = deriveDuelEntryPda(sessionPda);
-    const duelEntryInfo = await connection.getAccountInfo(duelEntryPda);
-    if (duelEntryInfo) {
-      const gameplayProgram = createGameplayStateProgram(connection);
-      const resetIx = await buildResetDuelEntryInstruction(
-        gameplayProgram,
-        sessionPda,
-        gameStatePda,
-        playerPubkey,
-        sessionSignerPubkey
-      );
-      transaction.add(resetIx);
-    }
+  // duel_entry is non-delegated and keyed by session PDA, so detect it directly
+  // instead of relying on a caller-provided duel nonce.
+  const [duelEntryPda] = deriveDuelEntryPda(sessionPda);
+  const duelEntryInfo = await connection.getAccountInfo(duelEntryPda);
+  if (duelEntryInfo) {
+    const gameplayProgram = createGameplayStateProgram(connection);
+    const resetIx = await buildResetDuelEntryInstruction(
+      gameplayProgram,
+      sessionPda,
+      gameStatePda,
+      playerPubkey,
+      sessionSignerPubkey
+    );
+    transaction.add(resetIx);
   }
 
   // Check which VRF accounts exist and are closeable (owned by the program, not delegated).
@@ -269,6 +274,8 @@ export async function abandonSession(
       player: playerPubkey,
       sessionSigner: sessionSignerPubkey,
       inventory: inventoryPda,
+      sessionDiscovery: sessionDiscoveryPda,
+      gauntletEchoes: null,
       mapVrfState: mapVrfInfo ? mapVrfStatePda : null,
       poiVrfState: poiVrfInfo ? poiVrfStatePda : null,
       gameplayVrfState: gameplayVrfInfo ? gameplayVrfStatePda : null,

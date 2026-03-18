@@ -71,7 +71,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['STONE'],
     effect: {
       timing: 'EVERY_OTHER_TURN',
-      description: 'Every other turn: gain 2/4/8 ARM',
+      description: 'Every other turn: gain 2/4/8 ARM and 1/2/4 Shrapnel',
     },
   },
   I5: {
@@ -84,7 +84,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['STONE'],
     effect: {
       timing: 'BATTLE_START',
-      description: 'Exposed (once per battle): gain 4/8/16 ARM',
+      description: 'Exposed (once per battle): gain 4/8/16 ARM and 2/4/8 Shrapnel',
     },
   },
   I6: {
@@ -171,8 +171,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['SCOUT'],
     effect: {
       timing: 'BATTLE_START',
-      description:
-        'If you act first on Turn 1, gain +1/2/4 DIG and +2/4/8 ARM',
+      description: 'If you act first on Turn 1, gain +1/2/4 DIG and +2/4/8 ARM',
     },
   },
   I13: {
@@ -185,8 +184,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['SCOUT'],
     effect: {
       timing: 'BATTLE_START',
-      description:
-        'If DIG > enemy DIG, gain +3/6/12 ARM',
+      description: 'If DIG > enemy DIG, gain +3/6/12 ARM',
     },
   },
   I14: {
@@ -212,8 +210,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['SCOUT'],
     effect: {
       timing: 'BATTLE_START',
-      description:
-        'If DIG > enemy ARM: your strikes ignore 2/4/8 ARM',
+      description: 'If DIG > enemy ARM: your strikes ignore 2/4/8 ARM',
     },
   },
   I16: {
@@ -284,7 +281,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     effect: {
       timing: 'TURN_START',
       description:
-        'Turn Start: convert 1 Gold → 4/8/16 ARM; gold gains increased by 50/100/200%',
+        'Turn Start: convert 1 Gold → 4/8/16 ARM (max 3 times per battle); gold gains increased by 50/100/200%',
     },
   },
   I21: {
@@ -353,7 +350,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['BLAST'],
     effect: {
       timing: 'COUNTDOWN',
-      description: 'Countdown(2): deal 10/20/40 to enemy and 4/8/16 to you (non-weapon)',
+      description: 'Countdown(3): deal 8/14/24 to enemy and 4/6/10 to you (non-weapon)',
     },
   },
   I26: {
@@ -366,7 +363,8 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['BLAST'],
     effect: {
       timing: 'PASSIVE',
-      description: 'You ignore self-BLAST damage; non-weapon damage grants +1/2/4 ARM once/turn',
+      description:
+        'Your BLAST self-damage is reduced by 50% (round down); non-weapon damage grants +1/2/4 ARM once/turn',
     },
   },
   I27: {
@@ -407,7 +405,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     effect: {
       timing: 'BATTLE_START',
       description:
-        'Reduce all bomb Countdown by 1/2/4 (min 0)',
+        'Reduce Countdown of all your bomb items by 1 (min 1); your bombs deal +0/2/4 extra damage to enemies',
     },
   },
   I30: {
@@ -420,7 +418,8 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['BLAST'],
     effect: {
       timing: 'BATTLE_START',
-      description: 'Battle Start: deal 2/4/8 non-weapon damage; your next bomb deals +3/6/12 and self-damage -2/4/8',
+      description:
+        'Battle Start: deal 2/4/8 non-weapon damage; your next bomb deals +3/6/12 and self-damage -2/4/8',
     },
   },
   I31: {
@@ -433,8 +432,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['BLAST'],
     effect: {
       timing: 'TURN_START',
-      description:
-        'Turn Start: store +2/4/8 damage; when Exposed or Turn 5+: deal stored damage',
+      description: 'Turn Start: store +2/4/8 damage; when Exposed or Turn 5+: deal stored damage',
     },
   },
   I32: {
@@ -490,8 +488,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['FROST'],
     effect: {
       timing: 'BATTLE_START',
-      description:
-        'If you act first on Turn 1: apply 2/4/8 Chill and gain +2/4/8 ARM',
+      description: 'If you act first on Turn 1: apply 2/4/8 Chill and gain +2/4/8 ARM',
     },
   },
   I36: {
@@ -526,7 +523,8 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['FROST'],
     effect: {
       timing: 'TURN_START',
-      description: 'Turn Start: if enemy has Chill, gain 2/4/8 ARM and deal 2/4/8 non-weapon damage',
+      description:
+        'Turn Start: if enemy has Chill, gain 2/4/8 ARM and deal 2/4/8 non-weapon damage',
     },
   },
   I39: {
@@ -583,7 +581,8 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['RUST'],
     effect: {
       timing: 'ON_HIT',
-      description: 'On Hit (once/turn): apply 1/2/4 Rust; if enemy has Rust ≥ 2, deal 2/4/8 non-weapon damage',
+      description:
+        'On Hit (once/turn): apply 1/2/4 Rust; if enemy has Rust ≥ 2, deal 2/4/8 non-weapon damage',
     },
   },
   I43: {
@@ -635,8 +634,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['RUST'],
     effect: {
       timing: 'TURN_START',
-      description:
-        'Turn Start: if enemy has Rust or no ARM, deal 2/4/8 non-weapon damage',
+      description: 'Turn Start: if enemy has Rust or no ARM, deal 2/4/8 non-weapon damage',
     },
   },
   I47: {
@@ -649,7 +647,8 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['RUST'],
     effect: {
       timing: 'ON_HIT',
-      description: 'On Hit (once/turn): apply +2/4/8 additional Rust; if enemy has 0 ARM, deal 2/4/8 non-weapon damage',
+      description:
+        'On Hit (once/turn): apply +2/4/8 additional Rust; if enemy has 0 ARM, deal 2/4/8 non-weapon damage',
     },
   },
   I48: {
@@ -662,7 +661,8 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['RUST'],
     effect: {
       timing: 'PASSIVE',
-      description: 'Whenever you apply Rust (once/turn): gain 2/4/8 Gold; Battle Start: apply 1/2/4 Rust',
+      description:
+        'Whenever you apply Rust (once/turn): gain 2/4/8 Gold; Battle Start: apply 1/2/4 Rust',
     },
   },
 
@@ -786,7 +786,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     baseRarity: 'COMMON',
     stats: {},
     tags: ['TEMPO'],
-    // Stats-only passive: baked Battle Start stats are shown in the Stats section
+    // Baked Battle Start stats are shown in the Stats section
   },
   I58: {
     id: 'I58',
@@ -812,7 +812,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     effect: {
       timing: 'BATTLE_START',
       description:
-        'If enemy acts first on Turn 1, gain +7/14/28 ARM before damage',
+        'If enemy acts first on Turn 1, gain +7/14/28 ARM and 2/4/8 Shrapnel before damage',
     },
   },
   I60: {
@@ -851,7 +851,8 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['TEMPO'],
     effect: {
       timing: 'FIRST_TURN',
-      description: 'If enemy acts first on Turn 1, gain 4/8/16 ARM and your first strike deals +3/6/12 damage',
+      description:
+        'If enemy acts first on Turn 1, gain 4/8/16 ARM and your first strike deals +3/6/12 damage',
     },
   },
   I63: {
@@ -864,8 +865,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['TEMPO'],
     effect: {
       timing: 'EVERY_OTHER_TURN',
-      description:
-        'Every other turn: gain +2/4/8 SPD',
+      description: 'Every other turn: gain +2/4/8 SPD',
     },
   },
   I64: {
@@ -878,8 +878,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['TEMPO'],
     effect: {
       timing: 'TURN_START',
-      description:
-        'Turn 5: heal 6/12/24 HP and gain +2/4/8 SPD',
+      description: 'Turn 5: heal 6/12/24 HP and gain +2/4/8 SPD',
     },
   },
 };
@@ -983,7 +982,11 @@ export function resolveDescriptionForTier(
       const baseValue = effect.values[0];
       const scaledValue = effect.values[tier - 1];
       if (baseValue !== scaledValue && !handledBaseValues.has(baseValue)) {
-        replacements.push({ oldVal: baseValue, newVal: String(scaledValue), placeholder: `\x00${idx++}\x00` });
+        replacements.push({
+          oldVal: baseValue,
+          newVal: String(scaledValue),
+          placeholder: `\x00${idx++}\x00`,
+        });
       }
     }
     // Pass 1: replace values with placeholders
@@ -1034,11 +1037,7 @@ export function getScaledEffectDescription(gearId: GearId, rarity: ItemRarity): 
   const tier = getTierFromRarity(rarity);
   const gearEffects = GEAR_EFFECTS[gearId];
 
-  return resolveDescriptionForTier(
-    def.effect.description,
-    gearEffects?.effects ?? [],
-    tier
-  );
+  return resolveDescriptionForTier(def.effect.description, gearEffects?.effects ?? [], tier);
 }
 
 /**

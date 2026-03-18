@@ -22,10 +22,14 @@ import { useSolanaConnection } from '../contexts/SolanaConnectionContext';
 import { RunMode } from '../services/solana/types/gameplay_state';
 import { POI_TYPES } from '../services/solana/types/poi_system';
 import { convertItemInstanceToGear, convertItemInstanceToTool } from '../services/solana/pitDraft';
-import { fetchFullSessionState } from '../services/solana/sessionRestore';
+import {
+  fetchFullSessionState,
+  unpackDiscoveryTiles,
+  convertDiscoveredEnemies,
+  convertDiscoveredPois,
+} from '../services/solana/sessionRestore';
 import { useNightMovement } from '../hooks/useNightMovement';
 import { usePoiInteraction } from '../hooks/usePoiInteraction';
-import { useFogPersistence } from '../hooks/useFogPersistence';
 import { DPadControls } from '../components/game/DPadControls';
 import {
   TopBar,
@@ -54,8 +58,6 @@ import { TileType, MapEnemy, MapPOI } from '../game/map/types';
 import { getDiscoveredWaypoints } from '../game/entities/pois';
 import {
   canAffordCostAcrossPhases,
-  selectDuelWeekBossForSeed,
-  selectWeekBossForLevel,
 } from '../game/time/progression';
 import { Typography } from '../theme/typography';
 import { useEquippedSkinImage } from '../hooks/useEquippedSkinImage';
@@ -76,9 +78,12 @@ import type {
 import { calculateItemStats } from '@/game/entities/items';
 import { normalizeCombatPlayerStats, type CombatPlayerStats } from './combat-player-stats';
 import type { GauntletCombatVisualEvent } from '@/services/solana/gauntlet';
-import { fetchGauntletEchoFromGameState } from '@/services/solana/gauntlet';
-import { createGameplayStateProgram } from '@/services/solana/programs';
-import { getGameStatePda } from '@/services/solana/gameplayState';
+import { fetchGauntletEchoFromDiscovery } from '@/services/solana/gauntlet';
+import { fetchSessionDiscovery } from '@/services/solana/mapGeneratorClient';
+import { createGameplayStateProgram, createMapGeneratorProgram } from '@/services/solana/programs';
+import { warmMovePlayerCaches } from '@/services/solana/gameplayState';
+import { deriveSessionDiscoveryPda } from '@/services/solana/constants';
+import { warmErBlockhashCache } from '@/services/solana/sessionSigner';
 import {
   ENEMY_DEFINITIONS,
   calculateGoldReward,
@@ -305,7 +310,7 @@ function createGauntletCombatParams(
  */
 async function buildFallbackGauntletCombatParams(
   connection: Connection,
-  gameStatePda: PublicKey,
+  sessionPda: PublicKey,
   week: number,
   confirmedState: { hp: number; gold: number; isDead: boolean },
   playerStats: PlayerStats,
@@ -315,8 +320,12 @@ async function buildFallbackGauntletCombatParams(
   seed: number
 ): Promise<CombatParams | null> {
   try {
-    const program = createGameplayStateProgram(connection);
-    const echoPreview = await fetchGauntletEchoFromGameState(program, gameStatePda, week);
+    const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
+    const discovery = await fetchSessionDiscovery(
+      createMapGeneratorProgram(connection),
+      sessionDiscoveryPda
+    );
+    const echoPreview = fetchGauntletEchoFromDiscovery(discovery);
     if (!echoPreview) {
       console.warn('[GameScreen] buildFallbackGauntletCombatParams: no echo data for week', week);
       return null;
@@ -456,15 +465,16 @@ export function GameScreen({ navigation }: GameScreenProps) {
     triggerBoss,
     gameplayState: onChainState,
     gameplaySyncStatus,
-    sessionKey,
     sessionPda,
-    mapSeed,
     currentLevel,
     forceAbandonCurrentSession,
+    getSessionSignerKeypair,
   } = useSession();
   const { wallet } = useWallet();
   const { gameplayReadConnection } = useSolanaConnection();
-  const { refreshMapEntities, pois: onChainPois } = useGameplayStateContext();
+  const {
+    gameState: gameplayContextState,
+  } = useGameplayStateContext();
   const variant = useScreenVariant();
   const nightMovement = useNightMovement();
   const poiInteraction = usePoiInteraction();
@@ -475,16 +485,25 @@ export function GameScreen({ navigation }: GameScreenProps) {
   const isController = inputMode === 'controller';
   const stateRef = useRef(state);
   stateRef.current = state;
+
+  // Pre-warm ER blockhash cache + move account caches on screen focus
+  // to avoid first-move latency penalty (~450ms for 3 sequential RPC calls)
+  useEffect(() => {
+    if (isFocused && gameplayReadConnection) {
+      warmErBlockhashCache(gameplayReadConnection);
+      if (sessionPda) {
+        warmMovePlayerCaches(
+          gameplayReadConnection,
+          createGameplayStateProgram(gameplayReadConnection),
+          sessionPda
+        );
+      }
+    }
+  }, [isFocused, gameplayReadConnection, sessionPda]);
   const onChainStateRef = useRef(onChainState);
   onChainStateRef.current = onChainState;
   const canTriggerCurrentPoiByPhase = poiInteraction.canInteract;
 
-  // Persist fog of war state to AsyncStorage for session restore
-  useFogPersistence({
-    sessionKey,
-    fog: state?.map.fog ?? null,
-    isActive: hasActiveSession,
-  });
   const feedbackTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [wallBreakFeedback, setWallBreakFeedback] = useState<string | null>(null);
   const [isMovePending, setIsMovePending] = useState(false);
@@ -495,6 +514,9 @@ export function GameScreen({ navigation }: GameScreenProps) {
   const [fastTravelCameraTarget, setFastTravelCameraTarget] = useState<Position | null>(null);
   const [fastTravelDestinations, setFastTravelDestinations] = useState<Position[]>([]);
   const [fastTravelSelectedIndex, setFastTravelSelectedIndex] = useState(0);
+  // Suppress POI auto-open on the tile we just restored onto.
+  // Resume should rebuild the screen first; the player can still interact manually.
+  const lastAutoTriggeredPosRef = useRef<{ x: number; y: number } | null>(null);
   // Use a ref for synchronous pending check to prevent race conditions with rapid clicks
   const isMovePendingRef = useRef(false);
   // Start hidden and fade in once the component tree has mounted + rendered,
@@ -712,6 +734,10 @@ export function GameScreen({ navigation }: GameScreenProps) {
       }
 
       if (!cancelled) {
+        lastAutoTriggeredPosRef.current = {
+          x: restored.player.position.x,
+          y: restored.player.position.y,
+        };
         dispatch({ type: 'RESTORE_GAME', state: restored });
         debugLog('[GameScreen] Auto-restore completed');
       }
@@ -727,6 +753,29 @@ export function GameScreen({ navigation }: GameScreenProps) {
       cancelled = true;
     };
   }, [isFocused, state, hasActiveSession, sessionPda, currentLevel, gameplayReadConnection, dispatch]);
+
+  /**
+   * Full resync from on-chain state. Fetches GameState, Inventory, and SessionDiscovery
+   * and dispatches RESTORE_GAME to replace the entire local state.
+   * Used when the local state may be out of sync (failed moves, multi-tab play, etc.).
+   */
+  const resyncFromChain = useCallback(async () => {
+    if (!sessionPda || !gameplayReadConnection) return;
+    debugLog('[GameScreen] resyncFromChain: fetching full state from chain...');
+    try {
+      const restored = await fetchFullSessionState(gameplayReadConnection, sessionPda, undefined, {
+        silentMissingData: true,
+      });
+      if (restored) {
+        dispatch({ type: 'RESTORE_GAME', state: restored });
+        debugLog('[GameScreen] resyncFromChain: state restored successfully');
+      } else {
+        console.warn('[GameScreen] resyncFromChain: failed to fetch session state');
+      }
+    } catch (err) {
+      console.error('[GameScreen] resyncFromChain: error:', err);
+    }
+  }, [sessionPda, gameplayReadConnection, dispatch]);
 
   useEffect(() => {
     if (
@@ -750,10 +799,9 @@ export function GameScreen({ navigation }: GameScreenProps) {
         isTriggeringBossRef.current = true;
         // Try to show echo combat with on-chain data before falling back to DeathScreen
         if (sessionPda && state) {
-          const [gsPda] = getGameStatePda(sessionPda);
           buildFallbackGauntletCombatParams(
             gameplayReadConnection,
-            gsPda,
+            sessionPda,
             onChainState.week,
             { hp: onChainState.hp, gold: onChainState.gold, isDead: true },
             {
@@ -788,11 +836,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
     }
 
     const resolvedWeekBoss: BossId | null =
-      onChainState.runMode === RunMode.Duel &&
-      (state.time.week === 1 || state.time.week === 2) &&
-      mapSeed != null
-        ? selectDuelWeekBossForSeed(mapSeed, state.time.week)
-        : (state.time.weekBoss ?? null);
+      state.time.weekBoss ?? null;
     if (!resolvedWeekBoss) {
       console.warn('[GameScreen] bossFightReady but no weekBoss defined');
       return;
@@ -836,13 +880,8 @@ export function GameScreen({ navigation }: GameScreenProps) {
         // resolvedWeekBoss points at the NEXT week's boss. Compute the
         // correct (just-fought) boss from the previous week instead.
         const playerWon = !onChainState.isDead;
-        const foughtWeek = playerWon ? ((state.time.week - 1) as 1 | 2 | 3) : state.time.week;
-        const foughtBoss: BossId | null =
-          onChainState.runMode === RunMode.Duel &&
-          (foughtWeek === 1 || foughtWeek === 2) &&
-          mapSeed != null
-            ? selectDuelWeekBossForSeed(mapSeed, foughtWeek)
-            : selectWeekBossForLevel(onChainState.campaignLevel, foughtWeek);
+        const foughtWeek = state.time.week as 1 | 2 | 3;
+        const foughtBoss: BossId | null = state.time.weekBoss ?? null;
 
         if (!foughtBoss) {
           console.warn(
@@ -995,7 +1034,6 @@ export function GameScreen({ navigation }: GameScreenProps) {
     state,
     mode,
     isMovePending,
-    mapSeed,
     triggerBoss,
     navigation,
     sessionPda,
@@ -1068,35 +1106,9 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
   const discoveredWaypoints = useMemo(() => {
     if (!state?.map) return [];
-
-    // Primary source: local map discovery (same source used by rail waypoint POI options).
-    const merged = new Map<string, MapPOI>();
-    for (const poi of getDiscoveredWaypoints(state.map)) {
-      merged.set(`${poi.position.x},${poi.position.y}`, poi);
-    }
-
-    // Secondary source: on-chain consumed waypoints. Merge (don't replace), so we never
-    // lose locally discovered/visible destinations during fast-travel selection.
-    const onChainWaypoints: MapPOI[] = onChainPois
-      .map((poi, index) => ({ poi, index }))
-      .filter(({ poi }) => poi.poiType === 8 && poi.consumed)
-      .map(({ poi, index }) => ({
-        id: `chain-waypoint-${index}-${poi.x}-${poi.y}`,
-        definitionId: 'L8',
-        position: { x: poi.x, y: poi.y },
-        visited: true,
-        discovered: true,
-      }));
-
-    for (const poi of onChainWaypoints) {
-      const key = `${poi.position.x},${poi.position.y}`;
-      if (!merged.has(key)) {
-        merged.set(key, poi);
-      }
-    }
-
-    return Array.from(merged.values());
-  }, [state?.map, onChainPois]);
+    // Source waypoints from the local game reducer map (populated by SYNC_DISCOVERY).
+    return getDiscoveredWaypoints(state.map);
+  }, [state?.map]);
 
   const isFastTravelActive = isFastTravelMode && fastTravelDestinations.length > 0;
   const hasOtherDiscoveredWaypoints = useMemo(() => {
@@ -1106,10 +1118,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
         wp.position.x !== state.player.position.x || wp.position.y !== state.player.position.y
     );
   }, [discoveredWaypoints, state?.player?.position]);
-  const isRailWaypointWithoutDestinations =
-    poiInteraction.currentPoi?.poiType === POI_TYPES.RAIL_WAYPOINT && !hasOtherDiscoveredWaypoints;
-  const canTriggerCurrentPoiInteraction =
-    canTriggerCurrentPoiByPhase && !isRailWaypointWithoutDestinations;
+  const canTriggerCurrentPoiInteraction = canTriggerCurrentPoiByPhase;
 
   useEffect(() => {
     if (!isFastTravelActive) {
@@ -1193,7 +1202,6 @@ export function GameScreen({ navigation }: GameScreenProps) {
       // Read state from ref — avoids rebuilding this callback on every state change
       const state = stateRef.current;
 
-      // Use ref for synchronous check to prevent race conditions with rapid clicks
       if (
         !state ||
         state.phase !== GamePhase.Exploration ||
@@ -1293,10 +1301,11 @@ export function GameScreen({ navigation }: GameScreenProps) {
       // Play appropriate movement sound immediately upon confirming the move direction
       playSfx(isWall ? 'move_dig' : 'move_floor');
 
-      // On-chain-first: send transaction, await confirmation, then sync local state
+      // On-chain: send transaction, await confirmation, then sync local state
       isMovePendingRef.current = true;
-      setIsMovePending(true);
-      debugLog('[GameScreen] Sending on-chain move to', targetPos.x, targetPos.y);
+      // Defer setIsMovePending(true) — the ref is enough for the synchronous guard.
+      // Setting state here triggers a full re-render before the TX send, adding
+      // 100-300ms of render blocking to the perceived move latency.
 
       // Store pre-combat state for potential combat replay
       // Note: HP/gold are captured inside .then() from result.previousState (on-chain truth)
@@ -1325,59 +1334,36 @@ export function GameScreen({ navigation }: GameScreenProps) {
             })
           );
           if (!result.success) {
-            showWallBreakFeedback('Movement failed on-chain');
-            void promptTransactionRetry({
-              title: 'Movement Failed',
-              message: 'The on-chain transaction failed.',
-            }).then((shouldRetry) => {
-              if (shouldRetry) {
-                // Retry the same move
-                isMovePendingRef.current = true;
-                setIsMovePending(true);
-                movePlayer({ targetX: targetPos.x, targetY: targetPos.y })
-                  .then((retryResult) => {
-                    if (retryResult.success && retryResult.newState) {
-                      dispatch({ type: 'SYNC_MOVE', confirmedState: retryResult.newState });
-                    }
-                  })
-                  .finally(() => {
-                    isMovePendingRef.current = false;
-                    setIsMovePending(false);
-                  });
-              }
+            // Resync full state from chain to recover from any mismatch
+            const prevPos = stateRef.current?.player?.position;
+            resyncFromChain().then(() => {
+              const newPos = stateRef.current?.player?.position;
+              const posChanged = prevPos && newPos &&
+                (prevPos.x !== newPos.x || prevPos.y !== newPos.y);
+              showWallBreakFeedback(posChanged ? 'Synced state on-chain' : 'Movement failed');
             });
             return;
           }
 
-          if (result.newState) {
+          if (!result.newState) {
+            // TX may have confirmed but state fetch failed — full resync
+            debugLog('[GameScreen] Move succeeded but newState is null, resyncing...');
+            resyncFromChain();
+            return;
+          }
+
+          {
             // Update local state from confirmed on-chain state
             dispatch({ type: 'SYNC_MOVE', confirmedState: result.newState });
 
-            // Refresh map entities (enemies/POIs) to get updated positions
-            // During night phases, enemies move toward the player after each player move
-            // Use previousState phase: on the last night move, newState has already
-            // transitioned to the next day, but enemies moved during the night phase
-            const wasNightPhase = result.previousState
-              ? result.previousState.phase === 1 || // Night1
-                result.previousState.phase === 3 || // Night2
-                result.previousState.phase === 5 // Night3
-              : false;
-
-            if (sessionPda && wasNightPhase) {
-              refreshMapEntities(sessionPda)
-                .then((data) => {
-                  if (data?.enemies && data.enemies.length > 0) {
-                    debugLog(
-                      '[GameScreen] Syncing enemy positions, count:',
-                      data.enemies.length
-                    );
-                    // Sync enemy positions from on-chain to local game state
-                    dispatch({ type: 'SYNC_ENEMY_POSITIONS', enemies: data.enemies });
-                  }
-                })
-                .catch((err) =>
-                  console.warn('[GameScreen] Failed to refresh map entities after move:', err)
-                );
+            // Sync newly revealed tiles, enemies, and POIs from SessionDiscovery
+            // (fetched in parallel with the move confirmation — no extra latency)
+            if (result.discovery) {
+              const discovery = result.discovery;
+              const tiles = unpackDiscoveryTiles(discovery, discovery.mapWidth, discovery.mapHeight);
+              const enemies = convertDiscoveredEnemies(discovery.discoveredEnemies, discovery.discoveredEnemyCount);
+              const pois = convertDiscoveredPois(discovery.discoveredPois, discovery.discoveredPoiCount);
+              dispatch({ type: 'SYNC_DISCOVERY', tiles, enemies, pois });
             }
 
             // Build preCombatPlayerStats from a mix of on-chain and local state:
@@ -1448,10 +1434,9 @@ export function GameScreen({ navigation }: GameScreenProps) {
                   '[GameScreen] Gauntlet visual parsing failed, attempting fallback from on-chain echo data'
                 );
                 if (sessionPda) {
-                  const [gsPda] = getGameStatePda(sessionPda);
                   const fallback = await buildFallbackGauntletCombatParams(
                     gameplayReadConnection,
-                    gsPda,
+                    sessionPda,
                     currentWeek,
                     { hp: result.newState.hp, gold: result.newState.gold, isDead: !!result.isDead },
                     preCombatPlayerStats,
@@ -1480,11 +1465,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
               // Campaign / Duel: boss fight auto-resolved inline in move_player
               const resolvedWeekBoss: BossId | null =
-                result.newState.runMode === RunMode.Duel &&
-                (currentWeek === 1 || currentWeek === 2) &&
-                mapSeed != null
-                  ? selectDuelWeekBossForSeed(mapSeed, currentWeek)
-                  : (state.time.weekBoss ?? null);
+                state.time.weekBoss ?? null;
 
               if (resolvedWeekBoss) {
                 // Prevent the boss useEffect from also triggering
@@ -1531,9 +1512,14 @@ export function GameScreen({ navigation }: GameScreenProps) {
               }
             }
 
-            // Handle combat - always go through CombatScreen for visualization
-            // This includes deaths from combat (CombatScreen will navigate to DeathScreen)
-            if (result.combatOccurred) {
+            // Handle combat - always go through CombatScreen for visualization.
+            // Day combat metadata parsing is intentionally skipped in useGameplayState.move()
+            // to save an RPC call, so zero-damage wins against an enemy on the target tile
+            // must still open CombatScreen based on the pre-move local map state.
+            const shouldShowCombat =
+              result.combatOccurred || (!!enemyAtTarget && !result.bossResolvedInline);
+
+            if (shouldShowCombat) {
               // Suppress POI auto-trigger at this position: combat takes priority.
               // After combat the player can manually open the POI with the A button.
               lastAutoTriggeredPosRef.current = { x: targetPos.x, y: targetPos.y };
@@ -1677,6 +1663,8 @@ export function GameScreen({ navigation }: GameScreenProps) {
         .catch((err) => {
           console.error('[GameScreen] movePlayer error:', err);
           showWallBreakFeedback('Movement sync error');
+          // Resync on unexpected errors too
+          resyncFromChain();
         })
         .finally(() => {
           isMovePendingRef.current = false;
@@ -1693,10 +1681,11 @@ export function GameScreen({ navigation }: GameScreenProps) {
       isMovePending,
       navigation,
       sessionPda,
-      mapSeed,
-      refreshMapEntities,
+      getSessionSignerKeypair,
+      gameplayReadConnection,
       isFastTravelActive,
       fastTravelDestinations.length,
+      resyncFromChain,
     ]
   );
 
@@ -1707,6 +1696,20 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
     const dest = fastTravelDestinations[fastTravelSelectedIndex] ?? fastTravelDestinations[0];
     if (!dest) {
+      setIsFastTravelMode(false);
+      setFastTravelDestinations([]);
+      return;
+    }
+
+    // Use ref for latest position to avoid stale closure after fast travel
+    const currentPos = stateRef.current?.player?.position ?? state.player.position;
+
+    // Prevent fast traveling to current position (stale closure)
+    if (
+      currentPos.x === dest.x &&
+      currentPos.y === dest.y
+    ) {
+      console.warn('[GameScreen] Fast travel dest === current position, skipping');
       setIsFastTravelMode(false);
       setFastTravelDestinations([]);
       return;
@@ -1729,7 +1732,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
       clearTimeout(skipMismatchTimeoutRef.current);
     }
 
-    poiInteraction.executeFastTravel(state.player.position, dest).then((result) => {
+    poiInteraction.executeFastTravel(currentPos, dest).then(async (result) => {
       if (result.success && result.newState) {
         dispatch({
           type: 'SYNC_MOVE',
@@ -1737,10 +1740,22 @@ export function GameScreen({ navigation }: GameScreenProps) {
         });
         // Prevent auto-trigger from reopening the waypoint modal at the destination
         lastAutoTriggeredPosRef.current = { x: dest.x, y: dest.y };
-        if (sessionPda) {
-          refreshMapEntities(sessionPda).catch((err) =>
-            console.warn('[GameScreen] Failed to refresh after fast travel:', err)
-          );
+        // Fetch SessionDiscovery to sync discovery state after fast travel
+        if (sessionPda && gameplayReadConnection) {
+          try {
+            const [sdPda] = deriveSessionDiscoveryPda(sessionPda);
+            const sd = await fetchSessionDiscovery(
+              createMapGeneratorProgram(gameplayReadConnection), sdPda
+            ).catch(() => null);
+            if (sd) {
+              const sdTiles = unpackDiscoveryTiles(sd, sd.mapWidth, sd.mapHeight);
+              const sdEnemies = convertDiscoveredEnemies(sd.discoveredEnemies, sd.discoveredEnemyCount);
+              const sdPois = convertDiscoveredPois(sd.discoveredPois, sd.discoveredPoiCount);
+              dispatch({ type: 'SYNC_DISCOVERY', tiles: sdTiles, enemies: sdEnemies, pois: sdPois });
+            }
+          } catch (err) {
+            console.warn('[GameScreen] Failed to refresh discovery after fast travel:', err);
+          }
         }
       } else if (result.error) {
         showWallBreakFeedback(result.error);
@@ -1762,28 +1777,32 @@ export function GameScreen({ navigation }: GameScreenProps) {
     poiInteraction,
     dispatch,
     sessionPda,
-    refreshMapEntities,
+    gameplayReadConnection,
     showWallBreakFeedback,
   ]);
 
   // Derive max gear slots from the session's maxWeeks (3 for campaign/duel/guest, 5 for gauntlet).
   // Guest mode has no onChainState, so defaults to TOTAL_WEEKS (3) → 8 slots.
-  const sessionMaxWeeks = onChainState?.maxWeeks ?? GAME_CONSTANTS.TOTAL_WEEKS;
-  const maxGearSlots =
+  const resolvedSessionRunMode = onChainState?.runMode ?? gameplayContextState?.runMode;
+  const sessionMaxWeeks =
+    onChainState?.maxWeeks ??
+    gameplayContextState?.maxWeeks ??
+    (resolvedSessionRunMode === RunMode.Gauntlet ? 5 : GAME_CONSTANTS.TOTAL_WEEKS);
+  const runMaxGearSlots =
     GAME_CONSTANTS.INITIAL_INVENTORY_SLOTS +
     (sessionMaxWeeks - 1) * GAME_CONSTANTS.INVENTORY_SLOTS_PER_WEEK;
   const isGauntletLayout = sessionMaxWeeks > GAME_CONSTANTS.TOTAL_WEEKS;
   const activeItemsetsCount = state?.player?.activeItemsets?.length ?? 0;
-  const totalPlayerSlots = maxGearSlots + 1 + activeItemsetsCount; // gear slots + weapon slot + itemset slots
+  const totalPlayerSlots = runMaxGearSlots + 1 + activeItemsetsCount; // gear slots + weapon slot + itemset slots
 
   const getPlayerItemAtSlot = useCallback(
     (index: number): Tool | Gear | null => {
       if (!state) return null;
-      if (index === maxGearSlots) return state.player.equippedTool;
+      if (index === runMaxGearSlots) return state.player.equippedTool;
       const slot = state.player.inventory.find((s) => s.index === index);
       return slot?.item ?? null;
     },
-    [state, maxGearSlots]
+    [state, runMaxGearSlots]
   );
 
   const getEchoItemAtSlot = useCallback(
@@ -1842,11 +1861,14 @@ export function GameScreen({ navigation }: GameScreenProps) {
           setFocusedSlotIndex((prev) => {
             if (inventoryFocus === 'player') {
               // If in itemset zone, go back to weapon
-              if (prev > maxGearSlots) return maxGearSlots;
-              if (prev === maxGearSlots) {
+              if (prev > runMaxGearSlots) return runMaxGearSlots;
+              if (prev === runMaxGearSlots) {
                 // Weapon → last gear row (column 0)
-                const lastRowStart = Math.max(0, maxGearSlots - (maxGearSlots % 4 || 4));
-                return Math.min(lastRowStart, maxGearSlots - 1);
+                const lastRowStart = Math.max(
+                  0,
+                  runMaxGearSlots - (runMaxGearSlots % 4 || 4)
+                );
+                return Math.min(lastRowStart, runMaxGearSlots - 1);
               }
               if (prev >= 4) return prev - 4;
               return prev;
@@ -1869,19 +1891,19 @@ export function GameScreen({ navigation }: GameScreenProps) {
           setFocusedSlotIndex((prev) => {
             if (inventoryFocus === 'player') {
               // In itemset zone
-              if (prev > maxGearSlots) {
-                const lastItemsetIndex = maxGearSlots + activeItemsetsCount;
+              if (prev > runMaxGearSlots) {
+                const lastItemsetIndex = runMaxGearSlots + activeItemsetsCount;
                 if (prev >= lastItemsetIndex) return prev;
                 return prev + 1;
               }
               // At weapon — go to first itemset if any
-              if (prev === maxGearSlots) {
-                if (activeItemsetsCount > 0) return maxGearSlots + 1;
+              if (prev === runMaxGearSlots) {
+                if (activeItemsetsCount > 0) return runMaxGearSlots + 1;
                 return prev;
               }
               // In gear zone
               const nextRow = prev + 4;
-              if (nextRow >= maxGearSlots) return maxGearSlots;
+              if (nextRow >= runMaxGearSlots) return runMaxGearSlots;
               return nextRow;
             }
             // echo focus (no itemsets, original logic)
@@ -1900,11 +1922,11 @@ export function GameScreen({ navigation }: GameScreenProps) {
           setFocusedSlotIndex((prev) => {
             if (inventoryFocus === 'player') {
               // In itemset zone — navigate left between itemsets
-              if (prev > maxGearSlots) {
-                if (prev <= maxGearSlots + 1) return prev;
+              if (prev > runMaxGearSlots) {
+                if (prev <= runMaxGearSlots + 1) return prev;
                 return prev - 1;
               }
-              if (prev === maxGearSlots) return prev; // weapon, no left/right
+              if (prev === runMaxGearSlots) return prev; // weapon, no left/right
               if (prev % 4 === 0) return prev;
               return prev - 1;
             }
@@ -1923,14 +1945,14 @@ export function GameScreen({ navigation }: GameScreenProps) {
           setFocusedSlotIndex((prev) => {
             if (inventoryFocus === 'player') {
               // In itemset zone — navigate right between itemsets
-              if (prev > maxGearSlots) {
-                const lastItemsetIndex = maxGearSlots + activeItemsetsCount;
+              if (prev > runMaxGearSlots) {
+                const lastItemsetIndex = runMaxGearSlots + activeItemsetsCount;
                 if (prev >= lastItemsetIndex) return prev;
                 return prev + 1;
               }
-              if (prev === maxGearSlots) return prev; // weapon, no left/right
+              if (prev === runMaxGearSlots) return prev; // weapon, no left/right
               if (prev % 4 === 3) return prev;
-              if (prev + 1 >= maxGearSlots) return prev;
+              if (prev + 1 >= runMaxGearSlots) return prev;
               return prev + 1;
             }
             // echo focus
@@ -1952,13 +1974,13 @@ export function GameScreen({ navigation }: GameScreenProps) {
       },
       onA: () => {
         if (inventoryFocus === 'player') {
-          if (focusedSlotIndex > maxGearSlots) {
+          if (focusedSlotIndex > runMaxGearSlots) {
             // Itemset slot
-            const itemsetIndex = focusedSlotIndex - maxGearSlots - 1;
+            const itemsetIndex = focusedSlotIndex - runMaxGearSlots - 1;
             const itemsetId = state?.player?.activeItemsets?.[itemsetIndex];
             if (itemsetId)
               handleInspectItemset(itemsetId as import('../game/engine/types').ItemsetId);
-          } else if (focusedSlotIndex === maxGearSlots) {
+          } else if (focusedSlotIndex === runMaxGearSlots) {
             if (state?.player?.equippedTool) handleInspectTool(state.player.equippedTool);
           } else {
             const item = getPlayerItemAtSlot(focusedSlotIndex);
@@ -2067,17 +2089,11 @@ export function GameScreen({ navigation }: GameScreenProps) {
   const tryOpenCurrentPoiInteraction = useCallback(() => {
     if (!state || state.phase !== GamePhase.Exploration) return;
     if (!poiInteraction.canInteract) return;
-    if (isRailWaypointWithoutDestinations) {
-      showWallBreakFeedback('No other waypoints discovered');
-      return;
-    }
     poiInteraction.interact();
   }, [
     state,
     poiInteraction.canInteract,
     poiInteraction.interact,
-    isRailWaypointWithoutDestinations,
-    showWallBreakFeedback,
   ]);
 
   // Navigate to CombatScreen when game phase transitions to Combat or BossFight.
@@ -2098,8 +2114,6 @@ export function GameScreen({ navigation }: GameScreenProps) {
   // lastAutoTriggeredPosRef prevents re-triggering at the same position after modal close.
   // We intentionally do NOT gate on "position changed" because shouldAutoOpen can resolve
   // one render after the position update (on-chain POI data loads asynchronously).
-  const lastAutoTriggeredPosRef = useRef<{ x: number; y: number } | null>(null);
-
   // Extract stable values from poiInteraction to avoid re-triggering on every hook state change.
   // poiInteract is stored in a ref because it has 15+ deps and changes reference frequently,
   // but the effect only needs to call it — not re-run when it changes.
@@ -2118,8 +2132,10 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
     if (shouldAutoOpen && !isInteracting && !alreadyTriggeredHere && canTriggerCurrentPoiInteraction) {
       debugLog('[GameScreen] Auto-triggering POI interaction at', currentPos.x, currentPos.y);
+      // Always mark as triggered to prevent infinite retry loops on persistent errors
+      // (e.g., VRF not fulfilled). The player can manually retry by stepping off and back.
       lastAutoTriggeredPosRef.current = { x: currentPos.x, y: currentPos.y };
-      poiInteractRef.current();
+      void poiInteractRef.current();
     }
 
     // Clear last auto-triggered position when player moves away from it
@@ -2136,8 +2152,41 @@ export function GameScreen({ navigation }: GameScreenProps) {
     canTriggerCurrentPoiInteraction,
   ]);
 
+  useEffect(() => {
+    if (!state?.player?.position || state.phase !== GamePhase.Exploration || !isFocused) return;
+    if (!poiInteraction.currentPoi) return;
+
+    const currentPos = state.player.position;
+    const lastAutoPos = lastAutoTriggeredPosRef.current;
+    const alreadyTriggeredHere =
+      !!lastAutoPos && lastAutoPos.x === currentPos.x && lastAutoPos.y === currentPos.y;
+
+    console.warn('[GameScreen] POI auto-open gates', {
+      position: currentPos,
+      poiType: poiInteraction.currentPoi.poiType,
+      autoOpenPOI,
+      shouldAutoOpen,
+      isInteracting,
+      canTriggerCurrentPoiInteraction,
+      alreadyTriggeredHere,
+      isFocused,
+      phase: state.phase,
+    });
+  }, [
+    autoOpenPOI,
+    canTriggerCurrentPoiInteraction,
+    isFocused,
+    isInteracting,
+    poiInteraction.currentPoi,
+    shouldAutoOpen,
+    state?.phase,
+    state?.player?.position,
+  ]);
+
   const handleFastTravel = useCallback(() => {
-    if (!state?.player?.position) {
+    // Use ref for latest position to avoid stale closure after fast travel
+    const currentPos = stateRef.current?.player?.position;
+    if (!currentPos) {
       return;
     }
 
@@ -2146,7 +2195,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
     // SHOW_POI_MODAL fallback (which doesn't generate options).
     const destinations = discoveredWaypoints
       .map((wp) => wp.position)
-      .filter((pos) => pos.x !== state.player.position.x || pos.y !== state.player.position.y)
+      .filter((pos) => pos.x !== currentPos.x || pos.y !== currentPos.y)
       .filter((pos, index, arr) => arr.findIndex((p) => p.x === pos.x && p.y === pos.y) === index);
 
     if (destinations.length === 0) {
@@ -2158,8 +2207,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
     let nearestDist = Infinity;
     for (let i = 0; i < destinations.length; i++) {
       const dest = destinations[i];
-      const dist =
-        Math.abs(dest.x - state.player.position.x) + Math.abs(dest.y - state.player.position.y);
+      const dist = Math.abs(dest.x - currentPos.x) + Math.abs(dest.y - currentPos.y);
       if (dist < nearestDist) {
         nearestDist = dist;
         nearestIndex = i;
@@ -2168,10 +2216,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
     // Prevent auto-open effect from immediately reopening the waypoint modal
     // after we close it to enter fast-travel selection.
-    lastAutoTriggeredPosRef.current = {
-      x: state.player.position.x,
-      y: state.player.position.y,
-    };
+    lastAutoTriggeredPosRef.current = { x: currentPos.x, y: currentPos.y };
 
     // Clear deferred POI state from the waypoint interaction before entering fast travel
     poiInteraction.clearCacheOffers();
@@ -2246,12 +2291,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
               // state.time.week is pre-POI (closure captures pre-dispatch value),
               // which is the correct fought week for both wins and losses.
               const foughtWeek = state.time.week as 1 | 2 | 3;
-              const foughtBoss: BossId | null =
-                onChainState?.runMode === RunMode.Duel &&
-                (foughtWeek === 1 || foughtWeek === 2) &&
-                mapSeed != null
-                  ? selectDuelWeekBossForSeed(mapSeed, foughtWeek)
-                  : selectWeekBossForLevel(onChainState?.campaignLevel ?? 0, foughtWeek);
+              const foughtBoss: BossId | null = state.time.weekBoss ?? null;
 
               if (foughtBoss) {
                 debugLog('[GameScreen] Boss resolved during POI, navigating to CombatScreen:', {
@@ -2532,7 +2572,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
             stats: state.player.stats,
             inventory: state.player.inventory,
             inventoryCapacity: state.player.inventoryCapacity,
-            maxGearSlots,
+            maxGearSlots: runMaxGearSlots,
             isGauntletLayout,
             equippedTool: state.player.equippedTool,
             activeItemsets: state.player.activeItemsets,
@@ -2540,7 +2580,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
         : null,
     [
       state,
-      maxGearSlots,
+      runMaxGearSlots,
       isGauntletLayout,
     ]
   );

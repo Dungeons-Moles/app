@@ -39,6 +39,8 @@ import {
   deriveMapVrfStatePda,
   derivePoiVrfStatePda,
   deriveGameplayVrfStatePda,
+  deriveSessionDiscoveryPda,
+  deriveGauntletEchoesPda,
 } from '@/services/solana/constants';
 import { SOLANA_CONFIG } from '@/services/solana/config';
 import { getUserErrorMessage } from '@/services/solana/errors';
@@ -350,6 +352,7 @@ export function useSessionManager() {
         const [poisPda] = deriveMapPoisPda(sessionPda);
         const [inventoryPda] = deriveInventoryPda(sessionPda);
         const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
+        const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
         const [mapConfigPda] = deriveMapConfigPda();
         console.log('[useSessionManager] PDAs derived', {
           sessionPda: sessionPda.toBase58(),
@@ -366,6 +369,7 @@ export function useSessionManager() {
             sessionSigner: wallet.publicKey, // Will be overridden by caller
             mapConfig: mapConfigPda,
             generatedMap: generatedMapPda,
+            sessionDiscovery: sessionDiscoveryPda,
             gameState: gameStatePda,
             mapEnemies: enemiesPda,
             mapPois: poisPda,
@@ -612,6 +616,7 @@ export function useSessionManager() {
       const [poisPda] = deriveMapPoisPda(sessionPda);
       const [inventoryPda] = deriveInventoryPda(sessionPda);
       const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
+      const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
       const [mapConfigPda] = deriveMapConfigPda();
       const [sessionManagerAuthorityPda] = deriveSessionManagerAuthorityPda();
 
@@ -627,6 +632,7 @@ export function useSessionManager() {
               sessionManagerAuthority: PublicKey;
               mapConfig: PublicKey;
               generatedMap: PublicKey;
+              sessionDiscovery: PublicKey | null;
               gameState: PublicKey;
               mapEnemies: PublicKey;
               mapPois: PublicKey;
@@ -651,6 +657,7 @@ export function useSessionManager() {
           sessionManagerAuthority: sessionManagerAuthorityPda,
           mapConfig: mapConfigPda,
           generatedMap: generatedMapPda,
+          sessionDiscovery: null, // Skipped — init separately to avoid insufficient lamports
           gameState: gameStatePda,
           mapEnemies: enemiesPda,
           mapPois: poisPda,
@@ -693,43 +700,23 @@ export function useSessionManager() {
       const [poisPda] = deriveMapPoisPda(sessionPda);
       const [inventoryPda] = deriveInventoryPda(sessionPda);
       const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
+      const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
       const [mapConfigPda] = deriveMapConfigPda();
+      const [sessionNoncesPda] = deriveSessionNoncesPda(wallet.publicKey);
       const [sessionManagerAuthorityPda] = deriveSessionManagerAuthorityPda();
 
-      const transaction = await (
-        baseWriteProgram.methods as unknown as {
-          startGauntletSession: () => {
-            accounts: (accounts: {
-              gameSession: PublicKey;
-              sessionCounter: PublicKey;
-              playerProfile: PublicKey;
-              player: PublicKey;
-              sessionSigner: PublicKey;
-              mapConfig: PublicKey;
-              generatedMap: PublicKey;
-              gameState: PublicKey;
-              mapEnemies: PublicKey;
-              mapPois: PublicKey;
-              inventory: PublicKey;
-              mapVrfState: PublicKey | null;
-              mapGeneratorProgram: PublicKey;
-              gameplayStateProgram: PublicKey;
-              poiSystemProgram: PublicKey;
-              playerInventoryProgram: PublicKey;
-              systemProgram: PublicKey;
-            }) => { transaction: () => Promise<Transaction> };
-          };
-        }
-      )
+      const transaction = await (baseWriteProgram.methods as any)
         .startGauntletSession()
-        .accounts({
+        .accountsPartial({
+          sessionNonces: sessionNoncesPda,
           gameSession: sessionPda,
           sessionCounter: counterPda,
           playerProfile: profilePda,
           player: wallet.publicKey,
           sessionSigner: sessionSignerPublicKey,
-          mapConfig: mapConfigPda,
+          sessionManagerAuthority: sessionManagerAuthorityPda,
           generatedMap: generatedMapPda,
+          sessionDiscovery: null,
           gameState: gameStatePda,
           mapEnemies: enemiesPda,
           mapPois: poisPda,
@@ -781,6 +768,7 @@ export function useSessionManager() {
       const [poisPda] = deriveMapPoisPda(sessionPda);
       const [inventoryPda] = deriveInventoryPda(sessionPda);
       const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
+      const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
       const [mapConfigPda] = deriveMapConfigPda();
       const transaction = await baseWriteProgram.methods
         .startSession(onChainLevel)
@@ -792,6 +780,7 @@ export function useSessionManager() {
           sessionSigner: sessionSignerPublicKey,
           mapConfig: mapConfigPda,
           generatedMap: generatedMapPda,
+          sessionDiscovery: sessionDiscoveryPda,
           gameState: gameStatePda,
           mapEnemies: enemiesPda,
           mapPois: poisPda,
@@ -898,6 +887,8 @@ export function useSessionManager() {
         const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
         const [inventoryPda] = deriveInventoryPda(sessionPda);
         const [mapPoisPda] = deriveMapPoisPda(sessionPda);
+        const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
+        const [gauntletEchoesPda] = deriveGauntletEchoesPda(sessionPda);
         const gameplayGameStateDelegate = deriveDelegatePdas(
           gameStatePda,
           SOLANA_CONFIG.programs.gameplayState
@@ -915,6 +906,10 @@ export function useSessionManager() {
           SOLANA_CONFIG.programs.playerInventory
         );
         const mapPoisDelegate = deriveDelegatePdas(mapPoisPda, SOLANA_CONFIG.programs.poiSystem);
+        const sessionDiscoveryDelegate = deriveDelegatePdas(
+          sessionDiscoveryPda,
+          SOLANA_CONFIG.programs.mapGenerator
+        );
         const delegationValidator = SOLANA_CONFIG.magic.delegationValidator;
 
         const delegateGameplayIx = await gameplayStateWriteProgram.methods
@@ -977,6 +972,20 @@ export function useSessionManager() {
             systemProgram: SystemProgram.programId,
           } as any)
           .instruction();
+        const delegateSessionDiscoveryIx = await mapGeneratorWriteProgram.methods
+          .delegateSessionDiscovery(delegationValidator)
+          .accountsStrict({
+            sessionDiscovery: sessionDiscoveryPda,
+            session: sessionPda,
+            player: sessionSignerKeypair.publicKey,
+            bufferSessionDiscovery: sessionDiscoveryDelegate.buffer,
+            delegationRecordSessionDiscovery: sessionDiscoveryDelegate.delegationRecord,
+            delegationMetadataSessionDiscovery: sessionDiscoveryDelegate.delegationMetadata,
+            ownerProgram: SOLANA_CONFIG.programs.mapGenerator,
+            delegationProgram: DELEGATION_PROGRAM_ID,
+            systemProgram: SystemProgram.programId,
+          } as any)
+          .instruction();
         const [sessionNoncesPda] = deriveSessionNoncesPda(wallet.publicKey);
         const delegateSessionIx = await baseWriteProgram.methods
           .delegateSession(onChainLevel, delegationValidator)
@@ -1014,11 +1023,44 @@ export function useSessionManager() {
         const delegationTx2 = new Transaction().add(
           ComputeBudgetProgram.setComputeUnitLimit({ units: 600_000 }),
           delegateGeneratedMapIx,
+          delegateSessionDiscoveryIx,
           delegateInventoryIx,
           delegateMapPoisIx
         );
-        await sendSessionSignerTransaction(baseConnection, delegationTx1, sessionSignerKeypair);
-        await sendSessionSignerTransaction(baseConnection, delegationTx2, sessionSignerKeypair);
+        // Fire-and-forget delegation TXs — skip confirmation, let waitForErSessionAccounts
+        // verify all accounts landed on the ER. Saves ~5s of sequential confirmation waits.
+        await sendSessionSignerTransaction(baseConnection, delegationTx1, sessionSignerKeypair, { skipConfirmation: true });
+        await sendSessionSignerTransaction(baseConnection, delegationTx2, sessionSignerKeypair, { skipConfirmation: true });
+
+        // Tx2b (optional): Delegate GauntletEchoes if it exists (gauntlet sessions only).
+        const gauntletEchoesInfo = await baseConnection
+          .getAccountInfo(gauntletEchoesPda, 'processed')
+          .catch(() => null);
+        if (gauntletEchoesInfo) {
+          const gauntletEchoesDelegate = deriveDelegatePdas(
+            gauntletEchoesPda,
+            SOLANA_CONFIG.programs.gameplayState
+          );
+          const delegateGauntletEchoesIx = await gameplayStateWriteProgram.methods
+            .delegateGauntletEchoes(delegationValidator)
+            .accountsStrict({
+              gauntletEchoes: gauntletEchoesPda,
+              gameSession: sessionPda,
+              player: sessionSignerKeypair.publicKey,
+              bufferGauntletEchoes: gauntletEchoesDelegate.buffer,
+              delegationRecordGauntletEchoes: gauntletEchoesDelegate.delegationRecord,
+              delegationMetadataGauntletEchoes: gauntletEchoesDelegate.delegationMetadata,
+              ownerProgram: SOLANA_CONFIG.programs.gameplayState,
+              delegationProgram: DELEGATION_PROGRAM_ID,
+              systemProgram: SystemProgram.programId,
+            } as any)
+            .instruction();
+          const delegationTxGe = new Transaction().add(
+            ComputeBudgetProgram.setComputeUnitLimit({ units: 600_000 }),
+            delegateGauntletEchoesIx
+          );
+          await sendSessionSignerTransaction(baseConnection, delegationTxGe, sessionSignerKeypair, { skipConfirmation: true });
+        }
 
         // Tx3: Delegate VRF state accounts if requested.
         // VRF states must be pre-initialized on base before this step.
@@ -1092,7 +1134,8 @@ export function useSessionManager() {
           signature = await sendSessionSignerTransaction(
             baseConnection,
             delegationTx3,
-            sessionSignerKeypair
+            sessionSignerKeypair,
+            { skipConfirmation: true }
           );
         }
 
@@ -1215,7 +1258,8 @@ export function useSessionManager() {
         // Frontend state can be stale (e.g., after interrupted cleanup). Check every account,
         // not only session PDA, because mixed ownership causes InvalidWritableAccount on move.
         const [poiVrfStatePda] = derivePoiVrfStatePda(sessionPda);
-
+        const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
+        const [gauntletEchoesPda] = deriveGauntletEchoesPda(sessionPda);
         const [
           baseSessionInfo,
           baseGameStateInfo,
@@ -1224,6 +1268,8 @@ export function useSessionManager() {
           baseInventoryInfo,
           baseMapPoisInfo,
           basePoiVrfInfo,
+          baseSessionDiscoveryInfo,
+          baseGauntletEchoesInfo,
         ] = await Promise.all([
           baseConnection.getAccountInfo(sessionPda, 'processed'),
           baseConnection.getAccountInfo(gameStatePda, 'processed'),
@@ -1232,6 +1278,8 @@ export function useSessionManager() {
           baseConnection.getAccountInfo(inventoryPda, 'processed'),
           baseConnection.getAccountInfo(mapPoisPda, 'processed'),
           baseConnection.getAccountInfo(poiVrfStatePda, 'processed').catch(() => null),
+          baseConnection.getAccountInfo(sessionDiscoveryPda, 'processed').catch(() => null),
+          baseConnection.getAccountInfo(gauntletEchoesPda, 'processed').catch(() => null),
         ]);
         if (!baseSessionInfo) {
           return { success: false, error: 'Session account not found' };
@@ -1247,6 +1295,8 @@ export function useSessionManager() {
         const delegatedInventory = !!baseInventoryInfo?.owner.equals(DELEGATION_PROGRAM_ID);
         const delegatedPois = !!baseMapPoisInfo?.owner.equals(DELEGATION_PROGRAM_ID);
         const delegatedPoiVrf = !!basePoiVrfInfo?.owner.equals(DELEGATION_PROGRAM_ID);
+        const delegatedSessionDiscovery = !!baseSessionDiscoveryInfo?.owner.equals(DELEGATION_PROGRAM_ID);
+        const delegatedGauntletEchoes = !!baseGauntletEchoesInfo?.owner.equals(DELEGATION_PROGRAM_ID);
         const hasAnyDelegated =
           delegatedSession ||
           delegatedGameState ||
@@ -1254,7 +1304,9 @@ export function useSessionManager() {
           delegatedMap ||
           delegatedInventory ||
           delegatedPois ||
-          delegatedPoiVrf;
+          delegatedPoiVrf ||
+          delegatedSessionDiscovery ||
+          delegatedGauntletEchoes;
         if (!hasAnyDelegated) {
           console.warn(
             '[useSessionManager] undelegateSession skipped: no delegated accounts detected'
@@ -1364,6 +1416,8 @@ export function useSessionManager() {
           inventory: delegatedInventory ? 'DELEGATED' : 'base',
           pois: delegatedPois ? 'DELEGATED' : 'base',
           poiVrf: delegatedPoiVrf ? 'DELEGATED' : basePoiVrfInfo ? 'base' : 'n/a',
+          sessionDiscovery: delegatedSessionDiscovery ? 'DELEGATED' : baseSessionDiscoveryInfo ? 'base' : 'n/a',
+          gauntletEchoes: delegatedGauntletEchoes ? 'DELEGATED' : baseGauntletEchoesInfo ? 'base' : 'n/a',
         });
 
         // Send-and-confirm helper for ER undelegation.
@@ -1379,10 +1433,12 @@ export function useSessionManager() {
           return sig;
         };
 
-        // Undelegate child accounts via their owning programs first, then session last.
-        // Each program can only undelegate accounts it owns (delegation program validates ownership).
+        // Undelegate all child accounts in parallel, then session last.
+        // Each undelegation TX is independent (different accounts, different programs).
+        const childUndelegations: Promise<void>[] = [];
+
         if (delegatedGameplayBoth) {
-          await tryUndelegateOrSkip(
+          childUndelegations.push(tryUndelegateOrSkip(
             async () => {
               const undelegateGameplayTx = await gameplayProgramEr.methods
                 .undelegateGameplayAccounts()
@@ -1402,9 +1458,9 @@ export function useSessionManager() {
               [mapEnemiesPda, SOLANA_CONFIG.programs.gameplayState, 'map_enemies'],
             ],
             true
-          );
+          ));
         } else if (delegatedGameStateOnly) {
-          await tryUndelegateOrSkip(
+          childUndelegations.push(tryUndelegateOrSkip(
             async () => {
               const tx = await gameplayProgramEr.methods
                 .undelegateGameState()
@@ -1420,9 +1476,9 @@ export function useSessionManager() {
             },
             [[gameStatePda, SOLANA_CONFIG.programs.gameplayState, 'game_state']],
             true
-          );
+          ));
         } else if (delegatedMapEnemiesOnly) {
-          await tryUndelegateOrSkip(
+          childUndelegations.push(tryUndelegateOrSkip(
             async () => {
               const tx = await gameplayProgramEr.methods
                 .undelegateMapEnemies()
@@ -1438,11 +1494,11 @@ export function useSessionManager() {
             },
             [[mapEnemiesPda, SOLANA_CONFIG.programs.gameplayState, 'map_enemies']],
             true
-          );
+          ));
         }
 
         if (delegatedMap) {
-          await tryUndelegateOrSkip(
+          childUndelegations.push(tryUndelegateOrSkip(
             async () => {
               const undelegateMapTx = await mapGeneratorProgramEr.methods
                 .undelegateGeneratedMap()
@@ -1458,11 +1514,51 @@ export function useSessionManager() {
             },
             [[generatedMapPda, SOLANA_CONFIG.programs.mapGenerator, 'generated_map']],
             true
-          );
+          ));
+        }
+
+        if (delegatedSessionDiscovery) {
+          childUndelegations.push(tryUndelegateOrSkip(
+            async () => {
+              const undelegateDiscoveryTx = await mapGeneratorProgramEr.methods
+                .undelegateSessionDiscovery()
+                .accounts({
+                  sessionDiscovery: sessionDiscoveryPda,
+                  session: sessionPda,
+                  sessionSigner: sessionSignerKeypair.publicKey,
+                  magicProgram: magicProgramId,
+                  magicContext: magicContextId,
+                })
+                .transaction();
+              await sendAndConfirmOnEr(undelegateDiscoveryTx, 'session_discovery');
+            },
+            [[sessionDiscoveryPda, SOLANA_CONFIG.programs.mapGenerator, 'session_discovery']],
+            true
+          ));
+        }
+
+        if (delegatedGauntletEchoes) {
+          childUndelegations.push(tryUndelegateOrSkip(
+            async () => {
+              const undelegateGauntletEchoesTx = await gameplayProgramEr.methods
+                .undelegateGauntletEchoes()
+                .accounts({
+                  gauntletEchoes: gauntletEchoesPda,
+                  gameSession: sessionPda,
+                  sessionSigner: sessionSignerKeypair.publicKey,
+                  magicProgram: magicProgramId,
+                  magicContext: magicContextId,
+                })
+                .transaction();
+              await sendAndConfirmOnEr(undelegateGauntletEchoesTx, 'gauntlet_echoes');
+            },
+            [[gauntletEchoesPda, SOLANA_CONFIG.programs.gameplayState, 'gauntlet_echoes']],
+            true
+          ));
         }
 
         if (delegatedInventory) {
-          await tryUndelegateOrSkip(
+          childUndelegations.push(tryUndelegateOrSkip(
             async () => {
               const undelegateInventoryTx = await playerInventoryProgramEr.methods
                 .undelegateInventory()
@@ -1478,11 +1574,11 @@ export function useSessionManager() {
             },
             [[inventoryPda, SOLANA_CONFIG.programs.playerInventory, 'inventory']],
             true
-          );
+          ));
         }
 
         if (delegatedPois) {
-          await tryUndelegateOrSkip(
+          childUndelegations.push(tryUndelegateOrSkip(
             async () => {
               const undelegatePoisTx = await poiSystemProgramEr.methods
                 .undelegateMapPois()
@@ -1498,11 +1594,11 @@ export function useSessionManager() {
             },
             [[mapPoisPda, SOLANA_CONFIG.programs.poiSystem, 'map_pois']],
             true
-          );
+          ));
         }
 
         if (delegatedPoiVrf) {
-          await tryUndelegateOrSkip(
+          childUndelegations.push(tryUndelegateOrSkip(
             async () => {
               const undelegatePoiVrfTx = await poiSystemProgramEr.methods
                 .undelegatePoiVrfState()
@@ -1522,9 +1618,13 @@ export function useSessionManager() {
             },
             [[poiVrfStatePda, SOLANA_CONFIG.programs.poiSystem, 'poi_vrf_state']],
             true
-          );
+          ));
         }
 
+        // Send all child undelegations in parallel
+        await Promise.all(childUndelegations);
+
+        // Undelegate the session account last (parent)
         let signature = 'undelegate_partial';
         if (delegatedSession) {
           await tryUndelegateOrSkip(
@@ -1557,6 +1657,12 @@ export function useSessionManager() {
         if (delegatedMap) {
           allChecks.push([generatedMapPda, SOLANA_CONFIG.programs.mapGenerator, 'generated_map']);
         }
+        if (delegatedSessionDiscovery) {
+          allChecks.push([sessionDiscoveryPda, SOLANA_CONFIG.programs.mapGenerator, 'session_discovery']);
+        }
+        if (delegatedGauntletEchoes) {
+          allChecks.push([gauntletEchoesPda, SOLANA_CONFIG.programs.gameplayState, 'gauntlet_echoes']);
+        }
         if (delegatedInventory) {
           allChecks.push([inventoryPda, SOLANA_CONFIG.programs.playerInventory, 'inventory']);
         }
@@ -1571,11 +1677,12 @@ export function useSessionManager() {
         }
 
         let allRestored = false;
-        // E2e test uses a fixed 5s wait for ER→base commit propagation before checking.
-        // Match that behavior: wait 5s upfront, then poll for up to 55s more.
-        console.log('[useSessionManager] undelegate: waiting 5s for base layer restoration...');
-        await new Promise((resolve) => setTimeout(resolve, 5000));
-        for (let i = 0; i < 55; i += 1) {
+        // Wait for ER→base commit propagation, then poll.
+        // With parallel undelegation TXs already confirmed on ER, base restoration
+        // typically completes within 2-3s.
+        console.log('[useSessionManager] undelegate: waiting 2s for base layer restoration...');
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        for (let i = 0; i < 30; i += 1) {
           const infos = await Promise.all(
             allChecks.map(([pda]) => baseConnection.getAccountInfo(pda, 'processed'))
           );
@@ -1646,6 +1753,32 @@ export function useSessionManager() {
             return { success: true, signature };
           }
           throw new Error('Owner not restored for all accounts after undelegate');
+        }
+
+        if (baseGauntletEchoesInfo || delegatedGauntletEchoes) {
+          const gauntletEchoesInfo = await baseConnection
+            .getAccountInfo(gauntletEchoesPda, 'processed')
+            .catch(() => null);
+          if (gauntletEchoesInfo?.owner.equals(SOLANA_CONFIG.programs.gameplayState)) {
+            const gameplayProgramBase = createGameplayStateProgram(baseConnection);
+            const closeGauntletEchoesTx = await gameplayProgramBase.methods
+              .closeGauntletEchoes()
+              .accounts({
+                gauntletEchoes: gauntletEchoesPda,
+                gameState: gameStatePda,
+                player: wallet.publicKey,
+                sessionSigner: sessionSignerKeypair.publicKey,
+              })
+              .transaction();
+            await sendSessionSignerTransaction(
+              baseConnection,
+              closeGauntletEchoesTx,
+              sessionSignerKeypair
+            );
+            console.log(
+              '[useSessionManager] undelegate: closed gauntlet_echoes after base restoration'
+            );
+          }
         }
 
         await fetchSession();
@@ -1766,6 +1899,20 @@ export function useSessionManager() {
         const program = createSessionManagerProgram(baseConnection);
         const transaction = new Transaction();
 
+        const [duelEntryPda] = deriveDuelEntryPda(sessionPda);
+        const duelEntryInfo = await baseConnection.getAccountInfo(duelEntryPda);
+        if (duelEntryInfo) {
+          const gameplayProgram = createGameplayStateProgram(baseConnection);
+          const resetIx = await buildResetDuelEntryInstruction(
+            gameplayProgram,
+            sessionPda,
+            gameStatePda,
+            wallet.publicKey,
+            sessionSignerKeypair.publicKey
+          );
+          transaction.add(resetIx);
+        }
+
         const closeIx = await program.methods
           .closeSessionOnly()
           .accounts({
@@ -1853,6 +2000,21 @@ export function useSessionManager() {
         const program = createSessionManagerProgram(baseConnection);
         const transaction = new Transaction();
 
+        const [duelEntryPda] = deriveDuelEntryPda(sessionPda);
+        const duelEntryInfo = await baseConnection.getAccountInfo(duelEntryPda);
+        if (duelEntryInfo) {
+          const gameplayProgram = createGameplayStateProgram(baseConnection);
+          const resetIx = await buildResetDuelEntryInstruction(
+            gameplayProgram,
+            sessionPda,
+            gameStatePda,
+            wallet.publicKey,
+            sessionSignerKeypair.publicKey
+          );
+          transaction.add(resetIx);
+        }
+
+        const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
         const forceCloseIx = await program.methods
           .forceCloseSession()
           .accounts({
@@ -1862,6 +2024,7 @@ export function useSessionManager() {
             generatedMap: generatedMapPda,
             mapPois: mapPoisPda,
             inventory: inventoryPda,
+            sessionDiscovery: sessionDiscoveryPda,
             playerProfile: playerProfilePda,
             player: wallet.publicKey,
             sessionSigner: sessionSignerKeypair.publicKey,
@@ -2137,23 +2300,20 @@ export function useSessionManager() {
         const program = createSessionManagerProgram(baseConnection);
         const transaction = new Transaction();
 
-        // For duel sessions, prepend reset_duel_entry to clean up duel state before closing
-        const [duelSessionPda] = deriveDuelSessionPda(wallet.publicKey);
-        const isDuelSession = sessionPda.equals(duelSessionPda);
-        if (isDuelSession) {
-          const [duelEntryPda] = deriveDuelEntryPda(sessionPda);
-          const duelEntryInfo = await baseConnection.getAccountInfo(duelEntryPda);
-          if (duelEntryInfo) {
-            const gameplayProgram = createGameplayStateProgram(baseConnection);
-            const resetIx = await buildResetDuelEntryInstruction(
-              gameplayProgram,
-              sessionPda,
-              gameStatePda,
-              wallet.publicKey,
-              sessionSignerKeypair.publicKey
-            );
-            transaction.add(resetIx);
-          }
+        // duel_entry is non-delegated and keyed by session PDA, so detect it directly
+        // instead of inferring duel mode from a possibly stale/default nonce.
+        const [duelEntryPda] = deriveDuelEntryPda(sessionPda);
+        const duelEntryInfo = await baseConnection.getAccountInfo(duelEntryPda);
+        if (duelEntryInfo) {
+          const gameplayProgram = createGameplayStateProgram(baseConnection);
+          const resetIx = await buildResetDuelEntryInstruction(
+            gameplayProgram,
+            sessionPda,
+            gameStatePda,
+            wallet.publicKey,
+            sessionSignerKeypair.publicKey
+          );
+          transaction.add(resetIx);
         }
 
         // Check which VRF accounts exist (only for sessions that used VRF)
@@ -2166,6 +2326,7 @@ export function useSessionManager() {
           baseConnection.getAccountInfo(gameplayVrfStatePda).catch(() => null),
         ]);
 
+        const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
         const endSessionIx = await program.methods
           .endSession(currentSession.campaignLevel)
           .accountsPartial({
@@ -2179,6 +2340,7 @@ export function useSessionManager() {
             sessionSigner: sessionSignerKeypair.publicKey,
             sessionManagerAuthority: deriveSessionManagerAuthorityPda()[0],
             inventory: inventoryPda,
+            sessionDiscovery: sessionDiscoveryPda,
             mapVrfState: mapVrfInfo ? mapVrfStatePda : null,
             poiVrfState: poiVrfInfo ? poiVrfStatePda : null,
             gameplayVrfState: gameplayVrfInfo ? gameplayVrfStatePda : null,

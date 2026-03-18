@@ -79,19 +79,21 @@ export const GEAR_EFFECTS: Record<GearId, GearEffects> = {
     ],
   },
 
-  // G-ST-04: Reinforcement Plate - Battle Start: gain 2/4/8 Armor; every other turn: gain 2/4/8 Armor
+  // G-ST-04: Reinforcement Plate - Battle Start: gain 2/4/8 Armor; every other turn: gain 2/4/8 Armor and 1/2/4 Shrapnel
   I4: {
     effects: [
       E(Trigger.BattleStart(), 'GainArmor', [2, 4, 8]),
       E(Trigger.EveryOtherTurn(), 'GainArmor', [2, 4, 8]),
+      E(Trigger.EveryOtherTurn(), 'ApplyShrapnel', [1, 2, 4]),
     ],
   },
 
-  // G-ST-05: Rebar Carapace - Battle Start: +3/6/12 Armor; FirstTimeExposed: +4/8/16 ARM
+  // G-ST-05: Rebar Carapace - Battle Start: +3/6/12 Armor; FirstTimeExposed: +4/8/16 ARM and 2/4/8 Shrapnel
   I5: {
     effects: [
       E(Trigger.BattleStart(), 'GainArmor', [3, 6, 12]),
       E(Trigger.FirstTimeExposed(), 'GainArmor', [4, 8, 16]),
+      E(Trigger.FirstTimeExposed(), 'ApplyShrapnel', [2, 4, 8]),
     ],
   },
 
@@ -182,12 +184,9 @@ export const GEAR_EFFECTS: Record<GearId, GearEffects> = {
     effects: [
       E(Trigger.BattleStart(), 'GainAtk', [1, 2, 4]),
       E(Trigger.BattleStart(), 'GainDig', [1, 2, 4]),
-      E(
-        Trigger.BattleStart(),
-        'SetArmorPiercing',
-        [2, 4, 8],
-        { condition: Cond.OwnerDigGreaterThanEnemyArmor() }
-      ),
+      E(Trigger.BattleStart(), 'SetArmorPiercing', [2, 4, 8], {
+        condition: Cond.OwnerDigGreaterThanEnemyArmor(),
+      }),
     ],
   },
 
@@ -213,7 +212,10 @@ export const GEAR_EFFECTS: Record<GearId, GearEffects> = {
 
   // G-GR-02: Lucky Coin - Victory: gain 3/6/12 Gold and heal 3/6/12 HP
   I18: {
-    effects: [E(Trigger.Victory(), 'GainGold', [3, 6, 12]), E(Trigger.Victory(), 'Heal', [3, 6, 12])],
+    effects: [
+      E(Trigger.Victory(), 'GainGold', [3, 6, 12]),
+      E(Trigger.Victory(), 'Heal', [3, 6, 12]),
+    ],
   },
 
   // G-GR-03: Gilded Band - Battle Start: gain 2/4/8 Armor and convert Gold → Armor 6/12/24; if Gold ≥ 20, +1/2/4 SPD this battle
@@ -221,19 +223,15 @@ export const GEAR_EFFECTS: Record<GearId, GearEffects> = {
     effects: [
       E(Trigger.BattleStart(), 'GainArmor', [2, 4, 8]),
       E(Trigger.BattleStart(), 'GoldToArmorScaled', [6, 12, 24]),
-      E(
-        Trigger.BattleStart(),
-        'GainSpd',
-        [1, 2, 4],
-        { condition: Cond.OwnerGoldAtLeast(20) }
-      ),
+      E(Trigger.BattleStart(), 'GainSpd', [1, 2, 4], { condition: Cond.OwnerGoldAtLeast(20) }),
     ],
   },
 
-  // G-GR-04: Royal Bracer - Battle Start: gain 1/2/4 ATK; Turn Start: convert Gold → 4/8/16 Armor and amplify Gold gains 50/100/200%
+  // G-GR-04: Royal Bracer - Battle Start: gain 1/2/4 ATK; max 3 Gold->Armor conversions; Turn Start convert Gold → 4/8/16 Armor and amplify Gold gains 50/100/200%
   I20: {
     effects: [
       E(Trigger.BattleStart(), 'GainAtk', [1, 2, 4]),
+      E(Trigger.BattleStart(), 'LimitGoldArmorConversions', [3, 3, 3]),
       E(Trigger.TurnStart(), 'ConsumeGoldForArmor', [4, 8, 16]),
       E(Trigger.TurnStart(), 'AmplifyGoldGain', [50, 100, 200]),
     ],
@@ -268,15 +266,15 @@ export const GEAR_EFFECTS: Record<GearId, GearEffects> = {
   // BLAST (I25-I32)
   // ===========================================================================
 
-  // G-BL-01: Small Charge - Countdown(2): deal 10/20/40 to enemy, 4/8/16 to self
+  // G-BL-01: Small Charge - Countdown(3): deal 8/14/24 to enemy, 4/6/10 to self
   I25: {
     effects: [
-      E(Trigger.Countdown(2), 'DealNonWeaponDamage', [10, 20, 40]),
-      E(Trigger.Countdown(2), 'DealSelfNonWeaponDamage', [4, 8, 16]),
+      E(Trigger.Countdown(3), 'DealNonWeaponDamage', [8, 14, 24]),
+      E(Trigger.Countdown(3), 'DealSelfNonWeaponDamage', [4, 6, 10]),
     ],
   },
 
-  // G-BL-02: Blast Suit - BlastImmunity, +4/8/16 Armor; OnDealNonWeaponDamage: +1/2/4 Armor (once/turn)
+  // G-BL-02: Blast Suit - 50% self-BLAST damage, +4/8/16 Armor; OnDealNonWeaponDamage: +1/2/4 Armor (once/turn)
   I26: {
     effects: [
       E(Trigger.BattleStart(), 'BlastImmunity', [1, 1, 1]),
@@ -301,12 +299,13 @@ export const GEAR_EFFECTS: Record<GearId, GearEffects> = {
     ],
   },
 
-  // G-BL-05: Bomb Satchel - Battle Start: ReduceAllCountdowns by 1/2/4; +4/8/16 Armor and +1/2/4 ATK
+  // G-BL-05: Bomb Satchel - Battle Start: ReduceAllCountdowns by 1; +4/8/16 Armor, +1/2/4 ATK, bombs deal +0/2/4
   I29: {
     effects: [
-      E(Trigger.BattleStart(), 'ReduceAllCountdowns', [1, 2, 4]),
+      E(Trigger.BattleStart(), 'ReduceAllCountdowns', [1, 1, 1]),
       E(Trigger.BattleStart(), 'GainArmor', [4, 8, 16]),
       E(Trigger.BattleStart(), 'GainAtk', [1, 2, 4]),
+      E(Trigger.BattleStart(), 'BombDamageBonus', [0, 2, 4]),
     ],
   },
 
@@ -596,11 +595,12 @@ export const GEAR_EFFECTS: Record<GearId, GearEffects> = {
     ],
   },
 
-  // G-TE-03: Counterweight Buckle - Battle Start: +1/2/4 SPD; FirstTurnIfSlower: gain 7/14/28 Armor
+  // G-TE-03: Counterweight Buckle - Battle Start: +1/2/4 SPD; FirstTurnIfSlower: gain 7/14/28 Armor and 2/4/8 Shrapnel
   I59: {
     effects: [
       E(Trigger.BattleStart(), 'GainSpd', [1, 2, 4]),
       E(Trigger.FirstTurnIfSlower(), 'GainArmor', [7, 14, 28]),
+      E(Trigger.FirstTurnIfSlower(), 'ApplyShrapnel', [2, 4, 8]),
     ],
   },
 
@@ -648,7 +648,6 @@ export const GEAR_EFFECTS: Record<GearId, GearEffects> = {
       E(Trigger.TurnN(5), 'GainSpd', [2, 4, 8]),
     ],
   },
-
 };
 
 // ============================================================================

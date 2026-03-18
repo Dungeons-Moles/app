@@ -7,7 +7,7 @@ import { View, StyleSheet, LayoutChangeEvent, PanResponder } from 'react-native'
 import { Image } from 'expo-image';
 import type { Position, WallHighlightState } from '../../game/engine/types';
 import { TimePhase } from '../../game/engine/types';
-import type { GameMap, MapEnemy } from '../../game/map/types';
+import type { GameMap, MapEnemy, MapPOI } from '../../game/map/types';
 import { TileType, FogState } from '../../game/map/types';
 import type { OverviewModeState } from '../../contexts/GameContext';
 import { useScreenVariant } from '../../contexts/ScreenVariantContext';
@@ -30,6 +30,7 @@ const SINGLE_USE_POIS = ['L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L12', 'L13'];
 const TILE_COLORS = {
   [TileType.Floor]: '#795040', // Brown corridor
   [TileType.Wall]: '#000000', // Black environment
+  [TileType.Unknown]: '#111111', // Hidden/private tiles
 } as const;
 
 const FOG_COLOR_HIDDEN = 'transparent';
@@ -79,8 +80,24 @@ interface VisibleTileRange {
 interface TileData {
   x: number;
   y: number;
+  floorVariation: number;
+  rockVariation: number;
+}
+
+interface VisibleTile extends TileData {
   type: TileType;
   fog: FogState;
+}
+
+interface TileRowProps {
+  y: number;
+  startX: number;
+  endX: number;
+  tileDescriptors: TileData[];
+  tileRow: TileType[];
+  fogRow: FogState[];
+  zoom: number;
+  showRevealOverlay: boolean;
 }
 
 // ============================================================================
@@ -122,6 +139,41 @@ function getCameraOffset(
   };
 }
 
+function getMapCellKey(x: number, y: number, mapWidth: number): number {
+  return y * mapWidth + x;
+}
+
+function buildCoordinateBuckets<T extends { position: Position }>(
+  entries: T[],
+  mapWidth: number
+): Map<number, T[]> {
+  const buckets = new Map<number, T[]>();
+  for (const entry of entries) {
+    const key = getMapCellKey(entry.position.x, entry.position.y, mapWidth);
+    const existing = buckets.get(key);
+    if (existing) {
+      existing.push(entry);
+      continue;
+    }
+    buckets.set(key, [entry]);
+  }
+  return buckets;
+}
+
+function buildTileDescriptorGrid(mapWidth: number, mapHeight: number): TileData[][] {
+  return Array.from({ length: mapHeight }, (_, y) =>
+    Array.from({ length: mapWidth }, (_, x) => {
+      const variation = Math.abs(x * 7 + y * 13);
+      return {
+        x,
+        y,
+        floorVariation: variation % floorImages.length,
+        rockVariation: variation % rockImages.length,
+      };
+    })
+  );
+}
+
 // ============================================================================
 // Memoized Render Components
 // ============================================================================
@@ -129,31 +181,26 @@ function getCameraOffset(
 const TileView = memo(function TileView({
   x,
   y,
+  floorVariation,
+  rockVariation,
   type,
   fog,
-  showRevealOverlay,
-  offsetX,
-  offsetY,
   zoom,
+  showRevealOverlay,
 }: TileData & {
-  showRevealOverlay: boolean;
-  offsetX: number;
-  offsetY: number;
+  type: TileType;
+  fog: FogState;
   zoom: number;
+  showRevealOverlay: boolean;
 }) {
-  const screenX = x * TILE_SIZE * zoom + offsetX;
-  const screenY = y * TILE_SIZE * zoom + offsetY;
+  const screenX = x * TILE_SIZE * zoom;
+  const screenY = y * TILE_SIZE * zoom;
   const size = TILE_SIZE * zoom;
 
-  const variation = Math.abs(x * 7 + y * 13);
-  let tileImage;
-  if (type === TileType.Floor) {
-    tileImage = floorImages[variation % floorImages.length];
-  } else {
-    tileImage = rockImages[variation % rockImages.length];
-  }
+  const tileImage =
+    type === TileType.Floor ? floorImages[floorVariation] : rockImages[rockVariation];
 
-  if (fog === FogState.Hidden) {
+  if (fog === FogState.Hidden || type === TileType.Unknown) {
     return (
       <View
         style={[
@@ -206,6 +253,33 @@ const TileView = memo(function TileView({
   );
 });
 
+const TileRow = memo(function TileRow({
+  y,
+  startX,
+  endX,
+  tileDescriptors,
+  tileRow,
+  fogRow,
+  zoom,
+  showRevealOverlay,
+}: TileRowProps) {
+  const tiles = [];
+  for (let x = startX; x <= endX; x++) {
+    const descriptor = tileDescriptors[x];
+    tiles.push(
+      <TileView
+        key={`tile-${descriptor.x}-${descriptor.y}`}
+        {...descriptor}
+        type={tileRow[x]}
+        fog={fogRow[x]}
+        zoom={zoom}
+        showRevealOverlay={showRevealOverlay}
+      />
+    );
+  }
+  return <>{tiles}</>;
+});
+
 /**
  * Entity renderer that combines the colored square background with an emoji on top.
  */
@@ -214,8 +288,6 @@ const EntityView = memo(function EntityView({
   y,
   image,
   opacity,
-  offsetX,
-  offsetY,
   zoom,
   flipX = false,
   grayscale = false,
@@ -225,8 +297,6 @@ const EntityView = memo(function EntityView({
   y: number;
   image?: any;
   opacity?: number;
-  offsetX: number;
-  offsetY: number;
   zoom: number;
   flipX?: boolean;
   grayscale?: boolean;
@@ -234,8 +304,8 @@ const EntityView = memo(function EntityView({
 }) {
   const size = ENTITY_SIZE * zoom;
   const offset = ENTITY_OFFSET * zoom;
-  const screenX = x * TILE_SIZE * zoom + offsetX - offset;
-  const screenY = y * TILE_SIZE * zoom + offsetY - offset - yOffset * zoom;
+  const screenX = x * TILE_SIZE * zoom - offset;
+  const screenY = y * TILE_SIZE * zoom - offset - yOffset * zoom;
 
   const transform = [];
   if (flipX) transform.push({ scaleX: -1 });
@@ -323,73 +393,80 @@ export const MapRenderer = memo(function MapRenderer({
     [cameraCenter, width, height, zoom]
   );
   const cameraTransform = useMemo(
-    () => [{ scale: zoom }, { translateX: cameraOffset.x }, { translateY: cameraOffset.y }],
-    [zoom, cameraOffset.x, cameraOffset.y]
+    () => [{ translateX: cameraOffset.x }, { translateY: cameraOffset.y }],
+    [cameraOffset.x, cameraOffset.y]
   );
 
   const isNight = timePhase === TimePhase.Night;
   const showRevealOverlay = isNight;
 
-  const visibleTiles = useMemo(() => {
-    const tiles: TileData[] = [];
+  const tileDescriptorGrid = useMemo(
+    () => buildTileDescriptorGrid(map.width, map.height),
+    [map.width, map.height]
+  );
+
+  const visibleRows = useMemo(() => {
+    const rows: number[] = [];
     for (let y = visibleRange.startY; y <= visibleRange.endY; y++) {
-      for (let x = visibleRange.startX; x <= visibleRange.endX; x++) {
-        tiles.push({ x, y, type: map.tiles[y][x], fog: map.fog[y][x] });
-      }
+      rows.push(y);
     }
-    return tiles;
-  }, [visibleRange, map.tiles, map.fog]);
+    return rows;
+  }, [visibleRange.startY, visibleRange.endY]);
+
+  const poiBuckets = useMemo(() => buildCoordinateBuckets(map.pois, map.width), [map.pois, map.width]);
+  const enemyBuckets = useMemo(
+    () => buildCoordinateBuckets(map.enemies, map.width),
+    [map.enemies, map.width]
+  );
 
   const visiblePOIs = useMemo(() => {
-    return map.pois.filter(
-      (poi) =>
-        poi.position.x >= visibleRange.startX &&
-        poi.position.x <= visibleRange.endX &&
-        poi.position.y >= visibleRange.startY &&
-        poi.position.y <= visibleRange.endY &&
-        map.fog[poi.position.y][poi.position.x] !== FogState.Hidden
-    );
-  }, [map.pois, visibleRange, map.fog]);
+    const pois: MapPOI[] = [];
+    for (let y = visibleRange.startY; y <= visibleRange.endY; y++) {
+      for (let x = visibleRange.startX; x <= visibleRange.endX; x++) {
+        if (map.fog[y][x] === FogState.Hidden) {
+          continue;
+        }
+        const bucket = poiBuckets.get(getMapCellKey(x, y, map.width));
+        if (!bucket) {
+          continue;
+        }
+        pois.push(...bucket);
+      }
+    }
+    return pois;
+  }, [poiBuckets, visibleRange, map.fog, map.width]);
 
   const visibleEnemies = useMemo(() => {
-    return map.enemies
-      .map((enemy) => {
-        if (
-          enemy.position.x < visibleRange.startX ||
-          enemy.position.x > visibleRange.endX ||
-          enemy.position.y < visibleRange.startY ||
-          enemy.position.y > visibleRange.endY
-        ) {
-          return null;
+    const enemies: Array<{ enemy: MapEnemy; variant: 'known' | 'unknown' }> = [];
+    for (let y = visibleRange.startY; y <= visibleRange.endY; y++) {
+      for (let x = visibleRange.startX; x <= visibleRange.endX; x++) {
+        const bucket = enemyBuckets.get(getMapCellKey(x, y, map.width));
+        if (!bucket) {
+          continue;
         }
 
-        const fog = map.fog[enemy.position.y][enemy.position.x];
+        const fog = map.fog[y][x];
         const isVisible = fog === FogState.Visible;
         const isRevealed = fog === FogState.Revealed;
 
-        if (isNight) {
-          // At night: show all enemies on non-hidden tiles
-          // - Visible tiles (in sight range): show actual enemy
-          // - Revealed tiles (outside sight range): show question mark
-          if (isVisible) {
-            return { enemy, variant: 'known' as const };
-          } else if (isRevealed) {
-            return { enemy, variant: 'unknown' as const };
+        for (const enemy of bucket) {
+          if (isNight) {
+            if (isVisible) {
+              enemies.push({ enemy, variant: 'known' });
+            } else if (isRevealed) {
+              enemies.push({ enemy, variant: 'unknown' });
+            }
+            continue;
           }
-          return null;
-        } else {
-          // During day: only show discovered or visible enemies
-          const isKnown = enemy.discovered || isVisible;
-          if (!isKnown) {
-            return null;
+
+          if (enemy.discovered || isVisible) {
+            enemies.push({ enemy, variant: 'known' });
           }
-          return { enemy, variant: 'known' as const };
         }
-      })
-      .filter(
-        (entry): entry is { enemy: MapEnemy; variant: 'known' | 'unknown' } => entry !== null
-      );
-  }, [map.enemies, map.fog, visibleRange, isNight]);
+      }
+    }
+    return enemies;
+  }, [enemyBuckets, visibleRange, map.fog, map.width, isNight]);
 
   const highlightVisible = useMemo(() => {
     if (!wallHighlight) {
@@ -487,19 +564,21 @@ export const MapRenderer = memo(function MapRenderer({
   return (
     <View style={styles.container} onLayout={handleLayout} {...panResponder.panHandlers}>
       <View style={styles.tileLayer}>
-        {visibleTiles.map((tile) => (
-          <TileView
-            key={`tile-${tile.x}-${tile.y}`}
-            x={tile.x}
-            y={tile.y}
-            type={tile.type}
-            fog={tile.fog}
-            showRevealOverlay={showRevealOverlay}
-            offsetX={cameraOffset.x}
-            offsetY={cameraOffset.y}
-            zoom={zoom}
-          />
-        ))}
+        <View style={[styles.cameraTranslateLayer, { transform: cameraTransform }]}>
+          {visibleRows.map((y) => (
+            <TileRow
+              key={`tile-row-${y}`}
+              y={y}
+              startX={visibleRange.startX}
+              endX={visibleRange.endX}
+              tileDescriptors={tileDescriptorGrid[y]}
+              tileRow={map.tiles[y]}
+              fogRow={map.fog[y]}
+              zoom={zoom}
+              showRevealOverlay={showRevealOverlay}
+            />
+          ))}
+        </View>
       </View>
 
       {/* Layered View for Entities */}
@@ -514,59 +593,55 @@ export const MapRenderer = memo(function MapRenderer({
             />
           )}
 
-          {/* 1. POIs */}
-          {visiblePOIs.map((poi) => {
-            const isUsed = poi.visited && SINGLE_USE_POIS.includes(poi.definitionId);
-            const isUnusableDay = poi.definitionId === 'L5' && !isNight;
-            const shouldBeGray = isUsed || isUnusableDay;
+          <View style={[styles.cameraTranslateLayer, { transform: cameraTransform }]}>
+            {/* 1. POIs */}
+            {visiblePOIs.map((poi) => {
+              const isUsed = poi.visited && SINGLE_USE_POIS.includes(poi.definitionId);
+              const isUnusableDay = poi.definitionId === 'L5' && !isNight;
+              const shouldBeGray = isUsed || isUnusableDay;
 
-            const fog = map.fog[poi.position.y][poi.position.x];
-            const dimmed = isNight && fog === FogState.Revealed;
-            return (
-              <EntityView
-                key={`poi-${poi.id}`}
-                x={poi.position.x}
-                y={poi.position.y}
-                image={getEntityImageSource(poi.definitionId)}
-                opacity={dimmed ? 0.6 : 1}
-                grayscale={shouldBeGray}
-                offsetX={cameraOffset.x}
-                offsetY={cameraOffset.y}
-                zoom={zoom}
-              />
-            );
-          })}
+              const fog = map.fog[poi.position.y][poi.position.x];
+              const dimmed = isNight && fog === FogState.Revealed;
+              return (
+                <EntityView
+                  key={`poi-${poi.id}`}
+                  x={poi.position.x}
+                  y={poi.position.y}
+                  image={getEntityImageSource(poi.definitionId)}
+                  opacity={dimmed ? 0.6 : 1}
+                  zoom={zoom}
+                  grayscale={shouldBeGray}
+                />
+              );
+            })}
 
-          {/* 2. Enemies */}
-          {visibleEnemies.map((entry) => {
-            const { enemy, variant } = entry;
-            const isUnknown = variant === 'unknown';
-            return (
-              <EntityView
-                key={`enemy-${enemy.id}`}
-                x={enemy.position.x}
-                y={enemy.position.y}
-                image={
-                  isUnknown ? unknownEnemyImageSource : getEntityImageSource(enemy.definitionId)
-                }
-                offsetX={cameraOffset.x}
-                offsetY={cameraOffset.y}
-                zoom={zoom}
-              />
-            );
-          })}
+            {/* 2. Enemies */}
+            {visibleEnemies.map((entry) => {
+              const { enemy, variant } = entry;
+              const isUnknown = variant === 'unknown';
+              return (
+                <EntityView
+                  key={`enemy-${enemy.id}`}
+                  x={enemy.position.x}
+                  y={enemy.position.y}
+                  image={
+                    isUnknown ? unknownEnemyImageSource : getEntityImageSource(enemy.definitionId)
+                  }
+                  zoom={zoom}
+                />
+              );
+            })}
 
-          {/* 3. Player (Topmost) */}
-          <EntityView
-            x={playerPosition.x}
-            y={playerPosition.y}
-            image={playerSkinSource ?? defaultMoleImageSource}
-            offsetX={cameraOffset.x}
-            offsetY={cameraOffset.y}
-            zoom={zoom}
-            flipX={playerFacing === 'left'}
-            yOffset={4}
-          />
+            {/* 3. Player (Topmost) */}
+            <EntityView
+              x={playerPosition.x}
+              y={playerPosition.y}
+              image={playerSkinSource ?? defaultMoleImageSource}
+              zoom={zoom}
+              flipX={playerFacing === 'left'}
+              yOffset={4}
+            />
+          </View>
         </View>
       </View>
     </View>
@@ -585,6 +660,10 @@ const styles = StyleSheet.create({
   },
   tileLayer: {
     ...StyleSheet.absoluteFillObject,
+  },
+  cameraTranslateLayer: {
+    ...StyleSheet.absoluteFillObject,
+    transformOrigin: '0 0',
   },
   tile: {
     position: 'absolute',

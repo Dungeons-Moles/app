@@ -24,6 +24,8 @@ import {
   deriveGameplayAuthorityPda,
   deriveMapPoisPda,
   deriveGameplayVrfStatePda,
+  deriveSessionDiscoveryPda,
+  deriveGauntletEchoesPda,
 } from './constants';
 
 import {
@@ -41,9 +43,53 @@ import {
 // Caches both positive (exists) and negative (doesn't exist) results.
 const vrfStateExistsCache = new Map<string, boolean>();
 
+// Cache for sessionDiscovery existence per session — avoids a round trip on every move.
+const discoveryExistsCache = new Map<string, boolean>();
+
+// Cache for gauntletEchoes existence per session — avoids a round trip on every move.
+const gauntletEchoesExistsCache = new Map<string, boolean>();
+
 // Pre-computed Anchor discriminator for move_player: sha256("global:move_player")[0..8]
 // Avoids going through Anchor's MethodsBuilder which adds ~120ms of async overhead.
 const MOVE_PLAYER_DISCRIMINATOR = Buffer.from([17, 58, 68, 221, 186, 117, 140, 231]);
+
+/**
+ * Pre-warm the optional-account existence caches for a session so the first
+ * movePlayer call doesn't pay 3 sequential RPC round trips (~450ms).
+ * Fire-and-forget — errors are silently swallowed.
+ */
+export function warmMovePlayerCaches(
+  connection: Connection,
+  program: Program,
+  sessionPda: PublicKey
+): void {
+  const sessionKey = sessionPda.toBase58();
+  if (
+    vrfStateExistsCache.has(sessionKey) &&
+    discoveryExistsCache.has(sessionKey) &&
+    gauntletEchoesExistsCache.has(sessionKey)
+  ) {
+    return; // already warm
+  }
+  const [gameplayVrfStatePda] = deriveGameplayVrfStatePda(sessionPda);
+  const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
+  const [gauntletEchoesPda] = deriveGauntletEchoesPda(sessionPda);
+  Promise.all([
+    vrfStateExistsCache.has(sessionKey) ? null :
+      (program.account as any)?.gameplayVrfState
+        ?.fetchNullable(gameplayVrfStatePda)
+        .catch(() => null)
+        .then((r: unknown) => vrfStateExistsCache.set(sessionKey, !!r)),
+    discoveryExistsCache.has(sessionKey) ? null :
+      connection.getAccountInfo(sessionDiscoveryPda)
+        .catch(() => null)
+        .then((r: unknown) => discoveryExistsCache.set(sessionKey, !!r)),
+    gauntletEchoesExistsCache.has(sessionKey) ? null :
+      connection.getAccountInfo(gauntletEchoesPda)
+        .catch(() => null)
+        .then((r: unknown) => gauntletEchoesExistsCache.set(sessionKey, !!r)),
+  ]).catch(() => {});
+}
 
 // ============================================================================
 // PDA Derivation (T014)
@@ -138,27 +184,42 @@ export async function movePlayer(
   sessionSignerKeypair: Keypair,
   params: MovePlayerParams
 ): Promise<{ signature: string; connection: Connection }> {
-  const tStart = Date.now();
   const [mapEnemiesPda] = deriveMapEnemiesPda(sessionPda);
   const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
   const [inventoryPda] = deriveInventoryPda(sessionPda);
   const [gameplayAuthorityPda] = deriveGameplayAuthorityPda();
   const [mapPoisPda] = deriveMapPoisPda(sessionPda);
   const [gameplayVrfStatePda] = deriveGameplayVrfStatePda(sessionPda);
-  // Optional account: include only when fully initialized/deserializable.
-  // Cache both positive and negative results per session to avoid a round trip on every move.
+  const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
+  // Optional accounts: include only when fully initialized/deserializable.
+  // Cache both positive and negative results per session to avoid round trips on every move.
+  // On first move (cold cache), all 3 checks run in parallel to avoid sequential latency.
   const sessionKey = sessionPda.toBase58();
-  let vrfStateExists: boolean;
-  if (vrfStateExistsCache.has(sessionKey)) {
-    vrfStateExists = vrfStateExistsCache.get(sessionKey)!;
-  } else {
-    const vrfAccount = await (program.account as any)?.gameplayVrfState
-      ?.fetchNullable(gameplayVrfStatePda)
-      .catch(() => null);
-    vrfStateExists = !!vrfAccount;
-    vrfStateExistsCache.set(sessionKey, vrfStateExists);
+  const [gauntletEchoesPda] = deriveGauntletEchoesPda(sessionPda);
+
+  const vrfCached = vrfStateExistsCache.has(sessionKey);
+  const discoveryCached = discoveryExistsCache.has(sessionKey);
+  const gauntletCached = gauntletEchoesExistsCache.has(sessionKey);
+
+  if (!vrfCached || !discoveryCached || !gauntletCached) {
+    const [vrfResult, discoveryResult, gauntletResult] = await Promise.all([
+      vrfCached ? Promise.resolve(null) :
+        (program.account as any)?.gameplayVrfState
+          ?.fetchNullable(gameplayVrfStatePda)
+          .catch(() => null),
+      discoveryCached ? Promise.resolve(null) :
+        connection.getAccountInfo(sessionDiscoveryPda).catch(() => null),
+      gauntletCached ? Promise.resolve(null) :
+        connection.getAccountInfo(gauntletEchoesPda).catch(() => null),
+    ]);
+    if (!vrfCached) vrfStateExistsCache.set(sessionKey, !!vrfResult);
+    if (!discoveryCached) discoveryExistsCache.set(sessionKey, !!discoveryResult);
+    if (!gauntletCached) gauntletEchoesExistsCache.set(sessionKey, !!gauntletResult);
   }
-  const tVrf = Date.now();
+
+  const vrfStateExists = vrfStateExistsCache.get(sessionKey)!;
+  const discoveryExists = discoveryExistsCache.get(sessionKey)!;
+  const gauntletEchoesExists = gauntletEchoesExistsCache.get(sessionKey)!;
 
   // Build instruction manually instead of using Anchor's MethodsBuilder.
   // Anchor's async account resolution loop adds ~120ms of overhead even when
@@ -179,11 +240,23 @@ export async function movePlayer(
     { pubkey: SOLANA_CONFIG.programs.mapGenerator, isSigner: false, isWritable: false },
     { pubkey: mapPoisPda, isSigner: false, isWritable: true },
     { pubkey: SOLANA_CONFIG.programs.poiSystem, isSigner: false, isWritable: false },
+    // Optional: session_discovery — when null, Anchor uses program_id as sentinel
+    {
+      pubkey: discoveryExists ? sessionDiscoveryPda : SOLANA_CONFIG.programs.gameplayState,
+      isSigner: false,
+      isWritable: discoveryExists,
+    },
     // Optional: when null, Anchor uses program_id as sentinel
     {
       pubkey: vrfStateExists ? gameplayVrfStatePda : SOLANA_CONFIG.programs.gameplayState,
       isSigner: false,
       isWritable: false,
+    },
+    // Optional: gauntlet_echoes — when null, Anchor uses program_id as sentinel
+    {
+      pubkey: gauntletEchoesExists ? gauntletEchoesPda : SOLANA_CONFIG.programs.gameplayState,
+      isSigner: false,
+      isWritable: gauntletEchoesExists,
     },
     { pubkey: sessionSignerKeypair.publicKey, isSigner: true, isWritable: false },
   ];
@@ -195,9 +268,6 @@ export async function movePlayer(
       data,
     })
   );
-  const tBuild = Date.now();
-  console.log(`[perf] movePlayer breakdown: vrfCheck=${tVrf - tStart}ms, txBuild=${tBuild - tVrf}ms`);
-
   // move_player can resolve boss fights / gauntlet echoes inline on the last
   // move of night3 (up to 50-turn combat + CPIs), which far exceeds the
   // default 200k CU limit.
@@ -275,15 +345,18 @@ export async function triggerBossFight(
 
   const transaction = await program.methods
     .triggerBossFight()
-    .accounts({
+    .accountsPartial({
       gameState: gameStatePda,
       gameSession: sessionPda,
       mapEnemies: mapEnemiesPda,
       generatedMap: generatedMapPda,
       inventory: inventoryPda,
       playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
+      gameplayVrfState: null,
+      sessionDiscovery: null,
+      mapGeneratorProgram: null,
       player: sessionSignerKeypair.publicKey,
-    })
+    } as any)
     .transaction();
 
   // Boss fight runs full combat resolution (up to 50 turns + effect processing)
@@ -503,60 +576,6 @@ function getStatTypeArg(stat: StatType): { [key: string]: Record<string, never> 
       return { dig: {} };
     default:
       throw new Error(`Unknown stat type: ${stat}`);
-  }
-}
-
-// ============================================================================
-// MapEnemies Fetch (for session restore)
-// ============================================================================
-
-/**
- * On-chain EnemyInstance structure from Anchor.
- */
-interface OnChainEnemyInstance {
-  archetypeId: number;
-  tier: number;
-  x: number;
-  y: number;
-  defeated: boolean;
-}
-
-/**
- * On-chain MapEnemies account structure from Anchor.
- */
-interface OnChainMapEnemies {
-  session: PublicKey;
-  enemies: OnChainEnemyInstance[];
-  count: number;
-  bump: number;
-}
-
-export type { OnChainEnemyInstance, OnChainMapEnemies };
-
-/**
- * Fetches current MapEnemies account from chain.
- *
- * @param program - Anchor program instance (gameplay_state)
- * @param mapEnemiesPda - MapEnemies PDA
- * @returns OnChainMapEnemies or null if not found
- */
-export async function fetchMapEnemies(
-  program: Program,
-  mapEnemiesPda: PublicKey
-): Promise<OnChainMapEnemies | null> {
-  try {
-    const account = await (
-      program.account as {
-        mapEnemies: {
-          fetchNullable: (address: PublicKey) => Promise<OnChainMapEnemies | null>;
-        };
-      }
-    ).mapEnemies.fetchNullable(mapEnemiesPda);
-
-    return account ?? null;
-  } catch (error) {
-    console.error('Failed to fetch map enemies:', error);
-    return null;
   }
 }
 

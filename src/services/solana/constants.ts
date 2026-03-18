@@ -137,6 +137,10 @@ export const PDA_SEEDS = {
   POI_VRF: 'poi_vrf',
   /** Gameplay VRF state: ["gameplay_vrf", session_pda] */
   GAMEPLAY_VRF: 'gameplay_vrf',
+  /** Session discovery: ["session_discovery", session_pda] */
+  SESSION_DISCOVERY: 'session_discovery',
+  /** Gauntlet echoes: ["gauntlet_echoes", session_pda] */
+  GAUNTLET_ECHOES: 'gauntlet_echoes',
 } as const;
 
 // ============================================================================
@@ -474,6 +478,28 @@ export function deriveGameplayVrfStatePda(sessionPda: PublicKey): [PublicKey, nu
   );
 }
 
+/**
+ * Derive SessionDiscovery PDA for a session.
+ * Seeds: ["session_discovery", session_pda] — owned by map-generator program.
+ */
+export function deriveSessionDiscoveryPda(sessionPda: PublicKey): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from(PDA_SEEDS.SESSION_DISCOVERY), sessionPda.toBuffer()],
+    MAP_GENERATOR_PROGRAM_ID
+  );
+}
+
+/**
+ * Derive GauntletEchoes PDA for a session.
+ * Seeds: ["gauntlet_echoes", session_pda] — owned by gameplay-state program.
+ */
+export function deriveGauntletEchoesPda(sessionPda: PublicKey): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from(PDA_SEEDS.GAUNTLET_ECHOES), sessionPda.toBuffer()],
+    GAMEPLAY_STATE_PROGRAM_ID
+  );
+}
+
 // ============================================================================
 // Composite PDA Derivation
 // ============================================================================
@@ -488,6 +514,8 @@ export interface SessionPdas {
   mapVrfStatePda: PublicKey;
   poiVrfStatePda: PublicKey;
   gameplayVrfStatePda: PublicKey;
+  sessionDiscoveryPda: PublicKey;
+  gauntletEchoesPda: PublicKey;
 }
 
 /**
@@ -504,6 +532,8 @@ export function deriveSessionPdas(sessionPda: PublicKey): SessionPdas {
     mapVrfStatePda: deriveMapVrfStatePda(sessionPda)[0],
     poiVrfStatePda: derivePoiVrfStatePda(sessionPda)[0],
     gameplayVrfStatePda: deriveGameplayVrfStatePda(sessionPda)[0],
+    sessionDiscoveryPda: deriveSessionDiscoveryPda(sessionPda)[0],
+    gauntletEchoesPda: deriveGauntletEchoesPda(sessionPda)[0],
   };
 }
 

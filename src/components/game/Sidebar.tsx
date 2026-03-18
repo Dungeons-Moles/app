@@ -6,7 +6,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { View, StyleSheet, Text, Pressable, Dimensions, Platform } from 'react-native';
 import { Image } from 'expo-image';
 import { CachedImageBackground } from '../common/CachedImageBackground';
-import { PublicKey } from '@solana/web3.js';
 import { StatsPanel } from './StatsPanel';
 import { InventoryPanel } from './InventoryPanel';
 import { FocusGlow } from '../ui/FocusGlow';
@@ -21,22 +20,21 @@ import { useWallet } from '../../contexts/WalletContext';
 import { useSolanaConnection } from '../../contexts/SolanaConnectionContext';
 import { useSession } from '../../contexts/SessionContext';
 import {
+  createMapGeneratorProgram,
   createGameplayStateProgram,
-  createPlayerProfileProgram,
 } from '../../services/solana/programs';
 import {
-  derivePlayerProfilePda,
   deriveGauntletSessionPda,
-  GAMEPLAY_STATE_PROGRAM_ID,
+  deriveSessionDiscoveryPda,
 } from '../../services/solana/constants';
 import { RunMode } from '../../services/solana/types/gameplay_state';
-import { fetchGauntletEchoFromGameState } from '../../services/solana/gauntlet';
+import { fetchGauntletEchoFromDiscovery, fetchGauntletEchoFromGameState } from '../../services/solana/gauntlet';
+import { fetchSessionDiscovery } from '../../services/solana/mapGeneratorClient';
 import { calculateItemStats } from '../../game/entities/items';
 import {
   convertItemInstanceToGear,
   convertItemInstanceToTool,
 } from '../../services/solana/pitDraft';
-import { selectDuelWeekBossForSeed } from '../../game/time/progression';
 import type {
   TimeState,
   PlayerStats,
@@ -186,7 +184,7 @@ function EchoEquipmentGrid({ tool, gear, week, focusIndex }: { tool: Tool | null
   const rows: (Gear | null)[][] = [];
   for (let i = 0; i < maxSlots; i += columnsPerRow) {
     const row: (Gear | null)[] = [];
-    for (let j = 0; j < columnsPerRow; j++) {
+    for (let j = 0; j < columnsPerRow && i + j < maxSlots; j++) {
       row.push(gear[i + j] ?? null);
     }
     rows.push(row);
@@ -256,9 +254,9 @@ export function BossPanel({
   const [pvpLoading, setPvpLoading] = useState(false);
   const { playSfx } = useAudio();
   const { gameState } = useGameplayStateContext();
-  const { mapSeed, gameplayState: sessionGameState } = useSession();
+  const { gameplayState: sessionGameState, sessionPda: activeSessionPda } = useSession();
   const { wallet } = useWallet();
-  const { connection } = useSolanaConnection();
+  const { connection, gameplayReadConnection } = useSolanaConnection();
   const boss = getBoss(time.weekBoss);
   // Use either context's gameState — SessionContext's instance is populated
   // earlier (during session start) while GameplayStateContext's may still be loading.
@@ -270,44 +268,12 @@ export function BossPanel({
     sessionGameState?.maxWeeks === 5;
   const isDuelRun = resolvedRunMode === RunMode.Duel;
   const isDuelFinalWeek = isDuelRun && resolvedWeek === 3;
-  const duelWeekBoss = useMemo(() => {
-    if (!isDuelRun || (resolvedWeek !== 1 && resolvedWeek !== 2)) return null;
-    if (mapSeed == null) return null;
-    const derivedBossId = selectDuelWeekBossForSeed(mapSeed, resolvedWeek);
-    return getBoss(derivedBossId);
-  }, [isDuelRun, mapSeed, resolvedWeek]);
-  const displayedBoss = isDuelFinalWeek ? null : isDuelRun ? duelWeekBoss : boss;
+  const displayedBoss = isGauntletRun ? null : isDuelFinalWeek ? null : boss;
   const shouldShowGauntletEcho = !displayedBoss && isGauntletRun;
   const shouldShowDuelOpponent = !displayedBoss && isDuelFinalWeek;
 
-  const fetchProfileNameByWallet = useCallback(
-    async (walletKey: string): Promise<string | null> => {
-      try {
-        const profileProgram = createPlayerProfileProgram(connection);
-        const [profilePda] = derivePlayerProfilePda(new PublicKey(walletKey));
-        const profile = await (
-          profileProgram.account as {
-            playerProfile: {
-              fetchNullable: (address: unknown) => Promise<{ name?: unknown } | null>;
-            };
-          }
-        ).playerProfile.fetchNullable(profilePda);
-        if (!profile || typeof profile.name !== 'string') return null;
-        const trimmed = (() => {
-          const raw = profile.name;
-          if (typeof raw !== 'string') return Buffer.from(raw as ArrayLike<number>).toString('utf-8').replace(/\0/g, '').trim();
-          if (/^\d+(,\d+)*$/.test(raw)) return Buffer.from(raw.split(',').map(Number)).toString('utf-8').replace(/\0/g, '').trim();
-          return raw.replace(/\0/g, '').trim();
-        })();
-        return trimmed.length > 0 ? trimmed : null;
-      } catch {
-        return null;
-      }
-    },
-    [connection]
-  );
-
-  const gameStateWeek = gameState?.week;
+  const currentGauntletWeek = resolvedWeek ?? time.week;
+  const pvpRequestIdRef = useRef(0);
   const loadPvpDetails = useCallback(async () => {
     if (!wallet.publicKey || displayedBoss || !isGauntletRun) {
       setPvpDetails({
@@ -316,47 +282,62 @@ export function BossPanel({
         tool: null,
         gear: [],
         stats: { hp: 15, atk: 1, arm: 0, spd: 0, dig: 0, gold: 0 },
-        week: gameStateWeek ?? 1,
+        week: currentGauntletWeek ?? 1,
       });
       return;
     }
 
+    const requestId = ++pvpRequestIdRef.current;
     setPvpLoading(true);
     try {
-      const gameplayProgram = createGameplayStateProgram(connection);
-      const week = gameStateWeek;
+      const week = currentGauntletWeek;
 
       if (week === undefined) {
-        setPvpDetails({
-          name: 'Mole Echo',
-          sourceLabel: 'PvP Echo',
-          tool: null,
-          gear: [],
-          stats: { hp: 15, atk: 1, arm: 0, spd: 0, dig: 0, gold: 0 },
-          week: 1,
-        });
+        if (requestId === pvpRequestIdRef.current) {
+          setPvpDetails({
+            name: 'Mole Echo',
+            sourceLabel: 'PvP Echo',
+            tool: null,
+            gear: [],
+            stats: { hp: 15, atk: 1, arm: 0, spd: 0, dig: 0, gold: 0 },
+            week: 1,
+          });
+        }
         return;
       }
 
-      // Derive game state PDA and read echo directly from the account's gauntletEchoes field.
-      // This is the source of truth — echoes are drawn at enter_gauntlet time and stored here.
-      const [gauntletSessionPda] = deriveGauntletSessionPda(wallet.publicKey);
-      const [gameStatePda] = PublicKey.findProgramAddressSync(
-        [Buffer.from('game_state'), gauntletSessionPda.toBuffer()],
-        GAMEPLAY_STATE_PROGRAM_ID
-      );
+      // Use active session PDA (not derived with default nonce 0, which is stale after overrides)
+      const gauntletSessionPda = activeSessionPda ?? deriveGauntletSessionPda(wallet.publicKey)[0];
+      const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(gauntletSessionPda);
+      // Use ER connection — SessionDiscovery and GauntletEchoes are delegated during active gameplay
+      const readConn = gameplayReadConnection ?? connection;
 
-      const preview = await fetchGauntletEchoFromGameState(gameplayProgram, gameStatePda, week);
+      // Try SessionDiscovery first, fall back to reading GauntletEchoes directly
+      let preview = null;
+      const discovery = await fetchSessionDiscovery(
+        createMapGeneratorProgram(readConn),
+        sessionDiscoveryPda
+      ).catch(() => null);
+      if (discovery) {
+        preview = fetchGauntletEchoFromDiscovery(discovery);
+      }
+      if (!preview) {
+        // SessionDiscovery echo not written yet — read directly from GauntletEchoes on ER
+        const gpProgram = createGameplayStateProgram(readConn);
+        preview = await fetchGauntletEchoFromGameState(gpProgram, gauntletSessionPda, week).catch(() => null);
+      }
 
       if (!preview) {
-        setPvpDetails({
-          name: 'Mole Echo',
-          sourceLabel: 'PvP Echo',
-          tool: null,
-          gear: [],
-          stats: { hp: 15, atk: 1, arm: 0, spd: 0, dig: 0, gold: 0 },
-          week,
-        });
+        if (requestId === pvpRequestIdRef.current) {
+          setPvpDetails({
+            name: 'Mole Echo',
+            sourceLabel: 'PvP Echo',
+            tool: null,
+            gear: [],
+            stats: { hp: 15, atk: 1, arm: 0, spd: 0, dig: 0, gold: 0 },
+            week,
+          });
+        }
         return;
       }
 
@@ -370,55 +351,55 @@ export function BossPanel({
       debugLog('[BossPanel] Gauntlet echo preview decoded', {
         week,
         isBootstrap: preview.isBootstrap,
-        sourcePlayer: preview.sourcePlayer?.toBase58?.() ?? null,
         toolDecoded: !!tool,
         gearDecodedCount: gear.length,
         goldAtBattleStart: preview.goldAtBattleStart,
       });
 
-      let name = 'Mole Echo';
-      let sourceLabel = 'Mole Echo';
-      if (!preview.isBootstrap && preview.sourcePlayer) {
-        const sourceWallet = preview.sourcePlayer.toBase58();
-        const profileName = await fetchProfileNameByWallet(sourceWallet);
-        name = profileName ?? sourceWallet.slice(0, 8);
-        sourceLabel = 'Player Echo';
-      }
+      const name = 'Mole Echo';
+      const sourceLabel = 'Mole Echo';
 
-      setPvpDetails({
-        name,
-        sourceLabel,
-        tool,
-        gear,
-        stats: {
-          hp: 15 + (itemStats.hp ?? 0),
-          atk: 1 + (itemStats.atk ?? 0),
-          arm: itemStats.arm ?? 0,
-          spd: itemStats.spd ?? 0,
-          dig: itemStats.dig ?? 0,
-          gold: preview.goldAtBattleStart,
-        },
-        week,
-      });
+      if (requestId === pvpRequestIdRef.current) {
+        setPvpDetails({
+          name,
+          sourceLabel,
+          tool,
+          gear,
+          stats: {
+            hp: 15 + (itemStats.hp ?? 0),
+            atk: 1 + (itemStats.atk ?? 0),
+            arm: itemStats.arm ?? 0,
+            spd: itemStats.spd ?? 0,
+            dig: itemStats.dig ?? 0,
+            gold: preview.goldAtBattleStart,
+          },
+          week,
+        });
+      }
     } catch {
-      setPvpDetails({
-        name: 'Mole Echo',
-        sourceLabel: 'PvP Echo',
-        tool: null,
-        gear: [],
-        stats: { hp: 15, atk: 1, arm: 0, spd: 0, dig: 0, gold: 0 },
-        week: gameStateWeek ?? 1,
-      });
+      if (requestId === pvpRequestIdRef.current) {
+        setPvpDetails({
+          name: 'Mole Echo',
+          sourceLabel: 'PvP Echo',
+          tool: null,
+          gear: [],
+          stats: { hp: 15, atk: 1, arm: 0, spd: 0, dig: 0, gold: 0 },
+          week: currentGauntletWeek ?? 1,
+        });
+      }
     } finally {
-      setPvpLoading(false);
+      if (requestId === pvpRequestIdRef.current) {
+        setPvpLoading(false);
+      }
     }
   }, [
     displayedBoss,
     connection,
-    fetchProfileNameByWallet,
-    gameStateWeek,
+    gameplayReadConnection,
+    currentGauntletWeek,
     wallet.publicKey,
     isGauntletRun,
+    activeSessionPda,
   ]);
 
   const handleBossPress = useCallback(() => {
@@ -471,7 +452,6 @@ export function BossPanel({
   debugLog('[BossPanel] render_mode', {
     hasBoss: !!displayedBoss,
     originalTimeWeekBoss: time.weekBoss ?? null,
-    hasDuelWeekBoss: !!duelWeekBoss,
     gameRunMode: gameState?.runMode ?? null,
     gameMaxWeeks: gameState?.maxWeeks ?? null,
     gameCampaignLevel: gameState?.campaignLevel ?? null,

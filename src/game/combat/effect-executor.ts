@@ -8,6 +8,7 @@
 import type { CombatSourceRef, CombatState, CombatantState, GearId } from '../engine/types';
 import type { ItemEffect, EffectType, Condition, TriggerType } from '../../data/combat-types';
 import { applyStatus } from './status-effects';
+import { getChillDamageBonus } from './damage';
 
 // ============================================================================
 // Effect Execution Context
@@ -46,8 +47,8 @@ export interface CombatEffectContext {
   nonWeaponAmplify: number;
   /** Update non-weapon damage amplification */
   setNonWeaponAmplify: (value: number) => void;
-  /** Blast immunity active */
-  blastImmunity: boolean;
+  /** Self-damage multiplier for countdown BLAST damage */
+  blastSelfDamageMultiplier: number;
   /** Double bomb triggers active */
   doubleBombTrigger: boolean;
   /** Bonus added to the first opponent-targeted non-weapon hit each turn */
@@ -76,6 +77,14 @@ export interface CombatEffectContext {
   setActiveBombSelfDamageReduction: (value: number) => void;
   /** Double on-hit effects active */
   doubleOnHitEffects: boolean;
+  /** OnHit effects can trigger on each strike separately */
+  onHitPerStrike: boolean;
+  /** Bonus damage for countdown bombs */
+  bombDamageBonus: number;
+  /** Reduce weapon damage while owner has armor */
+  weaponDamageReductionWhileArmored: number;
+  /** Extra shrapnel retaliation damage per consumed stack */
+  shrapnelReflectBonus: number;
   /** Armor piercing amount */
   armorPiercing: number;
   /** Update armor piercing amount */
@@ -86,6 +95,12 @@ export interface CombatEffectContext {
   preventDeathCharges: number;
   /** Update prevent death charges */
   setPreventDeathCharges: (value: number) => void;
+  /** Max Gold->Armor conversions this battle */
+  goldArmorConversionLimit: number;
+  /** Gold->Armor conversions already used */
+  goldArmorConversionsUsed: number;
+  /** Update Gold->Armor conversions used */
+  setGoldArmorConversionsUsed: (value: number) => void;
   /** Countdown items state */
   countdownItems: Map<GearId, number>;
   /** Persistent countdown acceleration for parity countdown triggers */
@@ -443,13 +458,19 @@ export function executeEffect(
     source?.id === 'I56' && effect.effectType === 'Heal' && ctx.phase === 'ON_HIT';
 
   if (
-    !checkCondition(effect.condition, owner, enemy, {
-      ownerExposedOverride: ctx.ownerExposedOverride,
-      enemyExposedOverride: ctx.enemyExposedOverride,
-    }, {
-      ownerGold: ctx.owner === 'player' ? (ctx.playerGold ?? 0) : (ctx.enemyGold ?? 0),
-      enemyGold: ctx.owner === 'player' ? (ctx.enemyGold ?? 0) : (ctx.playerGold ?? 0),
-    })
+    !checkCondition(
+      effect.condition,
+      owner,
+      enemy,
+      {
+        ownerExposedOverride: ctx.ownerExposedOverride,
+        enemyExposedOverride: ctx.enemyExposedOverride,
+      },
+      {
+        ownerGold: ctx.owner === 'player' ? (ctx.playerGold ?? 0) : (ctx.enemyGold ?? 0),
+        enemyGold: ctx.owner === 'player' ? (ctx.enemyGold ?? 0) : (ctx.playerGold ?? 0),
+      }
+    )
   ) {
     return { state, applied: false, logs };
   }
@@ -489,7 +510,8 @@ export function executeEffect(
     }
 
     case 'DealNonWeaponDamage': {
-      let amplifiedDamage = value + ctx.nonWeaponAmplify;
+      let amplifiedDamage =
+        value + ctx.nonWeaponAmplify + getChillDamageBonus(enemy.statusEffects.chill ?? 0);
       let detonationBonus = 0;
       if (ctx.nonWeaponHitsThisTurn === 0) {
         detonationBonus = ctx.doubleDetonationFirst;
@@ -499,6 +521,7 @@ export function executeEffect(
       amplifiedDamage += detonationBonus;
       ctx.setNonWeaponHitsThisTurn(ctx.nonWeaponHitsThisTurn + 1);
       if (ctx.phase === 'COUNTDOWN') {
+        amplifiedDamage += ctx.bombDamageBonus;
         if (ctx.nextBombDamageBonus > 0) {
           amplifiedDamage += ctx.nextBombDamageBonus;
           ctx.setNextBombDamageBonus(0);
@@ -517,7 +540,13 @@ export function executeEffect(
         ...state,
         [target]: updatedEnemy,
       };
-      logs.push({ effectName, target, damage: amplifiedDamage, nonWeaponDamage: amplifiedDamage, source });
+      logs.push({
+        effectName,
+        target,
+        damage: amplifiedDamage,
+        nonWeaponDamage: amplifiedDamage,
+        source,
+      });
       break;
     }
 
@@ -526,13 +555,17 @@ export function executeEffect(
       const activeReduction = ctx.phase === 'COUNTDOWN' ? ctx.activeBombSelfDamageReduction : 0;
       ctx.setPendingSelfNonWeaponBonus(0);
       ctx.setActiveBombSelfDamageReduction(0);
-      if (ctx.blastImmunity) {
-        break; // Immune to self blast damage
-      }
-      const amplifiedDamage = Math.max(
+      let amplifiedDamage = Math.max(
         0,
-        value + ctx.nonWeaponAmplify + pendingBonus - activeReduction
+        value +
+          ctx.nonWeaponAmplify +
+          pendingBonus -
+          activeReduction +
+          getChillDamageBonus(owner.statusEffects.chill ?? 0)
       );
+      if (ctx.phase === 'COUNTDOWN' && ctx.blastSelfDamageMultiplier < 100) {
+        amplifiedDamage = Math.floor((amplifiedDamage * ctx.blastSelfDamageMultiplier) / 100);
+      }
       const updatedOwner = {
         ...owner,
         hp: Math.max(0, owner.hp - amplifiedDamage),
@@ -552,9 +585,7 @@ export function executeEffect(
     }
 
     case 'Heal': {
-      const healValue = isVampiricToothHeal
-        ? Math.min(value, ctx.enemyBleedBeforeHit ?? 0)
-        : value;
+      const healValue = isVampiricToothHeal ? Math.min(value, ctx.enemyBleedBeforeHit ?? 0) : value;
       const healed = Math.min(healValue, owner.maxHp - owner.hp);
       if (healed > 0) {
         const updatedOwner = {
@@ -774,7 +805,11 @@ export function executeEffect(
         ctx.playerGold = newOwnerGold;
         const ownerGoldKey = ctx.owner === 'player' ? 'playerGold' : 'enemyGold';
         const enemyGoldKey = ctx.owner === 'player' ? 'enemyGold' : 'playerGold';
-        state = { ...state, [ownerGoldKey]: Math.max(0, newOwnerGold), [enemyGoldKey]: Math.max(0, newEnemyGold) };
+        state = {
+          ...state,
+          [ownerGoldKey]: Math.max(0, newOwnerGold),
+          [enemyGoldKey]: Math.max(0, newEnemyGold),
+        };
         ctx.setLastGoldStolen?.(stolen);
         logs.push({ effectName, target, goldChange: stolen, source });
       }
@@ -852,10 +887,14 @@ export function executeEffect(
 
     case 'ConsumeGoldForArmor': {
       // Consume 1 gold to gain [value] armor
-      if (ctx.playerGold >= 1) {
+      const limitReached =
+        ctx.goldArmorConversionLimit > 0 &&
+        ctx.goldArmorConversionsUsed >= ctx.goldArmorConversionLimit;
+      if (!limitReached && ctx.playerGold >= 1) {
         const newGold = ctx.playerGold - 1;
         ctx.updateGold(newGold);
         ctx.playerGold = newGold;
+        ctx.setGoldArmorConversionsUsed(ctx.goldArmorConversionsUsed + 1);
         const updatedOwner = {
           ...owner,
           arm: owner.arm + value,
@@ -904,6 +943,15 @@ export function executeEffect(
       if (ctx.setCountdownTurnBonus) {
         ctx.setCountdownTurnBonus((ctx.countdownTurnBonus ?? 0) + value);
       }
+      logs.push({ effectName, target: 'none', source });
+      break;
+    }
+
+    case 'ReduceWeaponDamageWhileArmored':
+    case 'BombDamageBonus':
+    case 'ShrapnelReflectBonus':
+    case 'OnHitPerStrike':
+    case 'LimitGoldArmorConversions': {
       logs.push({ effectName, target: 'none', source });
       break;
     }
@@ -1015,7 +1063,8 @@ export function processEffects(input: ProcessEffectsInput): EffectResult {
   let { state } = input.ctx;
   const allLogs: EffectLogEntry[] = [];
   let anyApplied = false;
-  const isExecutionEmblemEffect = (source?: CombatSourceRef): boolean => source?.kind === 'gear' && source.id === 'I54';
+  const isExecutionEmblemEffect = (source?: CombatSourceRef): boolean =>
+    source?.kind === 'gear' && source.id === 'I54';
   const hasLethalCombatant = (nextState: CombatState): boolean =>
     nextState.player.hp <= 0 || nextState.enemy.hp <= 0;
   let lethalSourceInstanceId: string | null = null;

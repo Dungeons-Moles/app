@@ -70,6 +70,7 @@ export interface DuelQueueState {
 export interface DuelEntryState {
   player: PublicKey;
   seed: bigint;
+  entryLamports: number;
   matchedCreatorPlayer: PublicKey | null;
 }
 
@@ -148,11 +149,16 @@ export async function fetchDuelEntry(
     const account = await (
       program.account as Record<string, { fetch: (key: PublicKey) => Promise<Record<string, unknown>> }>
     ).duelEntry.fetch(duelEntryPda);
+    const entryLamports = Number(account.entryLamports as bigint | number);
+    if (entryLamports === 0) {
+      return null;
+    }
     const matchedCreator = account.matchedCreator as Record<string, unknown> | null | undefined;
     const matchedCreatorPlayer = matchedCreator ? (matchedCreator.player as PublicKey) : null;
     return {
       player: account.player as PublicKey,
       seed: BigInt((account.seed as bigint | number).toString()),
+      entryLamports,
       matchedCreatorPlayer,
     };
   } catch {
@@ -422,6 +428,41 @@ export async function buildResetDuelEntryInstruction(
       gameState: gameStatePda,
       player: playerPublicKey,
       sessionSigner: sessionSignerPublicKey,
+    })
+    .transaction();
+
+  return tx.instructions[0];
+}
+
+export async function buildResetOrphanedDuelEntryInstruction(
+  program: Program,
+  sessionPda: PublicKey,
+  playerPublicKey: PublicKey
+): Promise<TransactionInstruction> {
+  const [duelEntryPda] = deriveDuelEntryPda(sessionPda);
+  const [duelVaultPda] = deriveDuelVaultPda();
+  const [duelOpenQueuePda] = deriveDuelOpenQueuePda();
+
+  const tx = await (
+    program.methods as unknown as {
+      resetOrphanedDuelEntry: () => {
+        accounts: (accounts: {
+          duelEntry: PublicKey;
+          sessionPda: PublicKey;
+          duelVault: PublicKey;
+          duelOpenQueue: PublicKey;
+          player: PublicKey;
+        }) => { transaction: () => Promise<Transaction> };
+      };
+    }
+  )
+    .resetOrphanedDuelEntry()
+    .accounts({
+      duelEntry: duelEntryPda,
+      sessionPda,
+      duelVault: duelVaultPda,
+      duelOpenQueue: duelOpenQueuePda,
+      player: playerPublicKey,
     })
     .transaction();
 

@@ -16,6 +16,7 @@ import {
   deriveGameplayAuthorityPda,
   deriveInventoryAuthorityPda,
   deriveGeneratedMapPda,
+  deriveMapEnemiesPda,
 } from './constants';
 import { SOLANA_CONFIG } from './config';
 import { createGameplayStateProgram } from './programs';
@@ -30,7 +31,7 @@ export type { MapPoisData, PoiInstance, ShopState, ItemOffer };
 
 // GameState with gauntlet echoes is large; POI instructions that CPI into
 // gameplay-state deserialize it multiple times, easily exceeding the 200K default.
-const POI_CU_LIMIT = 600_000;
+const POI_CU_LIMIT = 1_000_000;
 
 // ============================================================================
 // Transaction Context
@@ -48,6 +49,8 @@ export interface PoiTransactionContext {
   poiVrfStatePda?: PublicKey;
   /** Optional GameplayVrfState PDA for VRF-backed boss selection in skip_to_day CPI. */
   gameplayVrfStatePda?: PublicKey;
+  /** Optional SessionDiscovery PDA for discovery-aware POI interactions. */
+  sessionDiscoveryPda?: PublicKey;
 }
 
 /** Builds CU limit instruction and sends a POI transaction via session signer. */
@@ -96,10 +99,19 @@ export async function fetchMapPois(
  * If used during Night3, triggers the boss fight.
  */
 export async function interactRest(ctx: PoiTransactionContext, poiIndex: number): Promise<string> {
+  const transaction = await buildInteractRestTransaction(ctx, poiIndex);
+  return sendPoiTx(ctx, transaction);
+}
+
+export async function buildInteractRestTransaction(
+  ctx: PoiTransactionContext,
+  poiIndex: number
+): Promise<Transaction> {
   const [inventoryPda] = deriveInventoryPda(ctx.sessionPda);
   const [poiAuthorityPda] = derivePoiAuthorityPda();
   const [gameplayAuthorityPda] = deriveGameplayAuthorityPda();
   const [generatedMapPda] = deriveGeneratedMapPda(ctx.sessionPda);
+  const [mapEnemiesPda] = deriveMapEnemiesPda(ctx.sessionPda);
 
   // Optional account: include only when fully initialized/deserializable.
   // Some local flows can leave the PDA allocated but not initialized, which
@@ -117,6 +129,7 @@ export async function interactRest(ctx: PoiTransactionContext, poiIndex: number)
   const restAccounts: any = {
     mapPois: ctx.mapPoisPda,
     gameState: ctx.gameStatePda,
+    mapEnemies: mapEnemiesPda,
     inventory: inventoryPda,
     generatedMap: generatedMapPda,
     poiAuthority: poiAuthorityPda,
@@ -124,15 +137,17 @@ export async function interactRest(ctx: PoiTransactionContext, poiIndex: number)
     gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
     playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
     gameplayVrfState: vrfState,
+    gauntletEchoes: null,
     player: ctx.sessionSignerKeypair.publicKey,
+    sessionDiscovery: ctx.sessionDiscoveryPda ?? undefined,
+    session: ctx.sessionPda,
+    mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
   };
 
-  const transaction = await ctx.program.methods
+  return ctx.program.methods
     .interactRest(poiIndex)
     .accountsPartial(restAccounts)
     .transaction();
-
-  return sendPoiTx(ctx, transaction);
 }
 
 // ============================================================================
@@ -164,6 +179,9 @@ export async function generateCacheOffer(
       gameSession: ctx.sessionPda,
       poiVrfState: ctx.poiVrfStatePda,
       player: ctx.sessionSignerKeypair.publicKey,
+      sessionDiscovery: ctx.sessionDiscoveryPda ?? undefined,
+      session: ctx.sessionPda,
+      mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
     })
     .transaction();
 
@@ -207,6 +225,9 @@ export async function interactPickItem(
       gameSession: ctx.sessionPda,
       poiVrfState: ctx.poiVrfStatePda,
       player: ctx.sessionSignerKeypair.publicKey,
+      sessionDiscovery: ctx.sessionDiscoveryPda ?? undefined,
+      session: ctx.sessionPda,
+      mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
     })
     .transaction();
 
@@ -241,6 +262,9 @@ export async function interactToolOil(
       playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
       poiVrfState: ctx.poiVrfStatePda,
       player: ctx.sessionSignerKeypair.publicKey,
+      sessionDiscovery: ctx.sessionDiscoveryPda ?? undefined,
+      session: ctx.sessionPda,
+      mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
     })
     .transaction();
 
@@ -283,6 +307,9 @@ export async function generateOilOffer(
       playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
       poiVrfState: ctx.poiVrfStatePda,
       player: ctx.sessionSignerKeypair.publicKey,
+      sessionDiscovery: ctx.sessionDiscoveryPda ?? undefined,
+      session: ctx.sessionPda,
+      mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
     })
     .transaction();
 
@@ -301,16 +328,34 @@ export async function interactSurveyBeacon(
   ctx: PoiTransactionContext,
   poiIndex: number
 ): Promise<string> {
-  const transaction = await ctx.program.methods
+  const transaction = await buildInteractSurveyBeaconTransaction(ctx, poiIndex);
+  return sendPoiTx(ctx, transaction);
+}
+
+export async function buildInteractSurveyBeaconTransaction(
+  ctx: PoiTransactionContext,
+  poiIndex: number
+): Promise<Transaction> {
+  const [generatedMapPda] = deriveGeneratedMapPda(ctx.sessionPda);
+  const [mapEnemiesPda] = deriveMapEnemiesPda(ctx.sessionPda);
+  const [poiAuthorityPda] = derivePoiAuthorityPda();
+  const [gameplayAuthorityPda] = deriveGameplayAuthorityPda();
+  return ctx.program.methods
     .interactSurveyBeacon(poiIndex)
-    .accounts({
+    .accountsPartial({
       mapPois: ctx.mapPoisPda,
       gameState: ctx.gameStatePda,
+      generatedMap: generatedMapPda,
+      session: ctx.sessionPda,
+      mapEnemies: mapEnemiesPda,
+      poiAuthority: poiAuthorityPda,
+      gameplayAuthority: gameplayAuthorityPda,
+      gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
+      mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
+      sessionDiscovery: ctx.sessionDiscoveryPda ?? undefined,
       player: ctx.sessionSignerKeypair.publicKey,
     })
     .transaction();
-
-  return sendPoiTx(ctx, transaction);
 }
 
 // ============================================================================
@@ -318,19 +363,55 @@ export async function interactSurveyBeacon(
 // ============================================================================
 
 /**
+ * Generate and persist Seismic Scanner (L7) options from on-chain VRF state.
+ */
+export async function generateScannerOffer(
+  ctx: PoiTransactionContext,
+  poiIndex: number
+): Promise<string> {
+  const [generatedMapPda] = deriveGeneratedMapPda(ctx.sessionPda);
+  const transaction = await ctx.program.methods
+    .generateScannerOffer(poiIndex)
+    .accountsPartial({
+      mapPois: ctx.mapPoisPda,
+      gameState: ctx.gameStatePda,
+      generatedMap: generatedMapPda,
+      poiVrfState: ctx.poiVrfStatePda,
+      player: ctx.sessionSignerKeypair.publicKey,
+      sessionDiscovery: ctx.sessionDiscoveryPda ?? undefined,
+      session: ctx.sessionPda,
+    })
+    .transaction();
+
+  return sendPoiTx(ctx, transaction);
+}
+
+/**
  * Activate a Seismic Scanner (L7) to reveal the nearest undiscovered POI
- * of a selected category. POI is one-time use.
+ * of a selected offered type. POI is one-time use.
  */
 export async function interactSeismicScanner(
   ctx: PoiTransactionContext,
   poiIndex: number,
-  category: number
+  poiType: number
 ): Promise<string> {
+  const [generatedMapPda] = deriveGeneratedMapPda(ctx.sessionPda);
+  const [mapEnemiesPda] = deriveMapEnemiesPda(ctx.sessionPda);
+  const [poiAuthorityPda] = derivePoiAuthorityPda();
+  const [gameplayAuthorityPda] = deriveGameplayAuthorityPda();
   const transaction = await ctx.program.methods
-    .interactSeismicScanner(poiIndex, category)
-    .accounts({
+    .interactSeismicScanner(poiIndex, poiType)
+    .accountsPartial({
       mapPois: ctx.mapPoisPda,
       gameState: ctx.gameStatePda,
+      generatedMap: generatedMapPda,
+      session: ctx.sessionPda,
+      mapEnemies: mapEnemiesPda,
+      poiAuthority: poiAuthorityPda,
+      gameplayAuthority: gameplayAuthorityPda,
+      gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
+      mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
+      sessionDiscovery: ctx.sessionDiscoveryPda ?? undefined,
       player: ctx.sessionSignerKeypair.publicKey,
     })
     .transaction();
@@ -350,20 +431,36 @@ export async function fastTravel(
   fromPoiIndex: number,
   toPoiIndex: number
 ): Promise<string> {
-  const [poiAuthorityPda] = derivePoiAuthorityPda();
+  const transaction = await buildFastTravelTransaction(ctx, fromPoiIndex, toPoiIndex);
+  return sendPoiTx(ctx, transaction);
+}
 
-  const transaction = await ctx.program.methods
+export async function buildFastTravelTransaction(
+  ctx: PoiTransactionContext,
+  fromPoiIndex: number,
+  toPoiIndex: number
+): Promise<Transaction> {
+  const [poiAuthorityPda] = derivePoiAuthorityPda();
+  const [generatedMapPda] = deriveGeneratedMapPda(ctx.sessionPda);
+  const [mapEnemiesPda] = deriveMapEnemiesPda(ctx.sessionPda);
+  const [gameplayAuthorityPda] = deriveGameplayAuthorityPda();
+
+  return ctx.program.methods
     .fastTravel(fromPoiIndex, toPoiIndex)
-    .accounts({
+    .accountsPartial({
       mapPois: ctx.mapPoisPda,
       gameState: ctx.gameStatePda,
       poiAuthority: poiAuthorityPda,
       gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
+      gameplayAuthority: gameplayAuthorityPda,
+      mapEnemies: mapEnemiesPda,
+      generatedMap: generatedMapPda,
+      session: ctx.sessionPda,
+      mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
+      sessionDiscovery: ctx.sessionDiscoveryPda ?? undefined,
       player: ctx.sessionSignerKeypair.publicKey,
     })
     .transaction();
-
-  return sendPoiTx(ctx, transaction);
 }
 
 // ============================================================================
@@ -386,6 +483,9 @@ export async function enterShop(
       gameSession: ctx.sessionPda,
       poiVrfState: ctx.poiVrfStatePda,
       player: ctx.sessionSignerKeypair.publicKey,
+      sessionDiscovery: ctx.sessionDiscoveryPda ?? undefined,
+      session: ctx.sessionPda,
+      mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
     })
     .transaction();
 
@@ -406,7 +506,7 @@ export async function shopPurchase(
 
   const transaction = await ctx.program.methods
     .shopPurchase(offerIndex)
-    .accounts({
+    .accountsPartial({
       mapPois: ctx.mapPoisPda,
       gameState: ctx.gameStatePda,
       inventory: inventoryPda,
@@ -415,6 +515,9 @@ export async function shopPurchase(
       playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
       gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
       player: ctx.sessionSignerKeypair.publicKey,
+      sessionDiscovery: ctx.sessionDiscoveryPda ?? undefined,
+      session: ctx.sessionPda,
+      mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
     })
     .transaction();
 
@@ -430,13 +533,16 @@ export async function shopReroll(ctx: PoiTransactionContext): Promise<string> {
 
   const transaction = await ctx.program.methods
     .shopReroll()
-    .accounts({
+    .accountsPartial({
       mapPois: ctx.mapPoisPda,
       gameState: ctx.gameStatePda,
       gameSession: ctx.sessionPda,
       poiAuthority: poiAuthorityPda,
       gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
       player: ctx.sessionSignerKeypair.publicKey,
+      sessionDiscovery: ctx.sessionDiscoveryPda ?? undefined,
+      session: ctx.sessionPda,
+      mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
     })
     .transaction();
 

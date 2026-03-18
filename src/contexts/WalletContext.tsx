@@ -80,7 +80,11 @@ async function clearMobileWalletSession(): Promise<void> {
 
 function isPersistedWebWallet(value: string): value is SupportedWallet {
   return (
-    value === 'Jupiter' || value === 'Phantom' || value === 'Backpack' || value === 'DevKeypair'
+    value === 'Jupiter' ||
+    value === 'Phantom' ||
+    value === 'Backpack' ||
+    value === 'Solflare' ||
+    value === 'DevKeypair'
   );
 }
 
@@ -125,6 +129,7 @@ function getWebWalletProvider(walletName?: SupportedWallet): WebWalletProvider |
   const providers = window as typeof window & {
     solana?: unknown;
     backpack?: unknown;
+    solflare?: unknown;
   };
   const solanaWallet = providers.solana;
   const backpackProvider = providers.backpack;
@@ -142,6 +147,14 @@ function getWebWalletProvider(walletName?: SupportedWallet): WebWalletProvider |
       return backpackWallet;
     }
     return isWebWalletProvider(solanaWallet) && solanaWallet.isBackpack ? solanaWallet : null;
+  }
+
+  if (walletName === 'Solflare') {
+    const solflareProvider = providers.solflare;
+    if (isWebWalletProvider(solflareProvider) && solflareProvider.isSolflare) {
+      return solflareProvider;
+    }
+    return isWebWalletProvider(solanaWallet) && solanaWallet.isSolflare ? solanaWallet : null;
   }
 
   if (walletName === 'Jupiter') {
@@ -219,16 +232,17 @@ async function signAndSendWithDevWallet(
 
 // TEMPORARY: 'DevKeypair' added to bypass Phantom issues during local development.
 // Remove 'DevKeypair' once Phantom popup behavior is resolved.
-export type SupportedWallet = 'Jupiter' | 'Phantom' | 'Backpack' | 'DevKeypair';
+export type SupportedWallet = 'Jupiter' | 'Phantom' | 'Backpack' | 'Solflare' | 'DevKeypair';
 
 type WebWalletProvider = {
   isPhantom?: boolean;
   isBackpack?: boolean;
+  isSolflare?: boolean;
   isJupiterWallet?: boolean;
   isJupiter?: boolean;
-  connect: (options?: { onlyIfTrusted?: boolean; silent?: boolean }) => Promise<{
-    publicKey?: PublicKey;
-  }>;
+  connect: (options?: { onlyIfTrusted?: boolean; silent?: boolean }) => Promise<
+    { publicKey?: PublicKey } | boolean | void
+  >;
   signTransaction: (
     transaction: Transaction | VersionedTransaction
   ) => Promise<Transaction | VersionedTransaction>;
@@ -236,6 +250,8 @@ type WebWalletProvider = {
     transactions: Array<Transaction | VersionedTransaction>
   ) => Promise<Array<Transaction | VersionedTransaction>>;
   signMessage?: (message: Uint8Array) => Promise<{ signature: Uint8Array }>;
+  on?: (event: string, callback: (...args: unknown[]) => void) => void;
+  off?: (event: string, callback: (...args: unknown[]) => void) => void;
   publicKey?: PublicKey;
 };
 
@@ -405,7 +421,19 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       // Silent reconnect: onlyIfTrusted avoids showing a popup
       try {
         const response = await webWallet.connect({ onlyIfTrusted: true });
-        const publicKey = response.publicKey ?? webWallet.publicKey;
+        let rawKey =
+          (typeof response === 'object' && response !== null ? response.publicKey : undefined) ??
+          webWallet.publicKey;
+        if (!rawKey && webWallet.on) {
+          rawKey = await new Promise<PublicKey | undefined>((resolve) => {
+            const timeout = setTimeout(() => resolve(undefined), 3000);
+            webWallet.on!('connect', (key: unknown) => {
+              clearTimeout(timeout);
+              resolve((key as PublicKey) ?? webWallet.publicKey ?? undefined);
+            });
+          });
+        }
+        const publicKey = rawKey instanceof PublicKey ? rawKey : rawKey ? new PublicKey(rawKey) : null;
         if (publicKey) {
           setWallet({
             isConnected: true,
@@ -455,9 +483,29 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         const webWallet = getWebWalletProvider(selectedWebWallet ?? undefined);
         if (webWallet) {
           const response = await webWallet.connect();
-          const publicKey = response.publicKey ?? webWallet.publicKey;
+
+          // Most wallets return { publicKey } from connect(), but Solflare
+          // returns a boolean and emits a 'connect' event with the publicKey.
+          let rawKey =
+            (typeof response === 'object' && response !== null ? response.publicKey : undefined) ??
+            webWallet.publicKey;
+
+          // If publicKey isn't available yet, wait for the provider's 'connect' event
+          if (!rawKey && webWallet.on) {
+            rawKey = await new Promise<PublicKey | undefined>((resolve) => {
+              const timeout = setTimeout(() => resolve(undefined), 5000);
+              webWallet.on!('connect', (key: unknown) => {
+                clearTimeout(timeout);
+                resolve((key as PublicKey) ?? webWallet.publicKey ?? undefined);
+              });
+            });
+          }
+
+          const publicKey = rawKey instanceof PublicKey ? rawKey : rawKey ? new PublicKey(rawKey) : null;
           if (!publicKey) {
-            throw new Error('Wallet connection failed');
+            throw new Error(
+              `Wallet connection failed — no publicKey returned. Is ${walletName ?? 'the wallet'} unlocked?`
+            );
           }
 
           const address = publicKey.toBase58();

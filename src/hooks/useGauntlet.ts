@@ -3,10 +3,10 @@ import { PublicKey } from '@solana/web3.js';
 import { useWallet } from '@/contexts/WalletContext';
 import { useSession } from '@/contexts/SessionContext';
 import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
-import { createGameplayStateProgram, createMapGeneratorProgram } from '@/services/solana/programs';
+import { createGameplayStateProgram } from '@/services/solana/programs';
 import {
+  deriveGauntletEchoesPda,
   deriveGauntletSessionPda,
-  deriveGeneratedMapPda,
   deriveGameStatePda,
 } from '@/services/solana/constants';
 import { SOLANA_CONFIG } from '@/services/solana/config';
@@ -16,27 +16,13 @@ import {
   deriveGauntletConfigPda,
   getGauntletErrorMessage,
 } from '@/services/solana/gauntlet';
-import { fetchGeneratedMap } from '@/services/solana/mapGeneratorClient';
 import { fetchGameState } from '@/services/solana/gameplayState';
 
 export type GauntletPhase = 'confirm' | 'queued' | 'error';
-const MAX_SEED_FETCH_RETRIES = 8;
-const SEED_FETCH_RETRY_DELAY_MS = 250;
 const MAX_SWITCH_RETRIES = 3;
 const SWITCH_RETRY_DELAY_MS = 250;
 const GAUNTLET_CLEANUP_WAIT_TIMEOUT_MS = 45000;
 const GAUNTLET_CLEANUP_POLL_MS = 1000;
-
-function isNonBlockingDelegationError(errorMessage: string | undefined): boolean {
-  const message = (errorMessage ?? '').toLowerCase();
-  return (
-    message.includes('failed to delegate session to rollup') ||
-    message.includes('delegation not fully propagated') ||
-    message.includes('delegategameplayaccounts') ||
-    message.includes('access violation') ||
-    message.includes('failed to complete')
-  );
-}
 
 function isRecoverableStartError(errorMessage: string | undefined): boolean {
   const message = (errorMessage ?? '').toLowerCase();
@@ -160,24 +146,133 @@ export function useGauntlet() {
     console.log('[useGauntlet] ensureGauntletInitialized:init_confirmed', { signature: initSig });
   }, [wallet.publicKey, connection, signAndSendTransaction, confirmWithTimeout]);
 
-  const resolveSessionGeneratedSeed = useCallback(
-    async (sessionPda: PublicKey): Promise<bigint | null> => {
-      const mapProgram = createMapGeneratorProgram(connection);
-      for (let attempt = 1; attempt <= MAX_SEED_FETCH_RETRIES; attempt++) {
-        try {
-          const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
-          const generatedMap = await fetchGeneratedMap(mapProgram, generatedMapPda);
-          if (generatedMap?.seed !== undefined && generatedMap.seed !== null) {
-            return generatedMap.seed;
-          }
-        } catch {
-          // Retry while generated map account settles after start tx.
-        }
-        if (attempt < MAX_SEED_FETCH_RETRIES) {
-          await new Promise((resolve) => setTimeout(resolve, SEED_FETCH_RETRY_DELAY_MS));
-        }
+  const closeOrphanedGauntletEchoes = useCallback(
+    async (sessionPda: PublicKey): Promise<void> => {
+      if (!wallet.publicKey) return;
+
+      const [gauntletEchoesPda] = deriveGauntletEchoesPda(sessionPda);
+      const [sessionInfo, gauntletEchoesInfo] = await Promise.all([
+        connection.getAccountInfo(sessionPda, SOLANA_CONFIG.commitment),
+        connection.getAccountInfo(gauntletEchoesPda, SOLANA_CONFIG.commitment),
+      ]);
+
+      if (sessionInfo || !gauntletEchoesInfo) {
+        return;
       }
+
+      console.warn('[useGauntlet] closeOrphanedGauntletEchoes:found_orphan', {
+        sessionPda: sessionPda.toBase58(),
+        gauntletEchoesPda: gauntletEchoesPda.toBase58(),
+        owner: gauntletEchoesInfo.owner.toBase58(),
+      });
+
+      if (!gauntletEchoesInfo.owner.equals(SOLANA_CONFIG.programs.gameplayState)) {
+        throw new Error(
+          `Orphaned gauntlet echoes is not owned by gameplay-state: ${gauntletEchoesInfo.owner.toBase58()}`
+        );
+      }
+
+      console.log('[useGauntlet] closeOrphanedGauntletEchoes:start', {
+        sessionPda: sessionPda.toBase58(),
+        gauntletEchoesPda: gauntletEchoesPda.toBase58(),
+      });
+
+      const gameplayProgram = createGameplayStateProgram(connection);
+      const transaction = await (gameplayProgram.methods as any)
+        .closeOrphanedGauntletEchoes()
+        .accounts({
+          gauntletEchoes: gauntletEchoesPda,
+          sessionPda,
+          destination: wallet.publicKey,
+          payer: wallet.publicKey,
+        })
+        .transaction();
+
+      const signature = await signAndSendTransaction(transaction, { connection });
+      await connection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
+
+      const postCloseInfo = await connection.getAccountInfo(
+        gauntletEchoesPda,
+        SOLANA_CONFIG.commitment
+      );
+      if (postCloseInfo) {
+        throw new Error(
+          `Orphaned gauntlet echoes still exists after close attempt: ${gauntletEchoesPda.toBase58()}`
+        );
+      }
+
+      console.log('[useGauntlet] closeOrphanedGauntletEchoes:done', {
+        signature,
+        gauntletEchoesPda: gauntletEchoesPda.toBase58(),
+      });
+    },
+    [connection, signAndSendTransaction, wallet.publicKey]
+  );
+
+  const resolveSessionGeneratedSeed = useCallback(
+    async (_sessionPda: PublicKey): Promise<bigint | null> => {
       return null;
+    },
+    []
+  );
+
+  const validateResumedGauntletState = useCallback(
+    async (
+      sessionPda: PublicKey,
+      expectedState: Awaited<ReturnType<typeof fetchGameState>>
+    ): Promise<{ success: boolean; error?: string }> => {
+      if (!expectedState) {
+        return { success: false, error: 'Failed to verify existing gauntlet session state.' };
+      }
+
+      const gameplayProgram = createGameplayStateProgram(connection);
+      const [gameStatePda] = deriveGameStatePda(sessionPda);
+      const resumedState = await fetchGameState(gameplayProgram, gameStatePda);
+
+      if (!resumedState) {
+        return { success: false, error: 'Resumed gauntlet game state could not be fetched.' };
+      }
+
+      const mismatchedSession = !resumedState.session.equals(sessionPda);
+      const wrongRunMode = resumedState.runMode !== 2;
+      const mutatedDuringResume =
+        resumedState.totalMoves !== expectedState.totalMoves ||
+        resumedState.week !== expectedState.week ||
+        resumedState.phase !== expectedState.phase ||
+        resumedState.positionX !== expectedState.positionX ||
+        resumedState.positionY !== expectedState.positionY;
+
+      if (mismatchedSession || wrongRunMode || mutatedDuringResume) {
+        console.error('[useGauntlet] enterGauntlet:resume_state_validation_failed', {
+          sessionPda: sessionPda.toBase58(),
+          expected: expectedState
+            ? {
+                totalMoves: expectedState.totalMoves,
+                week: expectedState.week,
+                phase: expectedState.phase,
+                positionX: expectedState.positionX,
+                positionY: expectedState.positionY,
+                runMode: expectedState.runMode,
+              }
+            : null,
+          resumed: {
+            totalMoves: resumedState.totalMoves,
+            week: resumedState.week,
+            phase: resumedState.phase,
+            positionX: resumedState.positionX,
+            positionY: resumedState.positionY,
+            runMode: resumedState.runMode,
+            session: resumedState.session.toBase58(),
+          },
+        });
+        return {
+          success: false,
+          error:
+            'Resumed gauntlet session state was inconsistent after delegation. Please retry; if it persists, abandon the stuck session.',
+        };
+      }
+
+      return { success: true };
     },
     [connection]
   );
@@ -189,13 +284,6 @@ export function useGauntlet() {
         const switchResult = await switchToSession(gauntletSessionPda.toBase58());
         console.log('[useGauntlet] enterGauntlet:switch_result', { ...switchResult, attempt });
         if (switchResult.success) {
-          return { success: true };
-        }
-        if (isNonBlockingDelegationError(switchResult.error)) {
-          console.warn(
-            '[useGauntlet] enterGauntlet:continuing_despite_delegation_failure',
-            switchResult.error
-          );
           return { success: true };
         }
         lastError = switchResult.error ?? 'Failed to resume gauntlet session';
@@ -269,6 +357,7 @@ export function useGauntlet() {
       console.log('[useGauntlet] enterGauntlet:checking_existing_session', {
         gauntletSessionPda: gauntletSessionPda.toBase58(),
       });
+      await closeOrphanedGauntletEchoes(gauntletSessionPda);
       const existingGauntletSessionInfo = await connection.getAccountInfo(
         gauntletSessionPda,
         SOLANA_CONFIG.commitment
@@ -302,6 +391,15 @@ export function useGauntlet() {
           const switchResult = await switchToGauntletSessionWithRetry(gauntletSessionPda);
           if (!switchResult.success) {
             setError(switchResult.error ?? 'Failed to resume gauntlet session');
+            setPhase('error');
+            return false;
+          }
+          const resumeValidation = await validateResumedGauntletState(
+            gauntletSessionPda,
+            gameState
+          );
+          if (!resumeValidation.success) {
+            setError(resumeValidation.error ?? 'Failed to validate resumed gauntlet session');
             setPhase('error');
             return false;
           }
@@ -416,6 +514,7 @@ export function useGauntlet() {
   }, [
     wallet.publicKey,
     checkBalance,
+    closeOrphanedGauntletEchoes,
     ensureGauntletInitialized,
     mapSeed,
     startGauntletGame,
@@ -425,6 +524,7 @@ export function useGauntlet() {
     hasPendingCleanups,
     fetchSessionNonces,
     retryErVrfForSession,
+    validateResumedGauntletState,
   ]);
 
   const reset = useCallback(() => {

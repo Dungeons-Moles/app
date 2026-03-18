@@ -174,81 +174,46 @@ describe('Status Effects System', () => {
   // ============================================================================
   describe('Shrapnel Effect (T115)', () => {
     describe('reflect damage when struck', () => {
-      it('should return damage equal to Shrapnel stacks when struck', () => {
-        const combatant = createTestCombatant({
-          statusEffects: { ...DEFAULT_STATUS_EFFECTS, shrapnel: 5 },
-        });
-
-        const reflectDamage = getShrapnelDamage(combatant);
+      it('should return damage equal to strike ATK when Shrapnel is present', () => {
+        const reflectDamage = getShrapnelDamage(5, 0, true);
 
         expect(reflectDamage).toBe(5);
       });
 
       it('should return 0 when no Shrapnel stacks', () => {
-        const combatant = createTestCombatant({
-          statusEffects: { ...DEFAULT_STATUS_EFFECTS, shrapnel: 0 },
-        });
-
-        const reflectDamage = getShrapnelDamage(combatant);
+        const reflectDamage = getShrapnelDamage(5, 0, false);
 
         expect(reflectDamage).toBe(0);
       });
 
-      it('should reflect damage even when taking 0 damage from attack', () => {
-        // Shrapnel reflects based on stacks, not incoming damage
-        const combatant = createTestCombatant({
-          arm: 100, // High armor means 0 damage
-          statusEffects: { ...DEFAULT_STATUS_EFFECTS, shrapnel: 3 },
-        });
+      it('should add the reflect bonus when present', () => {
+        const reflectDamage = getShrapnelDamage(4, 1, true);
 
-        const reflectDamage = getShrapnelDamage(combatant);
-
-        expect(reflectDamage).toBe(3);
+        expect(reflectDamage).toBe(5);
       });
     });
 
-    describe('Shrapnel clearing at turn end', () => {
-      it('should clear all Shrapnel at turn end', () => {
+    describe('Shrapnel persistence at turn end', () => {
+      it('should keep all Shrapnel at turn end', () => {
         const combatant = createTestCombatant({
           statusEffects: { ...DEFAULT_STATUS_EFFECTS, shrapnel: 8 },
         });
 
         const updatedCombatant = processShrapnelClear(combatant);
 
-        expect(updatedCombatant.statusEffects.shrapnel).toBe(0);
+        expect(updatedCombatant.statusEffects.shrapnel).toBe(8);
       });
 
-      it('should not affect other status effects when clearing Shrapnel', () => {
+      it('should not affect other status effects when preserving Shrapnel', () => {
         const combatant = createTestCombatant({
           statusEffects: { chill: 2, shrapnel: 5, rust: 3, bleed: 0 },
         });
 
         const updatedCombatant = processShrapnelClear(combatant);
 
-        expect(updatedCombatant.statusEffects.shrapnel).toBe(0);
+        expect(updatedCombatant.statusEffects.shrapnel).toBe(5);
         expect(updatedCombatant.statusEffects.chill).toBe(2);
         expect(updatedCombatant.statusEffects.rust).toBe(3);
-      });
-
-      it('should keep up to 2 Shrapnel when Shrapnel Harness itemset is active', () => {
-        const combatant = createTestCombatant({
-          statusEffects: { ...DEFAULT_STATUS_EFFECTS, shrapnel: 8 },
-        });
-
-        // With Shrapnel Harness active
-        const updatedCombatant = processShrapnelClear(combatant, true);
-
-        expect(updatedCombatant.statusEffects.shrapnel).toBe(2); // Cap at 2
-      });
-
-      it('should keep existing Shrapnel if at or below 2 with Shrapnel Harness', () => {
-        const combatant = createTestCombatant({
-          statusEffects: { ...DEFAULT_STATUS_EFFECTS, shrapnel: 2 },
-        });
-
-        const updatedCombatant = processShrapnelClear(combatant, true);
-
-        expect(updatedCombatant.statusEffects.shrapnel).toBe(2);
       });
     });
   });

@@ -38,6 +38,10 @@ import type { CombatEnemyInfo } from '@/services/solana/eventParser';
 import { parseGauntletCombatVisualEvent } from '@/services/solana/gauntlet';
 import type { GauntletCombatVisualEvent } from '@/services/solana/gauntlet';
 import { sendSessionSignerTransaction, confirmErTransaction } from '@/services/solana/sessionSigner';
+import { fetchSessionDiscovery } from '@/services/solana/mapGeneratorClient';
+import type { SessionDiscoveryData } from '@/services/solana/mapGeneratorClient';
+import { deriveSessionDiscoveryPda } from '@/services/solana/constants';
+import { createMapGeneratorProgram } from '@/services/solana/programs';
 import { parseWithRetry } from '@/utils/retry';
 
 // ============================================================================
@@ -81,6 +85,8 @@ export interface UseGameplayStateReturn {
     preBossPlayerHp?: number;
     /** Gauntlet echo combat visual (from inline resolution in move_player) */
     gauntletCombatVisual?: GauntletCombatVisualEvent | null;
+    /** Updated SessionDiscovery data (tiles, enemies, POIs) after the move */
+    discovery?: SessionDiscoveryData | null;
   }>;
   /** Modify a player stat */
   updateStat: (
@@ -295,18 +301,8 @@ export function useGameplayState(): UseGameplayStateReturn {
       bossResolvedInline?: boolean;
       preBossPlayerHp?: number;
       gauntletCombatVisual?: GauntletCombatVisualEvent | null;
+      discovery?: SessionDiscoveryData | null;
     }> => {
-      console.log(
-        '[useGameplayState] move() called — program:',
-        !!program,
-        ', gameStatePda:',
-        gameStatePda?.toBase58() ?? 'null',
-        ', gameState:',
-        gameState ? 'set' : 'null',
-        ', endpoint:',
-        gameplayConnection.rpcEndpoint
-      );
-
       if (!program) {
         const msg = 'Program not available';
         console.error('[useGameplayState] move() failed:', msg);
@@ -329,7 +325,6 @@ export function useGameplayState(): UseGameplayStateReturn {
         currentGameState = await fetchGameState(program, gameStatePda);
         if (currentGameState && isMountedRef.current) {
           setGameState(currentGameState);
-          console.log('[useGameplayState] move(): on-demand fetch succeeded');
         }
       }
 
@@ -342,10 +337,9 @@ export function useGameplayState(): UseGameplayStateReturn {
 
       const previousState = currentGameState;
 
-      if (isMountedRef.current) {
-        setSyncStatus('syncing');
-        setError(null);
-      }
+      // Defer setSyncStatus('syncing') — setting state here triggers a React re-render
+      // that blocks the main thread before the TX is sent, adding 100-300ms latency.
+      // The sync status will be updated when the result arrives.
 
       try {
         const t0 = Date.now();
@@ -359,38 +353,37 @@ export function useGameplayState(): UseGameplayStateReturn {
           params
         );
         const { signature, connection: moveConnection } = moveResult;
-        const t1 = Date.now();
-        console.log(`[perf] movePlayer send: ${t1 - t0}ms`);
+        const tSent = Date.now();
 
-        // Run confirmation, state fetch, and combat log parse ALL in parallel.
-        // The ER processes the tx in ~50ms, so by the time the fetch arrives
+        // Run confirmation, state fetch, combat parse, AND discovery fetch ALL in parallel.
+        // The ER processes the tx in ~50ms, so by the time the fetches arrive
         // (~150ms from Brazil), the state already reflects the move.
-        // Confirmation still runs — it just doesn't block the fetch.
-        const confirmPromise = confirmErTransaction(moveConnection, signature);
-        const statePromise = fetchGameState(program, gameStatePda);
-        const combatPromise = parseCombatInfoWithRetry(
-          gameplayConnection,
-          program,
-          signature,
-          'move',
-          { maxAttempts: 1, delayMs: 0, quiet: true }
-        );
-
-        const [, confirmedState, combatResult] = await Promise.all([
-          confirmPromise,
-          statePromise,
-          combatPromise,
+        // Only parse combat logs during night phases (enemy-initiated combat).
+        // Day combat uses local enemy data (enemyAtTarget). Skipping the TX log
+        // parse saves one RPC call from the parallel batch.
+        const isNightPhase = previousState.phase === Phase.Night1 ||
+          previousState.phase === Phase.Night2 ||
+          previousState.phase === Phase.Night3;
+        const [sdPda] = deriveSessionDiscoveryPda(sessionPda);
+        const [, confirmedState, combatResult, discoveryData] = await Promise.all([
+          confirmErTransaction(moveConnection, signature),
+          fetchGameState(program, gameStatePda),
+          isNightPhase
+            ? parseCombatInfoWithRetry(
+                gameplayConnection,
+                program,
+                signature,
+                'move',
+                { maxAttempts: 1, delayMs: 0, quiet: true }
+              )
+            : Promise.resolve({ combatEnemyInfo: undefined }),
+          fetchSessionDiscovery(
+            createMapGeneratorProgram(moveConnection),
+            sdPda
+          ).catch(() => null),
         ]);
-        const t2 = Date.now();
-        console.log(`[perf] confirm+fetch+parse (parallel): ${t2 - t1}ms | total so far: ${t2 - t0}ms`);
-
-        // Debug: Log fetched HP to track sync issues
-        console.log('[useGameplayState] move() fetched state:', {
-          previousHp: previousState.hp,
-          fetchedHp: confirmedState?.hp,
-          previousGold: previousState.gold,
-          fetchedGold: confirmedState?.gold,
-        });
+        const tDone = Date.now();
+        console.log(`[perf] move total: ${tDone - t0}ms (send: ${tSent - t0}ms, fetch: ${tDone - tSent}ms)`);
 
         if (isMountedRef.current) {
           setGameState(confirmedState);
@@ -497,6 +490,7 @@ export function useGameplayState(): UseGameplayStateReturn {
           bossResolvedInline,
           preBossPlayerHp,
           gauntletCombatVisual,
+          discovery: discoveryData,
         };
       } catch (err) {
         console.error('[useGameplayState] Failed to move player:', err);
@@ -622,12 +616,6 @@ export function useGameplayState(): UseGameplayStateReturn {
           combatPromise,
         ]);
 
-        console.log('[useGameplayState] triggerBoss() fetched state:', {
-          previousHp: previousState.hp,
-          fetchedHp: confirmedState?.hp,
-          isDead: confirmedState?.isDead,
-        });
-
         if (isMountedRef.current) {
           setGameState(confirmedState);
           setSyncStatus('synced');
@@ -713,17 +701,14 @@ export function useGameplayState(): UseGameplayStateReturn {
   useEffect(() => {
     if (!gameStatePda || !program) return;
     let cancelled = false;
-    console.log('[useGameplayState] Auto-refresh triggered for PDA:', gameStatePda.toBase58());
     (async () => {
       const state = await refresh();
-      console.log('[useGameplayState] Auto-refresh complete, gameState:', state ? 'set' : 'null');
       if (state || cancelled) return;
       // ER propagation delay — retry up to 3 times with 800ms gaps
       for (let attempt = 1; attempt <= 3; attempt++) {
         await new Promise((r) => setTimeout(r, 800));
         if (cancelled) return;
         const retryState = await refresh();
-        console.log(`[useGameplayState] Auto-refresh retry #${attempt}, gameState:`, retryState ? 'set' : 'null');
         if (retryState || cancelled) return;
       }
     })();

@@ -67,6 +67,14 @@ export interface OilOffer {
   generatedAtSeed: bigint;
 }
 
+// Scanner offer for Seismic Scanner POI (matches on-chain ScannerOffer struct)
+export interface ScannerOffer {
+  poiIndex: number;
+  count: number;
+  poiTypes: number[];
+  generatedAtSeed: bigint;
+}
+
 // Map POIs account data
 export interface MapPoisData {
   session: PublicKey;
@@ -79,6 +87,7 @@ export interface MapPoisData {
   shopState: ShopState;
   cacheOffers: CacheOffer[];
   oilOffers: OilOffer[];
+  scannerOffers: ScannerOffer[];
 }
 
 // Account interfaces for POI instructions

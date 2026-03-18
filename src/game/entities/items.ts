@@ -72,6 +72,10 @@ export const TOOL_DEFINITIONS: Record<ToolId, ToolDefinition> = {
     rarity: 'COMMON',
     stats: { atk: 1, arm: 4 },
     tags: ['STONE'],
+    effect: {
+      timing: 'PASSIVE',
+      description: 'While you have Armor, take 1 less weapon damage from each strike (min 1)',
+    },
   },
   T2: {
     id: 'T2',
@@ -99,7 +103,7 @@ export const TOOL_DEFINITIONS: Record<ToolId, ToolDefinition> = {
     tags: ['SCOUT'],
     effect: {
       timing: 'ON_HIT',
-      description: 'Strike 2 times per turn',
+      description: 'Strike 2 times per turn; On Hit effects trigger on each strike separately',
     },
   },
   T4: {
@@ -186,7 +190,8 @@ export const TOOL_DEFINITIONS: Record<ToolId, ToolDefinition> = {
     tags: ['FROST'],
     effect: {
       timing: 'ON_HIT',
-      description: 'On Hit (once/turn): apply 1 Chill; if enemy has Chill, deal +1 bonus damage',
+      description:
+        'On Hit (once/turn): apply 1 Chill; if enemy has 2+ Chill, apply 1 additional Chill',
     },
   },
   T10: {
@@ -216,7 +221,7 @@ export const TOOL_DEFINITIONS: Record<ToolId, ToolDefinition> = {
     tags: ['RUST'],
     effect: {
       timing: 'ON_HIT',
-      description: 'On Hit (once/turn): apply 1 Rust',
+      description: 'On Hit (once/turn): apply 2 Rust',
     },
   },
   T12: {
@@ -245,7 +250,8 @@ export const TOOL_DEFINITIONS: Record<ToolId, ToolDefinition> = {
     tags: ['BLOOD'],
     effect: {
       timing: 'ON_HIT',
-      description: 'On Hit (once/turn): apply 1 Bleed',
+      description:
+        'On Hit (once/turn): apply 1 Bleed; when enemy takes Bleed damage, heal 1/2/4 HP',
     },
   },
   T14: {
@@ -272,6 +278,10 @@ export const TOOL_DEFINITIONS: Record<ToolId, ToolDefinition> = {
     rarity: 'COMMON',
     stats: { atk: 1, spd: 2 },
     tags: ['TEMPO'],
+    effect: {
+      timing: 'EVERY_OTHER_TURN',
+      description: 'Every other turn: gain +1/2/4 SPD this battle',
+    },
   },
   T16: {
     id: 'T16',
@@ -496,11 +506,21 @@ export function calculateItemStats(tool: Tool | null, gear: Gear[]): ItemStats {
 
   // Add tool stats
   if (tool) {
-    result.atk = (result.atk ?? 0) + (tool.stats.atk ?? 0);
-    result.arm = (result.arm ?? 0) + (tool.stats.arm ?? 0);
-    result.spd = (result.spd ?? 0) + (tool.stats.spd ?? 0);
-    result.dig = (result.dig ?? 0) + (tool.stats.dig ?? 0);
-    result.hp = (result.hp ?? 0) + (tool.stats.hp ?? 0);
+    const directStats: ItemStats = {
+      atk: tool.stats.atk ?? 0,
+      arm: tool.stats.arm ?? 0,
+      spd: tool.stats.spd ?? 0,
+      dig: tool.stats.dig ?? 0,
+      hp: tool.stats.hp ?? 0,
+    };
+    const derivedStats = getToolStatsAtTier(tool.id, rarityToToolTier(tool.rarity));
+    const mergedToolStats = mergeBakedStats(directStats, derivedStats);
+
+    result.atk = (result.atk ?? 0) + (mergedToolStats.atk ?? 0);
+    result.arm = (result.arm ?? 0) + (mergedToolStats.arm ?? 0);
+    result.spd = (result.spd ?? 0) + (mergedToolStats.spd ?? 0);
+    result.dig = (result.dig ?? 0) + (mergedToolStats.dig ?? 0);
+    result.hp = (result.hp ?? 0) + (mergedToolStats.hp ?? 0);
 
     // Add tool oil bonus (+1 to corresponding stat)
     if (tool.oil) {
@@ -523,11 +543,21 @@ export function calculateItemStats(tool: Tool | null, gear: Gear[]): ItemStats {
 
   // Add gear stats
   for (const item of gear) {
-    result.atk = (result.atk ?? 0) + (item.stats.atk ?? 0);
-    result.arm = (result.arm ?? 0) + (item.stats.arm ?? 0);
-    result.spd = (result.spd ?? 0) + (item.stats.spd ?? 0);
-    result.dig = (result.dig ?? 0) + (item.stats.dig ?? 0);
-    result.hp = (result.hp ?? 0) + (item.stats.hp ?? 0);
+    const directStats: ItemStats = {
+      atk: item.stats.atk ?? 0,
+      arm: item.stats.arm ?? 0,
+      spd: item.stats.spd ?? 0,
+      dig: item.stats.dig ?? 0,
+      hp: item.stats.hp ?? 0,
+    };
+    const derivedStats = getGearStatsAtTier(item.id, getTierFromRarity(item.currentRarity));
+    const mergedGearStats = mergeBakedStats(directStats, derivedStats);
+
+    result.atk = (result.atk ?? 0) + (mergedGearStats.atk ?? 0);
+    result.arm = (result.arm ?? 0) + (mergedGearStats.arm ?? 0);
+    result.spd = (result.spd ?? 0) + (mergedGearStats.spd ?? 0);
+    result.dig = (result.dig ?? 0) + (mergedGearStats.dig ?? 0);
+    result.hp = (result.hp ?? 0) + (mergedGearStats.hp ?? 0);
   }
 
   return result;

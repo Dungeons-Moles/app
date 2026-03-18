@@ -9,26 +9,20 @@ import { Connection, PublicKey } from '@solana/web3.js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   deriveGameStatePda,
-  deriveGeneratedMapPda,
-  deriveMapEnemiesPda,
-  deriveMapPoisPda,
   deriveInventoryPda,
+  deriveSessionDiscoveryPda,
 } from './constants';
 import {
   createGameplayStateProgram,
   createMapGeneratorProgram,
-  createPoiSystemProgram,
   createPlayerInventoryProgram,
 } from './programs';
-import { fetchGameState, fetchMapEnemies } from './gameplayState';
-import { fetchGeneratedMap } from './mapGeneratorClient';
-import { fetchMapPois } from './poiSystem';
+import { fetchGameState } from './gameplayState';
+import { fetchSessionDiscovery } from './mapGeneratorClient';
+import type { SessionDiscoveryData } from './mapGeneratorClient';
 import { fetchInventory } from './playerInventory';
 import { Phase, RunMode } from './types/gameplay_state';
 import { Tier } from './types/player_inventory';
-import type { OnChainEnemyInstance } from './gameplayState';
-import type { GeneratedMapData, OnChainEnemySpawn } from './mapGeneratorClient';
-import type { MapPoisData } from './types/poi_system';
 import type { PlayerInventoryData, ItemInstance } from './types/player_inventory';
 import type { GameState, ItemRarity } from '@/game/engine/types';
 import {
@@ -61,8 +55,9 @@ import {
 } from '@/game/entities/items';
 import { refreshPlayerStats } from '@/game/entities/player';
 import { GAME_CONSTANTS, getBaseHp } from '@/game/engine/constants';
-import { selectDuelWeekBossForSeed, selectWeekBossForLevel } from '@/game/time/progression';
-import { updateFogOfWar, applyInitialVisibility } from '@/game/map/fog-of-war';
+import { selectWeekBossForLevel } from '@/game/time/progression';
+import { updateFogOfWar } from '@/game/map/fog-of-war';
+import { BOSSES } from '@/data/bosses';
 
 // ============================================================================
 // Constants
@@ -228,186 +223,113 @@ export async function fetchFullSessionState(
 ): Promise<GameState | null> {
   // Derive all PDAs
   const [gameStatePda] = deriveGameStatePda(sessionPda);
-  const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
-  const [mapEnemiesPda] = deriveMapEnemiesPda(sessionPda);
-  const [mapPoisPda] = deriveMapPoisPda(sessionPda);
   const [inventoryPda] = deriveInventoryPda(sessionPda);
+  const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
 
   // Create program instances
   const gameplayProgram = createGameplayStateProgram(connection);
   const mapGenProgram = createMapGeneratorProgram(connection);
-  const poiProgram = createPoiSystemProgram(connection);
   const inventoryProgram = createPlayerInventoryProgram(connection);
 
-  // Fetch all 5 accounts in parallel
-  const [gameStateData, generatedMapData, mapEnemiesData, mapPoisData, inventoryData] =
+  // Fetch the runtime-safe public/session accounts in parallel.
+  const [gameStateData, inventoryData, sessionDiscoveryData] =
     await Promise.all([
       fetchGameState(gameplayProgram, gameStatePda),
-      fetchGeneratedMap(mapGenProgram, generatedMapPda),
-      fetchMapEnemies(gameplayProgram, mapEnemiesPda),
-      fetchMapPois(poiProgram, mapPoisPda),
       fetchInventory(inventoryProgram, inventoryPda),
+      fetchSessionDiscovery(mapGenProgram, sessionDiscoveryPda),
     ]);
 
-  if (!gameStateData || !generatedMapData) {
+  if (!gameStateData || !sessionDiscoveryData) {
     if (!options?.silentMissingData) {
       console.error('[sessionRestore] Missing required on-chain data:', {
         gameState: !!gameStateData,
-        generatedMap: !!generatedMapData,
+        sessionDiscovery: !!sessionDiscoveryData,
       });
     }
     return null;
   }
 
-  const toSeedNumber = (raw: unknown): number => {
-    if (typeof raw === 'bigint') {
-      return Number(raw % BigInt(2147483647));
-    }
-    if (typeof raw === 'number') {
-      return raw % 2147483647;
-    }
-    if (typeof raw === 'string') {
-      const parsed = BigInt(raw);
-      return Number(parsed % BigInt(2147483647));
-    }
-    if (raw && typeof raw === 'object' && 'toString' in raw) {
-      const parsed = BigInt((raw as { toString: () => string }).toString());
-      return Number(parsed % BigInt(2147483647));
-    }
-    return 0;
-  };
-  const derivedSeed = toSeedNumber(generatedMapData.seed);
-  const seed = seedOverride ?? derivedSeed;
+  const mapLooksUninitialized =
+    sessionDiscoveryData.mapWidth <= 0 ||
+    sessionDiscoveryData.mapHeight <= 0 ||
+    (gameStateData.positionX === 0 && gameStateData.positionY === 0);
 
-  // ============================================================
-  // RAW ON-CHAIN GAMESTATE DEBUG
-  // ============================================================
-  console.log('[sessionRestore] ====== RAW ON-CHAIN GAMESTATE ======');
-  console.log('[sessionRestore] gameStateData.hp:', gameStateData.hp);
-  console.log('[sessionRestore] gameStateData.gold:', gameStateData.gold);
-  console.log('[sessionRestore] gameStateData.position:', {
-    x: gameStateData.positionX,
-    y: gameStateData.positionY,
-  });
-  console.log('[sessionRestore] gameStateData.phase:', gameStateData.phase);
-  console.log('[sessionRestore] gameStateData.week:', gameStateData.week);
-  console.log('[sessionRestore] gameStateData.isDead:', gameStateData.isDead);
-  console.log('[sessionRestore] ====================================');
-
-  // Debug: Log inventory data
-  console.log('[sessionRestore] Inventory data fetched:', {
-    hasInventory: !!inventoryData,
-    tool: inventoryData?.tool ? decodeItemId(inventoryData.tool.itemId) : null,
-    gearCount: inventoryData?.gear?.filter((g) => g !== null).length ?? 0,
-    gearItems: inventoryData?.gear
-      ?.map((g, i) => (g ? { slot: i, id: decodeItemId(g.itemId) } : null))
-      .filter(Boolean),
-  });
-
-  // Build the complete GameState
-  const tiles = unpackTiles(
-    generatedMapData.packedTiles,
-    generatedMapData.width,
-    generatedMapData.height
-  );
-
-  // Apply broken walls from AsyncStorage (walls dug during gameplay are not stored on-chain).
-  // Skip for fresh sessions to prevent stale data from a previous session on the same PDA.
-  const sessionKey = sessionPda.toBase58();
-  const brokenWalls = gameStateData.totalMoves === 0 ? null : await loadBrokenWalls(sessionKey);
-  if (brokenWalls) {
-    for (const wall of brokenWalls) {
-      if (
-        wall.y >= 0 &&
-        wall.y < generatedMapData.height &&
-        wall.x >= 0 &&
-        wall.x < generatedMapData.width
-      ) {
-        tiles[wall.y][wall.x] = TileType.Floor;
-      }
+  if (mapLooksUninitialized) {
+    if (!options?.silentMissingData) {
+      console.warn('[sessionRestore] Generated map is not initialized yet:', {
+        width: sessionDiscoveryData.mapWidth,
+        height: sessionDiscoveryData.mapHeight,
+        discoveredEnemyCount: sessionDiscoveryData.discoveredEnemyCount,
+        discoveredPoiCount: sessionDiscoveryData.discoveredPoiCount,
+        position: {
+          x: gameStateData.positionX,
+          y: gameStateData.positionY,
+        },
+      });
     }
+    return null;
   }
 
-  const enemies = convertEnemies(
-    mapEnemiesData?.enemies ?? [],
-    generatedMapData.enemies,
-    generatedMapData.enemyCount
+  const seed = seedOverride ?? derivePublicSessionSeed(sessionPda);
+
+  const tiles = unpackDiscoveryTiles(
+    sessionDiscoveryData,
+    sessionDiscoveryData.mapWidth,
+    sessionDiscoveryData.mapHeight
   );
-  const pois = convertPois(
-    generatedMapData.pois,
-    generatedMapData.poiCount,
-    mapPoisData,
-    gameStateData.runMode
+  const enemies = convertDiscoveredEnemies(
+    sessionDiscoveryData.discoveredEnemies,
+    sessionDiscoveryData.discoveredEnemyCount
+  );
+  const pois = convertDiscoveredPois(
+    sessionDiscoveryData.discoveredPois,
+    sessionDiscoveryData.discoveredPoiCount
   );
   const time = convertTimeState(
     gameStateData,
     gameStateData.campaignLevel,
-    generatedMapData.seed
+    decodeBossId(sessionDiscoveryData.currentBossId)
   );
   const player = buildPlayer(gameStateData, inventoryData);
   const playerPos = { x: gameStateData.positionX, y: gameStateData.positionY };
 
   // Build the map
+  // Add Mole Den (L1) if not already in discoveredPois.
+  // The mole-den is always the first POI placed in GeneratedMap (index 0),
+  // so its MapPois index is always 0 after refreshMapPois.
+  const moleDenPos = { x: sessionDiscoveryData.moleDenX, y: sessionDiscoveryData.moleDenY };
+  const hasMoleDen = pois.some(
+    (p) => p.definitionId === 'L1' && p.position.x === moleDenPos.x && p.position.y === moleDenPos.y
+  );
+  if (!hasMoleDen && moleDenPos.x > 0 && moleDenPos.y > 0) {
+    pois.unshift({
+      id: 'poi-mole-den',
+      definitionId: 'L1',
+      position: moleDenPos,
+      visited: false,
+      discovered: true,
+      mapPoisIndex: 0,
+    });
+  }
+
   const map: GameMap = {
-    width: generatedMapData.width,
-    height: generatedMapData.height,
+    width: sessionDiscoveryData.mapWidth,
+    height: sessionDiscoveryData.mapHeight,
     tiles,
-    fog: buildEmptyFog(generatedMapData.width, generatedMapData.height),
+    fog: buildFogFromDiscovery(
+      sessionDiscoveryData,
+      sessionDiscoveryData.mapWidth,
+      sessionDiscoveryData.mapHeight
+    ),
     enemies,
     pois,
-    moleDenPosition: {
-      x: generatedMapData.moleDenX,
-      y: generatedMapData.moleDenY,
-    },
+    moleDenPosition: moleDenPos,
   };
 
-  // Restore fog from AsyncStorage or build from player position.
-  // Skip loading cached fog/walls for fresh sessions (totalMoves === 0) to prevent
-  // stale data from a previous session on the same deterministic PDA from bleeding through
-  // (e.g., after a validator reset where the same PDA is reused for a new session).
-  const isFreshSession = gameStateData.totalMoves === 0;
-  const restoredFog = isFreshSession
-    ? null
-    : await loadFogState(sessionKey, generatedMapData.width, generatedMapData.height);
-  if (restoredFog) {
-    map.fog = restoredFog;
-    // Mark enemies as discovered if they're on revealed/visible tiles
-    map.enemies = map.enemies.map((enemy) => {
-      const { x, y } = enemy.position;
-      if (x >= 0 && x < map.width && y >= 0 && y < map.height) {
-        const fogState = restoredFog[y][x];
-        if (fogState === FogState.Revealed || fogState === FogState.Visible) {
-          return { ...enemy, discovered: true };
-        }
-      }
-      return enemy;
-    });
-  } else {
-    // No saved fog or fresh session: reveal with initial sight radius (6)
-    const updatedMap = applyInitialVisibility(map, playerPos);
-    map.fog = updatedMap.fog;
-    map.enemies = updatedMap.enemies;
-  }
-
-  // Reconcile on-chain discovered POIs with fog state:
-  // If a POI is marked as discovered on-chain (e.g., from a previous seismic scanner use)
-  // but the fog tile is still Hidden (e.g., AsyncStorage fog was lost), reveal it.
-  for (const poi of map.pois) {
-    if (poi.discovered) {
-      const { x, y } = poi.position;
-      if (x >= 0 && x < map.width && y >= 0 && y < map.height) {
-        if (map.fog[y][x] === FogState.Hidden) {
-          map.fog[y][x] = FogState.Revealed;
-        }
-      }
-    }
-  }
-
-  // Clear stale caches for fresh sessions
-  if (isFreshSession) {
-    await clearFogState(sessionKey).catch(() => {});
-    await clearBrokenWalls(sessionKey).catch(() => {});
-  }
+  // Overlay the live visibility ring on top of persisted discovered tiles.
+  const updatedMap = updateFogOfWar(map, playerPos, time.phase === 'DAY');
+  map.fog = updatedMap.fog;
+  map.enemies = updatedMap.enemies;
 
   // Build RNG state: seed + totalMoves for deterministic resumption
   const rngState = seed + gameStateData.totalMoves;
@@ -428,16 +350,6 @@ export async function fetchFullSessionState(
     debug: DEFAULT_DEBUG_STATE,
     totalMoves: gameStateData.totalMoves,
   };
-
-  console.log('[sessionRestore] Full session state built:', {
-    playerPos,
-    week: time.week,
-    phase: time.phase,
-    movesRemaining: time.movesRemaining,
-    enemyCount: enemies.length,
-    poiCount: pois.length,
-    hasSavedFog: !!restoredFog,
-  });
 
   return state;
 }
@@ -472,6 +384,28 @@ export function unpackTiles(packedTiles: number[], width: number, height: number
   return tiles;
 }
 
+export function buildFogFromOnChainDiscovery(
+  discoveredTiles: number[],
+  width: number,
+  height: number
+): FogState[][] {
+  const fog = buildEmptyFog(width, height);
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const bitIndex = y * width + x;
+      const byteIndex = Math.floor(bitIndex / 8);
+      const bitOffset = bitIndex % 8;
+      const isDiscovered = ((discoveredTiles[byteIndex] ?? 0) >> bitOffset) & 1;
+      if (isDiscovered) {
+        fog[y][x] = FogState.Revealed;
+      }
+    }
+  }
+
+  return fog;
+}
+
 // ============================================================================
 // Enemy Conversion
 // ============================================================================
@@ -485,20 +419,15 @@ export function unpackTiles(packedTiles: number[], width: number, height: number
  * @param enemyCount - Actual enemy count from GeneratedMap
  * @returns Array of MapEnemy for the game engine
  */
-export function convertEnemies(
-  mapEnemies: OnChainEnemyInstance[],
-  generatedEnemies: OnChainEnemySpawn[],
+export function convertDiscoveredEnemies(
+  discoveredEnemies: SessionDiscoveryData['discoveredEnemies'],
   enemyCount: number
 ): MapEnemy[] {
-  // Prefer mapEnemies (has defeated flag) if available
-  const sourceEnemies = mapEnemies.length > 0 ? mapEnemies : generatedEnemies.slice(0, enemyCount);
   const result: MapEnemy[] = [];
 
-  for (let i = 0; i < sourceEnemies.length; i++) {
-    const enemy = sourceEnemies[i];
-
-    // Skip defeated enemies (only MapEnemies has this flag)
-    if ('defeated' in enemy && enemy.defeated) {
+  for (let i = 0; i < enemyCount; i++) {
+    const enemy = discoveredEnemies[i];
+    if (!enemy || enemy.defeated !== 0) {
       continue;
     }
 
@@ -514,7 +443,7 @@ export function convertEnemies(
     const tierStats = getEnemyTierStats(enemyId, tier);
 
     result.push({
-      id: `enemy-${i}`,
+      id: `enemy-${enemy.x}-${enemy.y}`,
       definitionId: enemyId,
       tier,
       position: { x: enemy.x, y: enemy.y },
@@ -524,10 +453,38 @@ export function convertEnemies(
         arm: tierStats.arm,
         spd: tierStats.spd,
       },
-      discovered: false,
+      discovered: true, // Enemies in SessionDiscovery have already been discovered
     });
   }
 
+  return result;
+}
+
+/**
+ * Converts raw enemy data (from MapEnemies) to MapEnemy array.
+ * Used when SessionDiscovery enemy data is stale (e.g., after survey beacon).
+ */
+export function convertRawEnemiesToMapEnemies(
+  rawEnemies: Array<{ x: number; y: number; archetypeId: number; tier: number }>
+): MapEnemy[] {
+  const result: MapEnemy[] = [];
+  for (let i = 0; i < rawEnemies.length; i++) {
+    const enemy = rawEnemies[i];
+    if (enemy.archetypeId < 0 || enemy.archetypeId >= ARCHETYPE_TO_ENEMY_ID.length) continue;
+
+    const enemyId = ARCHETYPE_TO_ENEMY_ID[enemy.archetypeId];
+    const tier = (enemy.tier + 1) as 1 | 2 | 3;
+    const tierStats = getEnemyTierStats(enemyId, tier);
+
+    result.push({
+      id: `enemy-${enemy.x}-${enemy.y}`,
+      definitionId: enemyId,
+      tier,
+      position: { x: enemy.x, y: enemy.y },
+      stats: { hp: tierStats.hp, atk: tierStats.atk, arm: tierStats.arm, spd: tierStats.spd },
+      discovered: true,
+    });
+  }
   return result;
 }
 
@@ -541,31 +498,22 @@ const COUNTER_CACHE_POI_TYPE = 13;
 /**
  * Converts on-chain POI data to game engine MapPOI array.
  *
- * Counter Cache (type 13) is boss-prep content and is excluded from
- * Duel/Gauntlet modes on-chain (see poi-system initialize_map_pois).
- * We must mirror that filter here so the local map matches MapPois.
+ * Uses SessionDiscovery's `discoveredPois[].used` as the `visited` flag
+ * (no longer reads MapPois directly for privacy).
  *
- * @param generatedPois - GeneratedMap POI spawns
- * @param poiCount - Actual POI count
- * @param mapPoisData - On-chain MapPois data (has used/discovered state)
- * @param runMode - Session run mode (Campaign, Duel, Gauntlet)
+ * @param discoveredPois - SessionDiscovery POI data
+ * @param poiCount - Actual discovered POI count
  * @returns Array of MapPOI for the game engine
  */
-export function convertPois(
-  generatedPois: GeneratedMapData['pois'],
-  poiCount: number,
-  mapPoisData: MapPoisData | null,
-  runMode: RunMode = RunMode.Campaign
+export function convertDiscoveredPois(
+  discoveredPois: SessionDiscoveryData['discoveredPois'],
+  poiCount: number
 ): MapPOI[] {
   const result: MapPOI[] = [];
-  const excludeCounterCache = runMode === RunMode.Duel || runMode === RunMode.Gauntlet;
 
   for (let i = 0; i < poiCount; i++) {
-    const poi = generatedPois[i];
+    const poi = discoveredPois[i];
     if (!poi) continue;
-
-    // Mirror on-chain filter: Counter Cache is boss-prep, excluded from PvP modes
-    if (excludeCounterCache && poi.poiType === COUNTER_CACHE_POI_TYPE) continue;
 
     const poiId = POI_TYPE_TO_ID[poi.poiType];
     if (!poiId) {
@@ -573,19 +521,13 @@ export function convertPois(
       continue;
     }
 
-    // Match MapPois entry by position (indices can differ when POIs are filtered)
-    const mapPoiInstance = mapPoisData?.pois?.find(
-      (p) => p.x === poi.x && p.y === poi.y
-    );
-    const isUsed = mapPoiInstance ? mapPoiInstance.used : poi.isUsed;
-    const isDiscovered = mapPoiInstance ? mapPoiInstance.discovered : false;
-
     result.push({
-      id: `poi-${result.length}`,
+      id: `poi-${poi.mapPoisIndex}`,
       definitionId: poiId,
       position: { x: poi.x, y: poi.y },
-      visited: isUsed,
-      discovered: isDiscovered,
+      visited: !!poi.used,
+      discovered: true,
+      mapPoisIndex: poi.mapPoisIndex,
     });
   }
 
@@ -612,16 +554,12 @@ export function convertTimeState(
     runMode?: RunMode;
   },
   campaignLevel: number,
-  seed: bigint | number
+  currentBossId: BossId | null
 ): TimeState {
   const week = Math.max(1, Math.min(3, gameState.week)) as 1 | 2 | 3;
   const { phase, cycle } = convertPhase(gameState.phase);
 
-  // Duels: week1/week2 boss is seed-based; week3 uses campaign selector but UI hides it as opponent.
-  const weekBoss =
-    gameState.runMode === RunMode.Duel && (week === 1 || week === 2)
-      ? selectDuelWeekBossForSeed(seed, week)
-      : selectWeekBossForLevel(campaignLevel, week);
+  const weekBoss = currentBossId ?? selectWeekBossForLevel(campaignLevel, 1);
 
   return {
     week,
@@ -696,39 +634,24 @@ function buildPlayer(
   const inventory: InventorySlot[] = [];
 
   if (inventoryData) {
-    console.log('[sessionRestore] buildPlayer: processing inventory data');
     // Convert tool
     if (inventoryData.tool) {
       equippedTool = convertToolInstance(inventoryData.tool);
-      console.log('[sessionRestore] buildPlayer: converted tool:', equippedTool?.id);
     }
 
     // Convert gear
     let slotIndex = 0;
     for (const gearSlot of inventoryData.gear) {
       if (gearSlot) {
-        const decodedId = decodeItemId(gearSlot.itemId);
-        console.log(
-          '[sessionRestore] buildPlayer: converting gear slot',
-          slotIndex,
-          '| itemId bytes:',
-          Array.from(gearSlot.itemId),
-          '| decoded:',
-          decodedId
-        );
         const gear = convertGearInstance(gearSlot);
         if (gear) {
           inventory.push({ item: gear, index: slotIndex });
-          console.log('[sessionRestore] buildPlayer: added gear to inventory:', gear.id);
         } else {
           console.warn('[sessionRestore] buildPlayer: failed to convert gear at slot', slotIndex);
         }
       }
       slotIndex++;
     }
-    console.log('[sessionRestore] buildPlayer: final inventory count:', inventory.length);
-  } else {
-    console.log('[sessionRestore] buildPlayer: no inventory data');
   }
 
   // Build player with base stats and inventory, then let
@@ -752,20 +675,6 @@ function buildPlayer(
   const baseHp = initialHp;
   const computedMaxHp = player.stats.maxHp;
 
-  // ============================================================
-  // ON-CHAIN HP DEBUG - Shows actual blockchain-stored HP value
-  // ============================================================
-  console.log('[sessionRestore] ====== ON-CHAIN HP DEBUG ======');
-  console.log('[sessionRestore] gameState.hp (RAW ON-CHAIN VALUE):', onChainHp);
-  console.log('[sessionRestore] Computed maxHp (with gear bonuses):', computedMaxHp);
-  console.log('[sessionRestore] Base HP constant:', baseHp);
-  console.log('[sessionRestore] Gear provides +HP bonus:', computedMaxHp > baseHp);
-  console.log(
-    '[sessionRestore] On-chain HP equals base (needs workaround):',
-    onChainHp === baseHp && computedMaxHp > baseHp
-  );
-  console.log('[sessionRestore] ================================');
-
   // Calculate gear HP bonus to determine the true base HP
   // On-chain HP includes gear bonuses, so we subtract them to get base HP
   const gearHpBonus = computedMaxHp - baseHp;
@@ -775,10 +684,6 @@ function buildPlayer(
     // This means the player was at full health before equipping gear,
     // and the on-chain HP hasn't been synced with gear bonuses.
     // Set baseStats.hp to base, stats.hp will be calculated with gear bonus.
-    console.log(
-      '[sessionRestore] buildPlayer: HP WORKAROUND APPLIED - on-chain HP is base, using maxHp with gear bonus:',
-      computedMaxHp
-    );
     player.stats.hp = computedMaxHp;
     player.baseStats.hp = baseHp; // Store BASE hp, not total
   } else {
@@ -786,13 +691,6 @@ function buildPlayer(
     // On-chain HP includes gear bonus, so subtract it to get base HP.
     const hp = Math.max(0, Math.min(onChainHp, computedMaxHp));
     const trueBaseHp = Math.max(0, hp - gearHpBonus);
-    console.log('[sessionRestore] buildPlayer: Using on-chain HP value:', {
-      onChainHp,
-      cappedHp: hp,
-      computedMaxHp,
-      gearHpBonus,
-      trueBaseHp,
-    });
     player.stats.hp = hp;
     player.baseStats.hp = trueBaseHp; // Store BASE hp, not total
   }
@@ -1023,4 +921,78 @@ function buildEmptyFog(width: number, height: number): FogState[][] {
     }
   }
   return fog;
+}
+
+/**
+ * Unpacks tile types from SessionDiscovery bitmaps.
+ * Uses discoveredTiles (which tiles are known) + revealedTileTypes (actual tile type)
+ * to build the tile grid. Broken walls are reflected in revealedTileTypes, so no
+ * client-side broken wall tracking is needed.
+ *
+ * Undiscovered tiles stay fully private and are represented as Unknown locally.
+ */
+export function unpackDiscoveryTiles(
+  discovery: SessionDiscoveryData,
+  width: number,
+  height: number
+): TileType[][] {
+  const tiles: TileType[][] = [];
+
+  for (let y = 0; y < height; y++) {
+    tiles[y] = [];
+    for (let x = 0; x < width; x++) {
+      const bitIndex = y * width + x;
+      const byteIndex = Math.floor(bitIndex / 8);
+      const bitOffset = bitIndex % 8;
+      const isDiscovered = ((discovery.discoveredTiles[byteIndex] ?? 0) >> bitOffset) & 1;
+      const isWall = ((discovery.revealedTileTypes[byteIndex] ?? 0) >> bitOffset) & 1;
+      tiles[y][x] = isDiscovered ? (isWall ? TileType.Wall : TileType.Floor) : TileType.Unknown;
+    }
+  }
+
+  return tiles;
+}
+
+/**
+ * Builds fog state from SessionDiscovery's discoveredTiles bitmap.
+ * 1 = Revealed, 0 = Hidden.
+ */
+function buildFogFromDiscovery(
+  discovery: SessionDiscoveryData,
+  width: number,
+  height: number
+): FogState[][] {
+  const fog = buildEmptyFog(width, height);
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const bitIndex = y * width + x;
+      const byteIndex = Math.floor(bitIndex / 8);
+      const bitOffset = bitIndex % 8;
+      const isDiscovered = ((discovery.discoveredTiles[byteIndex] ?? 0) >> bitOffset) & 1;
+      if (isDiscovered) {
+        fog[y][x] = FogState.Revealed;
+      }
+    }
+  }
+
+  return fog;
+}
+
+function decodeBossId(bytes: number[] | Uint8Array): BossId | null {
+  const value = Buffer.from(bytes)
+    .toString('utf-8')
+    .replace(/\0/g, '')
+    .trim() as BossId;
+  return value && value in BOSSES ? value : null;
+}
+
+function derivePublicSessionSeed(sessionPda: PublicKey): number {
+  const bytes = sessionPda.toBytes();
+  return (
+    ((bytes[0] ?? 0) << 24) ^
+    ((bytes[1] ?? 0) << 16) ^
+    ((bytes[2] ?? 0) << 8) ^
+    (bytes[3] ?? 0)
+  ) >>> 0;
 }
