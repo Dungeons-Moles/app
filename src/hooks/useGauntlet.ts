@@ -39,7 +39,6 @@ function isRecoverableStartError(errorMessage: string | undefined): boolean {
 export function useGauntlet() {
   const { wallet, signAndSendTransaction, checkBalance } = useWallet();
   const {
-    mapSeed,
     startGauntletGame,
     switchToSession,
     forceAbandonCurrentSession,
@@ -53,8 +52,6 @@ export function useGauntlet() {
   const [phase, setPhase] = useState<GauntletPhase>('confirm');
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [activeSeed, setActiveSeed] = useState<bigint | null>(null);
-
   const isMountedRef = useRef(true);
   useEffect(() => {
     isMountedRef.current = true;
@@ -209,13 +206,6 @@ export function useGauntlet() {
     [connection, signAndSendTransaction, wallet.publicKey]
   );
 
-  const resolveSessionGeneratedSeed = useCallback(
-    async (_sessionPda: PublicKey): Promise<bigint | null> => {
-      return null;
-    },
-    []
-  );
-
   const validateResumedGauntletState = useCallback(
     async (
       sessionPda: PublicKey,
@@ -307,7 +297,6 @@ export function useGauntlet() {
     setError(null);
     console.log('[useGauntlet] enterGauntlet:start', {
       wallet: wallet.publicKey.toBase58(),
-      currentMapSeed: mapSeed?.toString() ?? null,
     });
 
     try {
@@ -320,8 +309,6 @@ export function useGauntlet() {
       }
 
       await ensureGauntletInitialized();
-
-      let seed: bigint | null = null;
 
       const nonces = await fetchSessionNonces();
       const [gauntletSessionPda] = deriveGauntletSessionPda(wallet.publicKey, nonces.gauntlet);
@@ -412,7 +399,6 @@ export function useGauntlet() {
             setPhase('error');
             return false;
           }
-          seed = await resolveSessionGeneratedSeed(gauntletSessionPda);
         }
       }
 
@@ -431,7 +417,6 @@ export function useGauntlet() {
           setPhase('error');
           return false;
         }
-        seed = startResult.mapSeed ?? (await resolveSessionGeneratedSeed(gauntletSessionPda));
         } else if (!existingGauntletSessionInfo) {
           console.log('[useGauntlet] enterGauntlet:starting_new_gauntlet_session');
           const startResult = await startGauntletGame(onCommitted);
@@ -473,7 +458,6 @@ export function useGauntlet() {
             setPhase('error');
             return false;
           }
-          seed = await resolveSessionGeneratedSeed(gauntletSessionPda);
         } else {
           // Run the same switch path as resume so first entry gets identical finalized setup.
           const switchResult = await switchToGauntletSessionWithRetry(gauntletSessionPda);
@@ -482,14 +466,7 @@ export function useGauntlet() {
             setPhase('error');
             return false;
           }
-          seed = startResult.mapSeed ?? (await resolveSessionGeneratedSeed(gauntletSessionPda));
         }
-      }
-
-      if (seed === null) {
-        console.warn(
-          '[useGauntlet] enterGauntlet:seed_unavailable_continuing_with_onchain_restore_only'
-        );
       }
 
       if (shouldSkipEnterTx) {
@@ -498,7 +475,6 @@ export function useGauntlet() {
         console.log('[useGauntlet] enterGauntlet:new_session_ready_skip_extra_enter_tx');
       }
 
-      setActiveSeed(seed);
       setPhase('queued');
       return true;
     } catch (err) {
@@ -516,7 +492,6 @@ export function useGauntlet() {
     checkBalance,
     closeOrphanedGauntletEchoes,
     ensureGauntletInitialized,
-    mapSeed,
     startGauntletGame,
     switchToGauntletSessionWithRetry,
     connection,
@@ -537,7 +512,6 @@ export function useGauntlet() {
     phase,
     error,
     isLoading,
-    activeSeed,
     enterGauntlet,
     reset,
   };

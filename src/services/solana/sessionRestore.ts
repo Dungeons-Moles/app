@@ -613,11 +613,14 @@ function buildPlayer(
     gold: number;
     gearSlots: number;
     campaignLevel: number;
+    runMode?: RunMode;
   },
   inventoryData: PlayerInventoryData | null
 ): Player {
   const position = { x: gameState.positionX, y: gameState.positionY };
-  const initialHp = getBaseHp(gameState.campaignLevel);
+  const isPvP =
+    gameState.runMode === RunMode.Duel || gameState.runMode === RunMode.Gauntlet;
+  const initialHp = isPvP ? GAME_CONSTANTS.INITIAL_HP : getBaseHp(gameState.campaignLevel);
 
   // Base stats from game engine constants (pre-gear values)
   const baseStats: PlayerStats = {
