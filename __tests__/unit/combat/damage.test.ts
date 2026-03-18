@@ -164,7 +164,7 @@ describe('Damage Calculation', () => {
     });
 
     describe('Shrapnel status effect', () => {
-      it('should reflect damage equal to Shrapnel stacks', () => {
+      it('should reflect damage equal to strike ATK when defender has shrapnel', () => {
         const attacker = createTestCombatant({ atk: 10 });
         const defender = createTestCombatant({
           arm: 2,
@@ -173,7 +173,8 @@ describe('Damage Calculation', () => {
 
         const result = calculateDamage(attacker, defender);
 
-        expect(result.shrapnelReflect).toBe(4);
+        // Shrapnel reflect = effectiveAtk (10) + attacker chill bonus (0) = 10
+        expect(result.shrapnelReflect).toBe(10);
       });
 
       it('should not reflect damage when Shrapnel is 0', () => {
@@ -198,7 +199,7 @@ describe('Damage Calculation', () => {
         const result = calculateDamage(attacker, defender);
 
         expect(result.hpDamage).toBe(0);
-        expect(result.shrapnelReflect).toBe(5);
+        expect(result.shrapnelReflect).toBe(2);
       });
     });
 
@@ -282,12 +283,12 @@ describe('Damage Calculation', () => {
         // On-chain parity: Rust reduces ARM permanently at end of turn, not during strikes
         // Defender effective ARM: (4 + 1) = 5
         // Damage: 14 - 5 = 9
-        // Shrapnel reflect: defender shrapnel only = 3
+        // Shrapnel reflect: effectiveAtk (14) + chill bonus (1) = 15
         expect(result.baseAtk).toBe(14);
         expect(result.effectiveAtk).toBe(14); // Chill doesn't reduce ATK
         expect(result.armorDamage).toBe(5);
         expect(result.hpDamage).toBe(9);
-        expect(result.shrapnelReflect).toBe(3);
+        expect(result.shrapnelReflect).toBe(15);
       });
     });
   });

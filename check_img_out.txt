@@ -1,0 +1,2 @@
+Normal format, size, mode: WEBP (256, 256) RGBA
+Fast format, size, mode: WEBP (256, 256) RGBA

@@ -84,7 +84,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
   // Load persisted combat speed on mount
   useEffect(() => {
     AsyncStorage.getItem('defaultCombatSpeed').then((stored) => {
-      if (stored === 'normal' || stored === 'fast') {
+      if (stored === 'normal' || stored === 'fast' || stored === 'super-fast') {
         setDefaultCombatSpeed(stored);
       }
     });

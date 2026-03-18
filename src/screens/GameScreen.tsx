@@ -39,7 +39,10 @@ import {
   FastTravelOverlay,
   ItemTooltip,
   ItemsetTooltip,
+  CombatResultFloater,
+  DefeatOverlay,
 } from '../components/game';
+import type { CombatResultIndicator } from '../components/game/CombatResultFloater';
 import { Sidebar } from '../components/game/Sidebar';
 import { useFocusGlow } from '../components/ui/FocusGlow';
 import { PauseMenuModal } from '../components/ui/PauseMenuModal';
@@ -77,6 +80,7 @@ import type {
 } from '../game/engine/types';
 import { calculateItemStats } from '@/game/entities/items';
 import { normalizeCombatPlayerStats, type CombatPlayerStats } from './combat-player-stats';
+import { resolveCombatWithParity } from '../game/combat/parity-resolver';
 import type { GauntletCombatVisualEvent } from '@/services/solana/gauntlet';
 import { fetchGauntletEchoFromDiscovery } from '@/services/solana/gauntlet';
 import { fetchSessionDiscovery } from '@/services/solana/mapGeneratorClient';
@@ -469,6 +473,8 @@ export function GameScreen({ navigation }: GameScreenProps) {
     currentLevel,
     forceAbandonCurrentSession,
     getSessionSignerKeypair,
+    stopAutoCommit,
+    queueEndGame,
   } = useSession();
   const { wallet } = useWallet();
   const { gameplayReadConnection } = useSolanaConnection();
@@ -479,7 +485,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
   const nightMovement = useNightMovement();
   const poiInteraction = usePoiInteraction();
   const { playBgm, playSfx } = useAudio();
-  const { autoOpenPOI } = useSettings();
+  const { autoOpenPOI, autoResolveCombat } = useSettings();
   const isFocused = useIsFocused();
   const inputMode = useInputMode();
   const isController = inputMode === 'controller';
@@ -531,6 +537,16 @@ export function GameScreen({ navigation }: GameScreenProps) {
   const sidebarEnemyRef = useFocusGlow(inventoryFocus === 'enemy');
   const [totalEchoSlots, setTotalEchoSlots] = useState(0);
   const echoEquipmentRef = useRef<{ gear: Gear[]; tool: Tool | null }>({ gear: [], tool: null });
+  const [combatResultIndicators, setCombatResultIndicators] = useState<CombatResultIndicator[]>([]);
+  const combatResultIdRef = useRef(0);
+  const [defeatOverlayVisible, setDefeatOverlayVisible] = useState(false);
+  const defeatMetaRef = useRef<{
+    killedBy?: string;
+    totalMoves: number;
+    level: number;
+    week: number;
+    phase: number;
+  } | null>(null);
 
   // Fade in once game state is ready, giving expo-image time to render
   // cached assets into the component tree. On mobile, even cached images
@@ -555,6 +571,43 @@ export function GameScreen({ navigation }: GameScreenProps) {
       if (!seen) setShowTutorial(true);
     });
   }, []);
+
+  const handleCombatResultComplete = useCallback((id: string) => {
+    setCombatResultIndicators((prev) => prev.filter((i) => i.id !== id));
+  }, []);
+
+  const handleDefeatOverlayComplete = useCallback(() => {
+    setDefeatOverlayVisible(false);
+    const meta = defeatMetaRef.current;
+    if (!meta) return;
+
+    // On-chain session cleanup (same as CombatScreen defeat path)
+    if (hasActiveSession && mode !== 'guest') {
+      stopAutoCommit();
+      const levelReached = meta.level;
+      console.log('[GameScreen] Auto-resolve defeat: queueing deferred session cleanup');
+      void queueEndGame(levelReached, false).catch((err) => {
+        console.error('[GameScreen] Failed to queue deferred cleanup:', err);
+      });
+    }
+
+    // Navigate to DeathScreen using reset (same as CombatScreen)
+    navigation.reset({
+      index: 0,
+      routes: [
+        {
+          name: 'Death',
+          params: {
+            totalMoves: meta.totalMoves,
+            level: meta.level,
+            week: meta.week,
+            phase: getPhaseLabel(meta.phase),
+            killedBy: meta.killedBy,
+          },
+        },
+      ],
+    });
+  }, [hasActiveSession, mode, stopAutoCommit, queueEndGame, navigation]);
 
   // Auto-close tutorial on combat/boss transitions
   useEffect(() => {
@@ -1118,7 +1171,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
         wp.position.x !== state.player.position.x || wp.position.y !== state.player.position.y
     );
   }, [discoveredWaypoints, state?.player?.position]);
-  const canTriggerCurrentPoiInteraction = canTriggerCurrentPoiByPhase;
+  const canTriggerCurrentPoiInteraction = canTriggerCurrentPoiByPhase || !!poiInteraction.blockedReason;
 
   useEffect(() => {
     if (!isFastTravelActive) {
@@ -1541,76 +1594,48 @@ export function GameScreen({ navigation }: GameScreenProps) {
                 }
               }
 
-              if (combatEnemy) {
+              if (combatEnemy || result.combatEnemyInfo) {
                 // Combat was resolved on-chain during move_player.
-                // Navigate to CombatScreen to show combat replay.
-                debugLog('[GameScreen] Combat occurred with enemy:', {
-                  enemyId: combatEnemy.definitionId,
-                  enemyTier: combatEnemy.tier,
-                  enemyPosition: combatEnemy.position,
+                const hpDelta = result.newState.hp - preCombatPlayerStats.hp;
+                const goldDelta = result.newState.gold - preCombatPlayerStats.gold;
+
+                debugLog('[GameScreen] Combat occurred:', {
+                  enemyId: combatEnemy?.definitionId ?? result.combatEnemyInfo?.archetype,
                   preCombatPlayerHp: preCombatPlayerStats.hp,
                   postCombatPlayerHp: result.newState.hp,
                   goldBefore: preCombatPlayerStats.gold,
                   goldAfter: result.newState.gold,
                   playerDied: result.isDead,
+                  autoResolve: autoResolveCombat,
                 });
-                const combatParams = createCombatParams(
-                  combatEnemy,
-                  preCombatPlayerStats,
-                  preCombatGear,
-                  preCombatTool,
-                  preCombatItemsets,
-                  preCombatSeed,
-                  currentWeek,
-                  {
-                    finalPlayerHp: result.newState.hp,
-                    finalPlayerGold: result.newState.gold,
-                    playerWon: !result.isDead,
+
+                // Auto-resolve: skip CombatScreen, show floating indicators on map
+                if (autoResolveCombat) {
+                  if (hpDelta !== 0 || goldDelta > 0) {
+                    combatResultIdRef.current += 1;
+                    setCombatResultIndicators((prev) => [
+                      ...prev,
+                      {
+                        id: `cr_${combatResultIdRef.current}`,
+                        goldDelta: Math.max(0, goldDelta),
+                        hpDelta,
+                      },
+                    ]);
                   }
-                );
-                debugLog('[GameScreen] Navigating to CombatScreen with params:', {
-                  playerHp: combatParams.player.hp,
-                  playerAtk: combatParams.player.atk,
-                  enemyName: combatParams.enemy.name,
-                  enemyHp: combatParams.enemy.hp,
-                  seed: combatParams.seed,
-                  week: combatParams.week,
-                  isBossFight: combatParams.isBossFight,
-                  playerDied: result.isDead,
-                });
-                navigateToCombat(navigation, combatParams, result.newState);
-              } else if (result.combatEnemyInfo) {
-                // Night combat fallback: enemy walked onto player's new position during
-                // night movement. Local state has stale enemy positions, but we have the
-                // enemy archetype + HP from the on-chain CombatStarted event.
-                const enemyId = ARCHETYPE_TO_ENEMY_ID[result.combatEnemyInfo.archetype];
-                if (enemyId) {
-                  const tier = deriveEnemyTier(enemyId, result.combatEnemyInfo.hp);
-                  const enemyDef = ENEMY_DEFINITIONS[enemyId];
-                  const tierStats = enemyDef.tiers[tier - 1];
-                  debugLog(
-                    '[GameScreen] Night combat fallback: archetype=',
-                    result.combatEnemyInfo.archetype,
-                    'enemyId=',
-                    enemyId,
-                    'tier=',
-                    tier
-                  );
-                  const syntheticEnemy: MapEnemy = {
-                    id: `night_combat_${enemyId}_${tier}`,
-                    definitionId: enemyId,
-                    tier,
-                    position: targetPos,
-                    stats: {
-                      hp: tierStats.hp,
-                      atk: tierStats.atk,
-                      arm: tierStats.arm,
-                      spd: tierStats.spd,
-                    },
-                    discovered: true,
-                  };
+                  if (result.isDead && !result.bossFightReady) {
+                    defeatMetaRef.current = {
+                      killedBy: combatEnemy?.definitionId,
+                      totalMoves: result.newState.totalMoves,
+                      level: result.newState.campaignLevel,
+                      week: result.newState.week,
+                      phase: result.newState.phase,
+                    };
+                    setDefeatOverlayVisible(true);
+                  }
+                } else if (combatEnemy) {
+                  // Navigate to CombatScreen to show combat replay
                   const combatParams = createCombatParams(
-                    syntheticEnemy,
+                    combatEnemy,
                     preCombatPlayerStats,
                     preCombatGear,
                     preCombatTool,
@@ -1624,16 +1649,54 @@ export function GameScreen({ navigation }: GameScreenProps) {
                     }
                   );
                   navigateToCombat(navigation, combatParams, result.newState);
-                } else {
-                  console.error(
-                    '[GameScreen] Unknown enemy archetype:',
-                    result.combatEnemyInfo.archetype
-                  );
-                  if (result.isDead && !result.bossFightReady) {
-                    navigateToDeath(navigation, result.newState, 'Unknown enemy');
+                } else if (result.combatEnemyInfo) {
+                  // Night combat fallback: enemy walked onto player's new position during
+                  // night movement. Local state has stale enemy positions, but we have the
+                  // enemy archetype + HP from the on-chain CombatStarted event.
+                  const enemyId = ARCHETYPE_TO_ENEMY_ID[result.combatEnemyInfo.archetype];
+                  if (enemyId) {
+                    const tier = deriveEnemyTier(enemyId, result.combatEnemyInfo.hp);
+                    const enemyDef = ENEMY_DEFINITIONS[enemyId];
+                    const tierStats = enemyDef.tiers[tier - 1];
+                    const syntheticEnemy: MapEnemy = {
+                      id: `night_combat_${enemyId}_${tier}`,
+                      definitionId: enemyId,
+                      tier,
+                      position: targetPos,
+                      stats: {
+                        hp: tierStats.hp,
+                        atk: tierStats.atk,
+                        arm: tierStats.arm,
+                        spd: tierStats.spd,
+                      },
+                      discovered: true,
+                    };
+                    const combatParams = createCombatParams(
+                      syntheticEnemy,
+                      preCombatPlayerStats,
+                      preCombatGear,
+                      preCombatTool,
+                      preCombatItemsets,
+                      preCombatSeed,
+                      currentWeek,
+                      {
+                        finalPlayerHp: result.newState.hp,
+                        finalPlayerGold: result.newState.gold,
+                        playerWon: !result.isDead,
+                      }
+                    );
+                    navigateToCombat(navigation, combatParams, result.newState);
+                  } else {
+                    console.error(
+                      '[GameScreen] Unknown enemy archetype:',
+                      result.combatEnemyInfo.archetype
+                    );
+                    if (result.isDead && !result.bossFightReady) {
+                      navigateToDeath(navigation, result.newState, 'Unknown enemy');
+                    }
+                    // When bossFightReady is true, the boss useEffect will trigger
+                    // CombatScreen for the boss fight instead of skipping to Death.
                   }
-                  // When bossFightReady is true, the boss useEffect will trigger
-                  // CombatScreen for the boss fight instead of skipping to Death.
                 }
               } else {
                 // Combat occurred but couldn't find enemy and no event data available
@@ -1686,6 +1749,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
       isFastTravelActive,
       fastTravelDestinations.length,
       resyncFromChain,
+      autoResolveCombat,
     ]
   );
 
@@ -2088,12 +2152,23 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
   const tryOpenCurrentPoiInteraction = useCallback(() => {
     if (!state || state.phase !== GamePhase.Exploration) return;
+
+    // Show toast feedback when POI is completely unusable instead of opening modal
+    if (poiInteraction.blockedReason) {
+      showWallBreakFeedback(poiInteraction.blockedReason);
+      playSfx('ui_error');
+      return;
+    }
+
     if (!poiInteraction.canInteract) return;
     poiInteraction.interact();
   }, [
     state,
+    poiInteraction.blockedReason,
     poiInteraction.canInteract,
     poiInteraction.interact,
+    showWallBreakFeedback,
+    playSfx,
   ]);
 
   // Navigate to CombatScreen when game phase transitions to Combat or BossFight.
@@ -2104,9 +2179,60 @@ export function GameScreen({ navigation }: GameScreenProps) {
       mode === 'guest' &&
       (state?.phase === GamePhase.Combat || state?.phase === GamePhase.BossFight)
     ) {
+      // Auto-resolve field enemy combat (not boss fights) without opening CombatScreen
+      if (autoResolveCombat && state.phase === GamePhase.Combat && state.combat) {
+        const preCombatHp = state.combat.player.hp;
+        const preCombatGold = state.player.stats.gold;
+        const playerGear = state.player.inventory.map((slot) => slot.item);
+        const resolved = resolveCombatWithParity({
+          player: state.combat.player,
+          enemy: state.combat.enemy,
+          seed: state.rngState,
+          playerGear,
+          playerTool: state.player.equippedTool,
+          playerGold: state.player.stats.gold,
+          enemyDefinitionId: state.combat.enemyDefinitionId,
+          enemyId: state.combat.enemyDefinitionId as import('../game/combat/traits').EnemyId,
+          enemyTier: state.combat.enemyTier,
+        });
+        const combatResult = resolved.player.hp > 0 ? 'VICTORY' : 'DEFEAT';
+        dispatch({ type: 'RESOLVE_COMBAT', result: combatResult, combat: resolved });
+
+        const postCombatHp = Math.min(state.player.stats.maxHp, Math.max(0, resolved.player.hp));
+        const hpDelta = postCombatHp - preCombatHp;
+        const goldReward = combatResult === 'VICTORY' ? (resolved.goldReward ?? 0) : 0;
+        const goldDelta = goldReward;
+
+        if (hpDelta !== 0 || goldDelta > 0) {
+          combatResultIdRef.current += 1;
+          setCombatResultIndicators((prev) => [
+            ...prev,
+            {
+              id: `cr_${combatResultIdRef.current}`,
+              goldDelta: Math.max(0, goldDelta),
+              hpDelta,
+            },
+          ]);
+        }
+
+        if (combatResult === 'DEFEAT') {
+          const localPhaseNumber = state.time
+            ? (state.time.cycle - 1) * 2 + (state.time.phase === 'NIGHT' ? 1 : 0)
+            : 0;
+          defeatMetaRef.current = {
+            killedBy: resolved.enemy.name,
+            totalMoves: state.totalMoves ?? 0,
+            level: profile?.currentLevel ?? 1,
+            week: state.time.week,
+            phase: localPhaseNumber,
+          };
+          setDefeatOverlayVisible(true);
+        }
+        return;
+      }
       navigation.navigate('Combat');
     }
-  }, [state?.phase, navigation, mode]);
+  }, [state?.phase, navigation, mode, autoResolveCombat, dispatch]);
 
   // Auto-trigger POI interaction when player moves onto a POI.
   // Uses shouldAutoOpen instead of canInteract to skip auto-open for POIs with unmet preconditions
@@ -2750,6 +2876,11 @@ export function GameScreen({ navigation }: GameScreenProps) {
                   time={state.time}
                 />
 
+                <CombatResultFloater
+                  indicators={combatResultIndicators}
+                  onComplete={handleCombatResultComplete}
+                />
+
                 {isFastTravelActive && (
                   <FastTravelOverlay
                     waypoints={fastTravelOverlayWaypoints}
@@ -2883,6 +3014,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
             />
           )}
         <TutorialModal visible={showTutorial} onClose={() => setShowTutorial(false)} />
+        <DefeatOverlay visible={defeatOverlayVisible} onComplete={handleDefeatOverlayComplete} />
         </View>
       </InstantImageBackground>
     </Animated.View>

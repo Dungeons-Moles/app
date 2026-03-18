@@ -52,11 +52,14 @@ export function PauseMenuModal({
   const isController = inputMode === 'controller';
   const isCompact = useScreenVariant() === 'compact';
   const { musicVolume, setMusicVolume, sfxVolume, setSfxVolume, playSfx } = useAudio();
-  const { autoOpenPOI, setAutoOpenPOI } = useSettings();
+  const { autoOpenPOI, setAutoOpenPOI, autoResolveCombat, setAutoResolveCombat } = useSettings();
   const [focusIndex, setFocusIndex] = useState(0);
 
-  // focusIndex layout: 0=music, 1=sfx, 2=checkbox, 3=return to hub, 4=abandon (if present) | touch: tutorial shown above return to hub
-  const totalItems = 3 + 1 + (onAbandonSession ? 1 : 0);
+  // focusIndex layout: 0=music, 1=sfx, 2=autoOpenPOI, 3=autoResolveCombat, 4=tutorial (if present), 5=return to hub, 6=abandon (if present)
+  const tutorialIdx = onOpenTutorial ? 4 : -1;
+  const returnIdx = onOpenTutorial ? 5 : 4;
+  const abandonIdx = onOpenTutorial ? 6 : 5;
+  const totalItems = 4 + (onOpenTutorial ? 1 : 0) + 1 + (onAbandonSession ? 1 : 0);
 
   // Reset focus when opening
   useEffect(() => {
@@ -78,14 +81,24 @@ export function PauseMenuModal({
     }
     if (focusIndex === 3) {
       playSfx('ui_click');
+      setAutoResolveCombat(!autoResolveCombat);
+      return;
+    }
+    if (focusIndex === tutorialIdx && onOpenTutorial) {
+      playSfx('ui_click');
+      onOpenTutorial();
+      return;
+    }
+    if (focusIndex === returnIdx) {
+      playSfx('ui_click');
       onReturnToHub();
       return;
     }
-    if (focusIndex === 4 && onAbandonSession && !isAbandoning) {
+    if (focusIndex === abandonIdx && onAbandonSession && !isAbandoning) {
       playSfx('ui_click');
       onAbandonSession();
     }
-  }, [focusIndex, playSfx, autoOpenPOI, setAutoOpenPOI, onReturnToHub, onAbandonSession, isAbandoning]);
+  }, [focusIndex, playSfx, autoOpenPOI, setAutoOpenPOI, autoResolveCombat, setAutoResolveCombat, tutorialIdx, onOpenTutorial, returnIdx, onReturnToHub, abandonIdx, onAbandonSession, isAbandoning]);
 
   useControllerAction(
     {
@@ -98,7 +111,9 @@ export function PauseMenuModal({
             ? () => setSfxVolume(Math.round(Math.max(0, sfxVolume - 0.1) * 10) / 10)
             : focusIndex === 2
               ? () => { playSfx('ui_click'); setAutoOpenPOI(!autoOpenPOI); }
-              : undefined,
+              : focusIndex === 3
+                ? () => { playSfx('ui_click'); setAutoResolveCombat(!autoResolveCombat); }
+                : undefined,
       onDPadRight:
         focusIndex === 0
           ? () => setMusicVolume(Math.round(Math.min(1, musicVolume + 0.1) * 10) / 10)
@@ -106,7 +121,9 @@ export function PauseMenuModal({
             ? () => setSfxVolume(Math.round(Math.min(1, sfxVolume + 0.1) * 10) / 10)
             : focusIndex === 2
               ? () => { playSfx('ui_click'); setAutoOpenPOI(!autoOpenPOI); }
-              : undefined,
+              : focusIndex === 3
+                ? () => { playSfx('ui_click'); setAutoResolveCombat(!autoResolveCombat); }
+                : undefined,
       onA: handleSelect,
       onB: () => { playSfx('ui_back'); onClose(); },
     },
@@ -169,34 +186,48 @@ export function PauseMenuModal({
                     labelStyle={isCompact ? compactStyles.volumeLabel : undefined}
                   />
                 </FocusGlow>
+                <FocusGlow active={isController && focusIndex === 3}>
+                  <Checkbox
+                    label="Auto-resolve combat"
+                    checked={autoResolveCombat}
+                    onToggle={() => {
+                      playSfx('ui_click');
+                      setAutoResolveCombat(!autoResolveCombat);
+                    }}
+                    size={isCompact ? 32 : 20}
+                    labelStyle={isCompact ? compactStyles.volumeLabel : undefined}
+                  />
+                </FocusGlow>
               </View>
 
               <View style={[styles.menuList, isCompact && compactStyles.menuList]}>
-                <View style={styles.menuRow}>
-                  {!isController && onOpenTutorial && (
-                    <TouchableOpacity
-                      onPress={() => {
-                        playSfx('ui_click');
-                        onOpenTutorial();
-                      }}
-                      activeOpacity={0.7}
-                    >
-                      <CachedImageBackground
-                        source={buttonV3Source}
-                        style={[
-                          styles.menuButtonImageSmall,
-                          isCompact && compactStyles.menuButtonImageSmall,
-                        ]}
-                        resizeMode="stretch"
+                <View style={[styles.menuRow, isCompact && compactStyles.menuRow]}>
+                  {onOpenTutorial && (
+                    <FocusGlow active={isController && focusIndex === tutorialIdx}>
+                      <TouchableOpacity
+                        onPress={() => {
+                          playSfx('ui_click');
+                          onOpenTutorial();
+                        }}
+                        activeOpacity={0.7}
                       >
-                        <Text style={[styles.menuButtonText, isCompact && compactStyles.menuButtonText]}>
-                          Tutorial
-                        </Text>
-                      </CachedImageBackground>
-                    </TouchableOpacity>
+                        <CachedImageBackground
+                          source={buttonV3Source}
+                          style={[
+                            styles.menuButtonImageSmall,
+                            isCompact && compactStyles.menuButtonImage,
+                          ]}
+                          resizeMode="stretch"
+                        >
+                          <Text style={[styles.menuButtonText, isCompact && compactStyles.menuButtonText]}>
+                            Tutorial
+                          </Text>
+                        </CachedImageBackground>
+                      </TouchableOpacity>
+                    </FocusGlow>
                   )}
 
-                  <FocusGlow active={isController && focusIndex === 3}>
+                  <FocusGlow active={isController && focusIndex === returnIdx}>
                     <TouchableOpacity
                       onPress={() => {
                         playSfx('ui_click');
@@ -221,7 +252,7 @@ export function PauseMenuModal({
                 </View>
 
                 {onAbandonSession && (
-                  <FocusGlow active={isController && focusIndex === 4}>
+                  <FocusGlow active={isController && focusIndex === abandonIdx}>
                     <TouchableOpacity
                       onPress={() => {
                         playSfx('ui_click');
@@ -335,6 +366,7 @@ const styles = StyleSheet.create({
   checkboxRow: {
     width: '100%',
     marginBottom: 16,
+    gap: 8,
   },
   menuList: {
     width: '100%',
@@ -405,8 +437,14 @@ const compactStyles = StyleSheet.create({
   },
   checkboxRow: {
     marginBottom: 20,
+    gap: 12,
   },
   menuList: {
+    gap: 12,
+  },
+  menuRow: {
+    flexDirection: 'column',
+    alignItems: 'center',
     gap: 12,
   },
   menuButtonImage: {

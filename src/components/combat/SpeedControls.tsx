@@ -4,13 +4,7 @@
  */
 
 import React from 'react';
-import {
-  View,
-  StyleSheet,
-  TouchableOpacity,
-  Image,
-  ImageSourcePropType,
-} from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Image, ImageSourcePropType } from 'react-native';
 import { CachedImageBackground } from '../common/CachedImageBackground';
 import type { CombatSpeed } from '../../contexts/CombatContext';
 
@@ -19,6 +13,7 @@ const buttonBgActiveSource = require('../../../assets/ui/buttons/button-v3.webp'
 const stopIconSource = require('../../../assets/icons/ui/stop.webp');
 const normalIconSource = require('../../../assets/icons/ui/normal-speed.webp');
 const fastIconSource = require('../../../assets/icons/ui/fast-speed.webp');
+const superFastIconSource = require('../../../assets/icons/ui/super-fast-speed.webp');
 
 export interface SpeedControlsProps {
   currentSpeed: CombatSpeed;
@@ -43,11 +38,11 @@ export function SpeedControls({
     return (
       <TouchableOpacity
         key={speed}
-        style={[
-          { width: 60 * scale, height: 48 * scale },
-          disabled && styles.buttonDisabled,
-        ]}
-        onPress={() => { onPress?.(); onSpeedChange(speed); }}
+        style={[{ width: 60 * scale, height: 48 * scale }, disabled && styles.buttonDisabled]}
+        onPress={() => {
+          onPress?.();
+          onSpeedChange(speed);
+        }}
         disabled={disabled}
         activeOpacity={0.7}
       >
@@ -75,6 +70,7 @@ export function SpeedControls({
       {renderButton('paused', stopIconSource)}
       {renderButton('normal', normalIconSource)}
       {renderButton('fast', fastIconSource)}
+      {renderButton('super-fast', superFastIconSource)}
     </View>
   );
 }

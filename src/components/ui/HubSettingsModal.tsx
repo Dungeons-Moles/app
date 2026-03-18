@@ -49,11 +49,11 @@ export function HubSettingsModal({
   const isCompact = useScreenVariant() === 'compact';
   const { height } = useWindowDimensions();
   const { musicVolume, setMusicVolume, sfxVolume, setSfxVolume, playSfx } = useAudio();
-  const { autoOpenPOI, setAutoOpenPOI } = useSettings();
+  const { autoOpenPOI, setAutoOpenPOI, autoResolveCombat, setAutoResolveCombat } = useSettings();
   const { defaultCombatSpeed, updateDefaultCombatSpeed } = useProfile();
   const [settingsFocus, setSettingsFocus] = useState(0);
   const hasResetProfileAction = typeof onResetProfile === 'function';
-  const maxSettingsFocus = hasResetProfileAction ? 5 : 4;
+  const maxSettingsFocus = hasResetProfileAction ? 6 : 5;
   const baseModalHeight = isCompact ? 840 : 420;
   const maxModalHeight = Math.max(320, height * 0.95);
   const modalScale = Math.min(1, maxModalHeight / baseModalHeight);
@@ -63,7 +63,7 @@ export function HubSettingsModal({
     if (visible) setSettingsFocus(0);
   }, [visible]);
 
-  const SPEED_ORDER: CombatSpeed[] = ['paused', 'normal', 'fast'];
+  const SPEED_ORDER: CombatSpeed[] = ['paused', 'normal', 'fast', 'super-fast'];
   const cycleSpeed = useCallback(
     (dir: -1 | 1) => {
       const idx = SPEED_ORDER.indexOf(defaultCombatSpeed);
@@ -78,17 +78,27 @@ export function HubSettingsModal({
     setAutoOpenPOI(!autoOpenPOI);
   }, [autoOpenPOI, playSfx, setAutoOpenPOI]);
 
+  const toggleAutoResolveCombat = useCallback(() => {
+    playSfx('ui_click');
+    setAutoResolveCombat(!autoResolveCombat);
+  }, [autoResolveCombat, playSfx, setAutoResolveCombat]);
+
   useControllerAction(
     {
       onA:
         settingsFocus === 3
           ? toggleAutoOpenPOI
           : settingsFocus === 4
-            ? onDisconnect
-            : settingsFocus === 5 && hasResetProfileAction
-              ? onResetProfile
-              : undefined,
-      onB: () => { playSfx('ui_back'); onClose(); },
+            ? toggleAutoResolveCombat
+            : settingsFocus === 5
+              ? onDisconnect
+              : settingsFocus === 6 && hasResetProfileAction
+                ? onResetProfile
+                : undefined,
+      onB: () => {
+        playSfx('ui_back');
+        onClose();
+      },
       onDPadUp: () => setSettingsFocus((p) => Math.max(0, p - 1)),
       onDPadDown: () => setSettingsFocus((p) => Math.min(maxSettingsFocus, p + 1)),
       onDPadLeft:
@@ -100,7 +110,9 @@ export function HubSettingsModal({
               ? () => cycleSpeed(-1)
               : settingsFocus === 3
                 ? toggleAutoOpenPOI
-                : undefined,
+                : settingsFocus === 4
+                  ? toggleAutoResolveCombat
+                  : undefined,
       onDPadRight:
         settingsFocus === 0
           ? () => setMusicVolume(Math.round(Math.min(1, musicVolume + 0.1) * 10) / 10)
@@ -110,7 +122,9 @@ export function HubSettingsModal({
               ? () => cycleSpeed(1)
               : settingsFocus === 3
                 ? toggleAutoOpenPOI
-                : undefined,
+                : settingsFocus === 4
+                  ? toggleAutoResolveCombat
+                  : undefined,
     },
     isController && visible && controllerEnabled
   );
@@ -161,7 +175,10 @@ export function HubSettingsModal({
                     !isCompact && { gap: Math.min(14, (maxModalHeight - 200) / 12) },
                   ]}
                 >
-                  <FocusGlow active={isController && settingsFocus === 0} style={styles.settingGlow}>
+                  <FocusGlow
+                    active={isController && settingsFocus === 0}
+                    style={styles.settingGlow}
+                  >
                     <View style={styles.settingRow}>
                       <Text style={[styles.settingLabel, isCompact && compactStyles.settingLabel]}>
                         Music volume
@@ -174,7 +191,10 @@ export function HubSettingsModal({
                     </View>
                   </FocusGlow>
 
-                  <FocusGlow active={isController && settingsFocus === 1} style={styles.settingGlow}>
+                  <FocusGlow
+                    active={isController && settingsFocus === 1}
+                    style={styles.settingGlow}
+                  >
                     <View style={styles.settingRow}>
                       <Text style={[styles.settingLabel, isCompact && compactStyles.settingLabel]}>
                         SFX volume
@@ -187,7 +207,10 @@ export function HubSettingsModal({
                     </View>
                   </FocusGlow>
 
-                  <FocusGlow active={isController && settingsFocus === 2} style={styles.settingGlow}>
+                  <FocusGlow
+                    active={isController && settingsFocus === 2}
+                    style={styles.settingGlow}
+                  >
                     <View style={styles.settingRow}>
                       <Text style={[styles.settingLabel, isCompact && compactStyles.settingLabel]}>
                         Combat speed
@@ -201,7 +224,10 @@ export function HubSettingsModal({
                     </View>
                   </FocusGlow>
 
-                  <FocusGlow active={isController && settingsFocus === 3} style={styles.settingGlow}>
+                  <FocusGlow
+                    active={isController && settingsFocus === 3}
+                    style={styles.settingGlow}
+                  >
                     <Checkbox
                       label="Auto-open POI"
                       checked={autoOpenPOI}
@@ -213,6 +239,19 @@ export function HubSettingsModal({
 
                   <FocusGlow
                     active={isController && settingsFocus === 4}
+                    style={styles.settingGlow}
+                  >
+                    <Checkbox
+                      label="Auto-resolve combat"
+                      checked={autoResolveCombat}
+                      onToggle={toggleAutoResolveCombat}
+                      size={isCompact ? 44 : 20}
+                      labelStyle={isCompact ? { fontSize: 26 } : undefined}
+                    />
+                  </FocusGlow>
+
+                  <FocusGlow
+                    active={isController && settingsFocus === 5}
                     style={[
                       !isCompact && styles.mobileDisconnectGroup,
                       !hasResetProfileAction && { marginTop: 20 },
@@ -224,7 +263,10 @@ export function HubSettingsModal({
                         !isCompact && styles.mobileResetButton,
                         isCompact && compactStyles.resetButton,
                       ]}
-                      onPress={() => { playSfx('ui_click'); onDisconnect(); }}
+                      onPress={() => {
+                        playSfx('ui_click');
+                        onDisconnect();
+                      }}
                       activeOpacity={0.7}
                     >
                       <CachedImageBackground
@@ -243,7 +285,7 @@ export function HubSettingsModal({
 
                   {hasResetProfileAction && (
                     <FocusGlow
-                      active={isController && settingsFocus === 5}
+                      active={isController && settingsFocus === 6}
                       style={!isCompact ? styles.mobileResetProfileGroup : undefined}
                     >
                       <TouchableOpacity
@@ -252,7 +294,10 @@ export function HubSettingsModal({
                           !isCompact && styles.mobileResetButton,
                           isCompact && compactStyles.resetButton,
                         ]}
-                        onPress={() => { playSfx('ui_click'); onResetProfile?.(); }}
+                        onPress={() => {
+                          playSfx('ui_click');
+                          onResetProfile?.();
+                        }}
                         activeOpacity={0.7}
                       >
                         <CachedImageBackground
@@ -261,7 +306,10 @@ export function HubSettingsModal({
                           resizeMode="stretch"
                         >
                           <Text
-                            style={[styles.disconnectText, isCompact && compactStyles.disconnectText]}
+                            style={[
+                              styles.disconnectText,
+                              isCompact && compactStyles.disconnectText,
+                            ]}
                           >
                             Reset Profile
                           </Text>
@@ -318,25 +366,30 @@ export function HubSettingsModal({
                             isCompact && compactStyles.settingsHintText,
                           ]}
                         >
-                          {settingsFocus === 3 ? 'Toggle' : 'Confirm'}
+                          {settingsFocus === 3 || settingsFocus === 4 ? 'Toggle' : 'Confirm'}
                         </Text>
                       </View>
                     )}
                     <View style={styles.settingsHintRow}>
                       <Image
                         source={iconBSource}
-                        style={[styles.settingsHintIcon, isCompact && compactStyles.settingsHintIcon]}
+                        style={[
+                          styles.settingsHintIcon,
+                          isCompact && compactStyles.settingsHintIcon,
+                        ]}
                         resizeMode="contain"
                       />
                       <Text
-                        style={[styles.settingsHintText, isCompact && compactStyles.settingsHintText]}
+                        style={[
+                          styles.settingsHintText,
+                          isCompact && compactStyles.settingsHintText,
+                        ]}
                       >
                         Close
                       </Text>
                     </View>
                   </View>
                 )}
-
               </CachedImageBackground>
             </View>
           </TouchableWithoutFeedback>

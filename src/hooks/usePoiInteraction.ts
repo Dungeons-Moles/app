@@ -72,6 +72,7 @@ import { fetchInventory } from '@/services/solana/playerInventory';
 import { createPlayerInventoryProgram } from '@/services/solana/programs';
 import { deriveInventoryPda } from '@/services/solana/constants';
 import { gearToBackend, toolToBackend } from '@/data/id-mapping';
+import { FogState } from '@/game/map/types';
 import { createGearInstance } from '@/game/entities/items';
 import { createToolInstance } from '@/game/entities/items';
 import {
@@ -196,6 +197,8 @@ export interface PoiInteractionHookState {
   canInteract: boolean;
   /** Whether POI should auto-open (false if preconditions not met, e.g., no inventory space) */
   shouldAutoOpen: boolean;
+  /** If set, the POI is completely unusable — message explains why (show as toast instead of opening modal) */
+  blockedReason: string | null;
   /** The POI at current position (if any) */
   currentPoi: PoiData | undefined;
   /** Whether interaction is in progress */
@@ -989,6 +992,96 @@ export function usePoiInteraction(): UsePoiInteractionResult {
 
     return true;
   }, [canInteract, currentPoi, gameState]);
+
+  // Returns a user-facing reason when the POI is completely unusable.
+  // Night-only POIs blocked by canInteract are also covered here so the
+  // caller can show a toast instead of silently ignoring the tap.
+  const blockedReason = useMemo((): string | null => {
+    if (!gameState || !currentPoi) return null;
+
+    const poiType = currentPoi.poiType;
+
+    // Night-only POIs during the day (canInteract blocks these, but we still want a message)
+    if (NIGHT_ONLY_POIS.has(poiType) && gameState.time.phase === TimePhase.Day) {
+      return 'Can only rest during Night';
+    }
+
+    // Already consumed
+    if (currentPoi.consumed) return null; // no message needed, POI just isn't there
+
+    // Tool Oil Rack: no tool or already oiled
+    if (poiType === POI_TYPES.TOOL_OIL_RACK) {
+      if (!gameState.player.equippedTool) return 'Equip a tool first';
+      if (gameState.player.equippedTool.oil) return 'Tool already has oil applied';
+    }
+
+    // Rusty Anvil: no tool, max tier, or broke
+    if (poiType === POI_TYPES.RUSTY_ANVIL) {
+      if (!gameState.player.equippedTool) return 'Equip a tool first';
+      if (gameState.player.equippedTool.rarity === 'DIAMOND') return 'Tool is already max tier';
+      const cost = gameState.player.equippedTool.rarity === 'COMMON' ? 10 : 20;
+      if (gameState.player.stats.gold < cost) return `Not enough gold (need ${cost}g)`;
+    }
+
+    // Rune Kiln: no fuseable pairs
+    if (poiType === POI_TYPES.RUNE_KILN) {
+      const gearCounts = new Map<string, number>();
+      let hasPair = false;
+      for (const slot of gameState.player.inventory) {
+        if (slot.item.currentRarity !== 'DIAMOND') {
+          const key = `${slot.item.id}:${slot.item.currentRarity}`;
+          const count = (gearCounts.get(key) ?? 0) + 1;
+          gearCounts.set(key, count);
+          if (count >= 2) {
+            hasPair = true;
+            break;
+          }
+        }
+      }
+      if (!hasPair) return 'No matching items to fuse';
+    }
+
+    // Scrap Chute: empty inventory or no gold
+    if (poiType === POI_TYPES.SCRAP_CHUTE) {
+      if (gameState.player.inventory.length === 0) return 'No gear to scrap';
+      const act = gameState.campaignLevel
+        ? Math.ceil(gameState.campaignLevel / 3)
+        : 1;
+      const scrapCost = [4, 4, 6, 8][Math.max(0, Math.min(3, act - 1))];
+      if (gameState.player.stats.gold < scrapCost) return `Not enough gold to scrap (need ${scrapCost}g)`;
+    }
+
+    // Smuggler Hatch: completely broke (can't afford cheapest item = 8g, or reroll = 4g)
+    if (poiType === POI_TYPES.SMUGGLER_HATCH) {
+      if (gameState.player.stats.gold < 4) return 'No gold to spend at the shop';
+    }
+
+    // Seismic Scanner: all POIs already discovered
+    if (poiType === POI_TYPES.SEISMIC_SCANNER) {
+      const hasHidden = gameState.map.pois.some(
+        (poi) =>
+          !poi.visited &&
+          !poi.discovered &&
+          poi.definitionId !== 'L1' &&
+          gameState.map.fog[poi.position.y]?.[poi.position.x] === FogState.Hidden
+      );
+      if (!hasHidden) return 'All POIs already discovered';
+    }
+
+    // Rail Waypoint: no other discovered waypoints
+    if (poiType === POI_TYPES.RAIL_WAYPOINT) {
+      const otherWaypoints = gameState.map.pois.filter(
+        (poi) =>
+          poi.definitionId === 'L8' &&
+          (poi.position.x !== currentPoi.x || poi.position.y !== currentPoi.y) &&
+          (poi.discovered ||
+            gameState.map.fog[poi.position.y]?.[poi.position.x] !== FogState.Hidden)
+      );
+      if (otherWaypoints.length === 0) return 'No other waypoints discovered';
+    }
+
+    return null;
+  }, [gameState, currentPoi]);
 
   /**
    * Find POI index in the on-chain MapPois array by position.
@@ -3012,6 +3105,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
     () => ({
       canInteract,
       shouldAutoOpen,
+      blockedReason,
       currentPoi,
       isInteracting,
       error,
@@ -3036,6 +3130,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
     [
       canInteract,
       shouldAutoOpen,
+      blockedReason,
       currentPoi,
       isInteracting,
       error,

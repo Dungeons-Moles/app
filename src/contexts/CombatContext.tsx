@@ -28,9 +28,7 @@ import { resolveCombatWithParity } from '../game/combat/parity-resolver';
 import type { CombatResolverInput } from '../game/combat/types';
 import type { CombatSpeed } from '../types';
 import type { BackendCombatLogEntry } from '../services/solana/types/combat_events';
-import {
-  convertBackendLogToFrontend,
-} from '../services/solana/types/combat_events';
+import { convertBackendLogToFrontend } from '../services/solana/types/combat_events';
 
 export type { CombatSpeed } from '../types';
 
@@ -44,6 +42,7 @@ export const COMBAT_SPEED_MULTIPLIER: Record<CombatSpeed, number> = {
   paused: 0,
   normal: 1,
   fast: 2,
+  'super-fast': 4,
 };
 
 const FLOATING_NUMBER_FADE_DELAY_MS = 600;
@@ -77,16 +76,16 @@ function entryHasFloatingNumber(entry: CombatLogEntry | undefined): boolean {
 
   return Boolean(
     (entry.action === 'APPLY_STATUS' && result.statusApplied) ||
-      (result.damage && result.damage > 0) ||
-      (result.healing && result.healing > 0) ||
-      (result.armorGained && result.armorGained > 0) ||
-      (result.armorLost && result.armorLost > 0) ||
-      (result.goldStolen && result.goldStolen > 0) ||
-      (result.goldSpent && result.goldSpent > 0) ||
-      (result.goldGained && result.goldGained > 0) ||
-      (result.atkBonus && result.atkBonus > 0) ||
-      (result.spdBonus && result.spdBonus !== 0) ||
-      (result.digBonus && result.digBonus > 0)
+    (result.damage && result.damage > 0) ||
+    (result.healing && result.healing > 0) ||
+    (result.armorGained && result.armorGained > 0) ||
+    (result.armorLost && result.armorLost > 0) ||
+    (result.goldStolen && result.goldStolen > 0) ||
+    (result.goldSpent && result.goldSpent > 0) ||
+    (result.goldGained && result.goldGained > 0) ||
+    (result.atkBonus && result.atkBonus > 0) ||
+    (result.spdBonus && result.spdBonus !== 0) ||
+    (result.digBonus && result.digBonus > 0)
   );
 }
 
@@ -145,17 +144,17 @@ function entryIsStatusRemovalOnly(entry: CombatLogEntry | undefined): boolean {
 
   return Boolean(
     result.statusRemoved &&
-      !result.damage &&
-      !result.healing &&
-      !result.armorLost &&
-      !result.armorGained &&
-      !result.goldStolen &&
-      !result.goldSpent &&
-      !result.goldGained &&
-      !result.atkBonus &&
-      !result.spdBonus &&
-      !result.digBonus &&
-      !result.statusApplied
+    !result.damage &&
+    !result.healing &&
+    !result.armorLost &&
+    !result.armorGained &&
+    !result.goldStolen &&
+    !result.goldSpent &&
+    !result.goldGained &&
+    !result.atkBonus &&
+    !result.spdBonus &&
+    !result.digBonus &&
+    !result.statusApplied
   );
 }
 
@@ -462,15 +461,8 @@ function allocateContributionResolution(
   return allocations;
 }
 
-function expandAttackContributions(
-  entry: CombatLogEntry,
-  logIndex: number
-): DamageNumber[] {
-  if (
-    entry.action !== 'ATTACK' ||
-    entry.target === 'none' ||
-    !entry.result.contributions?.length
-  ) {
+function expandAttackContributions(entry: CombatLogEntry, logIndex: number): DamageNumber[] {
+  if (entry.action !== 'ATTACK' || entry.target === 'none' || !entry.result.contributions?.length) {
     return [];
   }
 
@@ -603,9 +595,9 @@ function createContributionDamageNumber(
 function shouldAggregateContributionPopup(entry: CombatLogEntry | undefined): boolean {
   return Boolean(
     entry?.action === 'ATTACK' &&
-      entry.result.contributions?.length &&
-      (entry.result.armorLost ?? 0) > 0 &&
-      (entry.result.damage ?? 0) > 0
+    entry.result.contributions?.length &&
+    (entry.result.armorLost ?? 0) > 0 &&
+    (entry.result.damage ?? 0) > 0
   );
 }
 
@@ -656,11 +648,7 @@ function appendFloatingNumbersForEntry(
       });
     }
 
-    if (
-      entry.result.armorLost &&
-      entry.target !== 'none' &&
-      !entry.result.damage
-    ) {
+    if (entry.result.armorLost && entry.target !== 'none' && !entry.result.damage) {
       pushNumber({
         id: `arm-${logIndex}-${Date.now()}`,
         value: entry.result.armorLost,
@@ -764,7 +752,8 @@ function appendFloatingNumbersForEntry(
       id: `goldspent-${logIndex}-${Date.now()}`,
       value: entry.result.goldSpent,
       type: 'gold',
-      target: entry.target === 'none' ? (entry.actor === 'enemy' ? 'enemy' : 'player') : entry.target,
+      target:
+        entry.target === 'none' ? (entry.actor === 'enemy' ? 'enemy' : 'player') : entry.target,
       timestamp: Date.now(),
       source: entry.result.source,
     });
@@ -812,14 +801,11 @@ function appendFloatingNumbersForPairedEntries(
     entry.result.source.kind === pairedEntry.result.source.kind &&
     entry.result.source.id === pairedEntry.result.source.id;
 
-  if (
-    statusType &&
-    sameStatusSource &&
-    entry.target === pairedEntry.target
-  ) {
+  if (statusType && sameStatusSource && entry.target === pairedEntry.target) {
     damageNumbers.push({
       id: `status-pair-${logIndex}-${Date.now()}`,
-      value: (entry.result.statusApplied?.stacks ?? 0) + (pairedEntry.result.statusApplied?.stacks ?? 0),
+      value:
+        (entry.result.statusApplied?.stacks ?? 0) + (pairedEntry.result.statusApplied?.stacks ?? 0),
       type: 'status',
       target: entry.target,
       timestamp: Date.now(),
@@ -832,13 +818,17 @@ function appendFloatingNumbersForPairedEntries(
 
   const sameTarget = entry.target === pairedEntry.target;
   const armorEntry =
-    (entry.result.armorLost ?? 0) > 0 && !(entry.result.damage ?? 0) ? entry :
-    (pairedEntry.result.armorLost ?? 0) > 0 && !(pairedEntry.result.damage ?? 0) ? pairedEntry :
-    null;
+    (entry.result.armorLost ?? 0) > 0 && !(entry.result.damage ?? 0)
+      ? entry
+      : (pairedEntry.result.armorLost ?? 0) > 0 && !(pairedEntry.result.damage ?? 0)
+        ? pairedEntry
+        : null;
   const damageEntry =
-    (entry.result.damage ?? 0) > 0 && !(entry.result.armorLost ?? 0) ? entry :
-    (pairedEntry.result.damage ?? 0) > 0 && !(pairedEntry.result.armorLost ?? 0) ? pairedEntry :
-    null;
+    (entry.result.damage ?? 0) > 0 && !(entry.result.armorLost ?? 0)
+      ? entry
+      : (pairedEntry.result.damage ?? 0) > 0 && !(pairedEntry.result.armorLost ?? 0)
+        ? pairedEntry
+        : null;
 
   if (!sameTarget || !armorEntry || !damageEntry) {
     appendFloatingNumbersForEntry(damageNumbers, entry, logIndex);
@@ -866,7 +856,11 @@ function getSimultaneousPairIndex(log: CombatLogEntry[], index: number): number 
   if (!entryHasFloatingNumber(entry) || !entryHasFloatingNumber(nextEntry)) return null;
   if (entry.action === 'ATTACK' || nextEntry.action === 'ATTACK') return null;
   if (entry.result.contributions?.length || nextEntry.result.contributions?.length) return null;
-  if (entry.turn !== nextEntry.turn || entry.timing !== nextEntry.timing || entry.actor !== nextEntry.actor) {
+  if (
+    entry.turn !== nextEntry.turn ||
+    entry.timing !== nextEntry.timing ||
+    entry.actor !== nextEntry.actor
+  ) {
     return null;
   }
   if (entry.target === 'none' || nextEntry.target === 'none') return null;
@@ -879,22 +873,26 @@ function getSimultaneousPairIndex(log: CombatLogEntry[], index: number): number 
   const hasStatDelta = (candidate: CombatLogEntry): boolean =>
     Boolean(
       candidate.result.armorGained ||
-        candidate.result.atkBonus ||
-        candidate.result.spdBonus ||
-        candidate.result.digBonus
+      candidate.result.atkBonus ||
+      candidate.result.spdBonus ||
+      candidate.result.digBonus
     );
   const hasDamageLikeDelta = (candidate: CombatLogEntry): boolean =>
     Boolean(
       candidate.result.damage ||
-        candidate.result.armorLost ||
-        candidate.result.healing ||
-        candidate.result.statusApplied
+      candidate.result.armorLost ||
+      candidate.result.healing ||
+      candidate.result.statusApplied
     );
 
   if (
     (hasStatDelta(entry) && hasDamageLikeDelta(nextEntry)) ||
     (hasStatDelta(nextEntry) && hasDamageLikeDelta(entry))
   ) {
+    return null;
+  }
+
+  if (hasStatDelta(entry) && hasStatDelta(nextEntry)) {
     return null;
   }
 
@@ -910,6 +908,13 @@ function getSimultaneousPairIndex(log: CombatLogEntry[], index: number): number 
     return null;
   }
 
+  const isStatusThenDamage =
+    (entry.action === 'APPLY_STATUS' && (nextEntry.result.damage ?? 0) > 0) ||
+    (nextEntry.action === 'APPLY_STATUS' && (entry.result.damage ?? 0) > 0);
+
+  if (isStatusThenDamage) {
+    return null;
+  }
   return index + 1;
 }
 
@@ -1063,8 +1068,7 @@ function applyLogEntryToCombatants(
     }
   }
 
-  const actorCombatant =
-    entry.actor === 'player' ? player : entry.actor === 'enemy' ? enemy : null;
+  const actorCombatant = entry.actor === 'player' ? player : entry.actor === 'enemy' ? enemy : null;
   const targetCombatant =
     entry.target === 'player' ? player : entry.target === 'enemy' ? enemy : null;
 
@@ -1086,16 +1090,9 @@ function applyLogEntryToCombatants(
     }
   }
 
-  if (
-    actorCombatant &&
-    entry.action === 'ATTACK' &&
-    isFinalAttackEntryForActorPhase(log, entryIndex)
-  ) {
-    actorCombatant.statusEffects = {
-      ...actorCombatant.statusEffects,
-      chill: Math.max(0, actorCombatant.statusEffects.chill - 1),
-    };
-  }
+  // Chill decay is handled at turn end via the PHASE_TRIGGER statusRemoved log entry.
+  // Do NOT decay chill here — it causes the displayed chill to drop prematurely
+  // (e.g., enemy shows 1 Chill right after attacking instead of waiting for turn end).
 
   if (result.goldStolen && result.goldStolen > 0) {
     if (entry.actor === 'player') {
@@ -1190,7 +1187,11 @@ function combatReducer(state: CombatUIState, action: CombatAction): CombatUIStat
           bossId: action.input.bossId,
         });
         const localCombat = resolveCombatWithParity(action.input);
-        console.log('[CombatContext] Local resolver produced log with', localCombat.log.length, 'entries');
+        console.log(
+          '[CombatContext] Local resolver produced log with',
+          localCombat.log.length,
+          'entries'
+        );
         return {
           ...state,
           combat: createCombatState(action.input),
@@ -1251,9 +1252,7 @@ function combatReducer(state: CombatUIState, action: CombatAction): CombatUIStat
       // the result with the authoritative on-chain outcome.
       const baseCombat = createCombatState(action.input);
       const localCombat = resolveCombatWithParity(action.input);
-      const onChainResult = action.outcome.playerWon
-        ? ('VICTORY' as const)
-        : ('DEFEAT' as const);
+      const onChainResult = action.outcome.playerWon ? ('VICTORY' as const) : ('DEFEAT' as const);
 
       const resolvedCombat = {
         ...localCombat,
@@ -1347,7 +1346,9 @@ function combatReducer(state: CombatUIState, action: CombatAction): CombatUIStat
         currentLogIndex: effectiveIndex,
         activeActorLogIndex: effectiveIndex,
         currentContributionIndex:
-          entry?.result.contributions?.length && !shouldAggregateContributionPopup(entry) ? 0 : null,
+          entry?.result.contributions?.length && !shouldAggregateContributionPopup(entry)
+            ? 0
+            : null,
         damageNumbers: trimmedNumbers,
         effectNotifications: trimmedNotifications,
       };
@@ -1385,10 +1386,7 @@ function combatReducer(state: CombatUIState, action: CombatAction): CombatUIStat
         }
       }
 
-      const newDamageNumbers = [
-        ...state.damageNumbers,
-        ...contribNumbers,
-      ].slice(-6);
+      const newDamageNumbers = [...state.damageNumbers, ...contribNumbers].slice(-6);
 
       return {
         ...state,
@@ -1558,12 +1556,7 @@ export function CombatProvider({ children, initialSpeed, onSpeedChange }: Combat
       playerGold: gold.player,
       enemyGold: gold.enemy,
     };
-  }, [
-    state.resolvedCombat,
-    state.combat,
-    state.currentLogIndex,
-    state.currentContributionIndex,
-  ]);
+  }, [state.resolvedCombat, state.combat, state.currentLogIndex, state.currentContributionIndex]);
 
   const getResult = useCallback(() => {
     return state.resolvedCombat?.result ?? null;
@@ -1578,7 +1571,7 @@ export function CombatProvider({ children, initialSpeed, onSpeedChange }: Combat
     if (!state.resolvedCombat || state.isComplete) return;
 
     const logLength = state.resolvedCombat.log.length;
-    const stopAtIndex = terminalLogIndex() ?? (logLength - 1);
+    const stopAtIndex = terminalLogIndex() ?? logLength - 1;
     const currentEntry = state.resolvedCombat.log[state.currentLogIndex];
     const activeContributionIndex = state.currentContributionIndex;
     const isInitialDelay = state.currentLogIndex < 0;
@@ -1593,8 +1586,9 @@ export function CombatProvider({ children, initialSpeed, onSpeedChange }: Combat
       activeContributionIndex !== null &&
       activeContributionIndex >= currentEntry.result.contributions.length - 1;
     const isWaitingForSinglePopupToFinish =
-      ((!currentEntry?.result.contributions?.length || shouldAggregateContributionPopup(currentEntry)) &&
-        entryHasFloatingNumber(currentEntry));
+      (!currentEntry?.result.contributions?.length ||
+        shouldAggregateContributionPopup(currentEntry)) &&
+      entryHasFloatingNumber(currentEntry);
     const floatingNumberCount = getEntryFloatingNumberCount(currentEntry);
     const isStatusApplyEntry =
       currentEntry?.action === 'APPLY_STATUS' && Boolean(currentEntry.result.statusApplied);
@@ -1654,15 +1648,15 @@ export function CombatProvider({ children, initialSpeed, onSpeedChange }: Combat
             ? null
             : (FLOATING_NUMBER_FADE_DELAY_MS + FLOATING_NUMBER_FADE_MS) /
               COMBAT_SPEED_MULTIPLIER[speed]
-        : isWaitingForSinglePopupToFinish
-          ? speed === 'paused'
-            ? null
-            : (Math.max(1, floatingNumberCount) * FLOATING_NUMBER_LIFETIME_MS +
-                (isStatusApplyEntry ? POST_STATUS_APPLY_BUFFER_MS : 0)) /
-              COMBAT_SPEED_MULTIPLIER[speed]
-          : isInstantStatusRemoval
-            ? 0
-          : getCombatAnimationIntervalMs(speed);
+          : isWaitingForSinglePopupToFinish
+            ? speed === 'paused'
+              ? null
+              : (Math.max(1, floatingNumberCount) * FLOATING_NUMBER_LIFETIME_MS +
+                  (isStatusApplyEntry ? POST_STATUS_APPLY_BUFFER_MS : 0)) /
+                COMBAT_SPEED_MULTIPLIER[speed]
+            : isInstantStatusRemoval
+              ? 0
+              : getCombatAnimationIntervalMs(speed);
 
     if (delayMs === null) return;
 
@@ -1702,33 +1696,32 @@ export function CombatProvider({ children, initialSpeed, onSpeedChange }: Combat
     terminalLogIndex,
   ]);
 
-  const value = useMemo<CombatContextType>(() => ({
-    state,
-    dispatch,
-    speed,
-    setSpeed,
-    startCombat,
-    startCombatWithLog,
-    startCombatWithOnchainOutcome,
-    displayStates,
-    getResult,
-  }), [
-    state,
-    dispatch,
-    speed,
-    setSpeed,
-    startCombat,
-    startCombatWithLog,
-    startCombatWithOnchainOutcome,
-    displayStates,
-    getResult,
-  ]);
-
-  return (
-    <CombatContext.Provider value={value}>
-      {children}
-    </CombatContext.Provider>
+  const value = useMemo<CombatContextType>(
+    () => ({
+      state,
+      dispatch,
+      speed,
+      setSpeed,
+      startCombat,
+      startCombatWithLog,
+      startCombatWithOnchainOutcome,
+      displayStates,
+      getResult,
+    }),
+    [
+      state,
+      dispatch,
+      speed,
+      setSpeed,
+      startCombat,
+      startCombatWithLog,
+      startCombatWithOnchainOutcome,
+      displayStates,
+      getResult,
+    ]
   );
+
+  return <CombatContext.Provider value={value}>{children}</CombatContext.Provider>;
 }
 
 // ============================================================================

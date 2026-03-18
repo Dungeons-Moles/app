@@ -11,7 +11,7 @@ import type {
   Tool,
 } from '@/game/engine/types';
 import { CombatPhase } from '@/game/engine/types';
-import { getEffectiveStrikes, processStatusEffectsTurnEnd } from '@/game/combat/status-effects';
+import { processStatusEffectsTurnEnd } from '@/game/combat/status-effects';
 import { applyDamage, getChillDamageBonus, isDefeated, isExposed, isWounded } from './damage';
 import { createCombatState } from './state';
 import type { CombatResolverInput } from './types';
@@ -32,6 +32,23 @@ import type { EquippedEffect } from './effect-bridge';
 
 type Side = 'player' | 'enemy';
 
+// Sudden death constants — must match on-chain combat-system engine.rs
+const SUDDEN_DEATH_TURN = 20;
+const SUDDEN_DEATH_RAMP_TURN = 30;
+
+/**
+ * Compute cumulative sudden-death ATK bonus for the given turn.
+ * Mirrors `check_sudden_death` in on-chain combat-system.
+ */
+function checkSuddenDeath(turn: number): number {
+  if (turn < SUDDEN_DEATH_TURN) return 0;
+  let bonus = turn - (SUDDEN_DEATH_TURN - 1);
+  if (turn >= SUDDEN_DEATH_RAMP_TURN) {
+    bonus += (turn - (SUDDEN_DEATH_RAMP_TURN - 1)) * 2;
+  }
+  return bonus;
+}
+
 interface SideRuntime {
   effects: EquippedEffect[];
   firedThisTurn: Set<string>;
@@ -47,7 +64,7 @@ interface SideRuntime {
   activeBombSelfDamageReduction: number;
   preserveShrapnelCap: number;
   preserveFreshChill: number;
-  countdownTurnBonus: number;
+  countdownReduction: number;
   lastGoldStolen: number;
   shardsEveryTurn: boolean;
   wasWounded: boolean;
@@ -65,6 +82,7 @@ interface SideRuntime {
   eldritch25Triggered: boolean;
   eldritchBleedActive: boolean;
   atkContributions: Map<string, CombatContribution>;
+  gearAtkBonus: number;
 }
 
 function sourceKey(source: CombatSourceRef): string {
@@ -144,6 +162,25 @@ function buildInitialAtkContributionMap(
   }
 
   return map;
+}
+
+function computeInitialGearAtkBonus(gear: Gear[]): number {
+  let total = 0;
+  for (const item of gear) {
+    let bakedAtk = 0;
+    for (const entry of collectGearEffects([item])) {
+      if (
+        entry.effect.trigger.type === 'BattleStart' &&
+        entry.effect.condition.type === 'None' &&
+        entry.effect.effectType === 'GainAtk' &&
+        entry.effect.value > 0
+      ) {
+        bakedAtk = Math.max(bakedAtk, entry.effect.value);
+      }
+    }
+    total += Math.max(item.stats.atk ?? 0, bakedAtk);
+  }
+  return total;
 }
 
 function addLogEntry(state: CombatState, entry: CombatLogEntry): CombatState {
@@ -300,7 +337,7 @@ function buildSideRuntime(input: CombatResolverInput, side: Side): SideRuntime {
     activeBombSelfDamageReduction: 0,
     preserveShrapnelCap,
     preserveFreshChill: 0,
-    countdownTurnBonus: 0,
+    countdownReduction: 0,
     lastGoldStolen: 0,
     shardsEveryTurn,
     wasWounded: false,
@@ -322,6 +359,7 @@ function buildSideRuntime(input: CombatResolverInput, side: Side): SideRuntime {
       input,
       side === 'player' ? input.player : input.enemy
     ),
+    gearAtkBonus: computeInitialGearAtkBonus(gear),
   };
 }
 
@@ -335,6 +373,10 @@ function runEffectsForSide(
   extra?: Partial<Parameters<typeof processEffects>[0]['triggerContext']>,
   options?: {
     allowRepeatEffectIds?: Set<string>;
+    /** On-chain parity: skip finalizeImmediateLethal inside this call (caller handles it). */
+    skipLethalCheck?: boolean;
+    /** On-chain parity: skip cross-source lethal gating in processEffects. */
+    skipLethalGating?: boolean;
   }
 ): CombatState {
   const sideRuntime = runtime[owner];
@@ -344,7 +386,7 @@ function runEffectsForSide(
     state: nextState,
     owner,
     phase,
-    turn: phase === 'COUNTDOWN' ? nextState.turn + sideRuntime.countdownTurnBonus : nextState.turn,
+    turn: nextState.turn,
     playerGold: getGold(nextState, owner),
     enemyGold: getGold(nextState, enemy),
     updateGold: (amount: number) => {
@@ -422,9 +464,9 @@ function runEffectsForSide(
       ctx.goldArmorConversionsUsed = sideRuntime.goldArmorConversionsUsed;
     },
     countdownItems: new Map(),
-    countdownTurnBonus: sideRuntime.countdownTurnBonus,
-    setCountdownTurnBonus: (value: number) => {
-      sideRuntime.countdownTurnBonus = Math.max(0, value);
+    countdownReduction: sideRuntime.countdownReduction,
+    setCountdownReduction: (value: number) => {
+      sideRuntime.countdownReduction = Math.max(0, value);
     },
     firstTimeWoundedTriggered: sideRuntime.firstTimeWoundedTriggered,
     setFirstTimeWoundedTriggered: () => {},
@@ -432,6 +474,11 @@ function runEffectsForSide(
     enemyExposedOverride: runtime[enemy].forcedExposedThisTurn,
     enemyBleedBeforeHit: extra?.enemyBleedBeforeHit ?? 0,
     allowRepeatEffectIds: options?.allowRepeatEffectIds,
+    gearAtkBonus: sideRuntime.gearAtkBonus,
+    setGearAtkBonus: (value: number) => {
+      sideRuntime.gearAtkBonus = Math.max(0, value);
+      ctx.gearAtkBonus = sideRuntime.gearAtkBonus;
+    },
   };
 
   const effectEntries = sideRuntime.effects.map((entry) => ({
@@ -456,11 +503,13 @@ function runEffectsForSide(
       triggerContext: {
         ownerActsFirst,
         shardsEveryTurn: sideRuntime.shardsEveryTurn,
+        countdownReduction: sideRuntime.countdownReduction,
         firstTimeWoundedTriggered: sideRuntime.firstTimeWoundedTriggered,
         firstTimeExposedTriggered: sideRuntime.firstTimeExposedTriggered,
         firstTimeShrapnelTriggered: sideRuntime.firstTimeShrapnelTriggered,
         ...extra,
       },
+      skipLethalGating: options?.skipLethalGating,
     });
     nextState = result.state;
     for (const logEntry of result.logs) {
@@ -481,15 +530,17 @@ function runEffectsForSide(
         toCombatLogEntry(nextState, owner, logEntry, phase as CombatLogEntry['timing'])
       );
     }
-    nextState = finalizeImmediateLethal(
-      nextState,
-      runtime,
-      phase as CombatLogEntry['timing'],
-      input,
-      result.lethalStartState
-    );
-    if (nextState.result) {
-      return nextState;
+    if (!options?.skipLethalCheck) {
+      nextState = finalizeImmediateLethal(
+        nextState,
+        runtime,
+        phase as CombatLogEntry['timing'],
+        input,
+        result.lethalStartState
+      );
+      if (nextState.result) {
+        return nextState;
+      }
     }
     for (const logEntry of result.logs) {
       if (!logEntry.nonWeaponDamage || logEntry.target === 'none') continue;
@@ -500,9 +551,13 @@ function runEffectsForSide(
         input,
         targetSide,
         'ON_DEAL_NON_WEAPON_DAMAGE',
-        targetSide === owner ? ownerActsFirst : !ownerActsFirst
+        targetSide === owner ? ownerActsFirst : !ownerActsFirst,
+        undefined,
+        options?.skipLethalCheck || options?.skipLethalGating
+          ? { skipLethalCheck: options.skipLethalCheck, skipLethalGating: options.skipLethalGating }
+          : undefined
       );
-      if (nextState.result) {
+      if (!options?.skipLethalCheck && nextState.result) {
         return nextState;
       }
     }
@@ -518,12 +573,18 @@ function runEffectsForSide(
         ownerActsFirst,
         {
           rustApplied: true,
-        }
+        },
+        options?.skipLethalCheck || options?.skipLethalGating
+          ? { skipLethalCheck: options.skipLethalCheck, skipLethalGating: options.skipLethalGating }
+          : undefined
       );
-      if (nextState.result) {
+      if (!options?.skipLethalCheck && nextState.result) {
         return nextState;
       }
     }
+  }
+  if (options?.skipLethalCheck) {
+    return nextState;
   }
   return finalizeImmediateLethal(nextState, runtime, phase as CombatLogEntry['timing'], input);
 }
@@ -805,7 +866,12 @@ function performStrike(
   const defenderBleedBeforeHit = defender.statusEffects.bleed ?? 0;
   const piercing = runtime[attackerSide].battleFlags.armorPiercing;
   const chillBonus = getChillDamageBonus(defender.statusEffects.chill ?? 0);
-  const strikeAtk = Math.max(0, attacker.atk + attacker.bonusAtk);
+  let strikeAtk = Math.max(0, attacker.atk + attacker.bonusAtk);
+  if (runtime[attackerSide].battleFlags.halfGearAtkAfterSecondStrike && strikeIndex >= 2) {
+    const gearBonus = Math.max(0, runtime[attackerSide].gearAtkBonus);
+    const nonGearAtk = Math.max(0, strikeAtk - gearBonus);
+    strikeAtk = nonGearAtk + Math.floor(gearBonus / 2);
+  }
   let attackPower = strikeAtk + chillBonus;
   const totalArmor = runtime[defenderSide].forcedExposedThisTurn
     ? 0
@@ -846,16 +912,9 @@ function performStrike(
     },
     rngValues: [],
   });
-  nextState = finalizeImmediateLethal(
-    nextState,
-    runtime,
-    attackerSide === 'player' ? CombatPhase.PlayerAttack : CombatPhase.EnemyAttack,
-    input,
-    state
-  );
-  if (nextState.result) {
-    return nextState;
-  }
+  // On-chain parity: NO death check after weapon damage.
+  // All on-hit effects, shrapnel retaliation, etc. fire before the death check,
+  // matching engine.rs line 540 where the only break is at the END of the strike.
 
   if (runtime[attackerSide].battleFlags.onHitPerStrike && strikeIndex > 0) {
     for (const entry of runtime[attackerSide].effects) {
@@ -865,14 +924,15 @@ function performStrike(
     }
   }
 
+  // On-chain parity: all on-hit/on-struck/shrapnel phases fire without intermediate death
+  // checks (engine.rs: single `if defender_stats.hp <= 0 { break; }` at line 540 AFTER all).
+  const strikeOpts = { skipLethalCheck: true, skipLethalGating: true } as const;
+
   const firedBeforeOnHit = new Set(runtime[attackerSide].firedThisTurn);
   nextState = runEffectsForSide(nextState, runtime, input, attackerSide, 'ON_HIT', ownerActsFirst, {
     isFirstStrike: strikeIndex === 0,
     enemyBleedBeforeHit: defenderBleedBeforeHit,
-  });
-  if (nextState.result) {
-    return nextState;
-  }
+  }, strikeOpts);
   if (runtime[attackerSide].battleFlags.doubleOnHitEffects) {
     const firedByFirstOnHitPass = new Set<string>();
     for (const entry of runtime[attackerSide].effects) {
@@ -898,11 +958,9 @@ function performStrike(
       },
       {
         allowRepeatEffectIds: firedByFirstOnHitPass,
+        ...strikeOpts,
       }
     );
-    if (nextState.result) {
-      return nextState;
-    }
   }
   nextState = runEffectsForSide(
     nextState,
@@ -913,14 +971,16 @@ function performStrike(
     !ownerActsFirst,
     {
       isFirstStrike: strikeIndex === 0,
-    }
+    },
+    strikeOpts
   );
-  if (nextState.result) {
-    return nextState;
-  }
 
+  // Shrapnel retaliation — on-chain fires even when defender HP <= 0 (no HP guard).
+  // Use current state (not pre-weapon snapshot) for shrapnel stacks.
+  const currentDefender = getCombatant(nextState, defenderSide);
+  const currentDefenderShrapnel = currentDefender.statusEffects.shrapnel ?? 0;
   const retaliation =
-    (defender.statusEffects.shrapnel ?? 0) > 0
+    currentDefenderShrapnel > 0
       ? strikeAtk +
         runtime[defenderSide].battleFlags.shrapnelReflectBonus +
         getChillDamageBonus(attacker.statusEffects.chill ?? 0)
@@ -930,10 +990,7 @@ function performStrike(
       ...getCombatant(nextState, defenderSide),
       statusEffects: {
         ...getCombatant(nextState, defenderSide).statusEffects,
-        shrapnel: Math.max(
-          0,
-          (getCombatant(nextState, defenderSide).statusEffects.shrapnel ?? 0) - 1
-        ),
+        shrapnel: Math.max(0, currentDefenderShrapnel - 1),
       },
     });
     nextState = setCombatant(nextState, attackerSide, {
@@ -953,16 +1010,19 @@ function performStrike(
       },
       rngValues: [],
     });
-    nextState = finalizeImmediateLethal(
-      nextState,
-      runtime,
-      attackerSide === 'player' ? CombatPhase.PlayerAttack : CombatPhase.EnemyAttack,
-      input,
-      state
-    );
-    if (nextState.result) {
-      return nextState;
-    }
+  }
+
+  // On-chain parity: single death check at end of strike (engine.rs line 540).
+  // Checks both sides + prevent-death (Last Breath Sigil).
+  nextState = finalizeImmediateLethal(
+    nextState,
+    runtime,
+    attackerSide === 'player' ? CombatPhase.PlayerAttack : CombatPhase.EnemyAttack,
+    input,
+    state
+  );
+  if (nextState.result) {
+    return nextState;
   }
 
   nextState = processTransitionEffects(nextState, runtime, input, attackerSide, ownerActsFirst);
@@ -1024,11 +1084,15 @@ function performSideAttacks(
 ): CombatState {
   let nextState = state;
   runtime[side].actedThisTurn = true;
+  const combatant = getCombatant(nextState, side);
   const spdExtraStrike = hasSpdAdvantageExtraStrike(nextState, side) ? 1 : 0;
+  const rawStrikes =
+    combatant.strikesPerTurn + runtime[side].extraStrikesThisTurn + spdExtraStrike;
+  const cappedStrikes = Math.min(rawStrikes, 5);
   const strikes =
-    getEffectiveStrikes(getCombatant(nextState, side)) +
-    runtime[side].extraStrikesThisTurn +
-    spdExtraStrike;
+    combatant.statusEffects.chill > 0
+      ? Math.max(1, cappedStrikes - combatant.statusEffects.chill)
+      : cappedStrikes;
   if (isDefeated(getCombatant(nextState, getOpposite(side)))) {
     return nextState;
   }
@@ -1292,6 +1356,7 @@ export function resolveCombatWithParity(input: CombatResolverInput): CombatState
   state = processTransitionEffects(state, runtime, input, 'enemy', false);
 
   const MAX_TURNS = 50;
+  let suddenDeathBonus = 0;
   while (state.turn < MAX_TURNS && !state.result) {
     state = {
       ...state,
@@ -1312,6 +1377,18 @@ export function resolveCombatWithParity(input: CombatResolverInput): CombatState
     runtime.enemy.forcedExposedThisTurn = false;
     runtime.player.extraStrikesThisTurn = 0;
     runtime.enemy.extraStrikesThisTurn = 0;
+
+    // Sudden death: escalating ATK bonus for both sides (mirrors on-chain apply_sudden_death)
+    const newSdBonus = checkSuddenDeath(state.turn);
+    if (newSdBonus > suddenDeathBonus) {
+      const delta = newSdBonus - suddenDeathBonus;
+      state = {
+        ...state,
+        player: { ...state.player, atk: state.player.atk + delta },
+        enemy: { ...state.enemy, atk: state.enemy.atk + delta },
+      };
+      suddenDeathBonus = newSdBonus;
+    }
 
     const playerActsFirst =
       state.player.spd + state.player.bonusSpd > state.enemy.spd + state.enemy.bonusSpd;
@@ -1382,7 +1459,16 @@ export function resolveCombatWithParity(input: CombatResolverInput): CombatState
   }
 
   if (!state.result) {
-    state = { ...state, result: determineResult(state, input) ?? 'DEFEAT' };
+    // Turn-50 failsafe: compare HP percentages (mirrors on-chain check_failsafe).
+    // Player wins only with strictly higher HP%; ties go to the enemy (DEFEAT).
+    const existingResult = determineResult(state, input);
+    if (existingResult) {
+      state = { ...state, result: existingResult };
+    } else {
+      const playerPct = Math.trunc((state.player.hp * 100) / state.player.maxHp);
+      const enemyPct = Math.trunc((state.enemy.hp * 100) / state.enemy.maxHp);
+      state = { ...state, result: playerPct > enemyPct ? 'VICTORY' : 'DEFEAT' };
+    }
   }
 
   if (state.result === 'VICTORY') {

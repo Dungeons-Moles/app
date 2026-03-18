@@ -25,7 +25,15 @@ import { Typography } from '../../theme/typography';
 const BACKGROUND_IMAGE = require('../../../assets/ui/backgrounds/loading-background.webp');
 
 /** Fields provided by CombatLayout from combat state — callers don't need to pass these */
-type CombatStateFields = 'hp' | 'maxHp' | 'atk' | 'arm' | 'maxArm' | 'spd' | 'statusEffects' | 'scale';
+type CombatStateFields =
+  | 'hp'
+  | 'maxHp'
+  | 'atk'
+  | 'arm'
+  | 'maxArm'
+  | 'spd'
+  | 'statusEffects'
+  | 'scale';
 
 export interface CombatLayoutProps {
   /** Props for EnemyPanel (combat-state fields like hp/atk are filled automatically) */
@@ -59,13 +67,7 @@ export const CombatLayout = React.memo(function CombatLayout({
   onCombatComplete,
   arenaChildren,
 }: CombatLayoutProps) {
-  const {
-    state: combatState,
-    speed,
-    setSpeed,
-    displayStates,
-    getResult,
-  } = useCombat();
+  const { state: combatState, speed, setSpeed, displayStates, getResult } = useCombat();
 
   const variant = useScreenVariant();
   const isCompact = variant === 'compact';
@@ -89,7 +91,7 @@ export const CombatLayout = React.memo(function CombatLayout({
   // --- Controller: speed cycling ---
   const inputMode = useInputMode();
   const isController = inputMode === 'controller';
-  const SPEED_ORDER: CombatSpeed[] = ['paused', 'normal', 'fast'];
+  const SPEED_ORDER: CombatSpeed[] = ['paused', 'normal', 'fast', 'super-fast'];
 
   const speedControlsDisabled = !combatState.resolvedCombat || combatState.isComplete;
 
@@ -102,7 +104,7 @@ export const CombatLayout = React.memo(function CombatLayout({
         setSpeed(SPEED_ORDER[next]);
       }
     },
-    [speed, setSpeed, speedControlsDisabled],
+    [speed, setSpeed, speedControlsDisabled]
   );
 
   useControllerAction(
@@ -110,7 +112,7 @@ export const CombatLayout = React.memo(function CombatLayout({
       onDPadRight: () => cycleSpeed(1),
       onDPadLeft: () => cycleSpeed(-1),
     },
-    isController,
+    isController
   );
 
   const controllerHints: ButtonHint[] = [{ button: 'DPadLeftRight', label: 'Speed' }];
@@ -146,12 +148,8 @@ export const CombatLayout = React.memo(function CombatLayout({
   const baseEnemyArm = combatState.combat
     ? combatState.combat.enemy.arm + combatState.combat.enemy.bonusArm
     : (enemy?.arm ?? 0);
-  const playerMaxArm = player
-    ? Math.max(basePlayerArm, playerPeakArmRef.current, player.arm)
-    : 0;
-  const enemyMaxArm = enemy
-    ? Math.max(baseEnemyArm, enemyPeakArmRef.current, enemy.arm)
-    : 0;
+  const playerMaxArm = player ? Math.max(basePlayerArm, playerPeakArmRef.current, player.arm) : 0;
+  const enemyMaxArm = enemy ? Math.max(baseEnemyArm, enemyPeakArmRef.current, enemy.arm) : 0;
 
   // --- Turn / actor computation ---
   // Use activeActorLogIndex (which can lead currentLogIndex) so the glow
@@ -198,7 +196,11 @@ export const CombatLayout = React.memo(function CombatLayout({
 
   return (
     <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
-      <CachedImageBackground source={BACKGROUND_IMAGE} style={styles.backgroundImage} resizeMode="cover">
+      <CachedImageBackground
+        source={BACKGROUND_IMAGE}
+        style={styles.backgroundImage}
+        resizeMode="cover"
+      >
         <View style={styles.darkOverlay}>
           {/* Optional label (e.g., "PIT DRAFT") */}
           {label && (

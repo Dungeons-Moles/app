@@ -764,7 +764,7 @@ describe('resolveCombatWithParity', () => {
     expect(firstAttack?.result.contributions).toHaveLength(2);
   });
 
-  it('triggers Emerald Shard on turn 1 first hit with Gemfinder Staff', () => {
+  it('triggers Quartz Shard on turn 1 first hit with Gemfinder Staff', () => {
     const input: CombatResolverInput = {
       player: {
         ...buildPlayerCombatant(25, 20, 'T6', ['I21']),
@@ -1194,7 +1194,7 @@ describe('resolveCombatWithParity', () => {
     expect(outcome.result).toBe('VICTORY');
   });
 
-  it('ends combat immediately on a lethal hit before shrapnel retaliation can fire', () => {
+  it('fires shrapnel retaliation even on a lethal hit (on-chain parity: death check after shrapnel)', () => {
     const input: CombatResolverInput = {
       player: {
         ...buildPlayerCombatant(25, 25, 'T0', []),
@@ -1229,9 +1229,11 @@ describe('resolveCombatWithParity', () => {
         (entry.result.damage ?? 0) > 0
     );
 
+    // On-chain: shrapnel fires even when defender dies (death check is AFTER shrapnel)
+    // Player ATK 5, shrapnel reflects 5 back
     expect(outcome.result).toBe('VICTORY');
-    expect(outcome.player.hp).toBe(25);
-    expect(shrapnelRetaliation).toBeUndefined();
+    expect(outcome.player.hp).toBe(20); // 25 - 5 shrapnel
+    expect(shrapnelRetaliation).toBeDefined();
   });
 
   it('does not cancel later enemy strikes when shrapnel retaliates and the attacker survives', () => {

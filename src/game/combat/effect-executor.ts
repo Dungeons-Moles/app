@@ -103,10 +103,10 @@ export interface CombatEffectContext {
   setGoldArmorConversionsUsed: (value: number) => void;
   /** Countdown items state */
   countdownItems: Map<GearId, number>;
-  /** Persistent countdown acceleration for parity countdown triggers */
-  countdownTurnBonus?: number;
-  /** Update persistent countdown acceleration */
-  setCountdownTurnBonus?: (value: number) => void;
+  /** Countdown period reduction (accumulated from ReduceAllCountdowns effects) */
+  countdownReduction?: number;
+  /** Update countdown reduction */
+  setCountdownReduction?: (value: number) => void;
   /** First time wounded flag (for Gore Mantle) */
   firstTimeWoundedTriggered: boolean;
   /** Set first time wounded flag */
@@ -118,6 +118,10 @@ export interface CombatEffectContext {
   /** Enemy bleed stacks before the current OnHit effects started */
   enemyBleedBeforeHit?: number;
   allowRepeatEffectIds?: Set<string>;
+  /** Cumulative gear ATK bonus for half-gear-atk-after-second-strike */
+  gearAtkBonus?: number;
+  /** Update cumulative gear ATK bonus */
+  setGearAtkBonus?: (value: number) => void;
 }
 
 export interface EffectLogEntry {
@@ -339,6 +343,7 @@ export function shouldTrigger(
     firstTimeShrapnelTriggered?: boolean;
     isDayStart?: boolean;
     shardsEveryTurn?: boolean;
+    countdownReduction?: number;
   }
 ): boolean {
   switch (trigger.type) {
@@ -373,8 +378,10 @@ export function shouldTrigger(
     case 'Wounded':
       return !context.wasWounded && context.isWounded === true;
 
-    case 'Countdown':
-      return phase === 'COUNTDOWN' && trigger.turns > 0 && turn > 0 && turn % trigger.turns === 0;
+    case 'Countdown': {
+      const effectivePeriod = Math.max(1, trigger.turns - (context.countdownReduction ?? 0));
+      return phase === 'COUNTDOWN' && effectivePeriod > 0 && turn > 0 && turn % effectivePeriod === 0;
+    }
 
     case 'Victory':
       return phase === 'VICTORY';
@@ -636,6 +643,9 @@ export function executeEffect(
         ...state,
         [ctx.owner]: updatedOwner,
       };
+      if (ctx.setGearAtkBonus && ctx.gearAtkBonus !== undefined) {
+        ctx.setGearAtkBonus(ctx.gearAtkBonus + value);
+      }
       logs.push({ effectName, target: ctx.owner, source, atkGained: value });
       break;
     }
@@ -936,12 +946,10 @@ export function executeEffect(
     }
 
     case 'ReduceAllCountdowns': {
-      // Reduce all countdown items by value
-      ctx.countdownItems.forEach((current: number, gearId: GearId) => {
-        ctx.countdownItems.set(gearId, Math.max(0, current - value));
-      });
-      if (ctx.setCountdownTurnBonus) {
-        ctx.setCountdownTurnBonus((ctx.countdownTurnBonus ?? 0) + value);
+      // Accumulate countdown period reduction (matches on-chain reduce_all_countdowns
+      // which permanently mutates Countdown { turns } on each invocation).
+      if (ctx.setCountdownReduction) {
+        ctx.setCountdownReduction((ctx.countdownReduction ?? 0) + value);
       }
       logs.push({ effectName, target: 'none', source });
       break;
@@ -957,7 +965,8 @@ export function executeEffect(
     }
 
     case 'AmplifyNonWeaponDamage': {
-      ctx.setNonWeaponAmplify(ctx.nonWeaponAmplify + Math.max(0, value));
+      // Value is already extracted via extractBattleFlags into nonWeaponAmplify.
+      // Do NOT add it again here — that would double-count the bonus.
       logs.push({ effectName, target: 'none', source });
       break;
     }
@@ -1056,7 +1065,10 @@ export interface ProcessEffectsInput {
     isDayStart?: boolean;
     ownerActsFirst?: boolean;
     shardsEveryTurn?: boolean;
+    countdownReduction?: number;
   };
+  /** On-chain parity: skip cross-source lethal gating within strike phases. */
+  skipLethalGating?: boolean;
 }
 
 export function processEffects(input: ProcessEffectsInput): EffectResult {
@@ -1081,7 +1093,11 @@ export function processEffects(input: ProcessEffectsInput): EffectResult {
 
   for (const firstPass of [true, false]) {
     for (const { effect, id, name, source, sourceInstanceId } of input.effects) {
-      if (lethalSourceInstanceId && sourceInstanceId !== lethalSourceInstanceId) {
+      if (
+        !input.skipLethalGating &&
+        lethalSourceInstanceId &&
+        sourceInstanceId !== lethalSourceInstanceId
+      ) {
         break;
       }
       if (currentSourceInstanceId !== sourceInstanceId) {
@@ -1130,7 +1146,7 @@ export function processEffects(input: ProcessEffectsInput): EffectResult {
         lethalStartState ??= sourceStartState;
       }
     }
-    if (hasLethalCombatant(state)) {
+    if (!input.skipLethalGating && hasLethalCombatant(state)) {
       break;
     }
   }

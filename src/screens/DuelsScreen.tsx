@@ -28,15 +28,12 @@ import { FocusGlow } from '../components/ui/FocusGlow';
 import { useAudio } from '../contexts/AudioContext';
 import { HubSettingsModal } from '../components/ui/HubSettingsModal';
 import { useGame } from '@/contexts/GameContext';
-import { usePaymentToken } from '@/hooks/usePaymentToken';
 import {
   createSessionSetup,
   resolveSessionSetup,
   rejectSessionSetup,
 } from '@/utils/sessionSetupSignal';
-import { PaymentTokenSelector, PaymentConfirmationModal } from '@/components/payment';
 import { InlineModal } from '@/components/InlineModal';
-import { BlurView } from 'expo-blur';
 
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.webp');
 const STAINS_BACKGROUND = require('../../assets/ui/backgrounds/stains-background.webp');
@@ -70,8 +67,6 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
   const [isCheckingSession, setIsCheckingSession] = useState(true);
 
   const { playSfx } = useAudio();
-  const payment = usePaymentToken(BigInt(DUEL_ENTRY_LAMPORTS));
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showSessionExistsModal, setShowSessionExistsModal] = useState(false);
 
@@ -157,12 +152,8 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
       setShowSessionExistsModal(true);
       return;
     }
-    if (!payment.selectedToken.isNative && payment.quote) {
-      setShowPaymentModal(true);
-      return;
-    }
     await handleEnterDirect();
-  }, [hasExistingDuelSession, payment.selectedToken, payment.quote, handleEnterDirect, playSfx]);
+  }, [hasExistingDuelSession, handleEnterDirect, playSfx]);
 
   const handleResumeExistingSession = useCallback(async () => {
     setShowSessionExistsModal(false);
@@ -194,11 +185,6 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
     resolveSessionSetup();
   }, [overrideAndStartDuelGame, navigation, dispatch]);
 
-  const handlePaymentConfirm = useCallback(async () => {
-    setShowPaymentModal(false);
-    await handleEnterDirect();
-  }, [handleEnterDirect]);
-
   const entryFeeSol = DUEL_ENTRY_LAMPORTS / 1_000_000_000;
 
   // --- Controller navigation ---
@@ -213,19 +199,6 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
     navigation.navigate('DuelsHistory');
   }, [navigation, playSfx]);
 
-  const cycleToken = useCallback(
-    (dir: -1 | 1) => {
-      const tokens = payment.supportedTokens;
-      const idx = tokens.findIndex((t) => t.symbol === payment.selectedToken.symbol);
-      const next = idx + dir;
-      if (next >= 0 && next < tokens.length) {
-        playSfx('ui_hover');
-        payment.setSelectedToken(tokens[next]);
-      }
-    },
-    [payment]
-  );
-
   useControllerAction(
     showSessionExistsModal
       ? {
@@ -233,7 +206,7 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
           onB: () => { playSfx('ui_back'); setShowSessionExistsModal(false); },
           onX: handleOverrideExistingSession,
         }
-      : showPaymentModal || showSettingsModal
+      : showSettingsModal
       ? {}
       : {
           onB: handleBack,
@@ -241,8 +214,6 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
           onA: panelFocus === 0 ? handleHistory : !duels.isLoading ? handleEnter : undefined,
           onDPadLeft: () => setPanelFocus(0),
           onDPadRight: () => setPanelFocus(1),
-          onL1: () => cycleToken(-1),
-          onR1: () => cycleToken(1),
         },
     isController && isFocused && duels.phase !== 'error'
   );
@@ -263,7 +234,6 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
         { button: 'X', label: 'Override' },
       ]
     : [
-        { button: 'L1R1', label: 'Currency' },
         { button: 'DPadLeftRight', label: 'Switch' },
         { button: 'A', label: 'Select' },
         { button: 'B', label: 'Back' },
@@ -502,55 +472,9 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
               </View>
             </View>
 
-            {/* Token selector — below the panel */}
-            {isCompact ? (
-              <View style={compactStyles.tokenSelectorWrap}>
-                <PaymentTokenSelector
-                  tokens={payment.supportedTokens}
-                  selectedToken={payment.selectedToken}
-                  onSelectToken={payment.setSelectedToken}
-                  quote={payment.quote}
-                  isQuoteLoading={payment.isQuoteLoading}
-                  solUsdPrice={payment.solUsdPrice}
-                  requiredLamports={BigInt(DUEL_ENTRY_LAMPORTS)}
-                  isCompact={isCompact}
-                  isController={isController}
-                />
-              </View>
-            ) : (
-              <BlurView
-                intensity={40}
-                tint="light"
-                experimentalBlurMethod="dimezisBlurView"
-                style={[styles.tokenSelectorWrap, styles.tokenSelectorBlur]}
-              >
-                <PaymentTokenSelector
-                  tokens={payment.supportedTokens}
-                  selectedToken={payment.selectedToken}
-                  onSelectToken={payment.setSelectedToken}
-                  quote={payment.quote}
-                  isQuoteLoading={payment.isQuoteLoading}
-                  solUsdPrice={payment.solUsdPrice}
-                  requiredLamports={BigInt(DUEL_ENTRY_LAMPORTS)}
-                  isCompact={false}
-                  isController={isController}
-                  grid
-                />
-              </BlurView>
-            )}
           </View>
         </View>
       </CachedImageBackground>
-      {payment.quote && (
-        <PaymentConfirmationModal
-          visible={showPaymentModal}
-          quote={payment.quote}
-          isDevnet={payment.isDevnet}
-          isCompact={isCompact}
-          onConfirm={handlePaymentConfirm}
-          onCancel={() => setShowPaymentModal(false)}
-        />
-      )}
       <InlineModal
         visible={showSessionExistsModal}
         transparent
@@ -751,20 +675,6 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
   },
-  tokenSelectorWrap: {
-    position: 'absolute',
-    right: 32,
-    top: '36%',
-    transform: [{ translateY: -40 }],
-    alignItems: 'center',
-  },
-  tokenSelectorBlur: {
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: 'rgba(61, 43, 31, 0.2)',
-    padding: 10,
-    overflow: 'hidden',
-  },
   panelButtons: {
     flexDirection: 'row',
     marginTop: 'auto',
@@ -946,10 +856,6 @@ const compactStyles = StyleSheet.create({
   panelIcon: {
     width: 162,
     height: 162,
-  },
-  tokenSelectorWrap: {
-    alignItems: 'center',
-    marginTop: 10,
   },
   panelButtons: {
     marginHorizontal: 0,

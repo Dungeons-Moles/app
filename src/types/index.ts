@@ -15,7 +15,7 @@ import type { PublicKey } from '@solana/web3.js';
 
 export * from '../game/input/types';
 
-export type CombatSpeed = 'paused' | 'normal' | 'fast';
+export type CombatSpeed = 'paused' | 'normal' | 'fast' | 'super-fast';
 
 export interface PlayerProfile {
   id: string;

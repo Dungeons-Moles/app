@@ -70,7 +70,7 @@ export function calculateDamage(attacker: CombatantState, defender: CombatantSta
   // Step 5: Calculate Shrapnel reflect
   const shrapnelReflect =
     defender.statusEffects.shrapnel > 0
-      ? defender.statusEffects.shrapnel + getChillDamageBonus(attacker.statusEffects.chill ?? 0)
+      ? effectiveAtk + getChillDamageBonus(attacker.statusEffects.chill ?? 0)
       : 0;
 
   return {

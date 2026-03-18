@@ -321,7 +321,7 @@ export function TutorialModal({ visible, onClose }: TutorialModalProps) {
                 <StatRow
                   icon={ICON_HP}
                   label="HP"
-                  desc="Health. Reach 0 and you die. Starts at 25. Does not regenerate between fights."
+                  desc="Health. Reach 0 and you die. Does not regenerate between fights."
                   s={s}
                   ns={ns}
                 />
@@ -342,7 +342,7 @@ export function TutorialModal({ visible, onClose }: TutorialModalProps) {
                 <StatRow
                   icon={ICON_SPD}
                   label="SPD"
-                  desc="Speed. Higher SPD acts first. Every 2 SPD advantage = +1 bonus damage on first strike."
+                  desc="Speed. Higher SPD acts first. 5+ SPD over enemy = 1 extra strike per turn."
                   s={s}
                   ns={ns}
                 />
@@ -356,7 +356,7 @@ export function TutorialModal({ visible, onClose }: TutorialModalProps) {
                 <StatRow
                   icon={ICON_COIN}
                   label="Gold"
-                  desc="Earned from enemies. Spent at Shops, Anvils, and POIs. Start: 10."
+                  desc="Earned from enemies. Spent at Shops, Anvils, and POIs."
                   s={s}
                   ns={ns}
                 />
@@ -376,7 +376,7 @@ export function TutorialModal({ visible, onClose }: TutorialModalProps) {
                 </Text>
               </View>
               <Text style={[smallStyle, { marginTop: smGap }]}>
-                Bosses have 2 weakness tags. Items of those tags appear more often that week.
+                All bosses have weakness tags. Items of those tags appear more often that week.
                 Counter Caches offer items from the boss's exact weaknesses!
               </Text>
               <Text style={[boldBody, { marginTop: gap }]}>Combat</Text>
@@ -604,7 +604,7 @@ export function TutorialModal({ visible, onClose }: TutorialModalProps) {
               <Text style={[smallStyle, { marginTop: smGap }]}>
                 {'\u2022'} ARM resets after each fight - it's very strong!{'\n'}
                 {'\u2022'} Upgrade your Tool at the Anvil when you can{'\n'}
-                {'\u2022'} SPD Advantage adds up: 4 SPD over enemy = +2 bonus dmg/turn{'\n'}
+                {'\u2022'} 5+ SPD over enemy grants an extra strike per turn{'\n'}
                 {'\u2022'} Scrap Chute unwanted Gear to make room for better items{'\n'}
                 {'\u2022'} Use the Rune Kiln to fuse duplicates into higher tiers
               </Text>
@@ -709,9 +709,7 @@ export function TutorialModal({ visible, onClose }: TutorialModalProps) {
               </Text>
               <Text style={[boldBody, { marginTop: gap }]}>SPD Advantage</Text>
               <Text style={[smallStyle, { marginTop: smGap }]}>
-                {isCompact
-                  ? 'Every 2 SPD over enemy = +1 bonus damage on first strike each turn'
-                  : 'Every 2 SPD over enemy = +1 bonus damage on first\nstrike each turn'}
+                5+ SPD over enemy = 1 extra strike per turn
               </Text>
               {isCompact && (
                 <Text

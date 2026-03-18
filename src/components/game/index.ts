@@ -13,3 +13,5 @@ export { DebugOverlay } from './DebugOverlay';
 export { FastTravelButton } from './FastTravelButton';
 export { FastTravelOverlay } from './FastTravelOverlay';
 export { BossTooltipModal } from './BossTooltipModal';
+export { CombatResultFloater } from './CombatResultFloater';
+export { DefeatOverlay } from './DefeatOverlay';

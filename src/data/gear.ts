@@ -286,7 +286,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
   },
   I21: {
     id: 'I21',
-    name: 'Emerald Shard',
+    name: 'Quartz Shard',
     emoji: '💚',
     image: require('../../assets/icons/items/greed/emerald_shard.webp'),
     baseRarity: 'COMMON',
@@ -299,7 +299,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
   },
   I22: {
     id: 'I22',
-    name: 'Ruby Shard',
+    name: 'Amber Shard',
     emoji: '❤️',
     image: require('../../assets/icons/items/greed/ruby_shard.webp'),
     baseRarity: 'COMMON',
@@ -312,7 +312,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
   },
   I23: {
     id: 'I23',
-    name: 'Sapphire Shard',
+    name: 'Zircon Shard',
     emoji: '💙',
     image: require('../../assets/icons/items/greed/sapphire_shard.webp'),
     baseRarity: 'COMMON',
@@ -325,7 +325,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
   },
   I24: {
     id: 'I24',
-    name: 'Citrine Shard',
+    name: 'Tourmaline Shard',
     emoji: '💛',
     image: require('../../assets/icons/items/greed/citrine_shard.webp'),
     baseRarity: 'COMMON',

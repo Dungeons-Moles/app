@@ -484,17 +484,17 @@ function filterGearByPool<T extends { id: string }>(
 // ============================================================================
 
 const SMUGGLER_GEAR_RARITY: ReadonlyArray<readonly [number, number, number, number]> = [
-  [35, 45, 10, 10], // Act 1
-  [45, 40, 10, 5], // Act 2
-  [55, 30, 12, 3], // Act 3
-  [65, 25, 8, 2], // Act 4
+  [45, 35, 12, 8], // Act 1
+  [40, 40, 12, 8], // Act 2
+  [30, 40, 18, 12], // Act 3
+  [25, 35, 25, 15], // Act 4
 ];
 
 const SMUGGLER_TOOL_RARITY: ReadonlyArray<readonly [number, number, number, number]> = [
-  [45, 40, 15, 0], // Act 1
-  [55, 35, 10, 0], // Act 2
-  [65, 30, 5, 0], // Act 3
-  [80, 15, 5, 0], // Act 4
+  [60, 30, 10, 0], // Act 1
+  [50, 35, 15, 0], // Act 2
+  [40, 35, 25, 0], // Act 3
+  [30, 40, 30, 0], // Act 4
 ];
 
 function rollShopRarity(

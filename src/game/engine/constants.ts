@@ -63,8 +63,11 @@ export function getBaseHp(campaignLevel: number): number {
 }
 
 export function getBaseGold(campaignLevel: number): number {
-  if (campaignLevel >= 1 && campaignLevel <= 9) return 10;
-  if (campaignLevel >= 10 && campaignLevel <= 19) return 5;
+  if (campaignLevel >= 1 && campaignLevel <= 5) return 10;
+  if (campaignLevel >= 6 && campaignLevel <= 10) return 8;
+  if (campaignLevel >= 11 && campaignLevel <= 15) return 5;
+  if (campaignLevel >= 16 && campaignLevel <= 20) return 3;
+  if (campaignLevel >= 21 && campaignLevel <= 30) return 2;
   return 0;
 }
 

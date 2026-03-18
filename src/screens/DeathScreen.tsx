@@ -29,7 +29,6 @@ import { useAudio } from '../contexts/AudioContext';
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.webp');
 const STAINS_BACKGROUND = require('../../assets/ui/backgrounds/stains-background.webp');
 const PAPER_PANEL = require('../../assets/ui/panels/paper-panel.webp');
-const SQUARE_FRAME = require('../../assets/ui/frames/square.webp');
 const SKULL_ICON = require('../../assets/icons/ui/skull.webp');
 const BUTTON_BG = require('../../assets/ui/buttons/button.webp');
 const DEFEAT_IMAGE = require('../../assets/ui/text/defeat.webp');
@@ -122,7 +121,6 @@ export function DeathScreen({ navigation, route }: DeathScreenProps) {
 
   const StatFrame = ({ label, value }: { label: string; value: string | number }) => (
     <View style={isVerticalLayout ? styles.statItemVertical : styles.statItem}>
-      <Image source={SQUARE_FRAME} style={styles.statFrameBg} resizeMode="stretch" />
       <Text style={isVerticalLayout ? styles.statFrameValueVertical : styles.statFrameValue}>
         {value}
       </Text>
@@ -354,25 +352,24 @@ const styles = StyleSheet.create({
   statsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 6,
-    gap: 6,
+    marginBottom: 12,
+    gap: 12,
   },
   statsRowCentered: {
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 6,
+    gap: 12,
   },
   statItem: {
     alignItems: 'center',
     justifyContent: 'center',
     minWidth: 60,
     flex: 1,
-  },
-  statFrameBg: {
-    position: 'absolute',
-    width: '100%',
-    height: '100%',
-    resizeMode: 'stretch',
+    paddingVertical: 8,
+    paddingHorizontal: 6,
+    borderWidth: 2,
+    borderColor: '#000000',
+    borderRadius: 4,
   },
   statFrameLabel: {
     fontFamily: Typography.body,
@@ -501,6 +498,9 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 14,
     paddingHorizontal: 10,
+    borderWidth: 2,
+    borderColor: '#000000',
+    borderRadius: 4,
   },
   statFrameValueVertical: {
     fontFamily: Typography.number,

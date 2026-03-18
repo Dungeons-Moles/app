@@ -274,10 +274,10 @@ Format: `ID — Name (Type) [Tag] {Rarity} — Image: <path> — Effect`
 - `G-GR-02` — Lucky Coin (Gear) [GREED] {Common} — Image: assets/icons/items/greed/lucky_coin.png — Victory: gain `3/6/12` Gold and heal `3/6/12` HP
 - `G-GR-03` — Gilded Band (Gear) [GREED] {Heroic} — Image: assets/icons/items/greed/gilded_band.png — `+2/4/8 ARM`; Battle Start: gain Armor equal to `Gold/6`, rounded down, capped at `6/12/24`; if Gold ≥ 20, also gain `+1/2/4` SPD this battle
 - `G-GR-04` — Royal Bracer (Gear) [GREED] {Mythic} — Image: assets/icons/items/greed/royal_bracer.png — Turn Start: convert 1 Gold → `4/8/16` Armor (max 3 times per battle); your Gold gains from all sources are increased by `50/100/200`% (round down)
-- `G-GR-05` — Emerald Shard (Gear) [GREED] {Common} — Image: assets/icons/items/greed/emerald_shard.png — Every other turn (on first hit): heal `2/4/8` HP
-- `G-GR-06` — Ruby Shard (Gear) [GREED] {Common} — Image: assets/icons/items/greed/ruby_shard.png — Every other turn (on first hit): deal `1/2/4` non-weapon damage
-- `G-GR-07` — Sapphire Shard (Gear) [GREED] {Common} — Image: assets/icons/items/greed/sapphire_shard.png — Every other turn (on first hit): gain `2/4/8` Armor
-- `G-GR-08` — Citrine Shard (Gear) [GREED] {Common} — Image: assets/icons/items/greed/citrine_shard.png — Every other turn (on first hit): gain `2/4/8` Gold; `+1/2/4 ARM`
+- `G-GR-05` — Quartz Shard (Gear) [GREED] {Common} — Image: assets/icons/items/greed/emerald_shard.png — Every other turn (on first hit): heal `2/4/8` HP
+- `G-GR-06` — Amber Shard (Gear) [GREED] {Common} — Image: assets/icons/items/greed/ruby_shard.png — Every other turn (on first hit): deal `1/2/4` non-weapon damage
+- `G-GR-07` — Zircon Shard (Gear) [GREED] {Common} — Image: assets/icons/items/greed/sapphire_shard.png — Every other turn (on first hit): gain `2/4/8` Armor
+- `G-GR-08` — Tourmaline Shard (Gear) [GREED] {Common} — Image: assets/icons/items/greed/citrine_shard.png — Every other turn (on first hit): gain `2/4/8` Gold; `+1/2/4 ARM`
 
 #### BLAST (10)
 
@@ -295,14 +295,14 @@ Format: `ID — Name (Type) [Tag] {Rarity} — Image: <path> — Effect`
 #### FROST (10)
 
 - `T-FR-01` — Rime Pike (Tool) [FROST] {Common} — Image: assets/icons/items/frost/rime_pike.png — `+1/2/3 ATK`; On Hit (once/turn): apply 1 Chill; if enemy has `2+` Chill, apply 1 additional Chill
-- `T-FR-02` — Glacier Fang (Tool) [FROST] {Rare} — Image: assets/icons/items/frost/glacier_fang.png — `+2/3/4 ATK`; On Hit (once/turn): apply 1 Chill; if enemy has Chill, gain +1 SPD this turn and deal +1 bonus damage
+- `T-FR-02` — Glacier Fang (Tool) [FROST] {Rare} — Image: assets/icons/items/frost/glacier_fang.png — `+2/3/4 ATK`; On Hit (once/turn): apply 1 Chill; if enemy has Chill, gain +1 SPD and deal +1 bonus damage
 - `G-FR-01` — Frost Lantern (Gear) [FROST] {Common} — Image: assets/icons/items/frost/frost_lantern.png — `+1/2/4 ARM`; Battle Start: give enemy `1/2/4` Chill
 - `G-FR-02` — Frostguard Buckler (Gear) [FROST] {Heroic} — Image: assets/icons/items/frost/frostguard_buckler.png — `+8/16/32 ARM`; Battle Start: if enemy has Chill, gain `+3/6/12` Armor and apply `1/2/4` Chill
 - `G-FR-03` — Cold Snap Charm (Gear) [FROST] {Rare} — Image: assets/icons/items/frost/cold_snap_charm.png — `+1/2/4 SPD`; if you act first on Turn 1: apply `2/4/8` Chill and gain `+2/4/8 ARM`
 - `G-FR-04` — Ice Skates (Gear) [FROST] {Rare} — Image: assets/icons/items/frost/ice_skates.png — `+2/4/8 SPD, +1/2/4 DIG, +2/4/8 ARM`
 - `G-FR-05` — Rime Cloak (Gear) [FROST] {Rare} — Image: assets/icons/items/frost/rime_cloak.png — `+3/6/12 ARM`; when struck (once/turn): apply `1/2/4` Chill to attacker
 - `G-FR-06` — Permafrost Core (Gear) [FROST] {Mythic} — Image: assets/icons/items/frost/permafrost_core.png — Turn Start: if enemy has Chill, gain `2/4/8` Armor and deal `2/4/8` non-weapon damage; Chill on enemies decays 1 stack slower (minimum decay: 0)
-- `G-FR-07` — Cold Front Idol (Gear) [FROST] {Heroic} — Image: assets/icons/items/frost/cold_front_idol.png — Every other turn: apply `1/2/4` Chill, deal `2/4/8` non-weapon damage, and gain `1/2/4 ARM`; if enemy already has Chill, gain `+2/4/8` SPD this turn
+- `G-FR-07` — Cold Front Idol (Gear) [FROST] {Heroic} — Image: assets/icons/items/frost/cold_front_idol.png — Every other turn: apply `1/2/4` Chill, deal `2/4/8` non-weapon damage, and gain `1/2/4 ARM`; if enemy already has Chill, gain `+2/4/8` SPD
 - `G-FR-08` — Deep Freeze Charm (Gear) [FROST] {Heroic} — Image: assets/icons/items/frost/deep_freeze_charm.png — `+3/6/12 ARM`; Wounded: apply `3/6/12` Chill, reduce enemy SPD by `1/2/4` (this battle), and your non-weapon damage gets +`1/2/4` while the enemy is Chilled
 
 #### RUST (10)
@@ -388,7 +388,7 @@ New accounts start with 40 items unlocked (5 per tag = 1 tool + 4 gear):
 | BLOOD | T-BO-01 | G-BO-01, G-BO-02, G-BO-03, G-BO-04 | 76, 48, 49, 50, 51 |
 | TEMPO | T-TE-01 | G-TE-01, G-TE-02, G-TE-03, G-TE-04 | 78, 56, 57, 58, 59 |
 
-**Note:** GREED starter gear skips G-GR-04 (Royal Bracer, Mythic) in favor of G-GR-05 (Emerald Shard, Common).
+**Note:** GREED starter gear skips G-GR-04 (Royal Bracer, Mythic) in favor of G-GR-05 (Quartz Shard, Common).
 
 #### Starter Bitmask
 
@@ -419,7 +419,7 @@ Itemsets activate when all required items are equipped.
 | Swift Digger Kit         | assets/icons/itemsets/swift_digger_kit.png         | `T-SC-01 + G-SC-01 + G-SC-06`           | Battle Start: if DIG > enemy DIG, gain +1 strike (this battle) and +3 ATK (this battle)                        |
 | Royal Extraction         | assets/icons/itemsets/royal_extraction.png         | `G-GR-01 + G-GR-04 + T-GR-02`           | Gold→Armor becomes 1→4; gain +1 Gold at the start of each battle                                               |
 | Whiteout Initiative      | assets/icons/itemsets/whiteout_initiative.png      | `G-FR-04 + G-FR-03 + G-TE-05`           | +1 SPD; if you act first Turn 1, apply +2 Chill and your first strike deals +3 damage            |
-| Bloodrush Protocol       | assets/icons/itemsets/bloodrush_protocol.png       | `T-BO-01 + G-BO-05 + G-TE-01`           | Turn 1: apply 3 Bleed; when enemy takes Bleed dmg, gain +1 SPD this turn (once/turn)                           |
+| Bloodrush Protocol       | assets/icons/itemsets/bloodrush_protocol.png       | `T-BO-01 + G-BO-05 + G-TE-01`           | Turn 1: apply 3 Bleed; when enemy takes Bleed dmg, gain +1 SPD (once/turn)                           |
 | Corrosion Payload        | assets/icons/itemsets/corrosion_payload.png        | `G-RU-02 + G-BL-03 + G-BL-05`           | First time your bomb deals damage each turn: apply 1 Rust                                                      |
 | Golden Shrapnel Exchange | assets/icons/itemsets/golden_shrapnel_exchange.png | `G-GR-04 + G-ST-06 + G-GR-03`           | When you convert Gold→Armor: gain +3 Shrapnel (once/turn)                                                      |
 

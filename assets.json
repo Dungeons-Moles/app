@@ -712,6 +712,11 @@
         "path": "assets/icons/ui/fast-speed.webp",
         "width": 256
       },
+      "super-fast-speed.webp": {
+        "height": 256,
+        "path": "assets/icons/ui/super-fast-speed.webp",
+        "width": 256
+      },
       "lock.webp": {
         "height": 256,
         "path": "assets/icons/ui/lock.webp",

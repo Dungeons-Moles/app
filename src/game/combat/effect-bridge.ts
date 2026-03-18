@@ -129,6 +129,8 @@ export interface BattleFlags {
   goldArmorConversionLimit: number;
   /** Has Trigger All Shards effect (T-GR-02: Gemfinder Staff) */
   triggerAllShards: boolean;
+  /** Half gear ATK after 2nd strike (T4: Pneumatic Drill) */
+  halfGearAtkAfterSecondStrike: boolean;
 }
 
 /**
@@ -151,6 +153,7 @@ export function extractBattleFlags(effects: EquippedEffect[]): BattleFlags {
     preventDeathCharges: 0,
     goldArmorConversionLimit: 0,
     triggerAllShards: false,
+    halfGearAtkAfterSecondStrike: false,
   };
 
   for (const { effect } of effects) {
@@ -184,6 +187,9 @@ export function extractBattleFlags(effects: EquippedEffect[]): BattleFlags {
       case 'BombDamageBonus':
         flags.bombDamageBonus += effect.value;
         break;
+      // ReduceAllCountdowns is NOT extracted as a flag — it accumulates in the
+      // effect executor so that both BattleStart (Bomb Satchel) and OnHit (Spark
+      // Pick) invocations correctly reduce the period.
       case 'ReduceWeaponDamageWhileArmored':
         flags.weaponDamageReductionWhileArmored = Math.max(
           flags.weaponDamageReductionWhileArmored,
@@ -201,6 +207,9 @@ export function extractBattleFlags(effects: EquippedEffect[]): BattleFlags {
         break;
       case 'TriggerAllShards':
         flags.triggerAllShards = true;
+        break;
+      case 'HalfGearAtkAfterSecondStrike':
+        flags.halfGearAtkAfterSecondStrike = true;
         break;
     }
   }

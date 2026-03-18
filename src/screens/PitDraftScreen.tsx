@@ -40,9 +40,6 @@ import { FocusGlow } from '../components/ui/FocusGlow';
 import { HubSettingsModal } from '../components/ui/HubSettingsModal';
 import { useEquippedSkinImage } from '../hooks/useEquippedSkinImage';
 import { useAudio } from '../contexts/AudioContext';
-import { usePaymentToken } from '@/hooks/usePaymentToken';
-import { PaymentTokenSelector, PaymentConfirmationModal } from '@/components/payment';
-import { BlurView } from 'expo-blur';
 
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.webp');
 const STAINS_BACKGROUND = require('../../assets/ui/backgrounds/stains-background.webp');
@@ -104,8 +101,6 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
   const { playBgm, playSfx } = useAudio();
   const { disconnect } = useWallet();
 
-  const payment = usePaymentToken(BigInt(PIT_DRAFT_ENTRY_LAMPORTS));
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
 
   // Play victory/defeat music on result phase
@@ -208,33 +203,11 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
 
   const handleEnter = useCallback(async () => {
     playSfx('ui_click');
-    if (!payment.selectedToken.isNative && payment.quote) {
-      setShowPaymentModal(true);
-      return;
-    }
     handleEnterDirect();
-  }, [payment.selectedToken, payment.quote, handleEnterDirect, playSfx]);
-
-  const handlePaymentConfirm = useCallback(() => {
-    setShowPaymentModal(false);
-    handleEnterDirect();
-  }, [handleEnterDirect]);
-
-  const cycleToken = useCallback(
-    (dir: -1 | 1) => {
-      const tokens = payment.supportedTokens;
-      const idx = tokens.findIndex((t) => t.symbol === payment.selectedToken.symbol);
-      const next = idx + dir;
-      if (next >= 0 && next < tokens.length) {
-        playSfx('ui_hover');
-        payment.setSelectedToken(tokens[next]);
-      }
-    },
-    [payment, playSfx]
-  );
+  }, [handleEnterDirect, playSfx]);
 
   useControllerAction(
-    showPaymentModal || showSettingsModal
+    showSettingsModal
       ? {}
       : {
           onB: handleBack,
@@ -242,8 +215,6 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
           onA: panelFocus === 0 ? handleHistory : !pitDraft.isLoading ? handleEnter : undefined,
           onDPadLeft: () => setPanelFocus(0),
           onDPadRight: () => setPanelFocus(1),
-          onL1: () => cycleToken(-1),
-          onR1: () => cycleToken(1),
         },
     isController && isFocused && (pitDraft.phase === 'confirm' || pitDraft.phase === 'queuing')
   );
@@ -628,55 +599,9 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
                 </View>
               </View>
 
-              {/* Token selector — below the panel */}
-              {isCompact ? (
-                <View style={compactStyles.tokenSelectorWrap}>
-                  <PaymentTokenSelector
-                    tokens={payment.supportedTokens}
-                    selectedToken={payment.selectedToken}
-                    onSelectToken={payment.setSelectedToken}
-                    quote={payment.quote}
-                    isQuoteLoading={payment.isQuoteLoading}
-                    solUsdPrice={payment.solUsdPrice}
-                    requiredLamports={BigInt(PIT_DRAFT_ENTRY_LAMPORTS)}
-                    isCompact={isCompact}
-                    isController={isController}
-                  />
-                </View>
-              ) : (
-                <BlurView
-                  intensity={40}
-                  tint="light"
-                  experimentalBlurMethod="dimezisBlurView"
-                  style={[styles.tokenSelectorWrap, styles.tokenSelectorBlur]}
-                >
-                  <PaymentTokenSelector
-                    tokens={payment.supportedTokens}
-                    selectedToken={payment.selectedToken}
-                    onSelectToken={payment.setSelectedToken}
-                    quote={payment.quote}
-                    isQuoteLoading={payment.isQuoteLoading}
-                    solUsdPrice={payment.solUsdPrice}
-                    requiredLamports={BigInt(PIT_DRAFT_ENTRY_LAMPORTS)}
-                    isCompact={false}
-                    isController={isController}
-                    grid
-                  />
-                </BlurView>
-              )}
             </View>
           </View>
         </CachedImageBackground>
-        {payment.quote && (
-          <PaymentConfirmationModal
-            visible={showPaymentModal}
-            quote={payment.quote}
-            isDevnet={payment.isDevnet}
-            isCompact={isCompact}
-            onConfirm={handlePaymentConfirm}
-            onCancel={() => setShowPaymentModal(false)}
-          />
-        )}
         <HubSettingsModal
           visible={showSettingsModal}
           onClose={() => setShowSettingsModal(false)}

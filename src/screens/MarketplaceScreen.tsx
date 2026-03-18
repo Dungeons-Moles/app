@@ -33,9 +33,6 @@ import { LAMPORTS_PER_SOL } from '@solana/web3.js';
 import type { MetaplexCoreAsset, ListingWithAsset } from '../types/solana';
 import { findNftItemInfo } from '../data/nftItems';
 import { getSkinImage } from '../data/skinImages';
-import { RUN_PRICE_LAMPORTS } from '@/services/solana/constants';
-import { usePaymentToken } from '@/hooks/usePaymentToken';
-import { PaymentTokenSelector, PaymentConfirmationModal } from '@/components/payment';
 
 const backgroundImage = require('../../assets/ui/backgrounds/loading-background.webp');
 const buttonV1Source = require('../../assets/ui/buttons/button-v1.webp');
@@ -69,8 +66,6 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
   const [isPurchasing, setIsPurchasing] = useState(false);
   const [purchaseError, setPurchaseError] = useState<string | null>(null);
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const payment = usePaymentToken(BigInt(RUN_PRICE_LAMPORTS));
-  const [showRunPaymentModal, setShowRunPaymentModal] = useState(false);
 
   const {
     userSkins,
@@ -138,15 +133,6 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
   }, [purchaseRuns, playSfx]);
 
   const handlePurchase = useCallback(async () => {
-    if (!payment.selectedToken.isNative && payment.quote) {
-      setShowRunPaymentModal(true);
-      return;
-    }
-    await handlePurchaseDirect();
-  }, [payment.selectedToken, payment.quote, handlePurchaseDirect]);
-
-  const handleRunPaymentConfirm = useCallback(async () => {
-    setShowRunPaymentModal(false);
     await handlePurchaseDirect();
   }, [handlePurchaseDirect]);
 
@@ -210,18 +196,6 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
       });
     },
     [playSfx]
-  );
-
-  const cycleToken = useCallback(
-    (dir: -1 | 1) => {
-      const tokens = payment.supportedTokens;
-      const idx = tokens.findIndex((t) => t.symbol === payment.selectedToken.symbol);
-      const next = idx + dir;
-      if (next >= 0 && next < tokens.length) {
-        payment.setSelectedToken(tokens[next]);
-      }
-    },
-    [payment]
   );
 
   // Sort skins: equipped first, then the rest
@@ -309,7 +283,7 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
   ]);
 
   useControllerAction(
-    showPriceInput || showRunPaymentModal || showSettingsModal
+    showPriceInput || showSettingsModal
       ? {} // Modals have their own controller handlers
       : {
           onB: handleBack,
@@ -342,13 +316,13 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
             : undefined,
           onDPadLeft:
             activeTab === 'pve'
-              ? () => cycleToken(-1)
+              ? undefined
               : activeSectionCount > 0
                 ? () => setNftFocus((p) => Math.max(0, p - 1))
                 : undefined,
           onDPadRight:
             activeTab === 'pve'
-              ? () => cycleToken(1)
+              ? undefined
               : activeSectionCount > 0
                 ? () => setNftFocus((p) => Math.min(activeSectionCount - 1, p + 1))
                 : undefined,
@@ -360,7 +334,6 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
     { button: 'L1R1', label: 'Switch Tab' },
     ...(activeTab === 'pve'
       ? [
-          { button: 'DPadLeftRight' as const, label: 'Currency' },
           { button: 'A' as const, label: 'Purchase' },
         ]
       : [
@@ -737,26 +710,11 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
                 />
                 <Text style={[styles.priceText, isCompact && compactStyles.priceText]}>
                   Price: 0.05 SOL
-                  {payment.solUsdPrice ? ` (~$${(0.05 * payment.solUsdPrice).toFixed(2)})` : ''}
                 </Text>
               </View>
 
               {/* Right side: payment selector + purchase button */}
               <View style={[styles.pveRight, isCompact && compactStyles.pveRight]}>
-                <View style={[styles.purchaseTokenTop, isCompact && compactStyles.purchaseTokenTop]}>
-                  <PaymentTokenSelector
-                    tokens={payment.supportedTokens}
-                    selectedToken={payment.selectedToken}
-                    onSelectToken={payment.setSelectedToken}
-                    quote={payment.quote}
-                    isQuoteLoading={payment.isQuoteLoading}
-                    solUsdPrice={payment.solUsdPrice}
-                    requiredLamports={BigInt(RUN_PRICE_LAMPORTS)}
-                    isCompact={isCompact}
-                    isController={isController}
-                  />
-                </View>
-
                 <TouchableOpacity
                   onPress={handlePurchase}
                   activeOpacity={0.7}
@@ -842,17 +800,6 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
             </Text>
           </CachedImageBackground>
         </View>
-      )}
-      {/* Run Payment Confirmation Modal */}
-      {payment.quote && (
-        <PaymentConfirmationModal
-          visible={showRunPaymentModal}
-          quote={payment.quote}
-          isDevnet={payment.isDevnet}
-          isCompact={isCompact}
-          onConfirm={handleRunPaymentConfirm}
-          onCancel={() => setShowRunPaymentModal(false)}
-        />
       )}
       {/* Price Input Modal */}
       <InlineModal
@@ -1070,11 +1017,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  purchaseTokenTop: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 4,
-  },
   sessionImage: {
     width: 262,
     height: 168,
@@ -1224,11 +1166,6 @@ const compactStyles = StyleSheet.create({
   pveRight: {
     alignItems: 'center',
     gap: 12,
-  },
-  purchaseTokenTop: {
-    width: '100%',
-    alignItems: 'center',
-    transform: [{ scale: 1.05 }],
   },
   sessionImage: {
     width: 620,

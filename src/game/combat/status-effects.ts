@@ -114,10 +114,11 @@ export function processChillDecay(combatant: CombatantState): CombatantState {
 export function getShrapnelDamage(
   strikeAtk: number,
   reflectBonus: number,
-  defenderHasShrapnel: boolean
+  defenderHasShrapnel: boolean,
+  attackerChill: number = 0
 ): number {
   if (!defenderHasShrapnel) return 0;
-  return Math.max(0, strikeAtk) + Math.max(0, reflectBonus);
+  return Math.max(0, strikeAtk) + Math.max(0, reflectBonus) + getChillDamageBonus(attackerChill);
 }
 
 /**

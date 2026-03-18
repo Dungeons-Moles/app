@@ -29,15 +29,12 @@ import { FocusGlow } from '../components/ui/FocusGlow';
 import { useAudio } from '../contexts/AudioContext';
 import { HubSettingsModal } from '../components/ui/HubSettingsModal';
 import { useGame } from '@/contexts/GameContext';
-import { usePaymentToken } from '@/hooks/usePaymentToken';
 import {
   createSessionSetup,
   resolveSessionSetup,
   rejectSessionSetup,
 } from '@/utils/sessionSetupSignal';
-import { PaymentTokenSelector, PaymentConfirmationModal } from '@/components/payment';
 import { InlineModal } from '@/components/InlineModal';
-import { BlurView } from 'expo-blur';
 
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.webp');
 const STAINS_BACKGROUND = require('../../assets/ui/backgrounds/stains-background.webp');
@@ -73,8 +70,6 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
   const lastShownErrorRef = useRef<string | null>(null);
 
   const { playSfx } = useAudio();
-  const payment = usePaymentToken(BigInt(GAUNTLET_ENTRY_LAMPORTS));
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showSessionExistsModal, setShowSessionExistsModal] = useState(false);
   const [isEntryTransitioning, setIsEntryTransitioning] = useState(false);
@@ -197,12 +192,8 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
       setShowSessionExistsModal(true);
       return;
     }
-    if (!payment.selectedToken.isNative && payment.quote) {
-      setShowPaymentModal(true);
-      return;
-    }
     await handleEnterDirect();
-  }, [hasExistingGauntletSession, payment.selectedToken, payment.quote, handleEnterDirect, playSfx]);
+  }, [hasExistingGauntletSession, handleEnterDirect, playSfx]);
 
   const handleResumeExistingSession = useCallback(async () => {
     setShowSessionExistsModal(false);
@@ -239,13 +230,6 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
     resolveSessionSetup();
   }, [overrideAndStartGauntletGame, navigation, dispatch]);
 
-  const handlePaymentConfirm = useCallback(async () => {
-    setShowPaymentModal(false);
-    // On devnet: proceed with SOL payment (swap is mocked)
-    // On mainnet: would compose swap+pay tx here
-    await handleEnterDirect();
-  }, [handleEnterDirect]);
-
   const entryFeeSol = GAUNTLET_ENTRY_LAMPORTS / 1_000_000_000;
 
   // --- Controller navigation ---
@@ -265,19 +249,6 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
     navigation.navigate('GauntletRanking');
   }, [navigation, playSfx]);
 
-  const cycleToken = useCallback(
-    (dir: -1 | 1) => {
-      const tokens = payment.supportedTokens;
-      const idx = tokens.findIndex((t) => t.symbol === payment.selectedToken.symbol);
-      const next = idx + dir;
-      if (next >= 0 && next < tokens.length) {
-        playSfx('ui_hover');
-        payment.setSelectedToken(tokens[next]);
-      }
-    },
-    [payment]
-  );
-
   useControllerAction(
     showSessionExistsModal
       ? {
@@ -285,7 +256,7 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
           onB: !isEntryTransitioning ? () => { playSfx('ui_back'); setShowSessionExistsModal(false); } : undefined,
           onX: !isEntryTransitioning ? handleOverrideExistingSession : undefined,
         }
-      : showPaymentModal || showSettingsModal
+      : showSettingsModal
       ? {} // Modal has its own controller handler
       : {
           onB: handleBack,
@@ -298,8 +269,6 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
                 : undefined,
           onDPadLeft: () => setPanelFocus(0),
           onDPadRight: () => setPanelFocus(1),
-          onL1: () => cycleToken(-1),
-          onR1: () => cycleToken(1),
           onY: handleRanking,
         },
     isController && isFocused
@@ -312,7 +281,6 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
         { button: 'X', label: 'Override' },
       ]
     : [
-        { button: 'L1R1', label: 'Currency' },
         { button: 'DPadLeftRight', label: 'Switch' },
         { button: 'A', label: 'Select' },
         { button: 'Y', label: 'Ranking' },
@@ -538,55 +506,9 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
               </View>
             </View>
 
-            {/* Token selector — below the panel */}
-            {isCompact ? (
-              <View style={compactStyles.tokenSelectorWrap}>
-                <PaymentTokenSelector
-                  tokens={payment.supportedTokens}
-                  selectedToken={payment.selectedToken}
-                  onSelectToken={payment.setSelectedToken}
-                  quote={payment.quote}
-                  isQuoteLoading={payment.isQuoteLoading}
-                  solUsdPrice={payment.solUsdPrice}
-                  requiredLamports={BigInt(GAUNTLET_ENTRY_LAMPORTS)}
-                  isCompact={isCompact}
-                  isController={isController}
-                />
-              </View>
-            ) : (
-              <BlurView
-                intensity={40}
-                tint="light"
-                experimentalBlurMethod="dimezisBlurView"
-                style={[styles.tokenSelectorWrap, styles.tokenSelectorBlur]}
-              >
-                <PaymentTokenSelector
-                  tokens={payment.supportedTokens}
-                  selectedToken={payment.selectedToken}
-                  onSelectToken={payment.setSelectedToken}
-                  quote={payment.quote}
-                  isQuoteLoading={payment.isQuoteLoading}
-                  solUsdPrice={payment.solUsdPrice}
-                  requiredLamports={BigInt(GAUNTLET_ENTRY_LAMPORTS)}
-                  isCompact={false}
-                  isController={isController}
-                  grid
-                />
-              </BlurView>
-            )}
           </View>
         </View>
       </CachedImageBackground>
-      {payment.quote && (
-        <PaymentConfirmationModal
-          visible={showPaymentModal}
-          quote={payment.quote}
-          isDevnet={payment.isDevnet}
-          isCompact={isCompact}
-          onConfirm={handlePaymentConfirm}
-          onCancel={() => setShowPaymentModal(false)}
-        />
-      )}
       <InlineModal
         visible={showSessionExistsModal}
         transparent
@@ -800,20 +722,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#3d2b1f',
   },
-  tokenSelectorWrap: {
-    position: 'absolute',
-    right: 32,
-    top: '36%',
-    transform: [{ translateY: -40 }],
-    alignItems: 'center',
-  },
-  tokenSelectorBlur: {
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: 'rgba(61, 43, 31, 0.2)',
-    padding: 10,
-    overflow: 'hidden',
-  },
   panelButtonText: {
     fontFamily: Typography.button,
     fontWeight: 'bold',
@@ -968,10 +876,6 @@ const compactStyles = StyleSheet.create({
     marginHorizontal: 0,
     marginTop: 150,
     marginBottom: 0,
-  },
-  tokenSelectorWrap: {
-    alignItems: 'center',
-    marginTop: 10,
   },
   modalContent: {
     width: 860,

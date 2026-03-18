@@ -135,12 +135,36 @@ function renderStatIcon(number: DamageNumber, sizScale: number) {
   );
 }
 
+function getStatusSourceIcon(source?: CombatSourceRef): ImageSourcePropType | null {
+  if (!source || source.kind !== 'status') return null;
+  return STATUS_ICONS[source.id as keyof typeof STATUS_ICONS] ?? null;
+}
+
 function renderSourceItemIcon(number: DamageNumber, sizScale: number) {
   const itemIcon = getSourceItemIcon(number.source);
   if (!itemIcon) return null;
   return (
     <Image
       source={itemIcon}
+      style={[
+        styles.statIcon,
+        {
+          width: 16 * sizScale,
+          height: 16 * sizScale,
+          marginLeft: 3 * sizScale,
+        },
+      ]}
+    />
+  );
+}
+
+function renderStatusSourceIcon(number: DamageNumber, sizScale: number) {
+  if (number.type === 'damage' && number.source?.kind === 'status') return null;
+  const icon = getStatusSourceIcon(number.source);
+  if (!icon) return null;
+  return (
+    <Image
+      source={icon}
       style={[
         styles.statIcon,
         {
@@ -301,6 +325,7 @@ const FloatingNumber = memo(function FloatingNumber({ number, position, scale: s
         )}
         {renderStatIcon(number, sizScale)}
         {renderSourceItemIcon(number, sizScale)}
+        {renderStatusSourceIcon(number, sizScale)}
       </View>
       {number.strikeLabel ? (
         <Text

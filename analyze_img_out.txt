@@ -1,0 +1,3 @@
+X coords with non-transparent pixels:
+Min X: 9 Max X: 249
+Gaps (X coords): []

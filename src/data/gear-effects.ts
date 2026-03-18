@@ -237,24 +237,24 @@ export const GEAR_EFFECTS: Record<GearId, GearEffects> = {
     ],
   },
 
-  // G-GR-05: Emerald Shard - EveryOtherTurnFirstHit: heal 2/4/8 HP
+  // G-GR-05: Quartz Shard - EveryOtherTurnFirstHit: heal 2/4/8 HP
   I21: {
     effects: [E(Trigger.EveryOtherTurnFirstHit(), 'Heal', [2, 4, 8], { oncePerTurn: true })],
   },
 
-  // G-GR-06: Ruby Shard - EveryOtherTurnFirstHit: deal 1/2/4 non-weapon damage
+  // G-GR-06: Amber Shard - EveryOtherTurnFirstHit: deal 1/2/4 non-weapon damage
   I22: {
     effects: [
       E(Trigger.EveryOtherTurnFirstHit(), 'DealNonWeaponDamage', [1, 2, 4], { oncePerTurn: true }),
     ],
   },
 
-  // G-GR-07: Sapphire Shard - EveryOtherTurnFirstHit: gain 2/4/8 Armor
+  // G-GR-07: Zircon Shard - EveryOtherTurnFirstHit: gain 2/4/8 Armor
   I23: {
     effects: [E(Trigger.EveryOtherTurnFirstHit(), 'GainArmor', [2, 4, 8], { oncePerTurn: true })],
   },
 
-  // G-GR-08: Citrine Shard - EveryOtherTurnFirstHit: gain 2/4/8 Gold and +1/2/4 Armor
+  // G-GR-08: Tourmaline Shard - EveryOtherTurnFirstHit: gain 2/4/8 Gold and +1/2/4 Armor
   I24: {
     effects: [
       E(Trigger.EveryOtherTurnFirstHit(), 'GainGold', [2, 4, 8], { oncePerTurn: true }),

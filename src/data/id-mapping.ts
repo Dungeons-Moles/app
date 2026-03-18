@@ -67,10 +67,10 @@ export const GEAR_FRONTEND_TO_BACKEND: Record<GearId, string> = {
   I18: 'G-GR-02', // Lucky Coin
   I19: 'G-GR-03', // Gilded Band
   I20: 'G-GR-04', // Royal Bracer
-  I21: 'G-GR-05', // Emerald Shard
-  I22: 'G-GR-06', // Ruby Shard
-  I23: 'G-GR-07', // Sapphire Shard
-  I24: 'G-GR-08', // Citrine Shard
+  I21: 'G-GR-05', // Quartz Shard
+  I22: 'G-GR-06', // Amber Shard
+  I23: 'G-GR-07', // Zircon Shard
+  I24: 'G-GR-08', // Tourmaline Shard
 
   // BLAST (8): I25-I32 -> G-BL-01 to G-BL-08
   I25: 'G-BL-01', // Small Charge
