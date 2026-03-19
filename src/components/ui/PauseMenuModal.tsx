@@ -100,10 +100,33 @@ export function PauseMenuModal({
     }
   }, [focusIndex, playSfx, autoOpenPOI, setAutoOpenPOI, autoResolveCombat, setAutoResolveCombat, tutorialIdx, onOpenTutorial, returnIdx, onReturnToHub, abandonIdx, onAbandonSession, isAbandoning]);
 
+  // In compact mode, tutorial and return-to-hub share a row:
+  // left/right navigates between them, up/down skips the pair as a group.
+  const isRowItem = isCompact && onOpenTutorial && (focusIndex === tutorialIdx || focusIndex === returnIdx);
+
   useControllerAction(
     {
-      onDPadUp: () => setFocusIndex((i) => Math.max(0, i - 1)),
-      onDPadDown: () => setFocusIndex((i) => Math.min(totalItems - 1, i + 1)),
+      onDPadUp: () =>
+        setFocusIndex((i) => {
+          if (isCompact && onOpenTutorial) {
+            // From abandon → jump to tutorial row
+            if (i === abandonIdx) return tutorialIdx;
+            // From tutorial or return → jump to last setting
+            if (i === tutorialIdx || i === returnIdx) return 3;
+          }
+          return Math.max(0, i - 1);
+        }),
+      onDPadDown: () =>
+        setFocusIndex((i) => {
+          if (isCompact && onOpenTutorial) {
+            // From last setting → jump to tutorial row
+            if (i === 3) return tutorialIdx;
+            // From tutorial or return → jump to abandon (or clamp)
+            if (i === tutorialIdx || i === returnIdx)
+              return onAbandonSession ? abandonIdx : i;
+          }
+          return Math.min(totalItems - 1, i + 1);
+        }),
       onDPadLeft:
         focusIndex === 0
           ? () => setMusicVolume(Math.round(Math.max(0, musicVolume - 0.1) * 10) / 10)
@@ -113,7 +136,9 @@ export function PauseMenuModal({
               ? () => { playSfx('ui_click'); setAutoOpenPOI(!autoOpenPOI); }
               : focusIndex === 3
                 ? () => { playSfx('ui_click'); setAutoResolveCombat(!autoResolveCombat); }
-                : undefined,
+                : isRowItem && focusIndex === returnIdx
+                  ? () => setFocusIndex(tutorialIdx)
+                  : undefined,
       onDPadRight:
         focusIndex === 0
           ? () => setMusicVolume(Math.round(Math.min(1, musicVolume + 0.1) * 10) / 10)
@@ -123,7 +148,9 @@ export function PauseMenuModal({
               ? () => { playSfx('ui_click'); setAutoOpenPOI(!autoOpenPOI); }
               : focusIndex === 3
                 ? () => { playSfx('ui_click'); setAutoResolveCombat(!autoResolveCombat); }
-                : undefined,
+                : isRowItem && focusIndex === tutorialIdx
+                  ? () => setFocusIndex(returnIdx)
+                  : undefined,
       onA: handleSelect,
       onB: () => { playSfx('ui_back'); onClose(); },
     },
@@ -215,7 +242,7 @@ export function PauseMenuModal({
                           source={buttonV3Source}
                           style={[
                             styles.menuButtonImageSmall,
-                            isCompact && compactStyles.menuButtonImage,
+                            isCompact && compactStyles.menuButtonImageSmall,
                           ]}
                           resizeMode="stretch"
                         >
@@ -239,7 +266,7 @@ export function PauseMenuModal({
                         source={buttonV1Source}
                         style={[
                           styles.menuButtonImageSmall,
-                          isCompact && compactStyles.menuButtonImage,
+                          isCompact && compactStyles.menuButtonImageSmall,
                         ]}
                         resizeMode="stretch"
                       >
@@ -418,7 +445,7 @@ const compactStyles = StyleSheet.create({
     transform: [{ scale: 1.4 }],
   },
   container: {
-    width: 320,
+    width: 340,
   },
   content: {
     padding: 20,
@@ -443,16 +470,16 @@ const compactStyles = StyleSheet.create({
     gap: 12,
   },
   menuRow: {
-    flexDirection: 'column',
-    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
     gap: 12,
   },
   menuButtonImage: {
-    width: 210,
+    width: 262,
     height: 50,
   },
   menuButtonImageSmall: {
-    width: 146,
+    width: 125,
     height: 50,
   },
   menuButtonText: {

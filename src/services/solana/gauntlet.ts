@@ -747,6 +747,7 @@ export async function buildSettleGauntletSessionTransaction(
   const [epochPoolPda] = deriveGauntletEpochPoolPda(epochIdBigInt);
   const [playerScorePda] = deriveGauntletPlayerScorePda(epochIdBigInt, playerPublicKey);
   const [inventoryPda] = deriveInventoryPda(sessionPda);
+  const [gameplayVrfStatePda] = deriveGameplayVrfStatePda(sessionPda);
   const [week1] = deriveGauntletWeekPoolPda(1);
   const [week2] = deriveGauntletWeekPoolPda(2);
   const [week3] = deriveGauntletWeekPoolPda(3);
@@ -763,6 +764,7 @@ export async function buildSettleGauntletSessionTransaction(
           gauntletEpochPool: PublicKey;
           gauntletPlayerScore: PublicKey;
           inventory: PublicKey;
+          gameplayVrfState: PublicKey;
           gauntletWeek1: PublicKey;
           gauntletWeek2: PublicKey;
           gauntletWeek3: PublicKey;
@@ -780,6 +782,7 @@ export async function buildSettleGauntletSessionTransaction(
       gauntletEpochPool: epochPoolPda,
       gauntletPlayerScore: playerScorePda,
       inventory: inventoryPda,
+      gameplayVrfState: gameplayVrfStatePda,
       gauntletWeek1: week1,
       gauntletWeek2: week2,
       gauntletWeek3: week3,

@@ -146,24 +146,9 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
             requirePoiVrfReady: false,
           });
           if (!switchResult.success) {
-            // Delegation-propagation errors are non-blocking: session exists on-chain,
-            // ER just hasn't replicated accounts yet. Continue to GameScreen.
-            const switchErrMsg = (switchResult.error ?? '').toLowerCase();
-            const isDelegationPropagationError =
-              switchErrMsg.includes('delegation not fully propagated') ||
-              switchErrMsg.includes('failed to delegate session to rollup') ||
-              switchErrMsg.includes('delegategameplayaccounts') ||
-              switchErrMsg.includes('access violation');
-            if (isDelegationPropagationError) {
-              console.warn(
-                '[CampaignSelect] switchToSession delegation propagation slow — continuing:',
-                switchResult.error
-              );
-            } else {
-              console.warn('[CampaignSelect] switchToSession failed:', switchResult.error);
-              rejectSessionSetup(switchResult.error ?? 'Failed to resume session.');
-              return;
-            }
+            console.warn('[CampaignSelect] switchToSession failed:', switchResult.error);
+            rejectSessionSetup(switchResult.error ?? 'Failed to resume session.');
+            return;
           }
         }
 
@@ -378,28 +363,15 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
           }
 
           if (!result?.success) {
-            // Delegation-propagation errors are non-blocking: the session was created
-            // on-chain and delegated to ER, but ER hasn't replicated the accounts yet.
-            // Continue to on-chain state fetch — it will wait for ER to propagate.
-            const errMsg = (result?.error ?? '').toLowerCase();
-            const isDelegationPropagationError =
-              errMsg.includes('delegation not fully propagated') ||
-              errMsg.includes('failed to delegate session to rollup') ||
-              errMsg.includes('delegategameplayaccounts') ||
-              errMsg.includes('access violation');
-            if (!isDelegationPropagationError) {
-              if (navigatedToLoading) {
-                rejectSessionSetup(result?.error ?? 'Failed to start session.');
-              } else {
-                setErrorMessage(result?.error ?? 'Failed to start session.');
-                setShowErrorModal(true);
-              }
-              return;
+            const errorMsg = result?.error ?? 'Failed to start session.';
+            console.warn('[CampaignSelect] Session start failed:', errorMsg);
+            if (navigatedToLoading) {
+              rejectSessionSetup(errorMsg);
+            } else {
+              setErrorMessage(errorMsg);
+              setShowErrorModal(true);
             }
-            console.warn(
-              '[CampaignSelect] Delegation propagation slow — continuing with on-chain fetch:',
-              result?.error
-            );
+            return;
           }
 
           // Determine seed to use — prefer the seed returned directly from startGame

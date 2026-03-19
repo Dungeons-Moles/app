@@ -1263,6 +1263,187 @@
       ]
     },
     {
+      "name": "delegate_pit_draft_vrf_state",
+      "docs": [
+        "Delegates GameplayVrfState PDA to MagicBlock for pit draft VRF (no session required).",
+        "The seed_key is typically matched_player_a from the PitDraftQueue."
+      ],
+      "discriminator": [
+        32,
+        157,
+        8,
+        100,
+        48,
+        12,
+        254,
+        61
+      ],
+      "accounts": [
+        {
+          "name": "buffer_gameplay_vrf_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "gameplay_vrf_state"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                165,
+                105,
+                51,
+                195,
+                50,
+                68,
+                93,
+                183,
+                82,
+                141,
+                122,
+                107,
+                195,
+                1,
+                86,
+                30,
+                104,
+                80,
+                170,
+                150,
+                122,
+                133,
+                234,
+                98,
+                181,
+                121,
+                227,
+                35,
+                228,
+                168,
+                136,
+                54
+              ]
+            }
+          }
+        },
+        {
+          "name": "delegation_record_gameplay_vrf_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "gameplay_vrf_state"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "delegation_metadata_gameplay_vrf_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "gameplay_vrf_state"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "gameplay_vrf_state",
+          "writable": true
+        },
+        {
+          "name": "seed_key"
+        },
+        {
+          "name": "payer",
+          "signer": true
+        },
+        {
+          "name": "owner_program",
+          "address": "C8hK4qsqsSYQeqyXuTPTUUS3T7N74WnZCuzvChTpK1Mo"
+        },
+        {
+          "name": "delegation_program",
+          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "validator",
+          "type": {
+            "option": "pubkey"
+          }
+        }
+      ]
+    },
+    {
       "name": "enter_duel",
       "docs": [
         "Pays duel entry and registers this run in async duel matchmaking."
@@ -1697,12 +1878,13 @@
     {
       "name": "enter_pit_draft",
       "docs": [
-        "Enters Pit Draft.",
+        "Enters Pit Draft with atomic resolution.",
         "",
         "Behavior:",
-        "- If queue is empty: player pays stake and becomes waiting player.",
-        "- If queue has a waiting player: player pays stake, match resolves immediately,",
-        "winner receives 95% of pot, company gets 3%, gauntlet pool gets 2%."
+        "- If queue is empty: player pays stake and becomes waiting player. No VRF needed.",
+        "- If queue has a waiting player: player pays stake, VRF must be pre-fulfilled,",
+        "combat resolves inline, winner receives 95% of pot, company gets 3%,",
+        "gauntlet pool gets 2%, queue is cleared."
       ],
       "discriminator": [
         57,
@@ -1782,62 +1964,33 @@
         {
           "name": "waiting_profile",
           "docs": [
-            "Waiting player's profile, required when queue is occupied."
+            "Waiting player's profile (required when matching, None when just queuing)."
           ],
-          "writable": true,
           "optional": true
         },
         {
           "name": "waiting_player_wallet",
-          "docs": [
-            "Waiting player's main wallet, required when queue is occupied."
-          ],
           "writable": true,
           "optional": true
         },
         {
           "name": "company_treasury",
-          "writable": true
+          "writable": true,
+          "optional": true
         },
         {
           "name": "gauntlet_pool_vault",
+          "docs": [
+            "Gauntlet pool vault for fee (required when matching)."
+          ],
           "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  103,
-                  97,
-                  117,
-                  110,
-                  116,
-                  108,
-                  101,
-                  116,
-                  95,
-                  112,
-                  111,
-                  111,
-                  108,
-                  95,
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
-              }
-            ]
-          }
+          "optional": true
         },
         {
           "name": "gameplay_vrf_state",
           "docs": [
-            "Optional VRF state. If provided and fulfilled, uses VRF randomness.",
-            "If absent or unfulfilled, falls back to slot-based deterministic randomness."
+            "VRF state — must be fulfilled when matching."
           ],
-          "writable": true,
           "optional": true
         },
         {
@@ -2542,6 +2695,67 @@
               {
                 "kind": "account",
                 "path": "session"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "init_pit_draft_vrf_state",
+      "docs": [
+        "Pre-creates GameplayVrfState on base chain for pit draft VRF (no session required).",
+        "Uses player_a from the pending match as the seed key."
+      ],
+      "discriminator": [
+        41,
+        226,
+        254,
+        107,
+        107,
+        228,
+        79,
+        246
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "seed_key"
+        },
+        {
+          "name": "vrf_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  112,
+                  108,
+                  97,
+                  121,
+                  95,
+                  118,
+                  114,
+                  102
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "seed_key"
               }
             ]
           }
@@ -4072,7 +4286,7 @@
       "name": "request_gameplay_vrf",
       "docs": [
         "Request VRF randomness for gameplay (pit draft, gauntlet echo, duel boss).",
-        "Inits the VrfState account (status = Requested, nonce = 1)."
+        "Increments the nonce to ensure each request produces unique randomness."
       ],
       "discriminator": [
         29,
@@ -8921,7 +9135,12 @@
       "name": "PitDraftQueue",
       "docs": [
         "Global queue for pit draft matchmaking.",
-        "Stores one waiting player; the next entrant is matched immediately."
+        "Two states:",
+        "- **Empty**: No players queued (`waiting_player` is None)",
+        "- **Waiting**: One player queued (`waiting_player` set), waiting for opponent",
+        "",
+        "When a second player enters with pre-fulfilled VRF, combat resolves atomically",
+        "in the same transaction — no intermediate \"matched\" state."
       ],
       "type": {
         "kind": "struct",

@@ -21,6 +21,7 @@ import {
   deriveMapConfigPda,
   deriveGameplayAuthorityPda,
   deriveSessionDiscoveryPda,
+  derivePitDraftVrfStatePda,
 } from './constants';
 import { SOLANA_CONFIG } from './config';
 
@@ -706,6 +707,28 @@ export async function buildInitGameplayVrfStateTransaction(
       payer,
       session: sessionPda,
       vrfState: gameplayVrfStatePda,
+      systemProgram: SystemProgram.programId,
+    })
+    .instruction();
+  return new Transaction().add(ix);
+}
+
+/**
+ * Pre-creates GameplayVrfState for pit draft on base chain.
+ * Uses playerA pubkey as the seed key (no session-manager ownership required).
+ */
+export async function buildInitPitDraftVrfStateTransaction(
+  gameplayStateProgram: Program,
+  seedKey: PublicKey,
+  payer: PublicKey
+): Promise<Transaction> {
+  const [vrfStatePda] = derivePitDraftVrfStatePda(seedKey);
+  const method = pickMethod(gameplayStateProgram, 'initPitDraftVrfState', 'initPitDraftVrfState');
+  const ix = await method()
+    .accounts({
+      payer,
+      seedKey,
+      vrfState: vrfStatePda,
       systemProgram: SystemProgram.programId,
     })
     .instruction();

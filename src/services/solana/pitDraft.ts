@@ -11,7 +11,10 @@
 import { ComputeBudgetProgram, Connection, PublicKey, SystemProgram, Transaction } from '@solana/web3.js';
 import type { Program } from '@coral-xyz/anchor';
 import { SOLANA_CONFIG } from './config';
-import { GAMEPLAY_STATE_PROGRAM_ID, derivePlayerProfilePda } from './constants';
+import {
+  GAMEPLAY_STATE_PROGRAM_ID,
+  derivePlayerProfilePda,
+} from './constants';
 import { toolToFrontend, gearToFrontend } from '@/data/id-mapping';
 import type { Tool, Gear, ToolOil } from '@/game/engine/types';
 import { getAllToolDefinitions, getToolStatsAtTier } from '@/game/entities/items';
@@ -101,15 +104,19 @@ export async function buildEnterPitDraftTransaction(
   connection: Connection,
   program: Program,
   playerPublicKey: PublicKey,
-  waitingProfile?: PublicKey | null,
-  waitingPlayerWallet?: PublicKey | null
+  matchAccounts?: {
+    waitingProfile: PublicKey;
+    waitingPlayerWallet: PublicKey;
+    vrfStatePda: PublicKey;
+  } | null
 ): Promise<Transaction> {
   const [queuePda] = derivePitDraftQueuePda();
   const [vaultPda] = derivePitDraftVaultPda();
-  const [gauntletPoolVaultPda] = deriveGauntletPoolVaultPda();
   const [playerProfilePda] = derivePlayerProfilePda(playerPublicKey);
 
-  // Optional accounts must use null so Anchor substitutes the program ID.
+  // When matching, pass all required accounts. When just queuing, pass null for optional accounts.
+  const [gauntletPoolVaultPda] = deriveGauntletPoolVaultPda();
+
   const enterPitDraftIx = await program.methods
     .enterPitDraft()
     .accountsPartial({
@@ -117,11 +124,11 @@ export async function buildEnterPitDraftTransaction(
       pitDraftVault: vaultPda,
       player: playerPublicKey,
       playerProfile: playerProfilePda,
-      waitingProfile: waitingProfile ?? null,
-      waitingPlayerWallet: waitingPlayerWallet ?? null,
-      companyTreasury: COMPANY_TREASURY,
-      gauntletPoolVault: gauntletPoolVaultPda,
-      gameplayVrfState: null,
+      waitingProfile: matchAccounts?.waitingProfile ?? null,
+      waitingPlayerWallet: matchAccounts?.waitingPlayerWallet ?? null,
+      companyTreasury: matchAccounts ? COMPANY_TREASURY : null,
+      gauntletPoolVault: matchAccounts ? gauntletPoolVaultPda : null,
+      gameplayVrfState: matchAccounts?.vrfStatePda ?? null,
       systemProgram: SystemProgram.programId,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any)
@@ -129,7 +136,7 @@ export async function buildEnterPitDraftTransaction(
 
   const transaction = new Transaction();
 
-  // Pit Draft matching + combat preparation can exceed default 200k CU.
+  // Pit Draft queue entry + optional atomic match+combat can exceed default 200k CU.
   transaction.add(
     ComputeBudgetProgram.setComputeUnitLimit({ units: PIT_DRAFT_CU_LIMIT }),
     ComputeBudgetProgram.setComputeUnitPrice({
@@ -144,6 +151,7 @@ export async function buildEnterPitDraftTransaction(
 
   return transaction;
 }
+
 
 // ============================================================================
 // Event Types
@@ -198,7 +206,7 @@ export interface PitDraftEventParseResult {
 // Event Parsing
 // ============================================================================
 
-// Discriminators from the IDL
+// Discriminators from the IDL (sha256("event:<EventName>")[..8])
 const PIT_DRAFT_QUEUED_DISC = Buffer.from([66, 238, 37, 54, 83, 248, 251, 246]);
 const PIT_DRAFT_COMBAT_VISUAL_DISC = Buffer.from([0, 40, 95, 5, 28, 192, 191, 227]);
 const PIT_DRAFT_RESOLVED_DISC = Buffer.from([200, 164, 181, 53, 37, 147, 146, 7]);

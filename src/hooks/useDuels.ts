@@ -136,21 +136,6 @@ export function useDuels() {
       if (switchResult.success) {
         return { success: true };
       }
-      const message = (switchResult.error ?? '').toLowerCase();
-      const nonBlocking =
-        message.includes('session key signer not available for delegation') ||
-        message.includes('failed to delegate session to rollup') ||
-        message.includes('delegation not fully propagated') ||
-        message.includes('delegatesession') ||
-        message.includes('access violation') ||
-        message.includes('failed to complete');
-      if (nonBlocking) {
-        console.warn(
-          '[useDuels] enterCurrentSessionDuel:continuing_despite_switch_delegation_error',
-          switchResult.error
-        );
-        return { success: true };
-      }
       return { success: false, error: switchResult.error ?? 'Failed to resume duel session' };
     },
     [switchToSession]

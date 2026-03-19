@@ -1286,7 +1286,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           erGameplayProgram,
           sessionPda,
           sessionSignerKeypair.publicKey,
-          { campaignLevel: 20, seed: localMapSeed }
+          { campaignLevel: 20, seed: localMapSeed, gameplayVrfStatePda: deriveGameplayVrfStatePda(sessionPda)[0] }
         );
         const mapWithBudgetTx = new Transaction().add(
           ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }),
@@ -2920,7 +2920,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           erGameplayProgram,
           sessionPda,
           newSessionSignerKeypair.publicKey,
-          { campaignLevel: 20, seed: localMapSeed }
+          { campaignLevel: 20, seed: localMapSeed, gameplayVrfStatePda: deriveGameplayVrfStatePda(sessionPda)[0] }
         );
         const mapWithBudgetTx = new Transaction().add(
           ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }),
@@ -3339,7 +3339,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           erGameplayProgram,
           sessionPda,
           newSessionSignerKeypair.publicKey,
-          { campaignLevel: 20, seed: localMapSeed }
+          { campaignLevel: 20, seed: localMapSeed, gameplayVrfStatePda: deriveGameplayVrfStatePda(sessionPda)[0] }
         );
         const mapWithBudgetTx = new Transaction().add(
           ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }),
@@ -4857,7 +4857,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             erGameplayProgram,
             sessionPda,
             newSessionSignerKeypair.publicKey,
-            { campaignLevel: 20, seed: localMapSeed }
+            { campaignLevel: 20, seed: localMapSeed, gameplayVrfStatePda: deriveGameplayVrfStatePda(sessionPda)[0] }
           );
           const mapWithBudgetTx = new Transaction().add(
             ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }),
@@ -5220,7 +5220,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             erGameplayProgram,
             sessionPda,
             newSessionSignerKeypair.publicKey,
-            { campaignLevel: 20, seed: localMapSeed }
+            { campaignLevel: 20, seed: localMapSeed, gameplayVrfStatePda: deriveGameplayVrfStatePda(sessionPda)[0] }
           );
           const mapWithBudgetTx = new Transaction().add(
             ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }),

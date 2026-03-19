@@ -6,13 +6,16 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { PublicKey } from '@solana/web3.js';
+import { Connection, PublicKey, SystemProgram, Transaction, TransactionInstruction, ComputeBudgetProgram } from '@solana/web3.js';
 import { useWallet } from '@/contexts/WalletContext';
 import { useProfile } from '@/contexts/ProfileContext';
 import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
 import { createGameplayStateProgram, createPlayerProfileProgram } from '@/services/solana/programs';
 import { derivePlayerProfilePda } from '@/services/solana/types';
-import { GAMEPLAY_STATE_PROGRAM_ID } from '@/services/solana/constants';
+import {
+  GAMEPLAY_STATE_PROGRAM_ID,
+  derivePitDraftVrfStatePda,
+} from '@/services/solana/constants';
 import {
   buildEnterPitDraftTransaction,
   fetchPitDraftQueue,
@@ -25,6 +28,15 @@ import {
   type PitDraftCombatVisualEvent,
   type PitDraftResolvedEvent,
 } from '@/services/solana/pitDraft';
+import {
+  buildInitPitDraftVrfStateTransaction,
+  buildRequestGameplayVrfTransaction,
+  buildRawGameplayVrfRequestTransaction,
+  waitForVrfFulfillment,
+} from '@/services/solana/vrf';
+import { SOLANA_CONFIG } from '@/services/solana/config';
+import { getLocalVrfPayerKeypair } from '@/services/solana/localVrfPayer';
+import { sendSessionSignerTransaction } from '@/services/solana/sessionSigner';
 import type { CombatantState, Tool, Gear } from '@/game/engine/types';
 import { calculateItemStats } from '@/game/entities/items';
 
@@ -91,6 +103,33 @@ export interface PitDraftHistoryItem {
 // ============================================================================
 
 const QUEUE_POLL_INTERVAL_MS = 3000;
+const VRF_FULFILLMENT_TIMEOUT_MS = 30_000;
+const DELEGATION_PROGRAM_ID = new PublicKey('DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh');
+
+const DIRECT_ER_RPC_URL =
+  process.env.EXPO_PUBLIC_EPHEMERAL_PROVIDER_ENDPOINT ?? 'https://devnet.magicblock.app/';
+const DIRECT_ER_WS_URL =
+  process.env.EXPO_PUBLIC_EPHEMERAL_WS_ENDPOINT ?? DIRECT_ER_RPC_URL.replace('https://', 'wss://');
+
+/**
+ * Derive delegation-related PDAs for a given account.
+ */
+function deriveDelegatePdas(target: PublicKey, ownerProgram: PublicKey) {
+  const [buffer] = PublicKey.findProgramAddressSync(
+    [Buffer.from('buffer'), target.toBuffer()],
+    ownerProgram
+  );
+  const [delegationRecord] = PublicKey.findProgramAddressSync(
+    [Buffer.from('delegation'), target.toBuffer()],
+    DELEGATION_PROGRAM_ID
+  );
+  const [delegationMetadata] = PublicKey.findProgramAddressSync(
+    [Buffer.from('delegation-metadata'), target.toBuffer()],
+    DELEGATION_PROGRAM_ID
+  );
+  return { buffer, delegationRecord, delegationMetadata };
+}
+
 const PIT_DRAFT_BASE_HP = 20;
 const PIT_DRAFT_BASE_ATK = 1;
 const PIT_DRAFT_BASE_ARM = 0;
@@ -338,16 +377,19 @@ export function usePitDraft() {
       processedQueueSignaturesRef.current.add(sigInfo.signature);
 
       const events = await parsePitDraftEvents(connection, program, sigInfo.signature);
-      if (!events.combatVisual || !events.resolved) continue;
 
-      const data = await buildMatchData(events.combatVisual, events.resolved);
-      if (!data) continue;
+      // Atomic resolution: combat+resolved events come from the enter_pit_draft TX
+      // when the second player enters with pre-fulfilled VRF.
+      if (events.combatVisual && events.resolved) {
+        const data = await buildMatchData(events.combatVisual, events.resolved);
+        if (!data) continue;
 
-      if (isMountedRef.current) {
-        setMatchData(data);
-        setPhase('matched');
+        if (isMountedRef.current) {
+          setMatchData(data);
+          setPhase('matched');
+        }
+        return true;
       }
-      return true;
     }
 
     return false;
@@ -424,6 +466,11 @@ export function usePitDraft() {
 
   /**
    * Enter the Pit Draft: build transaction, sign, send, parse events.
+   *
+   * New atomic flow:
+   * - If queue is empty: just queue up (no VRF needed).
+   * - If queue has waiting player: pre-fulfill VRF, then enter with match accounts.
+   *   Combat resolves atomically in the same TX.
    */
   const enterPitDraft = useCallback(async () => {
     if (!wallet.publicKey) {
@@ -453,57 +500,205 @@ export function usePitDraft() {
 
       const program = createGameplayStateProgram(connection);
 
-      // Check queue state to determine which accounts to pass
+      // Check queue state to determine flow
       const queue = await fetchPitDraftQueue(program);
 
-      let waitingProfile: PublicKey | null = null;
-      let waitingPlayerWallet: PublicKey | null = null;
-
       if (queue?.waitingPlayer) {
-        // Queue has a waiting player - we need their accounts for the match
-        waitingProfile = queue.waitingProfile ?? null;
-        waitingPlayerWallet = queue.waitingPlayer;
-      }
+        // Queue has a waiting player — pre-fulfill VRF, then enter with match accounts
+        // so combat resolves atomically in the enter TX.
+        console.log('[usePitDraft] Queue has waiting player, pre-fulfilling VRF');
 
-      // Build and send transaction
-      const transaction = await buildEnterPitDraftTransaction(
-        connection,
-        program,
-        wallet.publicKey,
-        waitingProfile,
-        waitingPlayerWallet
-      );
+        const waitingPlayer = queue.waitingPlayer;
+        const [vrfStatePda] = derivePitDraftVrfStatePda(waitingPlayer);
 
-      const signature = await signAndSendTransaction(transaction);
-      console.log('[usePitDraft] Transaction sent:', signature);
+        // Step 1: Init VRF state on base (using waiting player as seed key)
+        console.log('[usePitDraft] VRF step 1: init pit draft VRF state on base');
+        const initVrfTx = await buildInitPitDraftVrfStateTransaction(
+          program,
+          waitingPlayer,
+          wallet.publicKey
+        );
+        const initSig = await signAndSendTransaction(initVrfTx);
+        await connection.confirmTransaction(initSig, 'confirmed');
+        console.log('[usePitDraft] VRF state initialized:', initSig);
 
-      // Wait for confirmation
-      await connection.confirmTransaction(signature, 'confirmed');
-      console.log('[usePitDraft] Transaction confirmed');
+        if (SOLANA_CONFIG.isLocalValidator) {
+          // Localnet: request + fulfill VRF on base layer (local oracle)
+          console.log('[usePitDraft] VRF step 2: request on base (localnet)');
+          const localPayer = getLocalVrfPayerKeypair();
+          if (!localPayer) {
+            throw new Error('Local VRF payer keypair not configured. Set EXPO_PUBLIC_LOCAL_VRF_PAYER_KEYPAIR or EXPO_PUBLIC_ER_VALIDATOR_KEYPAIR.');
+          }
+          const vrfRequestTx = await buildRequestGameplayVrfTransaction(
+            program,
+            waitingPlayer, // waiting player as seed key
+            localPayer.publicKey,
+            localPayer.publicKey
+          );
+          await sendSessionSignerTransaction(connection, vrfRequestTx, localPayer);
+          console.log('[usePitDraft] VRF requested on base, waiting for oracle...');
 
-      // Parse events from the transaction
-      const events = await parsePitDraftEvents(connection, program, signature);
-
-      if (events.combatVisual && events.resolved) {
-        // Match resolved immediately (we were the second player)
-        const data = await buildMatchData(events.combatVisual, events.resolved);
-        if (data) {
-          setMatchData(data);
-          setPhase('matched');
+          const fulfilled = await waitForVrfFulfillment(connection, vrfStatePda, VRF_FULFILLMENT_TIMEOUT_MS);
+          if (!fulfilled) {
+            throw new Error('VRF fulfillment timed out on base. Ensure vrf-oracle is running (RPC_URL=http://127.0.0.1:8899).');
+          }
+          console.log('[usePitDraft] VRF fulfilled on base (localnet)');
         } else {
-          setError('Failed to parse match data');
+          // Devnet/Mainnet: delegate VRF to ER, request there, undelegate back
+          console.log('[usePitDraft] VRF step 2: delegate VRF state to ER');
+          const vrfDelegate = deriveDelegatePdas(vrfStatePda, SOLANA_CONFIG.programs.gameplayState);
+          const delegateVrfIx = await program.methods
+            .delegatePitDraftVrfState(SOLANA_CONFIG.magic.delegationValidator)
+            .accountsStrict({
+              gameplayVrfState: vrfStatePda,
+              seedKey: waitingPlayer,
+              payer: wallet.publicKey,
+              bufferGameplayVrfState: vrfDelegate.buffer,
+              delegationRecordGameplayVrfState: vrfDelegate.delegationRecord,
+              delegationMetadataGameplayVrfState: vrfDelegate.delegationMetadata,
+              ownerProgram: SOLANA_CONFIG.programs.gameplayState,
+              delegationProgram: DELEGATION_PROGRAM_ID,
+              systemProgram: SystemProgram.programId,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            } as any)
+            .instruction();
+          const delegateTx = new Transaction().add(
+            ComputeBudgetProgram.setComputeUnitLimit({ units: 600_000 }),
+            delegateVrfIx
+          );
+          const delegateSig = await signAndSendTransaction(delegateTx);
+          await connection.confirmTransaction(delegateSig, 'confirmed');
+          console.log('[usePitDraft] VRF state delegated:', delegateSig);
+
+          // Step 3: Request VRF on ER
+          console.log('[usePitDraft] VRF step 3: request VRF on ER');
+          const directErConnection = new Connection(DIRECT_ER_RPC_URL, {
+            commitment: SOLANA_CONFIG.erCommitment,
+            wsEndpoint: DIRECT_ER_WS_URL,
+          });
+
+          const maxWaitMs = 15_000;
+          const pollMs = 500;
+          const startWait = Date.now();
+          while (Date.now() - startWait < maxWaitMs) {
+            const info = await directErConnection.getAccountInfo(vrfStatePda).catch(() => null);
+            if (info) break;
+            await new Promise((r) => setTimeout(r, pollMs));
+          }
+
+          const vrfRequestTx = buildRawGameplayVrfRequestTransaction(
+            waitingPlayer,
+            wallet.publicKey,
+            SOLANA_CONFIG.programs.gameplayState
+          );
+          const vrfRequestSig = await signAndSendTransaction(vrfRequestTx);
+          console.log('[usePitDraft] VRF request sent on ER:', vrfRequestSig);
+
+          // Step 4: Wait for VRF fulfillment on ER
+          console.log('[usePitDraft] VRF step 4: waiting for fulfillment on ER');
+          const fulfilled = await waitForVrfFulfillment(
+            directErConnection,
+            vrfStatePda,
+            VRF_FULFILLMENT_TIMEOUT_MS
+          );
+          if (!fulfilled) {
+            throw new Error('VRF fulfillment timed out. Please try again.');
+          }
+          console.log('[usePitDraft] VRF fulfilled on ER');
+
+          // Step 5: Undelegate VRF state back to base
+          console.log('[usePitDraft] VRF step 5: undelegating VRF state from ER');
+          const MAGIC_PROGRAM_ID = SOLANA_CONFIG.magic.programId;
+          const MAGIC_CONTEXT_ID = SOLANA_CONFIG.magic.contextId;
+          const undelegateDiscriminator = Buffer.alloc(8);
+          undelegateDiscriminator.writeBigUInt64LE(3n);
+          const undelegateIx = new TransactionInstruction({
+            programId: MAGIC_PROGRAM_ID,
+            keys: [
+              { pubkey: wallet.publicKey, isSigner: true, isWritable: true },
+              { pubkey: vrfStatePda, isSigner: false, isWritable: true },
+              { pubkey: MAGIC_CONTEXT_ID, isSigner: false, isWritable: false },
+            ],
+            data: undelegateDiscriminator,
+          });
+          const undelegateTx = new Transaction().add(undelegateIx);
+          const undelegateSig = await signAndSendTransaction(undelegateTx);
+          console.log('[usePitDraft] Undelegate sent:', undelegateSig);
+
+          // Wait for VRF state to return to base
+          const undelegateWaitMs = 30_000;
+          const undelegateStart = Date.now();
+          while (Date.now() - undelegateStart < undelegateWaitMs) {
+            const info = await connection.getAccountInfo(vrfStatePda).catch(() => null);
+            if (info && !info.owner.equals(DELEGATION_PROGRAM_ID)) {
+              console.log('[usePitDraft] VRF state back on base layer');
+              break;
+            }
+            await new Promise((r) => setTimeout(r, 1_000));
+          }
+        }
+
+        // Now enter with fulfilled VRF — match + combat resolves atomically
+        console.log('[usePitDraft] Entering pit draft with match accounts (atomic resolution)');
+        const transaction = await buildEnterPitDraftTransaction(
+          connection,
+          program,
+          wallet.publicKey,
+          {
+            waitingProfile: queue.waitingProfile!,
+            waitingPlayerWallet: waitingPlayer,
+            vrfStatePda,
+          }
+        );
+
+        const signature = await signAndSendTransaction(transaction);
+        console.log('[usePitDraft] Enter+match TX sent:', signature);
+        await connection.confirmTransaction(signature, 'confirmed');
+        console.log('[usePitDraft] Enter+match TX confirmed');
+
+        // Parse combat events from this TX (they now come from enter_pit_draft)
+        const events = await parsePitDraftEvents(connection, program, signature);
+        if (events.combatVisual && events.resolved) {
+          const data = await buildMatchData(events.combatVisual, events.resolved);
+          if (data) {
+            setMatchData(data);
+            setPhase('matched');
+          } else {
+            setError('Failed to parse match data');
+            setPhase('error');
+          }
+        } else {
+          setError('Match transaction succeeded but combat events not found');
           setPhase('error');
         }
-      } else if (events.queued) {
-        // We're queued, waiting for an opponent
-        processedQueueSignaturesRef.current.clear();
-        processedQueueSignaturesRef.current.add(signature);
-        await setQueueAnchorFromSignature(signature);
-        setPhase('queuing');
-        startPolling();
       } else {
-        setError('Transaction succeeded but no events found');
-        setPhase('error');
+        // Queue empty — just queue up, no VRF needed
+        console.log('[usePitDraft] Queue empty, entering queue');
+        const transaction = await buildEnterPitDraftTransaction(
+          connection,
+          program,
+          wallet.publicKey,
+          null
+        );
+
+        const signature = await signAndSendTransaction(transaction);
+        console.log('[usePitDraft] Queue TX sent:', signature);
+        await connection.confirmTransaction(signature, 'confirmed');
+        console.log('[usePitDraft] Queue TX confirmed');
+
+        // Parse events — should get PitDraftQueued
+        const events = await parsePitDraftEvents(connection, program, signature);
+
+        if (events.queued) {
+          processedQueueSignaturesRef.current.clear();
+          processedQueueSignaturesRef.current.add(signature);
+          await setQueueAnchorFromSignature(signature);
+          setPhase('queuing');
+          startPolling();
+        } else {
+          setError('Transaction succeeded but no queue event found');
+          setPhase('error');
+        }
       }
     } catch (err) {
       console.error('[usePitDraft] Enter failed:', err);

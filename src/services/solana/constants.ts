@@ -486,6 +486,24 @@ export function deriveGauntletEchoesPda(sessionPda: PublicKey): [PublicKey, numb
 }
 
 // ============================================================================
+// Pit Draft PDA Derivation
+// ============================================================================
+
+/**
+ * Derive GameplayVrfState PDA for pit draft VRF (keyed by player_a, not session).
+ * Seeds: ["gameplay_vrf", player_a] — owned by gameplay-state program.
+ *
+ * @param playerA - The waiting player's wallet (used as seed key for pit draft VRF)
+ * @returns [PDA, bump]
+ */
+export function derivePitDraftVrfStatePda(playerA: PublicKey): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from(PDA_SEEDS.GAMEPLAY_VRF), playerA.toBuffer()],
+    GAMEPLAY_STATE_PROGRAM_ID
+  );
+}
+
+// ============================================================================
 // Composite PDA Derivation
 // ============================================================================
 
