@@ -23,14 +23,14 @@ import { SOLANA_CONFIG } from './config';
 // Constants
 // ============================================================================
 
-/** Default amount to fund sessionSigner (0.2 SOL).
- * Must cover all delegation-account rent allocations across gameplay/map/inventory/POI/session.
- * GenerateMap alone can consume ~0.07 SOL for the full map grid on devnet.
+/** Default amount to fund sessionSigner (0.05 SOL).
+ * Covers delegation buffer/record/metadata rent (~24 PDAs × ~0.0016 SOL each ≈ 0.038 SOL)
+ * plus base-layer tx fees. Rent is reclaimed at undelegation/session close.
  */
-export const DEFAULT_FUND_AMOUNT = 200_000_000; // lamports
+export const DEFAULT_FUND_AMOUNT = 50_000_000; // lamports
 
-/** Low balance warning threshold (0.01 SOL) */
-export const LOW_BALANCE_THRESHOLD = 10_000_000; // lamports
+/** Low balance warning threshold (0.005 SOL) */
+export const LOW_BALANCE_THRESHOLD = 5_000_000; // lamports
 
 /** Storage key for sessionSigner wallet */
 const SESSION_SIGNER_STORAGE_KEY = 'session_signer';
@@ -404,7 +404,7 @@ export async function getSessionSignerInfo(
  *
  * @param mainWallet - Main wallet public key (payer)
  * @param sessionSignerWallet - SessionSigner wallet public key (recipient)
- * @param amount - Amount in lamports (default: 80,000,000 = 0.08 SOL)
+ * @param amount - Amount in lamports (default: 50,000,000 = 0.05 SOL)
  * @returns Unsigned Transaction
  */
 export function createFundSessionSignerTransaction(
