@@ -61,6 +61,7 @@ import { TileType, MapEnemy, MapPOI } from '../game/map/types';
 import { getDiscoveredWaypoints } from '../game/entities/pois';
 import {
   canAffordCostAcrossPhases,
+  selectWeekBossForLevel,
 } from '../game/time/progression';
 import { Typography } from '../theme/typography';
 import { useEquippedSkinImage } from '../hooks/useEquippedSkinImage';
@@ -936,11 +937,16 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
       if (bossAlreadyResolvedInline) {
         // When the player won, the week already advanced on-chain, so
-        // resolvedWeekBoss points at the NEXT week's boss. Compute the
+        // state.time.weekBoss points at the NEXT week's boss. Compute the
         // correct (just-fought) boss from the previous week instead.
         const playerWon = !onChainState.isDead;
-        const foughtWeek = state.time.week as 1 | 2 | 3;
-        const foughtBoss: BossId | null = state.time.weekBoss ?? null;
+        const foughtWeek = (playerWon
+          ? Math.max(1, (state.time.week as number) - 1)
+          : state.time.week) as 1 | 2 | 3;
+        const foughtBoss: BossId | null = selectWeekBossForLevel(
+          onChainState.campaignLevel,
+          foughtWeek
+        );
 
         if (!foughtBoss) {
           console.warn(
@@ -1534,9 +1540,18 @@ export function GameScreen({ navigation }: GameScreenProps) {
                 return;
               }
 
-              // Campaign / Duel: boss fight auto-resolved inline in move_player
+              // Campaign / Duel: boss fight auto-resolved inline in move_player.
+              // Compute the fought boss from previousState.week (the week BEFORE the
+              // boss was resolved). state.time.weekBoss may already point to the NEXT
+              // week's boss if a resync (RESTORE_GAME) ran between clicks.
+              const foughtWeekForInline = (result.previousState?.week ?? currentWeek) as 1 | 2 | 3;
               const resolvedWeekBoss: BossId | null =
-                state.time.weekBoss ?? null;
+                result.previousState
+                  ? selectWeekBossForLevel(
+                      result.previousState.campaignLevel ?? onChainState!.campaignLevel,
+                      foughtWeekForInline
+                    )
+                  : state.time.weekBoss ?? null;
 
               if (resolvedWeekBoss) {
                 // Prevent the boss useEffect from also triggering
@@ -1560,7 +1575,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
                   preCombatTool,
                   preCombatItemsets,
                   preCombatSeed,
-                  currentWeek,
+                  foughtWeekForInline,
                   {
                     finalPlayerHp: result.newState.hp,
                     finalPlayerGold: result.newState.gold,
