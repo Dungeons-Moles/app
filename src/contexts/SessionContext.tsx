@@ -33,7 +33,6 @@ import {
   deriveGameStatePda,
   deriveGeneratedMapPda,
   deriveInventoryPda,
-  deriveMapEnemiesPda,
   deriveMapPoisPda,
   deriveSessionDiscoveryPda,
   deriveSessionPdas,
@@ -136,7 +135,7 @@ function isErPropagationErrorMessage(message: string): boolean {
 const DIRECT_ER_WS_URL =
   process.env.EXPO_PUBLIC_EPHEMERAL_WS_ENDPOINT ?? 'wss://devnet.magicblock.app/';
 const ER_VRF_WAIT_TIMEOUT_MS = 120_000;
-const ER_SYNC_MAP_ENEMIES_CU_LIMIT = 800_000;
+const ER_SYNC_MAP_ENEMIES_CU_LIMIT = 800_000; // still used by buildSyncMapEnemiesInstruction
 const MAX_SERIALIZED_TX_BYTES = 1232;
 const VRF_STATUS_OFFSET = 8 + 32 + 32 + 8;
 const VRF_STATUS_FULFILLED = 1;
@@ -686,7 +685,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     (sessionPda: PublicKey, options?: { includeVrf?: boolean }) => {
       const {
         gameStatePda,
-        mapEnemiesPda,
         generatedMapPda,
         inventoryPda,
         mapPoisPda,
@@ -703,11 +701,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         {
           label: 'game_state',
           pda: gameStatePda,
-          expectedOwner: SOLANA_CONFIG.programs.gameplayState,
-        },
-        {
-          label: 'map_enemies',
-          pda: mapEnemiesPda,
           expectedOwner: SOLANA_CONFIG.programs.gameplayState,
         },
         {
@@ -1971,7 +1964,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           startNonces.campaign
         );
         const [gameStatePda] = deriveGameStatePda(targetSessionPda);
-        const [mapEnemiesPda] = deriveMapEnemiesPda(targetSessionPda);
         const [mapPoisPda] = deriveMapPoisPda(targetSessionPda);
         const [inventoryPda] = deriveInventoryPda(targetSessionPda);
         const [generatedMapPda] = deriveGeneratedMapPda(targetSessionPda);
@@ -1981,16 +1973,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           wallet: wallet.publicKey!.toBase58(),
           sessionPda: targetSessionPda.toBase58(),
           gameStatePda: gameStatePda.toBase58(),
-          mapEnemiesPda: mapEnemiesPda.toBase58(),
           mapPoisPda: mapPoisPda.toBase58(),
           inventoryPda: inventoryPda.toBase58(),
           generatedMapPda: generatedMapPda.toBase58(),
           rpcEndpoint: connection.rpcEndpoint,
         });
-        const [sessionInfo, gsInfo, meInfo, mpInfo, invInfo, gmInfo] = await Promise.all([
+        const [sessionInfo, gsInfo, mpInfo, invInfo, gmInfo] = await Promise.all([
           connection.getAccountInfo(targetSessionPda, 'processed'),
           connection.getAccountInfo(gameStatePda, 'processed'),
-          connection.getAccountInfo(mapEnemiesPda, 'processed'),
           connection.getAccountInfo(mapPoisPda, 'processed'),
           connection.getAccountInfo(inventoryPda, 'processed'),
           connection.getAccountInfo(generatedMapPda, 'processed'),
@@ -2001,9 +1991,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             : 'null',
           gameState: gsInfo
             ? `exists owner=${gsInfo.owner.toBase58()} size=${gsInfo.data.length}`
-            : 'null',
-          mapEnemies: meInfo
-            ? `exists owner=${meInfo.owner.toBase58()} size=${meInfo.data.length}`
             : 'null',
           mapPois: mpInfo
             ? `exists owner=${mpInfo.owner.toBase58()} size=${mpInfo.data.length}`
@@ -2016,12 +2003,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             : 'null',
         });
         const sessionExists = !!sessionInfo;
-        const orphanedChildren = !sessionExists && (!!gsInfo || !!meInfo || !!mpInfo || !!invInfo || !!gmInfo);
+        const orphanedChildren = !sessionExists && (!!gsInfo || !!mpInfo || !!invInfo || !!gmInfo);
         if (orphanedChildren) {
           console.log('[SessionContext] Detected orphaned child accounts at session slot', {
             sessionPda: targetSessionPda.toBase58(),
             gameState: !!gsInfo,
-            mapEnemies: !!meInfo,
             mapPois: !!mpInfo,
           });
           // Need a session signer that matches game_state.session_signer to close them.
@@ -2047,7 +2033,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
           const delegatedAccounts = [
             { info: gsInfo, pda: gameStatePda, label: 'game_state' },
-            { info: meInfo, pda: mapEnemiesPda, label: 'map_enemies' },
             { info: mpInfo, pda: mapPoisPda, label: 'map_pois' },
           ].filter((a) => a.info && a.info.owner.equals(DELEGATION_PROGRAM_ID));
 
@@ -2123,12 +2108,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
                 await new Promise((r) => setTimeout(r, 2000 * attempt));
 
-                const [gsCheck, meCheck, mpCheck] = await Promise.all([
+                const [gsCheck, mpCheck] = await Promise.all([
                   connection.getAccountInfo(gameStatePda, 'processed'),
-                  connection.getAccountInfo(mapEnemiesPda, 'processed'),
                   connection.getAccountInfo(mapPoisPda, 'processed'),
                 ]);
-                const remaining = [gsCheck, meCheck, mpCheck].filter(
+                const remaining = [gsCheck, mpCheck].filter(
                   (info) => info && info.owner.equals(DELEGATION_PROGRAM_ID)
                 );
                 if (remaining.length === 0) {
@@ -2155,7 +2139,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           // All orphaned accounts are on base layer — close them
           const anyRemaining = await Promise.all([
             connection.getAccountInfo(gameStatePda, 'processed'),
-            connection.getAccountInfo(mapEnemiesPda, 'processed'),
             connection.getAccountInfo(mapPoisPda, 'processed'),
           ]).then((infos) => infos.some((i) => !!i));
 
@@ -3597,14 +3580,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     // Child accounts (game_state, etc.) can remain delegated even when the session
     // account has been restored, causing end_session to fail with AccountOwnedByWrongProgram.
     const [gameStatePda] = deriveGameStatePda(sessionPda);
-    const [mapEnemiesPda] = deriveMapEnemiesPda(sessionPda);
     const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
     const [mapPoisPda] = deriveMapPoisPda(sessionPda);
     const [inventoryPda] = deriveInventoryPda(sessionPda);
 
     const childInfos = await Promise.all([
       connection.getAccountInfo(gameStatePda, 'processed'),
-      connection.getAccountInfo(mapEnemiesPda, 'processed'),
       connection.getAccountInfo(generatedMapPda, 'processed'),
       connection.getAccountInfo(mapPoisPda, 'processed'),
       connection.getAccountInfo(inventoryPda, 'processed'),
@@ -3670,7 +3651,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const expectedOwners: Array<[PublicKey, PublicKey]> = [
         [sessionPda, SOLANA_CONFIG.programs.sessionManager],
         [gameStatePda, SOLANA_CONFIG.programs.gameplayState],
-        [mapEnemiesPda, SOLANA_CONFIG.programs.gameplayState],
         [generatedMapPda, SOLANA_CONFIG.programs.mapGenerator],
         [mapPoisPda, SOLANA_CONFIG.programs.poiSystem],
         [inventoryPda, SOLANA_CONFIG.programs.playerInventory],
@@ -3921,7 +3901,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     // Child accounts (game_state) can remain delegated even after the session PDA
     // is restored, causing downstream instructions to fail with AccountOwnedByWrongProgram.
     const [gameStatePda] = deriveGameStatePda(sessionPda);
-    const [mapEnemiesPda] = deriveMapEnemiesPda(sessionPda);
     const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
     const [mapPoisPda] = deriveMapPoisPda(sessionPda);
     const [inventoryPda] = deriveInventoryPda(sessionPda);
@@ -3929,7 +3908,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     const expectedOwners: Array<[PublicKey, PublicKey]> = [
       [sessionPda, SOLANA_CONFIG.programs.sessionManager],
       [gameStatePda, SOLANA_CONFIG.programs.gameplayState],
-      [mapEnemiesPda, SOLANA_CONFIG.programs.gameplayState],
       [generatedMapPda, SOLANA_CONFIG.programs.mapGenerator],
       [mapPoisPda, SOLANA_CONFIG.programs.poiSystem],
       [inventoryPda, SOLANA_CONFIG.programs.playerInventory],
@@ -6023,14 +6001,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                 // Wait for ALL account owners to be restored, not just the session PDA.
                 // After ER undelegation, base-layer accounts may take time to propagate.
                 const [gsP] = getGameStatePda(sessionPda);
-                const [meP] = deriveMapEnemiesPda(sessionPda);
                 const [gmP] = deriveGeneratedMapPda(sessionPda);
                 const [mpP] = deriveMapPoisPda(sessionPda);
                 const [invP] = deriveInventoryPda(sessionPda);
                 const expectedOwners: Array<[PublicKey, PublicKey, string]> = [
                   [sessionPda, SOLANA_CONFIG.programs.sessionManager, 'session'],
                   [gsP, SOLANA_CONFIG.programs.gameplayState, 'gameState'],
-                  [meP, SOLANA_CONFIG.programs.gameplayState, 'mapEnemies'],
                   [gmP, SOLANA_CONFIG.programs.mapGenerator, 'generatedMap'],
                   [mpP, SOLANA_CONFIG.programs.poiSystem, 'mapPois'],
                   [invP, SOLANA_CONFIG.programs.playerInventory, 'inventory'],
@@ -6092,13 +6068,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                 // Session PDA is owned by session-manager, but child accounts may
                 // still be delegated from a partial undelegation that timed out.
                 const [gsP] = getGameStatePda(sessionPda);
-                const [meP] = deriveMapEnemiesPda(sessionPda);
                 const [gmP] = deriveGeneratedMapPda(sessionPda);
                 const [mpP] = deriveMapPoisPda(sessionPda);
                 const [invP] = deriveInventoryPda(sessionPda);
                 const childAccounts: Array<[PublicKey, PublicKey, string]> = [
                   [gsP, SOLANA_CONFIG.programs.gameplayState, 'gameState'],
-                  [meP, SOLANA_CONFIG.programs.gameplayState, 'mapEnemies'],
                   [gmP, SOLANA_CONFIG.programs.mapGenerator, 'generatedMap'],
                   [mpP, SOLANA_CONFIG.programs.poiSystem, 'mapPois'],
                   [invP, SOLANA_CONFIG.programs.playerInventory, 'inventory'],
@@ -6458,21 +6432,18 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setUseErForGameplay(false);
 
       const [gameStatePda] = deriveGameStatePda(sessionPda);
-      const [mapEnemiesPda] = deriveMapEnemiesPda(sessionPda);
       const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
       const [inventoryPda] = deriveInventoryPda(sessionPda);
       const [mapPoisPda] = deriveMapPoisPda(sessionPda);
       const [
         sessionInfo,
         gameStateInfo,
-        mapEnemiesInfo,
         generatedMapInfo,
         inventoryInfo,
         mapPoisInfo,
       ] = await Promise.all([
         connection.getAccountInfo(sessionPda, 'processed'),
         connection.getAccountInfo(gameStatePda, 'processed'),
-        connection.getAccountInfo(mapEnemiesPda, 'processed'),
         connection.getAccountInfo(generatedMapPda, 'processed'),
         connection.getAccountInfo(inventoryPda, 'processed'),
         connection.getAccountInfo(mapPoisPda, 'processed'),
@@ -6480,7 +6451,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const stillDelegated =
         !!sessionInfo?.owner.equals(DELEGATION_PROGRAM_ID) ||
         !!gameStateInfo?.owner.equals(DELEGATION_PROGRAM_ID) ||
-        !!mapEnemiesInfo?.owner.equals(DELEGATION_PROGRAM_ID) ||
         !!generatedMapInfo?.owner.equals(DELEGATION_PROGRAM_ID) ||
         !!inventoryInfo?.owner.equals(DELEGATION_PROGRAM_ID) ||
         !!mapPoisInfo?.owner.equals(DELEGATION_PROGRAM_ID);
@@ -6490,7 +6460,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         owners: {
           session: sessionInfo?.owner.toBase58() ?? null,
           gameState: gameStateInfo?.owner.toBase58() ?? null,
-          mapEnemies: mapEnemiesInfo?.owner.toBase58() ?? null,
           generatedMap: generatedMapInfo?.owner.toBase58() ?? null,
           inventory: inventoryInfo?.owner.toBase58() ?? null,
           mapPois: mapPoisInfo?.owner.toBase58() ?? null,
@@ -6552,21 +6521,18 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         const sessionPda = sessionManager.activeSessionPda;
         if (sessionPda) {
           const [gameStatePda] = deriveGameStatePda(sessionPda);
-          const [mapEnemiesPda] = deriveMapEnemiesPda(sessionPda);
           const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
           const [inventoryPda] = deriveInventoryPda(sessionPda);
           const [mapPoisPda] = deriveMapPoisPda(sessionPda);
           const [
             sessionInfo,
             gameStateInfo,
-            mapEnemiesInfo,
             generatedMapInfo,
             inventoryInfo,
             mapPoisInfo,
           ] = await Promise.all([
             connection.getAccountInfo(sessionPda, 'processed'),
             connection.getAccountInfo(gameStatePda, 'processed'),
-            connection.getAccountInfo(mapEnemiesPda, 'processed'),
             connection.getAccountInfo(generatedMapPda, 'processed'),
             connection.getAccountInfo(inventoryPda, 'processed'),
             connection.getAccountInfo(mapPoisPda, 'processed'),
@@ -6574,7 +6540,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           const isStillDelegated =
             !!sessionInfo?.owner.equals(DELEGATION_PROGRAM_ID) ||
             !!gameStateInfo?.owner.equals(DELEGATION_PROGRAM_ID) ||
-            !!mapEnemiesInfo?.owner.equals(DELEGATION_PROGRAM_ID) ||
             !!generatedMapInfo?.owner.equals(DELEGATION_PROGRAM_ID) ||
             !!inventoryInfo?.owner.equals(DELEGATION_PROGRAM_ID) ||
             !!mapPoisInfo?.owner.equals(DELEGATION_PROGRAM_ID);

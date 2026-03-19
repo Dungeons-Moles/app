@@ -19,7 +19,6 @@ import { validateSessionCreation } from '@/services/solana/sessionBundle';
 import {
   deriveSessionPda,
   deriveGameStatePda,
-  deriveMapEnemiesPda,
   deriveMapPoisPda,
   deriveInventoryPda,
   derivePlayerProfilePda,
@@ -70,14 +69,6 @@ describe('Session Bundle Builder', () => {
 
       expect(gameStatePda).toBeDefined();
       expect(gameStatePda.toBase58()).not.toBe(sessionPda.toBase58());
-    });
-
-    it('should derive enemies PDA from session PDA', () => {
-      const [sessionPda] = deriveSessionPda(testWallet, 1);
-      const [enemiesPda] = deriveMapEnemiesPda(sessionPda);
-
-      expect(enemiesPda).toBeDefined();
-      expect(enemiesPda.toBase58()).not.toBe(sessionPda.toBase58());
     });
 
     it('should derive POIs PDA from session PDA', () => {

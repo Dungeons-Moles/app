@@ -3,7 +3,7 @@
  *
  * Creates session initialization transactions. The `start_session` instruction
  * now atomically creates all sub-accounts (GameSession, GeneratedMap, GameState,
- * MapEnemies, PlayerInventory, MapPois) via CPI in a single instruction.
+ * PlayerInventory, MapPois) via CPI in a single instruction.
  */
 
 import {
@@ -18,7 +18,6 @@ import {
   deriveSessionPda,
   deriveSessionCounterPda,
   deriveGameStatePda,
-  deriveMapEnemiesPda,
   deriveMapPoisPda,
   deriveInventoryPda,
   derivePlayerProfilePda,
@@ -43,7 +42,6 @@ export interface SessionBundleResult {
   transaction: Transaction;
   sessionPda: PublicKey;
   gameStatePda: PublicKey;
-  enemiesPda: PublicKey;
   poisPda: PublicKey;
   inventoryPda: PublicKey;
   generatedMapPda: PublicKey;
@@ -67,7 +65,7 @@ export interface SessionPrograms {
  *
  * The `start_session` instruction handles all sub-account creation via CPI:
  * - GeneratedMap (map-generator)
- * - GameState + MapEnemies (gameplay-state)
+ * - GameState (gameplay-state)
  * - MapPois (poi-system)
  * - PlayerInventory (player-inventory)
  */
@@ -84,7 +82,6 @@ export async function createSessionBundle(
   const [sessionCounterPda] = deriveSessionCounterPda();
   const [profilePda] = derivePlayerProfilePda(mainWallet);
   const [gameStatePda] = deriveGameStatePda(sessionPda);
-  const [enemiesPda] = deriveMapEnemiesPda(sessionPda);
   const [poisPda] = deriveMapPoisPda(sessionPda);
   const [inventoryPda] = deriveInventoryPda(sessionPda);
   const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
@@ -102,7 +99,6 @@ export async function createSessionBundle(
       mapConfig: mapConfigPda,
       generatedMap: generatedMapPda,
       gameState: gameStatePda,
-      mapEnemies: enemiesPda,
       mapPois: poisPda,
       inventory: inventoryPda,
       sessionDiscovery: sessionDiscoveryPda,
@@ -126,7 +122,6 @@ export async function createSessionBundle(
     transaction,
     sessionPda,
     gameStatePda,
-    enemiesPda,
     poisPda,
     inventoryPda,
     generatedMapPda,
@@ -164,7 +159,6 @@ export async function endSession(
 ): Promise<Transaction> {
   // Derive additional PDAs
   const [playerProfilePda] = derivePlayerProfilePda(playerPubkey);
-  const [mapEnemiesPda] = deriveMapEnemiesPda(sessionPda);
   const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
   const [mapPoisPda] = deriveMapPoisPda(sessionPda);
   const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
@@ -174,7 +168,6 @@ export async function endSession(
     .accountsPartial({
       gameSession: sessionPda,
       gameState: gameStatePda,
-      mapEnemies: mapEnemiesPda,
       generatedMap: generatedMapPda,
       mapPois: mapPoisPda,
       playerProfile: playerProfilePda,
@@ -224,7 +217,6 @@ export async function abandonSession(
 ): Promise<Transaction> {
   // Derive all PDAs that need to be closed
   const [gameStatePda] = deriveGameStatePda(sessionPda);
-  const [mapEnemiesPda] = deriveMapEnemiesPda(sessionPda);
   const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
   const [mapPoisPda] = deriveMapPoisPda(sessionPda);
   const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
@@ -268,7 +260,6 @@ export async function abandonSession(
     .accountsPartial({
       gameSession: sessionPda,
       gameState: gameStatePda,
-      mapEnemies: mapEnemiesPda,
       generatedMap: generatedMapPda,
       mapPois: mapPoisPda,
       player: playerPubkey,

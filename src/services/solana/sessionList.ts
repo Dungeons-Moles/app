@@ -14,7 +14,6 @@ import {
   GAMEPLAY_STATE_PROGRAM_ID,
   deriveSessionPda,
   deriveGameStatePda,
-  deriveMapEnemiesPda,
   deriveMapPoisPda,
   deriveInventoryPda,
 } from './constants';
@@ -80,8 +79,6 @@ export interface SessionData {
   session: SessionAccount;
   /** Game state account data */
   gameState: GameStateAccount;
-  /** Map enemies account data */
-  enemies: MapEnemiesAccount;
   /** Map POIs account data */
   pois: MapPoisAccount;
   /** Player inventory account data */
@@ -119,11 +116,6 @@ export interface GameStateAccount {
   movesRemaining: number;
   totalMoves: number;
   bossFightReady: boolean;
-}
-
-/** Map enemies account structure */
-export interface MapEnemiesAccount {
-  enemies: EnemyData[];
 }
 
 /** Individual enemy data */
@@ -306,7 +298,7 @@ export async function getSessionForLevel(
  * @param connection - Solana connection
  * @param sessionProgram - Session manager program
  * @param gameplayProgram - Gameplay state program
- * @param enemiesProgram - Field enemies program
+ * @param _enemiesProgram - Unused (kept for API compatibility)
  * @param poisProgram - POI system program
  * @param inventoryProgram - Inventory program
  * @param sessionPda - Session PDA to load
@@ -316,23 +308,21 @@ export async function switchToSession(
   connection: Connection,
   sessionProgram: Program,
   gameplayProgram: Program,
-  enemiesProgram: Program,
+  _enemiesProgram: Program,
   poisProgram: Program,
   inventoryProgram: Program,
   sessionPda: PublicKey
 ): Promise<SessionData | null> {
   // Derive all PDAs
   const [gameStatePda] = deriveGameStatePda(sessionPda);
-  const [enemiesPda] = deriveMapEnemiesPda(sessionPda);
   const [poisPda] = deriveMapPoisPda(sessionPda);
   const [inventoryPda] = deriveInventoryPda(sessionPda);
 
   // Fetch all accounts in parallel
-  const [sessionAccount, gameStateAccount, enemiesAccount, poisAccount, inventoryAccount] =
+  const [sessionAccount, gameStateAccount, poisAccount, inventoryAccount] =
     await connection.getMultipleAccountsInfo([
       sessionPda,
       gameStatePda,
-      enemiesPda,
       poisPda,
       inventoryPda,
     ]);
@@ -345,14 +335,6 @@ export async function switchToSession(
     const session = sessionProgram.coder.accounts.decode('gameSession', sessionAccount.data) as SessionAccount;
 
     const gameState = gameplayProgram.coder.accounts.decode('gameState', gameStateAccount.data) as GameStateAccount;
-
-    // Enemies and POIs might not exist yet
-    const enemies: MapEnemiesAccount = enemiesAccount
-      ? (enemiesProgram.coder.accounts.decode(
-          'mapEnemies',
-          enemiesAccount.data
-        ) as MapEnemiesAccount)
-      : { enemies: [] };
 
     const pois: MapPoisAccount = poisAccount
       ? (poisProgram.coder.accounts.decode('mapPois', poisAccount.data) as MapPoisAccount)
@@ -368,7 +350,6 @@ export async function switchToSession(
     return {
       session,
       gameState,
-      enemies,
       pois,
       inventory,
     };
@@ -392,19 +373,16 @@ export async function fetchSessionRawData(
 ): Promise<{
   sessionAccount: Buffer | null;
   gameStateAccount: Buffer | null;
-  enemiesAccount: Buffer | null;
   poisAccount: Buffer | null;
   inventoryAccount: Buffer | null;
 }> {
   const [gameStatePda] = deriveGameStatePda(sessionPda);
-  const [enemiesPda] = deriveMapEnemiesPda(sessionPda);
   const [poisPda] = deriveMapPoisPda(sessionPda);
   const [inventoryPda] = deriveInventoryPda(sessionPda);
 
   const accounts = await connection.getMultipleAccountsInfo([
     sessionPda,
     gameStatePda,
-    enemiesPda,
     poisPda,
     inventoryPda,
   ]);
@@ -412,9 +390,8 @@ export async function fetchSessionRawData(
   return {
     sessionAccount: accounts[0]?.data ? Buffer.from(accounts[0].data) : null,
     gameStateAccount: accounts[1]?.data ? Buffer.from(accounts[1].data) : null,
-    enemiesAccount: accounts[2]?.data ? Buffer.from(accounts[2].data) : null,
-    poisAccount: accounts[3]?.data ? Buffer.from(accounts[3].data) : null,
-    inventoryAccount: accounts[4]?.data ? Buffer.from(accounts[4].data) : null,
+    poisAccount: accounts[2]?.data ? Buffer.from(accounts[2].data) : null,
+    inventoryAccount: accounts[3]?.data ? Buffer.from(accounts[3].data) : null,
   };
 }
 

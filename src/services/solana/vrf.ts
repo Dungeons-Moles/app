@@ -16,7 +16,6 @@ import {
   derivePoiVrfStatePda,
   deriveGameplayVrfStatePda,
   deriveGeneratedMapPda,
-  deriveMapEnemiesPda,
   deriveGameStatePda,
   deriveMapPoisPda,
   deriveMapConfigPda,
@@ -277,7 +276,6 @@ export async function buildSyncMapEnemiesInstruction(
   options?: { gauntletEchoesPda?: PublicKey; gameplayVrfStatePda?: PublicKey }
 ): Promise<TransactionInstruction> {
   const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
-  const [mapEnemiesPda] = deriveMapEnemiesPda(sessionPda);
   const [gameStatePda] = deriveGameStatePda(sessionPda);
   const [mapPoisPda] = deriveMapPoisPda(sessionPda);
   const [gameplayAuthorityPda] = deriveGameplayAuthorityPda();
@@ -289,7 +287,6 @@ export async function buildSyncMapEnemiesInstruction(
       sessionSigner,
       session: sessionPda,
       generatedMap: generatedMapPda,
-      mapEnemies: mapEnemiesPda,
       gameState: gameStatePda,
       mapPois: mapPoisPda,
       poiSystemProgram: SOLANA_CONFIG.programs.poiSystem,
@@ -370,7 +367,6 @@ export async function buildRefreshDiscoveredEnemiesInstruction(
   sessionSigner: PublicKey
 ): Promise<TransactionInstruction> {
   const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
-  const [mapEnemiesPda] = deriveMapEnemiesPda(sessionPda);
   const [gameStatePda] = deriveGameStatePda(sessionPda);
   const [mapPoisPda] = deriveMapPoisPda(sessionPda);
   const [gameplayAuthorityPda] = deriveGameplayAuthorityPda();
@@ -386,7 +382,6 @@ export async function buildRefreshDiscoveredEnemiesInstruction(
       sessionSigner,
       session: sessionPda,
       generatedMap: generatedMapPda,
-      mapEnemies: mapEnemiesPda,
       gameplayAuthority: gameplayAuthorityPda,
       mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
       sessionDiscovery: sessionDiscoveryPda,

@@ -18,7 +18,6 @@ import { Program } from '@coral-xyz/anchor';
 import { SOLANA_CONFIG } from './config';
 import { sendSessionSignerTransaction, confirmErTransaction } from './sessionSigner';
 import {
-  deriveMapEnemiesPda,
   deriveInventoryPda,
   deriveGeneratedMapPda,
   deriveGameplayAuthorityPda,
@@ -184,7 +183,6 @@ export async function movePlayer(
   sessionSignerKeypair: Keypair,
   params: MovePlayerParams
 ): Promise<{ signature: string; connection: Connection }> {
-  const [mapEnemiesPda] = deriveMapEnemiesPda(sessionPda);
   const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
   const [inventoryPda] = deriveInventoryPda(sessionPda);
   const [gameplayAuthorityPda] = deriveGameplayAuthorityPda();
@@ -232,7 +230,6 @@ export async function movePlayer(
   const keys = [
     { pubkey: gameStatePda, isSigner: false, isWritable: true },
     { pubkey: sessionPda, isSigner: false, isWritable: false },
-    { pubkey: mapEnemiesPda, isSigner: false, isWritable: true },
     { pubkey: generatedMapPda, isSigner: false, isWritable: true },
     { pubkey: inventoryPda, isSigner: false, isWritable: true },
     { pubkey: gameplayAuthorityPda, isSigner: false, isWritable: false },
@@ -339,7 +336,6 @@ export async function triggerBossFight(
   sessionPda: PublicKey,
   sessionSignerKeypair: Keypair
 ): Promise<string> {
-  const [mapEnemiesPda] = deriveMapEnemiesPda(sessionPda);
   const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
   const [inventoryPda] = deriveInventoryPda(sessionPda);
 
@@ -348,7 +344,6 @@ export async function triggerBossFight(
     .accountsPartial({
       gameState: gameStatePda,
       gameSession: sessionPda,
-      mapEnemies: mapEnemiesPda,
       generatedMap: generatedMapPda,
       inventory: inventoryPda,
       playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,

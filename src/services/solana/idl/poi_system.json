@@ -1253,71 +1253,6 @@
           "address": "C8hK4qsqsSYQeqyXuTPTUUS3T7N74WnZCuzvChTpK1Mo"
         },
         {
-          "name": "map_enemies",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  109,
-                  97,
-                  112,
-                  95,
-                  101,
-                  110,
-                  101,
-                  109,
-                  105,
-                  101,
-                  115
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "map_pois.session",
-                "account": "MapPois"
-              }
-            ],
-            "program": {
-              "kind": "const",
-              "value": [
-                165,
-                105,
-                51,
-                195,
-                50,
-                68,
-                93,
-                183,
-                82,
-                141,
-                122,
-                107,
-                195,
-                1,
-                86,
-                30,
-                104,
-                80,
-                170,
-                150,
-                122,
-                133,
-                234,
-                98,
-                181,
-                121,
-                227,
-                35,
-                228,
-                168,
-                136,
-                54
-              ]
-            }
-          }
-        },
-        {
           "name": "gameplay_authority",
           "docs": [
             "Gameplay authority PDA from gameplay-state for CPI into map-generator."
@@ -3021,71 +2956,6 @@
           }
         },
         {
-          "name": "map_enemies",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  109,
-                  97,
-                  112,
-                  95,
-                  101,
-                  110,
-                  101,
-                  109,
-                  105,
-                  101,
-                  115
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "map_pois.session",
-                "account": "MapPois"
-              }
-            ],
-            "program": {
-              "kind": "const",
-              "value": [
-                165,
-                105,
-                51,
-                195,
-                50,
-                68,
-                93,
-                183,
-                82,
-                141,
-                122,
-                107,
-                195,
-                1,
-                86,
-                30,
-                104,
-                80,
-                170,
-                150,
-                122,
-                133,
-                234,
-                98,
-                181,
-                121,
-                227,
-                35,
-                228,
-                168,
-                136,
-                54
-              ]
-            }
-          }
-        },
-        {
           "name": "inventory",
           "docs": [
             "Player's inventory for deriving max_hp and boss fight resolution (mut for gear slot expansion)"
@@ -4401,71 +4271,6 @@
           "name": "session"
         },
         {
-          "name": "map_enemies",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  109,
-                  97,
-                  112,
-                  95,
-                  101,
-                  110,
-                  101,
-                  109,
-                  105,
-                  101,
-                  115
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "map_pois.session",
-                "account": "MapPois"
-              }
-            ],
-            "program": {
-              "kind": "const",
-              "value": [
-                165,
-                105,
-                51,
-                195,
-                50,
-                68,
-                93,
-                183,
-                82,
-                141,
-                122,
-                107,
-                195,
-                1,
-                86,
-                30,
-                104,
-                80,
-                170,
-                150,
-                122,
-                133,
-                234,
-                98,
-                181,
-                121,
-                227,
-                35,
-                228,
-                168,
-                136,
-                54
-              ]
-            }
-          }
-        },
-        {
           "name": "poi_authority",
           "docs": [
             "POI authority PDA for signing CPI calls."
@@ -4783,71 +4588,6 @@
         },
         {
           "name": "session"
-        },
-        {
-          "name": "map_enemies",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  109,
-                  97,
-                  112,
-                  95,
-                  101,
-                  110,
-                  101,
-                  109,
-                  105,
-                  101,
-                  115
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "map_pois.session",
-                "account": "MapPois"
-              }
-            ],
-            "program": {
-              "kind": "const",
-              "value": [
-                165,
-                105,
-                51,
-                195,
-                50,
-                68,
-                93,
-                183,
-                82,
-                141,
-                122,
-                107,
-                195,
-                1,
-                86,
-                30,
-                104,
-                80,
-                170,
-                150,
-                122,
-                133,
-                234,
-                98,
-                181,
-                121,
-                227,
-                35,
-                228,
-                168,
-                136,
-                54
-              ]
-            }
-          }
         },
         {
           "name": "poi_authority",
@@ -6268,19 +6008,6 @@
       ]
     },
     {
-      "name": "MapEnemies",
-      "discriminator": [
-        235,
-        215,
-        210,
-        109,
-        182,
-        109,
-        178,
-        138
-      ]
-    },
-    {
       "name": "MapPois",
       "discriminator": [
         96,
@@ -7410,6 +7137,27 @@
               "Whether gauntlet points have been settled to global accounts."
             ],
             "type": "bool"
+          },
+          {
+            "name": "enemies",
+            "docs": [
+              "Embedded enemy instances (max 48, 5 bytes each).",
+              "Replaces the old separate MapEnemies account."
+            ],
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "EnemyInstance"
+                }
+              }
+            }
+          },
+          {
+            "name": "enemy_count",
+            "docs": [
+              "Actual count of enemies on the map."
+            ],
+            "type": "u8"
           }
         ]
       }
@@ -7811,52 +7559,6 @@
             "name": "version",
             "docs": [
               "Config version for migrations"
-            ],
-            "type": "u8"
-          },
-          {
-            "name": "bump",
-            "docs": [
-              "PDA bump seed"
-            ],
-            "type": "u8"
-          }
-        ]
-      }
-    },
-    {
-      "name": "MapEnemies",
-      "docs": [
-        "On-chain account storing all enemy instances for a map",
-        "PDA Seeds: [\"map_enemies\", session.as_ref()]"
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "session",
-            "docs": [
-              "Parent session PDA"
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "enemies",
-            "docs": [
-              "Enemy instances (max 48)"
-            ],
-            "type": {
-              "vec": {
-                "defined": {
-                  "name": "EnemyInstance"
-                }
-              }
-            }
-          },
-          {
-            "name": "count",
-            "docs": [
-              "Actual count of enemies"
             ],
             "type": "u8"
           },

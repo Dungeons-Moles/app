@@ -38,13 +38,6 @@
           "writable": true
         },
         {
-          "name": "map_enemies",
-          "docs": [
-            "Map enemies account (closed via gameplay-state CPI)"
-          ],
-          "writable": true
-        },
-        {
           "name": "generated_map",
           "docs": [
             "Generated map account (closed via map-generator CPI)"
@@ -260,7 +253,7 @@
         "Close orphaned child accounts after force_close_session already freed the session PDA.",
         "Session PDA no longer exists, so we validate via game_state (which stores session_signer",
         "and player). Only closes accounts that are on base layer (owned by their programs).",
-        "Call order: map_pois → map_enemies → game_state (game_state last since others depend on it)."
+        "Call order: map_pois → game_state (game_state last since others depend on it)."
       ],
       "discriminator": [
         153,
@@ -278,13 +271,6 @@
           "docs": [
             "GameState is the auth source — stores session_signer and player.",
             "May be delegated (skipped if so)."
-          ],
-          "writable": true
-        },
-        {
-          "name": "map_enemies",
-          "docs": [
-            "Map enemies account — may be delegated."
           ],
           "writable": true
         },
@@ -493,10 +479,6 @@
         },
         {
           "name": "game_state",
-          "writable": true
-        },
-        {
-          "name": "map_enemies",
           "writable": true
         },
         {
@@ -1104,211 +1086,6 @@
         },
         {
           "name": "inventory",
-          "writable": true
-        },
-        {
-          "name": "player",
-          "signer": true
-        },
-        {
-          "name": "session_nonces",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  115,
-                  101,
-                  115,
-                  115,
-                  105,
-                  111,
-                  110,
-                  95,
-                  110,
-                  111,
-                  110,
-                  99,
-                  101,
-                  115
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "player"
-              }
-            ]
-          }
-        },
-        {
-          "name": "owner_program",
-          "address": "6w1XVMSTRmZU9AWCKVvKohGAHSFMENhda7vqhKPQ8TPn"
-        },
-        {
-          "name": "delegation_program",
-          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
-        },
-        {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
-        }
-      ],
-      "args": [
-        {
-          "name": "campaign_level",
-          "type": "u8"
-        }
-      ]
-    },
-    {
-      "name": "delegate_map_enemies",
-      "docs": [
-        "Delegates map-enemies account to the MagicBlock delegation program."
-      ],
-      "discriminator": [
-        8,
-        213,
-        179,
-        172,
-        143,
-        234,
-        76,
-        122
-      ],
-      "accounts": [
-        {
-          "name": "buffer_map_enemies",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  98,
-                  117,
-                  102,
-                  102,
-                  101,
-                  114
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "map_enemies"
-              }
-            ],
-            "program": {
-              "kind": "const",
-              "value": [
-                88,
-                32,
-                100,
-                135,
-                223,
-                216,
-                104,
-                241,
-                164,
-                121,
-                21,
-                139,
-                178,
-                138,
-                86,
-                12,
-                169,
-                79,
-                86,
-                46,
-                98,
-                133,
-                38,
-                183,
-                79,
-                139,
-                161,
-                77,
-                8,
-                54,
-                32,
-                153
-              ]
-            }
-          }
-        },
-        {
-          "name": "delegation_record_map_enemies",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  100,
-                  101,
-                  108,
-                  101,
-                  103,
-                  97,
-                  116,
-                  105,
-                  111,
-                  110
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "map_enemies"
-              }
-            ],
-            "program": {
-              "kind": "account",
-              "path": "delegation_program"
-            }
-          }
-        },
-        {
-          "name": "delegation_metadata_map_enemies",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  100,
-                  101,
-                  108,
-                  101,
-                  103,
-                  97,
-                  116,
-                  105,
-                  111,
-                  110,
-                  45,
-                  109,
-                  101,
-                  116,
-                  97,
-                  100,
-                  97,
-                  116,
-                  97
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "map_enemies"
-              }
-            ],
-            "program": {
-              "kind": "account",
-              "path": "delegation_program"
-            }
-          }
-        },
-        {
-          "name": "map_enemies",
           "writable": true
         },
         {
@@ -1999,13 +1776,6 @@
           "writable": true
         },
         {
-          "name": "map_enemies",
-          "docs": [
-            "Map enemies account (closed via gameplay-state CPI)"
-          ],
-          "writable": true
-        },
-        {
           "name": "generated_map",
           "docs": [
             "Generated map account (closed via map-generator CPI)"
@@ -2241,13 +2011,6 @@
           "name": "game_state",
           "docs": [
             "Game state account — may be delegated; validated by PDA derivation in handler."
-          ],
-          "writable": true
-        },
-        {
-          "name": "map_enemies",
-          "docs": [
-            "Map enemies account — may be delegated."
           ],
           "writable": true
         },
@@ -3176,10 +2939,6 @@
           "writable": true
         },
         {
-          "name": "map_enemies",
-          "writable": true
-        },
-        {
           "name": "map_pois",
           "writable": true
         },
@@ -3451,10 +3210,6 @@
           "writable": true
         },
         {
-          "name": "map_enemies",
-          "writable": true
-        },
-        {
           "name": "map_pois",
           "writable": true
         },
@@ -3672,10 +3427,6 @@
         },
         {
           "name": "game_state",
-          "writable": true
-        },
-        {
-          "name": "map_enemies",
           "writable": true
         },
         {

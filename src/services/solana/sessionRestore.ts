@@ -414,7 +414,7 @@ export function buildFogFromOnChainDiscovery(
  * Converts on-chain enemy data to game engine MapEnemy array.
  * Filters out defeated enemies, maps archetype IDs, and looks up stats.
  *
- * @param mapEnemies - On-chain MapEnemies enemy instances (with defeated flag)
+ * @param discoveredEnemies - SessionDiscovery enemy instances (with defeated flag)
  * @param generatedEnemies - GeneratedMap enemy spawns (for initial data)
  * @param enemyCount - Actual enemy count from GeneratedMap
  * @returns Array of MapEnemy for the game engine
@@ -461,10 +461,10 @@ export function convertDiscoveredEnemies(
 }
 
 /**
- * Converts raw enemy data (from MapEnemies) to MapEnemy array.
+ * Converts raw enemy data to MapEnemy array.
  * Used when SessionDiscovery enemy data is stale (e.g., after survey beacon).
  */
-export function convertRawEnemiesToMapEnemies(
+export function convertRawEnemies(
   rawEnemies: Array<{ x: number; y: number; archetypeId: number; tier: number }>
 ): MapEnemy[] {
   const result: MapEnemy[] = [];

@@ -103,8 +103,6 @@ export const PDA_SEEDS = {
   SESSION_COUNTER: 'session_counter',
   /** Game state: ["game_state", session_pda] */
   GAME_STATE: 'game_state',
-  /** Map enemies: ["map_enemies", session_pda] */
-  MAP_ENEMIES: 'map_enemies',
   /** Map POIs: ["map_pois", session_pda] */
   MAP_POIS: 'map_pois',
   /** Generated map: ["generated_map", session_pda] */
@@ -254,19 +252,6 @@ export function deriveSessionCounterPda(): [PublicKey, number] {
 export function deriveGameStatePda(sessionPda: PublicKey): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
     [Buffer.from(PDA_SEEDS.GAME_STATE), sessionPda.toBuffer()],
-    GAMEPLAY_STATE_PROGRAM_ID
-  );
-}
-
-/**
- * Derive MapEnemies PDA for a session.
- *
- * @param sessionPda - Session PDA
- * @returns [PDA, bump]
- */
-export function deriveMapEnemiesPda(sessionPda: PublicKey): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from(PDA_SEEDS.MAP_ENEMIES), sessionPda.toBuffer()],
     GAMEPLAY_STATE_PROGRAM_ID
   );
 }
@@ -507,7 +492,6 @@ export function deriveGauntletEchoesPda(sessionPda: PublicKey): [PublicKey, numb
 /** All session-scoped PDAs derived from a single session PDA. */
 export interface SessionPdas {
   gameStatePda: PublicKey;
-  mapEnemiesPda: PublicKey;
   mapPoisPda: PublicKey;
   inventoryPda: PublicKey;
   generatedMapPda: PublicKey;
@@ -525,7 +509,6 @@ export interface SessionPdas {
 export function deriveSessionPdas(sessionPda: PublicKey): SessionPdas {
   return {
     gameStatePda: deriveGameStatePda(sessionPda)[0],
-    mapEnemiesPda: deriveMapEnemiesPda(sessionPda)[0],
     mapPoisPda: deriveMapPoisPda(sessionPda)[0],
     inventoryPda: deriveInventoryPda(sessionPda)[0],
     generatedMapPda: deriveGeneratedMapPda(sessionPda)[0],
@@ -567,8 +550,6 @@ export const ACCOUNT_SIZES = {
   GAME_SESSION: 8 + 32 + 8 + 1 + 32 + 10 + 32 + 8, // ~131 bytes
   /** GameState account size */
   GAME_STATE: 8 + 32 + 32 + 2 + 2 + 2 + 6 * 2 + 1 + 1 + 1 + 4 + 1, // ~90 bytes
-  /** MapEnemies account size (10 enemies max) */
-  MAP_ENEMIES: 8 + 10 * (1 + 1 + 1 + 2 + 1), // ~68 bytes
   /** MapPois account size (varies) */
   MAP_POIS: 8 + 20 * (1 + 1 + 1 + 1), // ~88 bytes
   /** PlayerInventory account size */

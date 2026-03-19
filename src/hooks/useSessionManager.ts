@@ -28,7 +28,6 @@ import {
   deriveGauntletSessionPda,
   derivePlayerProfilePda,
   deriveGameStatePda,
-  deriveMapEnemiesPda,
   deriveMapPoisPda,
   deriveInventoryPda,
   deriveGeneratedMapPda,
@@ -348,7 +347,6 @@ export function useSessionManager() {
         const [counterPda] = deriveSessionCounterPda();
         const [profilePda] = derivePlayerProfilePda(wallet.publicKey);
         const [gameStatePda] = deriveGameStatePda(sessionPda);
-        const [enemiesPda] = deriveMapEnemiesPda(sessionPda);
         const [poisPda] = deriveMapPoisPda(sessionPda);
         const [inventoryPda] = deriveInventoryPda(sessionPda);
         const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
@@ -371,7 +369,6 @@ export function useSessionManager() {
             generatedMap: generatedMapPda,
             sessionDiscovery: sessionDiscoveryPda,
             gameState: gameStatePda,
-            mapEnemies: enemiesPda,
             mapPois: poisPda,
             inventory: inventoryPda,
             mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
@@ -612,7 +609,6 @@ export function useSessionManager() {
       const [counterPda] = deriveSessionCounterPda();
       const [profilePda] = derivePlayerProfilePda(wallet.publicKey);
       const [gameStatePda] = deriveGameStatePda(sessionPda);
-      const [enemiesPda] = deriveMapEnemiesPda(sessionPda);
       const [poisPda] = deriveMapPoisPda(sessionPda);
       const [inventoryPda] = deriveInventoryPda(sessionPda);
       const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
@@ -634,7 +630,6 @@ export function useSessionManager() {
               generatedMap: PublicKey;
               sessionDiscovery: PublicKey | null;
               gameState: PublicKey;
-              mapEnemies: PublicKey;
               mapPois: PublicKey;
               inventory: PublicKey;
               mapVrfState: PublicKey | null;
@@ -659,7 +654,6 @@ export function useSessionManager() {
           generatedMap: generatedMapPda,
           sessionDiscovery: null, // Skipped — init separately to avoid insufficient lamports
           gameState: gameStatePda,
-          mapEnemies: enemiesPda,
           mapPois: poisPda,
           inventory: inventoryPda,
           mapVrfState: mapVrfStatePda ?? null,
@@ -696,7 +690,6 @@ export function useSessionManager() {
       const [counterPda] = deriveSessionCounterPda();
       const [profilePda] = derivePlayerProfilePda(wallet.publicKey);
       const [gameStatePda] = deriveGameStatePda(sessionPda);
-      const [enemiesPda] = deriveMapEnemiesPda(sessionPda);
       const [poisPda] = deriveMapPoisPda(sessionPda);
       const [inventoryPda] = deriveInventoryPda(sessionPda);
       const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
@@ -718,7 +711,6 @@ export function useSessionManager() {
           generatedMap: generatedMapPda,
           sessionDiscovery: null,
           gameState: gameStatePda,
-          mapEnemies: enemiesPda,
           mapPois: poisPda,
           inventory: inventoryPda,
           mapVrfState: mapVrfStatePda ?? null,
@@ -764,7 +756,6 @@ export function useSessionManager() {
       const [counterPda] = deriveSessionCounterPda();
       const [profilePda] = derivePlayerProfilePda(wallet.publicKey);
       const [gameStatePda] = deriveGameStatePda(sessionPda);
-      const [enemiesPda] = deriveMapEnemiesPda(sessionPda);
       const [poisPda] = deriveMapPoisPda(sessionPda);
       const [inventoryPda] = deriveInventoryPda(sessionPda);
       const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
@@ -782,7 +773,6 @@ export function useSessionManager() {
           generatedMap: generatedMapPda,
           sessionDiscovery: sessionDiscoveryPda,
           gameState: gameStatePda,
-          mapEnemies: enemiesPda,
           mapPois: poisPda,
           inventory: inventoryPda,
           mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
@@ -883,7 +873,6 @@ export function useSessionManager() {
         const [fallbackSessionPda] = deriveSessionPda(wallet.publicKey, onChainLevel);
         const sessionPda = options?.sessionPda ?? activeSessionPdaRef.current ?? fallbackSessionPda;
         const [gameStatePda] = deriveGameStatePda(sessionPda);
-        const [mapEnemiesPda] = deriveMapEnemiesPda(sessionPda);
         const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
         const [inventoryPda] = deriveInventoryPda(sessionPda);
         const [mapPoisPda] = deriveMapPoisPda(sessionPda);
@@ -891,10 +880,6 @@ export function useSessionManager() {
         const [gauntletEchoesPda] = deriveGauntletEchoesPda(sessionPda);
         const gameplayGameStateDelegate = deriveDelegatePdas(
           gameStatePda,
-          SOLANA_CONFIG.programs.gameplayState
-        );
-        const gameplayMapEnemiesDelegate = deriveDelegatePdas(
-          mapEnemiesPda,
           SOLANA_CONFIG.programs.gameplayState
         );
         const generatedMapDelegate = deriveDelegatePdas(
@@ -916,15 +901,11 @@ export function useSessionManager() {
           .delegateGameplayAccounts(delegationValidator)
           .accountsStrict({
             gameState: gameStatePda,
-            mapEnemies: mapEnemiesPda,
             gameSession: sessionPda,
             player: sessionSignerKeypair.publicKey,
             bufferGameState: gameplayGameStateDelegate.buffer,
             delegationRecordGameState: gameplayGameStateDelegate.delegationRecord,
             delegationMetadataGameState: gameplayGameStateDelegate.delegationMetadata,
-            bufferMapEnemies: gameplayMapEnemiesDelegate.buffer,
-            delegationRecordMapEnemies: gameplayMapEnemiesDelegate.delegationRecord,
-            delegationMetadataMapEnemies: gameplayMapEnemiesDelegate.delegationMetadata,
             ownerProgram: SOLANA_CONFIG.programs.gameplayState,
             delegationProgram: DELEGATION_PROGRAM_ID,
             systemProgram: SystemProgram.programId,
@@ -1011,7 +992,7 @@ export function useSessionManager() {
           .instruction();
 
         // Split delegation into 2+ transactions to stay under the 1232-byte tx size limit.
-        // Tx1: gameplay (gameState + mapEnemies) + session
+        // Tx1: gameplay (gameState) + session
         // Tx2: generatedMap + inventory + mapPois
         // Tx3 (optional): VRF state accounts (poi, map, gameplay) — pre-initialized on base,
         //   delegated here so CPI-based VRF requests on ER can write to them.
@@ -1178,7 +1159,6 @@ export function useSessionManager() {
         const [fallbackSessionPda] = deriveSessionPda(wallet.publicKey, onChainLevel);
         const sessionPda = activeSessionPdaRef.current ?? fallbackSessionPda;
         const [gameStatePda] = deriveGameStatePda(sessionPda);
-        const [mapEnemiesPda] = deriveMapEnemiesPda(sessionPda);
         const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
         const [inventoryPda] = deriveInventoryPda(sessionPda);
         const [mapPoisPda] = deriveMapPoisPda(sessionPda);
@@ -1194,7 +1174,6 @@ export function useSessionManager() {
           .accountsPartial({
             gameSession: sessionPda,
             gameState: gameStatePda,
-            mapEnemies: mapEnemiesPda,
             generatedMap: generatedMapPda,
             inventory: inventoryPda,
             mapPois: mapPoisPda,
@@ -1250,7 +1229,6 @@ export function useSessionManager() {
         const [fallbackSessionPda] = deriveSessionPda(wallet.publicKey, onChainLevel);
         const sessionPda = activeSessionPdaRef.current ?? fallbackSessionPda;
         const [gameStatePda] = deriveGameStatePda(sessionPda);
-        const [mapEnemiesPda] = deriveMapEnemiesPda(sessionPda);
         const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
         const [inventoryPda] = deriveInventoryPda(sessionPda);
         const [mapPoisPda] = deriveMapPoisPda(sessionPda);
@@ -1263,7 +1241,6 @@ export function useSessionManager() {
         const [
           baseSessionInfo,
           baseGameStateInfo,
-          baseMapEnemiesInfo,
           baseGeneratedMapInfo,
           baseInventoryInfo,
           baseMapPoisInfo,
@@ -1273,7 +1250,6 @@ export function useSessionManager() {
         ] = await Promise.all([
           baseConnection.getAccountInfo(sessionPda, 'processed'),
           baseConnection.getAccountInfo(gameStatePda, 'processed'),
-          baseConnection.getAccountInfo(mapEnemiesPda, 'processed'),
           baseConnection.getAccountInfo(generatedMapPda, 'processed'),
           baseConnection.getAccountInfo(inventoryPda, 'processed'),
           baseConnection.getAccountInfo(mapPoisPda, 'processed'),
@@ -1286,11 +1262,6 @@ export function useSessionManager() {
         }
         const delegatedSession = !!baseSessionInfo.owner.equals(DELEGATION_PROGRAM_ID);
         const delegatedGameState = !!baseGameStateInfo?.owner.equals(DELEGATION_PROGRAM_ID);
-        const delegatedMapEnemies = !!baseMapEnemiesInfo?.owner.equals(DELEGATION_PROGRAM_ID);
-        // Use atomic undelegate when both are delegated; individual instructions for mixed state.
-        const delegatedGameplayBoth = delegatedGameState && delegatedMapEnemies;
-        const delegatedGameStateOnly = delegatedGameState && !delegatedMapEnemies;
-        const delegatedMapEnemiesOnly = delegatedMapEnemies && !delegatedGameState;
         const delegatedMap = !!baseGeneratedMapInfo?.owner.equals(DELEGATION_PROGRAM_ID);
         const delegatedInventory = !!baseInventoryInfo?.owner.equals(DELEGATION_PROGRAM_ID);
         const delegatedPois = !!baseMapPoisInfo?.owner.equals(DELEGATION_PROGRAM_ID);
@@ -1300,7 +1271,6 @@ export function useSessionManager() {
         const hasAnyDelegated =
           delegatedSession ||
           delegatedGameState ||
-          delegatedMapEnemies ||
           delegatedMap ||
           delegatedInventory ||
           delegatedPois ||
@@ -1409,9 +1379,7 @@ export function useSessionManager() {
         // Log initial account owners for diagnostics
         console.log('[useSessionManager] undelegate: base account owners', {
           session: delegatedSession ? 'DELEGATED' : 'base',
-          gameplayBoth: delegatedGameplayBoth ? 'DELEGATED' : 'base',
-          gameStateOnly: delegatedGameStateOnly ? 'DELEGATED' : 'base',
-          mapEnemiesOnly: delegatedMapEnemiesOnly ? 'DELEGATED' : 'base',
+          gameState: delegatedGameState ? 'DELEGATED' : 'base',
           map: delegatedMap ? 'DELEGATED' : 'base',
           inventory: delegatedInventory ? 'DELEGATED' : 'base',
           pois: delegatedPois ? 'DELEGATED' : 'base',
@@ -1437,14 +1405,13 @@ export function useSessionManager() {
         // Each undelegation TX is independent (different accounts, different programs).
         const childUndelegations: Promise<void>[] = [];
 
-        if (delegatedGameplayBoth) {
+        if (delegatedGameState) {
           childUndelegations.push(tryUndelegateOrSkip(
             async () => {
               const undelegateGameplayTx = await gameplayProgramEr.methods
                 .undelegateGameplayAccounts()
                 .accounts({
                   gameState: gameStatePda,
-                  mapEnemies: mapEnemiesPda,
                   gameSession: sessionPda,
                   sessionSigner: sessionSignerKeypair.publicKey,
                   magicProgram: magicProgramId,
@@ -1455,44 +1422,7 @@ export function useSessionManager() {
             },
             [
               [gameStatePda, SOLANA_CONFIG.programs.gameplayState, 'game_state'],
-              [mapEnemiesPda, SOLANA_CONFIG.programs.gameplayState, 'map_enemies'],
             ],
-            true
-          ));
-        } else if (delegatedGameStateOnly) {
-          childUndelegations.push(tryUndelegateOrSkip(
-            async () => {
-              const tx = await gameplayProgramEr.methods
-                .undelegateGameState()
-                .accounts({
-                  gameState: gameStatePda,
-                  gameSession: sessionPda,
-                  sessionSigner: sessionSignerKeypair.publicKey,
-                  magicProgram: magicProgramId,
-                  magicContext: magicContextId,
-                })
-                .transaction();
-              await sendAndConfirmOnEr(tx, 'game_state');
-            },
-            [[gameStatePda, SOLANA_CONFIG.programs.gameplayState, 'game_state']],
-            true
-          ));
-        } else if (delegatedMapEnemiesOnly) {
-          childUndelegations.push(tryUndelegateOrSkip(
-            async () => {
-              const tx = await gameplayProgramEr.methods
-                .undelegateMapEnemies()
-                .accounts({
-                  mapEnemies: mapEnemiesPda,
-                  gameSession: sessionPda,
-                  sessionSigner: sessionSignerKeypair.publicKey,
-                  magicProgram: magicProgramId,
-                  magicContext: magicContextId,
-                })
-                .transaction();
-              await sendAndConfirmOnEr(tx, 'map_enemies');
-            },
-            [[mapEnemiesPda, SOLANA_CONFIG.programs.gameplayState, 'map_enemies']],
             true
           ));
         }
@@ -1650,9 +1580,6 @@ export function useSessionManager() {
         const allChecks: Array<[PublicKey, PublicKey, string]> = [];
         if (delegatedGameState) {
           allChecks.push([gameStatePda, SOLANA_CONFIG.programs.gameplayState, 'game_state']);
-        }
-        if (delegatedMapEnemies) {
-          allChecks.push([mapEnemiesPda, SOLANA_CONFIG.programs.gameplayState, 'map_enemies']);
         }
         if (delegatedMap) {
           allChecks.push([generatedMapPda, SOLANA_CONFIG.programs.mapGenerator, 'generated_map']);
@@ -1991,7 +1918,6 @@ export function useSessionManager() {
         );
         const sessionPda = activeSessionPdaRef.current ?? fallbackSessionPda;
         const [gameStatePda] = deriveGameStatePda(sessionPda);
-        const [mapEnemiesPda] = deriveMapEnemiesPda(sessionPda);
         const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
         const [mapPoisPda] = deriveMapPoisPda(sessionPda);
         const [inventoryPda] = deriveInventoryPda(sessionPda);
@@ -2020,7 +1946,6 @@ export function useSessionManager() {
           .accounts({
             gameSession: sessionPda,
             gameState: gameStatePda,
-            mapEnemies: mapEnemiesPda,
             generatedMap: generatedMapPda,
             mapPois: mapPoisPda,
             inventory: inventoryPda,
@@ -2076,7 +2001,7 @@ export function useSessionManager() {
    * Close orphaned child accounts after force_close_session already freed the session PDA.
    * Calls session-manager's close_orphaned_accounts which CPIs into child programs.
    * Only closes accounts that are on base layer (owned by their programs).
-   * Order: map_pois → map_enemies → game_state (game_state last since others depend on it).
+   * Order: map_pois → game_state (game_state last since others depend on it).
    */
   const closeOrphanedAccounts = useCallback(
     async (sessionPda: PublicKey, sessionSignerKeypair: Keypair): Promise<TransactionResult> => {
@@ -2086,7 +2011,6 @@ export function useSessionManager() {
 
       try {
         const [gameStatePda] = deriveGameStatePda(sessionPda);
-        const [mapEnemiesPda] = deriveMapEnemiesPda(sessionPda);
         const [mapPoisPda] = deriveMapPoisPda(sessionPda);
 
         const program = createSessionManagerProgram(baseConnection);
@@ -2096,7 +2020,6 @@ export function useSessionManager() {
           .closeOrphanedAccounts()
           .accounts({
             gameState: gameStatePda,
-            mapEnemies: mapEnemiesPda,
             mapPois: mapPoisPda,
             player: wallet.publicKey,
             sessionSigner: sessionSignerKeypair.publicKey,
@@ -2141,7 +2064,6 @@ export function useSessionManager() {
 
       try {
         const [gameStatePda] = deriveGameStatePda(sessionPda);
-        const [mapEnemiesPda] = deriveMapEnemiesPda(sessionPda);
         const [mapPoisPda] = deriveMapPoisPda(sessionPda);
 
         const gameplayProgram = createGameplayStateProgram(baseConnection);
@@ -2149,9 +2071,8 @@ export function useSessionManager() {
         const transaction = new Transaction();
 
         // Check each account and add close_empty_* ix if it exists with 0 data
-        const [gsInfo, meInfo, mpInfo] = await Promise.all([
+        const [gsInfo, mpInfo] = await Promise.all([
           baseConnection.getAccountInfo(gameStatePda, 'confirmed'),
-          baseConnection.getAccountInfo(mapEnemiesPda, 'confirmed'),
           baseConnection.getAccountInfo(mapPoisPda, 'confirmed'),
         ]);
 
@@ -2166,37 +2087,6 @@ export function useSessionManager() {
             })
             .instruction();
           transaction.add(ix);
-        }
-
-        if (meInfo && meInfo.data.length === 0) {
-          console.log('[useSessionManager] Adding close_empty_map_enemies ix');
-          const ix = await gameplayProgram.methods
-            .closeEmptyMapEnemies()
-            .accounts({
-              mapEnemies: mapEnemiesPda,
-              destination: wallet.publicKey,
-              payer: signerKeypair.publicKey,
-            })
-            .instruction();
-          transaction.add(ix);
-        } else if (meInfo && meInfo.data.length > 0) {
-          // map_enemies has valid data but session PDA is gone — use close_orphaned_map_enemies
-          const sessionPdaInfo = await baseConnection.getAccountInfo(sessionPda, 'confirmed');
-          if (!sessionPdaInfo) {
-            console.log(
-              '[useSessionManager] Adding close_orphaned_map_enemies ix (valid data, no session)'
-            );
-            const ix = await gameplayProgram.methods
-              .closeOrphanedMapEnemies()
-              .accounts({
-                mapEnemies: mapEnemiesPda,
-                sessionPda: sessionPda,
-                destination: wallet.publicKey,
-                payer: signerKeypair.publicKey,
-              })
-              .instruction();
-            transaction.add(ix);
-          }
         }
 
         if (gsInfo && gsInfo.data.length === 0) {
@@ -2291,7 +2181,6 @@ export function useSessionManager() {
         const sessionPda = activeSessionPdaRef.current ?? fallbackSessionPda;
         const [gameStatePda] = deriveGameStatePda(sessionPda);
         const [inventoryPda] = deriveInventoryPda(sessionPda);
-        const [mapEnemiesPda] = deriveMapEnemiesPda(sessionPda);
         const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
         const [mapPoisPda] = deriveMapPoisPda(sessionPda);
         const [playerProfilePda] = derivePlayerProfilePda(wallet.publicKey);
@@ -2332,7 +2221,6 @@ export function useSessionManager() {
           .accountsPartial({
             gameSession: sessionPda,
             gameState: gameStatePda,
-            mapEnemies: mapEnemiesPda,
             generatedMap: generatedMapPda,
             mapPois: mapPoisPda,
             playerProfile: playerProfilePda,

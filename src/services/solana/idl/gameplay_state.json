@@ -302,42 +302,6 @@
       "args": []
     },
     {
-      "name": "close_empty_map_enemies",
-      "docs": [
-        "Close a corrupted/empty MapEnemies account (0-byte data).",
-        "After an ER reset, force-undelegation can leave accounts with no data.",
-        "Only works on accounts owned by this program with 0 bytes of data."
-      ],
-      "discriminator": [
-        139,
-        54,
-        126,
-        197,
-        116,
-        49,
-        39,
-        74
-      ],
-      "accounts": [
-        {
-          "name": "map_enemies",
-          "writable": true
-        },
-        {
-          "name": "destination",
-          "docs": [
-            "Receives the lamports from the closed account."
-          ],
-          "writable": true
-        },
-        {
-          "name": "payer",
-          "signer": true
-        }
-      ],
-      "args": []
-    },
-    {
       "name": "close_game_state",
       "docs": [
         "Closes the GameState account, returning rent to player."
@@ -576,79 +540,6 @@
       "args": []
     },
     {
-      "name": "close_map_enemies",
-      "docs": [
-        "Closes the MapEnemies account via session key signer authorization.",
-        "Used by session-manager CPI during end_session to clean up.",
-        "Rent is returned to the player wallet."
-      ],
-      "discriminator": [
-        192,
-        111,
-        190,
-        66,
-        236,
-        132,
-        252,
-        88
-      ],
-      "accounts": [
-        {
-          "name": "map_enemies",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  109,
-                  97,
-                  112,
-                  95,
-                  101,
-                  110,
-                  101,
-                  109,
-                  105,
-                  101,
-                  115
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "game_state.session",
-                "account": "GameState"
-              }
-            ]
-          }
-        },
-        {
-          "name": "game_state",
-          "docs": [
-            "GameState to verify session_signer authorization"
-          ]
-        },
-        {
-          "name": "player",
-          "docs": [
-            "Player wallet receives the rent refund (not a signer)"
-          ],
-          "writable": true
-        },
-        {
-          "name": "session_signer",
-          "docs": [
-            "Session key signer must sign to authorize closure"
-          ],
-          "signer": true,
-          "relations": [
-            "game_state"
-          ]
-        }
-      ],
-      "args": []
-    },
-    {
       "name": "close_orphaned_gauntlet_echoes",
       "docs": [
         "Closes an orphaned GauntletEchoes account whose session PDA no longer exists."
@@ -693,73 +584,6 @@
                 "kind": "account",
                 "path": "gauntlet_echoes.session",
                 "account": "GauntletEchoes"
-              }
-            ]
-          }
-        },
-        {
-          "name": "session_pda",
-          "docs": [
-            "Session PDA must not exist (proves the account is orphaned)."
-          ]
-        },
-        {
-          "name": "destination",
-          "docs": [
-            "Receives the lamports from the closed account."
-          ],
-          "writable": true
-        },
-        {
-          "name": "payer",
-          "signer": true
-        }
-      ],
-      "args": []
-    },
-    {
-      "name": "close_orphaned_map_enemies",
-      "docs": [
-        "Close an orphaned MapEnemies account that has valid data but whose",
-        "session PDA no longer exists. Proves the account is orphaned by",
-        "requiring the session PDA to have 0 lamports."
-      ],
-      "discriminator": [
-        171,
-        1,
-        244,
-        181,
-        5,
-        246,
-        175,
-        195
-      ],
-      "accounts": [
-        {
-          "name": "map_enemies",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  109,
-                  97,
-                  112,
-                  95,
-                  101,
-                  110,
-                  101,
-                  109,
-                  105,
-                  101,
-                  115
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "map_enemies.session",
-                "account": "MapEnemies"
               }
             ]
           }
@@ -901,7 +725,7 @@
     {
       "name": "delegate_gameplay_accounts",
       "docs": [
-        "Delegates GameState and MapEnemies PDAs to MagicBlock from gameplay-state."
+        "Delegates GameState PDA to MagicBlock from gameplay-state."
       ],
       "discriminator": [
         68,
@@ -1047,141 +871,6 @@
         },
         {
           "name": "game_state",
-          "writable": true
-        },
-        {
-          "name": "buffer_map_enemies",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  98,
-                  117,
-                  102,
-                  102,
-                  101,
-                  114
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "map_enemies"
-              }
-            ],
-            "program": {
-              "kind": "const",
-              "value": [
-                165,
-                105,
-                51,
-                195,
-                50,
-                68,
-                93,
-                183,
-                82,
-                141,
-                122,
-                107,
-                195,
-                1,
-                86,
-                30,
-                104,
-                80,
-                170,
-                150,
-                122,
-                133,
-                234,
-                98,
-                181,
-                121,
-                227,
-                35,
-                228,
-                168,
-                136,
-                54
-              ]
-            }
-          }
-        },
-        {
-          "name": "delegation_record_map_enemies",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  100,
-                  101,
-                  108,
-                  101,
-                  103,
-                  97,
-                  116,
-                  105,
-                  111,
-                  110
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "map_enemies"
-              }
-            ],
-            "program": {
-              "kind": "account",
-              "path": "delegation_program"
-            }
-          }
-        },
-        {
-          "name": "delegation_metadata_map_enemies",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  100,
-                  101,
-                  108,
-                  101,
-                  103,
-                  97,
-                  116,
-                  105,
-                  111,
-                  110,
-                  45,
-                  109,
-                  101,
-                  116,
-                  97,
-                  100,
-                  97,
-                  116,
-                  97
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "map_enemies"
-              }
-            ],
-            "program": {
-              "kind": "account",
-              "path": "delegation_program"
-            }
-          }
-        },
-        {
-          "name": "map_enemies",
           "writable": true
         },
         {
@@ -3122,37 +2811,6 @@
           }
         },
         {
-          "name": "map_enemies",
-          "docs": [
-            "Enemy instances seeded from generated map"
-          ],
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  109,
-                  97,
-                  112,
-                  95,
-                  101,
-                  110,
-                  101,
-                  109,
-                  105,
-                  101,
-                  115
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "game_session"
-              }
-            ]
-          }
-        },
-        {
           "name": "player",
           "writable": true,
           "signer": true
@@ -3512,35 +3170,6 @@
         },
         {
           "name": "game_session"
-        },
-        {
-          "name": "map_enemies",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  109,
-                  97,
-                  112,
-                  95,
-                  101,
-                  110,
-                  101,
-                  109,
-                  105,
-                  101,
-                  115
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "game_state.session",
-                "account": "GameState"
-              }
-            ]
-          }
         },
         {
           "name": "generated_map",
@@ -3931,7 +3560,7 @@
           "name": "session",
           "relations": [
             "generated_map",
-            "map_enemies"
+            "game_state"
           ]
         },
         {
@@ -4004,26 +3633,25 @@
           }
         },
         {
-          "name": "map_enemies",
+          "name": "game_state",
           "docs": [
-            "Enemy instances (read-only)."
+            "Game state (read-only) containing enemy instances."
           ],
           "pda": {
             "seeds": [
               {
                 "kind": "const",
                 "value": [
-                  109,
+                  103,
                   97,
-                  112,
-                  95,
-                  101,
-                  110,
-                  101,
                   109,
-                  105,
                   101,
-                  115
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
                 ]
               },
               {
@@ -4171,7 +3799,7 @@
           "name": "session",
           "relations": [
             "generated_map",
-            "map_enemies"
+            "game_state"
           ]
         },
         {
@@ -4244,26 +3872,25 @@
           }
         },
         {
-          "name": "map_enemies",
+          "name": "game_state",
           "docs": [
-            "Enemy instances (read-only)."
+            "Game state (read-only) containing enemy instances."
           ],
           "pda": {
             "seeds": [
               {
                 "kind": "const",
                 "value": [
-                  109,
+                  103,
                   97,
-                  112,
-                  95,
-                  101,
-                  110,
-                  101,
                   109,
-                  105,
                   101,
-                  115
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
                 ]
               },
               {
@@ -5547,7 +5174,7 @@
         "",
         "Called on the Ephemeral Rollup immediately after fill_map_with_seed or",
         "generate_map_with_vrf populates the GeneratedMap. Updates:",
-        "- map_enemies.enemies from generated_map.enemies",
+        "- game_state.enemies from generated_map.enemies",
         "- game_state map dimensions and spawn position (was set to placeholder 50x50/0,0 at init)"
       ],
       "discriminator": [
@@ -5572,7 +5199,6 @@
           "name": "session",
           "relations": [
             "generated_map",
-            "map_enemies",
             "game_state"
           ]
         },
@@ -5646,40 +5272,9 @@
           }
         },
         {
-          "name": "map_enemies",
-          "docs": [
-            "Enemy instances to populate from generated map."
-          ],
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  109,
-                  97,
-                  112,
-                  95,
-                  101,
-                  110,
-                  101,
-                  109,
-                  105,
-                  101,
-                  115
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "session"
-              }
-            ]
-          }
-        },
-        {
           "name": "game_state",
           "docs": [
-            "Game state to update with actual map dimensions and spawn position."
+            "Game state to update with actual map dimensions, spawn position, and enemies."
           ],
           "writable": true,
           "pda": {
@@ -5904,35 +5499,6 @@
           "writable": true
         },
         {
-          "name": "map_enemies",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  109,
-                  97,
-                  112,
-                  95,
-                  101,
-                  110,
-                  101,
-                  109,
-                  105,
-                  101,
-                  115
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "game_state.session",
-                "account": "GameState"
-              }
-            ]
-          }
-        },
-        {
           "name": "generated_map",
           "pda": {
             "seeds": [
@@ -6136,8 +5702,7 @@
     {
       "name": "undelegate_game_state",
       "docs": [
-        "Commits and undelegates only the game_state account from ER back to base layer.",
-        "Used when map_enemies is already on base but game_state is still delegated."
+        "Commits and undelegates only the game_state account from ER back to base layer."
       ],
       "discriminator": [
         175,
@@ -6195,10 +5760,6 @@
           "writable": true
         },
         {
-          "name": "map_enemies",
-          "writable": true
-        },
-        {
           "name": "game_session"
         },
         {
@@ -6236,47 +5797,6 @@
       "accounts": [
         {
           "name": "gauntlet_echoes",
-          "writable": true
-        },
-        {
-          "name": "game_session"
-        },
-        {
-          "name": "session_signer",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "magic_program",
-          "address": "Magic11111111111111111111111111111111111111"
-        },
-        {
-          "name": "magic_context",
-          "writable": true,
-          "address": "MagicContext1111111111111111111111111111111"
-        }
-      ],
-      "args": []
-    },
-    {
-      "name": "undelegate_map_enemies",
-      "docs": [
-        "Commits and undelegates only the map_enemies account from ER back to base layer.",
-        "Used when game_state is already on base but map_enemies is still delegated."
-      ],
-      "discriminator": [
-        49,
-        15,
-        227,
-        105,
-        27,
-        25,
-        71,
-        185
-      ],
-      "accounts": [
-        {
-          "name": "map_enemies",
           "writable": true
         },
         {
@@ -6468,19 +5988,6 @@
         36,
         83,
         95
-      ]
-    },
-    {
-      "name": "MapEnemies",
-      "discriminator": [
-        235,
-        215,
-        210,
-        109,
-        182,
-        109,
-        178,
-        138
       ]
     },
     {
@@ -6834,19 +6341,6 @@
         175,
         231,
         133
-      ]
-    },
-    {
-      "name": "MapEnemiesClosed",
-      "discriminator": [
-        66,
-        210,
-        53,
-        9,
-        131,
-        252,
-        18,
-        171
       ]
     },
     {
@@ -8224,6 +7718,27 @@
               "Whether gauntlet points have been settled to global accounts."
             ],
             "type": "bool"
+          },
+          {
+            "name": "enemies",
+            "docs": [
+              "Embedded enemy instances (max 48, 5 bytes each).",
+              "Replaces the old separate MapEnemies account."
+            ],
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "EnemyInstance"
+                }
+              }
+            }
+          },
+          {
+            "name": "enemy_count",
+            "docs": [
+              "Actual count of enemies on the map."
+            ],
+            "type": "u8"
           }
         ]
       }
@@ -9237,64 +8752,6 @@
           {
             "name": "gold_earned",
             "type": "u16"
-          }
-        ]
-      }
-    },
-    {
-      "name": "MapEnemies",
-      "docs": [
-        "On-chain account storing all enemy instances for a map",
-        "PDA Seeds: [\"map_enemies\", session.as_ref()]"
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "session",
-            "docs": [
-              "Parent session PDA"
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "enemies",
-            "docs": [
-              "Enemy instances (max 48)"
-            ],
-            "type": {
-              "vec": {
-                "defined": {
-                  "name": "EnemyInstance"
-                }
-              }
-            }
-          },
-          {
-            "name": "count",
-            "docs": [
-              "Actual count of enemies"
-            ],
-            "type": "u8"
-          },
-          {
-            "name": "bump",
-            "docs": [
-              "PDA bump seed"
-            ],
-            "type": "u8"
-          }
-        ]
-      }
-    },
-    {
-      "name": "MapEnemiesClosed",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "session",
-            "type": "pubkey"
           }
         ]
       }

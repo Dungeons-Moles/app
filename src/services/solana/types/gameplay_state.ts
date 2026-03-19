@@ -147,8 +147,6 @@ export interface MovePlayerAccounts {
   sessionManager: PublicKey;
   /** GameSession PDA: ["session", player, level] */
   gameSession: PublicKey;
-  /** MapEnemies PDA: ["map_enemies", session] */
-  mapEnemies: PublicKey;
   /** GeneratedMap PDA: ["generated_map", session] */
   generatedMap: PublicKey;
   /** PlayerInventory PDA: ["inventory", session] */
