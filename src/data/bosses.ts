@@ -331,6 +331,247 @@ export const BOSSES: Record<BossId, BossDefinition> = {
     ],
   },
 
+  // Biome B - Week 1 (5 bosses) - Same archetypes as Biome A with +1 SPD (capped at 3)
+  'B-B-W1-01': {
+    id: 'B-B-W1-01',
+    name: 'The Broodmother',
+    emoji: '\u{1F577}\uFE0F',
+    biome: 'B',
+    week: 1,
+    stats: { hp: 24, atk: 2, arm: 1, spd: 3, dig: 1 },
+    weaknessTags: ['STONE', 'FROST'],
+    abilities: [
+      {
+        name: 'Swarm Queen',
+        timing: 'PASSIVE',
+        description: 'Attacks 2 times per turn',
+        params: { strikes: 2 },
+      },
+      {
+        name: 'Webbed Strikes',
+        timing: 'EVERY_OTHER_TURN',
+        description: 'Every other turn, first strike applies 1 Chill',
+        params: { chill: 1 },
+      },
+    ],
+  },
+
+  'B-B-W1-02': {
+    id: 'B-B-W1-02',
+    name: 'Obsidian Golem',
+    emoji: '\u{1F5FF}',
+    biome: 'B',
+    week: 1,
+    stats: { hp: 28, atk: 2, arm: 8, spd: 1, dig: 3 },
+    weaknessTags: ['RUST', 'BLAST'],
+    abilities: [
+      {
+        name: 'Hardened Core',
+        timing: 'TURN_START',
+        description: 'Turn Start: +2 Armor',
+        params: { armor: 2 },
+      },
+      {
+        name: 'Cracked Shell',
+        timing: 'ON_STRUCK',
+        description: 'Taking non-weapon damage removes 2 Armor after damage',
+        params: { armorLoss: 2 },
+      },
+    ],
+  },
+
+  'B-B-W1-03': {
+    id: 'B-B-W1-03',
+    name: 'Gas Anomaly',
+    emoji: '\u2601\uFE0F',
+    biome: 'B',
+    week: 1,
+    stats: { hp: 26, atk: 2, arm: 0, spd: 2, dig: 2 },
+    weaknessTags: ['BLOOD', 'TEMPO'],
+    abilities: [
+      {
+        name: 'Toxic Seep',
+        timing: 'TURN_START',
+        description: 'Turn Start: Deal 1 damage ignoring Armor',
+        params: { damage: 1 },
+      },
+      {
+        name: 'Fume Panic',
+        timing: 'WOUNDED',
+        description: 'Wounded: gain +1 SPD this battle',
+        params: { spd: 1 },
+      },
+    ],
+  },
+
+  'B-B-W1-04': {
+    id: 'B-B-W1-04',
+    name: 'Mad Miner',
+    emoji: '\u26CF\uFE0F',
+    biome: 'B',
+    week: 1,
+    stats: { hp: 26, atk: 2, arm: 3, spd: 3, dig: 3 },
+    weaknessTags: ['SCOUT', 'GREED'],
+    abilities: [
+      {
+        name: 'Undermine',
+        timing: 'BATTLE_START',
+        description: 'Battle Start: if your DIG < boss DIG, you are Exposed for Turn 1 only',
+      },
+      {
+        name: 'Claim Jump',
+        timing: 'FIRST_TURN',
+        description: 'First Turn: if you are Exposed, boss gains +1 strike',
+        params: { strikes: 1 },
+      },
+    ],
+  },
+
+  'B-B-W1-05': {
+    id: 'B-B-W1-05',
+    name: 'Shard Colossus',
+    emoji: '\u{1FAB2}',
+    biome: 'B',
+    week: 1,
+    stats: { hp: 26, atk: 2, arm: 3, spd: 2, dig: 2 },
+    weaknessTags: ['STONE', 'BLOOD'],
+    abilities: [
+      {
+        name: 'Prismatic Spines',
+        timing: 'BATTLE_START',
+        description: 'Battle Start: gain 4 Shrapnel',
+        params: { shrapnel: 4 },
+      },
+      {
+        name: 'Refracting Hide',
+        timing: 'EVERY_OTHER_TURN',
+        description: 'Every other turn: gain +2 Shrapnel',
+        params: { shrapnel: 2 },
+      },
+    ],
+  },
+
+  // Biome B - Week 2 (5 bosses) - Same archetypes as Biome A with +1 SPD (capped at 3)
+  'B-B-W2-01': {
+    id: 'B-B-W2-01',
+    name: 'Drill Sergeant',
+    emoji: '\u{1FA96}',
+    biome: 'B',
+    week: 2,
+    stats: { hp: 34, atk: 2, arm: 6, spd: 3, dig: 3 },
+    weaknessTags: ['FROST', 'TEMPO'],
+    abilities: [
+      {
+        name: 'Rev Up',
+        timing: 'TURN_START',
+        description: 'Turn Start: +1 ATK and +1 SPD this battle',
+        params: { atk: 1, spd: 1 },
+      },
+      {
+        name: 'Formation',
+        timing: 'EVERY_OTHER_TURN',
+        description: 'Every other turn: +1 Armor',
+        params: { armor: 1 },
+      },
+    ],
+  },
+
+  'B-B-W2-02': {
+    id: 'B-B-W2-02',
+    name: 'Crystal Mimic',
+    emoji: '\u{1F48E}',
+    biome: 'B',
+    week: 2,
+    stats: { hp: 36, atk: 3, arm: 5, spd: 3, dig: 2 },
+    weaknessTags: ['BLAST', 'SCOUT'],
+    abilities: [
+      {
+        name: 'Prismatic Reflection',
+        timing: 'PASSIVE',
+        description: '2 reflection stacks (first 2 status applications reflect to you)',
+        params: { reflectionStacks: 2 },
+      },
+      {
+        name: 'Glass Heart',
+        timing: 'PASSIVE',
+        description: 'After reflection is gone, takes +2 non-weapon damage',
+        params: { bonusDamage: 2 },
+      },
+    ],
+  },
+
+  'B-B-W2-03': {
+    id: 'B-B-W2-03',
+    name: 'Rust Regent',
+    emoji: '\u{1F451}\u2623\uFE0F',
+    biome: 'B',
+    week: 2,
+    stats: { hp: 36, atk: 2, arm: 5, spd: 3, dig: 3 },
+    weaknessTags: ['BLOOD', 'TEMPO'],
+    abilities: [
+      {
+        name: 'Corroding Edict',
+        timing: 'ON_HIT',
+        description: 'On Hit (once/turn): apply 1 Rust',
+        params: { rust: 1 },
+      },
+      {
+        name: 'Execution Tax',
+        timing: 'TURN_START',
+        description: 'If you are Exposed at Turn Start, take 1 damage ignoring Armor',
+        params: { damage: 1 },
+      },
+    ],
+  },
+
+  'B-B-W2-04': {
+    id: 'B-B-W2-04',
+    name: 'Powder Keg Baron',
+    emoji: '\u{1F9E8}',
+    biome: 'B',
+    week: 2,
+    stats: { hp: 32, atk: 2, arm: 4, spd: 3, dig: 2 },
+    weaknessTags: ['STONE', 'FROST'],
+    abilities: [
+      {
+        name: 'Volatile Countdown',
+        timing: 'COUNTDOWN',
+        description: 'Countdown(3): deal 8 damage to you and self (non-weapon)',
+        params: { countdown: 3, damage: 8 },
+      },
+      {
+        name: 'Short Fuse',
+        timing: 'WOUNDED',
+        description: 'When Wounded, reduce its Countdown by 1',
+        params: { countdownReduction: 1 },
+      },
+    ],
+  },
+
+  'B-B-W2-05': {
+    id: 'B-B-W2-05',
+    name: 'Greedkeeper',
+    emoji: '\u{1FA99}\u{1F5DD}\uFE0F',
+    biome: 'B',
+    week: 2,
+    stats: { hp: 38, atk: 2, arm: 6, spd: 2, dig: 2 },
+    weaknessTags: ['GREED', 'RUST'],
+    abilities: [
+      {
+        name: 'Toll Collector',
+        timing: 'BATTLE_START',
+        description: 'Battle Start: steal 16 Gold (or all)',
+        params: { goldSteal: 16 },
+      },
+      {
+        name: 'Gilded Barrier',
+        timing: 'BATTLE_START',
+        description: 'Gain Armor equal to stolenGold/4 (cap 4)',
+        params: { armorPerGold: 4, armorCap: 4 },
+      },
+    ],
+  },
+
   // Biome B - Week 3 Finals (2 bosses)
   'B-B-W3-01': {
     id: 'B-B-W3-01',

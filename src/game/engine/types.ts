@@ -286,7 +286,7 @@ export type BossSelectionMode = 'random' | 'campaign';
 
 export type GuestDifficultyId = 'easy' | 'medium' | 'hard';
 
-// Biome A bosses (Week 1: 5, Week 2: 5, Week 3: 2) + Biome B (Week 3: 2)
+// Biome A bosses (Week 1: 5, Week 2: 5, Week 3: 2) + Biome B (Week 1: 5, Week 2: 5, Week 3: 2)
 export type BossId =
   // Biome A - Week 1
   | 'B-A-W1-01' // The Broodmother
@@ -303,6 +303,18 @@ export type BossId =
   // Biome A - Week 3 Finals
   | 'B-A-W3-01' // The Eldritch Mole
   | 'B-A-W3-02' // The Gilded Devourer
+  // Biome B - Week 1
+  | 'B-B-W1-01' // The Broodmother (B)
+  | 'B-B-W1-02' // Obsidian Golem (B)
+  | 'B-B-W1-03' // Gas Anomaly (B)
+  | 'B-B-W1-04' // Mad Miner (B)
+  | 'B-B-W1-05' // Shard Colossus (B)
+  // Biome B - Week 2
+  | 'B-B-W2-01' // Drill Sergeant (B)
+  | 'B-B-W2-02' // Crystal Mimic (B)
+  | 'B-B-W2-03' // Rust Regent (B)
+  | 'B-B-W2-04' // Powder Keg Baron (B)
+  | 'B-B-W2-05' // Greedkeeper (B)
   // Biome B - Week 3 Finals
   | 'B-B-W3-01' // The Frostbound Leviathan
   | 'B-B-W3-02'; // The Rusted Chronomancer

@@ -327,28 +327,13 @@ describe('Boss Selection (T061)', () => {
 
   describe('boss selection distribution', () => {
     it('Week 1 bosses have roughly equal probability', () => {
-      const counts: Record<BossId, number> = {
-        'B-A-W1-01': 0,
-        'B-A-W1-02': 0,
-        'B-A-W1-03': 0,
-        'B-A-W1-04': 0,
-        'B-A-W1-05': 0,
-        'B-A-W2-01': 0,
-        'B-A-W2-02': 0,
-        'B-A-W2-03': 0,
-        'B-A-W2-04': 0,
-        'B-A-W2-05': 0,
-        'B-A-W3-01': 0,
-        'B-A-W3-02': 0,
-        'B-B-W3-01': 0,
-        'B-B-W3-02': 0,
-      };
+      const counts: Partial<Record<BossId, number>> = {};
 
       const iterations = 1000;
       for (let seed = 0; seed < iterations; seed++) {
         const rng = new SeededRNG(seed);
         const boss = selectWeekBoss(1, rng);
-        counts[boss]++;
+        counts[boss] = (counts[boss] ?? 0) + 1;
       }
 
       // Each Week 1 boss should be selected roughly 20% of the time (200 +/- 100)
@@ -358,9 +343,9 @@ describe('Boss Selection (T061)', () => {
       });
 
       // Week 2 and 3 bosses should never be selected for Week 1
-      expect(counts['B-A-W2-01']).toBe(0);
-      expect(counts['B-A-W2-02']).toBe(0);
-      expect(counts['B-A-W3-01']).toBe(0);
+      expect(counts['B-A-W2-01'] ?? 0).toBe(0);
+      expect(counts['B-A-W2-02'] ?? 0).toBe(0);
+      expect(counts['B-A-W3-01'] ?? 0).toBe(0);
     });
   });
 

@@ -701,55 +701,48 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
           )}
           {activeTab === 'pve' && (
             <View style={[styles.pveContent, isCompact && compactStyles.pveContent]}>
-              {/* Left side: image + price */}
-              <View style={[styles.pveLeft, isCompact && compactStyles.pveLeft]}>
-                <Image
-                  source={sessionPapersSource}
-                  style={[styles.sessionImage, isCompact && compactStyles.sessionImage, !isCompact && { width: sessionImageWidth, height: sessionImageHeight }]}
-                  resizeMode="contain"
-                />
-                <Text style={[styles.priceText, isCompact && compactStyles.priceText]}>
-                  Price: 0.05 SOL
-                </Text>
-              </View>
-
-              {/* Right side: payment selector + purchase button */}
-              <View style={[styles.pveRight, isCompact && compactStyles.pveRight]}>
-                <TouchableOpacity
-                  onPress={handlePurchase}
-                  activeOpacity={0.7}
-                  disabled={isPurchasing}
+              <Image
+                source={sessionPapersSource}
+                style={[styles.sessionImage, isCompact && compactStyles.sessionImage, !isCompact && { width: sessionImageWidth, height: sessionImageHeight }]}
+                resizeMode="contain"
+              />
+              <Text style={[styles.priceText, isCompact && compactStyles.priceText]}>
+                Price: 0.05 SOL
+              </Text>
+              <TouchableOpacity
+                onPress={handlePurchase}
+                activeOpacity={0.7}
+                disabled={isPurchasing}
+              >
+                <CachedImageBackground
+                  source={buttonV3Source}
+                  style={[
+                    styles.purchaseButton,
+                    isCompact && compactStyles.purchaseButton,
+                    isPurchasing && { opacity: 0.6 },
+                  ]}
+                  resizeMode="stretch"
                 >
-                  <CachedImageBackground
-                    source={buttonV3Source}
-                    style={[
-                      styles.purchaseButton,
-                      isCompact && compactStyles.purchaseButton,
-                      isPurchasing && { opacity: 0.6 },
-                    ]}
-                    resizeMode="stretch"
-                  >
-                    {isPurchasing ? (
-                      <ActivityIndicator color="#1a1a1a" size={isCompact ? 'large' : 'small'} />
-                    ) : (
-                      <Text
-                        style={[
-                          styles.purchaseButtonText,
-                          isCompact && compactStyles.purchaseButtonText,
-                        ]}
-                      >
-                        Purchase
-                      </Text>
-                    )}
-                  </CachedImageBackground>
-                </TouchableOpacity>
+                  {isPurchasing ? (
+                    <ActivityIndicator color="#1a1a1a" size={isCompact ? 'large' : 'small'} />
+                  ) : (
+                    <Text
+                      style={[
+                        styles.purchaseButtonText,
+                        isCompact && compactStyles.purchaseButtonText,
+                      ]}
+                    >
+                      Purchase
+                    </Text>
+                  )}
+                </CachedImageBackground>
+              </TouchableOpacity>
 
-                {purchaseError && (
-                  <Text style={[styles.errorText, isCompact && compactStyles.errorText]}>
-                    {purchaseError}
-                  </Text>
-                )}
-              </View>
+              {purchaseError && (
+                <Text style={[styles.errorText, isCompact && compactStyles.errorText]}>
+                  {purchaseError}
+                </Text>
+              )}
             </View>
           )}
         </View>
@@ -1003,19 +996,11 @@ const styles = StyleSheet.create({
     color: '#8a7a6a',
   },
   pveContent: {
-    flexDirection: 'row',
+    flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 24,
-    marginTop: 16,
-  },
-  pveLeft: {
-    alignItems: 'center',
-    gap: 4,
-  },
-  pveRight: {
-    alignItems: 'center',
     gap: 8,
+    marginTop: 16,
   },
   sessionImage: {
     width: 262,
@@ -1156,16 +1141,8 @@ const compactStyles = StyleSheet.create({
     fontSize: 38,
   },
   pveContent: {
-    flexDirection: 'column',
     gap: 12,
     marginTop: -40,
-  },
-  pveLeft: {
-    alignItems: 'center',
-  },
-  pveRight: {
-    alignItems: 'center',
-    gap: 12,
   },
   sessionImage: {
     width: 620,

@@ -54,7 +54,7 @@ export function HubSettingsModal({
   const [settingsFocus, setSettingsFocus] = useState(0);
   const hasResetProfileAction = typeof onResetProfile === 'function';
   const maxSettingsFocus = hasResetProfileAction ? 6 : 5;
-  const baseModalHeight = isCompact ? 840 : 420;
+  const baseModalHeight = isCompact ? 960 : 420;
   const maxModalHeight = Math.max(320, height * 0.95);
   const modalScale = Math.min(1, maxModalHeight / baseModalHeight);
   const isTightFit = !isCompact && height < 420;
@@ -534,7 +534,7 @@ const styles = StyleSheet.create({
 const compactStyles = StyleSheet.create({
   settingsModalContent: {
     width: 760,
-    height: 840,
+    height: 960,
     padding: 80,
   },
   settingsModalBody: {

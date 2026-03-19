@@ -116,6 +116,7 @@ export function getFieldEnemyTraitEffects(enemyId: EnemyId, playerGold = 0): Par
 export function getBossTraitEffects(bossId: BossId): ParityEquippedEffect[] {
   switch (bossId) {
     case 'B-A-W1-01':
+    case 'B-B-W1-01':
       return wrapEffects(
         [
           createEffect(Trigger.BattleStart(), 'GainStrikes', 1),
@@ -126,6 +127,7 @@ export function getBossTraitEffects(bossId: BossId): ParityEquippedEffect[] {
         'boss'
       );
     case 'B-A-W1-02':
+    case 'B-B-W1-02':
       return wrapEffects(
         [
           createEffect(Trigger.TurnStart(), 'GainArmor', 2),
@@ -136,6 +138,7 @@ export function getBossTraitEffects(bossId: BossId): ParityEquippedEffect[] {
         'boss'
       );
     case 'B-A-W1-03':
+    case 'B-B-W1-03':
       return wrapEffects(
         [
           createEffect(Trigger.TurnStart(), 'DealNonWeaponDamage', 1),
@@ -146,6 +149,7 @@ export function getBossTraitEffects(bossId: BossId): ParityEquippedEffect[] {
         'boss'
       );
     case 'B-A-W1-04':
+    case 'B-B-W1-04':
       return wrapEffects(
         [
           createEffect(Trigger.FirstTurn(), 'GainStrikes', 1, {
@@ -157,6 +161,7 @@ export function getBossTraitEffects(bossId: BossId): ParityEquippedEffect[] {
         'boss'
       );
     case 'B-A-W1-05':
+    case 'B-B-W1-05':
       return wrapEffects(
         [
           createEffect(Trigger.BattleStart(), 'ApplyShrapnel', 4),
@@ -167,6 +172,7 @@ export function getBossTraitEffects(bossId: BossId): ParityEquippedEffect[] {
         'boss'
       );
     case 'B-A-W2-01':
+    case 'B-B-W2-01':
       return wrapEffects(
         [
           createEffect(Trigger.TurnStart(), 'GainAtk', 1),
@@ -178,6 +184,7 @@ export function getBossTraitEffects(bossId: BossId): ParityEquippedEffect[] {
         'boss'
       );
     case 'B-A-W2-02':
+    case 'B-B-W2-02':
       return wrapEffects(
         [
           createEffect(Trigger.BattleStart(), 'ApplyReflection', 2),
@@ -187,6 +194,7 @@ export function getBossTraitEffects(bossId: BossId): ParityEquippedEffect[] {
         'boss'
       );
     case 'B-A-W2-03':
+    case 'B-B-W2-03':
       return wrapEffects(
         [
           createEffect(Trigger.OnHit(), 'ApplyRust', 1),
@@ -199,6 +207,7 @@ export function getBossTraitEffects(bossId: BossId): ParityEquippedEffect[] {
         'boss'
       );
     case 'B-A-W2-04':
+    case 'B-B-W2-04':
       return wrapEffects(
         [
           createEffect(Trigger.Countdown(3), 'DealNonWeaponDamage', 8),
@@ -210,6 +219,7 @@ export function getBossTraitEffects(bossId: BossId): ParityEquippedEffect[] {
         'boss'
       );
     case 'B-A-W2-05':
+    case 'B-B-W2-05':
       return wrapEffects(
         [
           createEffect(Trigger.BattleStart(), 'StealGold', 16),
