@@ -352,7 +352,12 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
                   <Text style={[styles.profileLabel, isCompact && { fontSize: 22 }]}>
                     SUPPORTED WALLETS
                   </Text>
-                  <View style={styles.walletOptions}>
+                  <View
+                    style={[
+                      styles.walletOptions,
+                      !isCompact && panelDimensions && { gap: Math.max(1, Math.min(8, (panelDimensions.width - 300) / 15)) },
+                    ]}
+                  >
                     {SHOW_DEV_WALLET && (
                       <TouchableOpacity
                         style={[
@@ -444,7 +449,12 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
                           color={styles.walletIconInactive.color}
                           size={isCompact ? 64 : 36}
                         />
-                        <View style={styles.mainnetBanner}>
+                        <View
+                          style={[
+                            styles.mainnetBanner,
+                            isCompact ? styles.mainnetBannerNativeCompact : styles.mainnetBannerNative,
+                          ]}
+                        >
                           <Text
                             style={[
                               styles.mainnetBannerText,
@@ -714,6 +724,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 40,
     paddingVertical: 3,
     transform: [{ rotate: '35deg' }],
+  },
+  mainnetBannerNative: {
+    backgroundColor: '#a33a3a',
+    borderRadius: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    marginTop: 2,
+  },
+  mainnetBannerNativeCompact: {
+    backgroundColor: '#a33a3a',
+    borderRadius: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    marginTop: 4,
   },
   mainnetBannerText: {
     color: '#ffffff',
