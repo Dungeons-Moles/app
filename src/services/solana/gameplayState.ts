@@ -630,6 +630,32 @@ function getStatTypeArg(stat: StatType): { [key: string]: Record<string, never> 
 // ============================================================================
 
 /**
+ * Decodes raw AccountInfo data (from onAccountChange) into a typed GameState.
+ * Returns null if decoding fails.
+ */
+export function decodeGameStateFromAccountInfo(
+  program: Program,
+  data: Buffer | Uint8Array
+): GameState | null {
+  try {
+    const decoded = (program.coder.accounts as any).decode('gameState', data);
+    return decoded ? parseOnChainGameState(decoded) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Clears the per-session account existence caches for a given session.
+ * Call on session end to prevent memory leaks across sessions.
+ */
+export function clearMovePlayerCaches(sessionKey: string): void {
+  vrfStateExistsCache.delete(sessionKey);
+  discoveryExistsCache.delete(sessionKey);
+  gauntletEchoesExistsCache.delete(sessionKey);
+}
+
+/**
  * Calculates move cost for a tile.
  * Floor tile: 1 move
  * Wall tile: max(2, 6 - dig) moves

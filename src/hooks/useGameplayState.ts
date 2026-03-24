@@ -22,6 +22,7 @@ import {
   fetchGameState,
   calculateMoveCost,
   triggerBossFight,
+  decodeGameStateFromAccountInfo,
 } from '@/services/solana/gameplayState';
 import { getUserErrorMessage } from '@/services/solana/errors';
 import {
@@ -38,7 +39,7 @@ import type { CombatEnemyInfo } from '@/services/solana/eventParser';
 import { parseGauntletCombatVisualEvent } from '@/services/solana/gauntlet';
 import type { GauntletCombatVisualEvent } from '@/services/solana/gauntlet';
 import { sendSessionSignerTransaction, confirmErTransaction } from '@/services/solana/sessionSigner';
-import { fetchSessionDiscovery } from '@/services/solana/mapGeneratorClient';
+import { fetchSessionDiscovery, decodeSessionDiscoveryFromAccountInfo } from '@/services/solana/mapGeneratorClient';
 import type { SessionDiscoveryData } from '@/services/solana/mapGeneratorClient';
 import { deriveSessionDiscoveryPda } from '@/services/solana/constants';
 import { createMapGeneratorProgram } from '@/services/solana/programs';
@@ -143,11 +144,18 @@ export function useGameplayState(): UseGameplayStateReturn {
 
   const isMountedRef = useRef(true);
   const refreshInFlightRef = useRef<Promise<GameState | null> | null>(null);
+  const wsSubIdRef = useRef<number | null>(null);
+  const wsListenersRef = useRef<Set<(state: GameState) => void>>(new Set());
+  const wsDiscoverySubIdRef = useRef<number | null>(null);
+  const wsDiscoveryListenersRef = useRef<Set<(data: SessionDiscoveryData) => void>>(new Set());
+  const latestDiscoveryRef = useRef<SessionDiscoveryData | null>(null);
 
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
+      wsListenersRef.current.clear();
+      wsDiscoveryListenersRef.current.clear();
     };
   }, []);
 
@@ -224,6 +232,46 @@ export function useGameplayState(): UseGameplayStateReturn {
     setGameStatePdaState(pda);
     setSyncStatus(pda ? 'syncing' : 'synced');
   }, []);
+
+  /**
+   * Wait for the next WebSocket-delivered GameState update.
+   * Races a one-shot WS listener against a timeout that falls back to explicit fetch.
+   */
+  const waitForNextWsState = useCallback(
+    (timeoutMs: number = 500): Promise<GameState | null> => {
+      if (!program || !gameStatePda) return Promise.resolve(null);
+
+      const prog = program;
+      const pda = gameStatePda;
+
+      return new Promise<GameState | null>((resolve) => {
+        let resolved = false;
+        const done = (state: GameState | null) => {
+          if (resolved) return;
+          resolved = true;
+          wsListenersRef.current.delete(listener);
+          resolve(state);
+        };
+
+        // WS path: resolve when the subscription pushes a state update
+        const listener = (state: GameState) => done(state);
+        wsListenersRef.current.add(listener);
+
+        // Timeout fallback: explicit fetch if WS doesn't deliver in time
+        setTimeout(async () => {
+          if (resolved) return;
+          console.warn(`[useGameplayState] WS timeout after ${timeoutMs}ms, falling back to fetch`);
+          try {
+            const fetched = await fetchGameState(prog, pda);
+            done(fetched);
+          } catch {
+            done(null);
+          }
+        }, timeoutMs);
+      });
+    },
+    [program, gameStatePda]
+  );
 
   /**
    * Initialize a new game state for a session.
@@ -347,6 +395,30 @@ export function useGameplayState(): UseGameplayStateReturn {
       try {
         const t0 = Date.now();
         const sessionPda = currentGameState.session;
+
+        // Register WS listeners BEFORE sending the tx to avoid missing fast notifications.
+        // The ER can process and push within ms of receiving the tx from the router.
+        const wsStatePromise = waitForNextWsState(500);
+        // Discovery WS arrives ~140ms after gameState (ER pushes accounts sequentially).
+        // We must wait for it to get fresh tile/fog-of-war data for the caller.
+        const wsDiscoveryPromise = new Promise<SessionDiscoveryData | null>((resolve) => {
+          let resolved = false;
+          const listener = (data: SessionDiscoveryData) => {
+            if (resolved) return;
+            resolved = true;
+            wsDiscoveryListenersRef.current.delete(listener);
+            resolve(data);
+          };
+          wsDiscoveryListenersRef.current.add(listener);
+          // Timeout: fall back to latest cached discovery
+          setTimeout(() => {
+            if (resolved) return;
+            resolved = true;
+            wsDiscoveryListenersRef.current.delete(listener);
+            resolve(latestDiscoveryRef.current);
+          }, 500);
+        });
+
         const moveResult = await movePlayer(
           gameplayConnection,
           program,
@@ -358,47 +430,55 @@ export function useGameplayState(): UseGameplayStateReturn {
         const { signature, connection: moveConnection } = moveResult;
         const tSent = Date.now();
 
-        // Run confirmation, state fetch, combat parse, AND discovery fetch ALL in parallel.
-        // The ER processes the tx in ~50ms, so by the time the fetches arrive
-        // (~150ms from Brazil), the state already reflects the move.
-        // Only parse combat logs during night phases (enemy-initiated combat).
-        // Day combat uses local enemy data (enemyAtTarget). Skipping the TX log
-        // parse saves one RPC call from the parallel batch.
+        // Await WS state first (0-7ms), then conditionally parse combat only if HP changed.
+        // - confirmErTransaction: runs in background (WS notification IS implicit confirmation)
+        // - discovery: WS subscription updates latestDiscoveryRef in background
+        // - combat parse: only when HP decreased or player died (avoids ~200-400ms RPC on
+        //   non-combat night moves)
+        const tParallel = Date.now();
+
+        // Background confirmation for error logging only
+        confirmErTransaction(moveConnection, signature).catch((err) => {
+          console.error('[useGameplayState] Background confirm failed:', err);
+        });
+
+        // Await gameState + discovery WS in parallel. GameState arrives in ~0-8ms,
+        // discovery in ~140ms. Combat parse only runs after wsState if HP changed.
+        const [confirmedState, wsDiscoveryData] = await Promise.all([
+          wsStatePromise,
+          wsDiscoveryPromise,
+        ]);
+
+        // Only parse combat logs when the WS-delivered state shows HP changed or death.
+        // This skips the expensive getTransaction RPC call on non-combat night moves.
         const isNightPhase = previousState.phase === Phase.Night1 ||
           previousState.phase === Phase.Night2 ||
           previousState.phase === Phase.Night3;
-        const [sdPda] = deriveSessionDiscoveryPda(sessionPda);
-        const [, confirmedState, combatResult, discoveryData] = await Promise.all([
-          confirmErTransaction(moveConnection, signature),
-          fetchGameState(program, gameStatePda),
-          isNightPhase
-            ? parseCombatInfoWithRetry(
-                gameplayConnection,
-                program,
-                signature,
-                'move',
-                { maxAttempts: 1, delayMs: 0, quiet: true }
-              )
-            : Promise.resolve({ combatEnemyInfo: undefined }),
-          fetchSessionDiscovery(
-            createMapGeneratorProgram(moveConnection),
-            sdPda
-          ).catch(() => null),
-        ]);
-        const tDone = Date.now();
-        console.log(`[perf] move total: ${tDone - t0}ms (send: ${tSent - t0}ms, fetch: ${tDone - tSent}ms)`)
+        const hpOrDeathChangedEarly =
+          confirmedState != null && (confirmedState.hp < previousState.hp || confirmedState.isDead);
+        let combatResult: { combatEnemyInfo?: CombatEnemyInfo } = { combatEnemyInfo: undefined };
+        if (isNightPhase && hpOrDeathChangedEarly) {
+          combatResult = await parseCombatInfoWithRetry(
+            gameplayConnection,
+            program,
+            signature,
+            'move',
+            { maxAttempts: 1, delayMs: 0, quiet: true }
+          );
+        }
 
-        // Re-fetch discovery when the on-chain state diverged from pre-move state.
-        // The parallel fetch above may return stale pre-move data because it races
-        // with tx confirmation. This affects:
-        // - Phase transitions (Night→Day): visibility radius changes (2→4 tiles)
-        // - Boss/echo resolution: week advances, new boss ID written to discovery
-        let finalDiscovery = discoveryData;
+        const tDone = Date.now();
+        console.log(`[perf] move: ${tDone - t0}ms (send: ${tSent - t0}ms, ws: ${tDone - tSent}ms)`)
+
+        // Use WS-delivered discovery data. Re-fetch via RPC only on phase/week transitions
+        // where the WS data might be stale (visibility radius changes, boss ID updates).
+        let finalDiscovery: SessionDiscoveryData | null = wsDiscoveryData;
         if (
           confirmedState &&
           (confirmedState.phase !== previousState.phase ||
            confirmedState.week !== previousState.week)
         ) {
+          const [sdPda] = deriveSessionDiscoveryPda(sessionPda);
           const freshDiscovery = await fetchSessionDiscovery(
             createMapGeneratorProgram(moveConnection),
             sdPda
@@ -530,7 +610,7 @@ export function useGameplayState(): UseGameplayStateReturn {
         return { success: false };
       }
     },
-    [gameplayConnection, gameState, gameStatePda, program]
+    [gameplayConnection, gameState, gameStatePda, program, waitForNextWsState]
   );
 
   /**
@@ -554,8 +634,8 @@ export function useGameplayState(): UseGameplayStateReturn {
       try {
         await modifyStat(gameplayConnection, program, gameStatePda, sessionSignerKeypair, params);
 
-        // Fetch confirmed state
-        const confirmedState = await fetchGameState(program, gameStatePda);
+        // Wait for WS-delivered state (falls back to fetch after 500ms)
+        const confirmedState = await waitForNextWsState(500);
 
         if (isMountedRef.current) {
           setGameState(confirmedState);
@@ -578,7 +658,7 @@ export function useGameplayState(): UseGameplayStateReturn {
         return { success: false };
       }
     },
-    [gameplayConnection, gameState, gameStatePda, program]
+    [gameplayConnection, gameState, gameStatePda, program, waitForNextWsState]
   );
 
   /**
@@ -629,8 +709,12 @@ export function useGameplayState(): UseGameplayStateReturn {
           sessionPda,
           sessionSignerKeypair
         );
-        // Fire state fetch and compact combat metadata parse in parallel
-        const statePromise = fetchGameState(prog, gameStatePda);
+        // Fire WS state wait and compact combat metadata parse in parallel.
+        // When overrides are provided (gauntlet uses base-layer connection),
+        // fall back to explicit fetch since WS subscription is on gameplayReadConnection.
+        const statePromise = overrides
+          ? fetchGameState(prog, gameStatePda)
+          : waitForNextWsState(1000);
         const combatPromise = signature
           ? parseCombatInfoWithRetry(conn, prog, signature, 'boss', {
               maxAttempts: 2,
@@ -668,7 +752,7 @@ export function useGameplayState(): UseGameplayStateReturn {
         return { success: false };
       }
     },
-    [gameplayConnection, gameState, gameStatePda, program]
+    [gameplayConnection, gameState, gameStatePda, program, waitForNextWsState]
   );
 
   /**
@@ -722,25 +806,113 @@ export function useGameplayState(): UseGameplayStateReturn {
     [gameState?.dig]
   );
 
-  // Auto-refresh when gameStatePda changes.
-  // Includes a retry for ER propagation: after delegation, the ER may take a
-  // moment to receive the account, so a single fetch can return null.
+  // WebSocket subscription for real-time GameState updates.
+  // Replaces polling-based refresh — the ER pushes state changes via WS,
+  // eliminating an RPC roundtrip per move (~150ms from high-latency locations).
+  // Also does an immediate fetch for initial state (WS only fires on changes).
   useEffect(() => {
     if (!gameStatePda || !program) return;
     let cancelled = false;
+
+    // Set up WS subscription on the read connection (resolved ER validator)
+    try {
+      wsSubIdRef.current = gameplayReadConnection.onAccountChange(
+        gameStatePda,
+        (accountInfo) => {
+          const decoded = decodeGameStateFromAccountInfo(program, accountInfo.data);
+          if (!decoded || cancelled) return;
+
+          if (isMountedRef.current) {
+            setGameState(decoded);
+            setSyncStatus('synced');
+            setLastSyncAt(Date.now());
+          }
+
+          // Notify one-shot listeners (from move/triggerBoss/updateStat)
+          wsListenersRef.current.forEach((fn) => fn(decoded));
+          wsListenersRef.current.clear();
+        },
+        'processed'
+      );
+    } catch (err) {
+      console.warn('[useGameplayState] WS subscription setup failed:', err);
+    }
+
+    // Immediate fetch for initial state + ER propagation retry
     (async () => {
-      const state = await refresh();
-      if (state || cancelled) return;
+      const state = await fetchGameState(program, gameStatePda);
+      if ((state && isMountedRef.current && !cancelled)) {
+        setGameState(state);
+        setSyncStatus('synced');
+        setLastSyncAt(Date.now());
+        return;
+      }
+      if (cancelled) return;
       // ER propagation delay — retry up to 3 times with 800ms gaps
       for (let attempt = 1; attempt <= 3; attempt++) {
         await new Promise((r) => setTimeout(r, 800));
         if (cancelled) return;
-        const retryState = await refresh();
-        if (retryState || cancelled) return;
+        const retryState = await fetchGameState(program, gameStatePda);
+        if (retryState && isMountedRef.current && !cancelled) {
+          setGameState(retryState);
+          setSyncStatus('synced');
+          setLastSyncAt(Date.now());
+          return;
+        }
       }
     })();
-    return () => { cancelled = true; };
-  }, [gameStatePda, program, refresh]);
+
+    return () => {
+      cancelled = true;
+      wsListenersRef.current.clear();
+      if (wsSubIdRef.current !== null) {
+        void gameplayReadConnection
+          .removeAccountChangeListener(wsSubIdRef.current)
+          .catch(() => {});
+        wsSubIdRef.current = null;
+      }
+    };
+  }, [gameStatePda, program, gameplayReadConnection]);
+
+  // WebSocket subscription for SessionDiscovery updates.
+  // Set up once we know the session PDA (from gameState.session).
+  const sessionPdaForDiscovery = gameState?.session;
+  useEffect(() => {
+    if (!sessionPdaForDiscovery || !gameplayReadConnection) return;
+    let cancelled = false;
+
+    const [sdPda] = deriveSessionDiscoveryPda(sessionPdaForDiscovery);
+    const mapProgram = createMapGeneratorProgram(gameplayReadConnection);
+
+    try {
+      wsDiscoverySubIdRef.current = gameplayReadConnection.onAccountChange(
+        sdPda,
+        (accountInfo) => {
+          if (cancelled) return;
+          const decoded = decodeSessionDiscoveryFromAccountInfo(mapProgram, accountInfo.data);
+          if (!decoded) return;
+
+          latestDiscoveryRef.current = decoded;
+          wsDiscoveryListenersRef.current.forEach((fn) => fn(decoded));
+          wsDiscoveryListenersRef.current.clear();
+        },
+        'processed'
+      );
+    } catch (err) {
+      console.warn('[useGameplayState] Discovery WS subscription setup failed:', err);
+    }
+
+    return () => {
+      cancelled = true;
+      wsDiscoveryListenersRef.current.clear();
+      if (wsDiscoverySubIdRef.current !== null) {
+        void gameplayReadConnection
+          .removeAccountChangeListener(wsDiscoverySubIdRef.current)
+          .catch(() => {});
+        wsDiscoverySubIdRef.current = null;
+      }
+    };
+  }, [sessionPdaForDiscovery?.toBase58(), gameplayReadConnection]);
 
   return {
     gameState,

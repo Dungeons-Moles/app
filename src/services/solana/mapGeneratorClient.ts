@@ -97,3 +97,19 @@ export async function fetchSessionDiscovery(
     return null;
   }
 }
+
+/**
+ * Decodes raw AccountInfo data (from onAccountChange) into SessionDiscoveryData.
+ * Returns null if decoding fails.
+ */
+export function decodeSessionDiscoveryFromAccountInfo(
+  program: Program,
+  data: Buffer | Uint8Array
+): SessionDiscoveryData | null {
+  try {
+    const decoded = (program.coder.accounts as any).decode('sessionDiscovery', data);
+    return (decoded as SessionDiscoveryData) ?? null;
+  } catch {
+    return null;
+  }
+}
