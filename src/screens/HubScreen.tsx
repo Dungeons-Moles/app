@@ -2834,7 +2834,7 @@ const styles = StyleSheet.create({
 
   // SHARED MODAL STYLES (used by Skins, Ranks, Quests modals)
   marketplaceModal: {
-    width: 431,
+    width: 458,
     height: 380,
     position: 'relative',
     overflow: 'hidden',
@@ -2842,7 +2842,7 @@ const styles = StyleSheet.create({
   marketplaceBg: {
     position: 'absolute',
     top: (380 - 453) / 2,
-    left: (431 - 380) / 2,
+    left: (458 - 380) / 2,
     width: 380,
     height: 453,
     transform: [{ rotate: '90deg' }],
@@ -3194,12 +3194,12 @@ const compactStyles = StyleSheet.create({
   },
   // Shared modals (Skins, Ranks, Quests) — scaled up for compact
   marketplaceModal: {
-    width: 860,
+    width: 910,
     height: 760,
   },
   marketplaceBg: {
     top: (760 - 906) / 2,
-    left: (860 - 760) / 2,
+    left: (910 - 760) / 2,
     width: 760,
     height: 906,
   },
