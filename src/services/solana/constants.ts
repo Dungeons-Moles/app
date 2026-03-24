@@ -587,8 +587,8 @@ export const RUNS_PER_PURCHASE = 20;
 /** Minimum lamports to keep in sessionSigner wallet */
 export const MIN_SESSION_SIGNER_BALANCE = 5_000;
 
-/** Default sessionSigner wallet funding amount (0.05 SOL) */
-export const DEFAULT_SESSION_SIGNER_FUNDING = 50_000_000;
+/** Default sessionSigner wallet funding amount (0.1 SOL) */
+export const DEFAULT_SESSION_SIGNER_FUNDING = 100_000_000;
 
 // ============================================================================
 // Game Constants

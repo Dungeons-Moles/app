@@ -27,7 +27,7 @@ import { SOLANA_CONFIG } from './config';
  * Covers delegation buffer/record/metadata rent (~24 PDAs × ~0.0016 SOL each ≈ 0.038 SOL)
  * plus base-layer tx fees. Rent is reclaimed at undelegation/session close.
  */
-export const DEFAULT_FUND_AMOUNT = 50_000_000; // lamports
+export const DEFAULT_FUND_AMOUNT = 100_000_000; // 0.1 SOL — covers delegation rent for 3 VRF states + gameplay txs
 
 /** Low balance warning threshold (0.005 SOL) */
 export const LOW_BALANCE_THRESHOLD = 5_000_000; // lamports

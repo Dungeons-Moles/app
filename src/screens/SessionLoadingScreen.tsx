@@ -125,6 +125,7 @@ export function SessionLoadingScreen({ navigation }: SessionLoadingScreenProps) 
           cancelled = true;
           clearTimeout(timeout);
           clearSessionSetup();
+          console.error('[SessionLoadingScreen] Session setup failed:', err.message, err);
           exitWithError('Session Failed', err.message);
         }
       });

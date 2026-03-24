@@ -163,10 +163,26 @@ export function useGauntlet() {
         owner: gauntletEchoesInfo.owner.toBase58(),
       });
 
-      if (!gauntletEchoesInfo.owner.equals(SOLANA_CONFIG.programs.gameplayState)) {
-        throw new Error(
-          `Orphaned gauntlet echoes is not owned by gameplay-state: ${gauntletEchoesInfo.owner.toBase58()}`
+      // Skip if account is delegated (owned by delegation program, not gameplay-state)
+      const DELEGATION_PROGRAM_ID = new PublicKey('DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh');
+      if (
+        !gauntletEchoesInfo.owner.equals(SOLANA_CONFIG.programs.gameplayState) &&
+        !gauntletEchoesInfo.owner.equals(DELEGATION_PROGRAM_ID)
+      ) {
+        console.warn(
+          '[useGauntlet] closeOrphanedGauntletEchoes:unexpected_owner, skipping',
+          gauntletEchoesInfo.owner.toBase58()
         );
+        return;
+      }
+
+      // If delegated, the account is still active on the ER — not truly orphaned
+      if (gauntletEchoesInfo.owner.equals(DELEGATION_PROGRAM_ID)) {
+        console.warn(
+          '[useGauntlet] closeOrphanedGauntletEchoes:account_delegated, skipping',
+          gauntletEchoesPda.toBase58()
+        );
+        return;
       }
 
       console.log('[useGauntlet] closeOrphanedGauntletEchoes:start', {
@@ -174,34 +190,49 @@ export function useGauntlet() {
         gauntletEchoesPda: gauntletEchoesPda.toBase58(),
       });
 
-      const gameplayProgram = createGameplayStateProgram(connection);
-      const transaction = await (gameplayProgram.methods as any)
-        .closeOrphanedGauntletEchoes()
-        .accounts({
-          gauntletEchoes: gauntletEchoesPda,
-          sessionPda,
-          destination: wallet.publicKey,
-          payer: wallet.publicKey,
-        })
-        .transaction();
+      try {
+        const gameplayProgram = createGameplayStateProgram(connection);
+        const transaction = await (gameplayProgram.methods as any)
+          .closeOrphanedGauntletEchoes()
+          .accounts({
+            gauntletEchoes: gauntletEchoesPda,
+            sessionPda,
+            destination: wallet.publicKey,
+            payer: wallet.publicKey,
+          })
+          .transaction();
 
-      const signature = await signAndSendTransaction(transaction, { connection });
-      await connection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
+        const signature = await signAndSendTransaction(transaction, { connection });
+        await connection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
 
-      const postCloseInfo = await connection.getAccountInfo(
-        gauntletEchoesPda,
-        SOLANA_CONFIG.commitment
-      );
-      if (postCloseInfo) {
-        throw new Error(
-          `Orphaned gauntlet echoes still exists after close attempt: ${gauntletEchoesPda.toBase58()}`
+        const postCloseInfo = await connection.getAccountInfo(
+          gauntletEchoesPda,
+          SOLANA_CONFIG.commitment
         );
+        if (postCloseInfo) {
+          console.warn(
+            '[useGauntlet] closeOrphanedGauntletEchoes:still_exists_after_close',
+            gauntletEchoesPda.toBase58()
+          );
+        } else {
+          console.log('[useGauntlet] closeOrphanedGauntletEchoes:done', {
+            signature,
+            gauntletEchoesPda: gauntletEchoesPda.toBase58(),
+          });
+        }
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err ?? '');
+        // AccountDiscriminatorNotFound (0xbb9 / 3001) — account data is corrupted
+        // or in an intermediate undelegation state. Skip rather than blocking entry.
+        if (errMsg.includes('3001') || errMsg.includes('0xbb9') || errMsg.includes('AccountDiscriminatorNotFound')) {
+          console.warn(
+            '[useGauntlet] closeOrphanedGauntletEchoes:discriminator_not_found, skipping',
+            gauntletEchoesPda.toBase58()
+          );
+          return;
+        }
+        throw err;
       }
-
-      console.log('[useGauntlet] closeOrphanedGauntletEchoes:done', {
-        signature,
-        gauntletEchoesPda: gauntletEchoesPda.toBase58(),
-      });
     },
     [connection, signAndSendTransaction, wallet.publicKey]
   );
