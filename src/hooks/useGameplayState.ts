@@ -83,6 +83,8 @@ export interface UseGameplayStateReturn {
     bossResolvedInline?: boolean;
     /** Player HP at the start of the boss fight (from CombatStarted event) */
     preBossPlayerHp?: number;
+    /** Boss ID from BossCombatStarted event (authoritative, avoids stale weekBoss) */
+    inlineBossId?: string;
     /** Gauntlet echo combat visual (from inline resolution in move_player) */
     gauntletCombatVisual?: GauntletCombatVisualEvent | null;
     /** Updated SessionDiscovery data (tiles, enemies, POIs) after the move */
@@ -300,6 +302,7 @@ export function useGameplayState(): UseGameplayStateReturn {
       signature?: string;
       bossResolvedInline?: boolean;
       preBossPlayerHp?: number;
+      inlineBossId?: string;
       gauntletCombatVisual?: GauntletCombatVisualEvent | null;
       discovery?: SessionDiscoveryData | null;
     }> => {
@@ -383,7 +386,27 @@ export function useGameplayState(): UseGameplayStateReturn {
           ).catch(() => null),
         ]);
         const tDone = Date.now();
-        console.log(`[perf] move total: ${tDone - t0}ms (send: ${tSent - t0}ms, fetch: ${tDone - tSent}ms)`);
+        console.log(`[perf] move total: ${tDone - t0}ms (send: ${tSent - t0}ms, fetch: ${tDone - tSent}ms)`)
+
+        // Re-fetch discovery when the on-chain state diverged from pre-move state.
+        // The parallel fetch above may return stale pre-move data because it races
+        // with tx confirmation. This affects:
+        // - Phase transitions (Night→Day): visibility radius changes (2→4 tiles)
+        // - Boss/echo resolution: week advances, new boss ID written to discovery
+        let finalDiscovery = discoveryData;
+        if (
+          confirmedState &&
+          (confirmedState.phase !== previousState.phase ||
+           confirmedState.week !== previousState.week)
+        ) {
+          const freshDiscovery = await fetchSessionDiscovery(
+            createMapGeneratorProgram(moveConnection),
+            sdPda
+          ).catch(() => null);
+          if (freshDiscovery) {
+            finalDiscovery = freshDiscovery;
+          }
+        }
 
         if (isMountedRef.current) {
           setGameState(confirmedState);
@@ -403,6 +426,7 @@ export function useGameplayState(): UseGameplayStateReturn {
         // checking movesRemaining === 0.
         let bossResolvedInline = false;
         let preBossPlayerHp: number | undefined;
+        let inlineBossId: string | undefined;
         let gauntletCombatVisual: GauntletCombatVisualEvent | null = null;
 
         const bossResolvedIndicator =
@@ -454,8 +478,10 @@ export function useGameplayState(): UseGameplayStateReturn {
               program
             );
             preBossPlayerHp = bossParsed.preBossPlayerHp;
+            inlineBossId = bossParsed.bossId;
             console.log('[useGameplayState] Inline boss resolution detected:', {
               preBossPlayerHp,
+              inlineBossId,
             });
           } catch (err) {
             console.warn('[useGameplayState] Failed to parse inline boss combat:', err);
@@ -489,8 +515,9 @@ export function useGameplayState(): UseGameplayStateReturn {
           signature,
           bossResolvedInline,
           preBossPlayerHp,
+          inlineBossId,
           gauntletCombatVisual,
-          discovery: discoveryData,
+          discovery: finalDiscovery,
         };
       } catch (err) {
         console.error('[useGameplayState] Failed to move player:', err);

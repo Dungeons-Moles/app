@@ -261,7 +261,14 @@ export function BossPanel({
   // Use either context's gameState — SessionContext's instance is populated
   // earlier (during session start) while GameplayStateContext's may still be loading.
   const resolvedRunMode = gameState?.runMode ?? sessionGameState?.runMode;
-  const resolvedWeek = gameState?.week ?? sessionGameState?.week ?? time.week;
+  // Use the highest week value across sources — the local reducer (time.week)
+  // is updated immediately via SYNC_MOVE, while context values may lag after
+  // returning from CombatScreen.
+  const resolvedWeek = Math.max(
+    gameState?.week ?? 0,
+    sessionGameState?.week ?? 0,
+    time.week
+  );
   const isGauntletRun =
     resolvedRunMode === RunMode.Gauntlet ||
     gameState?.maxWeeks === 5 ||
@@ -312,19 +319,21 @@ export function BossPanel({
       // Use ER connection — SessionDiscovery and GauntletEchoes are delegated during active gameplay
       const readConn = gameplayReadConnection ?? connection;
 
-      // Try SessionDiscovery first, fall back to reading GauntletEchoes directly
+      // Read the echo directly from GauntletEchoes (indexed by week) — this is
+      // always accurate. SessionDiscovery's echo may be stale because move_player
+      // can't run the update_current_echo CPI (BPF stack budget exceeded).
       let preview = null;
-      const discovery = await fetchSessionDiscovery(
-        createMapGeneratorProgram(readConn),
-        sessionDiscoveryPda
-      ).catch(() => null);
-      if (discovery) {
-        preview = fetchGauntletEchoFromDiscovery(discovery);
-      }
+      const gpProgram = createGameplayStateProgram(readConn);
+      preview = await fetchGauntletEchoFromGameState(gpProgram, gauntletSessionPda, week).catch(() => null);
       if (!preview) {
-        // SessionDiscovery echo not written yet — read directly from GauntletEchoes on ER
-        const gpProgram = createGameplayStateProgram(readConn);
-        preview = await fetchGauntletEchoFromGameState(gpProgram, gauntletSessionPda, week).catch(() => null);
+        // Fallback: try SessionDiscovery in case GauntletEchoes isn't reachable
+        const discovery = await fetchSessionDiscovery(
+          createMapGeneratorProgram(readConn),
+          sessionDiscoveryPda
+        ).catch(() => null);
+        if (discovery) {
+          preview = fetchGauntletEchoFromDiscovery(discovery);
+        }
       }
 
       if (!preview) {

@@ -303,6 +303,7 @@ export async function parseBossCombatFromMoveTx(
 ): Promise<{
   preBossPlayerHp?: number;
   combatEnded?: CombatEndedEvent;
+  bossId?: string;
 }> {
   const tx = await connection.getTransaction(signature, {
     commitment: 'confirmed',
@@ -317,6 +318,7 @@ export async function parseBossCombatFromMoveTx(
   let preBossPlayerHpFromHeal: number | undefined;
   let lastCombatEnded: CombatEndedEvent | undefined;
   let bossStartedSeen = false;
+  let parsedBossId: string | undefined;
 
   for (const logLine of tx.meta.logMessages) {
     if (!logLine.startsWith('Program data: ')) continue;
@@ -337,6 +339,8 @@ export async function parseBossCombatFromMoveTx(
             );
             if (eventName === EVENT_NAMES.BOSS_COMBAT_STARTED) {
               bossStartedSeen = true;
+              const bossEvent = eventData as BossCombatStartedEvent;
+              if (bossEvent.bossId) parsedBossId = bossEvent.bossId;
             } else if (eventName === EVENT_NAMES.PLAYER_HEALED && !bossStartedSeen) {
               const healed = eventData as PlayerHealedEvent;
               preBossPlayerHpFromHeal = healed.newHp;
@@ -367,6 +371,7 @@ export async function parseBossCombatFromMoveTx(
   return {
     preBossPlayerHp: preBossPlayerHpFromHeal ?? lastPlayerHp,
     combatEnded: lastCombatEnded,
+    bossId: parsedBossId,
   };
 }
 

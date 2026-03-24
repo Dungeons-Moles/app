@@ -243,6 +243,7 @@ interface SessionContextType extends SessionState {
     signature?: string;
     bossResolvedInline?: boolean;
     preBossPlayerHp?: number;
+    inlineBossId?: string;
     gauntletCombatVisual?: GauntletCombatVisualEvent | null;
     discovery?: import('@/services/solana/mapGeneratorClient').SessionDiscoveryData | null;
   }>;
@@ -4042,6 +4043,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       signature?: string;
       bossResolvedInline?: boolean;
       preBossPlayerHp?: number;
+      inlineBossId?: string;
     }> => {
       const activeSessionPda = sessionManager.activeSessionPda;
       const expectedSessionSigner = sessionManager.session?.sessionSigner ?? null;

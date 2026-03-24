@@ -5382,6 +5382,94 @@
       "args": []
     },
     {
+      "name": "sync_discovery_boss",
+      "docs": [
+        "Syncs the current week's boss ID to SessionDiscovery.",
+        "",
+        "Called by the frontend after a rest-alcove-triggered boss win in Duel mode,",
+        "where the skip_to_day CPI chain is too deep for the ER to allow writable",
+        "session_discovery. This is a lightweight 2-level CPI",
+        "(session signer → gameplay_state → map_generator) that the ER handles fine."
+      ],
+      "discriminator": [
+        30,
+        191,
+        232,
+        148,
+        207,
+        13,
+        218,
+        195
+      ],
+      "accounts": [
+        {
+          "name": "game_state"
+        },
+        {
+          "name": "game_session"
+        },
+        {
+          "name": "gameplay_authority",
+          "docs": [
+            "Gameplay authority PDA for signing CPI calls to map_generator"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  112,
+                  108,
+                  97,
+                  121,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "session_discovery",
+          "docs": [
+            "SessionDiscovery to update the boss ID."
+          ],
+          "writable": true
+        },
+        {
+          "name": "map_generator_program",
+          "docs": [
+            "Map generator program for update_boss_id CPI."
+          ],
+          "address": "GCy5GqvnJN99rgGtV6fMn8NtL9E7RoAyHDGzQv8me65j"
+        },
+        {
+          "name": "gameplay_vrf_state",
+          "docs": [
+            "Optional GameplayVrfState for VRF-backed duel boss selection."
+          ],
+          "optional": true
+        },
+        {
+          "name": "player",
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "sync_map_enemies",
       "docs": [
         "Syncs enemies and game position from GeneratedMap after ER map generation.",

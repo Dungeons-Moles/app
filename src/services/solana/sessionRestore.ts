@@ -559,7 +559,11 @@ export function convertTimeState(
   const week = Math.max(1, Math.min(3, gameState.week)) as 1 | 2 | 3;
   const { phase, cycle } = convertPhase(gameState.phase);
 
-  const weekBoss = currentBossId ?? selectWeekBossForLevel(campaignLevel, 1);
+  // For Campaign (runMode 0 or undefined), compute boss deterministically from
+  // level+week when discovery doesn't have a valid boss. This handles the case where
+  // skip_to_day resolves a boss without updating SessionDiscovery (ER CPI limitation).
+  const isCampaign = gameState.runMode === undefined || gameState.runMode === RunMode.Campaign;
+  const weekBoss = currentBossId ?? (isCampaign ? selectWeekBossForLevel(campaignLevel, week) : selectWeekBossForLevel(campaignLevel, 1));
 
   return {
     week,
@@ -982,7 +986,7 @@ function buildFogFromDiscovery(
   return fog;
 }
 
-function decodeBossId(bytes: number[] | Uint8Array): BossId | null {
+export function decodeBossId(bytes: number[] | Uint8Array): BossId | null {
   const value = Buffer.from(bytes)
     .toString('utf-8')
     .replace(/\0/g, '')

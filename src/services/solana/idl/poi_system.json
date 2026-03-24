@@ -450,7 +450,10 @@
           "writable": true
         },
         {
-          "name": "game_session"
+          "name": "game_session",
+          "docs": [
+            "the session may already be delegated (owned by delegation program) at this point."
+          ]
         },
         {
           "name": "player",
@@ -630,7 +633,10 @@
           "writable": true
         },
         {
-          "name": "game_session"
+          "name": "game_session",
+          "docs": [
+            "the session may already be delegated (owned by delegation program) at this point."
+          ]
         },
         {
           "name": "player",
@@ -5842,6 +5848,13 @@
           "address": "C8hK4qsqsSYQeqyXuTPTUUS3T7N74WnZCuzvChTpK1Mo"
         },
         {
+          "name": "poi_vrf_state",
+          "docs": [
+            "VRF state for reroll randomness."
+          ],
+          "optional": true
+        },
+        {
           "name": "player",
           "docs": [
             "Player rerolling"
@@ -5894,7 +5907,10 @@
           "writable": true
         },
         {
-          "name": "game_session"
+          "name": "game_session",
+          "docs": [
+            "the session may already be delegated (owned by delegation program) at this point."
+          ]
         },
         {
           "name": "session_signer",
@@ -5934,7 +5950,10 @@
           "writable": true
         },
         {
-          "name": "game_session"
+          "name": "game_session",
+          "docs": [
+            "the session may already be delegated (owned by delegation program) at this point."
+          ]
         },
         {
           "name": "session_signer",
@@ -6475,6 +6494,11 @@
       "code": 6040,
       "name": "VrfRequired",
       "msg": "VRF randomness required for PvP offer generation"
+    },
+    {
+      "code": 6041,
+      "name": "VrfAlreadyFulfilled",
+      "msg": "VRF already fulfilled; cannot re-request"
     }
   ],
   "types": [

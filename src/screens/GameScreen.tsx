@@ -3,7 +3,7 @@
  */
 
 import React, { useCallback, useMemo, useEffect, useState, useRef } from 'react';
-import { View, Text, StyleSheet, Animated, Pressable, Platform } from 'react-native';
+import { View, Text, StyleSheet, Animated, Pressable, Platform, ActivityIndicator } from 'react-native';
 import { Image } from 'expo-image';
 import { CachedImageBackground } from '../components/common/CachedImageBackground';
 import { InstantImageBackground } from '../components/common/InstantImageBackground';
@@ -27,6 +27,7 @@ import {
   unpackDiscoveryTiles,
   convertDiscoveredEnemies,
   convertDiscoveredPois,
+  decodeBossId,
 } from '../services/solana/sessionRestore';
 import { useNightMovement } from '../hooks/useNightMovement';
 import { usePoiInteraction } from '../hooks/usePoiInteraction';
@@ -86,9 +87,16 @@ import type { GauntletCombatVisualEvent } from '@/services/solana/gauntlet';
 import { fetchGauntletEchoFromDiscovery } from '@/services/solana/gauntlet';
 import { fetchSessionDiscovery } from '@/services/solana/mapGeneratorClient';
 import { createGameplayStateProgram, createMapGeneratorProgram } from '@/services/solana/programs';
-import { warmMovePlayerCaches } from '@/services/solana/gameplayState';
-import { deriveSessionDiscoveryPda } from '@/services/solana/constants';
-import { warmErBlockhashCache } from '@/services/solana/sessionSigner';
+import { warmMovePlayerCaches, syncDiscoveryBoss } from '@/services/solana/gameplayState';
+import { deriveSessionDiscoveryPda, GAMEPLAY_STATE_PROGRAM_ID } from '@/services/solana/constants';
+import { warmErBlockhashCache, sendSessionSignerTransaction } from '@/services/solana/sessionSigner';
+import {
+  fetchDuelEntry,
+  buildFinalizeDuelRunTransaction,
+  parseDuelEvents,
+  deriveDuelEntryPda,
+} from '@/services/solana/duels';
+import { calculateCombatBakedItemStats } from '@/game/entities/items';
 import {
   ENEMY_DEFINITIONS,
   calculateGoldReward,
@@ -108,6 +116,8 @@ const SIDEBAR_BG = require('../../assets/ui/panels/sidebar.webp');
 const ICON_Y = require('../../assets/ui/control-buttons/y.webp');
 const BUTTON_V5 = require('../../assets/ui/buttons/button-v5.webp');
 const ENGINE_ICON = require('../../assets/ui/illustrations/engine.webp');
+
+const DUEL_BASE_HP = 20;
 
 const SIDEBAR_WIDTH = 230;
 const COMPACT_SIDEBAR_WIDTH = 280;
@@ -476,9 +486,10 @@ export function GameScreen({ navigation }: GameScreenProps) {
     getSessionSignerKeypair,
     stopAutoCommit,
     queueEndGame,
+    undelegateCurrentSession,
   } = useSession();
   const { wallet } = useWallet();
-  const { gameplayReadConnection } = useSolanaConnection();
+  const { connection, gameplayReadConnection } = useSolanaConnection();
   const {
     gameState: gameplayContextState,
   } = useGameplayStateContext();
@@ -515,6 +526,8 @@ export function GameScreen({ navigation }: GameScreenProps) {
   const [wallBreakFeedback, setWallBreakFeedback] = useState<string | null>(null);
   const [isMovePending, setIsMovePending] = useState(false);
   const [isExitingSession, setIsExitingSession] = useState(false);
+  const [duelCompleteVisible, setDuelCompleteVisible] = useState(false);
+  const [isDuelFinalizing, setIsDuelFinalizing] = useState(false);
   const [showPauseMenu, setShowPauseMenu] = useState(false);
   const [showTutorial, setShowTutorial] = useState(false);
   const [isFastTravelMode, setIsFastTravelMode] = useState(false);
@@ -943,10 +956,14 @@ export function GameScreen({ navigation }: GameScreenProps) {
         const foughtWeek = (playerWon
           ? Math.max(1, (state.time.week as number) - 1)
           : state.time.week) as 1 | 2 | 3;
-        const foughtBoss: BossId | null = selectWeekBossForLevel(
-          onChainState.campaignLevel,
-          foughtWeek
-        );
+        // For Duel mode, bosses are VRF-selected (not deterministic from level+week).
+        // SYNC_MOVE preserves the old weekBoss for Duel/Gauntlet when the week advances,
+        // so state.time.weekBoss still holds the just-fought boss.
+        // For Campaign mode, use the deterministic level-based selection.
+        const foughtBoss: BossId | null =
+          onChainState.runMode === RunMode.Duel
+            ? state.time.weekBoss ?? null
+            : selectWeekBossForLevel(onChainState.campaignLevel, foughtWeek);
 
         if (!foughtBoss) {
           console.warn(
@@ -961,8 +978,15 @@ export function GameScreen({ navigation }: GameScreenProps) {
           '[GameScreen] Boss already resolved inline, navigating to CombatScreen with local resolver:',
           { playerWon, foughtWeek, foughtBoss }
         );
+        // Use local HP as the pre-boss starting HP for the combat animation.
+        // state.player.stats.hp may still hold the pre-boss value if the SYNC_MOVE
+        // that triggered this effect used the post-boss on-chain HP but the local
+        // reducer hasn't processed it yet. If local HP seems wrong (0 or already
+        // synced to post-boss), fall back to maxHp.
+        const localHp = state.player.stats.hp;
+        const preBossHp = localHp > 0 ? localHp : Math.max(state.player.stats.maxHp, 1);
         const playerStats = {
-          hp: Math.max(state.player.stats.maxHp, 1),
+          hp: preBossHp,
           maxHp: state.player.stats.maxHp,
           atk: state.player.stats.atk,
           arm: state.player.stats.arm,
@@ -989,6 +1013,28 @@ export function GameScreen({ navigation }: GameScreenProps) {
           totalMoves: onChainState.totalMoves,
           phase: onChainState.phase,
         });
+
+        // Fire-and-forget: re-fetch discovery bossId for the new week's sidebar.
+        if (playerWon && sessionPda) {
+          const [sdPda] = deriveSessionDiscoveryPda(sessionPda);
+          fetchSessionDiscovery(
+            createMapGeneratorProgram(gameplayReadConnection),
+            sdPda
+          )
+            .then((fresh) => {
+              if (fresh) {
+                const freshBossId = decodeBossId(fresh.currentBossId);
+                if (freshBossId) {
+                  dispatch({
+                    type: 'SYNC_MOVE',
+                    confirmedState: onChainState,
+                    weekBoss: freshBossId,
+                  });
+                }
+              }
+            })
+            .catch(() => {});
+        }
         return;
       }
 
@@ -1116,7 +1162,8 @@ export function GameScreen({ navigation }: GameScreenProps) {
       !state ||
       mode === 'guest' ||
       isTriggeringBossRef.current ||
-      isMovePending
+      isMovePending ||
+      poiInteraction.isInteracting
     ) {
       return;
     }
@@ -1135,6 +1182,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
     state,
     mode,
     isMovePending,
+    poiInteraction.isInteracting,
     navigation,
   ]);
 
@@ -1250,6 +1298,154 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
   useLandscapeLock();
   useKeepAwake();
+
+  // Duel week 3: finalize the duel run and show appropriate UI.
+  // First player sees a "waiting for opponent" modal.
+  // Second player sees the PvP combat animation.
+  const handleDuelWeek3Completion = useCallback(async () => {
+    if (!sessionPda || !wallet.publicKey || isDuelFinalizing) return;
+    setIsDuelFinalizing(true);
+
+    try {
+      const duelProgram = createGameplayStateProgram(connection);
+      const duelEntry = await fetchDuelEntry(duelProgram, sessionPda);
+      if (!duelEntry) {
+        console.warn('[GameScreen] Duel week 3: no DuelEntry found');
+        await queueEndGame(0, true);
+        navigation.navigate('Duels');
+        return;
+      }
+
+      // Undelegate session from ER before sending finalize_duel_run to base chain.
+      const undelegateResult = await undelegateCurrentSession();
+      if (!undelegateResult.success) {
+        console.warn('[GameScreen] Duel week 3: undelegate failed:', undelegateResult.error);
+      }
+
+      const sessionSignerKeypair = getSessionSignerKeypair();
+      if (!sessionSignerKeypair) {
+        console.error('[GameScreen] Duel week 3: no session signer keypair');
+        await queueEndGame(0, true);
+        navigation.navigate('Duels');
+        return;
+      }
+
+      const [gameStatePda] = PublicKey.findProgramAddressSync(
+        [Buffer.from('game_state'), sessionPda.toBuffer()],
+        GAMEPLAY_STATE_PROGRAM_ID
+      );
+
+      const tx = await buildFinalizeDuelRunTransaction(
+        connection,
+        duelProgram,
+        wallet.publicKey,
+        sessionSignerKeypair.publicKey,
+        gameStatePda,
+        sessionPda,
+        duelEntry.matchedCreatorPlayer
+      );
+
+      const signature = await sendSessionSignerTransaction(connection, tx, sessionSignerKeypair);
+      await connection.confirmTransaction(signature, 'confirmed');
+
+      const events = await parseDuelEvents(connection, duelProgram, signature);
+
+      // Second player: PvP combat was resolved on-chain
+      if (
+        events.combatVisual &&
+        events.resolved?.resolution === 'completedCombat'
+      ) {
+        const visual = events.combatVisual;
+        const ourKey = wallet.publicKey.toBase58();
+        const isPlayerA = visual.playerA.toBase58() === ourKey;
+
+        const ourToolInstance = isPlayerA ? visual.playerATool : visual.playerBTool;
+        const ourGearInstances = isPlayerA ? visual.playerAGear : visual.playerBGear;
+        const oppToolInstance = isPlayerA ? visual.playerBTool : visual.playerATool;
+        const oppGearInstances = isPlayerA ? visual.playerBGear : visual.playerAGear;
+
+        const playerTool = ourToolInstance ? convertItemInstanceToTool(ourToolInstance) : null;
+        const playerGear = ourGearInstances
+          .filter((g): g is NonNullable<typeof g> => g !== null)
+          .map((g) => convertItemInstanceToGear(g))
+          .filter((g): g is Gear => g !== null);
+
+        const enemyTool = oppToolInstance ? convertItemInstanceToTool(oppToolInstance) : null;
+        const enemyGear = oppGearInstances
+          .filter((g): g is NonNullable<typeof g> => g !== null)
+          .map((g) => convertItemInstanceToGear(g))
+          .filter((g): g is Gear => g !== null);
+
+        const playerItemStats = calculateCombatBakedItemStats(playerTool, playerGear);
+        const enemyItemStats = calculateCombatBakedItemStats(enemyTool, enemyGear);
+        const playerMaxHp = DUEL_BASE_HP + (playerItemStats.hp ?? 0);
+        const enemyMaxHp = DUEL_BASE_HP + (enemyItemStats.hp ?? 0);
+
+        const isWinner = events.resolved.winner?.toBase58() === ourKey;
+        const finalPlayerHp = isPlayerA ? visual.finalPlayerAHp : visual.finalPlayerBHp;
+        const finalEnemyHp = isPlayerA ? visual.finalPlayerBHp : visual.finalPlayerAHp;
+
+        const combatParams: CombatParams = {
+          player: {
+            name: 'You', emoji: '', definitionId: 'player', isPlayer: true,
+            maxHp: playerMaxHp, hp: playerMaxHp,
+            atk: playerItemStats.atk ?? 0, arm: playerItemStats.arm ?? 0,
+            spd: playerItemStats.spd ?? 0, dig: playerItemStats.dig ?? 0,
+            bonusAtk: 0, bonusArm: 0, bonusSpd: 0,
+            statusEffects: { chill: 0, shrapnel: 0, rust: 0, bleed: 0 },
+            strikesPerTurn: 1, ignoresArmor: false,
+          },
+          enemy: {
+            name: 'Opponent', emoji: '', definitionId: 'pvpOpponent', isPlayer: false,
+            maxHp: enemyMaxHp, hp: enemyMaxHp,
+            atk: enemyItemStats.atk ?? 0, arm: enemyItemStats.arm ?? 0,
+            spd: enemyItemStats.spd ?? 0, dig: enemyItemStats.dig ?? 0,
+            bonusAtk: 0, bonusArm: 0, bonusSpd: 0,
+            statusEffects: { chill: 0, shrapnel: 0, rust: 0, bleed: 0 },
+            strikesPerTurn: 1, ignoresArmor: false,
+          },
+          seed: 0,
+          enemyDefinitionId: 'pvpOpponent' as any,
+          goldReward: 0,
+          activeItemSets: [],
+          playerGear,
+          playerTool,
+          playerGold: 0,
+          enemyTool,
+          enemyGear,
+          week: 3 as 1 | 2 | 3,
+          isBossFight: false,
+          onChainOutcome: {
+            finalPlayerHp: finalPlayerHp,
+            finalPlayerGold: 0,
+            playerWon: isWinner,
+          },
+        };
+
+        await queueEndGame(0, true);
+        navigateToCombat(navigation, combatParams, {
+          campaignLevel: 0,
+          totalMoves: onChainState?.totalMoves ?? 0,
+          phase: onChainState?.phase ?? 0,
+        });
+        return;
+      }
+
+      // First player: opponent hasn't finished yet
+      await queueEndGame(0, true);
+      setDuelCompleteVisible(true);
+    } catch (err) {
+      console.error('[GameScreen] Duel week 3 completion failed:', err);
+      await queueEndGame(0, true).catch(() => {});
+      navigation.navigate('Duels');
+    } finally {
+      setIsDuelFinalizing(false);
+    }
+  }, [
+    sessionPda, wallet.publicKey, isDuelFinalizing, connection,
+    undelegateCurrentSession, getSessionSignerKeypair, queueEndGame,
+    navigation, onChainState,
+  ]);
 
   const handleDirection = useCallback(
     (direction: Direction) => {
@@ -1420,8 +1616,13 @@ export function GameScreen({ navigation }: GameScreenProps) {
           }
 
           {
+            // Extract updated weekBoss from SessionDiscovery (for Duel/Gauntlet VRF-based bosses)
+            const discoveryBossId = result.discovery
+              ? decodeBossId(result.discovery.currentBossId) ?? undefined
+              : undefined;
+
             // Update local state from confirmed on-chain state
-            dispatch({ type: 'SYNC_MOVE', confirmedState: result.newState });
+            dispatch({ type: 'SYNC_MOVE', confirmedState: result.newState, weekBoss: discoveryBossId });
 
             // Sync newly revealed tiles, enemies, and POIs from SessionDiscovery
             // (fetched in parallel with the move confirmation — no extra latency)
@@ -1545,13 +1746,18 @@ export function GameScreen({ navigation }: GameScreenProps) {
               // boss was resolved). state.time.weekBoss may already point to the NEXT
               // week's boss if a resync (RESTORE_GAME) ran between clicks.
               const foughtWeekForInline = (result.previousState?.week ?? currentWeek) as 1 | 2 | 3;
+              // Use the boss ID from the BossCombatStarted event (authoritative).
+              // Falls back to state.time.weekBoss for Duel or selectWeekBossForLevel for Campaign.
               const resolvedWeekBoss: BossId | null =
-                result.previousState
-                  ? selectWeekBossForLevel(
-                      result.previousState.campaignLevel ?? onChainState!.campaignLevel,
-                      foughtWeekForInline
-                    )
-                  : state.time.weekBoss ?? null;
+                (result.inlineBossId as BossId | undefined) ??
+                (result.newState.runMode === RunMode.Duel
+                  ? state.time.weekBoss ?? null
+                  : result.previousState
+                    ? selectWeekBossForLevel(
+                        result.previousState.campaignLevel ?? onChainState!.campaignLevel,
+                        foughtWeekForInline
+                      )
+                    : state.time.weekBoss ?? null);
 
               if (resolvedWeekBoss) {
                 // Prevent the boss useEffect from also triggering
@@ -1594,8 +1800,45 @@ export function GameScreen({ navigation }: GameScreenProps) {
                 );
 
                 navigateToCombat(navigation, bossCombatParams, result.newState);
+
+                // Fire-and-forget: re-fetch discovery bossId for the new week's sidebar.
+                // The parallel discovery fetch may have returned stale data (ER race).
+                // This completes while the player watches the combat animation.
+                if (!result.isDead && sessionPda && result.newState) {
+                  const confirmedForBoss = result.newState;
+                  const [sdPda] = deriveSessionDiscoveryPda(sessionPda);
+                  fetchSessionDiscovery(
+                    createMapGeneratorProgram(gameplayReadConnection),
+                    sdPda
+                  )
+                    .then((fresh) => {
+                      if (fresh) {
+                        const freshBossId = decodeBossId(fresh.currentBossId);
+                        if (freshBossId) {
+                          dispatch({
+                            type: 'SYNC_MOVE',
+                            confirmedState: confirmedForBoss,
+                            weekBoss: freshBossId,
+                          });
+                        }
+                      }
+                    })
+                    .catch(() => {});
+                }
                 return; // Skip field enemy combat handling below
               }
+            }
+
+            // Duel week 3: no boss fight — handle duel completion.
+            // On-chain sets completed=true and bossFightReady=false for this case.
+            if (
+              !result.bossResolvedInline &&
+              result.newState?.runMode === RunMode.Duel &&
+              result.newState?.completed &&
+              !result.isDead
+            ) {
+              handleDuelWeek3Completion();
+              return;
             }
 
             // Handle combat - always go through CombatScreen for visualization.
@@ -2434,7 +2677,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
         poiInteraction.confirmPoiSelection(optionIndex).then((result) => {
           debugLog('[GameScreen] confirmPoiSelection result:', result);
           if (result.success) {
-            // Boss resolved during POI (e.g., Rest Alcove on Night 3) — show CombatScreen
+            // Boss/echo resolved during POI (e.g., Rest Alcove on Night 3) — show CombatScreen
             if (result.bossResolved && state) {
               const {
                 playerWon,
@@ -2450,42 +2693,145 @@ export function GameScreen({ navigation }: GameScreenProps) {
               // state.time.week is pre-POI (closure captures pre-dispatch value),
               // which is the correct fought week for both wins and losses.
               const foughtWeek = state.time.week as 1 | 2 | 3;
-              const foughtBoss: BossId | null = state.time.weekBoss ?? null;
 
-              if (foughtBoss) {
-                debugLog('[GameScreen] Boss resolved during POI, navigating to CombatScreen:', {
-                  playerWon,
+              // Gauntlet: echo combat resolved inline via skip_to_day.
+              // Build echo params from on-chain data (no boss for Gauntlet).
+              if (onChainState?.runMode === RunMode.Gauntlet && sessionPda) {
+                isTriggeringBossRef.current = true;
+                buildFallbackGauntletCombatParams(
+                  gameplayReadConnection,
+                  sessionPda,
                   foughtWeek,
-                  foughtBoss,
-                  preBossPlayerHp,
-                  turnsTaken,
-                  finalEnemyHp,
-                  signature,
-                });
-                const playerStats = {
-                  hp: preBossPlayerHp ?? Math.max(state.player.stats.hp, 1),
-                  maxHp: state.player.stats.maxHp,
-                  atk: state.player.stats.atk,
-                  arm: state.player.stats.arm,
-                  spd: state.player.stats.spd,
-                  dig: state.player.stats.dig,
-                  gold: finalPlayerGold,
-                };
-                const bossCombatParams = createBossCombatParams(
-                  foughtBoss,
-                  playerStats,
+                  { hp: finalPlayerHp, gold: finalPlayerGold, isDead: !playerWon },
+                  {
+                    hp: preBossPlayerHp ?? Math.max(state.player.stats.maxHp, 1),
+                    maxHp: state.player.stats.maxHp,
+                    atk: state.player.stats.atk,
+                    arm: state.player.stats.arm,
+                    spd: state.player.stats.spd,
+                    dig: state.player.stats.dig,
+                    gold: finalPlayerGold,
+                  },
                   state.player.inventory.map((slot) => slot.item),
                   state.player.equippedTool,
                   state.player.activeItemsets ?? [],
-                  state.rngState,
-                  foughtWeek,
-                  { finalPlayerHp, finalPlayerGold, playerWon }
-                );
-                navigateToCombat(navigation, bossCombatParams, {
-                  campaignLevel: onChainState?.campaignLevel ?? 0,
-                  totalMoves,
-                  phase,
-                });
+                  state.rngState
+                )
+                  .then((params) => {
+                    if (params) {
+                      navigateToCombat(navigation, params, {
+                        campaignLevel: onChainState?.campaignLevel ?? 0,
+                        totalMoves,
+                        phase,
+                      });
+                    } else if (!playerWon) {
+                      navigateToDeath(
+                        navigation,
+                        onChainState,
+                        `Week ${foughtWeek} Echo`
+                      );
+                    }
+                  })
+                  .catch(() => {
+                    if (!playerWon) {
+                      navigateToDeath(
+                        navigation,
+                        onChainState,
+                        `Week ${foughtWeek} Echo`
+                      );
+                    }
+                  });
+              } else if (
+                onChainState?.runMode === RunMode.Duel &&
+                onChainState?.completed &&
+                !onChainState?.isDead
+              ) {
+                // Duel week 3: no boss fight — handle duel completion
+                handleDuelWeek3Completion();
+              } else {
+                // Campaign / Duel: boss fight resolved inline
+                const foughtBoss: BossId | null =
+                  onChainState?.runMode === RunMode.Duel
+                    ? state.time.weekBoss ?? null
+                    : state.time.weekBoss ?? null;
+
+                if (foughtBoss) {
+                  debugLog('[GameScreen] Boss resolved during POI, navigating to CombatScreen:', {
+                    playerWon,
+                    foughtWeek,
+                    foughtBoss,
+                    preBossPlayerHp,
+                    turnsTaken,
+                    finalEnemyHp,
+                    signature,
+                  });
+                  const playerStats = {
+                    hp: preBossPlayerHp ?? Math.max(state.player.stats.hp, 1),
+                    maxHp: state.player.stats.maxHp,
+                    atk: state.player.stats.atk,
+                    arm: state.player.stats.arm,
+                    spd: state.player.stats.spd,
+                    dig: state.player.stats.dig,
+                    gold: finalPlayerGold,
+                  };
+                  const bossCombatParams = createBossCombatParams(
+                    foughtBoss,
+                    playerStats,
+                    state.player.inventory.map((slot) => slot.item),
+                    state.player.equippedTool,
+                    state.player.activeItemsets ?? [],
+                    state.rngState,
+                    foughtWeek,
+                    { finalPlayerHp, finalPlayerGold, playerWon }
+                  );
+                  navigateToCombat(navigation, bossCombatParams, {
+                    campaignLevel: onChainState?.campaignLevel ?? 0,
+                    totalMoves,
+                    phase,
+                  });
+
+                  // Fire-and-forget: sync boss ID to SessionDiscovery for the new week.
+                  // skip_to_day can't run update_boss_id_cpi (ER CPI depth limit),
+                  // so we call the lightweight sync_discovery_boss instruction separately.
+                  // After the on-chain update, re-fetch discovery and update local weekBoss.
+                  if (playerWon && sessionPda && onChainState) {
+                    const signerKp = getSessionSignerKeypair();
+                    if (signerKp) {
+                      const [gsaPda] = PublicKey.findProgramAddressSync(
+                        [Buffer.from('game_state'), sessionPda.toBuffer()],
+                        GAMEPLAY_STATE_PROGRAM_ID
+                      );
+                      syncDiscoveryBoss(
+                        gameplayReadConnection,
+                        createGameplayStateProgram(gameplayReadConnection),
+                        gsaPda,
+                        sessionPda,
+                        signerKp
+                      )
+                        .then(async () => {
+                          // Re-fetch discovery to get the updated boss ID
+                          const [sdPda] = deriveSessionDiscoveryPda(sessionPda);
+                          const fresh = await fetchSessionDiscovery(
+                            createMapGeneratorProgram(gameplayReadConnection),
+                            sdPda
+                          ).catch(() => null);
+                          if (fresh) {
+                            const freshBossId = decodeBossId(fresh.currentBossId);
+                            if (freshBossId) {
+                              dispatch({
+                                type: 'SYNC_MOVE',
+                                confirmedState: onChainState,
+                                weekBoss: freshBossId,
+                              });
+                            }
+                          }
+                        })
+                        .catch((err) =>
+                          console.warn('[GameScreen] syncDiscoveryBoss failed (non-fatal):', err)
+                        );
+                    }
+                  }
+                }
               }
               // usePoiInteraction already dispatched CLOSE_POI — skip the one below
               skipMismatchTimeoutRef.current = setTimeout(() => {
@@ -2992,6 +3338,8 @@ export function GameScreen({ navigation }: GameScreenProps) {
                 }}
               />
             )}
+
+            {/* intentionally empty — duel completion overlay moved to inline position below */}
           </View>
 
           {isCompact && isCompactSidebarVisible && !showTutorial && (
@@ -3048,6 +3396,36 @@ export function GameScreen({ navigation }: GameScreenProps) {
           )}
         <TutorialModal visible={showTutorial} onClose={() => setShowTutorial(false)} />
         <DefeatOverlay visible={defeatOverlayVisible} onComplete={handleDefeatOverlayComplete} />
+        {(duelCompleteVisible || isDuelFinalizing) && (
+          <View style={styles.duelCompleteOverlay}>
+            <View style={styles.duelCompletePanel}>
+              {isDuelFinalizing ? (
+                <>
+                  <Text style={styles.duelCompleteTitle}>Finalizing Duel...</Text>
+                  <ActivityIndicator size="large" color="#f5c542" style={{ marginTop: 16 }} />
+                </>
+              ) : (
+                <>
+                  <Text style={styles.duelCompleteTitle}>Duel Run Complete!</Text>
+                  <Text style={styles.duelCompleteMessage}>
+                    Your run is finished. Your opponent hasn't completed their run yet.
+                    {'\n\n'}
+                    You can check the outcome on the Duels screen when they're done.
+                  </Text>
+                  <Pressable
+                    style={styles.duelCompleteButton}
+                    onPress={() => {
+                      setDuelCompleteVisible(false);
+                      navigation.navigate('Duels');
+                    }}
+                  >
+                    <Text style={styles.duelCompleteButtonText}>OK</Text>
+                  </Pressable>
+                </>
+              )}
+            </View>
+          </View>
+        )}
         </View>
       </InstantImageBackground>
     </Animated.View>
@@ -3145,4 +3523,46 @@ const styles = StyleSheet.create({
     zIndex: 100,
   },
 
+  // Duel week 3 completion modal
+  duelCompleteOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 200,
+  },
+  duelCompletePanel: {
+    backgroundColor: '#2a1a0e',
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#f5c542',
+    padding: 24,
+    maxWidth: 400,
+    alignItems: 'center',
+  },
+  duelCompleteTitle: {
+    color: '#f5c542',
+    fontSize: 20,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  duelCompleteMessage: {
+    color: '#e8dcc0',
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 20,
+  },
+  duelCompleteButton: {
+    backgroundColor: '#f5c542',
+    paddingHorizontal: 32,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  duelCompleteButtonText: {
+    color: '#2a1a0e',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
 });

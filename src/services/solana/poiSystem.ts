@@ -50,6 +50,8 @@ export interface PoiTransactionContext {
   gameplayVrfStatePda?: PublicKey;
   /** Optional SessionDiscovery PDA for discovery-aware POI interactions. */
   sessionDiscoveryPda?: PublicKey;
+  /** Optional GauntletEchoes PDA for echo resolution in skip_to_day (Gauntlet mode). */
+  gauntletEchoesPda?: PublicKey;
 }
 
 /** Builds CU limit instruction and sends a POI transaction via session signer. */
@@ -134,7 +136,7 @@ export async function buildInteractRestTransaction(
     gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
     playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
     gameplayVrfState: vrfState,
-    gauntletEchoes: null,
+    gauntletEchoes: ctx.gauntletEchoesPda ?? null,
     player: ctx.sessionSignerKeypair.publicKey,
     sessionDiscovery: ctx.sessionDiscoveryPda ?? undefined,
     session: ctx.sessionPda,
@@ -531,6 +533,7 @@ export async function shopReroll(ctx: PoiTransactionContext): Promise<string> {
       gameSession: ctx.sessionPda,
       poiAuthority: poiAuthorityPda,
       gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
+      poiVrfState: ctx.poiVrfStatePda,
       player: ctx.sessionSignerKeypair.publicKey,
       sessionDiscovery: ctx.sessionDiscoveryPda ?? undefined,
       session: ctx.sessionPda,

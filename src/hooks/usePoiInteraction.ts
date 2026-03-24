@@ -23,7 +23,7 @@ import {
 import { oilFlagToModification } from '@/services/solana/types/player_inventory';
 import { useWallet } from '@/contexts/WalletContext';
 import { useAudio } from '@/contexts/AudioContext';
-import { deriveMapPoisPda, derivePoiVrfStatePda, deriveGameplayVrfStatePda, deriveSessionDiscoveryPda } from '@/services/solana/constants';
+import { deriveMapPoisPda, derivePoiVrfStatePda, deriveGameplayVrfStatePda, deriveSessionDiscoveryPda, deriveGauntletEchoesPda } from '@/services/solana/constants';
 import { getGameStatePda, fetchGameState } from '@/services/solana/gameplayState';
 import { PublicKey, Connection } from '@solana/web3.js';
 import { POI_TYPES } from '@/services/solana/types/poi_system';
@@ -32,7 +32,7 @@ import type {
   PoiInteractionState,
   CacheOffer,
 } from '@/services/solana/types/poi_system';
-import { Phase } from '@/services/solana/types/gameplay_state';
+import { Phase, RunMode } from '@/services/solana/types/gameplay_state';
 import { parseBossCombatFromMoveTx } from '@/services/solana/eventParser';
 import { getUserErrorMessage } from '@/services/solana/errors';
 import {
@@ -68,6 +68,7 @@ import {
   unpackDiscoveryTiles,
   convertDiscoveredEnemies,
   convertDiscoveredPois,
+  decodeBossId,
 } from '@/services/solana/sessionRestore';
 import { fetchInventory } from '@/services/solana/playerInventory';
 import { createPlayerInventoryProgram } from '@/services/solana/programs';
@@ -290,9 +291,8 @@ export interface PoiInteractParams {
 /** Night-only POI types */
 const NIGHT_ONLY_POIS: Set<number> = new Set([POI_TYPES.MOLE_DEN, POI_TYPES.REST_ALCOVE]);
 
-/** One-time use POI types */
+/** One-time use POI types (Mole Den is NOT here — it's repeatable) */
 const ONE_TIME_POIS: Set<number> = new Set([
-  POI_TYPES.MOLE_DEN,
   POI_TYPES.SUPPLY_CACHE,
   POI_TYPES.TOOL_CRATE,
   POI_TYPES.TOOL_OIL_RACK,
@@ -851,8 +851,14 @@ export function usePoiInteraction(): UsePoiInteractionResult {
       poiVrfStatePda,
       gameplayVrfStatePda,
       sessionDiscoveryPda,
+      // Only pass gauntletEchoesPda for Gauntlet sessions — for other modes the
+      // account doesn't exist on the ER, and passing it as writable causes
+      // InvalidWritableAccount from the ER's post-execution validation.
+      gauntletEchoesPda: onChainState?.runMode === RunMode.Gauntlet
+        ? deriveGauntletEchoesPda(sessionPda)[0]
+        : undefined,
     };
-  }, [getSessionSignerKeypair, poiProgram, mapPoisPda, gameStatePda, sessionPda, gameplayConnection, poiVrfStatePda, gameplayVrfStatePda, sessionDiscoveryPda]);
+  }, [getSessionSignerKeypair, poiProgram, mapPoisPda, gameStatePda, sessionPda, gameplayConnection, poiVrfStatePda, gameplayVrfStatePda, sessionDiscoveryPda, onChainState?.runMode]);
 
   // Check if there's a valid POI at the player's current position.
   // Sources from the game reducer state (populated by SYNC_DISCOVERY).
@@ -1457,11 +1463,14 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             // Step 1: Check SessionDiscovery for existing oil offer, or generate one on-chain
             let oilDiscovery = await fetchDiscoveryOffers(ctx.connection, ctx.sessionPda);
 
+            // oil_offer_oils persists even when active_offer_type changes (e.g. after
+            // visiting a cache POI).  Check the data directly, not active_offer_type.
+            // Also verify the offers are for THIS POI — stale offers from a different
+            // oil rack would cause NoActiveInteraction on-chain.
             const hasExistingOilOffer =
               oilDiscovery &&
-              oilDiscovery.activeOfferType === 3 && // 3=oil
-              oilDiscovery.activeOfferPoiIndex === poiIndex &&
-              oilDiscovery.oilOfferOils.some((o) => o !== 0);
+              oilDiscovery.oilOfferOils.some((o) => o !== 0) &&
+              oilDiscovery.activeOfferPoiIndex === poiIndex;
 
             if (!hasExistingOilOffer) {
               debugLog('[usePoiInteraction] Sending generateOilOffer on-chain');
@@ -1498,16 +1507,13 @@ export function usePoiInteraction(): UsePoiInteractionResult {
 
             if (
               !oilDiscovery ||
-              oilDiscovery.activeOfferType !== 3 ||
-              oilDiscovery.activeOfferPoiIndex !== poiIndex
+              !oilDiscovery.oilOfferOils.some((o) => o !== 0)
             ) {
               console.error(
-                '[usePoiInteraction] No oil offer found in SessionDiscovery for poiIndex:',
+                '[usePoiInteraction] No oil offer data in SessionDiscovery for poiIndex:',
                 poiIndex,
-                '| activeOfferType:',
-                oilDiscovery?.activeOfferType,
-                '| activeOfferPoiIndex:',
-                oilDiscovery?.activeOfferPoiIndex
+                '| oilOfferOils:',
+                oilDiscovery?.oilOfferOils
               );
               setError('Failed to generate oil offers');
               setIsInteracting(false);
@@ -2323,6 +2329,17 @@ export function usePoiInteraction(): UsePoiInteractionResult {
                 gameplayProgram
               ).catch(() => undefined as Awaited<ReturnType<typeof parseBossCombatFromMoveTx>> | undefined),
             ]);
+            // Fetch discovery before SYNC_MOVE so we can extract the updated weekBoss
+            // (for Duel/Gauntlet VRF-based bosses that update on week transitions)
+            let restDiscovery: Awaited<ReturnType<typeof fetchSessionDiscovery>> | null = null;
+            {
+              const [restSdPda] = deriveSessionDiscoveryPda(ctx.sessionPda);
+              restDiscovery = await fetchSessionDiscovery(
+                createMapGeneratorProgram(ctx.connection),
+                restSdPda
+              ).catch(() => null);
+            }
+
             if (updatedState) {
               debugLog(
                 '[usePoiInteraction] Syncing REST result | hp:',
@@ -2330,22 +2347,17 @@ export function usePoiInteraction(): UsePoiInteractionResult {
                 '| phase:',
                 updatedState.phase
               );
-              dispatch({ type: 'SYNC_MOVE', confirmedState: updatedState });
+              const discoveryBossId = restDiscovery
+                ? decodeBossId(restDiscovery.currentBossId) ?? undefined
+                : undefined;
+              dispatch({ type: 'SYNC_MOVE', confirmedState: updatedState, weekBoss: discoveryBossId });
             }
 
-            // Fetch discovery after rest tx
-            {
-              const [restSdPda] = deriveSessionDiscoveryPda(ctx.sessionPda);
-              const restDiscovery = await fetchSessionDiscovery(
-                createMapGeneratorProgram(ctx.connection),
-                restSdPda
-              ).catch(() => null);
-              if (restDiscovery) {
-                const sdTiles = unpackDiscoveryTiles(restDiscovery, restDiscovery.mapWidth, restDiscovery.mapHeight);
-                const sdEnemies = convertDiscoveredEnemies(restDiscovery.discoveredEnemies, restDiscovery.discoveredEnemyCount);
-                const sdPois = convertDiscoveredPois(restDiscovery.discoveredPois, restDiscovery.discoveredPoiCount);
-                dispatch({ type: 'SYNC_DISCOVERY', tiles: sdTiles, enemies: sdEnemies, pois: sdPois });
-              }
+            if (restDiscovery) {
+              const sdTiles = unpackDiscoveryTiles(restDiscovery, restDiscovery.mapWidth, restDiscovery.mapHeight);
+              const sdEnemies = convertDiscoveredEnemies(restDiscovery.discoveredEnemies, restDiscovery.discoveredEnemyCount);
+              const sdPois = convertDiscoveredPois(restDiscovery.discoveredPois, restDiscovery.discoveredPoiCount);
+              dispatch({ type: 'SYNC_DISCOVERY', tiles: sdTiles, enemies: sdEnemies, pois: sdPois });
             }
 
             // Detect boss resolution:
@@ -2371,6 +2383,22 @@ export function usePoiInteraction(): UsePoiInteractionResult {
               const playerDied = updatedState.isDead;
               const levelCompleted = updatedState.completed;
               if (weekAdvanced || playerDied || levelCompleted) {
+                // When event parsing fails to extract the post-heal HP, compute it
+                // locally from the known heal mechanics so CombatScreen shows the
+                // correct starting HP (not the stale pre-heal value from the closure).
+                let preBossHp = parsedBossCombat?.preBossPlayerHp;
+                if (preBossHp == null) {
+                  const preHealHp = gameState?.player.stats.hp ?? 0;
+                  const maxHp = gameState?.player.stats.maxHp ?? preHealHp;
+                  if (deferredPoiType === POI_TYPES.MOLE_DEN) {
+                    // Mole Den: full heal
+                    preBossHp = maxHp;
+                  } else {
+                    // Rest Alcove: +10 HP (capped at maxHp)
+                    preBossHp = Math.min(preHealHp + 10, maxHp);
+                  }
+                }
+
                 bossResolved = {
                   playerWon: parsedBossCombat?.combatEnded
                     ? parsedBossCombat.combatEnded.playerWon
@@ -2379,7 +2407,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
                   finalPlayerGold: updatedState.gold,
                   totalMoves: updatedState.totalMoves,
                   phase: updatedState.phase,
-                  preBossPlayerHp: parsedBossCombat?.preBossPlayerHp,
+                  preBossPlayerHp: preBossHp,
                   turnsTaken: parsedBossCombat?.combatEnded?.turnsTaken,
                   finalEnemyHp: parsedBossCombat?.combatEnded?.finalEnemyHp,
                   signature: restSignature,

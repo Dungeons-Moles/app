@@ -21,6 +21,7 @@ import type {
   ItemRarity,
   BossSelectionMode,
   GuestDifficultyId,
+  BossId,
 } from './types';
 import { GamePhase, CombatPhase, DEFAULT_STATUS_EFFECTS, TimePhase } from './types';
 // On-chain types inlined to avoid importing from services/solana which requires env vars.
@@ -62,7 +63,7 @@ import { Direction, DIRECTION_DELTA } from '../input/types';
 import { isValidTransition } from './state-machine';
 import { initializeGame, consumeMoves } from './state-factory';
 import { GAME_CONSTANTS } from './constants';
-import { TileType, TILE_MOVE_COST, type MapEnemy, type MapPOI, FogState } from '../map/types';
+import { TileType, TILE_MOVE_COST, type MapEnemy, type MapPOI, FogState, type GameMap } from '../map/types';
 import { updateFogOfWar } from '../map/fog-of-war';
 import { calculateDigCost, canDig, executeDig } from '../map/dig';
 import {
@@ -154,8 +155,8 @@ export type GameAction =
   | { type: 'ADD_GOLD'; amount: number }
   | { type: 'SPEND_GOLD'; amount: number }
   // On-chain-first sync actions
-  | { type: 'SYNC_MOVE'; confirmedState: OnChainGameState }
-  | { type: 'SYNC_COMBAT_RESULT'; confirmedState: OnChainGameState; result: CombatResult }
+  | { type: 'SYNC_MOVE'; confirmedState: OnChainGameState; weekBoss?: BossId }
+  | { type: 'SYNC_COMBAT_RESULT'; confirmedState: OnChainGameState; result: CombatResult; weekBoss?: BossId }
   // Enemy position sync (for night movement from on-chain)
   | {
       type: 'SYNC_ENEMY_POSITIONS';
@@ -310,10 +311,10 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
 
     // On-chain-first sync actions
     case 'SYNC_MOVE':
-      return handleSyncMove(state, action.confirmedState);
+      return handleSyncMove(state, action.confirmedState, action.weekBoss);
 
     case 'SYNC_COMBAT_RESULT':
-      return handleSyncCombatResult(state, action.confirmedState, action.result);
+      return handleSyncCombatResult(state, action.confirmedState, action.result, action.weekBoss);
 
     // Enemy position sync (for night movement from on-chain)
     case 'SYNC_ENEMY_POSITIONS':
@@ -1664,7 +1665,7 @@ function mapOnChainPhase(phase: number): { timePhase: TimePhase; cycle: 1 | 2 | 
  * Updates local game state from confirmed on-chain state after a move_player transaction.
  * This is the on-chain-first equivalent of the old MOVE action for non-guest mode.
  */
-function handleSyncMove(state: GameState, confirmedState: OnChainGameState): GameState {
+function handleSyncMove(state: GameState, confirmedState: OnChainGameState, weekBossOverride?: BossId): GameState {
   const { timePhase, cycle } = mapOnChainPhase(confirmedState.phase);
 
   const targetPos: Position = {
@@ -1672,8 +1673,14 @@ function handleSyncMove(state: GameState, confirmedState: OnChainGameState): Gam
     y: confirmedState.positionY,
   };
 
-  // Update fog of war for new position
-  const isDay = timePhase === TimePhase.Day;
+  // Update fog of war for new position.
+  // Use the most advanced phase between confirmed state and local state.
+  // The confirmed state can be stale when fetched in parallel with confirmation
+  // (the ER may not have processed the tx yet), while the local state may have
+  // already transitioned from Night to Day on the previous move's SYNC_MOVE.
+  const confirmedIsDay = timePhase === TimePhase.Day;
+  const localIsDay = state.time.phase === TimePhase.Day;
+  const isDay = confirmedIsDay || localIsDay;
   const updatedMap = updateFogOfWar(state.map, targetPos, isDay);
 
   // Remove any defeated enemies at the target position
@@ -1720,21 +1727,26 @@ function handleSyncMove(state: GameState, confirmedState: OnChainGameState): Gam
 
   // Sync time state from on-chain
   const syncedWeek = confirmedState.week as 1 | 2 | 3;
+  // Determine the weekBoss for the current week:
+  // - Campaign: always use deterministic selectWeekBossForLevel (never trust discovery
+  //   override — the parallel fetch can return stale pre-boss data).
+  // - Duel/Gauntlet: use discovery override if available (VRF-selected, not deterministic),
+  //   otherwise keep the existing value until a RESTORE_GAME corrects it.
+  const isDuelOrGauntlet = confirmedState.runMode === 2 || confirmedState.runMode === 1;
   const syncedWeekBoss =
     syncedWeek !== state.time.week
-      ? confirmedState.runMode === 2
-        ? state.time.weekBoss
-        : confirmedState.runMode === 1
-        ? state.time.weekBoss
+      ? isDuelOrGauntlet
+        ? weekBossOverride ?? state.time.weekBoss
         : selectWeekBossForLevel(confirmedState.campaignLevel, syncedWeek)
-      : state.time.weekBoss;
+      : isDuelOrGauntlet
+        ? weekBossOverride ?? state.time.weekBoss
+        : state.time.weekBoss;
   const updatedTime: TimeState = {
     ...state.time,
     week: syncedWeek,
     phase: timePhase,
     cycle,
     movesRemaining: confirmedState.movesRemaining,
-    // Update weekBoss if the week changed (e.g., after boss victory advanced the week on-chain)
     weekBoss: syncedWeekBoss,
   };
 
@@ -1837,7 +1849,8 @@ function handleSyncMove(state: GameState, confirmedState: OnChainGameState): Gam
 function handleSyncCombatResult(
   state: GameState,
   confirmedState: OnChainGameState,
-  result: CombatResult
+  result: CombatResult,
+  weekBossOverride?: BossId
 ): GameState {
   const { timePhase, cycle } = mapOnChainPhase(confirmedState.phase);
 
@@ -1880,14 +1893,15 @@ function handleSyncCombatResult(
   updatedPlayer.stats.hp = Math.max(0, Math.min(confirmedState.hp, updatedPlayer.stats.maxHp));
 
   const syncedWeek2 = confirmedState.week as 1 | 2 | 3;
+  const isDuelOrGauntlet2 = confirmedState.runMode === 2 || confirmedState.runMode === 1;
   const syncedWeekBoss2 =
     syncedWeek2 !== state.time.week
-      ? confirmedState.runMode === 2
-        ? state.time.weekBoss
-        : confirmedState.runMode === 1
-        ? state.time.weekBoss
+      ? isDuelOrGauntlet2
+        ? weekBossOverride ?? state.time.weekBoss
         : selectWeekBossForLevel(confirmedState.campaignLevel, syncedWeek2)
-      : state.time.weekBoss;
+      : isDuelOrGauntlet2
+        ? weekBossOverride ?? state.time.weekBoss
+        : state.time.weekBoss;
   const updatedTime: TimeState = {
     ...state.time,
     week: syncedWeek2,
@@ -2140,15 +2154,24 @@ function handleSyncDiscovery(
     mergedPois.unshift({ ...moleDen, id: 'poi-mole-den' });
   }
 
+  const mergedMap: GameMap = {
+    ...state.map,
+    tiles: newTiles,
+    fog: newFog,
+    enemies: mergedEnemies,
+    pois: mergedPois,
+  };
+
+  // Re-apply fog visibility centered on the player so the Visible radius matches
+  // the current phase. Without this, tiles revealed on-chain by RevealRadius (e.g.,
+  // 4-tile Day vision) appear as dim Revealed instead of bright Visible when the
+  // local SYNC_MOVE fog update used a stale phase.
+  const isDay = state.time.phase === TimePhase.Day;
+  const correctedMap = updateFogOfWar(mergedMap, state.player.position, isDay);
+
   return {
     ...state,
-    map: {
-      ...state.map,
-      tiles: newTiles,
-      fog: newFog,
-      enemies: mergedEnemies,
-      pois: mergedPois,
-    },
+    map: correctedMap,
   };
 }
 

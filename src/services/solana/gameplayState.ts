@@ -25,6 +25,7 @@ import {
   deriveGameplayVrfStatePda,
   deriveSessionDiscoveryPda,
   deriveGauntletEchoesPda,
+  GAMEPLAY_STATE_PROGRAM_ID,
 } from './constants';
 
 import {
@@ -86,7 +87,10 @@ export function warmMovePlayerCaches(
     gauntletEchoesExistsCache.has(sessionKey) ? null :
       connection.getAccountInfo(gauntletEchoesPda)
         .catch(() => null)
-        .then((r: unknown) => gauntletEchoesExistsCache.set(sessionKey, !!r)),
+        .then((info: { owner?: { toBase58?: () => string } } | null) => {
+          const isDelegated = (info as any)?.owner?.toBase58?.() === GAMEPLAY_STATE_PROGRAM_ID.toBase58();
+          gauntletEchoesExistsCache.set(sessionKey, !!info && isDelegated);
+        }),
   ]).catch(() => {});
 }
 
@@ -208,7 +212,13 @@ export async function movePlayer(
       discoveryCached ? Promise.resolve(null) :
         connection.getAccountInfo(sessionDiscoveryPda).catch(() => null),
       gauntletCached ? Promise.resolve(null) :
-        connection.getAccountInfo(gauntletEchoesPda).catch(() => null),
+        // Check if gauntlet_echoes exists AND is owned by gameplay_state (delegated).
+        // The ER proxies base-chain reads, so a non-delegated account would return data
+        // but cause InvalidWritableAccount when included as writable in an ER tx.
+        connection.getAccountInfo(gauntletEchoesPda).catch(() => null)
+          .then((info: { owner?: { toBase58?: () => string } } | null) =>
+            info?.owner?.toBase58?.() === GAMEPLAY_STATE_PROGRAM_ID.toBase58() ? info : null
+          ),
     ]);
     if (!vrfCached) vrfStateExistsCache.set(sessionKey, !!vrfResult);
     if (!discoveryCached) discoveryExistsCache.set(sessionKey, !!discoveryResult);
@@ -550,6 +560,47 @@ function parsePhase(phase: OnChainGameState['phase']): Phase {
   if ('day3' in phase) return Phase.Day3;
   if ('night3' in phase) return Phase.Night3;
   return Phase.Day1; // Default fallback
+}
+
+/**
+ * Builds and sends a sync_discovery_boss transaction on the ER.
+ * Called after rest-alcove boss wins in Duel mode to update the boss ID
+ * in SessionDiscovery (skip_to_day can't do this due to ER CPI depth limits).
+ */
+export async function syncDiscoveryBoss(
+  connection: Connection,
+  program: Program,
+  gameStatePda: PublicKey,
+  sessionPda: PublicKey,
+  sessionSignerKeypair: Keypair
+): Promise<string> {
+  const [gameplayAuthorityPda] = deriveGameplayAuthorityPda();
+  const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
+  const [gameplayVrfStatePda] = deriveGameplayVrfStatePda(sessionPda);
+
+  // Check if VRF state exists (needed for Duel boss selection)
+  const vrfExists = await (program.account as any)?.gameplayVrfState
+    ?.fetchNullable(gameplayVrfStatePda)
+    .catch(() => null);
+
+  const transaction = await (program.methods as any)
+    .syncDiscoveryBoss()
+    .accountsPartial({
+      gameState: gameStatePda,
+      gameSession: sessionPda,
+      gameplayAuthority: gameplayAuthorityPda,
+      sessionDiscovery: sessionDiscoveryPda,
+      mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
+      gameplayVrfState: vrfExists ? gameplayVrfStatePda : null,
+      player: sessionSignerKeypair.publicKey,
+    })
+    .transaction();
+
+  transaction.instructions.unshift(
+    ComputeBudgetProgram.setComputeUnitLimit({ units: 200_000 })
+  );
+
+  return sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair);
 }
 
 /**
