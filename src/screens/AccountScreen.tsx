@@ -595,7 +595,7 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
 
       <View style={[styles.versionLabel, isCompact && styles.versionLabelCompact]}>
         <Text style={[styles.versionText, isCompact && styles.versionTextCompact]}>
-          Beta Version {APP_VERSION}
+          Alpha v{APP_VERSION}
         </Text>
       </View>
     </Animated.View>
