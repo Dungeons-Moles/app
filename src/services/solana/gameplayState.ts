@@ -16,7 +16,16 @@ import {
 } from '@solana/web3.js';
 import { Program } from '@coral-xyz/anchor';
 import { SOLANA_CONFIG } from './config';
-import { sendSessionSignerTransaction, confirmErTransaction } from './sessionSigner';
+import {
+  sendSessionSignerTransaction,
+  confirmErTransaction,
+  getCachedErBlockhash,
+  buildMessageTemplate,
+  signTemplatedTransaction,
+  type MessageTemplate,
+} from './sessionSigner';
+import bs58 from 'bs58';
+import { Platform } from 'react-native';
 import {
   deriveInventoryPda,
   deriveGeneratedMapPda,
@@ -49,9 +58,43 @@ const discoveryExistsCache = new Map<string, boolean>();
 // Cache for gauntletEchoes existence per session — avoids a round trip on every move.
 const gauntletEchoesExistsCache = new Map<string, boolean>();
 
+// Cache PDA derivations per session — findProgramAddressSync is expensive on React Native
+// (~20-30ms per call due to SHA-256 loops in Hermes JS engine).
+const pdaCache = new Map<string, {
+  generatedMap: PublicKey;
+  inventory: PublicKey;
+  gameplayAuthority: PublicKey;
+  mapPois: PublicKey;
+  gameplayVrfState: PublicKey;
+  sessionDiscovery: PublicKey;
+  gauntletEchoes: PublicKey;
+}>();
+
 // Pre-computed Anchor discriminator for move_player: sha256("global:move_player")[0..8]
 // Avoids going through Anchor's MethodsBuilder which adds ~120ms of async overhead.
 const MOVE_PLAYER_DISCRIMINATOR = Buffer.from([17, 58, 68, 221, 186, 117, 140, 231]);
+
+// Pre-compiled message template per session — eliminates ~130ms message compilation on Hermes.
+// The move transaction has the same accounts every call; only blockhash, targetX/Y, and CU price change.
+const moveTemplateCache = new Map<string, MessageTemplate>();
+
+/** Patch specs for locating mutable fields in the serialized move_player message. */
+const MOVE_PATCH_SPECS = [
+  {
+    name: 'moveTarget',
+    dataLength: 10, // 8-byte discriminator + targetX + targetY
+    discriminator: Array.from(MOVE_PLAYER_DISCRIMINATOR),
+    patchOffset: 8, // skip discriminator
+    patchLength: 2, // targetX + targetY
+  },
+  {
+    name: 'cuPrice',
+    dataLength: 9, // 1-byte discriminator (3) + 8-byte u64 microLamports
+    discriminator: [3],
+    patchOffset: 1, // skip discriminator
+    patchLength: 8, // microLamports (u64 LE)
+  },
+];
 
 /**
  * Pre-warm the optional-account existence caches for a session so the first
@@ -187,23 +230,37 @@ export async function movePlayer(
   sessionSignerKeypair: Keypair,
   params: MovePlayerParams
 ): Promise<{ signature: string; connection: Connection }> {
-  const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
-  const [inventoryPda] = deriveInventoryPda(sessionPda);
-  const [gameplayAuthorityPda] = deriveGameplayAuthorityPda();
-  const [mapPoisPda] = deriveMapPoisPda(sessionPda);
-  const [gameplayVrfStatePda] = deriveGameplayVrfStatePda(sessionPda);
-  const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
-  // Optional accounts: include only when fully initialized/deserializable.
-  // Cache both positive and negative results per session to avoid round trips on every move.
-  // On first move (cold cache), all 3 checks run in parallel to avoid sequential latency.
   const sessionKey = sessionPda.toBase58();
-  const [gauntletEchoesPda] = deriveGauntletEchoesPda(sessionPda);
 
+  // Cache PDA derivations per session — findProgramAddressSync is expensive on RN
+  // (~20-30ms per call due to SHA-256 loops in Hermes). 7 PDAs × ~25ms = ~175ms per move.
+  if (!pdaCache.has(sessionKey)) {
+    pdaCache.set(sessionKey, {
+      generatedMap: deriveGeneratedMapPda(sessionPda)[0],
+      inventory: deriveInventoryPda(sessionPda)[0],
+      gameplayAuthority: deriveGameplayAuthorityPda()[0],
+      mapPois: deriveMapPoisPda(sessionPda)[0],
+      gameplayVrfState: deriveGameplayVrfStatePda(sessionPda)[0],
+      sessionDiscovery: deriveSessionDiscoveryPda(sessionPda)[0],
+      gauntletEchoes: deriveGauntletEchoesPda(sessionPda)[0],
+    });
+  }
+  const pdas = pdaCache.get(sessionKey)!;
+  const generatedMapPda = pdas.generatedMap;
+  const inventoryPda = pdas.inventory;
+  const gameplayAuthorityPda = pdas.gameplayAuthority;
+  const mapPoisPda = pdas.mapPois;
+  const gameplayVrfStatePda = pdas.gameplayVrfState;
+  const sessionDiscoveryPda = pdas.sessionDiscovery;
+  const gauntletEchoesPda = pdas.gauntletEchoes;
+
+  const tCache = Date.now();
   const vrfCached = vrfStateExistsCache.has(sessionKey);
   const discoveryCached = discoveryExistsCache.has(sessionKey);
   const gauntletCached = gauntletEchoesExistsCache.has(sessionKey);
 
   if (!vrfCached || !discoveryCached || !gauntletCached) {
+    console.log(`[perf]   cache MISS: vrf=${vrfCached} disc=${discoveryCached} gauntlet=${gauntletCached}`);
     const [vrfResult, discoveryResult, gauntletResult] = await Promise.all([
       vrfCached ? Promise.resolve(null) :
         (program.account as any)?.gameplayVrfState
@@ -229,10 +286,115 @@ export async function movePlayer(
   const discoveryExists = discoveryExistsCache.get(sessionKey)!;
   const gauntletEchoesExists = gauntletEchoesExistsCache.get(sessionKey)!;
 
-  // Build instruction manually instead of using Anchor's MethodsBuilder.
-  // Anchor's async account resolution loop adds ~120ms of overhead even when
-  // all accounts are provided, due to Promise chains and IDL traversal.
-  const data = Buffer.alloc(10); // 8 discriminator + 1 targetX (u8) + 1 targetY (u8)
+  console.log(`[perf]   cacheCheck: ${Date.now() - tCache}ms`);
+
+  // On React Native, use pre-compiled message template to avoid ~130ms compilation
+  // on every move. First call compiles and caches; subsequent calls clone-and-patch.
+  const isNative = Platform.OS !== 'web';
+
+  if (isNative) {
+    // --- Fast path: template-based fire-and-forget (React Native) ---
+    const tTemplate = Date.now();
+
+    // Get cached blockhash
+    const { blockhash } = await getCachedErBlockhash(connection, 'processed');
+    const blockhashBytes = bs58.decode(blockhash);
+
+    let template = moveTemplateCache.get(sessionKey);
+    if (!template) {
+      // First call: build full transaction and compile template (~130ms, once per session)
+      const data = Buffer.alloc(10);
+      data.set(MOVE_PLAYER_DISCRIMINATOR, 0);
+      data.writeUInt8(params.targetX, 8);
+      data.writeUInt8(params.targetY, 9);
+
+      const keys = [
+        { pubkey: gameStatePda, isSigner: false, isWritable: true },
+        { pubkey: sessionPda, isSigner: false, isWritable: false },
+        { pubkey: generatedMapPda, isSigner: false, isWritable: true },
+        { pubkey: inventoryPda, isSigner: false, isWritable: true },
+        { pubkey: gameplayAuthorityPda, isSigner: false, isWritable: false },
+        { pubkey: SOLANA_CONFIG.programs.playerInventory, isSigner: false, isWritable: false },
+        { pubkey: SOLANA_CONFIG.programs.mapGenerator, isSigner: false, isWritable: false },
+        { pubkey: mapPoisPda, isSigner: false, isWritable: true },
+        { pubkey: SOLANA_CONFIG.programs.poiSystem, isSigner: false, isWritable: false },
+        {
+          pubkey: discoveryExists ? sessionDiscoveryPda : SOLANA_CONFIG.programs.gameplayState,
+          isSigner: false,
+          isWritable: discoveryExists,
+        },
+        {
+          pubkey: vrfStateExists ? gameplayVrfStatePda : SOLANA_CONFIG.programs.gameplayState,
+          isSigner: false,
+          isWritable: false,
+        },
+        {
+          pubkey: gauntletEchoesExists ? gauntletEchoesPda : SOLANA_CONFIG.programs.gameplayState,
+          isSigner: false,
+          isWritable: gauntletEchoesExists,
+        },
+        { pubkey: sessionSignerKeypair.publicKey, isSigner: true, isWritable: false },
+      ];
+
+      const tx = new Transaction();
+      tx.feePayer = sessionSignerKeypair.publicKey;
+      tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 1_000_000 }));
+      tx.add(
+        ComputeBudgetProgram.setComputeUnitPrice({
+          microLamports: Math.floor(Math.random() * 1000) + 1,
+        })
+      );
+      tx.add(new TransactionInstruction({
+        keys,
+        programId: SOLANA_CONFIG.programs.gameplayState,
+        data,
+      }));
+      tx.recentBlockhash = blockhash;
+
+      template = buildMessageTemplate(tx, MOVE_PATCH_SPECS);
+      moveTemplateCache.set(sessionKey, template);
+      console.log(`[perf]   template: BUILT ${Date.now() - tTemplate}ms`);
+    }
+
+    const tSign = Date.now();
+
+    // Patch variable fields: targetX/Y and CU price for uniqueness
+    const moveTargetData = new Uint8Array([params.targetX, params.targetY]);
+    const cuPriceData = new Uint8Array(8);
+    new DataView(cuPriceData.buffer).setBigUint64(
+      0,
+      BigInt(Math.floor(Math.random() * 1000) + 1),
+      true // little-endian
+    );
+    const patchData = new Map<string, Uint8Array>([
+      ['moveTarget', moveTargetData],
+      ['cuPrice', cuPriceData],
+    ]);
+
+    const { wireTransaction, signature } = signTemplatedTransaction(
+      template,
+      blockhashBytes,
+      patchData,
+      sessionSignerKeypair.secretKey.slice(0, 32)
+    );
+    const tDone = Date.now();
+
+    // Fire-and-forget the HTTP send
+    connection.sendRawTransaction(Buffer.from(wireTransaction), {
+      skipPreflight: true,
+      maxRetries: 2,
+    }).then(() => {
+      console.log('[perf] sendTransaction(bg): completed (router=true)');
+    }).catch((err) => {
+      console.error('[movePlayer] Background send failed:', err);
+    });
+
+    console.log(`[perf] sendTransaction: 0ms (templated, sign: ${tDone - tSign}ms, sig=${signature.slice(0, 8)}...)`);
+    return { signature, connection };
+  }
+
+  // --- Standard path (web): use Transaction.sign + sendSessionSignerTransaction ---
+  const data = Buffer.alloc(10);
   data.set(MOVE_PLAYER_DISCRIMINATOR, 0);
   data.writeUInt8(params.targetX, 8);
   data.writeUInt8(params.targetY, 9);
@@ -247,19 +409,16 @@ export async function movePlayer(
     { pubkey: SOLANA_CONFIG.programs.mapGenerator, isSigner: false, isWritable: false },
     { pubkey: mapPoisPda, isSigner: false, isWritable: true },
     { pubkey: SOLANA_CONFIG.programs.poiSystem, isSigner: false, isWritable: false },
-    // Optional: session_discovery — when null, Anchor uses program_id as sentinel
     {
       pubkey: discoveryExists ? sessionDiscoveryPda : SOLANA_CONFIG.programs.gameplayState,
       isSigner: false,
       isWritable: discoveryExists,
     },
-    // Optional: when null, Anchor uses program_id as sentinel
     {
       pubkey: vrfStateExists ? gameplayVrfStatePda : SOLANA_CONFIG.programs.gameplayState,
       isSigner: false,
       isWritable: false,
     },
-    // Optional: gauntlet_echoes — when null, Anchor uses program_id as sentinel
     {
       pubkey: gauntletEchoesExists ? gauntletEchoesPda : SOLANA_CONFIG.programs.gameplayState,
       isSigner: false,
@@ -275,15 +434,10 @@ export async function movePlayer(
       data,
     })
   );
-  // move_player can resolve boss fights / gauntlet echoes inline on the last
-  // move of night3 (up to 50-turn combat + CPIs), which far exceeds the
-  // default 200k CU limit.
   transaction.instructions.unshift(
     ComputeBudgetProgram.setComputeUnitLimit({ units: 1_000_000 })
   );
 
-  // Skip ER confirmation here — caller runs it in parallel with state fetch
-  // to overlap the round trips (saves ~150ms from high-latency locations).
   const signature = await sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair, {
     skipErConfirmation: true,
   });
@@ -489,6 +643,7 @@ interface OnChainGameState {
   completed?: boolean;
   gauntletEpochId?: number;
   gauntletPointsEarned?: number;
+  gauntletDefenderCredit?: { defender: PublicKey; points: number | bigint } | null;
   gauntletHighestWeekWon?: number;
   gauntletSettled?: boolean;
   bump: number;
@@ -653,6 +808,7 @@ export function clearMovePlayerCaches(sessionKey: string): void {
   vrfStateExistsCache.delete(sessionKey);
   discoveryExistsCache.delete(sessionKey);
   gauntletEchoesExistsCache.delete(sessionKey);
+  pdaCache.delete(sessionKey);
 }
 
 /**

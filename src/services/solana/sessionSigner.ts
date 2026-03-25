@@ -17,7 +17,146 @@ import {
 } from '@solana/web3.js';
 import * as SecureStorage from '@/services/storage/secureStorage';
 import bs58 from 'bs58';
+import { ed25519 } from '@noble/curves/ed25519';
 import { SOLANA_CONFIG } from './config';
+
+// ============================================================================
+// Pre-compiled message template for fire-and-forget transactions
+// ============================================================================
+
+/** Byte offsets into a serialized Solana message for fields that change per call. */
+export interface MessageTemplate {
+  bytes: Uint8Array;
+  blockhashOffset: number;
+  /** Patchable data regions: [{offset, length}] within the serialized message. */
+  patches: { name: string; offset: number; length: number }[];
+}
+
+/** Read a compact-u16 from a byte array at the given offset. */
+function readCompactU16(bytes: Uint8Array, offset: number): { value: number; size: number } {
+  let value = 0;
+  let size = 0;
+  for (;;) {
+    const byte = bytes[offset + size];
+    value |= (byte & 0x7f) << (size * 7);
+    size += 1;
+    if ((byte & 0x80) === 0) break;
+  }
+  return { value, size };
+}
+
+/**
+ * Build a message template from a fully-constructed Transaction.
+ * Compiles the message once (expensive on Hermes: ~130ms) and locates
+ * the byte offsets of all patchable fields so subsequent calls can
+ * clone-and-patch in <1ms instead of recompiling.
+ *
+ * @param tx - Transaction with feePayer, recentBlockhash, and instructions set
+ * @param patchSpecs - Named data regions to locate: [{name, discriminator, dataLength, patchOffset, patchLength}]
+ *   - discriminator: first byte(s) of the instruction data to match
+ *   - dataLength: total instruction data length to match
+ *   - patchOffset: byte offset within the instruction data where the patchable region starts
+ *   - patchLength: number of bytes in the patchable region
+ */
+export function buildMessageTemplate(
+  tx: Transaction,
+  patchSpecs: {
+    name: string;
+    dataLength: number;
+    discriminator: number[];
+    patchOffset: number;
+    patchLength: number;
+  }[]
+): MessageTemplate {
+  const messageBytes = tx.serializeMessage();
+
+  // Parse the serialized message to find byte offsets.
+  let offset = 3; // skip 3-byte header
+
+  // Account keys
+  const { value: numAccounts, size: accCountSize } = readCompactU16(messageBytes, offset);
+  offset += accCountSize + numAccounts * 32;
+
+  // Blockhash
+  const blockhashOffset = offset;
+  offset += 32;
+
+  // Instructions
+  const { value: numInstructions, size: ixCountSize } = readCompactU16(messageBytes, offset);
+  offset += ixCountSize;
+
+  const patches: MessageTemplate['patches'] = [];
+
+  for (let i = 0; i < numInstructions; i++) {
+    offset += 1; // programIdIndex
+
+    const { value: numAccIdx, size: accIdxSize } = readCompactU16(messageBytes, offset);
+    offset += accIdxSize + numAccIdx;
+
+    const { value: dataLen, size: dataLenSize } = readCompactU16(messageBytes, offset);
+    offset += dataLenSize;
+    const dataStart = offset;
+
+    // Match against patch specs
+    for (const spec of patchSpecs) {
+      if (dataLen === spec.dataLength) {
+        let match = true;
+        for (let d = 0; d < spec.discriminator.length; d++) {
+          if (messageBytes[dataStart + d] !== spec.discriminator[d]) {
+            match = false;
+            break;
+          }
+        }
+        if (match) {
+          patches.push({
+            name: spec.name,
+            offset: dataStart + spec.patchOffset,
+            length: spec.patchLength,
+          });
+        }
+      }
+    }
+
+    offset += dataLen;
+  }
+
+  return { bytes: Uint8Array.from(messageBytes), blockhashOffset, patches };
+}
+
+/**
+ * Clone a message template, patch the variable fields, sign, and build the
+ * wire transaction — all without recompiling the message (~0ms vs ~130ms).
+ */
+export function signTemplatedTransaction(
+  template: MessageTemplate,
+  blockhashBytes: Uint8Array,
+  patchData: Map<string, Uint8Array>,
+  secretKeySeed: Uint8Array
+): { wireTransaction: Uint8Array; signature: string } {
+  // Clone template bytes
+  const msg = new Uint8Array(template.bytes.length);
+  msg.set(template.bytes);
+
+  // Patch blockhash
+  msg.set(blockhashBytes, template.blockhashOffset);
+
+  // Patch instruction data
+  for (const patch of template.patches) {
+    const data = patchData.get(patch.name);
+    if (data) msg.set(data, patch.offset);
+  }
+
+  // Sign
+  const signatureBytes = ed25519.sign(msg, secretKeySeed);
+
+  // Build wire: [1 (compact-u16)] [64-byte signature] [message]
+  const wire = new Uint8Array(1 + 64 + msg.length);
+  wire[0] = 1;
+  wire.set(signatureBytes, 1);
+  wire.set(msg, 65);
+
+  return { wireTransaction: wire, signature: bs58.encode(signatureBytes) };
+}
 
 // ============================================================================
 // Constants
@@ -49,7 +188,7 @@ let erBlockhashCache: {
   fetchedAt: number;
 } | null = null;
 
-const getCachedErBlockhash = async (
+export const getCachedErBlockhash = async (
   connection: Connection,
   commitment: import('@solana/web3.js').Commitment
 ): Promise<{ blockhash: string; lastValidBlockHeight: number }> => {
@@ -539,7 +678,7 @@ export async function sendSessionSignerTransaction(
   connection: Connection,
   transaction: Transaction,
   sessionSignerKeypair: Keypair,
-  options?: { skipErConfirmation?: boolean; skipConfirmation?: boolean }
+  options?: { skipErConfirmation?: boolean; skipConfirmation?: boolean; fireAndForget?: boolean }
 ): Promise<string> {
   const erConnection = isErConnection(connection);
   const baseInstructions = [...transaction.instructions];
@@ -547,6 +686,7 @@ export async function sendSessionSignerTransaction(
   let lastError: unknown = null;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const tSetup = Date.now();
     const tx = new Transaction();
     tx.feePayer = sessionSignerKeypair.publicKey;
     tx.add(...baseInstructions);
@@ -567,6 +707,7 @@ export async function sendSessionSignerTransaction(
       const randomMicroLamports = Math.floor(Math.random() * 1000) + 1;
       tx.add(ComputeBudgetProgram.setComputeUnitPrice({ microLamports: randomMicroLamports }));
     }
+    console.log(`[perf]   txSetup: ${Date.now() - tSetup}ms`);
 
     const confirmationCommitment = erConnection
       ? SOLANA_CONFIG.erCommitment
@@ -576,9 +717,7 @@ export async function sendSessionSignerTransaction(
     let lastValidBlockHeight = 0;
 
     {
-      // Always set blockhash + sign locally. For ER, use the cached blockhash
-      // to avoid a round trip per transaction. For the router path, this also
-      // prevents web3.js sendTransaction from doing a hidden internal fetch.
+      const tBh = Date.now();
       const blockhashCommitment = erConnection ? 'processed' : confirmationCommitment;
       const latest = erConnection
         ? await getCachedErBlockhash(connection, blockhashCommitment)
@@ -586,17 +725,63 @@ export async function sendSessionSignerTransaction(
       blockhash = latest.blockhash;
       lastValidBlockHeight = latest.lastValidBlockHeight;
       tx.recentBlockhash = blockhash;
+      console.log(`[perf]   blockhash: ${Date.now() - tBh}ms`);
+    }
+
+    // Fire-and-forget mode: compile message ONCE, sign raw bytes, build wire
+    // format manually. This avoids the double-compilation overhead in
+    // Transaction.sign() + Transaction.serialize() which costs ~280ms on Hermes.
+    if (options?.fireAndForget && erConnection) {
+      const tCompile = Date.now();
+      // Compile and serialize message ONCE (the expensive part: account dedup,
+      // sorting, compact-array building — ~130ms on Hermes).
+      const messageBytes = tx.serializeMessage();
+      const tSign = Date.now();
+
+      // Sign raw message bytes with @noble/curves ed25519 (bypasses
+      // Transaction.sign's internal re-compilation).
+      const seed = sessionSignerKeypair.secretKey.slice(0, 32);
+      const signatureBytes = ed25519.sign(messageBytes, seed);
+      const tWire = Date.now();
+
+      // Build wire transaction: [1 (compact-u16)] [64-byte signature] [message]
+      const wireTransaction = Buffer.alloc(1 + 64 + messageBytes.length);
+      wireTransaction.writeUInt8(1, 0);
+      wireTransaction.set(signatureBytes, 1);
+      wireTransaction.set(messageBytes, 65);
+
+      const signature = bs58.encode(signatureBytes);
+
+      connection.sendRawTransaction(wireTransaction, {
+        skipPreflight: true,
+        maxRetries: 2,
+      }).then(() => {
+        console.log(`[perf] sendTransaction(bg): completed (router=${isRouterPath})`);
+      }).catch((err) => {
+        console.error('[sessionSignerWallet] Background send failed:', err);
+      });
+      console.log(`[perf] sendTransaction: 0ms (fire-and-forget, compile: ${tSign - tCompile}ms, sign: ${tWire - tSign}ms, sig=${signature.slice(0, 8)}...)`);
+      return signature;
+    }
+
+    // Standard path (web / non-fire-and-forget): use Transaction.sign + serialize.
+    {
+      const tSign = Date.now();
       tx.sign(sessionSignerKeypair);
+      console.log(`[perf]   sign: ${Date.now() - tSign}ms`);
     }
 
     try {
       const tSend = Date.now();
-      const signature = await connection.sendRawTransaction(tx.serialize(), {
-        // MagicBlock ER recommends skipping preflight; preflight can fail with
-        // transient writable-account verification errors before ER state settles.
-        skipPreflight: erConnection,
-        maxRetries: 2,
-      });
+      const signature = await connection.sendRawTransaction(
+        tx.serialize({ verifySignatures: false }),
+        {
+          // MagicBlock ER recommends skipping preflight; preflight can fail with
+          // transient writable-account verification errors before ER state settles.
+          skipPreflight: erConnection,
+          maxRetries: 2,
+        },
+      );
       const tSent = Date.now();
       console.log(`[perf] sendTransaction: ${tSent - tSend}ms (router=${isRouterPath})`);
 
