@@ -329,7 +329,7 @@ export function MobileLanding() {
             <InkButton
               icon={<DiscordIcon />}
               label="Join Discord"
-              href="https://discord.gg/SbRz7Axa"
+              href="https://discord.gg/YqHTHA4B"
               delay={0.7}
             />
           </div>
