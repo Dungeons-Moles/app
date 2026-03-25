@@ -486,7 +486,11 @@ export async function modifyStat(
     })
     .transaction();
 
-  return sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair);
+  const isNative = Platform.OS !== 'web';
+  return sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair, {
+    fireAndForget: isNative,
+    skipErConfirmation: true,
+  });
 }
 
 /**
@@ -523,7 +527,11 @@ export async function triggerBossFight(
     ComputeBudgetProgram.setComputeUnitLimit({ units: 1_000_000 })
   );
 
-  return sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair);
+  const isNative = Platform.OS !== 'web';
+  return sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair, {
+    fireAndForget: isNative,
+    skipErConfirmation: true,
+  });
 }
 
 /**
@@ -559,7 +567,9 @@ export async function closeGameState(
     })
     .transaction();
 
-  return sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair);
+  return sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair, {
+    skipErConfirmation: true,
+  });
 }
 
 /**
@@ -755,7 +765,11 @@ export async function syncDiscoveryBoss(
     ComputeBudgetProgram.setComputeUnitLimit({ units: 200_000 })
   );
 
-  return sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair);
+  const isNative = Platform.OS !== 'web';
+  return sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair, {
+    fireAndForget: isNative,
+    skipErConfirmation: true,
+  });
 }
 
 /**

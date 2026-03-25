@@ -764,17 +764,29 @@ export async function sendSessionSignerTransaction(
       return signature;
     }
 
-    // Standard path (web / non-fire-and-forget): use Transaction.sign + serialize.
+    // Standard path: single-compilation with @noble/curves ed25519.
+    // On Hermes, Transaction.sign() + serialize() compiles the message twice (~280ms).
+    // Single compilation + noble sign: ~130ms + ~22ms = ~152ms.
+    let serializedTx: Uint8Array;
+    let precomputedSig: string;
     {
       const tSign = Date.now();
-      tx.sign(sessionSignerKeypair);
-      console.log(`[perf]   sign: ${Date.now() - tSign}ms`);
+      const messageBytes = tx.serializeMessage();
+      const seed = sessionSignerKeypair.secretKey.slice(0, 32);
+      const signatureBytes = ed25519.sign(messageBytes, seed);
+      const wire = new Uint8Array(1 + 64 + messageBytes.length);
+      wire[0] = 1;
+      wire.set(signatureBytes, 1);
+      wire.set(messageBytes, 65);
+      serializedTx = wire;
+      precomputedSig = bs58.encode(signatureBytes);
+      console.log(`[perf]   compile+sign: ${Date.now() - tSign}ms`);
     }
 
     try {
       const tSend = Date.now();
       const signature = await connection.sendRawTransaction(
-        tx.serialize({ verifySignatures: false }),
+        Buffer.from(serializedTx),
         {
           // MagicBlock ER recommends skipping preflight; preflight can fail with
           // transient writable-account verification errors before ER state settles.
