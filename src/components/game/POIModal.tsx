@@ -377,7 +377,6 @@ export const POIModal = React.memo(function POIModal({
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
   const [anvilModIndex, setAnvilModIndex] = useState<number | null>(null);
   const [selectedShopIndex, setSelectedShopIndex] = useState<number | null>(null);
-  const [selectedThreeChoiceIndex, setSelectedThreeChoiceIndex] = useState<number | null>(null);
   const options = interaction.options ?? [];
   const indexedOptions = useMemo(
     () => options.map((option, index) => ({ option, index })),
@@ -475,7 +474,7 @@ export const POIModal = React.memo(function POIModal({
       setFocusedIndex(0);
       setInventoryFocusIndex(0);
       setSelectedShopIndex(null);
-      setSelectedThreeChoiceIndex(null);
+
     }
   }, [visible]);
 
@@ -497,7 +496,6 @@ export const POIModal = React.memo(function POIModal({
     setFocusedIndex(0);
     setInventoryFocusIndex(0);
     setSelectedShopIndex(null);
-    setSelectedThreeChoiceIndex(null);
   }, [poiId]);
 
   // Sync controller focus with shop description panel
@@ -1091,22 +1089,10 @@ export const POIModal = React.memo(function POIModal({
                       effectDescription={effectDescription}
                       rarity={rarity}
                       itemName={itemName}
-                      selected={
-                        (isController && focusedIndex === index) ||
-                        selectedThreeChoiceIndex === index
-                      }
+                      selected={isController && focusedIndex === index}
                       disabled={option.disabled}
                       onSelect={() => {
-                        if (!isController) {
-                          if (selectedThreeChoiceIndex === index) {
-                            setSelectedThreeChoiceIndex(null);
-                            handleOptionSelect(index);
-                          } else {
-                            setSelectedThreeChoiceIndex(index);
-                          }
-                        } else {
-                          handleOptionSelect(index);
-                        }
+                        handleOptionSelect(index);
                       }}
                       onLongPress={(event) => handleOptionLongPress(option, event)}
                     />
@@ -1276,10 +1262,6 @@ export const POIModal = React.memo(function POIModal({
                           isSelected && styles.shopCellSelected,
                         ]}
                         onPress={() => {
-                          if (selectedShopIndex !== gridIdx) {
-                            setSelectedShopIndex(gridIdx);
-                            return;
-                          }
                           if (disabled) {
                             playSfx('ui_error');
                             return;

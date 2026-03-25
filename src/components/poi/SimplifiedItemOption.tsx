@@ -1,7 +1,7 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   Text,
-  TouchableOpacity,
+  Pressable,
   StyleSheet,
   type GestureResponderEvent,
   Image,
@@ -43,14 +43,19 @@ export function SimplifiedItemOption({
   const isMobileWide = !isCompact;
   const rarityColor = ITEM_RARITY_COLORS[rarity] ?? '#9ca3af';
 
+  const [pressed, setPressed] = useState(false);
+
+  const handlePressIn = useCallback(() => setPressed(true), []);
+  const handlePressOut = useCallback(() => setPressed(false), []);
+
   const containerStyle = useMemo(
     () => [
       styles.container,
       isMobileWide && styles.containerMobile,
-      selected && styles.selected,
+      (selected || pressed) && styles.selected,
       disabled && styles.disabled,
     ],
-    [selected, disabled, isMobileWide]
+    [selected, disabled, isMobileWide, pressed]
   );
 
   const textStyle = useMemo(
@@ -61,14 +66,15 @@ export function SimplifiedItemOption({
   const isCommon = rarity === 'COMMON';
 
   return (
-    <TouchableOpacity
+    <Pressable
       testID="item-option"
       style={containerStyle}
       onPress={onSelect}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
       onLongPress={onLongPress}
       delayLongPress={300}
       disabled={disabled}
-      activeOpacity={0.75}
       accessibilityRole="button"
       accessibilityLabel={`${itemName}, ${statDisplay ?? effectDescription ?? 'No stats'}, ${rarity.toLowerCase()} rarity`}
       accessibilityHint={`Long press to view ${itemName} details`}
@@ -109,7 +115,7 @@ export function SimplifiedItemOption({
           </Text>
         )}
       </View>
-    </TouchableOpacity>
+    </Pressable>
   );
 }
 
