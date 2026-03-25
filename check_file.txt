@@ -1,1 +1,0 @@
-assets/icons/ui/super-fast-speed.webp: RIFF (little-endian) data, Web/P image, VP8 encoding, 256x256, Scaling: [none]x[none], YUV color, decoders should clamp

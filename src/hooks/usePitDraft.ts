@@ -6,16 +6,20 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { Connection, PublicKey, SystemProgram, Transaction, TransactionInstruction, ComputeBudgetProgram } from '@solana/web3.js';
+import {
+  Connection,
+  PublicKey,
+  SystemProgram,
+  Transaction,
+  TransactionInstruction,
+  ComputeBudgetProgram,
+} from '@solana/web3.js';
 import { useWallet } from '@/contexts/WalletContext';
 import { useProfile } from '@/contexts/ProfileContext';
 import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
 import { createGameplayStateProgram, createPlayerProfileProgram } from '@/services/solana/programs';
 import { derivePlayerProfilePda } from '@/services/solana/types';
-import {
-  GAMEPLAY_STATE_PROGRAM_ID,
-  derivePitDraftVrfStatePda,
-} from '@/services/solana/constants';
+import { GAMEPLAY_STATE_PROGRAM_ID, derivePitDraftVrfStatePda } from '@/services/solana/constants';
 import {
   buildEnterPitDraftTransaction,
   fetchPitDraftQueue,
@@ -44,13 +48,7 @@ import { calculateItemStats } from '@/game/entities/items';
 // Types
 // ============================================================================
 
-export type PitDraftPhase =
-  | 'confirm'
-  | 'queuing'
-  | 'matched'
-  | 'combat'
-  | 'result'
-  | 'error';
+export type PitDraftPhase = 'confirm' | 'queuing' | 'matched' | 'combat' | 'result' | 'error';
 
 export interface PitDraftMatchData {
   combatVisual: PitDraftCombatVisualEvent;
@@ -166,12 +164,12 @@ function buildPitDraftCombatant(
   };
 }
 
-export function usePitDraft() {
+export function usePitDraft(initialPhase?: PitDraftPhase) {
   const { wallet, signAndSendTransaction, checkBalance } = useWallet();
   const { mode, profile } = useProfile();
   const { connection } = useSolanaConnection();
 
-  const [phase, setPhase] = useState<PitDraftPhase>('confirm');
+  const [phase, setPhase] = useState<PitDraftPhase>(initialPhase ?? 'confirm');
   const [matchData, setMatchData] = useState<PitDraftMatchData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -238,14 +236,18 @@ export function usePitDraft() {
    * Build match data from parsed events.
    */
   const fetchProfileByWallet = useCallback(
-    async (walletKey: PublicKey): Promise<{ name: string | null; equippedSkin: PublicKey | null }> => {
+    async (
+      walletKey: PublicKey
+    ): Promise<{ name: string | null; equippedSkin: PublicKey | null }> => {
       try {
         const program = createPlayerProfileProgram(connection);
         const [profilePda] = derivePlayerProfilePda(walletKey);
         const account = await (
           program.account as {
             playerProfile: {
-              fetchNullable: (address: PublicKey) => Promise<{ name?: unknown; equippedSkin?: unknown } | null>;
+              fetchNullable: (
+                address: PublicKey
+              ) => Promise<{ name?: unknown; equippedSkin?: unknown } | null>;
             };
           }
         ).playerProfile.fetchNullable(profilePda);
@@ -253,13 +255,25 @@ export function usePitDraft() {
         if (!account) return { name: null, equippedSkin: null };
         const name = (() => {
           const raw = account.name;
-          if (typeof raw !== 'string') return Buffer.from(raw as ArrayLike<number>).toString('utf-8').replace(/\0/g, '').trim() || null;
-          if (/^\d+(,\d+)*$/.test(raw)) return Buffer.from(raw.split(',').map(Number)).toString('utf-8').replace(/\0/g, '').trim() || null;
+          if (typeof raw !== 'string')
+            return (
+              Buffer.from(raw as ArrayLike<number>)
+                .toString('utf-8')
+                .replace(/\0/g, '')
+                .trim() || null
+            );
+          if (/^\d+(,\d+)*$/.test(raw))
+            return (
+              Buffer.from(raw.split(',').map(Number)).toString('utf-8').replace(/\0/g, '').trim() ||
+              null
+            );
           return raw.replace(/\0/g, '').trim() || null;
         })();
-        const equippedSkin = account.equippedSkin instanceof PublicKey && !PublicKey.default.equals(account.equippedSkin)
-          ? account.equippedSkin
-          : null;
+        const equippedSkin =
+          account.equippedSkin instanceof PublicKey &&
+          !PublicKey.default.equals(account.equippedSkin)
+            ? account.equippedSkin
+            : null;
         return { name, equippedSkin };
       } catch (err) {
         console.warn('[usePitDraft] Failed to fetch profile:', err);
@@ -321,11 +335,20 @@ export function usePitDraft() {
       const localProfileName = (() => {
         const raw = profile?.name;
         if (raw == null) return undefined;
-        if (typeof raw !== 'string') return Buffer.from(raw as ArrayLike<number>).toString('utf-8').replace(/\0/g, '').trim();
-        if (/^\d+(,\d+)*$/.test(raw)) return Buffer.from(raw.split(',').map(Number)).toString('utf-8').replace(/\0/g, '').trim();
+        if (typeof raw !== 'string')
+          return Buffer.from(raw as ArrayLike<number>)
+            .toString('utf-8')
+            .replace(/\0/g, '')
+            .trim();
+        if (/^\d+(,\d+)*$/.test(raw))
+          return Buffer.from(raw.split(',').map(Number))
+            .toString('utf-8')
+            .replace(/\0/g, '')
+            .trim();
         return raw.replace(/\0/g, '').trim();
       })();
-      const playerProfileName = localProfileName && localProfileName.length > 0 ? localProfileName : 'You';
+      const playerProfileName =
+        localProfileName && localProfileName.length > 0 ? localProfileName : 'You';
       const opponentProfile = await fetchProfileByWallet(opponentWalletKey);
       const opponentProfileName = opponentProfile.name ?? 'Opponent';
 
@@ -366,9 +389,7 @@ export function usePitDraft() {
       )
     );
 
-    const signatures = signatureGroups
-      .flat()
-      .sort((a, b) => (b.slot ?? 0) - (a.slot ?? 0));
+    const signatures = signatureGroups.flat().sort((a, b) => (b.slot ?? 0) - (a.slot ?? 0));
 
     for (const sigInfo of signatures) {
       const anchorSlot = queueAnchorSlotRef.current;
@@ -527,7 +548,9 @@ export function usePitDraft() {
           console.log('[usePitDraft] VRF step 2: request on base (localnet)');
           const localPayer = getLocalVrfPayerKeypair();
           if (!localPayer) {
-            throw new Error('Local VRF payer keypair not configured. Set EXPO_PUBLIC_LOCAL_VRF_PAYER_KEYPAIR or EXPO_PUBLIC_ER_VALIDATOR_KEYPAIR.');
+            throw new Error(
+              'Local VRF payer keypair not configured. Set EXPO_PUBLIC_LOCAL_VRF_PAYER_KEYPAIR or EXPO_PUBLIC_ER_VALIDATOR_KEYPAIR.'
+            );
           }
           const vrfRequestTx = await buildRequestGameplayVrfTransaction(
             program,
@@ -538,9 +561,15 @@ export function usePitDraft() {
           await sendSessionSignerTransaction(connection, vrfRequestTx, localPayer);
           console.log('[usePitDraft] VRF requested on base, waiting for oracle...');
 
-          const fulfilled = await waitForVrfFulfillment(connection, vrfStatePda, VRF_FULFILLMENT_TIMEOUT_MS);
+          const fulfilled = await waitForVrfFulfillment(
+            connection,
+            vrfStatePda,
+            VRF_FULFILLMENT_TIMEOUT_MS
+          );
           if (!fulfilled) {
-            throw new Error('VRF fulfillment timed out on base. Ensure vrf-oracle is running (RPC_URL=http://127.0.0.1:8899).');
+            throw new Error(
+              'VRF fulfillment timed out on base. Ensure vrf-oracle is running (RPC_URL=http://127.0.0.1:8899).'
+            );
           }
           console.log('[usePitDraft] VRF fulfilled on base (localnet)');
         } else {
@@ -559,7 +588,7 @@ export function usePitDraft() {
               ownerProgram: SOLANA_CONFIG.programs.gameplayState,
               delegationProgram: DELEGATION_PROGRAM_ID,
               systemProgram: SystemProgram.programId,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
             } as any)
             .instruction();
           const delegateTx = new Transaction().add(
@@ -734,83 +763,87 @@ export function usePitDraft() {
     setPhase('result');
   }, []);
 
-  const loadHistory = useCallback(async (maxMatches = 20) => {
-    if (!wallet.publicKey) {
-      setHistoryError('Wallet not connected');
-      return;
-    }
+  const loadHistory = useCallback(
+    async (maxMatches = 20) => {
+      if (!wallet.publicKey) {
+        setHistoryError('Wallet not connected');
+        return;
+      }
 
-    setIsHistoryLoading(true);
-    setHistoryError(null);
+      setIsHistoryLoading(true);
+      setHistoryError(null);
 
-    try {
-      const program = createGameplayStateProgram(connection);
-      const [queuePda] = derivePitDraftQueuePda();
-      const ourKey = wallet.publicKey.toBase58();
-      const matches: PitDraftHistoryItem[] = [];
-      const profileNameCache = new Map<string, string>();
-      let before: string | undefined;
-      let pages = 0;
-      const PAGE_SIZE = 50;
-      const MAX_PAGES = 10; // Hard cap: scan at most 500 txs
+      try {
+        const program = createGameplayStateProgram(connection);
+        const [queuePda] = derivePitDraftQueuePda();
+        const ourKey = wallet.publicKey.toBase58();
+        const matches: PitDraftHistoryItem[] = [];
+        const profileNameCache = new Map<string, string>();
+        let before: string | undefined;
+        let pages = 0;
+        const PAGE_SIZE = 50;
+        const MAX_PAGES = 10; // Hard cap: scan at most 500 txs
 
-      while (matches.length < maxMatches && pages < MAX_PAGES) {
-        const signatures = await connection.getSignaturesForAddress(
-          queuePda,
-          { limit: PAGE_SIZE, before },
-          'confirmed'
-        );
-        if (signatures.length === 0) break;
+        while (matches.length < maxMatches && pages < MAX_PAGES) {
+          const signatures = await connection.getSignaturesForAddress(
+            queuePda,
+            { limit: PAGE_SIZE, before },
+            'confirmed'
+          );
+          if (signatures.length === 0) break;
 
-        for (const sigInfo of signatures) {
-          const events = await parsePitDraftEvents(connection, program, sigInfo.signature);
-          if (!events.resolved) continue;
+          for (const sigInfo of signatures) {
+            const events = await parsePitDraftEvents(connection, program, sigInfo.signature);
+            if (!events.resolved) continue;
 
-          const { resolved } = events;
-          const playerA = resolved.playerA.toBase58();
-          const playerB = resolved.playerB.toBase58();
-          if (playerA !== ourKey && playerB !== ourKey) continue;
+            const { resolved } = events;
+            const playerA = resolved.playerA.toBase58();
+            const playerB = resolved.playerB.toBase58();
+            if (playerA !== ourKey && playerB !== ourKey) continue;
 
-          const opponentWallet = playerA === ourKey ? playerB : playerA;
-          let opponentProfileName = profileNameCache.get(opponentWallet);
-          if (!opponentProfileName) {
-            const fetched = await fetchProfileByWallet(new PublicKey(opponentWallet));
-            opponentProfileName = fetched.name ?? opponentWallet.slice(0, 4) + '..' + opponentWallet.slice(-4);
-            profileNameCache.set(opponentWallet, opponentProfileName);
+            const opponentWallet = playerA === ourKey ? playerB : playerA;
+            let opponentProfileName = profileNameCache.get(opponentWallet);
+            if (!opponentProfileName) {
+              const fetched = await fetchProfileByWallet(new PublicKey(opponentWallet));
+              opponentProfileName =
+                fetched.name ?? opponentWallet.slice(0, 4) + '..' + opponentWallet.slice(-4);
+              profileNameCache.set(opponentWallet, opponentProfileName);
+            }
+
+            matches.push({
+              signature: sigInfo.signature,
+              slot: sigInfo.slot ?? 0,
+              playedAtUnix: sigInfo.blockTime ?? null,
+              opponentWallet,
+              opponentProfileName,
+              isWinner: resolved.winner.toBase58() === ourKey,
+              winnerPayoutLamports: resolved.winnerPayout,
+              turnsTaken: resolved.turnsTaken,
+            });
+
+            if (matches.length >= maxMatches) break;
           }
 
-          matches.push({
-            signature: sigInfo.signature,
-            slot: sigInfo.slot ?? 0,
-            playedAtUnix: sigInfo.blockTime ?? null,
-            opponentWallet,
-            opponentProfileName,
-            isWinner: resolved.winner.toBase58() === ourKey,
-            winnerPayoutLamports: resolved.winnerPayout,
-            turnsTaken: resolved.turnsTaken,
-          });
-
-          if (matches.length >= maxMatches) break;
+          before = signatures[signatures.length - 1]?.signature;
+          pages += 1;
         }
 
-        before = signatures[signatures.length - 1]?.signature;
-        pages += 1;
+        if (isMountedRef.current) {
+          setHistory(matches);
+        }
+      } catch (err) {
+        console.error('[usePitDraft] Failed to load history:', err);
+        if (isMountedRef.current) {
+          setHistoryError('Failed to load match history. Please try again.');
+        }
+      } finally {
+        if (isMountedRef.current) {
+          setIsHistoryLoading(false);
+        }
       }
-
-      if (isMountedRef.current) {
-        setHistory(matches);
-      }
-    } catch (err) {
-      console.error('[usePitDraft] Failed to load history:', err);
-      if (isMountedRef.current) {
-        setHistoryError('Failed to load match history. Please try again.');
-      }
-    } finally {
-      if (isMountedRef.current) {
-        setIsHistoryLoading(false);
-      }
-    }
-  }, [wallet.publicKey, connection, fetchProfileByWallet]);
+    },
+    [wallet.publicKey, connection, fetchProfileByWallet]
+  );
 
   /**
    * Reset to initial state.

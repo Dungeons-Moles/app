@@ -26,7 +26,7 @@ import { RootStackParamList } from '../navigation';
 import { CombatProvider, useCombat } from '../contexts/CombatContext';
 import { useProfile } from '../contexts/ProfileContext';
 import { useWallet } from '../contexts/WalletContext';
-import { useIsFocused } from '@react-navigation/native';
+import { useIsFocused, RouteProp } from '@react-navigation/native';
 import { useScreenVariant } from '../contexts/ScreenVariantContext';
 import { usePitDraft } from '../hooks/usePitDraft';
 import { useLandscapeLock } from '../hooks/useOrientationLock';
@@ -59,14 +59,17 @@ const DEFEAT_IMAGE_ILLUST = require('../../assets/ui/illustrations/defeat-image.
 const SQUARE_FRAME = require('../../assets/ui/frames/square.webp');
 const BUTTON_BG = require('../../assets/ui/buttons/button.webp');
 const BUTTON_GREEN = require('../../assets/ui/buttons/button-green.webp');
+const MOLE_BONFIRE = require('../../assets/ui/illustrations/mole-bonfire.webp');
+const PAPER_PINS = require('../../assets/ui/panels/paper-with-pins.webp');
 
 type PitDraftScreenProps = {
+  route: RouteProp<RootStackParamList, 'PitDraft'>;
   navigation: NativeStackNavigationProp<RootStackParamList, 'PitDraft'>;
 };
 
-export function PitDraftScreen({ navigation }: PitDraftScreenProps) {
+export function PitDraftScreen({ route, navigation }: PitDraftScreenProps) {
   const { defaultCombatSpeed, updateDefaultCombatSpeed } = useProfile();
-  const pitDraft = usePitDraft();
+  const pitDraft = usePitDraft(route.params?.debugPhase);
 
   // Lock to landscape orientation
   useLandscapeLock();
@@ -267,7 +270,11 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
           style={styles.backgroundImage}
           resizeMode="cover"
         >
-          <Image source={STAINS_BACKGROUND} style={[styles.stainsOverlay, { opacity: 0.2 }]} resizeMode="cover" />
+          <Image
+            source={STAINS_BACKGROUND}
+            style={[styles.stainsOverlay, { opacity: 0.2 }]}
+            resizeMode="cover"
+          />
           {!isCompact && <View pointerEvents="none" style={styles.mobileResultBackgroundDim} />}
           <View style={styles.resultOverlay}>
             <View style={styles.centerContent}>
@@ -293,7 +300,11 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
                         style={styles.resultIllustrationCompact}
                         resizeMode="contain"
                       />
-                      <Animated.Text style={[styles.payoutTextCompact, { opacity: payoutBlinkAnim }]}>+{payoutSOL} SOL</Animated.Text>
+                      <Animated.Text
+                        style={[styles.payoutTextCompact, { opacity: payoutBlinkAnim }]}
+                      >
+                        +{payoutSOL} SOL
+                      </Animated.Text>
                     </>
                   ) : (
                     <>
@@ -380,7 +391,11 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
                   </View>
 
                   <View style={styles.resultRightColumn}>
-                    {isWinner && <Animated.Text style={[styles.payoutText, { opacity: payoutBlinkAnim }]}>+{payoutSOL} SOL</Animated.Text>}
+                    {isWinner && (
+                      <Animated.Text style={[styles.payoutText, { opacity: payoutBlinkAnim }]}>
+                        +{payoutSOL} SOL
+                      </Animated.Text>
+                    )}
 
                     <View style={styles.resultStatFrame}>
                       <Image
@@ -457,8 +472,16 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
             </View>
           )}
           {!isCompact && !isController && (
-            <TouchableOpacity onPress={handleBack} activeOpacity={0.7} style={styles.backButtonAbsolute}>
-              <CachedImageBackground source={buttonV1Source} style={styles.backButtonMobile} resizeMode="stretch">
+            <TouchableOpacity
+              onPress={handleBack}
+              activeOpacity={0.7}
+              style={styles.backButtonAbsolute}
+            >
+              <CachedImageBackground
+                source={buttonV1Source}
+                style={styles.backButtonMobile}
+                resizeMode="stretch"
+              >
                 <Text style={styles.backButtonTextMobile}>Back</Text>
               </CachedImageBackground>
             </TouchableOpacity>
@@ -561,9 +584,7 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
                         onPress={() => navigation.navigate('PitDraftHistory')}
                         activeOpacity={0.7}
                       >
-                        <Text
-                          style={[styles.panelButtonText, { fontSize: buttonFontSize }]}
-                        >
+                        <Text style={[styles.panelButtonText, { fontSize: buttonFontSize }]}>
                           History
                         </Text>
                       </TouchableOpacity>
@@ -598,7 +619,6 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
                   </View>
                 </View>
               </View>
-
             </View>
           </View>
         </CachedImageBackground>
@@ -648,8 +668,16 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
             </View>
           )}
           {!isCompact && !isController && (
-            <TouchableOpacity onPress={handleBack} activeOpacity={0.7} style={styles.backButtonAbsolute}>
-              <CachedImageBackground source={buttonV1Source} style={styles.backButtonMobile} resizeMode="stretch">
+            <TouchableOpacity
+              onPress={handleBack}
+              activeOpacity={0.7}
+              style={styles.backButtonAbsolute}
+            >
+              <CachedImageBackground
+                source={buttonV1Source}
+                style={styles.backButtonMobile}
+                resizeMode="stretch"
+              >
                 <Text style={styles.backButtonTextMobile}>Back</Text>
               </CachedImageBackground>
             </TouchableOpacity>
@@ -690,20 +718,68 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
 
             {/* Waiting content */}
             <View style={styles.queuingCenterContent}>
-              <Animated.View style={[styles.queuingContent, { opacity: pulseAnim }]}>
-                <Text style={[styles.queuingText, isCompact && compactStyles.queuingText]}>
-                  Waiting for opponent...
-                </Text>
-              </Animated.View>
+              <View style={[styles.bonfireContainer, isCompact && compactStyles.bonfireContainer]}>
+                <Image
+                  source={MOLE_BONFIRE}
+                  style={[styles.bonfireImage, isCompact && compactStyles.bonfireImage]}
+                  resizeMode="contain"
+                />
+                <Animated.View
+                  style={[
+                    styles.queuingContent,
+                    { opacity: pulseAnim },
+                    isCompact && compactStyles.queuingContent,
+                  ]}
+                >
+                  <Text style={[styles.queuingText, isCompact && compactStyles.queuingText]}>
+                    Waiting for{'\n'}opponent...
+                  </Text>
+                </Animated.View>
+              </View>
 
-              <Text style={[styles.queuingInfo, isCompact && compactStyles.queuingInfo]}>
-                Your entry has been recorded on-chain.
-                {'\n'}The match will resolve when another player joins.
-              </Text>
+              <View
+                style={[styles.paperPinsContainer, isCompact && compactStyles.paperPinsContainer]}
+              >
+                <Image source={PAPER_PINS} style={styles.paperPinsImage} resizeMode="stretch" />
+                <View
+                  style={[
+                    styles.paperPinsTextContainer,
+                    isCompact && compactStyles.paperPinsTextContainer,
+                  ]}
+                >
+                  <Text style={[styles.queuingInfo, isCompact && compactStyles.queuingInfo]}>
+                    Your entry has been recorded on-chain.{'\n'}The match will resolve when another
+                    {'\n'}player joins.
+                  </Text>
+                </View>
+              </View>
 
-              <Text style={[styles.queuingNote, isCompact && compactStyles.queuingNote]}>
-                The match will still happen if you leave this screen.
-              </Text>
+              <View
+                style={[styles.queuingButtonSlot, isCompact && compactStyles.queuingButtonSlot]}
+              >
+                <FocusGlow active={isController} style={{ width: '100%', height: '100%' }}>
+                  <TouchableOpacity
+                    onPress={handleBack}
+                    activeOpacity={0.7}
+                    style={styles.resultButtonPressable}
+                  >
+                    <CachedImageBackground
+                      source={BUTTON_BG}
+                      style={styles.resultButtonImage}
+                      resizeMode="stretch"
+                    >
+                      <Text
+                        style={[
+                          styles.queuingButtonText,
+                          isCompact && compactStyles.queuingButtonText,
+                        ]}
+                      >
+                        Back to Hub
+                      </Text>
+                    </CachedImageBackground>
+                  </TouchableOpacity>
+                </FocusGlow>
+              </View>
             </View>
           </View>
         </CachedImageBackground>
@@ -720,7 +796,11 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
   // Other phases use the original dark overlay layout
   return (
     <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
-      <CachedImageBackground source={BACKGROUND_IMAGE} style={styles.backgroundImage} resizeMode="cover">
+      <CachedImageBackground
+        source={BACKGROUND_IMAGE}
+        style={styles.backgroundImage}
+        resizeMode="cover"
+      >
         <View style={styles.darkOverlay}>
           <View style={styles.centerContent}>
             {/* Matched Phase (brief transition) */}
@@ -1025,35 +1105,75 @@ const styles = StyleSheet.create({
   },
 
   // Queuing phase
-  queuingContent: {
-    alignItems: 'center',
-  },
   queuingCenterContent: {
     flex: 1,
     alignItems: 'center',
+    justifyContent: 'flex-start',
+    marginTop: 0,
+  },
+  bonfireContainer: {
+    position: 'relative',
+    alignItems: 'center',
     justifyContent: 'center',
+    width: 250,
+    height: 180,
+    marginTop: 0,
+  },
+  bonfireImage: {
+    width: '100%',
+    height: '100%',
+  },
+  queuingContent: {
+    position: 'absolute',
+    top: '20%',
+    left: '5%',
+    width: 140,
+    alignItems: 'center',
   },
   queuingText: {
     fontFamily: Typography.header,
-    fontSize: 22,
+    fontSize: 18,
     color: '#3d2b1f',
     textAlign: 'center',
+    lineHeight: 22,
+  },
+  paperPinsContainer: {
+    width: 380,
+    height: 120,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: -10,
+  },
+  paperPinsImage: {
+    ...StyleSheet.absoluteFillObject,
+    width: '100%',
+    height: '100%',
+  },
+  paperPinsTextContainer: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
   },
   queuingInfo: {
     fontFamily: Typography.body,
-    fontSize: 13,
-    color: '#5c4033',
+    fontSize: 16,
+    color: '#000000',
     textAlign: 'center',
-    lineHeight: 18,
-    marginTop: 16,
+    lineHeight: 22,
   },
-  queuingNote: {
-    fontFamily: Typography.body,
-    fontSize: 11,
-    color: '#8a7a6a',
+  queuingButtonSlot: {
+    width: 200,
+    height: 60,
+    marginTop: 15,
+  },
+  queuingButtonText: {
+    fontFamily: Typography.button,
+    fontSize: 20,
+    color: '#FFFFFF',
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
     textAlign: 'center',
-    marginTop: 12,
-    fontStyle: 'italic',
+    marginBottom: 4,
   },
 
   // Result phase — shared
@@ -1313,16 +1433,41 @@ const compactStyles = StyleSheet.create({
     marginTop: 150,
     marginBottom: 0,
   },
+  bonfireContainer: {
+    width: 500,
+    height: 360,
+    marginTop: -40,
+  },
+  bonfireImage: {},
+  queuingContent: {
+    top: '20%',
+    left: '5%',
+    width: 280,
+  },
   queuingText: {
-    fontSize: 44,
+    fontSize: 36,
+    lineHeight: 44,
+  },
+  paperPinsContainer: {
+    width: 760,
+    height: 240,
+    marginTop: 20,
+  },
+  paperPinsTextContainer: {
+    paddingHorizontal: 40,
+    paddingVertical: 20,
   },
   queuingInfo: {
-    fontSize: 26,
-    lineHeight: 36,
-    marginTop: 32,
+    fontSize: 32,
+    lineHeight: 40,
   },
-  queuingNote: {
-    fontSize: 20,
+  queuingButtonSlot: {
+    width: 320,
+    height: 96,
     marginTop: 24,
+  },
+  queuingButtonText: {
+    fontSize: 32,
+    marginBottom: 6,
   },
 });

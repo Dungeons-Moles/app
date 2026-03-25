@@ -93,14 +93,7 @@ type HubScreenProps = {
 };
 
 export function HubScreen({ navigation }: HubScreenProps) {
-  const {
-    profile,
-    isLoading,
-    clearProfile,
-    updateName,
-    refresh,
-    mode,
-  } = useProfile();
+  const { profile, isLoading, clearProfile, updateName, refresh, mode } = useProfile();
   const isGuest = mode === 'guest';
   const isScreenFocused = useIsFocused();
   const screenVariant = useScreenVariant();
@@ -576,7 +569,12 @@ export function HubScreen({ navigation }: HubScreenProps) {
             : resetWarningFocus === 0 && !resetInProgress
               ? () => setShowResetWarning(false)
               : undefined,
-        onB: resetInProgress ? undefined : () => { playSfx('ui_back'); setShowResetWarning(false); },
+        onB: resetInProgress
+          ? undefined
+          : () => {
+              playSfx('ui_back');
+              setShowResetWarning(false);
+            },
         onDPadLeft: () => setResetWarningFocus((p) => Math.max(0, p - 1)),
         onDPadRight: () => setResetWarningFocus((p) => Math.min(1, p + 1)),
       }
@@ -600,7 +598,10 @@ export function HubScreen({ navigation }: HubScreenProps) {
   const pvpActions = showPvP
     ? {
         onA: () => [handleGauntlet, handleDuels, handlePitDraft][pvpFocus]?.(),
-        onB: () => { playSfx('ui_back'); setShowPvP(false); },
+        onB: () => {
+          playSfx('ui_back');
+          setShowPvP(false);
+        },
         onDPadUp: () => setPvpFocus((p) => Math.max(0, p - 1)),
         onDPadDown: () => setPvpFocus((p) => Math.min(2, p + 1)),
       }
@@ -966,9 +967,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
               )
             ) : (
               <View style={styles.topRightRow}>
-                {!isGuest && (
-                  <GauntletPoolBadge poolLamports={gauntletPoolLamports} />
-                )}
+                {!isGuest && <GauntletPoolBadge poolLamports={gauntletPoolLamports} />}
                 <TouchableOpacity
                   onPress={() => {
                     playSfx('ui_click');
@@ -1093,6 +1092,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
               </TouchableOpacity>
             )}
 
+
             {showBattleSimulator && (
               <FocusGlow active={isFocused('right', 0)}>
                 <TouchableOpacity onPress={handleBattleSimulator} activeOpacity={0.7}>
@@ -1165,11 +1165,17 @@ export function HubScreen({ navigation }: HubScreenProps) {
 
       {/* Guest mode description — bottom center */}
       {isGuest && (
-        <View style={[styles.guestModeBottomCenter, isCompact && compactStyles.guestModeBottomCenter]}>
-          <Text style={[styles.guestModeBottomText, isCompact && compactStyles.guestModeBottomText]}>
+        <View
+          style={[styles.guestModeBottomCenter, isCompact && compactStyles.guestModeBottomCenter]}
+        >
+          <Text
+            style={[styles.guestModeBottomText, isCompact && compactStyles.guestModeBottomText]}
+          >
             Guest mode — explore freely with no strings attached.
           </Text>
-          <Text style={[styles.guestModeBottomText, isCompact && compactStyles.guestModeBottomText]}>
+          <Text
+            style={[styles.guestModeBottomText, isCompact && compactStyles.guestModeBottomText]}
+          >
             Your progress won't be saved.
           </Text>
         </View>
@@ -1357,7 +1363,13 @@ export function HubScreen({ navigation }: HubScreenProps) {
         <TouchableWithoutFeedback onPress={() => setShowSkins(false)}>
           <View style={styles.modalOverlay}>
             <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
-              <View style={[styles.marketplaceModal, isCompact && compactStyles.marketplaceModal, modalScale < 1 && { transform: [{ scale: modalScale }] }]}>
+              <View
+                style={[
+                  styles.marketplaceModal,
+                  isCompact && compactStyles.marketplaceModal,
+                  modalScale < 1 && { transform: [{ scale: modalScale }] },
+                ]}
+              >
                 <CachedImageBackground
                   source={paperPanelSource}
                   style={[styles.marketplaceBg, isCompact && compactStyles.marketplaceBg]}
@@ -1463,12 +1475,20 @@ export function HubScreen({ navigation }: HubScreenProps) {
                         <>
                           <Image
                             source={iconDirSource}
-                            style={{ width: isCompact ? 40 : 18, height: isCompact ? 40 : 18, transform: [{ rotate: '-90deg' }] }}
+                            style={{
+                              width: isCompact ? 40 : 18,
+                              height: isCompact ? 40 : 18,
+                              transform: [{ rotate: '-90deg' }],
+                            }}
                             resizeMode="contain"
                           />
                           <Image
                             source={iconDirSource}
-                            style={{ width: isCompact ? 40 : 18, height: isCompact ? 40 : 18, transform: [{ rotate: '90deg' }] }}
+                            style={{
+                              width: isCompact ? 40 : 18,
+                              height: isCompact ? 40 : 18,
+                              transform: [{ rotate: '90deg' }],
+                            }}
                             resizeMode="contain"
                           />
                           <Text
@@ -1495,7 +1515,8 @@ export function HubScreen({ navigation }: HubScreenProps) {
                             ]}
                           >
                             {sortedSkins[skinsFocus] &&
-                            (profile?.equippedSkin?.equals(sortedSkins[skinsFocus].address) ?? false)
+                            (profile?.equippedSkin?.equals(sortedSkins[skinsFocus].address) ??
+                              false)
                               ? 'Unequip'
                               : 'Equip'}
                           </Text>
@@ -1537,7 +1558,13 @@ export function HubScreen({ navigation }: HubScreenProps) {
         <TouchableWithoutFeedback onPress={() => setShowQuests(false)}>
           <View style={styles.modalOverlay}>
             <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
-              <View style={[styles.marketplaceModal, isCompact && compactStyles.marketplaceModal, modalScale < 1 && { transform: [{ scale: modalScale }] }]}>
+              <View
+                style={[
+                  styles.marketplaceModal,
+                  isCompact && compactStyles.marketplaceModal,
+                  modalScale < 1 && { transform: [{ scale: modalScale }] },
+                ]}
+              >
                 <CachedImageBackground
                   source={paperPanelSource}
                   style={[styles.marketplaceBg, isCompact && compactStyles.marketplaceBg]}
@@ -1713,7 +1740,13 @@ export function HubScreen({ navigation }: HubScreenProps) {
         <TouchableWithoutFeedback onPress={() => setShowProfile(false)}>
           <View style={styles.modalOverlay}>
             <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
-              <View style={[styles.marketplaceModal, isCompact && compactStyles.marketplaceModal, modalScale < 1 && { transform: [{ scale: modalScale }] }]}>
+              <View
+                style={[
+                  styles.marketplaceModal,
+                  isCompact && compactStyles.marketplaceModal,
+                  modalScale < 1 && { transform: [{ scale: modalScale }] },
+                ]}
+              >
                 <CachedImageBackground
                   source={paperPanelSource}
                   style={[styles.marketplaceBg, isCompact && compactStyles.marketplaceBg]}
@@ -2281,10 +2314,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
         </TouchableWithoutFeedback>
       </InlineModal>
 
-      <BetaWelcomeModal
-        visible={showBetaWelcome}
-        onClose={() => setShowBetaWelcome(false)}
-      />
+      <BetaWelcomeModal visible={showBetaWelcome} onClose={() => setShowBetaWelcome(false)} />
 
       {/* Controller button hints */}
       <ControllerHints hints={controllerHints} horizontal size="large" />

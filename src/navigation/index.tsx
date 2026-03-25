@@ -135,14 +135,14 @@ export type RootStackParamList = {
     levelUnlocked?: number;
     itemUnlocked?: UnlockedItem;
   };
-  PitDraft: undefined;
+  PitDraft: { debugPhase?: 'queuing' | 'confirm' | 'matched' | 'result' } | undefined;
   PitDraftHistory: undefined;
   Duels: undefined;
   DuelsHistory: undefined;
   Gauntlet: undefined;
   GauntletHistory: undefined;
   GauntletRanking: { returnTo?: 'Hub' | 'Gauntlet' } | undefined;
-  SessionLoading: { mode: 'campaign' | 'gauntlet' | 'duel' } | undefined;
+  SessionLoading: { mode: 'campaign' | 'gauntlet' | 'duel'; forceLogo?: boolean } | undefined;
   Marketplace: undefined;
   Items: undefined;
 };
@@ -182,7 +182,7 @@ export function AppNavigator() {
   const onStateChange = useCallback((state: NavigationState | undefined) => {
     if (Platform.OS !== 'web') return;
     const routeName = getActiveRouteName(state);
-    const title = routeName ? SCREEN_TITLES[routeName] ?? routeName : '';
+    const title = routeName ? (SCREEN_TITLES[routeName] ?? routeName) : '';
     document.title = title ? `Dungeons & Moles - ${title}` : 'Dungeons & Moles';
   }, []);
 

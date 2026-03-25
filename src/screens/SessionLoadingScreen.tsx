@@ -2,9 +2,11 @@ import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Animated, Alert, Platform } from 'react-native';
 import { CachedImageBackground } from '../components/common/CachedImageBackground';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RouteProp } from '@react-navigation/native';
 import { RootStackParamList } from '../navigation';
 import { Typography } from '@/theme/typography';
 import { useScreenVariant } from '@/contexts/ScreenVariantContext';
+import { useProfile } from '../contexts/ProfileContext';
 import { getSessionSetupPromise, clearSessionSetup } from '@/utils/sessionSetupSignal';
 import { CachedImage as Image } from '../components/common/CachedImage';
 import { preloadCriticalImages } from '@/utils/preloadCriticalImages';
@@ -12,7 +14,21 @@ import { GAME_PRELOAD_ASSETS } from '@/constants/criticalImages';
 
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.webp');
 const STAINS_BACKGROUND = require('../../assets/ui/backgrounds/stains-background.webp');
-const SESSION_LOADING_IMAGES = [BACKGROUND_IMAGE, STAINS_BACKGROUND] as const;
+const MOLE_BONFIRE = require('../../assets/ui/illustrations/mole-bonfire.webp');
+const PAPER_PINS = require('../../assets/ui/panels/paper-with-pins.webp');
+const CAMPAIGN_TITLE = require('../../assets/ui/text/campaign.webp');
+const GAUNTLET_TITLE = require('../../assets/ui/text/gauntlet.webp');
+const DUELS_TITLE = require('../../assets/ui/text/duels.webp');
+
+const SESSION_LOADING_IMAGES = [
+  BACKGROUND_IMAGE,
+  STAINS_BACKGROUND,
+  MOLE_BONFIRE,
+  PAPER_PINS,
+  CAMPAIGN_TITLE,
+  GAUNTLET_TITLE,
+  DUELS_TITLE,
+] as const;
 
 const FLAVOR_TEXTS = [
   'Polishing pickaxe',
@@ -33,13 +49,31 @@ const FLAVOR_TEXTS = [
 ];
 
 type SessionLoadingScreenProps = {
+  route: RouteProp<RootStackParamList, 'SessionLoading'>;
   navigation: NativeStackNavigationProp<RootStackParamList, 'SessionLoading'>;
 };
 
-export function SessionLoadingScreen({ navigation }: SessionLoadingScreenProps) {
+export function SessionLoadingScreen({ route, navigation }: SessionLoadingScreenProps) {
   const isCompact = useScreenVariant() === 'compact';
+  const { mode: userProfileMode } = useProfile();
+
+  const gameMode = route.params?.mode;
+  const forceLogo = route.params?.forceLogo;
+  const titleSource =
+    userProfileMode === 'guest' && !forceLogo
+      ? null
+      : gameMode === 'campaign'
+        ? CAMPAIGN_TITLE
+        : gameMode === 'gauntlet'
+          ? GAUNTLET_TITLE
+          : gameMode === 'duel'
+            ? DUELS_TITLE
+            : null;
+
   const [dotCount, setDotCount] = useState(0);
-  const [flavorIndex, setFlavorIndex] = useState(() => Math.floor(Math.random() * FLAVOR_TEXTS.length));
+  const [flavorIndex, setFlavorIndex] = useState(() =>
+    Math.floor(Math.random() * FLAVOR_TEXTS.length)
+  );
   const flavorOpacity = useRef(new Animated.Value(1)).current;
 
   const exitWithError = (title: string, message: string) => {
@@ -137,24 +171,57 @@ export function SessionLoadingScreen({ navigation }: SessionLoadingScreenProps) 
   }, [navigation]);
 
   const dots = '.'.repeat(dotCount);
-  const scale = isCompact ? 2 : 1;
 
   return (
     <View style={styles.container}>
-      <CachedImageBackground source={BACKGROUND_IMAGE} style={styles.backgroundImage} resizeMode="cover">
+      <CachedImageBackground
+        source={BACKGROUND_IMAGE}
+        style={styles.backgroundImage}
+        resizeMode="cover"
+      >
         <Image source={STAINS_BACKGROUND} style={styles.stainsOverlay} resizeMode="cover" />
         <View style={styles.content}>
-          <Text style={[styles.loadingText, { fontSize: 32 * scale }]}>
-            Loading{dots}
-          </Text>
-          <Animated.Text
-            style={[
-              styles.flavorText,
-              { fontSize: 16 * scale, opacity: flavorOpacity },
-            ]}
-          >
-            {FLAVOR_TEXTS[flavorIndex]}...
-          </Animated.Text>
+          {titleSource && (
+            <View style={[styles.titleRow, isCompact && styles.titleRowCompact]}>
+              <Image
+                source={titleSource}
+                style={[styles.titleImage, isCompact && styles.titleImageCompact]}
+                resizeMode="contain"
+              />
+            </View>
+          )}
+
+          <View style={[styles.bonfireContainer, isCompact && styles.bonfireContainerCompact]}>
+            <Image
+              source={MOLE_BONFIRE}
+              style={[styles.bonfireImage, isCompact && styles.bonfireImageCompact]}
+              resizeMode="contain"
+            />
+            <View style={[styles.loadingContent, isCompact && styles.loadingContentCompact]}>
+              <Text style={[styles.loadingText, { fontSize: isCompact ? 36 : 18 }]}>
+                Loading{dots}
+              </Text>
+            </View>
+          </View>
+
+          <View style={[styles.paperPinsContainer, isCompact && styles.paperPinsContainerCompact]}>
+            <Image source={PAPER_PINS} style={styles.paperPinsImage} resizeMode="stretch" />
+            <View
+              style={[
+                styles.paperPinsTextContainer,
+                isCompact && styles.paperPinsTextContainerCompact,
+              ]}
+            >
+              <Animated.Text
+                style={[
+                  styles.flavorText,
+                  { fontSize: isCompact ? 34 : 18, opacity: flavorOpacity },
+                ]}
+              >
+                {FLAVOR_TEXTS[flavorIndex]}...
+              </Animated.Text>
+            </View>
+          </View>
         </View>
       </CachedImageBackground>
     </View>
@@ -173,18 +240,85 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 16,
+  },
+  titleRow: {
+    alignItems: 'center',
+    marginBottom: -8,
+  },
+  titleRowCompact: {
+    marginBottom: 40,
+  },
+  titleImage: {
+    width: 220,
+    height: 48,
+  },
+  titleImageCompact: {
+    width: 510,
+    height: 105,
+    marginBottom: 12,
+  },
+  bonfireContainer: {
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 250,
+    height: 180,
+    marginTop: 0,
+  },
+  bonfireContainerCompact: {
+    width: 500,
+    height: 360,
+    marginTop: -40,
+  },
+  bonfireImage: {
+    width: '100%',
+    height: '100%',
+  },
+  bonfireImageCompact: {},
+  loadingContent: {
+    position: 'absolute',
+    top: '20%',
+    left: '5%',
+    width: 140,
+    alignItems: 'center',
+  },
+  loadingContentCompact: {
+    width: 280,
   },
   loadingText: {
     fontFamily: Typography.header,
     color: '#3d2b1f',
     textAlign: 'center',
-    // Fixed width to prevent layout jumps from dot count changes
-    minWidth: 250,
+    minWidth: 140, // Keeps width steady
+  },
+  paperPinsContainer: {
+    width: 380,
+    height: 120,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: -10,
+  },
+  paperPinsContainerCompact: {
+    width: 760,
+    height: 240,
+    marginTop: 20,
+  },
+  paperPinsImage: {
+    ...StyleSheet.absoluteFillObject,
+    width: '100%',
+    height: '100%',
+  },
+  paperPinsTextContainer: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+  },
+  paperPinsTextContainerCompact: {
+    paddingHorizontal: 40,
+    paddingVertical: 20,
   },
   flavorText: {
     fontFamily: Typography.body,
-    color: '#3d2b1f',
+    color: '#000000',
     textAlign: 'center',
     fontStyle: 'italic',
   },
