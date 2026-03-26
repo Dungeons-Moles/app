@@ -642,6 +642,7 @@ const styles = StyleSheet.create({
     color: '#c0392b',
     fontSize: 14,
     textAlign: 'center',
+    maxWidth: '90%',
   },
   columnFooter: {
     flex: 1,

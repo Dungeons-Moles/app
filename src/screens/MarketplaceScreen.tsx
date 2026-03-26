@@ -1017,6 +1017,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#a33a3a',
     textAlign: 'center',
+    maxWidth: '90%',
   },
   purchaseButton: {
     width: 140,

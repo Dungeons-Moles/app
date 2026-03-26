@@ -52,6 +52,7 @@ import {
 } from '../utils/sessionSetupSignal';
 import { useNftMarketplace } from '../hooks/useNftMarketplace';
 import { useQuests } from '../hooks/useQuests';
+import { getUserErrorMessage } from '../services/solana/errors';
 import { useEquipSkin } from '../hooks/useEquipSkin';
 import { NftCard } from '../components/marketplace/NftCard';
 import { QuestCard } from '../components/quests/QuestCard';
@@ -352,7 +353,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
         });
         resolveSessionSetup();
       } catch (err) {
-        rejectSessionSetup(err instanceof Error ? err.message : 'Failed to start game.');
+        rejectSessionSetup(getUserErrorMessage(err));
       }
     },
     [dispatch, gameState, navigation]

@@ -731,6 +731,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#ff8f8f',
     textAlign: 'center',
+    maxWidth: '90%',
   },
   errorButtonRow: {
     flexDirection: 'row',

@@ -83,6 +83,8 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     fontSize: 12,
     fontWeight: '600',
+    maxWidth: '90%',
+    textAlign: 'center',
   },
   feedbackOverlayCompact: {
     top: 24,

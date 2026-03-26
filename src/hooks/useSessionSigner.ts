@@ -9,6 +9,7 @@ import { useCallback, useState, useEffect, useRef } from 'react';
 import { Keypair, Transaction } from '@solana/web3.js';
 import { useWallet } from '@/contexts/WalletContext';
 import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
+import { getUserErrorMessage } from '@/services/solana/errors';
 import {
   createSessionSignerWallet,
   loadSessionSignerWallet,
@@ -230,7 +231,7 @@ export function useSessionSigner(): UseSessionSignerReturn {
       } catch (err) {
         console.error('[useSessionSigner] Failed to create and fund sessionSigner:', err);
         if (isMountedRef.current) {
-          setError(err instanceof Error ? err.message : 'Failed to fund sessionSigner wallet');
+          setError(getUserErrorMessage(err));
           setState('failed');
         }
         return false;
@@ -271,7 +272,7 @@ export function useSessionSigner(): UseSessionSignerReturn {
       } catch (err) {
         console.error('Failed to top up sessionSigner:', err);
         if (isMountedRef.current) {
-          setError(err instanceof Error ? err.message : 'Failed to top up sessionSigner');
+          setError(getUserErrorMessage(err));
         }
         return false;
       }
@@ -317,7 +318,7 @@ export function useSessionSigner(): UseSessionSignerReturn {
           setState('idle');
           return true;
         }
-        setError(err instanceof Error ? err.message : 'Failed to drain sessionSigner');
+        setError(getUserErrorMessage(err));
         setState('failed');
       }
       return false;
@@ -394,7 +395,7 @@ export function useSessionSigner(): UseSessionSignerReturn {
       } catch (err) {
         console.error('[useSessionSigner] Failed to create sessionSigner:', err);
         if (isMountedRef.current) {
-          setError(err instanceof Error ? err.message : 'Failed to create sessionSigner wallet');
+          setError(getUserErrorMessage(err));
           setState('failed');
         }
         return null;
@@ -441,7 +442,7 @@ export function useSessionSigner(): UseSessionSignerReturn {
       } catch (err) {
         console.error('[useSessionSigner] Failed to persist derived sessionSigner:', err);
         if (isMountedRef.current) {
-          setError(err instanceof Error ? err.message : 'Failed to create sessionSigner wallet');
+          setError(getUserErrorMessage(err));
           setState('failed');
         }
         return null;

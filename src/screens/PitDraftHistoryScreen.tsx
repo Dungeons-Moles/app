@@ -811,6 +811,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
     marginTop: 20,
+    maxWidth: '90%',
   },
   replayOverlay: {
     ...StyleSheet.absoluteFillObject,

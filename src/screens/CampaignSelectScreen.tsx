@@ -28,6 +28,7 @@ import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHin
 import { useInputMode } from '../hooks/useInputMode';
 import { useAudio } from '../contexts/AudioContext';
 import { FocusGlow } from '../components/ui/FocusGlow';
+import { getUserErrorMessage } from '../services/solana/errors';
 import { HubSettingsModal } from '../components/ui/HubSettingsModal';
 import { Skeleton } from '../components/common/Skeleton';
 import { ProfileCard } from '../components/profile/ProfileCard';
@@ -172,7 +173,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
         dispatch({ type: 'RESET_GAME' });
         resolveSessionSetup();
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Failed to resume the session.';
+        const message = getUserErrorMessage(error, 'session_manager');
         if (navigatedToLoading) {
           rejectSessionSetup(message);
         } else {
@@ -352,7 +353,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
               mapSeed: result?.mapSeed?.toString() ?? null,
             });
           } catch (error) {
-            const message = error instanceof Error ? error.message : 'Failed to start session.';
+            const message = getUserErrorMessage(error, 'session_manager');
             if (navigatedToLoading) {
               rejectSessionSetup(message);
             } else {
@@ -428,7 +429,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
         resolveSessionSetup();
       } catch (error) {
         console.error('[CampaignSelect] Error starting game:', error);
-        const message = error instanceof Error ? error.message : 'Failed to start game.';
+        const message = getUserErrorMessage(error, 'session_manager');
         if (navigatedToLoading) {
           rejectSessionSetup(message);
         } else {
@@ -610,6 +611,8 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
       });
       console.log('[CampaignSelect] overrideAndStartGame result', overrideResult);
       if (!overrideResult.success) {
+        setShowSessionExistsModal(false);
+        setShowSessionInitializingModal(false);
         if (navigatedToLoading) {
           rejectSessionSetup(overrideResult.error ?? 'Failed to override session slot.');
         } else {
@@ -629,8 +632,9 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
       dispatch({ type: 'RESET_GAME' });
       resolveSessionSetup();
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : 'Failed to override session slot.';
+      setShowSessionExistsModal(false);
+      setShowSessionInitializingModal(false);
+      const message = getUserErrorMessage(error, 'session_manager');
       if (navigatedToLoading) {
         rejectSessionSetup(message);
       } else {
@@ -1393,6 +1397,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#a33a3a',
     textAlign: 'center',
+    maxWidth: '90%',
   },
   errorButton: {
     paddingVertical: 12,

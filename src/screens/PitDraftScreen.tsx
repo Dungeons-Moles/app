@@ -1378,6 +1378,7 @@ const styles = StyleSheet.create({
     color: '#F44336',
     textAlign: 'center',
     lineHeight: 20,
+    maxWidth: '90%',
   },
 });
 

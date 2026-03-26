@@ -11,6 +11,7 @@ import { getSessionSetupPromise, clearSessionSetup } from '@/utils/sessionSetupS
 import { CachedImage as Image } from '../components/common/CachedImage';
 import { preloadCriticalImages } from '@/utils/preloadCriticalImages';
 import { GAME_PRELOAD_ASSETS } from '@/constants/criticalImages';
+import { getUserErrorMessage } from '@/services/solana/errors';
 
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.webp');
 const STAINS_BACKGROUND = require('../../assets/ui/backgrounds/stains-background.webp');
@@ -160,7 +161,7 @@ export function SessionLoadingScreen({ route, navigation }: SessionLoadingScreen
           clearTimeout(timeout);
           clearSessionSetup();
           console.error('[SessionLoadingScreen] Session setup failed:', err.message, err);
-          exitWithError('Session Failed', err.message);
+          exitWithError('Session Failed', getUserErrorMessage(err));
         }
       });
 

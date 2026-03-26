@@ -202,12 +202,45 @@ export function getUserErrorMessage(error: unknown, programName?: string): strin
       return `Transaction failed (error ${errorCode})`;
     }
 
-    if (error.message.includes('insufficient funds')) {
-      return 'Insufficient SOL balance. Please top up your wallet.';
-    }
-
-    return error.message || 'An unexpected error occurred. Please try again.';
+    return sanitizeRawErrorMessage(error.message);
   }
 
-  return 'An unexpected error occurred. Please try again.';
+  return 'Something went wrong. Please try again.';
+}
+
+// Known raw Solana/infrastructure error patterns → friendly messages
+const RAW_ERROR_PATTERNS: [RegExp, string][] = [
+  [/not confirmed in \d+.*seconds/i, 'Transaction timed out. Please try again.'],
+  [/blockhash not found/i, 'Network sync issue. Please try again.'],
+  [/insufficient funds/i, 'Insufficient SOL balance. Please top up your wallet.'],
+  [/AccountOwnedByWrongProgram/i, 'Account state error. Please try again.'],
+  [/AccountNotEnoughKeys/i, 'Transaction error. Please try again.'],
+  [/AccountNotInitialized/i, 'Account not ready. Please try again.'],
+  [/InvalidAccountForFee/i, 'Transaction rejected by the network. Please try again.'],
+  [/illegally used as writeable/i, 'Transaction rejected by the network. Please try again.'],
+  [/ER transaction failed on-chain/i, 'Transaction failed. Please try again.'],
+  [/did not reach processed status/i, 'Transaction timed out. Please try again.'],
+  [/Base layer VRF request failed/i, 'Session setup failed. Please try again.'],
+  [/delegation.*not.*propagated/i, 'Session is loading. Please retry in a moment.'],
+  [/503|502|504|Service Unavailable/i, 'Network temporarily unavailable. Please try again.'],
+  [/fetch failed|network error|ECONNREFUSED/i, 'Connection error. Check your network and try again.'],
+  [/User rejected/i, 'Request was cancelled.'],
+  [/WalletNotFoundError/i, 'Wallet not found. Please connect a wallet.'],
+  [/WalletSignMessageError/i, 'Wallet signing failed. Please try again.'],
+  [/WalletSendTransactionError/i, 'Wallet failed to send transaction. Please try again.'],
+  [/Simulation failed/i, 'Transaction simulation failed. Please try again.'],
+  [/Node is behind/i, 'Network is catching up. Please try again shortly.'],
+  [/TransactionExpiredBlockheightExceededError/i, 'Transaction expired. Please try again.'],
+  [/block height exceeded/i, 'Transaction expired. Please try again.'],
+];
+
+function sanitizeRawErrorMessage(message: string): string {
+  if (!message) return 'Something went wrong. Please try again.';
+
+  for (const [pattern, friendly] of RAW_ERROR_PATTERNS) {
+    if (pattern.test(message)) return friendly;
+  }
+
+  console.warn('[getUserErrorMessage] Unhandled error:', message);
+  return 'Something went wrong. Please try again.';
 }

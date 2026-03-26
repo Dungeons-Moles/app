@@ -16,6 +16,7 @@ import {
   getItemAsync as getSecureItemAsync,
   setItemAsync as setSecureItemAsync,
 } from '@/services/storage/secureStorage';
+import { getUserErrorMessage } from '@/services/solana/errors';
 
 const APP_IDENTITY = {
   name: 'Dungeons & Moles',
@@ -588,7 +589,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
         return null;
       } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : 'Failed to connect wallet';
+        const errorMessage = getUserErrorMessage(err);
         setError(errorMessage);
         console.error('Wallet connection error:', err);
         return null;
