@@ -31,7 +31,8 @@
     "plugins": [
       "expo-secure-store",
       "expo-screen-orientation",
-      "expo-font"
+      "expo-font",
+      "@sentry/react-native"
     ],
     "extra": {
       "solanaCluster": "devnet",

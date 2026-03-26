@@ -2,6 +2,9 @@ import { PublicKey, Commitment } from '@solana/web3.js';
 
 const cluster = (process.env.EXPO_PUBLIC_SOLANA_CLUSTER ?? 'devnet') as 'devnet' | 'mainnet-beta';
 const rpcUrl = process.env.EXPO_PUBLIC_SOLANA_RPC_URL ?? 'https://api.devnet.solana.com';
+const rpcFallbackUrl = process.env.EXPO_PUBLIC_SOLANA_RPC_FALLBACK_URL ?? (
+  cluster === 'devnet' ? 'https://api.devnet.solana.com' : null
+);
 const useMagicRouter = process.env.EXPO_PUBLIC_USE_MAGIC_ROUTER === 'true';
 const directErRpcUrl =
   process.env.EXPO_PUBLIC_EPHEMERAL_PROVIDER_ENDPOINT ?? 'https://devnet.magicblock.app/';
@@ -103,6 +106,7 @@ export const SOLANA_CONFIG = {
   cluster,
   mobileChain: `solana:${cluster}` as `solana:${typeof cluster}`,
   rpcUrl,
+  rpcFallbackUrl,
   erRpcUrl,
   erWsUrl,
   directErRpcUrl,

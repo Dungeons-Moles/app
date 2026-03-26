@@ -9,6 +9,8 @@ interface SolanaConnectionContextValue {
   connection: Connection;
   /** Alias for base connection, for explicitness at callsites. */
   baseConnection: Connection;
+  /** Fallback base layer connection (public RPC), null if same as primary. */
+  fallbackConnection: Connection | null;
   /** Ephemeral rollup connection (MagicBlock). */
   erConnection: Connection;
   /** Direct ER connection (bypasses router, for reads). */
@@ -29,6 +31,11 @@ const SolanaConnectionContext = createContext<SolanaConnectionContextValue | und
 
 export function SolanaConnectionProvider({ children }: { children: ReactNode }) {
   const baseConnection = useMemo(() => createSolanaConnection(), []);
+  const fallbackConnection = useMemo(() => {
+    const url = SOLANA_CONFIG.rpcFallbackUrl;
+    if (!url || url === SOLANA_CONFIG.rpcUrl) return null;
+    return new Connection(url, SOLANA_CONFIG.commitment);
+  }, []);
   const erConnection = useMemo(() => createErConnection(), []);
   const directErConnection = useMemo(
     () =>
@@ -78,6 +85,7 @@ export function SolanaConnectionProvider({ children }: { children: ReactNode }) 
     () => ({
       connection: baseConnection,
       baseConnection,
+      fallbackConnection,
       erConnection,
       directErConnection: resolvedErConnection,
       gameplayConnection,
@@ -86,7 +94,7 @@ export function SolanaConnectionProvider({ children }: { children: ReactNode }) 
       setUseErForGameplay,
       setResolvedErEndpoint,
     }),
-    [baseConnection, erConnection, resolvedErConnection, gameplayConnection, gameplayReadConnection, useErForGameplay, setUseErForGameplay, setResolvedErEndpoint]
+    [baseConnection, fallbackConnection, erConnection, resolvedErConnection, gameplayConnection, gameplayReadConnection, useErForGameplay, setUseErForGameplay, setResolvedErEndpoint]
   );
 
   return (

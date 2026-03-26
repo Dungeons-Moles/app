@@ -1,4 +1,5 @@
 import { AnchorError } from '@coral-xyz/anchor';
+import * as Sentry from '@sentry/react-native';
 
 // Error messages keyed by program name and error code
 const PROGRAM_ERRORS: Record<string, Record<number, string>> = {
@@ -223,7 +224,7 @@ const RAW_ERROR_PATTERNS: [RegExp, string][] = [
   [/Base layer VRF request failed/i, 'Session setup failed. Please try again.'],
   [/delegation.*not.*propagated/i, 'Session is loading. Please retry in a moment.'],
   [/503|502|504|Service Unavailable/i, 'Network temporarily unavailable. Please try again.'],
-  [/fetch failed|network error|ECONNREFUSED/i, 'Connection error. Check your network and try again.'],
+  [/fetch failed|network error|network request failed|ECONNREFUSED/i, 'Connection error. Check your network and try again.'],
   [/User rejected/i, 'Request was cancelled.'],
   [/WalletNotFoundError/i, 'Wallet not found. Please connect a wallet.'],
   [/WalletSignMessageError/i, 'Wallet signing failed. Please try again.'],
@@ -242,5 +243,9 @@ function sanitizeRawErrorMessage(message: string): string {
   }
 
   console.warn('[getUserErrorMessage] Unhandled error:', message);
+  Sentry.captureMessage(message, {
+    level: 'warning',
+    tags: { source: 'unhandled_error' },
+  });
   return 'Something went wrong. Please try again.';
 }

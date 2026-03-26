@@ -8,6 +8,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import * as SplashScreen from 'expo-splash-screen';
 import * as NavigationBar from 'expo-navigation-bar';
+import * as Sentry from '@sentry/react-native';
 import {
   useFonts,
   IMFellEnglish_400Regular,
@@ -27,6 +28,13 @@ import { Psg1Wrapper } from './src/components/Psg1Wrapper';
 import { preloadCriticalImages } from './src/utils/preloadCriticalImages';
 import { Analytics } from '@vercel/analytics/react';
 
+Sentry.init({
+  dsn: process.env.EXPO_PUBLIC_SENTRY_DSN ?? '',
+  enabled: !!process.env.EXPO_PUBLIC_SENTRY_DSN,
+  tracesSampleRate: 0.2,
+  environment: __DEV__ ? 'development' : 'production',
+});
+
 // Critical assets to preload during splash screen (first screens the user sees)
 const PRELOAD_ASSETS = [
   require('./assets/ui/backgrounds/loading-background.webp'),
@@ -41,7 +49,7 @@ const PRELOAD_ASSETS = [
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
 
-export default function App() {
+function App() {
   const [fontsLoaded, fontError] = useFonts({
     'IMFellEnglish-Regular': IMFellEnglish_400Regular,
     'IMFellEnglish-Italic': IMFellEnglish_400Regular_Italic,
@@ -104,3 +112,5 @@ export default function App() {
     </Psg1Wrapper>
   );
 }
+
+export default Sentry.wrap(App);

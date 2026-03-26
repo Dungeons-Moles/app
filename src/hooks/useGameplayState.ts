@@ -38,7 +38,7 @@ import { parseCombatLog, parseBossCombatFromMoveTx } from '@/services/solana/eve
 import type { CombatEnemyInfo } from '@/services/solana/eventParser';
 import { parseGauntletCombatVisualEvent } from '@/services/solana/gauntlet';
 import type { GauntletCombatVisualEvent } from '@/services/solana/gauntlet';
-import { sendSessionSignerTransaction, confirmErTransaction } from '@/services/solana/sessionSigner';
+import { sendSessionSignerTransaction } from '@/services/solana/sessionSigner';
 import { fetchSessionDiscovery, decodeSessionDiscoveryFromAccountInfo } from '@/services/solana/mapGeneratorClient';
 import type { SessionDiscoveryData } from '@/services/solana/mapGeneratorClient';
 import { deriveSessionDiscoveryPda } from '@/services/solana/constants';
@@ -440,15 +440,9 @@ export function useGameplayState(): UseGameplayStateReturn {
         const { signature, connection: moveConnection } = moveResult;
         const tSent = Date.now();
 
-        // Timeouts start NOW (after send), not before.
-        // - confirmErTransaction: runs in background (WS notification IS implicit confirmation)
-        // - combat parse: only when HP decreased or player died
-        const tParallel = Date.now();
-
-        // Background confirmation for error logging only
-        confirmErTransaction(moveConnection, signature).catch((err) => {
-          console.error('[useGameplayState] Background confirm failed:', err);
-        });
+        // Background confirmation removed — WS subscription already delivers
+        // confirmed state, and the polling (40ms × 50 requests per move) saturates
+        // the HTTP connection on rapid moves, causing subsequent sends to stall.
 
         // Discovery timeout (starts after send)
         setTimeout(() => {
@@ -509,9 +503,14 @@ export function useGameplayState(): UseGameplayStateReturn {
           setLastSyncAt(Date.now());
         }
 
-        // Heuristic combat indicator: HP loss or death strongly suggests combat.
+        // Heuristic combat indicator: HP loss, death, or gold increase strongly suggests combat.
+        // Gold increase is included because move_player only changes gold via combat rewards,
+        // and during night phase the frontend may not know the enemy's position (enemies move
+        // on-chain), so HP-only detection misses zero-damage wins (high ARM).
         const hpOrDeathChanged =
           confirmedState != null && (confirmedState.hp < previousState.hp || confirmedState.isDead);
+        const goldIncreased =
+          confirmedState != null && confirmedState.gold > previousState.gold;
 
         // Detect inline boss/echo resolution from state changes.
         // Boss fights auto-resolve inside move_player when the last Night3 move
@@ -557,7 +556,7 @@ export function useGameplayState(): UseGameplayStateReturn {
         }
 
         const parsedCombatDetected = !!combatEnemyInfo;
-        const combatOccurred = hpOrDeathChanged || parsedCombatDetected;
+        const combatOccurred = hpOrDeathChanged || parsedCombatDetected || goldIncreased;
 
         if (
           bossResolvedIndicator &&

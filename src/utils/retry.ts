@@ -1,3 +1,30 @@
+import { Connection } from '@solana/web3.js';
+
+const NETWORK_FAILURE_RE =
+  /network request failed|fetch failed|econnrefused|503|502|504|service unavailable/i;
+
+/**
+ * Run an RPC operation with automatic fallback to a secondary connection.
+ * If `fn(primary)` throws a network-level error and `fallback` is provided,
+ * retries once with the fallback connection.
+ */
+export async function withRpcFallback<T>(
+  primary: Connection,
+  fallback: Connection | null | undefined,
+  fn: (conn: Connection) => Promise<T>
+): Promise<T> {
+  try {
+    return await fn(primary);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (fallback && NETWORK_FAILURE_RE.test(msg)) {
+      console.warn('[withRpcFallback] Primary RPC failed, trying fallback:', msg);
+      return fn(fallback);
+    }
+    throw err;
+  }
+}
+
 /**
  * Generic retry utility for parsing on-chain events.
  *
