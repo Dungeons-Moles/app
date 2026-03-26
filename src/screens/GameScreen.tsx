@@ -1563,6 +1563,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
       playSfx(isWall ? 'move_dig' : 'move_floor');
 
       // On-chain: send transaction, await confirmation, then sync local state
+      const tTap = Date.now();
       isMovePendingRef.current = true;
       // Safety timeout: if the move promise hangs (WS listener stall, network issue),
       // reset the guard after 5s so the player isn't permanently stuck.
@@ -1592,8 +1593,10 @@ export function GameScreen({ navigation }: GameScreenProps) {
         (e) => e.position.x === targetPos.x && e.position.y === targetPos.y
       );
 
+      console.log(`[perf] tap→send: ${Date.now() - tTap}ms`);
       movePlayer({ targetX: targetPos.x, targetY: targetPos.y })
         .then(async (result) => {
+          console.log(`[perf] tap→moveResult: ${Date.now() - tTap}ms`);
           debugLog(
             '[GameScreen] movePlayer result:',
             JSON.stringify({
@@ -1632,6 +1635,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
             // Update local state from confirmed on-chain state
             dispatch({ type: 'SYNC_MOVE', confirmedState: result.newState, weekBoss: discoveryBossId });
+            console.log(`[perf] tap→dispatch: ${Date.now() - tTap}ms`);
 
             // Sync newly revealed tiles, enemies, and POIs from SessionDiscovery
             // (fetched in parallel with the move confirmation — no extra latency)
@@ -1861,6 +1865,52 @@ export function GameScreen({ navigation }: GameScreenProps) {
               // Suppress POI auto-trigger at this position: combat takes priority.
               // After combat the player can manually open the POI with the A button.
               lastAutoTriggeredPosRef.current = { x: targetPos.x, y: targetPos.y };
+
+              // Compute deltas early — auto-resolve needs them even without enemy ID.
+              const hpDelta = result.newState.hp - preCombatPlayerStats.hp;
+              const goldDelta = result.newState.gold - preCombatPlayerStats.gold;
+
+              // Auto-resolve: show floating indicators on map regardless of enemy ID.
+              // During night phase, enemies move on-chain and local state has stale
+              // positions, so combatEnemy/combatEnemyInfo may both be null. The
+              // indicator only needs hp/gold deltas, not which enemy was fought.
+              if (autoResolveCombat) {
+                debugLog('[GameScreen] Auto-resolve combat:', {
+                  preCombatPlayerHp: preCombatPlayerStats.hp,
+                  postCombatPlayerHp: result.newState.hp,
+                  goldBefore: preCombatPlayerStats.gold,
+                  goldAfter: result.newState.gold,
+                  playerDied: result.isDead,
+                });
+                if (hpDelta !== 0 || goldDelta > 0) {
+                  combatResultIdRef.current += 1;
+                  setCombatResultIndicators((prev) => [
+                    ...prev,
+                    {
+                      id: `cr_${combatResultIdRef.current}`,
+                      goldDelta: Math.max(0, goldDelta),
+                      hpDelta,
+                    },
+                  ]);
+                }
+                if (result.isDead && !result.bossFightReady) {
+                  // Find enemy for death screen metadata (best-effort)
+                  const combatEnemy = enemyAtTarget ?? state.map.enemies.find(
+                    (e) =>
+                      e.position.x === state.player.position.x &&
+                      e.position.y === state.player.position.y
+                  );
+                  defeatMetaRef.current = {
+                    killedBy: combatEnemy?.definitionId,
+                    totalMoves: result.newState.totalMoves,
+                    level: result.newState.campaignLevel,
+                    week: result.newState.week,
+                    phase: result.newState.phase,
+                  };
+                  setDefeatOverlayVisible(true);
+                }
+              } else {
+              // Non-auto-resolve: need enemy identity for CombatScreen replay.
               // Find enemy - check both target position and player's current position
               // During night, enemies move toward player, so combat might occur at player's position
               let combatEnemy = enemyAtTarget;
@@ -1880,10 +1930,6 @@ export function GameScreen({ navigation }: GameScreenProps) {
               }
 
               if (combatEnemy || result.combatEnemyInfo) {
-                // Combat was resolved on-chain during move_player.
-                const hpDelta = result.newState.hp - preCombatPlayerStats.hp;
-                const goldDelta = result.newState.gold - preCombatPlayerStats.gold;
-
                 debugLog('[GameScreen] Combat occurred:', {
                   enemyId: combatEnemy?.definitionId ?? result.combatEnemyInfo?.archetype,
                   preCombatPlayerHp: preCombatPlayerStats.hp,
@@ -1891,33 +1937,9 @@ export function GameScreen({ navigation }: GameScreenProps) {
                   goldBefore: preCombatPlayerStats.gold,
                   goldAfter: result.newState.gold,
                   playerDied: result.isDead,
-                  autoResolve: autoResolveCombat,
                 });
 
-                // Auto-resolve: skip CombatScreen, show floating indicators on map
-                if (autoResolveCombat) {
-                  if (hpDelta !== 0 || goldDelta > 0) {
-                    combatResultIdRef.current += 1;
-                    setCombatResultIndicators((prev) => [
-                      ...prev,
-                      {
-                        id: `cr_${combatResultIdRef.current}`,
-                        goldDelta: Math.max(0, goldDelta),
-                        hpDelta,
-                      },
-                    ]);
-                  }
-                  if (result.isDead && !result.bossFightReady) {
-                    defeatMetaRef.current = {
-                      killedBy: combatEnemy?.definitionId,
-                      totalMoves: result.newState.totalMoves,
-                      level: result.newState.campaignLevel,
-                      week: result.newState.week,
-                      phase: result.newState.phase,
-                    };
-                    setDefeatOverlayVisible(true);
-                  }
-                } else if (combatEnemy) {
+                if (combatEnemy) {
                   // Navigate to CombatScreen to show combat replay
                   const combatParams = createCombatParams(
                     combatEnemy,
@@ -2000,6 +2022,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
                   navigateToDeath(navigation, result.newState, 'Unknown enemy');
                 }
               }
+              } // close non-auto-resolve else
             } else if (result.isDead && !result.bossFightReady) {
               // Non-combat death (shouldn't normally happen, but handle edge case).
               // Skip when bossFightReady — the boss useEffect will show CombatScreen first.
@@ -2015,6 +2038,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
           resyncFromChain();
         })
         .finally(() => {
+          console.log(`[perf] tap→done: ${Date.now() - tTap}ms`);
           clearTimeout(moveSafetyTimeout);
           isMovePendingRef.current = false;
           setIsMovePending(false);
