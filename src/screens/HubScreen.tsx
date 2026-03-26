@@ -37,6 +37,13 @@ import { FocusGlow } from '../components/ui/FocusGlow';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BetaWelcomeModal, BETA_WELCOME_KEY } from '../components/ui/BetaWelcomeModal';
 import { ControllerKeyboard } from '../components/ui/ControllerKeyboard';
+import { useSessionSigner } from '../hooks/useSessionSigner';
+import {
+  buildGameWalletDerivationMessage,
+  deriveSessionSignerFromSignature,
+  drainSessionSignerToMain,
+  storeSessionSignerWallet,
+} from '../services/solana/sessionSigner';
 import { getVrfSeed } from '../services/solana/vrf';
 import {
   createSessionSetup,
@@ -106,7 +113,8 @@ export function HubScreen({ navigation }: HubScreenProps) {
   const inputMode = useInputMode();
   const { state: gameState, dispatch } = useGame();
   const { playBgm, playSfx } = useAudio();
-  const { wallet, getBalance, disconnect } = useWallet();
+  const { wallet, getBalance, disconnect, signMessage } = useWallet();
+  const sessionSigner = useSessionSigner();
   const { connection } = useSolanaConnection();
   const [gauntletPoolLamports, setGauntletPoolLamports] = useState<bigint | null>(null);
   const [gauntletPoints, setGauntletPoints] = useState<number | null>(null);
@@ -129,6 +137,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
     group: 'right',
     index: 0,
   });
+  const [isWithdrawing, setIsWithdrawing] = useState(false);
   const [showResetWarning, setShowResetWarning] = useState(false);
   const [resetInProgress, setResetInProgress] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
@@ -140,7 +149,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
   const { userSkins, isLoading: skinsLoading, fetchUserAssets } = useNftMarketplace();
   const { quests, isLoading: questsLoading, fetchQuests, acceptQuest, claimReward } = useQuests();
   const { equipSkin, unequipSkin, isLoading: equipLoading } = useEquipSkin();
-  const { processPendingCleanups } = useSessionIdentity();
+  const { processPendingCleanups, hasActiveSession } = useSessionIdentity();
   const effectiveQuests = quests;
 
   // Sort skins: equipped first
@@ -439,6 +448,43 @@ export function HubScreen({ navigation }: HubScreenProps) {
     setProfileSuccessMessage(null);
     setShowProfile(true);
   };
+
+  // Lazily derive + persist game wallet keypair when profile modal opens
+  // and no keypair is stored yet. signMessage is free (no tx cost).
+  useEffect(() => {
+    if (!showProfile || sessionSigner.keypair || !wallet.publicKey) return;
+    const walletAddress = wallet.address ?? wallet.publicKey.toBase58();
+    let cancelled = false;
+    (async () => {
+      try {
+        const sig = await signMessage(buildGameWalletDerivationMessage());
+        if (cancelled) return;
+        const derived = deriveSessionSignerFromSignature(sig);
+        await storeSessionSignerWallet(walletAddress, derived);
+        // Trigger reload in the hook
+        await sessionSigner.markAsActive(derived);
+      } catch {
+        // User rejected signMessage — that's fine, just don't show game wallet
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [showProfile, sessionSigner.keypair, wallet.publicKey, wallet.address, signMessage, sessionSigner]);
+
+  const handleWithdrawGameWallet = useCallback(async () => {
+    if (!sessionSigner.keypair || !wallet.publicKey || hasActiveSession) return;
+    playSfx('ui_click');
+    setIsWithdrawing(true);
+    try {
+      await drainSessionSignerToMain(connection, sessionSigner.keypair, wallet.publicKey);
+      await sessionSigner.refreshBalance();
+    } catch (err) {
+      console.warn('[HubScreen] Withdraw failed:', err);
+    } finally {
+      setIsWithdrawing(false);
+    }
+  }, [sessionSigner, wallet.publicKey, hasActiveSession, connection, playSfx]);
+
+  const canWithdraw = !!sessionSigner.keypair && sessionSigner.balance > 0 && !hasActiveSession && !isWithdrawing;
 
   const NAME_MAX_LENGTH = 32;
 
@@ -1782,7 +1828,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
 
                   <ScrollView
                     style={{ flex: 1, width: '100%' }}
-                    contentContainerStyle={{ gap: 16 }}
+                    contentContainerStyle={{ gap: 16, paddingRight: isCompact ? 24 : 12 }}
                   >
                     {/* Name Edit */}
                     <View style={styles.profileSection}>
@@ -1957,6 +2003,89 @@ export function HubScreen({ navigation }: HubScreenProps) {
                         </View>
                       </View>
                     </View>
+
+                    {/* Game Wallet */}
+                    {sessionSigner.keypair && (
+                      <View style={styles.profileSection}>
+                        <Text
+                          style={[
+                            styles.profileSectionTitle,
+                            isCompact && compactStyles.profileSectionTitle,
+                          ]}
+                        >
+                          Game Wallet
+                        </Text>
+                        <View style={styles.profileStatsGrid}>
+                          <View style={styles.profileStatRow}>
+                            <Text
+                              style={[
+                                styles.profileStatLabel,
+                                isCompact && compactStyles.profileStatText,
+                              ]}
+                            >
+                              Address
+                            </Text>
+                            <Text
+                              style={[
+                                styles.profileStatValue,
+                                isCompact && compactStyles.profileStatText,
+                              ]}
+                              numberOfLines={1}
+                            >
+                              {shortenAddress(sessionSigner.keypair.publicKey.toBase58())}
+                            </Text>
+                          </View>
+                          <View style={styles.profileStatRow}>
+                            <Text
+                              style={[
+                                styles.profileStatLabel,
+                                isCompact && compactStyles.profileStatText,
+                              ]}
+                            >
+                              Balance
+                            </Text>
+                            <Text
+                              style={[
+                                styles.profileStatValue,
+                                isCompact && compactStyles.profileStatText,
+                              ]}
+                            >
+                              {(sessionSigner.balance / 1_000_000_000).toFixed(4)} SOL
+                            </Text>
+                          </View>
+                        </View>
+                        <TouchableOpacity
+                          onPress={handleWithdrawGameWallet}
+                          disabled={!canWithdraw}
+                          activeOpacity={0.7}
+                          style={{ alignItems: 'center', marginTop: 8 }}
+                        >
+                          <CachedImageBackground
+                            source={buttonV3Source}
+                            style={[
+                              styles.profileSaveButton,
+                              isCompact && compactStyles.profileSaveButton,
+                              { width: isCompact ? 280 : 160 },
+                              !canWithdraw && { opacity: 0.5 },
+                            ]}
+                            resizeMode="stretch"
+                          >
+                            {isWithdrawing ? (
+                              <ActivityIndicator size="small" color="#3d2b1f" />
+                            ) : (
+                              <Text
+                                style={[
+                                  styles.profileSaveButtonText,
+                                  isCompact && compactStyles.profileSaveButtonText,
+                                ]}
+                              >
+                                {hasActiveSession ? 'Session Active' : 'Withdraw'}
+                              </Text>
+                            )}
+                          </CachedImageBackground>
+                        </TouchableOpacity>
+                      </View>
+                    )}
                   </ScrollView>
                   {isController && (
                     <View style={[styles.settingsHints, isCompact && compactStyles.settingsHints]}>

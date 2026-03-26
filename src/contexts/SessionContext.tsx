@@ -75,9 +75,14 @@ import {
 import {
   loadSessionSignerWallet,
   loadSessionSignerForSession,
-  drainSessionSignerToMain,
+  withdrawExcessToMain,
+  calculateRequiredFunding,
+  SESSION_COST_CAMPAIGN,
+  SESSION_COST_DUEL,
+  SESSION_COST_GAUNTLET,
   sendSessionSignerTransaction,
   buildSessionDerivationMessage,
+  buildGameWalletDerivationMessage,
   deriveSessionSignerFromSignature,
 } from '@/services/solana/sessionSigner';
 import {
@@ -1832,10 +1837,24 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
         for (const candidate of candidates) {
           if (!candidate.matches) continue;
-          const signature = await signMessage(
-            buildSessionDerivationMessage(candidate.mode, candidate.nonce)
-          );
-          const derivedKeypair = deriveSessionSignerFromSignature(signature);
+          let derivedKeypair: Keypair;
+          if (sessionSigner.keypair && sessionSigner.keypair.publicKey.equals(expectedSessionSigner)) {
+            derivedKeypair = sessionSigner.keypair;
+          } else {
+            // Try new fixed derivation first
+            const signature = await signMessage(
+              buildGameWalletDerivationMessage()
+            );
+            derivedKeypair = deriveSessionSignerFromSignature(signature);
+
+            // Fallback: try legacy per-session derivation for sessions created before v1
+            if (!derivedKeypair.publicKey.equals(expectedSessionSigner)) {
+              const legacySig = await signMessage(
+                buildSessionDerivationMessage(candidate.mode, candidate.nonce)
+              );
+              derivedKeypair = deriveSessionSignerFromSignature(legacySig);
+            }
+          }
           if (!derivedKeypair.publicKey.equals(expectedSessionSigner)) {
             continue;
           }
@@ -2175,18 +2194,29 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      // Step 1: Create sessionSigner wallet and build fund transaction (no signature yet)
+      // Step 1: Reuse existing sessionSigner or derive a new one.
+      // With fixed derivation message, the same wallet always produces the same keypair.
+      // Skip the signMessage popup if we already have a stored signer.
       console.log(
-        '[SessionContext] Step 1: Creating sessionSigner wallet... (current keypair:',
+        '[SessionContext] Step 1: Getting sessionSigner wallet... (current keypair:',
         sessionSigner.keypair?.publicKey.toBase58() ?? 'null',
         ')'
       );
-      const derivationSignature = await signMessage(
-        buildSessionDerivationMessage(`campaign-${onChainLevel}`, currentNonces.campaign)
-      );
-      const derivedSessionSigner = deriveSessionSignerFromSignature(derivationSignature);
+      let derivedSessionSigner: Keypair;
+      if (sessionSigner.keypair) {
+        derivedSessionSigner = sessionSigner.keypair;
+        console.log('[SessionContext] Reusing existing sessionSigner:', derivedSessionSigner.publicKey.toBase58());
+      } else {
+        const derivationSignature = await signMessage(
+          buildGameWalletDerivationMessage()
+        );
+        derivedSessionSigner = deriveSessionSignerFromSignature(derivationSignature);
+      }
+      const signerBalance = await connection.getBalance(derivedSessionSigner.publicKey);
+      const fundingNeeded = calculateRequiredFunding(signerBalance, SESSION_COST_CAMPAIGN);
       const sessionSignerResult = await sessionSigner.createWithoutFundingFromKeypair(
-        derivedSessionSigner
+        derivedSessionSigner,
+        fundingNeeded
       );
       if (!sessionSignerResult) {
         return { success: false, error: 'Failed to create sessionSigner wallet' };
@@ -2204,7 +2234,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         newSessionSignerKeypair.publicKey
       );
       if (!sessionResult) {
-        await sessionSigner.clear();
+        sessionSigner.resetState();
         return { success: false, error: 'Failed to build session transaction' };
       }
       const { transaction: sessionTransaction, sessionPda } = sessionResult;
@@ -2280,7 +2310,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           logTxDebugError('startGame:start_tx', txError);
         }
 
-        await sessionSigner.clear();
+        sessionSigner.resetState();
         return {
           success: false,
           error:
@@ -2345,7 +2375,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       });
       if (!delegateResult.success) {
         logTxDebugError('startGame:delegate_tx', delegateResult.error);
-        await sessionSigner.clear();
+        sessionSigner.resetState();
         return {
           success: false,
           error: delegateResult.error ?? 'Delegation transaction failed after session creation',
@@ -2653,12 +2683,20 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
 
     const duelNonces = await sessionManager.fetchSessionNonces(wallet.publicKey);
-    const duelSignature = await signMessage(
-      buildSessionDerivationMessage('duel', duelNonces.duel)
-    );
-    const duelSessionSigner = deriveSessionSignerFromSignature(duelSignature);
+    let duelSessionSigner: Keypair;
+    if (sessionSigner.keypair) {
+      duelSessionSigner = sessionSigner.keypair;
+    } else {
+      const duelSignature = await signMessage(
+        buildGameWalletDerivationMessage()
+      );
+      duelSessionSigner = deriveSessionSignerFromSignature(duelSignature);
+    }
+    const duelSignerBalance = await connection.getBalance(duelSessionSigner.publicKey);
+    const duelFundingNeeded = calculateRequiredFunding(duelSignerBalance, SESSION_COST_DUEL);
     const sessionSignerResult = await sessionSigner.createWithoutFundingFromKeypair(
-      duelSessionSigner
+      duelSessionSigner,
+      duelFundingNeeded
     );
     if (!sessionSignerResult) {
       return { success: false, error: 'Failed to create sessionSigner wallet' };
@@ -3042,12 +3080,20 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
 
     const gauntletNonces = await sessionManager.fetchSessionNonces(wallet.publicKey);
-    const gauntletSignature = await signMessage(
-      buildSessionDerivationMessage('gauntlet', gauntletNonces.gauntlet)
-    );
-    const gauntletSessionSigner = deriveSessionSignerFromSignature(gauntletSignature);
+    let gauntletSessionSigner: Keypair;
+    if (sessionSigner.keypair) {
+      gauntletSessionSigner = sessionSigner.keypair;
+    } else {
+      const gauntletSignature = await signMessage(
+        buildGameWalletDerivationMessage()
+      );
+      gauntletSessionSigner = deriveSessionSignerFromSignature(gauntletSignature);
+    }
+    const gauntletSignerBalance = await connection.getBalance(gauntletSessionSigner.publicKey);
+    const gauntletFundingNeeded = calculateRequiredFunding(gauntletSignerBalance, SESSION_COST_GAUNTLET);
     const sessionSignerResult = await sessionSigner.createWithoutFundingFromKeypair(
-      gauntletSessionSigner
+      gauntletSessionSigner,
+      gauntletFundingNeeded
     );
     if (!sessionSignerResult) {
       return { success: false, error: 'Failed to create sessionSigner wallet' };
@@ -3813,14 +3859,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      // Drain/clear in background so post-combat navigation is not blocked.
+      // Withdraw excess balance in background (signer persists for reuse).
       void (async () => {
         try {
-          await sessionSigner.drain();
-        } catch (drainErr) {
-          console.warn('[SessionContext] Background drain failed:', drainErr);
-        } finally {
-          await sessionSigner.clear();
+          const keypair = sessionSigner.keypair;
+          if (keypair && wallet.publicKey) {
+            await withdrawExcessToMain(connection, keypair, wallet.publicKey);
+          }
+        } catch (err) {
+          console.warn('[SessionContext] Background excess withdrawal failed:', err);
         }
       })();
       setUseErForGameplay(false);
@@ -4309,12 +4356,20 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const onChainLevel = campaignLevel + 1;
       const currentNonces = await sessionManager.fetchSessionNonces(wallet.publicKey);
       const newNonce = currentNonces.campaign + 1n;
-      const walletSig = await signMessage(
-        buildSessionDerivationMessage(`campaign-${onChainLevel}`, newNonce)
-      );
-      const derivedSessionSigner = deriveSessionSignerFromSignature(walletSig);
+      let derivedSessionSigner: Keypair;
+      if (sessionSigner.keypair) {
+        derivedSessionSigner = sessionSigner.keypair;
+      } else {
+        const walletSig = await signMessage(
+          buildGameWalletDerivationMessage()
+        );
+        derivedSessionSigner = deriveSessionSignerFromSignature(walletSig);
+      }
+      const overrideSignerBalance = await connection.getBalance(derivedSessionSigner.publicKey);
+      const overrideFundingNeeded = calculateRequiredFunding(overrideSignerBalance, SESSION_COST_CAMPAIGN);
       const sessionSignerResult = await sessionSigner.createWithoutFundingFromKeypair(
-        derivedSessionSigner
+        derivedSessionSigner,
+        overrideFundingNeeded
       );
       if (!sessionSignerResult) {
         return { success: false, error: 'Failed to create sessionSigner wallet' };
@@ -4328,7 +4383,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         newNonce
       );
       if (!overrideTx || !sessionResult) {
-        await sessionSigner.clear();
+        sessionSigner.resetState();
         return { success: false, error: 'Failed to build override/start transaction' };
       }
 
@@ -4366,7 +4421,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         void sessionManager.fetchSession().then(() => refreshSessionList());
         _mark('session_setup');
       } catch (txError: unknown) {
-        await sessionSigner.clear();
+        sessionSigner.resetState();
         return {
           success: false,
           error: txError instanceof Error ? txError.message : 'Transaction failed',
@@ -4414,7 +4469,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       });
       _mark('delegated');
       if (!delegateResult.success) {
-        await sessionSigner.clear();
+        sessionSigner.resetState();
         return {
           success: false,
           error: delegateResult.error ?? 'Delegation transaction failed after session creation',
@@ -4634,10 +4689,18 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
       const duelNonces = await sessionManager.fetchSessionNonces(wallet.publicKey);
       const newNonce = duelNonces.duel + 1n;
-      const duelSignature = await signMessage(buildSessionDerivationMessage('duel', newNonce));
-      const duelSessionSigner = deriveSessionSignerFromSignature(duelSignature);
+      let duelSessionSigner: Keypair;
+      if (sessionSigner.keypair) {
+        duelSessionSigner = sessionSigner.keypair;
+      } else {
+        const duelSignature = await signMessage(buildGameWalletDerivationMessage());
+        duelSessionSigner = deriveSessionSignerFromSignature(duelSignature);
+      }
+      const overrideDuelBalance = await connection.getBalance(duelSessionSigner.publicKey);
+      const overrideDuelFunding = calculateRequiredFunding(overrideDuelBalance, SESSION_COST_DUEL);
       const sessionSignerResult = await sessionSigner.createWithoutFundingFromKeypair(
-        duelSessionSigner
+        duelSessionSigner,
+        overrideDuelFunding
       );
       if (!sessionSignerResult) {
         return { success: false, error: 'Failed to create sessionSigner wallet' };
@@ -4651,7 +4714,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         newNonce
       );
       if (!overrideTx || !sessionResult) {
-        await sessionSigner.clear();
+        sessionSigner.resetState();
         return { success: false, error: 'Failed to build duel session transaction' };
       }
 
@@ -4972,12 +5035,20 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
       const gauntletNonces = await sessionManager.fetchSessionNonces(wallet.publicKey);
       const newNonce = gauntletNonces.gauntlet + 1n;
-      const gauntletSignature = await signMessage(
-        buildSessionDerivationMessage('gauntlet', newNonce)
-      );
-      const gauntletSessionSigner = deriveSessionSignerFromSignature(gauntletSignature);
+      let gauntletSessionSigner: Keypair;
+      if (sessionSigner.keypair) {
+        gauntletSessionSigner = sessionSigner.keypair;
+      } else {
+        const gauntletSignature = await signMessage(
+          buildGameWalletDerivationMessage()
+        );
+        gauntletSessionSigner = deriveSessionSignerFromSignature(gauntletSignature);
+      }
+      const overrideGauntletBalance = await connection.getBalance(gauntletSessionSigner.publicKey);
+      const overrideGauntletFunding = calculateRequiredFunding(overrideGauntletBalance, SESSION_COST_GAUNTLET);
       const sessionSignerResult = await sessionSigner.createWithoutFundingFromKeypair(
-        gauntletSessionSigner
+        gauntletSessionSigner,
+        overrideGauntletFunding
       );
       if (!sessionSignerResult) {
         return { success: false, error: 'Failed to create sessionSigner wallet' };
@@ -4991,7 +5062,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         newNonce
       );
       if (!overrideTx || !sessionResult) {
-        await sessionSigner.clear();
+        sessionSigner.resetState();
         return { success: false, error: 'Failed to build gauntlet session transaction' };
       }
 
@@ -6244,9 +6315,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
               }
 
               try {
-                await drainSessionSignerToMain(connection, cleanupSigner, wallet.publicKey);
+                await withdrawExcessToMain(connection, cleanupSigner, wallet.publicKey);
               } catch (drainErr) {
-                console.warn('[SessionContext] Deferred cleanup drain failed:', drainErr);
+                console.warn('[SessionContext] Deferred cleanup excess withdrawal failed:', drainErr);
               }
 
               await updateCleanup(cleanup.id, { needsSessionEnd: false });
@@ -6413,7 +6484,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           await clearFogState(sessionPda.toBase58()).catch(() => {});
           await clearBrokenWalls(sessionPda.toBase58()).catch(() => {});
           sessionManager.resetSession();
-          await sessionSigner.clear();
+          sessionSigner.resetState();
           return { success: true, signature: forceCloseResult.signature };
         }
         const closeOnlyResult = await sessionManager.closeSessionOnly(sessionSignerKeypair);
@@ -6423,7 +6494,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           await clearFogState(sessionPda.toBase58()).catch(() => {});
           await clearBrokenWalls(sessionPda.toBase58()).catch(() => {});
           sessionManager.resetSession();
-          await sessionSigner.clear();
+          sessionSigner.resetState();
           return { success: true, signature: closeOnlyResult.signature };
         }
         return {
@@ -6510,7 +6581,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       await clearBrokenWalls(sessionKey);
       vrfReadySessionsRef.current.delete(sessionKey);
       sessionManager.resetSession();
-      await sessionSigner.clear();
+      sessionSigner.resetState();
       setUseErForGameplay(false);
 
       // Refresh session list

@@ -315,7 +315,7 @@ export async function validateSessionCreation(
   }
 
   const balance = await connection.getBalance(mainWallet);
-  const requiredBalance = DEFAULT_SESSION_SIGNER_FUNDING + 10_000_000;
+  const requiredBalance = DEFAULT_SESSION_SIGNER_FUNDING + 5_000_000; // reduced buffer since signer may already be funded
   if (balance < requiredBalance) {
     return {
       valid: false,

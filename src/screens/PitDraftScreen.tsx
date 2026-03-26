@@ -215,9 +215,16 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
       : {
           onB: handleBack,
           onStart: () => setShowSettingsModal(true),
-          onA: panelFocus === 0 ? handleHistory : !pitDraft.isLoading ? handleEnter : undefined,
-          onDPadLeft: () => setPanelFocus(0),
-          onDPadRight: () => setPanelFocus(1),
+          onA:
+            pitDraft.phase === 'queuing'
+              ? handleBack
+              : panelFocus === 0
+                ? handleHistory
+                : !pitDraft.isLoading
+                  ? handleEnter
+                  : undefined,
+          onDPadLeft: pitDraft.phase !== 'queuing' ? () => setPanelFocus(0) : undefined,
+          onDPadRight: pitDraft.phase !== 'queuing' ? () => setPanelFocus(1) : undefined,
         },
     isController && isFocused && (pitDraft.phase === 'confirm' || pitDraft.phase === 'queuing')
   );

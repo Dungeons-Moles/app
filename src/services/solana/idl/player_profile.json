@@ -384,7 +384,7 @@
         {
           "name": "session",
           "docs": [
-            "1. Account owner == session-manager program ID",
+            "1. Account owner == session-manager program ID (enforced by constraint below)",
             "2. session.player == player_profile.owner",
             "3. session.campaign_level == level_completed input",
             "4. session.session_signer == session_signer signer"
@@ -410,6 +410,15 @@
         {
           "name": "victory",
           "type": "bool"
+        },
+        {
+          "name": "unlock_randomness",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
         }
       ]
     },
@@ -767,6 +776,16 @@
       "code": 6020,
       "name": "SkinNotOwned",
       "msg": "Skin NFT is not owned by the player"
+    },
+    {
+      "code": 6021,
+      "name": "InvalidPitDraftQueueDiscriminator",
+      "msg": "Invalid pit draft queue discriminator"
+    },
+    {
+      "code": 6022,
+      "name": "SessionDataTooShort",
+      "msg": "Session account data too short"
     }
   ],
   "types": [

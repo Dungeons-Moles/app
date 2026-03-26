@@ -22,6 +22,7 @@ import {
   checkForPendingSession,
   DEFAULT_FUND_AMOUNT,
   LOW_BALANCE_THRESHOLD,
+  calculateRequiredFunding,
   type SessionSignerState,
 } from '@/services/solana/sessionSigner';
 import { SOLANA_CONFIG } from '@/services/solana/config';
@@ -58,7 +59,9 @@ export interface UseSessionSignerReturn {
   topUp: (amount?: number) => Promise<boolean>;
   /** Drain all remaining SOL back to main wallet */
   drain: () => Promise<boolean>;
-  /** Clear the sessionSigner wallet from storage */
+  /** Reset in-memory state without deleting from storage (use after session errors) */
+  resetState: () => void;
+  /** Clear the sessionSigner wallet from storage (use only on wallet disconnect) */
   clear: () => Promise<void>;
   /** Check for pending session from previous app launch */
   checkPendingSession: () => Promise<boolean>;
@@ -92,6 +95,25 @@ export function useSessionSigner(): UseSessionSignerReturn {
       isMountedRef.current = false;
     };
   }, []);
+
+  // Auto-load persisted session signer on mount / wallet change
+  useEffect(() => {
+    if (!walletAddress) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const stored = await loadSessionSignerWallet(walletAddress);
+        if (stored && !cancelled && isMountedRef.current) {
+          setKeypair(stored);
+          const { balance: bal } = await checkSessionSignerBalance(connection, stored.publicKey);
+          if (!cancelled && isMountedRef.current) setBalance(bal);
+        }
+      } catch {
+        // silent — not critical
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [walletAddress, connection]);
 
   /**
    * Refresh the current sessionSigner balance.
@@ -306,6 +328,21 @@ export function useSessionSigner(): UseSessionSignerReturn {
    * Clear the sessionSigner wallet from storage.
    * Should be called after drain.
    */
+  /**
+   * Reset in-memory state without deleting the keypair from SecureStore.
+   * Used after session errors — the persisted signer can still be reused.
+   */
+  const resetState = useCallback((): void => {
+    if (isMountedRef.current) {
+      setState('idle');
+      setError(null);
+    }
+  }, []);
+
+  /**
+   * Full clear: wipe keypair from SecureStore AND reset state.
+   * Only use when the user explicitly disconnects their wallet.
+   */
   const clear = useCallback(async (): Promise<void> => {
     await clearSessionSignerWallet();
     if (isMountedRef.current) {
@@ -386,10 +423,13 @@ export function useSessionSigner(): UseSessionSignerReturn {
           derivedKeypair.publicKey.toBase58()
         );
 
+        // Always include a transfer — even a minimal one — so the wallet adapter
+        // sees the signer as an active participant. Some wallets reject transactions
+        // where the signer has no transfer instructions ("No instructions").
         const fundTx = createFundSessionSignerTransaction(
           wallet.publicKey,
           derivedKeypair.publicKey,
-          amount
+          Math.max(amount, 1) // minimum 1 lamport to avoid empty tx
         );
 
         if (isMountedRef.current) {
@@ -496,6 +536,7 @@ export function useSessionSigner(): UseSessionSignerReturn {
     markAsActive,
     topUp,
     drain,
+    resetState,
     clear,
     checkPendingSession,
     associateWithSession,

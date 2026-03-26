@@ -228,15 +228,15 @@
         {
           "name": "player",
           "docs": [
-            "Player wallet receives the rent refund (not a signer)."
-          ],
-          "writable": true
+            "Player wallet."
+          ]
         },
         {
           "name": "session_signer",
           "docs": [
-            "Session key signer must sign to authorize closure."
+            "Session key signer must sign to authorize closure. Receives rent refund."
           ],
+          "writable": true,
           "signer": true
         }
       ],
@@ -288,11 +288,11 @@
           "name": "game_session"
         },
         {
-          "name": "player",
-          "writable": true
+          "name": "player"
         },
         {
           "name": "session_signer",
+          "writable": true,
           "signer": true
         }
       ],

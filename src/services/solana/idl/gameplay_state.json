@@ -355,17 +355,14 @@
           "writable": true
         },
         {
-          "name": "player",
-          "docs": [
-            "Player wallet receives the rent refund (not a signer)"
-          ],
-          "writable": true
+          "name": "player"
         },
         {
           "name": "session_signer",
           "docs": [
-            "Session key signer must sign to authorize closure"
+            "Session key signer authorizes closure and receives the rent refund."
           ],
+          "writable": true,
           "signer": true,
           "relations": [
             "game_state"
@@ -452,11 +449,14 @@
           }
         },
         {
-          "name": "player",
-          "writable": true
+          "name": "player"
         },
         {
           "name": "session_signer",
+          "docs": [
+            "Session key signer authorizes closure and receives the rent refund."
+          ],
+          "writable": true,
           "signer": true
         }
       ],
@@ -520,17 +520,14 @@
           ]
         },
         {
-          "name": "player",
-          "docs": [
-            "Player wallet receives the rent refund (not a signer)"
-          ],
-          "writable": true
+          "name": "player"
         },
         {
           "name": "session_signer",
           "docs": [
-            "Session key signer must sign to authorize closure"
+            "Session key signer authorizes closure and receives the rent refund."
           ],
+          "writable": true,
           "signer": true,
           "relations": [
             "game_state"
@@ -3025,15 +3022,21 @@
           }
         },
         {
-          "name": "player",
-          "writable": true,
-          "signer": true
+          "name": "player"
         },
         {
           "name": "session_signer",
           "docs": [
             "for authorizing gameplay transactions (move, boss fight)."
           ]
+        },
+        {
+          "name": "payer",
+          "docs": [
+            "Account that pays for the GameState account rent (session_signer in CPI flows)."
+          ],
+          "writable": true,
+          "signer": true
         },
         {
           "name": "system_program",

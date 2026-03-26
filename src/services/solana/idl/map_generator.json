@@ -67,17 +67,14 @@
           ]
         },
         {
-          "name": "player",
-          "docs": [
-            "Player wallet receives the rent refund (not a signer)"
-          ],
-          "writable": true
+          "name": "player"
         },
         {
           "name": "session_signer",
           "docs": [
-            "Session key signer must sign to authorize closure"
+            "Session key signer must sign to authorize closure and receives rent refund"
           ],
+          "writable": true,
           "signer": true
         }
       ],
@@ -129,11 +126,11 @@
           "name": "session"
         },
         {
-          "name": "player",
-          "writable": true
+          "name": "player"
         },
         {
           "name": "session_signer",
+          "writable": true,
           "signer": true
         }
       ],
@@ -196,11 +193,11 @@
           ]
         },
         {
-          "name": "player",
-          "writable": true
+          "name": "player"
         },
         {
           "name": "session_signer",
+          "writable": true,
           "signer": true
         }
       ],
@@ -407,7 +404,10 @@
           "writable": true
         },
         {
-          "name": "session"
+          "name": "session",
+          "docs": [
+            "the session may already be delegated (owned by delegation program) at this point."
+          ]
         },
         {
           "name": "player",
@@ -587,7 +587,10 @@
           "writable": true
         },
         {
-          "name": "session"
+          "name": "session",
+          "docs": [
+            "the session may already be delegated (owned by delegation program) at this point."
+          ]
         },
         {
           "name": "player",
@@ -767,7 +770,10 @@
           "writable": true
         },
         {
-          "name": "session"
+          "name": "session",
+          "docs": [
+            "the session may already be delegated (owned by delegation program) at this point."
+          ]
         },
         {
           "name": "player",
@@ -2152,7 +2158,7 @@
         {
           "name": "session",
           "docs": [
-            "Game session PDA reference (validated by has_one)"
+            "Game session PDA reference (validated by owner + has_one)"
           ],
           "relations": [
             "generated_map"
@@ -2271,7 +2277,10 @@
           "writable": true
         },
         {
-          "name": "session"
+          "name": "session",
+          "docs": [
+            "the session may already be delegated (owned by delegation program) at this point."
+          ]
         },
         {
           "name": "session_signer",
@@ -2311,7 +2320,10 @@
           "writable": true
         },
         {
-          "name": "session"
+          "name": "session",
+          "docs": [
+            "the session may already be delegated (owned by delegation program) at this point."
+          ]
         },
         {
           "name": "session_signer",

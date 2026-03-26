@@ -407,6 +407,7 @@
         },
         {
           "name": "session_signer",
+          "writable": true,
           "signer": true,
           "relations": [
             "game_session"
@@ -1862,9 +1863,8 @@
         {
           "name": "player",
           "docs": [
-            "Player wallet - receives rent refund but does NOT need to sign."
+            "Player wallet — validated by has_one constraint. Does NOT need to sign."
           ],
-          "writable": true,
           "relations": [
             "game_session"
           ]
@@ -1872,7 +1872,7 @@
         {
           "name": "session_signer",
           "docs": [
-            "Session key signer - must sign to authorize session end and close inventory"
+            "Session key signer — signs to authorize session end, receives all rent refunds."
           ],
           "writable": true,
           "signer": true,
@@ -3410,8 +3410,8 @@
         {
           "name": "session_signer",
           "docs": [
-            "Session key signer that will own all session-specific accounts (inventory, etc.)",
-            "Must be a signer so it can be set as the inventory owner for gameplay transactions."
+            "Session key signer — pays for all session account rents (funded by wallet in same tx).",
+            "Also set as the inventory owner for gameplay transactions."
           ],
           "writable": true,
           "signer": true

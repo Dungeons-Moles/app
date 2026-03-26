@@ -396,7 +396,10 @@
           "writable": true
         },
         {
-          "name": "session"
+          "name": "session",
+          "docs": [
+            "the session may already be delegated (owned by delegation program) at this point."
+          ]
         },
         {
           "name": "player",
@@ -1812,7 +1815,10 @@
           "writable": true
         },
         {
-          "name": "session"
+          "name": "session",
+          "docs": [
+            "the session may already be delegated (owned by delegation program) at this point."
+          ]
         },
         {
           "name": "session_signer",

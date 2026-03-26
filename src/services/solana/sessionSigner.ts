@@ -162,11 +162,22 @@ export function signTemplatedTransaction(
 // Constants
 // ============================================================================
 
-/** Default amount to fund sessionSigner (0.05 SOL).
- * Covers delegation buffer/record/metadata rent (~24 PDAs × ~0.0016 SOL each ≈ 0.038 SOL)
- * plus base-layer tx fees. Rent is reclaimed at undelegation/session close.
+/** Session signer funding per game mode.
+ * Each covers: account rents + delegation PDAs + VRF inits + tx fees + 10% buffer.
+ * All rent is reclaimed at session close and stays in the signer for reuse.
  */
-export const DEFAULT_FUND_AMOUNT = 100_000_000; // 0.1 SOL — covers delegation rent for 3 VRF states + gameplay txs
+export const SESSION_COST_CAMPAIGN = 85_000_000; // 0.085 SOL
+export const SESSION_COST_DUEL = 85_000_000; // 0.085 SOL (same accounts as campaign)
+export const SESSION_COST_GAUNTLET = 100_000_000; // 0.1 SOL (extra: GauntletEchoes + delegation)
+
+/** Fallback / max funding amount. */
+export const DEFAULT_FUND_AMOUNT = SESSION_COST_GAUNTLET;
+
+/** Maximum balance cap for session signer. Auto-withdraw excess after session end. */
+export const MAX_SIGNER_BALANCE = 110_000_000; // 0.11 SOL
+
+/** Total SOL needed by session signer per session (defaults to most expensive mode). */
+export const TOTAL_SESSION_COST = DEFAULT_FUND_AMOUNT;
 
 /** Low balance warning threshold (0.005 SOL) */
 export const LOW_BALANCE_THRESHOLD = 5_000_000; // lamports
@@ -286,8 +297,17 @@ const waitForErProcessedStatus = async (
 // Deterministic Session Key Derivation
 // ============================================================================
 
+/** @deprecated Use buildGameWalletDerivationMessage() for reusable signer. */
 export function buildSessionDerivationMessage(mode: string, nonce: bigint | number): Uint8Array {
   return new TextEncoder().encode(`DnM-session-${mode}-${nonce}`);
+}
+
+/**
+ * Fixed derivation message for the reusable game wallet signer.
+ * Same message → same wallet signature → same keypair across all sessions.
+ */
+export function buildGameWalletDerivationMessage(): Uint8Array {
+  return new TextEncoder().encode('DnM-game-wallet-v1');
 }
 
 export function deriveSessionSignerFromSignature(signature: Uint8Array): Keypair {
@@ -538,6 +558,15 @@ export async function getSessionSignerInfo(
 }
 
 /**
+ * Calculates how much SOL the signer needs to be topped up for a new session.
+ * Returns 0 if the signer already has enough.
+ */
+export function calculateRequiredFunding(currentBalance: number, sessionCost: number = TOTAL_SESSION_COST): number {
+  const needed = sessionCost - currentBalance;
+  return Math.max(0, needed);
+}
+
+/**
  * Creates a transaction to transfer SOL from main wallet to sessionSigner.
  * Note: This transaction must be signed by main wallet via Mobile Wallet Adapter.
  *
@@ -616,6 +645,61 @@ export async function drainSessionSignerToMain(
   drainTx.sign(sessionSignerKeypair);
 
   const signature = await connection.sendRawTransaction(drainTx.serialize(), {
+    skipPreflight: false,
+    maxRetries: 2,
+  });
+  await connection.confirmTransaction(
+    { signature, blockhash: latestBlockhash.blockhash, lastValidBlockHeight: latestBlockhash.lastValidBlockHeight },
+    SOLANA_CONFIG.commitment
+  );
+  return signature;
+}
+
+/**
+ * Withdraws excess SOL above MAX_SIGNER_BALANCE back to main wallet.
+ * Called after session end to prevent balance accumulation.
+ */
+export async function withdrawExcessToMain(
+  connection: Connection,
+  sessionSignerKeypair: Keypair,
+  mainWalletAddress: PublicKey
+): Promise<string | null> {
+  const balance = await connection.getBalance(sessionSignerKeypair.publicKey);
+  if (balance <= MAX_SIGNER_BALANCE) return null;
+
+  const excess = balance - MAX_SIGNER_BALANCE;
+  const latestBlockhash = await connection.getLatestBlockhash(SOLANA_CONFIG.commitment);
+
+  const tx = new Transaction({
+    feePayer: sessionSignerKeypair.publicKey,
+    recentBlockhash: latestBlockhash.blockhash,
+  }).add(
+    SystemProgram.transfer({
+      fromPubkey: sessionSignerKeypair.publicKey,
+      toPubkey: mainWalletAddress,
+      lamports: 1,
+    })
+  );
+  const exactFee = (await connection.getFeeForMessage(tx.compileMessage(), SOLANA_CONFIG.commitment))
+    .value;
+  const fee = exactFee ?? ESTIMATED_TX_FEE;
+
+  const transferAmount = excess - fee;
+  if (transferAmount <= 0) return null;
+
+  const withdrawTx = new Transaction({
+    feePayer: sessionSignerKeypair.publicKey,
+    recentBlockhash: latestBlockhash.blockhash,
+  }).add(
+    SystemProgram.transfer({
+      fromPubkey: sessionSignerKeypair.publicKey,
+      toPubkey: mainWalletAddress,
+      lamports: transferAmount,
+    })
+  );
+  withdrawTx.sign(sessionSignerKeypair);
+
+  const signature = await connection.sendRawTransaction(withdrawTx.serialize(), {
     skipPreflight: false,
     maxRetries: 2,
   });
