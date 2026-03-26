@@ -4,6 +4,17 @@
 import 'react-native-get-random-values';
 import { Buffer } from 'buffer';
 
+// React Native has global.WebSocket but not window.WebSocket.
+// rpc-websockets (used by @solana/web3.js) does `new window.WebSocket(...)`.
+// Without this, all WS subscriptions (onAccountChange) silently fail on RN.
+if (typeof globalThis.WebSocket !== 'undefined') {
+  if (typeof window === 'undefined') {
+    (globalThis as any).window = globalThis;
+  } else if (typeof (window as any).WebSocket === 'undefined') {
+    (window as any).WebSocket = globalThis.WebSocket;
+  }
+}
+
 // Make Buffer available globally
 global.Buffer = Buffer;
 

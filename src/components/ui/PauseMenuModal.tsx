@@ -12,6 +12,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Pressable,
+  useWindowDimensions,
 } from 'react-native';
 import { CachedImage as Image } from '../common/CachedImage';
 import { CachedImageBackground } from '../common/CachedImageBackground';
@@ -51,6 +52,7 @@ export function PauseMenuModal({
   const inputMode = useInputMode();
   const isController = inputMode === 'controller';
   const isCompact = useScreenVariant() === 'compact';
+  const { height: screenHeight } = useWindowDimensions();
   const { musicVolume, setMusicVolume, sfxVolume, setSfxVolume, playSfx } = useAudio();
   const { autoOpenPOI, setAutoOpenPOI, autoResolveCombat, setAutoResolveCombat } = useSettings();
   const [focusIndex, setFocusIndex] = useState(0);
@@ -167,7 +169,7 @@ export function PauseMenuModal({
   return (
     <Pressable style={styles.overlay} onPress={() => { playSfx('ui_back'); onClose(); }}>
       <Pressable style={styles.innerContainer} onPress={() => {}}>
-        <View style={[styles.scaleWrapper, isCompact && compactStyles.scaleWrapper]}>
+        <View style={[styles.scaleWrapper, isCompact && compactStyles.scaleWrapper, !isCompact && { transform: [{ scale: Math.min(1, (screenHeight * 0.90) / 380) }] }]}>
           <View style={[styles.container, isCompact && compactStyles.container]}>
             <Image source={paperPanelSource} style={styles.paperBg} resizeMode="stretch" />
             <View style={[styles.content, isCompact && compactStyles.content]}>

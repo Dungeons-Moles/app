@@ -1535,6 +1535,8 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 20,
     lineHeight: 20,
+    flexShrink: 1,
+    maxWidth: '100%',
   },
   modalButtons: {
     flexDirection: 'row',

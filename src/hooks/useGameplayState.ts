@@ -234,11 +234,32 @@ export function useGameplayState(): UseGameplayStateReturn {
   }, []);
 
   /**
-   * Wait for the next WebSocket-delivered GameState update.
-   * Races a one-shot WS listener against a timeout that falls back to explicit fetch.
+   * Register a one-shot WS listener that resolves when the GameState account changes.
+   * Call BEFORE sending the tx to avoid missing fast WS notifications.
+   * Returns a promise + cleanup function. Use raceWsVsFetch() to add a timeout AFTER the send.
    */
-  const waitForNextWsState = useCallback(
-    (timeoutMs: number = 500): Promise<GameState | null> => {
+  const registerWsListener = useCallback((): {
+    promise: Promise<GameState>;
+    cancel: () => void;
+  } => {
+    let resolve: (state: GameState) => void;
+    const promise = new Promise<GameState>((r) => { resolve = r; });
+    const listener = (state: GameState) => {
+      wsListenersRef.current.delete(listener);
+      resolve(state);
+    };
+    wsListenersRef.current.add(listener);
+    const cancel = () => wsListenersRef.current.delete(listener);
+    return { promise, cancel };
+  }, []);
+
+  /**
+   * Race a WS listener against a timeout that falls back to explicit fetch.
+   * The timeout starts NOW (call this AFTER the send completes, not before).
+   * The timeout is cancelled if WS delivers first (prevents orphaned warnings).
+   */
+  const raceWsVsFetch = useCallback(
+    (wsPromise: Promise<GameState>, timeoutMs: number): Promise<GameState | null> => {
       if (!program || !gameStatePda) return Promise.resolve(null);
 
       const prog = program;
@@ -249,21 +270,17 @@ export function useGameplayState(): UseGameplayStateReturn {
         const done = (state: GameState | null) => {
           if (resolved) return;
           resolved = true;
-          wsListenersRef.current.delete(listener);
+          clearTimeout(timeoutId);
           resolve(state);
         };
 
-        // WS path: resolve when the subscription pushes a state update
-        const listener = (state: GameState) => done(state);
-        wsListenersRef.current.add(listener);
+        wsPromise.then(done);
 
-        // Timeout fallback: explicit fetch if WS doesn't deliver in time
-        setTimeout(async () => {
+        const timeoutId = setTimeout(async () => {
           if (resolved) return;
           console.warn(`[useGameplayState] WS timeout after ${timeoutMs}ms, falling back to fetch`);
           try {
-            const fetched = await fetchGameState(prog, pda);
-            done(fetched);
+            done(await fetchGameState(prog, pda));
           } catch {
             done(null);
           }
@@ -398,26 +415,19 @@ export function useGameplayState(): UseGameplayStateReturn {
 
         // Register WS listeners BEFORE sending the tx to avoid missing fast notifications.
         // The ER can process and push within ms of receiving the tx from the router.
-        const wsStatePromise = waitForNextWsState(500);
-        // Discovery WS arrives ~140ms after gameState (ER pushes accounts sequentially).
-        // We must wait for it to get fresh tile/fog-of-war data for the caller.
-        const wsDiscoveryPromise = new Promise<SessionDiscoveryData | null>((resolve) => {
-          let resolved = false;
-          const listener = (data: SessionDiscoveryData) => {
-            if (resolved) return;
-            resolved = true;
-            wsDiscoveryListenersRef.current.delete(listener);
-            resolve(data);
-          };
-          wsDiscoveryListenersRef.current.add(listener);
-          // Timeout: fall back to latest cached discovery
-          setTimeout(() => {
-            if (resolved) return;
-            resolved = true;
-            wsDiscoveryListenersRef.current.delete(listener);
-            resolve(latestDiscoveryRef.current);
-          }, 500);
-        });
+        // Timeouts are started AFTER the send to avoid premature fallback on slow networks
+        // (RN's sendTransaction can take ~720ms, which would expire a 500ms timeout).
+        const wsState = registerWsListener();
+        let wsDiscoveryCancelled = false;
+        let wsDiscoveryResolve: (data: SessionDiscoveryData | null) => void;
+        const wsDiscoveryPromise = new Promise<SessionDiscoveryData | null>((r) => { wsDiscoveryResolve = r; });
+        const discoveryListener = (data: SessionDiscoveryData) => {
+          if (wsDiscoveryCancelled) return;
+          wsDiscoveryCancelled = true;
+          wsDiscoveryListenersRef.current.delete(discoveryListener);
+          wsDiscoveryResolve(data);
+        };
+        wsDiscoveryListenersRef.current.add(discoveryListener);
 
         const moveResult = await movePlayer(
           gameplayConnection,
@@ -430,11 +440,9 @@ export function useGameplayState(): UseGameplayStateReturn {
         const { signature, connection: moveConnection } = moveResult;
         const tSent = Date.now();
 
-        // Await WS state first (0-7ms), then conditionally parse combat only if HP changed.
+        // Timeouts start NOW (after send), not before.
         // - confirmErTransaction: runs in background (WS notification IS implicit confirmation)
-        // - discovery: WS subscription updates latestDiscoveryRef in background
-        // - combat parse: only when HP decreased or player died (avoids ~200-400ms RPC on
-        //   non-combat night moves)
+        // - combat parse: only when HP decreased or player died
         const tParallel = Date.now();
 
         // Background confirmation for error logging only
@@ -442,10 +450,17 @@ export function useGameplayState(): UseGameplayStateReturn {
           console.error('[useGameplayState] Background confirm failed:', err);
         });
 
-        // Await gameState + discovery WS in parallel. GameState arrives in ~0-8ms,
-        // discovery in ~140ms. Combat parse only runs after wsState if HP changed.
+        // Discovery timeout (starts after send)
+        setTimeout(() => {
+          if (wsDiscoveryCancelled) return;
+          wsDiscoveryCancelled = true;
+          wsDiscoveryListenersRef.current.delete(discoveryListener);
+          wsDiscoveryResolve(latestDiscoveryRef.current);
+        }, 500);
+
+        // Await gameState + discovery WS in parallel. Timeouts start after send.
         const [confirmedState, wsDiscoveryData] = await Promise.all([
-          wsStatePromise,
+          raceWsVsFetch(wsState.promise, 500),
           wsDiscoveryPromise,
         ]);
 
@@ -610,7 +625,7 @@ export function useGameplayState(): UseGameplayStateReturn {
         return { success: false };
       }
     },
-    [gameplayConnection, gameState, gameStatePda, program, waitForNextWsState]
+    [gameplayConnection, gameState, gameStatePda, program, registerWsListener, raceWsVsFetch]
   );
 
   /**
@@ -632,10 +647,11 @@ export function useGameplayState(): UseGameplayStateReturn {
       }
 
       try {
+        const wsState = registerWsListener();
         await modifyStat(gameplayConnection, program, gameStatePda, sessionSignerKeypair, params);
 
-        // Wait for WS-delivered state (falls back to fetch after 500ms)
-        const confirmedState = await waitForNextWsState(500);
+        // Wait for WS-delivered state (timeout starts after send)
+        const confirmedState = await raceWsVsFetch(wsState.promise, 500);
 
         if (isMountedRef.current) {
           setGameState(confirmedState);
@@ -658,7 +674,7 @@ export function useGameplayState(): UseGameplayStateReturn {
         return { success: false };
       }
     },
-    [gameplayConnection, gameState, gameStatePda, program, waitForNextWsState]
+    [gameplayConnection, gameState, gameStatePda, program, registerWsListener, raceWsVsFetch]
   );
 
   /**
@@ -700,6 +716,8 @@ export function useGameplayState(): UseGameplayStateReturn {
 
       try {
         const sessionPda = gameState.session;
+        // Register WS listener before send (overrides bypass WS)
+        const wsState = overrides ? null : registerWsListener();
         // Gauntlet echo combat auto-resolves inline in move_player — triggerBoss
         // should only be called for Campaign and Duel modes.
         const signature = await triggerBossFight(
@@ -712,9 +730,9 @@ export function useGameplayState(): UseGameplayStateReturn {
         // Fire WS state wait and compact combat metadata parse in parallel.
         // When overrides are provided (gauntlet uses base-layer connection),
         // fall back to explicit fetch since WS subscription is on gameplayReadConnection.
-        const statePromise = overrides
+        const statePromise = overrides || !wsState
           ? fetchGameState(prog, gameStatePda)
-          : waitForNextWsState(1000);
+          : raceWsVsFetch(wsState.promise, 1000);
         const combatPromise = signature
           ? parseCombatInfoWithRetry(conn, prog, signature, 'boss', {
               maxAttempts: 2,
@@ -752,7 +770,7 @@ export function useGameplayState(): UseGameplayStateReturn {
         return { success: false };
       }
     },
-    [gameplayConnection, gameState, gameStatePda, program, waitForNextWsState]
+    [gameplayConnection, gameState, gameStatePda, program, registerWsListener, raceWsVsFetch]
   );
 
   /**

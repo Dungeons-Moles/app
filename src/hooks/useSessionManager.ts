@@ -1120,6 +1120,13 @@ export function useSessionManager() {
           );
         }
 
+        // Warm ER connections (fire-and-forget). On React Native, the first HTTP request
+        // to a host pays a full TLS handshake (~500ms). This pre-establishes connections
+        // so gameplay sendTransaction is fast.
+        const { warmErBlockhashCache } = await import('@/services/solana/sessionSigner');
+        warmErBlockhashCache(erConnection);
+        erConnection.getSlot().catch(() => {});
+
         // Refresh session state
         await fetchSession();
 
@@ -1132,7 +1139,7 @@ export function useSessionManager() {
         if (isMountedRef.current) setIsLoading(false);
       }
     },
-    [baseConnection, fetchSession, hasActiveSession, session, wallet.publicKey, baseWriteProgram]
+    [baseConnection, erConnection, fetchSession, hasActiveSession, session, wallet.publicKey, baseWriteProgram]
   );
 
   const commitSession = useCallback(

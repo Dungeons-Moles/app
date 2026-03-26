@@ -250,43 +250,16 @@ export function HubSettingsModal({
                     />
                   </FocusGlow>
 
-                  <FocusGlow
-                    active={isController && settingsFocus === 5}
+                  <View
                     style={[
-                      !isCompact && styles.mobileDisconnectGroup,
-                      !hasResetProfileAction && { marginTop: 20 },
+                      !isCompact && styles.mobileButtonRow,
+                      !isCompact && !hasResetProfileAction && { marginTop: 20 },
+                      !isCompact && hasResetProfileAction && { marginTop: -2 },
                     ]}
                   >
-                    <TouchableOpacity
-                      style={[
-                        styles.resetButton,
-                        !isCompact && styles.mobileResetButton,
-                        isCompact && compactStyles.resetButton,
-                      ]}
-                      onPress={() => {
-                        playSfx('ui_click');
-                        onDisconnect();
-                      }}
-                      activeOpacity={0.7}
-                    >
-                      <CachedImageBackground
-                        source={buttonV1Source}
-                        style={styles.buttonImage}
-                        resizeMode="stretch"
-                      >
-                        <Text
-                          style={[styles.disconnectText, isCompact && compactStyles.disconnectText]}
-                        >
-                          Disconnect
-                        </Text>
-                      </CachedImageBackground>
-                    </TouchableOpacity>
-                  </FocusGlow>
-
-                  {hasResetProfileAction && (
                     <FocusGlow
-                      active={isController && settingsFocus === 6}
-                      style={!isCompact ? styles.mobileResetProfileGroup : undefined}
+                      active={isController && settingsFocus === 5}
+                      style={!isCompact && hasResetProfileAction ? styles.mobileButtonRowItem : undefined}
                     >
                       <TouchableOpacity
                         style={[
@@ -296,7 +269,7 @@ export function HubSettingsModal({
                         ]}
                         onPress={() => {
                           playSfx('ui_click');
-                          onResetProfile?.();
+                          onDisconnect();
                         }}
                         activeOpacity={0.7}
                       >
@@ -306,17 +279,49 @@ export function HubSettingsModal({
                           resizeMode="stretch"
                         >
                           <Text
-                            style={[
-                              styles.disconnectText,
-                              isCompact && compactStyles.disconnectText,
-                            ]}
+                            style={[styles.disconnectText, isCompact && compactStyles.disconnectText]}
                           >
-                            Reset Profile
+                            Disconnect
                           </Text>
                         </CachedImageBackground>
                       </TouchableOpacity>
                     </FocusGlow>
-                  )}
+
+                    {hasResetProfileAction && (
+                      <FocusGlow
+                        active={isController && settingsFocus === 6}
+                        style={!isCompact ? styles.mobileButtonRowItem : undefined}
+                      >
+                        <TouchableOpacity
+                          style={[
+                            styles.resetButton,
+                            !isCompact && styles.mobileResetButton,
+                            isCompact && compactStyles.resetButton,
+                          ]}
+                          onPress={() => {
+                            playSfx('ui_click');
+                            onResetProfile?.();
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          <CachedImageBackground
+                            source={buttonV1Source}
+                            style={styles.buttonImage}
+                            resizeMode="stretch"
+                          >
+                            <Text
+                              style={[
+                                styles.disconnectText,
+                                isCompact && compactStyles.disconnectText,
+                              ]}
+                            >
+                              Reset Profile
+                            </Text>
+                          </CachedImageBackground>
+                        </TouchableOpacity>
+                      </FocusGlow>
+                    )}
+                  </View>
                 </View>
 
                 {isController && (
@@ -475,13 +480,16 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   mobileResetButton: {
+    width: 140,
     marginTop: 0,
   },
-  mobileDisconnectGroup: {
-    marginTop: -2,
+  mobileButtonRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 10,
   },
-  mobileResetProfileGroup: {
-    marginTop: -4,
+  mobileButtonRowItem: {
+    flex: 1,
   },
   buttonImage: {
     width: '100%',

@@ -195,8 +195,22 @@ export function usePlayerProfile() {
           })
           .transaction();
 
-        const signature = await signAndSendTransaction(transaction);
-        await connection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
+        let signature: string;
+        try {
+          signature = await signAndSendTransaction(transaction);
+        } catch (sendError) {
+          console.error('[usePlayerProfile] signAndSend failed:', sendError);
+          throw new Error('Failed to send transaction. Please check your connection and try again.');
+        }
+
+        try {
+          await connection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
+        } catch (confirmError) {
+          console.error('[usePlayerProfile] confirmTransaction failed:', confirmError);
+          throw new Error(
+            'Transaction was sent but confirmation timed out. Your profile may have been created — please restart the app.'
+          );
+        }
 
         const account = await (
           readOnlyProgram.account as {
