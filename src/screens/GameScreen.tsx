@@ -1564,6 +1564,15 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
       // On-chain: send transaction, await confirmation, then sync local state
       isMovePendingRef.current = true;
+      // Safety timeout: if the move promise hangs (WS listener stall, network issue),
+      // reset the guard after 5s so the player isn't permanently stuck.
+      const moveSafetyTimeout = setTimeout(() => {
+        if (isMovePendingRef.current) {
+          console.warn('[GameScreen] Move safety timeout — resetting isMovePending');
+          isMovePendingRef.current = false;
+          setIsMovePending(false);
+        }
+      }, 5000);
       // Defer setIsMovePending(true) — the ref is enough for the synchronous guard.
       // Setting state here triggers a full re-render before the TX send, adding
       // 100-300ms of render blocking to the perceived move latency.
@@ -2006,6 +2015,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
           resyncFromChain();
         })
         .finally(() => {
+          clearTimeout(moveSafetyTimeout);
           isMovePendingRef.current = false;
           setIsMovePending(false);
         });
@@ -2645,6 +2655,12 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
   const handlePOIOption = useCallback(
     (optionIndex: number) => {
+      // Guard against double-tap while a POI interaction is in progress
+      if (poiInteraction.isInteracting) {
+        debugLog('[GameScreen] handlePOIOption BLOCKED: interaction already in progress');
+        return;
+      }
+
       debugLog(
         '[GameScreen] handlePOIOption called | optionIndex:',
         optionIndex,
