@@ -25,6 +25,7 @@ import { useInputMode } from '../hooks/useInputMode';
 import { useControllerAction } from '../hooks/useControllerAction';
 import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHints';
 import { useAudio } from '../contexts/AudioContext';
+import { RunMode } from '../services/solana/types/gameplay_state';
 
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.webp');
 const STAINS_BACKGROUND = require('../../assets/ui/backgrounds/stains-background.webp');
@@ -39,7 +40,8 @@ type DeathScreenProps = {
 };
 
 export function DeathScreen({ navigation, route }: DeathScreenProps) {
-  const { replay, totalMoves, level, week, phase, combatTurns, killedBy } = route.params ?? {};
+  const { replay, totalMoves, level, week, phase, enemiesDefeated, killedBy, runMode } =
+    route.params ?? {};
   const { availableRuns, mode } = useProfile();
   const { height } = useWindowDimensions();
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -102,7 +104,7 @@ export function DeathScreen({ navigation, route }: DeathScreenProps) {
     return 'Killed in combat';
   };
 
-  const turnsTaken = replay?.combatEnded?.turnsTaken ?? combatTurns ?? 0;
+  const defeated = enemiesDefeated ?? 0;
 
   // Shared components
   const DeathHeader = () => (
@@ -177,19 +179,25 @@ export function DeathScreen({ navigation, route }: DeathScreenProps) {
           </View>
           <View style={styles.statsRowCentered}>
             <StatFrame label="Total Moves" value={totalMoves ?? 0} />
-            <StatFrame label="Combat Turns" value={turnsTaken} />
+            <StatFrame label="Enemies Defeated" value={defeated} />
           </View>
         </>
       ) : (
         <>
           <View style={styles.statsRow}>
-            <StatFrame label="Level" value={level ?? 1} />
+            {runMode === RunMode.Gauntlet ? (
+              <StatFrame label="Mode" value="Gauntlet" />
+            ) : runMode === RunMode.Duel ? (
+              <StatFrame label="Mode" value="Duels" />
+            ) : (
+              <StatFrame label="Level" value={level ?? 1} />
+            )}
             <StatFrame label="Week" value={week ?? 1} />
             <StatFrame label="Phase" value={phase ?? 'Day 1'} />
           </View>
           <View style={styles.statsRowCentered}>
             <StatFrame label="Total Moves" value={totalMoves ?? 0} />
-            <StatFrame label="Combat Turns" value={turnsTaken} />
+            <StatFrame label="Enemies Defeated" value={defeated} />
           </View>
         </>
       )}

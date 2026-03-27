@@ -4215,8 +4215,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   /**
    * Trigger boss fight on-chain via session key signer.
-   * Gauntlet echo combat auto-resolves inline in move_player — this is only
-   * used for Campaign and Duel modes.
+   * Gauntlet echo combat requires a separate trigger_boss_fight call (not inline).
+   * Campaign and Duel (weeks 1-2) resolve inline in move_player.
    */
   const triggerBoss = useCallback(async (): Promise<{
     success: boolean;
@@ -6346,6 +6346,36 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                     }
                     throw new Error('Child accounts still delegated after undelegation retry');
                   }
+                }
+              }
+
+              // For gauntlet sessions, settle points/echoes before ending.
+              // Without this, deferred cleanup closes the session without crediting points.
+              if (cleanup.sessionType === 'gauntlet') {
+                try {
+                  const [gsP] = getGameStatePda(sessionPda);
+                  const gameplayProgram = createGameplayStateProgram(connection);
+                  const gsState = await fetchGameState(gameplayProgram, gsP);
+                  if (gsState && !gsState.gauntletSettled && wallet.publicKey) {
+                    console.log('[SessionContext] Deferred cleanup: settling gauntlet session...');
+                    const settleTx = await buildSettleGauntletSessionTransaction(
+                      connection,
+                      gameplayProgram,
+                      wallet.publicKey,
+                      cleanupSigner.publicKey,
+                      gsP,
+                      sessionPda
+                    );
+                    const settleSig = await sendSessionSignerTransaction(
+                      connection,
+                      settleTx,
+                      cleanupSigner
+                    );
+                    await connection.confirmTransaction(settleSig, 'confirmed');
+                    console.log('[SessionContext] Deferred cleanup: gauntlet settle confirmed:', settleSig);
+                  }
+                } catch (settleErr) {
+                  console.warn('[SessionContext] Deferred cleanup: gauntlet settle failed (non-fatal):', settleErr);
                 }
               }
 

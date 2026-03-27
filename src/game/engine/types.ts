@@ -320,7 +320,7 @@ export type BossId =
   | 'B-B-W3-02'; // The Rusted Chronomancer
 
 export interface TimeState {
-  week: 1 | 2 | 3;
+  week: number;
   phase: TimePhase;
   cycle: 1 | 2 | 3;
   movesRemaining: number;

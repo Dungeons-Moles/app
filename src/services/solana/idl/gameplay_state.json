@@ -5998,6 +5998,13 @@
           "address": "GCy5GqvnJN99rgGtV6fMn8NtL9E7RoAyHDGzQv8me65j"
         },
         {
+          "name": "gauntlet_echoes",
+          "docs": [
+            "Optional GauntletEchoes for gauntlet echo resolution."
+          ],
+          "optional": true
+        },
+        {
           "name": "player",
           "signer": true
         }

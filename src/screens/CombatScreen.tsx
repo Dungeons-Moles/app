@@ -310,8 +310,13 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
 
       const isVictory = result === 'VICTORY';
       const levelReached = combatInput?.campaignLevel ?? profile?.currentLevel ?? 1;
-      const isFinalWeekBoss = isBossFight && currentWeek === 3;
+      // Gauntlet has 5 weeks, Campaign/Duel have 3.
+      const maxWeeks = (combatInput?.runMode ?? gameplayState?.runMode) === RunMode.Gauntlet ? 5 : 3;
+      const isFinalWeekBoss = isBossFight && currentWeek === maxWeeks;
       const isOnChainMode = mode !== 'guest' && combatInput !== undefined;
+      // Prefer runMode from combatInput (preserved at navigation time) over
+      // gameplayState which may be cleared by session teardown.
+      const capturedRunMode = combatInput?.runMode ?? gameplayState?.runMode;
 
       console.log('[CombatScreen] Combat complete:', {
         result,
@@ -505,8 +510,9 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
                 level: levelReached,
                 week: currentWeek,
                 phase: getPhaseLabel(combatInput?.phase ?? localPhaseNumber),
-                combatTurns: combatState.resolvedCombat?.turn ?? 0,
                 killedBy: combatState.resolvedCombat?.enemy.name,
+                runMode: capturedRunMode,
+                enemiesDefeated: combatInput?.enemiesDefeated ?? 0,
               },
             },
           ],
@@ -549,8 +555,10 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
         navigation.replace('Victory', {
           level: levelReached,
           totalMoves: resolvedTotalMoves,
+          enemiesDefeated: combatInput?.enemiesDefeated ?? 0,
           levelUnlocked: levelReached + 1,
           itemUnlocked,
+          runMode: capturedRunMode,
         });
       } else {
         console.log('[CombatScreen] Navigating back to map (victory)');
@@ -640,6 +648,7 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
         traits: enemyTraits,
         equippedTool: combatInput?.enemyTool,
         equippedGear: combatInput?.enemyGear ?? [],
+        tier: !isBossFight ? (combatInput?.enemyTier ?? gameState?.combat?.enemyTier) : undefined,
       }}
       playerPanel={{
         name: combatState.combat?.player.name ?? 'Player',

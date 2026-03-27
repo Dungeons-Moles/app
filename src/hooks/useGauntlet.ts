@@ -399,10 +399,16 @@ export function useGauntlet() {
           needsFreshStart = true;
           shouldSkipEnterTx = false;
         } else if (gameState?.bossFightReady) {
-          console.log('[useGauntlet] enterGauntlet:existing_session_stuck (bossFightReady), abandoning');
-          await forceAbandonCurrentSession();
-          needsFreshStart = true;
-          shouldSkipEnterTx = false;
+          // bossFightReady means the echo fight hasn't been resolved yet —
+          // resume normally and let GameScreen's boss useEffect call triggerBoss().
+          console.log('[useGauntlet] enterGauntlet:resuming_with_bossFightReady');
+          onCommitted?.();
+          const switchResult = await switchToGauntletSessionWithRetry(gauntletSessionPda);
+          if (!switchResult.success) {
+            setError(switchResult.error ?? 'Failed to resume gauntlet session');
+            setPhase('error');
+            return false;
+          }
         } else {
           console.log('[useGauntlet] enterGauntlet:resuming_existing_session');
           onCommitted?.();

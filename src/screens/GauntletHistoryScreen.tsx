@@ -18,6 +18,12 @@ import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
 import { useScreenVariant } from '@/contexts/ScreenVariantContext';
 import { parseGauntletEvents, parseGauntletEventsFromLogs } from '@/services/solana/gauntlet';
 import { convertItemInstanceToTool, convertItemInstanceToGear } from '@/services/solana/pitDraft';
+import {
+  deriveGauntletSessionPda,
+  deriveGameStatePda,
+  deriveSessionNoncesPda,
+} from '@/services/solana/constants';
+import { createSessionManagerProgram } from '@/services/solana/programs';
 import { Typography } from '@/theme/typography';
 import { useAudio } from '../contexts/AudioContext';
 import { useControllerAction } from '../hooks/useControllerAction';
@@ -114,6 +120,7 @@ export function GauntletHistoryScreen({ navigation }: GauntletHistoryScreenProps
   }, []);
 
   const loadHistory = useCallback(async () => {
+    console.log('[GauntletHistory] loadHistory called, wallet:', wallet.publicKey?.toBase58() ?? 'null');
     if (!wallet.publicKey) {
       setError('Connect a wallet to view gauntlet history.');
       return;
@@ -125,14 +132,61 @@ export function GauntletHistoryScreen({ navigation }: GauntletHistoryScreenProps
     try {
       const ourKey = wallet.publicKey.toBase58();
 
-      // 1. Fetch recent wallet signatures (user-scoped)
-      const signatures = await connection.getSignaturesForAddress(
-        wallet.publicKey,
-        { limit: SIG_LIMIT },
-        'confirmed'
+      // 1. Read session nonces to derive gauntlet session PDAs.
+      //    Echo combat TXs are signed by the session key (not wallet), so we
+      //    query by the game state PDA which is referenced in every gameplay TX.
+      let gauntletNonce = 0n;
+      try {
+        const [noncesPda] = deriveSessionNoncesPda(wallet.publicKey);
+        const sessionProgram = createSessionManagerProgram(connection);
+        const noncesInfo = await connection.getAccountInfo(noncesPda);
+        if (noncesInfo) {
+          const decoded = sessionProgram.coder.accounts.decode('sessionNonces', noncesInfo.data) as {
+            gauntletNonce: { toString(): string };
+          };
+          gauntletNonce = BigInt(decoded.gauntletNonce.toString());
+        }
+      } catch {
+        // Nonces account doesn't exist yet — use 0
+      }
+
+      // 2. Derive game state PDAs for current and recent nonces
+      const noncesToCheck: bigint[] = [];
+      for (let n = gauntletNonce; n >= 0n && noncesToCheck.length < 3; n--) {
+        noncesToCheck.push(n);
+      }
+
+      // 3. Fetch signatures for each game state PDA in parallel
+      const allSignatures = await Promise.all(
+        noncesToCheck.map(async (nonce) => {
+          const [sessionPda] = deriveGauntletSessionPda(wallet.publicKey!, nonce);
+          const [gameStatePda] = deriveGameStatePda(sessionPda);
+          console.log('[GauntletHistory] Querying signatures for gameStatePda:', gameStatePda.toBase58(), 'nonce:', nonce.toString());
+          const sigs = await connection
+            .getSignaturesForAddress(gameStatePda, { limit: SIG_LIMIT }, 'confirmed')
+            .catch((err) => {
+              console.warn('[GauntletHistory] getSignaturesForAddress failed:', err);
+              return [];
+            });
+          console.log('[GauntletHistory] Got', sigs.length, 'signatures for nonce', nonce.toString());
+          return sigs;
+        })
       );
 
-      // 2. Fetch all transactions in parallel
+      // Flatten, deduplicate by signature, and sort by slot descending
+      const sigMap = new Map<string, (typeof allSignatures)[0][0]>();
+      for (const sigs of allSignatures) {
+        for (const sig of sigs) {
+          if (!sigMap.has(sig.signature)) {
+            sigMap.set(sig.signature, sig);
+          }
+        }
+      }
+      const signatures = Array.from(sigMap.values())
+        .sort((a, b) => (b.slot ?? 0) - (a.slot ?? 0))
+        .slice(0, SIG_LIMIT);
+
+      // 4. Fetch all transactions in parallel
       const txs = await Promise.all(
         signatures.map((s) =>
           connection
@@ -144,15 +198,26 @@ export function GauntletHistoryScreen({ navigation }: GauntletHistoryScreenProps
         )
       );
 
-      // 3. Parse gauntlet matches from results
+      // 5. Parse gauntlet matches from results
+      console.log('[GauntletHistory] Parsing', txs.length, 'transactions');
       const history: GauntletHistoryItem[] = [];
       for (let i = 0; i < txs.length && history.length < DEFAULT_MATCHES; i++) {
         const tx = txs[i];
-        if (!tx?.meta?.logMessages) continue;
+        if (!tx?.meta?.logMessages) {
+          console.log('[GauntletHistory] tx', i, 'no logMessages');
+          continue;
+        }
         const events = parseGauntletEventsFromLogs(tx.meta.logMessages);
         const visual = events.combatVisual;
-        if (!visual) continue;
-        if (visual.player.toBase58() !== ourKey) continue;
+        if (!visual) {
+          const programDataLines = tx.meta.logMessages.filter((l: string) => l.includes('Program data:'));
+          console.log('[GauntletHistory] tx', i, 'no combatVisual event, logs:', tx.meta.logMessages.length, 'programDataLines:', programDataLines.length, programDataLines.map((l: string) => l.slice(0, 80)));
+          continue;
+        }
+        if (visual.player.toBase58() !== ourKey) {
+          console.log('[GauntletHistory] tx', i, 'player mismatch:', visual.player.toBase58(), '!==', ourKey);
+          continue;
+        }
 
         const source = events.weekEchoSelected?.sourcePlayer
           ? `Echo: ${shortWallet(events.weekEchoSelected.sourcePlayer.toBase58())}`

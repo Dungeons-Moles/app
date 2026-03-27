@@ -73,8 +73,8 @@ export interface CombatParams {
   enemyGold?: number;
   /** PvP-only final deterministic fallback when all tiebreak stats are identical */
   pvpTieBreakerFavorPlayer?: boolean;
-  /** Current week (for final boss detection) */
-  week?: 1 | 2 | 3;
+  /** Current week (for final boss/echo detection — gauntlet goes up to 5) */
+  week?: number;
   /** Whether this is a boss fight */
   isBossFight?: boolean;
   /** Campaign level being played (1-40) */
@@ -104,6 +104,10 @@ export interface CombatParams {
   pvpOpponentSkinPubkey?: string | null;
   /** Local-only simulator flow: return to simulator instead of normal post-combat routing */
   simulatorMode?: boolean;
+  /** Run mode (Campaign/Duel/Gauntlet) — preserved for post-combat navigation */
+  runMode?: number;
+  /** Enemies defeated count from on-chain state */
+  enemiesDefeated?: number;
 }
 
 export type RootStackParamList = {
@@ -125,15 +129,18 @@ export type RootStackParamList = {
     level?: number;
     week?: number;
     phase?: string;
-    combatTurns?: number;
+    enemiesDefeated?: number;
     killedBy?: string;
+    runMode?: number;
   };
   Victory: {
     replay?: CombatReplay;
     level?: number;
     totalMoves?: number;
+    enemiesDefeated?: number;
     levelUnlocked?: number;
     itemUnlocked?: UnlockedItem;
+    runMode?: number;
   };
   PitDraft: { debugPhase?: 'queuing' | 'confirm' | 'matched' | 'result' } | undefined;
   PitDraftHistory: undefined;

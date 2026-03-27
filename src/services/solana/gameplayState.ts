@@ -516,7 +516,8 @@ export async function triggerBossFight(
   program: Program,
   gameStatePda: PublicKey,
   sessionPda: PublicKey,
-  sessionSignerKeypair: Keypair
+  sessionSignerKeypair: Keypair,
+  options?: { gauntletEchoesPda?: PublicKey }
 ): Promise<string> {
   const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
   const [inventoryPda] = deriveInventoryPda(sessionPda);
@@ -532,6 +533,7 @@ export async function triggerBossFight(
       gameplayVrfState: null,
       sessionDiscovery: null,
       mapGeneratorProgram: null,
+      gauntletEchoes: options?.gauntletEchoesPda ?? null,
       player: sessionSignerKeypair.publicKey,
     } as any)
     .transaction();
@@ -540,6 +542,14 @@ export async function triggerBossFight(
   transaction.instructions.unshift(
     ComputeBudgetProgram.setComputeUnitLimit({ units: 1_000_000 })
   );
+
+  // Gauntlet echo combat builds two full annotated inventories (player + echo)
+  // which can exceed the default 32KB BPF heap at higher weeks with full gear.
+  if (options?.gauntletEchoesPda) {
+    transaction.instructions.unshift(
+      ComputeBudgetProgram.requestHeapFrame({ bytes: 256 * 1024 })
+    );
+  }
 
   const isNative = Platform.OS !== 'web';
   return sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair, {
@@ -670,6 +680,8 @@ interface OnChainGameState {
   gauntletDefenderCredit?: { defender: PublicKey; points: number | bigint } | null;
   gauntletHighestWeekWon?: number;
   gauntletSettled?: boolean;
+  enemies?: Array<{ archetype: number; x: number; y: number; defeated: boolean }>;
+  enemyCount?: number;
   bump: number;
 }
 
@@ -725,6 +737,7 @@ function parseOnChainGameState(account: OnChainGameState): GameState {
     gauntletPointsEarned: account.gauntletPointsEarned ?? 0,
     gauntletHighestWeekWon: account.gauntletHighestWeekWon ?? 0,
     gauntletSettled: account.gauntletSettled ?? false,
+    enemiesDefeated: (account.enemies ?? []).filter((e) => e.defeated).length,
   };
 }
 

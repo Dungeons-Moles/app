@@ -556,14 +556,15 @@ export function convertTimeState(
   campaignLevel: number,
   currentBossId: BossId | null
 ): TimeState {
-  const week = Math.max(1, Math.min(3, gameState.week)) as 1 | 2 | 3;
+  const week = Math.max(1, gameState.week);
   const { phase, cycle } = convertPhase(gameState.phase);
 
   // For Campaign (runMode 0 or undefined), compute boss deterministically from
   // level+week when discovery doesn't have a valid boss. This handles the case where
   // skip_to_day resolves a boss without updating SessionDiscovery (ER CPI limitation).
   const isCampaign = gameState.runMode === undefined || gameState.runMode === RunMode.Campaign;
-  const weekBoss = currentBossId ?? (isCampaign ? selectWeekBossForLevel(campaignLevel, week) : selectWeekBossForLevel(campaignLevel, 1));
+  const clampedWeek = Math.min(week, 3) as 1 | 2 | 3;
+  const weekBoss = currentBossId ?? (isCampaign ? selectWeekBossForLevel(campaignLevel, clampedWeek) : selectWeekBossForLevel(campaignLevel, 1));
 
   return {
     week,

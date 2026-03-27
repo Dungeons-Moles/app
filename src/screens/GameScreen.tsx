@@ -84,7 +84,11 @@ import { calculateItemStats } from '@/game/entities/items';
 import { normalizeCombatPlayerStats, type CombatPlayerStats } from './combat-player-stats';
 import { resolveCombatWithParity } from '../game/combat/parity-resolver';
 import type { GauntletCombatVisualEvent } from '@/services/solana/gauntlet';
-import { fetchGauntletEchoFromDiscovery } from '@/services/solana/gauntlet';
+import {
+  fetchGauntletEchoFromDiscovery,
+  fetchGauntletEchoFromGameState,
+  parseGauntletCombatVisualEvent,
+} from '@/services/solana/gauntlet';
 import { fetchSessionDiscovery } from '@/services/solana/mapGeneratorClient';
 import { createGameplayStateProgram, createMapGeneratorProgram } from '@/services/solana/programs';
 import { warmMovePlayerCaches, syncDiscoveryBoss } from '@/services/solana/gameplayState';
@@ -198,7 +202,7 @@ function createCombatParams(
   playerTool: Tool | null,
   activeItemsets: string[],
   seed: number,
-  week: 1 | 2 | 3,
+  week: number,
   onChainOutcome?: {
     finalPlayerHp: number;
     finalPlayerGold: number;
@@ -308,8 +312,8 @@ function createGauntletCombatParams(
     playerGold: normalizedPlayerStats.gold,
     enemyTool: echoTool,
     enemyGear: echoGear,
-    week: Math.min(Math.max(week, 1), 3) as 1 | 2 | 3,
-    isBossFight: false,
+    week,
+    isBossFight: true,
     onChainOutcome: {
       finalPlayerHp: visual.finalPlayerHp,
       finalPlayerGold: playerGold,
@@ -335,12 +339,18 @@ async function buildFallbackGauntletCombatParams(
   seed: number
 ): Promise<CombatParams | null> {
   try {
-    const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
-    const discovery = await fetchSessionDiscovery(
-      createMapGeneratorProgram(connection),
-      sessionDiscoveryPda
-    );
-    const echoPreview = fetchGauntletEchoFromDiscovery(discovery);
+    // Primary: fetch from GauntletEchoes PDA (week-indexed, always has the correct week).
+    // Fallback: SessionDiscovery.currentEchoData (single slot, may be stale/overwritten).
+    const gameplayProgram = createGameplayStateProgram(connection);
+    let echoPreview = await fetchGauntletEchoFromGameState(gameplayProgram, sessionPda, week);
+    if (!echoPreview) {
+      const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
+      const discovery = await fetchSessionDiscovery(
+        createMapGeneratorProgram(connection),
+        sessionDiscoveryPda
+      );
+      echoPreview = fetchGauntletEchoFromDiscovery(discovery);
+    }
     if (!echoPreview) {
       console.warn('[GameScreen] buildFallbackGauntletCombatParams: no echo data for week', week);
       return null;
@@ -375,8 +385,8 @@ async function buildFallbackGauntletCombatParams(
       playerGold: playerStats.gold,
       enemyTool: echoTool,
       enemyGear: echoGear,
-      week: Math.min(Math.max(week, 1), 3) as 1 | 2 | 3,
-      isBossFight: false,
+      week,
+      isBossFight: true,
       onChainOutcome: {
         finalPlayerHp: confirmedState.hp,
         finalPlayerGold: confirmedState.gold,
@@ -395,7 +405,7 @@ async function buildFallbackGauntletCombatParams(
 function navigateToCombat(
   navigation: NativeStackNavigationProp<RootStackParamList, 'Game'>,
   combatParams: CombatParams,
-  meta: { campaignLevel: number; totalMoves: number; phase: number }
+  meta: { campaignLevel: number; totalMoves: number; phase: number; runMode?: number; enemiesDefeated?: number }
 ) {
   navigation.navigate('Combat', {
     combatInput: {
@@ -403,6 +413,8 @@ function navigateToCombat(
       campaignLevel: meta.campaignLevel,
       totalMoves: meta.totalMoves,
       phase: meta.phase,
+      runMode: meta.runMode,
+      enemiesDefeated: meta.enemiesDefeated,
     },
   });
 }
@@ -412,7 +424,7 @@ function navigateToCombat(
  */
 function navigateToDeath(
   navigation: NativeStackNavigationProp<RootStackParamList, 'Game'>,
-  meta: { totalMoves: number; campaignLevel: number; week: number; phase: number },
+  meta: { totalMoves: number; campaignLevel: number; week: number; phase: number; runMode?: number; enemiesDefeated?: number },
   killedBy?: string
 ) {
   navigation.navigate('Death', {
@@ -420,7 +432,9 @@ function navigateToDeath(
     level: meta.campaignLevel,
     week: meta.week,
     phase: getPhaseLabel(meta.phase),
+    enemiesDefeated: meta.enemiesDefeated ?? 0,
     killedBy,
+    runMode: meta.runMode,
   });
 }
 
@@ -560,6 +574,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
     level: number;
     week: number;
     phase: number;
+    runMode?: number;
   } | null>(null);
 
   // Fade in once game state is ready, giving expo-image time to render
@@ -619,6 +634,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
             week: meta.week,
             phase: getPhaseLabel(meta.phase),
             killedBy: meta.killedBy,
+            runMode: meta.runMode,
           },
         },
       ],
@@ -725,6 +741,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
   // This handles all cases: direct (no field combat on last move) and deferred
   // (returning from field enemy CombatScreen after the same move set bossFightReady).
   const isTriggeringBossRef = useRef(false);
+  const gauntletBossRetryRef = useRef(0);
   const isRestoringSessionRef = useRef(false);
   // Snapshot of the player's HP before the last move/POI interaction.
   // Used by the boss useEffect when the boss was already resolved inline
@@ -736,6 +753,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
   useEffect(() => {
     if (isFocused) {
       isTriggeringBossRef.current = false;
+      gauntletBossRetryRef.current = 0;
     }
   }, [isFocused]);
 
@@ -863,14 +881,17 @@ export function GameScreen({ navigation }: GameScreenProps) {
       return;
     }
 
-    // Gauntlet echo combat normally resolves inline in move_player — the move
-    // handler navigates to CombatScreen. This fires as a safety net when:
-    // (a) move handler missed the echo (visual parsing failure), or
-    // (b) skip_to_day set bossFightReady without resolving the echo.
+    // Gauntlet echo combat is NOT resolved inline in move_player (BPF stack
+    // overflow constraint). move_player sets boss_fight_ready = true and the
+    // frontend must call trigger_boss_fight separately to resolve the echo.
+    // This fires when:
+    // (a) move handler detected bossFightReady but bossResolvedInline was false, or
+    // (b) the player re-enters GameScreen with a stuck bossFightReady state.
     if (onChainState.runMode === RunMode.Gauntlet) {
+      isTriggeringBossRef.current = true;
+
       if (onChainState.isDead) {
-        isTriggeringBossRef.current = true;
-        // Try to show echo combat with on-chain data before falling back to DeathScreen
+        // Echo already resolved (e.g. player returned to this screen after death)
         if (sessionPda && state) {
           buildFallbackGauntletCombatParams(
             gameplayReadConnection,
@@ -906,6 +927,106 @@ export function GameScreen({ navigation }: GameScreenProps) {
         } else {
           navigateToDeath(navigation, onChainState, `Week ${onChainState.week} Echo`);
         }
+      } else {
+        // Echo not yet resolved — call trigger_boss_fight on-chain.
+        // Limit retries to prevent infinite loops on persistent failures (e.g. OOM).
+        if (gauntletBossRetryRef.current >= 2) {
+          console.error('[GameScreen] Gauntlet triggerBoss exceeded retry limit');
+          navigateToDeath(navigation, onChainState, `Week ${onChainState.week} Echo`);
+          return;
+        }
+        gauntletBossRetryRef.current += 1;
+
+        const preCombatPlayerStats = {
+          hp: (preBossHpRef.current != null && preBossHpRef.current > 0)
+            ? preBossHpRef.current
+            : onChainState.hp > 0
+              ? onChainState.hp
+              : Math.max(state.player.stats.maxHp, 1),
+          maxHp: state.player.stats.maxHp,
+          atk: state.player.stats.atk,
+          arm: state.player.stats.arm,
+          spd: state.player.stats.spd,
+          dig: state.player.stats.dig,
+          gold: onChainState.gold,
+        };
+        const preCombatGear = state.player.inventory.map((slot) => slot.item);
+        const preCombatTool = state.player.equippedTool;
+        const preCombatItemsets = state.player.activeItemsets ?? [];
+        const preCombatSeed = state.rngState;
+        const currentWeek = state.time.week;
+
+        triggerBoss()
+          .then(async (bossResult) => {
+            if (!bossResult.success || !bossResult.newState) {
+              console.error('[GameScreen] Gauntlet triggerBoss failed');
+              isTriggeringBossRef.current = false;
+              return;
+            }
+
+            // Happy path: use visual event from trigger_boss_fight tx
+            if (bossResult.gauntletVisual) {
+              const gauntletCombatParams = createGauntletCombatParams(
+                bossResult.gauntletVisual,
+                preCombatPlayerStats,
+                preCombatGear,
+                preCombatTool,
+                preCombatItemsets,
+                preCombatSeed,
+                currentWeek,
+                bossResult.newState.gold
+              );
+              navigateToCombat(navigation, gauntletCombatParams, bossResult.newState);
+              return;
+            }
+
+            // Fallback: build combat params from on-chain echo data
+            if (sessionPda) {
+              const fallback = await buildFallbackGauntletCombatParams(
+                gameplayReadConnection,
+                sessionPda,
+                currentWeek,
+                {
+                  hp: bossResult.newState.hp,
+                  gold: bossResult.newState.gold,
+                  isDead: !!bossResult.isDead,
+                },
+                preCombatPlayerStats,
+                preCombatGear,
+                preCombatTool,
+                preCombatItemsets,
+                preCombatSeed
+              );
+              if (fallback) {
+                navigateToCombat(navigation, fallback, bossResult.newState);
+                return;
+              }
+            }
+
+            // Fallback: dead → DeathScreen, alive → check completion or continue
+            if (bossResult.isDead) {
+              navigateToDeath(
+                navigation,
+                bossResult.newState,
+                `Week ${currentWeek} Echo`
+              );
+            } else if (bossResult.newState.completed) {
+              stopAutoCommit();
+              void queueEndGame(bossResult.newState.campaignLevel, true).catch(() => {});
+              navigation.replace('Victory', {
+                level: bossResult.newState.campaignLevel,
+                totalMoves: bossResult.newState.totalMoves,
+                runMode: bossResult.newState.runMode,
+              });
+            } else {
+              // Player won — state advanced to next week, continue exploration
+              isTriggeringBossRef.current = false;
+            }
+          })
+          .catch((err) => {
+            console.error('[GameScreen] Gauntlet triggerBoss error:', err);
+            isTriggeringBossRef.current = false;
+          });
       }
       return;
     }
@@ -1024,6 +1145,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
           campaignLevel: onChainState.campaignLevel,
           totalMoves: onChainState.totalMoves,
           phase: onChainState.phase,
+          runMode: onChainState.runMode,
         });
 
         // Fire-and-forget: re-fetch discovery bossId for the new week's sidebar.
@@ -1084,7 +1206,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
           state.player.equippedTool,
           state.player.activeItemsets ?? [],
           state.rngState,
-          state.time.week,
+          state.time.week as 1 | 2 | 3,
           bossResult.success && bossResult.newState
             ? {
                 finalPlayerHp: bossResult.newState.hp,
@@ -1106,6 +1228,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
           campaignLevel: bossResult.newState?.campaignLevel ?? onChainState.campaignLevel,
           totalMoves: bossResult.newState?.totalMoves ?? onChainState.totalMoves,
           phase: bossResult.newState?.phase ?? onChainState.phase,
+          runMode: bossResult.newState?.runMode ?? onChainState.runMode,
         });
       } catch (err) {
         console.error('[GameScreen] Boss fight trigger error:', err);
@@ -1124,7 +1247,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
             state.player.equippedTool,
             state.player.activeItemsets ?? [],
             state.rngState,
-            state.time.week
+            state.time.week as 1 | 2 | 3
           );
 
           console.warn('[GameScreen] Boss fight on-chain failed, falling back to local resolver:', {
@@ -1136,6 +1259,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
             campaignLevel: onChainState.campaignLevel,
             totalMoves: onChainState.totalMoves,
             phase: onChainState.phase,
+            runMode: onChainState.runMode,
           });
         } catch (fallbackErr) {
           // Boss definition missing — navigate to Death as last resort so the user isn't stuck.
@@ -1444,6 +1568,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
           campaignLevel: 0,
           totalMoves: onChainState?.totalMoves ?? 0,
           phase: onChainState?.phase ?? 0,
+          runMode: onChainState?.runMode,
         });
         return;
       }
@@ -1652,6 +1777,13 @@ export function GameScreen({ navigation }: GameScreenProps) {
             const discoveryBossId = result.discovery
               ? decodeBossId(result.discovery.currentBossId) ?? undefined
               : undefined;
+
+            // Prevent the boss useEffect from racing with the move handler.
+            // SYNC_MOVE below will set bossFightReady + isDead on the next render,
+            // but the move handler needs to navigate to CombatScreen first.
+            if (result.bossResolvedInline || result.bossFightReady) {
+              isTriggeringBossRef.current = true;
+            }
 
             // Update local state from confirmed on-chain state
             dispatch({ type: 'SYNC_MOVE', confirmedState: result.newState, weekBoss: discoveryBossId });
@@ -1862,6 +1994,74 @@ export function GameScreen({ navigation }: GameScreenProps) {
               }
             }
 
+            // Gauntlet: echo combat requires a separate trigger_boss_fight call.
+            // move_player sets boss_fight_ready = true but does NOT resolve the echo
+            // inline (BPF stack overflow constraint). Call triggerBoss() here in the
+            // move handler to avoid a race with the boss useEffect.
+            // Skip if player died to a field enemy on this move — the death handler
+            // below will navigate to DeathScreen instead.
+            if (
+              !result.bossResolvedInline &&
+              result.bossFightReady &&
+              !result.isDead &&
+              result.newState?.runMode === RunMode.Gauntlet
+            ) {
+              isTriggeringBossRef.current = true;
+              console.log('[GameScreen] Gauntlet echo not resolved inline, calling triggerBoss from move handler');
+              triggerBoss()
+                .then(async (bossResult) => {
+                  if (!bossResult.success || !bossResult.newState) {
+                    console.error('[GameScreen] Gauntlet triggerBoss failed in move handler');
+                    isTriggeringBossRef.current = false;
+                    return;
+                  }
+
+                  // Try to build combat params from on-chain echo data
+                  if (sessionPda) {
+                    const fallback = await buildFallbackGauntletCombatParams(
+                      gameplayReadConnection,
+                      sessionPda,
+                      currentWeek,
+                      {
+                        hp: bossResult.newState.hp,
+                        gold: bossResult.newState.gold,
+                        isDead: !!bossResult.isDead,
+                      },
+                      preCombatPlayerStats,
+                      preCombatGear,
+                      preCombatTool,
+                      preCombatItemsets,
+                      preCombatSeed
+                    );
+                    if (fallback) {
+                      navigateToCombat(navigation, fallback, bossResult.newState);
+                      return;
+                    }
+                  }
+
+                  if (bossResult.isDead) {
+                    navigateToDeath(navigation, bossResult.newState, `Week ${currentWeek} Echo`);
+                  } else if (bossResult.newState.completed) {
+                    // Final week won — navigate to Victory
+                    stopAutoCommit();
+                    void queueEndGame(bossResult.newState.campaignLevel, true).catch(() => {});
+                    navigation.replace('Victory', {
+                      level: bossResult.newState.campaignLevel,
+                      totalMoves: bossResult.newState.totalMoves,
+                      runMode: bossResult.newState.runMode,
+                    });
+                  } else {
+                    // Player won — state advanced to next week
+                    isTriggeringBossRef.current = false;
+                  }
+                })
+                .catch((err) => {
+                  console.error('[GameScreen] Gauntlet triggerBoss error in move handler:', err);
+                  isTriggeringBossRef.current = false;
+                });
+              return;
+            }
+
             // Duel week 3: no boss fight — handle duel completion.
             // On-chain sets completed=true and bossFightReady=false for this case.
             if (
@@ -1913,7 +2113,14 @@ export function GameScreen({ navigation }: GameScreenProps) {
                     },
                   ]);
                 }
-                if (result.isDead && !result.bossFightReady) {
+                // In gauntlet, boss_fight_ready is set on the last Night3 move but
+                // the echo is NOT resolved inline (separate trigger_boss_fight IX).
+                // If the player died here, it was a field enemy — not the echo.
+                const isFieldEnemyDeath = result.isDead && (
+                  !result.bossFightReady ||
+                  (result.newState.runMode === RunMode.Gauntlet && !result.bossResolvedInline)
+                );
+                if (isFieldEnemyDeath) {
                   // Find enemy for death screen metadata (best-effort)
                   const combatEnemy = enemyAtTarget ?? state.map.enemies.find(
                     (e) =>
@@ -1926,6 +2133,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
                     level: result.newState.campaignLevel,
                     week: result.newState.week,
                     phase: result.newState.phase,
+                    runMode: result.newState.runMode,
                   };
                   setDefeatOverlayVisible(true);
                 }
@@ -2018,11 +2226,10 @@ export function GameScreen({ navigation }: GameScreenProps) {
                       '[GameScreen] Unknown enemy archetype:',
                       result.combatEnemyInfo.archetype
                     );
-                    if (result.isDead && !result.bossFightReady) {
+                    if (result.isDead && (!result.bossFightReady ||
+                        (result.newState.runMode === RunMode.Gauntlet && !result.bossResolvedInline))) {
                       navigateToDeath(navigation, result.newState, 'Unknown enemy');
                     }
-                    // When bossFightReady is true, the boss useEffect will trigger
-                    // CombatScreen for the boss fight instead of skipping to Death.
                   }
                 }
               } else {
@@ -2037,15 +2244,17 @@ export function GameScreen({ navigation }: GameScreenProps) {
                   }
                 );
                 // If player died and no boss fight pending, navigate to death screen.
-                // When bossFightReady, the boss useEffect will show CombatScreen first.
-                if (result.isDead && !result.bossFightReady) {
+                // In gauntlet, bossFightReady doesn't mean the echo killed the player
+                // (echo requires separate trigger_boss_fight) — it's a field enemy death.
+                if (result.isDead && (!result.bossFightReady ||
+                    (result.newState.runMode === RunMode.Gauntlet && !result.bossResolvedInline))) {
                   navigateToDeath(navigation, result.newState, 'Unknown enemy');
                 }
               }
               } // close non-auto-resolve else
-            } else if (result.isDead && !result.bossFightReady) {
+            } else if (result.isDead && (!result.bossFightReady ||
+                (result.newState?.runMode === RunMode.Gauntlet && !result.bossResolvedInline))) {
               // Non-combat death (shouldn't normally happen, but handle edge case).
-              // Skip when bossFightReady — the boss useEffect will show CombatScreen first.
               debugLog('[GameScreen] Player died (non-combat), navigating to DeathScreen');
               navigateToDeath(navigation, result.newState);
             }
@@ -2757,52 +2966,79 @@ export function GameScreen({ navigation }: GameScreenProps) {
               const foughtWeek = state.time.week as 1 | 2 | 3;
 
               // Gauntlet: echo combat resolved inline via skip_to_day.
-              // Build echo params from on-chain data (no boss for Gauntlet).
               if (onChainState?.runMode === RunMode.Gauntlet && sessionPda) {
                 isTriggeringBossRef.current = true;
-                buildFallbackGauntletCombatParams(
-                  gameplayReadConnection,
-                  sessionPda,
-                  foughtWeek,
-                  { hp: finalPlayerHp, gold: finalPlayerGold, isDead: !playerWon },
-                  {
-                    hp: preBossPlayerHp ?? Math.max(state.player.stats.maxHp, 1),
-                    maxHp: state.player.stats.maxHp,
-                    atk: state.player.stats.atk,
-                    arm: state.player.stats.arm,
-                    spd: state.player.stats.spd,
-                    dig: state.player.stats.dig,
-                    gold: finalPlayerGold,
-                  },
-                  state.player.inventory.map((slot) => slot.item),
-                  state.player.equippedTool,
-                  state.player.activeItemsets ?? [],
-                  state.rngState
-                )
-                  .then((params) => {
-                    if (params) {
-                      navigateToCombat(navigation, params, {
-                        campaignLevel: onChainState?.campaignLevel ?? 0,
-                        totalMoves,
-                        phase,
-                      });
-                    } else if (!playerWon) {
-                      navigateToDeath(
-                        navigation,
-                        onChainState,
-                        `Week ${foughtWeek} Echo`
+                const preCombatPlayerStats = {
+                  hp: preBossPlayerHp ?? Math.max(state.player.stats.maxHp, 1),
+                  maxHp: state.player.stats.maxHp,
+                  atk: state.player.stats.atk,
+                  arm: state.player.stats.arm,
+                  spd: state.player.stats.spd,
+                  dig: state.player.stats.dig,
+                  gold: finalPlayerGold,
+                };
+                const preCombatGear = state.player.inventory.map((slot) => slot.item);
+                const preCombatTool = state.player.equippedTool;
+                const preCombatItemsets = state.player.activeItemsets ?? [];
+                const preCombatSeed = state.rngState;
+                const navMeta = {
+                  campaignLevel: onChainState?.campaignLevel ?? 0,
+                  totalMoves,
+                  phase,
+                  runMode: onChainState?.runMode,
+                };
+
+                // Happy path: parse visual event from the skip_to_day tx signature
+                (async () => {
+                  let visual: GauntletCombatVisualEvent | null = null;
+                  if (signature) {
+                    try {
+                      visual = await parseGauntletCombatVisualEvent(
+                        gameplayReadConnection,
+                        signature
                       );
+                    } catch {
+                      // fall through to fallback
                     }
-                  })
-                  .catch(() => {
-                    if (!playerWon) {
-                      navigateToDeath(
-                        navigation,
-                        onChainState,
-                        `Week ${foughtWeek} Echo`
-                      );
-                    }
-                  });
+                  }
+
+                  if (visual) {
+                    const gauntletCombatParams = createGauntletCombatParams(
+                      visual,
+                      preCombatPlayerStats,
+                      preCombatGear,
+                      preCombatTool,
+                      preCombatItemsets,
+                      preCombatSeed,
+                      foughtWeek,
+                      finalPlayerGold
+                    );
+                    navigateToCombat(navigation, gauntletCombatParams, navMeta);
+                    return;
+                  }
+
+                  // Fallback: build from on-chain echo data
+                  const fallback = await buildFallbackGauntletCombatParams(
+                    gameplayReadConnection,
+                    sessionPda,
+                    foughtWeek,
+                    { hp: finalPlayerHp, gold: finalPlayerGold, isDead: !playerWon },
+                    preCombatPlayerStats,
+                    preCombatGear,
+                    preCombatTool,
+                    preCombatItemsets,
+                    preCombatSeed
+                  );
+                  if (fallback) {
+                    navigateToCombat(navigation, fallback, navMeta);
+                  } else if (!playerWon) {
+                    navigateToDeath(navigation, onChainState, `Week ${foughtWeek} Echo`);
+                  }
+                })().catch(() => {
+                  if (!playerWon) {
+                    navigateToDeath(navigation, onChainState, `Week ${foughtWeek} Echo`);
+                  }
+                });
               } else if (
                 onChainState?.runMode === RunMode.Duel &&
                 onChainState?.completed &&
@@ -2850,6 +3086,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
                     campaignLevel: onChainState?.campaignLevel ?? 0,
                     totalMoves,
                     phase,
+                    runMode: onChainState?.runMode,
                   });
 
                   // Fire-and-forget: sync boss ID to SessionDiscovery for the new week.
