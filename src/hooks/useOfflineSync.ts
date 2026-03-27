@@ -52,6 +52,7 @@ export function useOfflineSync(options: UseOfflineSyncOptions = {}): UseOfflineS
 
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
   const isMountedRef = useRef(true);
+  const syncInFlightRef = useRef(false);
 
   const refreshPendingCount = useCallback(async () => {
     if (!wallet.address) {
@@ -81,6 +82,12 @@ export function useOfflineSync(options: UseOfflineSyncOptions = {}): UseOfflineS
       return null;
     }
 
+    // Prevent overlapping drains — concurrent calls would process the same
+    // queue items and submit duplicate transactions.
+    if (syncInFlightRef.current) {
+      return null;
+    }
+
     // Check connectivity before syncing
     const connectivity = await detectConnectivity(connection, wallet.address);
     if (!connectivity.isRpcConnected) {
@@ -88,6 +95,7 @@ export function useOfflineSync(options: UseOfflineSyncOptions = {}): UseOfflineS
       return null;
     }
 
+    syncInFlightRef.current = true;
     setIsSyncing(true);
 
     try {
@@ -101,6 +109,7 @@ export function useOfflineSync(options: UseOfflineSyncOptions = {}): UseOfflineS
       console.error('Failed to process sync queue:', error);
       return null;
     } finally {
+      syncInFlightRef.current = false;
       if (isMountedRef.current) {
         setIsSyncing(false);
       }

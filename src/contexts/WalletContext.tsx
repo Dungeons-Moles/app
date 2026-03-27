@@ -29,6 +29,10 @@ const WEB_WALLET_CHOICE_KEY = 'dm_web_wallet_choice';
 const MOBILE_WALLET_SESSION_KEY = 'dm_mobile_wallet_session';
 const IS_WEB = Platform.OS === 'web';
 
+/** Dev wallet is only available in development builds against a local validator. */
+const ENABLE_DEV_WEB_WALLET =
+  IS_WEB && __DEV__ && SOLANA_CONFIG.isLocalValidator;
+
 type StoredMobileWalletSession = {
   address: string;
   authToken: string;
@@ -294,7 +298,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     return true;
   });
   const [error, setError] = useState<string | null>(null);
-  const [devWebWallet] = useState<Keypair | null>(() => (IS_WEB ? loadDevWebWallet() : null));
+  const [devWebWallet] = useState<Keypair | null>(() => (ENABLE_DEV_WEB_WALLET ? loadDevWebWallet() : null));
   const [preferredWebWallet, setPreferredWebWallet] = useState<SupportedWallet | null>(() =>
     loadPreferredWebWallet()
   );
@@ -384,8 +388,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
       const targetWallet = preferredWebWallet ?? loadPreferredWebWallet();
 
-      // DevKeypair: synchronous restore
-      if (targetWallet === 'DevKeypair' && devWebWallet) {
+      // DevKeypair: synchronous restore (local dev only)
+      if (targetWallet === 'DevKeypair' && ENABLE_DEV_WEB_WALLET && devWebWallet) {
         setWallet({
           isConnected: true,
           address: devWebWallet.publicKey.toBase58(),
@@ -459,9 +463,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       setError(null);
 
       try {
-        // TEMPORARY: DevKeypair bypasses browser wallet detection for local dev.
-        // Remove this block when reverting to browser wallets only.
-        if (walletName === 'DevKeypair' && IS_WEB && devWebWallet) {
+        // DevKeypair: local development only (gated by ENABLE_DEV_WEB_WALLET).
+        if (walletName === 'DevKeypair' && ENABLE_DEV_WEB_WALLET && devWebWallet) {
           const address = devWebWallet.publicKey.toBase58();
           const authResult: AuthorizationResult = {
             address,
@@ -531,7 +534,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
           return authResult;
         }
 
-        if (IS_WEB && devWebWallet) {
+        if (ENABLE_DEV_WEB_WALLET && devWebWallet) {
           const address = devWebWallet.publicKey.toBase58();
           const authResult: AuthorizationResult = {
             address,
@@ -720,7 +723,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
           return targetConnection.sendRawTransaction(serialized, sendOptions);
         }
 
-        if (IS_WEB && devWebWallet) {
+        if (ENABLE_DEV_WEB_WALLET && devWebWallet && wallet.authToken === 'dev-web-wallet') {
           return signAndSendWithDevWallet(targetConnection, transaction, devWebWallet);
         }
 

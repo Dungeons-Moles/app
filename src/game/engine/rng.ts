@@ -38,7 +38,9 @@ export class SeededRNG {
    * Generate next random number in [0, 1)
    */
   next(): number {
-    this.state = (this.state * MULTIPLIER + INCREMENT) % MODULUS;
+    // Math.imul keeps the multiplication in 32-bit integer range, avoiding
+    // precision loss when state * MULTIPLIER exceeds 2^53 (JS safe integer limit).
+    this.state = (Math.imul(this.state, MULTIPLIER) + INCREMENT) & 0x7fffffff;
     return this.state / MODULUS;
   }
 

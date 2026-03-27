@@ -38,8 +38,12 @@ import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHin
 import { useInputMode } from '../hooks/useInputMode';
 import { FocusGlow } from '../components/ui/FocusGlow';
 import { HubSettingsModal } from '../components/ui/HubSettingsModal';
+import { InlineModal } from '../components/InlineModal';
 import { useEquippedSkinImage } from '../hooks/useEquippedSkinImage';
 import { useAudio } from '../contexts/AudioContext';
+
+const PAPER_PANEL = require('../../assets/ui/panels/paper-panel.webp');
+const iconASource = require('../../assets/ui/control-buttons/a.webp');
 
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.webp');
 const STAINS_BACKGROUND = require('../../assets/ui/backgrounds/stains-background.webp');
@@ -105,6 +109,33 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
   const { disconnect } = useWallet();
 
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showErrorModal, setShowErrorModal] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const lastShownErrorRef = useRef<string | null>(null);
+
+  // Show error modal when pit draft fails
+  useEffect(() => {
+    if (pitDraft.phase === 'error' && pitDraft.error && pitDraft.error !== lastShownErrorRef.current) {
+      lastShownErrorRef.current = pitDraft.error;
+      setErrorMessage(pitDraft.error);
+      setShowErrorModal(true);
+    }
+  }, [pitDraft.phase, pitDraft.error]);
+
+  const handleDismissError = useCallback(() => {
+    setShowErrorModal(false);
+    lastShownErrorRef.current = null;
+    pitDraft.reset();
+  }, [pitDraft]);
+
+  // Reset state when screen regains focus
+  const prevIsFocusedRef = useRef(false);
+  useEffect(() => {
+    if (isFocused && !prevIsFocusedRef.current) {
+      lastShownErrorRef.current = null;
+    }
+    prevIsFocusedRef.current = isFocused;
+  }, [isFocused]);
 
   // Play victory/defeat music on result phase
   useEffect(() => {
@@ -142,9 +173,9 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
     }).start();
   }, []);
 
-  // Pulse animation for queuing phase
+  // Pulse animation for queuing/preparing phase
   useEffect(() => {
-    if (pitDraft.phase !== 'queuing') return;
+    if (pitDraft.phase !== 'queuing' && pitDraft.phase !== 'preparing') return;
 
     const pulse = Animated.loop(
       Animated.sequence([
@@ -216,44 +247,37 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
           onB: handleBack,
           onStart: () => setShowSettingsModal(true),
           onA:
-            pitDraft.phase === 'queuing'
+            pitDraft.phase === 'queuing' || pitDraft.phase === 'preparing'
               ? handleBack
               : panelFocus === 0
                 ? handleHistory
                 : !pitDraft.isLoading
                   ? handleEnter
                   : undefined,
-          onDPadLeft: pitDraft.phase !== 'queuing' ? () => setPanelFocus(0) : undefined,
-          onDPadRight: pitDraft.phase !== 'queuing' ? () => setPanelFocus(1) : undefined,
+          onDPadLeft: pitDraft.phase !== 'queuing' && pitDraft.phase !== 'preparing' ? () => setPanelFocus(0) : undefined,
+          onDPadRight: pitDraft.phase !== 'queuing' && pitDraft.phase !== 'preparing' ? () => setPanelFocus(1) : undefined,
         },
-    isController && isFocused && (pitDraft.phase === 'confirm' || pitDraft.phase === 'queuing')
+    isController && isFocused && (pitDraft.phase === 'confirm' || pitDraft.phase === 'queuing' || pitDraft.phase === 'preparing')
   );
 
-  // Controller for result/error phases
+  // Controller for result phase
   useControllerAction(
-    {
-      onA:
-        pitDraft.phase === 'result'
-          ? handleBack
-          : pitDraft.phase === 'error'
-            ? pitDraft.reset
-            : undefined,
-      onB: pitDraft.phase === 'error' ? handleBack : undefined,
-      onStart: () => setShowSettingsModal(true),
-    },
+    showErrorModal
+      ? {
+          onA: handleDismissError,
+          onB: handleDismissError,
+        }
+      : {
+          onA: pitDraft.phase === 'result' ? handleBack : undefined,
+          onStart: () => setShowSettingsModal(true),
+        },
     isController &&
       isFocused &&
-      (pitDraft.phase === 'result' || pitDraft.phase === 'error') &&
+      (pitDraft.phase === 'result' || showErrorModal) &&
       !showSettingsModal
   );
 
-  const resultHints: ButtonHint[] =
-    pitDraft.phase === 'error'
-      ? [
-          { button: 'A', label: 'Try Again' },
-          { button: 'B', label: 'Back' },
-        ]
-      : [{ button: 'A', label: 'Back to Hub' }];
+  const resultHints: ButtonHint[] = [{ button: 'A', label: 'Back to Hub' }];
 
   const controllerHints: ButtonHint[] = [
     { button: 'L1R1', label: 'Currency' },
@@ -446,7 +470,7 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
   }
 
   // Confirm phase uses the new Gauntlet-style layout
-  if (pitDraft.phase === 'confirm') {
+  if (pitDraft.phase === 'confirm' || pitDraft.phase === 'error') {
     return (
       <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
         <CachedImageBackground
@@ -629,12 +653,149 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
             </View>
           </View>
         </CachedImageBackground>
+        {/* Error Modal */}
+        <InlineModal
+          visible={showErrorModal}
+          transparent
+          animationType="fade"
+          onRequestClose={handleDismissError}
+        >
+          <View style={styles.modalOverlay}>
+            <CachedImageBackground
+              source={PAPER_PANEL}
+              resizeMode="stretch"
+              style={[styles.modalContent, isCompact && compactStyles.modalContent]}
+            >
+              <Text style={[styles.modalTitle, isCompact && compactStyles.modalTitle]}>
+                Request Failed
+              </Text>
+              <Text style={[styles.modalText, isCompact && compactStyles.modalText]}>
+                {errorMessage || 'The request failed, please try again.'}
+              </Text>
+              {isCompact ? (
+                <View style={compactStyles.modalHintRow}>
+                  <View style={compactStyles.modalHintItem}>
+                    <Image
+                      source={iconASource}
+                      style={compactStyles.modalHintIcon}
+                      resizeMode="contain"
+                    />
+                    <Text style={compactStyles.modalHintLabel}>OK</Text>
+                  </View>
+                </View>
+              ) : (
+                <TouchableOpacity onPress={handleDismissError}>
+                  <CachedImageBackground
+                    source={buttonV4Source}
+                    resizeMode="stretch"
+                    style={styles.modalButtonBg}
+                  >
+                    <Text style={styles.modalButtonTextPrimary}>OK</Text>
+                  </CachedImageBackground>
+                </TouchableOpacity>
+              )}
+            </CachedImageBackground>
+          </View>
+        </InlineModal>
         <HubSettingsModal
           visible={showSettingsModal}
           onClose={() => setShowSettingsModal(false)}
           onDisconnect={handleDisconnect}
         />
         <ControllerHints hints={controllerHints} />
+      </Animated.View>
+    );
+  }
+
+  // Preparing phase — player 2 waiting for VRF fulfillment before entering
+  if (pitDraft.phase === 'preparing') {
+    const preparingHints: ButtonHint[] = [{ button: 'B', label: 'Back' }];
+
+    return (
+      <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
+        <CachedImageBackground
+          source={BACKGROUND_IMAGE}
+          style={styles.backgroundImage}
+          resizeMode="cover"
+        >
+          <Image source={STAINS_BACKGROUND} style={styles.stainsOverlay} resizeMode="cover" />
+          <View style={styles.confirmContent}>
+            <View style={[styles.confirmHeader, isCompact && compactStyles.confirmHeader]}>
+              {isCompact ? (
+                isController ? (
+                  <View style={[styles.headerButton, compactStyles.headerButton]} />
+                ) : (
+                  <TouchableOpacity onPress={handleBack} activeOpacity={0.7}>
+                    <CachedImageBackground
+                      source={buttonV1Source}
+                      style={[styles.headerButton, compactStyles.headerButton]}
+                      resizeMode="stretch"
+                    >
+                      <Text style={[styles.headerButtonText, compactStyles.headerButtonText]}>
+                        Back
+                      </Text>
+                    </CachedImageBackground>
+                  </TouchableOpacity>
+                )
+              ) : (
+                <View style={styles.headerButton} />
+              )}
+              <View style={styles.headerSpacer} />
+            </View>
+
+            <View style={[styles.titleRow, isCompact && compactStyles.titleRow]}>
+              <Image
+                source={PIT_DRAFT_TITLE}
+                style={[styles.titleImage, isCompact && compactStyles.titleImage]}
+                resizeMode="contain"
+              />
+            </View>
+
+            <View style={styles.queuingCenterContent}>
+              <View style={[styles.bonfireContainer, isCompact && compactStyles.bonfireContainer]}>
+                <Image
+                  source={MOLE_BONFIRE}
+                  style={[styles.bonfireImage, isCompact && compactStyles.bonfireImage]}
+                  resizeMode="contain"
+                />
+                <Animated.View
+                  style={[
+                    styles.queuingContent,
+                    { opacity: pulseAnim },
+                    isCompact && compactStyles.queuingContent,
+                  ]}
+                >
+                  <Text style={[styles.queuingText, isCompact && compactStyles.preparingText]}>
+                    Match found!{'\n'}Preparing...
+                  </Text>
+                </Animated.View>
+              </View>
+
+              <View
+                style={[styles.paperPinsContainer, isCompact && compactStyles.paperPinsContainer]}
+              >
+                <Image source={PAPER_PINS} style={styles.paperPinsImage} resizeMode="stretch" />
+                <View
+                  style={[
+                    styles.paperPinsTextContainer,
+                    isCompact && compactStyles.paperPinsTextContainer,
+                  ]}
+                >
+                  <Text style={[styles.queuingInfo, isCompact && compactStyles.queuingInfo]}>
+                    An opponent is waiting.{'\n'}Setting up on-chain randomness{'\n'}for fair
+                    combat...
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        </CachedImageBackground>
+        <HubSettingsModal
+          visible={showSettingsModal}
+          onClose={() => setShowSettingsModal(false)}
+          onDisconnect={handleDisconnect}
+        />
+        <ControllerHints hints={preparingHints} horizontal />
       </Animated.View>
     );
   }
@@ -818,35 +979,6 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
               </View>
             )}
 
-            {/* Error Phase */}
-            {pitDraft.phase === 'error' && (
-              <View style={styles.phaseContainer}>
-                <Text style={styles.title}>PIT DRAFT</Text>
-                <Text style={styles.errorText}>{pitDraft.error}</Text>
-
-                <View style={styles.buttonRow}>
-                  <TouchableOpacity onPress={handleBack} activeOpacity={0.7}>
-                    <CachedImageBackground
-                      source={buttonV1Source}
-                      style={styles.actionButton}
-                      resizeMode="stretch"
-                    >
-                      <Text style={styles.buttonText}>Back</Text>
-                    </CachedImageBackground>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity onPress={pitDraft.reset} activeOpacity={0.7}>
-                    <CachedImageBackground
-                      source={buttonV4Source}
-                      style={styles.actionButton}
-                      resizeMode="stretch"
-                    >
-                      <Text style={styles.buttonTextPrimary}>Try Again</Text>
-                    </CachedImageBackground>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            )}
           </View>
         </View>
       </CachedImageBackground>
@@ -855,7 +987,6 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
         onClose={() => setShowSettingsModal(false)}
         onDisconnect={handleDisconnect}
       />
-      {pitDraft.phase === 'error' && <ControllerHints hints={resultHints} horizontal />}
     </Animated.View>
   );
 }
@@ -1372,13 +1503,45 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 6,
   },
-  errorText: {
-    fontFamily: Typography.body,
-    fontSize: 14,
-    color: '#F44336',
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(25, 15, 10, 0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  modalContent: {
+    width: 360,
+    padding: 36,
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+  },
+  modalTitle: {
+    fontFamily: Typography.header,
+    fontSize: 24,
+    color: '#3d2b1f',
     textAlign: 'center',
-    lineHeight: 20,
-    maxWidth: '90%',
+    marginBottom: 10,
+  },
+  modalText: {
+    fontFamily: Typography.body,
+    fontSize: 15,
+    color: '#3d2b1f',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 18,
+  },
+  modalButtonBg: {
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    minWidth: 100,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalButtonTextPrimary: {
+    fontFamily: Typography.button,
+    fontSize: 14,
+    color: '#1f2f1a',
   },
 });
 
@@ -1456,6 +1619,10 @@ const compactStyles = StyleSheet.create({
     fontSize: 36,
     lineHeight: 44,
   },
+  preparingText: {
+    fontSize: 48,
+    lineHeight: 56,
+  },
   paperPinsContainer: {
     width: 760,
     height: 240,
@@ -1477,5 +1644,39 @@ const compactStyles = StyleSheet.create({
   queuingButtonText: {
     fontSize: 32,
     marginBottom: 6,
+  },
+  modalContent: {
+    width: 700,
+    padding: 50,
+  },
+  modalTitle: {
+    fontSize: 52,
+    marginBottom: 16,
+  },
+  modalText: {
+    fontSize: 34,
+    lineHeight: 46,
+    marginBottom: 22,
+  },
+  modalHintRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 30,
+    marginTop: 8,
+  },
+  modalHintItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  modalHintIcon: {
+    width: 72,
+    height: 72,
+  },
+  modalHintLabel: {
+    fontFamily: Typography.button,
+    fontSize: 28,
+    color: '#3d2b1f',
   },
 });

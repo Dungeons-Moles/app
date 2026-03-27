@@ -37,6 +37,8 @@ export interface TransactionResult {
   resolvedErConnection?: import('@solana/web3.js').Connection;
   /** VRF fulfillment was not confirmed yet — caller should retry via retryErVrfForSession. */
   vrfPending?: boolean;
+  /** Signature of the settle_session_result TX (emits ItemUnlocked event). */
+  settleSignature?: string;
 }
 
 /**

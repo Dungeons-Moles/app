@@ -595,7 +595,9 @@ export function GameScreen({ navigation }: GameScreenProps) {
     const meta = defeatMetaRef.current;
     if (!meta) return;
 
-    // On-chain session cleanup (same as CombatScreen defeat path)
+    // Queue deferred cleanup — runs via processPendingCleanups when user reaches
+    // CampaignSelectScreen. Can't teardown here because GameScreen's ER connections
+    // (WebSocket subscriptions, gameplay hooks) must be unmounted first.
     if (hasActiveSession && mode !== 'guest') {
       stopAutoCommit();
       const levelReached = meta.level;
@@ -724,6 +726,10 @@ export function GameScreen({ navigation }: GameScreenProps) {
   // (returning from field enemy CombatScreen after the same move set bossFightReady).
   const isTriggeringBossRef = useRef(false);
   const isRestoringSessionRef = useRef(false);
+  // Snapshot of the player's HP before the last move/POI interaction.
+  // Used by the boss useEffect when the boss was already resolved inline
+  // and on-chain state only has post-boss HP.
+  const preBossHpRef = useRef<number | null>(null);
 
   // Reset isTriggeringBossRef when screen regains focus (e.g., returning from
   // CombatScreen/VictoryScreen). This ensures future boss fights can trigger.
@@ -872,7 +878,9 @@ export function GameScreen({ navigation }: GameScreenProps) {
             onChainState.week,
             { hp: onChainState.hp, gold: onChainState.gold, isDead: true },
             {
-              hp: Math.max(state.player.stats.maxHp, 1),
+              hp: (preBossHpRef.current != null && preBossHpRef.current > 0)
+                ? preBossHpRef.current
+                : Math.max(state.player.stats.maxHp, 1),
               maxHp: state.player.stats.maxHp,
               atk: state.player.stats.atk,
               arm: state.player.stats.arm,
@@ -978,13 +986,17 @@ export function GameScreen({ navigation }: GameScreenProps) {
           '[GameScreen] Boss already resolved inline, navigating to CombatScreen with local resolver:',
           { playerWon, foughtWeek, foughtBoss }
         );
-        // Use local HP as the pre-boss starting HP for the combat animation.
-        // state.player.stats.hp may still hold the pre-boss value if the SYNC_MOVE
-        // that triggered this effect used the post-boss on-chain HP but the local
-        // reducer hasn't processed it yet. If local HP seems wrong (0 or already
-        // synced to post-boss), fall back to maxHp.
+        // Use the pre-move/POI HP snapshot as the pre-boss starting HP.
+        // By this point, on-chain state has the post-boss HP (boss resolved inline)
+        // and SYNC_MOVE already synced it to local state. preBossHpRef captures
+        // the HP before the move/POI that triggered the boss.
+        const snapshotHp = preBossHpRef.current;
         const localHp = state.player.stats.hp;
-        const preBossHp = localHp > 0 ? localHp : Math.max(state.player.stats.maxHp, 1);
+        const preBossHp = snapshotHp != null && snapshotHp > 0
+          ? snapshotHp
+          : localHp > 0
+            ? localHp
+            : Math.max(state.player.stats.maxHp, 1);
         const playerStats = {
           hp: preBossHp,
           maxHp: state.player.stats.maxHp,
@@ -1040,9 +1052,14 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
       // Build player stats from on-chain state (post-move, pre-boss).
       // Captured outside try so it's available in the catch fallback.
-      // When on-chain HP is 0 (boss fight already resolved inline or field death),
-      // use local stats as fallback so the local resolver produces a multi-turn combat.
-      const fallbackHp = onChainState.hp > 0 ? onChainState.hp : Math.max(state.player.stats.hp, 1);
+      // Prefer on-chain HP, then pre-boss snapshot, then local state, then maxHp.
+      const fallbackHp = onChainState.hp > 0
+        ? onChainState.hp
+        : (preBossHpRef.current != null && preBossHpRef.current > 0)
+          ? preBossHpRef.current
+          : state.player.stats.hp > 0
+            ? state.player.stats.hp
+            : Math.max(state.player.stats.maxHp, 1);
       const playerStats = {
         hp: fallbackHp,
         maxHp: state.player.stats.maxHp,
@@ -1577,6 +1594,9 @@ export function GameScreen({ navigation }: GameScreenProps) {
       // Defer setIsMovePending(true) — the ref is enough for the synchronous guard.
       // Setting state here triggers a full re-render before the TX send, adding
       // 100-300ms of render blocking to the perceived move latency.
+
+      // Snapshot HP before move for the boss useEffect fallback.
+      preBossHpRef.current = onChainState?.hp ?? state.player.stats.hp;
 
       // Store pre-combat state for potential combat replay
       // Note: HP/gold are captured inside .then() from result.previousState (on-chain truth)
@@ -2471,6 +2491,8 @@ export function GameScreen({ navigation }: GameScreenProps) {
     }
 
     if (!poiInteraction.canInteract) return;
+    // Snapshot HP before POI (POI can consume last moves and trigger inline boss).
+    preBossHpRef.current = onChainState?.hp ?? state.player.stats.hp;
     poiInteraction.interact();
   }, [
     state,

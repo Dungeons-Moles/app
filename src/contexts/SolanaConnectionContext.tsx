@@ -2,7 +2,7 @@ import React, { createContext, useContext, useMemo, useEffect, ReactNode, useSta
 import { Connection } from '@solana/web3.js';
 import { createErConnection, createSolanaConnection } from '@/services/solana/programs';
 import { checkValidatorFingerprint } from '@/services/solana/validatorFingerprint';
-import { SOLANA_CONFIG } from '@/services/solana/config';
+import { SOLANA_CONFIG, deriveErWsEndpoint } from '@/services/solana/config';
 
 interface SolanaConnectionContextValue {
   /** Base layer Solana connection (L1). */
@@ -58,9 +58,7 @@ export function SolanaConnectionProvider({ children }: { children: ReactNode }) 
     if (!resolvedErEndpoint) return directErConnection;
     return new Connection(resolvedErEndpoint, {
       commitment: SOLANA_CONFIG.erCommitment,
-      wsEndpoint: resolvedErEndpoint
-        .replace(/^https:\/\//, 'wss://')
-        .replace(/^http:\/\//, 'ws://'),
+      wsEndpoint: deriveErWsEndpoint(resolvedErEndpoint),
     });
   }, [resolvedErEndpoint, directErConnection]);
 

@@ -762,7 +762,7 @@ export async function sendSessionSignerTransaction(
   connection: Connection,
   transaction: Transaction,
   sessionSignerKeypair: Keypair,
-  options?: { skipErConfirmation?: boolean; skipConfirmation?: boolean; fireAndForget?: boolean }
+  options?: { skipErConfirmation?: boolean; skipConfirmation?: boolean; fireAndForget?: boolean; onSendFail?: (err: Error) => void }
 ): Promise<string> {
   const erConnection = isErConnection(connection);
   const baseInstructions = [...transaction.instructions];
@@ -843,6 +843,7 @@ export async function sendSessionSignerTransaction(
         console.log(`[perf] sendTransaction(bg): completed (router=${isRouterPath})`);
       }).catch((err) => {
         console.error('[sessionSignerWallet] Background send failed:', err);
+        options?.onSendFail?.(err instanceof Error ? err : new Error(String(err)));
       });
       console.log(`[perf] sendTransaction: 0ms (fire-and-forget, compile: ${tSign - tCompile}ms, sign: ${tWire - tSign}ms, sig=${signature.slice(0, 8)}...)`);
       return signature;

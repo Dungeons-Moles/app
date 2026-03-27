@@ -1253,9 +1253,23 @@ function combatReducer(state: CombatUIState, action: CombatAction): CombatUIStat
       const baseCombat = createCombatState(action.input);
       const localCombat = resolveCombatWithParity(action.input);
       const onChainResult = action.outcome.playerWon ? ('VICTORY' as const) : ('DEFEAT' as const);
+      const reconciledPlayer = {
+        ...localCombat.player,
+        hp: Math.max(0, Math.min(action.outcome.finalPlayerHp, localCombat.player.maxHp)),
+      };
+      const reconciledEnemy = action.outcome.finalEnemyHp != null
+        ? {
+            ...localCombat.enemy,
+            hp: Math.max(0, Math.min(action.outcome.finalEnemyHp, localCombat.enemy.maxHp)),
+          }
+        : onChainResult === 'VICTORY'
+          ? { ...localCombat.enemy, hp: 0 }
+          : localCombat.enemy;
 
       const resolvedCombat = {
         ...localCombat,
+        player: reconciledPlayer,
+        enemy: reconciledEnemy,
         result: onChainResult,
       };
 

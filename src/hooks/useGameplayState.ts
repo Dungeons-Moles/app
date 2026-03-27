@@ -435,7 +435,19 @@ export function useGameplayState(): UseGameplayStateReturn {
           gameStatePda,
           sessionPda,
           sessionSignerKeypair,
-          params
+          params,
+          {
+            onSendFail: (err) => {
+              console.warn('[useGameplayState] Fire-and-forget send failed:', err.message);
+              // Cancel WS wait early — the tx never reached the ER so no update will come.
+              if (!wsDiscoveryCancelled) {
+                wsDiscoveryCancelled = true;
+                wsDiscoveryListenersRef.current.delete(discoveryListener);
+                wsDiscoveryResolve(null);
+              }
+              wsState.cancel?.();
+            },
+          }
         );
         const { signature, connection: moveConnection } = moveResult;
         const tSent = Date.now();

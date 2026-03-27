@@ -217,18 +217,18 @@ export function useSessionManager() {
 
     try {
       let sessionPda = activeSessionPdaRef.current;
+      const nonces = !sessionPda ? await fetchSessionNonces(wallet.publicKey) : null;
       if (!sessionPda) {
-        const nonces = await fetchSessionNonces(wallet.publicKey);
         const [fallbackSessionPda] = deriveSessionPda(
           wallet.publicKey,
           activeOnChainLevelRef.current,
-          nonces.campaign
+          nonces!.campaign
         );
         sessionPda = fallbackSessionPda;
       }
-      const decodeRawGameSession = async (): Promise<RawGameSessionAccount | null> => {
+      const decodeRawGameSession = async (pda: PublicKey): Promise<RawGameSessionAccount | null> => {
         const accountInfo = await baseConnection.getAccountInfo(
-          sessionPda,
+          pda,
           SOLANA_CONFIG.commitment
         );
         if (!accountInfo?.data) {
@@ -239,29 +239,38 @@ export function useSessionManager() {
           accountInfo.data
         ) as RawGameSessionAccount;
       };
-      let account: RawGameSessionAccount | null = null;
 
-      try {
-        account = await (
-          readOnlyProgram.account as {
-            gameSession: {
-              fetchNullable: (address: PublicKey) => Promise<RawGameSessionAccount | null>;
-            };
-          }
-        ).gameSession.fetchNullable(sessionPda);
-
-        // For delegated accounts, Anchor fetchNullable may return null instead of throwing
-        // due owner mismatch. Try raw decode before considering session absent.
-        if (!account) {
-          account = await decodeRawGameSession();
-        }
-      } catch (anchorFetchError) {
-        // Delegated session accounts are owned by MagicBlock delegation program.
-        // Anchor account fetch enforces owner, so it can fail while delegated.
+      const tryFetchSession = async (pda: PublicKey): Promise<RawGameSessionAccount | null> => {
         try {
-          account = await decodeRawGameSession();
-        } catch (decodeError) {
-          throw anchorFetchError;
+          const account = await (
+            readOnlyProgram.account as {
+              gameSession: {
+                fetchNullable: (address: PublicKey) => Promise<RawGameSessionAccount | null>;
+              };
+            }
+          ).gameSession.fetchNullable(pda);
+          if (account) return account;
+          return await decodeRawGameSession(pda);
+        } catch {
+          // Delegated session accounts are owned by MagicBlock delegation program.
+          return await decodeRawGameSession(pda).catch(() => null);
+        }
+      };
+
+      let account = await tryFetchSession(sessionPda);
+
+      // If no campaign session found and we have nonces, try duel and gauntlet PDAs.
+      if (!account && nonces) {
+        const [duelPda] = deriveDuelSessionPda(wallet.publicKey, nonces.duel);
+        account = await tryFetchSession(duelPda);
+        if (account) {
+          sessionPda = duelPda;
+        } else {
+          const [gauntletPda] = deriveGauntletSessionPda(wallet.publicKey, nonces.gauntlet);
+          account = await tryFetchSession(gauntletPda);
+          if (account) {
+            sessionPda = gauntletPda;
+          }
         }
       }
 
@@ -342,8 +351,8 @@ export function useSessionManager() {
 
         const nonces = await fetchSessionNonces(wallet.publicKey);
         const [sessionPda] = deriveSessionPda(wallet.publicKey, onChainLevel, nonces.campaign);
-        activeSessionPdaRef.current = sessionPda;
-        setActiveSessionPdaState(sessionPda);
+        // Don't cache the PDA yet — wait until the tx is confirmed.
+        // If start_session fails, a stale PDA would mislead later reads.
         const [counterPda] = deriveSessionCounterPda();
         const [profilePda] = derivePlayerProfilePda(wallet.publicKey);
         const [gameStatePda] = deriveGameStatePda(sessionPda);
@@ -392,6 +401,10 @@ export function useSessionManager() {
         console.log('[useSessionManager] Transaction sent:', signature);
         await baseConnection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
         console.log('[useSessionManager] Transaction confirmed');
+
+        // Now that the tx is confirmed, cache the session PDA.
+        activeSessionPdaRef.current = sessionPda;
+        setActiveSessionPdaState(sessionPda);
 
         // Fetch the created session
         await fetchSession();
@@ -1008,10 +1021,11 @@ export function useSessionManager() {
           delegateInventoryIx,
           delegateMapPoisIx
         );
-        // Fire-and-forget delegation TXs — skip confirmation, let waitForErSessionAccounts
-        // verify all accounts landed on the ER. Saves ~5s of sequential confirmation waits.
-        await sendSessionSignerTransaction(baseConnection, delegationTx1, sessionSignerKeypair, { skipConfirmation: true });
-        await sendSessionSignerTransaction(baseConnection, delegationTx2, sessionSignerKeypair, { skipConfirmation: true });
+        // Base-layer delegation must be confirmed before we start waiting on ER pickup.
+        // Otherwise transient devnet send/confirm failures show up later as misleading
+        // "delegation not propagated" errors even though the delegation transaction failed.
+        await sendSessionSignerTransaction(baseConnection, delegationTx1, sessionSignerKeypair);
+        await sendSessionSignerTransaction(baseConnection, delegationTx2, sessionSignerKeypair);
 
         // Tx2b (optional): Delegate GauntletEchoes if it exists (gauntlet sessions only).
         const gauntletEchoesInfo = await baseConnection
@@ -1040,7 +1054,7 @@ export function useSessionManager() {
             ComputeBudgetProgram.setComputeUnitLimit({ units: 600_000 }),
             delegateGauntletEchoesIx
           );
-          await sendSessionSignerTransaction(baseConnection, delegationTxGe, sessionSignerKeypair, { skipConfirmation: true });
+          await sendSessionSignerTransaction(baseConnection, delegationTxGe, sessionSignerKeypair);
         }
 
         // Tx3: Delegate VRF state accounts if requested.
@@ -1115,8 +1129,7 @@ export function useSessionManager() {
           signature = await sendSessionSignerTransaction(
             baseConnection,
             delegationTx3,
-            sessionSignerKeypair,
-            { skipConfirmation: true }
+            sessionSignerKeypair
           );
         }
 
@@ -2216,10 +2229,12 @@ export function useSessionManager() {
         const [mapVrfStatePda] = deriveMapVrfStatePda(sessionPda);
         const [poiVrfStatePda] = derivePoiVrfStatePda(sessionPda);
         const [gameplayVrfStatePda] = deriveGameplayVrfStatePda(sessionPda);
-        const [mapVrfInfo, poiVrfInfo, gameplayVrfInfo] = await Promise.all([
+        const [gauntletEchoesPda] = deriveGauntletEchoesPda(sessionPda);
+        const [mapVrfInfo, poiVrfInfo, gameplayVrfInfo, gauntletEchoesInfo] = await Promise.all([
           baseConnection.getAccountInfo(mapVrfStatePda).catch(() => null),
           baseConnection.getAccountInfo(poiVrfStatePda).catch(() => null),
           baseConnection.getAccountInfo(gameplayVrfStatePda).catch(() => null),
+          baseConnection.getAccountInfo(gauntletEchoesPda).catch(() => null),
         ]);
 
         const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
@@ -2239,6 +2254,7 @@ export function useSessionManager() {
             mapVrfState: mapVrfInfo ? mapVrfStatePda : null,
             poiVrfState: poiVrfInfo ? poiVrfStatePda : null,
             gameplayVrfState: gameplayVrfInfo ? gameplayVrfStatePda : null,
+            gauntletEchoes: gauntletEchoesInfo ? gauntletEchoesPda : null,
             playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
             gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
             playerProfileProgram: SOLANA_CONFIG.programs.playerProfile,

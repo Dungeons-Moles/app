@@ -579,7 +579,7 @@ const styles = StyleSheet.create({
   summaryContainerVertical: {
     padding: 20,
     width: '100%',
-    marginBottom: 80,
+    marginBottom: 40,
   },
   summaryTitleVertical: {
     fontFamily: Typography.header,
@@ -619,7 +619,7 @@ const styles = StyleSheet.create({
     width: '130%',
     alignSelf: 'center',
     marginTop: 16,
-    marginBottom: 16,
+    marginBottom: 32,
   },
   unlockContainerVertical: {
     backgroundColor: 'rgba(50, 100, 50, 0.9)',

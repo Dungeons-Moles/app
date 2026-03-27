@@ -100,6 +100,9 @@ export function initializeGame(
     time,
     combat: null,
     activePOI: null,
+    wallHighlight: null,
+    fastTravel: null,
+    totalMoves: 0,
     activeItemPool: state.activeItemPool ?? createStarterBitmask(),
   };
 }

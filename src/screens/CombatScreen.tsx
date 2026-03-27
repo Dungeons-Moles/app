@@ -9,7 +9,7 @@ import React, { useEffect, useCallback, useMemo, useRef } from 'react';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
 import { PublicKey } from '@solana/web3.js';
-import { RootStackParamList } from '../navigation';
+import { RootStackParamList, type UnlockedItem } from '../navigation';
 import { useGame, GamePhase } from '../contexts/GameContext';
 import { CombatProvider, useCombat } from '../contexts/CombatContext';
 import { useAudio, type BgmTrack } from '../contexts/AudioContext';
@@ -27,8 +27,8 @@ import type { BossId } from '../game/engine/types';
 import { getEntityImageSource } from '../components/game/entityImages';
 import { useEquippedSkinImage } from '../hooks/useEquippedSkinImage';
 import { getPhaseLabel } from '../utils/phase-labels';
-import { getUnlockedItemForLevel } from '@/services/solana/eventParser';
-import { createGameplayStateProgram } from '@/services/solana/programs';
+import { parseGameplayEvents, extractVictoryData } from '@/services/solana/eventParser';
+import { createGameplayStateProgram, createPlayerProfileProgram } from '@/services/solana/programs';
 import { RunMode } from '@/services/solana/types/gameplay_state';
 import {
   buildFinalizeDuelRunTransaction,
@@ -110,6 +110,11 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
     getSessionSignerKeypair,
   } = useSession();
   const isResolvingDuelRef = useRef(false);
+  // Session teardown promise started eagerly during combat animation.
+  // By the time the countdown finishes, the teardown is usually already done.
+  const sessionEndPromiseRef = useRef<Promise<import('../types/solana').TransactionResult> | null>(
+    null
+  );
   const {
     state: combatState,
     startCombat,
@@ -232,6 +237,34 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
     gameState?.rngState,
     isBossFight,
     playBgm,
+  ]);
+
+  // Eagerly start session teardown during combat animation.
+  // The animation takes several seconds — plenty of time for undelegate + settle + end.
+  // The promise is awaited in handleCombatComplete so navigation doesn't block.
+  // Skip for duels — they have a special finalize flow that must run before teardown.
+  useEffect(() => {
+    if (sessionEndPromiseRef.current) return; // already started
+    if (mode === 'guest' || !hasActiveSession) return;
+    if (!combatInput?.onChainOutcome) return;
+    if (combatInput.duelReplay || gameplayState?.runMode === RunMode.Duel) return;
+
+    const isFinal = isBossFight && currentWeek === 3;
+    const willDie = !combatInput.onChainOutcome.playerWon;
+
+    // Start teardown for: final boss (win or lose) or any defeat
+    if (isFinal || willDie) {
+      console.log('[CombatScreen] Starting eager session teardown during animation');
+      sessionEndPromiseRef.current = endSessionWithSessionSigner();
+    }
+  }, [
+    mode,
+    hasActiveSession,
+    combatInput,
+    isBossFight,
+    currentWeek,
+    endSessionWithSessionSigner,
+    gameplayState?.runMode,
   ]);
 
   // Handle combat completion - now uses deferred cleanup for instant navigation
@@ -395,6 +428,8 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
         };
       };
 
+      let settleSignature: string | undefined;
+
       if (shouldEndSession && hasActiveSession && mode !== 'guest') {
         const isDuelRun = gameplayState?.runMode === RunMode.Duel;
         if (isDuelRun) {
@@ -405,35 +440,24 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
           }
         }
 
-        if (isVictory) {
-          // Victory: end session in background (state changes are fine since
-          // we navigate to VictoryScreen/Hub which handle them naturally).
-          console.log('[CombatScreen] Ending session in background (victory)');
-          void (async () => {
-            const endResult = await endSessionWithSessionSigner();
-            if (!endResult.success) {
-              console.warn('[CombatScreen] Failed to end session:', endResult.error);
-              try {
-                await queueEndGame(levelReached, isVictory);
-                console.log('[CombatScreen] Immediate end failed; deferred cleanup queued');
-              } catch (queueError) {
-                console.error(
-                  '[CombatScreen] Failed to queue deferred cleanup after end failure:',
-                  queueError
-                );
-              }
-            }
-          })();
+        // Await the eagerly-started teardown (or start one now if the eager effect didn't fire).
+        const endPromise =
+          sessionEndPromiseRef.current ?? endSessionWithSessionSigner();
+        const endResult = await endPromise;
+
+        if (endResult.success) {
+          settleSignature = endResult.settleSignature;
         } else {
-          // Defeat: queue deferred cleanup instead of ending session immediately.
-          // endSessionWithSessionSigner modifies React state across multiple context
-          // providers, which causes cascading re-renders that visibly blink the
-          // DeathScreen on web. The queued cleanup runs via processPendingCleanups
-          // when the user returns to HubScreen or CampaignSelectScreen.
-          console.log('[CombatScreen] Queueing deferred session cleanup (defeat)');
-          void queueEndGame(levelReached, false).catch((err) => {
-            console.error('[CombatScreen] Failed to queue deferred cleanup:', err);
-          });
+          console.warn('[CombatScreen] Failed to end session:', endResult.error);
+          try {
+            await queueEndGame(levelReached, isVictory);
+            console.log('[CombatScreen] Immediate end failed; deferred cleanup queued');
+          } catch (queueError) {
+            console.error(
+              '[CombatScreen] Failed to queue deferred cleanup after end failure:',
+              queueError
+            );
+          }
         }
       }
 
@@ -489,11 +513,44 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
         });
       } else if (isFinalWeekBoss) {
         console.log('[CombatScreen] Navigating to Victory screen (final week boss victory)');
+
+        // Parse the actual unlocked item from the on-chain settle transaction.
+        // The static getUnlockedItemForLevel() uses all-items.ts IDs which don't match
+        // on-chain pool indices (different set ordering), so we only trust on-chain events.
+        let itemUnlocked: UnlockedItem | undefined;
+        if (settleSignature && mode !== 'guest') {
+          try {
+            console.log('[CombatScreen] Parsing item unlock from settle signature:', settleSignature);
+            const profileProgram = createPlayerProfileProgram(connection);
+            const events = await parseGameplayEvents(
+              connection,
+              profileProgram,
+              settleSignature
+            );
+            const victoryData = extractVictoryData(events);
+            console.log('[CombatScreen] Victory data from settle events:', {
+              hasItemUnlocked: !!victoryData.itemUnlocked,
+              itemName: victoryData.itemUnlocked?.name,
+              levelUnlocked: victoryData.levelUnlocked,
+            });
+            if (victoryData.itemUnlocked) {
+              itemUnlocked = victoryData.itemUnlocked;
+            }
+          } catch (parseErr) {
+            console.warn('[CombatScreen] Failed to parse item unlock event:', parseErr);
+          }
+        } else {
+          console.log('[CombatScreen] No settle signature available for item unlock parsing:', {
+            settleSignature,
+            mode,
+          });
+        }
+
         navigation.replace('Victory', {
           level: levelReached,
           totalMoves: resolvedTotalMoves,
           levelUnlocked: levelReached + 1,
-          itemUnlocked: getUnlockedItemForLevel(levelReached),
+          itemUnlocked,
         });
       } else {
         console.log('[CombatScreen] Navigating back to map (victory)');

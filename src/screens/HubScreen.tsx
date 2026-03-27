@@ -382,6 +382,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
     navigation.navigate('BattleSimulator');
   }, [isGuest, navigation, playSfx]);
 
+
   const handleGauntlet = () => {
     playSfx('ui_click');
     setShowPvP(false);

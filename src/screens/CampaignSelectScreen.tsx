@@ -1653,7 +1653,7 @@ const compactStyles = StyleSheet.create({
     right: 28,
   },
   modalContent: {
-    width: 860,
+    width: 700,
     padding: 50,
   },
   modalTitle: {

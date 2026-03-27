@@ -204,23 +204,24 @@ export const ENEMY_MOVE_DURATION_MS = 200;
 // Event Name Constants
 // ============================================================================
 
+// Anchor's event coder returns camelCase names (e.g. 'combatStarted', not 'CombatStarted').
 export const EVENT_NAMES = {
-  COMBAT_STARTED: 'CombatStarted',
-  TURN_EXECUTED: 'TurnExecuted',
-  STATUS_APPLIED: 'StatusApplied',
-  COMBAT_ENDED: 'CombatEnded',
-  BOSS_COMBAT_STARTED: 'BossCombatStarted',
-  ENEMY_MOVED: 'EnemyMoved',
-  PLAYER_MOVED: 'PlayerMoved',
-  PLAYER_DEFEATED: 'PlayerDefeated',
-  LEVEL_COMPLETED: 'LevelCompleted',
-  ITEM_UNLOCKED: 'ItemUnlocked',
-  RUNS_PURCHASED: 'RunsPurchased',
-  PHASE_ADVANCED: 'PhaseAdvanced',
-  BOSS_FIGHT_READY: 'BossFightReady',
-  PLAYER_HEALED: 'PlayerHealed',
-  GOLD_MODIFIED_AUTHORIZED: 'GoldModifiedAuthorized',
-  COMBAT_LOG: 'CombatLog',
+  COMBAT_STARTED: 'combatStarted',
+  TURN_EXECUTED: 'turnExecuted',
+  STATUS_APPLIED: 'statusApplied',
+  COMBAT_ENDED: 'combatEnded',
+  BOSS_COMBAT_STARTED: 'bossCombatStarted',
+  ENEMY_MOVED: 'enemyMoved',
+  PLAYER_MOVED: 'playerMoved',
+  PLAYER_DEFEATED: 'playerDefeated',
+  LEVEL_COMPLETED: 'levelCompleted',
+  ITEM_UNLOCKED: 'itemUnlocked',
+  RUNS_PURCHASED: 'runsPurchased',
+  PHASE_ADVANCED: 'phaseAdvanced',
+  BOSS_FIGHT_READY: 'bossFightReady',
+  PLAYER_HEALED: 'playerHealed',
+  GOLD_MODIFIED_AUTHORIZED: 'goldModifiedAuthorized',
+  COMBAT_LOG: 'combatLog',
 } as const;
 
 // ============================================================================

@@ -41,6 +41,8 @@ export function VictoryDefeatDisplay({
   scale = 1,
 }: VictoryDefeatDisplayProps) {
   const [countdown, setCountdown] = useState(3);
+  const [dotCount, setDotCount] = useState(0);
+  const [isWaitingForNav, setIsWaitingForNav] = useState(false);
   const [displayedGold, setDisplayedGold] = useState(0);
   const scaleAnim = useRef(new Animated.Value(0)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
@@ -127,6 +129,7 @@ export function VictoryDefeatDisplay({
       if (remaining <= 0) {
         if (!didCompleteRef.current) {
           didCompleteRef.current = true;
+          setIsWaitingForNav(true);
           onComplete();
         }
         return;
@@ -148,6 +151,15 @@ export function VictoryDefeatDisplay({
       }
     };
   }, [scheduleCountdown]);
+
+  // Animated dots while waiting for async navigation (session teardown)
+  useEffect(() => {
+    if (!isWaitingForNav) return;
+    const interval = setInterval(() => {
+      setDotCount((prev) => (prev + 1) % 4);
+    }, 500);
+    return () => clearInterval(interval);
+  }, [isWaitingForNav]);
 
   const cardPadding = 40 * s;
   const cardBorderRadius = 20 * s;
@@ -221,9 +233,11 @@ export function VictoryDefeatDisplay({
         </Animated.View>
       )}
 
-      {/* Countdown */}
+      {/* Countdown / waiting indicator */}
       <Text style={[styles.countdown, { fontSize: 14 * s }]}>
-        Returning in {countdown}...
+        {isWaitingForNav
+          ? `Returning${'.'.repeat(dotCount)}`
+          : `Returning in ${countdown}...`}
       </Text>
     </>
   );

@@ -87,6 +87,8 @@ import {
   canAffordCostAcrossPhases,
   consumeMoveAcrossPhases,
 } from '../time/progression';
+import { PHASE_MOVES } from '../time/types';
+import { selectBossForRun } from './run-config';
 import { SeededRNG } from './rng';
 import {
   createPOIInteraction,
@@ -1188,11 +1190,21 @@ function handleResolveCombat(
   let finalRngState = updatedRngState;
   if (state.phase === GamePhase.BossFight && state.time.week < 3) {
     const rng = new SeededRNG(updatedRngState);
-    const nextWeekTime = advanceToNextWeek(state.time, rng);
-    if (nextWeekTime) {
-      newTime = nextWeekTime;
-      finalRngState = rng.getState();
-    }
+    const nextWeek = (state.time.week + 1) as 1 | 2 | 3;
+    const nextBoss = selectBossForRun(
+      nextWeek,
+      state.campaignLevel,
+      state.bossSelectionMode,
+      rng
+    );
+    newTime = {
+      week: nextWeek,
+      phase: TimePhase.Day,
+      cycle: 1,
+      movesRemaining: PHASE_MOVES[TimePhase.Day],
+      weekBoss: nextBoss,
+    };
+    finalRngState = rng.getState();
   }
 
   return {
@@ -1542,12 +1554,14 @@ function handleReturnToMenu(state: GameState): GameState {
     throw new Error(`Invalid transition: cannot return to menu from ${state.phase}`);
   }
 
-  // TODO: Reset game state to initial values
   return {
     ...state,
     phase: GamePhase.MainMenu,
     combat: null,
     activePOI: null,
+    wallHighlight: null,
+    fastTravel: null,
+    totalMoves: 0,
   };
 }
 
@@ -1828,6 +1842,7 @@ function handleSyncMove(state: GameState, confirmedState: OnChainGameState, week
       player: updatedPlayer,
       map: finalMap,
       time: updatedTime,
+      totalMoves: confirmedState.totalMoves ?? state.totalMoves,
       wallHighlight: null,
     };
   }
@@ -1838,6 +1853,7 @@ function handleSyncMove(state: GameState, confirmedState: OnChainGameState, week
     player: updatedPlayer,
     map: finalMap,
     time: updatedTime,
+    totalMoves: confirmedState.totalMoves ?? state.totalMoves,
     wallHighlight: null,
   };
 }
@@ -1918,7 +1934,21 @@ function handleSyncCombatResult(
       player: updatedPlayer,
       map: { ...state.map, enemies: updatedEnemies },
       time: updatedTime,
+      totalMoves: confirmedState.totalMoves ?? state.totalMoves,
       combat: state.combat ? { ...state.combat, result: 'DEFEAT' } : null,
+    };
+  }
+
+  // Week 3 boss victory = final boss = game victory
+  if (state.phase === GamePhase.BossFight && updatedTime.week === 3 && result === 'VICTORY') {
+    return {
+      ...state,
+      phase: GamePhase.Victory,
+      player: updatedPlayer,
+      map: { ...state.map, enemies: updatedEnemies },
+      time: updatedTime,
+      totalMoves: confirmedState.totalMoves ?? state.totalMoves,
+      combat: null,
     };
   }
 
@@ -1928,6 +1958,7 @@ function handleSyncCombatResult(
     player: updatedPlayer,
     map: { ...state.map, enemies: updatedEnemies },
     time: updatedTime,
+    totalMoves: confirmedState.totalMoves ?? state.totalMoves,
     combat: null,
   };
 }

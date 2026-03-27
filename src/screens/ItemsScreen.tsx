@@ -350,9 +350,12 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
     }).start();
   }, []);
 
-  // Load pool and select first unlocked item on mount
+  // Select first unlocked item on mount only
+  const hasInitializedRef = useRef(false);
   useEffect(() => {
+    if (hasInitializedRef.current) return;
     const task = InteractionManager.runAfterInteractions(() => {
+      hasInitializedRef.current = true;
       loadDraftPoolFromProfile();
       const all = getAllItems();
       const firstUnlocked = all.find((item) => isItemUnlocked(item.id));
@@ -363,6 +366,12 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
       task.cancel();
     };
   }, [isItemUnlocked, loadDraftPoolFromProfile]);
+
+  // Reload draft pool when profile's active pool changes (e.g. after save)
+  useEffect(() => {
+    if (!hasInitializedRef.current) return;
+    loadDraftPoolFromProfile();
+  }, [loadDraftPoolFromProfile]);
 
   const checkItemUnlocked = useCallback(
     (id: string): boolean => isGuest || isItemUnlocked(id),

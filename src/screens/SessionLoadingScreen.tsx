@@ -125,7 +125,9 @@ export function SessionLoadingScreen({ route, navigation }: SessionLoadingScreen
     return () => clearInterval(interval);
   }, [flavorOpacity]);
 
-  // Await the session setup promise AND asset preloading with a safety timeout
+  // Await session setup with a safety timeout. Asset preloading runs in
+  // parallel but must not block navigation — a slow/hung image fetch should
+  // never produce a false "Session Timed Out" when on-chain setup succeeded.
   useEffect(() => {
     let cancelled = false;
     const promise = getSessionSetupPromise();
@@ -145,9 +147,14 @@ export function SessionLoadingScreen({ route, navigation }: SessionLoadingScreen
       }
     }, 60_000);
 
-    // Wait for BOTH session setup and asset preloading before navigating
-    Promise.all([promise, assetPreloadRef.current])
-      .then(() => {
+    // Session setup is the critical path; asset preload is best-effort.
+    promise
+      .then(async () => {
+        // Give assets a brief window to finish, but don't block on them.
+        await Promise.race([
+          assetPreloadRef.current,
+          new Promise<void>((r) => setTimeout(r, 3_000)),
+        ]).catch(() => {});
         if (!cancelled) {
           cancelled = true;
           clearTimeout(timeout);

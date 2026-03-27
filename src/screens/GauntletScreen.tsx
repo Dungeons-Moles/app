@@ -7,7 +7,6 @@ import {
   StyleSheet,
   Animated,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { CachedImageBackground } from '../components/common/CachedImageBackground';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -73,6 +72,8 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showSessionExistsModal, setShowSessionExistsModal] = useState(false);
   const [isEntryTransitioning, setIsEntryTransitioning] = useState(false);
+  const [showErrorModal, setShowErrorModal] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
   const [poolLamports, setPoolLamports] = useState<bigint | null>(null);
 
   // Reset transitioning state if user returns to this screen (e.g. Game screen navigated back)
@@ -86,13 +87,20 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
     prevIsFocusedRef.current = isFocused;
   }, [isFocused, gauntlet]);
 
-  // Show alert when gauntlet entry fails (e.g. VRF timeout)
+  // Show error modal when gauntlet entry fails (e.g. VRF timeout)
   useEffect(() => {
     if (gauntlet.phase === 'error' && gauntlet.error && gauntlet.error !== lastShownErrorRef.current) {
       lastShownErrorRef.current = gauntlet.error;
-      Alert.alert('Entry Failed', gauntlet.error);
+      setErrorMessage(gauntlet.error);
+      setShowErrorModal(true);
     }
   }, [gauntlet.phase, gauntlet.error]);
+
+  const handleDismissError = useCallback(() => {
+    setShowErrorModal(false);
+    lastShownErrorRef.current = null;
+    gauntlet.reset();
+  }, [gauntlet]);
 
   const hasExistingGauntletSession = hasExistingGauntletSessionOnChain;
 
@@ -212,13 +220,12 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
     });
     if (!overrideResult.success) {
       setIsEntryTransitioning(false);
+      const msg = overrideResult.error ?? 'Failed to override gauntlet session.';
       if (navigatedToLoading) {
-        rejectSessionSetup(overrideResult.error ?? 'Failed to override gauntlet session.');
+        rejectSessionSetup(msg);
       } else {
-        Alert.alert(
-          'Override Failed',
-          overrideResult.error ?? 'Failed to override gauntlet session.'
-        );
+        setErrorMessage(msg);
+        setShowErrorModal(true);
       }
       return;
     }
@@ -250,7 +257,12 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
   }, [navigation, playSfx]);
 
   useControllerAction(
-    showSessionExistsModal
+    showErrorModal
+      ? {
+          onA: handleDismissError,
+          onB: handleDismissError,
+        }
+      : showSessionExistsModal
       ? {
           onA: !isEntryTransitioning ? handleResumeExistingSession : undefined,
           onB: !isEntryTransitioning ? () => { playSfx('ui_back'); setShowSessionExistsModal(false); } : undefined,
@@ -588,6 +600,50 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
           </CachedImageBackground>
         </View>
       </InlineModal>
+      {/* Error Modal */}
+      <InlineModal
+        visible={showErrorModal}
+        transparent
+        animationType="fade"
+        onRequestClose={handleDismissError}
+      >
+        <View style={styles.modalOverlay}>
+          <CachedImageBackground
+            source={PAPER_PANEL}
+            resizeMode="stretch"
+            style={[styles.modalContent, isCompact && compactStyles.modalContent]}
+          >
+            <Text style={[styles.modalTitle, isCompact && compactStyles.modalTitle]}>
+              Request Failed
+            </Text>
+            <Text style={[styles.modalText, isCompact && compactStyles.modalText]}>
+              {errorMessage || 'The request failed, please try again.'}
+            </Text>
+            {isCompact ? (
+              <View style={compactStyles.modalHintRow}>
+                <View style={compactStyles.modalHintItem}>
+                  <Image
+                    source={iconASource}
+                    style={compactStyles.modalHintIcon}
+                    resizeMode="contain"
+                  />
+                  <Text style={compactStyles.modalHintLabel}>OK</Text>
+                </View>
+              </View>
+            ) : (
+              <TouchableOpacity onPress={handleDismissError}>
+                <CachedImageBackground
+                  source={buttonV4Source}
+                  resizeMode="stretch"
+                  style={styles.modalButtonBg}
+                >
+                  <Text style={styles.modalButtonTextPrimary}>OK</Text>
+                </CachedImageBackground>
+              </TouchableOpacity>
+            )}
+          </CachedImageBackground>
+        </View>
+      </InlineModal>
       <HubSettingsModal
         visible={showSettingsModal}
         onClose={() => setShowSettingsModal(false)}
@@ -878,7 +934,7 @@ const compactStyles = StyleSheet.create({
     marginBottom: 0,
   },
   modalContent: {
-    width: 860,
+    width: 700,
     padding: 50,
   },
   modalTitle: {

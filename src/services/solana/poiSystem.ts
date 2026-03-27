@@ -9,7 +9,6 @@
 import { PublicKey, Keypair, Transaction, ComputeBudgetProgram } from '@solana/web3.js';
 import type { Connection } from '@solana/web3.js';
 import { Program } from '@coral-xyz/anchor';
-import { Platform } from 'react-native';
 import { sendSessionSignerTransaction } from './sessionSigner';
 import {
   deriveInventoryPda,
@@ -58,12 +57,7 @@ export interface PoiTransactionContext {
 /** Builds CU limit instruction and sends a POI transaction via session signer. */
 async function sendPoiTx(ctx: PoiTransactionContext, transaction: Transaction): Promise<string> {
   transaction.add(ComputeBudgetProgram.setComputeUnitLimit({ units: POI_CU_LIMIT }));
-  // On mobile, fire-and-forget eliminates ~400ms HTTP round-trip latency.
-  // The signature is computed locally; the caller fetches updated state afterward,
-  // and by then the ER has already processed the TX (~10-50ms).
-  const isNative = Platform.OS !== 'web';
   return sendSessionSignerTransaction(ctx.connection, transaction, ctx.sessionSignerKeypair, {
-    fireAndForget: isNative,
     skipErConfirmation: true,
   });
 }

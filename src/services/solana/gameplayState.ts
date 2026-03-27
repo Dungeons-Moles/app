@@ -99,7 +99,7 @@ const MOVE_PATCH_SPECS = [
 /**
  * Pre-warm the optional-account existence caches for a session so the first
  * movePlayer call doesn't pay 3 sequential RPC round trips (~450ms).
- * Fire-and-forget — errors are silently swallowed.
+ * Fire-and-forget — RPC errors leave the cache unset so the next call retries.
  */
 export function warmMovePlayerCaches(
   connection: Connection,
@@ -117,22 +117,27 @@ export function warmMovePlayerCaches(
   const [gameplayVrfStatePda] = deriveGameplayVrfStatePda(sessionPda);
   const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
   const [gauntletEchoesPda] = deriveGauntletEchoesPda(sessionPda);
+  // Sentinel: a successful RPC read returns null for absent accounts.
+  // A failed RPC throws — we must NOT cache false on error.
+  const FETCH_ERROR = Symbol('fetch_error');
   Promise.all([
     vrfStateExistsCache.has(sessionKey) ? null :
       (program.account as any)?.gameplayVrfState
         ?.fetchNullable(gameplayVrfStatePda)
-        .catch(() => null)
-        .then((r: unknown) => vrfStateExistsCache.set(sessionKey, !!r)),
+        .catch(() => FETCH_ERROR)
+        .then((r: unknown) => { if (r !== FETCH_ERROR) vrfStateExistsCache.set(sessionKey, !!r); }),
     discoveryExistsCache.has(sessionKey) ? null :
       connection.getAccountInfo(sessionDiscoveryPda)
-        .catch(() => null)
-        .then((r: unknown) => discoveryExistsCache.set(sessionKey, !!r)),
+        .catch(() => FETCH_ERROR)
+        .then((r: unknown) => { if (r !== FETCH_ERROR) discoveryExistsCache.set(sessionKey, !!r); }),
     gauntletEchoesExistsCache.has(sessionKey) ? null :
       connection.getAccountInfo(gauntletEchoesPda)
-        .catch(() => null)
-        .then((info: { owner?: { toBase58?: () => string } } | null) => {
-          const isDelegated = (info as any)?.owner?.toBase58?.() === GAMEPLAY_STATE_PROGRAM_ID.toBase58();
-          gauntletEchoesExistsCache.set(sessionKey, !!info && isDelegated);
+        .catch(() => FETCH_ERROR)
+        .then((info: unknown) => {
+          if (info === FETCH_ERROR) return;
+          const typedInfo = info as { owner?: { toBase58?: () => string } } | null;
+          const isDelegated = typedInfo?.owner?.toBase58?.() === GAMEPLAY_STATE_PROGRAM_ID.toBase58();
+          gauntletEchoesExistsCache.set(sessionKey, !!typedInfo && isDelegated);
         }),
   ]).catch(() => {});
 }
@@ -228,7 +233,8 @@ export async function movePlayer(
   gameStatePda: PublicKey,
   sessionPda: PublicKey,
   sessionSignerKeypair: Keypair,
-  params: MovePlayerParams
+  params: MovePlayerParams,
+  options?: { onSendFail?: (err: Error) => void }
 ): Promise<{ signature: string; connection: Connection }> {
   const sessionKey = sessionPda.toBase58();
 
@@ -261,25 +267,30 @@ export async function movePlayer(
 
   if (!vrfCached || !discoveryCached || !gauntletCached) {
     console.log(`[perf]   cache MISS: vrf=${vrfCached} disc=${discoveryCached} gauntlet=${gauntletCached}`);
+    // Sentinel: distinguish "account absent" (null) from "RPC failed" so we
+    // don't permanently cache false on a transient network error.
+    const FETCH_ERROR = Symbol('fetch_error');
     const [vrfResult, discoveryResult, gauntletResult] = await Promise.all([
       vrfCached ? Promise.resolve(null) :
         (program.account as any)?.gameplayVrfState
           ?.fetchNullable(gameplayVrfStatePda)
-          .catch(() => null),
+          .catch(() => FETCH_ERROR),
       discoveryCached ? Promise.resolve(null) :
-        connection.getAccountInfo(sessionDiscoveryPda).catch(() => null),
+        connection.getAccountInfo(sessionDiscoveryPda).catch(() => FETCH_ERROR),
       gauntletCached ? Promise.resolve(null) :
         // Check if gauntlet_echoes exists AND is owned by gameplay_state (delegated).
         // The ER proxies base-chain reads, so a non-delegated account would return data
         // but cause InvalidWritableAccount when included as writable in an ER tx.
-        connection.getAccountInfo(gauntletEchoesPda).catch(() => null)
-          .then((info: { owner?: { toBase58?: () => string } } | null) =>
-            info?.owner?.toBase58?.() === GAMEPLAY_STATE_PROGRAM_ID.toBase58() ? info : null
-          ),
+        connection.getAccountInfo(gauntletEchoesPda).catch(() => FETCH_ERROR)
+          .then((info: unknown) => {
+            if (info === FETCH_ERROR) return FETCH_ERROR;
+            const typedInfo = info as { owner?: { toBase58?: () => string } } | null;
+            return typedInfo?.owner?.toBase58?.() === GAMEPLAY_STATE_PROGRAM_ID.toBase58() ? typedInfo : null;
+          }),
     ]);
-    if (!vrfCached) vrfStateExistsCache.set(sessionKey, !!vrfResult);
-    if (!discoveryCached) discoveryExistsCache.set(sessionKey, !!discoveryResult);
-    if (!gauntletCached) gauntletEchoesExistsCache.set(sessionKey, !!gauntletResult);
+    if (!vrfCached && vrfResult !== FETCH_ERROR) vrfStateExistsCache.set(sessionKey, !!vrfResult);
+    if (!discoveryCached && discoveryResult !== FETCH_ERROR) discoveryExistsCache.set(sessionKey, !!discoveryResult);
+    if (!gauntletCached && gauntletResult !== FETCH_ERROR) gauntletEchoesExistsCache.set(sessionKey, !!gauntletResult);
   }
 
   const vrfStateExists = vrfStateExistsCache.get(sessionKey)!;
@@ -387,6 +398,7 @@ export async function movePlayer(
       console.log('[perf] sendTransaction(bg): completed (router=true)');
     }).catch((err) => {
       console.error('[movePlayer] Background send failed:', err);
+      options?.onSendFail?.(err instanceof Error ? err : new Error(String(err)));
     });
 
     console.log(`[perf] sendTransaction: 0ms (templated, sign: ${tDone - tSign}ms, sig=${signature.slice(0, 8)}...)`);
@@ -440,6 +452,8 @@ export async function movePlayer(
 
   const signature = await sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair, {
     skipErConfirmation: true,
+    fireAndForget: true,
+    onSendFail: options?.onSendFail,
   });
 
   return { signature, connection };
@@ -823,6 +837,7 @@ export function clearMovePlayerCaches(sessionKey: string): void {
   discoveryExistsCache.delete(sessionKey);
   gauntletEchoesExistsCache.delete(sessionKey);
   pdaCache.delete(sessionKey);
+  moveTemplateCache.delete(sessionKey);
 }
 
 /**

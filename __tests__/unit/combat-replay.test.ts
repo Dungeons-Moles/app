@@ -78,6 +78,41 @@ function CombatProbe({
   return null;
 }
 
+function OnChainOutcomeProbe({
+  input,
+  onSnapshot,
+}: {
+  input: CombatResolverInput;
+  onSnapshot: (snapshot: {
+    result: string | null;
+    resolvedPlayerHp: number | null;
+    resolvedEnemyHp: number | null;
+    displayPlayerHp: number | null;
+    displayEnemyHp: number | null;
+  }) => void;
+}) {
+  const { state, displayStates, getResult, startCombatWithOnchainOutcome } = useCombat();
+
+  useEffect(() => {
+    startCombatWithOnchainOutcome(input, {
+      finalPlayerHp: 18,
+      playerWon: true,
+    });
+  }, [input, startCombatWithOnchainOutcome]);
+
+  useEffect(() => {
+    onSnapshot({
+      result: getResult(),
+      resolvedPlayerHp: state.resolvedCombat?.player.hp ?? null,
+      resolvedEnemyHp: state.resolvedCombat?.enemy.hp ?? null,
+      displayPlayerHp: displayStates.player?.hp ?? null,
+      displayEnemyHp: displayStates.enemy?.hp ?? null,
+    });
+  }, [displayStates, getResult, onSnapshot, state.resolvedCombat]);
+
+  return null;
+}
+
 describe('Combat replay', () => {
   let consoleErrorSpy: jest.SpyInstance;
   let consoleLogSpy: jest.SpyInstance;
@@ -192,6 +227,60 @@ describe('Combat replay', () => {
     expect(shrapnelEntries[1]).toMatchObject({
       enemyHp: 18,
       playerShrapnel: 1,
+    });
+
+    act(() => {
+      renderer?.unmount();
+    });
+  });
+
+  it('uses authoritative on-chain HP in fallback replay state when local parity differs', () => {
+    const snapshots: Array<{
+      result: string | null;
+      resolvedPlayerHp: number | null;
+      resolvedEnemyHp: number | null;
+      displayPlayerHp: number | null;
+      displayEnemyHp: number | null;
+    }> = [];
+    let renderer: { unmount: () => void } | null = null;
+
+    const input: CombatResolverInput = {
+      player: buildCombatant('Player', true, 'player', 20, 2),
+      enemy: {
+        ...buildCombatant('Frost Wisp', false, 'FROST_WISP', 7, 1),
+        spd: 4,
+      },
+      seed: 1337,
+      enemyId: 'FROST_WISP' as any,
+      enemyDefinitionId: 'FROST_WISP',
+      enemyTier: 1,
+      goldReward: 2,
+      playerTool: createToolInstance('T3'),
+      playerGear: [createGearInstance('I10', 'COMMON')],
+      activeItemSets: [],
+      playerGold: 0,
+    };
+
+    act(() => {
+      renderer = TestRenderer.create(
+        React.createElement(
+          CombatProvider,
+          {
+            initialSpeed: 'paused',
+            children: React.createElement(OnChainOutcomeProbe, {
+              input,
+              onSnapshot: (snapshot) => snapshots.push(snapshot),
+            }),
+          },
+        )
+      );
+    });
+
+    const latest = snapshots.at(-1);
+    expect(latest).toMatchObject({
+      result: 'VICTORY',
+      resolvedPlayerHp: 18,
+      displayPlayerHp: 20,
     });
 
     act(() => {

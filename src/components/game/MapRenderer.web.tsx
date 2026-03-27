@@ -563,7 +563,7 @@ export const MapRenderer = memo(function MapRenderer({
 
   return (
     <View style={styles.container} onLayout={handleLayout} {...panResponder.panHandlers}>
-      <View style={styles.tileLayer}>
+      <View style={styles.tileLayer} pointerEvents="none">
         <View style={[styles.cameraTranslateLayer, { transform: cameraTransform }]}>
           {visibleRows.map((y) => (
             <TileRow
@@ -657,6 +657,8 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'transparent',
     position: 'relative',
+    // @ts-ignore - web-only: prevent native image drag from stealing pan gestures
+    userSelect: 'none',
   },
   tileLayer: {
     ...StyleSheet.absoluteFillObject,

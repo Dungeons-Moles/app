@@ -251,6 +251,10 @@ let _validatorKeypair: Keypair | null = null;
 
 function getValidatorKeypair(): Keypair | null {
   if (_validatorKeypair) return _validatorKeypair;
+  // Only read the env var in dev builds against a local validator.
+  // In production, EXPO_PUBLIC_ values are inlined into the JS bundle —
+  // reading a private key here would ship it to every client.
+  if (!__DEV__ || !SOLANA_CONFIG.isLocalValidator) return null;
   const b64 = process.env.EXPO_PUBLIC_ER_VALIDATOR_KEYPAIR;
   if (!b64) return null;
   try {

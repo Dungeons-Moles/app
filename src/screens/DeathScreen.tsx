@@ -87,9 +87,15 @@ export function DeathScreen({ navigation, route }: DeathScreenProps) {
     { button: 'B', label: 'Return to Hub' },
   ];
 
+  const formatEnemyName = (id: string): string =>
+    id
+      .split(/[_\-\s]+/)
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+      .join(' ');
+
   // Determine death cause description
   const getDeathCause = (): string => {
-    if (killedBy) return killedBy;
+    if (killedBy) return formatEnemyName(killedBy);
     if (replay?.isBoss) {
       return `Slain by Week ${replay.bossIntro?.week ?? '?'} Boss`;
     }

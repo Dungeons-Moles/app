@@ -102,6 +102,18 @@ if (
   throw new Error('Missing required Solana program IDs in environment variables');
 }
 
+/**
+ * Derive a WebSocket URL from an RPC endpoint.
+ * If the endpoint matches the configured direct ER RPC URL, returns the
+ * configured ER WS URL (handles cases where ports differ, e.g. localnet).
+ */
+export function deriveErWsEndpoint(rpcEndpoint: string): string {
+  const normalized = rpcEndpoint.replace(/\/+$/, '');
+  const normalizedDirect = (directErRpcUrl ?? '').replace(/\/+$/, '');
+  if (normalized === normalizedDirect) return directErWsUrl;
+  return rpcEndpoint.replace(/^https:\/\//, 'wss://').replace(/^http:\/\//, 'ws://');
+}
+
 export const SOLANA_CONFIG = {
   cluster,
   mobileChain: `solana:${cluster}` as `solana:${typeof cluster}`,

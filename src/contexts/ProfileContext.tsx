@@ -77,7 +77,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
   const [isInitialLoadComplete, setIsInitialLoadComplete] = useState(false);
   const [localUnlockedIndices, setLocalUnlockedIndices] = useState<Set<number>>(new Set());
   const [defaultCombatSpeed, setDefaultCombatSpeed] = useState<CombatSpeed>('normal');
-  const hasFetchedRef = useRef(false);
+  const fetchedForWalletRef = useRef<string | null>(null);
   const fetchProfileRef = useRef(profileApi.fetchProfile);
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
 
@@ -158,18 +158,18 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       if (!wallet.address) {
         if (isMounted) {
           setMode('guest');
-          hasFetchedRef.current = false;
+          fetchedForWalletRef.current = null;
           setIsInitialLoadComplete(true);
         }
         return;
       }
 
       // Prevent duplicate fetches for the same wallet
-      if (hasFetchedRef.current) {
+      if (fetchedForWalletRef.current === wallet.address) {
         if (isMounted) setIsInitialLoadComplete(true);
         return;
       }
-      hasFetchedRef.current = true;
+      fetchedForWalletRef.current = wallet.address;
 
       if (isMounted) setIsInitialLoadComplete(false);
 
@@ -202,7 +202,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     setError(null);
     const result = await profileApi.resetProfile();
     if (result.success) {
-      hasFetchedRef.current = false;
+      fetchedForWalletRef.current = null;
       setMode('online');
     }
     return result;

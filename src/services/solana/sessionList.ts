@@ -13,6 +13,8 @@ import {
   SESSION_MANAGER_PROGRAM_ID,
   GAMEPLAY_STATE_PROGRAM_ID,
   deriveSessionPda,
+  deriveDuelSessionPda,
+  deriveGauntletSessionPda,
   deriveGameStatePda,
   deriveMapPoisPda,
   deriveInventoryPda,
@@ -52,11 +54,15 @@ async function hasCompatibleSessionRuntime(
 /**
  * Active session summary for list display.
  */
+export type SessionType = 'campaign' | 'duel' | 'gauntlet';
+
 export interface ActiveSession {
   /** Session PDA as base58 string */
   sessionPda: string;
-  /** Campaign level (1-40) */
+  /** Campaign level (1-40 for campaign, 20 for duel/gauntlet) */
   level: number;
+  /** Session type */
+  sessionType: SessionType;
   /** Current week (1-3) */
   week: number;
   /** Current phase (0-5) */
@@ -157,13 +163,13 @@ export interface InventoryItem {
 // ============================================================================
 
 /**
- * Fetch all active sessions for a player.
+ * Fetch all active sessions for a player (campaign, duel, and gauntlet).
  *
  * @param connection - Solana connection
  * @param sessionProgram - Session manager program
  * @param gameplayProgram - Gameplay state program
  * @param playerPubkey - Player's main wallet
- * @param campaignNonce - Current campaign nonce from SessionNonces (default 0)
+ * @param nonces - Session nonces (campaign, duel, gauntlet). Defaults to 0 for all.
  * @returns Array of active sessions sorted by level
  */
 export async function fetchSessionList(
@@ -171,22 +177,31 @@ export async function fetchSessionList(
   sessionProgram: Program,
   gameplayProgram: Program,
   playerPubkey: PublicKey,
-  campaignNonce: bigint | number = 0
+  nonces: { campaign?: bigint | number; duel?: bigint | number; gauntlet?: bigint | number } = {}
 ): Promise<ActiveSession[]> {
   const sessions: ActiveSession[] = [];
-  const candidatePdas: PublicKey[] = [];
+
+  // Build candidate list: 40 campaign levels + 1 duel + 1 gauntlet
+  const candidates: { pda: PublicKey; level: number; sessionType: SessionType }[] = [];
+  const campaignNonce = nonces.campaign ?? 0;
   for (let onChainLevel = 1; onChainLevel <= 40; onChainLevel += 1) {
     const [sessionPda] = deriveSessionPda(playerPubkey, onChainLevel, campaignNonce);
-    candidatePdas.push(sessionPda);
+    candidates.push({ pda: sessionPda, level: onChainLevel - 1, sessionType: 'campaign' });
   }
+  const [duelPda] = deriveDuelSessionPda(playerPubkey, nonces.duel ?? 0);
+  candidates.push({ pda: duelPda, level: 19, sessionType: 'duel' }); // level 20 on-chain → 19 frontend
+  const [gauntletPda] = deriveGauntletSessionPda(playerPubkey, nonces.gauntlet ?? 0);
+  candidates.push({ pda: gauntletPda, level: 19, sessionType: 'gauntlet' });
 
   // NOTE: cannot rely on getProgramAccounts(session-manager) because delegated sessions
   // are owned by the delegation program while active.
-  const candidateAccounts = await connection.getMultipleAccountsInfo(candidatePdas);
+  const candidateAccounts = await connection.getMultipleAccountsInfo(
+    candidates.map((c) => c.pda)
+  );
 
   for (let i = 0; i < candidateAccounts.length; i += 1) {
     const account = candidateAccounts[i];
-    const pubkey = candidatePdas[i];
+    const { pda: pubkey, level, sessionType } = candidates[i];
     if (!account) {
       continue;
     }
@@ -209,13 +224,12 @@ export async function fetchSessionList(
       continue;
     }
 
-    const decodedLevel = i + 1; // deterministic from PDA seed, avoids coder decode edge-cases
-
     try {
       const gameState = gameplayProgram.coder.accounts.decode('gameState', gameStateAccount.data);
       sessions.push({
         sessionPda: pubkey.toBase58(),
-        level: decodedLevel - 1, // Convert 1-indexed on-chain to 0-indexed frontend
+        level,
+        sessionType,
         week: gameState.week,
         phase: gameState.phase,
         positionX: gameState.positionX,
@@ -227,7 +241,8 @@ export async function fetchSessionList(
       // Keep session visible/resumable even if game_state decode fails transiently.
       sessions.push({
         sessionPda: pubkey.toBase58(),
-        level: decodedLevel - 1,
+        level,
+        sessionType,
         week: 1,
         phase: 0,
         positionX: 0,
@@ -243,7 +258,7 @@ export async function fetchSessionList(
     }
   }
 
-  // Sort by level ascending
+  // Sort by level ascending, then by session type
   return sessions.sort((a, b) => a.level - b.level);
 }
 

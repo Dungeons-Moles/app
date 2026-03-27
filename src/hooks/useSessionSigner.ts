@@ -97,8 +97,14 @@ export function useSessionSigner(): UseSessionSignerReturn {
     };
   }, []);
 
-  // Auto-load persisted session signer on mount / wallet change
+  // Auto-load persisted session signer on mount / wallet change.
+  // Clear stale keypair/balance when wallet changes so state from the
+  // previous wallet never leaks into the new one.
   useEffect(() => {
+    // Reset immediately — async load below may restore them for the new wallet.
+    setKeypair(null);
+    setBalance(0);
+
     if (!walletAddress) return;
     let cancelled = false;
     (async () => {

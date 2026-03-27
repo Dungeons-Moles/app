@@ -1,5 +1,5 @@
 import type { BossId, BossSelectionMode, GuestDifficultyId } from './types';
-import { BOSS_POOLS, getActForCampaignLevel } from './constants';
+import { BOSS_POOLS_BY_BIOME, getActForCampaignLevel } from './constants';
 import type { SeededRNG } from './rng';
 import { selectWeekBossForLevel } from '../time/progression';
 
@@ -25,7 +25,8 @@ export function selectBossForRun(
     return selectWeekBossForLevel(campaignLevel, week);
   }
 
-  return rng.pick(BOSS_POOLS[week]);
+  const biome = getBiomeForCampaignLevel(campaignLevel);
+  return rng.pick(BOSS_POOLS_BY_BIOME[biome][week]);
 }
 
 export function getBiomeForCampaignLevel(campaignLevel: number): 'A' | 'B' {

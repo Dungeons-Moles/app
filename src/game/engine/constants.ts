@@ -128,12 +128,22 @@ export const RARITY_MULTIPLIER: Record<ItemRarity, number> = {
 // Boss Pools
 // ============================================================================
 
-// Boss pools by week - Biome A for now (can expand to biome selection later)
-export const BOSS_POOLS: Record<1 | 2 | 3, BossId[]> = {
-  1: ['B-A-W1-01', 'B-A-W1-02', 'B-A-W1-03', 'B-A-W1-04', 'B-A-W1-05'],
-  2: ['B-A-W2-01', 'B-A-W2-02', 'B-A-W2-03', 'B-A-W2-04', 'B-A-W2-05'],
-  3: ['B-A-W3-01', 'B-A-W3-02'],
+// Boss pools by week and biome
+export const BOSS_POOLS_BY_BIOME: Record<'A' | 'B', Record<1 | 2 | 3, BossId[]>> = {
+  A: {
+    1: ['B-A-W1-01', 'B-A-W1-02', 'B-A-W1-03', 'B-A-W1-04', 'B-A-W1-05'],
+    2: ['B-A-W2-01', 'B-A-W2-02', 'B-A-W2-03', 'B-A-W2-04', 'B-A-W2-05'],
+    3: ['B-A-W3-01', 'B-A-W3-02'],
+  },
+  B: {
+    1: ['B-B-W1-01', 'B-B-W1-02', 'B-B-W1-03', 'B-B-W1-04', 'B-B-W1-05'],
+    2: ['B-B-W2-01', 'B-B-W2-02', 'B-B-W2-03', 'B-B-W2-04', 'B-B-W2-05'],
+    3: ['B-B-W3-01', 'B-B-W3-02'],
+  },
 };
+
+// Flat biome-A pools for backwards compatibility
+export const BOSS_POOLS: Record<1 | 2 | 3, BossId[]> = BOSS_POOLS_BY_BIOME.A;
 
 // ============================================================================
 // Wall Break

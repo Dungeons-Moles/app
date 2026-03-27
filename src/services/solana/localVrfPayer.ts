@@ -20,7 +20,10 @@ const loadFromEnv = (value: string | undefined): Keypair | null => {
  * applies outside localhost mode.
  */
 export const getLocalVrfPayerKeypair = (): Keypair | null => {
-  if (!SOLANA_CONFIG.isLocalValidator) return null;
+  // Only available in dev builds against a local validator.
+  // EXPO_PUBLIC_ values are inlined into the bundle — reading private keys
+  // outside __DEV__ would ship them to every client.
+  if (!__DEV__ || !SOLANA_CONFIG.isLocalValidator) return null;
   if (_localVrfPayer !== undefined) return _localVrfPayer;
 
   const explicit = loadFromEnv(process.env.EXPO_PUBLIC_LOCAL_VRF_PAYER_KEYPAIR);

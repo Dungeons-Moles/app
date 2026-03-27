@@ -43,7 +43,7 @@ import {
   deriveGameplayVrfStatePda,
   deriveGauntletEchoesPda,
 } from '@/services/solana/constants';
-import { SOLANA_CONFIG } from '@/services/solana/config';
+import { SOLANA_CONFIG, deriveErWsEndpoint } from '@/services/solana/config';
 import {
   createMapGeneratorProgram,
   createSessionManagerProgram,
@@ -398,6 +398,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const getStateHashRef = useRef<(() => number[]) | null>(null);
   const vrfReadySessionsRef = useRef<Set<string>>(new Set());
   const forceAbandonCurrentSessionRef = useRef<(() => Promise<TransactionResult>) | null>(null);
+  // Tracks in-flight session teardown so new session starts wait for cleanup to finish.
+  const pendingTeardownRef = useRef<Promise<TransactionResult> | null>(null);
   const directErConnection = useMemo(
     () =>
       new Connection(DIRECT_ER_RPC_URL, {
@@ -540,9 +542,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
               }
               const directValidatorConnection = new Connection(delegation.fqdn, {
                 commitment: SOLANA_CONFIG.erCommitment,
-                wsEndpoint: delegation.fqdn
-                  .replace(/^https:\/\//, 'wss://')
-                  .replace(/^http:\/\//, 'ws://'),
+                wsEndpoint: deriveErWsEndpoint(delegation.fqdn),
               });
               const directLatest = await directValidatorConnection.getLatestBlockhash('confirmed');
               tx.feePayer = signerKeypair.publicKey;
@@ -852,7 +852,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         if (!status?.fqdn) return null;
         return new Connection(status.fqdn, {
           commitment: SOLANA_CONFIG.erCommitment,
-          wsEndpoint: status.fqdn.replace(/^https:\/\//, 'wss://').replace(/^http:\/\//, 'ws://'),
+          wsEndpoint: deriveErWsEndpoint(status.fqdn),
         });
       } catch {
         return null;
@@ -991,8 +991,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const [mapVrfPda] = deriveMapVrfStatePda(sessionPda);
       const info = await connection.getAccountInfo(mapVrfPda, 'confirmed');
       if (!info || info.data.length < 48) {
-        console.warn('[SessionContext] readMapVrfSeedFromBase: VRF state not found, using fallback seed');
-        return BigInt(Date.now());
+        throw new Error('Map VRF state not found or not yet fulfilled on base layer');
       }
       // Extract first 8 bytes of randomness (offset 40 = 8 discriminator + 32 session) as u64 LE
       const buf = info.data.slice(40, 48);
@@ -1058,7 +1057,18 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           tx.add(...gameplayVrfTx.instructions);
         }
 
-        await sendSessionSignerTransaction(connection, tx, localPayer);
+        try {
+          await sendSessionSignerTransaction(connection, tx, localPayer);
+        } catch (sendErr) {
+          // VRF already fulfilled from a previous session attempt — treat as success.
+          const errMsg = sendErr instanceof Error ? sendErr.message : String(sendErr);
+          if (errMsg.includes('VrfAlreadyFulfilled') || errMsg.includes('0x1799')) {
+            console.log(`[SessionContext] requestBaseLayerVrf: ${label} already fulfilled, skipping`);
+            vrfReadySessionsRef.current.add(sessionPda.toBase58());
+            return { success: true };
+          }
+          throw sendErr;
+        }
         console.log(`[SessionContext] requestBaseLayerVrf: ${label} requested, waiting for oracle...`);
 
         const waitPromises: Promise<boolean>[] = [];
@@ -1881,6 +1891,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         currentLevel: profile?.currentLevel,
       });
 
+      // Wait for any in-flight teardown from a previous session before creating a new one.
+      if (pendingTeardownRef.current) {
+        console.log('[SessionContext] Waiting for previous session teardown to complete...');
+        await pendingTeardownRef.current.catch(() => {});
+        pendingTeardownRef.current = null;
+      }
+
       // Validate player has available runs
       if (profile && profile.availableRuns <= 0) {
         console.log('[SessionContext] No available runs');
@@ -2334,6 +2351,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           campaignVrfToDelegate = undefined;
         } else if (poiVrfInfo) {
           console.log('[SessionContext] Step 6b: POI VRF already exists, skipping init');
+          // Check if VRF is already fulfilled (leftover from a previous session at the same PDA).
+          // If so, skip the request entirely — the fulfilled data is still valid.
+          const vrfStatus = poiVrfInfo.data.length > VRF_STATUS_OFFSET
+            ? poiVrfInfo.data[VRF_STATUS_OFFSET]
+            : null;
+          if (vrfStatus === 2) { // 2 = Fulfilled
+            console.log('[SessionContext] Step 6b: POI VRF already fulfilled, skipping request');
+            vrfReadySessionsRef.current.add(sessionPda.toBase58());
+            campaignVrfToDelegate = undefined;
+          }
         } else {
           try {
             const basePoiSysProg = createPoiSystemProgram(connection);
@@ -2453,9 +2480,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         setResolvedErEndpoint(signerResult.endpoint);
         resolvedConn = new Connection(signerResult.endpoint, {
           commitment: SOLANA_CONFIG.erCommitment,
-          wsEndpoint: signerResult.endpoint
-            .replace(/^https:\/\//, 'wss://')
-            .replace(/^http:\/\//, 'ws://'),
+          wsEndpoint: deriveErWsEndpoint(signerResult.endpoint),
         });
       }
 
@@ -2590,12 +2615,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           ComputeBudgetProgram.setComputeUnitLimit({ units: ER_SYNC_MAP_ENEMIES_CU_LIMIT }),
           ...syncTx.instructions
         );
-        await sendErInitTransactionWithRetry(
-          'startGame:sync_map_enemies',
-          syncWithBudgetTx,
-          newSessionSignerKeypair,
-          sessionPda
-        );
 
         // Discover POIs near spawn so they appear immediately
         const discoverPoisIx = await buildDiscoverSpawnPoisInstruction(
@@ -2607,6 +2626,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         const discoverPoisTx = new Transaction().add(
           ComputeBudgetProgram.setComputeUnitLimit({ units: ER_SYNC_MAP_ENEMIES_CU_LIMIT }),
           discoverPoisIx
+        );
+
+        await sendErInitTransactionWithRetry(
+          'startGame:sync_map_enemies',
+          syncWithBudgetTx,
+          newSessionSignerKeypair,
+          sessionPda
         );
         await sendErInitTransactionWithRetry(
           'startGame:discover_spawn_pois',
@@ -2677,6 +2703,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const startDuelGame = useCallback(async (onCommitted?: () => void): Promise<TransactionResult> => {
     console.log('[SessionContext] startDuelGame called');
+
+    if (pendingTeardownRef.current) {
+      console.log('[SessionContext] Waiting for previous session teardown to complete...');
+      await pendingTeardownRef.current.catch(() => {});
+      pendingTeardownRef.current = null;
+    }
 
     if (!wallet.publicKey) {
       return { success: false, error: 'Wallet not connected' };
@@ -3005,12 +3037,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           ComputeBudgetProgram.setComputeUnitLimit({ units: ER_SYNC_MAP_ENEMIES_CU_LIMIT }),
           ...syncTx.instructions
         );
-        await sendErInitTransactionWithRetry(
-          'startDuelGame:sync_map_enemies',
-          syncWithBudgetTx,
-          newSessionSignerKeypair,
-          sessionPda
-        );
 
         // Discover POIs near spawn so they appear immediately
         const discoverPoisIx = await buildDiscoverSpawnPoisInstruction(
@@ -3022,6 +3048,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         const discoverPoisTx = new Transaction().add(
           ComputeBudgetProgram.setComputeUnitLimit({ units: ER_SYNC_MAP_ENEMIES_CU_LIMIT }),
           discoverPoisIx
+        );
+
+        await sendErInitTransactionWithRetry(
+          'startDuelGame:sync_map_enemies',
+          syncWithBudgetTx,
+          newSessionSignerKeypair,
+          sessionPda
         );
         await sendErInitTransactionWithRetry(
           'startDuelGame:discover_spawn_pois',
@@ -3074,6 +3107,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const startGauntletGame = useCallback(async (onCommitted?: () => void): Promise<TransactionResult> => {
     console.log('[SessionContext] startGauntletGame called');
+
+    if (pendingTeardownRef.current) {
+      console.log('[SessionContext] Waiting for previous session teardown to complete...');
+      await pendingTeardownRef.current.catch(() => {});
+      pendingTeardownRef.current = null;
+    }
 
     if (!wallet.publicKey) {
       return { success: false, error: 'Wallet not connected' };
@@ -3432,12 +3471,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           ComputeBudgetProgram.setComputeUnitLimit({ units: ER_SYNC_MAP_ENEMIES_CU_LIMIT }),
           ...syncTx.instructions
         );
-        await sendErInitTransactionWithRetry(
-          'startGauntletGame:sync_map_enemies',
-          syncWithBudgetTx,
-          newSessionSignerKeypair,
-          sessionPda
-        );
 
         // Discover POIs near spawn so they appear immediately
         const discoverPoisIx = await buildDiscoverSpawnPoisInstruction(
@@ -3449,6 +3482,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         const discoverPoisTx = new Transaction().add(
           ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
           discoverPoisIx
+        );
+
+        await sendErInitTransactionWithRetry(
+          'startGauntletGame:sync_map_enemies',
+          syncWithBudgetTx,
+          newSessionSignerKeypair,
+          sessionPda
         );
         await sendErInitTransactionWithRetry(
           'startGauntletGame:discover_spawn_pois',
@@ -3587,8 +3627,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
    * Called automatically after combat ends in death or final victory.
    * The program validates that game_state.is_dead or game_state.completed is true.
    */
-  const endSessionWithSessionSigner = useCallback(async (): Promise<TransactionResult> => {
+  const endSessionWithSessionSignerInner = useCallback(async (): Promise<TransactionResult> => {
     console.log('[SessionContext] Ending session with session key signer...');
+    let settleSignature: string | undefined;
     await sessionManager.fetchSession();
     const endNonces = wallet.publicKey
       ? await sessionManager.fetchSessionNonces(wallet.publicKey)
@@ -3644,15 +3685,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       (info) => info && info.owner.equals(DELEGATION_PROGRAM_ID)
     );
 
-    // Settle result as early as possible once session account is back on base layer.
-    // This is idempotent on-chain and guarantees rewards/progression even if close fails later.
-    if (sessionOwnedByProgram) {
+    // Settlement is handled after undelegation completes (or by end_session via CPI).
+    // For the common delegated case, we skip the early settle to save a TX round-trip.
+    // For the non-delegated case (session already on base), settle now to capture the
+    // settleSignature for ItemUnlocked event parsing.
+    if (sessionOwnedByProgram && !anyChildDelegated) {
       const settleResult = await sessionManager.settleSessionResult(cleanupSigner);
-      if (!settleResult.success) {
-        console.warn(
-          '[SessionContext] settleSessionResult failed (will continue cleanup):',
-          settleResult.error
-        );
+      if (settleResult.success && settleResult.signature) {
+        settleSignature = settleResult.signature;
       }
     }
 
@@ -3674,7 +3714,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           if (forceCloseResult.success) {
             setUseErForGameplay(false);
             removeSessionFromActiveList(sessionPda, currentOnChainLevel);
-            return forceCloseResult;
+            return forceCloseResult.signature
+              ? { ...forceCloseResult, settleSignature: forceCloseResult.signature }
+              : forceCloseResult;
           }
           console.warn(
             '[SessionContext] forceCloseSession failed; trying closeSessionOnly last-resort'
@@ -3683,7 +3725,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           if (closeOnlyResult.success) {
             setUseErForGameplay(false);
             removeSessionFromActiveList(sessionPda, currentOnChainLevel);
-            return closeOnlyResult;
+            return closeOnlyResult.signature
+              ? { ...closeOnlyResult, settleSignature: closeOnlyResult.signature }
+              : closeOnlyResult;
           }
         }
         return {
@@ -3748,7 +3792,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           if (forceCloseResult.success) {
             setUseErForGameplay(false);
             removeSessionFromActiveList(sessionPda, currentOnChainLevel);
-            return forceCloseResult;
+            return forceCloseResult.signature
+              ? { ...forceCloseResult, settleSignature: forceCloseResult.signature }
+              : forceCloseResult;
           }
           console.warn(
             '[SessionContext] forceCloseSession failed; trying closeSessionOnly last-resort'
@@ -3757,7 +3803,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           if (closeOnlyResult.success) {
             setUseErForGameplay(false);
             removeSessionFromActiveList(sessionPda, currentOnChainLevel);
-            return closeOnlyResult;
+            return closeOnlyResult.signature
+              ? { ...closeOnlyResult, settleSignature: closeOnlyResult.signature }
+              : closeOnlyResult;
           }
         }
         return {
@@ -3766,10 +3814,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         };
       }
 
-      // Session ownership is restored now, so retry settlement if the early attempt
-      // could not run while the session account was still delegated.
+      // Session ownership is restored now — settle to capture the settleSignature
+      // for ItemUnlocked event parsing. end_session also settles via CPI as fallback.
       const settleAfterUndelegate = await sessionManager.settleSessionResult(cleanupSigner);
-      if (!settleAfterUndelegate.success) {
+      if (settleAfterUndelegate.success && settleAfterUndelegate.signature) {
+        settleSignature = settleAfterUndelegate.signature;
+      } else if (!settleAfterUndelegate.success) {
         console.warn(
           '[SessionContext] settleSessionResult after undelegate failed (will continue cleanup):',
           settleAfterUndelegate.error
@@ -3806,6 +3856,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
     // End the session on-chain (only session signer signs)
     let result = await sessionManager.endSession(cleanupSigner);
+    // If settle didn't capture the signature, end_session may have done the unlock.
+    if (!settleSignature && result.success && result.signature) {
+      settleSignature = result.signature;
+    }
 
     // If endSession fails, try forceCloseSession as fallback (handles non-terminal
     // abandoned sessions, partially delegated children, etc.)
@@ -3817,6 +3871,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const forceResult = await sessionManager.forceCloseSession(cleanupSigner);
       if (forceResult.success) {
         result = forceResult;
+        if (!settleSignature && forceResult.signature) {
+          settleSignature = forceResult.signature;
+        }
       } else {
         console.warn(
           '[SessionContext] forceCloseSession failed; trying closeSessionOnly last-resort'
@@ -3824,6 +3881,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         const closeOnlyResult = await sessionManager.closeSessionOnly(cleanupSigner);
         if (closeOnlyResult.success) {
           result = closeOnlyResult;
+          if (!settleSignature && closeOnlyResult.signature) {
+            settleSignature = closeOnlyResult.signature;
+          }
         }
       }
     }
@@ -3873,7 +3933,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setUseErForGameplay(false);
     }
 
-    return result;
+    return settleSignature ? { ...result, settleSignature } : result;
   }, [
     sessionSigner,
     getFallbackStateHash,
@@ -3887,6 +3947,19 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     resolveSessionSignerForSession,
     removeSessionFromActiveList,
   ]);
+
+  // Wrapper that tracks the teardown promise so new sessions wait for cleanup.
+  const endSessionWithSessionSigner = useCallback((): Promise<TransactionResult> => {
+    const promise = endSessionWithSessionSignerInner();
+    pendingTeardownRef.current = promise;
+    // Clear ref when done (success or failure)
+    void promise.finally(() => {
+      if (pendingTeardownRef.current === promise) {
+        pendingTeardownRef.current = null;
+      }
+    });
+    return promise;
+  }, [endSessionWithSessionSignerInner]);
 
   /**
    * Undelegate the current session from the rollup back to base chain.
@@ -4258,7 +4331,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         sessionProgram,
         gameplayProgram,
         wallet.publicKey,
-        nonces.campaign
+        { campaign: nonces.campaign, duel: nonces.duel, gauntlet: nonces.gauntlet }
       ).catch(() => []);
       setActiveSessions(sessions);
     } catch (error) {
@@ -4499,9 +4572,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         setResolvedErEndpoint(signerResult.endpoint);
         resolvedConn = new Connection(signerResult.endpoint, {
           commitment: SOLANA_CONFIG.erCommitment,
-          wsEndpoint: signerResult.endpoint
-            .replace(/^https:\/\//, 'wss://')
-            .replace(/^http:\/\//, 'ws://'),
+          wsEndpoint: deriveErWsEndpoint(signerResult.endpoint),
         });
       }
 
@@ -5672,6 +5743,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       return;
     }
     cleanupProcessingRef.current = true;
+    let resolveCleanupGate: (() => void) | null = null;
+    let cleanupGate: Promise<TransactionResult> | null = null;
 
     console.log('[SessionContext] processPendingCleanups:start', {
       walletId,
@@ -5709,7 +5782,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           sessionProgram,
           gameplayProgramBase,
           wallet.publicKey,
-          cleanupNonces.campaign
+          { campaign: cleanupNonces.campaign, duel: cleanupNonces.duel, gauntlet: cleanupNonces.gauntlet }
         );
         console.log('[SessionContext] processPendingCleanups:session_scan_count', sessions.length);
 
@@ -5818,8 +5891,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         }
 
         // Scan duel and gauntlet session PDAs for stale finished sessions.
-        // fetchSessionList only checks campaign levels 1-40 — duel/gauntlet
-        // sessions use fixed PDAs and would never be discovered otherwise.
+        // fetchSessionList now includes duel/gauntlet, but this extra scan
+        // provides additional cleanup logic (delegation-aware ER state check).
         const extraPdas: Array<{
           pda: PublicKey;
           sessionType: 'duel' | 'gauntlet';
@@ -5958,6 +6031,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
 
       console.log('[SessionContext] Processing pending cleanups:', pending.length);
+
+      // Track cleanup so new session starts wait for it to finish.
+      cleanupGate = new Promise<TransactionResult>((resolve) => {
+        resolveCleanupGate = () => resolve({ success: true });
+      });
+      if (!pendingTeardownRef.current) {
+        pendingTeardownRef.current = cleanupGate;
+      }
 
       for (const cleanup of pending) {
         try {
@@ -6359,6 +6440,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       console.log('[SessionContext] processPendingCleanups:done_remaining', remaining.length);
     } finally {
       cleanupProcessingRef.current = false;
+      // Release any waiting session starts.
+      if (resolveCleanupGate) resolveCleanupGate();
+      if (pendingTeardownRef.current === cleanupGate) {
+        pendingTeardownRef.current = null;
+      }
     }
   }, [
     walletId,

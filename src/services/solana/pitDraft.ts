@@ -14,6 +14,7 @@ import { SOLANA_CONFIG } from './config';
 import {
   GAMEPLAY_STATE_PROGRAM_ID,
   derivePlayerProfilePda,
+  derivePitDraftVrfStatePda,
 } from './constants';
 import { toolToFrontend, gearToFrontend } from '@/data/id-mapping';
 import type { Tool, Gear, ToolOil } from '@/game/engine/types';
@@ -38,6 +39,8 @@ const TOOL_OIL_FLAG_SPD = 0x02;
 const TOOL_OIL_FLAG_DIG = 0x04;
 const TOOL_OIL_FLAG_ARM = 0x08;
 const PIT_DRAFT_MAX_START_GOLD = 30;
+/** SOL funded to the temp keypair for background VRF TX fees. */
+const PIT_DRAFT_VRF_TEMP_FUND_LAMPORTS = 5_000_000; // 0.005 SOL
 const U64_MASK = (1n << 64n) - 1n;
 
 // ============================================================================
@@ -142,7 +145,84 @@ export async function buildEnterPitDraftTransaction(
     ComputeBudgetProgram.setComputeUnitPrice({
       microLamports: PIT_DRAFT_CU_PRICE_MICROLAMPORTS,
     }),
-    enterPitDraftIx
+  );
+
+  // Match resolution (second player) builds inventories, generates combat effects,
+  // and resolves PvP combat — exceeds the default 32KB heap. Request 256KB.
+  if (matchAccounts) {
+    transaction.add(
+      ComputeBudgetProgram.requestHeapFrame({ bytes: 256 * 1024 }),
+    );
+  }
+
+  transaction.add(enterPitDraftIx);
+
+  const { blockhash } = await connection.getLatestBlockhash(SOLANA_CONFIG.commitment);
+  transaction.recentBlockhash = blockhash;
+  transaction.feePayer = playerPublicKey;
+
+  return transaction;
+}
+
+/**
+ * Build a bundled TX for player 1 (queuing): enter_pit_draft + init VRF + fund temp keypair.
+ * All three instructions in a single wallet-signed transaction.
+ */
+export async function buildQueueWithVrfInitTransaction(
+  connection: Connection,
+  program: Program,
+  playerPublicKey: PublicKey,
+  tempKeypairPublicKey: PublicKey,
+): Promise<Transaction> {
+  const [queuePda] = derivePitDraftQueuePda();
+  const [vaultPda] = derivePitDraftVaultPda();
+  const [playerProfilePda] = derivePlayerProfilePda(playerPublicKey);
+  const [vrfStatePda] = derivePitDraftVrfStatePda(playerPublicKey);
+
+  // 1. enter_pit_draft (queue-only, no match accounts)
+  const enterPitDraftIx = await program.methods
+    .enterPitDraft()
+    .accountsPartial({
+      pitDraftQueue: queuePda,
+      pitDraftVault: vaultPda,
+      player: playerPublicKey,
+      playerProfile: playerProfilePda,
+      waitingProfile: null,
+      waitingPlayerWallet: null,
+      companyTreasury: null,
+      gauntletPoolVault: null,
+      gameplayVrfState: null,
+      systemProgram: SystemProgram.programId,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any)
+    .instruction();
+
+  // 2. init_pit_draft_vrf_state (wallet pays rent, init_if_needed)
+  const initVrfIx = await program.methods
+    .initPitDraftVrfState()
+    .accountsPartial({
+      payer: playerPublicKey,
+      seedKey: playerPublicKey,
+      vrfState: vrfStatePda,
+      systemProgram: SystemProgram.programId,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any)
+    .instruction();
+
+  // 3. Fund temp keypair for background VRF operations (delegate, request, undelegate)
+  const fundTempIx = SystemProgram.transfer({
+    fromPubkey: playerPublicKey,
+    toPubkey: tempKeypairPublicKey,
+    lamports: PIT_DRAFT_VRF_TEMP_FUND_LAMPORTS,
+  });
+
+  const transaction = new Transaction();
+  transaction.add(
+    ComputeBudgetProgram.setComputeUnitLimit({ units: PIT_DRAFT_CU_LIMIT }),
+    ComputeBudgetProgram.setComputeUnitPrice({ microLamports: PIT_DRAFT_CU_PRICE_MICROLAMPORTS }),
+    enterPitDraftIx,
+    initVrfIx,
+    fundTempIx,
   );
 
   const { blockhash } = await connection.getLatestBlockhash(SOLANA_CONFIG.commitment);

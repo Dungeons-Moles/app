@@ -7,7 +7,6 @@ import {
   StyleSheet,
   Animated,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { CachedImageBackground } from '../components/common/CachedImageBackground';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -69,8 +68,36 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
   const { playSfx } = useAudio();
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showSessionExistsModal, setShowSessionExistsModal] = useState(false);
+  const [showErrorModal, setShowErrorModal] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
   const hasExistingDuelSession = hasExistingDuelSessionOnChain;
+  const lastShownErrorRef = useRef<string | null>(null);
+
+  // Show error modal when duel entry fails
+  useEffect(() => {
+    if (duels.phase === 'error' && duels.error && duels.error !== lastShownErrorRef.current) {
+      lastShownErrorRef.current = duels.error;
+      setErrorMessage(duels.error);
+      setShowErrorModal(true);
+    }
+  }, [duels.phase, duels.error]);
+
+  // Reset state when screen regains focus
+  const prevIsFocusedRef = useRef(false);
+  useEffect(() => {
+    if (isFocused && !prevIsFocusedRef.current) {
+      duels.reset();
+      lastShownErrorRef.current = null;
+    }
+    prevIsFocusedRef.current = isFocused;
+  }, [isFocused, duels]);
+
+  const handleDismissError = useCallback(() => {
+    setShowErrorModal(false);
+    lastShownErrorRef.current = null;
+    duels.reset();
+  }, [duels]);
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -170,10 +197,12 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
       navigatedToLoading = true;
     });
     if (!overrideResult.success) {
+      const msg = overrideResult.error ?? 'Failed to override duel session.';
       if (navigatedToLoading) {
-        rejectSessionSetup(overrideResult.error ?? 'Failed to override duel session.');
+        rejectSessionSetup(msg);
       } else {
-        Alert.alert('Override Failed', overrideResult.error ?? 'Failed to override duel session.');
+        setErrorMessage(msg);
+        setShowErrorModal(true);
       }
       return;
     }
@@ -200,7 +229,12 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
   }, [navigation, playSfx]);
 
   useControllerAction(
-    showSessionExistsModal
+    showErrorModal
+      ? {
+          onA: handleDismissError,
+          onB: handleDismissError,
+        }
+      : showSessionExistsModal
       ? {
           onA: handleResumeExistingSession,
           onB: () => { playSfx('ui_back'); setShowSessionExistsModal(false); },
@@ -215,16 +249,7 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
           onDPadLeft: () => setPanelFocus(0),
           onDPadRight: () => setPanelFocus(1),
         },
-    isController && isFocused && duels.phase !== 'error'
-  );
-
-  useControllerAction(
-    {
-      onA: duels.reset,
-      onB: handleBack,
-      onStart: () => setShowSettingsModal(true),
-    },
-    isController && isFocused && duels.phase === 'error' && !showSettingsModal
+    isController && isFocused
   );
 
   const controllerHints: ButtonHint[] = showSessionExistsModal
@@ -238,69 +263,6 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
         { button: 'A', label: 'Select' },
         { button: 'B', label: 'Back' },
       ];
-  const errorHints: ButtonHint[] = [
-    { button: 'A', label: 'Try Again' },
-    { button: 'B', label: 'Back' },
-  ];
-
-  if (duels.phase === 'error') {
-    return (
-      <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
-        <CachedImageBackground
-          source={BACKGROUND_IMAGE}
-          style={styles.backgroundImage}
-          resizeMode="cover"
-        >
-          <View style={styles.errorOverlay}>
-            <View style={styles.errorContent}>
-              <Text style={[styles.errorTitle, isCompact && compactStyles.errorTitle]}>DUELS</Text>
-              <Text style={[styles.errorText, isCompact && compactStyles.errorText]}>
-                {duels.error}
-              </Text>
-              <View style={styles.errorButtonRow}>
-                <TouchableOpacity onPress={handleBack} activeOpacity={0.7}>
-                  <CachedImageBackground
-                    source={buttonV1Source}
-                    style={[styles.errorButton, isCompact && compactStyles.errorButton]}
-                    resizeMode="stretch"
-                  >
-                    <Text
-                      style={[styles.errorButtonText, isCompact && compactStyles.errorButtonText]}
-                    >
-                      Back
-                    </Text>
-                  </CachedImageBackground>
-                </TouchableOpacity>
-
-                <TouchableOpacity onPress={duels.reset} activeOpacity={0.7}>
-                  <CachedImageBackground
-                    source={buttonV4Source}
-                    style={[styles.errorButton, isCompact && compactStyles.errorButton]}
-                    resizeMode="stretch"
-                  >
-                    <Text
-                      style={[
-                        styles.errorButtonTextPrimary,
-                        isCompact && compactStyles.errorButtonTextPrimary,
-                      ]}
-                    >
-                      Try Again
-                    </Text>
-                  </CachedImageBackground>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        </CachedImageBackground>
-        <HubSettingsModal
-          visible={showSettingsModal}
-          onClose={() => setShowSettingsModal(false)}
-          onDisconnect={handleDisconnect}
-        />
-        <ControllerHints hints={errorHints} horizontal />
-      </Animated.View>
-    );
-  }
 
   return (
     <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
@@ -554,6 +516,50 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
           </CachedImageBackground>
         </View>
       </InlineModal>
+      {/* Error Modal */}
+      <InlineModal
+        visible={showErrorModal}
+        transparent
+        animationType="fade"
+        onRequestClose={handleDismissError}
+      >
+        <View style={styles.modalOverlay}>
+          <CachedImageBackground
+            source={PAPER_PANEL}
+            resizeMode="stretch"
+            style={[styles.modalContent, isCompact && compactStyles.modalContent]}
+          >
+            <Text style={[styles.modalTitle, isCompact && compactStyles.modalTitle]}>
+              Request Failed
+            </Text>
+            <Text style={[styles.modalText, isCompact && compactStyles.modalText]}>
+              {errorMessage || 'The request failed, please try again.'}
+            </Text>
+            {isCompact ? (
+              <View style={compactStyles.modalHintRow}>
+                <View style={compactStyles.modalHintItem}>
+                  <Image
+                    source={iconASource}
+                    style={compactStyles.modalHintIcon}
+                    resizeMode="contain"
+                  />
+                  <Text style={compactStyles.modalHintLabel}>OK</Text>
+                </View>
+              </View>
+            ) : (
+              <TouchableOpacity onPress={handleDismissError}>
+                <CachedImageBackground
+                  source={buttonV4Source}
+                  resizeMode="stretch"
+                  style={styles.modalButtonBg}
+                >
+                  <Text style={styles.modalButtonTextPrimary}>OK</Text>
+                </CachedImageBackground>
+              </TouchableOpacity>
+            )}
+          </CachedImageBackground>
+        </View>
+      </InlineModal>
       <HubSettingsModal
         visible={showSettingsModal}
         onClose={() => setShowSettingsModal(false)}
@@ -708,54 +714,6 @@ const styles = StyleSheet.create({
     height: 30,
     marginBottom: 6,
   },
-  // Error phase styles
-  errorOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.35)',
-  },
-  errorContent: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-    gap: 14,
-  },
-  errorTitle: {
-    fontFamily: Typography.header,
-    fontSize: 32,
-    color: '#FABC0F',
-    textAlign: 'center',
-  },
-  errorText: {
-    fontFamily: Typography.body,
-    fontSize: 14,
-    color: '#ff8f8f',
-    textAlign: 'center',
-    maxWidth: '90%',
-  },
-  errorButtonRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 8,
-  },
-  errorButton: {
-    width: 180,
-    height: 52,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  errorButtonText: {
-    fontFamily: Typography.button,
-    fontSize: 14,
-    color: '#3d2b1f',
-    marginBottom: 4,
-  },
-  errorButtonTextPrimary: {
-    fontFamily: Typography.button,
-    fontSize: 14,
-    color: '#1a1a1a',
-    marginBottom: 4,
-  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(25, 15, 10, 0.4)',
@@ -863,27 +821,8 @@ const compactStyles = StyleSheet.create({
     marginTop: 150,
     marginBottom: 0,
   },
-  errorTitle: {
-    fontSize: 64,
-  },
-  errorText: {
-    fontSize: 32,
-    maxWidth: 900,
-  },
-  errorButton: {
-    width: 280,
-    height: 90,
-  },
-  errorButtonText: {
-    fontSize: 30,
-    marginBottom: 6,
-  },
-  errorButtonTextPrimary: {
-    fontSize: 30,
-    marginBottom: 6,
-  },
   modalContent: {
-    width: 860,
+    width: 700,
     padding: 50,
   },
   modalTitle: {

@@ -32,7 +32,10 @@
       "expo-secure-store",
       "expo-screen-orientation",
       "expo-font",
-      "@sentry/react-native"
+      ["@sentry/react-native", {
+        "organization": "dungeons-moles",
+        "project": "app"
+      }]
     ],
     "extra": {
       "solanaCluster": "devnet",
