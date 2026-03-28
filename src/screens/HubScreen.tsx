@@ -95,6 +95,7 @@ const duelsPaperSource = require('../../assets/ui/illustrations/duels-paper.webp
 const pitDraftPaperSource = require('../../assets/ui/illustrations/pit-draft-paper.webp');
 const engineImageSource = require('../../assets/ui/illustrations/engine.webp');
 const walletImageSource = require('../../assets/ui/illustrations/wallet.webp');
+const squareFrameSource = require('../../assets/ui/frames/square.webp');
 
 type HubScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Hub'>;
@@ -382,7 +383,6 @@ export function HubScreen({ navigation }: HubScreenProps) {
     navigation.navigate('BattleSimulator');
   }, [isGuest, navigation, playSfx]);
 
-
   const handleGauntlet = () => {
     playSfx('ui_click');
     setShowPvP(false);
@@ -434,8 +434,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
 
   const handleSkins = () => {
     playSfx('ui_click');
-    setSkinsFocus(0);
-    setShowSkins(true);
+    navigation.navigate('Skins');
   };
 
   const handleItems = () => {
@@ -469,8 +468,17 @@ export function HubScreen({ navigation }: HubScreenProps) {
         // User rejected signMessage — that's fine, just don't show game wallet
       }
     })();
-    return () => { cancelled = true; };
-  }, [showProfile, sessionSigner.keypair, wallet.publicKey, wallet.address, signMessage, sessionSigner]);
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    showProfile,
+    sessionSigner.keypair,
+    wallet.publicKey,
+    wallet.address,
+    signMessage,
+    sessionSigner,
+  ]);
 
   const handleWithdrawGameWallet = useCallback(async () => {
     if (!sessionSigner.keypair || !wallet.publicKey || hasActiveSession) return;
@@ -486,7 +494,8 @@ export function HubScreen({ navigation }: HubScreenProps) {
     }
   }, [sessionSigner, wallet.publicKey, hasActiveSession, connection, playSfx]);
 
-  const canWithdraw = !!sessionSigner.keypair && sessionSigner.balance > 0 && !hasActiveSession && !isWithdrawing;
+  const canWithdraw =
+    !!sessionSigner.keypair && sessionSigner.balance > 0 && !hasActiveSession && !isWithdrawing;
 
   const NAME_MAX_LENGTH = 32;
 
@@ -822,11 +831,19 @@ export function HubScreen({ navigation }: HubScreenProps) {
                 resizeMode="stretch"
               >
                 {/* Avatar Square */}
-                <View style={[styles.avatarContainer, isCompact && compactStyles.avatarContainer]}>
+                <View style={[styles.avatarWrapper, isCompact && compactStyles.avatarWrapper]}>
+                  <View style={styles.avatarCropLayer}>
+                    <Image
+                      source={characterImage}
+                      style={[styles.avatarImage, isCompact && compactStyles.avatarImage]}
+                      contentFit="cover"
+                      contentPosition="top"
+                    />
+                  </View>
                   <Image
-                    source={characterImage}
-                    style={[styles.avatarImage, isCompact && compactStyles.avatarImage]}
-                    resizeMode="cover"
+                    source={squareFrameSource}
+                    style={styles.avatarFrameOverlay}
+                    contentFit="fill"
                   />
                 </View>
 
@@ -1139,7 +1156,6 @@ export function HubScreen({ navigation }: HubScreenProps) {
                 </CachedImageBackground>
               </TouchableOpacity>
             )}
-
 
             {showBattleSimulator && (
               <FocusGlow active={isFocused('right', 0)}>
@@ -2519,22 +2535,32 @@ const styles = StyleSheet.create({
     zIndex: 20,
     elevation: 20,
   },
-  avatarContainer: {
+  avatarWrapper: {
     width: 40.5,
-    height: 39,
-    borderRadius: 2,
-    overflow: 'hidden',
+    height: 40.5,
     marginLeft: 3.5,
     marginRight: 10,
-    justifyContent: 'flex-start',
+    position: 'relative',
+  },
+  avatarCropLayer: {
+    position: 'absolute',
+    top: 2,
+    left: 2,
+    right: 2,
+    bottom: 2,
+    overflow: 'hidden',
   },
   avatarImage: {
-    width: '165%', // Zoom in
-    height: '160%',
+    width: '100%',
+    height: '100%',
+    transform: [{ scale: 1.6 }, { translateY: 9 }],
+  },
+  avatarFrameOverlay: {
     position: 'absolute',
-    top: 0, // Align to top to show head
-    left: '-35%', // Center horizontally (160 - 100) / 2
-    resizeMode: 'cover',
+    top: 0,
+    left: 0,
+    width: '100%',
+    height: '100%',
   },
   playerInfo: {
     flex: 1,
@@ -3244,16 +3270,14 @@ const compactStyles = StyleSheet.create({
     height: 140,
     paddingLeft: 10,
   },
-  avatarContainer: {
-    width: 112,
-    height: 102,
+  avatarWrapper: {
+    width: 110,
+    height: 110,
     marginLeft: 10,
     marginRight: 18,
   },
   avatarImage: {
-    width: 180,
-    height: 170,
-    left: -38,
+    transform: [{ scale: 1.6 }, { translateY: 22 }],
   },
   playerName: {
     fontSize: 34,

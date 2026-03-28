@@ -46,6 +46,7 @@ const SOL_PILE = require('../../assets/ui/illustrations/sol-pile.webp');
 const CHEST = require('../../assets/ui/illustrations/chest.webp');
 const ECHO_FIGHT = require('../../assets/ui/illustrations/echo-fight.webp');
 const PAPER_PANEL = require('../../assets/ui/panels/paper-panel.webp');
+const PAPER_PANEL_WIDE = require('../../assets/ui/panels/paper-panel-wide.webp');
 const iconASource = require('../../assets/ui/control-buttons/a.webp');
 const iconBSource = require('../../assets/ui/control-buttons/b.webp');
 const engineImageSource = require('../../assets/ui/illustrations/engine.webp');
@@ -492,19 +493,19 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
                     <TouchableOpacity
                       onPress={handleEnter}
                       activeOpacity={0.7}
-                      disabled={gauntlet.isLoading || isEntryTransitioning || isCheckingSession}
+                      disabled={gauntlet.isLoading || isEntryTransitioning}
                     >
                       <View>
                         <Text
                           style={[
                             styles.panelButtonText,
                             { fontSize: buttonFontSize },
-                            (gauntlet.isLoading || isEntryTransitioning || isCheckingSession) && { opacity: 0 },
+                            (gauntlet.isLoading || isEntryTransitioning) && { opacity: 0 },
                           ]}
                         >
                           {hasExistingGauntletSession ? 'Resume' : 'Enter'}
                         </Text>
-                        {(gauntlet.isLoading || isEntryTransitioning || isCheckingSession) && (
+                        {(gauntlet.isLoading || isEntryTransitioning) && (
                           <ActivityIndicator
                             color="#3d2b1f"
                             size={isCompact ? 'large' : 'small'}
@@ -609,7 +610,7 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
       >
         <View style={styles.modalOverlay}>
           <CachedImageBackground
-            source={PAPER_PANEL}
+            source={PAPER_PANEL_WIDE}
             resizeMode="stretch"
             style={[styles.modalContent, isCompact && compactStyles.modalContent]}
           >

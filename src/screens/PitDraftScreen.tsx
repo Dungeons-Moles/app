@@ -43,6 +43,7 @@ import { useEquippedSkinImage } from '../hooks/useEquippedSkinImage';
 import { useAudio } from '../contexts/AudioContext';
 
 const PAPER_PANEL = require('../../assets/ui/panels/paper-panel.webp');
+const PAPER_PANEL_WIDE = require('../../assets/ui/panels/paper-panel-wide.webp');
 const iconASource = require('../../assets/ui/control-buttons/a.webp');
 
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.webp');
@@ -662,7 +663,7 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
         >
           <View style={styles.modalOverlay}>
             <CachedImageBackground
-              source={PAPER_PANEL}
+              source={PAPER_PANEL_WIDE}
               resizeMode="stretch"
               style={[styles.modalContent, isCompact && compactStyles.modalContent]}
             >

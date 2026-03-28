@@ -47,6 +47,7 @@ import type {
 import { getTierFromRarity } from '../../data/gear';
 
 const SIDEBAR_BG = require('../../../assets/ui/panels/sidebar.webp');
+const SIDEBAR_WIDE_BG = require('../../../assets/ui/panels/sidebar-wide.webp');
 const BOSS_PANEL_BG = require('../../../assets/ui/panels/boss-panel.webp');
 const DEFAULT_MOLE_IMAGE_SOURCE = require('../../../assets/entities/characters/default-mole.webp');
 const SLOT_BG = require('../../../assets/ui/frames/square.webp');
@@ -106,13 +107,22 @@ interface SidebarProps {
 const GEAR_SLOT_SIZE = 28;
 const TOOL_SLOT_SIZE = 42;
 
+const TIER_BG_COLORS: Record<number, string> = {
+  2: 'rgba(59, 130, 246, 0.15)',
+  3: 'rgba(234, 179, 8, 0.18)',
+};
+
+function getTierBgColor(tier: number): string | undefined {
+  return TIER_BG_COLORS[tier];
+}
+
 const EchoGearSlot = React.memo(function EchoGearSlot({ item, size = GEAR_SLOT_SIZE }: { item: Gear | null; size?: number }) {
-  const slotBg = useMemo(() => {
-    if (!item) return SLOT_BG;
+  const { slotBg, bgColor } = useMemo(() => {
+    if (!item) return { slotBg: SLOT_BG, bgColor: undefined };
     const tier = getTierFromRarity(item.currentRarity);
-    if (tier === 2) return SLOT_BG_BLUE;
-    if (tier === 3) return SLOT_BG_YELLOW;
-    return SLOT_BG;
+    if (tier === 2) return { slotBg: SLOT_BG_BLUE, bgColor: getTierBgColor(2) };
+    if (tier === 3) return { slotBg: SLOT_BG_YELLOW, bgColor: getTierBgColor(3) };
+    return { slotBg: SLOT_BG, bgColor: undefined };
   }, [item]);
 
   return (
@@ -120,7 +130,7 @@ const EchoGearSlot = React.memo(function EchoGearSlot({ item, size = GEAR_SLOT_S
       source={slotBg}
       style={[
         styles.echoSlot,
-        { width: size, height: size },
+        { width: size, height: size, backgroundColor: bgColor },
       ]}
       resizeMode="stretch"
     >
@@ -135,12 +145,12 @@ const EchoGearSlot = React.memo(function EchoGearSlot({ item, size = GEAR_SLOT_S
 });
 
 const EchoToolSlot = React.memo(function EchoToolSlot({ tool, size = TOOL_SLOT_SIZE }: { tool: Tool | null; size?: number }) {
-  const slotBg = useMemo(() => {
-    if (!tool) return SLOT_BG;
+  const { slotBg, bgColor } = useMemo(() => {
+    if (!tool) return { slotBg: SLOT_BG, bgColor: undefined };
     const tier = getTierFromRarity(tool.rarity);
-    if (tier === 2) return SLOT_BG_BLUE;
-    if (tier === 3) return SLOT_BG_YELLOW;
-    return SLOT_BG;
+    if (tier === 2) return { slotBg: SLOT_BG_BLUE, bgColor: getTierBgColor(2) };
+    if (tier === 3) return { slotBg: SLOT_BG_YELLOW, bgColor: getTierBgColor(3) };
+    return { slotBg: SLOT_BG, bgColor: undefined };
   }, [tool]);
 
   return (
@@ -148,7 +158,7 @@ const EchoToolSlot = React.memo(function EchoToolSlot({ tool, size = TOOL_SLOT_S
       source={slotBg}
       style={[
         styles.echoSlot,
-        { width: size, height: size },
+        { width: size, height: size, backgroundColor: bgColor },
       ]}
       resizeMode="stretch"
     >
@@ -581,6 +591,12 @@ export function BossPanel({
 export const Sidebar = React.memo(function Sidebar(props: SidebarProps) {
   const variant = useScreenVariant();
   const isCompact = variant === 'compact';
+  const { gameState } = useGameplayStateContext();
+  const { gameplayState: sessionGameState } = useSession();
+  const resolvedRunMode = gameState?.runMode ?? sessionGameState?.runMode;
+  const resolvedWeek = Math.max(gameState?.week ?? 0, sessionGameState?.week ?? 0, props.time.week);
+  const isDuelFinalWeek = resolvedRunMode === RunMode.Duel && resolvedWeek === 3;
+  const sidebarBg = isDuelFinalWeek ? SIDEBAR_WIDE_BG : SIDEBAR_BG;
 
   if (props.onlyBoss) {
     return (
@@ -644,7 +660,7 @@ export const Sidebar = React.memo(function Sidebar(props: SidebarProps) {
 
   if (props.onlyContent) {
     return (
-      <CachedImageBackground source={SIDEBAR_BG} style={styles.container} resizeMode="stretch">
+      <CachedImageBackground source={sidebarBg} style={styles.container} resizeMode="stretch">
         {content}
       </CachedImageBackground>
     );
@@ -652,7 +668,7 @@ export const Sidebar = React.memo(function Sidebar(props: SidebarProps) {
 
   return (
     <View style={styles.container}>
-      <CachedImageBackground source={SIDEBAR_BG} style={styles.sidebarBg} resizeMode="stretch">
+      <CachedImageBackground source={sidebarBg} style={styles.sidebarBg} resizeMode="stretch">
         {content}
       </CachedImageBackground>
     </View>

@@ -48,10 +48,12 @@ const buttonV4Source = require('../../assets/ui/buttons/button-v4.webp');
 const squareSource = require('../../assets/ui/frames/square.webp');
 const lockSource = require('../../assets/icons/ui/lock.webp');
 const PAPER_PANEL = require('../../assets/ui/panels/paper-panel.webp');
+const PAPER_PANEL_WIDE = require('../../assets/ui/panels/paper-panel-wide.webp');
 const iconASource = require('../../assets/ui/control-buttons/a.webp');
 const iconBSource = require('../../assets/ui/control-buttons/b.webp');
 const iconXSource = require('../../assets/ui/control-buttons/x.webp');
 const engineImageSource = require('../../assets/ui/illustrations/engine.webp');
+const campaignTextSource = require('../../assets/ui/text/campaign.webp');
 
 type CampaignSelectScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'CampaignSelect'>;
@@ -863,12 +865,12 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
             <View style={styles.backButton} />
           )}
 
-          <CachedImageBackground
-            source={buttonV4Source}
-            style={[styles.titlePanel, isCompact && compactStyles.titlePanel]}
-            resizeMode="stretch"
-          >
-            <Text style={[styles.title, isCompact && compactStyles.title]}>Campaign</Text>
+          <View style={[styles.titlePanel, isCompact && compactStyles.titlePanel]}>
+            <Image
+              source={campaignTextSource}
+              style={[styles.campaignImage, isCompact && compactStyles.campaignImage]}
+              resizeMode="contain"
+            />
             <Text style={[styles.subtitle, isCompact && compactStyles.subtitle]}>
               {isGuestMode
                 ? 'Guest Mode (1-10)'
@@ -876,7 +878,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
                   ? `Cached - Level ${(profile?.currentLevel ?? 0) + 1}`
                   : `Level ${(profile?.currentLevel ?? 0) + 1} / ${MAX_CAMPAIGN_LEVEL + 1}`}
             </Text>
-          </CachedImageBackground>
+          </View>
 
           {/* Mode indicator */}
           {(isGuestMode || isCachedMode) && (
@@ -1222,7 +1224,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
       >
         <View style={styles.modalOverlay}>
           <CachedImageBackground
-            source={PAPER_PANEL}
+            source={PAPER_PANEL_WIDE}
             resizeMode="stretch"
             style={[styles.modalContent, isCompact && compactStyles.modalContent]}
           >
@@ -1337,22 +1339,18 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   titlePanel: {
-    paddingVertical: 8,
-    paddingHorizontal: 24,
     alignItems: 'center',
     justifyContent: 'center',
-    width: 160,
-    height: 60,
   },
-  title: {
-    fontFamily: Typography.header,
-    fontSize: 20,
+  campaignImage: {
+    width: 170,
+    height: 44,
   },
   subtitle: {
     fontFamily: Typography.number,
     fontSize: 12,
-    color: '#888888',
-    marginBottom: 4,
+    color: '#000000',
+    marginTop: 2,
   },
   headerSpacer: {
     width: 80,
@@ -1584,18 +1582,14 @@ const compactStyles = StyleSheet.create({
     fontSize: 28,
     marginBottom: 6,
   },
-  titlePanel: {
+  titlePanel: {},
+  campaignImage: {
     width: 280,
-    height: 100,
-    paddingVertical: 12,
-    paddingHorizontal: 32,
-  },
-  title: {
-    fontSize: 36,
+    height: 72,
   },
   subtitle: {
     fontSize: 20,
-    marginBottom: 6,
+    marginTop: 4,
   },
   headerSpacer: {
     width: 140,
