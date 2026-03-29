@@ -680,6 +680,7 @@ interface OnChainGameState {
   gauntletDefenderCredit?: { defender: PublicKey; points: number | bigint } | null;
   gauntletHighestWeekWon?: number;
   gauntletSettled?: boolean;
+  duelMapSeed?: number;
   enemies?: Array<{ archetype: number; x: number; y: number; defeated: boolean }>;
   enemyCount?: number;
   bump: number;
@@ -737,6 +738,7 @@ function parseOnChainGameState(account: OnChainGameState): GameState {
     gauntletPointsEarned: account.gauntletPointsEarned ?? 0,
     gauntletHighestWeekWon: account.gauntletHighestWeekWon ?? 0,
     gauntletSettled: account.gauntletSettled ?? false,
+    duelMapSeed: account.duelMapSeed ?? 0,
     enemiesDefeated: (account.enemies ?? []).filter((e) => e.defeated).length,
   };
 }
@@ -775,6 +777,8 @@ export async function syncDiscoveryBoss(
     ?.fetchNullable(gameplayVrfStatePda)
     .catch(() => null);
 
+  const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
+
   const transaction = await (program.methods as any)
     .syncDiscoveryBoss()
     .accountsPartial({
@@ -784,6 +788,7 @@ export async function syncDiscoveryBoss(
       sessionDiscovery: sessionDiscoveryPda,
       mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
       gameplayVrfState: vrfExists ? gameplayVrfStatePda : null,
+      generatedMap: generatedMapPda,
       player: sessionSignerKeypair.publicKey,
     })
     .transaction();

@@ -43,7 +43,7 @@ import {
 } from '@/services/solana/constants';
 import { SOLANA_CONFIG } from '@/services/solana/config';
 import { getUserErrorMessage } from '@/services/solana/errors';
-import { buildResetDuelEntryInstruction, deriveDuelEntryPda } from '@/services/solana/duels';
+import { buildResetDuelEntryInstruction, deriveDuelEntryPda, fetchDuelEntry } from '@/services/solana/duels';
 import { sendSessionSignerTransaction } from '@/services/solana/sessionSigner';
 import { MAX_CAMPAIGN_LEVEL } from './useMapGenerator';
 import {
@@ -854,6 +854,8 @@ export function useSessionManager() {
         onChainLevel?: number;
         /** VRF state types to delegate (pre-init'd on base). */
         delegateVrf?: ('poi' | 'map' | 'gameplay')[];
+        /** Delegate the per-session DuelEntry PDA to ER (duel sessions only). */
+        delegateDuelEntry?: boolean;
       }
     ): Promise<TransactionResult> => {
       if (!wallet.publicKey || !baseWriteProgram) {
@@ -1057,6 +1059,39 @@ export function useSessionManager() {
           await sendSessionSignerTransaction(baseConnection, delegationTxGe, sessionSignerKeypair);
         }
 
+        // Tx2c (optional): Delegate DuelEntry if requested (duel sessions only).
+        console.log('[useSessionManager] delegateSession: delegateDuelEntry?', options?.delegateDuelEntry);
+        if (options?.delegateDuelEntry) {
+          const [duelEntryPda] = deriveDuelEntryPda(sessionPda);
+          const duelEntryInfo = await baseConnection
+            .getAccountInfo(duelEntryPda, 'processed')
+            .catch(() => null);
+          if (duelEntryInfo && !duelEntryInfo.owner.equals(DELEGATION_PROGRAM_ID)) {
+            const duelEntryDelegate = deriveDelegatePdas(
+              duelEntryPda,
+              SOLANA_CONFIG.programs.gameplayState
+            );
+            const delegateDuelEntryIx = await gameplayStateWriteProgram.methods
+              .delegateDuelEntry(sessionPda)
+              .accountsStrict({
+                duelEntry: duelEntryPda,
+                player: sessionSignerKeypair.publicKey,
+                bufferDuelEntry: duelEntryDelegate.buffer,
+                delegationRecordDuelEntry: duelEntryDelegate.delegationRecord,
+                delegationMetadataDuelEntry: duelEntryDelegate.delegationMetadata,
+                ownerProgram: SOLANA_CONFIG.programs.gameplayState,
+                delegationProgram: DELEGATION_PROGRAM_ID,
+                systemProgram: SystemProgram.programId,
+              } as any)
+              .instruction();
+            const delegationTxDe = new Transaction().add(
+              ComputeBudgetProgram.setComputeUnitLimit({ units: 600_000 }),
+              delegateDuelEntryIx
+            );
+            await sendSessionSignerTransaction(baseConnection, delegationTxDe, sessionSignerKeypair);
+          }
+        }
+
         // Tx3: Delegate VRF state accounts if requested.
         // VRF states must be pre-initialized on base before this step.
         const vrfTypes = options?.delegateVrf ?? [];
@@ -1223,6 +1258,45 @@ export function useSessionManager() {
       }
     },
     [erConnection, fetchSession, signAndSendTransaction, wallet.publicKey, erWriteProgram]
+  );
+
+  const delegateDuelEntry = useCallback(
+    async (sessionSignerKeypair: Keypair, sessionPda: PublicKey): Promise<TransactionResult> => {
+      if (!wallet.publicKey || !gameplayStateWriteProgram) {
+        return { success: false, error: 'Wallet not connected' };
+      }
+      try {
+        const [duelEntryPda] = deriveDuelEntryPda(sessionPda);
+        const duelEntryDelegate = deriveDelegatePdas(
+          duelEntryPda,
+          SOLANA_CONFIG.programs.gameplayState
+        );
+        const delegateDuelEntryIx = await gameplayStateWriteProgram.methods
+          .delegateDuelEntry(sessionPda)
+          .accountsStrict({
+            duelEntry: duelEntryPda,
+            player: sessionSignerKeypair.publicKey,
+            bufferDuelEntry: duelEntryDelegate.buffer,
+            delegationRecordDuelEntry: duelEntryDelegate.delegationRecord,
+            delegationMetadataDuelEntry: duelEntryDelegate.delegationMetadata,
+            ownerProgram: SOLANA_CONFIG.programs.gameplayState,
+            delegationProgram: DELEGATION_PROGRAM_ID,
+            systemProgram: SystemProgram.programId,
+          } as any)
+          .instruction();
+        const tx = new Transaction().add(
+          ComputeBudgetProgram.setComputeUnitLimit({ units: 600_000 }),
+          delegateDuelEntryIx
+        );
+        await sendSessionSignerTransaction(baseConnection, tx, sessionSignerKeypair);
+        return { success: true };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error('[useSessionManager] delegateDuelEntry failed:', msg);
+        return { success: false, error: msg };
+      }
+    },
+    [wallet.publicKey, gameplayStateWriteProgram, baseConnection]
   );
 
   const undelegateSession = useCallback(
@@ -1850,12 +1924,14 @@ export function useSessionManager() {
         const duelEntryInfo = await baseConnection.getAccountInfo(duelEntryPda);
         if (duelEntryInfo) {
           const gameplayProgram = createGameplayStateProgram(baseConnection);
+          const duelEntry = await fetchDuelEntry(gameplayProgram, sessionPda).catch(() => null);
           const resetIx = await buildResetDuelEntryInstruction(
             gameplayProgram,
             sessionPda,
             gameStatePda,
             wallet.publicKey,
-            sessionSignerKeypair.publicKey
+            sessionSignerKeypair.publicKey,
+            duelEntry?.matchedCreatorPlayer
           );
           transaction.add(resetIx);
         }
@@ -1950,12 +2026,14 @@ export function useSessionManager() {
         const duelEntryInfo = await baseConnection.getAccountInfo(duelEntryPda);
         if (duelEntryInfo) {
           const gameplayProgram = createGameplayStateProgram(baseConnection);
+          const duelEntry = await fetchDuelEntry(gameplayProgram, sessionPda).catch(() => null);
           const resetIx = await buildResetDuelEntryInstruction(
             gameplayProgram,
             sessionPda,
             gameStatePda,
             wallet.publicKey,
-            sessionSignerKeypair.publicKey
+            sessionSignerKeypair.publicKey,
+            duelEntry?.matchedCreatorPlayer
           );
           transaction.add(resetIx);
         }
@@ -2215,12 +2293,14 @@ export function useSessionManager() {
         const duelEntryInfo = await baseConnection.getAccountInfo(duelEntryPda);
         if (duelEntryInfo) {
           const gameplayProgram = createGameplayStateProgram(baseConnection);
+          const duelEntry = await fetchDuelEntry(gameplayProgram, sessionPda).catch(() => null);
           const resetIx = await buildResetDuelEntryInstruction(
             gameplayProgram,
             sessionPda,
             gameStatePda,
             wallet.publicKey,
-            sessionSignerKeypair.publicKey
+            sessionSignerKeypair.publicKey,
+            duelEntry?.matchedCreatorPlayer
           );
           transaction.add(resetIx);
         }
@@ -2336,6 +2416,7 @@ export function useSessionManager() {
     setActiveOnChainLevel,
     setActiveSessionPda,
     delegateSession,
+    delegateDuelEntry,
     commitSession,
     undelegateSession,
     settleSessionResult,

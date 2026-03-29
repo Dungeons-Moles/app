@@ -27,8 +27,6 @@ import { createCombatState } from '../game/combat/state';
 import { resolveCombatWithParity } from '../game/combat/parity-resolver';
 import type { CombatResolverInput } from '../game/combat/types';
 import type { CombatSpeed } from '../types';
-import type { BackendCombatLogEntry } from '../services/solana/types/combat_events';
-import { convertBackendLogToFrontend } from '../services/solana/types/combat_events';
 
 export type { CombatSpeed } from '../types';
 
@@ -164,13 +162,6 @@ function entryIsStatusRemovalOnly(entry: CombatLogEntry | undefined): boolean {
 
 export type CombatAction =
   | { type: 'START_COMBAT'; input: CombatResolverInput }
-  | {
-      type: 'START_COMBAT_WITH_LOG';
-      input: CombatResolverInput;
-      backendLog: BackendCombatLogEntry[];
-      /** Authoritative on-chain result to override log-derived result */
-      onChainResult?: 'VICTORY' | 'DEFEAT';
-    }
   | {
       type: 'START_COMBAT_WITH_ONCHAIN_OUTCOME';
       input: CombatResolverInput;
@@ -328,52 +319,6 @@ function extractEffectNotification(
 // ============================================================================
 
 /**
- * Derive combat result from a combat log by replaying all entries against
- * initial combatant HP. Used for backend-log combats where the result
- * is not provided explicitly.
- */
-function deriveCombatResultFromLog(combat: CombatState, log: CombatLogEntry[]): CombatResult {
-  let playerHp = combat.player.hp;
-  let playerMaxHp = combat.player.maxHp;
-  let enemyHp = combat.enemy.hp;
-  let enemyMaxHp = combat.enemy.maxHp;
-
-  for (const entry of log) {
-    if (entry.target === 'none') continue;
-
-    const isPlayer = entry.target === 'player';
-    const targetHp = isPlayer ? playerHp : enemyHp;
-    const targetMaxHp = isPlayer ? playerMaxHp : enemyMaxHp;
-    const { result } = entry;
-
-    let newHp = targetHp;
-    let newMaxHp = targetMaxHp;
-
-    if (result.damage && result.damage > 0) {
-      newHp = Math.max(0, newHp - result.damage);
-    }
-
-    if (result.healing && result.healing > 0) {
-      if (result.effectName === 'Crystal Crown') {
-        newMaxHp += result.healing;
-        newHp += result.healing;
-      } else {
-        newHp = Math.min(newMaxHp, newHp + result.healing);
-      }
-    }
-
-    if (isPlayer) {
-      playerHp = newHp;
-      playerMaxHp = newMaxHp;
-    } else {
-      enemyHp = newHp;
-      enemyMaxHp = newMaxHp;
-    }
-  }
-
-  return enemyHp <= 0 ? 'VICTORY' : playerHp <= 0 ? 'DEFEAT' : 'VICTORY';
-}
-
 /**
  * Find the first log index where either combatant reaches 0 HP.
  * Returns null if no lethal entry is found.
@@ -1168,91 +1113,33 @@ function combatReducer(state: CombatUIState, action: CombatAction): CombatUIStat
       };
     }
 
-    case 'START_COMBAT_WITH_LOG': {
-      // Use backend log instead of local resolver
-      // This ensures frontend animation matches on-chain combat exactly
-      const baseCombat = createCombatState(action.input);
-
-      const convertedLog = convertBackendLogToFrontend(action.backendLog, action.input);
-      const typedLog = convertedLog as unknown as CombatLogEntry[];
-
-      // If backend log is too short to produce a meaningful animation (< 3 entries),
-      // fall back to the local resolver so the player sees turn-by-turn combat.
-      // This handles cases where the on-chain combat log was truncated or incomplete.
-      if (typedLog.length < 3) {
-        console.warn('[CombatContext] Backend log too short, falling back to local resolver:', {
-          backendEntries: action.backendLog.length,
-          convertedEntries: typedLog.length,
-          playerHp: action.input.player.hp,
-          bossId: action.input.bossId,
-        });
-        const localCombat = resolveCombatWithParity(action.input);
-        console.log(
-          '[CombatContext] Local resolver produced log with',
-          localCombat.log.length,
-          'entries'
-        );
-        return {
-          ...state,
-          combat: createCombatState(action.input),
-          resolvedCombat: localCombat,
-          currentLogIndex: -1,
-          currentContributionIndex: null,
-          activeActorLogIndex: -1,
-          isAnimating: true,
-          isComplete: false,
-          damageNumbers: [],
-          effectNotifications: [],
-        };
-      }
-
-      // Derive the combat result by replaying the log against initial HP
-      const derivedResult = deriveCombatResultFromLog(baseCombat, typedLog);
-      // Use authoritative on-chain result when available, fall back to derived
-      const finalResult = action.onChainResult ?? derivedResult;
-
-      // Derive the turn count from the log (max turn value across all entries)
-      const maxTurn = typedLog.reduce((max, entry) => Math.max(max, entry.turn), 0);
-
-      // Create a resolved combat state with the backend log
-      // We still need the combat state structure for the animation system
-      const resolvedCombat = {
-        ...baseCombat,
-        log: typedLog,
-        result: finalResult,
-        turn: maxTurn,
-      };
-
-      console.log('[CombatContext] Using backend combat log:', {
-        entryCount: action.backendLog.length,
-        convertedCount: convertedLog.length,
-        derivedResult,
-        onChainResult: action.onChainResult,
-        finalResult,
-      });
-
-      return {
-        ...state,
-        combat: baseCombat,
-        resolvedCombat,
-        currentLogIndex: -1,
-        currentContributionIndex: null,
-        activeActorLogIndex: -1,
-        isAnimating: true,
-        isComplete: false,
-        damageNumbers: [],
-        effectNotifications: [],
-        respectTerminalLogIndex: true,
-      };
-    }
-
     case 'START_COMBAT_WITH_ONCHAIN_OUTCOME': {
       // On-chain fallback path when CombatLog event is unavailable.
       // Run local resolver for the combat animation log, but override
       // the result with the authoritative on-chain outcome.
-      const baseCombat = createCombatState(action.input);
-      const localCombat = resolveCombatWithParity(action.input);
       const onChainResult = action.outcome.playerWon ? ('VICTORY' as const) : ('DEFEAT' as const);
+
+      // First attempt with provided HP.
+      let localCombat = resolveCombatWithParity(action.input);
+
+      // If local sim disagrees with on-chain (e.g., stale pre-heal HP), re-run
+      // with corrected HP so the animation matches the authoritative result.
+      if (localCombat.result !== onChainResult) {
+        const correctedInput = {
+          ...action.input,
+          player: {
+            ...action.input.player,
+            hp: action.input.player.maxHp,
+          },
+        };
+        const retried = resolveCombatWithParity(correctedInput);
+        if (retried.result === onChainResult) {
+          localCombat = retried;
+        }
+        // If still disagrees, keep original — the result override below handles it.
+      }
+
+      const baseCombat = createCombatState(action.input);
       const reconciledPlayer = {
         ...localCombat.player,
         hp: Math.max(0, Math.min(action.outcome.finalPlayerHp, localCombat.player.maxHp)),
@@ -1280,6 +1167,7 @@ function combatReducer(state: CombatUIState, action: CombatAction): CombatUIStat
         playerHp: action.input.player.hp,
         enemyHp: action.input.enemy.hp,
         bossId: action.input.bossId,
+        retriedWithMaxHp: localCombat.result === onChainResult && action.input.player.hp !== action.input.player.maxHp,
       });
 
       return {
@@ -1443,12 +1331,6 @@ interface CombatContextType {
   setSpeed: (speed: CombatSpeed) => void;
   /** Start a new combat */
   startCombat: (input: CombatResolverInput) => void;
-  /** Start combat using backend log (for on-chain mode) */
-  startCombatWithLog: (
-    input: CombatResolverInput,
-    backendLog: BackendCombatLogEntry[],
-    onChainResult?: 'VICTORY' | 'DEFEAT'
-  ) => void;
   /** Start combat from authoritative on-chain result when log is unavailable */
   startCombatWithOnchainOutcome: (
     input: CombatResolverInput,
@@ -1497,17 +1379,6 @@ export function CombatProvider({ children, initialSpeed, onSpeedChange }: Combat
   const startCombat = useCallback(
     (input: CombatResolverInput) => {
       dispatch({ type: 'START_COMBAT', input });
-    },
-    [dispatch]
-  );
-
-  const startCombatWithLog = useCallback(
-    (
-      input: CombatResolverInput,
-      backendLog: BackendCombatLogEntry[],
-      onChainResult?: 'VICTORY' | 'DEFEAT'
-    ) => {
-      dispatch({ type: 'START_COMBAT_WITH_LOG', input, backendLog, onChainResult });
     },
     [dispatch]
   );
@@ -1717,7 +1588,6 @@ export function CombatProvider({ children, initialSpeed, onSpeedChange }: Combat
       speed,
       setSpeed,
       startCombat,
-      startCombatWithLog,
       startCombatWithOnchainOutcome,
       displayStates,
       getResult,
@@ -1728,7 +1598,6 @@ export function CombatProvider({ children, initialSpeed, onSpeedChange }: Combat
       speed,
       setSpeed,
       startCombat,
-      startCombatWithLog,
       startCombatWithOnchainOutcome,
       displayStates,
       getResult,

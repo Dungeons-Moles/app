@@ -1,5 +1,5 @@
 {
-  "address": "ApUAEEKYsRMjxoMA65WV2xiG8xGwWzFhHjTMGGefcumK",
+  "address": "GLKxBpZ8hc7qzvD9VHAVsJEjHSu2JVp1HaPrGH4fpTci",
   "metadata": {
     "name": "nft_marketplace",
     "version": "0.1.0",
@@ -734,38 +734,38 @@
             "program": {
               "kind": "const",
               "value": [
-                173,
-                178,
-                185,
-                109,
-                85,
-                174,
-                41,
-                240,
-                83,
-                161,
-                21,
-                228,
-                174,
-                149,
-                101,
+                229,
+                92,
+                184,
+                160,
                 192,
-                117,
-                119,
-                254,
-                61,
-                55,
-                200,
-                75,
-                179,
-                126,
-                215,
-                130,
-                121,
-                72,
-                90,
-                152,
-                13
+                222,
+                86,
+                172,
+                46,
+                194,
+                213,
+                211,
+                201,
+                45,
+                33,
+                178,
+                70,
+                109,
+                161,
+                78,
+                239,
+                15,
+                116,
+                209,
+                36,
+                26,
+                153,
+                62,
+                229,
+                135,
+                103,
+                162
               ]
             }
           }
@@ -1035,7 +1035,7 @@
     {
       "name": "update_quest_progress",
       "docs": [
-        "Update quest progress. For hackathon, admin can also call this."
+        "Update quest progress. Only callable by the marketplace authority."
       ],
       "discriminator": [
         167,
@@ -1109,11 +1109,47 @@
           }
         },
         {
+          "name": "marketplace_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116,
+                  112,
+                  108,
+                  97,
+                  99,
+                  101,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "docs": [
+            "Authority that must match marketplace_config.authority."
+          ],
+          "signer": true
+        },
+        {
           "name": "player",
           "docs": [
-            "For hackathon: admin or player can update progress."
+            "only the authority can advance quest progress."
           ],
-          "signer": true,
           "relations": [
             "quest_progress"
           ]
@@ -1275,6 +1311,16 @@
       "code": 6017,
       "name": "InvalidGauntletPool",
       "msg": "Invalid gauntlet pool account"
+    },
+    {
+      "code": 6018,
+      "name": "PriceTooLow",
+      "msg": "Listing price too low"
+    },
+    {
+      "code": 6019,
+      "name": "InvalidAccountData",
+      "msg": "Invalid account data"
     }
   ],
   "types": [

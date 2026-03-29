@@ -24,6 +24,7 @@ export const COMPANY_TREASURY = new PublicKey('5LvEA4tH5H5DtWCxa3FcauokxAycvafX9
 const DUEL_QUEUE_SEED = 'duel_queue';
 const DUEL_VAULT_SEED = 'duel_vault';
 const DUEL_OPEN_QUEUE_SEED = 'duel_open_queue';
+const DUEL_ER_QUEUE_SEED = 'duel_er_queue';
 const GAUNTLET_POOL_VAULT_SEED = 'gauntlet_pool_vault';
 const DUEL_CU_LIMIT = 500_000;
 const DUEL_CU_PRICE_MICROLAMPORTS = 1_000;
@@ -44,6 +45,10 @@ export function deriveDuelVaultPda(programId: PublicKey = GAMEPLAY_STATE_PROGRAM
 
 export function deriveDuelOpenQueuePda(programId: PublicKey = GAMEPLAY_STATE_PROGRAM_ID): [PublicKey, number] {
   return PublicKey.findProgramAddressSync([Buffer.from(DUEL_OPEN_QUEUE_SEED)], programId);
+}
+
+export function deriveDuelErQueuePda(programId: PublicKey = GAMEPLAY_STATE_PROGRAM_ID): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync([Buffer.from(DUEL_ER_QUEUE_SEED)], programId);
 }
 
 export function deriveGauntletPoolVaultPda(
@@ -172,10 +177,8 @@ export async function buildEnterDuelInstruction(
   gameStatePda: PublicKey,
   sessionPda: PublicKey
 ): Promise<TransactionInstruction> {
-  const [duelOpenQueuePda] = deriveDuelOpenQueuePda();
   const [duelVaultPda] = deriveDuelVaultPda();
   const [gauntletPoolVaultPda] = deriveGauntletPoolVaultPda();
-  const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
   const [duelEntryPda] = PublicKey.findProgramAddressSync(
     [Buffer.from('duel_entry'), sessionPda.toBuffer()],
     GAMEPLAY_STATE_PROGRAM_ID
@@ -186,11 +189,9 @@ export async function buildEnterDuelInstruction(
       enterDuel: () => {
         accounts: (accounts: {
           duelEntry: PublicKey;
-          duelOpenQueue: PublicKey;
           duelVault: PublicKey;
           player: PublicKey;
           gameState: PublicKey;
-          generatedMap: PublicKey;
           companyTreasury: PublicKey;
           gauntletPoolVault: PublicKey;
           systemProgram: PublicKey;
@@ -201,11 +202,9 @@ export async function buildEnterDuelInstruction(
     .enterDuel()
     .accounts({
       duelEntry: duelEntryPda,
-      duelOpenQueue: duelOpenQueuePda,
       duelVault: duelVaultPda,
       player: playerPublicKey,
       gameState: gameStatePda,
-      generatedMap: generatedMapPda,
       companyTreasury: COMPANY_TREASURY,
       gauntletPoolVault: gauntletPoolVaultPda,
       systemProgram: SystemProgram.programId,
@@ -213,6 +212,101 @@ export async function buildEnterDuelInstruction(
     .transaction();
 
   return tx.instructions[0];
+}
+
+/**
+ * Build a transaction that calls assign_duel_map_seed on gameplay-state.
+ * Must be called on base layer BEFORE delegation so DuelOpenQueue is accessible.
+ * Pops the matched creator from the queue and stores seed + loadout in game_state/duel_entry.
+ */
+export async function buildAssignDuelMapSeedTransaction(
+  program: Program,
+  sessionPda: PublicKey,
+  sessionSignerPublicKey: PublicKey
+): Promise<Transaction> {
+  const [gameStatePda] = PublicKey.findProgramAddressSync(
+    [Buffer.from('game_state'), sessionPda.toBuffer()],
+    GAMEPLAY_STATE_PROGRAM_ID
+  );
+  const [duelOpenQueuePda] = deriveDuelOpenQueuePda();
+  const [duelEntryPda] = deriveDuelEntryPda(sessionPda);
+
+  const tx = await (
+    program.methods as unknown as {
+      assignDuelMapSeed: () => {
+        accounts: (accounts: {
+          gameState: PublicKey;
+          duelOpenQueue: PublicKey;
+          duelEntry: PublicKey;
+          sessionSigner: PublicKey;
+        }) => { transaction: () => Promise<Transaction> };
+      };
+    }
+  )
+    .assignDuelMapSeed()
+    .accounts({
+      gameState: gameStatePda,
+      duelOpenQueue: duelOpenQueuePda,
+      duelEntry: duelEntryPda,
+      sessionSigner: sessionSignerPublicKey,
+    })
+    .transaction();
+
+  return tx;
+}
+
+/**
+ * Build a transaction that calls generate_duel_map on gameplay-state (runs on ER).
+ * Reads game_state.duel_map_seed (set by assign_duel_map_seed) or derives from VRF.
+ */
+export async function buildGenerateDuelMapTransaction(
+  program: Program,
+  sessionPda: PublicKey,
+  sessionSignerPublicKey: PublicKey,
+  opts: {
+    mapVrfStatePda: PublicKey | null;
+    sessionDiscoveryPda: PublicKey | null;
+  }
+): Promise<Transaction> {
+  const [gameStatePda] = PublicKey.findProgramAddressSync(
+    [Buffer.from('game_state'), sessionPda.toBuffer()],
+    GAMEPLAY_STATE_PROGRAM_ID
+  );
+  const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
+  const [gameplayAuthorityPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from('gameplay_authority')],
+    GAMEPLAY_STATE_PROGRAM_ID
+  );
+  const tx = await (
+    program.methods as unknown as {
+      generateDuelMap: () => {
+        accountsPartial: (accounts: {
+          gameState: PublicKey;
+          generatedMap: PublicKey;
+          mapVrfState: PublicKey | null;
+          gameplayAuthority: PublicKey;
+          mapGeneratorProgram: PublicKey;
+          sessionDiscovery: PublicKey | null;
+          gameSession: PublicKey;
+          player: PublicKey;
+        }) => { transaction: () => Promise<Transaction> };
+      };
+    }
+  )
+    .generateDuelMap()
+    .accountsPartial({
+      gameState: gameStatePda,
+      generatedMap: generatedMapPda,
+      mapVrfState: opts.mapVrfStatePda,
+      gameplayAuthority: gameplayAuthorityPda,
+      mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
+      sessionDiscovery: opts.sessionDiscoveryPda,
+      gameSession: sessionPda,
+      player: sessionSignerPublicKey,
+    })
+    .transaction();
+
+  return tx;
 }
 
 export async function buildEnterDuelTransaction(
@@ -250,12 +344,14 @@ export async function buildInitializeDuelsTransaction(
 ): Promise<Transaction> {
   const [duelVaultPda] = deriveDuelVaultPda();
   const [duelOpenQueuePda] = deriveDuelOpenQueuePda();
+  const [duelErQueuePda] = deriveDuelErQueuePda();
   const tx = await (
     program.methods as unknown as {
       initializeDuels: () => {
         accounts: (accounts: {
           duelVault: PublicKey;
           duelOpenQueue: PublicKey;
+          duelErQueue: PublicKey;
           admin: PublicKey;
           systemProgram: PublicKey;
         }) => { transaction: () => Promise<Transaction> };
@@ -266,6 +362,7 @@ export async function buildInitializeDuelsTransaction(
     .accounts({
       duelVault: duelVaultPda,
       duelOpenQueue: duelOpenQueuePda,
+      duelErQueue: duelErQueuePda,
       admin,
       systemProgram: SystemProgram.programId,
     })
@@ -319,7 +416,59 @@ export async function buildInitializeDuelQueueTransaction(
   return tx;
 }
 
+/**
+ * Build finalize_duel_run transaction (runs on ER before undelegation).
+ * No lamport transfers — those happen in settle_duel_payout on base.
+ */
 export async function buildFinalizeDuelRunTransaction(
+  program: Program,
+  playerPublicKey: PublicKey,
+  sessionSignerPublicKey: PublicKey,
+  gameStatePda: PublicKey,
+  sessionPda: PublicKey
+): Promise<Transaction> {
+  const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
+  const [inventoryPda] = deriveInventoryPda(sessionPda);
+  const [duelEntryPda] = deriveDuelEntryPda(sessionPda);
+
+  const tx = await (
+    program.methods as unknown as {
+      finalizeDuelRun: () => {
+        accounts: (accounts: {
+          duelEntry: PublicKey;
+          sessionSigner: PublicKey;
+          gameState: PublicKey;
+          inventory: PublicKey;
+          generatedMap: PublicKey;
+          player: PublicKey;
+        }) => { transaction: () => Promise<Transaction> };
+      };
+    }
+  )
+    .finalizeDuelRun()
+    .accounts({
+      duelEntry: duelEntryPda,
+      sessionSigner: sessionSignerPublicKey,
+      gameState: gameStatePda,
+      inventory: inventoryPda,
+      generatedMap: generatedMapPda,
+      player: playerPublicKey,
+    })
+    .transaction();
+
+  tx.instructions.unshift(
+    ComputeBudgetProgram.setComputeUnitLimit({ units: DUEL_CU_LIMIT }),
+    ComputeBudgetProgram.setComputeUnitPrice({ microLamports: DUEL_CU_PRICE_MICROLAMPORTS })
+  );
+
+  return tx;
+}
+
+/**
+ * Build settle_duel_payout transaction (runs on base after undelegation).
+ * Handles all lamport transfers based on finalized DuelEntry outcome.
+ */
+export async function buildSettleDuelPayoutTransaction(
   connection: Connection,
   program: Program,
   playerPublicKey: PublicKey,
@@ -328,48 +477,42 @@ export async function buildFinalizeDuelRunTransaction(
   sessionPda: PublicKey,
   creatorWallet?: PublicKey | null
 ): Promise<Transaction> {
-  const [duelOpenQueuePda] = deriveDuelOpenQueuePda();
   const [duelVaultPda] = deriveDuelVaultPda();
   const [gauntletPoolVaultPda] = deriveGauntletPoolVaultPda();
-  const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
+  const [duelEntryPda] = deriveDuelEntryPda(sessionPda);
+  const [duelOpenQueuePda] = deriveDuelOpenQueuePda();
   const [inventoryPda] = deriveInventoryPda(sessionPda);
-  const [duelEntryPda] = PublicKey.findProgramAddressSync(
-    [Buffer.from('duel_entry'), sessionPda.toBuffer()],
-    GAMEPLAY_STATE_PROGRAM_ID
-  );
 
   const tx = await (
     program.methods as unknown as {
-      finalizeDuelRun: () => {
-        accounts: (accounts: {
+      settleDuelPayout: () => {
+        accountsPartial: (accounts: {
           duelEntry: PublicKey;
-          duelOpenQueue: PublicKey;
           duelVault: PublicKey;
           player: PublicKey;
           sessionSigner: PublicKey;
-          gameState: PublicKey;
-          inventory: PublicKey;
-          generatedMap: PublicKey;
-          creatorWallet?: PublicKey | null;
+          creatorWallet: PublicKey | null;
           companyTreasury: PublicKey;
           gauntletPoolVault: PublicKey;
+          duelOpenQueue: PublicKey;
+          gameState: PublicKey;
+          inventory: PublicKey;
         }) => { transaction: () => Promise<Transaction> };
       };
     }
   )
-    .finalizeDuelRun()
-    .accounts({
+    .settleDuelPayout()
+    .accountsPartial({
       duelEntry: duelEntryPda,
-      duelOpenQueue: duelOpenQueuePda,
       duelVault: duelVaultPda,
       player: playerPublicKey,
       sessionSigner: sessionSignerPublicKey,
-      gameState: gameStatePda,
-      inventory: inventoryPda,
-      generatedMap: generatedMapPda,
       creatorWallet: creatorWallet ?? null,
       companyTreasury: COMPANY_TREASURY,
       gauntletPoolVault: gauntletPoolVaultPda,
+      duelOpenQueue: duelOpenQueuePda,
+      gameState: gameStatePda,
+      inventory: inventoryPda,
     })
     .transaction();
 
@@ -400,34 +543,39 @@ export async function buildResetDuelEntryInstruction(
   sessionPda: PublicKey,
   gameStatePda: PublicKey,
   playerPublicKey: PublicKey,
-  sessionSignerPublicKey: PublicKey
+  sessionSignerPublicKey: PublicKey,
+  creatorWallet?: PublicKey | null
 ): Promise<TransactionInstruction> {
   const [duelEntryPda] = deriveDuelEntryPda(sessionPda);
   const [duelVaultPda] = deriveDuelVaultPda();
-  const [duelOpenQueuePda] = deriveDuelOpenQueuePda();
+  const [gauntletPoolVaultPda] = deriveGauntletPoolVaultPda();
 
   const tx = await (
     program.methods as unknown as {
       resetDuelEntry: () => {
-        accounts: (accounts: {
+        accountsPartial: (accounts: {
           duelEntry: PublicKey;
-          duelVault: PublicKey;
-          duelOpenQueue: PublicKey;
           gameState: PublicKey;
           player: PublicKey;
           sessionSigner: PublicKey;
+          duelVault: PublicKey;
+          companyTreasury: PublicKey;
+          gauntletPoolVault: PublicKey;
+          creatorWallet: PublicKey | null;
         }) => { transaction: () => Promise<Transaction> };
       };
     }
   )
     .resetDuelEntry()
-    .accounts({
+    .accountsPartial({
       duelEntry: duelEntryPda,
-      duelVault: duelVaultPda,
-      duelOpenQueue: duelOpenQueuePda,
       gameState: gameStatePda,
       player: playerPublicKey,
       sessionSigner: sessionSignerPublicKey,
+      duelVault: duelVaultPda,
+      companyTreasury: COMPANY_TREASURY,
+      gauntletPoolVault: gauntletPoolVaultPda,
+      creatorWallet: creatorWallet ?? null,
     })
     .transaction();
 
@@ -440,8 +588,6 @@ export async function buildResetOrphanedDuelEntryInstruction(
   playerPublicKey: PublicKey
 ): Promise<TransactionInstruction> {
   const [duelEntryPda] = deriveDuelEntryPda(sessionPda);
-  const [duelVaultPda] = deriveDuelVaultPda();
-  const [duelOpenQueuePda] = deriveDuelOpenQueuePda();
 
   const tx = await (
     program.methods as unknown as {
@@ -449,8 +595,6 @@ export async function buildResetOrphanedDuelEntryInstruction(
         accounts: (accounts: {
           duelEntry: PublicKey;
           sessionPda: PublicKey;
-          duelVault: PublicKey;
-          duelOpenQueue: PublicKey;
           player: PublicKey;
         }) => { transaction: () => Promise<Transaction> };
       };
@@ -460,8 +604,6 @@ export async function buildResetOrphanedDuelEntryInstruction(
     .accounts({
       duelEntry: duelEntryPda,
       sessionPda,
-      duelVault: duelVaultPda,
-      duelOpenQueue: duelOpenQueuePda,
       player: playerPublicKey,
     })
     .transaction();

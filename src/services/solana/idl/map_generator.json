@@ -1,5 +1,5 @@
 {
-  "address": "GCy5GqvnJN99rgGtV6fMn8NtL9E7RoAyHDGzQv8me65j",
+  "address": "E6kc5Edg1s3AXVQQFRoYdAq4vPAFbkYbP7B5ujiuZwz4",
   "metadata": {
     "name": "map_generator",
     "version": "0.1.0",
@@ -75,6 +75,77 @@
             "Session key signer must sign to authorize closure and receives rent refund"
           ],
           "writable": true,
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "close_generated_map_orphaned",
+      "docs": [
+        "Close GeneratedMap when the session PDA no longer exists (orphaned).",
+        "Validates session_signer and player via the GameState account instead."
+      ],
+      "discriminator": [
+        126,
+        214,
+        223,
+        253,
+        156,
+        180,
+        179,
+        14
+      ],
+      "accounts": [
+        {
+          "name": "generated_map",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  101,
+                  110,
+                  101,
+                  114,
+                  97,
+                  116,
+                  101,
+                  100,
+                  95,
+                  109,
+                  97,
+                  112
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "generated_map.session",
+                "account": "GeneratedMap"
+              }
+            ]
+          }
+        },
+        {
+          "name": "game_state",
+          "docs": [
+            "GameState for auth — must belong to the same session."
+          ]
+        },
+        {
+          "name": "player",
+          "docs": [
+            "Player wallet receives the rent refund."
+          ],
+          "writable": true
+        },
+        {
+          "name": "session_signer",
+          "docs": [
+            "Session key signer — validated against game_state.session_signer."
+          ],
           "signer": true
         }
       ],
@@ -204,6 +275,81 @@
       "args": []
     },
     {
+      "name": "close_session_discovery_orphaned",
+      "docs": [
+        "Close SessionDiscovery when the session PDA no longer exists (orphaned).",
+        "Validates session_signer and player via the GameState account instead."
+      ],
+      "discriminator": [
+        14,
+        21,
+        78,
+        8,
+        158,
+        30,
+        7,
+        84
+      ],
+      "accounts": [
+        {
+          "name": "session_discovery",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  95,
+                  100,
+                  105,
+                  115,
+                  99,
+                  111,
+                  118,
+                  101,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "session_discovery.session",
+                "account": "SessionDiscovery"
+              }
+            ]
+          }
+        },
+        {
+          "name": "game_state",
+          "docs": [
+            "GameState for auth — must belong to the same session."
+          ]
+        },
+        {
+          "name": "player",
+          "docs": [
+            "Player wallet receives the rent refund."
+          ],
+          "writable": true
+        },
+        {
+          "name": "session_signer",
+          "docs": [
+            "Session key signer — validated against game_state.session_signer."
+          ],
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "consume_map_vrf",
       "docs": [
         "Marks MapVrfState as consumed after VRF randomness has been used.",
@@ -292,38 +438,38 @@
             "program": {
               "kind": "const",
               "value": [
-                225,
-                240,
-                24,
-                114,
-                207,
-                78,
-                29,
-                234,
-                224,
-                47,
-                10,
-                176,
-                232,
-                191,
-                75,
-                12,
-                245,
-                178,
-                5,
-                197,
+                194,
+                161,
+                35,
+                89,
+                181,
+                27,
+                182,
+                171,
+                120,
+                11,
+                138,
+                126,
+                254,
+                154,
+                192,
+                50,
+                27,
+                82,
                 71,
                 97,
-                18,
-                45,
-                73,
-                218,
-                84,
-                193,
-                245,
-                208,
-                172,
-                110
+                250,
+                182,
+                115,
+                87,
+                200,
+                163,
+                31,
+                189,
+                103,
+                232,
+                141,
+                229
               ]
             }
           }
@@ -415,7 +561,7 @@
         },
         {
           "name": "owner_program",
-          "address": "GCy5GqvnJN99rgGtV6fMn8NtL9E7RoAyHDGzQv8me65j"
+          "address": "E6kc5Edg1s3AXVQQFRoYdAq4vPAFbkYbP7B5ujiuZwz4"
         },
         {
           "name": "delegation_program",
@@ -475,38 +621,38 @@
             "program": {
               "kind": "const",
               "value": [
-                225,
-                240,
-                24,
-                114,
-                207,
-                78,
-                29,
-                234,
-                224,
-                47,
-                10,
-                176,
-                232,
-                191,
-                75,
-                12,
-                245,
-                178,
-                5,
-                197,
+                194,
+                161,
+                35,
+                89,
+                181,
+                27,
+                182,
+                171,
+                120,
+                11,
+                138,
+                126,
+                254,
+                154,
+                192,
+                50,
+                27,
+                82,
                 71,
                 97,
-                18,
-                45,
-                73,
-                218,
-                84,
-                193,
-                245,
-                208,
-                172,
-                110
+                250,
+                182,
+                115,
+                87,
+                200,
+                163,
+                31,
+                189,
+                103,
+                232,
+                141,
+                229
               ]
             }
           }
@@ -598,7 +744,7 @@
         },
         {
           "name": "owner_program",
-          "address": "GCy5GqvnJN99rgGtV6fMn8NtL9E7RoAyHDGzQv8me65j"
+          "address": "E6kc5Edg1s3AXVQQFRoYdAq4vPAFbkYbP7B5ujiuZwz4"
         },
         {
           "name": "delegation_program",
@@ -658,38 +804,38 @@
             "program": {
               "kind": "const",
               "value": [
-                225,
-                240,
-                24,
-                114,
-                207,
-                78,
-                29,
-                234,
-                224,
-                47,
-                10,
-                176,
-                232,
-                191,
-                75,
-                12,
-                245,
-                178,
-                5,
-                197,
+                194,
+                161,
+                35,
+                89,
+                181,
+                27,
+                182,
+                171,
+                120,
+                11,
+                138,
+                126,
+                254,
+                154,
+                192,
+                50,
+                27,
+                82,
                 71,
                 97,
-                18,
-                45,
-                73,
-                218,
-                84,
-                193,
-                245,
-                208,
-                172,
-                110
+                250,
+                182,
+                115,
+                87,
+                200,
+                163,
+                31,
+                189,
+                103,
+                232,
+                141,
+                229
               ]
             }
           }
@@ -781,7 +927,7 @@
         },
         {
           "name": "owner_program",
-          "address": "GCy5GqvnJN99rgGtV6fMn8NtL9E7RoAyHDGzQv8me65j"
+          "address": "E6kc5Edg1s3AXVQQFRoYdAq4vPAFbkYbP7B5ujiuZwz4"
         },
         {
           "name": "delegation_program",
@@ -952,6 +1098,151 @@
                 "path": "session"
               }
             ]
+          }
+        },
+        {
+          "name": "session_discovery",
+          "docs": [
+            "Optional SessionDiscovery to populate with initial map data."
+          ],
+          "writable": true,
+          "optional": true
+        }
+      ],
+      "args": [
+        {
+          "name": "seed",
+          "type": "u64"
+        },
+        {
+          "name": "campaign_level",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "fill_map_with_seed_authorized",
+      "docs": [
+        "Fills the map with a deterministic seed, authorized by gameplay-state via CPI.",
+        "Used for duel map generation where gameplay-state controls seed selection."
+      ],
+      "discriminator": [
+        234,
+        142,
+        6,
+        221,
+        83,
+        32,
+        115,
+        69
+      ],
+      "accounts": [
+        {
+          "name": "generated_map",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  101,
+                  110,
+                  101,
+                  114,
+                  97,
+                  116,
+                  101,
+                  100,
+                  95,
+                  109,
+                  97,
+                  112
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "session"
+              }
+            ]
+          }
+        },
+        {
+          "name": "session",
+          "relations": [
+            "generated_map"
+          ]
+        },
+        {
+          "name": "gameplay_authority",
+          "docs": [
+            "Gameplay authority PDA from gameplay-state that must sign.",
+            "This ensures only gameplay-state can call this instruction."
+          ],
+          "signer": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101,
+                  112,
+                  108,
+                  97,
+                  121,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                212,
+                240,
+                125,
+                83,
+                62,
+                116,
+                61,
+                173,
+                41,
+                58,
+                117,
+                192,
+                80,
+                57,
+                247,
+                215,
+                86,
+                202,
+                219,
+                130,
+                70,
+                8,
+                148,
+                207,
+                54,
+                255,
+                238,
+                244,
+                7,
+                232,
+                79,
+                123
+              ]
+            }
           }
         },
         {
@@ -2200,38 +2491,38 @@
             "program": {
               "kind": "const",
               "value": [
-                165,
-                105,
-                51,
-                195,
-                50,
-                68,
-                93,
-                183,
-                82,
-                141,
-                122,
-                107,
-                195,
-                1,
-                86,
-                30,
-                104,
+                212,
+                240,
+                125,
+                83,
+                62,
+                116,
+                61,
+                173,
+                41,
+                58,
+                117,
+                192,
                 80,
-                170,
-                150,
-                122,
-                133,
-                234,
-                98,
-                181,
-                121,
-                227,
-                35,
-                228,
-                168,
-                136,
-                54
+                57,
+                247,
+                215,
+                86,
+                202,
+                219,
+                130,
+                70,
+                8,
+                148,
+                207,
+                54,
+                255,
+                238,
+                244,
+                7,
+                232,
+                79,
+                123
               ]
             }
           }
@@ -2510,38 +2801,38 @@
             "program": {
               "kind": "const",
               "value": [
-                165,
-                105,
-                51,
-                195,
-                50,
-                68,
-                93,
-                183,
-                82,
-                141,
-                122,
-                107,
-                195,
-                1,
-                86,
-                30,
-                104,
+                212,
+                240,
+                125,
+                83,
+                62,
+                116,
+                61,
+                173,
+                41,
+                58,
+                117,
+                192,
                 80,
-                170,
-                150,
-                122,
-                133,
-                234,
-                98,
-                181,
-                121,
-                227,
-                35,
-                228,
-                168,
-                136,
-                54
+                57,
+                247,
+                215,
+                86,
+                202,
+                219,
+                130,
+                70,
+                8,
+                148,
+                207,
+                54,
+                255,
+                238,
+                244,
+                7,
+                232,
+                79,
+                123
               ]
             }
           }
@@ -2650,38 +2941,38 @@
             "program": {
               "kind": "const",
               "value": [
-                165,
-                105,
-                51,
-                195,
-                50,
-                68,
-                93,
-                183,
-                82,
-                141,
-                122,
-                107,
-                195,
-                1,
-                86,
-                30,
-                104,
+                212,
+                240,
+                125,
+                83,
+                62,
+                116,
+                61,
+                173,
+                41,
+                58,
+                117,
+                192,
                 80,
-                170,
-                150,
-                122,
-                133,
-                234,
-                98,
-                181,
-                121,
-                227,
-                35,
-                228,
-                168,
-                136,
-                54
+                57,
+                247,
+                215,
+                86,
+                202,
+                219,
+                130,
+                70,
+                8,
+                148,
+                207,
+                54,
+                255,
+                238,
+                244,
+                7,
+                232,
+                79,
+                123
               ]
             }
           }
@@ -2794,38 +3085,38 @@
             "program": {
               "kind": "const",
               "value": [
-                165,
-                105,
-                51,
-                195,
-                50,
-                68,
-                93,
-                183,
-                82,
-                141,
-                122,
-                107,
-                195,
-                1,
-                86,
-                30,
-                104,
+                212,
+                240,
+                125,
+                83,
+                62,
+                116,
+                61,
+                173,
+                41,
+                58,
+                117,
+                192,
                 80,
-                170,
-                150,
-                122,
-                133,
-                234,
-                98,
-                181,
-                121,
-                227,
-                35,
-                228,
-                168,
-                136,
-                54
+                57,
+                247,
+                215,
+                86,
+                202,
+                219,
+                130,
+                70,
+                8,
+                148,
+                207,
+                54,
+                255,
+                238,
+                244,
+                7,
+                232,
+                79,
+                123
               ]
             }
           }

@@ -5,7 +5,7 @@
  * IDL can be found at `target/idl/nft_marketplace.json`.
  */
 export type NftMarketplace = {
-  "address": "ApUAEEKYsRMjxoMA65WV2xiG8xGwWzFhHjTMGGefcumK",
+  "address": "GLKxBpZ8hc7qzvD9VHAVsJEjHSu2JVp1HaPrGH4fpTci",
   "metadata": {
     "name": "nftMarketplace",
     "version": "0.1.0",

@@ -79,6 +79,7 @@ function gauntletGearCapacity(week: number): number {
 
 interface SidebarProps {
   time: TimeState;
+  runMode?: RunMode;
   stats: PlayerStats;
   inventory: InventorySlot[];
   inventoryCapacity: number;
@@ -244,6 +245,7 @@ function EchoEquipmentGrid({ tool, gear, week, focusIndex }: { tool: Tool | null
 
 export function BossPanel({
   time,
+  runMode: runModeProp,
   scale = 1,
   compact = false,
   inline = false,
@@ -252,6 +254,7 @@ export function BossPanel({
   onEchoEquipmentLoaded,
 }: {
   time: TimeState;
+  runMode?: RunMode;
   scale?: number;
   compact?: boolean;
   inline?: boolean;
@@ -268,9 +271,9 @@ export function BossPanel({
   const { wallet } = useWallet();
   const { connection, gameplayReadConnection } = useSolanaConnection();
   const boss = getBoss(time.weekBoss);
-  // Use either context's gameState — SessionContext's instance is populated
-  // earlier (during session start) while GameplayStateContext's may still be loading.
-  const resolvedRunMode = gameState?.runMode ?? sessionGameState?.runMode;
+  // Prefer the prop (from reducer/GameScreen) over context values, which may be stale
+  // during week transitions.
+  const resolvedRunMode = runModeProp ?? gameState?.runMode ?? sessionGameState?.runMode;
   // Use the highest week value across sources — the local reducer (time.week)
   // is updated immediately via SYNC_MOVE, while context values may lag after
   // returning from CombatScreen.
@@ -457,7 +460,7 @@ export function BossPanel({
   const panelTitle = displayedBoss
     ? displayedBoss.name
     : shouldShowDuelOpponent
-      ? 'Your Opponent'
+      ? (inline ? 'Your Opponent' : 'Opponent')
       : shouldShowGauntletEcho
         ? (pvpDetails?.name ?? 'Mole Echo')
         : 'No Weekly Boss';
@@ -465,7 +468,7 @@ export function BossPanel({
     displayedBoss || shouldShowGauntletEcho
       ? 'Tap for details'
       : shouldShowDuelOpponent
-        ? 'Build is hidden until duel resolves'
+        ? ''
         : 'Duel final is at week end';
 
   debugLog('[BossPanel] render_mode', {
@@ -595,13 +598,13 @@ export const Sidebar = React.memo(function Sidebar(props: SidebarProps) {
   const { gameplayState: sessionGameState } = useSession();
   const resolvedRunMode = gameState?.runMode ?? sessionGameState?.runMode;
   const resolvedWeek = Math.max(gameState?.week ?? 0, sessionGameState?.week ?? 0, props.time.week);
-  const isDuelFinalWeek = resolvedRunMode === RunMode.Duel && resolvedWeek === 3;
-  const sidebarBg = isDuelFinalWeek ? SIDEBAR_WIDE_BG : SIDEBAR_BG;
+  const sidebarBg = SIDEBAR_BG;
 
   if (props.onlyBoss) {
     return (
       <BossPanel
         time={props.time}
+        runMode={props.runMode}
         scale={props.scale}
         compact={props.compactBoss}
         inline={props.inlineBoss}
@@ -628,7 +631,7 @@ export const Sidebar = React.memo(function Sidebar(props: SidebarProps) {
         isFloating && { flex: 0, flexGrow: 0, padding: 14, paddingTop: 16, gap: 16 },
       ]}
     >
-      {!props.onlyContent && <BossPanel time={props.time} />}
+      {!props.onlyContent && <BossPanel time={props.time} runMode={props.runMode} />}
 
       <View style={styles.statsWrapper}>
         <StatsPanel stats={props.stats} isSidebar={true} />

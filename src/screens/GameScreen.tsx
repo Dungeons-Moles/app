@@ -96,7 +96,7 @@ import { deriveSessionDiscoveryPda, GAMEPLAY_STATE_PROGRAM_ID } from '@/services
 import { warmErBlockhashCache, sendSessionSignerTransaction } from '@/services/solana/sessionSigner';
 import {
   fetchDuelEntry,
-  buildFinalizeDuelRunTransaction,
+  buildSettleDuelPayoutTransaction,
   parseDuelEvents,
   deriveDuelEntryPda,
 } from '@/services/solana/duels';
@@ -108,6 +108,7 @@ import {
   deriveEnemyTier,
 } from '../game/entities/enemies';
 import { BOSSES } from '../data/bosses';
+import { scaleBossStats } from '../data/boss-scaling';
 import type { BossId } from '../game/engine/types';
 import { GAME_CONSTANTS } from '../game/engine/constants';
 import Svg, { Path } from 'react-native-svg';
@@ -117,9 +118,11 @@ const STAINS_BACKGROUND = GAME_SCREEN_STAINS_BACKGROUND;
 const COIN_ICON = require('../../assets/icons/ui/coin.webp');
 const MAP_ICON = require('../../assets/icons/ui/map.webp');
 const SIDEBAR_BG = require('../../assets/ui/panels/sidebar.webp');
+const SIDEBAR_WIDE_BG = require('../../assets/ui/panels/sidebar-wide.webp');
 const ICON_Y = require('../../assets/ui/control-buttons/y.webp');
 const BUTTON_V5 = require('../../assets/ui/buttons/button-v5.webp');
 const ENGINE_ICON = require('../../assets/ui/illustrations/engine.webp');
+const PAPER_PANEL_WIDE = require('../../assets/ui/panels/paper-panel-wide.webp');
 
 const DUEL_BASE_HP = 20;
 
@@ -246,17 +249,21 @@ function createBossCombatParams(
     finalPlayerHp: number;
     finalPlayerGold: number;
     playerWon: boolean;
-  }
+  },
+  campaignLevel?: number
 ): CombatParams {
   const bossDef = BOSSES[bossId];
   if (!bossDef) {
     throw new Error(`Boss definition not found for ID: ${bossId}`);
   }
   const normalizedPlayerStats = normalizeCombatPlayerStats(playerStats, playerGear, playerTool);
+  const bossStats = campaignLevel
+    ? scaleBossStats(bossDef.stats, campaignLevel, week)
+    : bossDef.stats;
 
   return {
     player: buildPlayerCombatant(normalizedPlayerStats),
-    enemy: buildEnemyCombatant(bossDef.name, bossDef.emoji, bossId, bossDef.stats),
+    enemy: buildEnemyCombatant(bossDef.name, bossDef.emoji, bossId, bossStats),
     seed,
     bossId,
     enemyDefinitionId: bossId,
@@ -501,6 +508,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
     stopAutoCommit,
     queueEndGame,
     undelegateCurrentSession,
+    endSessionWithSessionSigner,
   } = useSession();
   const { wallet } = useWallet();
   const { connection, gameplayReadConnection } = useSolanaConnection();
@@ -1016,7 +1024,9 @@ export function GameScreen({ navigation }: GameScreenProps) {
               navigation.replace('Victory', {
                 level: bossResult.newState.campaignLevel,
                 totalMoves: bossResult.newState.totalMoves,
+                enemiesDefeated: bossResult.newState.enemiesDefeated,
                 runMode: bossResult.newState.runMode,
+                gauntletPoints: bossResult.newState.gauntletPointsEarned,
               });
             } else {
               // Player won — state advanced to next week, continue exploration
@@ -1139,7 +1149,8 @@ export function GameScreen({ navigation }: GameScreenProps) {
             finalPlayerHp: onChainState.hp,
             finalPlayerGold: onChainState.gold,
             playerWon,
-          }
+          },
+          onChainState.campaignLevel
         );
         navigateToCombat(navigation, bossCombatParams, {
           campaignLevel: onChainState.campaignLevel,
@@ -1213,7 +1224,8 @@ export function GameScreen({ navigation }: GameScreenProps) {
                 finalPlayerGold: bossResult.newState.gold,
                 playerWon: !bossResult.isDead,
               }
-            : undefined
+            : undefined,
+          onChainState?.campaignLevel ?? currentLevel ?? undefined
         );
 
         debugLog('[GameScreen] Navigating to CombatScreen for weekly fight:', {
@@ -1247,7 +1259,9 @@ export function GameScreen({ navigation }: GameScreenProps) {
             state.player.equippedTool,
             state.player.activeItemsets ?? [],
             state.rngState,
-            state.time.week as 1 | 2 | 3
+            state.time.week as 1 | 2 | 3,
+            undefined,
+            onChainState?.campaignLevel ?? currentLevel ?? undefined
           );
 
           console.warn('[GameScreen] Boss fight on-chain failed, falling back to local resolver:', {
@@ -1453,21 +1467,15 @@ export function GameScreen({ navigation }: GameScreenProps) {
       if (!duelEntry) {
         console.warn('[GameScreen] Duel week 3: no DuelEntry found');
         await queueEndGame(0, true);
-        navigation.navigate('Duels');
+        navigation.reset({ index: 1, routes: [{ name: 'Hub' }, { name: 'Duels' }] });
         return;
-      }
-
-      // Undelegate session from ER before sending finalize_duel_run to base chain.
-      const undelegateResult = await undelegateCurrentSession();
-      if (!undelegateResult.success) {
-        console.warn('[GameScreen] Duel week 3: undelegate failed:', undelegateResult.error);
       }
 
       const sessionSignerKeypair = getSessionSignerKeypair();
       if (!sessionSignerKeypair) {
         console.error('[GameScreen] Duel week 3: no session signer keypair');
         await queueEndGame(0, true);
-        navigation.navigate('Duels');
+        navigation.reset({ index: 1, routes: [{ name: 'Hub' }, { name: 'Duels' }] });
         return;
       }
 
@@ -1476,7 +1484,14 @@ export function GameScreen({ navigation }: GameScreenProps) {
         GAMEPLAY_STATE_PROGRAM_ID
       );
 
-      const tx = await buildFinalizeDuelRunTransaction(
+      // Step 1: Undelegate from ER.
+      const undelegateResult = await undelegateCurrentSession();
+      if (!undelegateResult.success) {
+        console.warn('[GameScreen] Duel week 3: undelegate failed:', undelegateResult.error);
+      }
+
+      // Step 2: Settle duel on base (captures loadout, resolves PvP, handles payouts).
+      const settleTx = await buildSettleDuelPayoutTransaction(
         connection,
         duelProgram,
         wallet.publicKey,
@@ -1485,11 +1500,11 @@ export function GameScreen({ navigation }: GameScreenProps) {
         sessionPda,
         duelEntry.matchedCreatorPlayer
       );
+      const settleSig = await sendSessionSignerTransaction(connection, settleTx, sessionSignerKeypair);
+      await connection.confirmTransaction(settleSig, 'confirmed');
+      console.log('[GameScreen] Duel week 3: settle_duel_payout confirmed', settleSig);
 
-      const signature = await sendSessionSignerTransaction(connection, tx, sessionSignerKeypair);
-      await connection.confirmTransaction(signature, 'confirmed');
-
-      const events = await parseDuelEvents(connection, duelProgram, signature);
+      const events = await parseDuelEvents(connection, duelProgram, settleSig);
 
       // Second player: PvP combat was resolved on-chain
       if (
@@ -1573,19 +1588,22 @@ export function GameScreen({ navigation }: GameScreenProps) {
         return;
       }
 
-      // First player: opponent hasn't finished yet
-      await queueEndGame(0, true);
+      // First player: opponent hasn't finished yet — end session properly
+      await endSessionWithSessionSigner().catch((err) => {
+        console.warn('[GameScreen] Duel week 3: endSession failed, queuing cleanup:', err);
+        return queueEndGame(0, true);
+      });
       setDuelCompleteVisible(true);
     } catch (err) {
       console.error('[GameScreen] Duel week 3 completion failed:', err);
-      await queueEndGame(0, true).catch(() => {});
-      navigation.navigate('Duels');
+      await endSessionWithSessionSigner().catch(() => queueEndGame(0, true).catch(() => {}));
+      navigation.reset({ index: 1, routes: [{ name: 'Hub' }, { name: 'Duels' }] });
     } finally {
       setIsDuelFinalizing(false);
     }
   }, [
-    sessionPda, wallet.publicKey, isDuelFinalizing, connection,
-    undelegateCurrentSession, getSessionSignerKeypair, queueEndGame,
+    sessionPda, wallet.publicKey, isDuelFinalizing, connection, gameplayReadConnection,
+    undelegateCurrentSession, getSessionSignerKeypair, queueEndGame, endSessionWithSessionSigner,
     navigation, onChainState,
   ]);
 
@@ -1663,7 +1681,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
           playSfx('move_floor');
         }
 
-        dispatch({ type: 'MOVE', direction });
+        dispatch({ type: 'MOVE', direction, autoOpenPOI });
         return;
       }
       debugLog('[GameScreen] Using on-chain move path');
@@ -1951,7 +1969,8 @@ export function GameScreen({ navigation }: GameScreenProps) {
                     finalPlayerHp: result.newState.hp,
                     finalPlayerGold: result.newState.gold,
                     playerWon: !result.isDead,
-                  }
+                  },
+                  onChainState?.campaignLevel ?? currentLevel ?? undefined
                 );
 
                 debugLog(
@@ -2048,7 +2067,9 @@ export function GameScreen({ navigation }: GameScreenProps) {
                     navigation.replace('Victory', {
                       level: bossResult.newState.campaignLevel,
                       totalMoves: bossResult.newState.totalMoves,
+                      enemiesDefeated: bossResult.newState.enemiesDefeated,
                       runMode: bossResult.newState.runMode,
+                      gauntletPoints: bossResult.newState.gauntletPointsEarned,
                     });
                   } else {
                     // Player won — state advanced to next week
@@ -2661,6 +2682,19 @@ export function GameScreen({ navigation }: GameScreenProps) {
     controllerEnabled
   );
 
+  // Controller A button to dismiss duel completion modal
+  useControllerAction(
+    {
+      onA: () => {
+        if (duelCompleteVisible) {
+          setDuelCompleteVisible(false);
+          navigation.reset({ index: 1, routes: [{ name: 'Hub' }, { name: 'Duels' }] });
+        }
+      },
+    },
+    isController && duelCompleteVisible
+  );
+
   // Reset inventory focus when leaving exploration phase
   useEffect(() => {
     if (state?.phase !== GamePhase.Exploration) {
@@ -2784,12 +2818,15 @@ export function GameScreen({ navigation }: GameScreenProps) {
   // Extract stable values from poiInteraction to avoid re-triggering on every hook state change.
   // poiInteract is stored in a ref because it has 15+ deps and changes reference frequently,
   // but the effect only needs to call it — not re-run when it changes.
-  const { shouldAutoOpen, isInteracting, interact: poiInteract } = poiInteraction;
+  const { shouldAutoOpen, isInteracting, interact: poiInteract, currentPoi } = poiInteraction;
   const poiInteractRef = useRef(poiInteract);
   poiInteractRef.current = poiInteract;
 
+  const isSurveyBeacon = currentPoi?.poiType === POI_TYPES.SURVEY_BEACON;
+
   useEffect(() => {
-    if (!autoOpenPOI) return;
+    // Survey Beacon always auto-triggers regardless of the auto-open setting
+    if (!autoOpenPOI && !isSurveyBeacon) return;
     if (!state?.player?.position || state.phase !== GamePhase.Exploration || !isFocused) return;
     const currentPos = state.player.position;
     const lastAutoPos = lastAutoTriggeredPosRef.current;
@@ -2811,6 +2848,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
     }
   }, [
     autoOpenPOI,
+    isSurveyBeacon,
     state?.player?.position,
     state?.phase,
     shouldAutoOpen,
@@ -3041,10 +3079,12 @@ export function GameScreen({ navigation }: GameScreenProps) {
                 });
               } else if (
                 onChainState?.runMode === RunMode.Duel &&
-                onChainState?.completed &&
-                !onChainState?.isDead
+                playerWon &&
+                foughtWeek >= 3
               ) {
-                // Duel week 3: no boss fight — handle duel completion
+                // Duel week 3: no boss fight — handle duel completion.
+                // Use foughtWeek (from local state) instead of onChainState.completed
+                // which may be stale when the POI callback fires.
                 handleDuelWeek3Completion();
               } else {
                 // Campaign / Duel: boss fight resolved inline
@@ -3080,7 +3120,8 @@ export function GameScreen({ navigation }: GameScreenProps) {
                     state.player.activeItemsets ?? [],
                     state.rngState,
                     foughtWeek,
-                    { finalPlayerHp, finalPlayerGold, playerWon }
+                    { finalPlayerHp, finalPlayerGold, playerWon },
+                    onChainState?.campaignLevel ?? currentLevel ?? undefined
                   );
                   navigateToCombat(navigation, bossCombatParams, {
                     campaignLevel: onChainState?.campaignLevel ?? 0,
@@ -3380,12 +3421,14 @@ export function GameScreen({ navigation }: GameScreenProps) {
             isGauntletLayout,
             equippedTool: state.player.equippedTool,
             activeItemsets: state.player.activeItemsets,
+            runMode: onChainState?.runMode,
           }
         : null,
     [
       state,
       runMaxGearSlots,
       isGauntletLayout,
+      onChainState?.runMode,
     ]
   );
   const handleToggleOverview = useCallback(() => {
@@ -3648,7 +3691,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
             >
               <CachedImageBackground
                 ref={sidebarEnemyRef}
-                source={SIDEBAR_BG}
+                source={onChainState?.runMode === RunMode.Duel && state.time.week === 3 ? SIDEBAR_WIDE_BG : SIDEBAR_BG}
                 style={styles.floatingBossPanel}
                 imageStyle={{ height: '100%' }}
                 contentFit="fill"
@@ -3697,32 +3740,48 @@ export function GameScreen({ navigation }: GameScreenProps) {
         <DefeatOverlay visible={defeatOverlayVisible} onComplete={handleDefeatOverlayComplete} />
         {(duelCompleteVisible || isDuelFinalizing) && (
           <View style={styles.duelCompleteOverlay}>
-            <View style={styles.duelCompletePanel}>
+            <CachedImageBackground
+              source={PAPER_PANEL_WIDE}
+              resizeMode="stretch"
+              style={[styles.duelCompletePanel, isCompact && styles.duelCompletePanelCompact]}
+            >
               {isDuelFinalizing ? (
                 <>
-                  <Text style={styles.duelCompleteTitle}>Finalizing Duel...</Text>
-                  <ActivityIndicator size="large" color="#f5c542" style={{ marginTop: 16 }} />
+                  <Text style={[styles.duelCompleteTitle, isCompact && styles.duelCompleteTitleCompact]}>Finalizing Duel...</Text>
+                  <ActivityIndicator size="large" color="#8B6914" style={{ marginTop: 16 }} />
                 </>
               ) : (
                 <>
-                  <Text style={styles.duelCompleteTitle}>Duel Run Complete!</Text>
-                  <Text style={styles.duelCompleteMessage}>
+                  <Text style={[styles.duelCompleteTitle, isCompact && styles.duelCompleteTitleCompact]}>Duel Run Complete!</Text>
+                  <Text style={[styles.duelCompleteMessage, isCompact && styles.duelCompleteMessageCompact]}>
                     Your run is finished. Your opponent hasn't completed their run yet.
                     {'\n\n'}
                     You can check the outcome on the Duels screen when they're done.
                   </Text>
                   <Pressable
-                    style={styles.duelCompleteButton}
                     onPress={() => {
                       setDuelCompleteVisible(false);
-                      navigation.navigate('Duels');
+                      navigation.reset({ index: 1, routes: [{ name: 'Hub' }, { name: 'Duels' }] });
                     }}
                   >
-                    <Text style={styles.duelCompleteButtonText}>OK</Text>
+                    {isCompact ? (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <Image source={require('../../assets/ui/control-buttons/a.webp')} style={{ width: 28, height: 28 }} />
+                        <Text style={[styles.duelCompleteButtonText, styles.duelCompleteButtonTextCompact]}>OK</Text>
+                      </View>
+                    ) : (
+                      <CachedImageBackground
+                        source={require('../../assets/ui/buttons/button.webp')}
+                        resizeMode="stretch"
+                        style={styles.duelCompleteButton}
+                      >
+                        <Text style={styles.duelCompleteButtonText}>OK</Text>
+                      </CachedImageBackground>
+                    )}
                   </Pressable>
                 </>
               )}
-            </View>
+            </CachedImageBackground>
           </View>
         )}
         </View>
@@ -3831,37 +3890,54 @@ const styles = StyleSheet.create({
     zIndex: 200,
   },
   duelCompletePanel: {
-    backgroundColor: '#2a1a0e',
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: '#f5c542',
-    padding: 24,
+    padding: 36,
     maxWidth: 400,
     alignItems: 'center',
   },
   duelCompleteTitle: {
-    color: '#f5c542',
-    fontSize: 20,
-    fontWeight: 'bold',
+    fontFamily: Typography.header,
+    color: '#3d2b1f',
+    fontSize: 22,
     textAlign: 'center',
     marginBottom: 12,
   },
   duelCompleteMessage: {
-    color: '#e8dcc0',
+    fontFamily: Typography.body,
+    color: '#3d2b1f',
     fontSize: 14,
     textAlign: 'center',
     lineHeight: 20,
     marginBottom: 20,
   },
   duelCompleteButton: {
-    backgroundColor: '#f5c542',
+    backgroundColor: '#8B6914',
     paddingHorizontal: 32,
     paddingVertical: 10,
     borderRadius: 8,
   },
   duelCompleteButtonText: {
-    color: '#2a1a0e',
+    color: '#fff',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  duelCompletePanelCompact: {
+    padding: 48,
+    maxWidth: 500,
+    transform: [{ scale: 1.45 }],
+  },
+  duelCompleteTitleCompact: {
+    fontSize: 26,
+  },
+  duelCompleteMessageCompact: {
+    fontSize: 16,
+    lineHeight: 24,
+  },
+  duelCompleteButtonCompact: {
+    backgroundColor: 'transparent',
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+  },
+  duelCompleteButtonTextCompact: {
+    color: '#3d2b1f',
   },
 });

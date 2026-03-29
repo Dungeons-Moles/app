@@ -31,7 +31,7 @@ import {
   DEFAULT_SESSION_SIGNER_FUNDING,
 } from './constants';
 import { SOLANA_CONFIG } from './config';
-import { buildResetDuelEntryInstruction, deriveDuelEntryPda } from './duels';
+import { buildResetDuelEntryInstruction, deriveDuelEntryPda, fetchDuelEntry } from './duels';
 import { createGameplayStateProgram } from './programs';
 
 // ============================================================================
@@ -229,12 +229,14 @@ export async function abandonSession(
   const duelEntryInfo = await connection.getAccountInfo(duelEntryPda);
   if (duelEntryInfo) {
     const gameplayProgram = createGameplayStateProgram(connection);
+    const duelEntry = await fetchDuelEntry(gameplayProgram, sessionPda).catch(() => null);
     const resetIx = await buildResetDuelEntryInstruction(
       gameplayProgram,
       sessionPda,
       gameStatePda,
       playerPubkey,
-      sessionSignerPubkey
+      sessionSignerPubkey,
+      duelEntry?.matchedCreatorPlayer
     );
     transaction.add(resetIx);
   }

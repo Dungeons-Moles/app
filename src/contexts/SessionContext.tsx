@@ -92,7 +92,15 @@ import {
   type ActiveSession,
 } from '@/services/solana/sessionList';
 import { abandonSession as abandonSessionTx } from '@/services/solana/sessionBundle';
-import { buildEnterDuelInstruction, parseDuelEvents } from '@/services/solana/duels';
+import {
+  buildAssignDuelMapSeedTransaction,
+  buildEnterDuelInstruction,
+  buildGenerateDuelMapTransaction,
+  buildSettleDuelPayoutTransaction,
+  deriveDuelEntryPda,
+  fetchDuelEntry,
+  parseDuelEvents,
+} from '@/services/solana/duels';
 import { clearFogState, clearBrokenWalls } from '@/services/solana/sessionRestore';
 import { getLocalVrfPayerKeypair } from '@/services/solana/localVrfPayer';
 import type { OnChainGameSession } from '@/services/solana/types/session_manager';
@@ -688,7 +696,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   );
 
   const getSessionDelegationTargets = useCallback(
-    (sessionPda: PublicKey, options?: { includeVrf?: boolean }) => {
+    (sessionPda: PublicKey, options?: { includeVrf?: boolean; includeDuelEntry?: boolean }) => {
       const {
         gameStatePda,
         generatedMapPda,
@@ -737,6 +745,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           expectedOwner: SOLANA_CONFIG.programs.poiSystem,
         });
       }
+      if (options?.includeDuelEntry) {
+        const [duelEntryPda] = deriveDuelEntryPda(sessionPda);
+        targets.push({
+          label: 'duel_entry',
+          pda: duelEntryPda,
+          expectedOwner: SOLANA_CONFIG.programs.gameplayState,
+        });
+      }
       return targets;
     },
     []
@@ -758,12 +774,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   );
 
   const waitForErSessionAccounts = useCallback(
-    async (sessionPda: PublicKey, options?: { includeVrf?: boolean }): Promise<boolean> => {
+    async (sessionPda: PublicKey, options?: { includeVrf?: boolean; includeDuelEntry?: boolean }): Promise<boolean> => {
       // Wait for the 6 core accounts that are always delegated from base chain.
       // VRF states (poi, map, gameplay) are also delegated but not checked here —
       // their readiness is verified via VRF fulfillment polling after requests are sent.
       const targets = getSessionDelegationTargets(sessionPda, {
         includeVrf: options?.includeVrf,
+        includeDuelEntry: options?.includeDuelEntry,
       });
       const startedAt = Date.now();
       const routerConnection = erConnection as Connection & {
@@ -1715,6 +1732,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       onChainLevel?: number;
       sessionSignerKeypair?: Keypair;
       delegateVrf?: ('poi' | 'map' | 'gameplay')[];
+      delegateDuelEntry?: boolean;
     }): Promise<TransactionResult> => {
       const targetSessionPda = options?.sessionPda ?? sessionManager.activeSessionPda ?? null;
       // Check on-chain first — avoids redundant delegation attempts when React state is stale
@@ -1722,7 +1740,23 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       if (targetSessionPda) {
         const alreadyDelegated = await isSessionFullyDelegatedOnBase(targetSessionPda);
         if (alreadyDelegated) {
-          const erReady = await waitForErSessionAccounts(targetSessionPda);
+          // Core accounts are delegated. But DuelEntry may still need delegation
+          // (it's created in enter_duel after session delegation on previous flows).
+          if (options?.delegateDuelEntry) {
+            const [duelEntryPda] = deriveDuelEntryPda(targetSessionPda);
+            const duelEntryInfo = await connection.getAccountInfo(duelEntryPda, 'processed').catch(() => null);
+            if (duelEntryInfo && !duelEntryInfo.owner.equals(DELEGATION_PROGRAM_ID)) {
+              // DuelEntry exists but not delegated — delegate it now via direct IX.
+              const sessionSignerKp = options?.sessionSignerKeypair ?? sessionSigner.keypair;
+              if (sessionSignerKp) {
+                console.log('[SessionContext] ensureDelegatedToRollup: delegating DuelEntry');
+                await sessionManager.delegateDuelEntry(sessionSignerKp, targetSessionPda);
+              }
+            }
+          }
+          const erReady = await waitForErSessionAccounts(targetSessionPda, {
+            includeDuelEntry: options?.delegateDuelEntry,
+          });
           if (!erReady) {
             console.warn(
               '[SessionContext] Delegated on base but ER is missing session accounts after timeout'
@@ -1736,6 +1770,19 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           return { success: false, error: 'Delegation not fully propagated to ER yet. Please retry.' };
         }
       } else if (sessionManager.session?.isDelegated) {
+        // Session state says delegated, but DuelEntry may still need delegation.
+        if (options?.delegateDuelEntry && targetSessionPda) {
+          const [duelEntryPda] = deriveDuelEntryPda(targetSessionPda);
+          const duelEntryInfo = await connection.getAccountInfo(duelEntryPda, 'processed').catch(() => null);
+          if (duelEntryInfo && !duelEntryInfo.owner.equals(DELEGATION_PROGRAM_ID)) {
+            const sessionSignerKp = options?.sessionSignerKeypair ?? sessionSigner.keypair;
+            if (sessionSignerKp) {
+              console.log('[SessionContext] ensureDelegatedToRollup: session delegated but DuelEntry needs delegation');
+              await sessionManager.delegateDuelEntry(sessionSignerKp, targetSessionPda);
+              await waitForErSessionAccounts(targetSessionPda, { includeDuelEntry: true });
+            }
+          }
+        }
         setUseErForGameplay(true);
         return { success: true };
       }
@@ -1750,6 +1797,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           sessionPda: targetSessionPda ?? undefined,
           onChainLevel: options?.onChainLevel ?? sessionManager.session?.campaignLevel ?? undefined,
           delegateVrf: options?.delegateVrf,
+          delegateDuelEntry: options?.delegateDuelEntry,
         });
 
       let result = await delegateWithOverrides();
@@ -1763,7 +1811,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       if (result.success) {
         // Wait for ER to pick up delegated accounts before switching gameplay route
         if (targetSessionPda) {
-          const erReady = await waitForErSessionAccounts(targetSessionPda);
+          const erReady = await waitForErSessionAccounts(targetSessionPda, {
+            includeDuelEntry: options?.delegateDuelEntry,
+          });
           if (!erReady) {
             return {
               success: false,
@@ -2825,6 +2875,24 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       'startDuelGame'
     );
 
+    // Assign duel map seed on base layer BEFORE delegation.
+    // Reads DuelOpenQueue (only accessible on base) and stores the creator's seed
+    // in game_state.duel_map_seed so generate_duel_map on ER can use it.
+    try {
+      console.log('[SessionContext] startDuelGame:assign_duel_map_seed (base)');
+      const baseGameplayProg = createGameplayStateProgram(connection);
+      const assignSeedTx = await buildAssignDuelMapSeedTransaction(
+        baseGameplayProg,
+        sessionPda,
+        newSessionSignerKeypair.publicKey
+      );
+      await sendSessionSignerTransaction(connection, assignSeedTx, newSessionSignerKeypair);
+      console.log('[SessionContext] startDuelGame:assign_duel_map_seed done');
+    } catch (assignErr) {
+      console.warn('[SessionContext] startDuelGame:assign_duel_map_seed failed:', assignErr instanceof Error ? assignErr.message : assignErr);
+      // Non-fatal: if this fails, generate_duel_map will use VRF (creator path)
+    }
+
     // Pre-init VRF states on base chain so they can be delegated.
     // Check ownership first: skip init for existing accounts, skip delegation for already-delegated ones.
     let duelVrfTypesToDelegate: ('poi' | 'map' | 'gameplay')[] = ['poi', 'map', 'gameplay'];
@@ -2891,7 +2959,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    // Delegate to ER including VRF states (only those not already delegated).
+    // Delegate to ER including VRF states and DuelEntry (only those not already delegated).
     const delegateResult = await ensureDelegatedToRollup({
       sessionPda,
       onChainLevel: 20,
@@ -2977,28 +3045,34 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
     } // end else (ER VRF)
 
-    // Generate map with VRF-derived randomness and sync enemies in a single ER transaction
+    // Generate duel map via gameplay-state CPI (seed from DuelErQueue or VRF)
     try {
-        console.log('[SessionContext] startDuelGame:map_and_sync (ER)');
-        const erMapGenProgram = createMapGeneratorProgram(directErConnection);
+        // Debug: check DuelEntry status on ER before generate_duel_map
+        const [debugDuelEntryPda] = deriveDuelEntryPda(sessionPda);
+        const debugDuelEntryInfo = await directErConnection.getAccountInfo(debugDuelEntryPda, 'processed').catch(() => null);
+        console.log('[SessionContext] startDuelGame:duel_entry_on_er', {
+          exists: !!debugDuelEntryInfo,
+          owner: debugDuelEntryInfo?.owner.toBase58() ?? 'N/A',
+        });
+        console.log('[SessionContext] startDuelGame:generate_duel_map (ER)');
         const erGameplayProgram = createGameplayStateProgram(directErConnection);
-        const localMapSeed = SOLANA_CONFIG.isLocalValidator
-          ? await readMapVrfSeedFromBase(sessionPda)
-          : undefined;
-        const { mapTx, syncTx } = await buildMapAndSyncTransaction(
-          SOLANA_CONFIG.isLocalValidator ? 'seed' : 'vrf',
-          erMapGenProgram,
+        const [mapVrfStatePda] = deriveMapVrfStatePda(sessionPda);
+        const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
+        const generateDuelMapTx = await buildGenerateDuelMapTransaction(
           erGameplayProgram,
           sessionPda,
           newSessionSignerKeypair.publicKey,
-          { campaignLevel: 20, seed: localMapSeed, gameplayVrfStatePda: deriveGameplayVrfStatePda(sessionPda)[0] }
+          {
+            mapVrfStatePda,
+            sessionDiscoveryPda,
+          }
         );
         const mapWithBudgetTx = new Transaction().add(
           ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }),
-          ...mapTx.instructions
+          ...generateDuelMapTx.instructions
         );
         await sendErInitTransactionWithRetry(
-          'startDuelGame:fill_map',
+          'startDuelGame:generate_duel_map',
           mapWithBudgetTx,
           newSessionSignerKeypair,
           sessionPda
@@ -3033,9 +3107,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           sessionPda
         );
 
+        const duelSyncIx = await buildSyncMapEnemiesInstruction(
+          erGameplayProgram,
+          sessionPda,
+          newSessionSignerKeypair.publicKey,
+          { gameplayVrfStatePda: deriveGameplayVrfStatePda(sessionPda)[0] }
+        );
         const syncWithBudgetTx = new Transaction().add(
           ComputeBudgetProgram.setComputeUnitLimit({ units: ER_SYNC_MAP_ENEMIES_CU_LIMIT }),
-          ...syncTx.instructions
+          duelSyncIx
         );
 
         // Discover POIs near spawn so they appear immediately
@@ -3824,6 +3904,37 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           '[SessionContext] settleSessionResult after undelegate failed (will continue cleanup):',
           settleAfterUndelegate.error
         );
+      }
+    }
+
+    // For duel sessions, settle payout on base layer before ending.
+    // Captures loadout, resolves PvP if matched, handles payouts, pushes to queue.
+    // Don't rely on context runMode (may be stale) — check DuelEntry existence instead.
+    if (wallet.publicKey) {
+      try {
+        const [duelEntryPda] = deriveDuelEntryPda(sessionPda);
+        const duelEntryInfo = await connection.getAccountInfo(duelEntryPda, 'processed').catch(() => null);
+        if (duelEntryInfo && duelEntryInfo.owner.equals(SOLANA_CONFIG.programs.gameplayState)) {
+          const duelProgram = createGameplayStateProgram(connection);
+          const duelEntry = await fetchDuelEntry(duelProgram, sessionPda).catch(() => null);
+          if (duelEntry && duelEntry.entryLamports > 0) {
+            console.log('[SessionContext] Duel: settling payout before end...');
+            const duelSettleTx = await buildSettleDuelPayoutTransaction(
+              connection,
+              duelProgram,
+              wallet.publicKey,
+              cleanupSigner.publicKey,
+              gameStatePda,
+              sessionPda,
+              duelEntry.matchedCreatorPlayer
+            );
+            const duelSettleSig = await sendSessionSignerTransaction(connection, duelSettleTx, cleanupSigner);
+            await connection.confirmTransaction(duelSettleSig, 'confirmed');
+            console.log('[SessionContext] Duel settle confirmed:', duelSettleSig);
+          }
+        }
+      } catch (duelSettleErr) {
+        console.warn('[SessionContext] Duel settle failed (non-fatal):', duelSettleErr);
       }
     }
 
@@ -4849,6 +4960,21 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         'overrideAndStartDuelGame'
       );
 
+      // Assign duel map seed on base layer BEFORE delegation.
+      try {
+        console.log('[SessionContext] overrideAndStartDuelGame:assign_duel_map_seed (base)');
+        const baseGameplayProg = createGameplayStateProgram(connection);
+        const assignSeedTx = await buildAssignDuelMapSeedTransaction(
+          baseGameplayProg,
+          sessionPda,
+          newSessionSignerKeypair.publicKey
+        );
+        await sendSessionSignerTransaction(connection, assignSeedTx, newSessionSignerKeypair);
+        console.log('[SessionContext] overrideAndStartDuelGame:assign_duel_map_seed done');
+      } catch (assignErr) {
+        console.warn('[SessionContext] overrideAndStartDuelGame:assign_duel_map_seed failed:', assignErr instanceof Error ? assignErr.message : assignErr);
+      }
+
       let duelVrfTypesToDelegate: ('poi' | 'map' | 'gameplay')[] = ['poi', 'map', 'gameplay'];
       const [poiVrfPda] = derivePoiVrfStatePda(sessionPda);
       const [mapVrfPda] = deriveMapVrfStatePda(sessionPda);
@@ -4917,7 +5043,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         onChainLevel: 20,
         sessionSignerKeypair: newSessionSignerKeypair,
         delegateVrf: SOLANA_CONFIG.isLocalValidator ? undefined : (duelVrfTypesToDelegate.length > 0 ? duelVrfTypesToDelegate : undefined),
-      });
+        });
       if (!delegateResult.success) {
         return {
           success: false,
@@ -4982,25 +5108,24 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       } // end else (ER VRF)
 
       try {
-          const erMapGenProgram = createMapGeneratorProgram(directErConnection);
           const erGameplayProgram = createGameplayStateProgram(directErConnection);
-          const localMapSeed = SOLANA_CONFIG.isLocalValidator
-            ? await readMapVrfSeedFromBase(sessionPda)
-            : undefined;
-          const { mapTx, syncTx } = await buildMapAndSyncTransaction(
-            SOLANA_CONFIG.isLocalValidator ? 'seed' : 'vrf',
-            erMapGenProgram,
+          const [overrideMapVrfStatePda] = deriveMapVrfStatePda(sessionPda);
+          const [overrideSessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
+          const generateDuelMapTx = await buildGenerateDuelMapTransaction(
             erGameplayProgram,
             sessionPda,
             newSessionSignerKeypair.publicKey,
-            { campaignLevel: 20, seed: localMapSeed, gameplayVrfStatePda: deriveGameplayVrfStatePda(sessionPda)[0] }
+            {
+              mapVrfStatePda: overrideMapVrfStatePda,
+              sessionDiscoveryPda: overrideSessionDiscoveryPda,
+            }
           );
           const mapWithBudgetTx = new Transaction().add(
             ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }),
-            ...mapTx.instructions
+            ...generateDuelMapTx.instructions
           );
           await sendErInitTransactionWithRetry(
-            'overrideAndStartDuelGame:fill_map',
+            'overrideAndStartDuelGame:generate_duel_map',
             mapWithBudgetTx,
             newSessionSignerKeypair,
             sessionPda
@@ -5033,9 +5158,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             sessionPda
           );
 
+          const overrideSyncIx = await buildSyncMapEnemiesInstruction(
+            erGameplayProgram,
+            sessionPda,
+            newSessionSignerKeypair.publicKey,
+            { gameplayVrfStatePda: deriveGameplayVrfStatePda(sessionPda)[0] }
+          );
           const syncWithBudgetTx = new Transaction().add(
             ComputeBudgetProgram.setComputeUnitLimit({ units: ER_SYNC_MAP_ENEMIES_CU_LIMIT }),
-            ...syncTx.instructions
+            overrideSyncIx
           );
           await sendErInitTransactionWithRetry(
             'overrideAndStartDuelGame:sync_map_enemies',

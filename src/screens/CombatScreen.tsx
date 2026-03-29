@@ -31,7 +31,7 @@ import { parseGameplayEvents, extractVictoryData } from '@/services/solana/event
 import { createGameplayStateProgram, createPlayerProfileProgram } from '@/services/solana/programs';
 import { RunMode } from '@/services/solana/types/gameplay_state';
 import {
-  buildFinalizeDuelRunTransaction,
+  buildSettleDuelPayoutTransaction,
   fetchDuelEntry,
   parseDuelEvents,
 } from '@/services/solana/duels';
@@ -145,8 +145,9 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
   // Start combat when screen loads
   useEffect(() => {
     // Play combat music immediately
+    const finalWeek = (combatInput?.runMode ?? gameplayState?.runMode) === RunMode.Gauntlet ? 5 : 3;
     const track: BgmTrack = isBossFight
-      ? currentWeek === 3
+      ? currentWeek === finalWeek
         ? 'boss_week_3'
         : 'boss_week_1_2'
       : 'standard_combat';
@@ -249,7 +250,8 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
     if (!combatInput?.onChainOutcome) return;
     if (combatInput.duelReplay || gameplayState?.runMode === RunMode.Duel) return;
 
-    const isFinal = isBossFight && currentWeek === 3;
+    const maxWeeks = (combatInput?.runMode ?? gameplayState?.runMode) === RunMode.Gauntlet ? 5 : 3;
+    const isFinal = isBossFight && currentWeek === maxWeeks;
     const willDie = !combatInput.onChainOutcome.playerWon;
 
     // Start teardown for: final boss (win or lose) or any defeat
@@ -372,7 +374,7 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
         const sessionSignerKeypair = getSessionSignerKeypair();
         if (!sessionSignerKeypair) return;
 
-        const tx = await buildFinalizeDuelRunTransaction(
+        const tx = await buildSettleDuelPayoutTransaction(
           connection,
           duelProgram,
           wallet.publicKey,
@@ -559,6 +561,7 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
           levelUnlocked: levelReached + 1,
           itemUnlocked,
           runMode: capturedRunMode,
+          gauntletPoints: gameplayState?.gauntletPointsEarned,
         });
       } else {
         console.log('[CombatScreen] Navigating back to map (victory)');
@@ -660,7 +663,7 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
         equippedGear: playerEquipment.gear,
       }}
       goldReward={victoryGoldReward}
-      isFinalVictory={isBossFight && currentWeek === 3}
+      isFinalVictory={isBossFight && currentWeek === ((combatInput?.runMode ?? gameplayState?.runMode) === RunMode.Gauntlet ? 5 : 3)}
       onCombatComplete={handleCombatComplete}
       arenaChildren={
         gameState ? (

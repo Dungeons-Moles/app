@@ -1063,17 +1063,11 @@ export function usePoiInteraction(): UsePoiInteractionResult {
       if (gameState.player.stats.gold < 4) return 'No gold to spend at the shop';
     }
 
-    // Seismic Scanner: all POIs already discovered
-    if (poiType === POI_TYPES.SEISMIC_SCANNER) {
-      const hasHidden = gameState.map.pois.some(
-        (poi) =>
-          !poi.visited &&
-          !poi.discovered &&
-          poi.definitionId !== 'L1' &&
-          gameState.map.fog[poi.position.y]?.[poi.position.x] === FogState.Hidden
-      );
-      if (!hasHidden) return 'All POIs already discovered';
-    }
+    // Seismic Scanner: the on-chain instruction checks the full MapPois account
+    // for undiscovered POIs. The frontend only has the discovered subset via
+    // SessionDiscovery, so we can't reliably pre-check here. Let the on-chain
+    // generate_scanner_offer determine availability — it returns an empty offer
+    // if no POIs remain, which the UI handles as "No POIs to reveal".
 
     // Rail Waypoint: no other discovered waypoints
     if (poiType === POI_TYPES.RAIL_WAYPOINT) {
@@ -2299,8 +2293,10 @@ export function usePoiInteraction(): UsePoiInteractionResult {
               return { success: false, error: restOption.disabledReason ?? 'Option is disabled' };
             }
 
-            // Save pre-interaction week to detect boss resolution after on-chain call
+            // Save pre-interaction week and HP to detect boss resolution after on-chain call
             const preWeek = gameState?.time.week ?? 0;
+            const preHealHpSnapshot = gameState?.player.stats.hp ?? 0;
+            const maxHpSnapshot = gameState?.player.stats.maxHp ?? preHealHpSnapshot;
 
             // Send interactRest on-chain
             debugLog(
@@ -2388,14 +2384,12 @@ export function usePoiInteraction(): UsePoiInteractionResult {
                 // correct starting HP (not the stale pre-heal value from the closure).
                 let preBossHp = parsedBossCombat?.preBossPlayerHp;
                 if (preBossHp == null) {
-                  const preHealHp = gameState?.player.stats.hp ?? 0;
-                  const maxHp = gameState?.player.stats.maxHp ?? preHealHp;
                   if (deferredPoiType === POI_TYPES.MOLE_DEN) {
                     // Mole Den: full heal
-                    preBossHp = maxHp;
+                    preBossHp = maxHpSnapshot;
                   } else {
                     // Rest Alcove: +10 HP (capped at maxHp)
-                    preBossHp = Math.min(preHealHp + 10, maxHp);
+                    preBossHp = Math.min(preHealHpSnapshot + 10, maxHpSnapshot);
                   }
                 }
 
