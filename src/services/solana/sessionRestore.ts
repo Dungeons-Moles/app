@@ -250,9 +250,7 @@ export async function fetchFullSessionState(
   }
 
   const mapLooksUninitialized =
-    sessionDiscoveryData.mapWidth <= 0 ||
-    sessionDiscoveryData.mapHeight <= 0 ||
-    (gameStateData.positionX === 0 && gameStateData.positionY === 0);
+    sessionDiscoveryData.mapWidth <= 0 || sessionDiscoveryData.mapHeight <= 0;
 
   if (mapLooksUninitialized) {
     if (!options?.silentMissingData) {
@@ -261,9 +259,13 @@ export async function fetchFullSessionState(
         height: sessionDiscoveryData.mapHeight,
         discoveredEnemyCount: sessionDiscoveryData.discoveredEnemyCount,
         discoveredPoiCount: sessionDiscoveryData.discoveredPoiCount,
-        position: {
+        onChainPosition: {
           x: gameStateData.positionX,
           y: gameStateData.positionY,
+        },
+        discoverySpawn: {
+          x: sessionDiscoveryData.spawnX,
+          y: sessionDiscoveryData.spawnY,
         },
       });
     }
@@ -291,7 +293,12 @@ export async function fetchFullSessionState(
     decodeBossId(sessionDiscoveryData.currentBossId)
   );
   const player = buildPlayer(gameStateData, inventoryData);
-  const playerPos = { x: gameStateData.positionX, y: gameStateData.positionY };
+  const playerPos =
+    gameStateData.positionX === 0 &&
+    gameStateData.positionY === 0 &&
+    (sessionDiscoveryData.spawnX !== 0 || sessionDiscoveryData.spawnY !== 0)
+      ? { x: sessionDiscoveryData.spawnX, y: sessionDiscoveryData.spawnY }
+      : { x: gameStateData.positionX, y: gameStateData.positionY };
 
   // Build the map
   // Add Mole Den (L1) if not already in discoveredPois.
@@ -780,14 +787,14 @@ export function decodeItemId(itemId: Uint8Array | number[]): string | null {
 
 /**
  * Maps on-chain Tier enum to ItemRarity for gear.
- * Tier I = base rarity (COMMON), Tier II = GILDED, Tier III = DIAMOND
+ * Tier I = base rarity (COMMON), Tier II = SAPPHIRE, Tier III = GOLDEN
  */
 function tierToRarity(tier: Tier): ItemRarity | undefined {
   switch (tier) {
     case Tier.II:
-      return 'GILDED';
+      return 'SAPPHIRE';
     case Tier.III:
-      return 'DIAMOND';
+      return 'GOLDEN';
     default:
       return undefined; // Tier I uses the item's base rarity
   }

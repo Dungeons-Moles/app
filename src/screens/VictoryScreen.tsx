@@ -25,6 +25,7 @@ import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHin
 import { useAudio } from '../contexts/AudioContext';
 import { useProfile } from '../contexts/ProfileContext';
 import { useScreenVariant } from '../contexts/ScreenVariantContext';
+import { RunMode } from '../services/solana/types/gameplay_state';
 
 const BACKGROUND_IMAGE = require('../../assets/ui/backgrounds/loading-background.webp');
 const STAINS_BACKGROUND = require('../../assets/ui/backgrounds/stains-background.webp');
@@ -39,7 +40,16 @@ type VictoryScreenProps = {
 };
 
 export function VictoryScreen({ navigation, route }: VictoryScreenProps) {
-  const { replay, level, totalMoves, levelUnlocked, itemUnlocked } = route.params ?? {};
+  const {
+    replay,
+    level,
+    totalMoves,
+    enemiesDefeated,
+    levelUnlocked,
+    itemUnlocked,
+    runMode,
+    gauntletPoints,
+  } = route.params ?? {};
   const { height } = useWindowDimensions();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
@@ -110,7 +120,7 @@ export function VictoryScreen({ navigation, route }: VictoryScreenProps) {
     { button: 'B', label: 'Return to Hub' },
   ];
 
-  const turnsTaken = replay?.combatEnded?.turnsTaken ?? 0;
+  const defeated = enemiesDefeated ?? 0;
 
   // Shared components
   const VictoryHeader = () => (
@@ -128,7 +138,11 @@ export function VictoryScreen({ navigation, route }: VictoryScreenProps) {
         resizeMode="contain"
       />
       <Text style={isVerticalLayout ? styles.subtitleVertical : styles.subtitle}>
-        Level {level ?? 1} Complete
+        {runMode === RunMode.Gauntlet
+          ? 'Finished Gauntlet'
+          : runMode === RunMode.Duel
+            ? 'Duel Complete'
+            : `Level ${level ?? 1} Complete`}
       </Text>
     </>
   );
@@ -174,25 +188,51 @@ export function VictoryScreen({ navigation, route }: VictoryScreenProps) {
       </Text>
 
       <View style={styles.statsRow}>
-        {mode !== 'guest' && <StatFrame label="Level" value={level ?? 1} />}
+        {mode !== 'guest' &&
+          (runMode === RunMode.Gauntlet ? (
+            <StatFrame label="Mode" value="Gauntlet" />
+          ) : runMode === RunMode.Duel ? (
+            <StatFrame label="Mode" value="Duels" />
+          ) : (
+            <StatFrame label="Level" value={level ?? 1} />
+          ))}
         <StatFrame label="Total Moves" value={totalMoves ?? 0} />
-        <StatFrame label="Combat Turns" value={turnsTaken} />
+        <StatFrame label="Enemies Defeated" value={defeated} />
       </View>
     </View>
   );
 
+  const isGauntlet = runMode === RunMode.Gauntlet;
+
   const UnlockDisplays = () => {
-    const hasLevel = showUnlock && levelUnlocked;
+    const hasLevel = showUnlock && levelUnlocked && !isGauntlet;
     const hasItem = showUnlock && itemUnlocked;
-    if (!hasLevel && !hasItem) return null;
+    const hasGauntletPoints = isGauntlet && gauntletPoints != null;
+    if (!hasLevel && !hasItem && !hasGauntletPoints) return null;
 
     return (
       <Animated.View
         style={[
           isVerticalLayout ? styles.unlocksRowVertical : styles.unlocksRow,
-          { opacity: glowAnim },
+          { opacity: hasGauntletPoints ? fadeAnim : glowAnim },
         ]}
       >
+        {/* Gauntlet Points Display */}
+        {hasGauntletPoints && (
+          <View
+            style={isVerticalLayout ? styles.unlockContainerVertical : styles.unlockContainer}
+          >
+            <Text style={isVerticalLayout ? styles.unlockTitleVertical : styles.unlockTitle}>
+              Points Earned
+            </Text>
+            <Text
+              style={isVerticalLayout ? styles.gauntletPointsVertical : styles.gauntletPoints}
+            >
+              +{gauntletPoints}
+            </Text>
+          </View>
+        )}
+
         {/* Level Unlock Display */}
         {hasLevel && (
           <View
@@ -473,6 +513,17 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#AAFFAA',
   },
+  gauntletPoints: {
+    fontFamily: Typography.number,
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#1A0A00',
+    textAlign: 'center',
+    textShadowColor: '#FABC0F',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 6,
+    marginVertical: 8,
+  },
   itemUnlockContainer: {
     backgroundColor: 'rgba(80, 60, 100, 0.9)',
     borderRadius: 10,
@@ -658,6 +709,17 @@ const styles = StyleSheet.create({
     fontFamily: Typography.body,
     fontSize: 16,
     color: '#AAFFAA',
+  },
+  gauntletPointsVertical: {
+    fontFamily: Typography.number,
+    fontSize: 48,
+    fontWeight: 'bold',
+    color: '#1A0A00',
+    textAlign: 'center',
+    textShadowColor: '#FABC0F',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 6,
+    marginVertical: 12,
   },
   itemUnlockContainerVertical: {
     backgroundColor: 'rgba(80, 60, 100, 0.9)',

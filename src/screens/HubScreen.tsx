@@ -452,8 +452,14 @@ export function HubScreen({ navigation }: HubScreenProps) {
 
   // Lazily derive + persist game wallet keypair when profile modal opens
   // and no keypair is stored yet. signMessage is free (no tx cost).
+  const gameWalletDeriveRef = useRef<'idle' | 'pending' | 'rejected'>('idle');
   useEffect(() => {
-    if (!showProfile || sessionSigner.keypair || !wallet.publicKey) return;
+    if (!showProfile) {
+      gameWalletDeriveRef.current = 'idle';
+      return;
+    }
+    if (sessionSigner.keypair || !wallet.publicKey || gameWalletDeriveRef.current !== 'idle') return;
+    gameWalletDeriveRef.current = 'pending';
     const walletAddress = wallet.address ?? wallet.publicKey.toBase58();
     let cancelled = false;
     (async () => {
@@ -462,10 +468,11 @@ export function HubScreen({ navigation }: HubScreenProps) {
         if (cancelled) return;
         const derived = deriveSessionSignerFromSignature(sig);
         await storeSessionSignerWallet(walletAddress, derived);
-        // Trigger reload in the hook
         await sessionSigner.markAsActive(derived);
+        gameWalletDeriveRef.current = 'idle';
       } catch {
-        // User rejected signMessage — that's fine, just don't show game wallet
+        // User rejected signMessage — don't retry until modal is reopened
+        gameWalletDeriveRef.current = 'rejected';
       }
     })();
     return () => {

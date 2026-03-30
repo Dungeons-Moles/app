@@ -176,6 +176,8 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
         enemyGold: combatInput.enemyGold,
         enemyActiveItemSets: combatInput.enemyActiveItemSets,
         preserveArmor: combatInput.preserveArmor,
+        pvpTieBreakerFavorPlayer: combatInput.pvpTieBreakerFavorPlayer,
+        pvpPlayerActsFirstOnTie: combatInput.pvpPlayerActsFirstOnTie,
       };
 
       // Temporary safety switch: on-chain combat currently uses the same parity resolver
@@ -284,6 +286,7 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
       }
 
       if (combatInput?.duelReplay) {
+        playBgm('hub', { crossfade: true, resume: false });
         if (combatInput.historyReplay) {
           navigation.goBack();
         } else {
@@ -441,7 +444,9 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
         duelReplayCombatInput = {
           player,
           enemy,
-          seed: 0,
+          seed: Number(visual.seed % BigInt(2 ** 32)),
+          pvpPlayerActsFirstOnTie: !isPlayerA,
+          pvpTieBreakerFavorPlayer: isPlayerA === (Number(visual.seed % BigInt(2)) === 0),
           onChainOutcome: {
             finalPlayerHp: isPlayerA ? visual.finalPlayerAHp : visual.finalPlayerBHp,
             finalPlayerGold: 0,

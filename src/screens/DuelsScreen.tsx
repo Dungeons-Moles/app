@@ -533,7 +533,10 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
             <Text style={[styles.modalTitle, isCompact && compactStyles.modalTitle]}>
               Request Failed
             </Text>
-            <Text style={[styles.modalText, isCompact && compactStyles.modalText]}>
+            <Text
+              style={[styles.modalText, isCompact && compactStyles.modalText]}
+              numberOfLines={7}
+            >
               {errorMessage || 'The request failed, please try again.'}
             </Text>
             {isCompact ? (

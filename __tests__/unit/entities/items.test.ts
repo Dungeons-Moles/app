@@ -105,17 +105,17 @@ describe('Items Entity', () => {
       expect(gear.tags).toContain('SCOUT');
     });
 
-    it('creates gear with Gilded rarity applying 2x multiplier', () => {
-      const gear = createGearInstance('I9', 'GILDED'); // DIG: 2*2=4
+    it('creates gear with Sapphire rarity applying 2x multiplier', () => {
+      const gear = createGearInstance('I9', 'SAPPHIRE'); // DIG: 2*2=4
 
-      expect(gear.currentRarity).toBe('GILDED');
+      expect(gear.currentRarity).toBe('SAPPHIRE');
       expect(gear.stats.dig).toBe(4);
     });
 
-    it('creates gear with Diamond rarity applying 4x multiplier', () => {
-      const gear = createGearInstance('I9', 'DIAMOND'); // DIG: 2*4=8
+    it('creates gear with Golden rarity applying 4x multiplier', () => {
+      const gear = createGearInstance('I9', 'GOLDEN'); // DIG: 2*4=8
 
-      expect(gear.currentRarity).toBe('DIAMOND');
+      expect(gear.currentRarity).toBe('GOLDEN');
       expect(gear.stats.dig).toBe(8);
     });
 
@@ -148,12 +148,12 @@ describe('Items Entity', () => {
       expect(applyRarityMultiplier('COMMON')).toBe(1.0);
     });
 
-    it('returns 2.0 multiplier for GILDED rarity', () => {
-      expect(applyRarityMultiplier('GILDED')).toBe(2.0);
+    it('returns 2.0 multiplier for SAPPHIRE rarity', () => {
+      expect(applyRarityMultiplier('SAPPHIRE')).toBe(2.0);
     });
 
-    it('returns 4.0 multiplier for DIAMOND rarity', () => {
-      expect(applyRarityMultiplier('DIAMOND')).toBe(4.0);
+    it('returns 4.0 multiplier for GOLDEN rarity', () => {
+      expect(applyRarityMultiplier('GOLDEN')).toBe(4.0);
     });
 
     it('returns 1.0 multiplier for RARE/HEROIC/MYTHIC (fixed rarities)', () => {

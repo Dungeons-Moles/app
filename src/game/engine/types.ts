@@ -90,7 +90,7 @@ export type ItemsetId =
 
 export type Rarity = 'COMMON' | 'UNCOMMON' | 'RARE' | 'EPIC';
 
-export type ItemRarity = 'COMMON' | 'GILDED' | 'DIAMOND' | 'RARE' | 'HEROIC' | 'MYTHIC';
+export type ItemRarity = 'COMMON' | 'SAPPHIRE' | 'GOLDEN' | 'RARE' | 'HEROIC' | 'MYTHIC';
 
 export type ItemTag = 'STONE' | 'SCOUT' | 'GREED' | 'BLAST' | 'FROST' | 'RUST' | 'BLOOD' | 'TEMPO';
 

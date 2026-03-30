@@ -304,7 +304,7 @@ export const TOOL_DEFINITIONS: Record<ToolId, ToolDefinition> = {
 
 /**
  * Get the stat multiplier for a given rarity
- * Only COMMON can be upgraded to GILDED (2.0x) or DIAMOND (4.0x)
+ * Only COMMON can be upgraded to SAPPHIRE (2.0x) or GOLDEN (4.0x)
  * RARE, HEROIC, MYTHIC are fixed rarities with no multiplier
  */
 export function applyRarityMultiplier(rarity: ItemRarity): number {

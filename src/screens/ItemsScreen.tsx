@@ -67,6 +67,8 @@ const statIconDIG = require('../../assets/icons/stats/DIG.webp');
 const statIconHP = require('../../assets/icons/stats/HP.webp');
 const squareFrameSource = require('../../assets/ui/frames/square.webp');
 const squareFrameGreenSource = require('../../assets/ui/frames/square-green.webp');
+const squareFrameBlueSource = require('../../assets/ui/frames/square-blue.webp');
+const squareFrameYellowSource = require('../../assets/ui/frames/square-yellow.webp');
 const engineImageSource = require('../../assets/ui/illustrations/engine.webp');
 
 const ITEMSET_ICONS: Record<string, any> = {
@@ -206,12 +208,24 @@ type DisplayItem = {
 
 const RARITY_COLORS: Record<ItemRarity, string> = {
   COMMON: '#9CA3AF',
-  GILDED: '#22C55E',
-  DIAMOND: '#3B82F6',
+  SAPPHIRE: '#4A90D9',
+  GOLDEN: '#CC9900',
   RARE: '#A855F7',
   HEROIC: '#F97316',
   MYTHIC: '#FFD700',
 };
+
+function getFrameForRarity(rarity: ItemRarity, isInPool: boolean): { source: any; bgColor?: string } {
+  if (isInPool) return { source: squareFrameGreenSource };
+  switch (rarity) {
+    case 'SAPPHIRE':
+      return { source: squareFrameBlueSource, bgColor: 'rgba(59, 130, 246, 0.15)' };
+    case 'GOLDEN':
+      return { source: squareFrameYellowSource, bgColor: 'rgba(234, 179, 8, 0.18)' };
+    default:
+      return { source: squareFrameSource };
+  }
+}
 
 type StatTiers = { atk?: string; arm?: string; spd?: string; dig?: string; hp?: string };
 
@@ -222,7 +236,7 @@ function formatTiered(v1: number, v2: number, v3: number): string {
 
 function getGearStatTiers(id: GearId, baseStats: ItemStats): StatTiers {
   const result: StatTiers = {};
-  const mults = [RARITY_MULTIPLIER.COMMON, RARITY_MULTIPLIER.GILDED, RARITY_MULTIPLIER.DIAMOND];
+  const mults = [RARITY_MULTIPLIER.COMMON, RARITY_MULTIPLIER.SAPPHIRE, RARITY_MULTIPLIER.GOLDEN];
 
   // BattleStart flat stats from effects (authoritative tier values)
   const e1 = getGearStatsAtTier(id, 1);
@@ -716,7 +730,7 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
           {/* Left column - Item grid by tag / Itemset grid */}
           <ScrollView
             ref={scrollViewRef}
-            style={styles.itemsListColumn}
+            style={[styles.itemsListColumn, isCompact && compactStyles.itemsListColumn]}
             showsVerticalScrollIndicator={false}
             onLayout={(e) => setLeftColumnWidth(e.nativeEvent.layout.width)}
           >
@@ -745,6 +759,7 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                           const isInPool =
                             !isGuest && poolIndex >= 0 && draftPoolIndices.has(poolIndex);
                           const isCursorItem = isController && idx === cursorIdx;
+                          const { source: frameSource, bgColor: frameBg } = getFrameForRarity(item.rarity, isInPool);
                           const cell = (
                             <TouchableOpacity
                               key={item.id}
@@ -758,8 +773,8 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                               activeOpacity={0.7}
                             >
                               <CachedImageBackground
-                                source={isInPool ? squareFrameGreenSource : squareFrameSource}
-                                style={[styles.itemFrame, isCompact && compactStyles.itemFrame, !isCompact && { width: cellSize, height: cellSize }]}
+                                source={frameSource}
+                                style={[styles.itemFrame, isCompact && compactStyles.itemFrame, !isCompact && { width: cellSize, height: cellSize }, frameBg ? { backgroundColor: frameBg } : undefined]}
                                 resizeMode="stretch"
                               >
                                 <Image
@@ -921,13 +936,15 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                           {selectedItemset.requiredItems.map((itemId) => {
                             const item = allItemsById[itemId as string];
                             if (!item) return null;
+                            const { source: reqFrameSource, bgColor: reqFrameBg } = getFrameForRarity(item.rarity, false);
                             return (
                               <View key={itemId as string} style={styles.itemsetMemberRow}>
                                 <CachedImageBackground
-                                  source={squareFrameSource}
+                                  source={reqFrameSource}
                                   style={[
                                     styles.itemsetReqFrame,
                                     isCompact && compactStyles.itemsetReqFrame,
+                                    reqFrameBg ? { backgroundColor: reqFrameBg } : undefined,
                                   ]}
                                   resizeMode="stretch"
                                 >
@@ -1269,6 +1286,7 @@ const styles = StyleSheet.create({
   itemsListColumn: {
     flex: 2,
     paddingRight: 8,
+    marginTop: 12,
   },
   tagSection: {
     marginBottom: 16,
@@ -1518,6 +1536,9 @@ const compactStyles = StyleSheet.create({
   },
   header: {
     marginBottom: 12,
+  },
+  itemsListColumn: {
+    marginTop: 20,
   },
   backButton: {
     width: 140,

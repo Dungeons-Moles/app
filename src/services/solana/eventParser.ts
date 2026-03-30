@@ -18,18 +18,13 @@ import type {
   BossCombatStartedEvent,
   EnemyMovedEvent,
   PlayerDefeatedEvent,
-  PlayerHealedEvent,
   LevelCompletedEvent,
   ItemUnlockedEvent,
   ParsedEvent,
   CombatEventParseResult,
   StatusEffect,
-  BackendCombatLogEntry,
 } from './types/combat_events';
-import {
-  EVENT_NAMES,
-  LogAction,
-} from './types/combat_events';
+import { EVENT_NAMES } from './types/combat_events';
 import { getItemForLevel } from '@/data/items/all-items';
 import { getGearDefinition } from '@/data/gear';
 import { getToolDefinition } from '@/game/entities/items';
@@ -288,93 +283,6 @@ export async function parseCombatLog(
   return { enemyInfo };
 }
 
-/**
- * Parse boss combat data from a move_player transaction that resolved the boss
- * fight inline (Campaign mode, Duel weeks 1-2).
- *
- * When move_player resolves both field enemy combat and boss combat in the same
- * transaction, this extracts the LAST CombatLog and CombatStarted events
- * (boss combat is always resolved after field enemies on-chain).
- */
-export async function parseBossCombatFromMoveTx(
-  connection: Connection,
-  signature: string,
-  program?: Program
-): Promise<{
-  preBossPlayerHp?: number;
-  combatEnded?: CombatEndedEvent;
-  bossId?: string;
-}> {
-  const tx = await connection.getTransaction(signature, {
-    commitment: 'confirmed',
-    maxSupportedTransactionVersion: 0,
-  });
-
-  if (!tx?.meta?.logMessages) {
-    return {};
-  }
-
-  let lastPlayerHp: number | undefined;
-  let preBossPlayerHpFromHeal: number | undefined;
-  let lastCombatEnded: CombatEndedEvent | undefined;
-  let bossStartedSeen = false;
-  let parsedBossId: string | undefined;
-
-  for (const logLine of tx.meta.logMessages) {
-    if (!logLine.startsWith('Program data: ')) continue;
-    const base64Data = logLine.slice('Program data: '.length);
-    try {
-      const buf = Buffer.from(base64Data, 'base64');
-
-      // Prefer typed event decoding when program is available so we can
-      // recover extra context (PlayerHealed + CombatEnded) in POI-driven boss flows.
-      if (program) {
-        try {
-          const raw = program.coder.events.decode(buf.toString('base64'));
-          if (raw) {
-            const eventName = raw.name;
-            const eventData = convertEventData(
-              eventName,
-              raw.data as Record<string, unknown>
-            );
-            if (eventName === EVENT_NAMES.BOSS_COMBAT_STARTED) {
-              bossStartedSeen = true;
-              const bossEvent = eventData as BossCombatStartedEvent;
-              if (bossEvent.bossId) parsedBossId = bossEvent.bossId;
-            } else if (eventName === EVENT_NAMES.PLAYER_HEALED && !bossStartedSeen) {
-              const healed = eventData as PlayerHealedEvent;
-              preBossPlayerHpFromHeal = healed.newHp;
-            } else if (eventName === EVENT_NAMES.COMBAT_ENDED) {
-              lastCombatEnded = eventData as CombatEndedEvent;
-            }
-          }
-        } catch {
-          // Ignore non-event program-data lines.
-        }
-      }
-
-      if (buf.length >= 8) {
-        const disc = Buffer.from(buf.subarray(0, 8));
-        if (disc.equals(COMBAT_STARTED_DISCRIMINATOR)) {
-          const PUBKEY_LEN = 32;
-          const data = Buffer.from(buf.subarray(8));
-          if (data.length >= PUBKEY_LEN + 2) {
-            lastPlayerHp = data.readInt16LE(PUBKEY_LEN); // player_hp at offset 32
-          }
-        }
-      }
-    } catch {
-      // Skip unparseable events
-    }
-  }
-
-  return {
-    preBossPlayerHp: preBossPlayerHpFromHeal ?? lastPlayerHp,
-    combatEnded: lastCombatEnded,
-    bossId: parsedBossId,
-  };
-}
-
 // ============================================================================
 // Low-Level Log Parser
 // ============================================================================
@@ -517,155 +425,9 @@ function convertEventData(name: string, data: Record<string, unknown>): unknown 
         timestamp: Number(data.timestamp ?? 0),
       } as ItemUnlockedEvent;
 
-    case EVENT_NAMES.COMBAT_LOG:
-      return {
-        player: (data.player as PublicKey)?.toString() ?? '',
-        entries: parseCombatLogEntries(data.entries),
-      } as { player: string; entries: BackendCombatLogEntry[] };
-
     default:
       return data;
   }
-}
-
-/**
- * Parse combat log entries from raw event data.
- * The entries come as an array of objects from Anchor's event decoder.
- */
-function parseCombatLogEntries(entries: unknown): BackendCombatLogEntry[] {
-  if (!Array.isArray(entries)) {
-    console.warn('[eventParser] CombatLog entries is not an array:', entries);
-    return [];
-  }
-
-  return entries.map((entry: Record<string, unknown>) => ({
-    turn: Number(entry.turn ?? 0),
-    isPlayer: Boolean(entry.isPlayer ?? entry.is_player ?? false),
-    action: parseLogAction(entry.action),
-    value: Number(entry.value ?? 0),
-    extra: Number(entry.extra ?? 0),
-    source: parseCombatSourceRef(entry.source),
-    contributions: parseCombatContributions(entry.contributions),
-  }));
-}
-
-function parseCombatSourceKind(kind: unknown): 'tool' | 'gear' | 'itemset' | 'enemy' | 'boss' | 'status' {
-  if (typeof kind === 'string') {
-    const normalized = kind.toLowerCase();
-    if (
-      normalized === 'tool' ||
-      normalized === 'gear' ||
-      normalized === 'itemset' ||
-      normalized === 'enemy' ||
-      normalized === 'boss' ||
-      normalized === 'status'
-    ) {
-      return normalized;
-    }
-  }
-
-  if (typeof kind === 'object' && kind !== null) {
-    const enumKey = Object.keys(kind)[0]?.toLowerCase();
-    return parseCombatSourceKind(enumKey);
-  }
-
-  switch (Number(kind)) {
-    case 0:
-      return 'tool';
-    case 1:
-      return 'gear';
-    case 2:
-      return 'itemset';
-    case 3:
-      return 'enemy';
-    case 4:
-      return 'boss';
-    default:
-      return 'status';
-  }
-}
-
-function parseCombatSourceId(id: unknown): string {
-  if (typeof id === 'string') return id.replace(/\0+$/g, '').trim();
-  if (Array.isArray(id) || id instanceof Uint8Array) {
-    const bytes = Array.from(id as number[] | Uint8Array);
-    return String.fromCharCode(...bytes).replace(/\0+$/g, '').trim();
-  }
-  return '';
-}
-
-function parseCombatSourceRef(source: unknown): BackendCombatLogEntry['source'] {
-  if (!source || typeof source !== 'object') return undefined;
-  const raw = source as Record<string, unknown>;
-  const id = parseCombatSourceId(raw.id);
-  return {
-    kind: parseCombatSourceKind(raw.kind),
-    id,
-    name: id || undefined,
-  };
-}
-
-function parseCombatContributions(
-  contributions: unknown
-): BackendCombatLogEntry['contributions'] {
-  if (!Array.isArray(contributions) || contributions.length === 0) return undefined;
-  return contributions
-    .map((entry) => {
-      if (!entry || typeof entry !== 'object') return null;
-      const raw = entry as Record<string, unknown>;
-      const source = parseCombatSourceRef(raw.source);
-      if (!source) return null;
-      return {
-        source,
-        value: Number(raw.value ?? 0),
-      };
-    })
-    .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
-}
-
-/**
- * Parse LogAction from Anchor's decoded enum format.
- * Anchor decodes enums as objects like { attack: {} } or { heal: {} }
- */
-function parseLogAction(action: unknown): LogAction {
-  if (typeof action === 'number') {
-    return action as LogAction;
-  }
-
-  if (typeof action === 'object' && action !== null) {
-    const keys = Object.keys(action);
-    if (keys.length > 0) {
-      const actionName = keys[0].toLowerCase();
-      switch (actionName) {
-        case 'attack':
-          return LogAction.Attack;
-        case 'heal':
-          return LogAction.Heal;
-        case 'applystatus':
-          return LogAction.ApplyStatus;
-        case 'statusdamage':
-          return LogAction.StatusDamage;
-        case 'armorchange':
-          return LogAction.ArmorChange;
-        case 'atkchange':
-          return LogAction.AtkChange;
-        case 'spdchange':
-          return LogAction.SpdChange;
-        case 'nonweapondamage':
-          return LogAction.NonWeaponDamage;
-        case 'shrapnelretaliation':
-          return LogAction.ShrapnelRetaliation;
-        case 'goldstolen':
-          return LogAction.GoldStolen;
-        default:
-          console.warn('[eventParser] Unknown LogAction:', actionName);
-          return LogAction.Attack;
-      }
-    }
-  }
-
-  console.warn('[eventParser] Could not parse LogAction:', action);
-  return LogAction.Attack;
 }
 
 /**

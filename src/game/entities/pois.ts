@@ -636,9 +636,9 @@ function calculateItemCost(item: Gear | Tool): number {
       return isTool ? 24 : 22;
     case 'MYTHIC':
       return isTool ? 38 : 34;
-    case 'GILDED':
+    case 'SAPPHIRE':
       return isTool ? 16 : 14;
-    case 'DIAMOND':
+    case 'GOLDEN':
       return isTool ? 24 : 22;
     default:
       return isTool ? 10 : 8;
@@ -690,8 +690,8 @@ function generateToolOilRackOptions(state: GameState, rng: SeededRNG): POIOption
 
 // ============================================================================
 // T096: Rusty Anvil (L10)
-// Upgrade tool tier (Common -> Gilded -> Diamond)
-// Cost: 10g (to Gilded), 20g (to Diamond)
+// Upgrade tool tier (Common -> Sapphire -> Golden)
+// Cost: 10g (to Sapphire), 20g (to Golden)
 // ============================================================================
 
 export function generateRustyAnvilOptions(state: GameState): POIOption[] {
@@ -713,10 +713,10 @@ export function generateRustyAnvilOptions(state: GameState): POIOption[] {
   let cost = 0;
 
   if (rarity === 'COMMON') {
-    nextRarity = 'GILDED';
+    nextRarity = 'SAPPHIRE';
     cost = 10;
-  } else if (rarity === 'GILDED') {
-    nextRarity = 'DIAMOND';
+  } else if (rarity === 'SAPPHIRE') {
+    nextRarity = 'GOLDEN';
     cost = 20;
   }
 
@@ -745,19 +745,19 @@ export function generateRustyAnvilOptions(state: GameState): POIOption[] {
 
 // ============================================================================
 // T097: Rune Kiln (L11)
-// Fuse 2 identical items to upgrade tier (Common->Gilded->Diamond)
+// Fuse 2 identical items to upgrade tier (Common->Sapphire->Golden)
 // ============================================================================
 
 export function generateRuneKilnOptions(state: GameState): POIOption[] {
   const options: POIOption[] = [];
 
-  // Find pairs of identical items that can be fused (any non-Diamond gear)
+  // Find pairs of identical items that can be fused (any non-Golden gear)
   // Key by id:rarity so different tiers of the same item are counted separately
   const gearCounts = new Map<string, { gearId: GearId; count: number; rarity: ItemRarity }>();
   for (const slot of state.player.inventory) {
     const { id, currentRarity } = slot.item;
-    // Any gear that hasn't reached max tier (Diamond) can be upgraded
-    if (currentRarity !== 'DIAMOND') {
+    // Any gear that hasn't reached max tier (Golden) can be upgraded
+    if (currentRarity !== 'GOLDEN') {
       const key = `${id}:${currentRarity}`;
       const existing = gearCounts.get(key);
       if (existing) {
@@ -772,7 +772,7 @@ export function generateRuneKilnOptions(state: GameState): POIOption[] {
   for (const [, info] of gearCounts) {
     if (info.count >= 2) {
       const def = GEAR_DEFINITIONS[info.gearId];
-      const nextRarity = info.rarity === 'GILDED' ? 'DIAMOND' : 'GILDED';
+      const nextRarity = info.rarity === 'SAPPHIRE' ? 'GOLDEN' : 'SAPPHIRE';
       const previewGear = createGearInstance(info.gearId, info.rarity);
       options.push({
         label: `${def.emoji} Fuse 2x ${def.name} -> ${nextRarity}`,
@@ -785,7 +785,7 @@ export function generateRuneKilnOptions(state: GameState): POIOption[] {
     options.push({
       label: 'No items to fuse',
       disabled: true,
-      disabledReason: 'Need 2 identical items (not Diamond)',
+      disabledReason: 'Need 2 identical items (not Golden)',
     });
   }
 
@@ -866,8 +866,8 @@ export const SCRAP_REFUND_BY_RARITY: Record<ItemRarity, number> = {
   RARE: 4,
   HEROIC: 6,
   MYTHIC: 10,
-  GILDED: 4,
-  DIAMOND: 6,
+  SAPPHIRE: 4,
+  GOLDEN: 6,
 };
 
 export function generateScrapChuteOptions(state: GameState): POIOption[] {
@@ -1337,8 +1337,8 @@ function applyRustyAnvilEffect(
 
   // Determine next rarity based on current
   let nextRarity: ItemRarity = tool.rarity;
-  if (tool.rarity === 'COMMON') nextRarity = 'GILDED';
-  else if (tool.rarity === 'GILDED') nextRarity = 'DIAMOND';
+  if (tool.rarity === 'COMMON') nextRarity = 'SAPPHIRE';
+  else if (tool.rarity === 'SAPPHIRE') nextRarity = 'GOLDEN';
   else return state; // Should not happen if options generated correctly
 
   // Calculate new stats: Base * Multiplier (oil is applied separately via tool.oil)
@@ -1422,7 +1422,7 @@ function applyRuneKilnEffect(state: GameState, optionIndex: number): GameState {
   const newInventory = state.player.inventory.filter((slot) => !slotsToRemove.includes(slot.index));
 
   // Add the upgraded item
-  const nextRarity: ItemRarity = currentRarity === 'COMMON' ? 'GILDED' : 'DIAMOND';
+  const nextRarity: ItemRarity = currentRarity === 'COMMON' ? 'SAPPHIRE' : 'GOLDEN';
   const upgradedGear = createGearInstance(gearDef.id, nextRarity);
 
   // Find next available slot

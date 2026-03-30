@@ -594,7 +594,7 @@ describe('resolveCombatWithParity', () => {
 
     const rareInput: CombatResolverInput = {
       ...commonInput,
-      playerGear: [createGearInstance('I19', 'GILDED')],
+      playerGear: [createGearInstance('I19', 'SAPPHIRE')],
     };
 
     const commonOutcome = resolveCombatWithParity(commonInput);
@@ -883,7 +883,7 @@ describe('resolveCombatWithParity', () => {
 
   it('applies Etched Burrowblade battle-start piercing when Salvage Clamp adds Rust first', () => {
     const playerTool = createToolInstance('T12');
-    const playerGear = [createGearInstance('I48', 'DIAMOND')];
+    const playerGear = [createGearInstance('I48', 'GOLDEN')];
     const input: CombatResolverInput = {
       player: {
         ...buildPlayerCombatant(25, 25, 'T12', ['I48']),
@@ -959,7 +959,7 @@ describe('resolveCombatWithParity', () => {
 
   it('fully ignores armor on the first strike when battle-start Rust is already at four stacks', () => {
     const playerTool = createToolInstance('T12');
-    const playerGear = [createGearInstance('I48', 'DIAMOND')];
+    const playerGear = [createGearInstance('I48', 'GOLDEN')];
     const input: CombatResolverInput = {
       player: {
         ...buildPlayerCombatant(25, 25, 'T12', ['I48']),
@@ -1071,7 +1071,7 @@ describe('resolveCombatWithParity', () => {
 
   it('tracks Weak-Point Manual baked attack on each Twin Picks strike immediately', () => {
     const playerTool = createToolInstance('T3');
-    const playerGear = [createGearInstance('I15', 'COMMON'), createGearInstance('I9', 'GILDED')];
+    const playerGear = [createGearInstance('I15', 'COMMON'), createGearInstance('I9', 'SAPPHIRE')];
     const input: CombatResolverInput = {
       player: {
         ...buildPlayerCombatant(25, 25, 'T3', ['I15', 'I9']),
@@ -1230,9 +1230,9 @@ describe('resolveCombatWithParity', () => {
     );
 
     // On-chain: shrapnel fires even when defender dies (death check is AFTER shrapnel)
-    // Player ATK 5, shrapnel reflects 5 back
+    // Player ATK 5, shrapnel reflects floor(5/2) = 2 back
     expect(outcome.result).toBe('VICTORY');
-    expect(outcome.player.hp).toBe(20); // 25 - 5 shrapnel
+    expect(outcome.player.hp).toBe(23); // 25 - 2 shrapnel (50% of 5)
     expect(shrapnelRetaliation).toBeDefined();
   });
 
@@ -1478,5 +1478,133 @@ describe('resolveCombatWithParity', () => {
     expect(outcome.player.hp).toBe(0);
     expect(outcome.enemy.hp).toBe(0);
     expect(outcome.result).toBe('DEFEAT');
+  });
+
+  it('PvP speed tie: enemy acts first by default (on-chain creator = player slot)', () => {
+    // On-chain: creator is "player", opponent is "enemy". Equal speed → enemy first.
+    // Player A (creator) view: self=player, opp=enemy → enemy acts first ✓
+    const player: CombatantState = {
+      name: 'Creator', emoji: '', definitionId: 'player', isPlayer: true,
+      maxHp: 10, hp: 10, atk: 5, arm: 0, spd: 3, dig: 0,
+      bonusAtk: 0, bonusArm: 0, bonusSpd: 0,
+      statusEffects: { chill: 0, shrapnel: 0, rust: 0, bleed: 0 },
+      strikesPerTurn: 1, ignoresArmor: false,
+    };
+    const enemy: CombatantState = {
+      name: 'Opponent', emoji: '', definitionId: 'pvpOpponent', isPlayer: false,
+      maxHp: 10, hp: 10, atk: 5, arm: 0, spd: 3, dig: 0,
+      bonusAtk: 0, bonusArm: 0, bonusSpd: 0,
+      statusEffects: { chill: 0, shrapnel: 0, rust: 0, bleed: 0 },
+      strikesPerTurn: 1, ignoresArmor: false,
+    };
+
+    const outcome = resolveCombatWithParity({
+      player, enemy, seed: 0, preserveArmor: true,
+    });
+
+    // Enemy acts first → enemy's attack is logged first (ENEMY_ATTACK timing)
+    const firstAttackLog = outcome.log.find(
+      (e) => e.timing === 'ENEMY_ATTACK' || e.timing === 'PLAYER_ATTACK'
+    );
+    expect(firstAttackLog?.timing).toBe('ENEMY_ATTACK');
+  });
+
+  it('PvP speed tie: pvpPlayerActsFirstOnTie flips turn order for Player B view', () => {
+    // Player B (opponent) view: self=player, creator=enemy.
+    // On-chain, opponent goes first → in B's view, "player" should go first.
+    const player: CombatantState = {
+      name: 'You', emoji: '', definitionId: 'player', isPlayer: true,
+      maxHp: 10, hp: 10, atk: 5, arm: 0, spd: 3, dig: 0,
+      bonusAtk: 0, bonusArm: 0, bonusSpd: 0,
+      statusEffects: { chill: 0, shrapnel: 0, rust: 0, bleed: 0 },
+      strikesPerTurn: 1, ignoresArmor: false,
+    };
+    const enemy: CombatantState = {
+      name: 'Opponent', emoji: '', definitionId: 'pvpOpponent', isPlayer: false,
+      maxHp: 10, hp: 10, atk: 5, arm: 0, spd: 3, dig: 0,
+      bonusAtk: 0, bonusArm: 0, bonusSpd: 0,
+      statusEffects: { chill: 0, shrapnel: 0, rust: 0, bleed: 0 },
+      strikesPerTurn: 1, ignoresArmor: false,
+    };
+
+    const outcome = resolveCombatWithParity({
+      player, enemy, seed: 0, preserveArmor: true,
+      pvpPlayerActsFirstOnTie: true,
+    });
+
+    // Player acts first → player's attack is logged first
+    const firstAttackLog = outcome.log.find(
+      (e) => e.timing === 'ENEMY_ATTACK' || e.timing === 'PLAYER_ATTACK'
+    );
+    expect(firstAttackLog?.timing).toBe('PLAYER_ATTACK');
+  });
+
+  it('PvP speed tie: both views agree with on-chain perspective (symmetric stats)', () => {
+    // With identical stats and equal speed, the one who strikes first wins.
+    // On-chain: enemy (opponent) acts first → enemy wins.
+    // Player A's view (creator=player, default): enemy first → A loses (DEFEAT) ✓
+    // Player B's view (opponent=player, flag): player first → B wins (VICTORY) ✓
+    // Both views match on-chain: opponent (Player B) wins.
+    const baseStats = {
+      maxHp: 15, hp: 15, atk: 4, arm: 1, spd: 3, dig: 0,
+      bonusAtk: 0, bonusArm: 0, bonusSpd: 0,
+      statusEffects: { chill: 0, shrapnel: 0, rust: 0, bleed: 0 } as const,
+      strikesPerTurn: 1 as const, ignoresArmor: false as const,
+    };
+
+    // Player A view (creator=player, no flag) → enemy acts first → A loses
+    const outcomeA = resolveCombatWithParity({
+      player: { ...baseStats, name: 'You', emoji: '', definitionId: 'player', isPlayer: true },
+      enemy: { ...baseStats, name: 'Opponent', emoji: '', definitionId: 'pvpOpponent', isPlayer: false },
+      seed: 42, preserveArmor: true,
+    });
+
+    // Player B view (opponent=player, flag set) → player acts first → B wins
+    const outcomeB = resolveCombatWithParity({
+      player: { ...baseStats, name: 'You', emoji: '', definitionId: 'player', isPlayer: true },
+      enemy: { ...baseStats, name: 'Opponent', emoji: '', definitionId: 'pvpOpponent', isPlayer: false },
+      seed: 42, preserveArmor: true,
+      pvpPlayerActsFirstOnTie: true,
+    });
+
+    // A loses (enemy wins), B wins (player wins) — both agree opponent (B) wins
+    expect(outcomeA.result).toBe('DEFEAT');
+    expect(outcomeB.result).toBe('VICTORY');
+  });
+
+  it('pvpPlayerActsFirstOnTie has no effect when speeds differ', () => {
+    const player: CombatantState = {
+      name: 'You', emoji: '', definitionId: 'player', isPlayer: true,
+      maxHp: 15, hp: 15, atk: 4, arm: 0, spd: 5, dig: 0,
+      bonusAtk: 0, bonusArm: 0, bonusSpd: 0,
+      statusEffects: { chill: 0, shrapnel: 0, rust: 0, bleed: 0 },
+      strikesPerTurn: 1, ignoresArmor: false,
+    };
+    const enemy: CombatantState = {
+      name: 'Opponent', emoji: '', definitionId: 'pvpOpponent', isPlayer: false,
+      maxHp: 15, hp: 15, atk: 4, arm: 0, spd: 3, dig: 0,
+      bonusAtk: 0, bonusArm: 0, bonusSpd: 0,
+      statusEffects: { chill: 0, shrapnel: 0, rust: 0, bleed: 0 },
+      strikesPerTurn: 1, ignoresArmor: false,
+    };
+
+    const withoutFlag = resolveCombatWithParity({
+      player, enemy, seed: 0, preserveArmor: true,
+    });
+    const withFlag = resolveCombatWithParity({
+      player, enemy, seed: 0, preserveArmor: true,
+      pvpPlayerActsFirstOnTie: true,
+    });
+
+    // Player has higher speed, goes first regardless of flag
+    const firstWithout = withoutFlag.log.find(
+      (e) => e.timing === 'ENEMY_ATTACK' || e.timing === 'PLAYER_ATTACK'
+    );
+    const firstWith = withFlag.log.find(
+      (e) => e.timing === 'ENEMY_ATTACK' || e.timing === 'PLAYER_ATTACK'
+    );
+    expect(firstWithout?.timing).toBe('PLAYER_ATTACK');
+    expect(firstWith?.timing).toBe('PLAYER_ATTACK');
+    expect(withoutFlag.player.hp).toBe(withFlag.player.hp);
   });
 });

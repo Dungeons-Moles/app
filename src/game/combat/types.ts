@@ -21,4 +21,6 @@ export interface CombatResolverInput {
   enemyActiveItemSets?: ItemsetId[];
   preserveArmor?: boolean;
   pvpTieBreakerFavorPlayer?: boolean;
+  /** When true, the "player" slot acts first on speed ties (PvP only). */
+  pvpPlayerActsFirstOnTie?: boolean;
 }

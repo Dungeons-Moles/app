@@ -17,6 +17,8 @@ import { useAudio } from '@/contexts/AudioContext';
 
 const paperPanelSource = require('../../../assets/ui/panels/paper-panel.webp');
 const squareSource = require('../../../assets/ui/frames/square.webp');
+const squareBlueSource = require('../../../assets/ui/frames/square-blue.webp');
+const squareYellowSource = require('../../../assets/ui/frames/square-yellow.webp');
 
 const STAT_ICONS = {
   HP: require('../../../assets/icons/stats/HP.webp'),
@@ -51,10 +53,10 @@ function getRarityColor(rarity: string): string {
   switch (rarity) {
     case 'COMMON':
       return '#696969'; // DimGray
-    case 'GILDED':
+    case 'SAPPHIRE':
+      return '#2563EB'; // Blue
+    case 'GOLDEN':
       return '#B8860B'; // DarkGoldenRod
-    case 'DIAMOND':
-      return '#008B8B'; // DarkCyan
     case 'RARE':
       return '#00008B'; // DarkBlue
     case 'HEROIC':
@@ -70,10 +72,10 @@ function getOriginalRarityColor(rarity: string): string {
   switch (rarity) {
     case 'COMMON':
       return '#A0A0A0';
-    case 'GILDED':
+    case 'SAPPHIRE':
+      return '#4A90D9';
+    case 'GOLDEN':
       return '#FFD700';
-    case 'DIAMOND':
-      return '#00FFFF';
     case 'RARE':
       return '#4169E1';
     case 'HEROIC':
@@ -245,9 +247,9 @@ export function ItemTooltip({ item, visible, onClose }: ItemTooltipProps) {
           >
             {/* Header */}
             <View style={[styles.header, { borderBottomColor: borderColor }]}>
-              <View style={[styles.iconContainer, { width: 64 * s, height: 64 * s }]}>
+              <View style={[styles.iconContainer, { width: 64 * s, height: 64 * s, backgroundColor: tier === 3 ? 'rgba(234, 179, 8, 0.18)' : tier === 2 ? 'rgba(59, 130, 246, 0.15)' : undefined, borderRadius: 4 * s }]}>
                 <Image
-                  source={squareSource}
+                  source={tier === 3 ? squareYellowSource : tier === 2 ? squareBlueSource : squareSource}
                   style={{ position: 'absolute', width: '100%', height: '100%' }}
                   contentFit="fill"
                 />

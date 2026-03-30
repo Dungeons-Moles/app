@@ -76,15 +76,20 @@ const SQUARE_BG = require('../../../assets/ui/frames/square.webp');
 const SQUARE_BG_BLUE = require('../../../assets/ui/frames/square-blue.webp');
 const SQUARE_BG_YELLOW = require('../../../assets/ui/frames/square-yellow.webp');
 
-function getTierSlotBg(rarity: ItemRarity): any {
+const TIER_BG_COLORS: Record<number, string> = {
+  2: 'rgba(59, 130, 246, 0.15)',
+  3: 'rgba(234, 179, 8, 0.18)',
+};
+
+function getTierSlotBg(rarity: ItemRarity): { source: any; bgColor?: string } {
   const tier = getTierFromRarity(rarity);
   switch (tier) {
     case 2:
-      return SQUARE_BG_BLUE;
+      return { source: SQUARE_BG_BLUE, bgColor: TIER_BG_COLORS[2] };
     case 3:
-      return SQUARE_BG_YELLOW;
+      return { source: SQUARE_BG_YELLOW, bgColor: TIER_BG_COLORS[3] };
     default:
-      return SQUARE_BG;
+      return { source: SQUARE_BG };
   }
 }
 
@@ -97,12 +102,21 @@ interface ItemBadgeProps {
 }
 
 function ItemBadge({ emoji, name, image, rarity, scale = 1 }: ItemBadgeProps) {
-  const slotBg = rarity ? getTierSlotBg(rarity) : SQUARE_BG;
+  const { source: slotBg, bgColor } = rarity
+    ? getTierSlotBg(rarity)
+    : { source: SQUARE_BG, bgColor: undefined };
   return (
     <CachedImageBackground
       source={slotBg}
       style={[
-        { width: 32 * scale, height: 32 * scale, justifyContent: 'center', alignItems: 'center' },
+        {
+          width: 32 * scale,
+          height: 32 * scale,
+          justifyContent: 'center',
+          alignItems: 'center',
+          backgroundColor: bgColor,
+          borderRadius: 4 * scale,
+        },
       ]}
       resizeMode="stretch"
     >

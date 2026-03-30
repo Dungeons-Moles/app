@@ -6,8 +6,8 @@
  *
  * Effect values are provided as tier arrays [tier1, tier2, tier3] where:
  * - tier1: Base item
- * - tier2: After first fusion (Gilded)
- * - tier3: After second fusion (Diamond)
+ * - tier2: After first fusion (Sapphire)
+ * - tier3: After second fusion (Golden)
  */
 
 import type { ToolId } from '../game/engine/types';

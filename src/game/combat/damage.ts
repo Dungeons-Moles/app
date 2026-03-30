@@ -67,11 +67,12 @@ export function calculateDamage(attacker: CombatantState, defender: CombatantSta
   const hpDamage =
     effectiveAtk <= 0 || defender.hp <= 0 ? 0 : Math.max(0, effectiveAtk - armorDamage);
 
-  // Step 5: Calculate Shrapnel reflect
-  const shrapnelReflect =
+  // Step 5: Calculate Shrapnel reflect (50% of raw damage, minimum 1)
+  const rawShrapnel =
     defender.statusEffects.shrapnel > 0
       ? effectiveAtk + getChillDamageBonus(attacker.statusEffects.chill ?? 0)
       : 0;
+  const shrapnelReflect = rawShrapnel > 0 ? Math.max(1, Math.floor(rawShrapnel / 2)) : 0;
 
   return {
     baseAtk,

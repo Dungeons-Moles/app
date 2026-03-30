@@ -6,7 +6,16 @@
 
 import React, { useMemo, useCallback, useRef, memo } from 'react';
 import { View, StyleSheet, LayoutChangeEvent, PanResponder } from 'react-native';
-import { Canvas, Rect, Group, Image, useImage, ColorMatrix } from '@shopify/react-native-skia';
+import {
+  Canvas,
+  Rect,
+  Group,
+  Image,
+  useImage,
+  ColorMatrix,
+  Circle,
+  BlurMask,
+} from '@shopify/react-native-skia';
 import type { Position, WallHighlightState } from '../../game/engine/types';
 import { TimePhase } from '../../game/engine/types';
 import type { GameMap, MapEnemy, MapPOI } from '../../game/map/types';
@@ -54,6 +63,13 @@ const rockV3Source = require('../../../assets/world/tiles/rock-v3.webp');
 const rockV4Source = require('../../../assets/world/tiles/rock-v4.webp');
 
 const SINGLE_USE_POIS = ['L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L12', 'L13'];
+
+// Tier glow colors for enemy indicators
+const TIER_GLOW_COLORS: Record<1 | 2 | 3, string> = {
+  1: 'rgba(200, 200, 200, 0.0)', // T1: no glow
+  2: 'rgba(255, 180, 0, 0.55)', // T2: orange/amber glow
+  3: 'rgba(220, 30, 30, 0.65)', // T3: red/crimson glow
+};
 
 // ============================================================================
 // Types
@@ -490,7 +506,8 @@ export const MapRenderer = memo(function MapRenderer({
         pois.push(...bucket);
       }
     }
-    return pois;
+    // Hide rest alcoves (L5) after they've been used
+    return pois.filter((p) => !(p.definitionId === 'L5' && p.visited));
   }, [poiBuckets, visibleRange, map.fog, map.width]);
 
   const visibleEnemies = useMemo(() => {
@@ -665,15 +682,32 @@ export const MapRenderer = memo(function MapRenderer({
           {visibleEnemies.map((entry) => {
             const { enemy, variant } = entry;
             const isUnknown = variant === 'unknown';
+            const tier = enemy.tier as 1 | 2 | 3;
+            const glowColor = !isUnknown ? TIER_GLOW_COLORS[tier] : undefined;
+            const entitySize = ENTITY_SIZE * zoom;
+            const entityOffset = ENTITY_OFFSET * zoom;
+            const centerX =
+              enemy.position.x * TILE_SIZE * zoom - entityOffset + entitySize / 2;
+            const centerY =
+              enemy.position.y * TILE_SIZE * zoom - entityOffset + entitySize / 2;
             return (
-              <SkiaEntity
-                key={`enemy-${enemy.id}`}
-                x={enemy.position.x}
-                y={enemy.position.y}
-                image={isUnknown ? entityImages.unknownEnemy : entityImages[enemy.definitionId]}
-                opacity={1}
-                zoom={zoom}
-              />
+              <React.Fragment key={`enemy-${enemy.id}`}>
+                {glowColor && (
+                  <Circle
+                    cx={centerX}
+                    cy={centerY}
+                    r={entitySize * 0.5}
+                    color={tier === 1 ? 'white' : tier === 2 ? 'orange' : 'red'}
+                  />
+                )}
+                <SkiaEntity
+                  x={enemy.position.x}
+                  y={enemy.position.y}
+                  image={isUnknown ? entityImages.unknownEnemy : entityImages[enemy.definitionId]}
+                  opacity={1}
+                  zoom={zoom}
+                />
+              </React.Fragment>
             );
           })}
 

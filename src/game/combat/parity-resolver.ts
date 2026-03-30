@@ -979,12 +979,14 @@ function performStrike(
   // Use current state (not pre-weapon snapshot) for shrapnel stacks.
   const currentDefender = getCombatant(nextState, defenderSide);
   const currentDefenderShrapnel = currentDefender.statusEffects.shrapnel ?? 0;
-  const retaliation =
+  const rawRetaliation =
     currentDefenderShrapnel > 0
       ? strikeAtk +
         runtime[defenderSide].battleFlags.shrapnelReflectBonus +
         getChillDamageBonus(attacker.statusEffects.chill ?? 0)
       : 0;
+  // 50% of raw damage (rounded down, minimum 1), goes through armor first
+  const retaliation = rawRetaliation > 0 ? Math.max(1, Math.floor(rawRetaliation / 2)) : 0;
   if (retaliation > 0) {
     nextState = setCombatant(nextState, defenderSide, {
       ...getCombatant(nextState, defenderSide),
@@ -993,9 +995,14 @@ function performStrike(
         shrapnel: Math.max(0, currentDefenderShrapnel - 1),
       },
     });
+    const currentAttacker = getCombatant(nextState, attackerSide);
+    const attackerArm = currentAttacker.arm + currentAttacker.bonusArm;
+    const armAbsorbed = Math.min(retaliation, Math.max(0, attackerArm));
+    const hpDamage = retaliation - armAbsorbed;
     nextState = setCombatant(nextState, attackerSide, {
-      ...getCombatant(nextState, attackerSide),
-      hp: Math.max(0, getCombatant(nextState, attackerSide).hp - retaliation),
+      ...currentAttacker,
+      arm: currentAttacker.arm - armAbsorbed,
+      hp: Math.max(0, currentAttacker.hp - hpDamage),
     });
     nextState = addLogEntry(nextState, {
       turn: nextState.turn,
@@ -1390,8 +1397,10 @@ export function resolveCombatWithParity(input: CombatResolverInput): CombatState
       suddenDeathBonus = newSdBonus;
     }
 
-    const playerActsFirst =
-      state.player.spd + state.player.bonusSpd > state.enemy.spd + state.enemy.bonusSpd;
+    const playerTotalSpd = state.player.spd + state.player.bonusSpd;
+    const enemyTotalSpd = state.enemy.spd + state.enemy.bonusSpd;
+    const playerActsFirst = playerTotalSpd > enemyTotalSpd
+      || (playerTotalSpd === enemyTotalSpd && !!input.pvpPlayerActsFirstOnTie);
     const madMinerTurnOneExpose =
       input.bossId === 'B-A-W1-04' && state.turn === 1 && state.enemy.dig > state.player.dig;
 

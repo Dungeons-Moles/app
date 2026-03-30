@@ -1618,7 +1618,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
             statusEffects: { chill: 0, shrapnel: 0, rust: 0, bleed: 0 },
             strikesPerTurn: 1, ignoresArmor: false,
           },
-          seed: 0,
+          seed: Number(visual.seed % BigInt(2 ** 32)),
           enemyDefinitionId: 'pvpOpponent' as any,
           goldReward: 0,
           activeItemSets: [],
@@ -1629,6 +1629,8 @@ export function GameScreen({ navigation }: GameScreenProps) {
           enemyGear,
           week: 3 as 1 | 2 | 3,
           isBossFight: false,
+          pvpPlayerActsFirstOnTie: !isPlayerA,
+          pvpTieBreakerFavorPlayer: isPlayerA === (Number(visual.seed % BigInt(2)) === 0),
           onChainOutcome: {
             finalPlayerHp: finalPlayerHp,
             finalPlayerGold: 0,

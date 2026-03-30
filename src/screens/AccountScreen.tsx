@@ -3,6 +3,7 @@ import {
   View,
   Text,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   StyleSheet,
   ActivityIndicator,
   Image,
@@ -26,6 +27,8 @@ import { ControllerHints, type ButtonHint } from '../components/ui/ControllerHin
 import { ControllerKeyboard } from '../components/ui/ControllerKeyboard';
 import { useInputMode } from '../hooks/useInputMode';
 import { useAudio } from '../contexts/AudioContext';
+import { VolumeControls } from '../components/ui/VolumeControls';
+import { FocusGlow } from '../components/ui/FocusGlow';
 import { APP_VERSION } from '../constants/app';
 import { SOLANA_CONFIG } from '../services/solana/config';
 import { Typography } from '../theme/typography';
@@ -53,7 +56,7 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
     mode,
   } = useProfile();
   const { wallet, connect, disconnect, isConnecting, error: walletError } = useWallet();
-  const { playBgm, playSfx, isInitialLoading } = useAudio();
+  const { playBgm, playSfx, isInitialLoading, musicVolume, setMusicVolume, sfxVolume, setSfxVolume } = useAudio();
   const screenVariant = useScreenVariant();
   const isCompact = screenVariant === 'compact';
   const isNative = Platform.OS !== 'web';
@@ -70,6 +73,8 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
   const sawProfileLoadRef = useRef(false);
   const [guestModeActivated, setGuestModeActivated] = useState(false);
   const [showKeyboard, setShowKeyboard] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [settingsFocus, setSettingsFocus] = useState(0);
   const [panelDimensions, setPanelDimensions] = useState<{ width: number; height: number } | null>(
     null
   );
@@ -196,6 +201,41 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
     disconnect();
   }, [playSfx, disconnect]);
 
+  const handleToggleSettings = useCallback(() => {
+    playSfx('ui_click');
+    setShowSettings((prev) => !prev);
+    setSettingsFocus(0);
+  }, [playSfx]);
+
+  const handleCloseSettings = useCallback(() => {
+    playSfx('ui_back');
+    setShowSettings(false);
+  }, [playSfx]);
+
+  useControllerAction(
+    {
+      onDPadUp: () => setSettingsFocus((p) => Math.max(0, p - 1)),
+      onDPadDown: () => setSettingsFocus((p) => Math.min(1, p + 1)),
+      onDPadLeft:
+        settingsFocus === 0
+          ? () => setMusicVolume(Math.round(Math.max(0, musicVolume - 0.1) * 10) / 10)
+          : () => setSfxVolume(Math.round(Math.max(0, sfxVolume - 0.1) * 10) / 10),
+      onDPadRight:
+        settingsFocus === 0
+          ? () => setMusicVolume(Math.round(Math.min(1, musicVolume + 0.1) * 10) / 10)
+          : () => setSfxVolume(Math.round(Math.min(1, sfxVolume + 0.1) * 10) / 10),
+      onB: handleCloseSettings,
+    },
+    isController && isFocused && showSettings
+  );
+
+  useControllerAction(
+    {
+      onStart: handleToggleSettings,
+    },
+    isController && isFocused && !showSettings && !showKeyboard
+  );
+
   useControllerAction(
     {
       onA: showWalletSelection
@@ -210,7 +250,7 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
       onDPadRight: showWalletSelection ? handleDPadRight : undefined,
       onSelect: showWalletSelection ? handlePlayAsGuest : undefined,
     },
-    isController && isFocused && !showLoading && !showKeyboard
+    isController && isFocused && !showLoading && !showKeyboard && !showSettings
   );
 
   const controllerHints: ButtonHint[] = showWalletSelection
@@ -218,17 +258,23 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
         { button: 'DPadLeftRight', label: 'Select Wallet' },
         { button: 'A', label: 'Sign In' },
         { button: 'Select', label: 'Play as Guest' },
+        { button: 'Start', label: 'Settings' },
       ]
     : isCheckingExistingProfile
-      ? [{ button: 'A', label: 'Checking Profile' }]
+      ? [
+          { button: 'A', label: 'Checking Profile' },
+          { button: 'Start', label: 'Settings' },
+        ]
     : hasName
       ? [
           { button: 'A', label: 'Create Profile' },
           { button: 'B', label: 'Clear Name' },
+          { button: 'Start', label: 'Settings' },
         ]
       : [
           { button: 'A', label: 'Enter Name' },
           { button: 'B', label: 'Back' },
+          { button: 'Start', label: 'Settings' },
         ];
 
   // --- Effects ---
@@ -590,6 +636,85 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
         </TouchableOpacity>
       )}
 
+      {/* Settings overlay */}
+      {showSettings && (
+        <TouchableWithoutFeedback onPress={handleCloseSettings}>
+          <View style={styles.settingsOverlay}>
+            <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
+              <CachedImageBackground
+                source={require('../../assets/ui/panels/paper-panel-wide.webp')}
+                style={[styles.settingsPanel, isCompact && styles.settingsPanelCompact]}
+                resizeMode="stretch"
+              >
+                <Text style={[styles.settingsTitle, isCompact && styles.settingsTitleCompact]}>
+                  Settings
+                </Text>
+                <View style={styles.settingsBody}>
+                  <FocusGlow active={isController && settingsFocus === 0} style={{ width: '100%' }}>
+                    <View style={styles.settingRow}>
+                      <Text style={[styles.settingLabel, isCompact && styles.settingLabelCompact]}>
+                        Music volume
+                      </Text>
+                      <VolumeControls
+                        currentVolume={musicVolume}
+                        onVolumeChange={setMusicVolume}
+                        scale={isCompact ? 2 : 0.8}
+                      />
+                    </View>
+                  </FocusGlow>
+                  <FocusGlow active={isController && settingsFocus === 1} style={{ width: '100%' }}>
+                    <View style={styles.settingRow}>
+                      <Text style={[styles.settingLabel, isCompact && styles.settingLabelCompact]}>
+                        SFX volume
+                      </Text>
+                      <VolumeControls
+                        currentVolume={sfxVolume}
+                        onVolumeChange={setSfxVolume}
+                        scale={isCompact ? 2 : 0.8}
+                      />
+                    </View>
+                  </FocusGlow>
+                </View>
+                {isController && (
+                  <View style={[styles.settingsHints, isCompact && styles.settingsHintsCompact]}>
+                    <View style={styles.settingsHintRow}>
+                      <Image
+                        source={require('../../assets/ui/control-buttons/direction.webp')}
+                        style={[styles.settingsHintIcon, isCompact && styles.settingsHintIconCompact, { transform: [{ rotate: '-90deg' }] }]}
+                        resizeMode="contain"
+                      />
+                      <Image
+                        source={require('../../assets/ui/control-buttons/direction.webp')}
+                        style={[styles.settingsHintIcon, isCompact && styles.settingsHintIconCompact, { transform: [{ rotate: '90deg' }] }]}
+                        resizeMode="contain"
+                      />
+                      <Text style={[styles.settingsHintText, isCompact && styles.settingsHintTextCompact]}>Change volume</Text>
+                    </View>
+                    <View style={styles.settingsHintRow}>
+                      <Image
+                        source={require('../../assets/ui/control-buttons/b.webp')}
+                        style={[styles.settingsHintIcon, isCompact && styles.settingsHintIconCompact]}
+                        resizeMode="contain"
+                      />
+                      <Text style={[styles.settingsHintText, isCompact && styles.settingsHintTextCompact]}>Close</Text>
+                    </View>
+                  </View>
+                )}
+                {!isController && (
+                  <TouchableOpacity
+                    onPress={handleCloseSettings}
+                    style={styles.settingsCloseButton}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    <Text style={[styles.settingsCloseText, isCompact && { fontSize: 44 }]}>✕</Text>
+                  </TouchableOpacity>
+                )}
+              </CachedImageBackground>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      )}
+
       {/* On-screen keyboard for controller mode */}
       <ControllerKeyboard
         visible={showKeyboard}
@@ -602,6 +727,27 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
 
       {/* Controller button hints */}
       <ControllerHints hints={controllerHints} />
+
+      {/* Settings button (touch mode) */}
+      {!isController && (
+        <TouchableOpacity
+          style={[styles.settingsButton, isCompact && styles.settingsButtonCompact]}
+          onPress={handleToggleSettings}
+          activeOpacity={0.7}
+        >
+          <CachedImageBackground
+            source={require('../../assets/ui/buttons/button-v1.webp')}
+            style={styles.settingsButtonBg}
+            resizeMode="stretch"
+          >
+            <Image
+              source={require('../../assets/ui/illustrations/engine.webp')}
+              style={[styles.settingsButtonIcon, isCompact && styles.settingsButtonIconCompact]}
+              resizeMode="contain"
+            />
+          </CachedImageBackground>
+        </TouchableOpacity>
+      )}
 
       <View style={[styles.versionLabel, isCompact && styles.versionLabelCompact]}>
         <Text style={[styles.versionText, isCompact && styles.versionTextCompact]}>
@@ -866,5 +1012,135 @@ const styles = StyleSheet.create({
   },
   versionTextCompact: {
     fontSize: 18,
+  },
+  settingsOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 200,
+  },
+  settingsPanel: {
+    width: 380,
+    height: 200,
+    padding: 44,
+    paddingTop: 30,
+    paddingBottom: 48,
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+  },
+  settingsPanelCompact: {
+    width: 760,
+    height: 420,
+    padding: 90,
+    paddingTop: 60,
+    paddingBottom: 100,
+  },
+  settingsTitle: {
+    fontFamily: Typography.header,
+    fontSize: 22,
+    color: '#3d2b1f',
+    marginBottom: 12,
+  },
+  settingsTitleCompact: {
+    fontSize: 42,
+    marginBottom: 24,
+  },
+  settingsBody: {
+    width: '100%',
+    alignItems: 'center',
+    gap: 10,
+  },
+  settingRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    width: '100%',
+  },
+  settingLabel: {
+    fontFamily: Typography.header,
+    fontSize: 13,
+    color: '#3d2b1f',
+    width: 90,
+    flexShrink: 0,
+  },
+  settingLabelCompact: {
+    fontSize: 26,
+    width: 180,
+  },
+  settingsCloseButton: {
+    position: 'absolute',
+    right: 20,
+    top: 12,
+    padding: 10,
+  },
+  settingsCloseText: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#5c4033',
+  },
+  settingsHints: {
+    position: 'absolute',
+    bottom: 14,
+    left: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  settingsHintsCompact: {
+    bottom: 36,
+    left: 24,
+    gap: 24,
+  },
+  settingsHintRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  settingsHintIcon: {
+    width: 18,
+    height: 18,
+  },
+  settingsHintIconCompact: {
+    width: 36,
+    height: 36,
+  },
+  settingsHintText: {
+    fontFamily: Typography.body,
+    fontSize: 11,
+    color: '#5c4033',
+  },
+  settingsHintTextCompact: {
+    fontSize: 22,
+  },
+  settingsButton: {
+    position: 'absolute',
+    top: 14,
+    right: 14,
+    zIndex: 100,
+    width: 36,
+    height: 36,
+  },
+  settingsButtonCompact: {
+    top: 24,
+    right: 24,
+    width: 60,
+    height: 60,
+  },
+  settingsButtonBg: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  settingsButtonIcon: {
+    width: 18,
+    height: 18,
+    marginBottom: 2,
+  },
+  settingsButtonIconCompact: {
+    width: 30,
+    height: 30,
+    marginBottom: 4,
   },
 });

@@ -48,7 +48,8 @@ describe('damage helpers', () => {
 
     const result = calculateDamage(attacker, defender);
 
-    expect(result.shrapnelReflect).toBe(4);
+    // raw = 1 + 3 (chill) = 4, 50% = 2
+    expect(result.shrapnelReflect).toBe(2);
   });
 
   it('adds chill bonus to bleed damage up to +3', () => {

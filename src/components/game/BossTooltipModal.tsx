@@ -22,9 +22,12 @@ import { useScreenVariant } from '../../contexts/ScreenVariantContext';
 import type { BossDefinition } from '../../data/bosses';
 import type { Tool, Gear } from '../../game/engine/types';
 import { ItemTooltip } from './ItemTooltip';
+import { getTierFromRarity } from '../../data/gear';
 
 const SIDEBAR_BG = require('../../../assets/ui/panels/sidebar.webp');
 const SLOT_BG = require('../../../assets/ui/frames/square.webp');
+const SLOT_BG_BLUE = require('../../../assets/ui/frames/square-blue.webp');
+const SLOT_BG_YELLOW = require('../../../assets/ui/frames/square-yellow.webp');
 const DEFAULT_MOLE_IMAGE_SOURCE = require('../../../assets/entities/characters/default-mole.webp');
 const COIN_ICON = require('../../../assets/icons/ui/coin.webp');
 const HP_ICON = require('../../../assets/icons/stats/HP.webp');
@@ -36,6 +39,19 @@ const OIL_ATK_ICON = require('../../../assets/icons/oils/ATK.webp');
 const OIL_DIG_ICON = require('../../../assets/icons/oils/DIG.webp');
 const OIL_SPD_ICON = require('../../../assets/icons/oils/SPD.webp');
 const OIL_ARM_ICON = require('../../../assets/icons/oils/ARM.webp');
+
+const TIER_BG_COLORS: Record<number, string> = {
+  2: 'rgba(59, 130, 246, 0.15)',
+  3: 'rgba(234, 179, 8, 0.18)',
+};
+
+function getTierSlotInfo(item: Tool | Gear): { source: any; bgColor?: string } {
+  const rarity = 'rarity' in item ? item.rarity : item.currentRarity;
+  const tier = getTierFromRarity(rarity);
+  if (tier === 2) return { source: SLOT_BG_BLUE, bgColor: TIER_BG_COLORS[2] };
+  if (tier === 3) return { source: SLOT_BG_YELLOW, bgColor: TIER_BG_COLORS[3] };
+  return { source: SLOT_BG };
+}
 
 interface BossTooltipModalProps {
   visible: boolean;
@@ -206,9 +222,10 @@ function BuildItemSlot({
   item: Tool | Gear | null;
   onPress?: () => void;
 }) {
+  const { source, bgColor } = item ? getTierSlotInfo(item) : { source: SLOT_BG, bgColor: undefined };
   return (
     <TouchableOpacity activeOpacity={0.8} onPress={onPress} disabled={!item}>
-      <CachedImageBackground source={SLOT_BG} style={styles.buildSlot} resizeMode="stretch">
+      <CachedImageBackground source={source} style={[styles.buildSlot, bgColor ? { backgroundColor: bgColor } : undefined]} resizeMode="stretch">
         {item ? (
           item.image ? (
             <Image source={item.image} style={styles.buildSlotImage} resizeMode="contain" />

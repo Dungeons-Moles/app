@@ -30,15 +30,20 @@ const SQUARE_BG = require('../../../assets/ui/frames/square.webp');
 const SQUARE_BG_BLUE = require('../../../assets/ui/frames/square-blue.webp');
 const SQUARE_BG_YELLOW = require('../../../assets/ui/frames/square-yellow.webp');
 
-function getTierSlotBg(rarity: ItemRarity): any {
+const TIER_BG_COLORS: Record<number, string> = {
+  2: 'rgba(59, 130, 246, 0.15)',
+  3: 'rgba(234, 179, 8, 0.18)',
+};
+
+function getTierSlotBg(rarity: ItemRarity): { source: any; bgColor?: string } {
   const tier = getTierFromRarity(rarity);
   switch (tier) {
     case 2:
-      return SQUARE_BG_BLUE;
+      return { source: SQUARE_BG_BLUE, bgColor: TIER_BG_COLORS[2] };
     case 3:
-      return SQUARE_BG_YELLOW;
+      return { source: SQUARE_BG_YELLOW, bgColor: TIER_BG_COLORS[3] };
     default:
-      return SQUARE_BG;
+      return { source: SQUARE_BG };
   }
 }
 
@@ -51,12 +56,21 @@ interface ItemBadgeProps {
 }
 
 function ItemBadge({ emoji, image, rarity, scale = 1 }: ItemBadgeProps) {
-  const slotBg = rarity ? getTierSlotBg(rarity) : SQUARE_BG;
+  const { source: slotBg, bgColor } = rarity
+    ? getTierSlotBg(rarity)
+    : { source: SQUARE_BG, bgColor: undefined };
   return (
     <CachedImageBackground
       source={slotBg}
       style={[
-        { width: 32 * scale, height: 32 * scale, justifyContent: 'center', alignItems: 'center' },
+        {
+          width: 32 * scale,
+          height: 32 * scale,
+          justifyContent: 'center',
+          alignItems: 'center',
+          backgroundColor: bgColor,
+          borderRadius: 4 * scale,
+        },
       ]}
       resizeMode="stretch"
     >
@@ -101,6 +115,8 @@ export interface EnemyPanelProps {
   imageOffsetY?: number;
   /** Scale factor for compact/mobile views (default 1) */
   scale?: number;
+  /** Enemy tier (1, 2, or 3) for field enemies */
+  tier?: 1 | 2 | 3;
 }
 
 interface StatRowProps {
@@ -143,6 +159,7 @@ export const EnemyPanel = React.memo(function EnemyPanel({
   equippedGear = [],
   imageOffsetY = 0,
   scale = 1,
+  tier,
 }: EnemyPanelProps) {
   const hpPercent = useMemo(() => Math.max(0, (hp / maxHp) * 100), [hp, maxHp]);
   const armorPercent = useMemo(
@@ -172,6 +189,41 @@ export const EnemyPanel = React.memo(function EnemyPanel({
           contentContainerStyle={scrollContentStyle}
           showsVerticalScrollIndicator={false}
         >
+          {tier && (
+            <View
+              style={[
+                styles.tierBadge,
+                {
+                  top: 16 * scale,
+                  right: 8 * scale,
+                  width: 22 * scale,
+                  paddingVertical: 2 * scale,
+                  borderRadius: 3 * scale,
+                  borderWidth: 1 * scale,
+                  borderColor: tier === 3 ? '#dc2626' : tier === 2 ? '#d97706' : '#6b7280',
+                  backgroundColor:
+                    tier === 3
+                      ? 'rgba(220, 38, 38, 0.15)'
+                      : tier === 2
+                        ? 'rgba(217, 119, 6, 0.15)'
+                        : 'rgba(107, 114, 128, 0.15)',
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.tierText,
+                  {
+                    fontSize: 8 * scale,
+                    color: tier === 3 ? '#dc2626' : tier === 2 ? '#d97706' : '#4b5563',
+                  },
+                ]}
+              >
+                {'I'.repeat(tier)}
+              </Text>
+            </View>
+          )}
+
           {gold !== undefined && (
             <View
               style={[
@@ -449,5 +501,18 @@ const styles = StyleSheet.create({
   itemsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+  },
+  tierBadge: {
+    position: 'absolute',
+    zIndex: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tierText: {
+    fontFamily: Typography.header,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    includeFontPadding: false,
+    textAlignVertical: 'center',
   },
 });

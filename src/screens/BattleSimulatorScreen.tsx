@@ -70,8 +70,8 @@ type GearSelection = {
 
 const TIER_RARITY = {
   1: 'COMMON',
-  2: 'GILDED',
-  3: 'DIAMOND',
+  2: 'SAPPHIRE',
+  3: 'GOLDEN',
 } as const;
 
 const TIER_LABELS: Record<ItemTier, string> = {

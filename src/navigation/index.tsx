@@ -20,6 +20,7 @@ import { GauntletHistoryScreen } from '../screens/GauntletHistoryScreen';
 import { GauntletRankingScreen } from '../screens/GauntletRankingScreen';
 import { MarketplaceScreen } from '../screens/MarketplaceScreen';
 import { ItemsScreen } from '../screens/ItemsScreen';
+import { SkinsScreen } from '../screens/SkinsScreen';
 import { SessionLoadingScreen } from '../screens/SessionLoadingScreen';
 import { BattleSimulatorScreen } from '../screens/BattleSimulatorScreen';
 import type { CombatReplay } from '../services/solana/types/combat_events';
@@ -73,6 +74,8 @@ export interface CombatParams {
   enemyGold?: number;
   /** PvP-only final deterministic fallback when all tiebreak stats are identical */
   pvpTieBreakerFavorPlayer?: boolean;
+  /** When true, the "player" slot acts first on speed ties (PvP: viewer is on-chain enemy) */
+  pvpPlayerActsFirstOnTie?: boolean;
   /** Current week (for final boss/echo detection — gauntlet goes up to 5) */
   week?: number;
   /** Whether this is a boss fight */
@@ -141,6 +144,7 @@ export type RootStackParamList = {
     levelUnlocked?: number;
     itemUnlocked?: UnlockedItem;
     runMode?: number;
+    gauntletPoints?: number;
   };
   PitDraft: { debugPhase?: 'queuing' | 'confirm' | 'matched' | 'result' } | undefined;
   PitDraftHistory: undefined;
@@ -152,6 +156,7 @@ export type RootStackParamList = {
   SessionLoading: { mode: 'campaign' | 'gauntlet' | 'duel'; forceLogo?: boolean } | undefined;
   Marketplace: undefined;
   Items: undefined;
+  Skins: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -176,6 +181,7 @@ const SCREEN_TITLES: Record<string, string> = {
   SessionLoading: 'Loading Session',
   Marketplace: 'Marketplace',
   Items: 'Items',
+  Skins: 'Skins',
 };
 
 function getActiveRouteName(state: NavigationState | undefined): string | undefined {
@@ -222,6 +228,7 @@ export function AppNavigator() {
         <Stack.Screen name="SessionLoading" component={SessionLoadingScreen} />
         <Stack.Screen name="Marketplace" component={MarketplaceScreen} />
         <Stack.Screen name="Items" component={ItemsScreen} />
+        <Stack.Screen name="Skins" component={SkinsScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

@@ -26,6 +26,40 @@ const BUFFER_TILES = 2;
 
 const SINGLE_USE_POIS = ['L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L12', 'L13'];
 
+// Tier glow CSS class names (matched to injected keyframes)
+const TIER_GLOW_CLASS: Record<1 | 2 | 3, string> = {
+  1: '', // T1: no glow
+  2: 'tier-glow-2', // T2: orange pulse
+  3: 'tier-glow-3', // T3: red pulse
+};
+
+// Inject glow keyframe animations into the document once
+if (typeof document !== 'undefined') {
+  const styleId = 'tier-glow-styles';
+  if (!document.getElementById(styleId)) {
+    const style = document.createElement('style');
+    style.id = styleId;
+    style.textContent = `
+      @keyframes tier-pulse-1 {
+        0%, 100% { filter: drop-shadow(0 0 3px rgba(255,255,255,0.6)) drop-shadow(0 0 6px rgba(255,255,255,0.3)); }
+        50% { filter: drop-shadow(0 0 6px rgba(255,255,255,1)) drop-shadow(0 0 12px rgba(255,255,255,0.6)); }
+      }
+      @keyframes tier-pulse-2 {
+        0%, 100% { filter: drop-shadow(0 0 3px rgba(255,180,0,0.6)) drop-shadow(0 0 6px rgba(255,180,0,0.3)); }
+        50% { filter: drop-shadow(0 0 7px rgba(255,180,0,1)) drop-shadow(0 0 14px rgba(255,180,0,0.6)); }
+      }
+      @keyframes tier-pulse-3 {
+        0%, 100% { filter: drop-shadow(0 0 4px rgba(220,30,30,0.7)) drop-shadow(0 0 8px rgba(220,30,30,0.4)); }
+        50% { filter: drop-shadow(0 0 8px rgba(220,30,30,1)) drop-shadow(0 0 16px rgba(220,30,30,0.7)); }
+      }
+      .tier-glow-1 { animation: tier-pulse-1 2s ease-in-out infinite; }
+      .tier-glow-2 { animation: tier-pulse-2 1.8s ease-in-out infinite; }
+      .tier-glow-3 { animation: tier-pulse-3 1.4s ease-in-out infinite; }
+    `;
+    document.head.appendChild(style);
+  }
+}
+
 // Tile colors - simplified: one color for floor, black for wall (fallback)
 const TILE_COLORS = {
   [TileType.Floor]: '#795040', // Brown corridor
@@ -292,6 +326,7 @@ const EntityView = memo(function EntityView({
   flipX = false,
   grayscale = false,
   yOffset = 0,
+  glowClass,
 }: {
   x: number;
   y: number;
@@ -301,6 +336,7 @@ const EntityView = memo(function EntityView({
   flipX?: boolean;
   grayscale?: boolean;
   yOffset?: number;
+  glowClass?: string;
 }) {
   const size = ENTITY_SIZE * zoom;
   const offset = ENTITY_OFFSET * zoom;
@@ -309,6 +345,30 @@ const EntityView = memo(function EntityView({
 
   const transform = [];
   if (flipX) transform.push({ scaleX: -1 });
+
+  // Use a raw div for enemies with glow so className works (RN Web View ignores className)
+  if (glowClass) {
+    return (
+      <div
+        className={glowClass}
+        style={{
+          position: 'absolute',
+          left: screenX,
+          top: screenY,
+          width: size,
+          height: size,
+          opacity: opacity ?? 1,
+          transform: flipX ? 'scaleX(-1)' : undefined,
+          filter: grayscale ? 'grayscale(100%)' : undefined,
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+        }}
+      >
+        {image && <Image source={image} style={styles.entityImage} contentFit="contain" />}
+      </div>
+    );
+  }
 
   return (
     <View
@@ -322,7 +382,7 @@ const EntityView = memo(function EntityView({
           opacity,
           transform,
           // @ts-ignore - grayscale filter for web
-          filter: grayscale ? 'grayscale(100%)' : 'none',
+          filter: grayscale ? 'grayscale(100%)' : undefined,
         },
       ]}
     >
@@ -433,7 +493,8 @@ export const MapRenderer = memo(function MapRenderer({
         pois.push(...bucket);
       }
     }
-    return pois;
+    // Hide rest alcoves (L5) after they've been used
+    return pois.filter((p) => !(p.definitionId === 'L5' && p.visited));
   }, [poiBuckets, visibleRange, map.fog, map.width]);
 
   const visibleEnemies = useMemo(() => {
@@ -619,6 +680,7 @@ export const MapRenderer = memo(function MapRenderer({
             {visibleEnemies.map((entry) => {
               const { enemy, variant } = entry;
               const isUnknown = variant === 'unknown';
+              const tier = enemy.tier as 1 | 2 | 3;
               return (
                 <EntityView
                   key={`enemy-${enemy.id}`}
@@ -628,6 +690,7 @@ export const MapRenderer = memo(function MapRenderer({
                     isUnknown ? unknownEnemyImageSource : getEntityImageSource(enemy.definitionId)
                   }
                   zoom={zoom}
+                  glowClass={!isUnknown ? TIER_GLOW_CLASS[tier] : undefined}
                 />
               );
             })}

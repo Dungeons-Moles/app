@@ -54,14 +54,19 @@ interface ItemSlotProps {
 
 const DEFAULT_RARITY_COLOR = '#4A4A4A';
 
-function getTierSlotBg(tier: ItemTier): any {
+const TIER_BG_COLORS: Record<number, string> = {
+  2: 'rgba(59, 130, 246, 0.15)',
+  3: 'rgba(234, 179, 8, 0.18)',
+};
+
+function getTierSlotBg(tier: ItemTier): { source: any; bgColor?: string } {
   switch (tier) {
     case 2:
-      return SLOT_BG_BLUE;
+      return { source: SLOT_BG_BLUE, bgColor: TIER_BG_COLORS[2] };
     case 3:
-      return SLOT_BG_YELLOW;
+      return { source: SLOT_BG_YELLOW, bgColor: TIER_BG_COLORS[3] };
     default:
-      return SLOT_BG;
+      return { source: SLOT_BG };
   }
 }
 
@@ -97,19 +102,20 @@ function ItemSlot({
   }, [item, slotIndex, onLongPress, playSfx]);
 
   const rarityColor = useMemo(() => (item ? getRarityColor(item) : DEFAULT_RARITY_COLOR), [item]);
-  const tierSlotBg = useMemo(() => {
-    if (!item || !isSidebar) return SLOT_BG;
+  const { tierSlotBg, tierBgColor } = useMemo(() => {
+    if (!item) return { tierSlotBg: SLOT_BG, tierBgColor: undefined };
     const rarity = 'rarity' in item ? item.rarity : item.currentRarity;
     const tier = getTierFromRarity(rarity);
-    return getTierSlotBg(tier);
-  }, [item, isSidebar]);
+    const { source, bgColor } = getTierSlotBg(tier);
+    return { tierSlotBg: source, tierBgColor: bgColor };
+  }, [item]);
   const slotStyle = useMemo(
     () => [
       styles.itemSlot,
-      { width: size, height: size },
+      { width: size, height: size, backgroundColor: tierBgColor },
       !isSidebar && { borderColor: rarityColor },
     ],
-    [rarityColor, isSidebar, size]
+    [rarityColor, isSidebar, size, tierBgColor]
   );
 
   const indicatorStyle = useMemo(
@@ -183,10 +189,10 @@ function getRarityColor(item: Tool | Gear): string {
   switch (rarity) {
     case 'COMMON':
       return '#A0A0A0';
-    case 'GILDED':
+    case 'SAPPHIRE':
+      return '#4A90D9';
+    case 'GOLDEN':
       return '#FFD700';
-    case 'DIAMOND':
-      return '#00FFFF';
     case 'RARE':
       return '#4169E1';
     case 'HEROIC':

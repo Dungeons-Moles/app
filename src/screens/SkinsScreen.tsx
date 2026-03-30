@@ -258,8 +258,12 @@ export function SkinsScreen({ navigation }: SkinsScreenProps) {
           return newIdx;
         });
       },
+      onStart: () => {
+        playSfx('ui_click');
+        setShowSettingsModal(true);
+      },
     },
-    isController && isFocused
+    isController && isFocused && !showSettingsModal
   );
 
   const controllerHints: ButtonHint[] = [

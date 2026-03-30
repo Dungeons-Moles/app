@@ -8,11 +8,23 @@ import {
   View,
 } from 'react-native';
 import type { ItemRarity } from '@/game/engine/types';
-import { ITEM_RARITY_COLORS } from '@/utils/rarity-colors';
 import { Typography } from '@/theme/typography';
 import { useScreenVariant } from '@/contexts/ScreenVariantContext';
 
 const squareSource = require('../../../assets/ui/frames/square.webp');
+const squareBlueSource = require('../../../assets/ui/frames/square-blue.webp');
+const squareYellowSource = require('../../../assets/ui/frames/square-yellow.webp');
+
+function getFrameForRarity(rarity: ItemRarity) {
+  switch (rarity) {
+    case 'SAPPHIRE':
+      return squareBlueSource;
+    case 'GOLDEN':
+      return squareYellowSource;
+    default:
+      return squareSource;
+  }
+}
 
 interface SimplifiedItemOptionProps {
   emoji?: string;
@@ -41,8 +53,6 @@ export function SimplifiedItemOption({
 }: SimplifiedItemOptionProps) {
   const isCompact = useScreenVariant() === 'compact';
   const isMobileWide = !isCompact;
-  const rarityColor = ITEM_RARITY_COLORS[rarity] ?? '#9ca3af';
-
   const [pressed, setPressed] = useState(false);
 
   const handlePressIn = useCallback(() => setPressed(true), []);
@@ -63,8 +73,6 @@ export function SimplifiedItemOption({
     [disabled]
   );
 
-  const isCommon = rarity === 'COMMON';
-
   return (
     <Pressable
       testID="item-option"
@@ -80,13 +88,11 @@ export function SimplifiedItemOption({
       accessibilityHint={`Long press to view ${itemName} details`}
     >
       <Image
-        source={squareSource}
+        source={getFrameForRarity(rarity)}
         style={{
           position: 'absolute',
           width: '100%',
           height: '100%',
-          backgroundColor: isCommon ? undefined : rarityColor,
-          opacity: isCommon ? 1 : 0.3,
           resizeMode: 'stretch',
         }}
       />

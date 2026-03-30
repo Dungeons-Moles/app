@@ -37,6 +37,7 @@ const RANKING_TITLE = require('../../assets/ui/text/ranking.webp');
 const buttonV1Source = require('../../assets/ui/buttons/button-v1.webp');
 const buttonV4Source = require('../../assets/ui/buttons/button-v4.webp');
 const engineImageSource = require('../../assets/ui/illustrations/engine.webp');
+const PAPER_PANEL_WIDE = require('../../assets/ui/panels/paper-panel-wide.webp');
 const MAX_RANK_ROWS = 100;
 const PAGE_SIZE = 10;
 const HALF_PAGE = 5;
@@ -298,6 +299,22 @@ export function GauntletRankingScreen({ navigation, route }: GauntletRankingScre
         </Text>
       )}
 
+      {/* Title above book (compact only) */}
+      {isCompact && (
+        <View style={compactStyles.titleAboveBook}>
+          <Image
+            source={GAUNTLET_TITLE}
+            style={compactStyles.titleImage}
+            resizeMode="contain"
+          />
+          <Image
+            source={RANKING_TITLE}
+            style={compactStyles.rankingTitleImage}
+            resizeMode="contain"
+          />
+        </View>
+      )}
+
       <View style={[styles.content, isCompact && compactStyles.content]}>
         {/* Header */}
         <View style={[styles.header, isCompact && compactStyles.header]}>
@@ -321,18 +338,20 @@ export function GauntletRankingScreen({ navigation, route }: GauntletRankingScre
             )}
           </View>
 
-          <View style={[styles.titleRow, isCompact && compactStyles.titleRow]}>
-            <Image
-              source={GAUNTLET_TITLE}
-              style={[styles.titleImage, isCompact && compactStyles.titleImage]}
-              resizeMode="contain"
-            />
-            <Image
-              source={RANKING_TITLE}
-              style={[styles.rankingTitleImage, isCompact && compactStyles.rankingTitleImage]}
-              resizeMode="contain"
-            />
-          </View>
+          {!isCompact && (
+            <View style={styles.titleRow}>
+              <Image
+                source={GAUNTLET_TITLE}
+                style={styles.titleImage}
+                resizeMode="contain"
+              />
+              <Image
+                source={RANKING_TITLE}
+                style={styles.rankingTitleImage}
+                resizeMode="contain"
+              />
+            </View>
+          )}
 
           <View style={styles.headerRight}>
             {!isCompact && !isController && (
@@ -378,13 +397,16 @@ export function GauntletRankingScreen({ navigation, route }: GauntletRankingScre
             <Text style={styles.errorText}>{error}</Text>
           </View>
         ) : !hasData ? (
-          <View style={[styles.columnsContainer, isCompact && compactStyles.columnsContainer]}>
-            <View style={styles.emptyColumn}>
+          <View style={styles.emptyOverlay} pointerEvents="box-none">
+            <CachedImageBackground
+              source={PAPER_PANEL_WIDE}
+              style={[styles.emptyPanel, isCompact && compactStyles.emptyPanel]}
+              resizeMode="stretch"
+            >
               <Text style={[styles.emptyText, isCompact && compactStyles.emptyText]}>
                 No ranking data yet for this epoch.
               </Text>
-            </View>
-            <View style={styles.column} />
+            </CachedImageBackground>
           </View>
         ) : (
           <View style={[styles.columnsContainer, isCompact && compactStyles.columnsContainer]}>
@@ -626,10 +648,18 @@ const styles = StyleSheet.create({
     fontSize: 10,
     marginTop: 1,
   },
-  emptyColumn: {
+  emptyOverlay: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    marginTop: -80,
+  },
+  emptyPanel: {
+    width: 240,
+    height: 70,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 16,
   },
   emptyText: {
     fontFamily: Typography.body,
@@ -693,6 +723,16 @@ const styles = StyleSheet.create({
 });
 
 const compactStyles = StyleSheet.create({
+  titleAboveBook: {
+    position: 'absolute',
+    top: 24,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 20,
+  },
   poolBadgeContainer: {
     top: 24,
     right: 8,
@@ -720,9 +760,6 @@ const compactStyles = StyleSheet.create({
     fontSize: 28,
     marginBottom: 6,
   },
-  titleRow: {
-    gap: 0,
-  },
   titleImage: {
     width: 280,
     height: 70,
@@ -732,6 +769,7 @@ const compactStyles = StyleSheet.create({
     width: 240,
     height: 64,
     marginTop: 8,
+    marginLeft: -24,
   },
   columnsContainer: {
     gap: 32,
@@ -739,6 +777,11 @@ const compactStyles = StyleSheet.create({
   },
   rightColumn: {
     paddingLeft: 40,
+  },
+  emptyPanel: {
+    width: 580,
+    height: 160,
+    paddingHorizontal: 40,
   },
   emptyText: {
     fontSize: 28,

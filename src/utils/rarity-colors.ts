@@ -16,8 +16,8 @@ export const RARITY_BG_COLORS: Record<Rarity, string> = {
 
 export const ITEM_RARITY_COLORS: Record<ItemRarity, string> = {
   COMMON: '#A0A0A0',
-  GILDED: '#FFD700',
-  DIAMOND: '#00FFFF',
+  SAPPHIRE: '#4A90D9',
+  GOLDEN: '#FFD700',
   RARE: '#4169E1',
   HEROIC: '#9932CC',
   MYTHIC: '#FF4500',
@@ -25,8 +25,8 @@ export const ITEM_RARITY_COLORS: Record<ItemRarity, string> = {
 
 export const ITEM_RARITY_BG_COLORS: Record<ItemRarity, string> = {
   COMMON: '#f3f4f6',
-  GILDED: '#fef3c7',
-  DIAMOND: '#cffafe',
+  SAPPHIRE: '#dbeafe',
+  GOLDEN: '#fef3c7',
   RARE: '#dbeafe',
   HEROIC: '#ede9fe',
   MYTHIC: '#ffedd5',

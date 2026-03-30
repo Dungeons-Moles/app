@@ -589,8 +589,8 @@ function tierToRarity(
   tier: Record<string, object>,
   baseRarity: Tool['rarity'] | Gear['baseRarity']
 ): Tool['rarity'] | Gear['baseRarity'] {
-  if ('iii' in tier) return 'DIAMOND';
-  if ('ii' in tier) return 'GILDED';
+  if ('iii' in tier) return 'GOLDEN';
+  if ('ii' in tier) return 'SAPPHIRE';
   return baseRarity;
 }
 

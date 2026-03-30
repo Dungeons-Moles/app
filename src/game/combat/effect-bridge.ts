@@ -32,8 +32,8 @@ export interface EquippedEffect {
  */
 export function getGearTier(gear: Gear): 1 | 2 | 3 {
   const multiplier = RARITY_MULTIPLIER[gear.currentRarity];
-  if (multiplier >= 4) return 3; // Diamond
-  if (multiplier >= 2) return 2; // Gilded
+  if (multiplier >= 4) return 3; // Golden
+  if (multiplier >= 2) return 2; // Sapphire
   return 1; // Base
 }
 

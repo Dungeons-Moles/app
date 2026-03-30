@@ -90,6 +90,8 @@ interface POIModalProps {
   /** Called when controller selects a gear item from the inline inventory. */
   onGearSelect?: (gear: Gear) => void;
   centerInCompact?: boolean;
+  /** Disable controller actions (e.g. when a confirmation modal is overlaid). */
+  controllerDisabled?: boolean;
 }
 
 // POI types that use the 3-choice card layout
@@ -150,10 +152,10 @@ function getRarityColor(item: Tool | Gear): string {
   switch (rarity) {
     case 'COMMON':
       return '#A0A0A0';
-    case 'GILDED':
+    case 'SAPPHIRE':
+      return '#4A90D9';
+    case 'GOLDEN':
       return '#FFD700';
-    case 'DIAMOND':
-      return '#00FFFF';
     case 'RARE':
       return '#4169E1';
     case 'HEROIC':
@@ -165,17 +167,27 @@ function getRarityColor(item: Tool | Gear): string {
   }
 }
 
-function getTierSquareSource(rarity: ItemRarity | null | undefined): any {
-  if (!rarity) return squareSource;
+const TIER_BG_COLORS: Record<number, string> = {
+  2: 'rgba(59, 130, 246, 0.15)',
+  3: 'rgba(234, 179, 8, 0.18)',
+};
+
+function getTierSquareInfo(rarity: ItemRarity | null | undefined): { source: any; bgColor?: string } {
+  if (!rarity) return { source: squareSource };
   const tier = getTierFromRarity(rarity);
   switch (tier) {
     case 2:
-      return squareBlueSource;
+      return { source: squareBlueSource, bgColor: TIER_BG_COLORS[2] };
     case 3:
-      return squareYellowSource;
+      return { source: squareYellowSource, bgColor: TIER_BG_COLORS[3] };
     default:
-      return squareSource;
+      return { source: squareSource };
   }
+}
+
+// Backwards compat – callers that only need the source image
+function getTierSquareSource(rarity: ItemRarity | null | undefined): any {
+  return getTierSquareInfo(rarity).source;
 }
 
 interface ListOptionButtonProps {
@@ -362,6 +374,7 @@ export const POIModal = React.memo(function POIModal({
   selectableGear,
   onGearSelect,
   centerInCompact,
+  controllerDisabled,
 }: POIModalProps) {
   if (!interaction) {
     return null;
@@ -613,7 +626,7 @@ export const POIModal = React.memo(function POIModal({
       },
       onB: () => { playSfx('ui_back'); onClose(); },
     },
-    isController && visible
+    isController && visible && !controllerDisabled
   );
 
   const getOptionRarity = useCallback((option: POIOption): ItemRarity => {
@@ -921,12 +934,13 @@ export const POIModal = React.memo(function POIModal({
               disabled={!hasSelection}
             >
               <Image
-                source={hasSelection ? getTierSquareSource(item?.currentRarity) : squareSource}
+                source={hasSelection ? getTierSquareInfo(item?.currentRarity).source : squareSource}
                 style={{
                   position: 'absolute',
                   width: '100%',
                   height: '100%',
                   resizeMode: 'stretch',
+                  backgroundColor: hasSelection ? getTierSquareInfo(item?.currentRarity).bgColor : undefined,
                 }}
               />
               {hasSelection && item ? (
@@ -1272,12 +1286,13 @@ export const POIModal = React.memo(function POIModal({
                         disabled={false}
                       >
                         <Image
-                          source={squareSource}
+                          source={getTierSquareInfo(option.item ? getItemRarity(option.item) : null).source}
                           style={{
                             position: 'absolute',
                             width: '100%',
                             height: '100%',
                             resizeMode: 'stretch',
+                            backgroundColor: option.item ? getTierSquareInfo(getItemRarity(option.item)).bgColor : undefined,
                           }}
                         />
                         {option.item?.image ? (
@@ -1330,9 +1345,9 @@ export const POIModal = React.memo(function POIModal({
     // Compute next rarity and stat delta
     const nextRarity: ItemRarity | null = tool
       ? tool.rarity === 'COMMON'
-        ? 'GILDED'
-        : tool.rarity === 'GILDED'
-          ? 'DIAMOND'
+        ? 'SAPPHIRE'
+        : tool.rarity === 'SAPPHIRE'
+          ? 'GOLDEN'
           : null
       : null;
     const currentTier = tool ? getTierFromRarity(tool.rarity) : 1;
@@ -1347,7 +1362,8 @@ export const POIModal = React.memo(function POIModal({
       }
     }
     const deltaText = formatStatBonuses(statDelta);
-    const nextSquareBg = getTierSquareSource(nextRarity);
+    const { source: nextSquareBg, bgColor: nextBgColor } = getTierSquareInfo(nextRarity);
+    const { source: currentSquareBg, bgColor: currentBgColor } = getTierSquareInfo(tool?.rarity);
 
     return (
       <ModalWrapper visible={visible} isCompact={isCompact} onClose={onClose}>
@@ -1380,7 +1396,7 @@ export const POIModal = React.memo(function POIModal({
               <>
                 <View style={styles.anvilUpgradeRow}>
                   <View style={styles.anvilSlot}>
-                    <Image source={squareSource} style={styles.anvilSlotBg} />
+                    <Image source={currentSquareBg} style={[styles.anvilSlotBg, currentBgColor ? { backgroundColor: currentBgColor } : undefined]} />
                     {tool.image ? (
                       <Image
                         source={tool.image}
@@ -1396,7 +1412,7 @@ export const POIModal = React.memo(function POIModal({
 
                   <View style={styles.anvilUpgradedColumn}>
                     <View style={[styles.anvilSlot]}>
-                      <Image source={nextSquareBg} style={styles.anvilSlotBg} />
+                      <Image source={nextSquareBg} style={[styles.anvilSlotBg, nextBgColor ? { backgroundColor: nextBgColor } : undefined]} />
                       {tool.image ? (
                         <Image
                           source={tool.image}
@@ -1414,7 +1430,7 @@ export const POIModal = React.memo(function POIModal({
             ) : (
               <View style={styles.anvilSlotCentered}>
                 <View style={styles.anvilSlot}>
-                  <Image source={squareSource} style={styles.anvilSlotBg} />
+                  <Image source={tool ? getTierSquareInfo(tool.rarity).source : squareSource} style={[styles.anvilSlotBg, tool ? { backgroundColor: getTierSquareInfo(tool.rarity).bgColor } : undefined]} />
                   {tool && tool.image ? (
                     <Image source={tool.image} style={styles.anvilSlotImage} resizeMode="contain" />
                   ) : tool ? (

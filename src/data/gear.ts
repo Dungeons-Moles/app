@@ -916,8 +916,8 @@ export function getGearByRarity(rarity: ItemRarity): GearDefinition[] {
  */
 export const RARITY_MULTIPLIER: Record<ItemRarity, number> = {
   COMMON: 1.0,
-  GILDED: 2.0,
-  DIAMOND: 4.0,
+  SAPPHIRE: 2.0,
+  GOLDEN: 4.0,
   RARE: 1.0,
   HEROIC: 1.0,
   MYTHIC: 1.0,
@@ -929,13 +929,13 @@ export const RARITY_MULTIPLIER: Record<ItemRarity, number> = {
 export type ItemTier = 1 | 2 | 3;
 
 /**
- * Derive tier from rarity: COMMON→T1, GILDED→T2, DIAMOND→T3
+ * Derive tier from rarity: COMMON→T1, SAPPHIRE→T2, GOLDEN→T3
  */
 export function getTierFromRarity(rarity: ItemRarity): ItemTier {
   switch (rarity) {
-    case 'GILDED':
+    case 'SAPPHIRE':
       return 2;
-    case 'DIAMOND':
+    case 'GOLDEN':
       return 3;
     default:
       return 1;

@@ -129,7 +129,7 @@ export type GameAction =
       guestDifficultyId?: GuestDifficultyId;
     }
   | { type: 'RESTORE_GAME'; state: GameState }
-  | { type: 'MOVE'; direction: Direction }
+  | { type: 'MOVE'; direction: Direction; autoOpenPOI?: boolean }
   | { type: 'HIGHLIGHT_WALL'; direction: Direction; targetPosition: Position; cost: number }
   | { type: 'BREAK_WALL' }
   | { type: 'CANCEL_WALL_HIGHLIGHT' }
@@ -193,7 +193,7 @@ export function isStartGameAction(
   return action.type === 'START_GAME';
 }
 
-export function isMoveAction(action: GameAction): action is { type: 'MOVE'; direction: Direction } {
+export function isMoveAction(action: GameAction): action is { type: 'MOVE'; direction: Direction; autoOpenPOI?: boolean } {
   return action.type === 'MOVE';
 }
 
@@ -226,7 +226,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       return handleRestoreGame(action.state);
 
     case 'MOVE':
-      return handleMove(state, action.direction);
+      return handleMove(state, action.direction, action.autoOpenPOI);
 
     case 'HIGHLIGHT_WALL':
       return handleHighlightWall(state, action.direction, action.targetPosition, action.cost);
@@ -419,7 +419,7 @@ function handleRestoreGame(restoredState: GameState): GameState {
  * Moves player in direction if valid, consumes time.
  * @see T066: Add time consumption to MOVE action
  */
-function handleMove(state: GameState, direction: Direction): GameState {
+function handleMove(state: GameState, direction: Direction, autoOpenPOI?: boolean): GameState {
   if (state.phase !== GamePhase.Exploration) {
     return state; // Ignore move if not exploring
   }
@@ -451,7 +451,7 @@ function handleMove(state: GameState, direction: Direction): GameState {
 
   if (hasHighlight && !isSameHighlight) {
     const canceledState = handleCancelWallHighlight(state);
-    return handleMove(canceledState, direction);
+    return handleMove(canceledState, direction, autoOpenPOI);
   }
 
   if (targetTile === TileType.Wall) {
@@ -634,7 +634,7 @@ function handleMove(state: GameState, direction: Direction): GameState {
         if (!poiAtTarget.discovered) {
           updatedMap = markPOIDiscovered(newState.map, poiAtTarget.id);
         }
-        if (!canFastTravel(updatedMap)) {
+        if (autoOpenPOI === false || !canFastTravel(updatedMap)) {
           return {
             ...newState,
             map: updatedMap,
@@ -642,20 +642,25 @@ function handleMove(state: GameState, direction: Direction): GameState {
         }
       }
       // Auto-open POI on step (skip night-only POIs during day;
-      // manual 'A' button still opens them with disabled options)
-      const interaction = createPOIInteraction(poiAtTarget, newState);
-      if (interaction) {
-        // Mark Rail Waypoints as discovered
-        let updatedMap = newState.map;
-        if (poiAtTarget.definitionId === 'L8' && !poiAtTarget.discovered) {
-          updatedMap = markPOIDiscovered(newState.map, poiAtTarget.id);
+      // manual 'A' button still opens them with disabled options).
+      // When autoOpenPOI is false, skip — player can still open manually with the A button.
+      if (autoOpenPOI === false) {
+        // fall through to return newState at end
+      } else {
+        const interaction = createPOIInteraction(poiAtTarget, newState);
+        if (interaction) {
+          // Mark Rail Waypoints as discovered
+          let updatedMap = newState.map;
+          if (poiAtTarget.definitionId === 'L8' && !poiAtTarget.discovered) {
+            updatedMap = markPOIDiscovered(newState.map, poiAtTarget.id);
+          }
+          return {
+            ...newState,
+            phase: GamePhase.POIInteraction,
+            map: updatedMap,
+            activePOI: interaction,
+          };
         }
-        return {
-          ...newState,
-          phase: GamePhase.POIInteraction,
-          map: updatedMap,
-          activePOI: interaction,
-        };
       }
     }
   }
@@ -1254,7 +1259,7 @@ function hasFuseCandidate(state: GameState): boolean {
   const counts = new Map<string, number>();
   for (const slot of state.player.inventory) {
     const gear = slot.item;
-    if (gear.currentRarity === 'DIAMOND') {
+    if (gear.currentRarity === 'GOLDEN') {
       continue;
     }
     const key = `${gear.id}:${gear.currentRarity}`;
@@ -1282,7 +1287,7 @@ function canOpenPOIModal(state: GameState, poiDefId: string): boolean {
       const tool = state.player.equippedTool;
       if (!tool) return false;
       if (tool.rarity === 'COMMON') return state.player.stats.gold >= 10;
-      if (tool.rarity === 'GILDED') return state.player.stats.gold >= 20;
+      if (tool.rarity === 'SAPPHIRE') return state.player.stats.gold >= 20;
       return false;
     }
     case 'L11':
@@ -2026,11 +2031,11 @@ function handleDiscardGearById(state: GameState, gearId: GearId): GameState {
  */
 function handleFuseGear(state: GameState, gearId: GearId): GameState {
   const NEXT_RARITY: Partial<Record<ItemRarity, ItemRarity>> = {
-    COMMON: 'GILDED',
-    RARE: 'GILDED',
-    HEROIC: 'GILDED',
-    MYTHIC: 'GILDED',
-    GILDED: 'DIAMOND',
+    COMMON: 'SAPPHIRE',
+    RARE: 'SAPPHIRE',
+    HEROIC: 'SAPPHIRE',
+    MYTHIC: 'SAPPHIRE',
+    SAPPHIRE: 'GOLDEN',
   };
 
   // Remove one copy
