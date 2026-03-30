@@ -1954,6 +1954,73 @@
           "writable": true
         },
         {
+          "name": "duel_entry",
+          "docs": [
+            "Duel entry for duel-session settlement validation."
+          ],
+          "optional": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  117,
+                  101,
+                  108,
+                  95,
+                  101,
+                  110,
+                  116,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "game_session"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                42,
+                133,
+                148,
+                207,
+                202,
+                95,
+                0,
+                69,
+                48,
+                206,
+                100,
+                209,
+                84,
+                148,
+                107,
+                54,
+                203,
+                212,
+                148,
+                86,
+                22,
+                151,
+                161,
+                130,
+                13,
+                114,
+                27,
+                126,
+                137,
+                183,
+                191,
+                126
+              ]
+            }
+          }
+        },
+        {
           "name": "map_vrf_state",
           "docs": [
             "Optional MapVrfState (only for PvP sessions using VRF)"
@@ -3556,6 +3623,19 @@
   ],
   "accounts": [
     {
+      "name": "DuelEntry",
+      "discriminator": [
+        138,
+        171,
+        78,
+        7,
+        76,
+        120,
+        208,
+        250
+      ]
+    },
+    {
       "name": "GameSession",
       "discriminator": [
         150,
@@ -3781,9 +3861,194 @@
       "code": 6015,
       "name": "VrfNotFulfilled",
       "msg": "VRF not fulfilled"
+    },
+    {
+      "code": 6016,
+      "name": "DuelSettlementRequired",
+      "msg": "Duel session must be settled before closing"
     }
   ],
   "types": [
+    {
+      "name": "DuelCreatorEntry",
+      "docs": [
+        "Finished creator snapshot waiting for an async duel opponent."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "seed",
+            "type": "u64"
+          },
+          {
+            "name": "entry_lamports",
+            "type": "u64"
+          },
+          {
+            "name": "finished_slot",
+            "type": "u64"
+          },
+          {
+            "name": "loadout",
+            "type": {
+              "defined": {
+                "name": "DuelLoadoutSnapshot"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "DuelEntry",
+      "docs": [
+        "Per-session duel staking/match state."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "session",
+            "type": "pubkey"
+          },
+          {
+            "name": "game_state",
+            "type": "pubkey"
+          },
+          {
+            "name": "seed",
+            "type": "u64"
+          },
+          {
+            "name": "entry_lamports",
+            "type": "u64"
+          },
+          {
+            "name": "finalized",
+            "type": "bool"
+          },
+          {
+            "name": "outcome",
+            "type": {
+              "defined": {
+                "name": "DuelRunOutcome"
+              }
+            }
+          },
+          {
+            "name": "loadout",
+            "type": {
+              "defined": {
+                "name": "DuelLoadoutSnapshot"
+              }
+            }
+          },
+          {
+            "name": "matched_creator",
+            "type": {
+              "option": {
+                "defined": {
+                  "name": "DuelCreatorEntry"
+                }
+              }
+            }
+          },
+          {
+            "name": "settled",
+            "type": "bool"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "DuelLoadoutSnapshot",
+      "docs": [
+        "Snapshot of a finalized duel loadout."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "tool",
+            "docs": [
+              "Final equipped tool at run end."
+            ],
+            "type": {
+              "option": {
+                "defined": {
+                  "name": "ItemInstance"
+                }
+              }
+            }
+          },
+          {
+            "name": "gear",
+            "docs": [
+              "Final equipped gear at run end."
+            ],
+            "type": {
+              "array": [
+                {
+                  "option": {
+                    "defined": {
+                      "name": "ItemInstance"
+                    }
+                  }
+                },
+                12
+              ]
+            }
+          },
+          {
+            "name": "gold_at_battle_start",
+            "docs": [
+              "Gold held by this player when duel PvP combat starts."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "hp_at_finish",
+            "docs": [
+              "Player HP at the moment the run was finalized (before PvP)."
+            ],
+            "type": "i16"
+          }
+        ]
+      }
+    },
+    {
+      "name": "DuelRunOutcome",
+      "docs": [
+        "Terminal outcome for a duel run participant."
+      ],
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Pending"
+          },
+          {
+            "name": "CompletedWeek3"
+          },
+          {
+            "name": "EliminatedBeforeWeek3"
+          }
+        ]
+      }
+    },
     {
       "name": "GameSession",
       "docs": [
@@ -3896,6 +4161,47 @@
               "Unix timestamp when settlement happened."
             ],
             "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ItemInstance",
+      "docs": [
+        "A specific item owned by a player"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "item_id",
+            "docs": [
+              "References ItemDefinition ID (e.g., \"T-ST-01\\0\")"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                8
+              ]
+            }
+          },
+          {
+            "name": "tier",
+            "docs": [
+              "Upgrade tier"
+            ],
+            "type": {
+              "defined": {
+                "name": "Tier"
+              }
+            }
+          },
+          {
+            "name": "tool_oil_flags",
+            "docs": [
+              "Tool Oil bitflags: 0x01=+ATK, 0x02=+SPD, 0x04=+DIG, 0x08=+ARM"
+            ],
+            "type": "u8"
           }
         ]
       }
@@ -4180,6 +4486,26 @@
           {
             "name": "timestamp",
             "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Tier",
+      "docs": [
+        "Item tier (upgrade level)"
+      ],
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "I"
+          },
+          {
+            "name": "II"
+          },
+          {
+            "name": "III"
           }
         ]
       }

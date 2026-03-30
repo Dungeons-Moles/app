@@ -11,6 +11,7 @@ import { InventoryPanel } from './InventoryPanel';
 import { FocusGlow } from '../ui/FocusGlow';
 import { BossTooltipModal, type PvpDetails } from './BossTooltipModal';
 import { getBoss } from '../../data/bosses';
+import { scaleBossStats } from '../../data/boss-scaling';
 import { getEntityImageSource } from './entityImages';
 import { Typography } from '../../theme/typography';
 import { useScreenVariant } from '../../contexts/ScreenVariantContext';
@@ -270,7 +271,11 @@ export function BossPanel({
   const { gameplayState: sessionGameState, sessionPda: activeSessionPda } = useSession();
   const { wallet } = useWallet();
   const { connection, gameplayReadConnection } = useSolanaConnection();
-  const boss = getBoss(time.weekBoss);
+  const baseBoss = getBoss(time.weekBoss);
+  const campaignLevel = gameState?.campaignLevel ?? sessionGameState?.campaignLevel;
+  const boss = baseBoss && campaignLevel
+    ? { ...baseBoss, stats: scaleBossStats(baseBoss.stats, campaignLevel, baseBoss.week) }
+    : baseBoss;
   // Prefer the prop (from reducer/GameScreen) over context values, which may be stale
   // during week transitions.
   const resolvedRunMode = runModeProp ?? gameState?.runMode ?? sessionGameState?.runMode;
@@ -287,10 +292,11 @@ export function BossPanel({
     gameState?.maxWeeks === 5 ||
     sessionGameState?.maxWeeks === 5;
   const isDuelRun = resolvedRunMode === RunMode.Duel;
+  const isDuelComplete = isDuelRun && !!sessionGameState?.completed;
   const isDuelFinalWeek = isDuelRun && resolvedWeek === 3;
-  const displayedBoss = isGauntletRun ? null : isDuelFinalWeek ? null : boss;
+  const displayedBoss = isGauntletRun || isDuelFinalWeek || isDuelComplete ? null : boss;
   const shouldShowGauntletEcho = !displayedBoss && isGauntletRun;
-  const shouldShowDuelOpponent = !displayedBoss && isDuelFinalWeek;
+  const shouldShowDuelOpponent = isDuelRun && (isDuelFinalWeek || isDuelComplete);
 
   const currentGauntletWeek = resolvedWeek ?? time.week;
   const pvpRequestIdRef = useRef(0);

@@ -95,7 +95,7 @@ import { warmMovePlayerCaches, syncDiscoveryBoss } from '@/services/solana/gamep
 import { deriveSessionDiscoveryPda, GAMEPLAY_STATE_PROGRAM_ID } from '@/services/solana/constants';
 import { warmErBlockhashCache, sendSessionSignerTransaction } from '@/services/solana/sessionSigner';
 import {
-  fetchDuelEntry,
+  fetchDuelEntryForSettlement,
   buildSettleDuelPayoutTransaction,
   parseDuelEvents,
   deriveDuelEntryPda,
@@ -551,6 +551,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
   const [isMovePending, setIsMovePending] = useState(false);
   const [isExitingSession, setIsExitingSession] = useState(false);
   const [duelCompleteVisible, setDuelCompleteVisible] = useState(false);
+  const [pendingWeaponSwap, setPendingWeaponSwap] = useState<{ optionIndex: number; toolName: string } | null>(null);
   const [isDuelFinalizing, setIsDuelFinalizing] = useState(false);
   const [showPauseMenu, setShowPauseMenu] = useState(false);
   const [showTutorial, setShowTutorial] = useState(false);
@@ -580,6 +581,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
   // Track enemies defeated locally — on-chain removes defeated enemies from the array
   // via swap_remove so (enemies.filter(e => e.defeated).length) is always 0.
   const enemiesDefeatedRef = useRef(0);
+  const pendingBossSidebarRefreshRef = useRef(false);
   const [defeatOverlayVisible, setDefeatOverlayVisible] = useState(false);
   const defeatMetaRef = useRef<{
     killedBy?: string;
@@ -882,7 +884,34 @@ export function GameScreen({ navigation }: GameScreenProps) {
     }
   }, [sessionPda, gameplayReadConnection, dispatch]);
 
+  const navigateToBossCombat = useCallback((
+    combatParams: CombatParams,
+    meta: { campaignLevel: number; totalMoves: number; phase: number; runMode?: number }
+  ) => {
+    pendingBossSidebarRefreshRef.current = true;
+    navigateToCombat(navigation, combatParams, meta, enemiesDefeatedRef.current);
+  }, [navigation]);
+
   useEffect(() => {
+    if (
+      !isFocused ||
+      !pendingBossSidebarRefreshRef.current ||
+      !state ||
+      state.phase !== GamePhase.Exploration ||
+      mode === 'guest' ||
+      !hasActiveSession
+    ) {
+      return;
+    }
+
+    pendingBossSidebarRefreshRef.current = false;
+    void resyncFromChain();
+  }, [hasActiveSession, isFocused, mode, resyncFromChain, state?.phase]);
+
+  useEffect(() => {
+    const requiresSeparateBossTrigger =
+      onChainState?.runMode === RunMode.Gauntlet ||
+      onChainState?.runMode === RunMode.Duel;
     if (
       !isFocused ||
       !onChainState?.bossFightReady ||
@@ -891,23 +920,20 @@ export function GameScreen({ navigation }: GameScreenProps) {
       isTriggeringBossRef.current ||
       isMovePending ||
       state.phase === GamePhase.POIInteraction ||
-      (state.time.phase !== 'BOSS')  // Local reducer already synced past the boss fight
+      (!requiresSeparateBossTrigger && state.time.phase !== 'BOSS')
     ) {
       return;
     }
 
-    // Gauntlet echo combat is NOT resolved inline in move_player (BPF stack
-    // overflow constraint). move_player sets boss_fight_ready = true and the
-    // frontend must call trigger_boss_fight separately to resolve the echo.
-    // This fires when:
-    // (a) move handler detected bossFightReady but bossResolvedInline was false, or
-    // (b) the player re-enters GameScreen with a stuck bossFightReady state.
-    if (onChainState.runMode === RunMode.Gauntlet || onChainState.runMode === RunMode.Duel) {
+    // Duel and Gauntlet weekly combats are resolved via trigger_boss_fight
+    // (separate tx). On resume, local phase may still be NIGHT3, so do not
+    // require the reducer to already be in BOSS phase for these modes.
+    if (requiresSeparateBossTrigger) {
       isTriggeringBossRef.current = true;
 
       if (onChainState.isDead) {
-        // Echo already resolved (e.g. player returned to this screen after death)
-        if (sessionPda && state) {
+        // Gauntlet echo already resolved (e.g. player returned after death).
+        if (onChainState.runMode === RunMode.Gauntlet && sessionPda && state) {
           buildFallbackGauntletCombatParams(
             gameplayReadConnection,
             sessionPda,
@@ -931,7 +957,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
           )
             .then((params) => {
               if (params) {
-                navigateToCombat(navigation, params, onChainState, enemiesDefeatedRef.current);
+                navigateToBossCombat(params, onChainState);
               } else {
                 navigateToDeath(navigation, onChainState, enemiesDefeatedRef.current, `Week ${onChainState.week} Echo`);
               }
@@ -940,24 +966,35 @@ export function GameScreen({ navigation }: GameScreenProps) {
               navigateToDeath(navigation, onChainState, enemiesDefeatedRef.current, `Week ${onChainState.week} Echo`);
             });
         } else {
-          navigateToDeath(navigation, onChainState, enemiesDefeatedRef.current, `Week ${onChainState.week} Echo`);
+          navigateToDeath(
+            navigation,
+            onChainState,
+            enemiesDefeatedRef.current,
+            `Week ${onChainState.week} ${onChainState.runMode === RunMode.Duel ? 'Boss' : 'Echo'}`
+          );
         }
       } else {
-        // Echo not yet resolved — call trigger_boss_fight on-chain.
-        // Limit retries to prevent infinite loops on persistent failures (e.g. OOM).
+        // Weekly combat not yet resolved — call trigger_boss_fight on-chain.
         if (gauntletBossRetryRef.current >= 2) {
-          console.error('[GameScreen] Gauntlet triggerBoss exceeded retry limit');
-          navigateToDeath(navigation, onChainState, enemiesDefeatedRef.current, `Week ${onChainState.week} Echo`);
+          console.error('[GameScreen] Weekly triggerBoss exceeded retry limit');
+          navigateToDeath(
+            navigation,
+            onChainState,
+            enemiesDefeatedRef.current,
+            `Week ${onChainState.week} ${onChainState.runMode === RunMode.Duel ? 'Boss' : 'Echo'}`
+          );
           return;
         }
         gauntletBossRetryRef.current += 1;
 
+        const healedOrCurrentHp =
+          onChainState.hp > 0
+            ? onChainState.hp
+            : (preBossHpRef.current != null && preBossHpRef.current > 0)
+              ? preBossHpRef.current
+              : Math.max(state.player.stats.maxHp, 1);
         const preCombatPlayerStats = {
-          hp: (preBossHpRef.current != null && preBossHpRef.current > 0)
-            ? preBossHpRef.current
-            : onChainState.hp > 0
-              ? onChainState.hp
-              : Math.max(state.player.stats.maxHp, 1),
+          hp: healedOrCurrentHp,
           maxHp: state.player.stats.maxHp,
           atk: state.player.stats.atk,
           arm: state.player.stats.arm,
@@ -974,46 +1011,77 @@ export function GameScreen({ navigation }: GameScreenProps) {
         triggerBoss()
           .then(async (bossResult) => {
             if (!bossResult.success || !bossResult.newState) {
-              console.error('[GameScreen] Gauntlet triggerBoss failed');
+              console.error('[GameScreen] Weekly triggerBoss failed');
               isTriggeringBossRef.current = false;
               return;
             }
 
-            // Happy path: use visual event from trigger_boss_fight tx
-            if (bossResult.gauntletVisual) {
-              const gauntletCombatParams = createGauntletCombatParams(
-                bossResult.gauntletVisual,
-                preCombatPlayerStats,
-                preCombatGear,
-                preCombatTool,
-                preCombatItemsets,
-                preCombatSeed,
-                currentWeek,
-                bossResult.newState.gold
-              );
-              navigateToCombat(navigation, gauntletCombatParams, bossResult.newState, enemiesDefeatedRef.current);
-              return;
-            }
+            if (onChainState.runMode === RunMode.Gauntlet) {
+              // Happy path: use visual event from trigger_boss_fight tx
+              if (bossResult.gauntletVisual) {
+                const gauntletCombatParams = createGauntletCombatParams(
+                  bossResult.gauntletVisual,
+                  preCombatPlayerStats,
+                  preCombatGear,
+                  preCombatTool,
+                  preCombatItemsets,
+                  preCombatSeed,
+                  currentWeek,
+                  bossResult.newState.gold
+                );
+                navigateToBossCombat(gauntletCombatParams, bossResult.newState);
+                return;
+              }
 
-            // Fallback: build combat params from on-chain echo data
-            if (sessionPda) {
-              const fallback = await buildFallbackGauntletCombatParams(
-                gameplayReadConnection,
-                sessionPda,
-                currentWeek,
-                {
-                  hp: bossResult.newState.hp,
-                  gold: bossResult.newState.gold,
-                  isDead: !!bossResult.isDead,
-                },
-                preCombatPlayerStats,
-                preCombatGear,
-                preCombatTool,
-                preCombatItemsets,
-                preCombatSeed
-              );
-              if (fallback) {
-                navigateToCombat(navigation, fallback, bossResult.newState, enemiesDefeatedRef.current);
+              // Fallback: build combat params from on-chain echo data
+              if (sessionPda) {
+                const fallback = await buildFallbackGauntletCombatParams(
+                  gameplayReadConnection,
+                  sessionPda,
+                  currentWeek,
+                  {
+                    hp: bossResult.newState.hp,
+                    gold: bossResult.newState.gold,
+                    isDead: !!bossResult.isDead,
+                  },
+                  preCombatPlayerStats,
+                  preCombatGear,
+                  preCombatTool,
+                  preCombatItemsets,
+                  preCombatSeed
+                );
+                if (fallback) {
+                  navigateToBossCombat(fallback, bossResult.newState);
+                  return;
+                }
+              }
+            } else {
+              const foughtBoss = state?.time.weekBoss ?? null;
+              if (foughtBoss) {
+                const bossCombatParams = createBossCombatParams(
+                  foughtBoss,
+                  {
+                    hp: preCombatPlayerStats.hp,
+                    maxHp: preCombatPlayerStats.maxHp,
+                    atk: preCombatPlayerStats.atk,
+                    arm: preCombatPlayerStats.arm,
+                    spd: preCombatPlayerStats.spd,
+                    dig: preCombatPlayerStats.dig,
+                    gold: bossResult.newState.gold,
+                  },
+                  preCombatGear,
+                  preCombatTool,
+                  preCombatItemsets,
+                  preCombatSeed,
+                  currentWeek as 1 | 2 | 3,
+                  {
+                    finalPlayerHp: bossResult.newState.hp,
+                    finalPlayerGold: bossResult.newState.gold,
+                    playerWon: !bossResult.isDead,
+                  },
+                  onChainState.campaignLevel ?? currentLevel ?? undefined
+                );
+                navigateToBossCombat(bossCombatParams, bossResult.newState);
                 return;
               }
             }
@@ -1024,7 +1092,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
                 navigation,
                 bossResult.newState,
                 enemiesDefeatedRef.current,
-                `Week ${currentWeek} Echo`
+                `Week ${currentWeek} ${onChainState.runMode === RunMode.Duel ? 'Boss' : 'Echo'}`
               );
             } else if (bossResult.newState.completed) {
               stopAutoCommit();
@@ -1081,21 +1149,14 @@ export function GameScreen({ navigation }: GameScreenProps) {
     });
 
     (async () => {
-      // Campaign and Duel (weeks 1-2) resolve the boss inline on-chain (either
-      // inside move_player or when a POI interaction exhausts remaining moves).
+      // Campaign resolves the boss inline on-chain (either inside move_player
+      // or when a POI interaction exhausts remaining moves).
       // The move handler normally navigates to CombatScreen for these cases, but
       // when the boss is triggered by a POI interaction (e.g., Rest Alcove consuming
       // the last moves on Night 3), the move handler doesn't fire. This guard
-      // catches both scenarios — wins AND losses — and shows CombatScreen via the
+      // catches both scenarios and shows CombatScreen via the
       // local resolver so the player always sees the boss fight animation.
-      const bossAlreadyResolvedInline =
-        onChainState.runMode === RunMode.Campaign ||
-        (onChainState.runMode === RunMode.Duel &&
-          // For deaths the week stays the same; for wins the week already advanced.
-          // Week 1 death → state.time.week=1, Week 1 win → state.time.week=2.
-          // Week 2 death → state.time.week=2, Week 2 win → state.time.week=3.
-          // So we check both the current week and the previous week.
-          (state.time.week <= 2 || (!onChainState.isDead && state.time.week === 3)));
+      const bossAlreadyResolvedInline = onChainState.runMode === RunMode.Campaign;
 
       if (bossAlreadyResolvedInline) {
         // When the player won, the week already advanced on-chain, so
@@ -1162,34 +1223,13 @@ export function GameScreen({ navigation }: GameScreenProps) {
           },
           onChainState.campaignLevel
         );
-        navigateToCombat(navigation, bossCombatParams, {
+        navigateToBossCombat(bossCombatParams, {
           campaignLevel: onChainState.campaignLevel,
           totalMoves: onChainState.totalMoves,
           phase: onChainState.phase,
           runMode: onChainState.runMode,
-        }, enemiesDefeatedRef.current);
+        });
 
-        // Fire-and-forget: re-fetch discovery bossId for the new week's sidebar.
-        if (playerWon && sessionPda) {
-          const [sdPda] = deriveSessionDiscoveryPda(sessionPda);
-          fetchSessionDiscovery(
-            createMapGeneratorProgram(gameplayReadConnection),
-            sdPda
-          )
-            .then((fresh) => {
-              if (fresh) {
-                const freshBossId = decodeBossId(fresh.currentBossId);
-                if (freshBossId) {
-                  dispatch({
-                    type: 'SYNC_MOVE',
-                    confirmedState: onChainState,
-                    weekBoss: freshBossId,
-                  });
-                }
-              }
-            })
-            .catch(() => {});
-        }
         return;
       }
 
@@ -1246,12 +1286,12 @@ export function GameScreen({ navigation }: GameScreenProps) {
           hasOnChainOutcome: bossResult.success,
         });
 
-        navigateToCombat(navigation, bossCombatParams, {
+        navigateToBossCombat(bossCombatParams, {
           campaignLevel: bossResult.newState?.campaignLevel ?? onChainState.campaignLevel,
           totalMoves: bossResult.newState?.totalMoves ?? onChainState.totalMoves,
           phase: bossResult.newState?.phase ?? onChainState.phase,
           runMode: bossResult.newState?.runMode ?? onChainState.runMode,
-        }, enemiesDefeatedRef.current);
+        });
       } catch (err) {
         console.error('[GameScreen] Boss fight trigger error:', err);
 
@@ -1279,12 +1319,12 @@ export function GameScreen({ navigation }: GameScreenProps) {
             playerHp: playerStats.hp,
           });
 
-          navigateToCombat(navigation, bossCombatParams, {
+          navigateToBossCombat(bossCombatParams, {
             campaignLevel: onChainState.campaignLevel,
             totalMoves: onChainState.totalMoves,
             phase: onChainState.phase,
             runMode: onChainState.runMode,
-          }, enemiesDefeatedRef.current);
+          });
         } catch (fallbackErr) {
           // Boss definition missing — navigate to Death as last resort so the user isn't stuck.
           console.error(
@@ -1473,14 +1513,6 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
     try {
       const duelProgram = createGameplayStateProgram(connection);
-      const duelEntry = await fetchDuelEntry(duelProgram, sessionPda);
-      if (!duelEntry) {
-        console.warn('[GameScreen] Duel week 3: no DuelEntry found');
-        await queueEndGame(0, true);
-        navigation.reset({ index: 1, routes: [{ name: 'Hub' }, { name: 'Duels' }] });
-        return;
-      }
-
       const sessionSignerKeypair = getSessionSignerKeypair();
       if (!sessionSignerKeypair) {
         console.error('[GameScreen] Duel week 3: no session signer keypair');
@@ -1499,6 +1531,15 @@ export function GameScreen({ navigation }: GameScreenProps) {
       if (!undelegateResult.success) {
         console.warn('[GameScreen] Duel week 3: undelegate failed:', undelegateResult.error);
       }
+
+      const duelEntry = await fetchDuelEntryForSettlement(duelProgram, sessionPda);
+      if (!duelEntry) {
+        console.warn('[GameScreen] Duel week 3: no DuelEntry found after undelegation');
+        await queueEndGame(0, true);
+        navigation.reset({ index: 1, routes: [{ name: 'Hub' }, { name: 'Duels' }] });
+        return;
+      }
+      const wasMatched = !!duelEntry.matchedCreatorPlayer;
 
       // Step 2: Settle duel on base (captures loadout, resolves PvP, handles payouts).
       console.log('[GameScreen] Duel week 3: settling with matchedCreator:', duelEntry.matchedCreatorPlayer?.toBase58() ?? 'null');
@@ -1520,6 +1561,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
         hasCombatVisual: !!events.combatVisual,
         hasResolved: !!events.resolved,
         resolution: events.resolved?.resolution ?? 'none',
+        wasMatched,
       });
 
       // Second player: PvP combat was resolved on-chain
@@ -1602,6 +1644,19 @@ export function GameScreen({ navigation }: GameScreenProps) {
           runMode: onChainState?.runMode,
         }, enemiesDefeatedRef.current);
         return;
+      }
+
+      if (events.resolved?.resolution === 'opponentEliminated') {
+        await endSessionWithSessionSigner().catch((err) => {
+          console.warn('[GameScreen] Duel week 3: endSession after opponent elimination failed:', err);
+          return queueEndGame(0, true);
+        });
+        navigation.reset({ index: 1, routes: [{ name: 'Hub' }, { name: 'Duels' }] });
+        return;
+      }
+
+      if (wasMatched) {
+        throw new Error('Matched duel settlement completed without PvP resolution event');
       }
 
       // First player: opponent hasn't finished yet — end session properly
@@ -1902,7 +1957,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
                     }
                   );
 
-                  navigateToCombat(navigation, gauntletCombatParams, result.newState, enemiesDefeatedRef.current);
+                  navigateToBossCombat(gauntletCombatParams, result.newState);
                   return;
                 }
 
@@ -1926,7 +1981,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
                     debugLog(
                       '[GameScreen] Fallback gauntlet combat params built, navigating to CombatScreen'
                     );
-                    navigateToCombat(navigation, fallback, result.newState, enemiesDefeatedRef.current);
+                    navigateToBossCombat(fallback, result.newState);
                     return;
                   }
                 }
@@ -1999,7 +2054,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
                   }
                 );
 
-                navigateToCombat(navigation, bossCombatParams, result.newState, enemiesDefeatedRef.current);
+                navigateToBossCombat(bossCombatParams, result.newState);
 
                 // Fire-and-forget: re-fetch discovery bossId for the new week's sidebar.
                 // The parallel discovery fetch may have returned stale data (ER race).
@@ -2039,7 +2094,8 @@ export function GameScreen({ navigation }: GameScreenProps) {
               !result.bossResolvedInline &&
               result.bossFightReady &&
               !result.isDead &&
-              (result.newState?.runMode === RunMode.Gauntlet || result.newState?.runMode === RunMode.Duel)
+              (result.newState?.runMode === RunMode.Gauntlet ||
+                result.newState?.runMode === RunMode.Duel)
             ) {
               isTriggeringBossRef.current = true;
               console.log('[GameScreen] Boss not resolved inline, calling triggerBoss from move handler');
@@ -2070,7 +2126,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
                         preCombatSeed
                       );
                       if (fallback) {
-                        navigateToCombat(navigation, fallback, bossResult.newState, enemiesDefeatedRef.current);
+                        navigateToBossCombat(fallback, bossResult.newState);
                         return;
                       }
                     }
@@ -2098,9 +2154,10 @@ export function GameScreen({ navigation }: GameScreenProps) {
                           finalPlayerHp: bossResult.newState.hp,
                           finalPlayerGold: bossResult.newState.gold,
                           playerWon: !bossResult.isDead,
-                        }
+                        },
+                        onChainState?.campaignLevel ?? currentLevel ?? undefined
                       );
-                      navigateToCombat(navigation, bossCombatParams, bossResult.newState, enemiesDefeatedRef.current);
+                      navigateToBossCombat(bossCombatParams, bossResult.newState);
                       return;
                     }
                   }
@@ -2774,12 +2831,15 @@ export function GameScreen({ navigation }: GameScreenProps) {
       onA: () => {
         if (duelCompleteVisible) {
           setDuelCompleteVisible(false);
+          playBgm('hub');
           navigation.reset({ index: 1, routes: [{ name: 'Hub' }, { name: 'Duels' }] });
         }
       },
     },
     isController && duelCompleteVisible
   );
+
+
 
   // Reset inventory focus when leaving exploration phase
   useEffect(() => {
@@ -3040,6 +3100,22 @@ export function GameScreen({ navigation }: GameScreenProps) {
         return;
       }
 
+      // Weapon swap confirmation: if picking a tool and player already has a non-default weapon
+      {
+        const equippedTool = state?.player?.equippedTool;
+        const hasRealWeapon = equippedTool && equippedTool.id !== 'T0';
+        if (hasRealWeapon) {
+          const selectedItem =
+            poiInteraction.cacheOfferOptions?.[optionIndex]?.item ??
+            state?.activePOI?.options?.[optionIndex]?.item;
+          if (selectedItem && 'rarity' in selectedItem && !('currentRarity' in selectedItem)) {
+            // It's a tool — prompt confirmation before proceeding
+            setPendingWeaponSwap({ optionIndex, toolName: selectedItem.name });
+            return;
+          }
+        }
+      }
+
       debugLog(
         '[GameScreen] handlePOIOption called | optionIndex:',
         optionIndex,
@@ -3080,6 +3156,8 @@ export function GameScreen({ navigation }: GameScreenProps) {
                 finalPlayerGold,
                 totalMoves,
                 phase,
+                runMode,
+                campaignLevel,
                 preBossPlayerHp,
                 turnsTaken,
                 finalEnemyHp,
@@ -3090,7 +3168,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
               const foughtWeek = state.time.week as 1 | 2 | 3;
 
               // Gauntlet: echo combat resolved inline via skip_to_day.
-              if (onChainState?.runMode === RunMode.Gauntlet && sessionPda) {
+              if (runMode === RunMode.Gauntlet && sessionPda) {
                 isTriggeringBossRef.current = true;
                 const preCombatPlayerStats = {
                   hp: preBossPlayerHp ?? Math.max(state.player.stats.maxHp, 1),
@@ -3106,10 +3184,17 @@ export function GameScreen({ navigation }: GameScreenProps) {
                 const preCombatItemsets = state.player.activeItemsets ?? [];
                 const preCombatSeed = state.rngState;
                 const navMeta = {
-                  campaignLevel: onChainState?.campaignLevel ?? 0,
+                  campaignLevel,
                   totalMoves,
                   phase,
-                  runMode: onChainState?.runMode,
+                  runMode,
+                };
+                const deathMeta = {
+                  campaignLevel,
+                  totalMoves,
+                  week: foughtWeek,
+                  phase,
+                  runMode,
                 };
 
                 // Happy path: parse visual event from the skip_to_day tx signature
@@ -3137,7 +3222,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
                       foughtWeek,
                       finalPlayerGold
                     );
-                    navigateToCombat(navigation, gauntletCombatParams, navMeta, enemiesDefeatedRef.current);
+                    navigateToBossCombat(gauntletCombatParams, navMeta);
                     return;
                   }
 
@@ -3154,17 +3239,17 @@ export function GameScreen({ navigation }: GameScreenProps) {
                     preCombatSeed
                   );
                   if (fallback) {
-                    navigateToCombat(navigation, fallback, navMeta, enemiesDefeatedRef.current);
+                    navigateToBossCombat(fallback, navMeta);
                   } else if (!playerWon) {
-                    navigateToDeath(navigation, onChainState, enemiesDefeatedRef.current, `Week ${foughtWeek} Echo`);
+                    navigateToDeath(navigation, deathMeta, enemiesDefeatedRef.current, `Week ${foughtWeek} Echo`);
                   }
                 })().catch(() => {
                   if (!playerWon) {
-                    navigateToDeath(navigation, onChainState, enemiesDefeatedRef.current, `Week ${foughtWeek} Echo`);
+                    navigateToDeath(navigation, deathMeta, enemiesDefeatedRef.current, `Week ${foughtWeek} Echo`);
                   }
                 });
               } else if (
-                onChainState?.runMode === RunMode.Duel &&
+                runMode === RunMode.Duel &&
                 playerWon &&
                 foughtWeek >= 3
               ) {
@@ -3175,7 +3260,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
               } else {
                 // Campaign / Duel: boss fight resolved inline
                 const foughtBoss: BossId | null =
-                  onChainState?.runMode === RunMode.Duel
+                  runMode === RunMode.Duel
                     ? state.time.weekBoss ?? null
                     : state.time.weekBoss ?? null;
 
@@ -3207,56 +3292,15 @@ export function GameScreen({ navigation }: GameScreenProps) {
                     state.rngState,
                     foughtWeek,
                     { finalPlayerHp, finalPlayerGold, playerWon },
-                    onChainState?.campaignLevel ?? currentLevel ?? undefined
+                    campaignLevel ?? currentLevel ?? undefined
                   );
-                  navigateToCombat(navigation, bossCombatParams, {
-                    campaignLevel: onChainState?.campaignLevel ?? 0,
+                  navigateToBossCombat(bossCombatParams, {
+                    campaignLevel,
                     totalMoves,
                     phase,
-                    runMode: onChainState?.runMode,
-                  }, enemiesDefeatedRef.current);
+                    runMode,
+                  });
 
-                  // Fire-and-forget: sync boss ID to SessionDiscovery for the new week.
-                  // skip_to_day can't run update_boss_id_cpi (ER CPI depth limit),
-                  // so we call the lightweight sync_discovery_boss instruction separately.
-                  // After the on-chain update, re-fetch discovery and update local weekBoss.
-                  if (playerWon && sessionPda && onChainState) {
-                    const signerKp = getSessionSignerKeypair();
-                    if (signerKp) {
-                      const [gsaPda] = PublicKey.findProgramAddressSync(
-                        [Buffer.from('game_state'), sessionPda.toBuffer()],
-                        GAMEPLAY_STATE_PROGRAM_ID
-                      );
-                      syncDiscoveryBoss(
-                        gameplayReadConnection,
-                        createGameplayStateProgram(gameplayReadConnection),
-                        gsaPda,
-                        sessionPda,
-                        signerKp
-                      )
-                        .then(async () => {
-                          // Re-fetch discovery to get the updated boss ID
-                          const [sdPda] = deriveSessionDiscoveryPda(sessionPda);
-                          const fresh = await fetchSessionDiscovery(
-                            createMapGeneratorProgram(gameplayReadConnection),
-                            sdPda
-                          ).catch(() => null);
-                          if (fresh) {
-                            const freshBossId = decodeBossId(fresh.currentBossId);
-                            if (freshBossId) {
-                              dispatch({
-                                type: 'SYNC_MOVE',
-                                confirmedState: onChainState,
-                                weekBoss: freshBossId,
-                              });
-                            }
-                          }
-                        })
-                        .catch((err) =>
-                          console.warn('[GameScreen] syncDiscoveryBoss failed (non-fatal):', err)
-                        );
-                    }
-                  }
                 }
               }
               // usePoiInteraction already dispatched CLOSE_POI — skip the one below
@@ -3334,7 +3378,67 @@ export function GameScreen({ navigation }: GameScreenProps) {
       playSfx('ui_click');
       dispatch({ type: 'SELECT_POI_OPTION', optionIndex });
     },
-    [dispatch, poiInteraction, state?.activePOI?.poi?.definitionId, playSfx]
+    [dispatch, poiInteraction, state?.activePOI?.poi?.definitionId, state?.player?.equippedTool, playSfx]
+  );
+
+  // Weapon swap confirmation: proceed with tool pick and close all modals
+  const handleConfirmWeaponSwap = useCallback(() => {
+    if (!pendingWeaponSwap) return;
+    const { optionIndex } = pendingWeaponSwap;
+    setPendingWeaponSwap(null);
+
+    skipMismatchDetectionRef.current = true;
+    if (skipMismatchTimeoutRef.current) clearTimeout(skipMismatchTimeoutRef.current);
+
+    const closePoi = () => {
+      dispatch({ type: 'CLOSE_POI' });
+      skipMismatchTimeoutRef.current = setTimeout(() => {
+        skipMismatchDetectionRef.current = false;
+      }, 1000);
+    };
+
+    if (poiInteraction.deferredPoiType !== null) {
+      // Smuggler Hatch (deferred/shop path)
+      poiInteraction.confirmPoiSelection(optionIndex).then((result) => {
+        if (result.success) {
+          closePoi();
+        } else if (result.error) {
+          closePoi();
+          showWallBreakFeedback(result.error);
+        }
+      });
+    } else if (poiInteraction.cacheOfferOptions && poiInteraction.cacheOfferOptions.length > 0) {
+      // Tool Crate (pick-item path)
+      const selectedItem = poiInteraction.cacheOfferOptions[optionIndex]?.item;
+      poiInteraction.selectCacheOffer(optionIndex).then((result) => {
+        if (result.success) {
+          if (selectedItem && !('currentRarity' in selectedItem)) {
+            dispatch({ type: 'EQUIP_TOOL', tool: selectedItem as Tool });
+          }
+          closePoi();
+        } else if (result.error) {
+          closePoi();
+          showWallBreakFeedback(result.error);
+        }
+      });
+    } else {
+      // Guest / local-only path
+      playSfx('ui_click');
+      dispatch({ type: 'SELECT_POI_OPTION', optionIndex });
+    }
+  }, [pendingWeaponSwap, poiInteraction, dispatch, showWallBreakFeedback, playSfx]);
+
+  const handleCancelWeaponSwap = useCallback(() => {
+    setPendingWeaponSwap(null);
+  }, []);
+
+  // Controller A/B for weapon swap confirmation modal
+  useControllerAction(
+    {
+      onA: handleConfirmWeaponSwap,
+      onB: handleCancelWeaponSwap,
+    },
+    isController && !!pendingWeaponSwap
   );
 
   // Override POI interaction options with on-chain cache offers when available
@@ -3385,7 +3489,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
       // Rune Kiln (L11) Logic
       if (state.activePOI?.poi.definitionId === 'L11' && 'currentRarity' in item) {
-        if (item.currentRarity === 'DIAMOND') return;
+        if (item.currentRarity === 'GOLDEN') return;
         const gear = item as Gear;
         const availableCount = state.player.inventory.filter(
           (slot) =>
@@ -3466,11 +3570,11 @@ export function GameScreen({ navigation }: GameScreenProps) {
     if (!playerInventory || !isItemSelectPoiActive) return [];
 
     if (activePoiDefId === 'L11') {
-      // Rune Kiln: only show gear with 2+ copies (non-Diamond), deduplicated
+      // Rune Kiln: only show gear with 2+ copies (non-Golden), deduplicated
       const gearCounts = new Map<string, { gear: Gear; count: number }>();
       for (const slot of playerInventory) {
         const item = slot.item;
-        if (!('currentRarity' in item) || item.currentRarity === 'DIAMOND') continue;
+        if (!('currentRarity' in item) || item.currentRarity === 'GOLDEN') continue;
         const gear = item as Gear;
         const key = `${gear.id}:${gear.currentRarity}`;
         const existing = gearCounts.get(key);
@@ -3751,6 +3855,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
                 selectableGear={selectableGear}
                 onGearSelect={handleControllerGearSelect}
                 centerInCompact={isCompact && !isCompactSidebarVisible}
+                controllerDisabled={!!pendingWeaponSwap}
               />
             )}
             {showPauseMenu && (
@@ -3822,31 +3927,76 @@ export function GameScreen({ navigation }: GameScreenProps) {
               onClose={handleCloseItemsetTooltip}
             />
           )}
-        <TutorialModal visible={showTutorial} onClose={() => setShowTutorial(false)} />
-        <DefeatOverlay visible={defeatOverlayVisible} onComplete={handleDefeatOverlayComplete} />
-        {(duelCompleteVisible || isDuelFinalizing) && (
+        {pendingWeaponSwap && (
           <View style={styles.duelCompleteOverlay}>
             <CachedImageBackground
               source={PAPER_PANEL_WIDE}
               resizeMode="stretch"
               style={[styles.duelCompletePanel, isCompact && styles.duelCompletePanelCompact]}
             >
-              {isDuelFinalizing ? (
-                <>
-                  <Text style={[styles.duelCompleteTitle, isCompact && styles.duelCompleteTitleCompact]}>Finalizing Duel...</Text>
-                  <ActivityIndicator size="large" color="#8B6914" style={{ marginTop: 16 }} />
-                </>
+              <Text style={[styles.duelCompleteTitle, isCompact && styles.duelCompleteTitleCompact]}>Replace Weapon?</Text>
+              <Text style={[styles.duelCompleteMessage, isCompact && styles.duelCompleteMessageCompact]}>
+                You already have {state?.player?.equippedTool?.name ?? 'a weapon'} equipped.
+                {'\n\n'}
+                Picking {pendingWeaponSwap.toolName} will replace your current weapon permanently.
+              </Text>
+              {isCompact ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 24, marginTop: 8 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Image source={require('../../assets/ui/control-buttons/b.webp')} style={{ width: 28, height: 28 }} />
+                    <Text style={[styles.duelCompleteButtonText, styles.duelCompleteButtonTextCompact]}>Cancel</Text>
+                  </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Image source={require('../../assets/ui/control-buttons/a.webp')} style={{ width: 28, height: 28 }} />
+                    <Text style={[styles.duelCompleteButtonText, styles.duelCompleteButtonTextCompact]}>Replace</Text>
+                  </View>
+                </View>
               ) : (
+                <View style={{ flexDirection: 'row', gap: 16, marginTop: 8 }}>
+                  <Pressable onPress={handleCancelWeaponSwap}>
+                    <CachedImageBackground
+                      source={require('../../assets/ui/buttons/button.webp')}
+                      resizeMode="stretch"
+                      style={styles.duelCompleteButton}
+                    >
+                      <Text style={styles.duelCompleteButtonText}>Cancel</Text>
+                    </CachedImageBackground>
+                  </Pressable>
+                  <Pressable onPress={handleConfirmWeaponSwap}>
+                    <CachedImageBackground
+                      source={require('../../assets/ui/buttons/button.webp')}
+                      resizeMode="stretch"
+                      style={styles.duelCompleteButton}
+                    >
+                      <Text style={styles.duelCompleteButtonText}>Replace</Text>
+                    </CachedImageBackground>
+                  </Pressable>
+                </View>
+              )}
+            </CachedImageBackground>
+          </View>
+        )}
+        <TutorialModal visible={showTutorial} onClose={() => setShowTutorial(false)} />
+        <DefeatOverlay visible={defeatOverlayVisible} onComplete={handleDefeatOverlayComplete} />
+        {duelCompleteVisible && (
+          <View style={styles.duelCompleteOverlay}>
+            <CachedImageBackground
+              source={PAPER_PANEL_WIDE}
+              resizeMode="stretch"
+              style={[styles.duelCompletePanel, isCompact && styles.duelCompletePanelCompact]}
+            >
+              {(
                 <>
                   <Text style={[styles.duelCompleteTitle, isCompact && styles.duelCompleteTitleCompact]}>Duel Run Complete!</Text>
                   <Text style={[styles.duelCompleteMessage, isCompact && styles.duelCompleteMessageCompact]}>
                     Your run is finished. Your opponent hasn't completed their run yet.
                     {'\n\n'}
-                    You can check the outcome on the Duels screen when they're done.
+                    You can check the outcome on the Duels History screen when they're done.
                   </Text>
                   <Pressable
                     onPress={() => {
                       setDuelCompleteVisible(false);
+                      playBgm('hub');
                       navigation.reset({ index: 1, routes: [{ name: 'Hub' }, { name: 'Duels' }] });
                     }}
                   >

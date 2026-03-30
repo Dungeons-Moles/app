@@ -99,6 +99,7 @@ import {
   buildSettleDuelPayoutTransaction,
   deriveDuelEntryPda,
   fetchDuelEntry,
+  fetchDuelEntryForSettlement,
   parseDuelEvents,
 } from '@/services/solana/duels';
 import { clearFogState, clearBrokenWalls } from '@/services/solana/sessionRestore';
@@ -3916,7 +3917,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         const duelEntryInfo = await connection.getAccountInfo(duelEntryPda, 'processed').catch(() => null);
         if (duelEntryInfo && duelEntryInfo.owner.equals(SOLANA_CONFIG.programs.gameplayState)) {
           const duelProgram = createGameplayStateProgram(connection);
-          const duelEntry = await fetchDuelEntry(duelProgram, sessionPda).catch(() => null);
+          const duelEntry = await fetchDuelEntryForSettlement(duelProgram, sessionPda).catch(
+            () => null
+          );
           if (duelEntry && duelEntry.entryLamports > 0 && !duelEntry.settled) {
             console.log('[SessionContext] Duel: settling payout before end...');
             const duelSettleTx = await buildSettleDuelPayoutTransaction(
@@ -3972,9 +3975,18 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       settleSignature = result.signature;
     }
 
+    const isDuelSession = gameplayState.gameState?.runMode === RunMode.Duel;
+
     // If endSession fails, try forceCloseSession as fallback (handles non-terminal
     // abandoned sessions, partially delegated children, etc.)
     if (!result.success) {
+      if (isDuelSession) {
+        console.warn(
+          '[SessionContext] Duel endSession failed; refusing force-close fallback:',
+          result.error
+        );
+        return result;
+      }
       console.warn(
         '[SessionContext] endSession failed; trying forceCloseSession fallback:',
         result.error

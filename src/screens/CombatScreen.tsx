@@ -32,7 +32,7 @@ import { createGameplayStateProgram, createPlayerProfileProgram } from '@/servic
 import { RunMode } from '@/services/solana/types/gameplay_state';
 import {
   buildSettleDuelPayoutTransaction,
-  fetchDuelEntry,
+  fetchDuelEntryForSettlement,
   parseDuelEvents,
 } from '@/services/solana/duels';
 import { sendSessionSignerTransaction } from '@/services/solana/sessionSigner';
@@ -363,8 +363,9 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
         const duelProgram = createGameplayStateProgram(connection);
 
         const ourKey = wallet.publicKey.toBase58();
-        const duelEntry = await fetchDuelEntry(duelProgram, gameplayState.session);
+        const duelEntry = await fetchDuelEntryForSettlement(duelProgram, gameplayState.session);
         if (!duelEntry || duelEntry.player.toBase58() !== ourKey) return;
+        const wasMatched = !!duelEntry.matchedCreatorPlayer;
 
         const [gameStatePda] = PublicKey.findProgramAddressSync(
           [Buffer.from('game_state'), gameplayState.session.toBuffer()],
@@ -389,12 +390,28 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
 
         const events = await parseDuelEvents(connection, duelProgram, signature);
 
-        if (
-          !events.combatVisual ||
-          !events.resolved ||
-          events.resolved.resolution !== 'completedCombat'
-        ) {
+        if (!events.resolved) {
+          if (wasMatched) {
+            throw new Error('Matched duel settlement missing DuelResolved event');
+          }
           return;
+        }
+
+        if (events.resolved.resolution === 'opponentEliminated') {
+          return;
+        }
+
+        if (events.resolved.resolution !== 'completedCombat') {
+          if (wasMatched) {
+            throw new Error(
+              `Unexpected matched duel resolution: ${events.resolved.resolution}`
+            );
+          }
+          return;
+        }
+
+        if (!events.combatVisual) {
+          throw new Error('Completed duel settlement missing DuelCombatVisual event');
         }
 
         const visual = events.combatVisual;
@@ -439,7 +456,9 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
 
       if (shouldEndSession && hasActiveSession && mode !== 'guest') {
         const isDuelRun = gameplayState?.runMode === RunMode.Duel;
-        if (isDuelRun) {
+        // Only try duel finalization if settlement hasn't already happened
+        // (onChainOutcome is set when GameScreen's handleDuelWeek3Completion already settled).
+        if (isDuelRun && !combatInput?.onChainOutcome) {
           try {
             await tryFinalizeDuelAndBuildReplay();
           } catch (duelFinalizeError) {

@@ -28,6 +28,8 @@ const DUEL_ER_QUEUE_SEED = 'duel_er_queue';
 const GAUNTLET_POOL_VAULT_SEED = 'gauntlet_pool_vault';
 const DUEL_CU_LIMIT = 500_000;
 const DUEL_CU_PRICE_MICROLAMPORTS = 1_000;
+const DUEL_ENTRY_SETTLEMENT_FETCH_ATTEMPTS = 5;
+const DUEL_ENTRY_SETTLEMENT_FETCH_DELAY_MS = 150;
 
 export function deriveDuelQueuePda(
   seed: bigint | number | string,
@@ -152,9 +154,17 @@ export async function fetchDuelEntry(
       [Buffer.from('duel_entry'), sessionPda.toBuffer()],
       GAMEPLAY_STATE_PROGRAM_ID
     );
-    const account = await (
-      program.account as Record<string, { fetch: (key: PublicKey) => Promise<Record<string, unknown>> }>
-    ).duelEntry.fetch(duelEntryPda);
+    const accountInfo = await program.provider.connection.getAccountInfo(
+      duelEntryPda,
+      SOLANA_CONFIG.commitment
+    );
+    if (!accountInfo || !accountInfo.owner.equals(GAMEPLAY_STATE_PROGRAM_ID)) {
+      return null;
+    }
+    const account = program.coder.accounts.decode('duelEntry', accountInfo.data) as Record<
+      string,
+      unknown
+    >;
     const entryLamports = Number(account.entryLamports as bigint | number);
     if (entryLamports === 0) {
       return null;
@@ -171,6 +181,25 @@ export async function fetchDuelEntry(
   } catch {
     return null;
   }
+}
+
+export async function fetchDuelEntryForSettlement(
+  program: Program,
+  sessionPda: PublicKey
+): Promise<DuelEntryState | null> {
+  let latestEntry: DuelEntryState | null = null;
+
+  for (let attempt = 1; attempt <= DUEL_ENTRY_SETTLEMENT_FETCH_ATTEMPTS; attempt += 1) {
+    latestEntry = await fetchDuelEntry(program, sessionPda);
+    if (latestEntry?.matchedCreatorPlayer) {
+      return latestEntry;
+    }
+    if (attempt < DUEL_ENTRY_SETTLEMENT_FETCH_ATTEMPTS) {
+      await new Promise((resolve) => setTimeout(resolve, DUEL_ENTRY_SETTLEMENT_FETCH_DELAY_MS));
+    }
+  }
+
+  return latestEntry;
 }
 
 export async function buildEnterDuelInstruction(

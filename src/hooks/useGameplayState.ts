@@ -34,14 +34,14 @@ import {
   MovePlayerParams,
   ModifyStatParams,
 } from '@/services/solana/types/gameplay_state';
-import { parseCombatLog, parseBossCombatFromMoveTx } from '@/services/solana/eventParser';
+import { parseCombatLog } from '@/services/solana/eventParser';
 import type { CombatEnemyInfo } from '@/services/solana/eventParser';
 import { parseGauntletCombatVisualEvent } from '@/services/solana/gauntlet';
 import type { GauntletCombatVisualEvent } from '@/services/solana/gauntlet';
 import { sendSessionSignerTransaction } from '@/services/solana/sessionSigner';
 import { fetchSessionDiscovery, decodeSessionDiscoveryFromAccountInfo } from '@/services/solana/mapGeneratorClient';
 import type { SessionDiscoveryData } from '@/services/solana/mapGeneratorClient';
-import { deriveSessionDiscoveryPda } from '@/services/solana/constants';
+import { deriveSessionDiscoveryPda, deriveGauntletEchoesPda } from '@/services/solana/constants';
 import { createMapGeneratorProgram } from '@/services/solana/programs';
 import { parseWithRetry } from '@/utils/retry';
 
@@ -577,21 +577,7 @@ export function useGameplayState(): UseGameplayStateReturn {
               (previousState.week === 1 || previousState.week === 2)))
         ) {
           bossResolvedInline = true;
-          try {
-            const bossParsed = await parseBossCombatFromMoveTx(
-              gameplayConnection,
-              signature!,
-              program
-            );
-            preBossPlayerHp = bossParsed.preBossPlayerHp;
-            inlineBossId = bossParsed.bossId;
-            console.log('[useGameplayState] Inline boss resolution detected:', {
-              preBossPlayerHp,
-              inlineBossId,
-            });
-          } catch (err) {
-            console.warn('[useGameplayState] Failed to parse inline boss combat:', err);
-          }
+          preBossPlayerHp = previousState.hp;
         }
 
         if (bossResolvedIndicator && previousState.runMode === RunMode.Gauntlet) {
@@ -729,32 +715,26 @@ export function useGameplayState(): UseGameplayStateReturn {
         const sessionPda = gameState.session;
         // Register WS listener before send (overrides bypass WS)
         const wsState = overrides ? null : registerWsListener();
-        // Gauntlet echo combat auto-resolves inline in move_player — triggerBoss
-        // should only be called for Campaign and Duel modes.
         const signature = await triggerBossFight(
           conn,
           prog,
           gameStatePda,
           sessionPda,
-          sessionSignerKeypair
+          sessionSignerKeypair,
+          gameState.runMode === RunMode.Gauntlet
+            ? { gauntletEchoesPda: deriveGauntletEchoesPda(sessionPda)[0] }
+            : undefined
         );
-        // Fire WS state wait and compact combat metadata parse in parallel.
+        // Wait for the confirmed state. Boss combat visualization is built
+        // entirely on the frontend now, so we no longer parse the old compact
+        // combat metadata path here.
         // When overrides are provided (gauntlet uses base-layer connection),
         // fall back to explicit fetch since WS subscription is on gameplayReadConnection.
         const statePromise = overrides || !wsState
           ? fetchGameState(prog, gameStatePda)
           : raceWsVsFetch(wsState.promise, 1000);
-        const combatPromise = signature
-          ? parseCombatInfoWithRetry(conn, prog, signature, 'boss', {
-              maxAttempts: 2,
-              delayMs: 80,
-            })
-          : Promise.resolve({ combatEnemyInfo: undefined });
 
-        const [confirmedState, combatResult] = await Promise.all([
-          statePromise,
-          combatPromise,
-        ]);
+        const confirmedState = await statePromise;
 
         if (isMountedRef.current) {
           setGameState(confirmedState);
@@ -762,12 +742,24 @@ export function useGameplayState(): UseGameplayStateReturn {
           setLastSyncAt(Date.now());
         }
 
+        // Parse gauntlet visual from the trigger_boss_fight tx when in gauntlet mode.
+        // Use more retries than move_player because triggerBossFight uses
+        // skipErConfirmation — the tx may not be queryable via getTransaction
+        // until the ER indexes it, even though account state has already settled.
+        let gauntletVisual: GauntletCombatVisualEvent | null = null;
+        if (signature && previousState.runMode === RunMode.Gauntlet) {
+          gauntletVisual = await parseWithRetry(
+            () => parseGauntletCombatVisualEvent(conn, signature),
+            { label: 'gauntlet visual', maxAttempts: 5, delayMs: 250 }
+          );
+        }
+
         return {
           success: true,
           newState: confirmedState ?? undefined,
           previousState,
           isDead: confirmedState?.isDead ?? false,
-          gauntletVisual: null,
+          gauntletVisual,
           signature,
         };
       } catch (err) {

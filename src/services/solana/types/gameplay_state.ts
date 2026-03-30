@@ -110,6 +110,10 @@ export interface GameState {
   gauntletHighestWeekWon: number;
   /** Whether gauntlet session has been settled */
   gauntletSettled: boolean;
+  /** Pre-assigned duel map seed from base layer (0 = creator, non-zero = matched) */
+  duelMapSeed: number;
+  /** Number of enemies defeated this run */
+  enemiesDefeated: number;
 }
 
 /**

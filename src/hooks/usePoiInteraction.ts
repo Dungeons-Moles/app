@@ -33,7 +33,6 @@ import type {
   CacheOffer,
 } from '@/services/solana/types/poi_system';
 import { Phase, RunMode } from '@/services/solana/types/gameplay_state';
-import { parseBossCombatFromMoveTx } from '@/services/solana/eventParser';
 import { getUserErrorMessage } from '@/services/solana/errors';
 import {
   interactRest,
@@ -256,6 +255,8 @@ export interface UsePoiInteractionResult extends PoiInteractionHookState {
       finalPlayerGold: number;
       totalMoves: number;
       phase: number;
+      runMode: RunMode;
+      campaignLevel: number;
       preBossPlayerHp?: number;
       turnsTaken?: number;
       finalEnemyHp?: number;
@@ -567,9 +568,9 @@ function convertShopOffersToOptions(
   playerGold: number
 ): POIOption[] {
   const options: POIOption[] = [];
-  // Tier: 1=base rarity (use gear's baseRarity), 2=GILDED, 3=DIAMOND
+  // Tier: 1=base rarity (use gear's baseRarity), 2=SAPPHIRE, 3=GOLDEN
   // Tier 1 means unupgraded — don't override the gear's base rarity
-  const tierToRarity: Record<number, 'GILDED' | 'DIAMOND' | undefined> = { 1: undefined, 2: 'GILDED', 3: 'DIAMOND' };
+  const tierToRarity: Record<number, 'SAPPHIRE' | 'GOLDEN' | undefined> = { 1: undefined, 2: 'SAPPHIRE', 3: 'GOLDEN' };
 
   for (const offer of offers) {
     const engineId = decodeItemId(offer.itemId);
@@ -952,20 +953,20 @@ export function usePoiInteraction(): UsePoiInteractionResult {
       }
     }
 
-    // Rusty Anvil (L10): Don't auto-open if tool is already max tier (DIAMOND)
+    // Rusty Anvil (L10): Don't auto-open if tool is already max tier (GOLDEN)
     if (poiType === POI_TYPES.RUSTY_ANVIL) {
-      if (gameState.player.equippedTool?.rarity === 'DIAMOND') {
+      if (gameState.player.equippedTool?.rarity === 'GOLDEN') {
         debugLog('[usePoiInteraction] shouldAutoOpen: false (tool already max tier)');
         return false;
       }
     }
 
-    // Rune Kiln (L11): Don't auto-open if no fuseable pairs (need 2 identical non-Diamond gear)
+    // Rune Kiln (L11): Don't auto-open if no fuseable pairs (need 2 identical non-Golden gear)
     if (poiType === POI_TYPES.RUNE_KILN) {
       const gearCounts = new Map<string, number>();
       let hasPair = false;
       for (const slot of gameState.player.inventory) {
-        if (slot.item.currentRarity !== 'DIAMOND') {
+        if (slot.item.currentRarity !== 'GOLDEN') {
           const key = `${slot.item.id}:${slot.item.currentRarity}`;
           const count = (gearCounts.get(key) ?? 0) + 1;
           gearCounts.set(key, count);
@@ -1025,7 +1026,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
     // Rusty Anvil: no tool, max tier, or broke
     if (poiType === POI_TYPES.RUSTY_ANVIL) {
       if (!gameState.player.equippedTool) return 'Equip a tool first';
-      if (gameState.player.equippedTool.rarity === 'DIAMOND') return 'Tool is already max tier';
+      if (gameState.player.equippedTool.rarity === 'GOLDEN') return 'Tool is already max tier';
       const cost = gameState.player.equippedTool.rarity === 'COMMON' ? 10 : 20;
       if (gameState.player.stats.gold < cost) return `Not enough gold (need ${cost}g)`;
     }
@@ -1035,7 +1036,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
       const gearCounts = new Map<string, number>();
       let hasPair = false;
       for (const slot of gameState.player.inventory) {
-        if (slot.item.currentRarity !== 'DIAMOND') {
+        if (slot.item.currentRarity !== 'GOLDEN') {
           const key = `${slot.item.id}:${slot.item.currentRarity}`;
           const count = (gearCounts.get(key) ?? 0) + 1;
           gearCounts.set(key, count);
@@ -2216,6 +2217,8 @@ export function usePoiInteraction(): UsePoiInteractionResult {
       finalPlayerGold: number;
       totalMoves: number;
       phase: number;
+      runMode: RunMode;
+      campaignLevel: number;
       preBossPlayerHp?: number;
       turnsTaken?: number;
       finalEnemyHp?: number;
@@ -2314,16 +2317,11 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             // GameplayStateContext must be updated before we dispatch to the reducer.
             // SessionContext must be updated so GameScreen's boss detection useEffect
             // sees bossFightReady=true (e.g., after rest on Night 3).
-            // Fetch game state, refresh contexts, and parse boss combat ALL in parallel
+            // Fetch game state and refresh contexts in parallel.
             const gameplayProgram = createGameplayStateProgram(gameplayReadConnection);
-            const [updatedState, , parsedBossCombat] = await Promise.all([
+            const [updatedState] = await Promise.all([
               fetchGameState(gameplayProgram, ctx.gameStatePda),
               Promise.all([refreshGameplayState(), refreshSessionState()]),
-              parseBossCombatFromMoveTx(
-                gameplayConnection,
-                restSignature,
-                gameplayProgram
-              ).catch(() => undefined as Awaited<ReturnType<typeof parseBossCombatFromMoveTx>> | undefined),
             ]);
             // Fetch discovery before SYNC_MOVE so we can extract the updated weekBoss
             // (for Duel/Gauntlet VRF-based bosses that update on week transitions)
@@ -2368,6 +2366,8 @@ export function usePoiInteraction(): UsePoiInteractionResult {
                   finalPlayerGold: number;
                   totalMoves: number;
                   phase: number;
+                  runMode: RunMode;
+                  campaignLevel: number;
                   preBossPlayerHp?: number;
                   turnsTaken?: number;
                   finalEnemyHp?: number;
@@ -2379,31 +2379,20 @@ export function usePoiInteraction(): UsePoiInteractionResult {
               const playerDied = updatedState.isDead;
               const levelCompleted = updatedState.completed;
               if (weekAdvanced || playerDied || levelCompleted) {
-                // When event parsing fails to extract the post-heal HP, compute it
-                // locally from the known heal mechanics so CombatScreen shows the
-                // correct starting HP (not the stale pre-heal value from the closure).
-                let preBossHp = parsedBossCombat?.preBossPlayerHp;
-                if (preBossHp == null) {
-                  if (deferredPoiType === POI_TYPES.MOLE_DEN) {
-                    // Mole Den: full heal
-                    preBossHp = maxHpSnapshot;
-                  } else {
-                    // Rest Alcove: +10 HP (capped at maxHp)
-                    preBossHp = Math.min(preHealHpSnapshot + 10, maxHpSnapshot);
-                  }
-                }
+                const preBossHp =
+                  deferredPoiType === POI_TYPES.MOLE_DEN
+                    ? maxHpSnapshot
+                    : Math.min(preHealHpSnapshot + 10, maxHpSnapshot);
 
                 bossResolved = {
-                  playerWon: parsedBossCombat?.combatEnded
-                    ? parsedBossCombat.combatEnded.playerWon
-                    : !playerDied,
+                  playerWon: !playerDied,
                   finalPlayerHp: updatedState.hp,
                   finalPlayerGold: updatedState.gold,
                   totalMoves: updatedState.totalMoves,
                   phase: updatedState.phase,
+                  runMode: updatedState.runMode,
+                  campaignLevel: updatedState.campaignLevel,
                   preBossPlayerHp: preBossHp,
-                  turnsTaken: parsedBossCombat?.combatEnded?.turnsTaken,
-                  finalEnemyHp: parsedBossCombat?.combatEnded?.finalEnemyHp,
                   signature: restSignature,
                 };
                 debugLog(
@@ -2772,8 +2761,8 @@ export function usePoiInteraction(): UsePoiInteractionResult {
               kilnIdBytes[i] = kilnBackendId.charCodeAt(i);
             }
 
-            // Map rarity to on-chain tier: COMMON=1, GILDED=2
-            const kilnTier = kilnGear.currentRarity === 'GILDED' ? 2 : 1;
+            // Map rarity to on-chain tier: COMMON=1, SAPPHIRE=2
+            const kilnTier = kilnGear.currentRarity === 'SAPPHIRE' ? 2 : 1;
 
             debugLog(
               '[usePoiInteraction] Sending interactRuneKiln on-chain | gear:',
@@ -2885,8 +2874,8 @@ export function usePoiInteraction(): UsePoiInteractionResult {
               anvilIdBytes[i] = anvilBackendId.charCodeAt(i);
             }
 
-            // Map rarity to on-chain tier: COMMON=1, GILDED=2
-            const anvilTier = tool.rarity === 'GILDED' ? 2 : 1;
+            // Map rarity to on-chain tier: COMMON=1, SAPPHIRE=2
+            const anvilTier = tool.rarity === 'SAPPHIRE' ? 2 : 1;
 
             debugLog(
               '[usePoiInteraction] Sending interactRustyAnvil on-chain | tool:',
@@ -2937,9 +2926,9 @@ export function usePoiInteraction(): UsePoiInteractionResult {
                 );
                 dispatch({ type: 'EQUIP_TOOL', tool: confirmedTool });
 
-                // Keep open if upgraded to GILDED and can still afford next tier (20g)
+                // Keep open if upgraded to SAPPHIRE and can still afford next tier (20g)
                 const confirmedGold = updatedAnvilState?.gold ?? gameState?.player?.stats?.gold ?? 0;
-                if (confirmedTool.rarity === 'GILDED' && confirmedGold >= 20 && gameState?.activePOI) {
+                if (confirmedTool.rarity === 'SAPPHIRE' && confirmedGold >= 20 && gameState?.activePOI) {
                   const anvilUpdatedState: Pick<GameState, 'player' | 'time'> = {
                     player: {
                       ...gameState.player,

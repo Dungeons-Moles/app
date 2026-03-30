@@ -2287,23 +2287,8 @@ export function useSessionManager() {
         const program = createSessionManagerProgram(baseConnection);
         const transaction = new Transaction();
 
-        // duel_entry is non-delegated and keyed by session PDA, so detect it directly
-        // instead of inferring duel mode from a possibly stale/default nonce.
         const [duelEntryPda] = deriveDuelEntryPda(sessionPda);
         const duelEntryInfo = await baseConnection.getAccountInfo(duelEntryPda);
-        if (duelEntryInfo) {
-          const gameplayProgram = createGameplayStateProgram(baseConnection);
-          const duelEntry = await fetchDuelEntry(gameplayProgram, sessionPda).catch(() => null);
-          const resetIx = await buildResetDuelEntryInstruction(
-            gameplayProgram,
-            sessionPda,
-            gameStatePda,
-            wallet.publicKey,
-            sessionSignerKeypair.publicKey,
-            duelEntry?.matchedCreatorPlayer
-          );
-          transaction.add(resetIx);
-        }
 
         // Check which VRF accounts exist (only for sessions that used VRF)
         const [mapVrfStatePda] = deriveMapVrfStatePda(sessionPda);
@@ -2331,6 +2316,7 @@ export function useSessionManager() {
             sessionManagerAuthority: deriveSessionManagerAuthorityPda()[0],
             inventory: inventoryPda,
             sessionDiscovery: sessionDiscoveryPda,
+            duelEntry: duelEntryInfo ? duelEntryPda : null,
             mapVrfState: mapVrfInfo ? mapVrfStatePda : null,
             poiVrfState: poiVrfInfo ? poiVrfStatePda : null,
             gameplayVrfState: gameplayVrfInfo ? gameplayVrfStatePda : null,
