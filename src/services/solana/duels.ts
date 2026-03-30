@@ -77,6 +77,7 @@ export interface DuelEntryState {
   seed: bigint;
   entryLamports: number;
   matchedCreatorPlayer: PublicKey | null;
+  settled: boolean;
 }
 
 export interface DuelOpenCreatorHead {
@@ -165,6 +166,7 @@ export async function fetchDuelEntry(
       seed: BigInt((account.seed as bigint | number).toString()),
       entryLamports,
       matchedCreatorPlayer,
+      settled: Boolean(account.settled),
     };
   } catch {
     return null;

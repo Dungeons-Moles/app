@@ -3917,7 +3917,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         if (duelEntryInfo && duelEntryInfo.owner.equals(SOLANA_CONFIG.programs.gameplayState)) {
           const duelProgram = createGameplayStateProgram(connection);
           const duelEntry = await fetchDuelEntry(duelProgram, sessionPda).catch(() => null);
-          if (duelEntry && duelEntry.entryLamports > 0) {
+          if (duelEntry && duelEntry.entryLamports > 0 && !duelEntry.settled) {
             console.log('[SessionContext] Duel: settling payout before end...');
             const duelSettleTx = await buildSettleDuelPayoutTransaction(
               connection,

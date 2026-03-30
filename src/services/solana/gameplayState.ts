@@ -522,6 +522,9 @@ export async function triggerBossFight(
   const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
   const [inventoryPda] = deriveInventoryPda(sessionPda);
 
+  const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
+  const [gameplayVrfStatePda] = deriveGameplayVrfStatePda(sessionPda);
+
   const transaction = await program.methods
     .triggerBossFight()
     .accountsPartial({
@@ -530,9 +533,9 @@ export async function triggerBossFight(
       generatedMap: generatedMapPda,
       inventory: inventoryPda,
       playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
-      gameplayVrfState: null,
-      sessionDiscovery: null,
-      mapGeneratorProgram: null,
+      gameplayVrfState: gameplayVrfStatePda,
+      sessionDiscovery: sessionDiscoveryPda,
+      mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
       gauntletEchoes: options?.gauntletEchoesPda ?? null,
       player: sessionSignerKeypair.publicKey,
     } as any)
