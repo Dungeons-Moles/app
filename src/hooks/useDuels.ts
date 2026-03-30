@@ -3,9 +3,17 @@ import { PublicKey, Transaction } from '@solana/web3.js';
 import { useWallet } from '@/contexts/WalletContext';
 import { useSession } from '@/contexts/SessionContext';
 import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
-import { createGameplayStateProgram, createPlayerProfileProgram } from '@/services/solana/programs';
+import {
+  createGameplayStateProgram,
+  createPlayerProfileProgram,
+  createSessionManagerProgram,
+} from '@/services/solana/programs';
 import { derivePlayerProfilePda } from '@/services/solana/types';
-import { GAMEPLAY_STATE_PROGRAM_ID, deriveDuelSessionPda } from '@/services/solana/constants';
+import {
+  GAMEPLAY_STATE_PROGRAM_ID,
+  deriveDuelSessionPda,
+  deriveSessionNoncesPda,
+} from '@/services/solana/constants';
 import { SOLANA_CONFIG } from '@/services/solana/config';
 import {
   buildEnterDuelTransaction,
@@ -413,16 +421,70 @@ export function useDuels() {
 
       try {
         const ourKey = wallet.publicKey.toBase58();
-        const SIG_LIMIT = 30;
+        const SIG_LIMIT = 15;
 
-        // 1. Fetch recent wallet signatures (user-scoped)
-        const signatures = await connection.getSignaturesForAddress(
-          wallet.publicKey,
-          { limit: SIG_LIMIT },
-          'confirmed'
+        // 1. Read duel nonce to derive duel session PDAs (like GauntletHistory).
+        //    Querying by duelEntryPda instead of wallet avoids scanning all wallet txs.
+        let duelNonce = 0n;
+        try {
+          const [noncesPda] = deriveSessionNoncesPda(wallet.publicKey);
+          const sessionProgram = createSessionManagerProgram(connection);
+          const noncesInfo = await connection.getAccountInfo(noncesPda);
+          if (noncesInfo) {
+            const decoded = sessionProgram.coder.accounts.decode('sessionNonces', noncesInfo.data) as {
+              duelNonce: { toString(): string };
+            };
+            duelNonce = BigInt(decoded.duelNonce.toString());
+          }
+        } catch {
+          // Nonces account doesn't exist yet — use 0
+        }
+
+        // 2. Derive duel entry PDAs for current and recent nonces
+        const noncesToCheck: bigint[] = [];
+        for (let n = duelNonce; n >= 0n && noncesToCheck.length < 5; n--) {
+          noncesToCheck.push(n);
+        }
+
+        // 3. Fetch signatures for each duel entry PDA in parallel,
+        //    plus a small wallet query to catch opponent settle txs that
+        //    reference us via creator_wallet (DuelResolved lives there
+        //    when we're the creator and the joiner settles second).
+        type SigInfo = Awaited<ReturnType<typeof connection.getSignaturesForAddress>>[0];
+        const WALLET_SIG_LIMIT = 10;
+
+        const sigFetches: Promise<SigInfo[]>[] = noncesToCheck.map(async (nonce) => {
+          const [sessionPda] = deriveDuelSessionPda(wallet.publicKey!, nonce);
+          const [duelEntryPda] = deriveDuelEntryPda(sessionPda);
+          return connection
+            .getSignaturesForAddress(duelEntryPda, { limit: SIG_LIMIT }, 'confirmed')
+            .catch(() => [] as SigInfo[]);
+        });
+
+        // Wallet fallback: catches settle txs from opponents where our wallet
+        // is the creator_wallet account (small limit keeps it fast).
+        sigFetches.push(
+          connection
+            .getSignaturesForAddress(wallet.publicKey, { limit: WALLET_SIG_LIMIT }, 'confirmed')
+            .catch(() => [] as SigInfo[])
         );
 
-        // 2. Fetch all transactions in parallel
+        const allSignatures = await Promise.all(sigFetches);
+
+        // Flatten, deduplicate by signature, and sort by slot descending
+        const sigMap = new Map<string, SigInfo>();
+        for (const sigs of allSignatures) {
+          for (const sig of sigs) {
+            if (!sigMap.has(sig.signature)) {
+              sigMap.set(sig.signature, sig);
+            }
+          }
+        }
+        const signatures = Array.from(sigMap.values())
+          .sort((a, b) => (b.slot ?? 0) - (a.slot ?? 0))
+          .slice(0, SIG_LIMIT);
+
+        // 4. Fetch all transactions in parallel
         const txs = await Promise.all(
           signatures.map((s) =>
             connection
@@ -434,11 +496,12 @@ export function useDuels() {
           )
         );
 
-        // 3. Parse duel matches from results
+        // 5. Parse duel matches from results
         const duelMatches: {
           sigInfo: (typeof signatures)[0];
           resolved: NonNullable<ReturnType<typeof parseDuelEventsFromLogs>['resolved']>;
           opponentWallet: string | null;
+          txBlockTime: number | null;
         }[] = [];
 
         for (let i = 0; i < txs.length && duelMatches.length < maxMatches; i++) {
@@ -455,10 +518,11 @@ export function useDuels() {
             sigInfo: signatures[i],
             resolved: events.resolved,
             opponentWallet: playerA === ourKey ? playerB : playerA,
+            txBlockTime: tx.blockTime ?? null,
           });
         }
 
-        // 4. Fetch opponent profile names in parallel
+        // 6. Fetch opponent profile names in parallel
         const uniqueOpponents = [
           ...new Set(
             duelMatches
@@ -479,11 +543,11 @@ export function useDuels() {
           }
         }
 
-        // 5. Build history items
+        // 7. Build history items
         const matches: DuelHistoryItem[] = duelMatches.map((m) => ({
           signature: m.sigInfo.signature,
           slot: m.sigInfo.slot ?? 0,
-          playedAtUnix: m.sigInfo.blockTime ?? null,
+          playedAtUnix: m.sigInfo.blockTime ?? m.txBlockTime ?? null,
           opponentWallet: m.opponentWallet,
           opponentProfileName: m.opponentWallet
             ? profileNameMap.get(m.opponentWallet) ?? 'Opponent'

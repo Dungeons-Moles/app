@@ -40,6 +40,8 @@ const GREEN_BRUSH = require('../../assets/ui/illustrations/green-brush.webp');
 const RED_BRUSH = require('../../assets/ui/illustrations/red-brush.webp');
 const buttonV1Source = require('../../assets/ui/buttons/button-v1.webp');
 const engineImageSource = require('../../assets/ui/illustrations/engine.webp');
+const SQUARE_FRAME = require('../../assets/ui/frames/square.webp');
+const DEFAULT_MOLE = require('../../assets/entities/characters/default-mole.webp');
 
 // On-chain base values (ATK/ARM/SPD start at 0; bonuses come from BattleStart log entries)
 const PVP_BASE_HP = 20;
@@ -144,9 +146,11 @@ export function DuelsHistoryScreen({ navigation }: DuelsHistoryScreenProps) {
           combatInput: {
             player,
             enemy,
-            seed: 0,
+            seed: Number(visual.seed % BigInt(2 ** 32)),
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             enemyDefinitionId: 'pvpOpponent' as any, // PvP uses a non-EnemyId definitionId
+            pvpPlayerActsFirstOnTie: !isPlayerA,
+            pvpTieBreakerFavorPlayer: isPlayerA === (Number(visual.seed % BigInt(2)) === 0),
             onChainOutcome: {
               finalPlayerHp: isPlayerA ? visual.finalPlayerAHp : visual.finalPlayerBHp,
               finalPlayerGold: 0,
@@ -387,9 +391,22 @@ export function DuelsHistoryScreen({ navigation }: DuelsHistoryScreenProps) {
                                 </View>
                                 <Text
                                   style={[styles.resultText, isCompact && compactStyles.resultText]}
+                                  numberOfLines={1}
                                 >
                                   vs {item.opponentProfileName}
                                 </Text>
+                                <View style={[styles.avatarWrapper, isCompact && compactStyles.avatarWrapper]}>
+                                  <Image
+                                    source={DEFAULT_MOLE}
+                                    style={[styles.avatarImage, isCompact && compactStyles.avatarImage]}
+                                    resizeMode="cover"
+                                  />
+                                  <Image
+                                    source={SQUARE_FRAME}
+                                    style={[styles.avatarFrame, isCompact && compactStyles.avatarFrame]}
+                                    resizeMode="stretch"
+                                  />
+                                </View>
                               </View>
                               <View style={styles.metaRow}>
                                 <Text
@@ -578,6 +595,25 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#000000',
   },
+  avatarWrapper: {
+    width: 22,
+    height: 22,
+    overflow: 'hidden',
+    borderRadius: 1,
+  },
+  avatarImage: {
+    width: 22 * 1.65,
+    height: 22 * 1.6,
+    position: 'absolute',
+    top: 0,
+    left: -(22 * 0.35),
+  },
+  avatarFrame: {
+    position: 'absolute',
+    width: 22,
+    height: 22,
+    zIndex: 1,
+  },
   metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -676,6 +712,19 @@ const compactStyles = StyleSheet.create({
   },
   resultLabel: {
     fontSize: 36,
+  },
+  avatarWrapper: {
+    width: 40,
+    height: 40,
+  },
+  avatarImage: {
+    width: 40 * 1.65,
+    height: 40 * 1.6,
+    left: -(40 * 0.35),
+  },
+  avatarFrame: {
+    width: 40,
+    height: 40,
   },
   metaText: {
     fontSize: 22,
