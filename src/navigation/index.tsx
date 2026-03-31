@@ -23,7 +23,6 @@ import { ItemsScreen } from '../screens/ItemsScreen';
 import { SkinsScreen } from '../screens/SkinsScreen';
 import { SessionLoadingScreen } from '../screens/SessionLoadingScreen';
 import { BattleSimulatorScreen } from '../screens/BattleSimulatorScreen';
-import type { CombatReplay } from '../services/solana/types/combat_events';
 import type {
   ItemStats,
   BossId,
@@ -127,7 +126,6 @@ export type RootStackParamList = {
       }
     | undefined;
   Death: {
-    replay?: CombatReplay;
     totalMoves?: number;
     level?: number;
     week?: number;
@@ -137,7 +135,6 @@ export type RootStackParamList = {
     runMode?: number;
   };
   Victory: {
-    replay?: CombatReplay;
     level?: number;
     totalMoves?: number;
     enemiesDefeated?: number;

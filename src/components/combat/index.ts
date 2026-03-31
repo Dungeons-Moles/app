@@ -4,7 +4,6 @@
  * Components for displaying combat animations and results.
  */
 
-export { TurnDisplay } from './TurnDisplay';
 export { BossIntro } from './BossIntro';
 export { CombatArena } from './CombatArena';
 export { VictoryDefeatDisplay } from './VictoryDefeatDisplay';

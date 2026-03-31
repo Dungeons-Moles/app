@@ -46,6 +46,8 @@ const backgroundImageWide = require('../../assets/ui/backgrounds/campaign-backgr
 const buttonV1Source = require('../../assets/ui/buttons/button-v1.webp');
 const buttonV4Source = require('../../assets/ui/buttons/button-v4.webp');
 const squareSource = require('../../assets/ui/frames/square.webp');
+const squareGreenSource = require('../../assets/ui/frames/square-green.webp');
+const squareYellowSource = require('../../assets/ui/frames/square-yellow.webp');
 const lockSource = require('../../assets/icons/ui/lock.webp');
 const PAPER_PANEL = require('../../assets/ui/panels/paper-panel.webp');
 const PAPER_PANEL_WIDE = require('../../assets/ui/panels/paper-panel-wide.webp');
@@ -729,7 +731,13 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
           activeOpacity={item.isUnlocked ? 0.7 : 1}
         >
           <CachedImageBackground
-            source={squareSource}
+            source={
+              item.isCompleted
+                ? squareGreenSource
+                : isCurrentLevel
+                  ? squareYellowSource
+                  : squareSource
+            }
             style={styles.levelCellBackground}
             resizeMode="stretch"
           >
@@ -739,12 +747,8 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
             {/* Completed overlay */}
             {item.isCompleted && <View style={styles.completedOverlay} />}
 
-            {/* Current level border highlight */}
-            {isCurrentLevel && (
-              <View
-                style={[styles.currentLevelBorder, isCompact && compactStyles.currentLevelBorder]}
-              />
-            )}
+            {/* Current level highlight */}
+            {isCurrentLevel && <View style={styles.currentLevelOverlay} />}
 
             {/* Selected state overlay */}
             {isSelected && <View style={styles.selectedOverlay} />}
@@ -1435,11 +1439,9 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(34, 85, 34, 0.35)',
   },
-  currentLevelBorder: {
+  currentLevelOverlay: {
     ...StyleSheet.absoluteFillObject,
-    borderWidth: 3,
-    borderColor: '#FABC0F',
-    borderRadius: 4,
+    backgroundColor: 'rgba(250, 188, 15, 0.25)',
   },
   selectedOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -1612,10 +1614,6 @@ const compactStyles = StyleSheet.create({
   },
   levelNumber: {
     fontSize: 30,
-  },
-  currentLevelBorder: {
-    borderWidth: 4,
-    borderRadius: 6,
   },
   checkmark: {
     top: 3,

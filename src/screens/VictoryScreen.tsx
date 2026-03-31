@@ -41,7 +41,6 @@ type VictoryScreenProps = {
 
 export function VictoryScreen({ navigation, route }: VictoryScreenProps) {
   const {
-    replay,
     level,
     totalMoves,
     enemiesDefeated,

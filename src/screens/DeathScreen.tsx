@@ -40,7 +40,7 @@ type DeathScreenProps = {
 };
 
 export function DeathScreen({ navigation, route }: DeathScreenProps) {
-  const { replay, totalMoves, level, week, phase, enemiesDefeated, killedBy, runMode } =
+  const { totalMoves, level, week, phase, enemiesDefeated, killedBy, runMode } =
     route.params ?? {};
   const { availableRuns, mode } = useProfile();
   const { height } = useWindowDimensions();
@@ -98,9 +98,6 @@ export function DeathScreen({ navigation, route }: DeathScreenProps) {
   // Determine death cause description
   const getDeathCause = (): string => {
     if (killedBy) return formatEnemyName(killedBy);
-    if (replay?.isBoss) {
-      return `Slain by Week ${replay.bossIntro?.week ?? '?'} Boss`;
-    }
     return 'Killed in combat';
   };
 

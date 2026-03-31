@@ -10,19 +10,11 @@
 import { Connection, PublicKey } from '@solana/web3.js';
 import type { Program } from '@coral-xyz/anchor';
 import type {
-  CombatReplay,
   CombatStartedEvent,
-  TurnExecutedEvent,
-  StatusAppliedEvent,
-  CombatEndedEvent,
-  BossCombatStartedEvent,
   EnemyMovedEvent,
   PlayerDefeatedEvent,
   LevelCompletedEvent,
   ItemUnlockedEvent,
-  ParsedEvent,
-  CombatEventParseResult,
-  StatusEffect,
 } from './types/combat_events';
 import { EVENT_NAMES } from './types/combat_events';
 import { getItemForLevel } from '@/data/items/all-items';
@@ -34,58 +26,6 @@ import type { UnlockedItem } from '@/navigation';
 // ============================================================================
 // Main Event Parser
 // ============================================================================
-
-/**
- * Parse combat-related events from a transaction.
- *
- * @param connection - Solana connection
- * @param program - Anchor program instance with event coder
- * @param signature - Transaction signature to parse
- * @returns CombatReplay if combat occurred, null otherwise
- */
-export async function parseCombatEvents(
-  connection: Connection,
-  program: Program,
-  signature: string
-): Promise<CombatReplay | null> {
-  const tx = await connection.getTransaction(signature, {
-    commitment: 'confirmed',
-    maxSupportedTransactionVersion: 0,
-  });
-
-  if (!tx?.meta?.logMessages) {
-    return null;
-  }
-
-  const events = parseEventsFromLogs(program, tx.meta.logMessages);
-
-  const combatStarted = events.find((e) => e.name === EVENT_NAMES.COMBAT_STARTED);
-  if (!combatStarted) {
-    return null;
-  }
-
-  const bossIntro = events.find((e) => e.name === EVENT_NAMES.BOSS_COMBAT_STARTED);
-  const combatEnded = events.find((e) => e.name === EVENT_NAMES.COMBAT_ENDED);
-
-  if (!combatEnded) {
-    console.warn('[eventParser] Found CombatStarted but no CombatEnded event');
-    return null;
-  }
-
-  return {
-    signature,
-    combatStarted: combatStarted.data as CombatStartedEvent,
-    turns: events
-      .filter((e) => e.name === EVENT_NAMES.TURN_EXECUTED)
-      .map((e) => e.data as TurnExecutedEvent),
-    statusEffects: events
-      .filter((e) => e.name === EVENT_NAMES.STATUS_APPLIED)
-      .map((e) => e.data as StatusAppliedEvent),
-    combatEnded: combatEnded.data as CombatEndedEvent,
-    isBoss: !!bossIntro,
-    bossIntro: bossIntro?.data as BossCombatStartedEvent | undefined,
-  };
-}
 
 /**
  * Parse enemy movement events for night phase animation.
@@ -124,18 +64,27 @@ export async function parseNightMovement(
  * @param signature - Transaction signature to parse
  * @returns Complete parse result with all event types
  */
+/**
+ * Result of parsing gameplay events from a transaction.
+ */
+export interface GameplayEventParseResult {
+  nightMovements: EnemyMovedEvent[];
+  playerDefeated: PlayerDefeatedEvent | null;
+  levelCompleted: LevelCompletedEvent | null;
+  itemUnlocked: ItemUnlockedEvent | null;
+}
+
 export async function parseGameplayEvents(
   connection: Connection,
   program: Program,
   signature: string
-): Promise<CombatEventParseResult> {
+): Promise<GameplayEventParseResult> {
   const tx = await connection.getTransaction(signature, {
     commitment: 'confirmed',
     maxSupportedTransactionVersion: 0,
   });
 
-  const result: CombatEventParseResult = {
-    combat: null,
+  const result: GameplayEventParseResult = {
     nightMovements: [],
     playerDefeated: null,
     levelCompleted: null,
@@ -147,27 +96,6 @@ export async function parseGameplayEvents(
   }
 
   const events = parseEventsFromLogs(program, tx.meta.logMessages);
-
-  // Parse combat replay
-  const combatStarted = events.find((e) => e.name === EVENT_NAMES.COMBAT_STARTED);
-  const combatEnded = events.find((e) => e.name === EVENT_NAMES.COMBAT_ENDED);
-
-  if (combatStarted && combatEnded) {
-    const bossIntro = events.find((e) => e.name === EVENT_NAMES.BOSS_COMBAT_STARTED);
-    result.combat = {
-      signature,
-      combatStarted: combatStarted.data as CombatStartedEvent,
-      turns: events
-        .filter((e) => e.name === EVENT_NAMES.TURN_EXECUTED)
-        .map((e) => e.data as TurnExecutedEvent),
-      statusEffects: events
-        .filter((e) => e.name === EVENT_NAMES.STATUS_APPLIED)
-        .map((e) => e.data as StatusAppliedEvent),
-      combatEnded: combatEnded.data as CombatEndedEvent,
-      isBoss: !!bossIntro,
-      bossIntro: bossIntro?.data as BossCombatStartedEvent | undefined,
-    };
-  }
 
   // Parse night movements
   result.nightMovements = events
@@ -193,6 +121,11 @@ export async function parseGameplayEvents(
   }
 
   return result;
+}
+
+interface ParsedEvent<T = unknown> {
+  name: string;
+  data: T;
 }
 
 // CombatStarted event discriminator from the IDL
@@ -359,40 +292,6 @@ function convertEventData(name: string, data: Record<string, unknown>): unknown 
         enemyAtk: Number(data.enemyAtk ?? data.enemy_atk ?? 0),
       } as CombatStartedEvent;
 
-    case EVENT_NAMES.TURN_EXECUTED:
-      return {
-        turn: Number(data.turn ?? 0),
-        playerHp: Number(data.playerHp ?? data.player_hp ?? 0),
-        enemyHp: Number(data.enemyHp ?? data.enemy_hp ?? 0),
-        playerDamage: Number(data.playerDamage ?? data.player_damage ?? 0),
-        enemyDamage: Number(data.enemyDamage ?? data.enemy_damage ?? 0),
-      } as TurnExecutedEvent;
-
-    case EVENT_NAMES.STATUS_APPLIED:
-      return {
-        target: Number(data.target ?? 0) === 0 ? 'player' : 'enemy',
-        effectType: Number(data.effectType ?? data.effect_type ?? 0) as StatusEffect,
-        stacks: Number(data.stacks ?? 0),
-      } as StatusAppliedEvent;
-
-    case EVENT_NAMES.COMBAT_ENDED:
-      return {
-        player: data.player as PublicKey,
-        playerWon: Boolean(data.playerWon ?? data.player_won ?? false),
-        finalPlayerHp: Number(data.finalPlayerHp ?? data.final_player_hp ?? 0),
-        finalEnemyHp: Number(data.finalEnemyHp ?? data.final_enemy_hp ?? 0),
-        goldEarned: Number(data.goldEarned ?? data.gold_earned ?? 0),
-        turnsTaken: Number(data.turnsTaken ?? data.turns_taken ?? 0),
-      } as CombatEndedEvent;
-
-    case EVENT_NAMES.BOSS_COMBAT_STARTED:
-      return {
-        player: data.player as PublicKey,
-        bossId: decodeBossId(data.bossId ?? data.boss_id),
-        bossHp: Number(data.bossHp ?? data.boss_hp ?? 0),
-        week: Number(data.week ?? 0),
-      } as BossCombatStartedEvent;
-
     case EVENT_NAMES.ENEMY_MOVED:
       return {
         enemyIndex: Number(data.enemyIndex ?? data.enemy_index ?? 0),
@@ -428,23 +327,6 @@ function convertEventData(name: string, data: Record<string, unknown>): unknown 
     default:
       return data;
   }
-}
-
-/**
- * Decode boss ID from bytes to string.
- */
-function decodeBossId(bossId: unknown): string {
-  if (typeof bossId === 'string') {
-    return bossId;
-  }
-
-  if (Array.isArray(bossId) || bossId instanceof Uint8Array) {
-    // Convert byte array to string, trimming null bytes
-    const bytes = Array.from(bossId as number[] | Uint8Array);
-    return String.fromCharCode(...bytes.filter((b) => b !== 0));
-  }
-
-  return 'UNKNOWN';
 }
 
 // ============================================================================
@@ -571,10 +453,10 @@ export function getUnlockedItemForLevel(level: number): UnlockedItem | undefined
 /**
  * Extract victory data from gameplay events parse result.
  *
- * @param result - CombatEventParseResult from parseGameplayEvents
+ * @param result - GameplayEventParseResult from parseGameplayEvents
  * @returns Object with levelUnlocked and itemUnlocked data
  */
-export function extractVictoryData(result: CombatEventParseResult): {
+export function extractVictoryData(result: GameplayEventParseResult): {
   levelUnlocked: number | undefined;
   itemUnlocked: UnlockedItem | undefined;
   totalMoves: number | undefined;

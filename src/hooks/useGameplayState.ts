@@ -499,17 +499,24 @@ export function useGameplayState(): UseGameplayStateReturn {
         const tDone = Date.now();
         console.log(`[perf] move: ${tDone - t0}ms (send: ${tSent - t0}ms, ws: ${tDone - tSent}ms)`);
 
-        // SessionDiscovery WS updates can lag one move behind on ER under load.
-        // Always prefer a post-move RPC fetch so fog/visibility and POI reveals
-        // update on the same step; fall back to the WS snapshot if the fetch fails.
+        // Prefer the WS-delivered discovery snapshot on normal moves to keep the
+        // hot path fast. Only pay for a follow-up RPC read when the move changed
+        // phase/week boundaries or when WS delivery missed entirely.
         let finalDiscovery: SessionDiscoveryData | null = wsDiscoveryData;
-        const [sdPda] = deriveSessionDiscoveryPda(sessionPda);
-        const freshDiscovery = await fetchSessionDiscovery(
-          createMapGeneratorProgram(moveConnection),
-          sdPda
-        ).catch(() => null);
-        if (freshDiscovery) {
-          finalDiscovery = freshDiscovery;
+        if (
+          confirmedState &&
+          (!wsDiscoveryData ||
+            confirmedState.phase !== previousState.phase ||
+            confirmedState.week !== previousState.week)
+        ) {
+          const [sdPda] = deriveSessionDiscoveryPda(sessionPda);
+          const freshDiscovery = await fetchSessionDiscovery(
+            createMapGeneratorProgram(moveConnection),
+            sdPda
+          ).catch(() => null);
+          if (freshDiscovery) {
+            finalDiscovery = freshDiscovery;
+          }
         }
 
         if (isMountedRef.current) {
