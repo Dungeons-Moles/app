@@ -13,6 +13,7 @@ process.env.EXPO_PUBLIC_PLAYER_PROFILE_PROGRAM_ID = '111111111111111111111111111
 process.env.EXPO_PUBLIC_GAMEPLAY_STATE_PROGRAM_ID = '11111111111111111111111111111111';
 process.env.EXPO_PUBLIC_PLAYER_INVENTORY_PROGRAM_ID = '11111111111111111111111111111111';
 process.env.EXPO_PUBLIC_POI_SYSTEM_PROGRAM_ID = '11111111111111111111111111111111';
+process.env.EXPO_PUBLIC_NFT_MARKETPLACE_PROGRAM_ID = '11111111111111111111111111111111';
 
 import { PublicKey } from '@solana/web3.js';
 import { validateSessionCreation } from '@/services/solana/sessionBundle';
@@ -194,13 +195,13 @@ describe('Session Bundle Constants', () => {
       RUNS_PER_PURCHASE,
     } = await import('@/services/solana/constants');
 
-    expect(DEFAULT_SESSION_SIGNER_FUNDING).toBe(50_000_000); // 0.05 SOL
+    expect(DEFAULT_SESSION_SIGNER_FUNDING).toBe(100_000_000); // 0.1 SOL
     expect(MAP_WIDTH).toBe(9);
     expect(MAP_HEIGHT).toBe(9);
     expect(MAX_SESSIONS).toBe(40);
     expect(MAX_ENEMIES).toBe(10);
     expect(INITIAL_GEAR_SLOTS).toBe(4);
-    expect(RUN_PRICE_LAMPORTS).toBe(5_000_000); // 0.005 SOL
+    expect(RUN_PRICE_LAMPORTS).toBe(50_000_000); // 0.05 SOL
     expect(RUNS_PER_PURCHASE).toBe(20);
   });
 });

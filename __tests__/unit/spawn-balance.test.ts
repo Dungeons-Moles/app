@@ -54,21 +54,44 @@ describe('Spawn Balance', () => {
   });
 
   describe('Statistical Verification', () => {
-    it('maintains zone constraints across 100 seeds', () => {
+    it('enforces spawn protection radius (no enemies within 5 Chebyshev tiles of spawn)', () => {
       for (let seed = 1; seed <= 100; seed += 1) {
         const map = generateMap({ seed, width: 50, height: 50 });
-        const spawn = map.moleDenPosition;
+        const spawn = map.spawn;
 
         for (const enemy of map.enemies) {
-          const zone = getSpawnZone(enemy.position, spawn);
+          const chebyshev = Math.max(
+            Math.abs(enemy.position.x - spawn.x),
+            Math.abs(enemy.position.y - spawn.y)
+          );
+          expect(chebyshev).toBeGreaterThan(5);
+        }
+      }
+    });
 
-          if (zone === 0) {
-            expect(enemy.tier).toBe(1);
-          } else if (zone === 1) {
-            expect(enemy.tier).toBeLessThanOrEqual(2);
+    it('near enemies are mostly T1 across 100 seeds', () => {
+      let nearT1 = 0;
+      let nearTotal = 0;
+
+      for (let seed = 1; seed <= 100; seed += 1) {
+        const map = generateMap({ seed, width: 50, height: 50 });
+        const spawn = map.spawn;
+        const maxDistance = 49 + 49; // MAP_WIDTH-1 + MAP_HEIGHT-1
+
+        for (const enemy of map.enemies) {
+          const manhattan =
+            Math.abs(enemy.position.x - spawn.x) + Math.abs(enemy.position.y - spawn.y);
+          const distPercent = Math.floor((manhattan * 100) / maxDistance);
+          if (distPercent <= 33) {
+            nearTotal += 1;
+            if (enemy.tier === 1) nearT1 += 1;
           }
         }
       }
+
+      // NEAR_TIER_WEIGHTS = [80, 15, 5] — at least 70% T1 near spawn
+      expect(nearTotal).toBeGreaterThan(0);
+      expect(nearT1 / nearTotal).toBeGreaterThanOrEqual(0.7);
     });
   });
 });

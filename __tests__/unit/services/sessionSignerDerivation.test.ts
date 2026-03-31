@@ -1,3 +1,24 @@
+// Set required env vars before imports trigger config validation
+process.env.EXPO_PUBLIC_SESSION_MANAGER_PROGRAM_ID = '11111111111111111111111111111111';
+process.env.EXPO_PUBLIC_MAP_GENERATOR_PROGRAM_ID = '11111111111111111111111111111111';
+process.env.EXPO_PUBLIC_PLAYER_PROFILE_PROGRAM_ID = '11111111111111111111111111111111';
+process.env.EXPO_PUBLIC_GAMEPLAY_STATE_PROGRAM_ID = '11111111111111111111111111111111';
+process.env.EXPO_PUBLIC_PLAYER_INVENTORY_PROGRAM_ID = '11111111111111111111111111111111';
+process.env.EXPO_PUBLIC_POI_SYSTEM_PROGRAM_ID = '11111111111111111111111111111111';
+process.env.EXPO_PUBLIC_NFT_MARKETPLACE_PROGRAM_ID = '11111111111111111111111111111111';
+
+// Mock react-native (not available in Node test environment)
+jest.mock('react-native', () => ({
+  Platform: { OS: 'web' },
+}));
+
+// Mock secure storage (depends on react-native Platform)
+jest.mock('@/services/storage/secureStorage', () => ({
+  getItem: jest.fn(),
+  setItem: jest.fn(),
+  deleteItem: jest.fn(),
+}));
+
 import {
   buildSessionDerivationMessage,
   deriveSessionSignerFromSignature,

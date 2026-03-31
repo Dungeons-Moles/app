@@ -87,24 +87,30 @@ function createTestCombatState(
 
 describe('Boss Definitions', () => {
   describe('BOSSES data', () => {
-    it('should have all 14 bosses defined', () => {
-      // 5 Week 1 + 5 Week 2 + 2 Week 3 Biome A + 2 Week 3 Biome B = 14
-      expect(Object.keys(BOSSES)).toHaveLength(14);
+    it('should have all 24 bosses defined', () => {
+      // 5 Week 1 + 5 Week 2 + 2 Week 3 per biome × 2 biomes = 24
+      expect(Object.keys(BOSSES)).toHaveLength(24);
     });
 
-    it('should have 5 Week 1 bosses', () => {
+    it('should have 10 Week 1 bosses (5 per biome)', () => {
       const week1Bosses = getBossesForWeek(1);
-      expect(week1Bosses).toHaveLength(5);
+      expect(week1Bosses).toHaveLength(10);
       expect(week1Bosses.map((b) => b.id)).toEqual(
-        expect.arrayContaining(['B-A-W1-01', 'B-A-W1-02', 'B-A-W1-03', 'B-A-W1-04', 'B-A-W1-05'])
+        expect.arrayContaining([
+          'B-A-W1-01', 'B-A-W1-02', 'B-A-W1-03', 'B-A-W1-04', 'B-A-W1-05',
+          'B-B-W1-01', 'B-B-W1-02', 'B-B-W1-03', 'B-B-W1-04', 'B-B-W1-05',
+        ])
       );
     });
 
-    it('should have 5 Week 2 bosses', () => {
+    it('should have 10 Week 2 bosses (5 per biome)', () => {
       const week2Bosses = getBossesForWeek(2);
-      expect(week2Bosses).toHaveLength(5);
+      expect(week2Bosses).toHaveLength(10);
       expect(week2Bosses.map((b) => b.id)).toEqual(
-        expect.arrayContaining(['B-A-W2-01', 'B-A-W2-02', 'B-A-W2-03', 'B-A-W2-04', 'B-A-W2-05'])
+        expect.arrayContaining([
+          'B-A-W2-01', 'B-A-W2-02', 'B-A-W2-03', 'B-A-W2-04', 'B-A-W2-05',
+          'B-B-W2-01', 'B-B-W2-02', 'B-B-W2-03', 'B-B-W2-04', 'B-B-W2-05',
+        ])
       );
     });
 
@@ -140,12 +146,16 @@ describe('Boss Definitions', () => {
     });
 
     // T063: Biome B boss distribution
-    it('T063: should have 2 Week 3 final bosses for Biome B', () => {
+    it('T063: should have 5 Week 1, 5 Week 2, 2 Week 3 bosses for Biome B', () => {
       const biomeBBosses = Object.values(BOSSES).filter((b) => b.biome === 'B');
+      const week1 = biomeBBosses.filter((b) => b.week === 1);
+      const week2 = biomeBBosses.filter((b) => b.week === 2);
       const week3 = biomeBBosses.filter((b) => b.week === 3);
 
+      expect(week1).toHaveLength(5);
+      expect(week2).toHaveLength(5);
       expect(week3).toHaveLength(2);
-      expect(biomeBBosses).toHaveLength(2); // Only Week 3 finals for Biome B
+      expect(biomeBBosses).toHaveLength(12);
       expect(week3.map((b) => b.id)).toEqual(expect.arrayContaining(['B-B-W3-01', 'B-B-W3-02']));
     });
 

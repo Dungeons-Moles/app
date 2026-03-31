@@ -11,8 +11,8 @@ describe('Map Generator', () => {
   describe('Determinism', () => {
     it('should produce identical maps with the same seed', () => {
       const params: MapGenerationParams = {
-        width: 25,
-        height: 25,
+        width: 50,
+        height: 50,
         seed: 12345,
       };
 
@@ -45,8 +45,8 @@ describe('Map Generator', () => {
     });
 
     it('should produce different maps with different seeds', () => {
-      const params1: MapGenerationParams = { width: 25, height: 25, seed: 12345 };
-      const params2: MapGenerationParams = { width: 25, height: 25, seed: 54321 };
+      const params1: MapGenerationParams = { width: 50, height: 50, seed: 12345 };
+      const params2: MapGenerationParams = { width: 50, height: 50, seed: 54321 };
 
       const map1 = generateMap(params1);
       const map2 = generateMap(params2);
@@ -59,8 +59,8 @@ describe('Map Generator', () => {
   describe('Maze Structure', () => {
     it('should generate a fully connected maze (all walkable tiles reachable)', () => {
       const params: MapGenerationParams = {
-        width: 25,
-        height: 25,
+        width: 50,
+        height: 50,
         seed: 42,
       };
 
@@ -112,8 +112,8 @@ describe('Map Generator', () => {
 
     it('should only contain corridor-style paths (no open rooms)', () => {
       const params: MapGenerationParams = {
-        width: 25,
-        height: 25,
+        width: 50,
+        height: 50,
         seed: 99,
       };
 
@@ -180,8 +180,8 @@ describe('Map Generator', () => {
   describe('Spawn and Mole Den', () => {
     it('should place Mole Den above the spawn position', () => {
       const params: MapGenerationParams = {
-        width: 25,
-        height: 25,
+        width: 50,
+        height: 50,
         seed: 123,
       };
 
@@ -195,8 +195,8 @@ describe('Map Generator', () => {
 
     it('should place spawn on a walkable tile', () => {
       const params: MapGenerationParams = {
-        width: 25,
-        height: 25,
+        width: 50,
+        height: 50,
         seed: 456,
       };
 
@@ -210,8 +210,8 @@ describe('Map Generator', () => {
   describe('POI Placement', () => {
     it('should place Mole Den POI at moleDenPosition', () => {
       const params: MapGenerationParams = {
-        width: 25,
-        height: 25,
+        width: 50,
+        height: 50,
         seed: 789,
       };
 
@@ -259,8 +259,8 @@ describe('Map Generator', () => {
   describe('Enemy Placement', () => {
     it('should place enemies on walkable tiles', () => {
       const params: MapGenerationParams = {
-        width: 25,
-        height: 25,
+        width: 50,
+        height: 50,
         seed: 111,
       };
 
@@ -274,8 +274,8 @@ describe('Map Generator', () => {
 
     it('should not place enemies on spawn or Mole Den positions', () => {
       const params: MapGenerationParams = {
-        width: 25,
-        height: 25,
+        width: 50,
+        height: 50,
         seed: 222,
       };
 
@@ -310,8 +310,8 @@ describe('Map Generator', () => {
   describe('Fog Initialization', () => {
     it('should initialize all tiles as Hidden', () => {
       const params: MapGenerationParams = {
-        width: 25,
-        height: 25,
+        width: 50,
+        height: 50,
         seed: 444,
       };
 

@@ -200,9 +200,9 @@ describe('Items Entity', () => {
       const stats = calculateItemStats(tool, [gear1, gear2, gear3]);
 
       expect(stats.atk).toBe(2); // T2(2)
-      expect(stats.arm).toBe(11); // T2(3) + I34(8)
-      expect(stats.spd).toBe(1); // I36(1)
-      expect(stats.dig).toBe(2); // I9(2)
+      expect(stats.arm).toBe(13); // T2(3) + I34(8) + I36 BattleStart GainArmor(2)
+      expect(stats.spd).toBe(3); // I36 BattleStart GainSpd(2) + I9 BattleStart GainSpd(1)
+      expect(stats.dig).toBe(3); // I9(2) + I36 BattleStart GainDig(1)
       expect(stats.hp).toBe(0);
     });
 
@@ -246,9 +246,9 @@ describe('Items Entity', () => {
       const stats = calculateItemStats(null, [gear1, gear2, gear3, gear4]);
 
       expect(stats.atk).toBe(0);
-      expect(stats.arm).toBe(11); // I34(8) + I37(3)
-      expect(stats.spd).toBe(1); // I36
-      expect(stats.dig).toBe(2); // I9
+      expect(stats.arm).toBe(13); // I34(8) + I37(3) + I36 BattleStart GainArmor(2)
+      expect(stats.spd).toBe(3); // I36 BattleStart GainSpd(2) + I9 BattleStart GainSpd(1)
+      expect(stats.dig).toBe(3); // I9(2) + I36 BattleStart GainDig(1)
       expect(stats.hp).toBe(0);
     });
   });
