@@ -21,6 +21,7 @@ import {
   createGameplayStateProgram,
   createMapGeneratorProgram,
 } from '@/services/solana/programs';
+import { SOLANA_CONFIG } from '@/services/solana/config';
 import { oilFlagToModification } from '@/services/solana/types/player_inventory';
 import { useWallet } from '@/contexts/WalletContext';
 import { useAudio } from '@/contexts/AudioContext';
@@ -732,6 +733,15 @@ export function usePoiInteraction(): UsePoiInteractionResult {
   const [deferredPoiIndex, setDeferredPoiIndex] = useState<number | null>(null);
   const [deferredPoiType, setDeferredPoiType] = useState<number | null>(null);
 
+  const gameplayWriteConnection = useMemo(() => {
+    const gameplayEndpoint = gameplayConnection.rpcEndpoint.replace(/\/+$/, '');
+    const readEndpoint = gameplayReadConnection.rpcEndpoint.replace(/\/+$/, '');
+    const directEndpoint = SOLANA_CONFIG.directErRpcUrl.replace(/\/+$/, '');
+    const isRouter = gameplayEndpoint.includes('router.magicblock.app');
+    const hasResolvedValidator = readEndpoint !== directEndpoint && !readEndpoint.includes('router.magicblock.app');
+    return isRouter && hasResolvedValidator ? gameplayReadConnection : gameplayConnection;
+  }, [gameplayConnection, gameplayReadConnection]);
+
   const syncLocalPoiAsConsumed = useCallback(
     (poi: PoiData | undefined) => {
       if (!poi) return;
@@ -808,7 +818,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
   const poiProgram = useMemo(() => {
     if (!wallet.publicKey) return null;
     try {
-      const provider = createAnchorProvider(gameplayConnection, {
+      const provider = createAnchorProvider(gameplayWriteConnection, {
         publicKey: wallet.publicKey,
         signTransaction: async (tx) => tx,
         signAllTransactions: async (txs) => txs,
@@ -817,7 +827,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
     } catch {
       return null;
     }
-  }, [gameplayConnection, wallet.publicKey]);
+  }, [gameplayWriteConnection, wallet.publicKey]);
 
   /** Derive PoiVrfState PDA for the active session (if any). */
   const poiVrfStatePda = useMemo(() => {
@@ -844,7 +854,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
       return null;
     }
     return {
-      connection: gameplayConnection,
+      connection: gameplayWriteConnection,
       program: poiProgram,
       mapPoisPda,
       gameStatePda,
@@ -860,7 +870,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
         ? deriveGauntletEchoesPda(sessionPda)[0]
         : undefined,
     };
-  }, [getSessionSignerKeypair, poiProgram, mapPoisPda, gameStatePda, sessionPda, gameplayConnection, poiVrfStatePda, gameplayVrfStatePda, sessionDiscoveryPda, onChainState?.runMode]);
+  }, [getSessionSignerKeypair, poiProgram, mapPoisPda, gameStatePda, sessionPda, gameplayWriteConnection, poiVrfStatePda, gameplayVrfStatePda, sessionDiscoveryPda, onChainState?.runMode]);
 
   // Check if there's a valid POI at the player's current position.
   // Sources from the game reducer state (populated by SYNC_DISCOVERY).

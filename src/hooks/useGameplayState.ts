@@ -40,6 +40,7 @@ import type { CombatEnemyInfo } from '@/services/solana/eventParser';
 import { parseGauntletCombatVisualEvent } from '@/services/solana/gauntlet';
 import type { GauntletCombatVisualEvent } from '@/services/solana/gauntlet';
 import { sendSessionSignerTransaction } from '@/services/solana/sessionSigner';
+import { SOLANA_CONFIG } from '@/services/solana/config';
 import {
   fetchSessionDiscovery,
   decodeSessionDiscoveryFromAccountInfo,
@@ -153,6 +154,15 @@ export function useGameplayState(): UseGameplayStateReturn {
   const wsDiscoverySubIdRef = useRef<number | null>(null);
   const wsDiscoveryListenersRef = useRef<Set<(data: SessionDiscoveryData) => void>>(new Set());
   const latestDiscoveryRef = useRef<SessionDiscoveryData | null>(null);
+
+  const gameplayWriteConnection = useMemo(() => {
+    const gameplayEndpoint = gameplayConnection.rpcEndpoint.replace(/\/+$/, '');
+    const readEndpoint = gameplayReadConnection.rpcEndpoint.replace(/\/+$/, '');
+    const directEndpoint = SOLANA_CONFIG.directErRpcUrl.replace(/\/+$/, '');
+    const isRouter = gameplayEndpoint.includes('router.magicblock.app');
+    const hasResolvedValidator = readEndpoint !== directEndpoint && !readEndpoint.includes('router.magicblock.app');
+    return isRouter && hasResolvedValidator ? gameplayReadConnection : gameplayConnection;
+  }, [gameplayConnection, gameplayReadConnection]);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -319,7 +329,7 @@ export function useGameplayState(): UseGameplayStateReturn {
 
       try {
         const { gameStatePda: pda } = await initializeGameState(
-          gameplayConnection,
+          gameplayWriteConnection,
           program,
           sessionPda,
           sessionSignerKeypair,
@@ -350,7 +360,7 @@ export function useGameplayState(): UseGameplayStateReturn {
         return false;
       }
     },
-    [gameplayConnection, program]
+    [gameplayConnection, gameplayWriteConnection, program]
   );
 
   /**
@@ -438,7 +448,7 @@ export function useGameplayState(): UseGameplayStateReturn {
         wsDiscoveryListenersRef.current.add(discoveryListener);
 
         const moveResult = await movePlayer(
-          gameplayConnection,
+          gameplayWriteConnection,
           program,
           gameStatePda,
           sessionPda,
@@ -501,7 +511,7 @@ export function useGameplayState(): UseGameplayStateReturn {
         let combatResult: { combatEnemyInfo?: CombatEnemyInfo } = { combatEnemyInfo: undefined };
         if (isNightPhase && hpOrDeathChangedEarly) {
           combatResult = await parseCombatInfoWithRetry(
-            gameplayConnection,
+            gameplayReadConnection,
             program,
             signature,
             'move',
@@ -658,7 +668,7 @@ export function useGameplayState(): UseGameplayStateReturn {
         return { success: false };
       }
     },
-    [gameplayConnection, gameState, gameStatePda, program, registerWsListener, raceWsVsFetch]
+    [gameplayReadConnection, gameplayWriteConnection, gameState, gameStatePda, program, registerWsListener, raceWsVsFetch]
   );
 
   /**
@@ -681,7 +691,7 @@ export function useGameplayState(): UseGameplayStateReturn {
 
       try {
         const wsState = registerWsListener();
-        await modifyStat(gameplayConnection, program, gameStatePda, sessionSignerKeypair, params);
+        await modifyStat(gameplayWriteConnection, program, gameStatePda, sessionSignerKeypair, params);
 
         // Wait for WS-delivered state (timeout starts after send)
         const confirmedState = await raceWsVsFetch(wsState.promise, 500);
@@ -707,7 +717,7 @@ export function useGameplayState(): UseGameplayStateReturn {
         return { success: false };
       }
     },
-    [gameplayConnection, gameState, gameStatePda, program, registerWsListener, raceWsVsFetch]
+    [gameplayWriteConnection, gameState, gameStatePda, program, registerWsListener, raceWsVsFetch]
   );
 
   /**
@@ -737,7 +747,7 @@ export function useGameplayState(): UseGameplayStateReturn {
       }
 
       // Use overrides when provided (e.g. gauntlet needs base-layer connection)
-      const conn = overrides?.connection ?? gameplayConnection;
+      const conn = overrides?.connection ?? gameplayWriteConnection;
       const prog = overrides?.program ?? program;
 
       const previousState = gameState;
@@ -823,7 +833,7 @@ export function useGameplayState(): UseGameplayStateReturn {
         return { success: false };
       }
     },
-    [gameplayConnection, gameState, gameStatePda, program, registerWsListener, raceWsVsFetch]
+    [gameplayWriteConnection, gameState, gameStatePda, program, registerWsListener, raceWsVsFetch]
   );
 
   /**
@@ -842,7 +852,7 @@ export function useGameplayState(): UseGameplayStateReturn {
       }
 
       try {
-        await closeGameState(gameplayConnection, program, gameStatePda, sessionSignerKeypair);
+        await closeGameState(gameplayWriteConnection, program, gameStatePda, sessionSignerKeypair);
 
         if (isMountedRef.current) {
           setGameState(null);
@@ -863,7 +873,7 @@ export function useGameplayState(): UseGameplayStateReturn {
         return false;
       }
     },
-    [gameplayConnection, gameStatePda, program]
+    [gameplayWriteConnection, gameStatePda, program]
   );
 
   /**
