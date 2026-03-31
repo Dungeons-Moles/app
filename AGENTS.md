@@ -6,14 +6,15 @@ This repository hosts the React Native + Expo codebase for Dungeons & Moles, a P
 
 - **Game loop:** Explore a seeded map, fight auto-resolving combat, use POIs for upgrades, and clear week bosses.
 - **Determinism:** `src/game/` logic must be deterministic for replay/debugging.
-- **Specs:** Product specs live in `specs/001-pve-dungeon-crawler/` and design detail is summarized in `specs/gdd.md`.
+- **Specs:** Design detail is in `specs/gdd.md`; combat follow-ups in `specs/combat-program-followups.md`.
 
 ## Architecture & Data Flow
 
 - **Pure logic vs UI:** `src/game/` contains pure logic (no React). UI lives in `src/components/` and `src/screens/`.
-- **State machine:** `src/game/engine/state-machine.ts` defines phase transitions (Exploration, Combat, POI, Boss, Victory/Defeat).
+- **State machine:** `src/game/engine/state-machine.ts` defines phase transitions (MainMenu, Exploration, Combat, POIInteraction, BossFight, Victory, Defeat).
 - **Reducer:** `src/game/engine/game-reducer.ts` manages local game state but must defer to on-chain state as the source of truth.
 - **RNG:** Use `SeededRNG` from `src/game/engine/rng.ts`; avoid `Math.random()` and `Date.now()` in game logic.
+- **Contexts:** 10 React contexts in `src/contexts/` manage cross-cutting state (SessionContext, WalletContext, CombatContext, GameContext, GameplayStateContext, ProfileContext, AudioContext, SettingsContext, SolanaConnectionContext, ScreenVariantContext).
 
 ## CRITICAL: On-Chain-First Principle
 
@@ -26,7 +27,7 @@ This repository hosts the React Native + Expo codebase for Dungeons & Moles, a P
 - **Phase/time progression:** Day/Night/Week transitions happen on-chain when `move_player` exhausts remaining moves. The frontend must reflect on-chain phase state, not compute transitions locally.
 - **Boss fights:** The `trigger_boss_fight` instruction resolves boss combat on-chain. The frontend must not resolve boss fights locally.
 
-**Pattern: On-chain instruction → Confirm → Fetch confirmed state → Update local UI**
+**Pattern: On-chain instruction -> Confirm -> Fetch confirmed state -> Update local UI**
 
 If the on-chain transaction fails, the local state must NOT change. No optimistic updates that persist on failure. The on-chain programs (`gameplay-state`, `combat-system`, `poi-system`, `session-manager`, `map-generator`, `player-inventory`, `field-enemies`) are the single source of truth.
 
@@ -91,11 +92,146 @@ It must NEVER silently start the game with a local seed and pretend the session 
 
 ## Key Directories
 
-- `src/game/`: Deterministic engine, combat, map generation, entities.
-- `src/data/`: Static definitions for items, gear, bosses, POIs.
-- `src/components/` + `src/screens/`: React Native UI.
-- `assets/`: All static images (see structure below).
-- `specs/`: Product specs and plans (`specs/gdd.md` is the design reference).
+- `src/game/`: Deterministic engine, combat, map generation, entities, input handling, time progression.
+- `src/data/`: Static definitions for items, gear, bosses, POIs, skins, NFT items.
+- `src/components/`: React Native UI components (see Components section below).
+- `src/screens/`: All app screens (see Screens section below).
+- `src/hooks/`: React hooks for game mechanics, PvP modes, input, persistence.
+- `src/contexts/`: React context providers (session, wallet, combat, game, profile, audio, settings, connection, screen variant).
+- `src/services/solana/`: On-chain interaction layer (account fetching, transaction building, event parsing, VRF, session management).
+- `src/services/storage/`: Secure storage (Expo SecureStore wrapper).
+- `src/utils/`: Shared utilities (phase labels, retry, rarity colors, stat display, storage, transaction alerts, session setup signal, image preloading).
+- `src/constants/`: App version, critical image lists, preload asset config.
+- `src/types/`: Shared TypeScript types (game types, Solana types).
+- `src/theme/`: Typography configuration (IM Fell English + Inter font families).
+- `src/navigation/`: React Navigation stack with typed route params.
+- `assets/`: All static images (see Assets section below).
+- `specs/`: Game design document (`gdd.md`) and combat follow-ups.
+
+## Screens
+
+| Screen | File | Purpose |
+| --- | --- | --- |
+| Loading | `LoadingScreen.tsx` | Initial app boot/splash |
+| ProfileCreation | `ProfileCreationScreen.tsx` | First-time profile setup |
+| Account | `AccountScreen.tsx` | Sign in / wallet connection |
+| Hub | `HubScreen.tsx` | Main menu after login |
+| CampaignSelect | `CampaignSelectScreen.tsx` | Campaign level selection |
+| SessionLoading | `SessionLoadingScreen.tsx` | Loading screen during session creation |
+| Game | `GameScreen.tsx` | Main gameplay/exploration |
+| Combat | `CombatScreen.tsx` | Combat encounter with replay |
+| Death | `DeathScreen.tsx` | Run summary after player death |
+| Victory | `VictoryScreen.tsx` | Level completion with unlock animations |
+| PitDraft | `PitDraftScreen.tsx` | Pit Draft PvP mode |
+| PitDraftHistory | `PitDraftHistoryScreen.tsx` | Pit Draft match history |
+| Duels | `DuelsScreen.tsx` | Duels PvP mode |
+| DuelsHistory | `DuelsHistoryScreen.tsx` | Duel match history |
+| Gauntlet | `GauntletScreen.tsx` | Gauntlet PvP mode |
+| GauntletHistory | `GauntletHistoryScreen.tsx` | Gauntlet run history |
+| GauntletRanking | `GauntletRankingScreen.tsx` | Gauntlet leaderboards |
+| Marketplace | `MarketplaceScreen.tsx` | NFT trading marketplace |
+| Items | `ItemsScreen.tsx` | Item inventory/collection |
+| Skins | `SkinsScreen.tsx` | Skin management |
+| BattleSimulator | `BattleSimulatorScreen.tsx` | Combat testing (debug only) |
+
+## Components
+
+- `src/components/combat/` - CombatLayout (shared PvE/PvP), CombatArena (Skia + web), BossIntro, CombatLog, CombatResult, DamageNumbers, EffectNotifications, EnemyPanel, PlayerPanel, SpeedControls, StatusEffectIcons, VictoryDefeatDisplay
+- `src/components/game/` - GameCanvas, MapRenderer (Skia + web), Sidebar, TopBar, StatsPanel, InventoryPanel, POIModal, DPadControls, FastTravelButton/Overlay, DebugOverlay, BossTooltipModal, CombatResultFloater, DefeatOverlay, WallHighlight, ItemTooltip, ItemsetTooltip, OverviewPanController
+- `src/components/ui/` - ControllerHints, ControllerKeyboard, ControllerNumpad, FocusGlow, BetaWelcomeModal, PauseMenuModal, TutorialModal, HubSettingsModal, GauntletPoolBadge, VolumeControls, Checkbox
+- `src/components/common/` - CachedImage, CachedImageBackground, GameLoadingBackdrop (+ web), InstantImageBackground (+ web), Skeleton
+- `src/components/items/` - ItemCard, ItemGrid, UnlockAnimation
+- `src/components/session/` - SessionCard, SessionSwitcher
+- `src/components/payment/` - PaymentConfirmationModal, PaymentTokenSelector
+- `src/components/marketplace/` - NftCard, PriceInput
+- `src/components/poi/` - ItemTooltip, SimplifiedItemOption
+- `src/components/profile/` - ProfileCard
+- `src/components/wallet/` - Wallet provider icons (Phantom, Solflare, Backpack, Jupiter)
+- `src/components/quests/` - QuestCard
+- `src/components/night/` - EnemyMovement
+- `src/components/web/` - MobileLanding, SocialSidebar
+- Root: InlineModal (+ web), Psg1Wrapper (+ web)
+
+## Hooks
+
+### Core Game & Session
+- `useGameplayState` - On-chain gameplay state management
+- `useSessionManager` - Session lifecycle (start, resume, end, abandon)
+- `useSessionSigner` - Session key creation and management
+- `useSessionKey` - Session key access
+- `useOfflineSync` - Offline state synchronization
+- `useMapGenerator` - Map generation coordination
+
+### PvP Modes
+- `usePitDraft` - Pit Draft queue, match, and combat flow
+- `useDuels` - Duels queue and seed-matched run flow
+- `useGauntlet` - Gauntlet entry, echo fights, and ranking
+
+### Game Mechanics
+- `usePoiInteraction` - POI interaction handling (on-chain)
+- `useNightMovement` - Enemy movement during night phase
+- `useFogPersistence` - Fog of war state persistence
+- `useHitAnimation` - Combat hit animation timing
+- `useEquipSkin` - Skin equipping
+- `useEquippedSkinImage` - Equipped skin image resolution
+- `useEntityImages` - Entity image loading
+- `useNftMarketplace` - NFT marketplace operations
+- `usePlayerProfile` - Player profile management
+- `useQuests` - Quest system
+- `usePaymentToken` - Payment token selection
+
+### Input & UI
+- `useInput` - General input handling
+- `useInputMode` - Controller vs touch detection (has `.web.ts` variant)
+- `useControllerAction` - Gamepad button action mapping
+- `useNativeGamepadMotion` - Native gamepad motion input
+- `useOrientationLock` - Screen orientation locking
+- `usePsg1LastEvent` - psg1-sim event tracking
+
+## Solana Services
+
+### Core Services (`src/services/solana/`)
+- `config.ts` - Solana connection and cluster configuration
+- `constants.ts` - Program IDs and PDA derivation
+- `programs.ts` - Anchor program instances
+- `connectivity.ts` - Network connectivity detection
+- `errors.ts` - Solana error handling
+- `cache.ts` - Account data caching
+- `types.ts` - Shared Solana types
+
+### Game State
+- `gameplayState.ts` - Core gameplay state read/write (movement, combat, phase)
+- `mapGeneratorClient.ts` - Map generation instructions
+- `poiSystem.ts` - POI interaction instructions
+- `eventParser.ts` - Combat event parsing from transaction logs
+- `playerInventory.ts` - Player inventory management
+
+### Session Management
+- `sessionBundle.ts` - Session creation with bundled transactions
+- `sessionList.ts` - Session list fetching and switching
+- `sessionRestore.ts` - Session recovery and restoration
+- `sessionSigner.ts` - Deterministic session key derivation and management
+- `syncQueue.ts` - Transaction sync queue
+
+### VRF & Delegation
+- `vrf.ts` - VRF request/fulfillment (ER oracle queue)
+- `forceUndelegate.ts` - Force undelegation from ER
+- `deferredCleanup.ts` - Deferred account cleanup
+- `localVrfPayer.ts` - Fee payer for localnet VRF
+- `validatorFingerprint.ts` - Validator identification
+
+### Marketplace & Assets
+- `metaplexCore.ts` - Metaplex Core NFT operations
+- `jupiter.ts` - Jupiter swap aggregator integration
+- `accountFetch.ts` - Account data fetching
+
+### IDLs (`src/services/solana/idl/`)
+- `gameplay_state.json`, `session_manager.json`, `poi_system.json`, `map_generator.json`, `player_inventory.json`, `player_profile.json`
+- `combat_system.json`, `field_enemies.json` (shared crate IDLs)
+- `nft_marketplace.json`
+
+### Type Definitions (`src/services/solana/types/`)
+- `combat_events.ts`, `gameplay_state.ts`, `item_pool.ts`, `map_generator.ts`, `nft_marketplace.ts`, `player_inventory.ts`, `player_profile.ts`, `poi_system.ts`, `session_manager.ts`
 
 ## Solana Programs (On-Chain)
 
@@ -162,8 +298,9 @@ cp ../solana-programs/target/idl/player_profile.json src/services/solana/idl/
 - `npm run android` / `npm run ios` / `npm run web`: run on device/emulator/web
 - `npm run lint` / `npm run lint:fix`: lint code
 - `npm run format`: format code with Prettier
+- `npm run optimize:images`: optimize runtime image assets
 - `npm run typecheck`: TypeScript type check
-- `npm test` / `npm run test:watch` / `npm run test:coverage`: Jest tests
+- `npm test` / `npm run test:watch` / `npm run test:coverage` / `npm run test:ci`: Jest tests
 
 ## Coding Conventions
 
@@ -174,7 +311,9 @@ cp ../solana-programs/target/idl/player_profile.json src/services/solana/idl/
 
 ## Testing Guidelines
 
-- Jest tests live in `__tests__/` and `src/`.
+- Jest tests live in `__tests__/` (unit + integration) and `src/` (co-located).
+- Unit tests cover: combat (damage, status effects, determinism, speed, post-combat HP), entities (player, bosses, items, POIs), map (fog of war, dig, pathfinding, generator), time (progression), RNG (determinism), data (itemsets, POIs, items), assets (image validation), gold rewards.
+- Integration tests cover: exploration, full runs, wall breaking, fast travel, map overview, determinism.
 - Coverage targets `src/game/**/*.ts`.
 - Add deterministic tests for game logic changes (fixed seeds).
 
@@ -182,46 +321,8 @@ cp ../solana-programs/target/idl/player_profile.json src/services/solana/idl/
 
 - Commit format: `feat(scope): ...`, `fix: ...`, `docs: ...`, `merge: ...`.
 - Reference task IDs when relevant (e.g., `T134`).
-- Update `specs/001-pve-dungeon-crawler/tasks.md` when completing planned tasks.
 
-## Core Loop Integration (007)
-
-The core loop integration feature (specs/007-core-loop-integration/) adds:
-
-### Screens
-
-- `DeathScreen` - Run summary after player death
-- `VictoryScreen` - Level completion with unlock animations
-- `RunPurchaseScreen` - Purchase runs (20 for 0.001 SOL)
-
-### Components
-
-- `src/components/combat/` - CombatLayout (shared PvE/PvP), CombatArena (Skia + web), EnemyPanel, PlayerPanel, SpeedControls, VictoryDefeatDisplay
-- `src/components/ui/` - ControllerHints (button hint bar), FocusGlow (selection highlight), ControllerKeyboard (on-screen keyboard)
-- `src/components/session/` - SessionCard for multi-session display
-- `src/components/items/` - ItemCard, ItemGrid, UnlockAnimation
-
-### Hooks
-
-- `useSessionList` - Multi-session management (fetch, switch, abandon)
-- `useCombatReplay` - Combat event parsing and replay
-- `useNightMovement` - Enemy movement during night phase
-- `usePoiInteraction` - POI interaction handling
-- `useControllerAction` - Gamepad/controller button action mapping
-- `useInputMode` - Detects controller vs touch input mode (has `.web.ts` variant)
-
-### Services
-
-- `src/services/solana/sessionList.ts` - Session list fetching and switching
-- `src/services/solana/sessionBundle.ts` - Session creation with sessionSigner wallet
-- `src/services/solana/eventParser.ts` - Combat event parsing from transaction logs
-
-### Navigation Routes
-
-- Death, Victory, RunPurchase screens added to navigation
-- Route params include combat replay data, level info, and unlock data
-
-### Time/Phase System
+## Time/Phase System
 
 - 3 weeks per level, each with Day 1-3 and Night 1-3 phases
 - Boss fight triggers at end of Night 3 for each week
@@ -240,12 +341,29 @@ All screens support gamepad navigation via `psg1-sim`. Key patterns:
 
 ## Screen Variants
 
-- `useScreenVariant()` returns `'compact'` (simulator/TV, ~1240×1080) or `'wide'` (mobile landscape)
+- `useScreenVariant()` returns `'compact'` (simulator/TV, ~1240x1080) or `'wide'` (mobile landscape)
 - Common pattern: `const isCompact = useScreenVariant() === 'compact'; const scale = isCompact ? 2 : 1;`
 - Both `.tsx` and `.web.tsx` variants exist for components using Skia (native) vs plain RN (web)
 
+## Platform-Specific Files (.web.ts/.web.tsx)
+
+- `useInputMode.web.ts` - Web input mode detection
+- `InlineModal.web.tsx` - Web modal variant
+- `Psg1Wrapper.web.tsx` - Web psg1-sim wrapper
+- `CombatArena.web.tsx` - Web combat rendering (plain RN instead of Skia)
+- `GameLoadingBackdrop.web.tsx` - Web loading backdrop
+- `InstantImageBackground.web.tsx` - Web image background
+- `MapRenderer.web.tsx` - Web map rendering
+- `GameCanvas.web.tsx` - Web game canvas
+
 ## Active Technologies
 
-- TypeScript 5.9.2 (React Native / Expo 54.0) + @solana/web3.js 1.98.4, @coral-xyz/anchor 0.32.1, React Native 0.81.5, Shopify React Native Skia
+- TypeScript 5.9 (React Native 0.81.5 / Expo SDK 54) + @solana/web3.js 1.98, @coral-xyz/anchor 0.32
+- @magicblock-labs/ephemeral-rollups-sdk 0.6 (ER delegation/undelegation)
+- React Navigation 7 (native stack)
+- Shopify React Native Skia (combat/game rendering)
+- React Native Reanimated 4.1 (animations)
 - psg1-sim (console simulator shell with gamepad input)
-- AsyncStorage (profile cache), Expo SecureStore (sessionSigner wallet keys)
+- AsyncStorage (profile cache), Expo SecureStore (session signer wallet keys)
+- Sentry (error tracking), Vercel Analytics
+- Jest 30 + ts-jest (testing), Playwright (E2E)

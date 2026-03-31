@@ -7,6 +7,7 @@ This client connects to the on-chain programs in `solana-programs` and supports 
 ## Features
 
 - Wallet connection and session-signer wallet session flow
+- Deterministic session keys derived from wallet `signMessage` (cross-device recovery)
 - On-chain session lifecycle (start, resume, switch, abandon, cleanup)
 - PvE campaign gameplay with map exploration, POIs, enemies, and boss fights
 - Campaign selection and multi-session management
@@ -14,13 +15,16 @@ This client connects to the on-chain programs in `solana-programs` and supports 
 - Duels PvP mode (async queue + seed-matched run flow)
 - Gauntlet PvP mode (5-week async mode with echo fights, history, ranking)
 - Combat replay UI with deterministic log playback
-- NFT marketplace (list, buy, cancel)
+- NFT marketplace (list, buy, cancel) with Metaplex Core assets
+- Jupiter swap integration and multi-token payments
 - Player profile creation and account management
 - Items/inventory management with skin equipping
+- Quest system
 - Death and victory screens with run summaries
 - Controller/gamepad navigation across all screens (via psg1-sim)
 - Responsive compact and wide screen variants
 - Mobile and web support through Expo
+- Sentry error tracking and Vercel analytics
 
 ## Tech Stack
 
@@ -28,11 +32,13 @@ This client connects to the on-chain programs in `solana-programs` and supports 
 - TypeScript 5.9
 - React 19.1
 - @coral-xyz/anchor 0.32 + @solana/web3.js 1.98
+- @magicblock-labs/ephemeral-rollups-sdk 0.6
 - React Navigation 7
 - React Native Skia (combat/game rendering)
 - React Native Reanimated (animations)
 - psg1-sim (console simulator with gamepad support)
 - AsyncStorage + Expo SecureStore (persistence)
+- Sentry (error tracking) + Vercel Analytics
 
 ## Prerequisites
 
@@ -174,6 +180,7 @@ npm run typecheck
 npm run lint
 npm run lint:fix
 npm run format
+npm run optimize:images
 npm test
 npm run test:watch
 npm run test:coverage
