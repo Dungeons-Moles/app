@@ -15,11 +15,14 @@ import {
   ComputeBudgetProgram,
 } from '@solana/web3.js';
 import { Program } from '@coral-xyz/anchor';
+import * as Sentry from '@sentry/react-native';
 import { SOLANA_CONFIG } from './config';
 import {
   sendSessionSignerTransaction,
   confirmErTransaction,
   getCachedErBlockhash,
+  getMagicRouterBlockhashForAccounts,
+  invalidateCachedErBlockhash,
   buildMessageTemplate,
   signTemplatedTransaction,
   fireAndForgetRawTx,
@@ -82,6 +85,28 @@ const MOVE_PLAYER_DISCRIMINATOR = Buffer.from([17, 58, 68, 221, 186, 117, 140, 2
 const moveTemplateCache = new Map<string, MessageTemplate>();
 // Cached Ed25519 seed (first 32 bytes of secretKey) to avoid .slice() allocation per move.
 const seedCache = new Map<string, Uint8Array>();
+const isMagicRouterRpc = (connection: Connection): boolean =>
+  connection.rpcEndpoint.replace(/\/+$/, '').includes('router.magicblock.app');
+
+const getMoveRoutedAccounts = (
+  sessionPda: PublicKey,
+  gameStatePda: PublicKey,
+  generatedMapPda: PublicKey,
+  inventoryPda: PublicKey,
+  mapPoisPda: PublicKey,
+  sessionDiscoveryPda: PublicKey,
+  gauntletEchoesPda: PublicKey,
+  discoveryExists: boolean,
+  gauntletEchoesExists: boolean
+): string[] => [
+  sessionPda.toBase58(),
+  gameStatePda.toBase58(),
+  generatedMapPda.toBase58(),
+  inventoryPda.toBase58(),
+  mapPoisPda.toBase58(),
+  ...(discoveryExists ? [sessionDiscoveryPda.toBase58()] : []),
+  ...(gauntletEchoesExists ? [gauntletEchoesPda.toBase58()] : []),
+];
 
 /** Patch specs for locating mutable fields in the serialized move_player message. */
 const MOVE_PATCH_SPECS = [
@@ -145,7 +170,22 @@ export async function eagerBuildMoveTemplate(
   const gauntletEchoesExists = gauntletEchoesExistsCache.get(sessionKey)!;
 
   try {
-    const { blockhash } = await getCachedErBlockhash(connection, 'processed');
+    const { blockhash } = isMagicRouterRpc(connection)
+      ? await getMagicRouterBlockhashForAccounts(
+          connection,
+          getMoveRoutedAccounts(
+            sessionPda,
+            gameStatePda,
+            pdas.generatedMap,
+            pdas.inventory,
+            pdas.mapPois,
+            pdas.sessionDiscovery,
+            pdas.gauntletEchoes,
+            discoveryExists,
+            gauntletEchoesExists
+          )
+        )
+      : await getCachedErBlockhash(connection, 'processed');
 
     const data = Buffer.alloc(10);
     data.set(MOVE_PLAYER_DISCRIMINATOR, 0);
@@ -450,7 +490,22 @@ export async function movePlayer(
     const tTemplate = Date.now();
 
     // Get cached blockhash (pre-decoded bytes avoid bs58.decode per move)
-    const { blockhash, blockhashBytes } = await getCachedErBlockhash(connection, 'processed');
+    const { blockhash, blockhashBytes } = isMagicRouterRpc(connection)
+      ? await getMagicRouterBlockhashForAccounts(
+          connection,
+          getMoveRoutedAccounts(
+            sessionPda,
+            gameStatePda,
+            generatedMapPda,
+            inventoryPda,
+            mapPoisPda,
+            sessionDiscoveryPda,
+            gauntletEchoesPda,
+            discoveryExists,
+            gauntletEchoesExists
+          )
+        )
+      : await getCachedErBlockhash(connection, 'processed');
 
     let template = moveTemplateCache.get(sessionKey);
     if (!template) {
@@ -547,6 +602,23 @@ export async function movePlayer(
       })
       .catch((err) => {
         console.error('[movePlayer] Background send failed:', err);
+        Sentry.captureException(err instanceof Error ? err : new Error(String(err)), {
+          tags: {
+            source: 'gameplayState.movePlayer.backgroundSend',
+            flow: 'movement',
+          },
+          extra: {
+            sessionPda: sessionPda.toBase58(),
+            gameStatePda: gameStatePda.toBase58(),
+            targetX: params.targetX,
+            targetY: params.targetY,
+            rpcEndpoint: connection.rpcEndpoint,
+          },
+        });
+        const errMessage = (err instanceof Error ? err.message : String(err)).toLowerCase();
+        if (errMessage.includes('blockhash not found')) {
+          invalidateCachedErBlockhash(connection);
+        }
         options?.onSendFail?.(err instanceof Error ? err : new Error(String(err)));
       });
 
@@ -607,6 +679,7 @@ export async function movePlayer(
       skipErConfirmation: true,
       fireAndForget: true,
       onSendFail: options?.onSendFail,
+      routedAccounts: isMagicRouterRpc(connection) ? [sessionPda] : undefined,
     }
   );
 

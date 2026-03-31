@@ -9,6 +9,7 @@
  */
 
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import * as Sentry from '@sentry/react-native';
 import { useGame, GamePhase } from '@/contexts/GameContext';
 import { TimePhase } from '@/game/engine/types';
 import { useSession } from '@/contexts/SessionContext';
@@ -1786,6 +1787,18 @@ export function usePoiInteraction(): UsePoiInteractionResult {
         const errorMessage = getUserErrorMessage(err, 'poi_system');
         setError(errorMessage);
         console.error('[usePoiInteraction] interact() ERROR:', err);
+        Sentry.captureException(err instanceof Error ? err : new Error(String(err)), {
+          tags: {
+            source: 'usePoiInteraction.interact',
+            flow: 'poi',
+          },
+          extra: {
+            sessionPda: sessionPda?.toBase58() ?? null,
+            poiType: currentPoi?.poiType ?? null,
+            poiPosition: currentPoi ? { x: currentPoi.x, y: currentPoi.y } : null,
+            playerPosition,
+          },
+        });
         setInteractionState('idle');
         return { success: false };
       } finally {
@@ -2161,6 +2174,17 @@ export function usePoiInteraction(): UsePoiInteractionResult {
         const errorMessage = getUserErrorMessage(err, 'poi_system');
         setError(errorMessage);
         console.error('[usePoiInteraction] selectCacheOffer ERROR:', err);
+        Sentry.captureException(err instanceof Error ? err : new Error(String(err)), {
+          tags: {
+            source: 'usePoiInteraction.selectCacheOffer',
+            flow: 'poi',
+          },
+          extra: {
+            sessionPda: sessionPda?.toBase58() ?? null,
+            poiIndex: confirmedPoiIndex,
+            choiceIndex,
+          },
+        });
         return { success: false };
       } finally {
         setIsInteracting(false);
@@ -3117,6 +3141,18 @@ export function usePoiInteraction(): UsePoiInteractionResult {
         const errorMessage = getUserErrorMessage(err, 'poi_system');
         setError(errorMessage);
         console.error('[usePoiInteraction] confirmPoiSelection error:', err);
+        Sentry.captureException(err instanceof Error ? err : new Error(String(err)), {
+          tags: {
+            source: 'usePoiInteraction.confirmPoiSelection',
+            flow: 'poi',
+          },
+          extra: {
+            sessionPda: sessionPda?.toBase58() ?? null,
+            deferredPoiIndex,
+            deferredPoiType,
+            optionIndex,
+          },
+        });
         return { success: false };
       } finally {
         setIsInteracting(false);

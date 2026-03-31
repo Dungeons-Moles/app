@@ -84,6 +84,7 @@ import {
   SESSION_COST_DUEL,
   SESSION_COST_GAUNTLET,
   sendSessionSignerTransaction,
+  confirmErTransaction,
   buildSessionDerivationMessage,
   buildGameWalletDerivationMessage,
   deriveSessionSignerFromSignature,
@@ -431,6 +432,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }),
     []
   );
+  const delegatedValidatorCacheRef = useRef<
+    Map<string, { fqdn: string; connection: Connection }>
+  >(new Map());
+
+  useEffect(() => {
+    delegatedValidatorCacheRef.current.clear();
+  }, [erConnection.rpcEndpoint]);
 
   // Send a session bootstrap tx directly to ER (non-router path).
   const sendRoutedErTransaction = useCallback(
@@ -480,60 +488,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
       const waitForErSignature = async (
         signature: string,
-        statusConnection: Connection,
-        blockhashInfo?: { blockhash: string; lastValidBlockHeight: number }
+        statusConnection: Connection
       ): Promise<void> => {
-        if (blockhashInfo) {
-          // Use confirmTransaction (websocket-based) — avoids repeated polling
-          // round trips which are expensive from high-latency locations.
-          const result = await statusConnection.confirmTransaction(
-            { signature, ...blockhashInfo },
-            'processed'
-          );
-          const err = (result as { value?: { err?: unknown } })?.value?.err;
-          if (err) {
-            throw new Error(`ER transaction failed on-chain: ${JSON.stringify(err)}`);
-          }
-          return;
-        }
-        // Fallback: poll when blockhash info is unavailable (e.g., router path).
-        const timeoutMs = 20_000;
-        const startedAt = Date.now();
-        while (Date.now() - startedAt < timeoutMs) {
-          const statuses = await statusConnection
-            .getSignatureStatuses([signature], {
-              searchTransactionHistory: false,
-            })
-            .catch(() => null);
-          const status = statuses?.value?.[0] ?? null;
-          if (status) {
-            if (status.err) {
-              throw new Error(`ER transaction failed on-chain: ${JSON.stringify(status.err)}`);
-            }
-            if (
-              status.confirmationStatus === 'processed' ||
-              status.confirmationStatus === 'confirmed' ||
-              status.confirmationStatus === 'finalized'
-            ) {
-              return;
-            }
-          }
-          await new Promise((resolve) => setTimeout(resolve, 50));
-        }
-
-        const historyStatus = await statusConnection
-          .getSignatureStatuses([signature], {
-            searchTransactionHistory: true,
-          })
-          .catch(() => null);
-        const status = historyStatus?.value?.[0] ?? null;
-        if (!status) {
-          throw new Error(
-            `ER transaction ${signature} did not reach processed status within ${timeoutMs}ms`
-          );
-        }
-        if (status.err) {
-          throw new Error(`ER transaction failed on-chain: ${JSON.stringify(status.err)}`);
+        try {
+          await confirmErTransaction(statusConnection, signature);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          const onChainFailure = message.includes('failed on-chain');
+          throw onChainFailure ? err : new Error(`ER transaction failed on-chain: ${message}`);
         }
       };
 
@@ -551,22 +513,37 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           const useRouterPath = erConnection.rpcEndpoint.includes('router.magicblock.app');
           if (useRouterPath) {
             const sendViaDirectDelegatedValidator = async (): Promise<string> => {
+              const routingKey = routingAccounts[0]?.toBase58();
+              const cached = routingKey
+                ? delegatedValidatorCacheRef.current.get(routingKey) ?? null
+                : null;
               const routerWithDelegation = erConnection as Connection & {
                 getDelegationStatus?: (
                   account: string | PublicKey
                 ) => Promise<{ isDelegated: boolean; fqdn?: string }>;
               };
-              if (typeof routerWithDelegation.getDelegationStatus !== 'function') {
-                throw new Error('Router delegation-status API unavailable');
+              let fqdn = cached?.fqdn ?? null;
+              let directValidatorConnection = cached?.connection ?? null;
+              if (!fqdn || !directValidatorConnection) {
+                if (typeof routerWithDelegation.getDelegationStatus !== 'function') {
+                  throw new Error('Router delegation-status API unavailable');
+                }
+                const delegation = await routerWithDelegation.getDelegationStatus(routingAccounts[0]);
+                if (!delegation?.fqdn) {
+                  throw new Error('Delegation status missing validator fqdn');
+                }
+                fqdn = delegation.fqdn;
+                directValidatorConnection = new Connection(fqdn, {
+                  commitment: SOLANA_CONFIG.erCommitment,
+                  wsEndpoint: deriveErWsEndpoint(fqdn),
+                });
+                if (routingKey) {
+                  delegatedValidatorCacheRef.current.set(routingKey, {
+                    fqdn,
+                    connection: directValidatorConnection,
+                  });
+                }
               }
-              const delegation = await routerWithDelegation.getDelegationStatus(routingAccounts[0]);
-              if (!delegation?.fqdn) {
-                throw new Error('Delegation status missing validator fqdn');
-              }
-              const directValidatorConnection = new Connection(delegation.fqdn, {
-                commitment: SOLANA_CONFIG.erCommitment,
-                wsEndpoint: deriveErWsEndpoint(delegation.fqdn),
-              });
               const directLatest = await directValidatorConnection.getLatestBlockhash('confirmed');
               tx.feePayer = signerKeypair.publicKey;
               tx.recentBlockhash = directLatest.blockhash;
@@ -577,11 +554,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                 skipPreflight: true,
                 maxRetries: 2,
               });
-              await waitForErSignature(sig, directValidatorConnection, directLatest);
+              await waitForErSignature(sig, directValidatorConnection);
               console.log('[SessionContext] sendRoutedErTransaction:direct_validator_ok', {
                 attempt,
                 signature: sig,
-                fqdn: delegation.fqdn,
+                fqdn,
               });
               return sig;
             };
@@ -601,7 +578,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                 skipPreflight: true,
                 maxRetries: 2,
               });
-              await waitForErSignature(sig, erConnection, latest);
+              await waitForErSignature(sig, erConnection);
               console.log('[SessionContext] sendRoutedErTransaction:router_ok', {
                 attempt,
                 signature: sig,
@@ -634,7 +611,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             skipPreflight: true,
             maxRetries: 2,
           });
-          await waitForErSignature(sig, directErConnection, latest);
+          await waitForErSignature(sig, directErConnection);
           console.log('[SessionContext] sendRoutedErTransaction:direct_ok', {
             attempt,
             signature: sig,
@@ -648,6 +625,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             message.includes('different ER nodes');
           const isFeeVisibilityIssue = message.includes('InvalidAccountForFee');
           const isBlockhashIssue = message.includes('blockhash');
+          if (isUnknownNode || isFeeVisibilityIssue) {
+            for (const account of routingAccounts) {
+              delegatedValidatorCacheRef.current.delete(account.toBase58());
+            }
+          }
           if (
             (!isUnknownNode && !isBlockhashIssue && !isFeeVisibilityIssue) ||
             attempt >= maxAttempts

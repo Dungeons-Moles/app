@@ -221,25 +221,82 @@ const ER_RETRY_BASE_DELAY_MS = 500;
 // ER blockhash cache — avoids a full round trip per transaction.
 // ER blockhashes are valid for ~60-90s; we use a conservative 15s TTL.
 const ER_BLOCKHASH_CACHE_TTL_MS = 15_000;
-let erBlockhashCache: {
+type CachedErBlockhash = {
   blockhash: string;
   blockhashBytes: Uint8Array;
   lastValidBlockHeight: number;
   fetchedAt: number;
-} | null = null;
+};
+const erBlockhashCache = new Map<string, CachedErBlockhash>();
+
+const getErBlockhashCacheKey = (connection: Connection): string =>
+  normalizeEndpoint(connection.rpcEndpoint);
+
+export const invalidateCachedErBlockhash = (connection: Connection): void => {
+  erBlockhashCache.delete(getErBlockhashCacheKey(connection));
+};
 
 export const getCachedErBlockhash = async (
   connection: Connection,
   commitment: import('@solana/web3.js').Commitment
 ): Promise<{ blockhash: string; blockhashBytes: Uint8Array; lastValidBlockHeight: number }> => {
+  const cacheKey = getErBlockhashCacheKey(connection);
   const now = Date.now();
-  if (erBlockhashCache && now - erBlockhashCache.fetchedAt < ER_BLOCKHASH_CACHE_TTL_MS) {
-    return erBlockhashCache;
+  const cached = erBlockhashCache.get(cacheKey);
+  if (cached && now - cached.fetchedAt < ER_BLOCKHASH_CACHE_TTL_MS) {
+    return cached;
   }
   const latest = await connection.getLatestBlockhash(commitment);
-  erBlockhashCache = { ...latest, blockhashBytes: bs58.decode(latest.blockhash), fetchedAt: now };
-  return erBlockhashCache;
+  const next = { ...latest, blockhashBytes: bs58.decode(latest.blockhash), fetchedAt: now };
+  erBlockhashCache.set(cacheKey, next);
+  return next;
 };
+
+const getWritableAccounts = (tx: Transaction): string[] => {
+  const writable = new Set<string>();
+  if (tx.feePayer) writable.add(tx.feePayer.toBase58());
+  for (const ix of tx.instructions) {
+    for (const key of ix.keys) {
+      if (key.isWritable) writable.add(key.pubkey.toBase58());
+    }
+  }
+  return [...writable];
+};
+
+const getRouterBlockhashForAccounts = async (
+  connection: Connection,
+  accounts: string[]
+): Promise<{ blockhash: string; blockhashBytes: Uint8Array; lastValidBlockHeight: number }> => {
+  const response = await fetch(connection.rpcEndpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'getBlockhashForAccounts',
+      params: [accounts],
+    }),
+  });
+  const payload = (await response.json()) as {
+    result?: { blockhash?: string; lastValidBlockHeight?: number };
+    error?: { message?: string };
+  };
+  const blockhash = payload.result?.blockhash;
+  const lastValidBlockHeight = payload.result?.lastValidBlockHeight;
+  if (!blockhash || typeof lastValidBlockHeight !== 'number') {
+    throw new Error(
+      payload.error?.message ??
+        'Router did not return blockhash for routed accounts (missing result.blockhash)'
+    );
+  }
+  return {
+    blockhash,
+    blockhashBytes: bs58.decode(blockhash),
+    lastValidBlockHeight,
+  };
+};
+
+export const getMagicRouterBlockhashForAccounts = getRouterBlockhashForAccounts;
 
 /** Pre-warm the ER blockhash cache so the first move doesn't pay a round-trip penalty. */
 export const warmErBlockhashCache = (connection: Connection): void => {
@@ -296,7 +353,19 @@ export function fireAndForgetRawTx(
       method: 'sendTransaction',
       params: [wireBase64, { encoding: 'base64', skipPreflight: true, maxRetries: 2 }],
     }),
-  }).then(() => {}).catch(() => {});
+  }).then(async (response) => {
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status} ${response.statusText}`);
+    }
+    const payload = (await response.json().catch(() => null)) as
+      | { error?: { code?: number; message?: string } }
+      | null;
+    if (payload?.error) {
+      throw new Error(
+        `RPC response error ${payload.error.code ?? 'unknown'}: ${payload.error.message ?? 'unknown error'}`
+      );
+    }
+  });
 }
 
 const normalizeEndpoint = (url: string): string => url.replace(/\/+$/, '');
@@ -842,7 +911,13 @@ export async function sendSessionSignerTransaction(
   connection: Connection,
   transaction: Transaction,
   sessionSignerKeypair: Keypair,
-  options?: { skipErConfirmation?: boolean; skipConfirmation?: boolean; fireAndForget?: boolean; onSendFail?: (err: Error) => void }
+  options?: {
+    skipErConfirmation?: boolean;
+    skipConfirmation?: boolean;
+    fireAndForget?: boolean;
+    onSendFail?: (err: Error) => void;
+    routedAccounts?: PublicKey[];
+  }
 ): Promise<string> {
   const erConnection = isErConnection(connection);
   const baseInstructions = [...transaction.instructions];
@@ -883,9 +958,17 @@ export async function sendSessionSignerTransaction(
     {
       const tBh = Date.now();
       const blockhashCommitment = erConnection ? 'processed' : confirmationCommitment;
-      const latest = erConnection
-        ? await getCachedErBlockhash(connection, blockhashCommitment)
-        : await connection.getLatestBlockhash(blockhashCommitment);
+      const latest =
+        erConnection && isRouterPath && options?.routedAccounts?.length
+          ? await getRouterBlockhashForAccounts(connection, [
+              ...new Set([
+                ...getWritableAccounts(tx),
+                ...options.routedAccounts.map((account) => account.toBase58()),
+              ]),
+            ])
+          : erConnection
+            ? await getCachedErBlockhash(connection, blockhashCommitment)
+            : await connection.getLatestBlockhash(blockhashCommitment);
       blockhash = latest.blockhash;
       lastValidBlockHeight = latest.lastValidBlockHeight;
       tx.recentBlockhash = blockhash;
@@ -924,6 +1007,9 @@ export async function sendSessionSignerTransaction(
           console.log(`[perf] sendTransaction(bg): completed (router=${isRouterPath})`);
         }).catch((err) => {
           console.error('[sessionSignerWallet] Background send failed:', err);
+          if (erConnection && isRetriableErBlockhashError(err)) {
+            invalidateCachedErBlockhash(connection);
+          }
           options?.onSendFail?.(err instanceof Error ? err : new Error(String(err)));
         });
       } else {
@@ -934,6 +1020,9 @@ export async function sendSessionSignerTransaction(
           console.log(`[perf] sendTransaction(bg): completed (router=${isRouterPath})`);
         }).catch((err) => {
           console.error('[sessionSignerWallet] Background send failed:', err);
+          if (erConnection && isRetriableErBlockhashError(err)) {
+            invalidateCachedErBlockhash(connection);
+          }
           options?.onSendFail?.(err instanceof Error ? err : new Error(String(err)));
         });
       }
@@ -1038,6 +1127,9 @@ export async function sendSessionSignerTransaction(
       lastError = err;
       const shouldRetryEr =
         erConnection && (isRetriableErWriteLockError(err) || isRetriableErBlockhashError(err));
+      if (erConnection && isRetriableErBlockhashError(err)) {
+        invalidateCachedErBlockhash(connection);
+      }
       if (!shouldRetryEr || attempt >= maxAttempts) {
         if (err instanceof SendTransactionError) {
           // Log preflight simulation logs if available (works on base chain

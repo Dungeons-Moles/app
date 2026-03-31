@@ -1498,11 +1498,17 @@ export function useSessionManager() {
         // MagicBlock ER requires skipPreflight: true — simulation does not
         // handle delegated accounts correctly on the ER.
         const UNDELEGATE_CU_LIMIT = 400_000;
-        const sendAndConfirmOnEr = async (tx: Transaction, label: string): Promise<string> => {
+        const sendAndConfirmOnEr = async (
+          tx: Transaction,
+          label: string,
+          routedAccounts: PublicKey[]
+        ): Promise<string> => {
           tx.instructions.unshift(
             ComputeBudgetProgram.setComputeUnitLimit({ units: UNDELEGATE_CU_LIMIT })
           );
-          const sig = await sendSessionSignerTransaction(erConnection, tx, sessionSignerKeypair);
+          const sig = await sendSessionSignerTransaction(erConnection, tx, sessionSignerKeypair, {
+            routedAccounts,
+          });
           console.log(`[useSessionManager] undelegate ${label}: confirmed ${sig.slice(0, 20)}…`);
           return sig;
         };
@@ -1524,7 +1530,10 @@ export function useSessionManager() {
                   magicContext: magicContextId,
                 })
                 .transaction();
-              await sendAndConfirmOnEr(undelegateGameplayTx, 'gameplay');
+              await sendAndConfirmOnEr(undelegateGameplayTx, 'gameplay', [
+                sessionPda,
+                gameStatePda,
+              ]);
             },
             [
               [gameStatePda, SOLANA_CONFIG.programs.gameplayState, 'game_state'],
@@ -1546,7 +1555,10 @@ export function useSessionManager() {
                   magicContext: magicContextId,
                 })
                 .transaction();
-              await sendAndConfirmOnEr(undelegateMapTx, 'generated_map');
+              await sendAndConfirmOnEr(undelegateMapTx, 'generated_map', [
+                sessionPda,
+                generatedMapPda,
+              ]);
             },
             [[generatedMapPda, SOLANA_CONFIG.programs.mapGenerator, 'generated_map']],
             true
@@ -1566,7 +1578,10 @@ export function useSessionManager() {
                   magicContext: magicContextId,
                 })
                 .transaction();
-              await sendAndConfirmOnEr(undelegateDiscoveryTx, 'session_discovery');
+              await sendAndConfirmOnEr(undelegateDiscoveryTx, 'session_discovery', [
+                sessionPda,
+                sessionDiscoveryPda,
+              ]);
             },
             [[sessionDiscoveryPda, SOLANA_CONFIG.programs.mapGenerator, 'session_discovery']],
             true
@@ -1586,7 +1601,10 @@ export function useSessionManager() {
                   magicContext: magicContextId,
                 })
                 .transaction();
-              await sendAndConfirmOnEr(undelegateGauntletEchoesTx, 'gauntlet_echoes');
+              await sendAndConfirmOnEr(undelegateGauntletEchoesTx, 'gauntlet_echoes', [
+                sessionPda,
+                gauntletEchoesPda,
+              ]);
             },
             [[gauntletEchoesPda, SOLANA_CONFIG.programs.gameplayState, 'gauntlet_echoes']],
             true
@@ -1606,7 +1624,10 @@ export function useSessionManager() {
                   magicContext: magicContextId,
                 })
                 .transaction();
-              await sendAndConfirmOnEr(undelegateInventoryTx, 'inventory');
+              await sendAndConfirmOnEr(undelegateInventoryTx, 'inventory', [
+                sessionPda,
+                inventoryPda,
+              ]);
             },
             [[inventoryPda, SOLANA_CONFIG.programs.playerInventory, 'inventory']],
             true
@@ -1626,7 +1647,7 @@ export function useSessionManager() {
                   magicContext: magicContextId,
                 })
                 .transaction();
-              await sendAndConfirmOnEr(undelegatePoisTx, 'map_pois');
+              await sendAndConfirmOnEr(undelegatePoisTx, 'map_pois', [sessionPda, mapPoisPda]);
             },
             [[mapPoisPda, SOLANA_CONFIG.programs.poiSystem, 'map_pois']],
             true
@@ -1646,7 +1667,10 @@ export function useSessionManager() {
                   magicContext: magicContextId,
                 })
                 .transaction();
-              await sendAndConfirmOnEr(undelegateMapVrfTx, 'map_vrf_state');
+              await sendAndConfirmOnEr(undelegateMapVrfTx, 'map_vrf_state', [
+                sessionPda,
+                mapVrfStatePda,
+              ]);
             },
             [[mapVrfStatePda, SOLANA_CONFIG.programs.mapGenerator, 'map_vrf_state']],
             true
@@ -1669,7 +1693,8 @@ export function useSessionManager() {
               await sendSessionSignerTransaction(
                 erConnection,
                 undelegatePoiVrfTx,
-                sessionSignerKeypair
+                sessionSignerKeypair,
+                { routedAccounts: [sessionPda, poiVrfStatePda] }
               );
             },
             [[poiVrfStatePda, SOLANA_CONFIG.programs.poiSystem, 'poi_vrf_state']],
@@ -1690,7 +1715,10 @@ export function useSessionManager() {
                   magicContext: magicContextId,
                 })
                 .transaction();
-              await sendAndConfirmOnEr(undelegateGameplayVrfTx, 'gameplay_vrf_state');
+              await sendAndConfirmOnEr(undelegateGameplayVrfTx, 'gameplay_vrf_state', [
+                sessionPda,
+                gameplayVrfStatePda,
+              ]);
             },
             [[gameplayVrfStatePda, SOLANA_CONFIG.programs.gameplayState, 'gameplay_vrf_state']],
             true
@@ -1715,7 +1743,7 @@ export function useSessionManager() {
                   magicContext: magicContextId,
                 })
                 .transaction();
-              signature = await sendAndConfirmOnEr(transaction, 'session');
+              signature = await sendAndConfirmOnEr(transaction, 'session', [sessionPda]);
             },
             [[sessionPda, SOLANA_CONFIG.programs.sessionManager, 'game_session']],
             true

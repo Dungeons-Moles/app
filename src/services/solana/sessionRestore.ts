@@ -7,6 +7,7 @@
 
 import { Connection, PublicKey } from '@solana/web3.js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Sentry from '@sentry/react-native';
 import {
   deriveGameStatePda,
   deriveGeneratedMapPda,
@@ -249,6 +250,16 @@ export async function fetchFullSessionState(
         generatedMap: !!generatedMapData,
         sessionDiscovery: !!sessionDiscoveryData,
       });
+      Sentry.captureMessage('sessionRestore:missing_required_on_chain_data', {
+        level: 'error',
+        tags: { source: 'sessionRestore.fetchFullSessionState' },
+        extra: {
+          sessionPda: sessionPda.toBase58(),
+          gameState: !!gameStateData,
+          generatedMap: !!generatedMapData,
+          sessionDiscovery: !!sessionDiscoveryData,
+        },
+      });
     }
     return null;
   }
@@ -278,6 +289,19 @@ export async function fetchFullSessionState(
             y: sessionDiscoveryData?.spawnY ?? 0,
           },
         });
+        Sentry.captureMessage('sessionRestore:generated_map_not_initialized', {
+          level: 'warning',
+          tags: { source: 'sessionRestore.fetchFullSessionState' },
+          extra: {
+            sessionPda: sessionPda.toBase58(),
+            sessionDiscoveryWidth: sessionDiscoveryData?.mapWidth ?? 0,
+            sessionDiscoveryHeight: sessionDiscoveryData?.mapHeight ?? 0,
+            generatedMapWidth: generatedMapData.width,
+            generatedMapHeight: generatedMapData.height,
+            positionX: gameStateData.positionX,
+            positionY: gameStateData.positionY,
+          },
+        });
       }
       return null;
     }
@@ -296,6 +320,19 @@ export async function fetchFullSessionState(
         discoverySpawn: {
           x: sessionDiscoveryData?.spawnX ?? 0,
           y: sessionDiscoveryData?.spawnY ?? 0,
+        },
+      });
+      Sentry.captureMessage('sessionRestore:using_generated_map_fallback', {
+        level: 'warning',
+        tags: { source: 'sessionRestore.fetchFullSessionState' },
+        extra: {
+          sessionPda: sessionPda.toBase58(),
+          sessionDiscoveryWidth: sessionDiscoveryData?.mapWidth ?? 0,
+          sessionDiscoveryHeight: sessionDiscoveryData?.mapHeight ?? 0,
+          generatedMapWidth: generatedMapData.width,
+          generatedMapHeight: generatedMapData.height,
+          positionX: gameStateData.positionX,
+          positionY: gameStateData.positionY,
         },
       });
     }

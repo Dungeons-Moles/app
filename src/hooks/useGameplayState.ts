@@ -8,6 +8,7 @@
 import { useCallback, useState, useRef, useEffect, useMemo } from 'react';
 import { PublicKey, Keypair, Connection, Transaction } from '@solana/web3.js';
 import { AnchorProvider, Program } from '@coral-xyz/anchor';
+import * as Sentry from '@sentry/react-native';
 import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
 import { useWallet } from '@/contexts/WalletContext';
 import {
@@ -446,6 +447,18 @@ export function useGameplayState(): UseGameplayStateReturn {
           {
             onSendFail: (err) => {
               console.warn('[useGameplayState] Fire-and-forget send failed:', err.message);
+              Sentry.captureException(err, {
+                tags: {
+                  source: 'useGameplayState.move.onSendFail',
+                  flow: 'movement',
+                },
+                extra: {
+                  gameStatePda: gameStatePda.toBase58(),
+                  sessionPda: sessionPda.toBase58(),
+                  targetX: params.targetX,
+                  targetY: params.targetY,
+                },
+              });
               // Cancel WS wait early — the tx never reached the ER so no update will come.
               if (!wsDiscoveryCancelled) {
                 wsDiscoveryCancelled = true;
@@ -622,6 +635,20 @@ export function useGameplayState(): UseGameplayStateReturn {
         };
       } catch (err) {
         console.error('[useGameplayState] Failed to move player:', err);
+        Sentry.captureException(err, {
+          tags: {
+            source: 'useGameplayState.move',
+            flow: 'movement',
+          },
+          extra: {
+            gameStatePda: gameStatePda.toBase58(),
+            currentSessionPda: previousState.session.toBase58(),
+            targetX: params.targetX,
+            targetY: params.targetY,
+            phase: previousState.phase,
+            week: previousState.week,
+          },
+        });
 
         if (isMountedRef.current) {
           setSyncStatus('error');
@@ -774,6 +801,19 @@ export function useGameplayState(): UseGameplayStateReturn {
         };
       } catch (err) {
         console.error('[useGameplayState] Failed to trigger boss fight:', err);
+        Sentry.captureException(err, {
+          tags: {
+            source: 'useGameplayState.triggerBoss',
+            flow: 'boss',
+          },
+          extra: {
+            gameStatePda: gameStatePda.toBase58(),
+            sessionPda: previousState.session.toBase58(),
+            runMode: previousState.runMode,
+            phase: previousState.phase,
+            week: previousState.week,
+          },
+        });
 
         if (isMountedRef.current) {
           setSyncStatus('error');
