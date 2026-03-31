@@ -1326,6 +1326,8 @@ export function useSessionManager() {
         const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
         const [inventoryPda] = deriveInventoryPda(sessionPda);
         const [mapPoisPda] = deriveMapPoisPda(sessionPda);
+        const [mapVrfStatePda] = deriveMapVrfStatePda(sessionPda);
+        const [gameplayVrfStatePda] = deriveGameplayVrfStatePda(sessionPda);
 
         // Frontend state can be stale (e.g., after interrupted cleanup). Check every account,
         // not only session PDA, because mixed ownership causes InvalidWritableAccount on move.
@@ -1338,7 +1340,9 @@ export function useSessionManager() {
           baseGeneratedMapInfo,
           baseInventoryInfo,
           baseMapPoisInfo,
+          baseMapVrfInfo,
           basePoiVrfInfo,
+          baseGameplayVrfInfo,
           baseSessionDiscoveryInfo,
           baseGauntletEchoesInfo,
         ] = await Promise.all([
@@ -1347,7 +1351,9 @@ export function useSessionManager() {
           baseConnection.getAccountInfo(generatedMapPda, 'processed'),
           baseConnection.getAccountInfo(inventoryPda, 'processed'),
           baseConnection.getAccountInfo(mapPoisPda, 'processed'),
+          baseConnection.getAccountInfo(mapVrfStatePda, 'processed').catch(() => null),
           baseConnection.getAccountInfo(poiVrfStatePda, 'processed').catch(() => null),
+          baseConnection.getAccountInfo(gameplayVrfStatePda, 'processed').catch(() => null),
           baseConnection.getAccountInfo(sessionDiscoveryPda, 'processed').catch(() => null),
           baseConnection.getAccountInfo(gauntletEchoesPda, 'processed').catch(() => null),
         ]);
@@ -1359,7 +1365,9 @@ export function useSessionManager() {
         const delegatedMap = !!baseGeneratedMapInfo?.owner.equals(DELEGATION_PROGRAM_ID);
         const delegatedInventory = !!baseInventoryInfo?.owner.equals(DELEGATION_PROGRAM_ID);
         const delegatedPois = !!baseMapPoisInfo?.owner.equals(DELEGATION_PROGRAM_ID);
+        const delegatedMapVrf = !!baseMapVrfInfo?.owner.equals(DELEGATION_PROGRAM_ID);
         const delegatedPoiVrf = !!basePoiVrfInfo?.owner.equals(DELEGATION_PROGRAM_ID);
+        const delegatedGameplayVrf = !!baseGameplayVrfInfo?.owner.equals(DELEGATION_PROGRAM_ID);
         const delegatedSessionDiscovery = !!baseSessionDiscoveryInfo?.owner.equals(DELEGATION_PROGRAM_ID);
         const delegatedGauntletEchoes = !!baseGauntletEchoesInfo?.owner.equals(DELEGATION_PROGRAM_ID);
         const hasAnyDelegated =
@@ -1368,7 +1376,9 @@ export function useSessionManager() {
           delegatedMap ||
           delegatedInventory ||
           delegatedPois ||
+          delegatedMapVrf ||
           delegatedPoiVrf ||
+          delegatedGameplayVrf ||
           delegatedSessionDiscovery ||
           delegatedGauntletEchoes;
         if (!hasAnyDelegated) {
@@ -1477,7 +1487,9 @@ export function useSessionManager() {
           map: delegatedMap ? 'DELEGATED' : 'base',
           inventory: delegatedInventory ? 'DELEGATED' : 'base',
           pois: delegatedPois ? 'DELEGATED' : 'base',
+          mapVrf: delegatedMapVrf ? 'DELEGATED' : baseMapVrfInfo ? 'base' : 'n/a',
           poiVrf: delegatedPoiVrf ? 'DELEGATED' : basePoiVrfInfo ? 'base' : 'n/a',
+          gameplayVrf: delegatedGameplayVrf ? 'DELEGATED' : baseGameplayVrfInfo ? 'base' : 'n/a',
           sessionDiscovery: delegatedSessionDiscovery ? 'DELEGATED' : baseSessionDiscoveryInfo ? 'base' : 'n/a',
           gauntletEchoes: delegatedGauntletEchoes ? 'DELEGATED' : baseGauntletEchoesInfo ? 'base' : 'n/a',
         });
@@ -1621,6 +1633,26 @@ export function useSessionManager() {
           ));
         }
 
+        if (delegatedMapVrf) {
+          childUndelegations.push(tryUndelegateOrSkip(
+            async () => {
+              const undelegateMapVrfTx = await mapGeneratorProgramEr.methods
+                .undelegateMapVrfState()
+                .accounts({
+                  mapVrfState: mapVrfStatePda,
+                  session: sessionPda,
+                  sessionSigner: sessionSignerKeypair.publicKey,
+                  magicProgram: magicProgramId,
+                  magicContext: magicContextId,
+                })
+                .transaction();
+              await sendAndConfirmOnEr(undelegateMapVrfTx, 'map_vrf_state');
+            },
+            [[mapVrfStatePda, SOLANA_CONFIG.programs.mapGenerator, 'map_vrf_state']],
+            true
+          ));
+        }
+
         if (delegatedPoiVrf) {
           childUndelegations.push(tryUndelegateOrSkip(
             async () => {
@@ -1641,6 +1673,26 @@ export function useSessionManager() {
               );
             },
             [[poiVrfStatePda, SOLANA_CONFIG.programs.poiSystem, 'poi_vrf_state']],
+            true
+          ));
+        }
+
+        if (delegatedGameplayVrf) {
+          childUndelegations.push(tryUndelegateOrSkip(
+            async () => {
+              const undelegateGameplayVrfTx = await gameplayProgramEr.methods
+                .undelegateGameplayVrfState()
+                .accounts({
+                  gameplayVrfState: gameplayVrfStatePda,
+                  gameSession: sessionPda,
+                  sessionSigner: sessionSignerKeypair.publicKey,
+                  magicProgram: magicProgramId,
+                  magicContext: magicContextId,
+                })
+                .transaction();
+              await sendAndConfirmOnEr(undelegateGameplayVrfTx, 'gameplay_vrf_state');
+            },
+            [[gameplayVrfStatePda, SOLANA_CONFIG.programs.gameplayState, 'gameplay_vrf_state']],
             true
           ));
         }
@@ -1690,8 +1742,14 @@ export function useSessionManager() {
         if (delegatedPois) {
           allChecks.push([mapPoisPda, SOLANA_CONFIG.programs.poiSystem, 'map_pois']);
         }
+        if (delegatedMapVrf) {
+          allChecks.push([mapVrfStatePda, SOLANA_CONFIG.programs.mapGenerator, 'map_vrf_state']);
+        }
         if (delegatedPoiVrf) {
           allChecks.push([poiVrfStatePda, SOLANA_CONFIG.programs.poiSystem, 'poi_vrf_state']);
+        }
+        if (delegatedGameplayVrf) {
+          allChecks.push([gameplayVrfStatePda, SOLANA_CONFIG.programs.gameplayState, 'gameplay_vrf_state']);
         }
         if (delegatedSession) {
           allChecks.push([sessionPda, SOLANA_CONFIG.programs.sessionManager, 'game_session']);

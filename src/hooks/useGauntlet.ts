@@ -91,7 +91,12 @@ export function useGauntlet() {
         if (status?.err) {
           throw new Error(`Transaction failed: ${JSON.stringify(status.err)}`);
         }
-        if (status && (status.confirmationStatus === 'processed' || status.confirmationStatus === 'confirmed' || status.confirmationStatus === 'finalized')) {
+        if (
+          status &&
+          (status.confirmationStatus === 'processed' ||
+            status.confirmationStatus === 'confirmed' ||
+            status.confirmationStatus === 'finalized')
+        ) {
           return;
         }
         await new Promise((resolve) => setTimeout(resolve, 500));
@@ -224,7 +229,11 @@ export function useGauntlet() {
         const errMsg = err instanceof Error ? err.message : String(err ?? '');
         // AccountDiscriminatorNotFound (0xbb9 / 3001) — account data is corrupted
         // or in an intermediate undelegation state. Skip rather than blocking entry.
-        if (errMsg.includes('3001') || errMsg.includes('0xbb9') || errMsg.includes('AccountDiscriminatorNotFound')) {
+        if (
+          errMsg.includes('3001') ||
+          errMsg.includes('0xbb9') ||
+          errMsg.includes('AccountDiscriminatorNotFound')
+        ) {
           console.warn(
             '[useGauntlet] closeOrphanedGauntletEchoes:discriminator_not_found, skipping',
             gauntletEchoesPda.toBase58()
@@ -298,6 +307,24 @@ export function useGauntlet() {
     [connection]
   );
 
+  const shouldRetryGauntletBootstrapVrf = useCallback(
+    (state: Awaited<ReturnType<typeof fetchGameState>>): boolean => {
+      if (!state) return true;
+      // Only retry bootstrap VRF recovery for sessions that still look like they
+      // are in the initial pre-play state. Once the player has already moved, we
+      // must not mutate map-generation inputs during resume.
+      return (
+        state.totalMoves === 0 &&
+        state.week <= 1 &&
+        state.positionX === 0 &&
+        state.positionY === 0 &&
+        !state.completed &&
+        !state.isDead
+      );
+    },
+    []
+  );
+
   const switchToGauntletSessionWithRetry = useCallback(
     async (gauntletSessionPda: PublicKey): Promise<{ success: boolean; error?: string }> => {
       let lastError: string | undefined;
@@ -317,227 +344,247 @@ export function useGauntlet() {
     [switchToSession]
   );
 
-  const enterGauntlet = useCallback(async (onCommitted?: () => void): Promise<boolean> => {
-    if (!wallet.publicKey) {
-      setError('Wallet not connected');
-      setPhase('error');
-      return false;
-    }
-
-    setIsLoading(true);
-    setError(null);
-    console.log('[useGauntlet] enterGauntlet:start', {
-      wallet: wallet.publicKey.toBase58(),
-    });
-
-    try {
-      const hasBalance = await checkBalance(BigInt(GAUNTLET_ENTRY_LAMPORTS + 10_000));
-      console.log('[useGauntlet] enterGauntlet:balance_checked', { hasBalance });
-      if (!hasBalance) {
-        setError('Insufficient SOL balance. You need at least 0.01 SOL.');
+  const enterGauntlet = useCallback(
+    async (onCommitted?: () => void): Promise<boolean> => {
+      if (!wallet.publicKey) {
+        setError('Wallet not connected');
         setPhase('error');
         return false;
       }
 
-      await ensureGauntletInitialized();
+      setIsLoading(true);
+      setError(null);
+      console.log('[useGauntlet] enterGauntlet:start', {
+        wallet: wallet.publicKey.toBase58(),
+      });
 
-      const nonces = await fetchSessionNonces();
-      const [gauntletSessionPda] = deriveGauntletSessionPda(wallet.publicKey, nonces.gauntlet);
-      if (hasPendingCleanups) {
-        const waitStartedAt = Date.now();
-        while (Date.now() - waitStartedAt < GAUNTLET_CLEANUP_WAIT_TIMEOUT_MS) {
-          await processPendingCleanups().catch((err) => {
-            console.warn('[useGauntlet] cleanup wait: processPendingCleanups failed', err);
-          });
-          const pendingSessionInfo = await connection.getAccountInfo(
+      try {
+        const hasBalance = await checkBalance(BigInt(GAUNTLET_ENTRY_LAMPORTS + 10_000));
+        console.log('[useGauntlet] enterGauntlet:balance_checked', { hasBalance });
+        if (!hasBalance) {
+          setError('Insufficient SOL balance. You need at least 0.01 SOL.');
+          setPhase('error');
+          return false;
+        }
+
+        await ensureGauntletInitialized();
+
+        const nonces = await fetchSessionNonces();
+        const [gauntletSessionPda] = deriveGauntletSessionPda(wallet.publicKey, nonces.gauntlet);
+        if (hasPendingCleanups) {
+          const waitStartedAt = Date.now();
+          while (Date.now() - waitStartedAt < GAUNTLET_CLEANUP_WAIT_TIMEOUT_MS) {
+            await processPendingCleanups().catch((err) => {
+              console.warn('[useGauntlet] cleanup wait: processPendingCleanups failed', err);
+            });
+            const pendingSessionInfo = await connection.getAccountInfo(
+              gauntletSessionPda,
+              SOLANA_CONFIG.commitment
+            );
+            if (!pendingSessionInfo) {
+              break;
+            }
+            await new Promise((resolve) => setTimeout(resolve, GAUNTLET_CLEANUP_POLL_MS));
+          }
+
+          const stillPendingSessionInfo = await connection.getAccountInfo(
             gauntletSessionPda,
             SOLANA_CONFIG.commitment
           );
-          if (!pendingSessionInfo) {
-            break;
+          if (stillPendingSessionInfo) {
+            setError(
+              'Previous gauntlet session cleanup is still in progress. Please wait a few seconds and try again.'
+            );
+            setPhase('error');
+            return false;
           }
-          await new Promise((resolve) => setTimeout(resolve, GAUNTLET_CLEANUP_POLL_MS));
         }
 
-        const stillPendingSessionInfo = await connection.getAccountInfo(
+        console.log('[useGauntlet] enterGauntlet:checking_existing_session', {
+          gauntletSessionPda: gauntletSessionPda.toBase58(),
+        });
+        await closeOrphanedGauntletEchoes(gauntletSessionPda);
+        const existingGauntletSessionInfo = await connection.getAccountInfo(
           gauntletSessionPda,
           SOLANA_CONFIG.commitment
         );
-        if (stillPendingSessionInfo) {
-          setError(
-            'Previous gauntlet session cleanup is still in progress. Please wait a few seconds and try again.'
-          );
-          setPhase('error');
-          return false;
-        }
-      }
+        console.log('[useGauntlet] enterGauntlet:existing_session_check_result', {
+          exists: !!existingGauntletSessionInfo,
+        });
 
-      console.log('[useGauntlet] enterGauntlet:checking_existing_session', {
-        gauntletSessionPda: gauntletSessionPda.toBase58(),
-      });
-      await closeOrphanedGauntletEchoes(gauntletSessionPda);
-      const existingGauntletSessionInfo = await connection.getAccountInfo(
-        gauntletSessionPda,
-        SOLANA_CONFIG.commitment
-      );
-      console.log('[useGauntlet] enterGauntlet:existing_session_check_result', {
-        exists: !!existingGauntletSessionInfo,
-      });
+        let shouldSkipEnterTx = !!existingGauntletSessionInfo;
+        let needsFreshStart = false;
 
-      let shouldSkipEnterTx = !!existingGauntletSessionInfo;
-      let needsFreshStart = false;
+        if (existingGauntletSessionInfo) {
+          // Check if the existing session is dead or stuck before resuming
+          const [gameStatePda] = deriveGameStatePda(gauntletSessionPda);
+          const gameplayProgram = createGameplayStateProgram(connection);
+          const gameState = await fetchGameState(gameplayProgram, gameStatePda);
 
-      if (existingGauntletSessionInfo) {
-        // Check if the existing session is dead or stuck before resuming
-        const [gameStatePda] = deriveGameStatePda(gauntletSessionPda);
-        const gameplayProgram = createGameplayStateProgram(connection);
-        const gameState = await fetchGameState(gameplayProgram, gameStatePda);
-
-        if (gameState?.isDead) {
-          console.log('[useGauntlet] enterGauntlet:existing_session_is_dead, abandoning');
-          await forceAbandonCurrentSession();
-          needsFreshStart = true;
-          shouldSkipEnterTx = false;
-        } else if (gameState?.bossFightReady) {
-          // bossFightReady means the echo fight hasn't been resolved yet —
-          // resume normally and let GameScreen's boss useEffect call triggerBoss().
-          console.log('[useGauntlet] enterGauntlet:resuming_with_bossFightReady');
-          onCommitted?.();
-          const switchResult = await switchToGauntletSessionWithRetry(gauntletSessionPda);
-          if (!switchResult.success) {
-            setError(switchResult.error ?? 'Failed to resume gauntlet session');
-            setPhase('error');
-            return false;
-          }
-        } else {
-          console.log('[useGauntlet] enterGauntlet:resuming_existing_session');
-          onCommitted?.();
-          const switchResult = await switchToGauntletSessionWithRetry(gauntletSessionPda);
-          if (!switchResult.success) {
-            setError(switchResult.error ?? 'Failed to resume gauntlet session');
-            setPhase('error');
-            return false;
-          }
-          const resumeValidation = await validateResumedGauntletState(
-            gauntletSessionPda,
-            gameState
-          );
-          if (!resumeValidation.success) {
-            setError(resumeValidation.error ?? 'Failed to validate resumed gauntlet session');
-            setPhase('error');
-            return false;
-          }
-          // Ensure ER VRF (map + gameplay) is fulfilled before proceeding.
-          // On localnet this is a no-op. On devnet/mainnet, re-requests VRF if needed
-          // so we never proceed with the fallback seed (Rule 3: no non-VRF randomness).
-          const vrfResult = await retryErVrfForSession(gauntletSessionPda.toBase58());
-          if (!vrfResult.success) {
-            setError(vrfResult.error ?? 'Randomness (VRF) not received from oracle — please try again');
-            setPhase('error');
-            return false;
+          if (gameState?.isDead) {
+            console.log('[useGauntlet] enterGauntlet:existing_session_is_dead, abandoning');
+            await forceAbandonCurrentSession();
+            needsFreshStart = true;
+            shouldSkipEnterTx = false;
+          } else if (gameState?.bossFightReady) {
+            // bossFightReady means the echo fight hasn't been resolved yet —
+            // resume normally and let GameScreen's boss useEffect call triggerBoss().
+            console.log('[useGauntlet] enterGauntlet:resuming_with_bossFightReady');
+            onCommitted?.();
+            const switchResult = await switchToGauntletSessionWithRetry(gauntletSessionPda);
+            if (!switchResult.success) {
+              setError(switchResult.error ?? 'Failed to resume gauntlet session');
+              setPhase('error');
+              return false;
+            }
+          } else {
+            console.log('[useGauntlet] enterGauntlet:resuming_existing_session');
+            onCommitted?.();
+            const switchResult = await switchToGauntletSessionWithRetry(gauntletSessionPda);
+            if (!switchResult.success) {
+              setError(switchResult.error ?? 'Failed to resume gauntlet session');
+              setPhase('error');
+              return false;
+            }
+            const resumeValidation = await validateResumedGauntletState(
+              gauntletSessionPda,
+              gameState
+            );
+            if (!resumeValidation.success) {
+              setError(resumeValidation.error ?? 'Failed to validate resumed gauntlet session');
+              setPhase('error');
+              return false;
+            }
+            // Ensure ER VRF (map + gameplay) is fulfilled before proceeding.
+            // On localnet this is a no-op. On devnet/mainnet, re-requests VRF if needed
+            // so we never proceed with the fallback seed (Rule 3: no non-VRF randomness).
+            if (shouldRetryGauntletBootstrapVrf(gameState)) {
+              const vrfResult = await retryErVrfForSession(gauntletSessionPda.toBase58());
+              if (!vrfResult.success) {
+                setError(
+                  vrfResult.error ?? 'Randomness (VRF) not received from oracle — please try again'
+                );
+                setPhase('error');
+                return false;
+              }
+            } else {
+              console.log(
+                '[useGauntlet] enterGauntlet:resume_existing_session_skip_bootstrap_vrf_retry',
+                {
+                  totalMoves: gameState?.totalMoves ?? null,
+                  week: gameState?.week ?? null,
+                  positionX: gameState?.positionX ?? null,
+                  positionY: gameState?.positionY ?? null,
+                }
+              );
+            }
           }
         }
-      }
 
-      if (needsFreshStart) {
-        // Dead/stuck session was cleaned up — start a fresh gauntlet
-        console.log('[useGauntlet] enterGauntlet:starting_fresh_after_cleanup');
-        const startResult = await startGauntletGame(onCommitted);
-        if (!startResult.success) {
-          setError(startResult.error ?? 'Failed to start gauntlet session after cleanup');
-          setPhase('error');
-          return false;
-        }
-        const switchResult = await switchToGauntletSessionWithRetry(gauntletSessionPda);
-        if (!switchResult.success) {
-          setError(switchResult.error ?? 'Failed to finalize gauntlet session setup');
-          setPhase('error');
-          return false;
-        }
-        } else if (!existingGauntletSessionInfo) {
-          console.log('[useGauntlet] enterGauntlet:starting_new_gauntlet_session');
+        if (needsFreshStart) {
+          // Dead/stuck session was cleaned up — start a fresh gauntlet
+          console.log('[useGauntlet] enterGauntlet:starting_fresh_after_cleanup');
           const startResult = await startGauntletGame(onCommitted);
-          console.log('[useGauntlet] enterGauntlet:startGauntletGame_result', startResult);
           if (!startResult.success) {
-          const canRecoverViaResume = isRecoverableStartError(startResult.error);
-          if (!canRecoverViaResume) {
-            setError(startResult.error ?? 'Failed to start gauntlet session');
+            setError(startResult.error ?? 'Failed to start gauntlet session after cleanup');
             setPhase('error');
             return false;
           }
-
-          // Recovery path: session creation can succeed while delegate/setup reports a transient failure.
-          // If the gauntlet session account now exists, continue as resume.
-          const postStartSessionInfo = await connection.getAccountInfo(
-            gauntletSessionPda,
-            SOLANA_CONFIG.commitment
-          );
-          if (!postStartSessionInfo) {
-            setError(startResult.error ?? 'Failed to start gauntlet session');
-            setPhase('error');
-            return false;
-          }
-
-          console.warn(
-            '[useGauntlet] enterGauntlet:recovering_after_start_failure_via_resume',
-            startResult.error
-          );
-          shouldSkipEnterTx = true;
-          const switchResult = await switchToGauntletSessionWithRetry(gauntletSessionPda);
-          if (!switchResult.success) {
-            setError(switchResult.error ?? 'Failed to resume gauntlet session');
-            setPhase('error');
-            return false;
-          }
-          const vrfResult = await retryErVrfForSession(gauntletSessionPda.toBase58());
-          if (!vrfResult.success) {
-            setError(vrfResult.error ?? 'Randomness (VRF) not received from oracle — please try again');
-            setPhase('error');
-            return false;
-          }
-        } else {
-          // Run the same switch path as resume so first entry gets identical finalized setup.
           const switchResult = await switchToGauntletSessionWithRetry(gauntletSessionPda);
           if (!switchResult.success) {
             setError(switchResult.error ?? 'Failed to finalize gauntlet session setup');
             setPhase('error');
             return false;
           }
+        } else if (!existingGauntletSessionInfo) {
+          console.log('[useGauntlet] enterGauntlet:starting_new_gauntlet_session');
+          const startResult = await startGauntletGame(onCommitted);
+          console.log('[useGauntlet] enterGauntlet:startGauntletGame_result', startResult);
+          if (!startResult.success) {
+            const canRecoverViaResume = isRecoverableStartError(startResult.error);
+            if (!canRecoverViaResume) {
+              setError(startResult.error ?? 'Failed to start gauntlet session');
+              setPhase('error');
+              return false;
+            }
+
+            // Recovery path: session creation can succeed while delegate/setup reports a transient failure.
+            // If the gauntlet session account now exists, continue as resume.
+            const postStartSessionInfo = await connection.getAccountInfo(
+              gauntletSessionPda,
+              SOLANA_CONFIG.commitment
+            );
+            if (!postStartSessionInfo) {
+              setError(startResult.error ?? 'Failed to start gauntlet session');
+              setPhase('error');
+              return false;
+            }
+
+            console.warn(
+              '[useGauntlet] enterGauntlet:recovering_after_start_failure_via_resume',
+              startResult.error
+            );
+            shouldSkipEnterTx = true;
+            const switchResult = await switchToGauntletSessionWithRetry(gauntletSessionPda);
+            if (!switchResult.success) {
+              setError(switchResult.error ?? 'Failed to resume gauntlet session');
+              setPhase('error');
+              return false;
+            }
+            const vrfResult = await retryErVrfForSession(gauntletSessionPda.toBase58());
+            if (!vrfResult.success) {
+              setError(
+                vrfResult.error ?? 'Randomness (VRF) not received from oracle — please try again'
+              );
+              setPhase('error');
+              return false;
+            }
+          } else {
+            // Run the same switch path as resume so first entry gets identical finalized setup.
+            const switchResult = await switchToGauntletSessionWithRetry(gauntletSessionPda);
+            if (!switchResult.success) {
+              setError(switchResult.error ?? 'Failed to finalize gauntlet session setup');
+              setPhase('error');
+              return false;
+            }
+          }
+        }
+
+        if (shouldSkipEnterTx) {
+          console.log('[useGauntlet] enterGauntlet:resume_existing_session_skip_enter_tx');
+        } else {
+          console.log('[useGauntlet] enterGauntlet:new_session_ready_skip_extra_enter_tx');
+        }
+
+        setPhase('queued');
+        return true;
+      } catch (err) {
+        console.error('[useGauntlet] enterGauntlet failed:', err);
+        setError(getGauntletErrorMessage(err));
+        setPhase('error');
+        return false;
+      } finally {
+        if (isMountedRef.current) {
+          setIsLoading(false);
         }
       }
-
-      if (shouldSkipEnterTx) {
-        console.log('[useGauntlet] enterGauntlet:resume_existing_session_skip_enter_tx');
-      } else {
-        console.log('[useGauntlet] enterGauntlet:new_session_ready_skip_extra_enter_tx');
-      }
-
-      setPhase('queued');
-      return true;
-    } catch (err) {
-      console.error('[useGauntlet] enterGauntlet failed:', err);
-      setError(getGauntletErrorMessage(err));
-      setPhase('error');
-      return false;
-    } finally {
-      if (isMountedRef.current) {
-        setIsLoading(false);
-      }
-    }
-  }, [
-    wallet.publicKey,
-    checkBalance,
-    closeOrphanedGauntletEchoes,
-    ensureGauntletInitialized,
-    startGauntletGame,
-    switchToGauntletSessionWithRetry,
-    connection,
-    processPendingCleanups,
-    hasPendingCleanups,
-    fetchSessionNonces,
-    retryErVrfForSession,
-    validateResumedGauntletState,
-  ]);
+    },
+    [
+      wallet.publicKey,
+      checkBalance,
+      closeOrphanedGauntletEchoes,
+      ensureGauntletInitialized,
+      startGauntletGame,
+      switchToGauntletSessionWithRetry,
+      connection,
+      processPendingCleanups,
+      hasPendingCleanups,
+      fetchSessionNonces,
+      retryErVrfForSession,
+      shouldRetryGauntletBootstrapVrf,
+      validateResumedGauntletState,
+    ]
+  );
 
   const reset = useCallback(() => {
     setPhase('confirm');

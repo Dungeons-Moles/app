@@ -1280,6 +1280,10 @@ export const POIModal = React.memo(function POIModal({
                             playSfx('ui_error');
                             return;
                           }
+                          if (!isController && !isSelected) {
+                            setSelectedShopIndex(gridIdx);
+                            return;
+                          }
                           onSelectOption(optionIndex);
                         }}
                         activeOpacity={0.7}

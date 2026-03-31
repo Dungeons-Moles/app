@@ -39,7 +39,10 @@ import type { CombatEnemyInfo } from '@/services/solana/eventParser';
 import { parseGauntletCombatVisualEvent } from '@/services/solana/gauntlet';
 import type { GauntletCombatVisualEvent } from '@/services/solana/gauntlet';
 import { sendSessionSignerTransaction } from '@/services/solana/sessionSigner';
-import { fetchSessionDiscovery, decodeSessionDiscoveryFromAccountInfo } from '@/services/solana/mapGeneratorClient';
+import {
+  fetchSessionDiscovery,
+  decodeSessionDiscoveryFromAccountInfo,
+} from '@/services/solana/mapGeneratorClient';
 import type { SessionDiscoveryData } from '@/services/solana/mapGeneratorClient';
 import { deriveSessionDiscoveryPda, deriveGauntletEchoesPda } from '@/services/solana/constants';
 import { createMapGeneratorProgram } from '@/services/solana/programs';
@@ -243,7 +246,9 @@ export function useGameplayState(): UseGameplayStateReturn {
     cancel: () => void;
   } => {
     let resolve: (state: GameState) => void;
-    const promise = new Promise<GameState>((r) => { resolve = r; });
+    const promise = new Promise<GameState>((r) => {
+      resolve = r;
+    });
     const listener = (state: GameState) => {
       wsListenersRef.current.delete(listener);
       resolve(state);
@@ -420,7 +425,9 @@ export function useGameplayState(): UseGameplayStateReturn {
         const wsState = registerWsListener();
         let wsDiscoveryCancelled = false;
         let wsDiscoveryResolve: (data: SessionDiscoveryData | null) => void;
-        const wsDiscoveryPromise = new Promise<SessionDiscoveryData | null>((r) => { wsDiscoveryResolve = r; });
+        const wsDiscoveryPromise = new Promise<SessionDiscoveryData | null>((r) => {
+          wsDiscoveryResolve = r;
+        });
         const discoveryListener = (data: SessionDiscoveryData) => {
           if (wsDiscoveryCancelled) return;
           wsDiscoveryCancelled = true;
@@ -472,7 +479,8 @@ export function useGameplayState(): UseGameplayStateReturn {
 
         // Only parse combat logs when the WS-delivered state shows HP changed or death.
         // This skips the expensive getTransaction RPC call on non-combat night moves.
-        const isNightPhase = previousState.phase === Phase.Night1 ||
+        const isNightPhase =
+          previousState.phase === Phase.Night1 ||
           previousState.phase === Phase.Night2 ||
           previousState.phase === Phase.Night3;
         const hpOrDeathChangedEarly =
@@ -489,24 +497,19 @@ export function useGameplayState(): UseGameplayStateReturn {
         }
 
         const tDone = Date.now();
-        console.log(`[perf] move: ${tDone - t0}ms (send: ${tSent - t0}ms, ws: ${tDone - tSent}ms)`)
+        console.log(`[perf] move: ${tDone - t0}ms (send: ${tSent - t0}ms, ws: ${tDone - tSent}ms)`);
 
-        // Use WS-delivered discovery data. Re-fetch via RPC only on phase/week transitions
-        // where the WS data might be stale (visibility radius changes, boss ID updates).
+        // SessionDiscovery WS updates can lag one move behind on ER under load.
+        // Always prefer a post-move RPC fetch so fog/visibility and POI reveals
+        // update on the same step; fall back to the WS snapshot if the fetch fails.
         let finalDiscovery: SessionDiscoveryData | null = wsDiscoveryData;
-        if (
-          confirmedState &&
-          (confirmedState.phase !== previousState.phase ||
-           confirmedState.week !== previousState.week)
-        ) {
-          const [sdPda] = deriveSessionDiscoveryPda(sessionPda);
-          const freshDiscovery = await fetchSessionDiscovery(
-            createMapGeneratorProgram(moveConnection),
-            sdPda
-          ).catch(() => null);
-          if (freshDiscovery) {
-            finalDiscovery = freshDiscovery;
-          }
+        const [sdPda] = deriveSessionDiscoveryPda(sessionPda);
+        const freshDiscovery = await fetchSessionDiscovery(
+          createMapGeneratorProgram(moveConnection),
+          sdPda
+        ).catch(() => null);
+        if (freshDiscovery) {
+          finalDiscovery = freshDiscovery;
         }
 
         if (isMountedRef.current) {
@@ -521,8 +524,7 @@ export function useGameplayState(): UseGameplayStateReturn {
         // on-chain), so HP-only detection misses zero-damage wins (high ARM).
         const hpOrDeathChanged =
           confirmedState != null && (confirmedState.hp < previousState.hp || confirmedState.isDead);
-        const goldIncreased =
-          confirmedState != null && confirmedState.gold > previousState.gold;
+        const goldIncreased = confirmedState != null && confirmedState.gold > previousState.gold;
 
         // Detect inline boss/echo resolution from state changes.
         // Boss fights auto-resolve inside move_player when the last Night3 move
@@ -730,9 +732,10 @@ export function useGameplayState(): UseGameplayStateReturn {
         // combat metadata path here.
         // When overrides are provided (gauntlet uses base-layer connection),
         // fall back to explicit fetch since WS subscription is on gameplayReadConnection.
-        const statePromise = overrides || !wsState
-          ? fetchGameState(prog, gameStatePda)
-          : raceWsVsFetch(wsState.promise, 1000);
+        const statePromise =
+          overrides || !wsState
+            ? fetchGameState(prog, gameStatePda)
+            : raceWsVsFetch(wsState.promise, 1000);
 
         const confirmedState = await statePromise;
 
@@ -862,7 +865,7 @@ export function useGameplayState(): UseGameplayStateReturn {
     // Immediate fetch for initial state + ER propagation retry
     (async () => {
       const state = await fetchGameState(program, gameStatePda);
-      if ((state && isMountedRef.current && !cancelled)) {
+      if (state && isMountedRef.current && !cancelled) {
         setGameState(state);
         setSyncStatus('synced');
         setLastSyncAt(Date.now());
@@ -887,9 +890,7 @@ export function useGameplayState(): UseGameplayStateReturn {
       cancelled = true;
       wsListenersRef.current.clear();
       if (wsSubIdRef.current !== null) {
-        void gameplayReadConnection
-          .removeAccountChangeListener(wsSubIdRef.current)
-          .catch(() => {});
+        void gameplayReadConnection.removeAccountChangeListener(wsSubIdRef.current).catch(() => {});
         wsSubIdRef.current = null;
       }
     };
@@ -1009,10 +1010,10 @@ async function parseGauntletVisualWithRetry(
   signature: string,
   options?: { maxAttempts?: number; delayMs?: number }
 ): Promise<GauntletCombatVisualEvent | null> {
-  return parseWithRetry(
-    () => parseGauntletCombatVisualEvent(connection, signature),
-    { label: 'gauntlet visual', ...options }
-  );
+  return parseWithRetry(() => parseGauntletCombatVisualEvent(connection, signature), {
+    label: 'gauntlet visual',
+    ...options,
+  });
 }
 
 /**

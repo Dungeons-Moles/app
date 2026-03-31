@@ -10,7 +10,7 @@ import { InstantImageBackground } from '../components/common/InstantImageBackgro
 import { Connection, PublicKey } from '@solana/web3.js';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useIsFocused } from '@react-navigation/native';
-import { RootStackParamList, CombatParams } from '../navigation';
+import { RootStackParamList, CombatParams, type UnlockedItem } from '../navigation';
 import { useGame, GamePhase } from '../contexts/GameContext';
 import { useSession } from '../contexts/SessionContext';
 import { useProfile } from '../contexts/ProfileContext';
@@ -19,7 +19,7 @@ import { useWallet } from '../contexts/WalletContext';
 import { useAudio } from '../contexts/AudioContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { useSolanaConnection } from '../contexts/SolanaConnectionContext';
-import { RunMode } from '../services/solana/types/gameplay_state';
+import { RunMode, deriveGameStatePda } from '../services/solana/types/gameplay_state';
 import { POI_TYPES } from '../services/solana/types/poi_system';
 import { convertItemInstanceToGear, convertItemInstanceToTool } from '../services/solana/pitDraft';
 import {
@@ -90,10 +90,11 @@ import {
   parseGauntletCombatVisualEvent,
 } from '@/services/solana/gauntlet';
 import { fetchSessionDiscovery } from '@/services/solana/mapGeneratorClient';
-import { createGameplayStateProgram, createMapGeneratorProgram } from '@/services/solana/programs';
-import { warmMovePlayerCaches, syncDiscoveryBoss } from '@/services/solana/gameplayState';
+import { createGameplayStateProgram, createMapGeneratorProgram, createPlayerProfileProgram } from '@/services/solana/programs';
+import { parseGameplayEvents, extractVictoryData } from '@/services/solana/eventParser';
+import { warmMovePlayerCaches, eagerBuildMoveTemplate, syncDiscoveryBoss } from '@/services/solana/gameplayState';
 import { deriveSessionDiscoveryPda, GAMEPLAY_STATE_PROGRAM_ID } from '@/services/solana/constants';
-import { warmErBlockhashCache, sendSessionSignerTransaction } from '@/services/solana/sessionSigner';
+import { warmErBlockhashCache, startErBlockhashRefresh, stopErBlockhashRefresh, sendSessionSignerTransaction } from '@/services/solana/sessionSigner';
 import {
   fetchDuelEntryForSettlement,
   buildSettleDuelPayoutTransaction,
@@ -407,13 +408,30 @@ async function buildFallbackGauntletCombatParams(
 }
 
 /**
+ * Parse the item unlock from the settle_session_result transaction.
+ */
+async function parseItemUnlockFromSettle(
+  conn: Connection,
+  settleSignature: string
+): Promise<UnlockedItem | undefined> {
+  try {
+    const profileProgram = createPlayerProfileProgram(conn);
+    const events = await parseGameplayEvents(conn, profileProgram, settleSignature);
+    const victoryData = extractVictoryData(events);
+    return victoryData.itemUnlocked;
+  } catch (err) {
+    console.warn('[GameScreen] Failed to parse item unlock from settle:', err);
+    return undefined;
+  }
+}
+
+/**
  * Navigate to CombatScreen with combat params and on-chain metadata.
  */
 function navigateToCombat(
   navigation: NativeStackNavigationProp<RootStackParamList, 'Game'>,
   combatParams: CombatParams,
-  meta: { campaignLevel: number; totalMoves: number; phase: number; runMode?: number },
-  enemiesDefeated: number
+  meta: { campaignLevel: number; totalMoves: number; phase: number; runMode?: number; enemiesDefeated: number },
 ) {
   navigation.navigate('Combat', {
     combatInput: {
@@ -422,7 +440,7 @@ function navigateToCombat(
       totalMoves: meta.totalMoves,
       phase: meta.phase,
       runMode: meta.runMode,
-      enemiesDefeated,
+      enemiesDefeated: meta.enemiesDefeated,
     },
   });
 }
@@ -432,8 +450,7 @@ function navigateToCombat(
  */
 function navigateToDeath(
   navigation: NativeStackNavigationProp<RootStackParamList, 'Game'>,
-  meta: { totalMoves: number; campaignLevel: number; week: number; phase: number; runMode?: number },
-  enemiesDefeated: number,
+  meta: { totalMoves: number; campaignLevel: number; week: number; phase: number; runMode?: number; enemiesDefeated: number },
   killedBy?: string
 ) {
   navigation.navigate('Death', {
@@ -441,7 +458,7 @@ function navigateToDeath(
     level: meta.campaignLevel,
     week: meta.week,
     phase: getPhaseLabel(meta.phase),
-    enemiesDefeated,
+    enemiesDefeated: meta.enemiesDefeated,
     killedBy,
     runMode: meta.runMode,
   });
@@ -529,18 +546,32 @@ export function GameScreen({ navigation }: GameScreenProps) {
   stateRef.current = state;
 
   // Pre-warm ER blockhash cache + move account caches on screen focus
-  // to avoid first-move latency penalty (~450ms for 3 sequential RPC calls)
+  // to avoid first-move latency penalty (~450ms for 3 sequential RPC calls).
+  // Also starts a periodic blockhash refresh so idle doesn't cause cold cache.
   useEffect(() => {
     if (isFocused && gameplayReadConnection) {
       warmErBlockhashCache(gameplayReadConnection);
+      startErBlockhashRefresh(gameplayReadConnection);
       if (sessionPda) {
-        warmMovePlayerCaches(
-          gameplayReadConnection,
-          createGameplayStateProgram(gameplayReadConnection),
-          sessionPda
-        );
+        const program = createGameplayStateProgram(gameplayReadConnection);
+        const signerKp = getSessionSignerKeypair();
+        // Warm caches then eagerly build template once caches are populated.
+        const warmPromise = warmMovePlayerCaches(gameplayReadConnection, program, sessionPda);
+        if (signerKp) {
+          warmPromise.then(() => {
+            const [gsPda] = deriveGameStatePda(sessionPda);
+            return eagerBuildMoveTemplate(
+              gameplayReadConnection,
+              gsPda,
+              sessionPda,
+              signerKp,
+            );
+          }).catch(() => {});
+        }
       }
+      return () => { stopErBlockhashRefresh(); };
     }
+    return undefined;
   }, [isFocused, gameplayReadConnection, sessionPda]);
   const onChainStateRef = useRef(onChainState);
   onChainStateRef.current = onChainState;
@@ -578,9 +609,6 @@ export function GameScreen({ navigation }: GameScreenProps) {
   const echoEquipmentRef = useRef<{ gear: Gear[]; tool: Tool | null }>({ gear: [], tool: null });
   const [combatResultIndicators, setCombatResultIndicators] = useState<CombatResultIndicator[]>([]);
   const combatResultIdRef = useRef(0);
-  // Track enemies defeated locally — on-chain removes defeated enemies from the array
-  // via swap_remove so (enemies.filter(e => e.defeated).length) is always 0.
-  const enemiesDefeatedRef = useRef(0);
   const pendingBossSidebarRefreshRef = useRef(false);
   const [defeatOverlayVisible, setDefeatOverlayVisible] = useState(false);
   const defeatMetaRef = useRef<{
@@ -590,6 +618,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
     week: number;
     phase: number;
     runMode?: number;
+    enemiesDefeated: number;
   } | null>(null);
 
   // Fade in once game state is ready, giving expo-image time to render
@@ -648,7 +677,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
             level: meta.level,
             week: meta.week,
             phase: getPhaseLabel(meta.phase),
-            enemiesDefeated: enemiesDefeatedRef.current,
+            enemiesDefeated: meta.enemiesDefeated,
             killedBy: meta.killedBy,
             runMode: meta.runMode,
           },
@@ -886,10 +915,10 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
   const navigateToBossCombat = useCallback((
     combatParams: CombatParams,
-    meta: { campaignLevel: number; totalMoves: number; phase: number; runMode?: number }
+    meta: { campaignLevel: number; totalMoves: number; phase: number; runMode?: number; enemiesDefeated: number }
   ) => {
     pendingBossSidebarRefreshRef.current = true;
-    navigateToCombat(navigation, combatParams, meta, enemiesDefeatedRef.current);
+    navigateToCombat(navigation, combatParams, meta);
   }, [navigation]);
 
   useEffect(() => {
@@ -959,17 +988,16 @@ export function GameScreen({ navigation }: GameScreenProps) {
               if (params) {
                 navigateToBossCombat(params, onChainState);
               } else {
-                navigateToDeath(navigation, onChainState, enemiesDefeatedRef.current, `Week ${onChainState.week} Echo`);
+                navigateToDeath(navigation, onChainState, `Week ${onChainState.week} Echo`);
               }
             })
             .catch(() => {
-              navigateToDeath(navigation, onChainState, enemiesDefeatedRef.current, `Week ${onChainState.week} Echo`);
+              navigateToDeath(navigation, onChainState, `Week ${onChainState.week} Echo`);
             });
         } else {
           navigateToDeath(
             navigation,
             onChainState,
-            enemiesDefeatedRef.current,
             `Week ${onChainState.week} ${onChainState.runMode === RunMode.Duel ? 'Boss' : 'Echo'}`
           );
         }
@@ -980,7 +1008,6 @@ export function GameScreen({ navigation }: GameScreenProps) {
           navigateToDeath(
             navigation,
             onChainState,
-            enemiesDefeatedRef.current,
             `Week ${onChainState.week} ${onChainState.runMode === RunMode.Duel ? 'Boss' : 'Echo'}`
           );
           return;
@@ -1091,16 +1118,25 @@ export function GameScreen({ navigation }: GameScreenProps) {
               navigateToDeath(
                 navigation,
                 bossResult.newState,
-                enemiesDefeatedRef.current,
                 `Week ${currentWeek} ${onChainState.runMode === RunMode.Duel ? 'Boss' : 'Echo'}`
               );
             } else if (bossResult.newState.completed) {
               stopAutoCommit();
-              void queueEndGame(bossResult.newState.campaignLevel, true).catch(() => {});
+              let itemUnlocked: UnlockedItem | undefined;
+              if (hasActiveSession) {
+                const endResult = await endSessionWithSessionSigner();
+                if (endResult.success && endResult.settleSignature) {
+                  itemUnlocked = await parseItemUnlockFromSettle(connection, endResult.settleSignature);
+                } else {
+                  void queueEndGame(bossResult.newState.campaignLevel, true).catch(() => {});
+                }
+              }
               navigation.replace('Victory', {
                 level: bossResult.newState.campaignLevel,
                 totalMoves: bossResult.newState.totalMoves,
-                enemiesDefeated: enemiesDefeatedRef.current,
+                enemiesDefeated: bossResult.newState.enemiesDefeated,
+                levelUnlocked: bossResult.newState.campaignLevel + 1,
+                itemUnlocked,
                 runMode: bossResult.newState.runMode,
                 gauntletPoints: bossResult.newState.gauntletPointsEarned,
               });
@@ -1228,6 +1264,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
           totalMoves: onChainState.totalMoves,
           phase: onChainState.phase,
           runMode: onChainState.runMode,
+          enemiesDefeated: onChainState.enemiesDefeated,
         });
 
         return;
@@ -1291,6 +1328,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
           totalMoves: bossResult.newState?.totalMoves ?? onChainState.totalMoves,
           phase: bossResult.newState?.phase ?? onChainState.phase,
           runMode: bossResult.newState?.runMode ?? onChainState.runMode,
+          enemiesDefeated: bossResult.newState?.enemiesDefeated ?? onChainState.enemiesDefeated,
         });
       } catch (err) {
         console.error('[GameScreen] Boss fight trigger error:', err);
@@ -1324,6 +1362,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
             totalMoves: onChainState.totalMoves,
             phase: onChainState.phase,
             runMode: onChainState.runMode,
+            enemiesDefeated: onChainState.enemiesDefeated,
           });
         } catch (fallbackErr) {
           // Boss definition missing — navigate to Death as last resort so the user isn't stuck.
@@ -1332,7 +1371,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
             fallbackErr
           );
           const bossName = BOSSES[resolvedWeekBoss]?.name ?? resolvedWeekBoss;
-          navigateToDeath(navigation, onChainState, enemiesDefeatedRef.current, bossName);
+          navigateToDeath(navigation, onChainState, bossName);
         }
       } finally {
         isTriggeringBossRef.current = false;
@@ -1375,7 +1414,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
     debugLog('[GameScreen] Dead gauntlet session detected, navigating to DeathScreen');
     isTriggeringBossRef.current = true;
-    navigateToDeath(navigation, onChainState, enemiesDefeatedRef.current, `Week ${onChainState.week} Echo`);
+    navigateToDeath(navigation, onChainState, `Week ${onChainState.week} Echo`);
   }, [
     isFocused,
     onChainState?.isDead,
@@ -1644,7 +1683,8 @@ export function GameScreen({ navigation }: GameScreenProps) {
           totalMoves: onChainState?.totalMoves ?? 0,
           phase: onChainState?.phase ?? 0,
           runMode: onChainState?.runMode,
-        }, enemiesDefeatedRef.current);
+          enemiesDefeated: onChainState?.enemiesDefeated ?? 0,
+        });
         return;
       }
 
@@ -1990,7 +2030,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
                 // Last resort: dead → DeathScreen, alive → state already advanced
                 if (result.isDead) {
-                  navigateToDeath(navigation, result.newState, enemiesDefeatedRef.current, `Week ${currentWeek} Echo`);
+                  navigateToDeath(navigation, result.newState, `Week ${currentWeek} Echo`);
                   return;
                 }
                 // Player won, state advanced to next week, continue exploration
@@ -2165,15 +2205,25 @@ export function GameScreen({ navigation }: GameScreenProps) {
                   }
 
                   if (bossResult.isDead) {
-                    navigateToDeath(navigation, bossResult.newState, enemiesDefeatedRef.current, `Week ${currentWeek} Boss`);
+                    navigateToDeath(navigation, bossResult.newState, `Week ${currentWeek} Boss`);
                   } else if (bossResult.newState.completed) {
                     // Final week won — navigate to Victory
                     stopAutoCommit();
-                    void queueEndGame(bossResult.newState.campaignLevel, true).catch(() => {});
+                    let itemUnlocked: UnlockedItem | undefined;
+                    if (hasActiveSession) {
+                      const endResult = await endSessionWithSessionSigner();
+                      if (endResult.success && endResult.settleSignature) {
+                        itemUnlocked = await parseItemUnlockFromSettle(connection, endResult.settleSignature);
+                      } else {
+                        void queueEndGame(bossResult.newState.campaignLevel, true).catch(() => {});
+                      }
+                    }
                     navigation.replace('Victory', {
                       level: bossResult.newState.campaignLevel,
                       totalMoves: bossResult.newState.totalMoves,
-                      enemiesDefeated: enemiesDefeatedRef.current,
+                      enemiesDefeated: bossResult.newState.enemiesDefeated,
+                      levelUnlocked: bossResult.newState.campaignLevel + 1,
+                      itemUnlocked,
                       runMode: bossResult.newState.runMode,
                       gauntletPoints: bossResult.newState.gauntletPointsEarned,
                     });
@@ -2246,12 +2296,6 @@ export function GameScreen({ navigation }: GameScreenProps) {
               // After combat the player can manually open the POI with the A button.
               lastAutoTriggeredPosRef.current = { x: targetPos.x, y: targetPos.y };
 
-              // Track field enemy kills locally (on-chain swap_removes defeated enemies
-              // so the defeated flag is never readable from the account).
-              if (!result.isDead && !result.bossResolvedInline) {
-                enemiesDefeatedRef.current += 1;
-              }
-
               // Compute deltas early — auto-resolve needs them even without enemy ID.
               const hpDelta = result.newState.hp - preCombatPlayerStats.hp;
               const goldDelta = result.newState.gold - preCombatPlayerStats.gold;
@@ -2300,6 +2344,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
                     week: result.newState.week,
                     phase: result.newState.phase,
                     runMode: result.newState.runMode,
+                    enemiesDefeated: result.newState.enemiesDefeated,
                   };
                   setDefeatOverlayVisible(true);
                 }
@@ -2349,7 +2394,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
                       playerWon: !result.isDead,
                     }
                   );
-                  navigateToCombat(navigation, combatParams, result.newState, enemiesDefeatedRef.current);
+                  navigateToCombat(navigation, combatParams, result.newState);
                 } else if (result.combatEnemyInfo) {
                   // Night combat fallback: enemy walked onto player's new position during
                   // night movement. Local state has stale enemy positions, but we have the
@@ -2386,7 +2431,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
                         playerWon: !result.isDead,
                       }
                     );
-                    navigateToCombat(navigation, combatParams, result.newState, enemiesDefeatedRef.current);
+                    navigateToCombat(navigation, combatParams, result.newState);
                   } else {
                     console.error(
                       '[GameScreen] Unknown enemy archetype:',
@@ -2394,7 +2439,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
                     );
                     if (result.isDead && (!result.bossFightReady ||
                         (result.newState.runMode === RunMode.Gauntlet && !result.bossResolvedInline))) {
-                      navigateToDeath(navigation, result.newState, enemiesDefeatedRef.current, 'Unknown enemy');
+                      navigateToDeath(navigation, result.newState, 'Unknown enemy');
                     }
                   }
                 }
@@ -2414,7 +2459,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
                 // (echo requires separate trigger_boss_fight) — it's a field enemy death.
                 if (result.isDead && (!result.bossFightReady ||
                     (result.newState.runMode === RunMode.Gauntlet && !result.bossResolvedInline))) {
-                  navigateToDeath(navigation, result.newState, enemiesDefeatedRef.current, 'Unknown enemy');
+                  navigateToDeath(navigation, result.newState, 'Unknown enemy');
                 }
               }
               } // close non-auto-resolve else
@@ -2422,7 +2467,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
                 (result.newState?.runMode === RunMode.Gauntlet && !result.bossResolvedInline))) {
               // Non-combat death (shouldn't normally happen, but handle edge case).
               debugLog('[GameScreen] Player died (non-combat), navigating to DeathScreen');
-              navigateToDeath(navigation, result.newState, enemiesDefeatedRef.current);
+              navigateToDeath(navigation, result.newState);
             }
           }
         })
@@ -2948,6 +2993,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
             level: profile?.currentLevel ?? 1,
             week: state.time.week,
             phase: localPhaseNumber,
+            enemiesDefeated: 0,
           };
           setDefeatOverlayVisible(true);
         }
@@ -3190,6 +3236,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
                   totalMoves,
                   phase,
                   runMode,
+                  enemiesDefeated: onChainState?.enemiesDefeated ?? 0,
                 };
                 const deathMeta = {
                   campaignLevel,
@@ -3197,6 +3244,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
                   week: foughtWeek,
                   phase,
                   runMode,
+                  enemiesDefeated: onChainState?.enemiesDefeated ?? 0,
                 };
 
                 // Happy path: parse visual event from the skip_to_day tx signature
@@ -3243,11 +3291,11 @@ export function GameScreen({ navigation }: GameScreenProps) {
                   if (fallback) {
                     navigateToBossCombat(fallback, navMeta);
                   } else if (!playerWon) {
-                    navigateToDeath(navigation, deathMeta, enemiesDefeatedRef.current, `Week ${foughtWeek} Echo`);
+                    navigateToDeath(navigation, deathMeta, `Week ${foughtWeek} Echo`);
                   }
                 })().catch(() => {
                   if (!playerWon) {
-                    navigateToDeath(navigation, deathMeta, enemiesDefeatedRef.current, `Week ${foughtWeek} Echo`);
+                    navigateToDeath(navigation, deathMeta, `Week ${foughtWeek} Echo`);
                   }
                 });
               } else if (
@@ -3301,6 +3349,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
                     totalMoves,
                     phase,
                     runMode,
+                    enemiesDefeated: onChainState?.enemiesDefeated ?? 0,
                   });
 
                 }
@@ -3743,7 +3792,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
               {!isCompact && (
                 <View style={[styles.bossTopContainer, { flexDirection: 'row', alignItems: 'center' }]}>
                   <View style={{ flex: 1 }}>
-                    <Sidebar {...sharedSidebarProps} onlyBoss={true} fitContentBoss={Platform.OS !== 'web'} />
+                    <Sidebar {...sharedSidebarProps} onlyBoss={true} />
                   </View>
                   {!isController && (
                     <Pressable
@@ -4047,7 +4096,7 @@ const styles = StyleSheet.create({
     color: '#000000',
     fontWeight: 'bold',
   },
-  bossTopContainer: { width: SIDEBAR_WIDTH },
+  bossTopContainer: { width: SIDEBAR_WIDTH, zIndex: 110 },
   bossTopContainerCompact: { width: SIDEBAR_WIDTH, justifyContent: 'center', alignItems: 'center' },
   navbarDivider: {
     width: 2,
@@ -4062,7 +4111,7 @@ const styles = StyleSheet.create({
     position: 'relative',
     overflow: 'hidden',
   },
-  sidebarBottomContainer: { width: SIDEBAR_WIDTH, padding: 6 },
+  sidebarBottomContainer: { width: SIDEBAR_WIDTH, padding: 6, zIndex: 110 },
   loading: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   loadingText: { fontFamily: Typography.header, fontSize: 20, color: '#666666' },
   dpadOverlay: { position: 'absolute', bottom: 24, left: 24 },

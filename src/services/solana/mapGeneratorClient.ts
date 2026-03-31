@@ -8,22 +8,49 @@ import { PublicKey } from '@solana/web3.js';
 import type { Program } from '@coral-xyz/anchor';
 
 // ============================================================================
-// SessionDiscovery Types
+// Shared Types
 // ============================================================================
 
-export interface DiscoveredPoiData {
-  poiType: number;
-  x: number;
-  y: number;
-  used: boolean;
-  mapPoisIndex: number;
-}
-
-export interface DiscoveredEnemyData {
+export interface EnemySpawnData {
   archetypeId: number;
   tier: number;
   x: number;
   y: number;
+}
+
+export interface PoiSpawnData {
+  poiType: number;
+  isUsed: boolean;
+  x: number;
+  y: number;
+}
+
+export interface GeneratedMapData {
+  session: PublicKey;
+  width: number;
+  height: number;
+  seed: number | bigint;
+  spawnX: number;
+  spawnY: number;
+  moleDenX: number;
+  moleDenY: number;
+  walkableCount: number;
+  packedTiles: number[];
+  discoveredTiles: number[];
+  enemyCount: number;
+  enemies: EnemySpawnData[];
+  poiCount: number;
+  pois: PoiSpawnData[];
+  bump: number;
+}
+
+export interface DiscoveredPoiData extends PoiSpawnData {
+  poiType: number;
+  used: boolean;
+  mapPoisIndex: number;
+}
+
+export interface DiscoveredEnemyData extends EnemySpawnData {
   defeated: number;
   mapEnemiesIndex: number;
 }
@@ -72,6 +99,51 @@ export interface SessionDiscoveryData {
 }
 
 /**
+ * Fetches the GeneratedMap account for a session.
+ */
+export async function fetchGeneratedMap(
+  program: Program,
+  generatedMapPda: PublicKey
+): Promise<GeneratedMapData | null> {
+  try {
+    const account = await (
+      program.account as {
+        generatedMap: {
+          fetchNullable: (address: PublicKey) => Promise<GeneratedMapData | null>;
+        };
+      }
+    ).generatedMap.fetchNullable(generatedMapPda);
+
+    return account ?? null;
+  } catch (error) {
+    const provider = program.provider as unknown as {
+      connection?: {
+        getAccountInfo?: (
+          address: PublicKey,
+          commitment?: string
+        ) => Promise<{ data?: Buffer | Uint8Array } | null>;
+      } | null;
+    };
+    const connection = provider.connection ?? null;
+    if (!connection?.getAccountInfo) {
+      console.error('Failed to fetch generated map:', error);
+      return null;
+    }
+
+    try {
+      const info = await connection.getAccountInfo(generatedMapPda, 'processed');
+      if (!info?.data) {
+        return null;
+      }
+      return decodeGeneratedMapFromAccountInfo(program, info.data);
+    } catch (fallbackError) {
+      console.error('Failed to fetch generated map:', fallbackError);
+      return null;
+    }
+  }
+}
+
+/**
  * Fetches the SessionDiscovery account for a session.
  *
  * @param program - Anchor program instance for map_generator
@@ -93,8 +165,30 @@ export async function fetchSessionDiscovery(
 
     return account ?? null;
   } catch (error) {
-    console.error('Failed to fetch session discovery:', error);
-    return null;
+    const provider = program.provider as unknown as {
+      connection?: {
+        getAccountInfo?: (
+          address: PublicKey,
+          commitment?: string
+        ) => Promise<{ data?: Buffer | Uint8Array } | null>;
+      } | null;
+    };
+    const connection = provider.connection ?? null;
+    if (!connection?.getAccountInfo) {
+      console.error('Failed to fetch session discovery:', error);
+      return null;
+    }
+
+    try {
+      const info = await connection.getAccountInfo(sessionDiscoveryPda, 'processed');
+      if (!info?.data) {
+        return null;
+      }
+      return decodeSessionDiscoveryFromAccountInfo(program, info.data);
+    } catch (fallbackError) {
+      console.error('Failed to fetch session discovery:', fallbackError);
+      return null;
+    }
   }
 }
 
@@ -109,6 +203,21 @@ export function decodeSessionDiscoveryFromAccountInfo(
   try {
     const decoded = (program.coder.accounts as any).decode('sessionDiscovery', data);
     return (decoded as SessionDiscoveryData) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Decodes raw AccountInfo data into GeneratedMapData.
+ */
+export function decodeGeneratedMapFromAccountInfo(
+  program: Program,
+  data: Buffer | Uint8Array
+): GeneratedMapData | null {
+  try {
+    const decoded = (program.coder.accounts as any).decode('generatedMap', data);
+    return (decoded as GeneratedMapData) ?? null;
   } catch {
     return null;
   }

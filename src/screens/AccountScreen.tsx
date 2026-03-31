@@ -4,10 +4,10 @@ import {
   Text,
   TouchableOpacity,
   TouchableWithoutFeedback,
+  Pressable,
   StyleSheet,
   ActivityIndicator,
   Image,
-  TextInput,
   Animated,
   Platform,
 } from 'react-native';
@@ -535,19 +535,23 @@ export function AccountScreen({ navigation }: AccountScreenProps) {
                   >
                     CREATE PROFILE
                   </Text>
-                  <TextInput
+                  <Pressable
                     style={[
                       styles.profileInput,
-                      isCompact && { fontSize: 20, paddingVertical: 14, width: '85%' },
+                      isCompact && { paddingVertical: 14, width: '85%' },
                     ]}
-                    placeholder="Adventurer name"
-                    placeholderTextColor="#999999"
-                    value={profileName}
-                    onChangeText={setProfileName}
-                    maxLength={32}
-                    autoCapitalize="words"
-                    editable={!showLoading}
-                  />
+                    onPress={showLoading ? undefined : handleOpenKeyboard}
+                  >
+                    <Text
+                      style={[
+                        styles.profileInputText,
+                        !profileName && styles.profileInputPlaceholder,
+                        isCompact && { fontSize: 20 },
+                      ]}
+                    >
+                      {profileName || 'Adventurer name'}
+                    </Text>
+                  </Pressable>
                 </>
               )}
             </View>
@@ -904,7 +908,14 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     paddingHorizontal: 12,
     paddingVertical: 10,
+    justifyContent: 'center',
+  },
+  profileInputText: {
     color: '#000000',
+    fontSize: 14,
+  },
+  profileInputPlaceholder: {
+    color: '#999999',
   },
   buttonWrapper: {
     position: 'absolute',

@@ -13,9 +13,10 @@ import {
   Image,
   useImage,
   ColorMatrix,
-  Circle,
-  BlurMask,
+  Shadow,
 } from '@shopify/react-native-skia';
+import { useDerivedValue } from 'react-native-reanimated';
+import { useClock } from '@shopify/react-native-skia/lib/module/external/reanimated/interpolators';
 import type { Position, WallHighlightState } from '../../game/engine/types';
 import { TimePhase } from '../../game/engine/types';
 import type { GameMap, MapEnemy, MapPOI } from '../../game/map/types';
@@ -67,8 +68,8 @@ const SINGLE_USE_POIS = ['L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L12', 'L13'];
 // Tier glow colors for enemy indicators
 const TIER_GLOW_COLORS: Record<1 | 2 | 3, string> = {
   1: 'rgba(200, 200, 200, 0.0)', // T1: no glow
-  2: 'rgba(255, 180, 0, 0.55)', // T2: orange/amber glow
-  3: 'rgba(220, 30, 30, 0.65)', // T3: red/crimson glow
+  2: 'rgba(255, 180, 0, 0.8)', // T2: orange/amber glow
+  3: 'rgba(220, 30, 30, 0.9)', // T3: red/crimson glow
 };
 
 // ============================================================================
@@ -335,7 +336,7 @@ interface SkiaEntityProps {
   zoom: number;
   flipX?: boolean;
   grayscale?: boolean;
-  yOffset?: number; // Added vertical offset
+  yOffset?: number;
 }
 
 const SkiaEntity = memo(function SkiaEntity({
@@ -378,9 +379,62 @@ const SkiaEntity = memo(function SkiaEntity({
     return ImageComponent;
   }
 
-  // No fallback: Do not render colored squares as per user request
   return null;
 });
+
+// Pulsing glow periods matching web CSS animations (ms)
+const TIER_GLOW_PERIOD: Record<2 | 3, number> = {
+  2: 1800, // T2: 1.8s cycle (matches web tier-pulse-2)
+  3: 1400, // T3: 1.4s cycle (matches web tier-pulse-3)
+};
+
+function GlowingSkiaEntity({
+  x,
+  y,
+  image,
+  zoom,
+  glowColor,
+  tier,
+}: {
+  x: number;
+  y: number;
+  image: any;
+  zoom: number;
+  glowColor: string;
+  tier: 2 | 3;
+}) {
+  const clock = useClock();
+  const period = TIER_GLOW_PERIOD[tier];
+
+  const blur = useDerivedValue(() => {
+    // Sin wave oscillating between min and max blur, matching web drop-shadow ranges
+    const t = Math.sin((clock.value / period) * 2 * Math.PI);
+    const minBlur = 3 * zoom;
+    const maxBlur = tier === 3 ? 8 * zoom : 7 * zoom;
+    return minBlur + ((t + 1) / 2) * (maxBlur - minBlur);
+  }, [clock, period, zoom, tier]);
+
+  const size = ENTITY_SIZE * zoom;
+  const offset = ENTITY_OFFSET * zoom;
+  const drawX = x * TILE_SIZE * zoom - offset;
+  const drawY = y * TILE_SIZE * zoom - offset;
+
+  if (!image) return null;
+
+  return (
+    <Image
+      image={image}
+      x={drawX}
+      y={drawY}
+      width={size}
+      height={size}
+      fit="contain"
+    >
+      <Shadow dx={0} dy={0} blur={blur} color={glowColor} />
+      <Shadow dx={0} dy={0} blur={blur} color={glowColor} />
+    </Image>
+  );
+}
 
 // ============================================================================
 // Component
@@ -440,7 +494,7 @@ export const MapRenderer = memo(function MapRenderer({
   const variant = useScreenVariant();
   const targetVerticalTiles = variant === 'compact' ? 9 : 7;
   const baseDynamicZoom = height / (targetVerticalTiles * TILE_SIZE);
-  const dynamicZoom = variant === 'compact' ? baseDynamicZoom : baseDynamicZoom * 1.11;
+  const dynamicZoom = variant === 'compact' ? baseDynamicZoom : baseDynamicZoom * 0.9;
   const overviewZoom = variant === 'compact' ? overview.zoom * 2 : overview.zoom;
   const zoom = overview.active ? overviewZoom : dynamicZoom;
 
@@ -683,31 +737,33 @@ export const MapRenderer = memo(function MapRenderer({
             const { enemy, variant } = entry;
             const isUnknown = variant === 'unknown';
             const tier = enemy.tier as 1 | 2 | 3;
-            const glowColor = !isUnknown ? TIER_GLOW_COLORS[tier] : undefined;
-            const entitySize = ENTITY_SIZE * zoom;
-            const entityOffset = ENTITY_OFFSET * zoom;
-            const centerX =
-              enemy.position.x * TILE_SIZE * zoom - entityOffset + entitySize / 2;
-            const centerY =
-              enemy.position.y * TILE_SIZE * zoom - entityOffset + entitySize / 2;
-            return (
-              <React.Fragment key={`enemy-${enemy.id}`}>
-                {glowColor && (
-                  <Circle
-                    cx={centerX}
-                    cy={centerY}
-                    r={entitySize * 0.5}
-                    color={tier === 1 ? 'white' : tier === 2 ? 'orange' : 'red'}
-                  />
-                )}
-                <SkiaEntity
+            const enemyImage = isUnknown
+              ? entityImages.unknownEnemy
+              : entityImages[enemy.definitionId];
+
+            if (!isUnknown && tier > 1) {
+              return (
+                <GlowingSkiaEntity
+                  key={`enemy-${enemy.id}`}
                   x={enemy.position.x}
                   y={enemy.position.y}
-                  image={isUnknown ? entityImages.unknownEnemy : entityImages[enemy.definitionId]}
-                  opacity={1}
+                  image={enemyImage}
                   zoom={zoom}
+                  glowColor={TIER_GLOW_COLORS[tier]}
+                  tier={tier as 2 | 3}
                 />
-              </React.Fragment>
+              );
+            }
+
+            return (
+              <SkiaEntity
+                key={`enemy-${enemy.id}`}
+                x={enemy.position.x}
+                y={enemy.position.y}
+                image={enemyImage}
+                opacity={1}
+                zoom={zoom}
+              />
             );
           })}
 

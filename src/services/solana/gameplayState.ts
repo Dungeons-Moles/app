@@ -22,9 +22,9 @@ import {
   getCachedErBlockhash,
   buildMessageTemplate,
   signTemplatedTransaction,
+  fireAndForgetRawTx,
   type MessageTemplate,
 } from './sessionSigner';
-import bs58 from 'bs58';
 import { Platform } from 'react-native';
 import {
   deriveInventoryPda,
@@ -60,15 +60,18 @@ const gauntletEchoesExistsCache = new Map<string, boolean>();
 
 // Cache PDA derivations per session — findProgramAddressSync is expensive on React Native
 // (~20-30ms per call due to SHA-256 loops in Hermes JS engine).
-const pdaCache = new Map<string, {
-  generatedMap: PublicKey;
-  inventory: PublicKey;
-  gameplayAuthority: PublicKey;
-  mapPois: PublicKey;
-  gameplayVrfState: PublicKey;
-  sessionDiscovery: PublicKey;
-  gauntletEchoes: PublicKey;
-}>();
+const pdaCache = new Map<
+  string,
+  {
+    generatedMap: PublicKey;
+    inventory: PublicKey;
+    gameplayAuthority: PublicKey;
+    mapPois: PublicKey;
+    gameplayVrfState: PublicKey;
+    sessionDiscovery: PublicKey;
+    gauntletEchoes: PublicKey;
+  }
+>();
 
 // Pre-computed Anchor discriminator for move_player: sha256("global:move_player")[0..8]
 // Avoids going through Anchor's MethodsBuilder which adds ~120ms of async overhead.
@@ -77,6 +80,8 @@ const MOVE_PLAYER_DISCRIMINATOR = Buffer.from([17, 58, 68, 221, 186, 117, 140, 2
 // Pre-compiled message template per session — eliminates ~130ms message compilation on Hermes.
 // The move transaction has the same accounts every call; only blockhash, targetX/Y, and CU price change.
 const moveTemplateCache = new Map<string, MessageTemplate>();
+// Cached Ed25519 seed (first 32 bytes of secretKey) to avoid .slice() allocation per move.
+const seedCache = new Map<string, Uint8Array>();
 
 /** Patch specs for locating mutable fields in the serialized move_player message. */
 const MOVE_PATCH_SPECS = [
@@ -97,6 +102,116 @@ const MOVE_PATCH_SPECS = [
 ];
 
 /**
+ * Eagerly build the move message template in the background so the first
+ * movePlayer() call on native doesn't pay the ~130-270ms Hermes compilation cost.
+ * Must be called AFTER warmMovePlayerCaches has populated the existence caches.
+ * Fire-and-forget — errors are silently ignored; first move will build if needed.
+ */
+export async function eagerBuildMoveTemplate(
+  connection: Connection,
+  gameStatePda: PublicKey,
+  sessionPda: PublicKey,
+  sessionSignerKeypair: Keypair
+): Promise<void> {
+  if (Platform.OS === 'web') return; // web doesn't use templates
+  const sessionKey = sessionPda.toBase58();
+  if (moveTemplateCache.has(sessionKey)) return; // already built
+
+  // Need existence caches to be populated first
+  if (
+    !vrfStateExistsCache.has(sessionKey) ||
+    !discoveryExistsCache.has(sessionKey) ||
+    !gauntletEchoesExistsCache.has(sessionKey)
+  ) {
+    return; // caches not ready yet — first move will build
+  }
+
+  // Ensure PDA cache is populated
+  if (!pdaCache.has(sessionKey)) {
+    pdaCache.set(sessionKey, {
+      generatedMap: deriveGeneratedMapPda(sessionPda)[0],
+      inventory: deriveInventoryPda(sessionPda)[0],
+      gameplayAuthority: deriveGameplayAuthorityPda()[0],
+      mapPois: deriveMapPoisPda(sessionPda)[0],
+      gameplayVrfState: deriveGameplayVrfStatePda(sessionPda)[0],
+      sessionDiscovery: deriveSessionDiscoveryPda(sessionPda)[0],
+      gauntletEchoes: deriveGauntletEchoesPda(sessionPda)[0],
+    });
+  }
+  const pdas = pdaCache.get(sessionKey)!;
+
+  const vrfStateExists = vrfStateExistsCache.get(sessionKey)!;
+  const discoveryExists = discoveryExistsCache.get(sessionKey)!;
+  const gauntletEchoesExists = gauntletEchoesExistsCache.get(sessionKey)!;
+
+  try {
+    const { blockhash } = await getCachedErBlockhash(connection, 'processed');
+
+    const data = Buffer.alloc(10);
+    data.set(MOVE_PLAYER_DISCRIMINATOR, 0);
+    data.writeUInt8(0, 8); // placeholder targetX
+    data.writeUInt8(0, 9); // placeholder targetY
+
+    const keys = [
+      { pubkey: gameStatePda, isSigner: false, isWritable: true },
+      { pubkey: sessionPda, isSigner: false, isWritable: false },
+      { pubkey: pdas.generatedMap, isSigner: false, isWritable: true },
+      { pubkey: pdas.inventory, isSigner: false, isWritable: true },
+      { pubkey: pdas.gameplayAuthority, isSigner: false, isWritable: false },
+      { pubkey: SOLANA_CONFIG.programs.playerInventory, isSigner: false, isWritable: false },
+      { pubkey: SOLANA_CONFIG.programs.mapGenerator, isSigner: false, isWritable: false },
+      { pubkey: pdas.mapPois, isSigner: false, isWritable: true },
+      { pubkey: SOLANA_CONFIG.programs.poiSystem, isSigner: false, isWritable: false },
+      {
+        pubkey: discoveryExists ? pdas.sessionDiscovery : SOLANA_CONFIG.programs.gameplayState,
+        isSigner: false,
+        isWritable: discoveryExists,
+      },
+      {
+        pubkey: vrfStateExists ? pdas.gameplayVrfState : SOLANA_CONFIG.programs.gameplayState,
+        isSigner: false,
+        isWritable: false,
+      },
+      {
+        pubkey: gauntletEchoesExists ? pdas.gauntletEchoes : SOLANA_CONFIG.programs.gameplayState,
+        isSigner: false,
+        isWritable: gauntletEchoesExists,
+      },
+      { pubkey: sessionSignerKeypair.publicKey, isSigner: true, isWritable: false },
+    ];
+
+    const tx = new Transaction();
+    tx.feePayer = sessionSignerKeypair.publicKey;
+    tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 1_000_000 }));
+    tx.add(
+      ComputeBudgetProgram.setComputeUnitPrice({
+        microLamports: Math.floor(Math.random() * 1000) + 1,
+      })
+    );
+    tx.add(
+      new TransactionInstruction({
+        keys,
+        programId: SOLANA_CONFIG.programs.gameplayState,
+        data,
+      })
+    );
+    tx.recentBlockhash = blockhash;
+
+    const template = buildMessageTemplate(tx, MOVE_PATCH_SPECS);
+    moveTemplateCache.set(sessionKey, template);
+
+    // Also cache the seed
+    if (!seedCache.has(sessionKey)) {
+      seedCache.set(sessionKey, sessionSignerKeypair.secretKey.slice(0, 32));
+    }
+
+    console.log('[perf] eagerBuildMoveTemplate: DONE');
+  } catch (err) {
+    console.warn('[perf] eagerBuildMoveTemplate failed (first move will build):', err);
+  }
+}
+
+/**
  * Pre-warm the optional-account existence caches for a session so the first
  * movePlayer call doesn't pay 3 sequential RPC round trips (~450ms).
  * Fire-and-forget — RPC errors leave the cache unset so the next call retries.
@@ -105,14 +220,14 @@ export function warmMovePlayerCaches(
   connection: Connection,
   program: Program,
   sessionPda: PublicKey
-): void {
+): Promise<void> {
   const sessionKey = sessionPda.toBase58();
   if (
     vrfStateExistsCache.has(sessionKey) &&
     discoveryExistsCache.has(sessionKey) &&
     gauntletEchoesExistsCache.has(sessionKey)
   ) {
-    return; // already warm
+    return Promise.resolve(); // already warm
   }
   const [gameplayVrfStatePda] = deriveGameplayVrfStatePda(sessionPda);
   const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
@@ -120,26 +235,38 @@ export function warmMovePlayerCaches(
   // Sentinel: a successful RPC read returns null for absent accounts.
   // A failed RPC throws — we must NOT cache false on error.
   const FETCH_ERROR = Symbol('fetch_error');
-  Promise.all([
-    vrfStateExistsCache.has(sessionKey) ? null :
-      (program.account as any)?.gameplayVrfState
-        ?.fetchNullable(gameplayVrfStatePda)
-        .catch(() => FETCH_ERROR)
-        .then((r: unknown) => { if (r !== FETCH_ERROR) vrfStateExistsCache.set(sessionKey, !!r); }),
-    discoveryExistsCache.has(sessionKey) ? null :
-      connection.getAccountInfo(sessionDiscoveryPda)
-        .catch(() => FETCH_ERROR)
-        .then((r: unknown) => { if (r !== FETCH_ERROR) discoveryExistsCache.set(sessionKey, !!r); }),
-    gauntletEchoesExistsCache.has(sessionKey) ? null :
-      connection.getAccountInfo(gauntletEchoesPda)
-        .catch(() => FETCH_ERROR)
-        .then((info: unknown) => {
-          if (info === FETCH_ERROR) return;
-          const typedInfo = info as { owner?: { toBase58?: () => string } } | null;
-          const isDelegated = typedInfo?.owner?.toBase58?.() === GAMEPLAY_STATE_PROGRAM_ID.toBase58();
-          gauntletEchoesExistsCache.set(sessionKey, !!typedInfo && isDelegated);
-        }),
-  ]).catch(() => {});
+  return Promise.all([
+    vrfStateExistsCache.has(sessionKey)
+      ? null
+      : (program.account as any)?.gameplayVrfState
+          ?.fetchNullable(gameplayVrfStatePda)
+          .catch(() => FETCH_ERROR)
+          .then((r: unknown) => {
+            if (r !== FETCH_ERROR) vrfStateExistsCache.set(sessionKey, !!r);
+          }),
+    discoveryExistsCache.has(sessionKey)
+      ? null
+      : connection
+          .getAccountInfo(sessionDiscoveryPda)
+          .catch(() => FETCH_ERROR)
+          .then((r: unknown) => {
+            if (r !== FETCH_ERROR) discoveryExistsCache.set(sessionKey, !!r);
+          }),
+    gauntletEchoesExistsCache.has(sessionKey)
+      ? null
+      : connection
+          .getAccountInfo(gauntletEchoesPda)
+          .catch(() => FETCH_ERROR)
+          .then((info: unknown) => {
+            if (info === FETCH_ERROR) return;
+            const typedInfo = info as { owner?: { toBase58?: () => string } } | null;
+            const isDelegated =
+              typedInfo?.owner?.toBase58?.() === GAMEPLAY_STATE_PROGRAM_ID.toBase58();
+            gauntletEchoesExistsCache.set(sessionKey, !!typedInfo && isDelegated);
+          }),
+  ])
+    .then(() => {})
+    .catch(() => {});
 }
 
 // ============================================================================
@@ -210,7 +337,11 @@ export async function initializeGameState(
     })
     .transaction();
 
-  const signature = await sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair);
+  const signature = await sendSessionSignerTransaction(
+    connection,
+    transaction,
+    sessionSignerKeypair
+  );
 
   return { signature, gameStatePda };
 }
@@ -266,31 +397,42 @@ export async function movePlayer(
   const gauntletCached = gauntletEchoesExistsCache.has(sessionKey);
 
   if (!vrfCached || !discoveryCached || !gauntletCached) {
-    console.log(`[perf]   cache MISS: vrf=${vrfCached} disc=${discoveryCached} gauntlet=${gauntletCached}`);
+    console.log(
+      `[perf]   cache MISS: vrf=${vrfCached} disc=${discoveryCached} gauntlet=${gauntletCached}`
+    );
     // Sentinel: distinguish "account absent" (null) from "RPC failed" so we
     // don't permanently cache false on a transient network error.
     const FETCH_ERROR = Symbol('fetch_error');
     const [vrfResult, discoveryResult, gauntletResult] = await Promise.all([
-      vrfCached ? Promise.resolve(null) :
-        (program.account as any)?.gameplayVrfState
-          ?.fetchNullable(gameplayVrfStatePda)
-          .catch(() => FETCH_ERROR),
-      discoveryCached ? Promise.resolve(null) :
-        connection.getAccountInfo(sessionDiscoveryPda).catch(() => FETCH_ERROR),
-      gauntletCached ? Promise.resolve(null) :
-        // Check if gauntlet_echoes exists AND is owned by gameplay_state (delegated).
-        // The ER proxies base-chain reads, so a non-delegated account would return data
-        // but cause InvalidWritableAccount when included as writable in an ER tx.
-        connection.getAccountInfo(gauntletEchoesPda).catch(() => FETCH_ERROR)
-          .then((info: unknown) => {
-            if (info === FETCH_ERROR) return FETCH_ERROR;
-            const typedInfo = info as { owner?: { toBase58?: () => string } } | null;
-            return typedInfo?.owner?.toBase58?.() === GAMEPLAY_STATE_PROGRAM_ID.toBase58() ? typedInfo : null;
-          }),
+      vrfCached
+        ? Promise.resolve(null)
+        : (program.account as any)?.gameplayVrfState
+            ?.fetchNullable(gameplayVrfStatePda)
+            .catch(() => FETCH_ERROR),
+      discoveryCached
+        ? Promise.resolve(null)
+        : connection.getAccountInfo(sessionDiscoveryPda).catch(() => FETCH_ERROR),
+      gauntletCached
+        ? Promise.resolve(null)
+        : // Check if gauntlet_echoes exists AND is owned by gameplay_state (delegated).
+          // The ER proxies base-chain reads, so a non-delegated account would return data
+          // but cause InvalidWritableAccount when included as writable in an ER tx.
+          connection
+            .getAccountInfo(gauntletEchoesPda)
+            .catch(() => FETCH_ERROR)
+            .then((info: unknown) => {
+              if (info === FETCH_ERROR) return FETCH_ERROR;
+              const typedInfo = info as { owner?: { toBase58?: () => string } } | null;
+              return typedInfo?.owner?.toBase58?.() === GAMEPLAY_STATE_PROGRAM_ID.toBase58()
+                ? typedInfo
+                : null;
+            }),
     ]);
     if (!vrfCached && vrfResult !== FETCH_ERROR) vrfStateExistsCache.set(sessionKey, !!vrfResult);
-    if (!discoveryCached && discoveryResult !== FETCH_ERROR) discoveryExistsCache.set(sessionKey, !!discoveryResult);
-    if (!gauntletCached && gauntletResult !== FETCH_ERROR) gauntletEchoesExistsCache.set(sessionKey, !!gauntletResult);
+    if (!discoveryCached && discoveryResult !== FETCH_ERROR)
+      discoveryExistsCache.set(sessionKey, !!discoveryResult);
+    if (!gauntletCached && gauntletResult !== FETCH_ERROR)
+      gauntletEchoesExistsCache.set(sessionKey, !!gauntletResult);
   }
 
   const vrfStateExists = vrfStateExistsCache.get(sessionKey)!;
@@ -307,9 +449,8 @@ export async function movePlayer(
     // --- Fast path: template-based fire-and-forget (React Native) ---
     const tTemplate = Date.now();
 
-    // Get cached blockhash
-    const { blockhash } = await getCachedErBlockhash(connection, 'processed');
-    const blockhashBytes = bs58.decode(blockhash);
+    // Get cached blockhash (pre-decoded bytes avoid bs58.decode per move)
+    const { blockhash, blockhashBytes } = await getCachedErBlockhash(connection, 'processed');
 
     let template = moveTemplateCache.get(sessionKey);
     if (!template) {
@@ -355,11 +496,13 @@ export async function movePlayer(
           microLamports: Math.floor(Math.random() * 1000) + 1,
         })
       );
-      tx.add(new TransactionInstruction({
-        keys,
-        programId: SOLANA_CONFIG.programs.gameplayState,
-        data,
-      }));
+      tx.add(
+        new TransactionInstruction({
+          keys,
+          programId: SOLANA_CONFIG.programs.gameplayState,
+          data,
+        })
+      );
       tx.recentBlockhash = blockhash;
 
       template = buildMessageTemplate(tx, MOVE_PATCH_SPECS);
@@ -382,26 +525,34 @@ export async function movePlayer(
       ['cuPrice', cuPriceData],
     ]);
 
+    let seed = seedCache.get(sessionKey);
+    if (!seed) {
+      seed = sessionSignerKeypair.secretKey.slice(0, 32);
+      seedCache.set(sessionKey, seed);
+    }
     const { wireTransaction, signature } = signTemplatedTransaction(
       template,
       blockhashBytes,
       patchData,
-      sessionSignerKeypair.secretKey.slice(0, 32)
+      seed
     );
     const tDone = Date.now();
 
-    // Fire-and-forget the HTTP send
-    connection.sendRawTransaction(Buffer.from(wireTransaction), {
-      skipPreflight: true,
-      maxRetries: 2,
-    }).then(() => {
-      console.log('[perf] sendTransaction(bg): completed (router=true)');
-    }).catch((err) => {
-      console.error('[movePlayer] Background send failed:', err);
-      options?.onSendFail?.(err instanceof Error ? err : new Error(String(err)));
-    });
+    // Fire-and-forget via direct fetch (bypasses Connection.sendRawTransaction
+    // response parsing overhead on Hermes).
+    const wireBase64 = Buffer.from(wireTransaction).toString('base64');
+    fireAndForgetRawTx(connection.rpcEndpoint, wireBase64)
+      .then(() => {
+        console.log('[perf] sendTransaction(bg): completed (router=true)');
+      })
+      .catch((err) => {
+        console.error('[movePlayer] Background send failed:', err);
+        options?.onSendFail?.(err instanceof Error ? err : new Error(String(err)));
+      });
 
-    console.log(`[perf] sendTransaction: 0ms (templated, sign: ${tDone - tSign}ms, sig=${signature.slice(0, 8)}...)`);
+    console.log(
+      `[perf] sendTransaction: 0ms (templated, sign: ${tDone - tSign}ms, sig=${signature.slice(0, 8)}...)`
+    );
     return { signature, connection };
   }
 
@@ -446,15 +597,18 @@ export async function movePlayer(
       data,
     })
   );
-  transaction.instructions.unshift(
-    ComputeBudgetProgram.setComputeUnitLimit({ units: 1_000_000 })
-  );
+  transaction.instructions.unshift(ComputeBudgetProgram.setComputeUnitLimit({ units: 1_000_000 }));
 
-  const signature = await sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair, {
-    skipErConfirmation: true,
-    fireAndForget: true,
-    onSendFail: options?.onSendFail,
-  });
+  const signature = await sendSessionSignerTransaction(
+    connection,
+    transaction,
+    sessionSignerKeypair,
+    {
+      skipErConfirmation: true,
+      fireAndForget: true,
+      onSendFail: options?.onSendFail,
+    }
+  );
 
   return { signature, connection };
 }
@@ -542,16 +696,12 @@ export async function triggerBossFight(
     .transaction();
 
   // Boss fight runs full combat resolution (up to 50 turns + effect processing)
-  transaction.instructions.unshift(
-    ComputeBudgetProgram.setComputeUnitLimit({ units: 1_000_000 })
-  );
+  transaction.instructions.unshift(ComputeBudgetProgram.setComputeUnitLimit({ units: 1_000_000 }));
 
   // Gauntlet echo combat builds two full annotated inventories (player + echo)
   // which can exceed the default 32KB BPF heap at higher weeks with full gear.
   if (options?.gauntletEchoesPda) {
-    transaction.instructions.unshift(
-      ComputeBudgetProgram.requestHeapFrame({ bytes: 256 * 1024 })
-    );
+    transaction.instructions.unshift(ComputeBudgetProgram.requestHeapFrame({ bytes: 256 * 1024 }));
   }
 
   const isNative = Platform.OS !== 'web';
@@ -711,6 +861,16 @@ function parseOnChainGameState(account: OnChainGameState): GameState {
   const DEFAULT_SPD = 1;
   const DEFAULT_DIG = 1;
 
+  const toPlainNumber = (value: unknown, fallback = 0): number => {
+    if (typeof value === 'number') return value;
+    if (typeof value === 'bigint') return Number(value);
+    if (value && typeof value === 'object' && 'toString' in value) {
+      const parsed = Number((value as { toString: () => string }).toString());
+      return Number.isFinite(parsed) ? parsed : fallback;
+    }
+    return fallback;
+  };
+
   return {
     player: account.player,
     session: account.session,
@@ -737,12 +897,20 @@ function parseOnChainGameState(account: OnChainGameState): GameState {
     runMode: parseRunMode(account.runMode),
     maxWeeks: account.maxWeeks ?? 3,
     completed: account.completed ?? false,
-    gauntletEpochId: account.gauntletEpochId ?? 0,
-    gauntletPointsEarned: account.gauntletPointsEarned ?? 0,
-    gauntletHighestWeekWon: account.gauntletHighestWeekWon ?? 0,
+    gauntletEpochId: toPlainNumber(account.gauntletEpochId, 0),
+    gauntletPointsEarned: toPlainNumber(account.gauntletPointsEarned, 0),
+    gauntletHighestWeekWon: toPlainNumber(account.gauntletHighestWeekWon, 0),
     gauntletSettled: account.gauntletSettled ?? false,
-    duelMapSeed: account.duelMapSeed ?? 0,
-    enemiesDefeated: (account.enemies ?? []).filter((e) => e.defeated).length,
+    duelMapSeed: toPlainNumber(account.duelMapSeed, 0),
+    enemiesDefeated: toPlainNumber((account as any).enemiesDefeated, 0),
+    enemies: account.enemies?.map((enemy) => ({
+      archetype: enemy.archetype,
+      tier: (enemy as any).tier,
+      x: enemy.x,
+      y: enemy.y,
+      defeated: enemy.defeated,
+    })),
+    enemyCount: toPlainNumber(account.enemyCount, account.enemies?.length ?? 0),
   };
 }
 
@@ -796,9 +964,7 @@ export async function syncDiscoveryBoss(
     })
     .transaction();
 
-  transaction.instructions.unshift(
-    ComputeBudgetProgram.setComputeUnitLimit({ units: 200_000 })
-  );
+  transaction.instructions.unshift(ComputeBudgetProgram.setComputeUnitLimit({ units: 200_000 }));
 
   const isNative = Platform.OS !== 'web';
   return sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair, {

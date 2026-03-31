@@ -735,6 +735,31 @@ export async function buildInitPitDraftVrfStateTransaction(
   return new Transaction().add(ix);
 }
 
+/**
+ * Commits and undelegates GameplayVrfState for pit draft back to base chain.
+ * Uses the same seedKey that derived the pit-draft VRF PDA.
+ */
+export async function buildUndelegatePitDraftVrfStateTransaction(
+  gameplayStateProgram: Program,
+  seedKey: PublicKey,
+  payer: PublicKey
+): Promise<Transaction> {
+  const [vrfStatePda] = derivePitDraftVrfStatePda(seedKey);
+  const method = pickMethod(
+    gameplayStateProgram,
+    'undelegatePitDraftVrfState',
+    'undelegatePitDraftVrfState'
+  );
+  const ix = await method()
+    .accounts({
+      gameplayVrfState: vrfStatePda,
+      seedKey,
+      payer,
+    })
+    .instruction();
+  return new Transaction().add(ix);
+}
+
 // ============================================================================
 // VRF State Polling (for future oracle integration)
 // ============================================================================

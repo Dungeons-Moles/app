@@ -114,6 +114,10 @@ export interface GameState {
   duelMapSeed: number;
   /** Number of enemies defeated this run */
   enemiesDefeated: number;
+  /** Live enemy runtime state, when available from on-chain decode */
+  enemies?: Array<{ archetype: number; tier?: number; x: number; y: number; defeated: boolean }>;
+  /** Runtime enemy count, when available from on-chain decode */
+  enemyCount?: number;
 }
 
 /**

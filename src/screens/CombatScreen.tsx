@@ -316,7 +316,8 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
       const isVictory = result === 'VICTORY';
       const levelReached = combatInput?.campaignLevel ?? profile?.currentLevel ?? 1;
       // Gauntlet has 5 weeks, Campaign/Duel have 3.
-      const maxWeeks = (combatInput?.runMode ?? gameplayState?.runMode) === RunMode.Gauntlet ? 5 : 3;
+      const maxWeeks =
+        (combatInput?.runMode ?? gameplayState?.runMode) === RunMode.Gauntlet ? 5 : 3;
       const isFinalWeekBoss = isBossFight && currentWeek === maxWeeks;
       const isOnChainMode = mode !== 'guest' && combatInput !== undefined;
       // Prefer runMode from combatInput (preserved at navigation time) over
@@ -406,9 +407,7 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
 
         if (events.resolved.resolution !== 'completedCombat') {
           if (wasMatched) {
-            throw new Error(
-              `Unexpected matched duel resolution: ${events.resolved.resolution}`
-            );
+            throw new Error(`Unexpected matched duel resolution: ${events.resolved.resolution}`);
           }
           return;
         }
@@ -472,8 +471,7 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
         }
 
         // Await the eagerly-started teardown (or start one now if the eager effect didn't fire).
-        const endPromise =
-          sessionEndPromiseRef.current ?? endSessionWithSessionSigner();
+        const endPromise = sessionEndPromiseRef.current ?? endSessionWithSessionSigner();
         const endResult = await endPromise;
 
         if (endResult.success) {
@@ -552,13 +550,12 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
         let itemUnlocked: UnlockedItem | undefined;
         if (settleSignature && mode !== 'guest') {
           try {
-            console.log('[CombatScreen] Parsing item unlock from settle signature:', settleSignature);
-            const profileProgram = createPlayerProfileProgram(connection);
-            const events = await parseGameplayEvents(
-              connection,
-              profileProgram,
+            console.log(
+              '[CombatScreen] Parsing item unlock from settle signature:',
               settleSignature
             );
+            const profileProgram = createPlayerProfileProgram(connection);
+            const events = await parseGameplayEvents(connection, profileProgram, settleSignature);
             const victoryData = extractVictoryData(events);
             console.log('[CombatScreen] Victory data from settle events:', {
               hasItemUnlocked: !!victoryData.itemUnlocked,
@@ -585,7 +582,14 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
           levelUnlocked: levelReached + 1,
           itemUnlocked,
           runMode: capturedRunMode,
-          gauntletPoints: gameplayState?.gauntletPointsEarned,
+          gauntletPoints:
+            typeof gameplayState?.gauntletPointsEarned === 'number'
+              ? gameplayState.gauntletPointsEarned
+              : gameplayState?.gauntletPointsEarned != null
+                ? Number(
+                    (gameplayState.gauntletPointsEarned as { toString: () => string }).toString()
+                  )
+                : undefined,
         });
       } else {
         console.log('[CombatScreen] Navigating back to map (victory)');
@@ -652,7 +656,8 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
   // Get display states for gold fallback
   const { playerGold, enemyGold } = displayStates;
   const enemyDig = displayStates.enemy?.dig ?? combatInput?.enemy.dig ?? 0;
-  const playerDig = displayStates.player?.dig ?? combatInput?.player.dig ?? gameState?.player.stats.dig ?? 0;
+  const playerDig =
+    displayStates.player?.dig ?? combatInput?.player.dig ?? gameState?.player.stats.dig ?? 0;
   const victoryGoldReward = combatInput?.historyReplay
     ? undefined
     : combatState.resolvedCombat?.goldReward;
@@ -687,7 +692,11 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
         equippedGear: playerEquipment.gear,
       }}
       goldReward={victoryGoldReward}
-      isFinalVictory={isBossFight && currentWeek === ((combatInput?.runMode ?? gameplayState?.runMode) === RunMode.Gauntlet ? 5 : 3)}
+      isFinalVictory={
+        isBossFight &&
+        currentWeek ===
+          ((combatInput?.runMode ?? gameplayState?.runMode) === RunMode.Gauntlet ? 5 : 3)
+      }
       onCombatComplete={handleCombatComplete}
       arenaChildren={
         gameState ? (

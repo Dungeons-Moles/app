@@ -390,6 +390,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#1A1A1A',
     marginTop: 2,
+    textAlign: 'center',
   },
   statFrameValue: {
     fontFamily: Typography.number,
@@ -527,6 +528,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#1A1A1A',
     marginTop: 2,
+    textAlign: 'center',
   },
   warningContainerVertical: {
     backgroundColor: 'rgba(139, 0, 0, 0.3)',

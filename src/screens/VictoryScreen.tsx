@@ -115,10 +115,7 @@ export function VictoryScreen({ navigation, route }: VictoryScreenProps) {
 
   useControllerAction({ onA: handleReturnToHub, onB: handleReturnToHub }, isController);
 
-  const controllerHints: ButtonHint[] = [
-    { button: 'A', label: 'Return to Hub' },
-    { button: 'B', label: 'Return to Hub' },
-  ];
+  const controllerHints: ButtonHint[] = [{ button: 'A', label: 'Return to Hub' }];
 
   const defeated = enemiesDefeated ?? 0;
 
@@ -203,11 +200,17 @@ export function VictoryScreen({ navigation, route }: VictoryScreenProps) {
   );
 
   const isGauntlet = runMode === RunMode.Gauntlet;
+  const gauntletPointsDisplay =
+    gauntletPoints == null
+      ? null
+      : typeof gauntletPoints === 'number'
+        ? gauntletPoints
+        : Number((gauntletPoints as { toString: () => string }).toString());
 
   const UnlockDisplays = () => {
     const hasLevel = showUnlock && levelUnlocked && !isGauntlet;
     const hasItem = showUnlock && itemUnlocked;
-    const hasGauntletPoints = isGauntlet && gauntletPoints != null;
+    const hasGauntletPoints = isGauntlet && gauntletPointsDisplay != null;
     if (!hasLevel && !hasItem && !hasGauntletPoints) return null;
 
     return (
@@ -219,25 +222,19 @@ export function VictoryScreen({ navigation, route }: VictoryScreenProps) {
       >
         {/* Gauntlet Points Display */}
         {hasGauntletPoints && (
-          <View
-            style={isVerticalLayout ? styles.unlockContainerVertical : styles.unlockContainer}
-          >
+          <View style={isVerticalLayout ? styles.unlockContainerVertical : styles.unlockContainer}>
             <Text style={isVerticalLayout ? styles.unlockTitleVertical : styles.unlockTitle}>
               Points Earned
             </Text>
-            <Text
-              style={isVerticalLayout ? styles.gauntletPointsVertical : styles.gauntletPoints}
-            >
-              +{gauntletPoints}
+            <Text style={isVerticalLayout ? styles.gauntletPointsVertical : styles.gauntletPoints}>
+              +{gauntletPointsDisplay}
             </Text>
           </View>
         )}
 
         {/* Level Unlock Display */}
         {hasLevel && (
-          <View
-            style={isVerticalLayout ? styles.unlockContainerVertical : styles.unlockContainer}
-          >
+          <View style={isVerticalLayout ? styles.unlockContainerVertical : styles.unlockContainer}>
             <Text style={isVerticalLayout ? styles.unlockTitleVertical : styles.unlockTitle}>
               Level Unlocked!
             </Text>
@@ -255,7 +252,9 @@ export function VictoryScreen({ navigation, route }: VictoryScreenProps) {
         {/* Item Unlock Display */}
         {hasItem && (
           <View
-            style={isVerticalLayout ? styles.itemUnlockContainerVertical : styles.itemUnlockContainer}
+            style={
+              isVerticalLayout ? styles.itemUnlockContainerVertical : styles.itemUnlockContainer
+            }
           >
             <Text style={isVerticalLayout ? styles.unlockTitleVertical : styles.unlockTitle}>
               New Item Unlocked!
@@ -285,7 +284,11 @@ export function VictoryScreen({ navigation, route }: VictoryScreenProps) {
   const ReturnButton = () => (
     <View style={isVerticalLayout ? styles.buttonSlotVertical : styles.buttonSlot}>
       <Pressable style={styles.buttonPressable} onPress={handleReturnToHub}>
-        <CachedImageBackground source={BUTTON_GREEN} style={styles.buttonImage} resizeMode="contain">
+        <CachedImageBackground
+          source={BUTTON_GREEN}
+          style={styles.buttonImage}
+          resizeMode="contain"
+        >
           <Text
             style={isVerticalLayout ? styles.returnButtonTextVertical : styles.returnButtonText}
           >
@@ -298,7 +301,11 @@ export function VictoryScreen({ navigation, route }: VictoryScreenProps) {
 
   return (
     <View style={styles.container}>
-      <CachedImageBackground source={BACKGROUND_IMAGE} style={styles.backgroundImage} resizeMode="cover">
+      <CachedImageBackground
+        source={BACKGROUND_IMAGE}
+        style={styles.backgroundImage}
+        resizeMode="cover"
+      >
         <Image source={STAINS_BACKGROUND} style={styles.stainsOverlay} resizeMode="cover" />
         {!isCompact && <View pointerEvents="none" style={styles.mobileBackgroundDim} />}
         <View style={styles.mainContent}>
@@ -460,6 +467,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#1A1A1A',
     marginTop: 2,
+    textAlign: 'center',
   },
   statValue: {
     fontFamily: Typography.number,
@@ -663,6 +671,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#1A1A1A',
     marginTop: 2,
+    textAlign: 'center',
   },
   unlocksRowVertical: {
     flexDirection: 'row',

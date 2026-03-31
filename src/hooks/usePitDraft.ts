@@ -12,9 +12,9 @@ import {
   PublicKey,
   SystemProgram,
   Transaction,
-  TransactionInstruction,
   ComputeBudgetProgram,
 } from '@solana/web3.js';
+import { ConnectionMagicRouter } from '@magicblock-labs/ephemeral-rollups-sdk';
 import { useWallet } from '@/contexts/WalletContext';
 import { useProfile } from '@/contexts/ProfileContext';
 import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
@@ -23,6 +23,8 @@ import { derivePlayerProfilePda } from '@/services/solana/types';
 import { GAMEPLAY_STATE_PROGRAM_ID, derivePitDraftVrfStatePda } from '@/services/solana/constants';
 import {
   buildEnterPitDraftTransaction,
+  buildLeavePitDraftTransaction,
+  buildQueueOnlyTransaction,
   buildQueueWithVrfInitTransaction,
   fetchPitDraftQueue,
   parsePitDraftEvents,
@@ -36,8 +38,8 @@ import {
 } from '@/services/solana/pitDraft';
 import {
   buildInitPitDraftVrfStateTransaction,
+  buildUndelegatePitDraftVrfStateTransaction,
   buildRequestGameplayVrfTransaction,
-  buildRawGameplayVrfRequestTransaction,
   waitForVrfFulfillment,
 } from '@/services/solana/vrf';
 import { SOLANA_CONFIG } from '@/services/solana/config';
@@ -212,57 +214,98 @@ async function backgroundVrfSetup(
   }
 
   // Devnet/Mainnet: delegate → request on ER → wait → undelegate
-  console.log('[usePitDraft] BG VRF: delegate VRF state to ER');
-  const vrfDelegate = deriveDelegatePdas(vrfStatePda, SOLANA_CONFIG.programs.gameplayState);
-  const delegateVrfIx = await program.methods
-    .delegatePitDraftVrfState(SOLANA_CONFIG.magic.delegationValidator)
-    .accountsStrict({
-      gameplayVrfState: vrfStatePda,
-      seedKey,
-      payer: signerKeypair.publicKey,
-      bufferGameplayVrfState: vrfDelegate.buffer,
-      delegationRecordGameplayVrfState: vrfDelegate.delegationRecord,
-      delegationMetadataGameplayVrfState: vrfDelegate.delegationMetadata,
-      ownerProgram: SOLANA_CONFIG.programs.gameplayState,
-      delegationProgram: DELEGATION_PROGRAM_ID,
-      systemProgram: SystemProgram.programId,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } as any)
-    .instruction();
-  const delegateTx = new Transaction().add(
-    ComputeBudgetProgram.setComputeUnitLimit({ units: 600_000 }),
-    delegateVrfIx,
-  );
-  await sendSessionSignerTransaction(baseConnection, delegateTx, signerKeypair);
-  console.log('[usePitDraft] BG VRF: delegated');
+  // Check if already delegated (e.g., from a previous attempt that failed mid-flow).
+  const baseVrfInfo = await baseConnection.getAccountInfo(vrfStatePda).catch(() => null);
+  const alreadyDelegated = baseVrfInfo && baseVrfInfo.owner.equals(DELEGATION_PROGRAM_ID);
+
+  if (alreadyDelegated) {
+    console.log('[usePitDraft] BG VRF: already delegated, skipping delegation step');
+  } else {
+    console.log('[usePitDraft] BG VRF: delegate VRF state to ER');
+    const vrfDelegate = deriveDelegatePdas(vrfStatePda, SOLANA_CONFIG.programs.gameplayState);
+    const delegateVrfIx = await program.methods
+      .delegatePitDraftVrfState(SOLANA_CONFIG.magic.delegationValidator)
+      .accountsStrict({
+        gameplayVrfState: vrfStatePda,
+        seedKey,
+        payer: signerKeypair.publicKey,
+        bufferGameplayVrfState: vrfDelegate.buffer,
+        delegationRecordGameplayVrfState: vrfDelegate.delegationRecord,
+        delegationMetadataGameplayVrfState: vrfDelegate.delegationMetadata,
+        ownerProgram: SOLANA_CONFIG.programs.gameplayState,
+        delegationProgram: DELEGATION_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any)
+      .instruction();
+    const delegateTx = new Transaction().add(
+      ComputeBudgetProgram.setComputeUnitLimit({ units: 600_000 }),
+      delegateVrfIx,
+    );
+    await sendSessionSignerTransaction(baseConnection, delegateTx, signerKeypair);
+    console.log('[usePitDraft] BG VRF: delegated');
+  }
+
+  // Resolve the correct ER validator endpoint for the delegated VRF state.
+  // The MagicBlock router distributes delegated accounts across ER nodes;
+  // sending to the wrong node means the oracle never sees the VRF request.
+  let erConnectionForVrf: Connection;
+  if (SOLANA_CONFIG.useMagicRouter) {
+    console.log('[usePitDraft] BG VRF: resolving ER validator via router');
+    const routerConn = new ConnectionMagicRouter(SOLANA_CONFIG.erRpcUrl, {
+      commitment: SOLANA_CONFIG.erCommitment,
+      wsEndpoint: SOLANA_CONFIG.erWsUrl,
+    });
+    let fqdn: string | undefined;
+    try {
+      const status = await routerConn.getDelegationStatus(vrfStatePda) as
+        { isDelegated: boolean; fqdn?: string };
+      fqdn = status?.fqdn ?? undefined;
+    } catch { /* fall through */ }
+    if (fqdn) {
+      console.log('[usePitDraft] BG VRF: resolved ER validator:', fqdn);
+      erConnectionForVrf = new Connection(fqdn, {
+        commitment: SOLANA_CONFIG.erCommitment,
+        wsEndpoint: fqdn.replace(/^https:\/\//, 'wss://').replace(/^http:\/\//, 'ws://'),
+      });
+    } else {
+      console.log('[usePitDraft] BG VRF: no fqdn from router, falling back to direct ER');
+      erConnectionForVrf = new Connection(DIRECT_ER_RPC_URL, {
+        commitment: SOLANA_CONFIG.erCommitment,
+        wsEndpoint: DIRECT_ER_WS_URL,
+      });
+    }
+  } else {
+    erConnectionForVrf = new Connection(DIRECT_ER_RPC_URL, {
+      commitment: SOLANA_CONFIG.erCommitment,
+      wsEndpoint: DIRECT_ER_WS_URL,
+    });
+  }
 
   // Wait for delegation to propagate on ER
-  const directErConnection = new Connection(DIRECT_ER_RPC_URL, {
-    commitment: SOLANA_CONFIG.erCommitment,
-    wsEndpoint: DIRECT_ER_WS_URL,
-  });
-
   const maxDelegateWaitMs = 15_000;
   const startWait = Date.now();
   while (Date.now() - startWait < maxDelegateWaitMs) {
-    const info = await directErConnection.getAccountInfo(vrfStatePda).catch(() => null);
+    const info = await erConnectionForVrf.getAccountInfo(vrfStatePda).catch(() => null);
     if (info) break;
     await new Promise((r) => setTimeout(r, 500));
   }
 
-  // Request VRF on ER
+  // Request VRF on ER via CPI (gameplay program signs for identity PDA)
   console.log('[usePitDraft] BG VRF: request on ER');
-  const vrfRequestTx = buildRawGameplayVrfRequestTransaction(
+  const erProgram = createGameplayStateProgram(erConnectionForVrf);
+  const vrfRequestTx = await buildRequestGameplayVrfTransaction(
+    erProgram,
     seedKey,
     signerKeypair.publicKey,
-    SOLANA_CONFIG.programs.gameplayState,
+    signerKeypair.publicKey,
   );
-  await sendSessionSignerTransaction(directErConnection, vrfRequestTx, signerKeypair);
+  await sendSessionSignerTransaction(erConnectionForVrf, vrfRequestTx, signerKeypair);
   console.log('[usePitDraft] BG VRF: request sent on ER');
 
   // Wait for fulfillment on ER
   const fulfilled = await waitForVrfFulfillment(
-    directErConnection,
+    erConnectionForVrf,
     vrfStatePda,
     VRF_FULFILLMENT_TIMEOUT_MS,
   );
@@ -274,20 +317,14 @@ async function backgroundVrfSetup(
 
   // Undelegate back to base
   console.log('[usePitDraft] BG VRF: undelegating from ER');
-  const undelegateDiscriminator = Buffer.alloc(8);
-  undelegateDiscriminator.writeBigUInt64LE(3n);
-  const undelegateIx = new TransactionInstruction({
-    programId: SOLANA_CONFIG.magic.programId,
-    keys: [
-      { pubkey: signerKeypair.publicKey, isSigner: true, isWritable: true },
-      { pubkey: vrfStatePda, isSigner: false, isWritable: true },
-      { pubkey: SOLANA_CONFIG.magic.contextId, isSigner: false, isWritable: false },
-    ],
-    data: undelegateDiscriminator,
-  });
+  const undelegateTx = await buildUndelegatePitDraftVrfStateTransaction(
+    erProgram,
+    seedKey,
+    signerKeypair.publicKey,
+  );
   await sendSessionSignerTransaction(
-    directErConnection,
-    new Transaction().add(undelegateIx),
+    erConnectionForVrf,
+    undelegateTx,
     signerKeypair,
   );
   console.log('[usePitDraft] BG VRF: undelegate sent');
@@ -692,23 +729,42 @@ export function usePitDraft(initialPhase?: PitDraftPhase) {
           const tempKeypair = Keypair.generate();
           _pitDraftTempKeypair = tempKeypair;
 
-          // Wallet TX 1 of 2: init VRF state + fund temp keypair
-          const initVrfTx = await buildInitPitDraftVrfStateTransaction(
-            program,
-            waitingPlayer,
-            wallet.publicKey,
-          );
-          // Append funding instruction to the same TX
-          initVrfTx.add(
-            SystemProgram.transfer({
-              fromPubkey: wallet.publicKey,
-              toPubkey: tempKeypair.publicKey,
-              lamports: 5_000_000, // 0.005 SOL for VRF TX fees
-            }),
-          );
-          const initSig = await signAndSendTransaction(initVrfTx);
-          await connection.confirmTransaction(initSig, 'confirmed');
-          console.log('[usePitDraft] Player 2 VRF init + fund TX confirmed:', initSig);
+          // Check if VRF state is already delegated (from player 1's partial attempt).
+          // If so, skip init and just fund the temp keypair for ER VRF request.
+          const vrfBaseInfo = await connection.getAccountInfo(vrfStatePda).catch(() => null);
+          const vrfAlreadyDelegated = vrfBaseInfo && vrfBaseInfo.owner.equals(DELEGATION_PROGRAM_ID);
+
+          if (vrfAlreadyDelegated) {
+            console.log('[usePitDraft] VRF state already delegated, skipping init — funding temp keypair only');
+            const fundTx = new Transaction().add(
+              SystemProgram.transfer({
+                fromPubkey: wallet.publicKey,
+                toPubkey: tempKeypair.publicKey,
+                lamports: 5_000_000,
+              }),
+            );
+            const fundSig = await signAndSendTransaction(fundTx);
+            await connection.confirmTransaction(fundSig, 'confirmed');
+            console.log('[usePitDraft] Player 2 fund-only TX confirmed:', fundSig);
+          } else {
+            // Wallet TX 1 of 2: init VRF state + fund temp keypair
+            const initVrfTx = await buildInitPitDraftVrfStateTransaction(
+              program,
+              waitingPlayer,
+              wallet.publicKey,
+            );
+            // Append funding instruction to the same TX
+            initVrfTx.add(
+              SystemProgram.transfer({
+                fromPubkey: wallet.publicKey,
+                toPubkey: tempKeypair.publicKey,
+                lamports: 5_000_000, // 0.005 SOL for VRF TX fees
+              }),
+            );
+            const initSig = await signAndSendTransaction(initVrfTx);
+            await connection.confirmTransaction(initSig, 'confirmed');
+            console.log('[usePitDraft] Player 2 VRF init + fund TX confirmed:', initSig);
+          }
 
           // Background VRF setup via temp keypair (no wallet interaction)
           await backgroundVrfSetup(connection, program, tempKeypair, waitingPlayer, vrfStatePda);
@@ -767,12 +823,23 @@ export function usePitDraft(initialPhase?: PitDraftPhase) {
         const tempKeypair = Keypair.generate();
         _pitDraftTempKeypair = tempKeypair;
 
-        const transaction = await buildQueueWithVrfInitTransaction(
-          connection,
-          program,
-          wallet.publicKey,
-          tempKeypair.publicKey,
-        );
+        // Check if VRF state is still delegated from a previous attempt.
+        // If so, skip init (backgroundVrfSetup handles already-delegated state).
+        const [vrfCheckPda] = derivePitDraftVrfStatePda(wallet.publicKey);
+        const vrfInfo = await connection.getAccountInfo(vrfCheckPda).catch(() => null);
+        const vrfStillDelegated = vrfInfo && vrfInfo.owner.equals(DELEGATION_PROGRAM_ID);
+
+        let transaction: Transaction;
+        if (vrfStillDelegated) {
+          console.log('[usePitDraft] VRF state still delegated, skipping init — queue + fund only');
+          transaction = await buildQueueOnlyTransaction(
+            connection, program, wallet.publicKey, tempKeypair.publicKey,
+          );
+        } else {
+          transaction = await buildQueueWithVrfInitTransaction(
+            connection, program, wallet.publicKey, tempKeypair.publicKey,
+          );
+        }
 
         const signature = await signAndSendTransaction(transaction);
         console.log('[usePitDraft] Queue+VRF init TX sent:', signature);
@@ -916,6 +983,31 @@ export function usePitDraft(initialPhase?: PitDraftPhase) {
   );
 
   /**
+   * Leave the pit draft queue on-chain, refunding the entry fee.
+   */
+  const leaveQueue = useCallback(async () => {
+    if (!wallet.publicKey) return;
+    setIsLoading(true);
+    try {
+      const program = createGameplayStateProgram(connection);
+      const tx = await buildLeavePitDraftTransaction(connection, program, wallet.publicKey);
+      const sig = await signAndSendTransaction(tx);
+      await connection.confirmTransaction(sig, 'confirmed');
+      console.log('[usePitDraft] Left queue, refund confirmed:', sig);
+    } catch (err) {
+      console.error('[usePitDraft] Leave queue failed:', err);
+      setError(err instanceof Error ? err.message : 'Failed to leave queue');
+    } finally {
+      stopPolling();
+      processedQueueSignaturesRef.current.clear();
+      queueAnchorSlotRef.current = null;
+      setPhase('confirm');
+      setMatchData(null);
+      setIsLoading(false);
+    }
+  }, [wallet.publicKey, connection, signAndSendTransaction, stopPolling]);
+
+  /**
    * Reset to initial state.
    */
   const reset = useCallback(() => {
@@ -939,6 +1031,7 @@ export function usePitDraft(initialPhase?: PitDraftPhase) {
     historyError,
     loadHistory,
     enterPitDraft,
+    leaveQueue,
     startCombatPhase,
     showResult,
     reset,

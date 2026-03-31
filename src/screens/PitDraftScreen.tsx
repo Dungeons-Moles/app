@@ -19,6 +19,7 @@ import {
   StyleSheet,
   Animated,
   ActivityIndicator,
+  useWindowDimensions,
 } from 'react-native';
 import { CachedImageBackground } from '../components/common/CachedImageBackground';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -106,6 +107,8 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
   const payoutBlinkAnim = useRef(new Animated.Value(1)).current;
   const isFocused = useIsFocused();
   const isCompact = useScreenVariant() === 'compact';
+  const { height: windowHeight } = useWindowDimensions();
+  const heightScale = isCompact ? 1 : Math.min(1, windowHeight / 450);
   const { playBgm, playSfx } = useAudio();
   const { disconnect } = useWallet();
 
@@ -212,6 +215,11 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
     navigation.goBack();
   }, [navigation, pitDraft, playSfx]);
 
+  const handleLeaveQueue = useCallback(async () => {
+    playSfx('ui_back');
+    await pitDraft.leaveQueue();
+  }, [pitDraft, playSfx]);
+
   const handleDisconnect = useCallback(() => {
     disconnect();
     navigation.reset({
@@ -224,6 +232,7 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
   const inputMode = useInputMode();
   const isController = inputMode === 'controller';
   const [panelFocus, setPanelFocus] = useState(1); // 0 = History, 1 = Enter
+  const [queueFocus, setQueueFocus] = useState(0); // 0 = Leave Queue, 1 = Back to Hub
   const [panelWidth, setPanelWidth] = useState(300);
   const buttonFontSize = isCompact ? 52 : panelWidth * 0.06;
 
@@ -244,20 +253,25 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
   useControllerAction(
     showSettingsModal
       ? {}
-      : {
-          onB: handleBack,
-          onStart: () => setShowSettingsModal(true),
-          onA:
-            pitDraft.phase === 'queuing' || pitDraft.phase === 'preparing'
-              ? handleBack
-              : panelFocus === 0
-                ? handleHistory
-                : !pitDraft.isLoading
-                  ? handleEnter
-                  : undefined,
-          onDPadLeft: pitDraft.phase !== 'queuing' && pitDraft.phase !== 'preparing' ? () => setPanelFocus(0) : undefined,
-          onDPadRight: pitDraft.phase !== 'queuing' && pitDraft.phase !== 'preparing' ? () => setPanelFocus(1) : undefined,
-        },
+      : pitDraft.phase === 'queuing' || pitDraft.phase === 'preparing'
+        ? {
+            onB: handleBack,
+            onStart: () => setShowSettingsModal(true),
+            onA: queueFocus === 0 ? handleLeaveQueue : handleBack,
+            onDPadLeft: () => setQueueFocus(0),
+            onDPadRight: () => setQueueFocus(1),
+          }
+        : {
+            onB: handleBack,
+            onStart: () => setShowSettingsModal(true),
+            onA: panelFocus === 0
+              ? handleHistory
+              : !pitDraft.isLoading
+                ? handleEnter
+                : undefined,
+            onDPadLeft: () => setPanelFocus(0),
+            onDPadRight: () => setPanelFocus(1),
+          },
     isController && isFocused && (pitDraft.phase === 'confirm' || pitDraft.phase === 'queuing' || pitDraft.phase === 'preparing')
   );
 
@@ -755,7 +769,11 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
               />
             </View>
 
-            <View style={styles.queuingCenterContent}>
+            <View style={[
+              styles.queuingCenterContent,
+              isCompact && { justifyContent: 'center' },
+              !isCompact && heightScale < 1 && { transform: [{ scale: heightScale }], transformOrigin: 'top center' },
+            ]}>
               <View style={[styles.bonfireContainer, isCompact && compactStyles.bonfireContainer]}>
                 <Image
                   source={MOLE_BONFIRE}
@@ -806,7 +824,11 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
 
   // Queuing phase — matches the confirm phase visual style
   if (pitDraft.phase === 'queuing') {
-    const queuingHints: ButtonHint[] = [{ button: 'B', label: 'Back' }];
+    const queuingHints: ButtonHint[] = [
+      { button: 'DPadLeftRight', label: 'Select' },
+      { button: 'A', label: 'Confirm' },
+      { button: 'B', label: 'Back' },
+    ];
 
     return (
       <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
@@ -838,6 +860,24 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
                 </CachedImageBackground>
               </TouchableOpacity>
             </View>
+          )}
+          {!isCompact && !isController && (
+            <TouchableOpacity
+              onPress={handleLeaveQueue}
+              activeOpacity={0.7}
+              disabled={pitDraft.isLoading}
+              style={styles.leaveQueuePosition}
+            >
+              <CachedImageBackground
+                source={BUTTON_BG}
+                style={styles.leaveQueueBtn}
+                resizeMode="stretch"
+              >
+                <Text style={styles.leaveQueueBtnText}>
+                  {pitDraft.isLoading ? 'Leaving...' : 'Leave Queue'}
+                </Text>
+              </CachedImageBackground>
+            </TouchableOpacity>
           )}
           {!isCompact && !isController && (
             <TouchableOpacity
@@ -889,7 +929,7 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
             </View>
 
             {/* Waiting content */}
-            <View style={styles.queuingCenterContent}>
+            <View style={[styles.queuingCenterContent, !isCompact && heightScale < 1 && { transform: [{ scale: heightScale }], transformOrigin: 'top center' }]}>
               <View style={[styles.bonfireContainer, isCompact && compactStyles.bonfireContainer]}>
                 <Image
                   source={MOLE_BONFIRE}
@@ -926,32 +966,50 @@ function PitDraftContent({ navigation, pitDraft }: PitDraftContentProps) {
                 </View>
               </View>
 
-              <View
-                style={[styles.queuingButtonSlot, isCompact && compactStyles.queuingButtonSlot]}
-              >
-                <FocusGlow active={isController} style={{ width: '100%', height: '100%' }}>
-                  <TouchableOpacity
-                    onPress={handleBack}
-                    activeOpacity={0.7}
-                    style={styles.resultButtonPressable}
-                  >
-                    <CachedImageBackground
-                      source={BUTTON_BG}
-                      style={styles.resultButtonImage}
-                      resizeMode="stretch"
-                    >
-                      <Text
-                        style={[
-                          styles.queuingButtonText,
-                          isCompact && compactStyles.queuingButtonText,
-                        ]}
+              {isCompact && (
+                <View style={compactStyles.queuingButtonRow}>
+                  <View style={compactStyles.queuingButtonSlot}>
+                    <FocusGlow active={isController && queueFocus === 0} style={{ width: '100%', height: '100%' }}>
+                      <TouchableOpacity
+                        onPress={handleLeaveQueue}
+                        activeOpacity={0.7}
+                        disabled={pitDraft.isLoading}
+                        style={styles.resultButtonPressable}
                       >
-                        Back to Hub
-                      </Text>
-                    </CachedImageBackground>
-                  </TouchableOpacity>
-                </FocusGlow>
-              </View>
+                        <CachedImageBackground
+                          source={BUTTON_BG}
+                          style={styles.resultButtonImage}
+                          resizeMode="stretch"
+                        >
+                          <Text style={compactStyles.queuingButtonText}>
+                            {pitDraft.isLoading ? 'Leaving...' : 'Leave Queue'}
+                          </Text>
+                        </CachedImageBackground>
+                      </TouchableOpacity>
+                    </FocusGlow>
+                  </View>
+                  <View style={compactStyles.queuingButtonSlot}>
+                    <FocusGlow active={isController && queueFocus === 1} style={{ width: '100%', height: '100%' }}>
+                      <TouchableOpacity
+                        onPress={handleBack}
+                        activeOpacity={0.7}
+                        style={styles.resultButtonPressable}
+                      >
+                        <CachedImageBackground
+                          source={BUTTON_BG}
+                          style={styles.resultButtonImage}
+                          resizeMode="stretch"
+                        >
+                          <Text style={compactStyles.queuingButtonText}>
+                            Back to Hub
+                          </Text>
+                        </CachedImageBackground>
+                      </TouchableOpacity>
+                    </FocusGlow>
+                  </View>
+                </View>
+              )}
+
             </View>
           </View>
         </CachedImageBackground>
@@ -1053,7 +1111,6 @@ function CombatPhaseContent({ pitDraft }: CombatPhaseContentProps) {
 
   return (
     <CombatLayout
-      label="PIT DRAFT"
       playerSkinSource={playerSkinSource}
       pvpOpponentSkinSource={opponentSkinSource}
       enemyPanel={{
@@ -1234,6 +1291,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
+  leaveQueuePosition: {
+    position: 'absolute',
+    bottom: 24,
+    right: 24,
+    zIndex: 10,
+  },
+  leaveQueueBtn: {
+    width: 140,
+    height: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  leaveQueueBtnText: {
+    fontFamily: Typography.button,
+    fontSize: 14,
+    color: '#FFFFFF',
+    textAlign: 'center',
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
+  },
   settingsBtn: {
     width: 60,
     height: 60,
@@ -1301,21 +1379,6 @@ const styles = StyleSheet.create({
     color: '#000000',
     textAlign: 'center',
     lineHeight: 22,
-  },
-  queuingButtonSlot: {
-    width: 200,
-    height: 60,
-    marginTop: 15,
-  },
-  queuingButtonText: {
-    fontFamily: Typography.button,
-    fontSize: 20,
-    color: '#FFFFFF',
-    textShadowColor: 'rgba(0, 0, 0, 0.5)',
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 2,
-    textAlign: 'center',
-    marginBottom: 4,
   },
 
   // Result phase — shared
@@ -1624,8 +1687,8 @@ const compactStyles = StyleSheet.create({
     lineHeight: 44,
   },
   preparingText: {
-    fontSize: 48,
-    lineHeight: 56,
+    fontSize: 32,
+    lineHeight: 40,
   },
   paperPinsContainer: {
     width: 760,
@@ -1640,13 +1703,23 @@ const compactStyles = StyleSheet.create({
     fontSize: 32,
     lineHeight: 40,
   },
+  queuingButtonRow: {
+    flexDirection: 'row' as const,
+    gap: 16,
+    marginTop: 24,
+  },
   queuingButtonSlot: {
     width: 320,
     height: 96,
-    marginTop: 24,
   },
   queuingButtonText: {
+    fontFamily: Typography.button,
     fontSize: 32,
+    color: '#FFFFFF',
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
+    textAlign: 'center',
     marginBottom: 6,
   },
   modalContent: {

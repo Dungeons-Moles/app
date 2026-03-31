@@ -3556,6 +3556,87 @@
       "args": []
     },
     {
+      "name": "leave_pit_draft",
+      "docs": [
+        "Leaves the pit draft queue, refunding the entry fee from the vault.",
+        "Only the waiting player can call this."
+      ],
+      "discriminator": [
+        113,
+        10,
+        233,
+        166,
+        27,
+        217,
+        31,
+        52
+      ],
+      "accounts": [
+        {
+          "name": "pit_draft_queue",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  105,
+                  116,
+                  95,
+                  100,
+                  114,
+                  97,
+                  102,
+                  116,
+                  95,
+                  113,
+                  117,
+                  101,
+                  117,
+                  101
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "pit_draft_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  105,
+                  116,
+                  95,
+                  100,
+                  114,
+                  97,
+                  102,
+                  116,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "player",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "modify_gold_authorized",
       "docs": [
         "Modifies the player's gold by a delta value, authorized by poi-system.",
@@ -6646,6 +6727,46 @@
       "args": []
     },
     {
+      "name": "undelegate_gameplay_vrf_state",
+      "docs": [
+        "Commits and undelegates session-scoped GameplayVrfState from ER back to base layer."
+      ],
+      "discriminator": [
+        141,
+        161,
+        164,
+        230,
+        250,
+        251,
+        159,
+        194
+      ],
+      "accounts": [
+        {
+          "name": "gameplay_vrf_state",
+          "writable": true
+        },
+        {
+          "name": "game_session"
+        },
+        {
+          "name": "session_signer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "magic_program",
+          "address": "Magic11111111111111111111111111111111111111"
+        },
+        {
+          "name": "magic_context",
+          "writable": true,
+          "address": "MagicContext1111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "undelegate_gauntlet_echoes",
       "docs": [
         "Commits and undelegates GauntletEchoes from ER (gauntlet sessions only)."
@@ -6670,6 +6791,47 @@
         },
         {
           "name": "session_signer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "magic_program",
+          "address": "Magic11111111111111111111111111111111111111"
+        },
+        {
+          "name": "magic_context",
+          "writable": true,
+          "address": "MagicContext1111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "undelegate_pit_draft_vrf_state",
+      "docs": [
+        "Commits and undelegates GameplayVrfState for pit draft back to base layer.",
+        "The seed_key is the same pubkey used to derive the pit-draft VRF PDA."
+      ],
+      "discriminator": [
+        109,
+        185,
+        142,
+        18,
+        49,
+        96,
+        85,
+        94
+      ],
+      "accounts": [
+        {
+          "name": "gameplay_vrf_state",
+          "writable": true
+        },
+        {
+          "name": "seed_key"
+        },
+        {
+          "name": "payer",
           "writable": true,
           "signer": true
         },
@@ -7259,6 +7421,19 @@
         192,
         191,
         227
+      ]
+    },
+    {
+      "name": "PitDraftQueueCancelled",
+      "discriminator": [
+        208,
+        110,
+        96,
+        14,
+        156,
+        106,
+        6,
+        187
       ]
     },
     {
@@ -8680,6 +8855,13 @@
               "Actual count of enemies on the map."
             ],
             "type": "u8"
+          },
+          {
+            "name": "enemies_defeated",
+            "docs": [
+              "Total field enemies defeated this run (persists across reloads)."
+            ],
+            "type": "u16"
           }
         ]
       }
@@ -9959,6 +10141,22 @@
               "PDA bump seed."
             ],
             "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PitDraftQueueCancelled",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "refund_lamports",
+            "type": "u64"
           }
         ]
       }

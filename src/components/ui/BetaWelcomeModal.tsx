@@ -100,7 +100,7 @@ export function BetaWelcomeModal({ visible, onClose }: BetaWelcomeModalProps) {
               <View style={[styles.modalBody, isCompact && compactStyles.modalBody]}>
                 <Text style={[styles.bodyText, isCompact && compactStyles.bodyText]}>
                   Dungeons & Moles is currently in{' '}
-                  <Text style={styles.bold}>Early Beta</Text>.{'\n\n'}
+                  <Text style={styles.bold}>Early Alpha</Text>.{'\n\n'}
                   You may encounter the occasional unruly bug lurking in the tunnels. If something
                   goes wrong, try <Text style={styles.bold}>reloading the game</Text> and{' '}
                   <Text style={styles.bold}>resuming your session</Text> — that usually clears

@@ -4,9 +4,11 @@
  * Used when psg1-sim intercepts physical keys (j→A, k→B, arrows→DPad).
  */
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
 import { InlineModal } from '../InlineModal';
 import { useControllerAction } from '../../hooks/useControllerAction';
+import { useInputMode } from '../../hooks/useInputMode';
 import { useScreenVariant } from '../../contexts/ScreenVariantContext';
 import { Typography } from '../../theme/typography';
 import { CachedImage as Image } from '../common/CachedImage';
@@ -21,6 +23,20 @@ const ROWS = [
   ['A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L'],
   ['Z', 'X', 'C', 'V', 'B', 'N', 'M'],
   ['CASE', 'SPACE', '←', 'OK'],
+];
+
+// Split layout for mobile landscape (Samsung-style)
+const SPLIT_LEFT = [
+  ['Q', 'W', 'E', 'R', 'T'],
+  ['A', 'S', 'D', 'F', 'G'],
+  ['Z', 'X', 'C', 'V'],
+  ['CASE', 'SPACE'],
+];
+const SPLIT_RIGHT = [
+  ['Y', 'U', 'I', 'O', 'P'],
+  ['H', 'J', 'K', 'L'],
+  ['B', 'N', 'M'],
+  ['←', 'OK'],
 ];
 
 interface ControllerKeyboardProps {
@@ -41,6 +57,7 @@ export function ControllerKeyboard({
   onCancel,
 }: ControllerKeyboardProps) {
   const isCompact = useScreenVariant() === 'compact';
+  const isController = useInputMode() === 'controller';
   const [text, setText] = useState(value);
   const [cursor, setCursor] = useState({ row: 0, col: 0 });
   const [isUpper, setIsUpper] = useState(true);
@@ -83,6 +100,24 @@ export function ControllerKeyboard({
   const confirm = useCallback(() => {
     onSubmit(textRef.current);
   }, [onSubmit]);
+
+  const handleTouchKey = useCallback(
+    (key: string) => {
+      if (key === 'CASE') {
+        setIsUpper((prev) => !prev);
+      } else if (key === 'SPACE') {
+        setText((prev) => (prev.length < maxLength ? prev + ' ' : prev));
+      } else if (key === '←') {
+        setText((prev) => prev.slice(0, -1));
+      } else if (key === 'OK') {
+        onSubmit(textRef.current);
+      } else {
+        const char = isUpper ? key : key.toLowerCase();
+        setText((prev) => (prev.length < maxLength ? prev + char : prev));
+      }
+    },
+    [isUpper, maxLength, onSubmit]
+  );
 
   const moveUp = useCallback(() => {
     setCursor((prev) => {
@@ -137,21 +172,148 @@ export function ControllerKeyboard({
     '←': keyW,
     OK: isCompact ? 80 : 54,
   };
+  const mobileSpecialWidths: Record<string, number> = {
+    CASE: 44,
+    SPACE: 80,
+    '←': 44,
+    OK: 54,
+  };
   const iconSize = isCompact ? 24 : 16;
 
-  return (
-    <InlineModal visible={visible} transparent animationType="fade">
-      <View style={styles.overlay}>
-        <View style={[styles.panel, isCompact && styles.panelCompact]}>
-          {/* Title */}
-          <Text style={[styles.title, isCompact && styles.titleCompact]}>ENTER NAME</Text>
+  const renderKey = (key: string, rowIdx: number, colIdx: number, isMobileSplit: boolean) => {
+    const isSelected = cursor.row === rowIdx && cursor.col === colIdx;
+    const isSpecial = key === 'CASE' || key === 'SPACE' || key === '←' || key === 'OK';
+    const widths = isMobileSplit ? mobileSpecialWidths : specialWidths;
+    const w = isSpecial ? (widths[key] ?? keyW) : keyW;
 
-          {/* Text preview */}
-          <View style={[styles.previewRow, isCompact && styles.previewRowCompact]}>
+    let label: string;
+    if (key === 'CASE') {
+      label = isUpper ? 'abc' : 'ABC';
+    } else if (key.length === 1 && key >= 'A' && key <= 'Z') {
+      label = isUpper ? key : key.toLowerCase();
+    } else {
+      label = key;
+    }
+
+    const selected = isSelected && isController;
+    const svgSize = isCompact ? 22 : 14;
+    const svgColor = selected ? '#f4e4bc' : '#3d2b1f';
+
+    return (
+      <Pressable
+        key={key}
+        style={[
+          styles.key,
+          { width: w, height: keyH },
+          isSpecial && styles.specialKey,
+          selected && styles.keySelected,
+        ]}
+        onPress={() => handleTouchKey(key)}
+      >
+        {key === '←' ? (
+          <Svg width={svgSize} height={svgSize} viewBox="0 0 24 24" fill="none">
+            <Path
+              d="M9.707 4.293a1 1 0 0 0-1.497.083L2.293 11.293a1 1 0 0 0 0 1.414l5.917 6.917a1 1 0 0 0 1.497.083L10.414 19H20a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-9.586l-.707-.707Z"
+              stroke={svgColor}
+              strokeWidth={1.8}
+            />
+            <Path
+              d="M16 9l-5 6M11 9l5 6"
+              stroke={svgColor}
+              strokeWidth={1.8}
+              strokeLinecap="round"
+            />
+          </Svg>
+        ) : (
+          <Text
+            style={[
+              styles.keyText,
+              isCompact && styles.keyTextCompact,
+              isSpecial && styles.specialKeyText,
+              isCompact && isSpecial && styles.specialKeyTextCompact,
+              selected && styles.keyTextSelected,
+            ]}
+          >
+            {label}
+          </Text>
+        )}
+      </Pressable>
+    );
+  };
+
+  const renderUnifiedKeyboard = () => (
+    <View style={[styles.keyboard, { gap }]}>
+      {ROWS.map((row, rowIdx) => (
+        <View key={rowIdx} style={[styles.keyRow, { gap }]}>
+          {row.map((key, colIdx) => renderKey(key, rowIdx, colIdx, false))}
+        </View>
+      ))}
+    </View>
+  );
+
+  const renderSplitHalf = (rows: string[][]) => (
+    <View style={[styles.keyboard, { gap }]}>
+      {rows.map((row, rowIdx) => (
+        <View key={rowIdx} style={[styles.keyRow, { gap }]}>
+          {row.map((key, colIdx) => renderKey(key, rowIdx, colIdx, true))}
+        </View>
+      ))}
+    </View>
+  );
+
+  // Mobile: cancel top-right, centered input above split keyboard docked to bottom
+  if (!isCompact) {
+    return (
+      <InlineModal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
+        <Pressable style={styles.mobileOverlay} onPress={onCancel}>
+          {/* Cancel button — top right */}
+          <Pressable onPress={onCancel} style={styles.mobileCancelBtn}>
+            <Text style={styles.mobileCancelText}>Cancel</Text>
+          </Pressable>
+
+          {/* Spacer — tap to cancel */}
+          <View style={styles.mobileSpacer} />
+
+          {/* Input + split keyboard docked to bottom */}
+          <Pressable style={styles.mobileBottom} onPress={() => {}}>
+            {/* Centered input */}
+            <View style={styles.mobileInputBar}>
+              <View style={styles.mobileInputInner}>
+                <Text
+                  style={[styles.previewText, !text && styles.previewPlaceholder]}
+                  numberOfLines={1}
+                >
+                  {text || placeholder}
+                  <Text style={styles.previewCursor}>_</Text>
+                </Text>
+                <Text style={styles.charCount}>{text.length}/{maxLength}</Text>
+              </View>
+            </View>
+
+            {/* Split keyboard */}
+            <View style={styles.splitKeyboard}>
+              {renderSplitHalf(SPLIT_LEFT)}
+              <View style={styles.splitGap} />
+              {renderSplitHalf(SPLIT_RIGHT)}
+            </View>
+          </Pressable>
+        </Pressable>
+      </InlineModal>
+    );
+  }
+
+  // Compact / controller: single centered panel
+  return (
+    <InlineModal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
+      <Pressable style={styles.overlay} onPress={onCancel}>
+        <Pressable style={[styles.panel, styles.panelCompact]} onPress={() => {}}>
+          <Text style={[styles.title, styles.titleCompact]}>ENTER NAME</Text>
+
+          <View style={[styles.previewRow, styles.previewRowCompact]}>
             <Text
               style={[
                 styles.previewText,
-                isCompact && styles.previewTextCompact,
+                styles.previewTextCompact,
                 !text && styles.previewPlaceholder,
               ]}
               numberOfLines={1}
@@ -159,79 +321,36 @@ export function ControllerKeyboard({
               {text || placeholder}
               <Text style={styles.previewCursor}>_</Text>
             </Text>
-            <Text style={[styles.charCount, isCompact && styles.charCountCompact]}>
+            <Text style={[styles.charCount, styles.charCountCompact]}>
               {text.length}/{maxLength}
             </Text>
           </View>
 
-          {/* Keyboard rows */}
-          <View style={[styles.keyboard, { gap }]}>
-            {ROWS.map((row, rowIdx) => (
-              <View key={rowIdx} style={[styles.keyRow, { gap }]}>
-                {row.map((key, colIdx) => {
-                  const isSelected = cursor.row === rowIdx && cursor.col === colIdx;
-                  const isSpecial = rowIdx === 3;
-                  const w = isSpecial ? (specialWidths[key] ?? keyW) : keyW;
+          {renderUnifiedKeyboard()}
 
-                  let label: string;
-                  if (key === 'CASE') {
-                    label = isUpper ? 'abc' : 'ABC';
-                  } else if (key.length === 1 && key >= 'A' && key <= 'Z') {
-                    label = isUpper ? key : key.toLowerCase();
-                  } else {
-                    label = key;
-                  }
-
-                  return (
-                    <View
-                      key={key}
-                      style={[
-                        styles.key,
-                        { width: w, height: keyH },
-                        isSpecial && styles.specialKey,
-                        isSelected && styles.keySelected,
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.keyText,
-                          isCompact && styles.keyTextCompact,
-                          isSpecial && styles.specialKeyText,
-                          isCompact && isSpecial && styles.specialKeyTextCompact,
-                          isSelected && styles.keyTextSelected,
-                        ]}
-                      >
-                        {label}
-                      </Text>
-                    </View>
-                  );
-                })}
-              </View>
-            ))}
-          </View>
-
-          {/* Inline hints */}
-          <View style={[styles.hints, isCompact && styles.hintsCompact]}>
-            {(
-              [
-                [ICON_A, 'Select'],
-                [ICON_B, 'Delete'],
-                [ICON_START, 'Confirm'],
-                [ICON_SELECT, 'Cancel'],
-              ] as const
-            ).map(([icon, label]) => (
-              <View key={label} style={styles.hintItem}>
-                <Image
-                  source={icon}
-                  style={{ width: iconSize, height: iconSize }}
-                  resizeMode="contain"
-                />
-                <Text style={[styles.hintLabel, isCompact && styles.hintLabelCompact]}>{label}</Text>
-              </View>
-            ))}
-          </View>
-        </View>
-      </View>
+          {isController && (
+            <View style={[styles.hints, styles.hintsCompact]}>
+              {(
+                [
+                  [ICON_A, 'Select'],
+                  [ICON_B, 'Delete'],
+                  [ICON_START, 'Confirm'],
+                  [ICON_SELECT, 'Cancel'],
+                ] as const
+              ).map(([icon, label]) => (
+                <View key={label} style={styles.hintItem}>
+                  <Image
+                    source={icon}
+                    style={{ width: iconSize, height: iconSize }}
+                    resizeMode="contain"
+                  />
+                  <Text style={[styles.hintLabel, styles.hintLabelCompact]}>{label}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+        </Pressable>
+      </Pressable>
     </InlineModal>
   );
 }
@@ -251,6 +370,68 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     paddingHorizontal: 20,
     alignItems: 'center',
+    maxWidth: 460,
+    width: '90%',
+  },
+  // --- Mobile split layout ---
+  mobileOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  mobileCancelBtn: {
+    position: 'absolute',
+    top: 10,
+    right: 16,
+    zIndex: 10,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+  },
+  mobileCancelText: {
+    fontFamily: Typography.body,
+    fontSize: 13,
+    color: '#EFE9D6',
+  },
+  mobileSpacer: {
+    flex: 1,
+  },
+  mobileBottom: {
+    backgroundColor: '#EFE9D6',
+    borderTopWidth: 1,
+    borderTopColor: '#c8b99a',
+    width: '85%',
+    alignSelf: 'center',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#c8b99a',
+    marginBottom: 6,
+  },
+  mobileInputBar: {
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#d4c49c',
+  },
+  mobileInputInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f4e4bc',
+    borderWidth: 1,
+    borderColor: '#c8b99a',
+    borderRadius: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    width: 320,
+    maxWidth: '80%',
+  },
+  splitKeyboard: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+  },
+  splitGap: {
+    width: 24,
   },
   panelCompact: {
     paddingVertical: 24,
@@ -264,6 +445,8 @@ const styles = StyleSheet.create({
     color: '#3d2b1f',
     letterSpacing: 2,
     marginBottom: 8,
+    flex: 1,
+    textAlign: 'center',
   },
   titleCompact: {
     fontSize: 22,

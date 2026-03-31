@@ -18,7 +18,35 @@ import {
 import * as SecureStorage from '@/services/storage/secureStorage';
 import bs58 from 'bs58';
 import { ed25519 } from '@noble/curves/ed25519';
+import { Platform } from 'react-native';
 import { SOLANA_CONFIG } from './config';
+
+// ============================================================================
+// Ed25519 JIT warm-up — Hermes takes ~1.5s to JIT-compile @noble/curves on
+// first call. Running a dummy sign at module load moves this cost to app startup
+// (background) instead of blocking the first gameplay move.
+// ============================================================================
+if (Platform.OS !== 'web') {
+  const _warmupSeed = new Uint8Array(32);
+  _warmupSeed[0] = 1; // non-zero seed required by noble
+  // Schedule off the critical path — InteractionManager.runAfterInteractions
+  // is not available in service modules, so use setImmediate/setTimeout.
+  const doWarmup = () => {
+    try {
+      const sig = ed25519.sign(new Uint8Array(64), _warmupSeed);
+      // Also warm up bs58 encode/decode (used for signature and blockhash)
+      const encoded = bs58.encode(sig);
+      bs58.decode(encoded);
+    } catch (_) {
+      // ignore — the point is to trigger JIT compilation
+    }
+  };
+  if (typeof setImmediate !== 'undefined') {
+    setImmediate(doWarmup);
+  } else {
+    setTimeout(doWarmup, 0);
+  }
+}
 
 // ============================================================================
 // Pre-compiled message template for fire-and-forget transactions
@@ -195,6 +223,7 @@ const ER_RETRY_BASE_DELAY_MS = 500;
 const ER_BLOCKHASH_CACHE_TTL_MS = 15_000;
 let erBlockhashCache: {
   blockhash: string;
+  blockhashBytes: Uint8Array;
   lastValidBlockHeight: number;
   fetchedAt: number;
 } | null = null;
@@ -202,14 +231,14 @@ let erBlockhashCache: {
 export const getCachedErBlockhash = async (
   connection: Connection,
   commitment: import('@solana/web3.js').Commitment
-): Promise<{ blockhash: string; lastValidBlockHeight: number }> => {
+): Promise<{ blockhash: string; blockhashBytes: Uint8Array; lastValidBlockHeight: number }> => {
   const now = Date.now();
   if (erBlockhashCache && now - erBlockhashCache.fetchedAt < ER_BLOCKHASH_CACHE_TTL_MS) {
     return erBlockhashCache;
   }
   const latest = await connection.getLatestBlockhash(commitment);
-  erBlockhashCache = { ...latest, fetchedAt: now };
-  return latest;
+  erBlockhashCache = { ...latest, blockhashBytes: bs58.decode(latest.blockhash), fetchedAt: now };
+  return erBlockhashCache;
 };
 
 /** Pre-warm the ER blockhash cache so the first move doesn't pay a round-trip penalty. */
@@ -218,6 +247,57 @@ export const warmErBlockhashCache = (connection: Connection): void => {
     getCachedErBlockhash(connection, 'processed').catch(() => {});
   }
 };
+
+// Periodic blockhash refresh — keeps the cache warm during active gameplay so
+// the first move after a pause never pays a cold-fetch penalty (~200-500ms).
+let _blockhashRefreshTimer: ReturnType<typeof setInterval> | null = null;
+let _blockhashRefreshConnection: Connection | null = null;
+
+/**
+ * Start a background interval that refreshes the ER blockhash cache every 10s.
+ * Call once when the game screen mounts; call stopErBlockhashRefresh on unmount.
+ */
+export const startErBlockhashRefresh = (connection: Connection): void => {
+  if (!isErConnection(connection)) return;
+  // Already running for this connection
+  if (_blockhashRefreshTimer && _blockhashRefreshConnection === connection) return;
+  stopErBlockhashRefresh();
+  _blockhashRefreshConnection = connection;
+  // Refresh every 10s — well within the 15s TTL, so the cache is always warm.
+  _blockhashRefreshTimer = setInterval(() => {
+    getCachedErBlockhash(connection, 'processed').catch(() => {});
+  }, 10_000);
+};
+
+export const stopErBlockhashRefresh = (): void => {
+  if (_blockhashRefreshTimer) {
+    clearInterval(_blockhashRefreshTimer);
+    _blockhashRefreshTimer = null;
+    _blockhashRefreshConnection = null;
+  }
+};
+
+/**
+ * Fire-and-forget raw transaction send via direct fetch.
+ * Bypasses @solana/web3.js Connection.sendRawTransaction which parses the
+ * JSON-RPC response synchronously (~30-50ms on Hermes). For fire-and-forget
+ * we don't need the parsed response — just fire the HTTP POST.
+ */
+export function fireAndForgetRawTx(
+  endpoint: string,
+  wireBase64: string,
+): Promise<void> {
+  return fetch(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'sendTransaction',
+      params: [wireBase64, { encoding: 'base64', skipPreflight: true, maxRetries: 2 }],
+    }),
+  }).then(() => {}).catch(() => {});
+}
 
 const normalizeEndpoint = (url: string): string => url.replace(/\/+$/, '');
 const directErRpcUrl =
@@ -836,15 +916,27 @@ export async function sendSessionSignerTransaction(
 
       const signature = bs58.encode(signatureBytes);
 
-      connection.sendRawTransaction(wireTransaction, {
-        skipPreflight: true,
-        maxRetries: 2,
-      }).then(() => {
-        console.log(`[perf] sendTransaction(bg): completed (router=${isRouterPath})`);
-      }).catch((err) => {
-        console.error('[sessionSignerWallet] Background send failed:', err);
-        options?.onSendFail?.(err instanceof Error ? err : new Error(String(err)));
-      });
+      // Use direct fetch on native to bypass Connection.sendRawTransaction's
+      // JSON-RPC response parsing overhead (~30-50ms on Hermes).
+      if (Platform.OS !== 'web') {
+        const wireBase64 = Buffer.from(wireTransaction).toString('base64');
+        fireAndForgetRawTx(connection.rpcEndpoint, wireBase64).then(() => {
+          console.log(`[perf] sendTransaction(bg): completed (router=${isRouterPath})`);
+        }).catch((err) => {
+          console.error('[sessionSignerWallet] Background send failed:', err);
+          options?.onSendFail?.(err instanceof Error ? err : new Error(String(err)));
+        });
+      } else {
+        connection.sendRawTransaction(wireTransaction, {
+          skipPreflight: true,
+          maxRetries: 2,
+        }).then(() => {
+          console.log(`[perf] sendTransaction(bg): completed (router=${isRouterPath})`);
+        }).catch((err) => {
+          console.error('[sessionSignerWallet] Background send failed:', err);
+          options?.onSendFail?.(err instanceof Error ? err : new Error(String(err)));
+        });
+      }
       console.log(`[perf] sendTransaction: 0ms (fire-and-forget, compile: ${tSign - tCompile}ms, sign: ${tWire - tSign}ms, sig=${signature.slice(0, 8)}...)`);
       return signature;
     }

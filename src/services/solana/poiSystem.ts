@@ -145,10 +145,7 @@ export async function buildInteractRestTransaction(
     mapGeneratorProgram: SOLANA_CONFIG.programs.mapGenerator,
   };
 
-  return ctx.program.methods
-    .interactRest(poiIndex)
-    .accountsPartial(restAccounts)
-    .transaction();
+  return ctx.program.methods.interactRest(poiIndex).accountsPartial(restAccounts).transaction();
 }
 
 // ============================================================================
@@ -204,8 +201,13 @@ export async function interactPickItem(
   if (safePoiIndex !== poiIndex || safeChoiceIndex !== choiceIndex) {
     console.error(
       '[interactPickItem] arg sanitization changed values! poiIndex:',
-      poiIndex, '→', safePoiIndex,
-      '| choiceIndex:', choiceIndex, '→', safeChoiceIndex
+      poiIndex,
+      '→',
+      safePoiIndex,
+      '| choiceIndex:',
+      choiceIndex,
+      '→',
+      safeChoiceIndex
     );
   }
 
@@ -467,10 +469,7 @@ export async function buildFastTravelTransaction(
  * Enter the Smuggler Hatch shop (L9).
  * Generates shop offers deterministically.
  */
-export async function enterShop(
-  ctx: PoiTransactionContext,
-  poiIndex: number
-): Promise<string> {
+export async function enterShop(ctx: PoiTransactionContext, poiIndex: number): Promise<string> {
   const transaction = await ctx.program.methods
     .enterShop(poiIndex)
     .accountsPartial({

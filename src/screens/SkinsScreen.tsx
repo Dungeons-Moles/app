@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   ScrollView,
   Animated,
+  useWindowDimensions,
 } from 'react-native';
 import { Image } from 'expo-image';
 import type { ImageSourcePropType } from 'react-native';
@@ -66,6 +67,7 @@ const DEFAULT_SKIN: SkinData = {
   description: 'The classic mole look',
 };
 
+
 type SkinsScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Skins'>;
 };
@@ -82,14 +84,13 @@ export function SkinsScreen({ navigation }: SkinsScreenProps) {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [equippedSkinData, setEquippedSkinData] = useState<SkinData | null>(null);
   const [allOwnedSkins, setAllOwnedSkins] = useState<SkinData[]>([]);
-  const skinsCollectionRef = useRef<import('@solana/web3.js').PublicKey | null>(null);
+  const skinsCollectionRef = useRef<import('@solana/web3.js').PublicKey | undefined>(undefined);
 
   // Build skins list: Default + owned skins (deduped)
   const skinsData = useMemo<SkinData[]>(() => {
     if (allOwnedSkins.length > 0) {
       return [DEFAULT_SKIN, ...allOwnedSkins];
     }
-    // Before full fetch completes, show equipped skin instantly
     return equippedSkinData ? [DEFAULT_SKIN, equippedSkinData] : [DEFAULT_SKIN];
   }, [equippedSkinData, allOwnedSkins]);
 
@@ -97,6 +98,17 @@ export function SkinsScreen({ navigation }: SkinsScreenProps) {
   const [cursorIdx, setCursorIdx] = useState(0);
 
   const isFocused = useIsFocused();
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  // Scale factor based on screen width (baseline 890px)
+  const wScale = isCompact ? 1 : Math.min(1, screenWidth / 890);
+  // Scale skin image based on screen height (base 200px at 400px height)
+  const skinImageSize = isCompact ? 440 : Math.round(Math.min(200, screenHeight * 0.4));
+  const narrowScreen = screenWidth < 860;
+  // Grid cell sizes scaled by width
+  const cellSize = isCompact ? 110 : Math.round(74 * wScale);
+  const cellMargin = isCompact ? 16 : Math.round(14 * wScale);
+  const gridPadLeft = isCompact ? 24 : Math.round(20 * wScale);
+  const gridWidth = isCompact ? 528 : gridPadLeft + 4 * (cellSize + cellMargin);
 
   // Fast path: fetch equipped skin instantly via getAccountInfo (~100ms)
   useEffect(() => {
@@ -332,7 +344,7 @@ export function SkinsScreen({ navigation }: SkinsScreenProps) {
         <View style={styles.columnsContainer}>
           {/* Left column - Grid */}
           <View style={[styles.leftColumn, isCompact && compactStyles.leftColumn]}>
-            <Text style={[styles.pageTitle, isCompact && compactStyles.pageTitle]}>
+            <Text style={[styles.pageTitle, isCompact && compactStyles.pageTitle, narrowScreen && styles.pageTitleRight]}>
               Skins Journal
             </Text>
             <View style={styles.divider} />
@@ -340,7 +352,7 @@ export function SkinsScreen({ navigation }: SkinsScreenProps) {
               showsVerticalScrollIndicator={false}
               contentContainerStyle={styles.scrollContent}
             >
-              <View style={[styles.gridContainer, isCompact && compactStyles.gridContainer]}>
+              <View style={[styles.gridContainer, isCompact && compactStyles.gridContainer, !isCompact && { paddingLeft: gridPadLeft, width: gridWidth }]}>
                 {skinsData.map((skin, idx) => {
                   const isSelected = selectedSkin.id === skin.id;
                   const isEquipped = profile?.equippedSkin
@@ -351,7 +363,7 @@ export function SkinsScreen({ navigation }: SkinsScreenProps) {
                   const cell = (
                     <TouchableOpacity
                       key={skin.id}
-                      style={[styles.gridCellWrapper, isCompact && compactStyles.gridCellWrapper]}
+                      style={[styles.gridCellWrapper, isCompact && compactStyles.gridCellWrapper, !isCompact && { width: cellSize, marginRight: cellMargin }]}
                       onPress={() => handleSelectSkin(skin, idx)}
                       activeOpacity={0.7}
                     >
@@ -359,6 +371,7 @@ export function SkinsScreen({ navigation }: SkinsScreenProps) {
                         style={[
                           styles.imageContainer,
                           isCompact && compactStyles.imageContainer,
+                          !isCompact && { width: cellSize, height: cellSize },
                           isSelected && styles.imageContainerSelected,
                         ]}
                       >
@@ -437,7 +450,7 @@ export function SkinsScreen({ navigation }: SkinsScreenProps) {
               <>
                 <Image
                   source={selectedSkin.image}
-                  style={[styles.largeSkinImage, isCompact && compactStyles.largeSkinImage]}
+                  style={[styles.largeSkinImage, isCompact && compactStyles.largeSkinImage, !isCompact && { width: skinImageSize, height: skinImageSize }]}
                   contentFit="contain"
                 />
                 <Text
@@ -560,6 +573,9 @@ const styles = StyleSheet.create({
     color: '#3d2b1f',
     marginBottom: 8,
     fontStyle: 'italic',
+  },
+  pageTitleRight: {
+    alignSelf: 'flex-end',
   },
   divider: {
     height: 1,

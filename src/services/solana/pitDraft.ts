@@ -103,6 +103,38 @@ export async function fetchPitDraftQueue(
 // Transaction Building
 // ============================================================================
 
+export async function buildLeavePitDraftTransaction(
+  connection: Connection,
+  program: Program,
+  playerPublicKey: PublicKey,
+): Promise<Transaction> {
+  const [queuePda] = derivePitDraftQueuePda();
+  const [vaultPda] = derivePitDraftVaultPda();
+
+  const leaveIx = await program.methods
+    .leavePitDraft()
+    .accountsPartial({
+      pitDraftQueue: queuePda,
+      pitDraftVault: vaultPda,
+      player: playerPublicKey,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any)
+    .instruction();
+
+  const transaction = new Transaction();
+  transaction.add(
+    ComputeBudgetProgram.setComputeUnitLimit({ units: 100_000 }),
+    ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 1_000 }),
+    leaveIx,
+  );
+
+  const { blockhash } = await connection.getLatestBlockhash(SOLANA_CONFIG.commitment);
+  transaction.recentBlockhash = blockhash;
+  transaction.feePayer = playerPublicKey;
+
+  return transaction;
+}
+
 export async function buildEnterPitDraftTransaction(
   connection: Connection,
   program: Program,
@@ -232,6 +264,58 @@ export async function buildQueueWithVrfInitTransaction(
   return transaction;
 }
 
+
+/**
+ * Build a TX for player 1 when VRF state is already delegated (stale from prior attempt):
+ * enter_pit_draft + fund temp keypair only (skip VRF init).
+ */
+export async function buildQueueOnlyTransaction(
+  connection: Connection,
+  program: Program,
+  playerPublicKey: PublicKey,
+  tempKeypairPublicKey: PublicKey,
+): Promise<Transaction> {
+  const [queuePda] = derivePitDraftQueuePda();
+  const [vaultPda] = derivePitDraftVaultPda();
+  const [playerProfilePda] = derivePlayerProfilePda(playerPublicKey);
+
+  const enterPitDraftIx = await program.methods
+    .enterPitDraft()
+    .accountsPartial({
+      pitDraftQueue: queuePda,
+      pitDraftVault: vaultPda,
+      player: playerPublicKey,
+      playerProfile: playerProfilePda,
+      waitingProfile: null,
+      waitingPlayerWallet: null,
+      companyTreasury: null,
+      gauntletPoolVault: null,
+      gameplayVrfState: null,
+      systemProgram: SystemProgram.programId,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any)
+    .instruction();
+
+  const fundTempIx = SystemProgram.transfer({
+    fromPubkey: playerPublicKey,
+    toPubkey: tempKeypairPublicKey,
+    lamports: PIT_DRAFT_VRF_TEMP_FUND_LAMPORTS,
+  });
+
+  const transaction = new Transaction();
+  transaction.add(
+    ComputeBudgetProgram.setComputeUnitLimit({ units: PIT_DRAFT_CU_LIMIT }),
+    ComputeBudgetProgram.setComputeUnitPrice({ microLamports: PIT_DRAFT_CU_PRICE_MICROLAMPORTS }),
+    enterPitDraftIx,
+    fundTempIx,
+  );
+
+  const { blockhash } = await connection.getLatestBlockhash(SOLANA_CONFIG.commitment);
+  transaction.recentBlockhash = blockhash;
+  transaction.feePayer = playerPublicKey;
+
+  return transaction;
+}
 
 // ============================================================================
 // Event Types

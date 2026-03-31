@@ -146,14 +146,14 @@ export type RootStackParamList = {
     runMode?: number;
     gauntletPoints?: number;
   };
-  PitDraft: { debugPhase?: 'queuing' | 'confirm' | 'matched' | 'result' } | undefined;
+  PitDraft: { debugPhase?: 'queuing' | 'confirm' | 'matched' | 'preparing' | 'result' } | undefined;
   PitDraftHistory: undefined;
   Duels: undefined;
   DuelsHistory: undefined;
   Gauntlet: undefined;
   GauntletHistory: undefined;
   GauntletRanking: { returnTo?: 'Hub' | 'Gauntlet' } | undefined;
-  SessionLoading: { mode: 'campaign' | 'gauntlet' | 'duel'; forceLogo?: boolean } | undefined;
+  SessionLoading: { mode: 'campaign' | 'gauntlet' | 'duel'; forceLogo?: boolean; debugPreview?: boolean } | undefined;
   Marketplace: undefined;
   Items: undefined;
   Skins: undefined;
