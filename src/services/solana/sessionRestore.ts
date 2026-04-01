@@ -737,16 +737,15 @@ export function convertTimeState(
   const week = Math.max(1, gameState.week);
   const { phase, cycle } = convertPhase(gameState.phase);
 
-  // For Campaign (runMode 0 or undefined), compute boss deterministically from
-  // level+week when discovery doesn't have a valid boss. This handles the case where
-  // skip_to_day resolves a boss without updating SessionDiscovery (ER CPI limitation).
+  // Campaign bosses are deterministic from level+week — always derive them
+  // from selectWeekBossForLevel rather than trusting SessionDiscovery, which
+  // may be stale (skip_to_day can't update it via CPI due to ER depth limits).
+  // Duel/Gauntlet bosses are VRF-selected, so use the discovery boss ID.
   const isCampaign = gameState.runMode === undefined || gameState.runMode === RunMode.Campaign;
   const clampedWeek = Math.min(week, 3) as 1 | 2 | 3;
-  const weekBoss =
-    currentBossId ??
-    (isCampaign
-      ? selectWeekBossForLevel(campaignLevel, clampedWeek)
-      : selectWeekBossForLevel(campaignLevel, 1));
+  const weekBoss = isCampaign
+    ? selectWeekBossForLevel(campaignLevel, clampedWeek)
+    : currentBossId ?? selectWeekBossForLevel(campaignLevel, 1);
 
   return {
     week,

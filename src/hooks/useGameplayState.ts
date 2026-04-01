@@ -23,6 +23,7 @@ import {
   fetchGameState,
   calculateMoveCost,
   triggerBossFight,
+  skipToEow,
   decodeGameStateFromAccountInfo,
 } from '@/services/solana/gameplayState';
 import { getUserErrorMessage } from '@/services/solana/errors';
@@ -126,6 +127,10 @@ export interface UseGameplayStateReturn {
     gauntletVisual?: GauntletCombatVisualEvent | null;
     signature?: string;
   }>;
+  /** Skip directly to the current week's boss-ready state on-chain */
+  skipToEndOfWeek: (
+    sessionSignerKeypair: Keypair
+  ) => Promise<{ success: boolean; newState?: GameState }>;
   /** Calculate move cost for a tile */
   getMoveCost: (isWall: boolean) => number;
   /** Set the game state PDA (for loading existing sessions) */
@@ -779,7 +784,56 @@ export function useGameplayState(): UseGameplayStateReturn {
             ? fetchGameState(prog, gameStatePda)
             : raceWsVsFetch(wsState.promise, 1000);
 
-        const confirmedState = await statePromise;
+        let confirmedState = await statePromise;
+
+        // trigger_boss_fight uses fire-and-forget ER submission, so the first
+        // post-send read can still reflect the pre-resolution boss-ready state.
+        // Accepting that stale read leaves the frontend on the old week/boss
+        // after the replay finishes. Wait for a state that actually reflects
+        // boss resolution before returning success.
+        const needsResolvedBossState =
+          confirmedState != null &&
+          confirmedState.bossFightReady &&
+          !confirmedState.isDead &&
+          !confirmedState.completed &&
+          confirmedState.week === previousState.week;
+
+        if (needsResolvedBossState) {
+          const resolvedState = await parseWithRetry(
+            async () => {
+              const freshState = await fetchGameState(prog, gameStatePda);
+              if (!freshState) return null;
+
+              const bossStillPending =
+                freshState.bossFightReady &&
+                !freshState.isDead &&
+                !freshState.completed &&
+                freshState.week === previousState.week;
+
+              return bossStillPending ? null : freshState;
+            },
+            {
+              label: 'boss resolution state',
+              maxAttempts: 6,
+              delayMs: 200,
+            }
+          );
+
+          if (resolvedState) {
+            confirmedState = resolvedState;
+          } else if (confirmedState) {
+            console.warn(
+              '[useGameplayState] triggerBoss returning potentially stale state after retries',
+              {
+                previousWeek: previousState.week,
+                returnedWeek: confirmedState.week,
+                bossFightReady: confirmedState.bossFightReady,
+                isDead: confirmedState.isDead,
+                completed: confirmedState.completed,
+              }
+            );
+          }
+        }
 
         if (isMountedRef.current) {
           setGameState(confirmedState);
@@ -821,6 +875,68 @@ export function useGameplayState(): UseGameplayStateReturn {
             phase: previousState.phase,
             week: previousState.week,
           },
+        });
+
+        if (isMountedRef.current) {
+          setSyncStatus('error');
+          setError(getUserErrorMessage(err, 'gameplay_state'));
+        }
+
+        return { success: false };
+      }
+    },
+    [gameplayWriteConnection, gameState, gameStatePda, program, registerWsListener, raceWsVsFetch]
+  );
+
+  /**
+   * Skip to end of week on-chain.
+   * Calls skip_to_eow which sets phase=Night3 and boss_fight_ready=true.
+   * Boss resolution is handled by the existing triggerBoss flow.
+   */
+  const skipToEndOfWeek = useCallback(
+    async (
+      sessionSignerKeypair: Keypair,
+    ): Promise<{ success: boolean; newState?: GameState }> => {
+      if (!program || !gameStatePda || !gameState) {
+        setError('Game state not initialized');
+        return { success: false };
+      }
+
+      if (isMountedRef.current) {
+        setSyncStatus('syncing');
+        setError(null);
+      }
+
+      try {
+        const wsState = registerWsListener();
+        await skipToEow(
+          gameplayWriteConnection,
+          program,
+          gameStatePda,
+          sessionSignerKeypair,
+        );
+
+        const statePromise = !wsState
+          ? fetchGameState(program, gameStatePda)
+          : raceWsVsFetch(wsState.promise, 1000);
+
+        const confirmedState = await statePromise;
+
+        if (isMountedRef.current) {
+          setGameState(confirmedState);
+          setSyncStatus('synced');
+          setLastSyncAt(Date.now());
+        }
+
+        return {
+          success: true,
+          newState: confirmedState ?? undefined,
+        };
+      } catch (err) {
+        console.error('[useGameplayState] Failed to skip to end of week:', err);
+        Sentry.captureException(err, {
+          tags: { source: 'useGameplayState.skipToEndOfWeek' },
+          extra: { gameStatePda: gameStatePda.toBase58() },
         });
 
         if (isMountedRef.current) {
@@ -999,6 +1115,7 @@ export function useGameplayState(): UseGameplayStateReturn {
     initialize,
     move,
     triggerBoss,
+    skipToEndOfWeek,
     updateStat,
     close,
     refresh,

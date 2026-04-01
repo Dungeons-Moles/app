@@ -344,6 +344,7 @@ export function shouldTrigger(
     isDayStart?: boolean;
     shardsEveryTurn?: boolean;
     countdownReduction?: number;
+    armorLostThisTurn?: number;
   }
 ): boolean {
   switch (trigger.type) {
@@ -428,6 +429,9 @@ export function shouldTrigger(
 
     case 'FirstTimeGainShrapnel':
       return context.shrapnelGained === true && !context.firstTimeShrapnelTriggered;
+
+    case 'ArmorLostAtLeast':
+      return (context.armorLostThisTurn ?? 0) >= trigger.threshold;
 
     default:
       return false;

@@ -43,7 +43,7 @@ export const ITEMSET_DEFINITIONS: Record<ItemsetId, ItemsetDefinition> = {
     id: 'SHARD_CIRCUIT',
     name: 'Shard Circuit',
     emoji: '🔁',
-    requiredItems: ['I21', 'I22', 'I23', 'I24'], // G-GR-05 to G-GR-08
+    requiredItems: ['I19', 'I20', 'I21', 'I22'], // Ruby(G-GR-03) + Pyrite(G-GR-04) + Amethyst(G-GR-05) + Emerald(G-GR-06)
     bonus: {
       description: 'Shards trigger every turn',
       timing: 'TURN_START',
@@ -128,7 +128,7 @@ export const ITEMSET_DEFINITIONS: Record<ItemsetId, ItemsetDefinition> = {
     id: 'ROYAL_EXTRACTION',
     name: 'Royal Extraction',
     emoji: '🏦',
-    requiredItems: ['I17', 'I20', 'T6'], // G-GR-01 + G-GR-04 + T-GR-02
+    requiredItems: ['I17', 'I24', 'T6'], // G-GR-01 + G-GR-08(Royal Bracer) + T-GR-02
     bonus: {
       description: 'Gold to ARM conversion becomes 1:4; gain +1 Gold at battle start',
       passive: true,
@@ -182,13 +182,13 @@ export const ITEMSET_DEFINITIONS: Record<ItemsetId, ItemsetDefinition> = {
 
   // ============================================================================
   // Golden Shrapnel Exchange - Greed/Stone synergy
-  // GDD: G-GR-04 + G-ST-06 + G-GR-03
+  // GDD: G-GR-08(Royal Bracer) + G-ST-06 + G-GR-07(Gilded Ring)
   // ============================================================================
   GOLDEN_SHRAPNEL_EXCHANGE: {
     id: 'GOLDEN_SHRAPNEL_EXCHANGE',
     name: 'Golden Shrapnel Exchange',
     emoji: '🪙🛡️',
-    requiredItems: ['I20', 'I6', 'I19'],
+    requiredItems: ['I24', 'I6', 'I23'],
     bonus: {
       description: 'When you convert Gold to ARM: gain +3 Shrapnel (once/turn)',
       passive: true,

@@ -208,20 +208,27 @@ const madMinerTrait: BossTrait = {
 // T107: Drill Sergeant Trait - Rev Up (+2 ATK on Turn Start)
 // ============================================================================
 
+const DRILL_SERGEANT_REV_UP_MAX_STACKS = 4;
+
 const drillSergeantTrait: BossTrait = {
   id: 'B-A-W2-01',
   name: 'Rev Up',
-  description: 'Turn Start: Gain +2 ATK',
+  description: 'Turn Start: Gain +2 ATK (max +' + (DRILL_SERGEANT_REV_UP_MAX_STACKS * 2) + ')',
   timings: ['TURN_START'],
   execute: (state, context) => {
     if (context.timing !== 'TURN_START') {
       return { state, triggered: false };
     }
 
-    // Add +2 to bonus ATK
+    // Cap Rev Up at max stacks (each stack adds +2 ATK)
+    const maxBonus = DRILL_SERGEANT_REV_UP_MAX_STACKS * 2;
+    if (state.enemy.bonusAtk >= maxBonus) {
+      return { state, triggered: false };
+    }
+
     const newEnemy: CombatantState = {
       ...state.enemy,
-      bonusAtk: state.enemy.bonusAtk + 2,
+      bonusAtk: Math.min(state.enemy.bonusAtk + 2, maxBonus),
     };
 
     return {

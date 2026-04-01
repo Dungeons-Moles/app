@@ -174,8 +174,8 @@ export const BOSSES: Record<BossId, BossDefinition> = {
       {
         name: 'Rev Up',
         timing: 'TURN_START',
-        description: 'Turn Start: +1 ATK and +1 SPD this battle',
-        params: { atk: 1, spd: 1 },
+        description: 'Turn Start: +1 ATK and +1 SPD this battle (max +4 each)',
+        params: { atk: 1, spd: 1, maxStacks: 4 },
       },
       {
         name: 'Formation',
@@ -464,8 +464,8 @@ export const BOSSES: Record<BossId, BossDefinition> = {
       {
         name: 'Rev Up',
         timing: 'TURN_START',
-        description: 'Turn Start: +1 ATK and +1 SPD this battle',
-        params: { atk: 1, spd: 1 },
+        description: 'Turn Start: +1 ATK and +1 SPD this battle (max +4 each)',
+        params: { atk: 1, spd: 1, maxStacks: 4 },
       },
       {
         name: 'Formation',
@@ -580,7 +580,7 @@ export const BOSSES: Record<BossId, BossDefinition> = {
     biome: 'B',
     week: 3,
     stats: { hp: 52, atk: 3, arm: 10, spd: 2, dig: 3 },
-    weaknessTags: ['TEMPO', 'STONE'],
+    weaknessTags: ['RUST', 'STONE'],
     abilities: [
       {
         name: 'Whiteout',

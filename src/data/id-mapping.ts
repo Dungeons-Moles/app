@@ -65,12 +65,12 @@ export const GEAR_FRONTEND_TO_BACKEND: Record<GearId, string> = {
   // GREED (8): I17-I24 -> G-GR-01 to G-GR-08
   I17: 'G-GR-01', // Loose Nuggets
   I18: 'G-GR-02', // Lucky Coin
-  I19: 'G-GR-03', // Gilded Band
-  I20: 'G-GR-04', // Royal Bracer
-  I21: 'G-GR-05', // Quartz Shard
-  I22: 'G-GR-06', // Amber Shard
-  I23: 'G-GR-07', // Zircon Shard
-  I24: 'G-GR-08', // Tourmaline Shard
+  I19: 'G-GR-03', // Ruby Shard
+  I20: 'G-GR-04', // Pyrite Shard
+  I21: 'G-GR-05', // Amethyst Shard
+  I22: 'G-GR-06', // Emerald Shard
+  I23: 'G-GR-07', // Gilded Ring
+  I24: 'G-GR-08', // Royal Bracer
 
   // BLAST (8): I25-I32 -> G-BL-01 to G-BL-08
   I25: 'G-BL-01', // Small Charge
@@ -84,10 +84,10 @@ export const GEAR_FRONTEND_TO_BACKEND: Record<GearId, string> = {
 
   // FROST (8): I33-I40 -> G-FR-01 to G-FR-08
   I33: 'G-FR-01', // Frost Lantern
-  I34: 'G-FR-02', // Frostguard Buckler
+  I34: 'G-FR-02', // Rime Cloak
   I35: 'G-FR-03', // Cold Snap Charm
   I36: 'G-FR-04', // Ice Skates
-  I37: 'G-FR-05', // Rime Cloak
+  I37: 'G-FR-05', // Frostguard Buckler
   I38: 'G-FR-06', // Permafrost Core
   I39: 'G-FR-07', // Cold Front Idol
   I40: 'G-FR-08', // Deep Freeze Charm

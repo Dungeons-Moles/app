@@ -280,6 +280,8 @@ interface SessionContextType extends SessionState {
     gauntletVisual?: GauntletCombatVisualEvent | null;
     signature?: string;
   }>;
+  /** Skip to end of week on-chain (via session key signer) */
+  skipToEndOfWeek: () => Promise<{ success: boolean; newState?: GameState }>;
   /** Modify player stat on-chain (via session key signer) */
   modifyPlayerStat: (params: ModifyStatParams) => Promise<{ success: boolean; newValue?: number }>;
   /** Top up session key signer */
@@ -386,6 +388,7 @@ interface SessionGameplayContextType {
   error: string | null;
   movePlayer: SessionContextType['movePlayer'];
   triggerBoss: SessionContextType['triggerBoss'];
+  skipToEndOfWeek: SessionContextType['skipToEndOfWeek'];
   modifyPlayerStat: SessionContextType['modifyPlayerStat'];
   refreshGameplayState: SessionContextType['refreshGameplayState'];
 }
@@ -1373,42 +1376,67 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
 
       const sessionKey = resolvedSessionPda.toBase58();
-      if (vrfReadySessionsRef.current.has(sessionKey)) {
-        return { success: true };
-      }
-
       const [poiVrfStatePda] = derivePoiVrfStatePda(resolvedSessionPda);
+      const [gameplayVrfStatePda] = deriveGameplayVrfStatePda(resolvedSessionPda);
 
       const isFulfilledStatus = (status: number | null): boolean =>
         status !== null && status >= VRF_STATUS_FULFILLED;
 
-      // POI VRF is initialized and requested on the Ephemeral Rollup after delegation.
-      // Always poll the ER connection for fulfillment status.
-      const readStatusFromAny = async (): Promise<number | null> => {
+      // POI and gameplay VRF are initialized and requested on the Ephemeral
+      // Rollup after delegation. Boss flow requires gameplay_vrf_state, so a
+      // session is only VRF-ready when both accounts are fulfilled.
+      const readStatusesFromAny = async (): Promise<{
+        poi: number | null;
+        gameplay: number | null;
+      }> => {
         const routedConnection = await getRoutedErConnectionForAccount(resolvedSessionPda);
         const candidates = [routedConnection, directErConnection].filter(
           (conn): conn is Connection => conn !== null
         );
+        let poiStatus: number | null = null;
+        let gameplayStatus: number | null = null;
         for (const conn of candidates) {
-          const info = await conn.getAccountInfo(poiVrfStatePda, 'processed').catch(() => null);
-          if (info && info.data.length > VRF_STATUS_OFFSET) {
-            return info.data[VRF_STATUS_OFFSET] ?? null;
+          if (poiStatus === null) {
+            const poiInfo = await conn.getAccountInfo(poiVrfStatePda, 'processed').catch(() => null);
+            if (poiInfo && poiInfo.data.length > VRF_STATUS_OFFSET) {
+              poiStatus = poiInfo.data[VRF_STATUS_OFFSET] ?? null;
+            }
+          }
+          if (gameplayStatus === null) {
+            const gameplayInfo = await conn
+              .getAccountInfo(gameplayVrfStatePda, 'processed')
+              .catch(() => null);
+            if (gameplayInfo && gameplayInfo.data.length > VRF_STATUS_OFFSET) {
+              gameplayStatus = gameplayInfo.data[VRF_STATUS_OFFSET] ?? null;
+            }
+          }
+          if (poiStatus !== null && gameplayStatus !== null) {
+            break;
           }
         }
-        return null;
+        return { poi: poiStatus, gameplay: gameplayStatus };
       };
 
       // Quick check: already fulfilled?
-      const statusNow = await readStatusFromAny();
-      if (isFulfilledStatus(statusNow)) {
+      const statusNow = await readStatusesFromAny();
+      if (isFulfilledStatus(statusNow.poi) && isFulfilledStatus(statusNow.gameplay)) {
         vrfReadySessionsRef.current.add(sessionKey);
         return { success: true };
+      }
+
+      // Older session flows could mark the cache ready before gameplay VRF was
+      // actually initialized/fulfilled. Never trust the cache without a fresh
+      // on-chain verification of both required VRF accounts.
+      if (vrfReadySessionsRef.current.has(sessionKey)) {
+        vrfReadySessionsRef.current.delete(sessionKey);
       }
 
       console.log('[SessionContext] ensureSessionVrfReady: waiting for fulfillment', {
         sessionPda: sessionKey,
         poiVrfStatePda: poiVrfStatePda.toBase58(),
-        statusNow,
+        gameplayVrfStatePda: gameplayVrfStatePda.toBase58(),
+        poiStatusNow: statusNow.poi,
+        gameplayStatusNow: statusNow.gameplay,
       });
 
       // Wait for oracle fulfillment on ER.
@@ -1416,8 +1444,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const POLL_MS = 1_000;
       const startedAt = Date.now();
       while (Date.now() - startedAt < WAIT_TIMEOUT_MS) {
-        const status = await readStatusFromAny();
-        if (isFulfilledStatus(status)) {
+        const status = await readStatusesFromAny();
+        if (isFulfilledStatus(status.poi) && isFulfilledStatus(status.gameplay)) {
           console.log('[SessionContext] ensureSessionVrfReady: fulfilled');
           vrfReadySessionsRef.current.add(sessionKey);
           return { success: true };
@@ -1428,7 +1456,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       return {
         success: false,
         error:
-          'POI VRF was not fulfilled in time. The oracle may not have processed the request. Try overriding the session.',
+          'Session VRF was not fulfilled in time. The oracle may not have processed the request. Try overriding the session.',
       };
     },
     [directErConnection, getRoutedErConnectionForAccount, sessionManager.activeSessionPda]
@@ -2732,44 +2760,70 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         };
       }
 
-      // Step 6b: Pre-init POI VRF state on base chain so it can be delegated.
-      // Check ownership first: skip init if already exists, skip delegation if already delegated.
-      let campaignVrfToDelegate: 'poi'[] | undefined = ['poi'];
-      console.log('[SessionContext] Step 6b: Pre-init POI VRF state on base chain...');
+      // Step 6b: Pre-init campaign VRF states on base chain so they can be delegated.
+      // Boss flow requires gameplay_vrf_state, so campaign sessions must carry both.
+      let campaignVrfToDelegate: ('poi' | 'gameplay')[] | undefined = ['poi', 'gameplay'];
+      console.log('[SessionContext] Step 6b: Pre-init campaign VRF states on base chain...');
       {
         const [poiVrfPda] = derivePoiVrfStatePda(sessionPda);
-        const poiVrfInfo = await connection.getAccountInfo(poiVrfPda).catch(() => null);
-        if (poiVrfInfo && poiVrfInfo.owner.equals(DELEGATION_PROGRAM_ID)) {
-          console.log(
-            '[SessionContext] Step 6b: POI VRF already delegated, skipping init+delegation'
-          );
+        const [gameplayVrfPda] = deriveGameplayVrfStatePda(sessionPda);
+        const [poiVrfInfo, gameplayVrfInfo] = await Promise.all([
+          connection.getAccountInfo(poiVrfPda).catch(() => null),
+          connection.getAccountInfo(gameplayVrfPda).catch(() => null),
+        ]);
+
+        campaignVrfToDelegate = (['poi', 'gameplay'] as const).filter((type) => {
+          const info = type === 'poi' ? poiVrfInfo : gameplayVrfInfo;
+          return !info || !info.owner.equals(DELEGATION_PROGRAM_ID);
+        });
+
+        const poiVrfStatus =
+          poiVrfInfo && poiVrfInfo.data.length > VRF_STATUS_OFFSET
+            ? poiVrfInfo.data[VRF_STATUS_OFFSET]
+            : null;
+        const gameplayVrfStatus =
+          gameplayVrfInfo && gameplayVrfInfo.data.length > VRF_STATUS_OFFSET
+            ? gameplayVrfInfo.data[VRF_STATUS_OFFSET]
+            : null;
+        if (poiVrfStatus === 2 && gameplayVrfStatus === 2) {
+          console.log('[SessionContext] Step 6b: Campaign VRF already fulfilled on base');
+          vrfReadySessionsRef.current.add(sessionPda.toBase58());
           campaignVrfToDelegate = undefined;
-        } else if (poiVrfInfo) {
-          console.log('[SessionContext] Step 6b: POI VRF already exists, skipping init');
-          // Check if VRF is already fulfilled (leftover from a previous session at the same PDA).
-          // If so, skip the request entirely — the fulfilled data is still valid.
-          const vrfStatus =
-            poiVrfInfo.data.length > VRF_STATUS_OFFSET ? poiVrfInfo.data[VRF_STATUS_OFFSET] : null;
-          if (vrfStatus === 2) {
-            // 2 = Fulfilled
-            console.log('[SessionContext] Step 6b: POI VRF already fulfilled, skipping request');
-            vrfReadySessionsRef.current.add(sessionPda.toBase58());
-            campaignVrfToDelegate = undefined;
-          }
-        } else {
+        }
+
+        const needsInitPoi = !poiVrfInfo;
+        const needsInitGameplay = !gameplayVrfInfo;
+        if (needsInitPoi || needsInitGameplay) {
           try {
-            const basePoiSysProg = createPoiSystemProgram(connection);
-            const initPoiVrfTx = await buildInitPoiVrfStateTransaction(
-              basePoiSysProg,
-              sessionPda,
-              newSessionSignerKeypair.publicKey
+            const initCampaignVrfTx = new Transaction();
+            if (needsInitPoi) {
+              const basePoiSysProg = createPoiSystemProgram(connection);
+              const initPoiVrfTx = await buildInitPoiVrfStateTransaction(
+                basePoiSysProg,
+                sessionPda,
+                newSessionSignerKeypair.publicKey
+              );
+              initCampaignVrfTx.add(...initPoiVrfTx.instructions);
+            }
+            if (needsInitGameplay) {
+              const baseGameplayProg = createGameplayStateProgram(connection);
+              const initGameplayVrfTx = await buildInitGameplayVrfStateTransaction(
+                baseGameplayProg,
+                sessionPda,
+                newSessionSignerKeypair.publicKey
+              );
+              initCampaignVrfTx.add(...initGameplayVrfTx.instructions);
+            }
+            await sendSessionSignerTransaction(
+              connection,
+              initCampaignVrfTx,
+              newSessionSignerKeypair
             );
-            await sendSessionSignerTransaction(connection, initPoiVrfTx, newSessionSignerKeypair);
-            console.log('[SessionContext] Step 6b: POI VRF state pre-initialized on base');
+            console.log('[SessionContext] Step 6b: campaign VRF states pre-initialized on base');
           } catch (initErr) {
-            logTxDebugError('startGame:init_poi_vrf', initErr);
+            logTxDebugError('startGame:init_campaign_vrf', initErr);
             console.warn(
-              '[SessionContext] Step 6b: init_poi_vrf failed (may already exist):',
+              '[SessionContext] Step 6b: init_campaign_vrf failed (may already exist):',
               initErr instanceof Error ? initErr.message : initErr
             );
           }
@@ -2884,31 +2938,44 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         });
       }
 
-      // Step 7d: Request POI VRF on the Ephemeral Rollup via CPI.
+      // Step 7d: Request campaign VRF on the Ephemeral Rollup.
       if (vrfReadySessionsRef.current.has(sessionPda.toBase58())) {
         console.log(
-          '[SessionContext] startGame:poi_vrf:already_fulfilled_on_base, skipping ER request'
+          '[SessionContext] startGame:campaign_vrf:already_fulfilled_on_base, skipping ER request'
         );
       } else {
-        console.log('[SessionContext] startGame:poi_vrf (ER)');
+        console.log('[SessionContext] startGame:campaign_vrf (ER)');
         try {
           const [poiVrfStatePda] = derivePoiVrfStatePda(sessionPda);
+          const [gameplayVrfStatePda] = deriveGameplayVrfStatePda(sessionPda);
           const erPoiSysProg = createPoiSystemProgram(directErConnection);
+          const erGameplayProg = createGameplayStateProgram(directErConnection);
           const poiVrfTx = await buildRequestAndFulfillPoiVrfTransaction(
             erPoiSysProg,
             sessionPda,
             newSessionSignerKeypair.publicKey,
             newSessionSignerKeypair.publicKey
           );
+          const gameplayVrfTx = await buildRequestGameplayVrfTransaction(
+            erGameplayProg,
+            sessionPda,
+            newSessionSignerKeypair.publicKey,
+            newSessionSignerKeypair.publicKey
+          );
+          const campaignVrfTx = new Transaction().add(
+            ...poiVrfTx.instructions,
+            ...gameplayVrfTx.instructions
+          );
 
           const VRF_MAX_RETRIES = 3;
           for (let vrfAttempt = 1; vrfAttempt <= VRF_MAX_RETRIES; vrfAttempt++) {
             try {
-              const vrfSig = await sendRoutedErTransaction(poiVrfTx, newSessionSignerKeypair, [
+              const vrfSig = await sendRoutedErTransaction(campaignVrfTx, newSessionSignerKeypair, [
                 sessionPda,
                 poiVrfStatePda,
+                gameplayVrfStatePda,
               ]);
-              console.log('[SessionContext] startGame:poi_vrf:sent', {
+              console.log('[SessionContext] startGame:campaign_vrf:sent', {
                 signature: vrfSig,
                 attempt: vrfAttempt,
               });
@@ -2916,7 +2983,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             } catch (vrfSendErr) {
               const msg = vrfSendErr instanceof Error ? vrfSendErr.message : String(vrfSendErr);
               if (msg.includes('InvalidAccountForFee') && vrfAttempt < VRF_MAX_RETRIES) {
-                console.warn('[SessionContext] startGame:poi_vrf:retry_after_fee_error', {
+                console.warn('[SessionContext] startGame:campaign_vrf:retry_after_fee_error', {
                   attempt: vrfAttempt,
                 });
                 await new Promise((resolve) => setTimeout(resolve, 2_000));
@@ -2928,28 +2995,27 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
           const routedVrfConnection =
             (await getRoutedErConnectionForAccount(sessionPda)) ?? directErConnection;
-          const fulfilled = await waitForVrfFulfillment(
-            routedVrfConnection,
-            poiVrfStatePda,
-            30_000
-          );
-          if (fulfilled) {
-            console.log('[SessionContext] startGame:poi_vrf:fulfilled (ER)');
+          const [poiFulfilled, gameplayFulfilled] = await Promise.all([
+            waitForVrfFulfillment(routedVrfConnection, poiVrfStatePda, 30_000),
+            waitForVrfFulfillment(routedVrfConnection, gameplayVrfStatePda, 30_000),
+          ]);
+          if (poiFulfilled && gameplayFulfilled) {
+            console.log('[SessionContext] startGame:campaign_vrf:fulfilled (ER)');
             vrfReadySessionsRef.current.add(sessionPda.toBase58());
           } else {
-            console.warn('[SessionContext] startGame:poi_vrf:fulfillment_timeout (ER)');
+            console.warn('[SessionContext] startGame:campaign_vrf:fulfillment_timeout (ER)');
             return {
               success: false,
               error:
-                'POI VRF was not fulfilled in time. Session was created, but gameplay remains blocked until the oracle fulfills the request. Return and retry or resume once VRF is ready.',
+                'Campaign VRF was not fulfilled in time. Session was created, but gameplay remains blocked until the oracle fulfills the request. Return and retry or resume once VRF is ready.',
             };
           }
         } catch (poiVrfErr) {
-          logTxDebugError('startGame:poi_vrf_er', poiVrfErr);
+          logTxDebugError('startGame:campaign_vrf_er', poiVrfErr);
           return {
             success: false,
             error:
-              poiVrfErr instanceof Error ? poiVrfErr.message : 'Failed to request POI VRF on ER',
+              poiVrfErr instanceof Error ? poiVrfErr.message : 'Failed to request campaign VRF on ER',
           };
         }
       }
@@ -4742,8 +4808,57 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       await sessionSigner.associateWithSession(resolvedSessionSigner, activeSessionPda.toBase58());
     }
 
+    if (activeSessionPda) {
+      const vrfReady = await ensureSessionVrfReady(activeSessionPda.toBase58());
+      if (!vrfReady.success) {
+        console.error('[SessionContext] triggerBoss blocked: VRF not fulfilled', vrfReady.error);
+        return { success: false };
+      }
+    }
+
     return gameplayState.triggerBoss(resolvedSessionSigner);
   }, [
+    ensureSessionVrfReady,
+    gameplayState,
+    resolveSessionSignerForSession,
+    sessionManager.activeSessionPda,
+    sessionManager.session?.sessionSigner,
+    sessionSigner,
+  ]);
+
+  /**
+   * Skip to end of week on-chain via session key signer.
+   */
+  const skipToEndOfWeek = useCallback(async (): Promise<{ success: boolean; newState?: GameState }> => {
+    const activeSessionPda = sessionManager.activeSessionPda;
+    const expectedSessionSigner = sessionManager.session?.sessionSigner ?? null;
+    const resolvedSessionSigner =
+      sessionSigner.keypair ??
+      (activeSessionPda
+        ? await resolveSessionSignerForSession(activeSessionPda, expectedSessionSigner)
+        : null);
+
+    if (!resolvedSessionSigner) {
+      console.error('[SessionContext] skipToEndOfWeek failed: Session key signer not available');
+      return { success: false };
+    }
+
+    if (activeSessionPda && !sessionSigner.keypair) {
+      await sessionSigner.markAsActive(resolvedSessionSigner);
+      await sessionSigner.associateWithSession(resolvedSessionSigner, activeSessionPda.toBase58());
+    }
+
+    if (activeSessionPda) {
+      const vrfReady = await ensureSessionVrfReady(activeSessionPda.toBase58());
+      if (!vrfReady.success) {
+        console.error('[SessionContext] skipToEndOfWeek blocked: VRF not fulfilled', vrfReady.error);
+        return { success: false };
+      }
+    }
+
+    return gameplayState.skipToEndOfWeek(resolvedSessionSigner);
+  }, [
+    ensureSessionVrfReady,
     gameplayState,
     resolveSessionSignerForSession,
     sessionManager.activeSessionPda,
@@ -5001,21 +5116,61 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         };
       }
 
-      let campaignVrfToDelegate: 'poi'[] | undefined = ['poi'];
+      let campaignVrfToDelegate: ('poi' | 'gameplay')[] | undefined = ['poi', 'gameplay'];
       {
         const [poiVrfPda] = derivePoiVrfStatePda(sessionPda);
-        const poiVrfInfo = await connection.getAccountInfo(poiVrfPda).catch(() => null);
-        if (poiVrfInfo && poiVrfInfo.owner.equals(DELEGATION_PROGRAM_ID)) {
+        const [gameplayVrfPda] = deriveGameplayVrfStatePda(sessionPda);
+        const [poiVrfInfo, gameplayVrfInfo] = await Promise.all([
+          connection.getAccountInfo(poiVrfPda).catch(() => null),
+          connection.getAccountInfo(gameplayVrfPda).catch(() => null),
+        ]);
+
+        campaignVrfToDelegate = (['poi', 'gameplay'] as const).filter((type) => {
+          const info = type === 'poi' ? poiVrfInfo : gameplayVrfInfo;
+          return !info || !info.owner.equals(DELEGATION_PROGRAM_ID);
+        });
+
+        const poiVrfStatus =
+          poiVrfInfo && poiVrfInfo.data.length > VRF_STATUS_OFFSET
+            ? poiVrfInfo.data[VRF_STATUS_OFFSET]
+            : null;
+        const gameplayVrfStatus =
+          gameplayVrfInfo && gameplayVrfInfo.data.length > VRF_STATUS_OFFSET
+            ? gameplayVrfInfo.data[VRF_STATUS_OFFSET]
+            : null;
+        if (poiVrfStatus === 2 && gameplayVrfStatus === 2) {
+          vrfReadySessionsRef.current.add(sessionPda.toBase58());
           campaignVrfToDelegate = undefined;
-        } else if (!poiVrfInfo) {
+        }
+
+        const needsInitPoi = !poiVrfInfo;
+        const needsInitGameplay = !gameplayVrfInfo;
+        if (needsInitPoi || needsInitGameplay) {
           try {
-            const basePoiSysProg = createPoiSystemProgram(connection);
-            const initPoiVrfTx = await buildInitPoiVrfStateTransaction(
-              basePoiSysProg,
-              sessionPda,
-              newSessionSignerKeypair.publicKey
+            const initCampaignVrfTx = new Transaction();
+            if (needsInitPoi) {
+              const basePoiSysProg = createPoiSystemProgram(connection);
+              const initPoiVrfTx = await buildInitPoiVrfStateTransaction(
+                basePoiSysProg,
+                sessionPda,
+                newSessionSignerKeypair.publicKey
+              );
+              initCampaignVrfTx.add(...initPoiVrfTx.instructions);
+            }
+            if (needsInitGameplay) {
+              const baseGameplayProg = createGameplayStateProgram(connection);
+              const initGameplayVrfTx = await buildInitGameplayVrfStateTransaction(
+                baseGameplayProg,
+                sessionPda,
+                newSessionSignerKeypair.publicKey
+              );
+              initCampaignVrfTx.add(...initGameplayVrfTx.instructions);
+            }
+            await sendSessionSignerTransaction(
+              connection,
+              initCampaignVrfTx,
+              newSessionSignerKeypair
             );
-            await sendSessionSignerTransaction(connection, initPoiVrfTx, newSessionSignerKeypair);
           } catch {}
         }
       }
@@ -5080,44 +5235,56 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
       if (vrfReadySessionsRef.current.has(sessionPda.toBase58())) {
         console.log(
-          '[SessionContext] overrideAndStartGame:poi_vrf:already_fulfilled_on_base, skipping ER request'
+          '[SessionContext] overrideAndStartGame:campaign_vrf:already_fulfilled_on_base, skipping ER request'
         );
       } else {
         try {
           const [poiVrfStatePda] = derivePoiVrfStatePda(sessionPda);
+          const [gameplayVrfStatePda] = deriveGameplayVrfStatePda(sessionPda);
           const erPoiSysProg = createPoiSystemProgram(directErConnection);
+          const erGameplayProg = createGameplayStateProgram(directErConnection);
           const poiVrfTx = await buildRequestAndFulfillPoiVrfTransaction(
             erPoiSysProg,
             sessionPda,
             newSessionSignerKeypair.publicKey,
             newSessionSignerKeypair.publicKey
           );
-          await sendRoutedErTransaction(poiVrfTx, newSessionSignerKeypair, [
+          const gameplayVrfTx = await buildRequestGameplayVrfTransaction(
+            erGameplayProg,
+            sessionPda,
+            newSessionSignerKeypair.publicKey,
+            newSessionSignerKeypair.publicKey
+          );
+          const campaignVrfTx = new Transaction().add(
+            ...poiVrfTx.instructions,
+            ...gameplayVrfTx.instructions
+          );
+          await sendRoutedErTransaction(campaignVrfTx, newSessionSignerKeypair, [
             sessionPda,
             poiVrfStatePda,
+            gameplayVrfStatePda,
           ]);
           const routedVrfConnection =
             (await getRoutedErConnectionForAccount(sessionPda)) ?? directErConnection;
-          const fulfilled = await waitForVrfFulfillment(
-            routedVrfConnection,
-            poiVrfStatePda,
-            30_000
-          );
-          if (fulfilled) {
+          const [poiFulfilled, gameplayFulfilled] = await Promise.all([
+            waitForVrfFulfillment(routedVrfConnection, poiVrfStatePda, 30_000),
+            waitForVrfFulfillment(routedVrfConnection, gameplayVrfStatePda, 30_000),
+          ]);
+          if (poiFulfilled && gameplayFulfilled) {
             vrfReadySessionsRef.current.add(sessionPda.toBase58());
           } else {
             return {
               success: false,
               error:
-                'POI VRF was not fulfilled in time. Session was created, but gameplay remains blocked until the oracle fulfills the request. Return and retry or resume once VRF is ready.',
+                'Campaign VRF was not fulfilled in time. Session was created, but gameplay remains blocked until the oracle fulfills the request. Return and retry or resume once VRF is ready.',
             };
           }
         } catch (poiVrfErr) {
-          logTxDebugError('overrideAndStartGame:poi_vrf_er', poiVrfErr);
+          logTxDebugError('overrideAndStartGame:campaign_vrf_er', poiVrfErr);
           return {
             success: false,
             error:
-              poiVrfErr instanceof Error ? poiVrfErr.message : 'Failed to request POI VRF on ER',
+              poiVrfErr instanceof Error ? poiVrfErr.message : 'Failed to request campaign VRF on ER',
           };
         }
       }
@@ -7384,6 +7551,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       error: sessionManager.error || gameplayState.error || sessionSigner.error,
       movePlayer,
       triggerBoss,
+      skipToEndOfWeek,
       modifyPlayerStat,
       refreshGameplayState: gameplayState.refresh,
     }),
@@ -7398,6 +7566,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       sessionSigner.error,
       movePlayer,
       triggerBoss,
+      skipToEndOfWeek,
       modifyPlayerStat,
     ]
   );

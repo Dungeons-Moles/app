@@ -266,18 +266,15 @@ export function ControllerKeyboard({
     return (
       <InlineModal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
         <Pressable style={styles.mobileOverlay} onPress={onCancel}>
-          {/* Cancel button — top right */}
-          <Pressable onPress={onCancel} style={styles.mobileCancelBtn}>
-            <Text style={styles.mobileCancelText}>Cancel</Text>
-          </Pressable>
-
           {/* Spacer — tap to cancel */}
           <View style={styles.mobileSpacer} />
 
           {/* Input + split keyboard docked to bottom */}
           <Pressable style={styles.mobileBottom} onPress={() => {}}>
-            {/* Centered input */}
+            {/* Input bar with centered input and cancel top-right */}
             <View style={styles.mobileInputBar}>
+              {/* Left spacer to balance cancel button */}
+              <View style={styles.mobileCancelSpacer} />
               <View style={styles.mobileInputInner}>
                 <Text
                   style={[styles.previewText, !text && styles.previewPlaceholder]}
@@ -288,6 +285,9 @@ export function ControllerKeyboard({
                 </Text>
                 <Text style={styles.charCount}>{text.length}/{maxLength}</Text>
               </View>
+              <Pressable onPress={onCancel} style={styles.mobileCancelBtn}>
+                <Text style={styles.mobileCancelText}>Cancel</Text>
+              </Pressable>
             </View>
 
             {/* Split keyboard */}
@@ -379,17 +379,14 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
   },
   mobileCancelBtn: {
-    position: 'absolute',
-    top: 10,
-    right: 16,
-    zIndex: 10,
+    width: 60,
+    alignItems: 'flex-end',
     paddingVertical: 6,
-    paddingHorizontal: 12,
   },
   mobileCancelText: {
     fontFamily: Typography.body,
-    fontSize: 13,
-    color: '#EFE9D6',
+    fontSize: 12,
+    color: '#8b7355',
   },
   mobileSpacer: {
     flex: 1,
@@ -406,11 +403,16 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   mobileInputBar: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderBottomWidth: 1,
     borderBottomColor: '#d4c49c',
+  },
+  mobileCancelSpacer: {
+    width: 60,
   },
   mobileInputInner: {
     flexDirection: 'row',
@@ -434,6 +436,7 @@ const styles = StyleSheet.create({
     width: 24,
   },
   panelCompact: {
+    maxWidth: 700,
     paddingVertical: 24,
     paddingHorizontal: 32,
     borderRadius: 16,

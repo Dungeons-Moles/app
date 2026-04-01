@@ -184,7 +184,7 @@ describe('Boss Definitions', () => {
       expect(getBossWeaknessTags('B-A-W1-01')).toEqual(['STONE', 'FROST']);
       expect(getBossWeaknessTags('B-A-W1-02')).toEqual(['RUST', 'BLAST']);
       expect(getBossWeaknessTags('B-A-W3-01')).toEqual(['RUST', 'TEMPO']);
-      expect(getBossWeaknessTags('B-B-W3-01')).toEqual(['TEMPO', 'STONE']);
+      expect(getBossWeaknessTags('B-B-W3-01')).toEqual(['RUST', 'STONE']);
     });
   });
 
@@ -305,15 +305,20 @@ describe('Boss Traits', () => {
       expect(result.effectName).toBe('Rev Up');
     });
 
-    it('should stack ATK gain over multiple turns', () => {
+    it('should stack ATK gain over multiple turns, capped at +8', () => {
       let state = createTestCombatState({}, { bonusAtk: 0 });
 
-      // Simulate 5 turns
-      for (let i = 1; i <= 5; i++) {
+      // Simulate 6 turns — cap at 4 stacks (+8 total)
+      for (let i = 1; i <= 6; i++) {
         const result = executeBossTrait(state, 'B-A-W2-01', 'TURN_START');
         state = result.state;
-        expect(state.enemy.bonusAtk).toBe(i * 2);
+        const expected = Math.min(i * 2, 8);
+        expect(state.enemy.bonusAtk).toBe(expected);
       }
+      // After cap, trait should not trigger
+      const capped = executeBossTrait(state, 'B-A-W2-01', 'TURN_START');
+      expect(capped.triggered).toBe(false);
+      expect(capped.state.enemy.bonusAtk).toBe(8);
     });
   });
 

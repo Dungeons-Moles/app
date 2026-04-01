@@ -259,8 +259,8 @@ export function getCountdownEffects(
  * Get all shard effects (for Gemfinder Staff trigger)
  */
 export function getShardEffects(effects: EquippedEffect[]): EquippedEffect[] {
-  // Shards are G-GR-05 through G-GR-08
-  const shardIds: GearId[] = ['I21', 'I22', 'I23', 'I24'];
+  // Shards are G-GR-03 through G-GR-06
+  const shardIds: GearId[] = ['I19', 'I20', 'I21', 'I22'];
   return effects.filter((e) => shardIds.includes(e.sourceId as GearId));
 }
 

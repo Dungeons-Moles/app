@@ -568,7 +568,7 @@ describe('resolveCombatWithParity', () => {
     expect(bleedApplications).toHaveLength(2);
   });
 
-  it('grants Gilded Band armor from floor(playerGold / 6) capped by tier', () => {
+  it('grants Gilded Ring armor from floor(playerGold / 6) capped by tier', () => {
     const commonInput: CombatResolverInput = {
       player: {
         ...buildPlayerCombatant(25, 25, 'T0', ['I19']),
@@ -617,7 +617,7 @@ describe('resolveCombatWithParity', () => {
     expect(rareGoldArmorGain).toBeDefined();
   });
 
-  it('does not grant Gilded Band SPD below 20 gold', () => {
+  it('does not grant Gilded Ring SPD below 20 gold', () => {
     const input: CombatResolverInput = {
       player: {
         ...buildPlayerCombatant(25, 25, 'T0', ['I19']),
@@ -764,7 +764,7 @@ describe('resolveCombatWithParity', () => {
     expect(firstAttack?.result.contributions).toHaveLength(2);
   });
 
-  it('triggers Quartz Shard on turn 1 first hit with Gemfinder Staff', () => {
+  it('triggers Ruby Shard on turn 1 first hit with Gemfinder Staff', () => {
     const input: CombatResolverInput = {
       player: {
         ...buildPlayerCombatant(25, 20, 'T6', ['I21']),
@@ -789,7 +789,7 @@ describe('resolveCombatWithParity', () => {
     };
 
     const outcome = resolveCombatWithParity(input);
-    const emeraldHeal = outcome.log.find(
+    const rubyHeal = outcome.log.find(
       (entry) =>
         entry.turn === 1 &&
         entry.actor === 'player' &&
@@ -797,7 +797,7 @@ describe('resolveCombatWithParity', () => {
         entry.result.healing === 2
     );
 
-    expect(emeraldHeal).toBeDefined();
+    expect(rubyHeal).toBeDefined();
   });
 
   it('grants the faster side one extra strike when leading by 5 SPD', () => {

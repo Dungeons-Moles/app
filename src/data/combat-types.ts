@@ -32,7 +32,8 @@ export type TriggerType =
   | { type: 'FirstTimeWounded' }
   | { type: 'FirstTimeExposed' }
   | { type: 'FirstTimeGainShrapnel' }
-  | { type: 'BeforeStrike' };
+  | { type: 'BeforeStrike' }
+  | { type: 'ArmorLostAtLeast'; threshold: number };
 
 // Helper constructors for triggers
 export const Trigger = {
@@ -61,6 +62,7 @@ export const Trigger = {
   FirstTimeExposed: (): TriggerType => ({ type: 'FirstTimeExposed' }),
   FirstTimeGainShrapnel: (): TriggerType => ({ type: 'FirstTimeGainShrapnel' }),
   BeforeStrike: (): TriggerType => ({ type: 'BeforeStrike' }),
+  ArmorLostAtLeast: (threshold: number): TriggerType => ({ type: 'ArmorLostAtLeast', threshold }),
 } as const;
 
 // ============================================================================

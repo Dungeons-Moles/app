@@ -79,11 +79,11 @@ export const GEAR_EFFECTS: Record<GearId, GearEffects> = {
     ],
   },
 
-  // G-ST-04: Reinforcement Plate - Battle Start: gain 2/4/8 Armor; every other turn: gain 2/4/8 Armor and 1/2/4 Shrapnel
+  // G-ST-04: Reinforcement Plate - Battle Start: gain 2/4/8 Armor; every other turn: gain 1/3/6 Armor and 1/2/4 Shrapnel
   I4: {
     effects: [
       E(Trigger.BattleStart(), 'GainArmor', [2, 4, 8]),
-      E(Trigger.EveryOtherTurn(), 'GainArmor', [2, 4, 8]),
+      E(Trigger.EveryOtherTurn(), 'GainArmor', [1, 3, 6]),
       E(Trigger.EveryOtherTurn(), 'ApplyShrapnel', [1, 2, 4]),
     ],
   },
@@ -210,16 +210,40 @@ export const GEAR_EFFECTS: Record<GearId, GearEffects> = {
     ],
   },
 
-  // G-GR-02: Lucky Coin - Victory: gain 3/6/12 Gold and heal 3/6/12 HP
+  // G-GR-02: Lucky Coin - Victory: gain 2/4/8 Gold and heal 2/4/8 HP
   I18: {
     effects: [
-      E(Trigger.Victory(), 'GainGold', [3, 6, 12]),
-      E(Trigger.Victory(), 'Heal', [3, 6, 12]),
+      E(Trigger.Victory(), 'GainGold', [2, 4, 8]),
+      E(Trigger.Victory(), 'Heal', [2, 4, 8]),
     ],
   },
 
-  // G-GR-03: Gilded Band - Battle Start: gain 2/4/8 Armor and convert Gold → Armor 6/12/24; if Gold ≥ 20, +1/2/4 SPD this battle
+  // G-GR-03: Ruby Shard - EveryOtherTurnFirstHit: heal 2/4/8 HP
   I19: {
+    effects: [E(Trigger.EveryOtherTurnFirstHit(), 'Heal', [2, 4, 8], { oncePerTurn: true })],
+  },
+
+  // G-GR-04: Pyrite Shard - EveryOtherTurnFirstHit: gain 2/4/8 Gold
+  I20: {
+    effects: [
+      E(Trigger.EveryOtherTurnFirstHit(), 'GainGold', [2, 4, 8], { oncePerTurn: true }),
+    ],
+  },
+
+  // G-GR-05: Amethyst Shard - EveryOtherTurnFirstHit: deal 1/2/4 non-weapon damage
+  I21: {
+    effects: [
+      E(Trigger.EveryOtherTurnFirstHit(), 'DealNonWeaponDamage', [1, 2, 4], { oncePerTurn: true }),
+    ],
+  },
+
+  // G-GR-06: Emerald Shard - EveryOtherTurnFirstHit: gain 2/4/8 Armor
+  I22: {
+    effects: [E(Trigger.EveryOtherTurnFirstHit(), 'GainArmor', [2, 4, 8], { oncePerTurn: true })],
+  },
+
+  // G-GR-07: Gilded Ring - Battle Start: gain 2/4/8 Armor and convert Gold → Armor 6/12/24; if Gold ≥ 20, +1/2/4 SPD this battle
+  I23: {
     effects: [
       E(Trigger.BattleStart(), 'GainArmor', [2, 4, 8]),
       E(Trigger.BattleStart(), 'GoldToArmorScaled', [6, 12, 24]),
@@ -227,38 +251,13 @@ export const GEAR_EFFECTS: Record<GearId, GearEffects> = {
     ],
   },
 
-  // G-GR-04: Royal Bracer - Battle Start: gain 1/2/4 ATK; max 3 Gold->Armor conversions; Turn Start convert Gold → 4/8/16 Armor and amplify Gold gains 50/100/200%
-  I20: {
+  // G-GR-08: Royal Bracer - Battle Start: gain 1/2/4 ATK; max 3 Gold->Armor conversions; Turn Start convert Gold → 4/8/16 Armor and amplify Gold gains 50/100/200%
+  I24: {
     effects: [
       E(Trigger.BattleStart(), 'GainAtk', [1, 2, 4]),
       E(Trigger.BattleStart(), 'LimitGoldArmorConversions', [3, 3, 3]),
       E(Trigger.TurnStart(), 'ConsumeGoldForArmor', [4, 8, 16]),
       E(Trigger.TurnStart(), 'AmplifyGoldGain', [50, 100, 200]),
-    ],
-  },
-
-  // G-GR-05: Quartz Shard - EveryOtherTurnFirstHit: heal 2/4/8 HP
-  I21: {
-    effects: [E(Trigger.EveryOtherTurnFirstHit(), 'Heal', [2, 4, 8], { oncePerTurn: true })],
-  },
-
-  // G-GR-06: Amber Shard - EveryOtherTurnFirstHit: deal 1/2/4 non-weapon damage
-  I22: {
-    effects: [
-      E(Trigger.EveryOtherTurnFirstHit(), 'DealNonWeaponDamage', [1, 2, 4], { oncePerTurn: true }),
-    ],
-  },
-
-  // G-GR-07: Zircon Shard - EveryOtherTurnFirstHit: gain 2/4/8 Armor
-  I23: {
-    effects: [E(Trigger.EveryOtherTurnFirstHit(), 'GainArmor', [2, 4, 8], { oncePerTurn: true })],
-  },
-
-  // G-GR-08: Tourmaline Shard - EveryOtherTurnFirstHit: gain 2/4/8 Gold and +1/2/4 Armor
-  I24: {
-    effects: [
-      E(Trigger.EveryOtherTurnFirstHit(), 'GainGold', [2, 4, 8], { oncePerTurn: true }),
-      E(Trigger.EveryOtherTurnFirstHit(), 'GainArmor', [1, 2, 4], { oncePerTurn: true }),
     ],
   },
 
@@ -346,16 +345,11 @@ export const GEAR_EFFECTS: Record<GearId, GearEffects> = {
     ],
   },
 
-  // G-FR-02: Frostguard Buckler - +8/16/32 ARM; if enemy has Chill: +3/6/12 ARM and apply 1/2/4 Chill
+  // G-FR-02: Rime Cloak - +3/6/12 ARM; OnStruck (once/turn): apply 1/2/4 Chill
   I34: {
     effects: [
-      E(Trigger.BattleStart(), 'GainArmor', [8, 16, 32]),
-      E(Trigger.BattleStart(), 'GainArmor', [3, 6, 12], {
-        condition: Cond.EnemyHasStatus('Chill'),
-      }),
-      E(Trigger.BattleStart(), 'ApplyChill', [1, 2, 4], {
-        condition: Cond.EnemyHasStatus('Chill'),
-      }),
+      E(Trigger.BattleStart(), 'GainArmor', [3, 6, 12]),
+      E(Trigger.OnStruck(), 'ApplyChill', [1, 2, 4], { oncePerTurn: true }),
     ],
   },
 
@@ -368,20 +362,24 @@ export const GEAR_EFFECTS: Record<GearId, GearEffects> = {
     ],
   },
 
-  // G-FR-04: Ice Skates - Battle Start: +2/4/8 SPD, +1/2/4 DIG, and +2/4/8 Armor
+  // G-FR-04: Ice Skates - Battle Start: +2/4/8 SPD, +1/2/4 DIG (ARM removed)
   I36: {
     effects: [
       E(Trigger.BattleStart(), 'GainSpd', [2, 4, 8]),
       E(Trigger.BattleStart(), 'GainDig', [1, 2, 4]),
-      E(Trigger.BattleStart(), 'GainArmor', [2, 4, 8]),
     ],
   },
 
-  // G-FR-05: Rime Cloak - +3/6/12 ARM; OnStruck (once/turn): apply 1/2/4 Chill
+  // G-FR-05: Frostguard Buckler - +6/12/24 ARM; if enemy has Chill: +3/6/12 ARM and apply 1/2/4 Chill
   I37: {
     effects: [
-      E(Trigger.BattleStart(), 'GainArmor', [3, 6, 12]),
-      E(Trigger.OnStruck(), 'ApplyChill', [1, 2, 4], { oncePerTurn: true }),
+      E(Trigger.BattleStart(), 'GainArmor', [6, 12, 24]),
+      E(Trigger.BattleStart(), 'GainArmor', [3, 6, 12], {
+        condition: Cond.EnemyHasStatus('Chill'),
+      }),
+      E(Trigger.BattleStart(), 'ApplyChill', [1, 2, 4], {
+        condition: Cond.EnemyHasStatus('Chill'),
+      }),
     ],
   },
 
@@ -447,10 +445,11 @@ export const GEAR_EFFECTS: Record<GearId, GearEffects> = {
     ],
   },
 
-  // G-RU-03: Corroded Greaves - +1/2/4 SPD; Wounded: apply 2/4/8 Rust
+  // G-RU-03: Corroded Greaves - +1/2/4 SPD; Battle Start: apply 1/2/4 Rust; Wounded: apply additional 2/4/8 Rust
   I43: {
     effects: [
       E(Trigger.BattleStart(), 'GainSpd', [1, 2, 4]),
+      E(Trigger.BattleStart(), 'ApplyRust', [1, 2, 4]),
       E(Trigger.Wounded(), 'ApplyRust', [2, 4, 8], { oncePerTurn: true }),
     ],
   },
@@ -463,11 +462,11 @@ export const GEAR_EFFECTS: Record<GearId, GearEffects> = {
     ],
   },
 
-  // G-RU-05: Flaking Plating - +6/12/24 ARM; Exposed: apply 2/4/8 Rust
+  // G-RU-05: Flaking Plating - +6/12/24 ARM; when you lose 3+ Armor in a turn: apply 2/4/8 Rust
   I45: {
     effects: [
       E(Trigger.BattleStart(), 'GainArmor', [6, 12, 24]),
-      E(Trigger.Exposed(), 'ApplyRust', [2, 4, 8], { oncePerTurn: true }),
+      E(Trigger.ArmorLostAtLeast(3), 'ApplyRust', [2, 4, 8], { oncePerTurn: true }),
     ],
   },
 
@@ -507,9 +506,9 @@ export const GEAR_EFFECTS: Record<GearId, GearEffects> = {
   // BLOOD (I49-I56)
   // ===========================================================================
 
-  // G-BO-01: Last Breath Sigil - PreventDeath, heal 2/4/8 HP
+  // G-BO-01: Last Breath Sigil - PreventDeath, heal 3/6/12 HP
   I49: {
-    effects: [E(Trigger.BattleStart(), 'PreventDeath', [2, 4, 8])],
+    effects: [E(Trigger.BattleStart(), 'PreventDeath', [3, 6, 12])],
   },
 
   // G-BO-02: Bloodletting Fang - Battle Start: +1/2/4 ATK; OnHit: +1/2/4 damage if enemy has Bleed
@@ -530,11 +529,11 @@ export const GEAR_EFFECTS: Record<GearId, GearEffects> = {
     ],
   },
 
-  // G-BO-04: Blood Chalice - Battle Start: gain +2/4/8 Armor; Victory: heal 5/10/20 HP
+  // G-BO-04: Blood Chalice - Battle Start: gain +2/4/8 Armor; Victory: heal 4/8/16 HP
   I52: {
     effects: [
       E(Trigger.BattleStart(), 'GainArmor', [2, 4, 8]),
-      E(Trigger.Victory(), 'Heal', [5, 10, 20]),
+      E(Trigger.Victory(), 'Heal', [4, 8, 16]),
     ],
   },
 
@@ -579,19 +578,20 @@ export const GEAR_EFFECTS: Record<GearId, GearEffects> = {
   // TEMPO (I57-I64)
   // ===========================================================================
 
-  // G-TE-01: Wind-Up Spring - Battle Start: +1/2/4 SPD, +2/4/8 ATK
+  // G-TE-01: Wind-Up Spring - Battle Start: +1/2/4 SPD, +1/2/4 ATK
   I57: {
     effects: [
       E(Trigger.BattleStart(), 'GainSpd', [1, 2, 4]),
-      E(Trigger.BattleStart(), 'GainAtk', [2, 4, 8]),
+      E(Trigger.BattleStart(), 'GainAtk', [1, 2, 4]),
     ],
   },
 
-  // G-TE-02: Ambush Charm - Battle Start: +1/2/4 SPD; FirstTurnIfFaster: +3/6/12 damage (once)
+  // G-TE-02: Ambush Charm - Battle Start: +1/2/4 SPD; FirstTurnIfFaster: +4/8/16 damage (once) and +1/2/4 ATK
   I58: {
     effects: [
       E(Trigger.BattleStart(), 'GainSpd', [1, 2, 4]),
-      E(Trigger.FirstTurnIfFaster(), 'DealDamage', [3, 6, 12], { oncePerTurn: true }),
+      E(Trigger.FirstTurnIfFaster(), 'DealDamage', [4, 8, 16], { oncePerTurn: true }),
+      E(Trigger.FirstTurnIfFaster(), 'GainAtk', [1, 2, 4]),
     ],
   },
 
@@ -604,12 +604,12 @@ export const GEAR_EFFECTS: Record<GearId, GearEffects> = {
     ],
   },
 
-  // G-TE-04: Hourglass Charge - Battle Start: +2/4/8 Armor; Turn 5: gain +3/6/12 ATK and +2/4/8 SPD
+  // G-TE-04: Hourglass Charge - Battle Start: +2/4/8 Armor; Turn 3: gain +2/4/8 ATK and +1/2/4 SPD
   I60: {
     effects: [
       E(Trigger.BattleStart(), 'GainArmor', [2, 4, 8]),
-      E(Trigger.TurnN(5), 'GainAtk', [3, 6, 12]),
-      E(Trigger.TurnN(5), 'GainSpd', [2, 4, 8]),
+      E(Trigger.TurnN(3), 'GainAtk', [2, 4, 8]),
+      E(Trigger.TurnN(3), 'GainSpd', [1, 2, 4]),
     ],
   },
 

@@ -6406,6 +6406,35 @@
       ]
     },
     {
+      "name": "skip_to_eow",
+      "docs": [
+        "Skips all remaining phases in the current week, setting boss_fight_ready.",
+        "The player forfeits all remaining moves. Boss resolution is deferred to",
+        "a separate trigger_boss_fight transaction."
+      ],
+      "discriminator": [
+        164,
+        81,
+        21,
+        128,
+        101,
+        74,
+        151,
+        3
+      ],
+      "accounts": [
+        {
+          "name": "game_state",
+          "writable": true
+        },
+        {
+          "name": "player",
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "trigger_boss_fight",
       "docs": [
         "Triggers and resolves the boss fight when conditions are met.",

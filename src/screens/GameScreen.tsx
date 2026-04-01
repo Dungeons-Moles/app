@@ -47,6 +47,7 @@ import type { CombatResultIndicator } from '../components/game/CombatResultFloat
 import { Sidebar } from '../components/game/Sidebar';
 import { useFocusGlow } from '../components/ui/FocusGlow';
 import { PauseMenuModal } from '../components/ui/PauseMenuModal';
+import { SkipToEowModal } from '../components/ui/SkipToEowModal';
 import { TutorialModal } from '../components/ui/TutorialModal';
 import { TUTORIAL_SEEN_KEY } from '../components/ui/tutorialPages';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -518,6 +519,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
     hasActiveSession,
     movePlayer,
     triggerBoss,
+    skipToEndOfWeek,
     gameplayState: onChainState,
     gameplaySyncStatus,
     sessionPda,
@@ -585,6 +587,8 @@ export function GameScreen({ navigation }: GameScreenProps) {
   const [pendingWeaponSwap, setPendingWeaponSwap] = useState<{ optionIndex: number; toolName: string } | null>(null);
   const [isDuelFinalizing, setIsDuelFinalizing] = useState(false);
   const [showPauseMenu, setShowPauseMenu] = useState(false);
+  const [showSkipToEow, setShowSkipToEow] = useState(false);
+  const [isSkippingToEow, setIsSkippingToEow] = useState(false);
   const [showTutorial, setShowTutorial] = useState(false);
   const [isFastTravelMode, setIsFastTravelMode] = useState(false);
   const [fastTravelCameraTarget, setFastTravelCameraTarget] = useState<Position | null>(null);
@@ -610,6 +614,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
   const [combatResultIndicators, setCombatResultIndicators] = useState<CombatResultIndicator[]>([]);
   const combatResultIdRef = useRef(0);
   const pendingBossSidebarRefreshRef = useRef(false);
+  const duelWeek3FinalizeRequestedRef = useRef<string | null>(null);
   const [defeatOverlayVisible, setDefeatOverlayVisible] = useState(false);
   const defeatMetaRef = useRef<{
     killedBy?: string;
@@ -795,12 +800,16 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
   // Reset isTriggeringBossRef when screen regains focus (e.g., returning from
   // CombatScreen/VictoryScreen). This ensures future boss fights can trigger.
+  // Do NOT reset if bossFightReady is still true — the boss hasn't been resolved
+  // yet and resetting would cause the boss useEffect to double-fire with stale
+  // on-chain state (especially on localnet where fire-and-forget tx confirmations
+  // can lag behind the state fetch).
   useEffect(() => {
-    if (isFocused) {
+    if (isFocused && !onChainState?.bossFightReady) {
       isTriggeringBossRef.current = false;
       gauntletBossRetryRef.current = 0;
     }
-  }, [isFocused]);
+  }, [isFocused, onChainState?.bossFightReady]);
 
   // Audio: Handle exploration BGM based on phase + night transition SFX
   // Track whether this is the first BGM play for the current session.
@@ -1192,7 +1201,16 @@ export function GameScreen({ navigation }: GameScreenProps) {
       // the last moves on Night 3), the move handler doesn't fire. This guard
       // catches both scenarios and shows CombatScreen via the
       // local resolver so the player always sees the boss fight animation.
-      const bossAlreadyResolvedInline = onChainState.runMode === RunMode.Campaign;
+      //
+      // skip_to_eow sets bossFightReady=true WITHOUT resolving — the boss
+      // must still be resolved via triggerBoss(). Since bossFightReady is a
+      // prerequisite for this useEffect (line 950), it's always true here.
+      // When the boss WAS resolved inline (normal move_player), the confirmed
+      // state has bossFightReady=false, so the useEffect never fires for that
+      // case — the move handler navigates to CombatScreen directly instead.
+      // Therefore this path is only reached when the boss is NOT yet resolved
+      // (skip_to_eow or session restore), and we should always call triggerBoss().
+      const bossAlreadyResolvedInline = false;
 
       if (bossAlreadyResolvedInline) {
         // When the player won, the week already advanced on-chain, so
@@ -1323,6 +1341,18 @@ export function GameScreen({ navigation }: GameScreenProps) {
           hasOnChainOutcome: bossResult.success,
         });
 
+        // Keep local exploration state aligned with the confirmed post-boss
+        // chain state before showing the replay. Without this, skip-to-EOW can
+        // return from CombatScreen to the stale pre-boss week/sidebar state.
+        if (
+          bossResult.success &&
+          bossResult.newState &&
+          !bossResult.isDead &&
+          !bossResult.newState.completed
+        ) {
+          dispatch({ type: 'SYNC_MOVE', confirmedState: bossResult.newState });
+        }
+
         navigateToBossCombat(bossCombatParams, {
           campaignLevel: bossResult.newState?.campaignLevel ?? onChainState.campaignLevel,
           totalMoves: bossResult.newState?.totalMoves ?? onChainState.totalMoves,
@@ -1374,7 +1404,10 @@ export function GameScreen({ navigation }: GameScreenProps) {
           navigateToDeath(navigation, onChainState, bossName);
         }
       } finally {
-        isTriggeringBossRef.current = false;
+        // Do NOT reset isTriggeringBossRef here — the focus-return effect
+        // handles it once bossFightReady is confirmed false on-chain.
+        // Resetting here would allow the boss useEffect to double-fire if
+        // the on-chain state hasn't refreshed yet (fire-and-forget latency).
       }
     })();
   }, [
@@ -1718,6 +1751,37 @@ export function GameScreen({ navigation }: GameScreenProps) {
     sessionPda, wallet.publicKey, isDuelFinalizing, connection, gameplayReadConnection,
     undelegateCurrentSession, getSessionSignerKeypair, queueEndGame, endSessionWithSessionSigner,
     navigation, onChainState,
+  ]);
+
+  useEffect(() => {
+    if (mode === 'guest' || !sessionPda || !onChainState) return;
+
+    const shouldFinalizeDuelWeek3 =
+      onChainState.runMode === RunMode.Duel &&
+      onChainState.completed &&
+      !onChainState.isDead &&
+      !duelCompleteVisible &&
+      !isDuelFinalizing;
+
+    if (!shouldFinalizeDuelWeek3) {
+      if (!onChainState.completed) {
+        duelWeek3FinalizeRequestedRef.current = null;
+      }
+      return;
+    }
+
+    const finalizeKey = `${sessionPda.toBase58()}:${onChainState.week}:${onChainState.completed}`;
+    if (duelWeek3FinalizeRequestedRef.current === finalizeKey) return;
+
+    duelWeek3FinalizeRequestedRef.current = finalizeKey;
+    handleDuelWeek3Completion();
+  }, [
+    mode,
+    sessionPda,
+    onChainState,
+    duelCompleteVisible,
+    isDuelFinalizing,
+    handleDuelWeek3Completion,
   ]);
 
   const handleDirection = useCallback(
@@ -2647,11 +2711,11 @@ export function GameScreen({ navigation }: GameScreenProps) {
   // A inspects items, and B/R1/L1 exits focus mode.
   const isPOIModalOpen = state?.phase === GamePhase.POIInteraction;
   const controllerEnabled =
-    isController && isFocused && !!state && !isPOIModalOpen && !showPauseMenu && !showTutorial;
+    isController && isFocused && !!state && !isPOIModalOpen && !showPauseMenu && !showSkipToEow && !showTutorial;
 
   // Compact view sidebar toggle via X — kept separate so it works even when POI modal is open
   const [isCompactSidebarVisible, setIsCompactSidebarVisible] = useState(true);
-  const sidebarToggleEnabled = isController && isFocused && !!state && !showPauseMenu && !showTutorial;
+  const sidebarToggleEnabled = isController && isFocused && !!state && !showPauseMenu && !showSkipToEow && !showTutorial;
 
   useControllerAction(
     {
@@ -3686,6 +3750,56 @@ export function GameScreen({ navigation }: GameScreenProps) {
     setFastTravelDestinations([]);
   }, []);
   const handlePauseClose = useCallback(() => setShowPauseMenu(false), []);
+
+  // Skip to EOW handlers
+  const handleSkullPress = useCallback(() => {
+    // Don't allow skip if not in exploration phase
+    if (!state || state.phase !== GamePhase.Exploration) return;
+    // In on-chain mode, also check on-chain guards
+    if (mode !== 'guest' && onChainState) {
+      if (onChainState.bossFightReady || onChainState.isDead || onChainState.completed) return;
+    }
+    playSfx('ui_click');
+    setShowSkipToEow(true);
+  }, [state, mode, onChainState, playSfx]);
+
+  const handleSkipToEowClose = useCallback(() => setShowSkipToEow(false), []);
+
+  const handleSkipToEowConfirm = useCallback(async () => {
+    setIsSkippingToEow(true);
+    try {
+      if (mode === 'guest') {
+        // Guest mode: dispatch TRIGGER_BOSS directly to local reducer
+        setShowSkipToEow(false);
+        dispatch({ type: 'TRIGGER_BOSS' });
+      } else {
+        const result = await skipToEndOfWeek();
+        setShowSkipToEow(false);
+
+        if (result.success && result.newState) {
+          const ns = result.newState;
+
+          // Duel week 3: no boss fight — on-chain sets completed=true.
+          // Trigger the duel finalization flow (waiting-for-opponent / PvP).
+          if (ns.runMode === RunMode.Duel && ns.completed && !ns.isDead) {
+            dispatch({ type: 'SYNC_MOVE', confirmedState: ns });
+            handleDuelWeek3Completion();
+            return;
+          }
+
+          // SYNC_MOVE detects bossFightReady=true and sets local phase to Boss.
+          // The boss useEffect then fires and calls triggerBoss() to resolve
+          // the boss/echo on-chain, same path for all run modes.
+          dispatch({ type: 'SYNC_MOVE', confirmedState: ns });
+        }
+      }
+    } catch (err) {
+      console.error('[GameScreen] skipToEndOfWeek failed:', err);
+    } finally {
+      setIsSkippingToEow(false);
+    }
+  }, [mode, skipToEndOfWeek, dispatch, handleDuelWeek3Completion]);
+
   const handleReturnToHub = useCallback(() => {
     setShowPauseMenu(false);
     navigation.replace('Hub');
@@ -3774,7 +3888,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
                   <Text style={[styles.weekText, { fontSize: 12 * navScale }]}>
                     Week {state.time.week}
                   </Text>
-                  <TopBar time={state.time} scale={navScale} />
+                  <TopBar time={state.time} scale={navScale} onSkullPress={handleSkullPress} />
                 </View>
                 <View style={[styles.navbarRight, { width: 80 * navScale }]}>
                   <View style={[styles.goldDisplay, { gap: 6 * navScale }]}>
@@ -3920,6 +4034,15 @@ export function GameScreen({ navigation }: GameScreenProps) {
                   setShowPauseMenu(false);
                   setShowTutorial(true);
                 }}
+              />
+            )}
+
+            {showSkipToEow && (
+              <SkipToEowModal
+                visible={true}
+                onClose={handleSkipToEowClose}
+                onConfirm={handleSkipToEowConfirm}
+                isSkipping={isSkippingToEow}
               />
             )}
 

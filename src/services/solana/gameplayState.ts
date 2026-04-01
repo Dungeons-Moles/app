@@ -770,13 +770,33 @@ export async function triggerBossFight(
     .transaction();
 
   // Boss fight runs full combat resolution (up to 50 turns + effect processing)
+  // and may CPI into inventory mutations. Duel and gauntlet paths both exceed
+  // the default 32KB BPF heap in practice, so match the program tests by
+  // requesting a larger heap frame for all boss triggers.
   transaction.instructions.unshift(ComputeBudgetProgram.setComputeUnitLimit({ units: 1_000_000 }));
+  transaction.instructions.unshift(ComputeBudgetProgram.requestHeapFrame({ bytes: 256 * 1024 }));
 
-  // Gauntlet echo combat builds two full annotated inventories (player + echo)
-  // which can exceed the default 32KB BPF heap at higher weeks with full gear.
-  if (options?.gauntletEchoesPda) {
-    transaction.instructions.unshift(ComputeBudgetProgram.requestHeapFrame({ bytes: 256 * 1024 }));
-  }
+  return sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair);
+}
+
+/**
+ * Skips all remaining phases in the current week, jumping directly to end-of-week
+ * boss/echo resolution. The player forfeits all remaining moves. Same accounts as
+ * triggerBossFight since it resolves the boss inline.
+ */
+export async function skipToEow(
+  connection: Connection,
+  program: Program,
+  gameStatePda: PublicKey,
+  sessionSignerKeypair: Keypair,
+): Promise<string> {
+  const transaction = await program.methods
+    .skipToEow()
+    .accountsPartial({
+      gameState: gameStatePda,
+      player: sessionSignerKeypair.publicKey,
+    } as any)
+    .transaction();
 
   const isNative = Platform.OS !== 'web';
   return sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair, {

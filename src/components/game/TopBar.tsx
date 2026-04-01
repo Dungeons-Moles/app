@@ -3,7 +3,7 @@
  */
 
 import React, { useMemo } from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, TouchableOpacity } from 'react-native';
 import { Image } from 'expo-image';
 import type { TimeState } from '../../game/engine/types';
 import { TimePhase } from '../../game/engine/types';
@@ -23,14 +23,15 @@ const MOVES_PER_TICK = 5;
 interface TopBarProps {
   time: TimeState;
   scale?: number;
+  onSkullPress?: () => void;
 }
 
-export function TopBar({ time, scale = 1 }: TopBarProps) {
+export function TopBar({ time, scale = 1, onSkullPress }: TopBarProps) {
   const progress = getWeekProgress(time);
 
   return (
     <View style={styles.container}>
-      <WeekProgressTimeline time={time} progress={progress} scale={scale} />
+      <WeekProgressTimeline time={time} progress={progress} scale={scale} onSkullPress={onSkullPress} />
     </View>
   );
 }
@@ -39,9 +40,10 @@ interface WeekProgressTimelineProps {
   time: TimeState;
   progress: number;
   scale: number;
+  onSkullPress?: () => void;
 }
 
-function WeekProgressTimeline({ time, scale }: WeekProgressTimelineProps) {
+function WeekProgressTimeline({ time, scale, onSkullPress }: WeekProgressTimelineProps) {
   const currentTickPosition = useMemo(() => {
     const ticksPerCycle = DAY_TICKS + NIGHT_TICKS;
 
@@ -107,10 +109,21 @@ function WeekProgressTimeline({ time, scale }: WeekProgressTimelineProps) {
             </View>
           );
         })}
-        {/* Skull icon at the end */}
-        <View style={{ position: 'absolute', right: -(iconSize / 2) }}>
-          <Image source={SKULL_ICON} style={{ width: iconSize, height: iconSize }} contentFit="contain" />
-        </View>
+        {/* Skull icon at the end — tappable when onSkullPress provided */}
+        {onSkullPress ? (
+          <TouchableOpacity
+            style={{ position: 'absolute', right: -(iconSize / 2) }}
+            onPress={onSkullPress}
+            activeOpacity={0.6}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
+            <Image source={SKULL_ICON} style={{ width: iconSize, height: iconSize }} contentFit="contain" />
+          </TouchableOpacity>
+        ) : (
+          <View style={{ position: 'absolute', right: -(iconSize / 2) }}>
+            <Image source={SKULL_ICON} style={{ width: iconSize, height: iconSize }} contentFit="contain" />
+          </View>
+        )}
       </View>
 
       {/* Tick Bar Row */}

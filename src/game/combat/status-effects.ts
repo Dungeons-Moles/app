@@ -118,7 +118,8 @@ export function getShrapnelDamage(
   attackerChill: number = 0
 ): number {
   if (!defenderHasShrapnel) return 0;
-  return Math.max(0, strikeAtk) + Math.max(0, reflectBonus) + getChillDamageBonus(attackerChill);
+  const raw = Math.max(0, strikeAtk) + Math.max(0, reflectBonus) + getChillDamageBonus(attackerChill);
+  return Math.max(1, Math.floor(raw / 2));
 }
 
 /**

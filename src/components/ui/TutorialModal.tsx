@@ -20,6 +20,7 @@ const BOSS_PANEL_BG = require('../../../assets/ui/panels/boss-panel.webp');
 // Character / entity images
 const IMG_MOLE = require('../../../assets/entities/characters/default-mole.webp');
 const IMG_TUNNEL_RAT = require('../../../assets/entities/enemies/field/tunnel-rat.webp');
+const IMG_TUNNEL_RAT_TIERS = require('../../../assets/entities/enemies/tunnel-rat-tiers.png');
 const IMG_BROODMOTHER = require('../../../assets/entities/enemies/bosses/broodmother.webp');
 
 // Tile images
@@ -78,6 +79,7 @@ const TUTORIAL_CRITICAL_IMAGES = [
   BOSS_PANEL_BG,
   IMG_MOLE,
   IMG_TUNNEL_RAT,
+  IMG_TUNNEL_RAT_TIERS,
   IMG_BROODMOTHER,
   IMG_FLOOR,
   IMG_ROCK,
@@ -183,15 +185,15 @@ export function TutorialModal({ visible, onClose }: TutorialModalProps) {
 
   const titleStyle = [
     txtStyles.title,
-    { fontSize: ns(isCompact ? 28 : 17), marginBottom: ns(isCompact ? 8 : 5) },
+    { fontSize: ns(isCompact ? 28 : 15), marginBottom: ns(isCompact ? 8 : 4) },
   ];
   const bodyStyle = [
     txtStyles.body,
-    { fontSize: ns(isCompact ? 19 : 12), lineHeight: ns(isCompact ? 26 : 17) },
+    { fontSize: ns(isCompact ? 19 : 10.5), lineHeight: ns(isCompact ? 26 : 15) },
   ];
   const smallStyle = [
     txtStyles.body,
-    { fontSize: ns(isCompact ? 17 : 11), lineHeight: ns(isCompact ? 23 : 15) },
+    { fontSize: ns(isCompact ? 17 : 9.5), lineHeight: ns(isCompact ? 23 : 13) },
   ];
   const boldBody = [bodyStyle, { fontFamily: Typography.stat }].flat();
   const gap = ns(isCompact ? 8 : 5);
@@ -234,7 +236,7 @@ export function TutorialModal({ visible, onClose }: TutorialModalProps) {
               <View style={[pageStyles.row, { marginTop: gap }]}>
                 <Image source={IMG_ROCK} style={iconMd} resizeMode="contain" />
                 <Text style={[bodyStyle, { flex: 1 }]}>
-                  Wall: press twice to dig. Cost: 6-DIG moves (minimum 2).
+                  Wall: press twice to dig. Cost: 6-DIG moves (min 2).
                 </Text>
               </View>
               <View style={[pageStyles.row, { marginTop: gap }]}>
@@ -375,10 +377,6 @@ export function TutorialModal({ visible, onClose }: TutorialModalProps) {
                   {'\n'}3 weeks per stage. Beat all 3 bosses to win.
                 </Text>
               </View>
-              <Text style={[smallStyle, { marginTop: smGap }]}>
-                All bosses have weakness tags. Items of those tags appear more often that week.
-                Counter Caches offer items from the boss's exact weaknesses!
-              </Text>
               <Text style={[boldBody, { marginTop: gap }]}>Combat</Text>
               <View style={[pageStyles.row, { marginTop: smGap }]}>
                 <Image source={IMG_TUNNEL_RAT} style={iconMd} resizeMode="contain" />
@@ -387,12 +385,38 @@ export function TutorialModal({ visible, onClose }: TutorialModalProps) {
                   ARM first, then HP. Max 5 strikes/turn.
                 </Text>
               </View>
+              <Text style={[boldBody, { marginTop: smGap }]}>Enemy Tiers</Text>
+              {isCompact ? (
+                <>
+                  <View style={[pageStyles.centeredImage, { marginVertical: smGap }]}>
+                    <Image
+                      source={IMG_TUNNEL_RAT_TIERS}
+                      style={{ width: 240 * s, height: 60 * s }}
+                      resizeMode="contain"
+                    />
+                  </View>
+                  <Text style={smallStyle}>
+                    Enemies come in 3 tiers. Higher tiers have better stats and give more Gold (2g / 4g / 6g).
+                  </Text>
+                </>
+              ) : (
+                <View style={[pageStyles.row, { marginTop: smGap }]}>
+                  <Image
+                    source={IMG_TUNNEL_RAT_TIERS}
+                    style={{ width: ns(120), height: ns(30) }}
+                    resizeMode="contain"
+                  />
+                  <Text style={[smallStyle, { flex: 1 }]}>
+                    3 tiers. Higher tiers have better stats and give more Gold (2g / 4g / 6g).
+                  </Text>
+                </View>
+              )}
               <Text style={[boldBody, { marginTop: gap }]}>Status Effects</Text>
               <Text style={[smallStyle, { marginTop: smGap }]}>
                 {'\u2022'} Chill: -1 strike/turn, +1 dmg/stack (max +3){'\n'}
                 {'\u2022'} Rust: Lose ARM = stacks end of turn. Persists!{'\n'}
                 {'\u2022'} Bleed: Take dmg = stacks end of turn{'\n'}
-                {'\u2022'} Shrapnel: Reflects dmg to attacker when struck
+                {'\u2022'} Shrapnel: Consumes 1 stack when struck.{'\n'}{'   '}Reflects half ATK back
               </Text>
             </View>
           </>
@@ -512,7 +536,7 @@ export function TutorialModal({ visible, onClose }: TutorialModalProps) {
                 <PoiRow
                   icon={ICON_RAIL}
                   name="Rail Waypoint"
-                  desc="Fast travel between discovered waypoints. Repeatable."
+                  desc={`Fast travel between discovered waypoints.\nRepeatable.`}
                   s={s}
                   ns={ns}
                 />
@@ -598,7 +622,8 @@ export function TutorialModal({ visible, onClose }: TutorialModalProps) {
               <Text style={[smallStyle, { marginTop: smGap }]}>
                 {'\u2022'} Enemies move toward you at night - stay alert!{'\n'}
                 {'\u2022'} Mole Dens give a full heal and skip to Day{'\n'}
-                {'\u2022'} Rest Alcoves heal 10 HP and also skip to Day
+                {'\u2022'} Rest Alcoves heal 10 HP and also skip to Day{'\n'}
+                {'\u2022'} Tap the skull icon in the top bar to skip straight to the boss fight
               </Text>
               <Text style={[boldBody, { marginTop: gap }]}>Build Planning</Text>
               <Text style={[smallStyle, { marginTop: smGap }]}>

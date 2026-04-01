@@ -83,6 +83,7 @@ interface SideRuntime {
   eldritchBleedActive: boolean;
   atkContributions: Map<string, CombatContribution>;
   gearAtkBonus: number;
+  armAtTurnStart: number;
 }
 
 function sourceKey(source: CombatSourceRef): string {
@@ -360,6 +361,7 @@ function buildSideRuntime(input: CombatResolverInput, side: Side): SideRuntime {
       side === 'player' ? input.player : input.enemy
     ),
     gearAtkBonus: computeInitialGearAtkBonus(gear),
+    armAtTurnStart: 0,
   };
 }
 
@@ -601,6 +603,7 @@ function processTransitionEffects(
   const nextWounded = isWounded(combatant);
   const nextExposed = isExposed(combatant) || sideRuntime.forcedExposedThisTurn;
   const hasShrapnel = (combatant.statusEffects.shrapnel ?? 0) > 0;
+  const armorLostThisTurn = Math.max(0, sideRuntime.armAtTurnStart - combatant.arm);
   let nextState = runEffectsForSide(state, runtime, input, owner, 'TRANSITION', ownerActsFirst, {
     wasWounded: sideRuntime.wasWounded,
     isWounded: nextWounded,
@@ -610,6 +613,7 @@ function processTransitionEffects(
     firstTimeWoundedTriggered: sideRuntime.firstTimeWoundedTriggered,
     firstTimeExposedTriggered: sideRuntime.firstTimeExposedTriggered,
     firstTimeShrapnelTriggered: sideRuntime.firstTimeShrapnelTriggered,
+    armorLostThisTurn,
   });
   if (nextState.result) {
     return nextState;
@@ -805,6 +809,31 @@ function processEldritchMolePhases(
   }
 
   return nextState;
+}
+
+const DRILL_SERGEANT_REV_UP_MAX_BONUS = 4;
+
+function processDrillSergeantRevUpCap(
+  state: CombatState,
+  input: CombatResolverInput
+): CombatState {
+  if (
+    input.bossId !== 'B-A-W2-01' &&
+    input.bossId !== 'B-B-W2-01'
+  ) {
+    return state;
+  }
+  // Rev Up fires at TurnStart adding +1 ATK and +1 SPD each turn.
+  // After 4 stacks (Turn 5+), undo the extra +1 that just fired.
+  if (state.turn <= DRILL_SERGEANT_REV_UP_MAX_BONUS) {
+    return state;
+  }
+  const enemy = getCombatant(state, 'enemy');
+  return setCombatant(state, 'enemy', {
+    ...enemy,
+    bonusAtk: enemy.bonusAtk - 1,
+    bonusSpd: enemy.bonusSpd - 1,
+  });
 }
 
 function processEldritchMoleTurnStart(
@@ -1277,6 +1306,7 @@ function processStartOfTurnForSide(
     }
   }
   if (side === 'enemy') {
+    nextState = processDrillSergeantRevUpCap(nextState, input);
     nextState = processEldritchMoleTurnStart(nextState, runtime, input);
     if (nextState.result) {
       return nextState;
@@ -1380,6 +1410,8 @@ export function resolveCombatWithParity(input: CombatResolverInput): CombatState
     runtime.enemy.activeBombSelfDamageReduction = 0;
     runtime.player.actedThisTurn = false;
     runtime.enemy.actedThisTurn = false;
+    runtime.player.armAtTurnStart = state.player.arm;
+    runtime.enemy.armAtTurnStart = state.enemy.arm;
     runtime.player.forcedExposedThisTurn = false;
     runtime.enemy.forcedExposedThisTurn = false;
     runtime.player.extraStrikesThisTurn = 0;

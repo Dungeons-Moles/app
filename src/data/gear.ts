@@ -71,7 +71,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['STONE'],
     effect: {
       timing: 'EVERY_OTHER_TURN',
-      description: 'Every other turn: gain 2/4/8 ARM and 1/2/4 Shrapnel',
+      description: 'Every other turn: gain 1/3/6 ARM and 1/2/4 Shrapnel',
     },
   },
   I5: {
@@ -253,12 +253,64 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['GREED'],
     effect: {
       timing: 'VICTORY',
-      description: 'Victory: gain 3/6/12 Gold and heal 3/6/12 HP',
+      description: 'Victory: gain 2/4/8 Gold and heal 2/4/8 HP',
     },
   },
   I19: {
     id: 'I19',
-    name: 'Gilded Band',
+    name: 'Ruby Shard',
+    emoji: '💚',
+    image: require('../../assets/icons/items/greed/ruby_shard.webp'),
+    baseRarity: 'COMMON',
+    stats: {},
+    tags: ['GREED'],
+    effect: {
+      timing: 'EVERY_OTHER_TURN',
+      description: 'Every other turn (on first hit): heal 2/4/8 HP',
+    },
+  },
+  I20: {
+    id: 'I20',
+    name: 'Pyrite Shard',
+    emoji: '💛',
+    image: require('../../assets/icons/items/greed/pyrite_shard.webp'),
+    baseRarity: 'COMMON',
+    stats: {},
+    tags: ['GREED'],
+    effect: {
+      timing: 'EVERY_OTHER_TURN',
+      description: 'Every other turn (on first hit): gain 2/4/8 Gold',
+    },
+  },
+  I21: {
+    id: 'I21',
+    name: 'Amethyst Shard',
+    emoji: '💜',
+    image: require('../../assets/icons/items/greed/amethyst_shard.webp'),
+    baseRarity: 'COMMON',
+    stats: {},
+    tags: ['GREED'],
+    effect: {
+      timing: 'EVERY_OTHER_TURN',
+      description: 'Every other turn (on first hit): deal 1/2/4 non-weapon damage',
+    },
+  },
+  I22: {
+    id: 'I22',
+    name: 'Emerald Shard',
+    emoji: '💚',
+    image: require('../../assets/icons/items/greed/emerald_shard.webp'),
+    baseRarity: 'COMMON',
+    stats: {},
+    tags: ['GREED'],
+    effect: {
+      timing: 'EVERY_OTHER_TURN',
+      description: 'Every other turn (on first hit): gain 2/4/8 ARM',
+    },
+  },
+  I23: {
+    id: 'I23',
+    name: 'Gilded Ring',
     emoji: '💍',
     image: require('../../assets/icons/items/greed/gilded_band.webp'),
     baseRarity: 'HEROIC',
@@ -270,8 +322,8 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
         'Battle Start: gain ARM equal to Gold/6, rounded down, capped at 6/12/24; if Gold ≥ 20, gain +1/2/4 SPD',
     },
   },
-  I20: {
-    id: 'I20',
+  I24: {
+    id: 'I24',
     name: 'Royal Bracer',
     emoji: '👑',
     image: require('../../assets/icons/items/greed/royal_bracer.webp'),
@@ -282,58 +334,6 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
       timing: 'TURN_START',
       description:
         'Turn Start: convert 1 Gold → 4/8/16 ARM (max 3 times per battle); gold gains increased by 50/100/200%',
-    },
-  },
-  I21: {
-    id: 'I21',
-    name: 'Quartz Shard',
-    emoji: '💚',
-    image: require('../../assets/icons/items/greed/emerald_shard.webp'),
-    baseRarity: 'COMMON',
-    stats: {},
-    tags: ['GREED'],
-    effect: {
-      timing: 'EVERY_OTHER_TURN',
-      description: 'Every other turn (on first hit): heal 2/4/8 HP',
-    },
-  },
-  I22: {
-    id: 'I22',
-    name: 'Amber Shard',
-    emoji: '❤️',
-    image: require('../../assets/icons/items/greed/ruby_shard.webp'),
-    baseRarity: 'COMMON',
-    stats: {},
-    tags: ['GREED'],
-    effect: {
-      timing: 'EVERY_OTHER_TURN',
-      description: 'Every other turn (on first hit): deal 1/2/4 non-weapon damage',
-    },
-  },
-  I23: {
-    id: 'I23',
-    name: 'Zircon Shard',
-    emoji: '💙',
-    image: require('../../assets/icons/items/greed/sapphire_shard.webp'),
-    baseRarity: 'COMMON',
-    stats: {},
-    tags: ['GREED'],
-    effect: {
-      timing: 'EVERY_OTHER_TURN',
-      description: 'Every other turn (on first hit): gain 2/4/8 ARM',
-    },
-  },
-  I24: {
-    id: 'I24',
-    name: 'Tourmaline Shard',
-    emoji: '💛',
-    image: require('../../assets/icons/items/greed/citrine_shard.webp'),
-    baseRarity: 'COMMON',
-    stats: {},
-    tags: ['GREED'],
-    effect: {
-      timing: 'EVERY_OTHER_TURN',
-      description: 'Every other turn (on first hit): gain 2/4/8 Gold and +1/2/4 ARM',
     },
   },
 
@@ -467,15 +467,15 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
   },
   I34: {
     id: 'I34',
-    name: 'Frostguard Buckler',
-    emoji: '🛡️❄️',
-    image: require('../../assets/icons/items/frost/frostguard_buckler.webp'),
-    baseRarity: 'HEROIC',
-    stats: { arm: 8 },
+    name: 'Rime Cloak',
+    emoji: '🧥❄️',
+    image: require('../../assets/icons/items/frost/rime_cloak.webp'),
+    baseRarity: 'RARE',
+    stats: { arm: 3 },
     tags: ['FROST'],
     effect: {
-      timing: 'BATTLE_START',
-      description: 'Battle Start: if enemy has Chill, gain +3/6/12 ARM and apply 1/2/4 Chill',
+      timing: 'ON_STRUCK',
+      description: 'When struck (once/turn): apply 1/2/4 Chill to attacker',
     },
   },
   I35: {
@@ -502,15 +502,15 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
   },
   I37: {
     id: 'I37',
-    name: 'Rime Cloak',
-    emoji: '🧥❄️',
-    image: require('../../assets/icons/items/frost/rime_cloak.webp'),
-    baseRarity: 'RARE',
-    stats: { arm: 3 },
+    name: 'Frostguard Buckler',
+    emoji: '🛡️❄️',
+    image: require('../../assets/icons/items/frost/frostguard_buckler.webp'),
+    baseRarity: 'HEROIC',
+    stats: { arm: 6 },
     tags: ['FROST'],
     effect: {
-      timing: 'ON_STRUCK',
-      description: 'When struck (once/turn): apply 1/2/4 Chill to attacker',
+      timing: 'BATTLE_START',
+      description: 'Battle Start: if enemy has Chill, gain +3/6/12 ARM and apply 1/2/4 Chill',
     },
   },
   I38: {
@@ -594,8 +594,8 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     stats: { spd: 1 },
     tags: ['RUST'],
     effect: {
-      timing: 'WOUNDED',
-      description: 'Wounded: apply 2/4/8 Rust',
+      timing: 'BATTLE_START',
+      description: 'Battle Start: apply 1/2/4 Rust. Wounded: apply additional 2/4/8 Rust',
     },
   },
   I44: {
@@ -620,8 +620,8 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     stats: { arm: 6 },
     tags: ['RUST'],
     effect: {
-      timing: 'EXPOSED',
-      description: 'Exposed: apply 2/4/8 Rust to enemy',
+      timing: 'PASSIVE',
+      description: 'When you lose 3+ Armor in a turn: apply 2/4/8 Rust to enemy',
     },
   },
   I46: {
@@ -679,7 +679,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['BLOOD'],
     effect: {
       timing: 'ON_DEATH',
-      description: 'One use: first time you would die in battle, prevent it and heal 2/4/8 HP',
+      description: 'One use: first time you would die in battle, prevent it and heal 3/6/12 HP',
     },
   },
   I50: {
@@ -718,7 +718,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['BLOOD'],
     effect: {
       timing: 'VICTORY',
-      description: 'Victory: heal 5/10/20 HP',
+      description: 'Victory: heal 4/8/16 HP',
     },
   },
   I53: {
@@ -798,7 +798,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['TEMPO'],
     effect: {
       timing: 'FIRST_TURN',
-      description: 'If you act first on Turn 1, your first strike deals +3/6/12 damage',
+      description: 'If you act first on Turn 1, your first strike deals +4/8/16 damage and gain +1/2/4 ATK',
     },
   },
   I59: {
@@ -825,7 +825,7 @@ export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
     tags: ['TEMPO'],
     effect: {
       timing: 'TURN_START',
-      description: 'Turn 5: gain +3/6/12 ATK and +2/4/8 SPD',
+      description: 'Turn 3: gain +2/4/8 ATK and +1/2/4 SPD',
     },
   },
   I61: {
