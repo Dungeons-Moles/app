@@ -4,6 +4,20 @@
 import 'react-native-get-random-values';
 import { Buffer } from 'buffer';
 
+const disableConsoleLogs = process.env.EXPO_PUBLIC_DISABLE_CONSOLE_LOGS === 'true';
+const keepConsoleErrors = process.env.EXPO_PUBLIC_KEEP_CONSOLE_ERRORS === 'true';
+
+if (disableConsoleLogs) {
+  console.log = () => {};
+  console.info = () => {};
+  console.debug = () => {};
+  console.trace = () => {};
+  console.warn = () => {};
+  if (!keepConsoleErrors) {
+    console.error = () => {};
+  }
+}
+
 // React Native has global.WebSocket but not window.WebSocket.
 // rpc-websockets (used by @solana/web3.js) does `new window.WebSocket(...)`.
 // Without this, all WS subscriptions (onAccountChange) silently fail on RN.

@@ -853,6 +853,11 @@ export function usePoiInteraction(): UsePoiInteractionResult {
     if (!keypair || !poiProgram || !mapPoisPda || !gameStatePda || !sessionPda) {
       return null;
     }
+    console.log('[usePoiInteraction] createPoiCtx:connections', {
+      gameplayConnection: gameplayConnection.rpcEndpoint,
+      gameplayReadConnection: gameplayReadConnection.rpcEndpoint,
+      gameplayWriteConnection: gameplayWriteConnection.rpcEndpoint,
+    });
     return {
       connection: gameplayWriteConnection,
       program: poiProgram,
