@@ -263,7 +263,19 @@ const getWritableAccounts = (tx: Transaction): string[] => {
   return [...writable];
 };
 
-const getRouterBlockhashForAccounts = async (
+// Router blockhash cache — the router's getBlockhashForAccounts returns a blockhash
+// from the validator holding the routed accounts. During a session all accounts live
+// on the same validator, so we can cache per endpoint with a short TTL.
+const ROUTER_BLOCKHASH_CACHE_TTL_MS = 5_000;
+type CachedRouterBlockhash = {
+  blockhash: string;
+  blockhashBytes: Uint8Array;
+  lastValidBlockHeight: number;
+  fetchedAt: number;
+};
+const routerBlockhashCache = new Map<string, CachedRouterBlockhash>();
+
+const fetchRouterBlockhashForAccounts = async (
   connection: Connection,
   accounts: string[]
 ): Promise<{ blockhash: string; blockhashBytes: Uint8Array; lastValidBlockHeight: number }> => {
@@ -296,7 +308,26 @@ const getRouterBlockhashForAccounts = async (
   };
 };
 
+const getRouterBlockhashForAccounts = async (
+  connection: Connection,
+  accounts: string[]
+): Promise<{ blockhash: string; blockhashBytes: Uint8Array; lastValidBlockHeight: number }> => {
+  const cacheKey = normalizeEndpoint(connection.rpcEndpoint);
+  const now = Date.now();
+  const cached = routerBlockhashCache.get(cacheKey);
+  if (cached && now - cached.fetchedAt < ROUTER_BLOCKHASH_CACHE_TTL_MS) {
+    return cached;
+  }
+  const result = await fetchRouterBlockhashForAccounts(connection, accounts);
+  routerBlockhashCache.set(cacheKey, { ...result, fetchedAt: now });
+  return result;
+};
+
 export const getMagicRouterBlockhashForAccounts = getRouterBlockhashForAccounts;
+
+export const invalidateCachedRouterBlockhash = (connection: Connection): void => {
+  routerBlockhashCache.delete(normalizeEndpoint(connection.rpcEndpoint));
+};
 
 /** Pre-warm the ER blockhash cache so the first move doesn't pay a round-trip penalty. */
 export const warmErBlockhashCache = (connection: Connection): void => {
@@ -898,6 +929,19 @@ export async function confirmErTransaction(
   }
 }
 
+// Cache ed25519 seed (first 32 bytes of secretKey) per signer to avoid
+// .slice() allocation on every transaction. Keyed by pubkey base58.
+const signerSeedCache = new Map<string, Uint8Array>();
+function getCachedSignerSeed(keypair: Keypair): Uint8Array {
+  const key = keypair.publicKey.toBase58();
+  let seed = signerSeedCache.get(key);
+  if (!seed) {
+    seed = keypair.secretKey.slice(0, 32);
+    signerSeedCache.set(key, seed);
+  }
+  return seed;
+}
+
 /**
  * Signs and sends a transaction using the sessionSigner keypair.
  *
@@ -987,7 +1031,7 @@ export async function sendSessionSignerTransaction(
 
       // Sign raw message bytes with @noble/curves ed25519 (bypasses
       // Transaction.sign's internal re-compilation).
-      const seed = sessionSignerKeypair.secretKey.slice(0, 32);
+      const seed = getCachedSignerSeed(sessionSignerKeypair);
       const signatureBytes = ed25519.sign(messageBytes, seed);
       const tWire = Date.now();
 
@@ -1009,6 +1053,7 @@ export async function sendSessionSignerTransaction(
           console.error('[sessionSignerWallet] Background send failed:', err);
           if (erConnection && isRetriableErBlockhashError(err)) {
             invalidateCachedErBlockhash(connection);
+            invalidateCachedRouterBlockhash(connection);
           }
           options?.onSendFail?.(err instanceof Error ? err : new Error(String(err)));
         });
@@ -1022,6 +1067,7 @@ export async function sendSessionSignerTransaction(
           console.error('[sessionSignerWallet] Background send failed:', err);
           if (erConnection && isRetriableErBlockhashError(err)) {
             invalidateCachedErBlockhash(connection);
+            invalidateCachedRouterBlockhash(connection);
           }
           options?.onSendFail?.(err instanceof Error ? err : new Error(String(err)));
         });
@@ -1038,7 +1084,7 @@ export async function sendSessionSignerTransaction(
     {
       const tSign = Date.now();
       const messageBytes = tx.serializeMessage();
-      const seed = sessionSignerKeypair.secretKey.slice(0, 32);
+      const seed = getCachedSignerSeed(sessionSignerKeypair);
       const signatureBytes = ed25519.sign(messageBytes, seed);
       const wire = new Uint8Array(1 + 64 + messageBytes.length);
       wire[0] = 1;
@@ -1129,6 +1175,7 @@ export async function sendSessionSignerTransaction(
         erConnection && (isRetriableErWriteLockError(err) || isRetriableErBlockhashError(err));
       if (erConnection && isRetriableErBlockhashError(err)) {
         invalidateCachedErBlockhash(connection);
+        invalidateCachedRouterBlockhash(connection);
       }
       if (!shouldRetryEr || attempt >= maxAttempts) {
         if (err instanceof SendTransactionError) {

@@ -34,6 +34,48 @@ export type { MapPoisData, PoiInstance, ShopState, ItemOffer };
 const POI_CU_LIMIT = 1_000_000;
 
 // ============================================================================
+// PDA Caches — findProgramAddressSync is ~20-30ms per call on Hermes.
+// POI functions derive 3-5 PDAs per interaction; caching saves ~60-150ms.
+// ============================================================================
+
+// Global PDAs (no session-specific seed) — derived once at module load.
+let _poiAuthorityPda: PublicKey | null = null;
+let _gameplayAuthorityPda: PublicKey | null = null;
+let _inventoryAuthorityPda: PublicKey | null = null;
+
+function cachedPoiAuthorityPda(): PublicKey {
+  if (!_poiAuthorityPda) _poiAuthorityPda = derivePoiAuthorityPda()[0];
+  return _poiAuthorityPda;
+}
+function cachedGameplayAuthorityPda(): PublicKey {
+  if (!_gameplayAuthorityPda) _gameplayAuthorityPda = deriveGameplayAuthorityPda()[0];
+  return _gameplayAuthorityPda;
+}
+function cachedInventoryAuthorityPda(): PublicKey {
+  if (!_inventoryAuthorityPda) _inventoryAuthorityPda = deriveInventoryAuthorityPda()[0];
+  return _inventoryAuthorityPda;
+}
+
+// Session-specific PDAs — cached per session PDA.
+const sessionPdaCache = new Map<
+  string,
+  { inventory: PublicKey; generatedMap: PublicKey }
+>();
+
+function cachedSessionPdas(sessionPda: PublicKey): { inventory: PublicKey; generatedMap: PublicKey } {
+  const key = sessionPda.toBase58();
+  let cached = sessionPdaCache.get(key);
+  if (!cached) {
+    cached = {
+      inventory: deriveInventoryPda(sessionPda)[0],
+      generatedMap: deriveGeneratedMapPda(sessionPda)[0],
+    };
+    sessionPdaCache.set(key, cached);
+  }
+  return cached;
+}
+
+// ============================================================================
 // Transaction Context
 // ============================================================================
 
@@ -113,10 +155,10 @@ export async function buildInteractRestTransaction(
   ctx: PoiTransactionContext,
   poiIndex: number
 ): Promise<Transaction> {
-  const [inventoryPda] = deriveInventoryPda(ctx.sessionPda);
-  const [poiAuthorityPda] = derivePoiAuthorityPda();
-  const [gameplayAuthorityPda] = deriveGameplayAuthorityPda();
-  const [generatedMapPda] = deriveGeneratedMapPda(ctx.sessionPda);
+  const { inventory: inventoryPda } = cachedSessionPdas(ctx.sessionPda);
+  const poiAuthorityPda = cachedPoiAuthorityPda();
+  const gameplayAuthorityPda = cachedGameplayAuthorityPda();
+  const { generatedMap: generatedMapPda } = cachedSessionPdas(ctx.sessionPda);
 
   // Optional account: include only when fully initialized/deserializable.
   // Some local flows can leave the PDA allocated but not initialized, which
@@ -163,9 +205,9 @@ export async function generateCacheOffer(
   ctx: PoiTransactionContext,
   poiIndex: number
 ): Promise<string> {
-  const [inventoryPda] = deriveInventoryPda(ctx.sessionPda);
-  const [inventoryAuthorityPda] = deriveInventoryAuthorityPda();
-  const [poiAuthorityPda] = derivePoiAuthorityPda();
+  const { inventory: inventoryPda } = cachedSessionPdas(ctx.sessionPda);
+  const inventoryAuthorityPda = cachedInventoryAuthorityPda();
+  const poiAuthorityPda = cachedPoiAuthorityPda();
 
   const transaction = await ctx.program.methods
     .generateCacheOffer(poiIndex)
@@ -214,9 +256,9 @@ export async function interactPickItem(
     );
   }
 
-  const [inventoryPda] = deriveInventoryPda(ctx.sessionPda);
-  const [inventoryAuthorityPda] = deriveInventoryAuthorityPda();
-  const [poiAuthorityPda] = derivePoiAuthorityPda();
+  const { inventory: inventoryPda } = cachedSessionPdas(ctx.sessionPda);
+  const inventoryAuthorityPda = cachedInventoryAuthorityPda();
+  const poiAuthorityPda = cachedPoiAuthorityPda();
 
   const transaction = await ctx.program.methods
     .interactPickItem(safePoiIndex, safeChoiceIndex)
@@ -254,9 +296,9 @@ export async function interactToolOil(
   currentOilFlags: number,
   modification: number
 ): Promise<string> {
-  const [inventoryPda] = deriveInventoryPda(ctx.sessionPda);
+  const { inventory: inventoryPda } = cachedSessionPdas(ctx.sessionPda);
 
-  const [poiAuthorityPda] = derivePoiAuthorityPda();
+  const poiAuthorityPda = cachedPoiAuthorityPda();
 
   const transaction = await ctx.program.methods
     .interactToolOil(poiIndex, currentOilFlags, modification)
@@ -299,9 +341,9 @@ export async function generateOilOffer(
   ctx: PoiTransactionContext,
   poiIndex: number
 ): Promise<string> {
-  const [inventoryPda] = deriveInventoryPda(ctx.sessionPda);
+  const { inventory: inventoryPda } = cachedSessionPdas(ctx.sessionPda);
 
-  const [poiAuthorityPda] = derivePoiAuthorityPda();
+  const poiAuthorityPda = cachedPoiAuthorityPda();
 
   const transaction = await ctx.program.methods
     .generateOilOffer(poiIndex)
@@ -342,9 +384,9 @@ export async function buildInteractSurveyBeaconTransaction(
   ctx: PoiTransactionContext,
   poiIndex: number
 ): Promise<Transaction> {
-  const [generatedMapPda] = deriveGeneratedMapPda(ctx.sessionPda);
-  const [poiAuthorityPda] = derivePoiAuthorityPda();
-  const [gameplayAuthorityPda] = deriveGameplayAuthorityPda();
+  const { generatedMap: generatedMapPda } = cachedSessionPdas(ctx.sessionPda);
+  const poiAuthorityPda = cachedPoiAuthorityPda();
+  const gameplayAuthorityPda = cachedGameplayAuthorityPda();
   return ctx.program.methods
     .interactSurveyBeacon(poiIndex)
     .accountsPartial({
@@ -373,7 +415,7 @@ export async function generateScannerOffer(
   ctx: PoiTransactionContext,
   poiIndex: number
 ): Promise<string> {
-  const [generatedMapPda] = deriveGeneratedMapPda(ctx.sessionPda);
+  const { generatedMap: generatedMapPda } = cachedSessionPdas(ctx.sessionPda);
   const transaction = await ctx.program.methods
     .generateScannerOffer(poiIndex)
     .accountsPartial({
@@ -400,9 +442,9 @@ export async function interactSeismicScanner(
   poiIndex: number,
   poiType: number
 ): Promise<string> {
-  const [generatedMapPda] = deriveGeneratedMapPda(ctx.sessionPda);
-  const [poiAuthorityPda] = derivePoiAuthorityPda();
-  const [gameplayAuthorityPda] = deriveGameplayAuthorityPda();
+  const { generatedMap: generatedMapPda } = cachedSessionPdas(ctx.sessionPda);
+  const poiAuthorityPda = cachedPoiAuthorityPda();
+  const gameplayAuthorityPda = cachedGameplayAuthorityPda();
   const transaction = await ctx.program.methods
     .interactSeismicScanner(poiIndex, poiType)
     .accountsPartial({
@@ -443,9 +485,9 @@ export async function buildFastTravelTransaction(
   fromPoiIndex: number,
   toPoiIndex: number
 ): Promise<Transaction> {
-  const [poiAuthorityPda] = derivePoiAuthorityPda();
-  const [generatedMapPda] = deriveGeneratedMapPda(ctx.sessionPda);
-  const [gameplayAuthorityPda] = deriveGameplayAuthorityPda();
+  const poiAuthorityPda = cachedPoiAuthorityPda();
+  const { generatedMap: generatedMapPda } = cachedSessionPdas(ctx.sessionPda);
+  const gameplayAuthorityPda = cachedGameplayAuthorityPda();
 
   return ctx.program.methods
     .fastTravel(fromPoiIndex, toPoiIndex)
@@ -498,9 +540,9 @@ export async function shopPurchase(
   ctx: PoiTransactionContext,
   offerIndex: number
 ): Promise<string> {
-  const [poiAuthorityPda] = derivePoiAuthorityPda();
-  const [inventoryPda] = deriveInventoryPda(ctx.sessionPda);
-  const [inventoryAuthorityPda] = deriveInventoryAuthorityPda();
+  const poiAuthorityPda = cachedPoiAuthorityPda();
+  const { inventory: inventoryPda } = cachedSessionPdas(ctx.sessionPda);
+  const inventoryAuthorityPda = cachedInventoryAuthorityPda();
 
   const transaction = await ctx.program.methods
     .shopPurchase(offerIndex)
@@ -527,7 +569,7 @@ export async function shopPurchase(
  * Cost increases with each reroll: 4, 6, 8, 10, ...
  */
 export async function shopReroll(ctx: PoiTransactionContext): Promise<string> {
-  const [poiAuthorityPda] = derivePoiAuthorityPda();
+  const poiAuthorityPda = cachedPoiAuthorityPda();
 
   const transaction = await ctx.program.methods
     .shopReroll()
@@ -578,8 +620,8 @@ export async function interactRustyAnvil(
   itemId: Uint8Array,
   currentTier: number
 ): Promise<string> {
-  const [inventoryPda] = deriveInventoryPda(ctx.sessionPda);
-  const [poiAuthorityPda] = derivePoiAuthorityPda();
+  const { inventory: inventoryPda } = cachedSessionPdas(ctx.sessionPda);
+  const poiAuthorityPda = cachedPoiAuthorityPda();
 
   const transaction = await ctx.program.methods
     .interactRustyAnvil(poiIndex, Array.from(itemId), currentTier)
@@ -613,7 +655,7 @@ export async function interactRuneKiln(
   item2Id: Uint8Array,
   item2Tier: number
 ): Promise<string> {
-  const [inventoryPda] = deriveInventoryPda(ctx.sessionPda);
+  const { inventory: inventoryPda } = cachedSessionPdas(ctx.sessionPda);
 
   const transaction = await ctx.program.methods
     .interactRuneKiln(poiIndex, Array.from(item1Id), item1Tier, Array.from(item2Id), item2Tier)
@@ -642,9 +684,9 @@ export async function interactScrapChute(
   poiIndex: number,
   itemId: Uint8Array
 ): Promise<string> {
-  const [inventoryPda] = deriveInventoryPda(ctx.sessionPda);
-  const [inventoryAuthorityPda] = deriveInventoryAuthorityPda();
-  const [poiAuthorityPda] = derivePoiAuthorityPda();
+  const { inventory: inventoryPda } = cachedSessionPdas(ctx.sessionPda);
+  const inventoryAuthorityPda = cachedInventoryAuthorityPda();
+  const poiAuthorityPda = cachedPoiAuthorityPda();
 
   const transaction = await ctx.program.methods
     .interactScrapChute(poiIndex, Array.from(itemId))

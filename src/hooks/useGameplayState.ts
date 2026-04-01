@@ -435,7 +435,7 @@ export function useGameplayState(): UseGameplayStateReturn {
         // (RN's sendTransaction can take ~720ms, which would expire a 500ms timeout).
         const wsState = registerWsListener();
         let wsDiscoveryCancelled = false;
-        let wsDiscoveryResolve: (data: SessionDiscoveryData | null) => void;
+        let wsDiscoveryResolve!: (data: SessionDiscoveryData | null) => void;
         const wsDiscoveryPromise = new Promise<SessionDiscoveryData | null>((r) => {
           wsDiscoveryResolve = r;
         });
@@ -486,19 +486,17 @@ export function useGameplayState(): UseGameplayStateReturn {
         // confirmed state, and the polling (40ms × 50 requests per move) saturates
         // the HTTP connection on rapid moves, causing subsequent sends to stall.
 
-        // Discovery timeout (starts after send)
-        setTimeout(() => {
-          if (wsDiscoveryCancelled) return;
+        // Await only gameState — don't block the move on discovery WS delivery.
+        // Discovery is best-effort: take whatever arrived by the time gameState resolves.
+        const confirmedState = await raceWsVsFetch(wsState.promise, 500);
+
+        // Resolve discovery immediately with whatever is available (WS data or latest ref).
+        if (!wsDiscoveryCancelled) {
           wsDiscoveryCancelled = true;
           wsDiscoveryListenersRef.current.delete(discoveryListener);
           wsDiscoveryResolve(latestDiscoveryRef.current);
-        }, 500);
-
-        // Await gameState + discovery WS in parallel. Timeouts start after send.
-        const [confirmedState, wsDiscoveryData] = await Promise.all([
-          raceWsVsFetch(wsState.promise, 500),
-          wsDiscoveryPromise,
-        ]);
+        }
+        const wsDiscoveryData = await wsDiscoveryPromise;
 
         // Only parse combat logs when the WS-delivered state shows HP changed or death.
         // This skips the expensive getTransaction RPC call on non-combat night moves.

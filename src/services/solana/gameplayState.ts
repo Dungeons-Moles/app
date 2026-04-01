@@ -23,6 +23,7 @@ import {
   getCachedErBlockhash,
   getMagicRouterBlockhashForAccounts,
   invalidateCachedErBlockhash,
+  invalidateCachedRouterBlockhash,
   buildMessageTemplate,
   signTemplatedTransaction,
   fireAndForgetRawTx,
@@ -598,7 +599,7 @@ export async function movePlayer(
     const wireBase64 = Buffer.from(wireTransaction).toString('base64');
     fireAndForgetRawTx(connection.rpcEndpoint, wireBase64)
       .then(() => {
-        console.log('[perf] sendTransaction(bg): completed (router=true)');
+        console.log(`[perf] sendTransaction(bg): completed (router=${isMagicRouterRpc(connection)})`);
       })
       .catch((err) => {
         console.error('[movePlayer] Background send failed:', err);
@@ -618,10 +619,10 @@ export async function movePlayer(
         const errMessage = (err instanceof Error ? err.message : String(err)).toLowerCase();
         if (errMessage.includes('blockhash not found')) {
           invalidateCachedErBlockhash(connection);
+          invalidateCachedRouterBlockhash(connection);
         }
         options?.onSendFail?.(err instanceof Error ? err : new Error(String(err)));
       });
-
     console.log(
       `[perf] sendTransaction: 0ms (templated, sign: ${tDone - tSign}ms, sig=${signature.slice(0, 8)}...)`
     );
