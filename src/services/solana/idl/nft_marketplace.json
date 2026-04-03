@@ -204,6 +204,35 @@
           ]
         },
         {
+          "name": "relic_asset_record",
+          "writable": true,
+          "optional": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  108,
+                  105,
+                  99,
+                  95,
+                  97,
+                  115,
+                  115,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "asset"
+              }
+            ]
+          }
+        },
+        {
           "name": "collection",
           "writable": true
         },
@@ -220,6 +249,15 @@
           ]
         },
         {
+          "name": "seller_player_relic_pool",
+          "writable": true,
+          "optional": true
+        },
+        {
+          "name": "buyer_player_relic_pool",
+          "writable": true
+        },
+        {
           "name": "company_treasury",
           "writable": true
         },
@@ -230,6 +268,10 @@
         {
           "name": "mpl_core_program",
           "address": "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d"
+        },
+        {
+          "name": "player_profile_program",
+          "address": "GSLNDrNoHeZXVxB7Yu7tUe8417PpZ5XV7JPYupPw9WQy"
         },
         {
           "name": "system_program",
@@ -873,11 +915,51 @@
           "signer": true
         },
         {
+          "name": "relic_asset",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  108,
+                  105,
+                  99,
+                  95,
+                  97,
+                  115,
+                  115,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "asset"
+              }
+            ]
+          }
+        },
+        {
+          "name": "player_relic_pool",
+          "writable": true
+        },
+        {
           "name": "owner"
         },
         {
           "name": "mpl_core_program",
           "address": "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d"
+        },
+        {
+          "name": "player_profile_program",
+          "address": "GSLNDrNoHeZXVxB7Yu7tUe8417PpZ5XV7JPYupPw9WQy"
+        },
+        {
+          "name": "log_wrapper",
+          "address": "noopb9bkMVfRPU8AsbpTUg8AQkHtKwMYZiFUjNRtMmV"
         },
         {
           "name": "system_program",
@@ -894,7 +976,7 @@
           "type": "string"
         },
         {
-          "name": "_nft_item_id",
+          "name": "nft_item_id",
           "type": {
             "array": [
               "u8",
@@ -1003,6 +1085,10 @@
         {
           "name": "mpl_core_program",
           "address": "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d"
+        },
+        {
+          "name": "log_wrapper",
+          "address": "noopb9bkMVfRPU8AsbpTUg8AQkHtKwMYZiFUjNRtMmV"
         },
         {
           "name": "system_program",
@@ -1218,6 +1304,19 @@
         177,
         58,
         162
+      ]
+    },
+    {
+      "name": "RelicAsset",
+      "discriminator": [
+        222,
+        160,
+        151,
+        133,
+        226,
+        88,
+        154,
+        91
       ]
     }
   ],
@@ -1641,6 +1740,35 @@
           },
           {
             "name": "Seasonal"
+          }
+        ]
+      }
+    },
+    {
+      "name": "RelicAsset",
+      "docs": [
+        "Asset-backed relic metadata for gameplay registration.",
+        "PDA: [b\"relic_asset\", asset.key()]"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "asset",
+            "type": "pubkey"
+          },
+          {
+            "name": "item_id",
+            "type": {
+              "array": [
+                "u8",
+                8
+              ]
+            }
+          },
+          {
+            "name": "bump",
+            "type": "u8"
           }
         ]
       }

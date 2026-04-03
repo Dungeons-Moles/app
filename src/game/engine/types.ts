@@ -154,7 +154,8 @@ export type ToolId =
   | 'T13'
   | 'T14' // BLOOD: Serrated Drill, Reaper Pick
   | 'T15'
-  | 'T16'; // TEMPO: Quickpick, Chrono Rapier
+  | 'T16' // TEMPO: Quickpick, Chrono Rapier
+  | 'T17'; // RELIC: Pioneer's Mattock
 
 export type ToolOil = 'ATK' | 'DIG' | 'SPD' | 'ARM';
 
@@ -239,6 +240,7 @@ export interface Tool {
   emoji: string;
   image?: any;
   rarity: ItemRarity;
+  tier?: 1 | 2 | 3;
   stats: ItemStats;
   tags: ItemTag[];
   oil?: ToolOil | null;

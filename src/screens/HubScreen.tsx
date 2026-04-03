@@ -57,7 +57,7 @@ import { useEquipSkin } from '../hooks/useEquipSkin';
 import { NftCard } from '../components/marketplace/NftCard';
 import { QuestCard } from '../components/quests/QuestCard';
 import { getSkinImage } from '../data/skinImages';
-import { useEquippedSkinImage } from '../hooks/useEquippedSkinImage';
+import { useEquippedSkinImage, getEquippedSkinDisplayScale } from '../hooks/useEquippedSkinImage';
 import { useAudio } from '../contexts/AudioContext';
 import { useSolanaConnection } from '../contexts/SolanaConnectionContext';
 import {
@@ -1066,7 +1066,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
           {/* CENTER - Character */}
           <View style={[styles.center, isCompact && compactStyles.center]}>
             <View style={styles.characterContainer}>
-              <View style={[styles.characterShadow, isCompact && compactStyles.characterShadow]}>
+              <View style={[styles.characterShadow, isCompact && compactStyles.characterShadow, (() => { const s = getEquippedSkinDisplayScale(profile?.equippedSkin); return s !== 1 ? (isCompact ? { bottom: -16 } : { bottom: -40 }) : undefined; })()]}>
                 <Svg height="100%" width="100%">
                   <Defs>
                     <Pattern
@@ -1090,7 +1090,7 @@ export function HubScreen({ navigation }: HubScreenProps) {
               </View>
               <Image
                 source={characterImage}
-                style={[styles.characterImage, isCompact && compactStyles.characterImage]}
+                style={[styles.characterImage, isCompact && compactStyles.characterImage, (() => { const s = getEquippedSkinDisplayScale(profile?.equippedSkin); if (s === 1) return undefined; if (isCompact) { const h = 330; return { transform: [{ scale: s }, { translateY: -(h * (s - 1)) / (2 * s) }] }; } return { transform: [{ scale: s }], marginTop: 14 }; })()]}
                 resizeMode="contain"
               />
             </View>

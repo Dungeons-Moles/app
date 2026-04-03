@@ -54,7 +54,7 @@ import {
   createToolInstance,
   createGearInstance,
   getToolStatsAtTier,
-  rarityToToolTier,
+  getToolUpgradeTier,
 } from '@/game/entities/items';
 import { refreshPlayerStats } from '@/game/entities/player';
 import { GAME_CONSTANTS, getBaseHp } from '@/game/engine/constants';
@@ -123,6 +123,8 @@ export const ONCHAIN_TO_ENGINE_ID: Record<string, string> = {
   // TEMPO tools
   'T-TE-01': 'T15',
   'T-TE-02': 'T16',
+  // RELIC tools
+  'S-XX-07': 'T17',
   // STONE gear (I1-I8)
   'G-ST-01': 'I1',
   'G-ST-02': 'I2',
@@ -901,9 +903,10 @@ export function convertToolInstance(item: ItemInstance): Tool | null {
     if (upgradedRarity) {
       tool.rarity = upgradedRarity;
     }
+    tool.tier = (item.tier + 1) as 1 | 2 | 3;
 
     // Recalculate stats using TOOL_EFFECTS tier values (matches on-chain)
-    const tier = rarityToToolTier(tool.rarity);
+    const tier = getToolUpgradeTier(tool);
     tool.stats = { ...getToolStatsAtTier(id as ToolId, tier) };
 
     // Apply tool oil modifications

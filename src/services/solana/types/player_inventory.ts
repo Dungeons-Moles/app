@@ -74,7 +74,9 @@ export interface PlayerInventoryData {
   session: PublicKey;
   player: PublicKey;
   tool: ItemInstance | null;
+  toolRelicAsset?: PublicKey | null;
   gear: (ItemInstance | null)[];
+  gearRelicAssets?: (PublicKey | null)[];
   gearSlotCapacity: number;
   bump: number;
 }

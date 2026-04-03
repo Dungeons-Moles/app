@@ -1,7 +1,7 @@
 /**
  * Tool Effects - Aligned with Solana Backend (programs/player-inventory/src/items.rs)
  *
- * This file provides effect definitions for all 17 tools that match
+ * This file provides effect definitions for all 18 tools that match
  * the exact behavior defined in the Solana backend.
  *
  * Effect values are provided as tier arrays [tier1, tier2, tier3] where:
@@ -53,7 +53,7 @@ function E(
 }
 
 // ============================================================================
-// All Tool Effects (17 tools)
+// All Tool Effects (18 tools)
 // ============================================================================
 
 export const TOOL_EFFECTS: Record<ToolId, ToolEffects> = {
@@ -247,12 +247,20 @@ export const TOOL_EFFECTS: Record<ToolId, ToolEffects> = {
     ],
   },
 
-  // T-TE-02: Chrono Rapier - +2/3/4 ATK, +3/4/5 SPD, FirstTurnIfFaster: +3/4/5 ATK
+  // T-TE-02: Chrono Rapier - +2/3/4 ATK, +3/4/5 SPD, FirstTurnIfFaster: +1/2/3 ATK
   T16: {
     effects: [
       E(Trigger.BattleStart(), 'GainAtk', [2, 3, 4]),
       E(Trigger.BattleStart(), 'GainSpd', [3, 4, 5]),
-      E(Trigger.FirstTurnIfFaster(), 'GainAtk', [3, 4, 5]),
+      E(Trigger.FirstTurnIfFaster(), 'GainAtk', [1, 2, 3]),
+    ],
+  },
+
+  // T17: Pioneer's Mattock - +3/4/5 ATK, OnHit (once/turn): rotating Chill/Rust/Bleed
+  T17: {
+    effects: [
+      E(Trigger.BattleStart(), 'GainAtk', [3, 4, 5]),
+      E(Trigger.OnHit(), 'ApplyRotatingDebuff', [1, 1, 1], { oncePerTurn: true }),
     ],
   },
 };

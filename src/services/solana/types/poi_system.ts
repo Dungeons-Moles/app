@@ -41,6 +41,8 @@ export interface ShopState {
 
 export interface ItemOffer {
   itemId: Uint8Array; // 8 bytes
+  relicAsset?: PublicKey | null;
+  isRelic?: boolean;
   tier: number;
   price: number;
   purchased: boolean;
@@ -49,6 +51,8 @@ export interface ItemOffer {
 // Individual offer item from on-chain CacheOffer
 export interface OfferItem {
   itemId: number[]; // 8 bytes
+  relicAsset?: PublicKey | null;
+  isRelic?: boolean;
   rarity: number;
   tier: number; // Item tier (0=Tier I, 1=Tier II, 2=Tier III)
 }

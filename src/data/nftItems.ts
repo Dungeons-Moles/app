@@ -53,6 +53,15 @@ export const NFT_ITEMS: Record<string, NftItemInfo> = {
     rarity: 'heroic',
     emoji: '\u{1F462}',
   },
+  'S-XX-07': {
+    name: "Pioneer's Mattock",
+    description:
+      'On Hit (once/turn): apply a rotating debuff - Turn 1: 1 Chill, Turn 2: 1 Rust, Turn 3: 1 Bleed, then repeat.',
+    tag: 'RELIC',
+    rarity: 'heroic',
+    emoji: '\u26CF\uFE0F',
+    image: require('../../assets/icons/items/relics/pioneers_mattock.webp'),
+  },
 };
 
 export function getNftItemInfo(id: string): NftItemInfo | undefined {

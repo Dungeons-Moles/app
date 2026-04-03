@@ -16,6 +16,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useIsFocused } from '@react-navigation/native';
 import { useProfile } from '../contexts/ProfileContext';
 import { useWallet } from '../contexts/WalletContext';
+import { useSolanaConnection } from '../contexts/SolanaConnectionContext';
 import { RootStackParamList } from '../navigation';
 import { Typography } from '../theme/typography';
 import { useScreenVariant } from '../contexts/ScreenVariantContext';
@@ -34,6 +35,7 @@ import {
 import { getGearStatsAtTier } from '../data/gear-effects';
 import {
   getToolsByTag,
+  getToolDefinition,
   ToolDefinition,
   getToolEffectDescriptionAllTiers,
   getToolStatsAtTier,
@@ -46,8 +48,18 @@ import {
   setItemUnlocked as setPoolBit,
   getItemPoolIndex,
 } from '../services/solana/types/item_pool';
+import {
+  createAnchorProvider,
+  createPlayerProfileProgram,
+  createPlayerProfileProgramWithProvider,
+} from '../services/solana/programs';
+import { derivePlayerRelicPoolPda } from '../services/solana/constants';
+import { encodeFixedItemId, fetchPlayerRelicPool } from '../services/solana/playerRelics';
+import { ONCHAIN_TO_ENGINE_ID } from '../services/solana/sessionRestore';
 import { getAllItemsetDefinitions, getItemsetsForItem } from '../data/itemsets';
 import type { ItemsetDefinition } from '../data/itemsets';
+import { SOLANA_CONFIG } from '../services/solana/config';
+import { getUserErrorMessage } from '../services/solana/errors';
 
 const backgroundImage = require('../../assets/ui/backgrounds/loading-background.webp');
 const bookImageMobile = require('../../assets/ui/backgrounds/book-wide.webp');
@@ -55,7 +67,6 @@ const bookImageCompact = require('../../assets/ui/backgrounds/book-compact.webp'
 const buttonV1Source = require('../../assets/ui/buttons/button-v1.webp');
 const buttonSource = require('../../assets/ui/buttons/button.webp');
 const buttonV3Source = require('../../assets/ui/buttons/button-v3.webp');
-const buttonV4Source = require('../../assets/ui/buttons/button-v4.webp');
 const buttonGreenSource = require('../../assets/ui/buttons/button-green.webp');
 const buttonGraySource = require('../../assets/ui/buttons/button-gray.webp');
 const lockIconSource = require('../../assets/icons/ui/lock.webp');
@@ -70,6 +81,11 @@ const squareFrameGreenSource = require('../../assets/ui/frames/square-green.webp
 const squareFrameBlueSource = require('../../assets/ui/frames/square-blue.webp');
 const squareFrameYellowSource = require('../../assets/ui/frames/square-yellow.webp');
 const engineImageSource = require('../../assets/ui/illustrations/engine.webp');
+const itemsTitleSource = require('../../assets/ui/text/items.webp');
+const itemsetsTitleSource = require('../../assets/ui/text/itemsets.webp');
+const arrowIcon = require('../../assets/icons/ui/normal-speed.webp');
+const iconL1Source = require('../../assets/ui/control-buttons/l1.webp');
+const iconR1Source = require('../../assets/ui/control-buttons/r1.webp');
 
 const ITEMSET_ICONS: Record<string, any> = {
   UNION_STANDARD: require('../../assets/icons/itemsets/union_standard.webp'),
@@ -192,6 +208,7 @@ const TAG_COLORS: Record<ItemTag, string> = {
 };
 
 const ALL_TAGS: ItemTag[] = ['STONE', 'SCOUT', 'GREED', 'BLAST', 'FROST', 'RUST', 'BLOOD', 'TEMPO'];
+const RELIC_COLOR = '#C27830';
 
 const ITEM_POOL_MIN_SIZE = MIN_ACTIVE_POOL;
 
@@ -203,7 +220,10 @@ type DisplayItem = {
   stats: ItemStats;
   effect?: { description: string };
   isTool: boolean;
-  tag: ItemTag;
+  tag?: ItemTag;
+  isRelic?: boolean;
+  relicCount?: number;
+  inRelicPool?: boolean;
 };
 
 const RARITY_COLORS: Record<ItemRarity, string> = {
@@ -293,7 +313,7 @@ type ItemsScreenProps = {
 const convertToDisplayItem = (
   def: ToolDefinition | GearDefinition,
   isTool: boolean,
-  tag: ItemTag
+  tag?: ItemTag
 ): DisplayItem => ({
   id: def.id,
   name: def.name,
@@ -319,10 +339,19 @@ const getAllItems = (): DisplayItem[] => {
   return allItems;
 };
 
+function getRelicDisplayItem(toolId: ToolId): DisplayItem {
+  const def = getToolDefinition(toolId);
+  return {
+    ...convertToDisplayItem(def, true, undefined),
+    isRelic: true,
+  };
+}
+
 export function ItemsScreen({ navigation }: ItemsScreenProps) {
   const { playSfx } = useAudio();
   const { isItemUnlocked, updateActiveItemPool, profile, mode } = useProfile();
-  const { disconnect } = useWallet();
+  const { wallet, disconnect, signAndSendTransaction } = useWallet();
+  const { baseConnection } = useSolanaConnection();
   const isGuest = mode === 'guest';
   const screenVariant = useScreenVariant();
   const isCompact = screenVariant === 'compact';
@@ -339,7 +368,23 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
   const [selectedItem, setSelectedItem] = useState<DisplayItem | null>(null);
   const [draftPoolIndices, setDraftPoolIndices] = useState<Set<number>>(new Set());
   const [isSavingItemPool, setIsSavingItemPool] = useState(false);
+  const [isUpdatingRelicPool, setIsUpdatingRelicPool] = useState(false);
+  const [relicItems, setRelicItems] = useState<DisplayItem[]>([]);
+  const [draftRelicPoolIds, setDraftRelicPoolIds] = useState<Set<string>>(new Set());
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const provider = useMemo(() => {
+    if (!wallet.publicKey) return null;
+    const walletAdapter = {
+      publicKey: wallet.publicKey,
+      signTransaction: async (tx: any) => tx,
+      signAllTransactions: async (txs: any) => txs,
+    } as any;
+    return createAnchorProvider(baseConnection, walletAdapter);
+  }, [baseConnection, wallet.publicKey]);
+  const writeProgram = useMemo(() => {
+    if (!provider) return null;
+    return createPlayerProfileProgramWithProvider(provider);
+  }, [provider]);
 
   const activePoolBitmask = useMemo(
     () => profile?.activeItemPool ?? new Uint8Array(BITMASK_SIZE),
@@ -364,22 +409,71 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
     }).start();
   }, []);
 
+  const loadRelics = useCallback(async () => {
+    if (!wallet.publicKey || isGuest) {
+      setRelicItems([]);
+      return;
+    }
+
+    const program = createPlayerProfileProgram(baseConnection);
+    const [playerRelicPoolPda] = derivePlayerRelicPoolPda(wallet.publicKey);
+    const relicPool = await fetchPlayerRelicPool(program, playerRelicPoolPda);
+
+    if (!relicPool) {
+      setRelicItems([]);
+      return;
+    }
+
+    const nextRelics: DisplayItem[] = [];
+    const nextDraftRelics = new Set<string>();
+    for (const relic of relicPool.relics) {
+      if (relic.ownedCount <= 0) continue;
+      const engineId = ONCHAIN_TO_ENGINE_ID[relic.itemId];
+      if (!engineId || engineId !== 'T17') continue;
+      if (relic.inActivePool) nextDraftRelics.add(engineId);
+      nextRelics.push({
+        ...getRelicDisplayItem(engineId as ToolId),
+        relicCount: relic.ownedCount,
+        inRelicPool: relic.inActivePool,
+      });
+    }
+
+    setRelicItems(nextRelics);
+    setDraftRelicPoolIds(nextDraftRelics);
+  }, [baseConnection, isGuest, wallet.publicKey]);
+
+  useEffect(() => {
+    void loadRelics();
+  }, [loadRelics]);
+
   // Select first unlocked item on mount only
   const hasInitializedRef = useRef(false);
+  const standardItems = useMemo(() => getAllItems(), []);
+  const allItems = useMemo(() => [...standardItems, ...relicItems], [relicItems, standardItems]);
+
   useEffect(() => {
     if (hasInitializedRef.current) return;
     const task = InteractionManager.runAfterInteractions(() => {
       hasInitializedRef.current = true;
       loadDraftPoolFromProfile();
-      const all = getAllItems();
-      const firstUnlocked = all.find((item) => isItemUnlocked(item.id));
-      setSelectedItem(firstUnlocked || all[0] || null);
+      const firstUnlocked = allItems.find((item) =>
+        item.isRelic ? true : isItemUnlocked(item.id)
+      );
+      const fallbackSelection = allItems[0] ?? null;
+      setSelectedItem(firstUnlocked || fallbackSelection);
       setSelectedItemset(getAllItemsetDefinitions()[0] || null);
     });
     return () => {
       task.cancel();
     };
-  }, [isItemUnlocked, loadDraftPoolFromProfile]);
+  }, [allItems, isItemUnlocked, loadDraftPoolFromProfile]);
+
+  useEffect(() => {
+    if (!hasInitializedRef.current || allItems.length === 0) return;
+    if (!selectedItem || !allItems.some((item) => item.id === selectedItem.id)) {
+      setSelectedItem(allItems[0] ?? null);
+    }
+  }, [allItems, selectedItem]);
 
   // Reload draft pool when profile's active pool changes (e.g. after save)
   useEffect(() => {
@@ -388,12 +482,16 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
   }, [loadDraftPoolFromProfile]);
 
   const checkItemUnlocked = useCallback(
-    (id: string): boolean => isGuest || isItemUnlocked(id),
+    (id: string): boolean => {
+      if (id === 'T17') return true;
+      return isGuest || isItemUnlocked(id);
+    },
     [isGuest, isItemUnlocked]
   );
 
   const togglePoolItem = useCallback(
     (item: DisplayItem) => {
+      if (item.isRelic) return;
       if (!checkItemUnlocked(item.id)) return;
 
       const poolIndex = getItemPoolIndex(item.id);
@@ -419,14 +517,32 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
     [checkItemUnlocked]
   );
 
+  const toggleRelicPoolItem = useCallback(
+    async (item: DisplayItem) => {
+      if (!item.isRelic) return;
+      setDraftRelicPoolIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(item.id)) next.delete(item.id);
+        else next.add(item.id);
+        return next;
+      });
+    },
+    []
+  );
+
   const hasPoolChanges = useMemo(() => {
     for (let i = 0; i < 80; i++) {
       const onChain = isPoolBitSet(activePoolBitmask, i);
       const draft = draftPoolIndices.has(i);
       if (onChain !== draft) return true;
     }
+    for (const relic of relicItems) {
+      const onChain = !!relic.inRelicPool;
+      const draft = draftRelicPoolIds.has(relic.id);
+      if (onChain !== draft) return true;
+    }
     return false;
-  }, [activePoolBitmask, draftPoolIndices]);
+  }, [activePoolBitmask, draftPoolIndices, draftRelicPoolIds, relicItems]);
 
   const handleSaveItemPool = useCallback(async () => {
     console.log('[ItemsScreen] Save pressed, pool size:', draftPoolIndices.size);
@@ -446,6 +562,7 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
 
     console.log('[ItemsScreen] Sending updateActiveItemPool transaction...');
     setIsSavingItemPool(true);
+    setIsUpdatingRelicPool(true);
     try {
       const result = await updateActiveItemPool(nextBitmask);
       if (!result.success) {
@@ -453,6 +570,27 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
         Alert.alert('Failed to Save', result.error ?? 'Could not update active item pool.');
         return;
       }
+
+      if (wallet.publicKey && writeProgram) {
+        const [playerRelicPoolPda] = derivePlayerRelicPoolPda(wallet.publicKey);
+        for (const relic of relicItems) {
+          const desiredActive = draftRelicPoolIds.has(relic.id);
+          const currentActive = !!relic.inRelicPool;
+          if (desiredActive === currentActive) continue;
+          const relicItemId = relic.id === 'T17' ? 'S-XX-07' : relic.id;
+          const transaction = await writeProgram.methods
+            .setRelicActive(encodeFixedItemId(relicItemId), desiredActive)
+            .accounts({
+              playerRelicPool: playerRelicPoolPda,
+              owner: wallet.publicKey,
+            })
+            .transaction();
+          const signature = await signAndSendTransaction(transaction);
+          await baseConnection.confirmTransaction(signature, SOLANA_CONFIG.commitment);
+        }
+      }
+
+      await loadRelics();
       console.log('[ItemsScreen] Item pool saved successfully, signature:', result.signature);
       Alert.alert('Saved', 'Your item pool has been updated.');
     } catch (err) {
@@ -460,8 +598,19 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
       Alert.alert('Failed to Save', 'An unexpected error occurred.');
     } finally {
       setIsSavingItemPool(false);
+      setIsUpdatingRelicPool(false);
     }
-  }, [draftPoolIndices, updateActiveItemPool]);
+  }, [
+    baseConnection,
+    draftPoolIndices,
+    draftRelicPoolIds,
+    loadRelics,
+    relicItems,
+    signAndSendTransaction,
+    updateActiveItemPool,
+    wallet.publicKey,
+    writeProgram,
+  ]);
 
   const handleBack = useCallback(() => {
     playSfx('ui_back');
@@ -479,6 +628,7 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
   const selectedItemPoolIndex = selectedItem ? getItemPoolIndex(selectedItem.id) : -1;
   const selectedItemInPool =
     selectedItemPoolIndex >= 0 && draftPoolIndices.has(selectedItemPoolIndex);
+  const selectedRelicInPool = !!selectedItem?.isRelic && draftRelicPoolIds.has(selectedItem.id);
   const canRemoveSelectedItem = !selectedItemInPool || draftPoolIndices.size > ITEM_POOL_MIN_SIZE;
 
   // --- Controller navigation ---
@@ -486,7 +636,6 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
   const isController = inputMode === 'controller';
   const isFocused = useIsFocused();
   const [showSettingsModal, setShowSettingsModal] = useState(false);
-  const allItems = useMemo(() => getAllItems(), []);
   const itemsByTag = useMemo(() => {
     const grouped = {} as Record<ItemTag, DisplayItem[]>;
     for (const tag of ALL_TAGS) {
@@ -497,6 +646,12 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
   const itemsPerRow = isCompact ? 5 : 5;
 
   const [cursorIdx, setCursorIdx] = useState(0);
+
+  useEffect(() => {
+    if (cursorIdx >= allItems.length && allItems.length > 0) {
+      setCursorIdx(allItems.length - 1);
+    }
+  }, [allItems.length, cursorIdx]);
 
   // Tab state
   const [activeTab, setActiveTab] = useState<'items' | 'itemsets'>('items');
@@ -552,15 +707,27 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
     });
   }, [playSfx]);
 
+  const cursorItem = activeTab === 'items' ? allItems[cursorIdx] : null;
+  const canToggleCursorItem =
+    !!cursorItem &&
+    !isGuest &&
+    checkItemUnlocked(cursorItem.id) &&
+    (cursorItem.isRelic ? true : getItemPoolIndex(cursorItem.id) >= 0);
+
   useControllerAction(
     {
       onB: handleBack,
       onStart: () => setShowSettingsModal(true),
       onA:
-        activeTab === 'items' && !isGuest
+        activeTab === 'items' && canToggleCursorItem
           ? () => {
               const item = allItems[cursorIdx];
-              if (item && checkItemUnlocked(item.id)) togglePoolItem(item);
+              if (!item) return;
+              if (item.isRelic) {
+                void toggleRelicPoolItem(item);
+              } else {
+                togglePoolItem(item);
+              }
             }
           : undefined,
       onX: activeTab === 'items' && !isGuest && hasPoolChanges ? handleSaveItemPool : undefined,
@@ -590,9 +757,19 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
   const controllerHints: ButtonHint[] = [
     { button: 'L1R1', label: 'Tab' },
     { button: 'DPad', label: 'Navigate' },
-    ...(activeTab === 'items' && !isGuest
+    ...(activeTab === 'items' && canToggleCursorItem
       ? [
-          { button: 'A' as const, label: selectedItemInPool ? 'Remove' : 'Add to Pool' },
+          {
+            button: 'A' as const,
+            label:
+              cursorItem?.isRelic
+                ? draftRelicPoolIds.has(cursorItem.id)
+                  ? 'Remove from Pool'
+                  : 'Add to Pool'
+                : selectedItemInPool
+                  ? 'Remove'
+                  : 'Add to Pool',
+          },
           ...(hasPoolChanges ? [{ button: 'X' as const, label: 'Save' }] : []),
         ]
       : []),
@@ -611,8 +788,6 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
       <View style={[styles.content, isCompact && compactStyles.content]}>
         {/* Header */}
         <View style={[styles.header, isCompact && compactStyles.header]}>
-          {/* In mobile view, Back and the tab toggle sit side-by-side on the left.
-              In compact view they remain separate siblings for the 3-way space-between spread. */}
           {(() => {
             const inner = (
               <>
@@ -631,36 +806,12 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                 )}
                 <View style={styles.titleGroup}>
                   <TouchableOpacity onPress={toggleTab} activeOpacity={0.8}>
-                    <CachedImageBackground
-                      source={buttonV4Source}
-                      style={[styles.titlePanel, isCompact && compactStyles.titlePanel]}
-                      resizeMode="stretch"
-                    >
-                      <Text style={[styles.title, isCompact && compactStyles.title]}>
-                        {activeTab === 'items' ? 'Items' : 'Itemsets'}
-                      </Text>
-                      {!isCompact && activeTab === 'items' && !isGuest && (
-                        <Text
-                          numberOfLines={1}
-                          style={styles.poolCountInButton}
-                        >
-                          Pool: {draftPoolIndices.size} (min {ITEM_POOL_MIN_SIZE})
-                        </Text>
-                      )}
-                    </CachedImageBackground>
+                    <Image
+                      source={activeTab === 'items' ? itemsTitleSource : itemsetsTitleSource}
+                      style={[styles.titleImage, isCompact && compactStyles.titleImage, isCompact && activeTab === 'itemsets' && compactStyles.titleImageItemsets]}
+                      resizeMode="contain"
+                    />
                   </TouchableOpacity>
-                  {isCompact && activeTab === 'items' && !isGuest && (
-                    <Text
-                      numberOfLines={1}
-                      style={[
-                        styles.poolCountText,
-                        compactStyles.poolCountText,
-                        styles.poolCountAbsolute,
-                      ]}
-                    >
-                      Pool: {draftPoolIndices.size} (min {ITEM_POOL_MIN_SIZE})
-                    </Text>
-                  )}
                 </View>
               </>
             );
@@ -669,6 +820,16 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
 
           {/* Header right: save + settings */}
           <View style={styles.headerRight}>
+            {activeTab === 'items' && !isGuest && (
+              <View>
+                <Text numberOfLines={1} style={[styles.poolCountBelow, isCompact && compactStyles.poolCountBelow]}>
+                  Pool: {draftPoolIndices.size} (min {ITEM_POOL_MIN_SIZE})
+                </Text>
+                <Text numberOfLines={1} style={[styles.poolCountBelow, isCompact && compactStyles.poolCountBelow]}>
+                  Relic Pool: {draftRelicPoolIds.size}
+                </Text>
+              </View>
+            )}
             {activeTab === 'items' && !isGuest ? (
               <TouchableOpacity
                 disabled={
@@ -691,10 +852,17 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                 >
                   {isSavingItemPool ? (
                     <ActivityIndicator size="small" color="#1a1a1a" />
+                  ) : isCompact ? (
+                    <View style={compactStyles.saveHint}>
+                      <Image
+                        source={require('../../assets/ui/control-buttons/x.webp')}
+                        style={compactStyles.saveHintIcon}
+                        resizeMode="contain"
+                      />
+                      <Text style={[styles.saveButtonText, compactStyles.saveButtonText]}>Save</Text>
+                    </View>
                   ) : (
-                    <Text style={[styles.saveButtonText, isCompact && compactStyles.saveButtonText]}>
-                      {isCompact ? 'Press X to Save' : 'Save'}
-                    </Text>
+                    <Text style={styles.saveButtonText}>Save</Text>
                   )}
                 </CachedImageBackground>
               </TouchableOpacity>
@@ -723,6 +891,68 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
               </TouchableOpacity>
             )}
           </View>
+
+          {/* Tabs — mobile only, absolute center so they don't shift layout */}
+          {!isCompact && (
+            <View style={styles.tabs} pointerEvents="box-none">
+            {isController ? (
+              <Image
+                source={iconL1Source}
+                style={styles.tabShoulderIcon}
+                resizeMode="contain"
+              />
+            ) : (
+              <TouchableOpacity onPress={toggleTab} activeOpacity={0.7}>
+                <Image
+                  source={arrowIcon}
+                  style={[styles.tabArrowIcon, styles.tabArrowLeft]}
+                  resizeMode="contain"
+                />
+              </TouchableOpacity>
+            )}
+            {(['items', 'itemsets'] as const).map((tab) => (
+              <TouchableOpacity
+                key={tab}
+                style={[styles.tab, activeTab === tab && styles.tabActive]}
+                onPress={() => {
+                  playSfx('ui_click');
+                  setActiveTab(tab);
+                  if (tab === 'itemsets') {
+                    setItemsetCursorIdx(0);
+                    setSelectedItemset(getAllItemsetDefinitions()[0] || null);
+                  } else {
+                    setCursorIdx(0);
+                  }
+                }}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[
+                    styles.tabText,
+                    activeTab === tab && styles.tabTextActive,
+                  ]}
+                >
+                  {tab === 'items' ? 'Items' : 'Itemsets'}
+                </Text>
+              </TouchableOpacity>
+            ))}
+            {isController ? (
+              <Image
+                source={iconR1Source}
+                style={styles.tabShoulderIcon}
+                resizeMode="contain"
+              />
+            ) : (
+              <TouchableOpacity onPress={toggleTab} activeOpacity={0.7}>
+                <Image
+                  source={arrowIcon}
+                  style={styles.tabArrowIcon}
+                  resizeMode="contain"
+                />
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
         </View>
 
         {/* Two-column layout */}
@@ -737,8 +967,13 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
             {activeTab === 'items' ? (
               (() => {
                 let flatIdx = 0;
-                return ALL_TAGS.map((tag) => {
+                const sections = ALL_TAGS.map((tag) => {
                   const tagItems = itemsByTag[tag] ?? [];
+                  const tagUnlocked = tagItems.filter((item) => checkItemUnlocked(item.id)).length;
+                  const tagInPool = tagItems.filter((item) => {
+                    const poolIndex = getItemPoolIndex(item.id);
+                    return poolIndex >= 0 && draftPoolIndices.has(poolIndex);
+                  }).length;
                   return (
                     <View key={tag} style={styles.tagSection}>
                       <Text
@@ -749,6 +984,9 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                         ]}
                       >
                         {TAG_DISPLAY_NAMES[tag]}
+                        {!isGuest && (
+                          <Text style={[styles.tagCount, isCompact && compactStyles.tagCount]}> ({tagInPool}/{tagUnlocked})</Text>
+                        )}
                       </Text>
                       <View style={[styles.itemsGrid, isCompact && compactStyles.itemsGrid, !isCompact && { width: gridWidth, gap: gridGap }]}>
                         {tagItems.map((item) => {
@@ -814,6 +1052,91 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                     </View>
                   );
                 });
+                if (relicItems.length > 0) {
+                  sections.push(
+                    <View key="relics" style={styles.tagSection}>
+                      <Text
+                        style={[
+                          styles.tagHeader,
+                          isCompact && compactStyles.tagHeader,
+                          { color: RELIC_COLOR },
+                        ]}
+                      >
+                        RELIC ITEMS
+                        {!isGuest && (
+                          <Text style={[styles.tagCount, isCompact && compactStyles.tagCount]}> ({draftRelicPoolIds.size}/{relicItems.length})</Text>
+                        )}
+                      </Text>
+                      <View
+                        style={[
+                          styles.itemsGrid,
+                          isCompact && compactStyles.itemsGrid,
+                          !isCompact && { width: gridWidth, gap: gridGap },
+                        ]}
+                      >
+                        {relicItems.map((item) => {
+                          const idx = flatIdx++;
+                          const isSelected = selectedItem?.id === item.id;
+                          const isCursorItem = isController && idx === cursorIdx;
+                          const { source: frameSource, bgColor: frameBg } = getFrameForRarity(
+                            item.rarity,
+                            draftRelicPoolIds.has(item.id)
+                          );
+                          const cell = (
+                            <TouchableOpacity
+                              key={item.id}
+                              style={[
+                                styles.itemGridCell,
+                                isCompact && compactStyles.itemGridCell,
+                                !isCompact && { width: cellSize, height: cellSize },
+                                isSelected && styles.itemGridCellSelected,
+                              ]}
+                              onPress={() => {
+                                playSfx('ui_hover');
+                                setSelectedItem(item);
+                              }}
+                              activeOpacity={0.7}
+                            >
+                              <CachedImageBackground
+                                source={frameSource}
+                                style={[
+                                  styles.itemFrame,
+                                  isCompact && compactStyles.itemFrame,
+                                  !isCompact && { width: cellSize, height: cellSize },
+                                  frameBg ? { backgroundColor: frameBg } : undefined,
+                                ]}
+                                resizeMode="stretch"
+                              >
+                                <Image
+                                  source={item.image}
+                                  style={[
+                                    styles.itemImage,
+                                    isCompact && compactStyles.itemImage,
+                                    !isCompact && { width: imageSize, height: imageSize },
+                                  ]}
+                                  resizeMode="contain"
+                                />
+                                {(item.relicCount ?? 0) > 1 && (
+                                  <View style={styles.relicCountBadge}>
+                                    <Text style={styles.relicCountText}>x{item.relicCount}</Text>
+                                  </View>
+                                )}
+                              </CachedImageBackground>
+                            </TouchableOpacity>
+                          );
+                          return isCursorItem ? (
+                            <View key={item.id} ref={cursorRef}>
+                              <FocusGlow active>{cell}</FocusGlow>
+                            </View>
+                          ) : (
+                            cell
+                          );
+                        })}
+                      </View>
+                    </View>
+                  );
+                }
+                return sections;
               })()
             ) : (
               <View style={styles.tagSection}>
@@ -997,7 +1320,35 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                   </CachedImageBackground>
                 )}
 
-                {!isGuest && checkItemUnlocked(selectedItem.id) && selectedItemPoolIndex >= 0 && (
+                {!isGuest && selectedItem.isRelic && (
+                  <TouchableOpacity
+                    onPress={() => void toggleRelicPoolItem(selectedItem)}
+                    style={[styles.poolToggleButton, isCompact && compactStyles.poolToggleButton]}
+                    disabled={isUpdatingRelicPool}
+                    activeOpacity={0.8}
+                  >
+                    <CachedImageBackground
+                      source={selectedRelicInPool ? buttonSource : buttonGreenSource}
+                      style={[
+                        styles.poolToggleButtonBg,
+                        isCompact && compactStyles.poolToggleButtonBg,
+                        isUpdatingRelicPool && styles.saveButtonDisabled,
+                      ]}
+                      resizeMode="stretch"
+                    >
+                      <Text
+                        style={[
+                          styles.poolToggleButtonText,
+                          isCompact && compactStyles.poolToggleButtonText,
+                        ]}
+                      >
+                        {selectedRelicInPool ? 'Remove from Pool' : 'Add to Pool'}
+                      </Text>
+                    </CachedImageBackground>
+                  </TouchableOpacity>
+                )}
+
+                {!isGuest && !selectedItem.isRelic && checkItemUnlocked(selectedItem.id) && selectedItemPoolIndex >= 0 && (
                   <TouchableOpacity
                     onPress={() => togglePoolItem(selectedItem)}
                     style={[styles.poolToggleButton, isCompact && compactStyles.poolToggleButton]}
@@ -1039,14 +1390,27 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
                     resizeMode="contain"
                   />
                   <Text
-                    style={[styles.selectedItemName, isCompact && compactStyles.selectedItemName]}
+                    style={[
+                      styles.selectedItemName,
+                      isCompact && compactStyles.selectedItemName,
+                      selectedItem.isRelic && styles.relicSelectedItemName,
+                    ]}
                   >
                     {selectedItem.name}
                   </Text>
+                  {selectedItem.isRelic && (
+                    <Text style={[styles.relicOwnedText, isCompact && compactStyles.relicOwnedText]}>
+                      Owned: {selectedItem.relicCount ?? 1}
+                    </Text>
+                  )}
                   <View
                     style={[
                       styles.rarityBadge,
-                      { backgroundColor: RARITY_COLORS[selectedItem.rarity] },
+                      {
+                        backgroundColor: selectedItem.isRelic
+                          ? RARITY_COLORS[selectedItem.rarity]
+                          : RARITY_COLORS[selectedItem.rarity],
+                      },
                     ]}
                   >
                     <Text style={[styles.rarityText, isCompact && compactStyles.rarityText]}>
@@ -1184,7 +1548,7 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    paddingTop: 24,
+    paddingTop: 32,
     paddingHorizontal: 64,
     paddingBottom: 28,
   },
@@ -1192,7 +1556,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: -4,
+    marginBottom: 8,
   },
   backButton: {
     width: 80,
@@ -1205,17 +1569,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginBottom: 4,
   },
-  titlePanel: {
-    paddingVertical: 8,
-    paddingHorizontal: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: 180,
-    height: 60,
-  },
-  title: {
-    fontFamily: Typography.header,
-    fontSize: 20,
+  titleImage: {
+    width: 130,
+    height: 40,
   },
   saveButton: {
     width: 90,
@@ -1256,27 +1612,53 @@ const styles = StyleSheet.create({
   titleGroup: {
     alignItems: 'center',
   },
-  poolCountText: {
+  tabs: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 6,
+  },
+  tabShoulderIcon: {
+    width: 22,
+    height: 22,
+    opacity: 0.6,
+  },
+  tabArrowIcon: {
+    width: 18,
+    height: 18,
+    opacity: 0.5,
+  },
+  tabArrowLeft: {
+    transform: [{ rotate: '180deg' }],
+  },
+  tab: {
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+    borderRadius: 4,
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  tabActive: {
+    borderBottomColor: '#3d2b1f',
+  },
+  tabText: {
+    fontFamily: Typography.button,
+    fontSize: 14,
+    color: '#8a7a6a',
+  },
+  tabTextActive: {
+    color: '#3d2b1f',
+  },
+  poolCountBelow: {
     fontFamily: Typography.header,
     fontSize: 11,
     color: '#3d2b1f',
-  },
-  poolCountAbsolute: {
-    position: 'absolute',
-    left: '100%',
-    marginLeft: 8,
-    width: 150,
-    top: '50%',
-    transform: [{ translateY: '-50%' }],
-  },
-  poolCountInButton: {
-    position: 'absolute',
-    bottom: 10,
-    right: 14,
-    fontFamily: Typography.header,
-    fontSize: 11,
-    color: '#3d2b1f',
-    opacity: 0.7,
+    textAlign: 'right',
   },
   columnsContainer: {
     flex: 1,
@@ -1298,6 +1680,11 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     letterSpacing: 1,
   },
+  tagCount: {
+    fontFamily: Typography.number,
+    fontSize: 12,
+    letterSpacing: 0,
+  },
   itemsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1314,12 +1701,34 @@ const styles = StyleSheet.create({
   itemGridCellSelected: {
     backgroundColor: 'rgba(250,188,15,0.14)',
   },
+  relicItemGridCellSelected: {
+    backgroundColor: 'rgba(194,120,48,0.18)',
+  },
   itemFrame: {
     width: 54,
     height: 54,
     justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
+  },
+  relicItemFrame: {
+    backgroundColor: 'rgba(194,120,48,0.12)',
+  },
+  relicCountBadge: {
+    position: 'absolute',
+    right: 2,
+    bottom: 2,
+    backgroundColor: RELIC_COLOR,
+    borderRadius: 8,
+    minWidth: 18,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    alignItems: 'center',
+  },
+  relicCountText: {
+    fontFamily: Typography.button,
+    fontSize: 9,
+    color: '#fff7e8',
   },
   itemImage: {
     width: 46,
@@ -1392,6 +1801,15 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#3d2b1f',
     textAlign: 'center',
+    marginBottom: 4,
+  },
+  relicSelectedItemName: {
+    color: RELIC_COLOR,
+  },
+  relicOwnedText: {
+    fontFamily: Typography.body,
+    fontSize: 11,
+    color: RELIC_COLOR,
     marginBottom: 4,
   },
   rarityBadge: {
@@ -1530,7 +1948,7 @@ const styles = StyleSheet.create({
 
 const compactStyles = StyleSheet.create({
   content: {
-    paddingTop: 130,
+    paddingTop: 138,
     paddingHorizontal: 88,
     paddingBottom: 160,
   },
@@ -1548,29 +1966,41 @@ const compactStyles = StyleSheet.create({
     fontSize: 28,
     marginBottom: 6,
   },
-  titlePanel: {
-    width: 320,
-    height: 100,
-    paddingVertical: 12,
-    paddingHorizontal: 32,
+  titleImage: {
+    width: 220,
+    height: 68,
   },
-  title: {
-    fontSize: 36,
+  titleImageItemsets: {
+    width: 343,
   },
   saveButton: {
-    width: 220,
+    width: 160,
     height: 76,
   },
   saveButtonText: {
     fontSize: 28,
     marginBottom: 6,
   },
-  poolCountText: {
+  saveHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  saveHintIcon: {
+    width: 28,
+    height: 28,
+    marginBottom: 4,
+  },
+  poolCountBelow: {
     fontSize: 18,
   },
   tagHeader: {
     fontSize: 22,
     marginBottom: 12,
+  },
+  tagCount: {
+    fontSize: 18,
   },
   itemsGrid: {
     gap: 11,
@@ -1617,6 +2047,10 @@ const compactStyles = StyleSheet.create({
   selectedItemName: {
     fontSize: 24,
     marginBottom: 8,
+  },
+  relicOwnedText: {
+    fontSize: 18,
+    marginBottom: 6,
   },
   rarityText: {
     fontSize: 16,

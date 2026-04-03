@@ -13,9 +13,12 @@ import {
   deriveListingPda,
   deriveMintAuthorityPda,
   derivePlayerProfilePda,
+  derivePlayerRelicPoolPda,
   MPL_CORE_PROGRAM_ID,
+  PLAYER_PROFILE_PROGRAM_ID,
   TREASURY_PUBKEY,
   GAUNTLET_POOL_PUBKEY,
+  NFT_MARKETPLACE_PROGRAM_ID,
 } from '@/services/solana/constants';
 import { fetchUserNfts, fetchAllListings } from '@/services/solana/metaplexCore';
 import { getUserErrorMessage } from '@/services/solana/errors';
@@ -252,24 +255,35 @@ export function useNftMarketplace() {
       }
 
       try {
-        const { listing, asset } = listingWithAsset;
+        const { listing } = listingWithAsset;
         const [listingPda] = deriveListingPda(listing.asset);
         const [configPda] = deriveMarketplaceConfigPda();
         const [mintAuthPda] = deriveMintAuthorityPda();
+        const isRelicItem = listing.collection.equals(config.itemsCollection);
+        const [buyerRelicPoolPda] = derivePlayerRelicPoolPda(wallet.publicKey);
+        const [sellerRelicPoolPda] = derivePlayerRelicPoolPda(listing.seller);
+        const relicAssetRecordPda = PublicKey.findProgramAddressSync(
+          [Buffer.from('relic_asset'), listing.asset.toBuffer()],
+          NFT_MARKETPLACE_PROGRAM_ID
+        )[0];
 
         const transaction = await writeProgram.methods
           .buyNft()
-          .accounts({
+          .accountsPartial({
             listing: listingPda,
             marketplaceConfig: configPda,
             mintAuthority: mintAuthPda,
             asset: listing.asset,
+            relicAssetRecord: isRelicItem ? relicAssetRecordPda : undefined,
             collection: listing.collection,
             buyer: wallet.publicKey,
             seller: listing.seller,
+            sellerPlayerRelicPool: isRelicItem ? sellerRelicPoolPda : undefined,
+            buyerPlayerRelicPool: buyerRelicPoolPda,
             companyTreasury: config.companyTreasury,
             gauntletPool: config.gauntletPool,
             mplCoreProgram: MPL_CORE_PROGRAM_ID,
+            playerProfileProgram: PLAYER_PROFILE_PROGRAM_ID,
             systemProgram: SystemProgram.programId,
           })
           .transaction();

@@ -25,7 +25,7 @@ import { ENEMY_TRAITS, type EnemyId } from '../game/combat/traits';
 import { BOSSES } from '../data/bosses';
 import type { BossId } from '../game/engine/types';
 import { getEntityImageSource } from '../components/game/entityImages';
-import { useEquippedSkinImage } from '../hooks/useEquippedSkinImage';
+import { useEquippedSkinImage, getEquippedSkinCombatScale } from '../hooks/useEquippedSkinImage';
 import { getPhaseLabel } from '../utils/phase-labels';
 import { parseGameplayEvents, extractVictoryData } from '@/services/solana/eventParser';
 import { createGameplayStateProgram, createPlayerProfileProgram } from '@/services/solana/programs';
@@ -96,6 +96,7 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
   const { state: gameState, dispatch: gameDispatch } = useGame();
   const { profile, mode } = useProfile();
   const playerSkinSource = useEquippedSkinImage(profile?.equippedSkin);
+  const playerCombatScale = getEquippedSkinCombatScale(profile?.equippedSkin);
   const { wallet, signAndSendTransaction } = useWallet();
   const { connection } = useSolanaConnection();
   const { playBgm } = useAudio();
@@ -666,6 +667,7 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
     <CombatLayout
       playerSkinSource={playerSkinSource}
       pvpOpponentSkinSource={pvpOpponentSkinSource}
+      playerCombatScale={playerCombatScale}
       enemyPanel={{
         name: combatState.combat?.enemy.name ?? 'Enemy',
         emoji: combatState.combat?.enemy.emoji ?? '',

@@ -40,7 +40,7 @@ import { useInputMode } from '../hooks/useInputMode';
 import { FocusGlow } from '../components/ui/FocusGlow';
 import { HubSettingsModal } from '../components/ui/HubSettingsModal';
 import { InlineModal } from '../components/InlineModal';
-import { useEquippedSkinImage } from '../hooks/useEquippedSkinImage';
+import { useEquippedSkinImage, getEquippedSkinCombatScale } from '../hooks/useEquippedSkinImage';
 import { useAudio } from '../contexts/AudioContext';
 
 const PAPER_PANEL = require('../../assets/ui/panels/paper-panel.webp');
@@ -1066,6 +1066,7 @@ function CombatPhaseContent({ pitDraft }: CombatPhaseContentProps) {
   const { profile } = useProfile();
   const { playBgm } = useAudio();
   const playerSkinSource = useEquippedSkinImage(profile?.equippedSkin);
+  const playerCombatScale = getEquippedSkinCombatScale(profile?.equippedSkin);
   const opponentSkinSource = useEquippedSkinImage(pitDraft.matchData?.opponentSkinPubkey ?? null);
   const { state: combatState, startCombatWithOnchainOutcome } = useCombat();
 
@@ -1113,6 +1114,7 @@ function CombatPhaseContent({ pitDraft }: CombatPhaseContentProps) {
     <CombatLayout
       playerSkinSource={playerSkinSource}
       pvpOpponentSkinSource={opponentSkinSource}
+      playerCombatScale={playerCombatScale}
       enemyPanel={{
         name: 'Opponent',
         emoji: '',

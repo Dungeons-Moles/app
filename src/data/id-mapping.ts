@@ -1,7 +1,7 @@
 /**
  * ID Mapping between Frontend and Solana Backend
  *
- * Frontend uses: T0-T16 for tools, I1-I64 for gear
+ * Frontend uses: T0-T17 for tools, I1-I64 for gear
  * Backend uses: T-XX-NN for tools, G-XX-NN for gear (8-byte null-terminated)
  *
  * This mapping layer enables interoperability between systems.
@@ -10,7 +10,7 @@
 import type { ToolId, GearId } from '../game/engine/types';
 
 // ============================================================================
-// Tool ID Mapping (17 tools)
+// Tool ID Mapping (18 tools)
 // ============================================================================
 
 export const TOOL_FRONTEND_TO_BACKEND: Record<ToolId, string> = {
@@ -31,6 +31,7 @@ export const TOOL_FRONTEND_TO_BACKEND: Record<ToolId, string> = {
   T14: 'T-BO-02', // Reaper Pick (Blood)
   T15: 'T-TE-01', // Quickpick (Tempo)
   T16: 'T-TE-02', // Chrono Rapier (Tempo)
+  T17: 'S-XX-07', // Pioneer's Mattock (Relic)
 };
 
 export const TOOL_BACKEND_TO_FRONTEND: Record<string, ToolId> = Object.fromEntries(

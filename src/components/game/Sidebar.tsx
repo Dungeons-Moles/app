@@ -31,7 +31,7 @@ import {
 import { RunMode } from '../../services/solana/types/gameplay_state';
 import { fetchGauntletEchoFromDiscovery, fetchGauntletEchoFromGameState } from '../../services/solana/gauntlet';
 import { fetchSessionDiscovery } from '../../services/solana/mapGeneratorClient';
-import { calculateItemStats } from '../../game/entities/items';
+import { calculateItemStats, getToolUpgradeTier } from '../../game/entities/items';
 import {
   convertItemInstanceToGear,
   convertItemInstanceToTool,
@@ -149,7 +149,7 @@ const EchoGearSlot = React.memo(function EchoGearSlot({ item, size = GEAR_SLOT_S
 const EchoToolSlot = React.memo(function EchoToolSlot({ tool, size = TOOL_SLOT_SIZE }: { tool: Tool | null; size?: number }) {
   const { slotBg, bgColor } = useMemo(() => {
     if (!tool) return { slotBg: SLOT_BG, bgColor: undefined };
-    const tier = getTierFromRarity(tool.rarity);
+    const tier = getToolUpgradeTier(tool);
     if (tier === 2) return { slotBg: SLOT_BG_BLUE, bgColor: getTierBgColor(2) };
     if (tier === 3) return { slotBg: SLOT_BG_YELLOW, bgColor: getTierBgColor(3) };
     return { slotBg: SLOT_BG, bgColor: undefined };

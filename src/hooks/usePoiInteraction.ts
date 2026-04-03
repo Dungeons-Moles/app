@@ -76,8 +76,7 @@ import { createPlayerInventoryProgram } from '@/services/solana/programs';
 import { deriveInventoryPda } from '@/services/solana/constants';
 import { gearToBackend, toolToBackend } from '@/data/id-mapping';
 import { FogState } from '@/game/map/types';
-import { createGearInstance } from '@/game/entities/items';
-import { createToolInstance } from '@/game/entities/items';
+import { createGearInstance, createToolInstance, getToolUpgradeTier } from '@/game/entities/items';
 import {
   generateRuneKilnOptions,
   generateRustyAnvilOptions,
@@ -1042,8 +1041,9 @@ export function usePoiInteraction(): UsePoiInteractionResult {
     // Rusty Anvil: no tool, max tier, or broke
     if (poiType === POI_TYPES.RUSTY_ANVIL) {
       if (!gameState.player.equippedTool) return 'Equip a tool first';
-      if (gameState.player.equippedTool.rarity === 'GOLDEN') return 'Tool is already max tier';
-      const cost = gameState.player.equippedTool.rarity === 'COMMON' ? 10 : 20;
+      const toolTier = getToolUpgradeTier(gameState.player.equippedTool);
+      if (toolTier >= 3) return 'Tool is already max tier';
+      const cost = toolTier === 1 ? 10 : 20;
       if (gameState.player.stats.gold < cost) return `Not enough gold (need ${cost}g)`;
     }
 
@@ -2914,7 +2914,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             }
 
             // Map rarity to on-chain tier: COMMON=1, SAPPHIRE=2
-            const anvilTier = tool.rarity === 'SAPPHIRE' ? 2 : 1;
+            const anvilTier = getToolUpgradeTier(tool);
 
             debugLog(
               '[usePoiInteraction] Sending interactRustyAnvil on-chain | tool:',
@@ -2967,7 +2967,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
 
                 // Keep open if upgraded to SAPPHIRE and can still afford next tier (20g)
                 const confirmedGold = updatedAnvilState?.gold ?? gameState?.player?.stats?.gold ?? 0;
-                if (confirmedTool.rarity === 'SAPPHIRE' && confirmedGold >= 20 && gameState?.activePOI) {
+                if (getToolUpgradeTier(confirmedTool) === 2 && confirmedGold >= 20 && gameState?.activePOI) {
                   const anvilUpdatedState: Pick<GameState, 'player' | 'time'> = {
                     player: {
                       ...gameState.player,

@@ -46,6 +46,8 @@ export interface CombatLayoutProps {
   playerSkinSource?: ImageSourcePropType;
   /** PvP opponent skin image source for the combat arena sprites */
   pvpOpponentSkinSource?: ImageSourcePropType;
+  /** Per-skin combat scale for the player sprite (default 1) */
+  playerCombatScale?: number;
   /** Gold reward shown on VictoryDefeatDisplay (PvE only) */
   goldReward?: number;
   /** Whether this is the final boss victory (PvE only) */
@@ -62,6 +64,7 @@ export const CombatLayout = React.memo(function CombatLayout({
   label,
   playerSkinSource,
   pvpOpponentSkinSource,
+  playerCombatScale,
   goldReward,
   isFinalVictory,
   onCombatComplete,
@@ -250,6 +253,7 @@ export const CombatLayout = React.memo(function CombatLayout({
                 activeActor={activeActor}
                 playerSkinSource={playerSkinSource}
                 pvpOpponentSkinSource={pvpOpponentSkinSource}
+                playerCombatScale={playerCombatScale}
                 scale={scale}
               />
 

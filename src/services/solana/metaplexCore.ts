@@ -128,7 +128,8 @@ export async function fetchUserSkinsDas(
     });
 
     const json = await res.json();
-    if (!json.result?.items) return [];
+    if (json.error) throw new Error(json.error.message ?? 'DAS RPC error');
+    if (!json.result?.items) throw new Error('DAS returned no items field');
 
     let items: DasAsset[] = json.result.items;
 

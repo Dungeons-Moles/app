@@ -694,20 +694,19 @@
       ]
     },
     {
-      "name": "equip_special_gear_authorized",
+      "name": "equip_relic_authorized",
       "docs": [
-        "Equips an NFT-backed gear item into the player's inventory.",
-        "Validates the NFT is owned by the player and the nft_item_id exists in the catalog."
+        "Equips an asset-backed relic item into the player's inventory."
       ],
       "discriminator": [
-        240,
-        199,
-        50,
-        125,
-        52,
-        214,
-        1,
-        126
+        166,
+        186,
+        90,
+        130,
+        148,
+        46,
+        248,
+        66
       ],
       "accounts": [
         {
@@ -804,22 +803,64 @@
           }
         },
         {
-          "name": "special_asset",
+          "name": "inventory_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  110,
+                  118,
+                  101,
+                  110,
+                  116,
+                  111,
+                  114,
+                  121,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "gameplay_state_program",
           "docs": [
-            "1. AssetV1 discriminator check",
-            "2. Owner field matches inventory player"
-          ]
+            "Gameplay state program for HP modification CPI"
+          ],
+          "address": "3rzGGgHRRnMATmYJkjidPMapEMesvA16PTs5HhfAep4V"
+        },
+        {
+          "name": "game_state",
+          "docs": [
+            "Game state for HP bonus updates"
+          ],
+          "writable": true
         }
       ],
       "args": [
         {
-          "name": "nft_item_id",
+          "name": "relic_item_id",
           "type": {
             "array": [
               "u8",
               8
             ]
           }
+        },
+        {
+          "name": "relic_asset",
+          "type": "pubkey"
         }
       ]
     },
@@ -1231,38 +1272,38 @@
             "program": {
               "kind": "const",
               "value": [
-                212,
-                240,
-                125,
-                83,
-                62,
-                116,
-                61,
-                173,
-                41,
-                58,
-                117,
-                192,
-                80,
-                57,
-                247,
-                215,
-                86,
-                202,
-                219,
-                130,
-                70,
-                8,
+                42,
+                133,
                 148,
                 207,
+                202,
+                95,
+                0,
+                69,
+                48,
+                206,
+                100,
+                209,
+                84,
+                148,
+                107,
                 54,
-                255,
-                238,
-                244,
-                7,
-                232,
-                79,
-                123
+                203,
+                212,
+                148,
+                86,
+                22,
+                151,
+                161,
+                130,
+                13,
+                114,
+                27,
+                126,
+                137,
+                183,
+                191,
+                126
               ]
             }
           }
@@ -2501,6 +2542,11 @@
       "code": 6012,
       "name": "InvalidSession",
       "msg": "Invalid session account"
+    },
+    {
+      "code": 6013,
+      "name": "RelicModificationNotSupported",
+      "msg": "Relic modification is not supported for this interaction"
     }
   ],
   "types": [
@@ -2667,6 +2713,9 @@
           },
           {
             "name": "ApplyBleed"
+          },
+          {
+            "name": "ApplyRotatingDebuff"
           },
           {
             "name": "RemoveArmor"
@@ -3115,6 +3164,15 @@
             }
           },
           {
+            "name": "tool_relic_asset",
+            "docs": [
+              "Relic asset for the equipped tool, when the tool came from the relic pool."
+            ],
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
             "name": "gear",
             "docs": [
               "Equipped gear (0-12)"
@@ -3127,6 +3185,20 @@
                       "name": "ItemInstance"
                     }
                   }
+                },
+                12
+              ]
+            }
+          },
+          {
+            "name": "gear_relic_assets",
+            "docs": [
+              "Relic asset per equipped gear slot, when that gear came from the relic pool."
+            ],
+            "type": {
+              "array": [
+                {
+                  "option": "pubkey"
                 },
                 12
               ]
@@ -3395,6 +3467,15 @@
           },
           {
             "name": "FirstTimeGainShrapnel"
+          },
+          {
+            "name": "ArmorLostAtLeast",
+            "fields": [
+              {
+                "name": "threshold",
+                "type": "u8"
+              }
+            ]
           }
         ]
       }

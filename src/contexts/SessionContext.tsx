@@ -147,6 +147,8 @@ function isErPropagationErrorMessage(message: string): boolean {
     message.includes('InvalidWritableAccount') ||
     message.includes('InvalidAccountOwner') ||
     message.includes('AccountDidNotDeserialize') ||
+    message.includes('UnsupportedProgramId') ||
+    message.includes('Program is not deployed') ||
     message.includes('"Custom":3003') ||
     message.includes('"Custom":3004')
   );

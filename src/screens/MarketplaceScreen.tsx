@@ -37,7 +37,6 @@ import { getSkinImage } from '../data/skinImages';
 const backgroundImage = require('../../assets/ui/backgrounds/loading-background.webp');
 const buttonV1Source = require('../../assets/ui/buttons/button-v1.webp');
 const buttonV3Source = require('../../assets/ui/buttons/button-v3.webp');
-const buttonV4Source = require('../../assets/ui/buttons/button-v4.webp');
 const sessionPapersSource = require('../../assets/ui/illustrations/session-papers.webp');
 const rectangleSource = require('../../assets/ui/frames/rectangle.webp');
 const paperPanelSource = require('../../assets/ui/panels/paper-panel.webp');
@@ -45,6 +44,8 @@ const iconL1Source = require('../../assets/ui/control-buttons/l1.webp');
 const iconR1Source = require('../../assets/ui/control-buttons/r1.webp');
 const arrowIcon = require('../../assets/icons/ui/normal-speed.webp');
 const engineImageSource = require('../../assets/ui/illustrations/engine.webp');
+const yellowBrushSource = require('../../assets/ui/illustrations/yellow-brush.webp');
+const marketplaceTitleSource = require('../../assets/ui/text/marketplace.webp');
 
 type MarketplaceScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Marketplace'>;
@@ -405,13 +406,11 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
                 </TouchableOpacity>
               )}
 
-              <CachedImageBackground
-                source={buttonV4Source}
-                style={[styles.titlePanel, compactStyles.titlePanel]}
-                resizeMode="stretch"
-              >
-                <Text style={[styles.title, compactStyles.title]}>Marketplace</Text>
-              </CachedImageBackground>
+              <Image
+                source={marketplaceTitleSource}
+                style={[styles.titleImage, compactStyles.titleImage]}
+                resizeMode="contain"
+              />
 
               <View style={[styles.headerSpacer, compactStyles.headerSpacer]} />
             </>
@@ -419,13 +418,11 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
             <>
               <View style={styles.backButton} />
 
-              <CachedImageBackground
-                source={buttonV4Source}
-                style={styles.titlePanel}
-                resizeMode="stretch"
-              >
-                <Text style={styles.title}>Marketplace</Text>
-              </CachedImageBackground>
+              <Image
+                source={marketplaceTitleSource}
+                style={styles.titleImage}
+                resizeMode="contain"
+              />
 
               <View style={styles.headerSpacer} />
             </>
@@ -609,7 +606,7 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
                 <ActivityIndicator color="#3d2b1f" size={isCompact ? 'large' : 'small'} />
               )}
 
-              {/* My NFT Items */}
+              {/* My Relic Items */}
               <Text
                 style={[
                   styles.sectionTitle,
@@ -617,11 +614,11 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
                   isController && sectionFocus === 0 && styles.sectionTitleActive,
                 ]}
               >
-                My NFT Items
+                My Relic Items
               </Text>
               {userNftItems.length === 0 ? (
                 <Text style={[styles.emptyText, isCompact && compactStyles.emptyText]}>
-                  No NFT items yet
+                  No relic items yet
                 </Text>
               ) : (
                 <View style={[styles.nftGrid, isCompact && compactStyles.nftGrid]}>
@@ -706,37 +703,55 @@ export function MarketplaceScreen({ navigation }: MarketplaceScreenProps) {
                 style={[styles.sessionImage, isCompact && compactStyles.sessionImage, !isCompact && { width: sessionImageWidth, height: sessionImageHeight }]}
                 resizeMode="contain"
               />
-              <Text style={[styles.priceText, isCompact && compactStyles.priceText]}>
-                Price: 0.05 SOL
-              </Text>
-              <TouchableOpacity
-                onPress={handlePurchase}
-                activeOpacity={0.7}
-                disabled={isPurchasing}
-              >
-                <CachedImageBackground
-                  source={buttonV3Source}
-                  style={[
-                    styles.purchaseButton,
-                    isCompact && compactStyles.purchaseButton,
-                    isPurchasing && { opacity: 0.6 },
-                  ]}
+              <View style={[styles.priceContainer, isCompact && compactStyles.priceContainer]}>
+                <Image
+                  source={yellowBrushSource}
+                  style={[styles.priceBrush, isCompact && compactStyles.priceBrush]}
                   resizeMode="stretch"
-                >
+                />
+                <Text style={[styles.priceText, isCompact && compactStyles.priceText]}>
+                  Price: 0.05 SOL
+                </Text>
+              </View>
+              {isCompact ? (
+                <View style={compactStyles.purchaseHint}>
                   {isPurchasing ? (
-                    <ActivityIndicator color="#1a1a1a" size={isCompact ? 'large' : 'small'} />
+                    <ActivityIndicator color="#3d2b1f" size="large" />
                   ) : (
-                    <Text
-                      style={[
-                        styles.purchaseButtonText,
-                        isCompact && compactStyles.purchaseButtonText,
-                      ]}
-                    >
-                      Purchase
-                    </Text>
+                    <>
+                      <Image
+                        source={require('../../assets/ui/control-buttons/a.webp')}
+                        style={compactStyles.purchaseHintIcon}
+                        resizeMode="contain"
+                      />
+                      <Text style={compactStyles.purchaseHintText}>Purchase</Text>
+                    </>
                   )}
-                </CachedImageBackground>
-              </TouchableOpacity>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  onPress={handlePurchase}
+                  activeOpacity={0.7}
+                  disabled={isPurchasing}
+                >
+                  <CachedImageBackground
+                    source={buttonV3Source}
+                    style={[
+                      styles.purchaseButton,
+                      isPurchasing && { opacity: 0.6 },
+                    ]}
+                    resizeMode="stretch"
+                  >
+                    {isPurchasing ? (
+                      <ActivityIndicator color="#1a1a1a" size="small" />
+                    ) : (
+                      <Text style={styles.purchaseButtonText}>
+                        Purchase
+                      </Text>
+                    )}
+                  </CachedImageBackground>
+                </TouchableOpacity>
+              )}
 
               {purchaseError && (
                 <Text style={[styles.errorText, isCompact && compactStyles.errorText]}>
@@ -933,17 +948,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginBottom: 4,
   },
-  titlePanel: {
-    paddingVertical: 8,
-    paddingHorizontal: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
+  titleImage: {
     width: 180,
-    height: 60,
-  },
-  title: {
-    fontFamily: Typography.header,
-    fontSize: 20,
+    height: 37,
   },
   headerSpacer: {
     width: 80,
@@ -999,16 +1006,27 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: 12,
     marginTop: 16,
   },
   sessionImage: {
     width: 262,
     height: 168,
   },
+  priceContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 4,
+    marginBottom: 0,
+  },
+  priceBrush: {
+    position: 'absolute',
+    width: 240,
+    height: 60,
+  },
   priceText: {
     fontFamily: Typography.number,
-    fontSize: 16,
+    fontSize: 20,
     fontWeight: 'bold',
     color: '#3d2b1f',
   },
@@ -1112,14 +1130,9 @@ const compactStyles = StyleSheet.create({
     fontSize: 28,
     marginBottom: 6,
   },
-  titlePanel: {
+  titleImage: {
     width: 320,
-    height: 100,
-    paddingVertical: 12,
-    paddingHorizontal: 32,
-  },
-  title: {
-    fontSize: 36,
+    height: 66,
   },
   headerSpacer: {
     width: 140,
@@ -1142,27 +1155,40 @@ const compactStyles = StyleSheet.create({
     fontSize: 38,
   },
   pveContent: {
-    gap: 12,
-    marginTop: -40,
+    gap: 40,
+    marginTop: -120,
   },
   sessionImage: {
     width: 620,
     height: 397,
     marginTop: -12,
   },
+  priceContainer: {
+    marginBottom: 32,
+  },
+  priceBrush: {
+    width: 400,
+    height: 120,
+  },
   priceText: {
-    fontSize: 28,
+    fontSize: 36,
   },
   errorText: {
     fontSize: 20,
   },
-  purchaseButton: {
-    width: 240,
-    height: 80,
+  purchaseHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
-  purchaseButtonText: {
+  purchaseHintIcon: {
+    width: 40,
+    height: 40,
+  },
+  purchaseHintText: {
+    fontFamily: Typography.button,
     fontSize: 28,
-    marginBottom: 6,
+    color: '#3d2b1f',
   },
   sessionsContainer: {
     bottom: 28,

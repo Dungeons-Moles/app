@@ -50,13 +50,22 @@ export type SkinData = {
   name: string;
   image: ImageSourcePropType;
   description: string;
+  onChainName?: string;
 };
 
 /** Display name and description overrides for known on-chain skin names */
 const SKIN_META: Record<string, { displayName: string; description: string }> = {
-  'MagicBlock Wizard': {
+  Wizardio: {
     displayName: 'Wizardio',
     description: 'Real-time Magician (Magicblock)',
+  },
+  Player2: {
+    displayName: 'Player2',
+    description: 'The OG gamer (Play Solana)',
+  },
+  'PlaySolana Player': {
+    displayName: 'Player2',
+    description: 'The OG gamer (Play Solana)',
   },
 };
 
@@ -126,6 +135,7 @@ export function SkinsScreen({ navigation }: SkinsScreenProps) {
           name: meta?.displayName ?? asset.name,
           image: getSkinImage(asset.name) || defaultMoleImage,
           description: meta?.description ?? asset.name,
+          onChainName: asset.name,
         });
       } catch (e) {
         console.warn('[SkinsScreen] Failed to fetch equipped skin:', e);
@@ -148,6 +158,7 @@ export function SkinsScreen({ navigation }: SkinsScreenProps) {
           name: meta?.displayName ?? nft.name,
           image: getSkinImage(nft.name) || defaultMoleImage,
           description: meta?.description ?? nft.name,
+          onChainName: nft.name,
         };
       });
 

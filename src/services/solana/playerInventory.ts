@@ -13,7 +13,9 @@ interface OnChainInventory {
   session: PublicKey;
   player: PublicKey;
   tool: OnChainItemInstance | null;
+  toolRelicAsset?: PublicKey | null;
   gear: (OnChainItemInstance | null)[];
+  gearRelicAssets?: (PublicKey | null)[];
   gearSlotCapacity: number;
   bump: number;
 }
@@ -52,7 +54,9 @@ export async function fetchInventory(
       session: account.session,
       player: account.player,
       tool: parseItemInstance(account.tool),
+      toolRelicAsset: account.toolRelicAsset ?? null,
       gear: account.gear.map(parseItemInstance),
+      gearRelicAssets: account.gearRelicAssets ?? [],
       gearSlotCapacity: account.gearSlotCapacity,
       bump: account.bump,
     };

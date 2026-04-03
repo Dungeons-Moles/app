@@ -2975,6 +2975,74 @@
           }
         },
         {
+          "name": "player_relic_pool",
+          "writable": true,
+          "optional": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  108,
+                  97,
+                  121,
+                  101,
+                  114,
+                  95,
+                  114,
+                  101,
+                  108,
+                  105,
+                  99,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "player"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                229,
+                92,
+                184,
+                160,
+                192,
+                222,
+                86,
+                172,
+                46,
+                194,
+                213,
+                211,
+                201,
+                45,
+                33,
+                178,
+                70,
+                109,
+                161,
+                78,
+                239,
+                15,
+                116,
+                209,
+                36,
+                26,
+                153,
+                62,
+                229,
+                135,
+                103,
+                162
+              ]
+            }
+          }
+        },
+        {
           "name": "player",
           "writable": true,
           "signer": true
@@ -3065,6 +3133,10 @@
         {
           "name": "player_inventory_program",
           "address": "GrXaTaf7wZ74mTaWQ9QSUPAKG6M3Sf4xaZjNytTLa8yC"
+        },
+        {
+          "name": "player_profile_program",
+          "address": "GSLNDrNoHeZXVxB7Yu7tUe8417PpZ5XV7JPYupPw9WQy"
         },
         {
           "name": "system_program",
@@ -3246,6 +3318,74 @@
           }
         },
         {
+          "name": "player_relic_pool",
+          "writable": true,
+          "optional": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  108,
+                  97,
+                  121,
+                  101,
+                  114,
+                  95,
+                  114,
+                  101,
+                  108,
+                  105,
+                  99,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "player"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                229,
+                92,
+                184,
+                160,
+                192,
+                222,
+                86,
+                172,
+                46,
+                194,
+                213,
+                211,
+                201,
+                45,
+                33,
+                178,
+                70,
+                109,
+                161,
+                78,
+                239,
+                15,
+                116,
+                209,
+                36,
+                26,
+                153,
+                62,
+                229,
+                135,
+                103,
+                162
+              ]
+            }
+          }
+        },
+        {
           "name": "player",
           "writable": true,
           "signer": true
@@ -3336,6 +3476,10 @@
         {
           "name": "player_inventory_program",
           "address": "GrXaTaf7wZ74mTaWQ9QSUPAKG6M3Sf4xaZjNytTLa8yC"
+        },
+        {
+          "name": "player_profile_program",
+          "address": "GSLNDrNoHeZXVxB7Yu7tUe8417PpZ5XV7JPYupPw9WQy"
         },
         {
           "name": "system_program",
@@ -3452,6 +3596,74 @@
                   121,
                   101,
                   114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "player"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                229,
+                92,
+                184,
+                160,
+                192,
+                222,
+                86,
+                172,
+                46,
+                194,
+                213,
+                211,
+                201,
+                45,
+                33,
+                178,
+                70,
+                109,
+                161,
+                78,
+                239,
+                15,
+                116,
+                209,
+                36,
+                26,
+                153,
+                62,
+                229,
+                135,
+                103,
+                162
+              ]
+            }
+          }
+        },
+        {
+          "name": "player_relic_pool",
+          "writable": true,
+          "optional": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  108,
+                  97,
+                  121,
+                  101,
+                  114,
+                  95,
+                  114,
+                  101,
+                  108,
+                  105,
+                  99,
+                  115
                 ]
               },
               {
@@ -3662,6 +3874,19 @@
       ]
     },
     {
+      "name": "PlayerRelicPool",
+      "discriminator": [
+        1,
+        105,
+        67,
+        203,
+        111,
+        254,
+        159,
+        128
+      ]
+    },
+    {
       "name": "SessionCounter",
       "discriminator": [
         86,
@@ -3866,6 +4091,11 @@
       "code": 6016,
       "name": "DuelSettlementRequired",
       "msg": "Duel session must be settled before closing"
+    },
+    {
+      "code": 6017,
+      "name": "InvalidRelicOwnershipProofs",
+      "msg": "Invalid relic ownership proofs"
     }
   ],
   "types": [
@@ -4122,6 +4352,26 @@
             }
           },
           {
+            "name": "active_relic_count",
+            "docs": [
+              "Snapshot of active relics at session start."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "active_relics",
+            "type": {
+              "array": [
+                {
+                  "defined": {
+                    "name": "SessionRelicEntry"
+                  }
+                },
+                16
+              ]
+            }
+          },
+          {
             "name": "session_signer",
             "docs": [
               "Session key signer pubkey for gameplay transactions",
@@ -4279,6 +4529,61 @@
       }
     },
     {
+      "name": "PlayerRelicEntry",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "item_id",
+            "type": {
+              "array": [
+                "u8",
+                8
+              ]
+            }
+          },
+          {
+            "name": "owned_count",
+            "type": "u16"
+          },
+          {
+            "name": "in_active_pool",
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PlayerRelicPool",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "count",
+            "type": "u8"
+          },
+          {
+            "name": "relics",
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "PlayerRelicEntry"
+                }
+              }
+            }
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
       "name": "SessionCounter",
       "docs": [
         "Global counter for generating unique session IDs"
@@ -4430,6 +4735,27 @@
           {
             "name": "new_nonce",
             "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "SessionRelicEntry",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "asset",
+            "type": "pubkey"
+          },
+          {
+            "name": "item_id",
+            "type": {
+              "array": [
+                "u8",
+                8
+              ]
+            }
           }
         ]
       }

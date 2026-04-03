@@ -37,6 +37,8 @@ interface CombatArenaProps {
   playerSkinSource?: ImageSource;
   /** PvP opponent skin image source (their equipped skin or default mole) */
   pvpOpponentSkinSource?: ImageSource;
+  /** Per-skin combat scale for the player sprite (default 1) */
+  playerCombatScale?: number;
   scale?: number;
 }
 
@@ -51,6 +53,7 @@ export const CombatArena = React.memo(function CombatArena({
   enemyMaxArm = 0,
   playerSkinSource,
   pvpOpponentSkinSource,
+  playerCombatScale = 1,
   scale = 1,
 }: CombatArenaProps) {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
@@ -140,16 +143,16 @@ export const CombatArena = React.memo(function CombatArena({
             style={[
               styles.imageContainer,
               {
-                left: playerX - 40 * scale * layer.size,
-                top: combatantY - 40 * scale * layer.size,
-                width: 80 * scale * layer.size,
-                height: 80 * scale * layer.size,
+                left: playerX - 40 * scale * playerCombatScale * layer.size,
+                top: combatantY + 40 * scale - 80 * scale * playerCombatScale * layer.size,
+                width: 80 * scale * playerCombatScale * layer.size,
+                height: 80 * scale * playerCombatScale * layer.size,
                 opacity: Animated.multiply(playerGlow.opacity, layer.opacity),
                 transform: [{ scaleX: -1 }, { scale: playerGlow.scale }],
               },
             ]}
           >
-            <Image source={playerSkinSource ?? defaultMoleImageSource} style={{ width: 120 * scale * layer.size, height: 120 * scale * layer.size }} contentFit="contain" tintColor="#D4A84B" />
+            <Image source={playerSkinSource ?? defaultMoleImageSource} style={{ width: 120 * scale * playerCombatScale * layer.size, height: 120 * scale * playerCombatScale * layer.size }} contentFit="contain" tintColor="#D4A84B" />
           </Animated.View>
         ))}
 
@@ -157,17 +160,17 @@ export const CombatArena = React.memo(function CombatArena({
         <Animated.View
           style={[
             styles.imageContainer,
-            { left: playerX - 40 * scale, top: combatantY - 40 * scale, width: 80 * scale, height: 80 * scale, opacity: playerHit.flashOpacity, transform: [{ scaleX: -1 }, { translateX: playerHit.shakeX }] },
+            { left: playerX - 40 * scale * playerCombatScale, top: combatantY + 40 * scale - 80 * scale * playerCombatScale, width: 80 * scale * playerCombatScale, height: 80 * scale * playerCombatScale, opacity: playerHit.flashOpacity, transform: [{ scaleX: -1 }, { translateX: playerHit.shakeX }] },
           ]}
         >
           <Image
             source={playerSkinSource ?? defaultMoleImageSource}
-            style={{ width: 120 * scale, height: 120 * scale }}
+            style={{ width: 120 * scale * playerCombatScale, height: 120 * scale * playerCombatScale }}
             contentFit="contain"
           />
           {[...playerStatusFlashes, ...playerStatFlashes, { color: '#a855f7', opacity: playerHit.armorFlashOpacity }].map((flash, i) => (
             <Animated.View key={i} style={[styles.tintOverlay, { opacity: flash.opacity }]}>
-              <Image source={playerSkinSource ?? defaultMoleImageSource} style={{ width: 120 * scale, height: 120 * scale }} contentFit="contain" tintColor={flash.color} />
+              <Image source={playerSkinSource ?? defaultMoleImageSource} style={{ width: 120 * scale * playerCombatScale, height: 120 * scale * playerCombatScale }} contentFit="contain" tintColor={flash.color} />
             </Animated.View>
           ))}
         </Animated.View>
@@ -177,13 +180,13 @@ export const CombatArena = React.memo(function CombatArena({
           <DamageNumbers
             damageNumbers={damageNumbers}
             enemyPosition={{ x: enemyX, y: combatantY - enemyHalf + enemyYOffset - 20 }}
-            playerPosition={{ x: playerX, y: combatantY - combatantRadius - 20 }}
+            playerPosition={{ x: playerX, y: combatantY + combatantRadius - combatantRadius * 2 * playerCombatScale - 20 }}
             scale={scale}
           />
           <EffectNotifications
             notifications={effectNotifications}
             enemyPosition={{ x: enemyX, y: combatantY - enemyHalf + enemyYOffset - 40 }}
-            playerPosition={{ x: playerX, y: combatantY - combatantRadius - 40 }}
+            playerPosition={{ x: playerX, y: combatantY + combatantRadius - combatantRadius * 2 * playerCombatScale - 40 }}
             scale={scale}
           />
         </View>

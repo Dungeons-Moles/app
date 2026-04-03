@@ -293,38 +293,7 @@
       "accounts": [
         {
           "name": "session_discovery",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  115,
-                  101,
-                  115,
-                  115,
-                  105,
-                  111,
-                  110,
-                  95,
-                  100,
-                  105,
-                  115,
-                  99,
-                  111,
-                  118,
-                  101,
-                  114,
-                  121
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "session_discovery.session",
-                "account": "SessionDiscovery"
-              }
-            ]
-          }
+          "writable": true
         },
         {
           "name": "game_state",
@@ -3326,11 +3295,16 @@
     },
     {
       "code": 6013,
+      "name": "VrfAlreadyFinalized",
+      "msg": "VRF already fulfilled or consumed"
+    },
+    {
+      "code": 6014,
       "name": "DiscoveredPoisFull",
       "msg": "Discovered POIs full"
     },
     {
-      "code": 6014,
+      "code": 6015,
       "name": "InvalidOfferData",
       "msg": "Invalid offer data"
     }

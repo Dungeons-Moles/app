@@ -5950,6 +5950,43 @@
       "args": []
     },
     {
+      "name": "skip_to_eow",
+      "docs": [
+        "Skips all remaining phases in the current week, jumping directly to",
+        "boss_fight_ready state. The player forfeits all remaining moves and",
+        "receives no HP, gold, or other benefits for skipped phases.",
+        "",
+        "Does NOT resolve the boss fight — the frontend calls trigger_boss_fight",
+        "(or the duel/gauntlet equivalent) as a separate transaction so the",
+        "combat visualization can play before the outcome is applied.",
+        "",
+        "For Duel week 3 (no boss), marks the run as completed immediately.",
+        "",
+        "Signed by session signer (no wallet popup)."
+      ],
+      "discriminator": [
+        164,
+        81,
+        21,
+        128,
+        101,
+        74,
+        151,
+        3
+      ],
+      "accounts": [
+        {
+          "name": "game_state",
+          "writable": true
+        },
+        {
+          "name": "player",
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "sync_discovery_boss",
       "docs": [
         "Syncs the current week's boss ID to SessionDiscovery.",
@@ -6404,35 +6441,6 @@
           "type": "i16"
         }
       ]
-    },
-    {
-      "name": "skip_to_eow",
-      "docs": [
-        "Skips all remaining phases in the current week, setting boss_fight_ready.",
-        "The player forfeits all remaining moves. Boss resolution is deferred to",
-        "a separate trigger_boss_fight transaction."
-      ],
-      "discriminator": [
-        164,
-        81,
-        21,
-        128,
-        101,
-        74,
-        151,
-        3
-      ],
-      "accounts": [
-        {
-          "name": "game_state",
-          "writable": true
-        },
-        {
-          "name": "player",
-          "signer": true
-        }
-      ],
-      "args": []
     },
     {
       "name": "trigger_boss_fight",
@@ -7808,6 +7816,11 @@
       "code": 6057,
       "name": "VrfNotRequested",
       "msg": "VRF state has not been requested yet"
+    },
+    {
+      "code": 6058,
+      "name": "VrfAlreadyFinalized",
+      "msg": "VRF already fulfilled or consumed and cannot be requested again"
     }
   ],
   "types": [
@@ -10373,6 +10386,15 @@
             }
           },
           {
+            "name": "tool_relic_asset",
+            "docs": [
+              "Relic asset for the equipped tool, when the tool came from the relic pool."
+            ],
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
             "name": "gear",
             "docs": [
               "Equipped gear (0-12)"
@@ -10385,6 +10407,20 @@
                       "name": "ItemInstance"
                     }
                   }
+                },
+                12
+              ]
+            }
+          },
+          {
+            "name": "gear_relic_assets",
+            "docs": [
+              "Relic asset per equipped gear slot, when that gear came from the relic pool."
+            ],
+            "type": {
+              "array": [
+                {
+                  "option": "pubkey"
                 },
                 12
               ]

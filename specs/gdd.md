@@ -334,7 +334,7 @@ Format: `ID — Name (Type) [Tag] {Rarity} — Image: <path> — Effect`
 #### TEMPO (10)
 
 - `T-TE-01` — Quickpick (Tool) [TEMPO] {Common} — Image: assets/icons/items/tempo/quickpick.png — `+1/2/3 ATK, +2/3/4 SPD`; every other turn: gain `+1/2/4` SPD (this battle)
-- `T-TE-02` — Chrono Rapier (Tool) [TEMPO] {Mythic} — Image: assets/icons/items/tempo/chrono_rapier.png — `+2/3/4 ATK, +3/4/5 SPD`; you always act first on Turn 1 regardless of enemy SPD; if you act first, gain `+3/4/5` ATK (this battle)
+- `T-TE-02` — Chrono Rapier (Tool) [TEMPO] {Mythic} — Image: assets/icons/items/tempo/chrono_rapier.png — `+2/3/4 ATK, +3/4/5 SPD`; you always act first on Turn 1 regardless of enemy SPD; if you act first, gain `+1/2/3` ATK (this battle)
 - `G-TE-01` — Wind-Up Spring (Gear) [TEMPO] {Common} — Image: assets/icons/items/tempo/wind-up_spring.png — Turn 1: gain `+1/2/4 SPD` and `+1/2/4` ATK (this battle)
 - `G-TE-02` — Ambush Charm (Gear) [TEMPO] {Rare} — Image: assets/icons/items/tempo/ambush_charm.png — `+1/2/4 SPD`; if you act first on Turn 1, your first strike deals `+4/8/16` damage and gain `+1/2/4 ATK` (this battle)
 - `G-TE-03` — Counterweight Buckle (Gear) [TEMPO] {Rare} — Image: assets/icons/items/tempo/counterweight_buckle.png — `+1/2/4 SPD`; if enemy acts first on Turn 1, gain `7/14/28` Armor and `2/4/8` Shrapnel before damage
@@ -343,6 +343,21 @@ Format: `ID — Name (Type) [Tag] {Rarity} — Image: <path> — Effect`
 - `G-TE-06` — Backstep Buckle (Gear) [TEMPO] {Rare} — Image: assets/icons/items/tempo/backstep_buckle.png — If enemy acts first on Turn 1, gain `4/8/16` Armor AND your first strike deals `+3/6/12` damage
 - `G-TE-07` — Tempo Battery (Gear) [TEMPO] {Heroic} — Image: assets/icons/items/tempo/tempo_battery.png — `+1/2/4 ATK, +3/6/12 ARM`; every other turn: gain `+2/4/8 SPD` (this battle)
 - `G-TE-08` — Second Wind Clock (Gear) [TEMPO] {Heroic} — Image: assets/icons/items/tempo/second_wind_clock.png — `+3/6/12 ARM`; Turn 5: heal `6/12/24` HP and gain `+2/4/8` SPD (this battle)
+
+### Relic Items
+
+Relic Items are asset-backed special items that exist outside the base 80-item catalog.
+
+- Relics are minted only by the game owner/admin, but can be minted to any player wallet.
+- Owning a relic makes it immediately valid for that player; there is no separate registration step.
+- Relics are extra and do not count toward the base `40`-item minimum required in the standard item pool.
+- Players can add or remove owned relics from their relic pool manually.
+- Duplicate NFTs of the same relic count as quantity for ownership only; gameplay can only include that relic once.
+- If a player no longer owns the last NFT for an active relic, session start silently prunes that relic from the relic pool before the run begins.
+
+#### Current Relics
+
+- `S-XX-07` — Pioneer's Mattock (Tool) [RELIC] {Heroic} — Image: assets/icons/items/relics/pioneers_mattock.webp — `+3/4/5 ATK`; On Hit (once/turn): apply a rotating debuff — Turn 1: 1 Chill, Turn 2: 1 Rust, Turn 3: 1 Bleed, then repeat
 
 ### On-Chain Item Bitmask
 

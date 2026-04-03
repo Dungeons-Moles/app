@@ -704,6 +704,23 @@ export function executeEffect(
       break;
     }
 
+    case 'ApplyRotatingDebuff': {
+      const rotation = (ctx.turn - 1) % 3;
+      const statusType = rotation === 0 ? 'chill' : rotation === 1 ? 'rust' : 'bleed';
+      const label = rotation === 0 ? 'Chill' : rotation === 1 ? 'Rust' : 'Bleed';
+      const reflected = applyReflectableStatusToOpponent(
+        state,
+        ctx,
+        `${effectName} (${label})`,
+        source,
+        statusType,
+        value
+      );
+      state = reflected.state;
+      logs.push(...reflected.logs);
+      break;
+    }
+
     case 'ApplyShrapnel': {
       const updatedOwner = applyStatus(owner, 'shrapnel', value);
       state = {
@@ -1070,6 +1087,7 @@ export interface ProcessEffectsInput {
     ownerActsFirst?: boolean;
     shardsEveryTurn?: boolean;
     countdownReduction?: number;
+    armorLostThisTurn?: number;
   };
   /** On-chain parity: skip cross-source lethal gating within strike phases. */
   skipLethalGating?: boolean;
@@ -1093,7 +1111,8 @@ export function processEffects(input: ProcessEffectsInput): EffectResult {
     (effect.effectType === 'ApplyChill' ||
       effect.effectType === 'ApplyShrapnel' ||
       effect.effectType === 'ApplyRust' ||
-      effect.effectType === 'ApplyBleed');
+      effect.effectType === 'ApplyBleed' ||
+      effect.effectType === 'ApplyRotatingDebuff');
 
   for (const firstPass of [true, false]) {
     for (const { effect, id, name, source, sourceInstanceId } of input.effects) {

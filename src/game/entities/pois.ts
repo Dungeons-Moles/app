@@ -26,7 +26,7 @@ import type { POIId as DataPOIId, POIDefinition } from '../../data/pois';
 import { POI_DEFINITIONS, getPOIDefinition, canInteractWithPOI } from '../../data/pois';
 import type { MapPOI, GameMap } from '../map/types';
 import { FogState } from '../map/types';
-import { createToolInstance, getToolsByRarity, TOOL_DEFINITIONS } from './items';
+import { createToolInstance, getToolStatsAtTier, getToolUpgradeTier, getToolsByRarity } from './items';
 import { addGearToInventory, equipTool, refreshPlayerStats } from './player';
 import {
   createGearInstance,
@@ -34,7 +34,6 @@ import {
   getScaledEffectDescription,
   getTierFromRarity,
   GEAR_DEFINITIONS,
-  RARITY_MULTIPLIER,
 } from '../../data/gear';
 import { getGearStatsAtTier } from '../../data/gear-effects';
 import { SeededRNG } from '../engine/rng';
@@ -708,17 +707,11 @@ export function generateRustyAnvilOptions(state: GameState): POIOption[] {
     ];
   }
 
-  const rarity = tool.rarity;
-  let nextRarity: ItemRarity | null = null;
-  let cost = 0;
-
-  if (rarity === 'COMMON') {
-    nextRarity = 'SAPPHIRE';
-    cost = 10;
-  } else if (rarity === 'SAPPHIRE') {
-    nextRarity = 'GOLDEN';
-    cost = 20;
-  }
+  const currentTier = getToolUpgradeTier(tool);
+  const nextTier = currentTier < 3 ? ((currentTier + 1) as 1 | 2 | 3) : null;
+  const nextRarity: ItemRarity | null =
+    nextTier === 2 ? 'SAPPHIRE' : nextTier === 3 ? 'GOLDEN' : null;
+  const cost = currentTier === 1 ? 10 : currentTier === 2 ? 20 : 0;
 
   const options: POIOption[] = [];
 
@@ -1336,22 +1329,15 @@ function applyRustyAnvilEffect(
   }
 
   // Determine next rarity based on current
+  const currentTier = getToolUpgradeTier(tool);
+  const nextTier = currentTier + 1;
+  if (nextTier > 3) return state;
+
   let nextRarity: ItemRarity = tool.rarity;
-  if (tool.rarity === 'COMMON') nextRarity = 'SAPPHIRE';
-  else if (tool.rarity === 'SAPPHIRE') nextRarity = 'GOLDEN';
-  else return state; // Should not happen if options generated correctly
+  if (nextTier === 2) nextRarity = 'SAPPHIRE';
+  else if (nextTier === 3) nextRarity = 'GOLDEN';
 
-  // Calculate new stats: Base * Multiplier (oil is applied separately via tool.oil)
-  const baseDef = TOOL_DEFINITIONS[tool.id];
-  const multiplier = RARITY_MULTIPLIER[nextRarity];
-  const newStats: ItemStats = {};
-
-  // Base stats * multiplier
-  if (baseDef.stats.atk) newStats.atk = Math.floor(baseDef.stats.atk * multiplier);
-  if (baseDef.stats.arm) newStats.arm = Math.floor(baseDef.stats.arm * multiplier);
-  if (baseDef.stats.spd) newStats.spd = Math.floor(baseDef.stats.spd * multiplier);
-  if (baseDef.stats.dig) newStats.dig = Math.floor(baseDef.stats.dig * multiplier);
-  if (baseDef.stats.hp) newStats.hp = Math.floor(baseDef.stats.hp * multiplier);
+  const newStats = getToolStatsAtTier(tool.id, nextTier as 1 | 2 | 3);
 
   const newState: GameState = {
     ...state,
@@ -1364,6 +1350,7 @@ function applyRustyAnvilEffect(
       equippedTool: {
         ...tool,
         rarity: nextRarity,
+        tier: nextTier as 1 | 2 | 3,
         stats: newStats,
       },
     }),

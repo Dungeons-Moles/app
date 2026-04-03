@@ -273,8 +273,12 @@ export interface OnChainGameSession {
   isDelegated: boolean;
   bump: number;
   activeItemPool: number[];
+  activeRelicCount?: number;
+  activeRelics?: unknown[];
   sessionSigner: import('@solana/web3.js').PublicKey;
   stateHash: number[];
+  settled?: boolean;
+  settledVictory?: boolean;
 }
 
 export interface OnChainSessionCounter {

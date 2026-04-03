@@ -15,6 +15,7 @@ import {
   createGameplayStateProgramWithProvider,
   createMapGeneratorProgram,
   createMapGeneratorProgramWithProvider,
+  createNftMarketplaceProgram,
   createPlayerInventoryProgram,
   createPlayerInventoryProgramWithProvider,
   createPoiSystemProgram,
@@ -31,7 +32,7 @@ import {
   deriveMapPoisPda,
   deriveInventoryPda,
   deriveGeneratedMapPda,
-  deriveMapConfigPda,
+  derivePlayerRelicPoolPda,
   deriveSessionManagerAuthorityPda,
   deriveSessionPda,
   deriveSessionNoncesPda,
@@ -43,6 +44,7 @@ import {
 } from '@/services/solana/constants';
 import { SOLANA_CONFIG } from '@/services/solana/config';
 import { getUserErrorMessage } from '@/services/solana/errors';
+import { fetchOwnedRelicProofAccounts } from '@/services/solana/relicProofs';
 import { buildResetDuelEntryInstruction, deriveDuelEntryPda, fetchDuelEntry } from '@/services/solana/duels';
 import { sendSessionSignerTransaction } from '@/services/solana/sessionSigner';
 import { MAX_CAMPAIGN_LEVEL } from './useMapGenerator';
@@ -62,8 +64,12 @@ interface RawGameSessionAccount {
   isDelegated: boolean;
   bump: number;
   activeItemPool?: ArrayLike<number>;
+  activeRelicCount?: number;
+  activeRelics?: unknown[];
   sessionSigner?: PublicKey;
   stateHash: ArrayLike<number>;
+  settled?: boolean;
+  settledVictory?: boolean;
 }
 
 const DELEGATION_PROGRAM_ID = new PublicKey('DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh');
@@ -92,6 +98,10 @@ export function useSessionManager() {
     () => createSessionManagerProgram(baseConnection),
     [baseConnection]
   );
+  const readOnlyMarketplaceProgram = useMemo(
+    () => createNftMarketplaceProgram(baseConnection),
+    [baseConnection]
+  );
   const [session, setSession] = useState<OnChainGameSession | null>(null);
   const [hasActiveSession, setHasActiveSession] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -109,6 +119,21 @@ export function useSessionManager() {
    *  waiting for React to re-render and flush the setState calls from fetchSession. */
   const sessionRef = useRef<OnChainGameSession | null>(null);
   const hasActiveSessionRef = useRef(false);
+
+  const buildRelicProofAccounts = useCallback(
+    async (playerRelicPoolPda: PublicKey | null): Promise<{ pubkey: PublicKey; isWritable: boolean; isSigner: boolean }[]> => {
+      if (!wallet.publicKey || !playerRelicPoolPda) {
+        return [];
+      }
+
+      return fetchOwnedRelicProofAccounts(
+        baseConnection,
+        readOnlyMarketplaceProgram,
+        wallet.publicKey
+      );
+    },
+    [baseConnection, readOnlyMarketplaceProgram, wallet.publicKey]
+  );
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -202,6 +227,15 @@ export function useSessionManager() {
       }
     },
     [baseConnection, readOnlyProgram]
+  );
+
+  const resolvePlayerRelicPool = useCallback(
+    async (player: PublicKey): Promise<PublicKey | null> => {
+      const [playerRelicPoolPda] = derivePlayerRelicPoolPda(player);
+      const info = await baseConnection.getAccountInfo(playerRelicPoolPda);
+      return info ? playerRelicPoolPda : null;
+    },
+    [baseConnection]
   );
 
   const fetchSession = useCallback(async () => {
@@ -298,8 +332,12 @@ export function useSessionManager() {
         isDelegated: account.isDelegated,
         bump: account.bump,
         activeItemPool: Array.from(account.activeItemPool ?? []),
+        activeRelicCount: account.activeRelicCount ?? 0,
+        activeRelics: account.activeRelics ?? [],
         sessionSigner: account.sessionSigner ?? wallet.publicKey,
         stateHash: Array.from(account.stateHash),
+        settled: account.settled ?? false,
+        settledVictory: account.settledVictory ?? false,
       };
 
       sessionRef.current = sessionData;
@@ -317,7 +355,7 @@ export function useSessionManager() {
     } finally {
       if (isMountedRef.current) setIsLoading(false);
     }
-  }, [readOnlyProgram, wallet.publicKey]);
+  }, [baseConnection, fetchSessionNonces, readOnlyProgram, wallet.publicKey]);
 
   const startSession = useCallback(
     async (campaignLevel: number): Promise<TransactionResult> => {
@@ -353,14 +391,16 @@ export function useSessionManager() {
         const [sessionPda] = deriveSessionPda(wallet.publicKey, onChainLevel, nonces.campaign);
         // Don't cache the PDA yet — wait until the tx is confirmed.
         // If start_session fails, a stale PDA would mislead later reads.
+        const [sessionNoncesPda] = deriveSessionNoncesPda(wallet.publicKey);
         const [counterPda] = deriveSessionCounterPda();
         const [profilePda] = derivePlayerProfilePda(wallet.publicKey);
+        const playerRelicPoolPda = await resolvePlayerRelicPool(wallet.publicKey);
+        const relicProofAccounts = await buildRelicProofAccounts(playerRelicPoolPda);
         const [gameStatePda] = deriveGameStatePda(sessionPda);
         const [poisPda] = deriveMapPoisPda(sessionPda);
         const [inventoryPda] = deriveInventoryPda(sessionPda);
         const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
         const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
-        const [mapConfigPda] = deriveMapConfigPda();
         console.log('[useSessionManager] PDAs derived', {
           sessionPda: sessionPda.toBase58(),
           counterPda: counterPda.toBase58(),
@@ -368,13 +408,14 @@ export function useSessionManager() {
         console.log('[useSessionManager] Building transaction...');
         const transaction = await baseWriteProgram.methods
           .startSession(onChainLevel)
-          .accounts({
+          .accountsPartial({
+            sessionNonces: sessionNoncesPda,
             gameSession: sessionPda,
             sessionCounter: counterPda,
             playerProfile: profilePda,
+            playerRelicPool: playerRelicPoolPda ?? null,
             player: wallet.publicKey,
             sessionSigner: wallet.publicKey, // Will be overridden by caller
-            mapConfig: mapConfigPda,
             generatedMap: generatedMapPda,
             sessionDiscovery: sessionDiscoveryPda,
             gameState: gameStatePda,
@@ -384,8 +425,10 @@ export function useSessionManager() {
             gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
             poiSystemProgram: SOLANA_CONFIG.programs.poiSystem,
             playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
+            playerProfileProgram: SOLANA_CONFIG.programs.playerProfile,
             systemProgram: SystemProgram.programId,
-          })
+          } as any)
+          .remainingAccounts(relicProofAccounts)
           .transaction();
 
         // start_session does multiple CPIs (map gen ~378k CUs, game state, inventory, POIs),
@@ -419,7 +462,16 @@ export function useSessionManager() {
         if (isMountedRef.current) setIsLoading(false);
       }
     },
-    [baseConnection, fetchSession, signAndSendTransaction, wallet.publicKey, baseWriteProgram]
+    [
+      baseConnection,
+      fetchSession,
+      fetchSessionNonces,
+      resolvePlayerRelicPool,
+      signAndSendTransaction,
+      wallet.publicKey,
+      baseWriteProgram,
+      buildRelicProofAccounts,
+    ]
   );
 
   const overrideCampaignSession = useCallback(async (): Promise<TransactionResult> => {
@@ -619,51 +671,29 @@ export function useSessionManager() {
       const [sessionPda] = deriveDuelSessionPda(wallet.publicKey, nonce);
       activeSessionPdaRef.current = sessionPda;
       setActiveSessionPdaState(sessionPda);
+      const [sessionNoncesPda] = deriveSessionNoncesPda(wallet.publicKey);
       const [counterPda] = deriveSessionCounterPda();
       const [profilePda] = derivePlayerProfilePda(wallet.publicKey);
+      const playerRelicPoolPda = await resolvePlayerRelicPool(wallet.publicKey);
+      const relicProofAccounts = await buildRelicProofAccounts(playerRelicPoolPda);
       const [gameStatePda] = deriveGameStatePda(sessionPda);
       const [poisPda] = deriveMapPoisPda(sessionPda);
       const [inventoryPda] = deriveInventoryPda(sessionPda);
       const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
       const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
-      const [mapConfigPda] = deriveMapConfigPda();
       const [sessionManagerAuthorityPda] = deriveSessionManagerAuthorityPda();
 
-      const transaction = await (
-        baseWriteProgram.methods as unknown as {
-          startDuelSession: () => {
-            accounts: (accounts: {
-              gameSession: PublicKey;
-              sessionCounter: PublicKey;
-              playerProfile: PublicKey;
-              player: PublicKey;
-              sessionSigner: PublicKey;
-              sessionManagerAuthority: PublicKey;
-              mapConfig: PublicKey;
-              generatedMap: PublicKey;
-              sessionDiscovery: PublicKey | null;
-              gameState: PublicKey;
-              mapPois: PublicKey;
-              inventory: PublicKey;
-              mapVrfState: PublicKey | null;
-              mapGeneratorProgram: PublicKey;
-              gameplayStateProgram: PublicKey;
-              poiSystemProgram: PublicKey;
-              playerInventoryProgram: PublicKey;
-              systemProgram: PublicKey;
-            }) => { transaction: () => Promise<Transaction> };
-          };
-        }
-      )
+      const transaction = await (baseWriteProgram.methods as any)
         .startDuelSession()
-        .accounts({
+        .accountsPartial({
+          sessionNonces: sessionNoncesPda,
           gameSession: sessionPda,
           sessionCounter: counterPda,
           playerProfile: profilePda,
+          playerRelicPool: playerRelicPoolPda ?? null,
           player: wallet.publicKey,
           sessionSigner: sessionSignerPublicKey,
           sessionManagerAuthority: sessionManagerAuthorityPda,
-          mapConfig: mapConfigPda,
           generatedMap: generatedMapPda,
           sessionDiscovery: null, // Skipped — init separately to avoid insufficient lamports
           gameState: gameStatePda,
@@ -674,13 +704,15 @@ export function useSessionManager() {
           gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
           poiSystemProgram: SOLANA_CONFIG.programs.poiSystem,
           playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
+          playerProfileProgram: SOLANA_CONFIG.programs.playerProfile,
           systemProgram: SystemProgram.programId,
-        })
+        } as any)
+        .remainingAccounts(relicProofAccounts)
         .transaction();
 
       return { transaction, sessionPda };
     },
-    [wallet.publicKey, baseWriteProgram]
+    [wallet.publicKey, baseWriteProgram, buildRelicProofAccounts, fetchSessionNonces, resolvePlayerRelicPool]
   );
 
   const buildStartGauntletSessionTransaction = useCallback(
@@ -702,12 +734,13 @@ export function useSessionManager() {
       setActiveSessionPdaState(sessionPda);
       const [counterPda] = deriveSessionCounterPda();
       const [profilePda] = derivePlayerProfilePda(wallet.publicKey);
+      const playerRelicPoolPda = await resolvePlayerRelicPool(wallet.publicKey);
+      const relicProofAccounts = await buildRelicProofAccounts(playerRelicPoolPda);
       const [gameStatePda] = deriveGameStatePda(sessionPda);
       const [poisPda] = deriveMapPoisPda(sessionPda);
       const [inventoryPda] = deriveInventoryPda(sessionPda);
       const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
       const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
-      const [mapConfigPda] = deriveMapConfigPda();
       const [sessionNoncesPda] = deriveSessionNoncesPda(wallet.publicKey);
       const [sessionManagerAuthorityPda] = deriveSessionManagerAuthorityPda();
 
@@ -718,6 +751,7 @@ export function useSessionManager() {
           gameSession: sessionPda,
           sessionCounter: counterPda,
           playerProfile: profilePda,
+          playerRelicPool: playerRelicPoolPda ?? null,
           player: wallet.publicKey,
           sessionSigner: sessionSignerPublicKey,
           sessionManagerAuthority: sessionManagerAuthorityPda,
@@ -731,13 +765,15 @@ export function useSessionManager() {
           gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
           poiSystemProgram: SOLANA_CONFIG.programs.poiSystem,
           playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
+          playerProfileProgram: SOLANA_CONFIG.programs.playerProfile,
           systemProgram: SystemProgram.programId,
-        })
+        } as any)
+        .remainingAccounts(relicProofAccounts)
         .transaction();
 
       return { transaction, sessionPda };
     },
-    [wallet.publicKey, baseWriteProgram]
+    [wallet.publicKey, baseWriteProgram, buildRelicProofAccounts, fetchSessionNonces, resolvePlayerRelicPool]
   );
 
   /**
@@ -766,23 +802,26 @@ export function useSessionManager() {
       const [sessionPda] = deriveSessionPda(wallet.publicKey, onChainLevel, nonce);
       activeSessionPdaRef.current = sessionPda;
       setActiveSessionPdaState(sessionPda);
+      const [sessionNoncesPda] = deriveSessionNoncesPda(wallet.publicKey);
       const [counterPda] = deriveSessionCounterPda();
       const [profilePda] = derivePlayerProfilePda(wallet.publicKey);
+      const playerRelicPoolPda = await resolvePlayerRelicPool(wallet.publicKey);
+      const relicProofAccounts = await buildRelicProofAccounts(playerRelicPoolPda);
       const [gameStatePda] = deriveGameStatePda(sessionPda);
       const [poisPda] = deriveMapPoisPda(sessionPda);
       const [inventoryPda] = deriveInventoryPda(sessionPda);
       const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
       const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
-      const [mapConfigPda] = deriveMapConfigPda();
       const transaction = await baseWriteProgram.methods
         .startSession(onChainLevel)
-        .accounts({
+        .accountsPartial({
+          sessionNonces: sessionNoncesPda,
           gameSession: sessionPda,
           sessionCounter: counterPda,
           playerProfile: profilePda,
+          playerRelicPool: playerRelicPoolPda ?? null,
           player: wallet.publicKey,
           sessionSigner: sessionSignerPublicKey,
-          mapConfig: mapConfigPda,
           generatedMap: generatedMapPda,
           sessionDiscovery: sessionDiscoveryPda,
           gameState: gameStatePda,
@@ -792,13 +831,15 @@ export function useSessionManager() {
           gameplayStateProgram: SOLANA_CONFIG.programs.gameplayState,
           poiSystemProgram: SOLANA_CONFIG.programs.poiSystem,
           playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
+          playerProfileProgram: SOLANA_CONFIG.programs.playerProfile,
           systemProgram: SystemProgram.programId,
-        })
+        } as any)
+        .remainingAccounts(relicProofAccounts)
         .transaction();
 
       return { transaction, sessionPda };
     },
-    [wallet.publicKey, baseWriteProgram]
+    [wallet.publicKey, baseWriteProgram, buildRelicProofAccounts, fetchSessionNonces, resolvePlayerRelicPool]
   );
 
   /**

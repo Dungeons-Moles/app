@@ -24,6 +24,7 @@ import type {
   BossId,
 } from './types';
 import { GamePhase, CombatPhase, DEFAULT_STATUS_EFFECTS, TimePhase } from './types';
+import { getToolUpgradeTier } from '../entities/items';
 // On-chain types inlined to avoid importing from services/solana which requires env vars.
 // These must stay in sync with src/services/solana/types/gameplay_state.ts.
 
@@ -1286,8 +1287,9 @@ function canOpenPOIModal(state: GameState, poiDefId: string): boolean {
     case 'L10': {
       const tool = state.player.equippedTool;
       if (!tool) return false;
-      if (tool.rarity === 'COMMON') return state.player.stats.gold >= 10;
-      if (tool.rarity === 'SAPPHIRE') return state.player.stats.gold >= 20;
+      const toolTier = getToolUpgradeTier(tool);
+      if (toolTier === 1) return state.player.stats.gold >= 10;
+      if (toolTier === 2) return state.player.stats.gold >= 20;
       return false;
     }
     case 'L11':

@@ -16,13 +16,14 @@ import {
 import type { Program } from '@coral-xyz/anchor';
 import {
   deriveSessionPda,
+  deriveSessionNoncesPda,
   deriveSessionCounterPda,
   deriveGameStatePda,
   deriveMapPoisPda,
   deriveInventoryPda,
   derivePlayerProfilePda,
+  derivePlayerRelicPoolPda,
   deriveGeneratedMapPda,
-  deriveMapConfigPda,
   deriveSessionManagerAuthorityPda,
   deriveMapVrfStatePda,
   derivePoiVrfStatePda,
@@ -32,7 +33,8 @@ import {
 } from './constants';
 import { SOLANA_CONFIG } from './config';
 import { buildResetDuelEntryInstruction, deriveDuelEntryPda, fetchDuelEntry } from './duels';
-import { createGameplayStateProgram } from './programs';
+import { createGameplayStateProgram, createNftMarketplaceProgram } from './programs';
+import { fetchOwnedRelicProofAccounts } from './relicProofs';
 
 // ============================================================================
 // Types
@@ -79,24 +81,30 @@ export async function createSessionBundle(
 ): Promise<SessionBundleResult> {
   // Derive all PDAs
   const [sessionPda] = deriveSessionPda(mainWallet, campaignLevel, nonce);
+  const [sessionNoncesPda] = deriveSessionNoncesPda(mainWallet);
   const [sessionCounterPda] = deriveSessionCounterPda();
   const [profilePda] = derivePlayerProfilePda(mainWallet);
+  const [playerRelicPoolPda] = derivePlayerRelicPoolPda(mainWallet);
   const [gameStatePda] = deriveGameStatePda(sessionPda);
   const [poisPda] = deriveMapPoisPda(sessionPda);
   const [inventoryPda] = deriveInventoryPda(sessionPda);
   const [generatedMapPda] = deriveGeneratedMapPda(sessionPda);
   const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(sessionPda);
-  const [mapConfigPda] = deriveMapConfigPda();
+  const playerRelicPoolInfo = await connection.getAccountInfo(playerRelicPoolPda);
+  const relicProofAccounts = playerRelicPoolInfo
+    ? await fetchOwnedRelicProofAccounts(connection, createNftMarketplaceProgram(connection), mainWallet)
+    : [];
 
   const startSessionIx = await programs.sessionManager.methods
     .startSession(campaignLevel)
-    .accounts({
+    .accountsPartial({
+      sessionNonces: sessionNoncesPda,
       gameSession: sessionPda,
       sessionCounter: sessionCounterPda,
       playerProfile: profilePda,
+      playerRelicPool: playerRelicPoolInfo ? playerRelicPoolPda : null,
       player: mainWallet,
-      sessionSigner: sessionSigner,
-      mapConfig: mapConfigPda,
+      sessionSigner,
       generatedMap: generatedMapPda,
       gameState: gameStatePda,
       mapPois: poisPda,
@@ -108,7 +116,8 @@ export async function createSessionBundle(
       playerInventoryProgram: SOLANA_CONFIG.programs.playerInventory,
       playerProfileProgram: SOLANA_CONFIG.programs.playerProfile,
       systemProgram: SystemProgram.programId,
-    })
+    } as any)
+    .remainingAccounts(relicProofAccounts)
     .instruction();
 
   const transaction = new Transaction();

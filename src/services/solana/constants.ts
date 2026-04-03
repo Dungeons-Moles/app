@@ -99,6 +99,8 @@ export const PDA_SEEDS = {
   GAUNTLET_SESSION: 'gauntlet_session',
   /** Session nonces: ["session_nonces", player] */
   SESSION_NONCES: 'session_nonces',
+  /** Player relic pool: ["player_relics", owner] */
+  PLAYER_RELICS: 'player_relics',
   /** Session counter: ["session_counter"] */
   SESSION_COUNTER: 'session_counter',
   /** Game state: ["game_state", session_pda] */
@@ -123,6 +125,8 @@ export const PDA_SEEDS = {
   MARKETPLACE_CONFIG: 'marketplace_config',
   /** Listing: ["listing", asset] */
   LISTING: 'listing',
+  /** Relic asset record: ["relic_asset", asset] */
+  RELIC_ASSET: 'relic_asset',
   /** Mint authority: ["mint_authority"] */
   MINT_AUTHORITY: 'mint_authority',
   /** Quest definition: ["quest_def", quest_id(u16 LE)] */
@@ -169,6 +173,19 @@ export function deriveSessionNoncesPda(player: PublicKey): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
     [Buffer.from(PDA_SEEDS.SESSION_NONCES), player.toBuffer()],
     SESSION_MANAGER_PROGRAM_ID
+  );
+}
+
+/**
+ * Derive PlayerRelicPool PDA for a player.
+ *
+ * @param owner - Player's main wallet public key
+ * @returns [PDA, bump]
+ */
+export function derivePlayerRelicPoolPda(owner: PublicKey): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from(PDA_SEEDS.PLAYER_RELICS), owner.toBuffer()],
+    PLAYER_PROFILE_PROGRAM_ID
   );
 }
 
@@ -379,6 +396,13 @@ export function deriveMarketplaceConfigPda(): [PublicKey, number] {
 export function deriveListingPda(asset: PublicKey): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
     [Buffer.from(PDA_SEEDS.LISTING), asset.toBuffer()],
+    NFT_MARKETPLACE_PROGRAM_ID
+  );
+}
+
+export function deriveRelicAssetPda(asset: PublicKey): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from(PDA_SEEDS.RELIC_ASSET), asset.toBuffer()],
     NFT_MARKETPLACE_PROGRAM_ID
   );
 }

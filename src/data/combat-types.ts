@@ -85,6 +85,7 @@ export type EffectType =
   | 'ApplyShrapnel'
   | 'ApplyRust'
   | 'ApplyBleed'
+  | 'ApplyRotatingDebuff'
   | 'RemoveArmor'
   | 'RemoveOwnArmor'
   | 'GainStrikes'

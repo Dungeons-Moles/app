@@ -11,6 +11,7 @@ import type { ItemEffect } from '../../data/combat-types';
 import { GEAR_EFFECTS, getGearEffectsAtTier } from '../../data/gear-effects';
 import { TOOL_EFFECTS, getToolEffectsAtTier } from '../../data/tool-effects';
 import { RARITY_MULTIPLIER, getTierFromRarity } from '../../data/gear';
+import { getToolUpgradeTier } from '../entities/items';
 import type { CombatEffectContext, EffectLogEntry } from './effect-executor';
 import { processEffects } from './effect-executor';
 
@@ -74,7 +75,7 @@ export function collectToolEffects(tool: Tool | null): EquippedEffect[] {
   const toolEffects = TOOL_EFFECTS[tool.id];
   if (!toolEffects) return [];
 
-  const tier = getTierFromRarity(tool.rarity);
+  const tier = getToolUpgradeTier(tool);
   const itemEffects = getToolEffectsAtTier(tool.id, tier);
 
   return itemEffects.map((effect, i) => ({

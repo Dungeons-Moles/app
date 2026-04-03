@@ -34,7 +34,7 @@ const squareSource = require('../../../assets/ui/frames/square.webp');
 const squareBlueSource = require('../../../assets/ui/frames/square-blue.webp');
 const squareYellowSource = require('../../../assets/ui/frames/square-yellow.webp');
 
-import { TOOL_DEFINITIONS, getToolStatsAtTier } from '@/game/entities/items';
+import { TOOL_DEFINITIONS, getToolStatsAtTier, getToolUpgradeTier } from '@/game/entities/items';
 import { SCRAP_REFUND_BY_RARITY } from '@/game/entities/pois';
 import { GEAR_DEFINITIONS } from '@/data/gear';
 import type { POIId } from '@/game/engine/types';
@@ -1347,15 +1347,10 @@ export const POIModal = React.memo(function POIModal({
     const isMaxTier = upgradeOption?.label === 'Max Upgrade Reached';
 
     // Compute next rarity and stat delta
-    const nextRarity: ItemRarity | null = tool
-      ? tool.rarity === 'COMMON'
-        ? 'SAPPHIRE'
-        : tool.rarity === 'SAPPHIRE'
-          ? 'GOLDEN'
-          : null
-      : null;
-    const currentTier = tool ? getTierFromRarity(tool.rarity) : 1;
-    const nextTier = nextRarity ? getTierFromRarity(nextRarity) : null;
+    const currentTier = tool ? getToolUpgradeTier(tool) : 1;
+    const nextTier = currentTier < 3 ? ((currentTier + 1) as 1 | 2 | 3) : null;
+    const nextRarity: ItemRarity | null =
+      nextTier === 2 ? 'SAPPHIRE' : nextTier === 3 ? 'GOLDEN' : null;
     const currentStats = tool ? getToolStatsAtTier(tool.id as ToolId, currentTier) : {};
     const nextStats = tool && nextTier ? getToolStatsAtTier(tool.id as ToolId, nextTier) : null;
     const statDelta: Record<string, number> = {};
@@ -1367,7 +1362,9 @@ export const POIModal = React.memo(function POIModal({
     }
     const deltaText = formatStatBonuses(statDelta);
     const { source: nextSquareBg, bgColor: nextBgColor } = getTierSquareInfo(nextRarity);
-    const { source: currentSquareBg, bgColor: currentBgColor } = getTierSquareInfo(tool?.rarity);
+    const currentVisualRarity: ItemRarity | undefined =
+      currentTier === 2 ? 'SAPPHIRE' : currentTier === 3 ? 'GOLDEN' : tool?.rarity;
+    const { source: currentSquareBg, bgColor: currentBgColor } = getTierSquareInfo(currentVisualRarity);
 
     return (
       <ModalWrapper visible={visible} isCompact={isCompact} onClose={onClose}>
@@ -1434,7 +1431,7 @@ export const POIModal = React.memo(function POIModal({
             ) : (
               <View style={styles.anvilSlotCentered}>
                 <View style={styles.anvilSlot}>
-                  <Image source={tool ? getTierSquareInfo(tool.rarity).source : squareSource} style={[styles.anvilSlotBg, tool ? { backgroundColor: getTierSquareInfo(tool.rarity).bgColor } : undefined]} />
+                  <Image source={tool ? getTierSquareInfo(currentVisualRarity).source : squareSource} style={[styles.anvilSlotBg, tool ? { backgroundColor: getTierSquareInfo(currentVisualRarity).bgColor } : undefined]} />
                   {tool && tool.image ? (
                     <Image source={tool.image} style={styles.anvilSlotImage} resizeMode="contain" />
                   ) : tool ? (

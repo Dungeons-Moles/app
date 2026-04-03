@@ -44,6 +44,8 @@ interface CombatArenaProps {
   playerSkinSource?: ImageSourcePropType;
   /** PvP opponent skin image source (their equipped skin or default mole) */
   pvpOpponentSkinSource?: ImageSourcePropType;
+  /** Per-skin combat scale for the player sprite (default 1) */
+  playerCombatScale?: number;
   /** Scale factor for compact/mobile views (default 1) */
   scale?: number;
 }
@@ -64,6 +66,7 @@ export const CombatArena = React.memo(function CombatArena({
   enemyMaxArm = 0,
   playerSkinSource,
   pvpOpponentSkinSource,
+  playerCombatScale = 1,
   scale = 1,
 }: CombatArenaProps) {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
@@ -102,6 +105,7 @@ export const CombatArena = React.memo(function CombatArena({
   const enemyEntityScale = getEntityCombatScale(enemy.definitionId);
   const enemyRadius = combatantRadius * enemyEntityScale;
   const enemyYOffset = getEntityCombatYOffset(enemy.definitionId) * scale;
+  const playerRadius = combatantRadius * playerCombatScale;
   const enemyXOffset = getEntityCombatXOffset(enemy.definitionId) * scale;
 
   const enemyImageSource =
@@ -203,10 +207,10 @@ export const CombatArena = React.memo(function CombatArena({
           style={[
             styles.imageContainer,
             {
-              left: playerX - combatantRadius * layer.size,
-              top: combatantY - combatantRadius * layer.size,
-              width: combatantRadius * 2 * layer.size,
-              height: combatantRadius * 2 * layer.size,
+              left: playerX - playerRadius * layer.size,
+              top: combatantY + combatantRadius - playerRadius * 2 * layer.size,
+              width: playerRadius * 2 * layer.size,
+              height: playerRadius * 2 * layer.size,
               opacity: Animated.multiply(playerGlow.opacity, layer.opacity),
               transform: [{ scaleX: -1 }, { scale: playerGlow.scale }],
             },
@@ -215,8 +219,8 @@ export const CombatArena = React.memo(function CombatArena({
           <RNImage
             source={playerSkinSource ?? DEFAULT_MOLE}
             style={{
-              width: combatantRadius * 2 * layer.size,
-              height: combatantRadius * 2 * layer.size,
+              width: playerRadius * 2 * layer.size,
+              height: playerRadius * 2 * layer.size,
               tintColor: '#D4A84B',
             }}
             resizeMode="contain"
@@ -228,10 +232,10 @@ export const CombatArena = React.memo(function CombatArena({
         style={[
           styles.imageContainer,
           {
-            left: playerX - combatantRadius,
-            top: combatantY - combatantRadius,
-            width: combatantRadius * 2,
-            height: combatantRadius * 2,
+            left: playerX - playerRadius,
+            top: combatantY + combatantRadius - playerRadius * 2,
+            width: playerRadius * 2,
+            height: playerRadius * 2,
             opacity: playerHit.flashOpacity,
             transform: [{ scaleX: -1 }, { translateX: playerHit.shakeX }],
           },
@@ -239,7 +243,7 @@ export const CombatArena = React.memo(function CombatArena({
       >
         <RNImage
           source={playerSkinSource ?? DEFAULT_MOLE}
-          style={{ width: combatantRadius * 2, height: combatantRadius * 2 }}
+          style={{ width: playerRadius * 2, height: playerRadius * 2 }}
           resizeMode="contain"
         />
         {[...playerStatusFlashes, ...playerStatFlashes, { color: '#a855f7', opacity: playerHit.armorFlashOpacity }].map((flash, i) => (
@@ -249,8 +253,8 @@ export const CombatArena = React.memo(function CombatArena({
             style={[
               styles.tintOverlay,
               {
-                width: combatantRadius * 2,
-                height: combatantRadius * 2,
+                width: playerRadius * 2,
+                height: playerRadius * 2,
                 tintColor: flash.color,
                 opacity: flash.opacity,
               },
@@ -265,13 +269,13 @@ export const CombatArena = React.memo(function CombatArena({
         <DamageNumbers
           damageNumbers={damageNumbers}
           enemyPosition={{ x: enemyX, y: combatantY - enemyRadius + enemyYOffset - 20 }}
-          playerPosition={{ x: playerX, y: combatantY - combatantRadius - 20 }}
+          playerPosition={{ x: playerX, y: combatantY + combatantRadius - playerRadius * 2 - 20 }}
           scale={scale}
         />
         <EffectNotifications
           notifications={effectNotifications}
           enemyPosition={{ x: enemyX, y: combatantY - enemyRadius + enemyYOffset - 40 }}
-          playerPosition={{ x: playerX, y: combatantY - combatantRadius - 40 }}
+          playerPosition={{ x: playerX, y: combatantY + combatantRadius - playerRadius * 2 - 40 }}
           scale={scale}
         />
       </View>

@@ -45,7 +45,7 @@ export interface ToolDefinition {
 }
 
 /**
- * All tool definitions per current balance data (17 tools including starter)
+ * All tool definitions per current balance data (18 tools including starter and relics)
  * @see docs/gdd.md Section 9: Item System
  */
 export const TOOL_DEFINITIONS: Record<ToolId, ToolDefinition> = {
@@ -293,7 +293,21 @@ export const TOOL_DEFINITIONS: Record<ToolId, ToolDefinition> = {
     tags: ['TEMPO'],
     effect: {
       timing: 'FIRST_TURN',
-      description: 'If you act first on Turn 1, gain +3 ATK (this battle)',
+      description: 'If you act first on Turn 1, gain +1 ATK (this battle)',
+    },
+  },
+  T17: {
+    id: 'T17',
+    name: "Pioneer's Mattock",
+    emoji: '⛏️',
+    image: require('../../../assets/icons/items/relics/pioneers_mattock.webp'),
+    rarity: 'HEROIC',
+    stats: { atk: 3 },
+    tags: [],
+    effect: {
+      timing: 'ON_HIT',
+      description:
+        'On Hit (once/turn): apply a rotating debuff - Turn 1: 1 Chill, Turn 2: 1 Rust, Turn 3: 1 Bleed, then repeat.',
     },
   },
 };
@@ -316,6 +330,10 @@ export function applyRarityMultiplier(rarity: ItemRarity): number {
  * Re-exports getTierFromRarity for convenience.
  */
 export const rarityToToolTier = getTierFromRarity;
+
+export function getToolUpgradeTier(tool: Pick<Tool, 'rarity' | 'tier'>): 1 | 2 | 3 {
+  return tool.tier ?? rarityToToolTier(tool.rarity);
+}
 
 /**
  * Get tool stats at a specific tier using TOOL_EFFECTS (matching on-chain values).
@@ -379,7 +397,7 @@ export function calculateCombatBakedItemStats(tool: Tool | null, gear: Gear[]): 
       dig: tool.stats.dig ?? 0,
       hp: tool.stats.hp ?? 0,
     };
-    const derivedStats = getToolStatsAtTier(tool.id, rarityToToolTier(tool.rarity));
+    const derivedStats = getToolStatsAtTier(tool.id, getToolUpgradeTier(tool));
     const mergedToolStats = mergeBakedStats(directStats, derivedStats);
 
     result.atk = (result.atk ?? 0) + (mergedToolStats.atk ?? 0);
@@ -444,6 +462,7 @@ export function createToolInstance(id: ToolId): Tool {
     emoji: def.emoji,
     image: def.image,
     rarity: def.rarity,
+    tier: rarityToToolTier(def.rarity),
     stats: { ...def.stats },
     tags: [...def.tags],
     oil: null,
@@ -513,7 +532,7 @@ export function calculateItemStats(tool: Tool | null, gear: Gear[]): ItemStats {
       dig: tool.stats.dig ?? 0,
       hp: tool.stats.hp ?? 0,
     };
-    const derivedStats = getToolStatsAtTier(tool.id, rarityToToolTier(tool.rarity));
+    const derivedStats = getToolStatsAtTier(tool.id, getToolUpgradeTier(tool));
     const mergedToolStats = mergeBakedStats(directStats, derivedStats);
 
     result.atk = (result.atk ?? 0) + (mergedToolStats.atk ?? 0);

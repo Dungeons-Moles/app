@@ -191,12 +191,14 @@ export function signTemplatedTransaction(
 // ============================================================================
 
 /** Session signer funding per game mode.
- * Each covers: account rents + delegation PDAs + VRF inits + tx fees + 10% buffer.
+ * Each covers: account rents + delegation PDAs + VRF inits + tx fees + buffer.
+ * Campaign and duel now need the same top-up as gauntlet-era defaults because
+ * MapPois / session accounts grew and the final delegate step was running short.
  * All rent is reclaimed at session close and stays in the signer for reuse.
  */
-export const SESSION_COST_CAMPAIGN = 85_000_000; // 0.085 SOL
-export const SESSION_COST_DUEL = 85_000_000; // 0.085 SOL (same accounts as campaign)
-export const SESSION_COST_GAUNTLET = 100_000_000; // 0.1 SOL (extra: GauntletEchoes + delegation)
+export const SESSION_COST_CAMPAIGN = 100_000_000; // 0.1 SOL
+export const SESSION_COST_DUEL = 100_000_000; // 0.1 SOL
+export const SESSION_COST_GAUNTLET = 100_000_000; // 0.1 SOL
 
 /** Fallback / max funding amount. */
 export const DEFAULT_FUND_AMOUNT = SESSION_COST_GAUNTLET;
