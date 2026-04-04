@@ -14,12 +14,16 @@ import type { SessionDiscoveryData } from './mapGeneratorClient';
 
 export const GAUNTLET_ENTRY_LAMPORTS = 10_000_000; // 0.01 SOL
 export const COMPANY_TREASURY = new PublicKey('5LvEA4tH5H5DtWCxa3FcauokxAycvafX9ruvcT2mEXt8');
+const DELEGATION_PROGRAM_ID = new PublicKey('DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh');
 
 const GAUNTLET_CONFIG_SEED = 'gauntlet_config';
 const GAUNTLET_POOL_VAULT_SEED = 'gauntlet_pool_vault';
 const GAUNTLET_WEEK_POOL_SEED = 'gauntlet_week_pool';
 const GAUNTLET_EPOCH_POOL_SEED = 'gauntlet_epoch_pool';
 const GAUNTLET_PLAYER_SCORE_SEED = 'gauntlet_player_score';
+const GAUNTLET_REWARD_RECORD_SEED = 'gauntlet_reward_record';
+const GAUNTLET_GLOBAL_CRANK_TASK_ID_SEED = 'gauntlet_global_crank_task';
+const GAUNTLET_PLAYER_CRANK_TASK_ID_SEED = 'gauntlet_player_crank_task';
 const GAUNTLET_COMBAT_VISUAL_DISC = Buffer.from([132, 232, 40, 83, 206, 86, 46, 58]);
 const GAUNTLET_RUN_ENDED_DISC = Buffer.from([36, 102, 1, 250, 202, 105, 54, 159]);
 const GAUNTLET_WEEK_ADVANCED_DISC = Buffer.from([19, 89, 61, 105, 33, 240, 42, 100]);
@@ -29,6 +33,11 @@ const ITEM_OPTION_SIZE = 11;
 const ENTER_CU_LIMIT = 500_000;
 const INITIALIZE_CU_LIMIT = 1_400_000;
 const LOCAL_FEE_ACCOUNT_AIRDROP_LAMPORTS = 1_000_000;
+const GAUNTLET_DELEGATE_CU_LIMIT = 600_000;
+const GAUNTLET_SCHEDULE_CU_LIMIT = 400_000;
+const DEFAULT_EPOCH_CRANK_INTERVAL_MS = 60_000;
+const DEFAULT_PLAYER_CRANK_INTERVAL_MS = 30_000;
+const DEFAULT_CRANK_ITERATIONS = 0; // 0 = unlimited in MagicBlock's scheduler
 
 export interface GauntletCombatVisualEvent {
   player: PublicKey;
@@ -117,6 +126,19 @@ export function deriveGauntletPlayerScorePda(
   epochBytes.writeBigUInt64LE(epochId);
   return PublicKey.findProgramAddressSync(
     [Buffer.from(GAUNTLET_PLAYER_SCORE_SEED), epochBytes, player.toBuffer()],
+    programId
+  );
+}
+
+export function deriveGauntletRewardRecordPda(
+  epochId: bigint,
+  player: PublicKey,
+  programId: PublicKey = GAMEPLAY_STATE_PROGRAM_ID
+): [PublicKey, number] {
+  const epochBytes = Buffer.alloc(8);
+  epochBytes.writeBigUInt64LE(epochId);
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from(GAUNTLET_REWARD_RECORD_SEED), epochBytes, player.toBuffer()],
     programId
   );
 }
@@ -225,6 +247,221 @@ function deriveU64Random(seeds: Uint8Array[]): bigint {
   acc ^= acc >> 27n;
   acc = (acc * 0x94d049bb133111ebn) & U64_MASK;
   return (acc ^ (acc >> 31n)) & U64_MASK;
+}
+
+function deriveDelegatePdas(target: PublicKey, ownerProgram: PublicKey) {
+  const [buffer] = PublicKey.findProgramAddressSync(
+    [Buffer.from('buffer'), target.toBuffer()],
+    ownerProgram
+  );
+  const [delegationRecord] = PublicKey.findProgramAddressSync(
+    [Buffer.from('delegation'), target.toBuffer()],
+    DELEGATION_PROGRAM_ID
+  );
+  const [delegationMetadata] = PublicKey.findProgramAddressSync(
+    [Buffer.from('delegation-metadata'), target.toBuffer()],
+    DELEGATION_PROGRAM_ID
+  );
+  return { buffer, delegationRecord, delegationMetadata };
+}
+
+export function deriveGauntletGlobalCrankTaskId(epochId: bigint): bigint {
+  const epochBytes = Buffer.alloc(8);
+  epochBytes.writeBigUInt64LE(epochId);
+  return deriveU64Random([Buffer.from(GAUNTLET_GLOBAL_CRANK_TASK_ID_SEED), epochBytes]);
+}
+
+export function deriveGauntletPlayerCrankTaskId(epochId: bigint, player: PublicKey): bigint {
+  const epochBytes = Buffer.alloc(8);
+  epochBytes.writeBigUInt64LE(epochId);
+  return deriveU64Random([
+    Buffer.from(GAUNTLET_PLAYER_CRANK_TASK_ID_SEED),
+    epochBytes,
+    player.toBuffer(),
+  ]);
+}
+
+export async function buildDelegateGauntletGlobalAccountsTransaction(
+  connection: Connection,
+  program: Program,
+  payerPublicKey: PublicKey,
+  epochId: bigint,
+  validator: PublicKey | null = SOLANA_CONFIG.magic.delegationValidator
+): Promise<Transaction> {
+  const epochIdBN = new BN(epochId.toString());
+  const [gauntletConfigPda] = deriveGauntletConfigPda();
+  const [gauntletPoolVaultPda] = deriveGauntletPoolVaultPda();
+  const [gauntletEpochPoolPda] = deriveGauntletEpochPoolPda(epochId);
+
+  const gauntletConfigDelegate = deriveDelegatePdas(gauntletConfigPda, GAMEPLAY_STATE_PROGRAM_ID);
+  const gauntletPoolVaultDelegate = deriveDelegatePdas(
+    gauntletPoolVaultPda,
+    GAMEPLAY_STATE_PROGRAM_ID
+  );
+  const gauntletEpochPoolDelegate = deriveDelegatePdas(
+    gauntletEpochPoolPda,
+    GAMEPLAY_STATE_PROGRAM_ID
+  );
+
+  const tx = await (program.methods as any)
+    .delegateGauntletGlobalAccounts(validator)
+    .accountsStrict({
+      bufferGauntletConfig: gauntletConfigDelegate.buffer,
+      delegationRecordGauntletConfig: gauntletConfigDelegate.delegationRecord,
+      delegationMetadataGauntletConfig: gauntletConfigDelegate.delegationMetadata,
+      gauntletConfig: gauntletConfigPda,
+      bufferGauntletPoolVault: gauntletPoolVaultDelegate.buffer,
+      delegationRecordGauntletPoolVault: gauntletPoolVaultDelegate.delegationRecord,
+      delegationMetadataGauntletPoolVault: gauntletPoolVaultDelegate.delegationMetadata,
+      gauntletPoolVault: gauntletPoolVaultPda,
+      bufferGauntletEpochPool: gauntletEpochPoolDelegate.buffer,
+      delegationRecordGauntletEpochPool: gauntletEpochPoolDelegate.delegationRecord,
+      delegationMetadataGauntletEpochPool: gauntletEpochPoolDelegate.delegationMetadata,
+      gauntletEpochPool: gauntletEpochPoolPda,
+      payer: payerPublicKey,
+      ownerProgram: GAMEPLAY_STATE_PROGRAM_ID,
+      delegationProgram: DELEGATION_PROGRAM_ID,
+      systemProgram: SystemProgram.programId,
+    })
+    .transaction();
+
+  tx.instructions.unshift(ComputeBudgetProgram.setComputeUnitLimit({ units: GAUNTLET_DELEGATE_CU_LIMIT }));
+  const { blockhash } = await connection.getLatestBlockhash(SOLANA_CONFIG.commitment);
+  tx.recentBlockhash = blockhash;
+  tx.feePayer = payerPublicKey;
+  return tx;
+}
+
+export async function buildDelegateGauntletRewardAccountsTransaction(
+  connection: Connection,
+  program: Program,
+  payerPublicKey: PublicKey,
+  epochId: bigint,
+  playerPublicKey: PublicKey,
+  validator: PublicKey | null = SOLANA_CONFIG.magic.delegationValidator
+): Promise<Transaction> {
+  const epochIdBN = new BN(epochId.toString());
+  const [gauntletPlayerScorePda] = deriveGauntletPlayerScorePda(epochId, playerPublicKey);
+  const [gauntletRewardRecordPda] = deriveGauntletRewardRecordPda(epochId, playerPublicKey);
+  const gauntletPlayerScoreDelegate = deriveDelegatePdas(
+    gauntletPlayerScorePda,
+    GAMEPLAY_STATE_PROGRAM_ID
+  );
+  const gauntletRewardRecordDelegate = deriveDelegatePdas(
+    gauntletRewardRecordPda,
+    GAMEPLAY_STATE_PROGRAM_ID
+  );
+
+  const tx = await (program.methods as any)
+    .delegateGauntletRewardAccounts(epochIdBN, validator)
+    .accountsStrict({
+      bufferGauntletPlayerScore: gauntletPlayerScoreDelegate.buffer,
+      delegationRecordGauntletPlayerScore: gauntletPlayerScoreDelegate.delegationRecord,
+      delegationMetadataGauntletPlayerScore: gauntletPlayerScoreDelegate.delegationMetadata,
+      gauntletPlayerScore: gauntletPlayerScorePda,
+      bufferGauntletRewardRecord: gauntletRewardRecordDelegate.buffer,
+      delegationRecordGauntletRewardRecord: gauntletRewardRecordDelegate.delegationRecord,
+      delegationMetadataGauntletRewardRecord: gauntletRewardRecordDelegate.delegationMetadata,
+      gauntletRewardRecord: gauntletRewardRecordPda,
+      payer: payerPublicKey,
+      playerWallet: playerPublicKey,
+      ownerProgram: GAMEPLAY_STATE_PROGRAM_ID,
+      delegationProgram: DELEGATION_PROGRAM_ID,
+      systemProgram: SystemProgram.programId,
+    })
+    .transaction();
+
+  tx.instructions.unshift(ComputeBudgetProgram.setComputeUnitLimit({ units: GAUNTLET_DELEGATE_CU_LIMIT }));
+  const { blockhash } = await connection.getLatestBlockhash(SOLANA_CONFIG.commitment);
+  tx.recentBlockhash = blockhash;
+  tx.feePayer = payerPublicKey;
+  return tx;
+}
+
+export async function buildScheduleGauntletEpochCrankTransaction(
+  connection: Connection,
+  program: Program,
+  payerPublicKey: PublicKey,
+  epochId: bigint,
+  overrides?: {
+    taskId?: bigint;
+    executionIntervalMillis?: number;
+    iterations?: number;
+  }
+): Promise<Transaction> {
+  const epochIdBN = new BN(epochId.toString());
+  const [gauntletConfigPda] = deriveGauntletConfigPda();
+  const [gauntletPoolVaultPda] = deriveGauntletPoolVaultPda();
+  const [gauntletEpochPoolPda] = deriveGauntletEpochPoolPda(epochId);
+
+  const tx = await (program.methods as any)
+    .scheduleGauntletEpochCrank(epochIdBN, {
+      taskId: new BN((overrides?.taskId ?? deriveGauntletGlobalCrankTaskId(epochId)).toString()),
+      executionIntervalMillis: new BN(
+        String(overrides?.executionIntervalMillis ?? DEFAULT_EPOCH_CRANK_INTERVAL_MS)
+      ),
+      iterations: new BN(String(overrides?.iterations ?? DEFAULT_CRANK_ITERATIONS)),
+    })
+    .accountsPartial({
+      magicProgram: SOLANA_CONFIG.magic.programId,
+      payer: payerPublicKey,
+      gauntletConfig: gauntletConfigPda,
+      gauntletPoolVault: gauntletPoolVaultPda,
+      gauntletEpochPool: gauntletEpochPoolPda,
+    } as any)
+    .transaction();
+
+  tx.instructions.unshift(ComputeBudgetProgram.setComputeUnitLimit({ units: GAUNTLET_SCHEDULE_CU_LIMIT }));
+  const { blockhash } = await connection.getLatestBlockhash(SOLANA_CONFIG.commitment);
+  tx.recentBlockhash = blockhash;
+  tx.feePayer = payerPublicKey;
+  return tx;
+}
+
+export async function buildScheduleGauntletPlayerRewardCrankTransaction(
+  connection: Connection,
+  program: Program,
+  payerPublicKey: PublicKey,
+  epochId: bigint,
+  playerPublicKey: PublicKey,
+  overrides?: {
+    taskId?: bigint;
+    executionIntervalMillis?: number;
+    iterations?: number;
+  }
+): Promise<Transaction> {
+  const epochIdBN = new BN(epochId.toString());
+  const [gauntletRewardRecordPda] = deriveGauntletRewardRecordPda(epochId, playerPublicKey);
+  const [gauntletEpochPoolPda] = deriveGauntletEpochPoolPda(epochId);
+  const [gauntletPlayerScorePda] = deriveGauntletPlayerScorePda(epochId, playerPublicKey);
+  const [gauntletPoolVaultPda] = deriveGauntletPoolVaultPda();
+
+  const tx = await (program.methods as any)
+    .scheduleGauntletPlayerRewardCrank(epochIdBN, {
+      taskId: new BN(
+        (overrides?.taskId ?? deriveGauntletPlayerCrankTaskId(epochId, playerPublicKey)).toString()
+      ),
+      executionIntervalMillis: new BN(
+        String(overrides?.executionIntervalMillis ?? DEFAULT_PLAYER_CRANK_INTERVAL_MS)
+      ),
+      iterations: new BN(String(overrides?.iterations ?? DEFAULT_CRANK_ITERATIONS)),
+    })
+    .accountsPartial({
+      magicProgram: SOLANA_CONFIG.magic.programId,
+      payer: payerPublicKey,
+      gauntletRewardRecord: gauntletRewardRecordPda,
+      gauntletEpochPool: gauntletEpochPoolPda,
+      gauntletPlayerScore: gauntletPlayerScorePda,
+      gauntletPoolVault: gauntletPoolVaultPda,
+      playerWallet: playerPublicKey,
+    } as any)
+    .transaction();
+
+  tx.instructions.unshift(ComputeBudgetProgram.setComputeUnitLimit({ units: GAUNTLET_SCHEDULE_CU_LIMIT }));
+  const { blockhash } = await connection.getLatestBlockhash(SOLANA_CONFIG.commitment);
+  tx.recentBlockhash = blockhash;
+  tx.feePayer = payerPublicKey;
+  return tx;
 }
 
 export async function fetchGauntletWeekEchoPreview(
@@ -573,6 +810,7 @@ export async function buildEnterGauntletInstruction(
   const [gauntletPoolVaultPda] = deriveGauntletPoolVaultPda();
   const [epochPoolPda] = deriveGauntletEpochPoolPda(epochIdBigInt);
   const [playerScorePda] = deriveGauntletPlayerScorePda(epochIdBigInt, playerPublicKey);
+  const [rewardRecordPda] = deriveGauntletRewardRecordPda(epochIdBigInt, playerPublicKey);
   const [gauntletEchoesPda] = deriveGauntletEchoesPda(sessionPda);
 
   const tx = await program.methods
@@ -585,6 +823,7 @@ export async function buildEnterGauntletInstruction(
       companyTreasury: COMPANY_TREASURY,
       gauntletEpochPool: epochPoolPda,
       gauntletPlayerScore: playerScorePda,
+      gauntletRewardRecord: rewardRecordPda,
       gauntletEchoes: gauntletEchoesPda,
       systemProgram: SystemProgram.programId,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -725,6 +964,8 @@ export async function buildInitializeGauntletTransaction(
 }
 
 const SETTLE_CU_LIMIT = 500_000;
+const FINALIZE_CU_LIMIT = 300_000;
+const PAYOUT_CU_LIMIT = 300_000;
 
 export async function buildSettleGauntletSessionTransaction(
   connection: Connection,
@@ -796,6 +1037,172 @@ export async function buildSettleGauntletSessionTransaction(
   const { blockhash } = await connection.getLatestBlockhash(SOLANA_CONFIG.commitment);
   tx.recentBlockhash = blockhash;
   tx.feePayer = sessionSignerPublicKey;
+  return tx;
+}
+
+export async function buildFinalizeGauntletEpochTransaction(
+  connection: Connection,
+  program: Program,
+  payerPublicKey: PublicKey,
+  epochId: bigint
+): Promise<Transaction> {
+  const epochIdBN = new BN(epochId.toString());
+  const [gauntletConfigPda] = deriveGauntletConfigPda();
+  const [gauntletPoolVaultPda] = deriveGauntletPoolVaultPda();
+  const [gauntletEpochPoolPda] = deriveGauntletEpochPoolPda(epochId);
+
+  const tx = await (
+    program.methods as unknown as {
+      finalizeGauntletEpoch: (epochIdArg: BN) => {
+        accounts: (accounts: {
+          gauntletConfig: PublicKey;
+          gauntletPoolVault: PublicKey;
+          gauntletEpochPool: PublicKey;
+          payer: PublicKey;
+          systemProgram: PublicKey;
+        }) => { transaction: () => Promise<Transaction> };
+      };
+    }
+  )
+    .finalizeGauntletEpoch(epochIdBN)
+    .accounts({
+      gauntletConfig: gauntletConfigPda,
+      gauntletPoolVault: gauntletPoolVaultPda,
+      gauntletEpochPool: gauntletEpochPoolPda,
+      payer: payerPublicKey,
+      systemProgram: SystemProgram.programId,
+    })
+    .transaction();
+
+  tx.instructions.unshift(ComputeBudgetProgram.setComputeUnitLimit({ units: FINALIZE_CU_LIMIT }));
+  const { blockhash } = await connection.getLatestBlockhash(SOLANA_CONFIG.commitment);
+  tx.recentBlockhash = blockhash;
+  tx.feePayer = payerPublicKey;
+  return tx;
+}
+
+export async function buildSettleGauntletDefenderPointsTransaction(
+  connection: Connection,
+  program: Program,
+  payerPublicKey: PublicKey,
+  epochId: bigint,
+  playerPublicKey: PublicKey
+): Promise<Transaction> {
+  const epochIdBN = new BN(epochId.toString());
+  const [gauntletEpochPoolPda] = deriveGauntletEpochPoolPda(epochId);
+  const [gauntletPlayerScorePda] = deriveGauntletPlayerScorePda(epochId, playerPublicKey);
+
+  const tx = await (
+    program.methods as unknown as {
+      settleGauntletDefenderPoints: (epochIdArg: BN) => {
+        accounts: (accounts: {
+          gauntletEpochPool: PublicKey;
+          gauntletPlayerScore: PublicKey;
+          player: PublicKey;
+          payer: PublicKey;
+          systemProgram: PublicKey;
+        }) => { transaction: () => Promise<Transaction> };
+      };
+    }
+  )
+    .settleGauntletDefenderPoints(epochIdBN)
+    .accounts({
+      gauntletEpochPool: gauntletEpochPoolPda,
+      gauntletPlayerScore: gauntletPlayerScorePda,
+      player: playerPublicKey,
+      payer: payerPublicKey,
+      systemProgram: SystemProgram.programId,
+    })
+    .transaction();
+
+  tx.instructions.unshift(ComputeBudgetProgram.setComputeUnitLimit({ units: SETTLE_CU_LIMIT }));
+  const { blockhash } = await connection.getLatestBlockhash(SOLANA_CONFIG.commitment);
+  tx.recentBlockhash = blockhash;
+  tx.feePayer = payerPublicKey;
+  return tx;
+}
+
+export async function buildSettleGauntletRewardForPlayerTransaction(
+  connection: Connection,
+  program: Program,
+  payerPublicKey: PublicKey,
+  epochId: bigint,
+  playerPublicKey: PublicKey
+): Promise<Transaction> {
+  const epochIdBN = new BN(epochId.toString());
+  const [gauntletEpochPoolPda] = deriveGauntletEpochPoolPda(epochId);
+  const [gauntletPlayerScorePda] = deriveGauntletPlayerScorePda(epochId, playerPublicKey);
+  const [gauntletRewardRecordPda] = deriveGauntletRewardRecordPda(epochId, playerPublicKey);
+
+  const tx = await (
+    program.methods as unknown as {
+      settleGauntletRewardForPlayer: (epochIdArg: BN) => {
+        accounts: (accounts: {
+          gauntletEpochPool: PublicKey;
+          gauntletPlayerScore: PublicKey;
+          gauntletRewardRecord: PublicKey;
+          player: PublicKey;
+          payer: PublicKey;
+          systemProgram: PublicKey;
+        }) => { transaction: () => Promise<Transaction> };
+      };
+    }
+  )
+    .settleGauntletRewardForPlayer(epochIdBN)
+    .accounts({
+      gauntletEpochPool: gauntletEpochPoolPda,
+      gauntletPlayerScore: gauntletPlayerScorePda,
+      gauntletRewardRecord: gauntletRewardRecordPda,
+      player: playerPublicKey,
+      payer: payerPublicKey,
+      systemProgram: SystemProgram.programId,
+    })
+    .transaction();
+
+  tx.instructions.unshift(ComputeBudgetProgram.setComputeUnitLimit({ units: SETTLE_CU_LIMIT }));
+  const { blockhash } = await connection.getLatestBlockhash(SOLANA_CONFIG.commitment);
+  tx.recentBlockhash = blockhash;
+  tx.feePayer = payerPublicKey;
+  return tx;
+}
+
+export async function buildPayoutGauntletRewardTransaction(
+  connection: Connection,
+  program: Program,
+  payerPublicKey: PublicKey,
+  epochId: bigint,
+  playerPublicKey: PublicKey
+): Promise<Transaction> {
+  const epochIdBN = new BN(epochId.toString());
+  const [gauntletRewardRecordPda] = deriveGauntletRewardRecordPda(epochId, playerPublicKey);
+  const [gauntletPlayerScorePda] = deriveGauntletPlayerScorePda(epochId, playerPublicKey);
+  const [gauntletPoolVaultPda] = deriveGauntletPoolVaultPda();
+
+  const tx = await (
+    program.methods as unknown as {
+      payoutGauntletReward: (epochIdArg: BN) => {
+        accounts: (accounts: {
+          gauntletRewardRecord: PublicKey;
+          gauntletPlayerScore: PublicKey;
+          gauntletPoolVault: PublicKey;
+          playerWallet: PublicKey;
+        }) => { transaction: () => Promise<Transaction> };
+      };
+    }
+  )
+    .payoutGauntletReward(epochIdBN)
+    .accounts({
+      gauntletRewardRecord: gauntletRewardRecordPda,
+      gauntletPlayerScore: gauntletPlayerScorePda,
+      gauntletPoolVault: gauntletPoolVaultPda,
+      playerWallet: playerPublicKey,
+    })
+    .transaction();
+
+  tx.instructions.unshift(ComputeBudgetProgram.setComputeUnitLimit({ units: PAYOUT_CU_LIMIT }));
+  const { blockhash } = await connection.getLatestBlockhash(SOLANA_CONFIG.commitment);
+  tx.recentBlockhash = blockhash;
+  tx.feePayer = payerPublicKey;
   return tx;
 }
 

@@ -123,6 +123,10 @@ import type { GauntletCombatVisualEvent } from '@/services/solana/gauntlet';
 import {
   buildEnterGauntletInstruction,
   buildRedrawGauntletEchoesInstruction,
+  buildDelegateGauntletGlobalAccountsTransaction,
+  buildDelegateGauntletRewardAccountsTransaction,
+  buildScheduleGauntletEpochCrankTransaction,
+  buildScheduleGauntletPlayerRewardCrankTransaction,
   deriveGauntletConfigPda,
   buildSettleGauntletSessionTransaction,
   ensureLocalFeeAccounts,
@@ -1020,6 +1024,71 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       return { ready: false };
     },
     [directErConnection, getRoutedErConnectionForAccount]
+  );
+
+  const configureGauntletAutomation = useCallback(
+    async (params: {
+      epochId: bigint;
+      playerPublicKey: PublicKey;
+      sessionSignerKeypair: Keypair;
+    }): Promise<void> => {
+      const baseGameplayProgram = createGameplayStateProgram(connection);
+      const erGameplayProgram = createGameplayStateProgram(erConnection);
+
+      try {
+        const delegateGlobalTx = await buildDelegateGauntletGlobalAccountsTransaction(
+          connection,
+          baseGameplayProgram,
+          params.sessionSignerKeypair.publicKey,
+          params.epochId
+        );
+        await sendSessionSignerTransaction(connection, delegateGlobalTx, params.sessionSignerKeypair);
+
+        const delegateRewardTx = await buildDelegateGauntletRewardAccountsTransaction(
+          connection,
+          baseGameplayProgram,
+          params.sessionSignerKeypair.publicKey,
+          params.epochId,
+          params.playerPublicKey
+        );
+        await sendSessionSignerTransaction(connection, delegateRewardTx, params.sessionSignerKeypair);
+      } catch (error) {
+        console.warn(
+          '[SessionContext] configureGauntletAutomation: base delegation failed',
+          error instanceof Error ? error.message : error
+        );
+        return;
+      }
+
+      try {
+        const epochCrankTx = await buildScheduleGauntletEpochCrankTransaction(
+          erConnection,
+          erGameplayProgram,
+          params.sessionSignerKeypair.publicKey,
+          params.epochId
+        );
+        await sendSessionSignerTransaction(erConnection, epochCrankTx, params.sessionSignerKeypair, {
+          skipConfirmation: true,
+        });
+
+        const playerCrankTx = await buildScheduleGauntletPlayerRewardCrankTransaction(
+          erConnection,
+          erGameplayProgram,
+          params.sessionSignerKeypair.publicKey,
+          params.epochId,
+          params.playerPublicKey
+        );
+        await sendSessionSignerTransaction(erConnection, playerCrankTx, params.sessionSignerKeypair, {
+          skipConfirmation: true,
+        });
+      } catch (error) {
+        console.warn(
+          '[SessionContext] configureGauntletAutomation: crank scheduling failed',
+          error instanceof Error ? error.message : error
+        );
+      }
+    },
+    [connection, erConnection]
   );
 
   /**
@@ -3837,6 +3906,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         );
       }
 
+      await configureGauntletAutomation({
+        epochId: epochIdBigInt,
+        playerPublicKey: wallet.publicKey,
+        sessionSignerKeypair: newSessionSignerKeypair,
+      });
+
       if (vrfReadySessionsRef.current.has(sessionPda.toBase58())) {
         console.log(
           '[SessionContext] startGauntletGame:all_vrf:already_fulfilled_on_base, skipping ER request'
@@ -4056,6 +4131,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       getRoutedErConnectionForAccount,
       sendRoutedErTransaction,
       sendErInitTransactionWithRetry,
+      configureGauntletAutomation,
       waitForSessionSignerOnEr,
     ]
   );
@@ -5764,6 +5840,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       getRoutedErConnectionForAccount,
       sendRoutedErTransaction,
       sendErInitTransactionWithRetry,
+      configureGauntletAutomation,
       waitForSessionSignerOnEr,
     ]
   );
@@ -5953,6 +6030,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
 
       await waitForSessionSignerOnEr(newSessionSignerKeypair.publicKey);
+      await configureGauntletAutomation({
+        epochId: epochIdBigInt,
+        playerPublicKey: wallet.publicKey,
+        sessionSignerKeypair: newSessionSignerKeypair,
+      });
 
       if (vrfReadySessionsRef.current.has(sessionPda.toBase58())) {
         console.log(

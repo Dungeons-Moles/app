@@ -208,7 +208,7 @@
     {
       "name": "claim_gauntlet_rewards",
       "docs": [
-        "Claims rewards for a finalized epoch."
+        "Compatibility path for signer-driven claiming."
       ],
       "discriminator": [
         217,
@@ -286,6 +286,49 @@
                   111,
                   114,
                   101
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "epoch_id"
+              },
+              {
+                "kind": "account",
+                "path": "player"
+              }
+            ]
+          }
+        },
+        {
+          "name": "gauntlet_reward_record",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  117,
+                  110,
+                  116,
+                  108,
+                  101,
+                  116,
+                  95,
+                  114,
+                  101,
+                  119,
+                  97,
+                  114,
+                  100,
+                  95,
+                  114,
+                  101,
+                  99,
+                  111,
+                  114,
+                  100
                 ]
               },
               {
@@ -803,6 +846,307 @@
         {
           "name": "max_weeks",
           "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "crank_finalize_gauntlet_epoch",
+      "docs": [
+        "Crank-only epoch finalization path. Accounts must already exist and be delegated on ER."
+      ],
+      "discriminator": [
+        18,
+        102,
+        245,
+        181,
+        171,
+        253,
+        180,
+        146
+      ],
+      "accounts": [
+        {
+          "name": "gauntlet_config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  117,
+                  110,
+                  116,
+                  108,
+                  101,
+                  116,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "gauntlet_pool_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  117,
+                  110,
+                  116,
+                  108,
+                  101,
+                  116,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "gauntlet_epoch_pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  117,
+                  110,
+                  116,
+                  108,
+                  101,
+                  116,
+                  95,
+                  101,
+                  112,
+                  111,
+                  99,
+                  104,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "epoch_id"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "epoch_id",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "crank_process_gauntlet_player_rewards",
+      "docs": [
+        "Crank-only path that materializes defender points, settles payout, and pays the player."
+      ],
+      "discriminator": [
+        252,
+        249,
+        9,
+        190,
+        20,
+        55,
+        32,
+        31
+      ],
+      "accounts": [
+        {
+          "name": "gauntlet_epoch_pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  117,
+                  110,
+                  116,
+                  108,
+                  101,
+                  116,
+                  95,
+                  101,
+                  112,
+                  111,
+                  99,
+                  104,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "epoch_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "gauntlet_player_score",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  117,
+                  110,
+                  116,
+                  108,
+                  101,
+                  116,
+                  95,
+                  112,
+                  108,
+                  97,
+                  121,
+                  101,
+                  114,
+                  95,
+                  115,
+                  99,
+                  111,
+                  114,
+                  101
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "epoch_id"
+              },
+              {
+                "kind": "account",
+                "path": "player_wallet"
+              }
+            ]
+          }
+        },
+        {
+          "name": "gauntlet_reward_record",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  117,
+                  110,
+                  116,
+                  108,
+                  101,
+                  116,
+                  95,
+                  114,
+                  101,
+                  119,
+                  97,
+                  114,
+                  100,
+                  95,
+                  114,
+                  101,
+                  99,
+                  111,
+                  114,
+                  100
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "epoch_id"
+              },
+              {
+                "kind": "account",
+                "path": "player_wallet"
+              }
+            ]
+          }
+        },
+        {
+          "name": "gauntlet_pool_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  117,
+                  110,
+                  116,
+                  108,
+                  101,
+                  116,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "player_wallet",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "epoch_id",
+          "type": "u64"
         }
       ]
     },
@@ -1702,6 +2046,778 @@
       ]
     },
     {
+      "name": "delegate_gauntlet_global_accounts",
+      "docs": [
+        "Delegates global gauntlet accounts used by automatic epoch finalization."
+      ],
+      "discriminator": [
+        26,
+        224,
+        126,
+        181,
+        217,
+        47,
+        201,
+        31
+      ],
+      "accounts": [
+        {
+          "name": "buffer_gauntlet_config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "gauntlet_config"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                42,
+                133,
+                148,
+                207,
+                202,
+                95,
+                0,
+                69,
+                48,
+                206,
+                100,
+                209,
+                84,
+                148,
+                107,
+                54,
+                203,
+                212,
+                148,
+                86,
+                22,
+                151,
+                161,
+                130,
+                13,
+                114,
+                27,
+                126,
+                137,
+                183,
+                191,
+                126
+              ]
+            }
+          }
+        },
+        {
+          "name": "delegation_record_gauntlet_config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "gauntlet_config"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "delegation_metadata_gauntlet_config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "gauntlet_config"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "gauntlet_config",
+          "writable": true
+        },
+        {
+          "name": "buffer_gauntlet_pool_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "gauntlet_pool_vault"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                42,
+                133,
+                148,
+                207,
+                202,
+                95,
+                0,
+                69,
+                48,
+                206,
+                100,
+                209,
+                84,
+                148,
+                107,
+                54,
+                203,
+                212,
+                148,
+                86,
+                22,
+                151,
+                161,
+                130,
+                13,
+                114,
+                27,
+                126,
+                137,
+                183,
+                191,
+                126
+              ]
+            }
+          }
+        },
+        {
+          "name": "delegation_record_gauntlet_pool_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "gauntlet_pool_vault"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "delegation_metadata_gauntlet_pool_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "gauntlet_pool_vault"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "gauntlet_pool_vault",
+          "writable": true
+        },
+        {
+          "name": "buffer_gauntlet_epoch_pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "gauntlet_epoch_pool"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                42,
+                133,
+                148,
+                207,
+                202,
+                95,
+                0,
+                69,
+                48,
+                206,
+                100,
+                209,
+                84,
+                148,
+                107,
+                54,
+                203,
+                212,
+                148,
+                86,
+                22,
+                151,
+                161,
+                130,
+                13,
+                114,
+                27,
+                126,
+                137,
+                183,
+                191,
+                126
+              ]
+            }
+          }
+        },
+        {
+          "name": "delegation_record_gauntlet_epoch_pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "gauntlet_epoch_pool"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "delegation_metadata_gauntlet_epoch_pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "gauntlet_epoch_pool"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "gauntlet_epoch_pool",
+          "writable": true
+        },
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "owner_program",
+          "address": "3rzGGgHRRnMATmYJkjidPMapEMesvA16PTs5HhfAep4V"
+        },
+        {
+          "name": "delegation_program",
+          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "epoch_id",
+          "type": "u64"
+        },
+        {
+          "name": "validator",
+          "type": {
+            "option": "pubkey"
+          }
+        }
+      ]
+    },
+    {
+      "name": "delegate_gauntlet_reward_accounts",
+      "docs": [
+        "Delegates per-player gauntlet reward accounts used by automatic settlement and payout."
+      ],
+      "discriminator": [
+        133,
+        178,
+        186,
+        155,
+        222,
+        14,
+        131,
+        78
+      ],
+      "accounts": [
+        {
+          "name": "buffer_gauntlet_player_score",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "gauntlet_player_score"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                42,
+                133,
+                148,
+                207,
+                202,
+                95,
+                0,
+                69,
+                48,
+                206,
+                100,
+                209,
+                84,
+                148,
+                107,
+                54,
+                203,
+                212,
+                148,
+                86,
+                22,
+                151,
+                161,
+                130,
+                13,
+                114,
+                27,
+                126,
+                137,
+                183,
+                191,
+                126
+              ]
+            }
+          }
+        },
+        {
+          "name": "delegation_record_gauntlet_player_score",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "gauntlet_player_score"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "delegation_metadata_gauntlet_player_score",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "gauntlet_player_score"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "gauntlet_player_score",
+          "writable": true
+        },
+        {
+          "name": "buffer_gauntlet_reward_record",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "gauntlet_reward_record"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                42,
+                133,
+                148,
+                207,
+                202,
+                95,
+                0,
+                69,
+                48,
+                206,
+                100,
+                209,
+                84,
+                148,
+                107,
+                54,
+                203,
+                212,
+                148,
+                86,
+                22,
+                151,
+                161,
+                130,
+                13,
+                114,
+                27,
+                126,
+                137,
+                183,
+                191,
+                126
+              ]
+            }
+          }
+        },
+        {
+          "name": "delegation_record_gauntlet_reward_record",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "gauntlet_reward_record"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "delegation_metadata_gauntlet_reward_record",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "gauntlet_reward_record"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "gauntlet_reward_record",
+          "writable": true
+        },
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "player_wallet"
+        },
+        {
+          "name": "owner_program",
+          "address": "3rzGGgHRRnMATmYJkjidPMapEMesvA16PTs5HhfAep4V"
+        },
+        {
+          "name": "delegation_program",
+          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "epoch_id",
+          "type": "u64"
+        },
+        {
+          "name": "validator",
+          "type": {
+            "option": "pubkey"
+          }
+        }
+      ]
+    },
+    {
       "name": "delegate_pit_draft_vrf_state",
       "docs": [
         "Delegates GameplayVrfState PDA to MagicBlock for pit draft VRF (no session required).",
@@ -2175,6 +3291,49 @@
           }
         },
         {
+          "name": "gauntlet_reward_record",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  117,
+                  110,
+                  116,
+                  108,
+                  101,
+                  116,
+                  95,
+                  114,
+                  101,
+                  119,
+                  97,
+                  114,
+                  100,
+                  95,
+                  114,
+                  101,
+                  99,
+                  111,
+                  114,
+                  100
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "epoch_id"
+              },
+              {
+                "kind": "account",
+                "path": "player"
+              }
+            ]
+          }
+        },
+        {
           "name": "gauntlet_echoes",
           "writable": true,
           "pda": {
@@ -2455,6 +3614,15 @@
               }
             ]
           }
+        },
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
         }
       ],
       "args": [
@@ -4022,6 +5190,151 @@
       ]
     },
     {
+      "name": "payout_gauntlet_reward",
+      "docs": [
+        "Permissionless payout to the canonical player wallet."
+      ],
+      "discriminator": [
+        25,
+        59,
+        127,
+        12,
+        77,
+        46,
+        248,
+        20
+      ],
+      "accounts": [
+        {
+          "name": "gauntlet_reward_record",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  117,
+                  110,
+                  116,
+                  108,
+                  101,
+                  116,
+                  95,
+                  114,
+                  101,
+                  119,
+                  97,
+                  114,
+                  100,
+                  95,
+                  114,
+                  101,
+                  99,
+                  111,
+                  114,
+                  100
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "epoch_id"
+              },
+              {
+                "kind": "account",
+                "path": "player_wallet"
+              }
+            ]
+          }
+        },
+        {
+          "name": "gauntlet_player_score",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  117,
+                  110,
+                  116,
+                  108,
+                  101,
+                  116,
+                  95,
+                  112,
+                  108,
+                  97,
+                  121,
+                  101,
+                  114,
+                  95,
+                  115,
+                  99,
+                  111,
+                  114,
+                  101
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "epoch_id"
+              },
+              {
+                "kind": "account",
+                "path": "player_wallet"
+              }
+            ]
+          }
+        },
+        {
+          "name": "gauntlet_pool_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  117,
+                  110,
+                  116,
+                  108,
+                  101,
+                  116,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "player_wallet",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "epoch_id",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "process_undelegation",
       "discriminator": [
         196,
@@ -5055,6 +6368,344 @@
       ]
     },
     {
+      "name": "schedule_gauntlet_epoch_crank",
+      "docs": [
+        "Schedule automatic epoch finalization on ER."
+      ],
+      "discriminator": [
+        101,
+        200,
+        164,
+        217,
+        203,
+        139,
+        23,
+        119
+      ],
+      "accounts": [
+        {
+          "name": "magic_program",
+          "address": "Magic11111111111111111111111111111111111111"
+        },
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "gauntlet_config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  117,
+                  110,
+                  116,
+                  108,
+                  101,
+                  116,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "gauntlet_pool_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  117,
+                  110,
+                  116,
+                  108,
+                  101,
+                  116,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "gauntlet_epoch_pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  117,
+                  110,
+                  116,
+                  108,
+                  101,
+                  116,
+                  95,
+                  101,
+                  112,
+                  111,
+                  99,
+                  104,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "epoch_id"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "epoch_id",
+          "type": "u64"
+        },
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "ScheduleCrankArgs"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "schedule_gauntlet_player_reward_crank",
+      "docs": [
+        "Schedule automatic per-player reward settlement and payout on ER."
+      ],
+      "discriminator": [
+        64,
+        89,
+        217,
+        49,
+        201,
+        5,
+        112,
+        192
+      ],
+      "accounts": [
+        {
+          "name": "magic_program",
+          "address": "Magic11111111111111111111111111111111111111"
+        },
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "gauntlet_reward_record",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  117,
+                  110,
+                  116,
+                  108,
+                  101,
+                  116,
+                  95,
+                  114,
+                  101,
+                  119,
+                  97,
+                  114,
+                  100,
+                  95,
+                  114,
+                  101,
+                  99,
+                  111,
+                  114,
+                  100
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "epoch_id"
+              },
+              {
+                "kind": "account",
+                "path": "player_wallet"
+              }
+            ]
+          }
+        },
+        {
+          "name": "gauntlet_epoch_pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  117,
+                  110,
+                  116,
+                  108,
+                  101,
+                  116,
+                  95,
+                  101,
+                  112,
+                  111,
+                  99,
+                  104,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "epoch_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "gauntlet_player_score",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  117,
+                  110,
+                  116,
+                  108,
+                  101,
+                  116,
+                  95,
+                  112,
+                  108,
+                  97,
+                  121,
+                  101,
+                  114,
+                  95,
+                  115,
+                  99,
+                  111,
+                  114,
+                  101
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "epoch_id"
+              },
+              {
+                "kind": "account",
+                "path": "player_wallet"
+              }
+            ]
+          }
+        },
+        {
+          "name": "gauntlet_pool_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  117,
+                  110,
+                  116,
+                  108,
+                  101,
+                  116,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "player_wallet",
+          "docs": [
+            "is only used as a fixed writable account meta for the scheduled crank."
+          ],
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "epoch_id",
+          "type": "u64"
+        },
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "ScheduleCrankArgs"
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "set_phase_for_testing",
       "docs": [
         "TEST ONLY: Sets the game phase and moves remaining directly.",
@@ -5423,6 +7074,277 @@
         }
       ],
       "args": []
+    },
+    {
+      "name": "settle_gauntlet_defender_points",
+      "docs": [
+        "Materializes pending defender points into a player's visible score."
+      ],
+      "discriminator": [
+        97,
+        66,
+        40,
+        199,
+        230,
+        236,
+        106,
+        115
+      ],
+      "accounts": [
+        {
+          "name": "gauntlet_epoch_pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  117,
+                  110,
+                  116,
+                  108,
+                  101,
+                  116,
+                  95,
+                  101,
+                  112,
+                  111,
+                  99,
+                  104,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "epoch_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "gauntlet_player_score",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  117,
+                  110,
+                  116,
+                  108,
+                  101,
+                  116,
+                  95,
+                  112,
+                  108,
+                  97,
+                  121,
+                  101,
+                  114,
+                  95,
+                  115,
+                  99,
+                  111,
+                  114,
+                  101
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "epoch_id"
+              },
+              {
+                "kind": "account",
+                "path": "player"
+              }
+            ]
+          }
+        },
+        {
+          "name": "player"
+        },
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "epoch_id",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "settle_gauntlet_reward_for_player",
+      "docs": [
+        "Finalizes a player's payout record for an already-finalized epoch."
+      ],
+      "discriminator": [
+        229,
+        150,
+        94,
+        155,
+        167,
+        182,
+        230,
+        106
+      ],
+      "accounts": [
+        {
+          "name": "gauntlet_epoch_pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  117,
+                  110,
+                  116,
+                  108,
+                  101,
+                  116,
+                  95,
+                  101,
+                  112,
+                  111,
+                  99,
+                  104,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "epoch_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "gauntlet_player_score",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  117,
+                  110,
+                  116,
+                  108,
+                  101,
+                  116,
+                  95,
+                  112,
+                  108,
+                  97,
+                  121,
+                  101,
+                  114,
+                  95,
+                  115,
+                  99,
+                  111,
+                  114,
+                  101
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "epoch_id"
+              },
+              {
+                "kind": "account",
+                "path": "player"
+              }
+            ]
+          }
+        },
+        {
+          "name": "gauntlet_reward_record",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  117,
+                  110,
+                  116,
+                  108,
+                  101,
+                  116,
+                  95,
+                  114,
+                  101,
+                  119,
+                  97,
+                  114,
+                  100,
+                  95,
+                  114,
+                  101,
+                  99,
+                  111,
+                  114,
+                  100
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "epoch_id"
+              },
+              {
+                "kind": "account",
+                "path": "player"
+              }
+            ]
+          }
+        },
+        {
+          "name": "player"
+        },
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "epoch_id",
+          "type": "u64"
+        }
+      ]
     },
     {
       "name": "settle_gauntlet_session",
@@ -7043,6 +8965,19 @@
       ]
     },
     {
+      "name": "GauntletRewardRecord",
+      "discriminator": [
+        79,
+        229,
+        208,
+        219,
+        14,
+        187,
+        37,
+        204
+      ]
+    },
+    {
       "name": "GauntletWeekPool",
       "discriminator": [
         153,
@@ -7315,6 +9250,19 @@
         218,
         132,
         6
+      ]
+    },
+    {
+      "name": "GauntletRewardSettled",
+      "discriminator": [
+        116,
+        156,
+        200,
+        59,
+        68,
+        62,
+        5,
+        142
       ]
     },
     {
@@ -7779,46 +9727,51 @@
     },
     {
       "code": 6050,
+      "name": "GauntletRewardNotSettled",
+      "msg": "Gauntlet reward record is not settled"
+    },
+    {
+      "code": 6051,
       "name": "GauntletAlreadyEntered",
       "msg": "Gauntlet entry already paid for this run"
     },
     {
-      "code": 6051,
+      "code": 6052,
       "name": "RunModeConfigurationLocked",
       "msg": "Run mode can only be configured at session start"
     },
     {
-      "code": 6052,
+      "code": 6053,
       "name": "InvalidRunModeMaxWeeks",
       "msg": "Invalid max weeks value for run mode"
     },
     {
-      "code": 6053,
+      "code": 6054,
       "name": "GauntletAlreadySettled",
       "msg": "Gauntlet session already settled"
     },
     {
-      "code": 6054,
+      "code": 6055,
       "name": "InvalidCampaignLevel",
       "msg": "Campaign level must be between 1 and 40"
     },
     {
-      "code": 6055,
+      "code": 6056,
       "name": "AccountNotEmpty",
       "msg": "Account still has data — cannot close as empty"
     },
     {
-      "code": 6056,
+      "code": 6057,
       "name": "VrfNotFulfilled",
       "msg": "VRF state has not been fulfilled yet"
     },
     {
-      "code": 6057,
+      "code": 6058,
       "name": "VrfNotRequested",
       "msg": "VRF state has not been requested yet"
     },
     {
-      "code": 6058,
+      "code": 6059,
       "name": "VrfAlreadyFinalized",
       "msg": "VRF already fulfilled or consumed and cannot be requested again"
     }
@@ -9456,6 +11409,66 @@
       }
     },
     {
+      "name": "GauntletRewardRecord",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "epoch_id",
+            "type": "u64"
+          },
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "final_points",
+            "type": "u64"
+          },
+          {
+            "name": "payout_lamports",
+            "type": "u64"
+          },
+          {
+            "name": "settled",
+            "type": "bool"
+          },
+          {
+            "name": "paid",
+            "type": "bool"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "GauntletRewardSettled",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "epoch_id",
+            "type": "u64"
+          },
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "points",
+            "type": "u64"
+          },
+          {
+            "name": "payout_lamports",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
       "name": "GauntletRewardsClaimed",
       "type": {
         "kind": "struct",
@@ -10602,6 +12615,26 @@
           },
           {
             "name": "Gauntlet"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ScheduleCrankArgs",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "task_id",
+            "type": "u64"
+          },
+          {
+            "name": "execution_interval_millis",
+            "type": "u64"
+          },
+          {
+            "name": "iterations",
+            "type": "u64"
           }
         ]
       }
