@@ -315,6 +315,20 @@
       ],
       "accounts": [
         {
+          "name": "map_pois",
+          "writable": true
+        },
+        {
+          "name": "game_session",
+          "docs": [
+            "the session may already be delegated (owned by delegation program) at this point."
+          ]
+        },
+        {
+          "name": "player",
+          "signer": true
+        },
+        {
           "name": "buffer_map_pois",
           "writable": true,
           "pda": {
@@ -400,8 +414,41 @@
               }
             ],
             "program": {
-              "kind": "account",
-              "path": "delegation_program"
+              "kind": "const",
+              "value": [
+                181,
+                183,
+                0,
+                225,
+                242,
+                87,
+                58,
+                192,
+                204,
+                6,
+                34,
+                1,
+                52,
+                74,
+                207,
+                151,
+                184,
+                53,
+                6,
+                235,
+                140,
+                229,
+                25,
+                152,
+                204,
+                98,
+                126,
+                24,
+                147,
+                128,
+                167,
+                62
+              ]
             }
           }
         },
@@ -440,24 +487,43 @@
               }
             ],
             "program": {
-              "kind": "account",
-              "path": "delegation_program"
+              "kind": "const",
+              "value": [
+                181,
+                183,
+                0,
+                225,
+                242,
+                87,
+                58,
+                192,
+                204,
+                6,
+                34,
+                1,
+                52,
+                74,
+                207,
+                151,
+                184,
+                53,
+                6,
+                235,
+                140,
+                229,
+                25,
+                152,
+                204,
+                98,
+                126,
+                24,
+                147,
+                128,
+                167,
+                62
+              ]
             }
           }
-        },
-        {
-          "name": "map_pois",
-          "writable": true
-        },
-        {
-          "name": "game_session",
-          "docs": [
-            "the session may already be delegated (owned by delegation program) at this point."
-          ]
-        },
-        {
-          "name": "player",
-          "signer": true
         },
         {
           "name": "owner_program",
@@ -497,6 +563,20 @@
         245
       ],
       "accounts": [
+        {
+          "name": "poi_vrf_state",
+          "writable": true
+        },
+        {
+          "name": "game_session",
+          "docs": [
+            "the session may already be delegated (owned by delegation program) at this point."
+          ]
+        },
+        {
+          "name": "player",
+          "signer": true
+        },
         {
           "name": "buffer_poi_vrf_state",
           "writable": true,
@@ -583,8 +663,41 @@
               }
             ],
             "program": {
-              "kind": "account",
-              "path": "delegation_program"
+              "kind": "const",
+              "value": [
+                181,
+                183,
+                0,
+                225,
+                242,
+                87,
+                58,
+                192,
+                204,
+                6,
+                34,
+                1,
+                52,
+                74,
+                207,
+                151,
+                184,
+                53,
+                6,
+                235,
+                140,
+                229,
+                25,
+                152,
+                204,
+                98,
+                126,
+                24,
+                147,
+                128,
+                167,
+                62
+              ]
             }
           }
         },
@@ -623,24 +736,43 @@
               }
             ],
             "program": {
-              "kind": "account",
-              "path": "delegation_program"
+              "kind": "const",
+              "value": [
+                181,
+                183,
+                0,
+                225,
+                242,
+                87,
+                58,
+                192,
+                204,
+                6,
+                34,
+                1,
+                52,
+                74,
+                207,
+                151,
+                184,
+                53,
+                6,
+                235,
+                140,
+                229,
+                25,
+                152,
+                204,
+                98,
+                126,
+                24,
+                147,
+                128,
+                167,
+                62
+              ]
             }
           }
-        },
-        {
-          "name": "poi_vrf_state",
-          "writable": true
-        },
-        {
-          "name": "game_session",
-          "docs": [
-            "the session may already be delegated (owned by delegation program) at this point."
-          ]
-        },
-        {
-          "name": "player",
-          "signer": true
         },
         {
           "name": "owner_program",
@@ -5070,6 +5202,9 @@
     },
     {
       "name": "process_undelegation",
+      "docs": [
+        "Processes undelegation (replaces #[ephemeral] macro output)."
+      ],
       "discriminator": [
         196,
         28,
@@ -5303,10 +5438,7 @@
           "signer": true
         },
         {
-          "name": "session",
-          "docs": [
-            "Same pattern as map_generator::RequestMapVrf and gameplay_state::RequestGameplayVrf."
-          ]
+          "name": "session"
         },
         {
           "name": "vrf_state",
@@ -5995,58 +6127,6 @@
   ],
   "accounts": [
     {
-      "name": "GameSession",
-      "discriminator": [
-        150,
-        116,
-        20,
-        197,
-        205,
-        121,
-        220,
-        240
-      ]
-    },
-    {
-      "name": "GameState",
-      "discriminator": [
-        144,
-        94,
-        208,
-        172,
-        248,
-        99,
-        134,
-        120
-      ]
-    },
-    {
-      "name": "GeneratedMap",
-      "discriminator": [
-        192,
-        250,
-        64,
-        211,
-        84,
-        36,
-        83,
-        95
-      ]
-    },
-    {
-      "name": "MapConfig",
-      "discriminator": [
-        186,
-        3,
-        214,
-        68,
-        161,
-        115,
-        92,
-        173
-      ]
-    },
-    {
       "name": "MapPois",
       "discriminator": [
         96,
@@ -6060,19 +6140,6 @@
       ]
     },
     {
-      "name": "PlayerInventory",
-      "discriminator": [
-        101,
-        75,
-        0,
-        132,
-        216,
-        157,
-        45,
-        32
-      ]
-    },
-    {
       "name": "PoiVrfState",
       "discriminator": [
         0,
@@ -6083,19 +6150,6 @@
         13,
         103,
         75
-      ]
-    },
-    {
-      "name": "SessionDiscovery",
-      "discriminator": [
-        145,
-        31,
-        85,
-        67,
-        225,
-        59,
-        109,
-        213
       ]
     }
   ],

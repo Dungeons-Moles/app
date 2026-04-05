@@ -10,7 +10,7 @@
 
 import { PublicKey, Transaction, TransactionInstruction, SystemProgram } from '@solana/web3.js';
 import type { Connection } from '@solana/web3.js';
-import type { Program } from '@coral-xyz/anchor';
+import type { Program } from '@anchor-lang/core';
 import {
   deriveMapVrfStatePda,
   derivePoiVrfStatePda,

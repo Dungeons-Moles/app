@@ -384,6 +384,17 @@
       ],
       "accounts": [
         {
+          "name": "generated_map",
+          "writable": true
+        },
+        {
+          "name": "session"
+        },
+        {
+          "name": "player",
+          "signer": true
+        },
+        {
           "name": "buffer_generated_map",
           "writable": true,
           "pda": {
@@ -469,8 +480,41 @@
               }
             ],
             "program": {
-              "kind": "account",
-              "path": "delegation_program"
+              "kind": "const",
+              "value": [
+                181,
+                183,
+                0,
+                225,
+                242,
+                87,
+                58,
+                192,
+                204,
+                6,
+                34,
+                1,
+                52,
+                74,
+                207,
+                151,
+                184,
+                53,
+                6,
+                235,
+                140,
+                229,
+                25,
+                152,
+                204,
+                98,
+                126,
+                24,
+                147,
+                128,
+                167,
+                62
+              ]
             }
           }
         },
@@ -509,24 +553,43 @@
               }
             ],
             "program": {
-              "kind": "account",
-              "path": "delegation_program"
+              "kind": "const",
+              "value": [
+                181,
+                183,
+                0,
+                225,
+                242,
+                87,
+                58,
+                192,
+                204,
+                6,
+                34,
+                1,
+                52,
+                74,
+                207,
+                151,
+                184,
+                53,
+                6,
+                235,
+                140,
+                229,
+                25,
+                152,
+                204,
+                98,
+                126,
+                24,
+                147,
+                128,
+                167,
+                62
+              ]
             }
           }
-        },
-        {
-          "name": "generated_map",
-          "writable": true
-        },
-        {
-          "name": "session",
-          "docs": [
-            "the session may already be delegated (owned by delegation program) at this point."
-          ]
-        },
-        {
-          "name": "player",
-          "signer": true
         },
         {
           "name": "owner_program",
@@ -566,6 +629,17 @@
         171
       ],
       "accounts": [
+        {
+          "name": "map_vrf_state",
+          "writable": true
+        },
+        {
+          "name": "session"
+        },
+        {
+          "name": "player",
+          "signer": true
+        },
         {
           "name": "buffer_map_vrf_state",
           "writable": true,
@@ -652,8 +726,41 @@
               }
             ],
             "program": {
-              "kind": "account",
-              "path": "delegation_program"
+              "kind": "const",
+              "value": [
+                181,
+                183,
+                0,
+                225,
+                242,
+                87,
+                58,
+                192,
+                204,
+                6,
+                34,
+                1,
+                52,
+                74,
+                207,
+                151,
+                184,
+                53,
+                6,
+                235,
+                140,
+                229,
+                25,
+                152,
+                204,
+                98,
+                126,
+                24,
+                147,
+                128,
+                167,
+                62
+              ]
             }
           }
         },
@@ -692,24 +799,43 @@
               }
             ],
             "program": {
-              "kind": "account",
-              "path": "delegation_program"
+              "kind": "const",
+              "value": [
+                181,
+                183,
+                0,
+                225,
+                242,
+                87,
+                58,
+                192,
+                204,
+                6,
+                34,
+                1,
+                52,
+                74,
+                207,
+                151,
+                184,
+                53,
+                6,
+                235,
+                140,
+                229,
+                25,
+                152,
+                204,
+                98,
+                126,
+                24,
+                147,
+                128,
+                167,
+                62
+              ]
             }
           }
-        },
-        {
-          "name": "map_vrf_state",
-          "writable": true
-        },
-        {
-          "name": "session",
-          "docs": [
-            "the session may already be delegated (owned by delegation program) at this point."
-          ]
-        },
-        {
-          "name": "player",
-          "signer": true
         },
         {
           "name": "owner_program",
@@ -749,6 +875,17 @@
         240
       ],
       "accounts": [
+        {
+          "name": "session_discovery",
+          "writable": true
+        },
+        {
+          "name": "session"
+        },
+        {
+          "name": "player",
+          "signer": true
+        },
         {
           "name": "buffer_session_discovery",
           "writable": true,
@@ -835,8 +972,41 @@
               }
             ],
             "program": {
-              "kind": "account",
-              "path": "delegation_program"
+              "kind": "const",
+              "value": [
+                181,
+                183,
+                0,
+                225,
+                242,
+                87,
+                58,
+                192,
+                204,
+                6,
+                34,
+                1,
+                52,
+                74,
+                207,
+                151,
+                184,
+                53,
+                6,
+                235,
+                140,
+                229,
+                25,
+                152,
+                204,
+                98,
+                126,
+                24,
+                147,
+                128,
+                167,
+                62
+              ]
             }
           }
         },
@@ -875,24 +1045,43 @@
               }
             ],
             "program": {
-              "kind": "account",
-              "path": "delegation_program"
+              "kind": "const",
+              "value": [
+                181,
+                183,
+                0,
+                225,
+                242,
+                87,
+                58,
+                192,
+                204,
+                6,
+                34,
+                1,
+                52,
+                74,
+                207,
+                151,
+                184,
+                53,
+                6,
+                235,
+                140,
+                229,
+                25,
+                152,
+                204,
+                98,
+                126,
+                24,
+                147,
+                128,
+                167,
+                62
+              ]
             }
           }
-        },
-        {
-          "name": "session_discovery",
-          "writable": true
-        },
-        {
-          "name": "session",
-          "docs": [
-            "the session may already be delegated (owned by delegation program) at this point."
-          ]
-        },
-        {
-          "name": "player",
-          "signer": true
         },
         {
           "name": "owner_program",
@@ -1991,6 +2180,9 @@
     },
     {
       "name": "process_undelegation",
+      "docs": [
+        "Processes undelegation (replaces #[ephemeral] macro output)."
+      ],
       "discriminator": [
         196,
         28,
@@ -2184,8 +2376,7 @@
           "writable": true
         },
         {
-          "name": "slot_hashes",
-          "address": "SysvarS1otHashes111111111111111111111111111"
+          "name": "slot_hashes"
         },
         {
           "name": "vrf_program",
@@ -2537,10 +2728,7 @@
           "writable": true
         },
         {
-          "name": "session",
-          "docs": [
-            "the session may already be delegated (owned by delegation program) at this point."
-          ]
+          "name": "session"
         },
         {
           "name": "session_signer",
@@ -2620,10 +2808,7 @@
           "writable": true
         },
         {
-          "name": "session",
-          "docs": [
-            "the session may already be delegated (owned by delegation program) at this point."
-          ]
+          "name": "session"
         },
         {
           "name": "session_signer",

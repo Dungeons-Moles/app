@@ -14,7 +14,7 @@ import {
   TransactionInstruction,
   ComputeBudgetProgram,
 } from '@solana/web3.js';
-import { Program } from '@coral-xyz/anchor';
+import { Program } from '@anchor-lang/core';
 import * as Sentry from '@sentry/react-native';
 import { SOLANA_CONFIG } from './config';
 import {

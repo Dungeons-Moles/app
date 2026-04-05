@@ -574,6 +574,44 @@
       ],
       "accounts": [
         {
+          "name": "game_state",
+          "writable": true
+        },
+        {
+          "name": "player",
+          "signer": true
+        },
+        {
+          "name": "session_nonces",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  95,
+                  110,
+                  111,
+                  110,
+                  99,
+                  101,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "player"
+              }
+            ]
+          }
+        },
+        {
           "name": "buffer_game_state",
           "writable": true,
           "pda": {
@@ -659,8 +697,41 @@
               }
             ],
             "program": {
-              "kind": "account",
-              "path": "delegation_program"
+              "kind": "const",
+              "value": [
+                181,
+                183,
+                0,
+                225,
+                242,
+                87,
+                58,
+                192,
+                204,
+                6,
+                34,
+                1,
+                52,
+                74,
+                207,
+                151,
+                184,
+                53,
+                6,
+                235,
+                140,
+                229,
+                25,
+                152,
+                204,
+                98,
+                126,
+                24,
+                147,
+                128,
+                167,
+                62
+              ]
             }
           }
         },
@@ -699,47 +770,42 @@
               }
             ],
             "program": {
-              "kind": "account",
-              "path": "delegation_program"
+              "kind": "const",
+              "value": [
+                181,
+                183,
+                0,
+                225,
+                242,
+                87,
+                58,
+                192,
+                204,
+                6,
+                34,
+                1,
+                52,
+                74,
+                207,
+                151,
+                184,
+                53,
+                6,
+                235,
+                140,
+                229,
+                25,
+                152,
+                204,
+                98,
+                126,
+                24,
+                147,
+                128,
+                167,
+                62
+              ]
             }
-          }
-        },
-        {
-          "name": "game_state",
-          "writable": true
-        },
-        {
-          "name": "player",
-          "signer": true
-        },
-        {
-          "name": "session_nonces",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  115,
-                  101,
-                  115,
-                  115,
-                  105,
-                  111,
-                  110,
-                  95,
-                  110,
-                  111,
-                  110,
-                  99,
-                  101,
-                  115
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "player"
-              }
-            ]
           }
         },
         {
@@ -778,6 +844,44 @@
         0
       ],
       "accounts": [
+        {
+          "name": "generated_map",
+          "writable": true
+        },
+        {
+          "name": "player",
+          "signer": true
+        },
+        {
+          "name": "session_nonces",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  95,
+                  110,
+                  111,
+                  110,
+                  99,
+                  101,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "player"
+              }
+            ]
+          }
+        },
         {
           "name": "buffer_generated_map",
           "writable": true,
@@ -864,8 +968,41 @@
               }
             ],
             "program": {
-              "kind": "account",
-              "path": "delegation_program"
+              "kind": "const",
+              "value": [
+                181,
+                183,
+                0,
+                225,
+                242,
+                87,
+                58,
+                192,
+                204,
+                6,
+                34,
+                1,
+                52,
+                74,
+                207,
+                151,
+                184,
+                53,
+                6,
+                235,
+                140,
+                229,
+                25,
+                152,
+                204,
+                98,
+                126,
+                24,
+                147,
+                128,
+                167,
+                62
+              ]
             }
           }
         },
@@ -904,47 +1041,42 @@
               }
             ],
             "program": {
-              "kind": "account",
-              "path": "delegation_program"
+              "kind": "const",
+              "value": [
+                181,
+                183,
+                0,
+                225,
+                242,
+                87,
+                58,
+                192,
+                204,
+                6,
+                34,
+                1,
+                52,
+                74,
+                207,
+                151,
+                184,
+                53,
+                6,
+                235,
+                140,
+                229,
+                25,
+                152,
+                204,
+                98,
+                126,
+                24,
+                147,
+                128,
+                167,
+                62
+              ]
             }
-          }
-        },
-        {
-          "name": "generated_map",
-          "writable": true
-        },
-        {
-          "name": "player",
-          "signer": true
-        },
-        {
-          "name": "session_nonces",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  115,
-                  101,
-                  115,
-                  115,
-                  105,
-                  111,
-                  110,
-                  95,
-                  110,
-                  111,
-                  110,
-                  99,
-                  101,
-                  115
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "player"
-              }
-            ]
           }
         },
         {
@@ -983,6 +1115,44 @@
         17
       ],
       "accounts": [
+        {
+          "name": "inventory",
+          "writable": true
+        },
+        {
+          "name": "player",
+          "signer": true
+        },
+        {
+          "name": "session_nonces",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  95,
+                  110,
+                  111,
+                  110,
+                  99,
+                  101,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "player"
+              }
+            ]
+          }
+        },
         {
           "name": "buffer_inventory",
           "writable": true,
@@ -1069,8 +1239,41 @@
               }
             ],
             "program": {
-              "kind": "account",
-              "path": "delegation_program"
+              "kind": "const",
+              "value": [
+                181,
+                183,
+                0,
+                225,
+                242,
+                87,
+                58,
+                192,
+                204,
+                6,
+                34,
+                1,
+                52,
+                74,
+                207,
+                151,
+                184,
+                53,
+                6,
+                235,
+                140,
+                229,
+                25,
+                152,
+                204,
+                98,
+                126,
+                24,
+                147,
+                128,
+                167,
+                62
+              ]
             }
           }
         },
@@ -1109,47 +1312,42 @@
               }
             ],
             "program": {
-              "kind": "account",
-              "path": "delegation_program"
+              "kind": "const",
+              "value": [
+                181,
+                183,
+                0,
+                225,
+                242,
+                87,
+                58,
+                192,
+                204,
+                6,
+                34,
+                1,
+                52,
+                74,
+                207,
+                151,
+                184,
+                53,
+                6,
+                235,
+                140,
+                229,
+                25,
+                152,
+                204,
+                98,
+                126,
+                24,
+                147,
+                128,
+                167,
+                62
+              ]
             }
-          }
-        },
-        {
-          "name": "inventory",
-          "writable": true
-        },
-        {
-          "name": "player",
-          "signer": true
-        },
-        {
-          "name": "session_nonces",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  115,
-                  101,
-                  115,
-                  115,
-                  105,
-                  111,
-                  110,
-                  95,
-                  110,
-                  111,
-                  110,
-                  99,
-                  101,
-                  115
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "player"
-              }
-            ]
           }
         },
         {
@@ -1188,6 +1386,44 @@
         113
       ],
       "accounts": [
+        {
+          "name": "map_pois",
+          "writable": true
+        },
+        {
+          "name": "player",
+          "signer": true
+        },
+        {
+          "name": "session_nonces",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  95,
+                  110,
+                  111,
+                  110,
+                  99,
+                  101,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "player"
+              }
+            ]
+          }
+        },
         {
           "name": "buffer_map_pois",
           "writable": true,
@@ -1274,8 +1510,41 @@
               }
             ],
             "program": {
-              "kind": "account",
-              "path": "delegation_program"
+              "kind": "const",
+              "value": [
+                181,
+                183,
+                0,
+                225,
+                242,
+                87,
+                58,
+                192,
+                204,
+                6,
+                34,
+                1,
+                52,
+                74,
+                207,
+                151,
+                184,
+                53,
+                6,
+                235,
+                140,
+                229,
+                25,
+                152,
+                204,
+                98,
+                126,
+                24,
+                147,
+                128,
+                167,
+                62
+              ]
             }
           }
         },
@@ -1314,47 +1583,42 @@
               }
             ],
             "program": {
-              "kind": "account",
-              "path": "delegation_program"
+              "kind": "const",
+              "value": [
+                181,
+                183,
+                0,
+                225,
+                242,
+                87,
+                58,
+                192,
+                204,
+                6,
+                34,
+                1,
+                52,
+                74,
+                207,
+                151,
+                184,
+                53,
+                6,
+                235,
+                140,
+                229,
+                25,
+                152,
+                204,
+                98,
+                126,
+                24,
+                147,
+                128,
+                167,
+                62
+              ]
             }
-          }
-        },
-        {
-          "name": "map_pois",
-          "writable": true
-        },
-        {
-          "name": "player",
-          "signer": true
-        },
-        {
-          "name": "session_nonces",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  115,
-                  101,
-                  115,
-                  115,
-                  105,
-                  111,
-                  110,
-                  95,
-                  110,
-                  111,
-                  110,
-                  99,
-                  101,
-                  115
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "player"
-              }
-            ]
           }
         },
         {
@@ -1394,6 +1658,14 @@
         245
       ],
       "accounts": [
+        {
+          "name": "poi_vrf_state",
+          "writable": true
+        },
+        {
+          "name": "player",
+          "signer": true
+        },
         {
           "name": "buffer_poi_vrf_state",
           "writable": true,
@@ -1480,8 +1752,41 @@
               }
             ],
             "program": {
-              "kind": "account",
-              "path": "delegation_program"
+              "kind": "const",
+              "value": [
+                181,
+                183,
+                0,
+                225,
+                242,
+                87,
+                58,
+                192,
+                204,
+                6,
+                34,
+                1,
+                52,
+                74,
+                207,
+                151,
+                184,
+                53,
+                6,
+                235,
+                140,
+                229,
+                25,
+                152,
+                204,
+                98,
+                126,
+                24,
+                147,
+                128,
+                167,
+                62
+              ]
             }
           }
         },
@@ -1520,18 +1825,43 @@
               }
             ],
             "program": {
-              "kind": "account",
-              "path": "delegation_program"
+              "kind": "const",
+              "value": [
+                181,
+                183,
+                0,
+                225,
+                242,
+                87,
+                58,
+                192,
+                204,
+                6,
+                34,
+                1,
+                52,
+                74,
+                207,
+                151,
+                184,
+                53,
+                6,
+                235,
+                140,
+                229,
+                25,
+                152,
+                204,
+                98,
+                126,
+                24,
+                147,
+                128,
+                167,
+                62
+              ]
             }
           }
-        },
-        {
-          "name": "poi_vrf_state",
-          "writable": true
-        },
-        {
-          "name": "player",
-          "signer": true
         },
         {
           "name": "owner_program",
@@ -1575,6 +1905,47 @@
         197
       ],
       "accounts": [
+        {
+          "name": "game_session",
+          "writable": true
+        },
+        {
+          "name": "player"
+        },
+        {
+          "name": "session_signer",
+          "signer": true
+        },
+        {
+          "name": "session_nonces",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  95,
+                  110,
+                  111,
+                  110,
+                  99,
+                  101,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "player"
+              }
+            ]
+          }
+        },
         {
           "name": "buffer_game_session",
           "writable": true,
@@ -1661,8 +2032,41 @@
               }
             ],
             "program": {
-              "kind": "account",
-              "path": "delegation_program"
+              "kind": "const",
+              "value": [
+                181,
+                183,
+                0,
+                225,
+                242,
+                87,
+                58,
+                192,
+                204,
+                6,
+                34,
+                1,
+                52,
+                74,
+                207,
+                151,
+                184,
+                53,
+                6,
+                235,
+                140,
+                229,
+                25,
+                152,
+                204,
+                98,
+                126,
+                24,
+                147,
+                128,
+                167,
+                62
+              ]
             }
           }
         },
@@ -1701,50 +2105,42 @@
               }
             ],
             "program": {
-              "kind": "account",
-              "path": "delegation_program"
+              "kind": "const",
+              "value": [
+                181,
+                183,
+                0,
+                225,
+                242,
+                87,
+                58,
+                192,
+                204,
+                6,
+                34,
+                1,
+                52,
+                74,
+                207,
+                151,
+                184,
+                53,
+                6,
+                235,
+                140,
+                229,
+                25,
+                152,
+                204,
+                98,
+                126,
+                24,
+                147,
+                128,
+                167,
+                62
+              ]
             }
-          }
-        },
-        {
-          "name": "game_session",
-          "writable": true
-        },
-        {
-          "name": "player"
-        },
-        {
-          "name": "session_signer",
-          "signer": true
-        },
-        {
-          "name": "session_nonces",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  115,
-                  101,
-                  115,
-                  115,
-                  105,
-                  111,
-                  110,
-                  95,
-                  110,
-                  111,
-                  110,
-                  99,
-                  101,
-                  115
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "player"
-              }
-            ]
           }
         },
         {
@@ -2512,6 +2908,9 @@
     },
     {
       "name": "process_undelegation",
+      "docs": [
+        "Processes undelegation (replaces #[ephemeral] macro output)."
+      ],
       "discriminator": [
         196,
         28,
@@ -3835,19 +4234,6 @@
   ],
   "accounts": [
     {
-      "name": "DuelEntry",
-      "discriminator": [
-        138,
-        171,
-        78,
-        7,
-        76,
-        120,
-        208,
-        250
-      ]
-    },
-    {
       "name": "GameSession",
       "discriminator": [
         150,
@@ -3858,32 +4244,6 @@
         121,
         220,
         240
-      ]
-    },
-    {
-      "name": "PlayerProfile",
-      "discriminator": [
-        82,
-        226,
-        99,
-        87,
-        164,
-        130,
-        181,
-        80
-      ]
-    },
-    {
-      "name": "PlayerRelicPool",
-      "discriminator": [
-        1,
-        105,
-        67,
-        203,
-        111,
-        254,
-        159,
-        128
       ]
     },
     {

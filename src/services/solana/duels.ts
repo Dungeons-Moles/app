@@ -8,7 +8,7 @@
  */
 
 import { ComputeBudgetProgram, Connection, PublicKey, SystemProgram, Transaction, TransactionInstruction } from '@solana/web3.js';
-import type { Program } from '@coral-xyz/anchor';
+import type { Program } from '@anchor-lang/core';
 import { SOLANA_CONFIG } from './config';
 import {
   GAMEPLAY_STATE_PROGRAM_ID,

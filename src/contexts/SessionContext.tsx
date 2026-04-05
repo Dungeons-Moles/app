@@ -4828,13 +4828,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         );
       }
 
-      if (activeSessionPda) {
-        const vrfReady = await ensureSessionVrfReady(activeSessionPda.toBase58());
-        if (!vrfReady.success) {
-          console.error('[SessionContext] movePlayer blocked: VRF not fulfilled', vrfReady.error);
-          return { success: false };
-        }
-      }
+      // VRF readiness is guaranteed by session startup — the game gates on
+      // VRF fulfillment before entering the map. Checking on every move
+      // added ~260ms of blocking RPC calls (2× getAccountInfo to ER).
       console.log(
         '[SessionContext] movePlayer: sessionSigner =',
         resolvedSessionSigner.publicKey.toBase58(),
@@ -4886,17 +4882,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       await sessionSigner.associateWithSession(resolvedSessionSigner, activeSessionPda.toBase58());
     }
 
-    if (activeSessionPda) {
-      const vrfReady = await ensureSessionVrfReady(activeSessionPda.toBase58());
-      if (!vrfReady.success) {
-        console.error('[SessionContext] triggerBoss blocked: VRF not fulfilled', vrfReady.error);
-        return { success: false };
-      }
-    }
-
     return gameplayState.triggerBoss(resolvedSessionSigner);
   }, [
-    ensureSessionVrfReady,
     gameplayState,
     resolveSessionSignerForSession,
     sessionManager.activeSessionPda,
@@ -4926,17 +4913,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       await sessionSigner.associateWithSession(resolvedSessionSigner, activeSessionPda.toBase58());
     }
 
-    if (activeSessionPda) {
-      const vrfReady = await ensureSessionVrfReady(activeSessionPda.toBase58());
-      if (!vrfReady.success) {
-        console.error('[SessionContext] skipToEndOfWeek blocked: VRF not fulfilled', vrfReady.error);
-        return { success: false };
-      }
-    }
-
     return gameplayState.skipToEndOfWeek(resolvedSessionSigner);
   }, [
-    ensureSessionVrfReady,
     gameplayState,
     resolveSessionSignerForSession,
     sessionManager.activeSessionPda,

@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
 import { SystemProgram, PublicKey } from '@solana/web3.js';
-import { AnchorProvider } from '@coral-xyz/anchor';
+import { AnchorProvider } from '@anchor-lang/core';
 import { useWallet } from '@/contexts/WalletContext';
 import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
 import {

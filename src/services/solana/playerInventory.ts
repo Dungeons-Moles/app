@@ -1,5 +1,5 @@
 import { Connection, PublicKey, Keypair } from '@solana/web3.js';
-import type { Program } from '@coral-xyz/anchor';
+import type { Program } from '@anchor-lang/core';
 import type { PlayerInventoryData, ItemInstance } from './types/player_inventory';
 import { Tier, ToolOilModification } from './types/player_inventory';
 

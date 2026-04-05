@@ -18,7 +18,7 @@
     "test:ci": "jest --ci --coverage --reporters=default --reporters=jest-junit"
   },
   "dependencies": {
-    "@coral-xyz/anchor": "^0.32.1",
+    "@anchor-lang/core": "^1.0.0",
     "@expo-google-fonts/im-fell-english": "^0.4.0",
     "@expo-google-fonts/inter": "^0.4.2",
     "@magicblock-labs/ephemeral-rollups-sdk": "^0.10.3",

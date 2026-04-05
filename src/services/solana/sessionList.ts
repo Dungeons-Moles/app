@@ -8,7 +8,7 @@
  */
 
 import { Connection, PublicKey } from '@solana/web3.js';
-import type { Program } from '@coral-xyz/anchor';
+import type { Program } from '@anchor-lang/core';
 import {
   SESSION_MANAGER_PROGRAM_ID,
   GAMEPLAY_STATE_PROGRAM_ID,

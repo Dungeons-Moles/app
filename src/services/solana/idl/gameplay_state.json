@@ -1134,6 +1134,15 @@
       ],
       "accounts": [
         {
+          "name": "duel_entry",
+          "writable": true
+        },
+        {
+          "name": "player",
+          "writable": true,
+          "signer": true
+        },
+        {
           "name": "buffer_duel_entry",
           "writable": true,
           "pda": {
@@ -1219,8 +1228,41 @@
               }
             ],
             "program": {
-              "kind": "account",
-              "path": "delegation_program"
+              "kind": "const",
+              "value": [
+                181,
+                183,
+                0,
+                225,
+                242,
+                87,
+                58,
+                192,
+                204,
+                6,
+                34,
+                1,
+                52,
+                74,
+                207,
+                151,
+                184,
+                53,
+                6,
+                235,
+                140,
+                229,
+                25,
+                152,
+                204,
+                98,
+                126,
+                24,
+                147,
+                128,
+                167,
+                62
+              ]
             }
           }
         },
@@ -1259,22 +1301,43 @@
               }
             ],
             "program": {
-              "kind": "account",
-              "path": "delegation_program"
+              "kind": "const",
+              "value": [
+                181,
+                183,
+                0,
+                225,
+                242,
+                87,
+                58,
+                192,
+                204,
+                6,
+                34,
+                1,
+                52,
+                74,
+                207,
+                151,
+                184,
+                53,
+                6,
+                235,
+                140,
+                229,
+                25,
+                152,
+                204,
+                98,
+                126,
+                24,
+                147,
+                128,
+                167,
+                62
+              ]
             }
           }
-        },
-        {
-          "name": "duel_entry",
-          "docs": [
-            "Anchor serialization crash after delegation changes the owner."
-          ],
-          "writable": true
-        },
-        {
-          "name": "player",
-          "writable": true,
-          "signer": true
         },
         {
           "name": "owner_program",
@@ -1313,6 +1376,15 @@
         53
       ],
       "accounts": [
+        {
+          "name": "duel_er_queue",
+          "writable": true
+        },
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true
+        },
         {
           "name": "buffer_duel_er_queue",
           "writable": true,
@@ -1399,8 +1471,41 @@
               }
             ],
             "program": {
-              "kind": "account",
-              "path": "delegation_program"
+              "kind": "const",
+              "value": [
+                181,
+                183,
+                0,
+                225,
+                242,
+                87,
+                58,
+                192,
+                204,
+                6,
+                34,
+                1,
+                52,
+                74,
+                207,
+                151,
+                184,
+                53,
+                6,
+                235,
+                140,
+                229,
+                25,
+                152,
+                204,
+                98,
+                126,
+                24,
+                147,
+                128,
+                167,
+                62
+              ]
             }
           }
         },
@@ -1439,22 +1544,43 @@
               }
             ],
             "program": {
-              "kind": "account",
-              "path": "delegation_program"
+              "kind": "const",
+              "value": [
+                181,
+                183,
+                0,
+                225,
+                242,
+                87,
+                58,
+                192,
+                204,
+                6,
+                34,
+                1,
+                52,
+                74,
+                207,
+                151,
+                184,
+                53,
+                6,
+                235,
+                140,
+                229,
+                25,
+                152,
+                204,
+                98,
+                126,
+                24,
+                147,
+                128,
+                167,
+                62
+              ]
             }
           }
-        },
-        {
-          "name": "duel_er_queue",
-          "docs": [
-            "Anchor serialization crash after delegation changes the owner."
-          ],
-          "writable": true
-        },
-        {
-          "name": "admin",
-          "writable": true,
-          "signer": true
         },
         {
           "name": "owner_program",
@@ -1487,6 +1613,17 @@
         209
       ],
       "accounts": [
+        {
+          "name": "game_state",
+          "writable": true
+        },
+        {
+          "name": "game_session"
+        },
+        {
+          "name": "player",
+          "signer": true
+        },
         {
           "name": "buffer_game_state",
           "writable": true,
@@ -1573,8 +1710,41 @@
               }
             ],
             "program": {
-              "kind": "account",
-              "path": "delegation_program"
+              "kind": "const",
+              "value": [
+                181,
+                183,
+                0,
+                225,
+                242,
+                87,
+                58,
+                192,
+                204,
+                6,
+                34,
+                1,
+                52,
+                74,
+                207,
+                151,
+                184,
+                53,
+                6,
+                235,
+                140,
+                229,
+                25,
+                152,
+                204,
+                98,
+                126,
+                24,
+                147,
+                128,
+                167,
+                62
+              ]
             }
           }
         },
@@ -1613,21 +1783,43 @@
               }
             ],
             "program": {
-              "kind": "account",
-              "path": "delegation_program"
+              "kind": "const",
+              "value": [
+                181,
+                183,
+                0,
+                225,
+                242,
+                87,
+                58,
+                192,
+                204,
+                6,
+                34,
+                1,
+                52,
+                74,
+                207,
+                151,
+                184,
+                53,
+                6,
+                235,
+                140,
+                229,
+                25,
+                152,
+                204,
+                98,
+                126,
+                24,
+                147,
+                128,
+                167,
+                62
+              ]
             }
           }
-        },
-        {
-          "name": "game_state",
-          "writable": true
-        },
-        {
-          "name": "game_session"
-        },
-        {
-          "name": "player",
-          "signer": true
         },
         {
           "name": "owner_program",
@@ -1667,6 +1859,17 @@
         28
       ],
       "accounts": [
+        {
+          "name": "gameplay_vrf_state",
+          "writable": true
+        },
+        {
+          "name": "game_session"
+        },
+        {
+          "name": "player",
+          "signer": true
+        },
         {
           "name": "buffer_gameplay_vrf_state",
           "writable": true,
@@ -1753,8 +1956,41 @@
               }
             ],
             "program": {
-              "kind": "account",
-              "path": "delegation_program"
+              "kind": "const",
+              "value": [
+                181,
+                183,
+                0,
+                225,
+                242,
+                87,
+                58,
+                192,
+                204,
+                6,
+                34,
+                1,
+                52,
+                74,
+                207,
+                151,
+                184,
+                53,
+                6,
+                235,
+                140,
+                229,
+                25,
+                152,
+                204,
+                98,
+                126,
+                24,
+                147,
+                128,
+                167,
+                62
+              ]
             }
           }
         },
@@ -1793,21 +2029,43 @@
               }
             ],
             "program": {
-              "kind": "account",
-              "path": "delegation_program"
+              "kind": "const",
+              "value": [
+                181,
+                183,
+                0,
+                225,
+                242,
+                87,
+                58,
+                192,
+                204,
+                6,
+                34,
+                1,
+                52,
+                74,
+                207,
+                151,
+                184,
+                53,
+                6,
+                235,
+                140,
+                229,
+                25,
+                152,
+                204,
+                98,
+                126,
+                24,
+                147,
+                128,
+                167,
+                62
+              ]
             }
           }
-        },
-        {
-          "name": "gameplay_vrf_state",
-          "writable": true
-        },
-        {
-          "name": "game_session"
-        },
-        {
-          "name": "player",
-          "signer": true
         },
         {
           "name": "owner_program",
@@ -1847,6 +2105,17 @@
         76
       ],
       "accounts": [
+        {
+          "name": "gauntlet_echoes",
+          "writable": true
+        },
+        {
+          "name": "game_session"
+        },
+        {
+          "name": "player",
+          "signer": true
+        },
         {
           "name": "buffer_gauntlet_echoes",
           "writable": true,
@@ -1933,8 +2202,41 @@
               }
             ],
             "program": {
-              "kind": "account",
-              "path": "delegation_program"
+              "kind": "const",
+              "value": [
+                181,
+                183,
+                0,
+                225,
+                242,
+                87,
+                58,
+                192,
+                204,
+                6,
+                34,
+                1,
+                52,
+                74,
+                207,
+                151,
+                184,
+                53,
+                6,
+                235,
+                140,
+                229,
+                25,
+                152,
+                204,
+                98,
+                126,
+                24,
+                147,
+                128,
+                167,
+                62
+              ]
             }
           }
         },
@@ -1973,21 +2275,43 @@
               }
             ],
             "program": {
-              "kind": "account",
-              "path": "delegation_program"
+              "kind": "const",
+              "value": [
+                181,
+                183,
+                0,
+                225,
+                242,
+                87,
+                58,
+                192,
+                204,
+                6,
+                34,
+                1,
+                52,
+                74,
+                207,
+                151,
+                184,
+                53,
+                6,
+                235,
+                140,
+                229,
+                25,
+                152,
+                204,
+                98,
+                126,
+                24,
+                147,
+                128,
+                167,
+                62
+              ]
             }
           }
-        },
-        {
-          "name": "gauntlet_echoes",
-          "writable": true
-        },
-        {
-          "name": "game_session"
-        },
-        {
-          "name": "player",
-          "signer": true
         },
         {
           "name": "owner_program",
@@ -2027,6 +2351,23 @@
         31
       ],
       "accounts": [
+        {
+          "name": "gauntlet_config",
+          "writable": true
+        },
+        {
+          "name": "gauntlet_pool_vault",
+          "writable": true
+        },
+        {
+          "name": "gauntlet_epoch_pool",
+          "writable": true
+        },
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
         {
           "name": "buffer_gauntlet_config",
           "writable": true,
@@ -2113,8 +2454,41 @@
               }
             ],
             "program": {
-              "kind": "account",
-              "path": "delegation_program"
+              "kind": "const",
+              "value": [
+                181,
+                183,
+                0,
+                225,
+                242,
+                87,
+                58,
+                192,
+                204,
+                6,
+                34,
+                1,
+                52,
+                74,
+                207,
+                151,
+                184,
+                53,
+                6,
+                235,
+                140,
+                229,
+                25,
+                152,
+                204,
+                98,
+                126,
+                24,
+                147,
+                128,
+                167,
+                62
+              ]
             }
           }
         },
@@ -2153,14 +2527,43 @@
               }
             ],
             "program": {
-              "kind": "account",
-              "path": "delegation_program"
+              "kind": "const",
+              "value": [
+                181,
+                183,
+                0,
+                225,
+                242,
+                87,
+                58,
+                192,
+                204,
+                6,
+                34,
+                1,
+                52,
+                74,
+                207,
+                151,
+                184,
+                53,
+                6,
+                235,
+                140,
+                229,
+                25,
+                152,
+                204,
+                98,
+                126,
+                24,
+                147,
+                128,
+                167,
+                62
+              ]
             }
           }
-        },
-        {
-          "name": "gauntlet_config",
-          "writable": true
         },
         {
           "name": "buffer_gauntlet_pool_vault",
@@ -2248,8 +2651,41 @@
               }
             ],
             "program": {
-              "kind": "account",
-              "path": "delegation_program"
+              "kind": "const",
+              "value": [
+                181,
+                183,
+                0,
+                225,
+                242,
+                87,
+                58,
+                192,
+                204,
+                6,
+                34,
+                1,
+                52,
+                74,
+                207,
+                151,
+                184,
+                53,
+                6,
+                235,
+                140,
+                229,
+                25,
+                152,
+                204,
+                98,
+                126,
+                24,
+                147,
+                128,
+                167,
+                62
+              ]
             }
           }
         },
@@ -2288,14 +2724,43 @@
               }
             ],
             "program": {
-              "kind": "account",
-              "path": "delegation_program"
+              "kind": "const",
+              "value": [
+                181,
+                183,
+                0,
+                225,
+                242,
+                87,
+                58,
+                192,
+                204,
+                6,
+                34,
+                1,
+                52,
+                74,
+                207,
+                151,
+                184,
+                53,
+                6,
+                235,
+                140,
+                229,
+                25,
+                152,
+                204,
+                98,
+                126,
+                24,
+                147,
+                128,
+                167,
+                62
+              ]
             }
           }
-        },
-        {
-          "name": "gauntlet_pool_vault",
-          "writable": true
         },
         {
           "name": "buffer_gauntlet_epoch_pool",
@@ -2383,8 +2848,41 @@
               }
             ],
             "program": {
-              "kind": "account",
-              "path": "delegation_program"
+              "kind": "const",
+              "value": [
+                181,
+                183,
+                0,
+                225,
+                242,
+                87,
+                58,
+                192,
+                204,
+                6,
+                34,
+                1,
+                52,
+                74,
+                207,
+                151,
+                184,
+                53,
+                6,
+                235,
+                140,
+                229,
+                25,
+                152,
+                204,
+                98,
+                126,
+                24,
+                147,
+                128,
+                167,
+                62
+              ]
             }
           }
         },
@@ -2423,19 +2921,43 @@
               }
             ],
             "program": {
-              "kind": "account",
-              "path": "delegation_program"
+              "kind": "const",
+              "value": [
+                181,
+                183,
+                0,
+                225,
+                242,
+                87,
+                58,
+                192,
+                204,
+                6,
+                34,
+                1,
+                52,
+                74,
+                207,
+                151,
+                184,
+                53,
+                6,
+                235,
+                140,
+                229,
+                25,
+                152,
+                204,
+                98,
+                126,
+                24,
+                147,
+                128,
+                167,
+                62
+              ]
             }
           }
-        },
-        {
-          "name": "gauntlet_epoch_pool",
-          "writable": true
-        },
-        {
-          "name": "payer",
-          "writable": true,
-          "signer": true
         },
         {
           "name": "owner_program",
@@ -2479,6 +3001,22 @@
         78
       ],
       "accounts": [
+        {
+          "name": "gauntlet_player_score",
+          "writable": true
+        },
+        {
+          "name": "gauntlet_reward_record",
+          "writable": true
+        },
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "player_wallet"
+        },
         {
           "name": "buffer_gauntlet_player_score",
           "writable": true,
@@ -2565,8 +3103,41 @@
               }
             ],
             "program": {
-              "kind": "account",
-              "path": "delegation_program"
+              "kind": "const",
+              "value": [
+                181,
+                183,
+                0,
+                225,
+                242,
+                87,
+                58,
+                192,
+                204,
+                6,
+                34,
+                1,
+                52,
+                74,
+                207,
+                151,
+                184,
+                53,
+                6,
+                235,
+                140,
+                229,
+                25,
+                152,
+                204,
+                98,
+                126,
+                24,
+                147,
+                128,
+                167,
+                62
+              ]
             }
           }
         },
@@ -2605,14 +3176,43 @@
               }
             ],
             "program": {
-              "kind": "account",
-              "path": "delegation_program"
+              "kind": "const",
+              "value": [
+                181,
+                183,
+                0,
+                225,
+                242,
+                87,
+                58,
+                192,
+                204,
+                6,
+                34,
+                1,
+                52,
+                74,
+                207,
+                151,
+                184,
+                53,
+                6,
+                235,
+                140,
+                229,
+                25,
+                152,
+                204,
+                98,
+                126,
+                24,
+                147,
+                128,
+                167,
+                62
+              ]
             }
           }
-        },
-        {
-          "name": "gauntlet_player_score",
-          "writable": true
         },
         {
           "name": "buffer_gauntlet_reward_record",
@@ -2700,8 +3300,41 @@
               }
             ],
             "program": {
-              "kind": "account",
-              "path": "delegation_program"
+              "kind": "const",
+              "value": [
+                181,
+                183,
+                0,
+                225,
+                242,
+                87,
+                58,
+                192,
+                204,
+                6,
+                34,
+                1,
+                52,
+                74,
+                207,
+                151,
+                184,
+                53,
+                6,
+                235,
+                140,
+                229,
+                25,
+                152,
+                204,
+                98,
+                126,
+                24,
+                147,
+                128,
+                167,
+                62
+              ]
             }
           }
         },
@@ -2740,22 +3373,43 @@
               }
             ],
             "program": {
-              "kind": "account",
-              "path": "delegation_program"
+              "kind": "const",
+              "value": [
+                181,
+                183,
+                0,
+                225,
+                242,
+                87,
+                58,
+                192,
+                204,
+                6,
+                34,
+                1,
+                52,
+                74,
+                207,
+                151,
+                184,
+                53,
+                6,
+                235,
+                140,
+                229,
+                25,
+                152,
+                204,
+                98,
+                126,
+                24,
+                147,
+                128,
+                167,
+                62
+              ]
             }
           }
-        },
-        {
-          "name": "gauntlet_reward_record",
-          "writable": true
-        },
-        {
-          "name": "payer",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "player_wallet"
         },
         {
           "name": "owner_program",
@@ -2800,6 +3454,17 @@
         61
       ],
       "accounts": [
+        {
+          "name": "gameplay_vrf_state",
+          "writable": true
+        },
+        {
+          "name": "seed_key"
+        },
+        {
+          "name": "payer",
+          "signer": true
+        },
         {
           "name": "buffer_gameplay_vrf_state",
           "writable": true,
@@ -2886,8 +3551,41 @@
               }
             ],
             "program": {
-              "kind": "account",
-              "path": "delegation_program"
+              "kind": "const",
+              "value": [
+                181,
+                183,
+                0,
+                225,
+                242,
+                87,
+                58,
+                192,
+                204,
+                6,
+                34,
+                1,
+                52,
+                74,
+                207,
+                151,
+                184,
+                53,
+                6,
+                235,
+                140,
+                229,
+                25,
+                152,
+                204,
+                98,
+                126,
+                24,
+                147,
+                128,
+                167,
+                62
+              ]
             }
           }
         },
@@ -2926,21 +3624,43 @@
               }
             ],
             "program": {
-              "kind": "account",
-              "path": "delegation_program"
+              "kind": "const",
+              "value": [
+                181,
+                183,
+                0,
+                225,
+                242,
+                87,
+                58,
+                192,
+                204,
+                6,
+                34,
+                1,
+                52,
+                74,
+                207,
+                151,
+                184,
+                53,
+                6,
+                235,
+                140,
+                229,
+                25,
+                152,
+                204,
+                98,
+                126,
+                24,
+                147,
+                128,
+                167,
+                62
+              ]
             }
           }
-        },
-        {
-          "name": "gameplay_vrf_state",
-          "writable": true
-        },
-        {
-          "name": "seed_key"
-        },
-        {
-          "name": "payer",
-          "signer": true
         },
         {
           "name": "owner_program",
@@ -5302,6 +6022,9 @@
     },
     {
       "name": "process_undelegation",
+      "docs": [
+        "Processes undelegation (replaces #[ephemeral] macro output)."
+      ],
       "discriminator": [
         196,
         28,
@@ -9150,32 +9873,6 @@
       ]
     },
     {
-      "name": "GeneratedMap",
-      "discriminator": [
-        192,
-        250,
-        64,
-        211,
-        84,
-        36,
-        83,
-        95
-      ]
-    },
-    {
-      "name": "MapVrfState",
-      "discriminator": [
-        144,
-        80,
-        226,
-        84,
-        46,
-        221,
-        98,
-        37
-      ]
-    },
-    {
       "name": "PitDraftQueue",
       "discriminator": [
         250,
@@ -9199,32 +9896,6 @@
         96,
         243,
         112
-      ]
-    },
-    {
-      "name": "PlayerInventory",
-      "discriminator": [
-        101,
-        75,
-        0,
-        132,
-        216,
-        157,
-        45,
-        32
-      ]
-    },
-    {
-      "name": "PlayerProfile",
-      "discriminator": [
-        82,
-        226,
-        99,
-        87,
-        164,
-        130,
-        181,
-        80
       ]
     }
   ],

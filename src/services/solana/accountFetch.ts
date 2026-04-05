@@ -1,4 +1,4 @@
-import { BorshAccountsCoder, Idl, Program } from '@coral-xyz/anchor';
+import { BorshAccountsCoder, Idl, Program } from '@anchor-lang/core';
 import type { AccountInfo } from '@solana/web3.js';
 import { PublicKey } from '@solana/web3.js';
 

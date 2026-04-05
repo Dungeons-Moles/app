@@ -1,4 +1,4 @@
-import { AnchorError } from '@coral-xyz/anchor';
+import { AnchorError } from '@anchor-lang/core';
 import * as Sentry from '@sentry/react-native';
 
 // Error messages keyed by program name and error code

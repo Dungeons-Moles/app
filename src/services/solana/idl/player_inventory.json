@@ -261,6 +261,20 @@
       ],
       "accounts": [
         {
+          "name": "inventory",
+          "writable": true
+        },
+        {
+          "name": "session",
+          "docs": [
+            "the session may already be delegated (owned by delegation program) at this point."
+          ]
+        },
+        {
+          "name": "player",
+          "signer": true
+        },
+        {
           "name": "buffer_inventory",
           "writable": true,
           "pda": {
@@ -346,8 +360,41 @@
               }
             ],
             "program": {
-              "kind": "account",
-              "path": "delegation_program"
+              "kind": "const",
+              "value": [
+                181,
+                183,
+                0,
+                225,
+                242,
+                87,
+                58,
+                192,
+                204,
+                6,
+                34,
+                1,
+                52,
+                74,
+                207,
+                151,
+                184,
+                53,
+                6,
+                235,
+                140,
+                229,
+                25,
+                152,
+                204,
+                98,
+                126,
+                24,
+                147,
+                128,
+                167,
+                62
+              ]
             }
           }
         },
@@ -386,24 +433,43 @@
               }
             ],
             "program": {
-              "kind": "account",
-              "path": "delegation_program"
+              "kind": "const",
+              "value": [
+                181,
+                183,
+                0,
+                225,
+                242,
+                87,
+                58,
+                192,
+                204,
+                6,
+                34,
+                1,
+                52,
+                74,
+                207,
+                151,
+                184,
+                53,
+                6,
+                235,
+                140,
+                229,
+                25,
+                152,
+                204,
+                98,
+                126,
+                24,
+                147,
+                128,
+                167,
+                62
+              ]
             }
           }
-        },
-        {
-          "name": "inventory",
-          "writable": true
-        },
-        {
-          "name": "session",
-          "docs": [
-            "the session may already be delegated (owned by delegation program) at this point."
-          ]
-        },
-        {
-          "name": "player",
-          "signer": true
         },
         {
           "name": "owner_program",
@@ -1692,6 +1758,10 @@
     },
     {
       "name": "process_undelegation",
+      "docs": [
+        "Processes undelegation of a previously delegated account.",
+        "Generated equivalent of what #[ephemeral] macro would produce."
+      ],
       "discriminator": [
         196,
         28,
@@ -2553,7 +2623,9 @@
     {
       "name": "Condition",
       "docs": [
-        "Conditions that must be met for an effect to fire"
+        "Conditions that must be met for an effect to fire.",
+        "IMPORTANT: Variant order determines borsh discriminant (0, 1, 2, ...).",
+        "Do NOT reorder existing variants — append new ones at the end."
       ],
       "repr": {
         "kind": "rust"
@@ -2578,9 +2650,6 @@
             "name": "EnemyHasArmor"
           },
           {
-            "name": "EnemyHasNoArmor"
-          },
-          {
             "name": "DigGreaterThanEnemyDig"
           },
           {
@@ -2597,6 +2666,9 @@
           },
           {
             "name": "OwnerHasArmor"
+          },
+          {
+            "name": "EnemyHasNoArmor"
           },
           {
             "name": "OwnerArmorAtLeast",

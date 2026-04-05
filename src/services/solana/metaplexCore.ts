@@ -1,5 +1,5 @@
 import { Connection, PublicKey, GetProgramAccountsFilter } from '@solana/web3.js';
-import { Program } from '@coral-xyz/anchor';
+import { Program } from '@anchor-lang/core';
 import type { MetaplexCoreAsset, ListingData } from '@/types/solana';
 import { MPL_CORE_PROGRAM_ID } from './constants';
 

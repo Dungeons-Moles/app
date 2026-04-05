@@ -1,5 +1,5 @@
 import { ComputeBudgetProgram, Connection, PublicKey, SystemProgram, Transaction, TransactionInstruction } from '@solana/web3.js';
-import type { Program } from '@coral-xyz/anchor';
+import type { Program } from '@anchor-lang/core';
 import BN from 'bn.js';
 import { SOLANA_CONFIG } from './config';
 import {

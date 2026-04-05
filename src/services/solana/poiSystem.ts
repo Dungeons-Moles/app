@@ -8,7 +8,7 @@
 
 import { PublicKey, Keypair, Transaction, ComputeBudgetProgram } from '@solana/web3.js';
 import type { Connection } from '@solana/web3.js';
-import { Program } from '@coral-xyz/anchor';
+import { Program } from '@anchor-lang/core';
 import { Platform } from 'react-native';
 import { sendSessionSignerTransaction } from './sessionSigner';
 import {

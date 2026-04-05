@@ -8,7 +8,7 @@ process.env.EXPO_PUBLIC_POI_SYSTEM_PROGRAM_ID = '1111111111111111111111111111111
 process.env.EXPO_PUBLIC_NFT_MARKETPLACE_PROGRAM_ID = '11111111111111111111111111111111';
 
 import { PublicKey } from '@solana/web3.js';
-import type { Program } from '@coral-xyz/anchor';
+import type { Program } from '@anchor-lang/core';
 
 import { fetchDuelEntry, deriveDuelEntryPda } from './duels';
 import { GAMEPLAY_STATE_PROGRAM_ID } from './constants';

@@ -1,4 +1,4 @@
-import { AnchorProvider, Program, Idl } from '@coral-xyz/anchor';
+import { AnchorProvider, Program, Idl } from '@anchor-lang/core';
 import { Connection } from '@solana/web3.js';
 import { ConnectionMagicRouter } from '@magicblock-labs/ephemeral-rollups-sdk';
 import { SOLANA_CONFIG } from './config';

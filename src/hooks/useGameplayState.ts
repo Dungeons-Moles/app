@@ -7,7 +7,7 @@
 
 import { useCallback, useState, useRef, useEffect, useMemo } from 'react';
 import { PublicKey, Keypair, Connection, Transaction } from '@solana/web3.js';
-import { AnchorProvider, Program } from '@coral-xyz/anchor';
+import { AnchorProvider, Program } from '@anchor-lang/core';
 import * as Sentry from '@sentry/react-native';
 import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
 import { useWallet } from '@/contexts/WalletContext';
@@ -260,18 +260,22 @@ export function useGameplayState(): UseGameplayStateReturn {
   const registerWsListener = useCallback((): {
     promise: Promise<GameState>;
     cancel: () => void;
+    deliveredViaWs: boolean;
   } => {
     let resolve: (state: GameState) => void;
+    const result = { promise: null as unknown as Promise<GameState>, cancel: () => {}, deliveredViaWs: false };
     const promise = new Promise<GameState>((r) => {
       resolve = r;
     });
     const listener = (state: GameState) => {
+      result.deliveredViaWs = true;
       wsListenersRef.current.delete(listener);
       resolve(state);
     };
     wsListenersRef.current.add(listener);
-    const cancel = () => wsListenersRef.current.delete(listener);
-    return { promise, cancel };
+    result.promise = promise;
+    result.cancel = () => wsListenersRef.current.delete(listener);
+    return result;
   }, []);
 
   /**
@@ -494,6 +498,7 @@ export function useGameplayState(): UseGameplayStateReturn {
         // Await only gameState — don't block the move on discovery WS delivery.
         // Discovery is best-effort: take whatever arrived by the time gameState resolves.
         const confirmedState = await raceWsVsFetch(wsState.promise, 500);
+        const tWs = Date.now();
 
         // Resolve discovery immediately with whatever is available (WS data or latest ref).
         if (!wsDiscoveryCancelled) {
@@ -502,6 +507,7 @@ export function useGameplayState(): UseGameplayStateReturn {
           wsDiscoveryResolve(latestDiscoveryRef.current);
         }
         const wsDiscoveryData = await wsDiscoveryPromise;
+        const tDiscovery = Date.now();
 
         // Only parse combat logs when the WS-delivered state shows HP changed or death.
         // This skips the expensive getTransaction RPC call on non-combat night moves.
@@ -521,20 +527,27 @@ export function useGameplayState(): UseGameplayStateReturn {
             { maxAttempts: 1, delayMs: 0, quiet: true }
           );
         }
+        const tCombat = Date.now();
 
-        const tDone = Date.now();
-        console.log(`[perf] move: ${tDone - t0}ms (send: ${tSent - t0}ms, ws: ${tDone - tSent}ms)`);
+        console.log(
+          `[perf] move: ${tCombat - t0}ms` +
+          ` | send: ${tSent - t0}ms` +
+          ` | wsWait: ${tWs - tSent}ms (${confirmedState ? 'ws' : 'timeout+fetch'})` +
+          ` | discovery: ${tDiscovery - tWs}ms` +
+          ` | combat: ${tCombat - tDiscovery}ms` +
+          ` (night=${isNightPhase}, hpChanged=${hpOrDeathChangedEarly})`
+        );
 
         // Prefer the WS-delivered discovery snapshot on normal moves to keep the
         // hot path fast. Only pay for a follow-up RPC read when the move changed
         // phase/week boundaries or when WS delivery missed entirely.
         let finalDiscovery: SessionDiscoveryData | null = wsDiscoveryData;
-        if (
-          confirmedState &&
+        const needsDiscoveryFetch = confirmedState &&
           (!wsDiscoveryData ||
             confirmedState.phase !== previousState.phase ||
-            confirmedState.week !== previousState.week)
-        ) {
+            confirmedState.week !== previousState.week);
+        if (needsDiscoveryFetch) {
+          const tDiscFetch = Date.now();
           const [sdPda] = deriveSessionDiscoveryPda(sessionPda);
           const freshDiscovery = await fetchSessionDiscovery(
             createMapGeneratorProgram(moveConnection),
@@ -543,12 +556,19 @@ export function useGameplayState(): UseGameplayStateReturn {
           if (freshDiscovery) {
             finalDiscovery = freshDiscovery;
           }
+          console.log(`[perf]   discoveryFetch: ${Date.now() - tDiscFetch}ms`);
         }
 
-        if (isMountedRef.current) {
-          setGameState(confirmedState);
-          setSyncStatus('synced');
-          setLastSyncAt(Date.now());
+        // Only call setGameState when WS timed out and we fell back to HTTP fetch.
+        // When WS delivered the state, the onAccountChange callback already called
+        // setGameState — calling it again would trigger a redundant re-render
+        // (~700ms on web), blocking the .then() in GameScreen.
+        if (confirmedState && !wsState.deliveredViaWs) {
+          if (isMountedRef.current) {
+            setGameState(confirmedState);
+            setSyncStatus('synced');
+            setLastSyncAt(Date.now());
+          }
         }
 
         // Heuristic combat indicator: HP loss, death, or gold increase strongly suggests combat.
@@ -585,6 +605,7 @@ export function useGameplayState(): UseGameplayStateReturn {
 
         // Use pre-fetched combat result from the quick parallel parse.
         // If the quick attempt missed and HP actually changed, do a follow-up retry.
+        const tCombatRetry = Date.now();
         let combatEnemyInfo: CombatEnemyInfo | undefined;
         if (!isBossOrEchoResolution) {
           if (combatResult.combatEnemyInfo) {
@@ -600,6 +621,9 @@ export function useGameplayState(): UseGameplayStateReturn {
             );
             combatEnemyInfo = retryResult.combatEnemyInfo;
           }
+        }
+        if (Date.now() - tCombatRetry > 5) {
+          console.log(`[perf]   combatRetry: ${Date.now() - tCombatRetry}ms (boss=${isBossOrEchoResolution}, hpChanged=${hpOrDeathChanged})`);
         }
 
         const parsedCombatDetected = !!combatEnemyInfo;
@@ -631,6 +655,12 @@ export function useGameplayState(): UseGameplayStateReturn {
           });
         }
 
+        console.log(
+          `[perf] move-total: ${Date.now() - t0}ms` +
+          ` | postProcess: ${Date.now() - tCombat}ms` +
+          ` (discFetch=${needsDiscoveryFetch ? 'yes' : 'no'}` +
+          `, combatRetry=${hpOrDeathChanged && !isBossOrEchoResolution ? 'yes' : 'no'})`
+        );
         return {
           success: true,
           newState: confirmedState ?? undefined,
@@ -1017,15 +1047,25 @@ export function useGameplayState(): UseGameplayStateReturn {
           const decoded = decodeGameStateFromAccountInfo(program, accountInfo.data);
           if (!decoded || cancelled) return;
 
-          if (isMountedRef.current) {
-            setGameState(decoded);
-            setSyncStatus('synced');
-            setLastSyncAt(Date.now());
+          // Notify one-shot listeners FIRST, then defer the React state
+          // update. This lets the promise .then() chain in GameScreen fire
+          // before React processes the re-render (~500-900ms on web).
+          const hasListeners = wsListenersRef.current.size > 0;
+          if (hasListeners) {
+            wsListenersRef.current.forEach((fn) => fn(decoded));
+            wsListenersRef.current.clear();
           }
-
-          // Notify one-shot listeners (from move/triggerBoss/updateStat)
-          wsListenersRef.current.forEach((fn) => fn(decoded));
-          wsListenersRef.current.clear();
+          // Defer setGameState so the promise resolution above can propagate
+          // through the microtask queue before React batches a re-render.
+          if (isMountedRef.current) {
+            queueMicrotask(() => {
+              if (isMountedRef.current) {
+                setGameState(decoded);
+                setSyncStatus('synced');
+                setLastSyncAt(Date.now());
+              }
+            });
+          }
         },
         'processed'
       );
