@@ -802,7 +802,8 @@
           "docs": [
             "Map generator program for record_discovered_poi CPI"
           ],
-          "optional": true
+          "optional": true,
+          "address": "E6kc5Edg1s3AXVQQFRoYdAq4vPAFbkYbP7B5ujiuZwz4"
         }
       ],
       "args": [
@@ -932,7 +933,8 @@
           "docs": [
             "Map generator program for record_discovered_poi CPI"
           ],
-          "optional": true
+          "optional": true,
+          "address": "E6kc5Edg1s3AXVQQFRoYdAq4vPAFbkYbP7B5ujiuZwz4"
         }
       ],
       "args": [
@@ -1102,7 +1104,8 @@
           "docs": [
             "Map generator program for offer data CPI"
           ],
-          "optional": true
+          "optional": true,
+          "address": "E6kc5Edg1s3AXVQQFRoYdAq4vPAFbkYbP7B5ujiuZwz4"
         }
       ],
       "args": [
@@ -1830,7 +1833,8 @@
           "docs": [
             "Map generator program for offer data CPI"
           ],
-          "optional": true
+          "optional": true,
+          "address": "E6kc5Edg1s3AXVQQFRoYdAq4vPAFbkYbP7B5ujiuZwz4"
         }
       ],
       "args": [
@@ -2095,7 +2099,8 @@
           "docs": [
             "Map generator program for offer data CPI"
           ],
-          "optional": true
+          "optional": true,
+          "address": "E6kc5Edg1s3AXVQQFRoYdAq4vPAFbkYbP7B5ujiuZwz4"
         }
       ],
       "args": [
@@ -2312,7 +2317,8 @@
           "docs": [
             "Map generator program for offer data CPI"
           ],
-          "optional": true
+          "optional": true,
+          "address": "E6kc5Edg1s3AXVQQFRoYdAq4vPAFbkYbP7B5ujiuZwz4"
         }
       ],
       "args": [
@@ -2830,7 +2836,8 @@
           "docs": [
             "Map generator program for offer data CPI"
           ],
-          "optional": true
+          "optional": true,
+          "address": "E6kc5Edg1s3AXVQQFRoYdAq4vPAFbkYbP7B5ujiuZwz4"
         }
       ],
       "args": [
@@ -3253,7 +3260,8 @@
           "docs": [
             "Map generator program for mark_discovered_poi_used CPI"
           ],
-          "optional": true
+          "optional": true,
+          "address": "E6kc5Edg1s3AXVQQFRoYdAq4vPAFbkYbP7B5ujiuZwz4"
         }
       ],
       "args": [
@@ -4986,7 +4994,8 @@
           "docs": [
             "Map generator program for offer data CPI"
           ],
-          "optional": true
+          "optional": true,
+          "address": "E6kc5Edg1s3AXVQQFRoYdAq4vPAFbkYbP7B5ujiuZwz4"
         }
       ],
       "args": [
@@ -5683,7 +5692,8 @@
           "docs": [
             "Map generator program for offer data CPI"
           ],
-          "optional": true
+          "optional": true,
+          "address": "E6kc5Edg1s3AXVQQFRoYdAq4vPAFbkYbP7B5ujiuZwz4"
         }
       ],
       "args": [
@@ -5881,7 +5891,8 @@
           "docs": [
             "Map generator program for offer data CPI"
           ],
-          "optional": true
+          "optional": true,
+          "address": "E6kc5Edg1s3AXVQQFRoYdAq4vPAFbkYbP7B5ujiuZwz4"
         }
       ],
       "args": []
@@ -5904,6 +5915,11 @@
       "accounts": [
         {
           "name": "map_pois",
+          "docs": [
+            "by the delegation program, not this program. Validated in handler via:",
+            "(1) PDA address derivation with crate::ID, (2) Anchor discriminator in",
+            "try_deserialize, (3) map_pois.session == session_key cross-reference."
+          ],
           "writable": true
         },
         {
@@ -5947,6 +5963,10 @@
       "accounts": [
         {
           "name": "poi_vrf_state",
+          "docs": [
+            "by the delegation program, not this program. Validated in handler via PDA",
+            "address derivation with crate::ID and discriminator check in try_deserialize."
+          ],
           "writable": true
         },
         {
