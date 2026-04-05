@@ -198,13 +198,13 @@ export function signTemplatedTransaction(
  */
 export const SESSION_COST_CAMPAIGN = 100_000_000; // 0.1 SOL
 export const SESSION_COST_DUEL = 100_000_000; // 0.1 SOL
-export const SESSION_COST_GAUNTLET = 100_000_000; // 0.1 SOL
+export const SESSION_COST_GAUNTLET = 150_000_000; // 0.15 SOL — gauntlet delegates ~12 accounts (echoes, globals, rewards, 5 pools)
 
 /** Fallback / max funding amount. */
 export const DEFAULT_FUND_AMOUNT = SESSION_COST_GAUNTLET;
 
 /** Maximum balance cap for session signer. Auto-withdraw excess after session end. */
-export const MAX_SIGNER_BALANCE = 110_000_000; // 0.11 SOL
+export const MAX_SIGNER_BALANCE = 160_000_000; // 0.16 SOL
 
 /** Total SOL needed by session signer per session (defaults to most expensive mode). */
 export const TOTAL_SESSION_COST = DEFAULT_FUND_AMOUNT;
