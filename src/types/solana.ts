@@ -28,6 +28,10 @@ export interface TransactionResult {
   success: boolean;
   signature?: string;
   error?: string;
+  /** True when the user explicitly cancelled (e.g. dismissed the funding prompt). */
+  cancelled?: boolean;
+  /** When set, the user chose to resume an existing session in this game mode. */
+  resumeSessionType?: 'campaign' | 'duel' | 'gauntlet';
   gameState?: GameState | null;
   mapSeed?: bigint | null;
   sessionPda?: string;

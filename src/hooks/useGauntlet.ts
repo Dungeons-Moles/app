@@ -345,7 +345,7 @@ export function useGauntlet() {
   );
 
   const enterGauntlet = useCallback(
-    async (onCommitted?: () => void): Promise<boolean> => {
+    async (onCommitted?: () => void): Promise<boolean | string> => {
       if (!wallet.publicKey) {
         setError('Wallet not connected');
         setPhase('error');
@@ -501,6 +501,7 @@ export function useGauntlet() {
           const startResult = await startGauntletGame(onCommitted);
           console.log('[useGauntlet] enterGauntlet:startGauntletGame_result', startResult);
           if (!startResult.success) {
+            if (startResult.cancelled) return startResult.resumeSessionType ?? false;
             const canRecoverViaResume = isRecoverableStartError(startResult.error);
             if (!canRecoverViaResume) {
               setError(startResult.error ?? 'Failed to start gauntlet session');

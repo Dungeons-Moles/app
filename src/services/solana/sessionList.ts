@@ -75,6 +75,10 @@ export interface ActiveSession {
   movesRemaining: number;
   /** Last activity timestamp */
   lastPlayedAt: number;
+  /** Current HP */
+  hp: number;
+  /** Maximum HP */
+  maxHp: number;
 }
 
 /**
@@ -236,6 +240,8 @@ export async function fetchSessionList(
         positionY: gameState.positionY,
         movesRemaining: gameState.movesRemaining,
         lastPlayedAt: Date.now(),
+        hp: gameState.hp ?? 0,
+        maxHp: gameState.maxHp ?? 0,
       });
     } catch (error) {
       // Keep session visible/resumable even if game_state decode fails transiently.
@@ -249,6 +255,8 @@ export async function fetchSessionList(
         positionY: 0,
         movesRemaining: 0,
         lastPlayedAt: Date.now(),
+        hp: 0,
+        maxHp: 0,
       });
       console.warn('[sessionList] Failed to decode game_state, using fallback metadata', {
         sessionPda: pubkey.toBase58(),

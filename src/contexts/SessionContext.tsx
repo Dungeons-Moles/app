@@ -8,7 +8,11 @@ import React, {
   useMemo,
   ReactNode,
 } from 'react';
-import { Alert } from 'react-native';
+import { Alert, View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
+import { Typography } from '@/theme/typography';
+import { useScreenVariant } from '@/contexts/ScreenVariantContext';
+import { useInputMode } from '@/hooks/useInputMode';
+import { useControllerAction } from '@/hooks/useControllerAction';
 import {
   Connection,
   Keypair,
@@ -77,6 +81,7 @@ import {
 } from '@/services/solana/deferredCleanup';
 import {
   loadSessionSignerWallet,
+  storeSessionSignerWallet,
   loadSessionSignerForSession,
   withdrawExcessToMain,
   calculateRequiredFunding,
@@ -118,6 +123,8 @@ import {
 } from '@/services/solana/types/gameplay_state';
 import type { TransactionResult } from '@/types/solana';
 import type { SessionSignerState } from '@/services/solana/sessionSigner';
+import { InlineModal } from '@/components/InlineModal';
+import { CachedImageBackground } from '@/components/common/CachedImageBackground';
 import type { CombatEnemyInfo } from '@/services/solana/eventParser';
 import type { GauntletCombatVisualEvent } from '@/services/solana/gauntlet';
 import {
@@ -173,6 +180,23 @@ function isFinalizedVrfStatus(status: number | null): boolean {
 // ============================================================================
 // Types
 // ============================================================================
+
+/** Discriminated union for the pre-session gate modal. */
+export type SessionGateState =
+  | {
+      type: 'activeSession';
+      session: ActiveSession;
+      targetMode: string;
+      targetLevel?: number;
+    }
+  | {
+      type: 'insufficientBalance';
+      amount: number;
+      balance: number;
+      targetMode: string;
+      targetLevel?: number;
+    }
+  | null;
 
 export interface SessionState {
   /** Current on-chain session (if any) */
@@ -303,6 +327,9 @@ interface SessionContextType extends SessionState {
   ) => Promise<TransactionResult>;
   /** Ensure required session VRF state is fulfilled before gameplay is allowed */
   ensureSessionVrfReady: (sessionPda?: string) => Promise<TransactionResult>;
+  /** Session gate state — when non-null, a blocking modal is shown (active session or funding) */
+  sessionGate: SessionGateState;
+  /** Dismiss the funding prompt and continue with the session start */
   /** Inspect current startup/readiness state for an existing session */
   getSessionStartupState: (sessionPda?: string) => Promise<SessionStartupState | null>;
   /** Abandon a session (deducts 1 run) */
@@ -384,6 +411,7 @@ interface SessionIdentityContextType {
   setGameStatePda: SessionContextType['setGameStatePda'];
   fetchSessionNonces: SessionContextType['fetchSessionNonces'];
   retryErVrfForSession: SessionContextType['retryErVrfForSession'];
+  sessionGate: SessionContextType['sessionGate'];
 }
 
 /** Frequently-changing gameplay state (updates during active gameplay) */
@@ -433,6 +461,51 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const forceAbandonCurrentSessionRef = useRef<(() => Promise<TransactionResult>) | null>(null);
   // Tracks in-flight session teardown so new session starts wait for cleanup to finish.
   const pendingTeardownRef = useRef<Promise<TransactionResult> | null>(null);
+
+  // Session gate: pre-session blocking modal (active session conflict or insufficient balance)
+  const FUNDING_PROMPT_THRESHOLD = 10_000_000; // 0.01 SOL — skip modal for tiny top-ups
+  const [sessionGate, setSessionGate] = useState<SessionGateState>(null);
+  const sessionGateResolveRef = useRef<((action: string) => void) | null>(null);
+  // Forward refs for functions defined later in the component (used by session gate)
+  const abandonSessionRef = useRef<(sessionPda: string) => Promise<TransactionResult>>(
+    () => Promise.resolve({ success: false, error: 'Not initialized' })
+  );
+  const refreshSessionListRef = useRef<() => Promise<void>>(() => Promise.resolve());
+
+  const resolveSessionGate = useCallback((action: string) => {
+    setSessionGate(null);
+    if (sessionGateResolveRef.current) {
+      sessionGateResolveRef.current(action);
+      sessionGateResolveRef.current = null;
+    }
+  }, []);
+
+  /** Check for active sessions and show the gate modal. Returns action taken. */
+  const checkActiveSessionGate = useCallback(
+    (targetMode: string, targetLevel?: number): Promise<'continue' | 'cancel' | 'resume' | 'abandon'> => {
+      if (activeSessions.length === 0) return Promise.resolve('continue' as const);
+      return new Promise((resolve) => {
+        sessionGateResolveRef.current = resolve as (action: string) => void;
+        setSessionGate({ type: 'activeSession', session: activeSessions[0], targetMode, targetLevel });
+      });
+    },
+    [activeSessions]
+  );
+
+  /** Show the funding modal and wait for user response. Returns true to continue, false if cancelled. */
+  const awaitFundingPromptIfNeeded = useCallback(
+    (fundingNeeded: number, signerBalance: number, targetMode: string, targetLevel?: number): Promise<boolean> => {
+      if (fundingNeeded <= FUNDING_PROMPT_THRESHOLD) {
+        return Promise.resolve(true);
+      }
+      return new Promise<boolean>((resolve) => {
+        sessionGateResolveRef.current = (action) => resolve(action === 'continue');
+        setSessionGate({ type: 'insufficientBalance', amount: fundingNeeded, balance: signerBalance, targetMode, targetLevel });
+      });
+    },
+    []
+  );
+
   const directErConnection = useMemo(
     () =>
       new Connection(DIRECT_ER_RPC_URL, {
@@ -2474,6 +2547,19 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         };
       }
 
+      // Check for active sessions in any mode — enforce single shared session
+      const gateResult = await checkActiveSessionGate('campaign', campaignLevel);
+      if (gateResult === 'cancel') return { success: false, cancelled: true };
+      if (gateResult === 'resume') return { success: false, cancelled: true, resumeSessionType: activeSessions[0]?.sessionType };
+      if (gateResult === 'abandon') {
+        const existing = activeSessions[0];
+        if (existing) {
+          const abandonResult = await abandonSessionRef.current(existing.sessionPda);
+          if (!abandonResult.success) return { success: false, error: abandonResult.error ?? 'Failed to abandon session' };
+          await refreshSessionListRef.current();
+        }
+      }
+
       // Validate campaign level is unlocked
       if (profile && campaignLevel > profile.currentLevel) {
         console.log('[SessionContext] Level not unlocked');
@@ -2718,11 +2804,32 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           derivedSessionSigner.publicKey.toBase58()
         );
       } else {
-        const derivationSignature = await signMessage(buildGameWalletDerivationMessage());
-        derivedSessionSigner = deriveSessionSignerFromSignature(derivationSignature);
+        // Try loading from storage first (avoids signMessage popup if previously derived)
+        const walletAddress = wallet.address ?? wallet.publicKey?.toBase58();
+        if (walletAddress) {
+          const stored = await loadSessionSignerWallet(walletAddress);
+          if (stored) {
+            derivedSessionSigner = stored;
+            await sessionSigner.markAsActive(stored);
+            console.log(
+              '[SessionContext] Loaded sessionSigner from storage:',
+              derivedSessionSigner.publicKey.toBase58()
+            );
+          } else {
+            const derivationSignature = await signMessage(buildGameWalletDerivationMessage());
+            derivedSessionSigner = deriveSessionSignerFromSignature(derivationSignature);
+            await storeSessionSignerWallet(walletAddress, derivedSessionSigner);
+            await sessionSigner.markAsActive(derivedSessionSigner);
+          }
+        } else {
+          const derivationSignature = await signMessage(buildGameWalletDerivationMessage());
+          derivedSessionSigner = deriveSessionSignerFromSignature(derivationSignature);
+        }
       }
       const signerBalance = await connection.getBalance(derivedSessionSigner.publicKey);
       const fundingNeeded = calculateRequiredFunding(signerBalance, SESSION_COST_CAMPAIGN);
+      const fundingContinued = await awaitFundingPromptIfNeeded(fundingNeeded, signerBalance, 'campaign', campaignLevel);
+      if (!fundingContinued) return { success: false, cancelled: true };
       const sessionSignerResult = await sessionSigner.createWithoutFundingFromKeypair(
         derivedSessionSigner,
         fundingNeeded
@@ -3257,6 +3364,19 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         return { success: false, error: 'Wallet not connected' };
       }
 
+      // Check for active sessions in any mode — enforce single shared session
+      const duelGateResult = await checkActiveSessionGate('duel');
+      if (duelGateResult === 'cancel') return { success: false, cancelled: true };
+      if (duelGateResult === 'resume') return { success: false, cancelled: true, resumeSessionType: activeSessions[0]?.sessionType };
+      if (duelGateResult === 'abandon') {
+        const existing = activeSessions[0];
+        if (existing) {
+          const abandonResult = await abandonSessionRef.current(existing.sessionPda);
+          if (!abandonResult.success) return { success: false, error: abandonResult.error ?? 'Failed to abandon session' };
+          await refreshSessionListRef.current();
+        }
+      }
+
       const duelNonces = await sessionManager.fetchSessionNonces(wallet.publicKey);
       let duelSessionSigner: Keypair;
       if (sessionSigner.keypair) {
@@ -3267,6 +3387,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
       const duelSignerBalance = await connection.getBalance(duelSessionSigner.publicKey);
       const duelFundingNeeded = calculateRequiredFunding(duelSignerBalance, SESSION_COST_DUEL);
+      const fundingContinued = await awaitFundingPromptIfNeeded(duelFundingNeeded, duelSignerBalance, 'duel');
+      if (!fundingContinued) return { success: false, cancelled: true };
       const sessionSignerResult = await sessionSigner.createWithoutFundingFromKeypair(
         duelSessionSigner,
         duelFundingNeeded
@@ -3677,6 +3799,19 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         return { success: false, error: 'Wallet not connected' };
       }
 
+      // Check for active sessions in any mode — enforce single shared session
+      const gauntletGateResult = await checkActiveSessionGate('gauntlet');
+      if (gauntletGateResult === 'cancel') return { success: false, cancelled: true };
+      if (gauntletGateResult === 'resume') return { success: false, cancelled: true, resumeSessionType: activeSessions[0]?.sessionType };
+      if (gauntletGateResult === 'abandon') {
+        const existing = activeSessions[0];
+        if (existing) {
+          const abandonResult = await abandonSessionRef.current(existing.sessionPda);
+          if (!abandonResult.success) return { success: false, error: abandonResult.error ?? 'Failed to abandon session' };
+          await refreshSessionListRef.current();
+        }
+      }
+
       const gauntletNonces = await sessionManager.fetchSessionNonces(wallet.publicKey);
       let gauntletSessionSigner: Keypair;
       if (sessionSigner.keypair) {
@@ -3690,6 +3825,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         gauntletSignerBalance,
         SESSION_COST_GAUNTLET
       );
+      const fundingContinued = await awaitFundingPromptIfNeeded(gauntletFundingNeeded, gauntletSignerBalance, 'gauntlet');
+      if (!fundingContinued) return { success: false, cancelled: true };
       const sessionSignerResult = await sessionSigner.createWithoutFundingFromKeypair(
         gauntletSessionSigner,
         gauntletFundingNeeded
@@ -5010,6 +5147,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setIsSessionListLoading(false);
     }
   }, [connection, wallet.publicKey]);
+  refreshSessionListRef.current = refreshSessionList;
 
   // Fetch session list when wallet connects
   useEffect(() => {
@@ -5111,6 +5249,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         overrideSignerBalance,
         SESSION_COST_CAMPAIGN
       );
+      const fundingContinued = await awaitFundingPromptIfNeeded(overrideFundingNeeded, overrideSignerBalance, 'campaign', campaignLevel);
+      if (!fundingContinued) return { success: false, cancelled: true };
       const sessionSignerResult = await sessionSigner.createWithoutFundingFromKeypair(
         derivedSessionSigner,
         overrideFundingNeeded
@@ -5494,6 +5634,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
       const overrideDuelBalance = await connection.getBalance(duelSessionSigner.publicKey);
       const overrideDuelFunding = calculateRequiredFunding(overrideDuelBalance, SESSION_COST_DUEL);
+      const fundingContinued = await awaitFundingPromptIfNeeded(overrideDuelFunding, overrideDuelBalance, 'duel');
+      if (!fundingContinued) return { success: false, cancelled: true };
       const sessionSignerResult = await sessionSigner.createWithoutFundingFromKeypair(
         duelSessionSigner,
         overrideDuelFunding
@@ -5843,6 +5985,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         overrideGauntletBalance,
         SESSION_COST_GAUNTLET
       );
+      const fundingContinued = await awaitFundingPromptIfNeeded(overrideGauntletFunding, overrideGauntletBalance, 'gauntlet');
+      if (!fundingContinued) return { success: false, cancelled: true };
       const sessionSignerResult = await sessionSigner.createWithoutFundingFromKeypair(
         gauntletSessionSigner,
         overrideGauntletFunding
@@ -7280,6 +7424,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     },
     [activeSessions, connection, wallet.publicKey, refreshSessionList, queueEndGame]
   );
+  abandonSessionRef.current = abandonSessionFn;
 
   /**
    * Force abandon the current session by calling the Solana abandon_session instruction.
@@ -7551,6 +7696,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setGameStatePda: gameplayState.setGameStatePda,
       fetchSessionNonces,
       retryErVrfForSession,
+      sessionGate,
     }),
     [
       sessionManager.session,
@@ -7601,6 +7747,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       gameplayState.setGameStatePda,
       fetchSessionNonces,
       retryErVrfForSession,
+      sessionGate,
     ]
   );
 
@@ -7648,11 +7795,599 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       <SessionIdentityContext.Provider value={identityValue}>
         <SessionGameplayContext.Provider value={gameplayValue}>
           {children}
+          <SessionGateModal
+            gate={sessionGate}
+            onAction={resolveSessionGate}
+          />
         </SessionGameplayContext.Provider>
       </SessionIdentityContext.Provider>
     </SessionContext.Provider>
   );
 }
+
+// ============================================================================
+// Session Gate Modal — blocks session start when active session exists or funding is needed
+// ============================================================================
+
+const PAPER_PANEL_SOURCE = require('../../assets/ui/panels/paper-panel.webp');
+const BUTTON_V1_SOURCE = require('../../assets/ui/buttons/button-v1.webp');
+const BUTTON_V4_SOURCE = require('../../assets/ui/buttons/button-v4.webp');
+const ICON_A_SOURCE = require('../../assets/ui/control-buttons/a.webp');
+const ICON_B_SOURCE = require('../../assets/ui/control-buttons/b.webp');
+const ICON_X_SOURCE = require('../../assets/ui/control-buttons/x.webp');
+
+function getModeBadgeLabel(sessionType: string): string {
+  switch (sessionType) {
+    case 'campaign': return 'CAMPAIGN';
+    case 'duel': return 'DUELS';
+    case 'gauntlet': return 'GAUNTLET';
+    default: return sessionType.toUpperCase();
+  }
+}
+
+function getTargetLabel(mode: string, level?: number): string {
+  switch (mode) {
+    case 'campaign': return `Campaign — Stage ${(level ?? 0) + 1}`;
+    case 'duel': return 'Duels';
+    case 'gauntlet': return 'Gauntlet';
+    default: return mode;
+  }
+}
+
+function SessionGateModal({
+  gate,
+  onAction,
+}: {
+  gate: SessionGateState;
+  onAction: (action: string) => void;
+}) {
+  const isCompact = useScreenVariant() === 'compact';
+  const inputMode = useInputMode();
+  const isController = inputMode === 'controller';
+  const visible = gate !== null;
+
+  const handleCancel = useCallback(() => onAction('cancel'), [onAction]);
+  const handleContinue = useCallback(() => onAction('continue'), [onAction]);
+  const handleResume = useCallback(() => onAction('resume'), [onAction]);
+  const handleAbandon = useCallback(() => onAction('abandon'), [onAction]);
+
+  useControllerAction(
+    gate?.type === 'activeSession'
+      ? { onA: handleResume, onB: handleCancel, onX: handleAbandon }
+      : { onA: handleContinue, onB: handleCancel },
+    isController && visible
+  );
+
+  if (!gate) return null;
+
+  if (gate.type === 'activeSession') {
+    return (
+      <ActiveSessionGateContent
+        session={gate.session}
+        isCompact={isCompact}
+        isController={isController}
+        onResume={handleResume}
+        onAbandon={handleAbandon}
+        onCancel={handleCancel}
+      />
+    );
+  }
+
+  return (
+    <InsufficientBalanceGateContent
+      amount={gate.amount}
+      balance={gate.balance}
+      targetMode={gate.targetMode}
+      targetLevel={gate.targetLevel}
+      isCompact={isCompact}
+      isController={isController}
+      onContinue={handleContinue}
+      onCancel={handleCancel}
+    />
+  );
+}
+
+// --- Active Session Gate (Image 1) ---
+
+function ActiveSessionGateContent({
+  session,
+  isCompact,
+  isController,
+  onResume,
+  onAbandon,
+  onCancel,
+}: {
+  session: ActiveSession;
+  isCompact: boolean;
+  isController: boolean;
+  onResume: () => void;
+  onAbandon: () => void;
+  onCancel: () => void;
+}) {
+  const weekProgress = session.week / 3;
+
+  return (
+    <InlineModal visible transparent animationType="fade" onRequestClose={onCancel}>
+      <View style={sgStyles.overlay}>
+        <CachedImageBackground
+          source={PAPER_PANEL_SOURCE}
+          resizeMode="stretch"
+          style={[sgStyles.content, isCompact && sgCompact.content]}
+        >
+          <Text style={[sgStyles.title, isCompact && sgCompact.title]}>
+            Session Already in Progress
+          </Text>
+          <Text style={[sgStyles.subtitle, isCompact && sgCompact.subtitle]}>
+            You can only have one active session at a time. Resume your run or abandon it to start fresh.
+          </Text>
+
+          {/* Mode badge */}
+          <View style={[sgStyles.badge, isCompact && sgCompact.badge]}>
+            <Text style={[sgStyles.badgeText, isCompact && sgCompact.badgeText]}>
+              {getModeBadgeLabel(session.sessionType)}
+            </Text>
+          </View>
+
+          {/* Stats card */}
+          <View style={[sgStyles.card, isCompact && sgCompact.card]}>
+            {session.sessionType === 'campaign' ? (
+              <View style={sgStyles.statRow}>
+                <Text style={[sgStyles.statLabel, isCompact && sgCompact.statLabel]}>Stage</Text>
+                <Text style={[sgStyles.statValue, isCompact && sgCompact.statValue]}>
+                  {session.level + 1} / 40 · Week {session.week}
+                </Text>
+              </View>
+            ) : (
+              <View style={sgStyles.statRow}>
+                <Text style={[sgStyles.statLabel, isCompact && sgCompact.statLabel]}>Phase</Text>
+                <Text style={[sgStyles.statValue, isCompact && sgCompact.statValue]}>
+                  Week {session.week}
+                </Text>
+              </View>
+            )}
+            {session.maxHp > 0 && (
+              <View style={sgStyles.statRow}>
+                <Text style={[sgStyles.statLabel, isCompact && sgCompact.statLabel]}>HP</Text>
+                <Text style={[sgStyles.statValue, isCompact && sgCompact.statValue]}>
+                  {session.hp} / {session.maxHp}
+                </Text>
+              </View>
+            )}
+            {/* Progress bar */}
+            <View style={sgStyles.progressSection}>
+              <View style={sgStyles.progressHeader}>
+                <Text style={[sgStyles.progressLabel, isCompact && sgCompact.progressLabel]}>Run progress</Text>
+                <Text style={[sgStyles.progressLabel, isCompact && sgCompact.progressLabel]}>Week {session.week} of 3</Text>
+              </View>
+              <View style={[sgStyles.progressTrack, isCompact && sgCompact.progressTrack]}>
+                <View style={[sgStyles.progressFill, { width: `${weekProgress * 100}%` }]} />
+              </View>
+            </View>
+          </View>
+
+          {/* Actions */}
+          {isCompact ? (
+            <View style={sgCompact.hintRow}>
+              <View style={sgCompact.hintItem}>
+                <Image source={ICON_B_SOURCE} style={sgCompact.hintIcon} resizeMode="contain" />
+                <Text style={sgCompact.hintLabel}>Cancel</Text>
+              </View>
+              <View style={sgCompact.hintItem}>
+                <Image source={ICON_X_SOURCE} style={sgCompact.hintIcon} resizeMode="contain" />
+                <Text style={sgCompact.hintLabel}>Abandon & Start New</Text>
+              </View>
+              <View style={sgCompact.hintItem}>
+                <Image source={ICON_A_SOURCE} style={sgCompact.hintIcon} resizeMode="contain" />
+                <Text style={sgCompact.hintLabel}>Resume</Text>
+              </View>
+            </View>
+          ) : (
+            <View style={sgStyles.actions}>
+              <TouchableOpacity onPress={onResume}>
+                <CachedImageBackground source={BUTTON_V4_SOURCE} resizeMode="stretch" style={sgStyles.buttonBg}>
+                  <Text style={sgStyles.buttonTextPrimary}>Resume Adventure</Text>
+                </CachedImageBackground>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={onAbandon}>
+                <CachedImageBackground source={BUTTON_V1_SOURCE} resizeMode="stretch" style={sgStyles.buttonBg}>
+                  <Text style={sgStyles.buttonTextSecondary}>Abandon & Start New</Text>
+                </CachedImageBackground>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={onCancel} hitSlop={{ top: 8, bottom: 8, left: 16, right: 16 }}>
+                <Text style={[sgStyles.linkText, isCompact && sgCompact.linkText]}>Go back</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          <Text style={[sgStyles.footnote, isCompact && sgCompact.footnote]}>
+            Abandoning will close all session accounts and return your deposit to your game wallet.
+          </Text>
+        </CachedImageBackground>
+      </View>
+    </InlineModal>
+  );
+}
+
+// --- Insufficient Balance Gate (Image 2) ---
+
+function InsufficientBalanceGateContent({
+  amount,
+  balance,
+  targetMode,
+  targetLevel,
+  isCompact,
+  isController,
+  onContinue,
+  onCancel,
+}: {
+  amount: number;
+  balance: number;
+  targetMode: string;
+  targetLevel?: number;
+  isCompact: boolean;
+  isController: boolean;
+  onContinue: () => void;
+  onCancel: () => void;
+}) {
+  const totalDeposit = 0.12;
+  const balanceSol = (balance / 1e9).toFixed(4);
+  const topUpSol = (amount / 1e9).toFixed(4);
+
+  return (
+    <InlineModal visible transparent animationType="fade" onRequestClose={onCancel}>
+      <View style={sgStyles.overlay}>
+        <CachedImageBackground
+          source={PAPER_PANEL_SOURCE}
+          resizeMode="stretch"
+          style={[sgStyles.content, sgStyles.contentTall, isCompact && sgCompact.content, isCompact && sgCompact.contentTall]}
+        >
+          <Text style={[sgStyles.title, isCompact && sgCompact.title]}>
+            Not Enough Supplies
+          </Text>
+          <Text style={[sgStyles.subtitle, isCompact && sgCompact.subtitle]}>
+            Your Season Pass needs a refundable deposit of{' '}
+            <Text style={sgStyles.highlightGreen}>{totalDeposit} SOL</Text> to start a new session.
+          </Text>
+
+          <View style={[sgStyles.divider, isCompact && sgCompact.divider]} />
+
+          <Text style={[sgStyles.targetText, isCompact && sgCompact.targetText]}>
+            Starting: <Text style={sgStyles.bold}>{getTargetLabel(targetMode, targetLevel)}</Text>
+          </Text>
+
+          {/* Balance card */}
+          <View style={[sgStyles.card, isCompact && sgCompact.card]}>
+            <View style={sgStyles.statRow}>
+              <Text style={[sgStyles.statLabel, isCompact && sgCompact.statLabel]}>Game wallet balance</Text>
+              <Text style={[sgStyles.statValueRed, isCompact && sgCompact.statValue]}>{balanceSol} SOL</Text>
+            </View>
+            <View style={[sgStyles.cardSeparator, isCompact && sgCompact.cardSeparator]} />
+            <View style={sgStyles.statRow}>
+              <Text style={[sgStyles.statLabel, isCompact && sgCompact.statLabel]}>Top-up needed</Text>
+              <Text style={[sgStyles.statValueGreen, isCompact && sgCompact.statValue]}>{topUpSol} SOL</Text>
+            </View>
+          </View>
+
+          {/* Info box */}
+          <View style={[sgStyles.infoBox, isCompact && sgCompact.infoBox]}>
+            <Text style={[sgStyles.infoText, isCompact && sgCompact.infoText]}>
+              <Text style={sgStyles.bold}>This is not a fee.</Text> Your full {totalDeposit} SOL is returned to your game wallet when the session ends. Withdraw anytime from your <Text style={sgStyles.bold}>Profile</Text>.
+            </Text>
+          </View>
+
+          {/* Actions */}
+          {isCompact ? (
+            <View style={sgCompact.hintRow}>
+              <View style={sgCompact.hintItem}>
+                <Image source={ICON_A_SOURCE} style={sgCompact.hintIcon} resizeMode="contain" />
+                <Text style={sgCompact.hintLabel}>Top Up & Play</Text>
+              </View>
+              <View style={sgCompact.hintItem}>
+                <Image source={ICON_B_SOURCE} style={sgCompact.hintIcon} resizeMode="contain" />
+                <Text style={sgCompact.hintLabel}>Go back</Text>
+              </View>
+            </View>
+          ) : (
+            <View style={sgStyles.actions}>
+              <TouchableOpacity onPress={onContinue}>
+                <CachedImageBackground source={BUTTON_V4_SOURCE} resizeMode="stretch" style={sgStyles.buttonBgWide}>
+                  <Text style={sgStyles.buttonTextPrimary}>Top Up & Play</Text>
+                </CachedImageBackground>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={onCancel} hitSlop={{ top: 8, bottom: 8, left: 16, right: 16 }}>
+                <Text style={[sgStyles.linkText, isCompact && sgCompact.linkText]}>Go back</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </CachedImageBackground>
+      </View>
+    </InlineModal>
+  );
+}
+
+const sgStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  content: {
+    width: 480,
+    padding: 40,
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+  },
+  contentTall: {
+    paddingVertical: 28,
+  },
+  title: {
+    fontFamily: Typography.header,
+    fontSize: 20,
+    color: '#3d2b1f',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  subtitle: {
+    fontFamily: Typography.body,
+    fontSize: 11,
+    color: '#5c4033',
+    textAlign: 'center',
+    lineHeight: 16,
+    marginBottom: 12,
+  },
+  badge: {
+    backgroundColor: 'rgba(46, 125, 50, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(46, 125, 50, 0.35)',
+    borderRadius: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 3,
+    marginBottom: 10,
+  },
+  badgeText: {
+    fontFamily: Typography.stat,
+    fontSize: 10,
+    color: '#2e7d32',
+    letterSpacing: 1,
+  },
+  card: {
+    width: '100%',
+    borderWidth: 1,
+    borderColor: 'rgba(93, 64, 51, 0.2)',
+    borderRadius: 6,
+    padding: 10,
+    marginBottom: 10,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+  },
+  statRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  statLabel: {
+    fontFamily: Typography.body,
+    fontSize: 11,
+    color: '#5c4033',
+  },
+  statValue: {
+    fontFamily: Typography.stat,
+    fontSize: 12,
+    color: '#3d2b1f',
+  },
+  statValueRed: {
+    fontFamily: Typography.stat,
+    fontSize: 12,
+    color: '#c62828',
+  },
+  statValueGreen: {
+    fontFamily: Typography.stat,
+    fontSize: 12,
+    color: '#2e7d32',
+  },
+  cardSeparator: {
+    height: 1,
+    backgroundColor: 'rgba(93, 64, 51, 0.15)',
+    marginVertical: 4,
+  },
+  progressSection: {
+    marginTop: 6,
+  },
+  progressHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  progressLabel: {
+    fontFamily: Typography.body,
+    fontSize: 9,
+    color: '#8d7b6b',
+  },
+  progressTrack: {
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(93, 64, 51, 0.15)',
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 4,
+    backgroundColor: '#2e7d32',
+  },
+  divider: {
+    width: '80%',
+    height: 1,
+    backgroundColor: 'rgba(93, 64, 51, 0.2)',
+    marginVertical: 8,
+  },
+  targetText: {
+    fontFamily: Typography.body,
+    fontSize: 11,
+    color: '#5c4033',
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  bold: {
+    fontFamily: Typography.stat,
+    color: '#3d2b1f',
+  },
+  highlightGreen: {
+    fontFamily: Typography.stat,
+    color: '#2e7d32',
+  },
+  infoBox: {
+    width: '100%',
+    backgroundColor: 'rgba(46, 125, 50, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(46, 125, 50, 0.2)',
+    borderRadius: 6,
+    padding: 10,
+    marginBottom: 12,
+  },
+  infoText: {
+    fontFamily: Typography.body,
+    fontSize: 10,
+    color: '#5c4033',
+    textAlign: 'center',
+    lineHeight: 15,
+  },
+  actions: {
+    alignItems: 'center',
+    gap: 8,
+  },
+  buttonBg: {
+    paddingVertical: 10,
+    paddingHorizontal: 24,
+    minWidth: 200,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  buttonBgWide: {
+    paddingVertical: 10,
+    paddingHorizontal: 24,
+    minWidth: 220,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  buttonTextPrimary: {
+    fontFamily: Typography.button,
+    fontSize: 14,
+    color: '#1f2f1a',
+    textAlign: 'center',
+  },
+  buttonTextSecondary: {
+    fontFamily: Typography.button,
+    fontSize: 14,
+    color: '#3d2b1f',
+    textAlign: 'center',
+  },
+  linkText: {
+    fontFamily: Typography.body,
+    fontSize: 11,
+    color: '#8d7b6b',
+    textDecorationLine: 'underline',
+    marginTop: 2,
+  },
+  footnote: {
+    fontFamily: Typography.body,
+    fontSize: 9,
+    color: '#8d7b6b',
+    fontStyle: 'italic',
+    textAlign: 'center',
+    marginTop: 8,
+  },
+});
+
+const sgCompact = StyleSheet.create({
+  content: {
+    width: 900,
+    padding: 60,
+  },
+  contentTall: {
+    paddingVertical: 40,
+  },
+  title: {
+    fontSize: 38,
+    marginBottom: 12,
+  },
+  subtitle: {
+    fontSize: 20,
+    lineHeight: 28,
+    marginBottom: 16,
+  },
+  badge: {
+    paddingHorizontal: 20,
+    paddingVertical: 6,
+    marginBottom: 16,
+  },
+  badgeText: {
+    fontSize: 18,
+  },
+  card: {
+    padding: 16,
+    marginBottom: 16,
+  },
+  statLabel: {
+    fontSize: 20,
+  },
+  statValue: {
+    fontSize: 22,
+  },
+  progressLabel: {
+    fontSize: 16,
+  },
+  progressTrack: {
+    height: 14,
+    borderRadius: 7,
+  },
+  divider: {
+    marginVertical: 12,
+  },
+  targetText: {
+    fontSize: 20,
+    marginBottom: 16,
+  },
+  infoBox: {
+    padding: 16,
+    marginBottom: 20,
+  },
+  infoText: {
+    fontSize: 18,
+    lineHeight: 26,
+  },
+  cardSeparator: {
+    marginVertical: 6,
+  },
+  linkText: {
+    fontSize: 20,
+  },
+  footnote: {
+    fontSize: 16,
+    marginTop: 12,
+  },
+  hintRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 30,
+    marginTop: 8,
+  },
+  hintItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  hintIcon: {
+    width: 72,
+    height: 72,
+  },
+  hintLabel: {
+    fontFamily: Typography.button,
+    fontSize: 28,
+    color: '#3d2b1f',
+  },
+});
 
 // ============================================================================
 // Hook

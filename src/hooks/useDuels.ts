@@ -149,7 +149,7 @@ export function useDuels() {
     [switchToSession]
   );
 
-  const enterCurrentSessionDuel = useCallback(async (onCommitted?: () => void): Promise<boolean> => {
+  const enterCurrentSessionDuel = useCallback(async (onCommitted?: () => void): Promise<boolean | string> => {
     if (!wallet.publicKey) {
       setError('Wallet not connected');
       setPhase('error');
@@ -265,6 +265,7 @@ export function useDuels() {
         // startDuelGame now calls enter_duel on base chain before delegation.
         const startResult = await startDuelGame(onCommitted);
         if (!startResult.success) {
+          if (startResult.cancelled) return startResult.resumeSessionType ?? false;
           const canRecoverViaResume = isRecoverableDuelStartError(startResult.error);
           if (!canRecoverViaResume) {
             setError(startResult.error ?? 'Failed to start duel session');

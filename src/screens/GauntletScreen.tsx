@@ -58,7 +58,7 @@ type GauntletScreenProps = {
 
 export function GauntletScreen({ navigation }: GauntletScreenProps) {
   const gauntlet = useGauntlet();
-  const { overrideAndStartGauntletGame, fetchSessionNonces } = useSessionIdentity();
+  const { overrideAndStartGauntletGame, fetchSessionNonces, sessionGate } = useSessionIdentity();
   const { dispatch } = useGame();
   const { wallet, disconnect } = useWallet();
   const { connection } = useSolanaConnection();
@@ -180,13 +180,20 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
       navigation.navigate('SessionLoading', { mode: 'gauntlet' });
       navigatedToLoading = true;
     });
-    if (ok) {
+    if (ok === true) {
       dispatch({ type: 'RESET_GAME' });
       if (!navigatedToLoading) {
         createSessionSetup();
         navigation.navigate('SessionLoading', { mode: 'gauntlet' });
       }
       resolveSessionSetup();
+      return;
+    }
+    if (typeof ok === 'string') {
+      // User chose to resume an existing session in another mode
+      setIsEntryTransitioning(false);
+      const route = ok === 'campaign' ? 'CampaignSelect' : ok === 'duel' ? 'Duels' : 'Gauntlet';
+      navigation.navigate(route as any);
       return;
     }
     if (navigatedToLoading) {
@@ -221,6 +228,10 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
     });
     if (!overrideResult.success) {
       setIsEntryTransitioning(false);
+      if (overrideResult.cancelled) {
+        if (navigatedToLoading) rejectSessionSetup('Cancelled');
+        return;
+      }
       const msg = overrideResult.error ?? 'Failed to override gauntlet session.';
       if (navigatedToLoading) {
         rejectSessionSetup(msg);
@@ -284,7 +295,7 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
           onDPadRight: () => setPanelFocus(1),
           onY: handleRanking,
         },
-    isController && isFocused
+    isController && isFocused && !sessionGate
   );
 
   const controllerHints: ButtonHint[] = showSessionExistsModal

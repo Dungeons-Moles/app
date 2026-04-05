@@ -56,7 +56,7 @@ type DuelsScreenProps = {
 
 export function DuelsScreen({ navigation }: DuelsScreenProps) {
   const duels = useDuels();
-  const { overrideAndStartDuelGame, fetchSessionNonces } = useSessionIdentity();
+  const { overrideAndStartDuelGame, fetchSessionNonces, sessionGate } = useSessionIdentity();
   const { dispatch } = useGame();
   const { wallet, disconnect } = useWallet();
   const { connection } = useSolanaConnection();
@@ -158,7 +158,7 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
       navigation.navigate('SessionLoading', { mode: 'duel' });
       navigatedToLoading = true;
     });
-    if (ok) {
+    if (ok === true) {
       dispatch({ type: 'RESET_GAME' });
       if (!navigatedToLoading) {
         // Setup completed before the onCommitted callback fired — navigate
@@ -167,6 +167,11 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
         navigation.navigate('SessionLoading', { mode: 'duel' });
       }
       resolveSessionSetup();
+      return;
+    }
+    if (typeof ok === 'string') {
+      const route = ok === 'campaign' ? 'CampaignSelect' : ok === 'gauntlet' ? 'Gauntlet' : 'Duels';
+      navigation.navigate(route as any);
       return;
     }
     if (navigatedToLoading) {
@@ -198,6 +203,10 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
       navigatedToLoading = true;
     });
     if (!overrideResult.success) {
+      if (overrideResult.cancelled) {
+        if (navigatedToLoading) rejectSessionSetup('Cancelled');
+        return;
+      }
       const msg = overrideResult.error ?? 'Failed to override duel session.';
       if (navigatedToLoading) {
         rejectSessionSetup(msg);
@@ -250,7 +259,7 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
           onDPadLeft: () => setPanelFocus(0),
           onDPadRight: () => setPanelFocus(1),
         },
-    isController && isFocused
+    isController && isFocused && !sessionGate
   );
 
   const controllerHints: ButtonHint[] = showSessionExistsModal

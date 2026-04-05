@@ -80,6 +80,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
     switchToSession,
     ensureSessionVrfReady,
     getSessionPdaForLevel,
+    sessionGate,
   } = useSessionIdentity();
   const { state: gameState, dispatch } = useGame();
   const {
@@ -163,7 +164,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
           console.log('[CampaignSelect] No session PDA found, trying startSessionOnChain...');
           const result = await startSessionOnChain(level.level);
           if (result && !result.success) {
-            rejectSessionSetup(result.error ?? 'Failed to resume session.');
+            if (!result.cancelled) rejectSessionSetup(result.error ?? 'Failed to resume session.');
             return;
           }
           resumedSessionPda = result?.sessionPda ?? null;
@@ -368,6 +369,15 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
           }
 
           if (!result?.success) {
+            if (result?.cancelled) {
+              if (result.resumeSessionType) {
+                const route = result.resumeSessionType === 'campaign' ? 'CampaignSelect'
+                  : result.resumeSessionType === 'gauntlet' ? 'Gauntlet' : 'Duels';
+                navigation.navigate(route as any);
+              }
+              if (navigatedToLoading) rejectSessionSetup('Cancelled');
+              return;
+            }
             const errorMsg = result?.error ?? 'Failed to start session.';
             console.warn('[CampaignSelect] Session start failed:', errorMsg);
             if (navigatedToLoading) {
@@ -615,6 +625,12 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
       });
       console.log('[CampaignSelect] overrideAndStartGame result', overrideResult);
       if (!overrideResult.success) {
+        if (overrideResult.cancelled) {
+          setShowSessionExistsModal(false);
+          setShowSessionInitializingModal(false);
+          if (navigatedToLoading) rejectSessionSetup('Cancelled');
+          return;
+        }
         setShowSessionExistsModal(false);
         setShowSessionInitializingModal(false);
         if (navigatedToLoading) {
@@ -693,7 +709,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
       onDPadUp: () => setCursorIdx((p) => Math.max(0, p - NUM_COLUMNS)),
       onDPadDown: () => setCursorIdx((p) => Math.min(levels.length - 1, p + NUM_COLUMNS)),
     },
-    isController && isScreenFocused && !showSettingsModal
+    isController && isScreenFocused && !showSettingsModal && !sessionGate
   );
 
   const controllerHints: ButtonHint[] = anyModalOpen
