@@ -517,6 +517,44 @@ export function useGameplayState(): UseGameplayStateReturn {
         const confirmedState = await raceWsVsFetch(wsState.promise, 500);
         const tWs = Date.now();
 
+        // Detect silent TX failures: if position didn't change, the TX likely
+        // failed on-chain. Check signature status to surface the actual error.
+        if (confirmedState &&
+            confirmedState.positionX === previousState.positionX &&
+            confirmedState.positionY === previousState.positionY &&
+            confirmedState.movesRemaining === previousState.movesRemaining) {
+          try {
+            const sigStatus = await moveConnection.getSignatureStatus(signature);
+            const err = sigStatus?.value?.err;
+            if (err) {
+              // Fetch full transaction logs for detailed error info
+              let logs: string[] | null = null;
+              try {
+                const txInfo = await moveConnection.getTransaction(signature, {
+                  commitment: 'confirmed',
+                  maxSupportedTransactionVersion: 0,
+                });
+                logs = txInfo?.meta?.logMessages ?? null;
+              } catch {
+                // Best-effort log fetch
+              }
+              console.error(
+                '[useGameplayState] Move TX failed on-chain:',
+                JSON.stringify(err),
+                '| sig:', signature,
+                logs ? '\nLogs:\n' + logs.join('\n') : '(no logs available)'
+              );
+              return { success: false };
+            }
+            // TX might still be processing — null status means not yet landed
+            if (!sigStatus?.value) {
+              console.warn('[useGameplayState] Move TX not confirmed yet (state unchanged), sig:', signature);
+            }
+          } catch {
+            // getSignatureStatus failed — can't determine TX status
+          }
+        }
+
         // Give discovery WS a short grace window after gameState resolves.
         // Both account changes are pushed by the same ER slot, but on mobile
         // the second notification can arrive 5-20ms after the first. Without

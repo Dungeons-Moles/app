@@ -2192,18 +2192,16 @@ export function GameScreen({ navigation }: GameScreenProps) {
               }
             }
 
-            // Gauntlet: echo combat requires a separate trigger_boss_fight call.
-            // move_player sets boss_fight_ready = true but does NOT resolve the echo
-            // inline (BPF stack overflow constraint). Call triggerBoss() here in the
+            // Boss combat requires a separate trigger_boss_fight call.
+            // move_player sets boss_fight_ready = true but does NOT resolve the boss
+            // inline (heap exhaustion constraint). Call triggerBoss() here in the
             // move handler to avoid a race with the boss useEffect.
             // Skip if player died to a field enemy on this move — the death handler
             // below will navigate to DeathScreen instead.
             if (
               !result.bossResolvedInline &&
               result.bossFightReady &&
-              !result.isDead &&
-              (result.newState?.runMode === RunMode.Gauntlet ||
-                result.newState?.runMode === RunMode.Duel)
+              !result.isDead
             ) {
               isTriggeringBossRef.current = true;
               console.log('[GameScreen] Boss not resolved inline, calling triggerBoss from move handler');
@@ -3777,18 +3775,22 @@ export function GameScreen({ navigation }: GameScreenProps) {
         dispatch({ type: 'TRIGGER_BOSS' });
       } else {
         const result = await skipToEndOfWeek();
-        setShowSkipToEow(false);
 
         if (result.success && result.newState) {
           const ns = result.newState;
 
           // Duel week 3: no boss fight — on-chain sets completed=true.
           // Trigger the duel finalization flow (waiting-for-opponent / PvP).
+          // Keep the skip modal visible during finalization so the player
+          // sees "Finalizing..." instead of a frozen game screen.
           if (ns.runMode === RunMode.Duel && ns.completed && !ns.isDead) {
             dispatch({ type: 'SYNC_MOVE', confirmedState: ns });
-            handleDuelWeek3Completion();
+            await handleDuelWeek3Completion();
+            setShowSkipToEow(false);
             return;
           }
+
+          setShowSkipToEow(false);
 
           // SYNC_MOVE detects bossFightReady=true and sets local phase to Boss.
           // The boss useEffect then fires and calls triggerBoss() to resolve

@@ -229,7 +229,7 @@ export async function eagerBuildMoveTemplate(
 
     const tx = new Transaction();
     tx.feePayer = sessionSignerKeypair.publicKey;
-    tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 1_000_000 }));
+    tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }));
     tx.add(
       ComputeBudgetProgram.setComputeUnitPrice({
         microLamports: Math.floor(Math.random() * 1000) + 1,
@@ -552,7 +552,7 @@ export async function movePlayer(
 
       const tx = new Transaction();
       tx.feePayer = sessionSignerKeypair.publicKey;
-      tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 1_000_000 }));
+      tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }));
       tx.add(
         ComputeBudgetProgram.setComputeUnitPrice({
           microLamports: Math.floor(Math.random() * 1000) + 1,
@@ -679,7 +679,7 @@ export async function movePlayer(
       data,
     })
   );
-  transaction.instructions.unshift(ComputeBudgetProgram.setComputeUnitLimit({ units: 1_000_000 }));
+  transaction.instructions.unshift(ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }));
 
   const signature = await sendSessionSignerTransaction(
     connection,
@@ -782,7 +782,7 @@ export async function triggerBossFight(
   // and may CPI into inventory mutations. Duel and gauntlet paths both exceed
   // the default 32KB BPF heap in practice, so match the program tests by
   // requesting a larger heap frame for all boss triggers.
-  transaction.instructions.unshift(ComputeBudgetProgram.setComputeUnitLimit({ units: 1_000_000 }));
+  transaction.instructions.unshift(ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }));
   transaction.instructions.unshift(ComputeBudgetProgram.requestHeapFrame({ bytes: 256 * 1024 }));
 
   return sendSessionSignerTransaction(connection, transaction, sessionSignerKeypair);
