@@ -17,8 +17,29 @@ import {
 } from '@solana/web3.js';
 import * as SecureStorage from '@/services/storage/secureStorage';
 import bs58 from 'bs58';
-import { ed25519 } from '@noble/curves/ed25519';
+import { ed25519 as nobleEd25519 } from '@noble/curves/ed25519';
 import { Platform } from 'react-native';
+
+// Native Ed25519 signing via react-native-quick-crypto (C++/JSI).
+// ~2ms vs ~15ms for @noble/curves on Hermes. Falls back to noble on web.
+let nativeEd25519Sign: ((message: Uint8Array, secretKey: Uint8Array) => Uint8Array) | null = null;
+if (Platform.OS !== 'web') {
+  try {
+    const { Ed } = require('react-native-quick-crypto/lib/commonjs/ed');
+    const ed = new Ed('ed25519', {});
+    nativeEd25519Sign = (message: Uint8Array, secretKey: Uint8Array): Uint8Array => {
+      // Must slice to the exact byte range — Buffer.buffer can be a shared pool ArrayBuffer
+      const msgBuf = message.buffer.slice(message.byteOffset, message.byteOffset + message.byteLength);
+      const keyBuf = secretKey.buffer.slice(secretKey.byteOffset, secretKey.byteOffset + secretKey.byteLength);
+      const result = ed.signSync(msgBuf, keyBuf);
+      return new Uint8Array(result);
+    };
+  } catch {
+    // Fallback to noble if quick-crypto isn't available
+  }
+}
+
+const ed25519Sign = nativeEd25519Sign ?? ((msg: Uint8Array, key: Uint8Array) => nobleEd25519.sign(msg, key));
 import { SOLANA_CONFIG } from './config';
 
 // ============================================================================
@@ -33,7 +54,7 @@ if (Platform.OS !== 'web') {
   // is not available in service modules, so use setImmediate/setTimeout.
   const doWarmup = () => {
     try {
-      const sig = ed25519.sign(new Uint8Array(64), _warmupSeed);
+      const sig = ed25519Sign(new Uint8Array(64), _warmupSeed);
       // Also warm up bs58 encode/decode (used for signature and blockhash)
       const encoded = bs58.encode(sig);
       bs58.decode(encoded);
@@ -174,8 +195,8 @@ export function signTemplatedTransaction(
     if (data) msg.set(data, patch.offset);
   }
 
-  // Sign
-  const signatureBytes = ed25519.sign(msg, secretKeySeed);
+  // Sign (native C++ on mobile, noble JS on web)
+  const signatureBytes = ed25519Sign(msg, secretKeySeed);
 
   // Build wire: [1 (compact-u16)] [64-byte signature] [message]
   const wire = new Uint8Array(1 + 64 + msg.length);
@@ -1031,10 +1052,10 @@ export async function sendSessionSignerTransaction(
       const messageBytes = tx.serializeMessage();
       const tSign = Date.now();
 
-      // Sign raw message bytes with @noble/curves ed25519 (bypasses
+      // Sign raw message bytes with native Ed25519 on mobile (bypasses
       // Transaction.sign's internal re-compilation).
       const seed = getCachedSignerSeed(sessionSignerKeypair);
-      const signatureBytes = ed25519.sign(messageBytes, seed);
+      const signatureBytes = ed25519Sign(messageBytes, seed);
       const tWire = Date.now();
 
       // Build wire transaction: [1 (compact-u16)] [64-byte signature] [message]
@@ -1087,7 +1108,7 @@ export async function sendSessionSignerTransaction(
       const tSign = Date.now();
       const messageBytes = tx.serializeMessage();
       const seed = getCachedSignerSeed(sessionSignerKeypair);
-      const signatureBytes = ed25519.sign(messageBytes, seed);
+      const signatureBytes = ed25519Sign(messageBytes, seed);
       const wire = new Uint8Array(1 + 64 + messageBytes.length);
       wire[0] = 1;
       wire.set(signatureBytes, 1);
