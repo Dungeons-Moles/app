@@ -2,13 +2,18 @@ package expo.modules.fastaccountwatcher
 
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+import okhttp3.Call
+import okhttp3.Callback
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
@@ -30,6 +35,12 @@ class FastAccountWatcherModule : Module() {
     .pingInterval(30, TimeUnit.SECONDS)
     .build()
 
+  // Separate client for HTTP requests (sendTransaction) with normal timeouts
+  private val httpClient = OkHttpClient.Builder()
+    .connectTimeout(10, TimeUnit.SECONDS)
+    .readTimeout(10, TimeUnit.SECONDS)
+    .build()
+
   private val nextId = AtomicInteger(1)
 
   // Map of our internal subscription ID → active watcher
@@ -47,11 +58,12 @@ class FastAccountWatcherModule : Module() {
         wsEndpoint = wsEndpoint,
         accountPubkey = accountPubkey,
         commitment = commitment,
-        onData = { id, base64Data, slot ->
+        onData = { id, base64Data, slot, nativeReceivedAt ->
           sendEvent("onAccountChange", mapOf(
             "watcherId" to id,
             "data" to base64Data,
-            "slot" to slot
+            "slot" to slot,
+            "nativeReceivedAt" to nativeReceivedAt
           ))
         },
         onError = { id, error ->
@@ -75,6 +87,41 @@ class FastAccountWatcherModule : Module() {
       watchers.clear()
     }
 
+    // Fire-and-forget sendTransaction via native OkHttp — bypasses RN's fetch() bridge.
+    // Returns immediately after enqueuing the HTTP request. Errors are silently ignored
+    // (the WS subscription will detect if the TX didn't land).
+    AsyncFunction("sendRawTransaction") { endpoint: String, wireBase64: String ->
+      val jsonBody = JSONObject().apply {
+        put("jsonrpc", "2.0")
+        put("id", 1)
+        put("method", "sendTransaction")
+        put("params", JSONArray().apply {
+          put(wireBase64)
+          put(JSONObject().apply {
+            put("encoding", "base64")
+            put("skipPreflight", true)
+            put("maxRetries", 2)
+          })
+        })
+      }
+      val body = jsonBody.toString()
+        .toRequestBody("application/json".toMediaType())
+      val request = Request.Builder()
+        .url(endpoint)
+        .post(body)
+        .build()
+
+      // Enqueue (async) — truly fire-and-forget, no bridge round-trip
+      httpClient.newCall(request).enqueue(object : Callback {
+        override fun onFailure(call: Call, e: IOException) {
+          // Silent — WS will detect if TX didn't land
+        }
+        override fun onResponse(call: Call, response: Response) {
+          response.close() // drain & release connection
+        }
+      })
+    }
+
     OnDestroy {
       watchers.values.forEach { it.close() }
       watchers.clear()
@@ -91,7 +138,7 @@ private class AccountWatcher(
   private val wsEndpoint: String,
   private val accountPubkey: String,
   private val commitment: String,
-  private val onData: (Int, String, Long) -> Unit,
+  private val onData: (Int, String, Long, Double) -> Unit,
   private val onError: (Int, String) -> Unit
 ) {
   private var ws: WebSocket? = null
@@ -140,8 +187,9 @@ private class AccountWatcher(
             val value = result.getJSONObject("value")
             val dataArray = value.getJSONArray("data")
             val base64Data = dataArray.getString(0)
+            val nativeReceivedAt = System.currentTimeMillis().toDouble()
 
-            onData(watcherId, base64Data, slot)
+            onData(watcherId, base64Data, slot, nativeReceivedAt)
           }
         } catch (e: Exception) {
           // Silently ignore parse errors — non-notification messages

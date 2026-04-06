@@ -9,6 +9,8 @@ export interface AccountChangeEvent {
   slot?: number;
   /** Error message (present on failure). */
   error?: string;
+  /** Native-side timestamp (ms since epoch) when OkHttp received the WS message. */
+  nativeReceivedAt?: number;
 }
 
 type FastAccountWatcherEvents = {
@@ -52,4 +54,16 @@ export function addAccountChangeListener(
   callback: (event: AccountChangeEvent) => void
 ): EventSubscription {
   return emitter.addListener('onAccountChange', callback);
+}
+
+/**
+ * Fire-and-forget sendTransaction via native OkHttp.
+ * Bypasses RN's fetch() bridge — the HTTP POST is enqueued natively
+ * and returns immediately. No response is awaited.
+ */
+export async function sendRawTransaction(
+  endpoint: string,
+  wireBase64: string
+): Promise<void> {
+  return FastAccountWatcherModule.sendRawTransaction(endpoint, wireBase64);
 }

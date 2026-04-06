@@ -10,12 +10,12 @@ import { PublicKey, Keypair, Connection, Transaction } from '@solana/web3.js';
 import { AnchorProvider, Program } from '@anchor-lang/core';
 import * as Sentry from '@sentry/react-native';
 import { Platform } from 'react-native';
-import {
-  subscribe as nativeWsSubscribe,
-  unsubscribe as nativeWsUnsubscribe,
-  addAccountChangeListener as addNativeAccountChangeListener,
-} from '../../modules/fast-account-watcher';
 import { deriveErWsEndpoint } from '@/services/solana/config';
+
+// Native module is Android-only — lazy import to avoid crash on web
+const nativeWatcher = Platform.OS !== 'web'
+  ? require('../../modules/fast-account-watcher') as typeof import('../../modules/fast-account-watcher')
+  : null;
 import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
 import { useWallet } from '@/contexts/WalletContext';
 import {
@@ -1121,7 +1121,7 @@ export function useGameplayState(): UseGameplayStateReturn {
       const prog = program;
       let localWatcherId: number | null = null;
 
-      const subscription = addNativeAccountChangeListener((event) => {
+      const subscription = nativeWatcher!.addAccountChangeListener((event) => {
         if (cancelled) return;
         // Filter: only handle events for THIS watcher (gameState, not discovery)
         if (localWatcherId === null || event.watcherId !== localWatcherId) return;
@@ -1130,19 +1130,26 @@ export function useGameplayState(): UseGameplayStateReturn {
           return;
         }
         if (!event.data) return;
+        const jsReceivedAt = Date.now();
         try {
           const buffer = Buffer.from(event.data, 'base64');
           const decoded = decodeGameStateFromAccountInfo(prog, buffer);
-          if (decoded) handleDecodedState(decoded);
+          if (decoded) {
+            const nativeToJs = event.nativeReceivedAt
+              ? Math.round(jsReceivedAt - event.nativeReceivedAt)
+              : '?';
+            console.log(`[perf] nativeWs: nativeToJs=${nativeToJs}ms`);
+            handleDecodedState(decoded);
+          }
         } catch (err) {
           console.warn('[useGameplayState] Native WS decode error:', err);
         }
       });
 
-      nativeWsSubscribe(wsEndpoint, pubkey, 'processed')
+      nativeWatcher!.subscribe(wsEndpoint, pubkey, 'processed')
         .then((id) => {
           if (cancelled) {
-            nativeWsUnsubscribe(id).catch(() => {});
+            nativeWatcher!.unsubscribe(id).catch(() => {});
           } else {
             localWatcherId = id;
             nativeWatcherIdRef.current = id;
@@ -1173,7 +1180,7 @@ export function useGameplayState(): UseGameplayStateReturn {
         subscription.remove();
         const watcherId = nativeWatcherIdRef.current;
         if (watcherId !== null) {
-          nativeWsUnsubscribe(watcherId).catch(() => {});
+          nativeWatcher!.unsubscribe(watcherId).catch(() => {});
           nativeWatcherIdRef.current = null;
         }
         if (wsSubIdRef.current !== null) {
@@ -1280,7 +1287,7 @@ export function useGameplayState(): UseGameplayStateReturn {
       const pubkey = sdPda.toBase58();
       let localWatcherId: number | null = null;
 
-      const subscription = addNativeAccountChangeListener((event) => {
+      const subscription = nativeWatcher!.addAccountChangeListener((event) => {
         if (cancelled) return;
         if (localWatcherId === null || event.watcherId !== localWatcherId) return;
         if (!event.data) return;
@@ -1293,10 +1300,10 @@ export function useGameplayState(): UseGameplayStateReturn {
         }
       });
 
-      nativeWsSubscribe(wsEndpoint, pubkey, 'processed')
+      nativeWatcher!.subscribe(wsEndpoint, pubkey, 'processed')
         .then((id) => {
           if (cancelled) {
-            nativeWsUnsubscribe(id).catch(() => {});
+            nativeWatcher!.unsubscribe(id).catch(() => {});
           } else {
             localWatcherId = id;
             nativeDiscoveryWatcherIdRef.current = id;
@@ -1324,7 +1331,7 @@ export function useGameplayState(): UseGameplayStateReturn {
         subscription.remove();
         const watcherId = nativeDiscoveryWatcherIdRef.current;
         if (watcherId !== null) {
-          nativeWsUnsubscribe(watcherId).catch(() => {});
+          nativeWatcher!.unsubscribe(watcherId).catch(() => {});
           nativeDiscoveryWatcherIdRef.current = null;
         }
         if (wsDiscoverySubIdRef.current !== null) {

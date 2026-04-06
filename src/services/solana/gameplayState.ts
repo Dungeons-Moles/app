@@ -30,6 +30,12 @@ import {
   type MessageTemplate,
 } from './sessionSigner';
 import { Platform } from 'react-native';
+
+// Native fire-and-forget send — lazy import to avoid crash on web
+const nativeSend = Platform.OS !== 'web'
+  ? (require('../../../modules/fast-account-watcher') as typeof import('../../../modules/fast-account-watcher')).sendRawTransaction
+  : null;
+
 import {
   deriveInventoryPda,
   deriveGeneratedMapPda,
@@ -594,10 +600,13 @@ export async function movePlayer(
     );
     const tDone = Date.now();
 
-    // Fire-and-forget via direct fetch (bypasses Connection.sendRawTransaction
-    // response parsing overhead on Hermes).
+    // Fire-and-forget: on mobile use native OkHttp (bypasses RN fetch bridge),
+    // on web use direct fetch (bypasses Connection.sendRawTransaction parsing).
     const wireBase64 = Buffer.from(wireTransaction).toString('base64');
-    fireAndForgetRawTx(connection.rpcEndpoint, wireBase64)
+    const sendPromise = nativeSend
+      ? nativeSend(connection.rpcEndpoint, wireBase64)
+      : fireAndForgetRawTx(connection.rpcEndpoint, wireBase64);
+    sendPromise
       .then(() => {
         console.log(`[perf] sendTransaction(bg): completed (router=${isMagicRouterRpc(connection)})`);
       })
