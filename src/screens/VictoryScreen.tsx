@@ -55,13 +55,18 @@ export function VictoryScreen({ navigation, route }: VictoryScreenProps) {
   const glowAnim = useRef(new Animated.Value(0)).current;
   const { playBgm, playSfx } = useAudio();
   const [showUnlock, setShowUnlock] = useState(false);
-  const { mode } = useProfile();
+  const { mode, refresh: refreshProfile } = useProfile();
   const isCompact = useScreenVariant() === 'compact';
 
   const isVerticalLayout = height > 768;
   const [summarySize, setSummarySize] = useState({ width: 0, height: 0 });
 
   useEffect(() => {
+    if (mode !== 'guest') {
+      void refreshProfile().catch((err) => {
+        console.warn('[VictoryScreen] Profile refresh failed:', err);
+      });
+    }
     playBgm('victory', { crossfade: true });
     // Initial fade in
     Animated.parallel([
@@ -98,7 +103,7 @@ export function VictoryScreen({ navigation, route }: VictoryScreenProps) {
         }, 500);
       }
     });
-  }, [fadeAnim, slideAnim, glowAnim, levelUnlocked, itemUnlocked, playBgm]);
+  }, [fadeAnim, slideAnim, glowAnim, levelUnlocked, itemUnlocked, mode, playBgm, refreshProfile]);
 
   const handleReturnToHub = useCallback(() => {
     playSfx('ui_back');

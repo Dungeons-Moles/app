@@ -4,12 +4,6 @@
  */
 import React, { useState } from 'react';
 import { APP_VERSION } from '../../constants/app';
-import {
-  VideoOverlay,
-  isDemoRoute,
-  navigateFromDemo,
-  navigateToDemo,
-} from './SocialSidebar';
 
 const APK_RELEASE_URL = `https://github.com/Dungeons-Moles/app/releases/download/v${APP_VERSION}/dungeons-and-moles.apk`;
 
@@ -33,15 +27,6 @@ function DownloadIcon() {
       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
       <polyline points="7 10 12 15 17 10" />
       <line x1="12" y1="15" x2="12" y2="3" />
-    </svg>
-  );
-}
-
-function TvIcon() {
-  return (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M7 2l5 5 5-5" />
-      <rect x="2" y="7" width="20" height="14" rx="2" />
     </svg>
   );
 }
@@ -166,13 +151,6 @@ function InkDivider({ delay }: { delay: number }) {
 /* ── Main Component ────────────────────────────────────────── */
 
 export function MobileLanding() {
-  const [demoOpen, setDemoOpen] = useState(isDemoRoute);
-
-  React.useEffect(() => {
-    const onPopState = () => setDemoOpen(isDemoRoute());
-    window.addEventListener('popstate', onPopState);
-    return () => window.removeEventListener('popstate', onPopState);
-  }, []);
 
   return (
     <>
@@ -315,12 +293,6 @@ export function MobileLanding() {
               delay={0.4}
             />
             <InkButton
-              icon={<TvIcon />}
-              label="Watch Demo"
-              onClick={navigateToDemo}
-              delay={0.5}
-            />
-            <InkButton
               icon={<XIcon />}
               label="Follow on X"
               href="https://x.com/DungeonsMoles"
@@ -350,8 +322,6 @@ export function MobileLanding() {
           </p>
         </div>
       </div>
-
-      {demoOpen && <VideoOverlay onClose={navigateFromDemo} />}
 
       <style>{`
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }

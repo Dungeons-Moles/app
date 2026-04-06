@@ -1792,35 +1792,10 @@ function handleSyncMove(state: GameState, confirmedState: OnChainGameState, week
   // Check for POI at target position
   const poiAtTarget = findPOIAtPosition(finalMap, targetPos);
   if (poiAtTarget && !poiAtTarget.visited) {
-    // On-chain sync path: stay in Exploration and let usePoiInteraction send the
-    // dedicated POI transaction after the move is confirmed.
-    if (SELECTION_POIS.has(poiAtTarget.definitionId)) {
-      // Fall through — usePoiInteraction.canInteract will detect the POI
-      // and the "Interact" button will appear in Exploration phase
-    } else {
-      // Auto-trigger POIs: all on-chain POI transactions are handled by usePoiInteraction.
-      const tempState: GameState = {
-        ...state,
-        player: updatedPlayer,
-        map: finalMap,
-        time: updatedTime,
-      };
-      const interaction = createPOIInteraction(poiAtTarget, tempState);
-      if (interaction) {
-        let interactionMap = finalMap;
-        if (poiAtTarget.definitionId === 'L8' && !poiAtTarget.discovered) {
-          interactionMap = markPOIDiscovered(finalMap, poiAtTarget.id);
-        }
-        return {
-          ...state,
-          phase: GamePhase.POIInteraction,
-          player: updatedPlayer,
-          map: interactionMap,
-          time: updatedTime,
-          activePOI: interaction,
-          wallHighlight: null,
-        };
-      }
+    // On-chain sync path: always stay in Exploration and let usePoiInteraction
+    // drive any follow-up POI transaction after the move is confirmed.
+    if (poiAtTarget.definitionId === 'L8' && !poiAtTarget.discovered) {
+      finalMap = markPOIDiscovered(finalMap, poiAtTarget.id);
     }
   }
 

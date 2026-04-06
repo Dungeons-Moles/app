@@ -29,15 +29,6 @@ function DiscordIcon() {
   );
 }
 
-function TvIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M7 2l5 5 5-5" />
-      <rect x="2" y="7" width="20" height="14" rx="2" />
-    </svg>
-  );
-}
-
 function SpeakerOnIcon() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -108,289 +99,9 @@ function SocialButton({
   );
 }
 
-/* ── Channel Button ────────────────────────────────────────── */
-
-function ChannelButton({
-  label,
-  active,
-  onClick,
-}: {
-  label: string;
-  active: boolean;
-  onClick: () => void;
-}) {
-  const [hovered, setHovered] = useState(false);
-
-  return (
-    <button
-      onClick={onClick}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        padding: '8px 24px',
-        borderRadius: 6,
-        border: active ? '1.5px solid #d4a843' : '1.5px solid #2a2555',
-        background: active
-          ? 'rgba(212, 168, 67, 0.15)'
-          : hovered
-            ? 'rgba(75, 69, 120, 0.4)'
-            : 'rgba(26, 22, 54, 0.6)',
-        color: active ? '#d4a843' : hovered ? '#c8c0e0' : '#6b6590',
-        cursor: 'pointer',
-        fontFamily: 'Inter-SemiBold, Inter, sans-serif',
-        fontSize: 13,
-        letterSpacing: '0.08em',
-        textTransform: 'uppercase' as const,
-        transition: 'all 0.2s ease',
-        outline: 'none',
-        boxShadow: active ? '0 0 12px rgba(212, 168, 67, 0.2)' : 'none',
-      }}
-    >
-      {label}
-    </button>
-  );
-}
-
-/* ── Video Overlay ─────────────────────────────────────────── */
-
-export function VideoOverlay({ onClose }: { onClose: () => void }) {
-  const [activeVideo, setActiveVideo] = useState<'pitch' | 'demo'>('demo');
-  const [isStatic, setIsStatic] = useState(false);
-  const [isClosing, setIsClosing] = useState(false);
-  const isMobile = window.innerWidth <= 768;
-
-  const switchChannel = useCallback(
-    (channel: 'pitch' | 'demo') => {
-      if (channel === activeVideo) return;
-      setIsStatic(true);
-      setTimeout(() => {
-        setActiveVideo(channel);
-        setTimeout(() => setIsStatic(false), 200);
-      }, 150);
-    },
-    [activeVideo]
-  );
-
-  const handleClose = useCallback(() => {
-    setIsClosing(true);
-    setTimeout(onClose, 280);
-  }, [onClose]);
-
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') handleClose();
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [handleClose]);
-
-  const videoId = activeVideo === 'pitch' ? 'Kb2xCMSovE0' : 'iqJWPreAZZ0';
-
-  return (
-    <div
-      onClick={handleClose}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 10001,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'rgba(8, 6, 20, 0.93)',
-        backdropFilter: 'blur(8px)',
-        opacity: isClosing ? 0 : 1,
-        transition: 'opacity 0.28s ease',
-      }}
-    >
-      {/* TV Frame */}
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          position: 'relative',
-          background: 'linear-gradient(145deg, #1e1a30, #141025)',
-          borderRadius: isMobile ? 18 : 20,
-          padding: isMobile ? '20px 14px 16px' : '24px 28px 28px',
-          border: '2px solid #2a2555',
-          boxShadow:
-            '0 0 80px rgba(42, 37, 85, 0.4), 0 20px 60px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.04)',
-          width: isMobile ? 'calc(100vw - 24px)' : 'auto',
-          maxWidth: isMobile ? 'calc(100vw - 24px)' : '90vw',
-          boxSizing: 'border-box',
-          animation: isClosing ? undefined : 'dm-tv-slideUp 0.45s cubic-bezier(0.16, 1, 0.3, 1)',
-          transform: isClosing ? 'translateY(20px)' : 'translateY(0)',
-          transition: 'transform 0.28s ease',
-        }}
-      >
-        {/* Close button */}
-        {!isMobile && (
-          <button
-            onClick={handleClose}
-            style={{
-              position: 'absolute',
-              top: -14,
-              right: -14,
-              width: 32,
-              height: 32,
-              borderRadius: 16,
-              border: '1.5px solid #3d3a9e',
-              background: '#1a1625',
-              color: '#8b85b0',
-              fontSize: 18,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: 0,
-              outline: 'none',
-              transition: 'all 0.2s ease',
-              lineHeight: 1,
-              zIndex: 2,
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.color = '#d4a843';
-              e.currentTarget.style.borderColor = '#d4a843';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.color = '#8b85b0';
-              e.currentTarget.style.borderColor = '#3d3a9e';
-            }}
-          >
-            &times;
-          </button>
-        )}
-
-        {/* Channel switcher */}
-        <div
-          style={{
-            display: 'flex',
-            gap: 12,
-            marginBottom: 16,
-            justifyContent: 'center',
-            width: '100%',
-          }}
-        >
-          <ChannelButton
-            label="Demo"
-            active={activeVideo === 'demo'}
-            onClick={() => switchChannel('demo')}
-          />
-          <ChannelButton
-            label="Pitch"
-            active={activeVideo === 'pitch'}
-            onClick={() => switchChannel('pitch')}
-          />
-        </div>
-
-        {/* Screen area */}
-        <div
-          style={{
-            position: 'relative',
-            width: isMobile ? '100%' : Math.min(800, window.innerWidth * 0.85),
-            maxWidth: '100%',
-            aspectRatio: '16/9',
-            background: '#050510',
-            borderRadius: 8,
-            overflow: 'hidden',
-            border: '2px solid #0f0e1a',
-            boxSizing: 'border-box',
-            boxShadow: 'inset 0 0 50px rgba(0,0,0,0.8), 0 0 30px rgba(42, 37, 85, 0.15)',
-          }}
-        >
-          {/* YouTube iframe */}
-          <iframe
-            key={videoId}
-            src={`https://www.youtube.com/embed/${videoId}?rel=0&modestbranding=1`}
-            title={activeVideo === 'pitch' ? 'Dungeons & Moles Pitch' : 'Dungeons & Moles Demo'}
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-            allowFullScreen
-            style={{
-              width: '100%',
-              height: '100%',
-              border: 'none',
-              display: 'block',
-            }}
-          />
-
-          {/* Scanlines overlay */}
-          <div
-            style={{
-              position: 'absolute',
-              inset: 0,
-              background:
-                'repeating-linear-gradient(0deg, rgba(0,0,0,0.12) 0px, transparent 1px, transparent 3px)',
-              pointerEvents: 'none',
-              animation: 'dm-scanline-scroll 0.15s linear infinite',
-            }}
-          />
-
-          {/* CRT vignette */}
-          <div
-            style={{
-              position: 'absolute',
-              inset: 0,
-              background:
-                'radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.45) 100%)',
-              pointerEvents: 'none',
-            }}
-          />
-
-          {/* Static effect on channel switch */}
-          {isStatic && (
-            <div
-              style={{
-                position: 'absolute',
-                inset: 0,
-                background:
-                  'repeating-linear-gradient(0deg, rgba(255,255,255,0.08) 0px, transparent 1px, transparent 2px), repeating-linear-gradient(90deg, rgba(255,255,255,0.05) 0px, transparent 2px, transparent 5px)',
-                animation: 'dm-static-flash 0.35s linear forwards',
-                pointerEvents: 'none',
-                zIndex: 2,
-              }}
-            />
-          )}
-        </div>
-
-        {/* Screen glow (warm emission below the screen) */}
-        <div
-          style={{
-            height: 2,
-            marginTop: 8,
-            borderRadius: 2,
-            background:
-              'radial-gradient(ellipse at center, rgba(212, 168, 67, 0.2) 0%, transparent 70%)',
-          }}
-        />
-      </div>
-    </div>
-  );
-}
-
-/* ── URL helpers ───────────────────────────────────────────── */
-
-export const DEMO_PATH = '/video';
-
-export function isDemoRoute() {
-  return window.location.pathname === DEMO_PATH;
-}
-
-export function navigateToDemo() {
-  window.history.pushState({ demo: true }, '', DEMO_PATH);
-  window.dispatchEvent(new PopStateEvent('popstate'));
-}
-
-export function navigateFromDemo() {
-  if (window.history.state?.demo) {
-    window.history.back();
-  } else {
-    window.history.pushState({}, '', '/');
-    window.dispatchEvent(new PopStateEvent('popstate'));
-  }
-}
-
 /* ── Main Export ────────────────────────────────────────────── */
 
 export function SocialSidebar() {
-  const [demoOpen, setDemoOpen] = useState(isDemoRoute);
   const [muted, setMuted] = useState(false);
   const [visible, setVisible] = useState(
     () => window.innerWidth > PSG1_W || window.innerHeight > PSG1_H
@@ -402,12 +113,6 @@ export function SocialSidebar() {
     };
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
-  }, []);
-
-  useEffect(() => {
-    const onPopState = () => setDemoOpen(isDemoRoute());
-    window.addEventListener('popstate', onPopState);
-    return () => window.removeEventListener('popstate', onPopState);
   }, []);
 
   // Listen for mute state from AudioContext
@@ -444,7 +149,6 @@ export function SocialSidebar() {
             onClick={toggleMute}
             label={muted ? 'Unmute' : 'Mute'}
           />
-          <SocialButton icon={<TvIcon />} onClick={navigateToDemo} label="Watch" />
           <SocialButton
             icon={
               <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: 1 }}>
@@ -464,31 +168,10 @@ export function SocialSidebar() {
         </div>
       )}
 
-      {demoOpen && <VideoOverlay onClose={navigateFromDemo} />}
-
       <style>{`
         @keyframes dm-sidebar-fadeIn {
           from { opacity: 0; transform: translateY(-50%) translateX(12px); }
           to   { opacity: 1; transform: translateY(-50%) translateX(0); }
-        }
-        @keyframes dm-tv-slideUp {
-          from { transform: translateY(30px) scale(0.97); opacity: 0; }
-          to   { transform: translateY(0) scale(1); opacity: 1; }
-        }
-        @keyframes dm-static-flash {
-          0%   { opacity: 0; }
-          8%   { opacity: 0.9; }
-          16%  { opacity: 0.2; }
-          24%  { opacity: 0.85; }
-          40%  { opacity: 0.3; }
-          55%  { opacity: 0.7; }
-          70%  { opacity: 0.15; }
-          85%  { opacity: 0.4; }
-          100% { opacity: 0; }
-        }
-        @keyframes dm-scanline-scroll {
-          from { background-position: 0 0; }
-          to   { background-position: 0 3px; }
         }
       `}</style>
     </>

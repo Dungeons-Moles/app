@@ -60,6 +60,9 @@ import { getAllItemsetDefinitions, getItemsetsForItem } from '../data/itemsets';
 import type { ItemsetDefinition } from '../data/itemsets';
 import { SOLANA_CONFIG } from '../services/solana/config';
 import { getUserErrorMessage } from '../services/solana/errors';
+import { fetchPitDraftQueue } from '../services/solana/pitDraft';
+import { createGameplayStateProgram } from '../services/solana/programs';
+import { InlineModal } from '../components/InlineModal';
 
 const backgroundImage = require('../../assets/ui/backgrounds/loading-background.webp');
 const bookImageMobile = require('../../assets/ui/backgrounds/book-wide.webp');
@@ -69,6 +72,8 @@ const buttonSource = require('../../assets/ui/buttons/button.webp');
 const buttonV3Source = require('../../assets/ui/buttons/button-v3.webp');
 const buttonGreenSource = require('../../assets/ui/buttons/button-green.webp');
 const buttonGraySource = require('../../assets/ui/buttons/button-gray.webp');
+const buttonV4Source = require('../../assets/ui/buttons/button-v4.webp');
+const paperPanelWideSource = require('../../assets/ui/panels/paper-panel-wide.webp');
 const lockIconSource = require('../../assets/icons/ui/lock.webp');
 const rectangleFrameSource = require('../../assets/ui/frames/rectangle.webp');
 const statIconATK = require('../../assets/icons/stats/ATK.webp');
@@ -368,6 +373,8 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
   const [selectedItem, setSelectedItem] = useState<DisplayItem | null>(null);
   const [draftPoolIndices, setDraftPoolIndices] = useState<Set<number>>(new Set());
   const [isSavingItemPool, setIsSavingItemPool] = useState(false);
+  const [showPitDraftLockedModal, setShowPitDraftLockedModal] = useState(false);
+  const [showSavedModal, setShowSavedModal] = useState(false);
   const [isUpdatingRelicPool, setIsUpdatingRelicPool] = useState(false);
   const [relicItems, setRelicItems] = useState<DisplayItem[]>([]);
   const [draftRelicPoolIds, setDraftRelicPoolIds] = useState<Set<string>>(new Set());
@@ -555,6 +562,21 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
       return;
     }
 
+    // Pre-check: block save if player is queued in Pit Draft
+    if (wallet.publicKey) {
+      try {
+        const gsProgram = createGameplayStateProgram(baseConnection);
+        const queue = await fetchPitDraftQueue(gsProgram);
+        if (queue?.waitingPlayer?.equals(wallet.publicKey)) {
+          setShowPitDraftLockedModal(true);
+          return;
+        }
+      } catch (checkErr) {
+        // Non-fatal — let the on-chain instruction catch it if the pre-check fails
+        console.warn('[ItemsScreen] Pit draft queue pre-check failed:', checkErr);
+      }
+    }
+
     const nextBitmask = new Uint8Array(BITMASK_SIZE);
     for (const index of draftPoolIndices) {
       setPoolBit(nextBitmask, index);
@@ -567,7 +589,13 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
       const result = await updateActiveItemPool(nextBitmask);
       if (!result.success) {
         console.error('[ItemsScreen] Save failed:', result.error);
-        Alert.alert('Failed to Save', result.error ?? 'Could not update active item pool.');
+        const isPitDraftLocked =
+          result.error?.includes('Pit Draft') || result.error?.includes('pit draft');
+        if (isPitDraftLocked) {
+          setShowPitDraftLockedModal(true);
+        } else {
+          Alert.alert('Failed to Save', result.error ?? 'Could not update active item pool.');
+        }
         return;
       }
 
@@ -592,7 +620,7 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
 
       await loadRelics();
       console.log('[ItemsScreen] Item pool saved successfully, signature:', result.signature);
-      Alert.alert('Saved', 'Your item pool has been updated.');
+      setShowSavedModal(true);
     } catch (err) {
       console.error('[ItemsScreen] Unexpected save error:', err);
       Alert.alert('Failed to Save', 'An unexpected error occurred.');
@@ -1529,6 +1557,63 @@ export function ItemsScreen({ navigation }: ItemsScreenProps) {
         onClose={() => setShowSettingsModal(false)}
         onDisconnect={handleDisconnect}
       />
+      <InlineModal
+        visible={showSavedModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowSavedModal(false)}
+      >
+        <View style={styles.pitDraftModalOverlay}>
+          <CachedImageBackground
+            source={paperPanelWideSource}
+            resizeMode="stretch"
+            style={styles.pitDraftModalContent}
+          >
+            <Text style={styles.pitDraftModalTitle}>Saved</Text>
+            <Text style={styles.pitDraftModalText}>
+              Your item pool has been updated.
+            </Text>
+            <TouchableOpacity onPress={() => setShowSavedModal(false)}>
+              <CachedImageBackground
+                source={buttonV4Source}
+                resizeMode="stretch"
+                style={styles.pitDraftModalButtonBg}
+              >
+                <Text style={styles.pitDraftModalButtonText}>OK</Text>
+              </CachedImageBackground>
+            </TouchableOpacity>
+          </CachedImageBackground>
+        </View>
+      </InlineModal>
+      <InlineModal
+        visible={showPitDraftLockedModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowPitDraftLockedModal(false)}
+      >
+        <View style={styles.pitDraftModalOverlay}>
+          <CachedImageBackground
+            source={paperPanelWideSource}
+            resizeMode="stretch"
+            style={styles.pitDraftModalContent}
+          >
+            <Text style={styles.pitDraftModalTitle}>Pit Draft Queue Active</Text>
+            <Text style={styles.pitDraftModalText}>
+              You cannot update your item pool while queued in Pit Draft. Leave the queue first,
+              then try again.
+            </Text>
+            <TouchableOpacity onPress={() => setShowPitDraftLockedModal(false)}>
+              <CachedImageBackground
+                source={buttonV4Source}
+                resizeMode="stretch"
+                style={styles.pitDraftModalButtonBg}
+              >
+                <Text style={styles.pitDraftModalButtonText}>OK</Text>
+              </CachedImageBackground>
+            </TouchableOpacity>
+          </CachedImageBackground>
+        </View>
+      </InlineModal>
       <ControllerHints hints={controllerHints} horizontal />
     </Animated.View>
   );
@@ -1943,6 +2028,46 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     textAlign: 'center',
     marginBottom: 4,
+  },
+  pitDraftModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  pitDraftModalContent: {
+    width: 360,
+    padding: 36,
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+  },
+  pitDraftModalTitle: {
+    fontFamily: Typography.header,
+    fontSize: 20,
+    color: '#3d2b1f',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  pitDraftModalText: {
+    fontFamily: Typography.body,
+    fontSize: 14,
+    color: '#3d2b1f',
+    textAlign: 'center',
+    marginBottom: 20,
+    lineHeight: 20,
+  },
+  pitDraftModalButtonBg: {
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    minWidth: 100,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pitDraftModalButtonText: {
+    fontFamily: Typography.button,
+    fontSize: 14,
+    color: '#1f2f1a',
+    textAlign: 'center',
   },
 });
 

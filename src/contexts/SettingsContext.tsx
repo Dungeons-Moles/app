@@ -9,7 +9,7 @@ interface Settings {
 }
 
 const DEFAULT_SETTINGS: Settings = {
-  autoOpenPOI: true,
+  autoOpenPOI: false,
   autoResolveCombat: false,
 };
 

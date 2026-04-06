@@ -15,6 +15,7 @@ const PROGRAM_ERRORS: Record<string, Record<number, string>> = {
     6008: 'Insufficient SOL for purchase',
     6009: 'Level is not unlocked',
     6010: 'Invalid treasury account',
+    6018: 'Cannot update item pool while queued in Pit Draft. Leave the queue first.',
   },
   session_manager: {
     6000: 'You already have an active session',
@@ -213,7 +214,7 @@ export function getUserErrorMessage(error: unknown, programName?: string): strin
 const RAW_ERROR_PATTERNS: [RegExp, string][] = [
   [/not confirmed in \d+.*seconds/i, 'Transaction timed out. Please try again.'],
   [/blockhash not found/i, 'Network sync issue. Please try again.'],
-  [/insufficient funds/i, 'Insufficient SOL balance. Please top up your wallet.'],
+  [/insufficient funds/i, 'Your game wallet needs a top-up to cover session costs. This is a refundable deposit that returns when your session ends. Visit your Profile to manage your game wallet.'],
   [/AccountOwnedByWrongProgram/i, 'Account state error. Please try again.'],
   [/AccountNotEnoughKeys/i, 'Transaction error. Please try again.'],
   [/AccountNotInitialized/i, 'Account not ready. Please try again.'],
@@ -226,6 +227,7 @@ const RAW_ERROR_PATTERNS: [RegExp, string][] = [
   [/503|502|504|Service Unavailable/i, 'Network temporarily unavailable. Please try again.'],
   [/fetch failed|network error|network request failed|ECONNREFUSED/i, 'Connection error. Check your network and try again.'],
   [/User rejected/i, 'Request was cancelled.'],
+  [/CancellationException/i, 'Request was cancelled.'],
   [/WalletNotFoundError/i, 'Wallet not found. Please connect a wallet.'],
   [/WalletSignMessageError/i, 'Wallet signing failed. Please try again.'],
   [/WalletSendTransactionError/i, 'Wallet failed to send transaction. Please try again.'],

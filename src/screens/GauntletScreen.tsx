@@ -504,19 +504,21 @@ export function GauntletScreen({ navigation }: GauntletScreenProps) {
                     <TouchableOpacity
                       onPress={handleEnter}
                       activeOpacity={0.7}
-                      disabled={gauntlet.isLoading || isEntryTransitioning}
+                      disabled={gauntlet.isLoading || isEntryTransitioning || isCheckingSession}
                     >
                       <View>
                         <Text
                           style={[
                             styles.panelButtonText,
                             { fontSize: buttonFontSize },
-                            (gauntlet.isLoading || isEntryTransitioning) && { opacity: 0 },
+                            (gauntlet.isLoading || isEntryTransitioning || isCheckingSession) && {
+                              opacity: 0,
+                            },
                           ]}
                         >
                           {hasExistingGauntletSession ? 'Resume' : 'Enter'}
                         </Text>
-                        {(gauntlet.isLoading || isEntryTransitioning) && (
+                        {(gauntlet.isLoading || isEntryTransitioning || isCheckingSession) && (
                           <ActivityIndicator
                             color="#3d2b1f"
                             size={isCompact ? 'large' : 'small'}

@@ -418,19 +418,19 @@ export function DuelsScreen({ navigation }: DuelsScreenProps) {
                     <TouchableOpacity
                       onPress={handleEnter}
                       activeOpacity={0.7}
-                      disabled={duels.isLoading}
+                      disabled={duels.isLoading || isCheckingSession}
                     >
                       <View>
                         <Text
                           style={[
                             styles.panelButtonText,
                             { fontSize: buttonFontSize },
-                            duels.isLoading && { opacity: 0 },
+                            (duels.isLoading || isCheckingSession) && { opacity: 0 },
                           ]}
                         >
                           {hasExistingDuelSession ? 'Resume' : 'Enter'}
                         </Text>
-                        {duels.isLoading && (
+                        {(duels.isLoading || isCheckingSession) && (
                           <ActivityIndicator
                             color="#3d2b1f"
                             size={isCompact ? 'large' : 'small'}

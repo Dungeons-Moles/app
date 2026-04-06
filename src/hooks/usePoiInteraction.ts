@@ -36,6 +36,7 @@ import type {
 } from '@/services/solana/types/poi_system';
 import { Phase, RunMode } from '@/services/solana/types/gameplay_state';
 import { getUserErrorMessage } from '@/services/solana/errors';
+import { parseWithRetry } from '@/utils/retry';
 import {
   interactRest,
   interactPickItem,
@@ -100,6 +101,58 @@ function debugLog(...args: unknown[]) {
   if (__DEV__ && POI_DEBUG_LOGS) {
     console.log(...args);
   }
+}
+
+function countDiscoveryBits(bytes: number[]): number {
+  let total = 0;
+  for (const value of bytes) {
+    let byte = value & 0xff;
+    while (byte) {
+      total += byte & 1;
+      byte >>= 1;
+    }
+  }
+  return total;
+}
+
+function countVisibleFogTiles(fog: FogState[][] | undefined): number {
+  if (!fog) return 0;
+  let total = 0;
+  for (const row of fog) {
+    for (const cell of row) {
+      if (cell !== FogState.Hidden) total += 1;
+    }
+  }
+  return total;
+}
+
+async function retryRead<T>(
+  read: () => Promise<T | null>,
+  options?: {
+    shouldAccept?: (value: T) => boolean;
+    maxAttempts?: number;
+    delayMs?: number;
+  }
+): Promise<T | null> {
+  const shouldAccept = options?.shouldAccept;
+  const maxAttempts = Math.max(1, options?.maxAttempts ?? 5);
+  const delayMs = Math.max(0, options?.delayMs ?? 120);
+  let lastValue: T | null = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const value = await read().catch(() => null);
+    if (value) {
+      lastValue = value;
+      if (!shouldAccept || shouldAccept(value)) {
+        return value;
+      }
+    }
+    if (attempt < maxAttempts && delayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+
+  return lastValue;
 }
 
 /**
@@ -755,16 +808,43 @@ export function usePoiInteraction(): UsePoiInteractionResult {
   );
 
   const syncDiscoveryFromChain = useCallback(
-    async (connection: Connection, targetSessionPda: PublicKey): Promise<SessionDiscoveryData | null> => {
-      const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(targetSessionPda);
-      const discovery = await fetchSessionDiscovery(
-        createMapGeneratorProgram(connection),
-        sessionDiscoveryPda
-      ).catch(() => null);
-
-      if (!discovery) {
-        return null;
+    async (
+      connection: Connection,
+      targetSessionPda: PublicKey,
+      options?: {
+        shouldAccept?: (discovery: SessionDiscoveryData) => boolean;
+        maxAttempts?: number;
+        delayMs?: number;
       }
+    ): Promise<SessionDiscoveryData | null> => {
+      const [sessionDiscoveryPda] = deriveSessionDiscoveryPda(targetSessionPda);
+      const shouldAccept = options?.shouldAccept;
+      const maxAttempts = Math.max(1, options?.maxAttempts ?? 1);
+      const delayMs = Math.max(0, options?.delayMs ?? 0);
+      let accepted: SessionDiscoveryData | null = null;
+      let lastSeen: SessionDiscoveryData | null = null;
+
+      for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+        const discovery = await fetchSessionDiscovery(
+          createMapGeneratorProgram(connection),
+          sessionDiscoveryPda
+        ).catch(() => null);
+
+        if (discovery) {
+          lastSeen = discovery;
+          if (!shouldAccept || shouldAccept(discovery)) {
+            accepted = discovery;
+            break;
+          }
+        }
+
+        if (attempt < maxAttempts && delayMs > 0) {
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+        }
+      }
+
+      const discovery = accepted ?? lastSeen;
+      if (!discovery) return null;
 
       dispatch({
         type: 'SYNC_DISCOVERY',
@@ -1511,7 +1591,13 @@ export function usePoiInteraction(): UsePoiInteractionResult {
                 }
               }
               debugLog('[usePoiInteraction] generateOilOffer CONFIRMED, re-fetching...');
-              oilDiscovery = await fetchDiscoveryOffers(ctx.connection, ctx.sessionPda);
+              oilDiscovery = await parseWithRetry(
+                async () => {
+                  const d = await fetchDiscoveryOffers(ctx.connection, ctx.sessionPda);
+                  return d && d.oilOfferOils.some((o) => o !== 0) ? d : null;
+                },
+                { maxAttempts: 5, delayMs: 600, label: 'oilOfferPropagation' }
+              );
             } else {
               debugLog('[usePoiInteraction] Saved oil offer found for poiIndex:', poiIndex);
             }
@@ -1555,11 +1641,25 @@ export function usePoiInteraction(): UsePoiInteractionResult {
 
           // Survey Beacon (L6)
           case POI_TYPES.SURVEY_BEACON: {
+            const visibleTilesBefore = countVisibleFogTiles(gameState?.map?.fog);
             await withErPositionRetry(() => interactSurveyBeacon(ctx, poiIndex));
             syncLocalPoiAsConsumed(currentPoi);
 
             try {
-              await syncDiscoveryFromChain(ctx.connection, ctx.sessionPda);
+              await syncDiscoveryFromChain(ctx.connection, ctx.sessionPda, {
+                maxAttempts: 5,
+                delayMs: 120,
+                shouldAccept: (discovery) => {
+                  const discoveredTileCount = countDiscoveryBits(discovery.discoveredTiles);
+                  const discoveredPoi = discovery.discoveredPois
+                    .slice(0, discovery.discoveredPoiCount)
+                    .find((poi) => poi.mapPoisIndex === poiIndex);
+                  return (
+                    discoveredTileCount > visibleTilesBefore ||
+                    !!discoveredPoi?.used
+                  );
+                },
+              });
             } catch (e) {
               console.warn('[usePoiInteraction] Failed to reveal beacon tiles in SessionDiscovery:', e);
             }
@@ -2359,19 +2459,35 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             // Fetch game state and refresh contexts in parallel.
             const gameplayProgram = createGameplayStateProgram(gameplayReadConnection);
             const [updatedState] = await Promise.all([
-              fetchGameState(gameplayProgram, ctx.gameStatePda),
+              retryRead(
+                () => fetchGameState(gameplayProgram, ctx.gameStatePda),
+                {
+                  shouldAccept: (state) =>
+                    state.week !== preWeek ||
+                    state.phase !== (gameState?.time ? ((gameState.time.cycle - 1) * 2 + (gameState.time.phase === TimePhase.Night ? 1 : 0)) : state.phase) ||
+                    state.hp !== preHealHpSnapshot,
+                }
+              ),
               Promise.all([refreshGameplayState(), refreshSessionState()]),
             ]);
             // Fetch discovery before SYNC_MOVE so we can extract the updated weekBoss
             // (for Duel/Gauntlet VRF-based bosses that update on week transitions)
-            let restDiscovery: Awaited<ReturnType<typeof fetchSessionDiscovery>> | null = null;
-            {
-              const [restSdPda] = deriveSessionDiscoveryPda(ctx.sessionPda);
-              restDiscovery = await fetchSessionDiscovery(
-                createMapGeneratorProgram(ctx.connection),
-                restSdPda
-              ).catch(() => null);
-            }
+            const visibleTilesBeforeRest = countVisibleFogTiles(gameState?.map?.fog);
+            const restDiscovery = await syncDiscoveryFromChain(ctx.connection, ctx.sessionPda, {
+              maxAttempts: 5,
+              delayMs: 120,
+              shouldAccept: (discovery) => {
+                const discoveredTileCount = countDiscoveryBits(discovery.discoveredTiles);
+                const discoveredPoi = discovery.discoveredPois
+                  .slice(0, discovery.discoveredPoiCount)
+                  .find((poi) => poi.mapPoisIndex === validatedPoiIndex);
+                return (
+                  discoveredTileCount >= visibleTilesBeforeRest ||
+                  !!discoveredPoi?.used ||
+                  discovery.activeOfferPoiIndex !== validatedPoiIndex
+                );
+              },
+            });
 
             if (updatedState) {
               debugLog(
@@ -2384,13 +2500,6 @@ export function usePoiInteraction(): UsePoiInteractionResult {
                 ? decodeBossId(restDiscovery.currentBossId) ?? undefined
                 : undefined;
               dispatch({ type: 'SYNC_MOVE', confirmedState: updatedState, weekBoss: discoveryBossId });
-            }
-
-            if (restDiscovery) {
-              const sdTiles = unpackDiscoveryTiles(restDiscovery, restDiscovery.mapWidth, restDiscovery.mapHeight);
-              const sdEnemies = convertDiscoveredEnemies(restDiscovery.discoveredEnemies, restDiscovery.discoveredEnemyCount);
-              const sdPois = convertDiscoveredPois(restDiscovery.discoveredPois, restDiscovery.discoveredPoiCount);
-              dispatch({ type: 'SYNC_DISCOVERY', tiles: sdTiles, enemies: sdEnemies, pois: sdPois });
             }
 
             // Detect boss resolution:
@@ -2497,7 +2606,12 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             const oilInventoryProgram = createPlayerInventoryProgram(gameplayReadConnection);
             const [oilInventoryPda] = deriveInventoryPda(ctx.sessionPda);
             const [oilInventoryData] = await Promise.all([
-              fetchInventory(oilInventoryProgram, oilInventoryPda),
+              retryRead(
+                () => fetchInventory(oilInventoryProgram, oilInventoryPda),
+                {
+                  shouldAccept: (inventory) => !!inventory.tool,
+                }
+              ),
               refreshGameplayState(),
             ]);
 
@@ -2528,7 +2642,15 @@ export function usePoiInteraction(): UsePoiInteractionResult {
               }
             }
 
-            // POI consumed state synced via SYNC_DISCOVERY on next move
+            // Sync POI consumption immediately instead of waiting for the next move.
+            await syncDiscoveryFromChain(ctx.connection, ctx.sessionPda, {
+              maxAttempts: 5,
+              delayMs: 120,
+              shouldAccept: (discovery) =>
+                !!discovery.discoveredPois
+                  .slice(0, discovery.discoveredPoiCount)
+                  .find((poi) => poi.mapPoisIndex === validatedPoiIndex)?.used,
+            });
             break;
           }
 
@@ -2820,9 +2942,18 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             // Sync inventory from confirmed on-chain state (not optimistic)
             const kilnInventoryProgram = createPlayerInventoryProgram(gameplayReadConnection);
             const [kilnInventoryPda] = deriveInventoryPda(ctx.sessionPda);
-            const kilnInventoryData = await fetchInventory(
-              kilnInventoryProgram,
-              kilnInventoryPda
+            const kilnInventoryData = await retryRead(
+              () => fetchInventory(kilnInventoryProgram, kilnInventoryPda),
+              {
+                shouldAccept: (inventory) =>
+                  inventory.gear.some((gear) => {
+                    const converted = gear ? convertGearInstance(gear) : null;
+                    return (
+                      converted?.id === kilnGear.id &&
+                      converted.currentRarity !== kilnGear.currentRarity
+                    );
+                  }),
+              }
             );
 
             if (kilnInventoryData) {
@@ -2875,6 +3006,15 @@ export function usePoiInteraction(): UsePoiInteractionResult {
               );
               dispatch({ type: 'FUSE_GEAR', gearId: kilnGear.id as GearId });
             }
+
+            await syncDiscoveryFromChain(ctx.connection, ctx.sessionPda, {
+              maxAttempts: 5,
+              delayMs: 120,
+              shouldAccept: (discovery) =>
+                !!discovery.discoveredPois
+                  .slice(0, discovery.discoveredPoiCount)
+                  .find((poi) => poi.mapPoisIndex === validatedPoiIndex)?.used,
+            });
 
             break;
           }
@@ -2938,8 +3078,13 @@ export function usePoiInteraction(): UsePoiInteractionResult {
             const [inventoryPda] = deriveInventoryPda(ctx.sessionPda);
 
             const [updatedAnvilState, inventoryData] = await Promise.all([
-              fetchGameState(gameplayProgram, ctx.gameStatePda),
-              fetchInventory(inventoryProgram, inventoryPda),
+              retryRead(() => fetchGameState(gameplayProgram, ctx.gameStatePda)),
+              retryRead(
+                () => fetchInventory(inventoryProgram, inventoryPda),
+                {
+                  shouldAccept: (inventory) => !!inventory.tool,
+                }
+              ),
               refreshGameplayState(),
             ]);
 

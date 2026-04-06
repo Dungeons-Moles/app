@@ -180,12 +180,13 @@ export function HubScreen({ navigation }: HubScreenProps) {
     }).start();
   }, [isScreenFocused, playBgm, fadeAnim]);
 
-  // Show beta welcome modal on first visit
+  // Show season pass modal on first visit (on-chain mode only)
   useEffect(() => {
+    if (isGuest) return;
     AsyncStorage.getItem(BETA_WELCOME_KEY).then((shown) => {
       if (!shown) setShowBetaWelcome(true);
     });
-  }, []);
+  }, [isGuest]);
 
   // Process any pending session cleanups when Hub screen gains focus
   // (e.g. returning from DeathScreen after a deferred queueEndGame)

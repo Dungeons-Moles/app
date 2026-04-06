@@ -1890,6 +1890,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
       // On-chain: send transaction, await confirmation, then sync local state
       const tTap = Date.now();
       isMovePendingRef.current = true;
+
       // Safety timeout: if the move promise hangs (WS listener stall, network issue),
       // reset the guard after 5s so the player isn't permanently stuck.
       const moveSafetyTimeout = setTimeout(() => {

@@ -196,15 +196,15 @@ export function signTemplatedTransaction(
  * MapPois / session accounts grew and the final delegate step was running short.
  * All rent is reclaimed at session close and stays in the signer for reuse.
  */
-export const SESSION_COST_CAMPAIGN = 100_000_000; // 0.1 SOL
-export const SESSION_COST_DUEL = 100_000_000; // 0.1 SOL
-export const SESSION_COST_GAUNTLET = 150_000_000; // 0.15 SOL — gauntlet delegates ~12 accounts (echoes, globals, rewards, 5 pools)
+export const SESSION_COST_CAMPAIGN = 120_000_000; // 0.12 SOL
+export const SESSION_COST_DUEL = 120_000_000; // 0.12 SOL
+export const SESSION_COST_GAUNTLET = 120_000_000; // 0.12 SOL
 
 /** Fallback / max funding amount. */
 export const DEFAULT_FUND_AMOUNT = SESSION_COST_GAUNTLET;
 
 /** Maximum balance cap for session signer. Auto-withdraw excess after session end. */
-export const MAX_SIGNER_BALANCE = 160_000_000; // 0.16 SOL
+export const MAX_SIGNER_BALANCE = 130_000_000; // 0.13 SOL
 
 /** Total SOL needed by session signer per session (defaults to most expensive mode). */
 export const TOTAL_SESSION_COST = DEFAULT_FUND_AMOUNT;

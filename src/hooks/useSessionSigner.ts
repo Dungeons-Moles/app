@@ -521,15 +521,6 @@ export function useSessionSigner(): UseSessionSignerReturn {
     }
   }, [walletAddress, state, checkPendingSession]);
 
-  // Periodically refresh balance when active
-  useEffect(() => {
-    if (state !== 'active' || !keypair) {
-      return;
-    }
-
-    const interval = setInterval(refreshBalance, 30000); // Every 30 seconds
-    return () => clearInterval(interval);
-  }, [state, keypair, refreshBalance]);
 
   return {
     state,

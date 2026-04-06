@@ -150,6 +150,11 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   // Fading interval reference
   const fadeIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Serialization queue — ensures only one playBgm executes at a time.
+  // Without this, rapid calls (e.g. mobile screen transitions) can interleave
+  // and leave two tracks playing simultaneously.
+  const bgmQueueRef = useRef<Promise<void>>(Promise.resolve());
+
   // Web autoplay policy: browsers block play() until a user gesture.
   // We queue the pending BGM and replay it on the first interaction.
   const userHasInteracted = useRef(Platform.OS !== 'web');
@@ -370,105 +375,138 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  /** Safety net: pause every pool sound EXCEPT the one about to play.
+   *  Catches orphaned tracks that slipped through normal stop logic. */
+  const pauseAllExcept = async (except: BgmKey | null) => {
+    const promises: Promise<void>[] = [];
+    for (const [key, sound] of bgmPoolRef.current.entries()) {
+      if (key === except) continue;
+      promises.push(
+        sound
+          .getStatusAsync()
+          .then(async (status) => {
+            if (status.isLoaded && status.isPlaying) {
+              playbackPositions.current[key] = status.positionMillis;
+              await sound.pauseAsync();
+            }
+          })
+          .catch(() => {})
+      );
+    }
+    await Promise.all(promises);
+  };
+
   const playBgm = useCallback(
-    async (track: BgmTrack, options: PlayBgmOptions = { resume: false, crossfade: true }) => {
+    (track: BgmTrack, options: PlayBgmOptions = { resume: false, crossfade: true }) => {
       // Web autoplay: queue the track until the user interacts with the page
       if (!userHasInteracted.current && track !== 'none') {
         pendingBgmRef.current = { track, options };
-        return;
+        return Promise.resolve();
       }
 
-      // Don't restart if it's already playing the requested track.
-      if (activeTrackRef.current === (track === 'none' ? null : track)) {
-        return;
-      }
+      // Serialize: chain onto the queue so concurrent calls execute one at a time.
+      const job = bgmQueueRef.current.then(async () => {
+        // Don't restart if it's already playing the requested track.
+        if (activeTrackRef.current === (track === 'none' ? null : track)) {
+          return;
+        }
 
-      if (!bgmPoolReady.current) return;
+        if (!bgmPoolReady.current) return;
 
-      const vol = musicVolumeRef.current;
+        const vol = musicVolumeRef.current;
 
-      // Handle fade-to-silence
-      if (track === 'none') {
-        const oldTrack = activeTrackRef.current;
-        activeTrackRef.current = null;
+        // Cancel any in-progress crossfade before doing anything else
+        if (fadeIntervalRef.current) {
+          clearInterval(fadeIntervalRef.current);
+          fadeIntervalRef.current = null;
+        }
 
-        if (oldTrack) {
-          const oldSound = bgmPoolRef.current.get(oldTrack);
-          if (oldSound && options.crossfade) {
-            // Cancel any in-progress fadeout
-            if (fadingOutTrackRef.current && fadingOutTrackRef.current !== oldTrack) {
-              await pausePoolSound(fadingOutTrackRef.current);
-              fadingOutTrackRef.current = null;
+        // Handle fade-to-silence
+        if (track === 'none') {
+          const oldTrack = activeTrackRef.current;
+          activeTrackRef.current = null;
+
+          if (oldTrack) {
+            const oldSound = bgmPoolRef.current.get(oldTrack);
+            if (oldSound && options.crossfade) {
+              fadingOutTrackRef.current = oldTrack;
+
+              startCrossfade(
+                () => {},
+                (progress) => {
+                  oldSound.setVolumeAsync(progress * vol).catch(() => {});
+                },
+                async () => {
+                  await pausePoolSound(oldTrack);
+                  if (fadingOutTrackRef.current === oldTrack) fadingOutTrackRef.current = null;
+                }
+              );
+            } else {
+              await pausePoolSound(oldTrack);
             }
-            fadingOutTrackRef.current = oldTrack;
+          }
+          // Safety net: ensure nothing else is still playing
+          await pauseAllExcept(null);
+          return;
+        }
 
-            startCrossfade(
-              () => {},
-              (progress) => {
-                oldSound.setVolumeAsync(progress * vol).catch(() => {});
-              },
-              async () => {
-                await pausePoolSound(oldTrack);
-                if (fadingOutTrackRef.current === oldTrack) fadingOutTrackRef.current = null;
-              }
-            );
+        const newSound = bgmPoolRef.current.get(track);
+        if (!newSound) return;
+
+        try {
+          // Stop any in-progress fadeout immediately
+          if (fadingOutTrackRef.current) {
+            await pausePoolSound(fadingOutTrackRef.current);
+            fadingOutTrackRef.current = null;
+          }
+
+          // Prepare the new sound
+          if (options.resume && playbackPositions.current[track]) {
+            await newSound.setPositionAsync(playbackPositions.current[track]!);
           } else {
-            await pausePoolSound(oldTrack);
+            await newSound.setPositionAsync(0);
+            playbackPositions.current[track] = 0;
           }
-        }
-        return;
-      }
 
-      const newSound = bgmPoolRef.current.get(track);
-      if (!newSound) return;
+          const oldTrack = activeTrackRef.current;
+          const hasOldBgm = !!oldTrack;
 
-      try {
-        // Stop any in-progress fadeout immediately
-        if (fadingOutTrackRef.current) {
-          await pausePoolSound(fadingOutTrackRef.current);
-          fadingOutTrackRef.current = null;
-        }
+          // Safety net: pause ALL other sounds before starting the new one.
+          // This catches orphaned tracks from interrupted crossfades or race conditions.
+          await pauseAllExcept(track);
 
-        // Prepare the new sound
-        if (options.resume && playbackPositions.current[track]) {
-          await newSound.setPositionAsync(playbackPositions.current[track]!);
-        } else {
-          await newSound.setPositionAsync(0);
-          playbackPositions.current[track] = 0;
-        }
+          // Set initial volume for new track
+          await newSound.setVolumeAsync(options.crossfade && hasOldBgm ? 0 : vol);
+          activeTrackRef.current = track;
+          await newSound.playAsync();
 
-        const oldTrack = activeTrackRef.current;
-        const hasOldBgm = !!oldTrack;
+          if (options.crossfade && oldTrack) {
+            const oldSound = bgmPoolRef.current.get(oldTrack);
+            if (oldSound) {
+              fadingOutTrackRef.current = oldTrack;
 
-        // Set initial volume for new track
-        await newSound.setVolumeAsync(options.crossfade && hasOldBgm ? 0 : vol);
-        activeTrackRef.current = track;
-        await newSound.playAsync();
-
-        if (options.crossfade && oldTrack) {
-          const oldSound = bgmPoolRef.current.get(oldTrack);
-          if (oldSound) {
-            fadingOutTrackRef.current = oldTrack;
-
-            startCrossfade(
-              (progress) => {
-                newSound.setVolumeAsync(progress * vol).catch(() => {});
-              },
-              (progress) => {
-                oldSound.setVolumeAsync(progress * vol).catch(() => {});
-              },
-              async () => {
-                await pausePoolSound(oldTrack);
-                if (fadingOutTrackRef.current === oldTrack) fadingOutTrackRef.current = null;
-              }
-            );
+              startCrossfade(
+                (progress) => {
+                  newSound.setVolumeAsync(progress * vol).catch(() => {});
+                },
+                (progress) => {
+                  oldSound.setVolumeAsync(progress * vol).catch(() => {});
+                },
+                async () => {
+                  await pausePoolSound(oldTrack);
+                  if (fadingOutTrackRef.current === oldTrack) fadingOutTrackRef.current = null;
+                }
+              );
+            }
           }
-        } else if (oldTrack) {
-          await pausePoolSound(oldTrack);
+        } catch (err) {
+          console.warn(`[AudioContext] Failed to play BGM ${track}:`, err);
         }
-      } catch (err) {
-        console.warn(`[AudioContext] Failed to play BGM ${track}:`, err);
-      }
+      });
+
+      // Update the queue — swallow errors so one failure doesn't block future calls
+      bgmQueueRef.current = job.catch(() => {});
+      return job;
     },
     [musicVolume]
   );
@@ -478,18 +516,18 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     playBgmRef.current = playBgm;
   }, [playBgm]);
 
-  const stopBgm = useCallback(async () => {
-    const current = activeTrackRef.current;
-    activeTrackRef.current = null;
-    if (current) await pausePoolSound(current);
-    if (fadingOutTrackRef.current) {
-      await pausePoolSound(fadingOutTrackRef.current);
+  const stopBgm = useCallback(() => {
+    const job = bgmQueueRef.current.then(async () => {
+      if (fadeIntervalRef.current) {
+        clearInterval(fadeIntervalRef.current);
+        fadeIntervalRef.current = null;
+      }
+      activeTrackRef.current = null;
       fadingOutTrackRef.current = null;
-    }
-    if (fadeIntervalRef.current) {
-      clearInterval(fadeIntervalRef.current);
-      fadeIntervalRef.current = null;
-    }
+      await pauseAllExcept(null);
+    });
+    bgmQueueRef.current = job.catch(() => {});
+    return job;
   }, []);
 
   // --- SFX Management ---
