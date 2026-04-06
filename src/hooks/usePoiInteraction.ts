@@ -13,6 +13,7 @@ import * as Sentry from '@sentry/react-native';
 import { useGame, GamePhase } from '@/contexts/GameContext';
 import { TimePhase } from '@/game/engine/types';
 import { useSession } from '@/contexts/SessionContext';
+import { useProfile } from '@/contexts/ProfileContext';
 import { useGameplayStateContext, type PoiData } from '@/contexts/GameplayStateContext';
 import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
 import {
@@ -764,6 +765,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
   } = useGameplayStateContext();
   const { gameplayConnection, gameplayReadConnection } = useSolanaConnection();
   const { wallet } = useWallet();
+  const { mode } = useProfile();
   const { playSfx } = useAudio();
 
   const [isInteracting, setIsInteracting] = useState(false);
@@ -1310,7 +1312,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
       }
 
       // Guest mode: dispatch INTERACT_POI to the local reducer (no on-chain interaction)
-      if (!hasActiveSession) {
+      if (mode === 'guest' || !hasActiveSession) {
         const localPoi = gameState?.map?.pois?.find(
           (p) =>
             p.position.x === currentPoi.x &&
@@ -1924,6 +1926,7 @@ export function usePoiInteraction(): UsePoiInteractionResult {
       canInteract,
       playerPosition,
       currentPoi,
+      mode,
       hasActiveSession,
       createPoiCtx,
       poiProgram,

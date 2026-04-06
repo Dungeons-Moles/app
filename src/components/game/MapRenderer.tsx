@@ -65,6 +65,18 @@ const rockV4Source = require('../../../assets/world/tiles/rock-v4.webp');
 
 const SINGLE_USE_POIS = ['L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L12', 'L13'];
 
+// Enemies whose sprites face right by default and should flip when chasing left at night
+const FLIPPABLE_ENEMIES = new Set([
+  'TUNNEL_RAT',
+  'FROST_WISP',
+  'COIN_SLUG',
+  'BLOOD_MOSQUITO',
+  'SHARD_BEETLE',
+  'COLLAPSED_MINER',
+  'TUNNEL_WARDEN',
+  'BURROW_AMBUSHER',
+]);
+
 // Tier glow colors for enemy indicators
 const TIER_GLOW_COLORS: Record<1 | 2 | 3, string> = {
   1: 'rgba(200, 200, 200, 0.0)', // T1: no glow
@@ -395,6 +407,7 @@ function GlowingSkiaEntity({
   zoom,
   glowColor,
   tier,
+  flipX = false,
 }: {
   x: number;
   y: number;
@@ -402,6 +415,7 @@ function GlowingSkiaEntity({
   zoom: number;
   glowColor: string;
   tier: 2 | 3;
+  flipX?: boolean;
 }) {
   const clock = useClock();
   const period = TIER_GLOW_PERIOD[tier];
@@ -421,7 +435,7 @@ function GlowingSkiaEntity({
 
   if (!image) return null;
 
-  return (
+  const ImageComponent = (
     <Image
       image={image}
       x={drawX}
@@ -434,6 +448,16 @@ function GlowingSkiaEntity({
       <Shadow dx={0} dy={0} blur={blur} color={glowColor} />
     </Image>
   );
+
+  if (flipX) {
+    return (
+      <Group origin={{ x: drawX + size / 2, y: drawY + size / 2 }} transform={[{ scaleX: -1 }]}>
+        {ImageComponent}
+      </Group>
+    );
+  }
+
+  return ImageComponent;
 }
 
 // ============================================================================
@@ -740,6 +764,11 @@ export const MapRenderer = memo(function MapRenderer({
             const enemyImage = isUnknown
               ? entityImages.unknownEnemy
               : entityImages[enemy.definitionId];
+            const shouldFlip =
+              isNight &&
+              !isUnknown &&
+              FLIPPABLE_ENEMIES.has(enemy.definitionId) &&
+              playerPosition.x < enemy.position.x;
 
             if (!isUnknown && tier > 1) {
               return (
@@ -751,6 +780,7 @@ export const MapRenderer = memo(function MapRenderer({
                   zoom={zoom}
                   glowColor={TIER_GLOW_COLORS[tier]}
                   tier={tier as 2 | 3}
+                  flipX={shouldFlip}
                 />
               );
             }
@@ -763,6 +793,7 @@ export const MapRenderer = memo(function MapRenderer({
                 image={enemyImage}
                 opacity={1}
                 zoom={zoom}
+                flipX={shouldFlip}
               />
             );
           })}

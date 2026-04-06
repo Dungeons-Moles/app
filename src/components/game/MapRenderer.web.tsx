@@ -26,6 +26,18 @@ const BUFFER_TILES = 2;
 
 const SINGLE_USE_POIS = ['L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L12', 'L13'];
 
+// Enemies whose sprites face right by default and should flip when chasing left at night
+const FLIPPABLE_ENEMIES = new Set([
+  'TUNNEL_RAT',
+  'FROST_WISP',
+  'COIN_SLUG',
+  'BLOOD_MOSQUITO',
+  'SHARD_BEETLE',
+  'COLLAPSED_MINER',
+  'TUNNEL_WARDEN',
+  'BURROW_AMBUSHER',
+]);
+
 // Tier glow CSS class names (matched to injected keyframes)
 const TIER_GLOW_CLASS: Record<1 | 2 | 3, string> = {
   1: '', // T1: no glow
@@ -681,6 +693,11 @@ export const MapRenderer = memo(function MapRenderer({
               const { enemy, variant } = entry;
               const isUnknown = variant === 'unknown';
               const tier = enemy.tier as 1 | 2 | 3;
+              const shouldFlip =
+                isNight &&
+                !isUnknown &&
+                FLIPPABLE_ENEMIES.has(enemy.definitionId) &&
+                playerPosition.x < enemy.position.x;
               return (
                 <EntityView
                   key={`enemy-${enemy.id}`}
@@ -690,6 +707,7 @@ export const MapRenderer = memo(function MapRenderer({
                     isUnknown ? unknownEnemyImageSource : getEntityImageSource(enemy.definitionId)
                   }
                   zoom={zoom}
+                  flipX={shouldFlip}
                   glowClass={!isUnknown ? TIER_GLOW_CLASS[tier] : undefined}
                 />
               );
