@@ -94,7 +94,7 @@ export function CombatScreen({ navigation, route }: CombatScreenProps) {
 
 function CombatScreenContent({ navigation, route }: CombatScreenProps) {
   const { state: gameState, dispatch: gameDispatch } = useGame();
-  const { profile, mode } = useProfile();
+  const { profile, mode, refresh: refreshProfile } = useProfile();
   const playerSkinSource = useEquippedSkinImage(profile?.equippedSkin);
   const playerCombatScale = getEquippedSkinCombatScale(profile?.equippedSkin);
   const { wallet, signAndSendTransaction } = useWallet();
@@ -459,6 +459,10 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
 
       let settleSignature: string | undefined;
 
+      // If the eager teardown already completed, hasActiveSession may be false.
+      // Retrieve the settle signature from the eager promise before checking hasActiveSession.
+      const eagerPromise = sessionEndPromiseRef.current;
+
       if (shouldEndSession && hasActiveSession && mode !== 'guest') {
         const isDuelRun = gameplayState?.runMode === RunMode.Duel;
         // Only try duel finalization if settlement hasn't already happened
@@ -472,11 +476,14 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
         }
 
         // Await the eagerly-started teardown (or start one now if the eager effect didn't fire).
-        const endPromise = sessionEndPromiseRef.current ?? endSessionWithSessionSigner();
+        const endPromise = eagerPromise ?? endSessionWithSessionSigner();
         const endResult = await endPromise;
 
         if (endResult.success) {
-          settleSignature = endResult.settleSignature;
+          settleSignature = endResult.settleSignature ?? endResult.signature;
+          await refreshProfile().catch((err) => {
+            console.warn('[CombatScreen] Profile refresh after session end failed:', err);
+          });
         } else {
           console.warn('[CombatScreen] Failed to end session:', endResult.error);
           try {
@@ -488,6 +495,13 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
               queueError
             );
           }
+        }
+      } else if (shouldEndSession && eagerPromise && mode !== 'guest') {
+        // Eager teardown already completed (hasActiveSession is now false).
+        // Await the result to get the settleSignature for item unlock parsing.
+        const endResult = await eagerPromise;
+        if (endResult.success) {
+          settleSignature = endResult.settleSignature ?? endResult.signature;
         }
       }
 
@@ -618,6 +632,7 @@ function CombatScreenContent({ navigation, route }: CombatScreenProps) {
     session,
     gameplayState,
     connection,
+    refreshProfile,
     signAndSendTransaction,
     getSessionSignerKeypair,
   ]);

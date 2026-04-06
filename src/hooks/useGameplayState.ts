@@ -9,6 +9,7 @@ import { useCallback, useState, useRef, useEffect, useMemo } from 'react';
 import { PublicKey, Keypair, Connection, Transaction } from '@solana/web3.js';
 import { AnchorProvider, Program } from '@anchor-lang/core';
 import * as Sentry from '@sentry/react-native';
+import { Platform } from 'react-native';
 import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
 import { useWallet } from '@/contexts/WalletContext';
 import {
@@ -96,6 +97,10 @@ export interface UseGameplayStateReturn {
     gauntletCombatVisual?: GauntletCombatVisualEvent | null;
     /** Updated SessionDiscovery data (tiles, enemies, POIs) after the move */
     discovery?: SessionDiscoveryData | null;
+    /** Non-blocking promise for fresh discovery when WS missed delivery.
+     *  Resolves to updated SessionDiscoveryData or null. Callers should
+     *  consume this to patch fog-of-war without blocking the move result. */
+    lazyDiscovery?: Promise<SessionDiscoveryData | null>;
   }>;
   /** Modify a player stat */
   updateStat: (
@@ -284,7 +289,11 @@ export function useGameplayState(): UseGameplayStateReturn {
    * The timeout is cancelled if WS delivers first (prevents orphaned warnings).
    */
   const raceWsVsFetch = useCallback(
-    (wsPromise: Promise<GameState>, timeoutMs: number): Promise<GameState | null> => {
+    (
+      wsPromise: Promise<GameState>,
+      timeoutMs: number,
+      options?: { earlyFetchMs?: number }
+    ): Promise<GameState | null> => {
       if (!program || !gameStatePda) return Promise.resolve(null);
 
       const prog = program;
@@ -292,14 +301,30 @@ export function useGameplayState(): UseGameplayStateReturn {
 
       return new Promise<GameState | null>((resolve) => {
         let resolved = false;
+        let earlyFetchTimer: ReturnType<typeof setTimeout> | null = null;
         const done = (state: GameState | null) => {
           if (resolved) return;
           resolved = true;
           clearTimeout(timeoutId);
+          if (earlyFetchTimer) clearTimeout(earlyFetchTimer);
           resolve(state);
         };
 
         wsPromise.then(done);
+
+        if (options?.earlyFetchMs != null) {
+          earlyFetchTimer = setTimeout(async () => {
+            if (resolved) return;
+            try {
+              const fetched = await fetchGameState(prog, pda);
+              if (fetched) {
+                done(fetched);
+              }
+            } catch {
+              // keep waiting for WS / timeout fallback
+            }
+          }, options.earlyFetchMs);
+        }
 
         const timeoutId = setTimeout(async () => {
           if (resolved) return;
@@ -444,6 +469,7 @@ export function useGameplayState(): UseGameplayStateReturn {
         // (RN's sendTransaction can take ~720ms, which would expire a 500ms timeout).
         const wsState = registerWsListener();
         let wsDiscoveryCancelled = false;
+        let discoveryDeliveredViaWs = false;
         let wsDiscoveryResolve!: (data: SessionDiscoveryData | null) => void;
         const wsDiscoveryPromise = new Promise<SessionDiscoveryData | null>((r) => {
           wsDiscoveryResolve = r;
@@ -451,6 +477,7 @@ export function useGameplayState(): UseGameplayStateReturn {
         const discoveryListener = (data: SessionDiscoveryData) => {
           if (wsDiscoveryCancelled) return;
           wsDiscoveryCancelled = true;
+          discoveryDeliveredViaWs = true;
           wsDiscoveryListenersRef.current.delete(discoveryListener);
           wsDiscoveryResolve(data);
         };
@@ -500,11 +527,28 @@ export function useGameplayState(): UseGameplayStateReturn {
         const confirmedState = await raceWsVsFetch(wsState.promise, 500);
         const tWs = Date.now();
 
-        // Resolve discovery immediately with whatever is available (WS data or latest ref).
+        // Give discovery WS a short grace window after gameState resolves.
+        // Both account changes are pushed by the same ER slot, but on mobile
+        // the second notification can arrive 5-20ms after the first. Without
+        // this grace period, we'd always miss discovery on mobile and fall back
+        // to a ~500ms lazy fetch.
         if (!wsDiscoveryCancelled) {
-          wsDiscoveryCancelled = true;
-          wsDiscoveryListenersRef.current.delete(discoveryListener);
-          wsDiscoveryResolve(latestDiscoveryRef.current);
+          await new Promise<void>((resolve) => {
+            const graceMs = 30;
+            const timer = setTimeout(() => {
+              if (!wsDiscoveryCancelled) {
+                wsDiscoveryCancelled = true;
+                wsDiscoveryListenersRef.current.delete(discoveryListener);
+                wsDiscoveryResolve(latestDiscoveryRef.current);
+              }
+              resolve();
+            }, graceMs);
+            // If discovery arrives during grace window, resolve immediately
+            wsDiscoveryPromise.then(() => {
+              clearTimeout(timer);
+              resolve();
+            });
+          });
         }
         const wsDiscoveryData = await wsDiscoveryPromise;
         const tDiscovery = Date.now();
@@ -542,11 +586,20 @@ export function useGameplayState(): UseGameplayStateReturn {
         // hot path fast. Only pay for a follow-up RPC read when the move changed
         // phase/week boundaries or when WS delivery missed entirely.
         let finalDiscovery: SessionDiscoveryData | null = wsDiscoveryData;
-        const needsDiscoveryFetch = confirmedState &&
-          (!wsDiscoveryData ||
-            confirmedState.phase !== previousState.phase ||
-            confirmedState.week !== previousState.week);
-        if (needsDiscoveryFetch) {
+        let lazyDiscoveryPromise: Promise<SessionDiscoveryData | null> | undefined;
+        const needsBlockingDiscoveryFetch = !!confirmedState && (
+          !wsDiscoveryData ||
+          confirmedState.phase !== previousState.phase ||
+          confirmedState.week !== previousState.week
+        );
+        // When WS missed discovery but we have stale ref data, fire a non-blocking
+        // background fetch so the move returns fast. The caller can consume the
+        // lazy promise to patch fog-of-war without blocking the move result.
+        const needsLazyDiscoveryFetch = !!confirmedState &&
+          !needsBlockingDiscoveryFetch &&
+          !discoveryDeliveredViaWs &&
+          !!wsDiscoveryData;
+        if (needsBlockingDiscoveryFetch) {
           const tDiscFetch = Date.now();
           const [sdPda] = deriveSessionDiscoveryPda(sessionPda);
           const freshDiscovery = await fetchSessionDiscovery(
@@ -557,6 +610,16 @@ export function useGameplayState(): UseGameplayStateReturn {
             finalDiscovery = freshDiscovery;
           }
           console.log(`[perf]   discoveryFetch: ${Date.now() - tDiscFetch}ms`);
+        } else if (needsLazyDiscoveryFetch) {
+          const [sdPda] = deriveSessionDiscoveryPda(sessionPda);
+          const conn = moveConnection;
+          lazyDiscoveryPromise = fetchSessionDiscovery(
+            createMapGeneratorProgram(conn),
+            sdPda
+          ).then((fresh) => {
+            if (fresh) latestDiscoveryRef.current = fresh;
+            return fresh;
+          }).catch(() => null);
         }
 
         // Only call setGameState when WS timed out and we fell back to HTTP fetch.
@@ -658,7 +721,8 @@ export function useGameplayState(): UseGameplayStateReturn {
         console.log(
           `[perf] move-total: ${Date.now() - t0}ms` +
           ` | postProcess: ${Date.now() - tCombat}ms` +
-          ` (discFetch=${needsDiscoveryFetch ? 'yes' : 'no'}` +
+          ` (discFetch=${needsBlockingDiscoveryFetch ? 'yes' : needsLazyDiscoveryFetch ? 'lazy' : 'no'}` +
+          `, discWs=${discoveryDeliveredViaWs ? 'yes' : 'no'}` +
           `, combatRetry=${hpOrDeathChanged && !isBossOrEchoResolution ? 'yes' : 'no'})`
         );
         return {
@@ -675,6 +739,7 @@ export function useGameplayState(): UseGameplayStateReturn {
           inlineBossId,
           gauntletCombatVisual,
           discovery: finalDiscovery,
+          lazyDiscovery: lazyDiscoveryPromise,
         };
       } catch (err) {
         console.error('[useGameplayState] Failed to move player:', err);

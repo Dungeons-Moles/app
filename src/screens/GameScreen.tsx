@@ -94,6 +94,7 @@ import { fetchSessionDiscovery } from '@/services/solana/mapGeneratorClient';
 import { createGameplayStateProgram, createMapGeneratorProgram, createPlayerProfileProgram } from '@/services/solana/programs';
 import { parseGameplayEvents, extractVictoryData } from '@/services/solana/eventParser';
 import { warmMovePlayerCaches, eagerBuildMoveTemplate, syncDiscoveryBoss } from '@/services/solana/gameplayState';
+import { SOLANA_CONFIG } from '@/services/solana/config';
 import { deriveSessionDiscoveryPda, GAMEPLAY_STATE_PROGRAM_ID } from '@/services/solana/constants';
 import { warmErBlockhashCache, startErBlockhashRefresh, stopErBlockhashRefresh, sendSessionSignerTransaction } from '@/services/solana/sessionSigner';
 import {
@@ -532,7 +533,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
     endSessionWithSessionSigner,
   } = useSession();
   const { wallet } = useWallet();
-  const { connection, gameplayReadConnection } = useSolanaConnection();
+  const { connection, gameplayConnection, gameplayReadConnection } = useSolanaConnection();
   const {
     gameState: gameplayContextState,
   } = useGameplayStateContext();
@@ -546,24 +547,33 @@ export function GameScreen({ navigation }: GameScreenProps) {
   const isController = inputMode === 'controller';
   const stateRef = useRef(state);
   stateRef.current = state;
+  const gameplayWriteConnection = useMemo(() => {
+    const gameplayEndpoint = gameplayConnection.rpcEndpoint.replace(/\/+$/, '');
+    const readEndpoint = gameplayReadConnection.rpcEndpoint.replace(/\/+$/, '');
+    const directEndpoint = SOLANA_CONFIG.directErRpcUrl.replace(/\/+$/, '');
+    const isRouter = gameplayEndpoint.includes('router.magicblock.app');
+    const hasResolvedValidator =
+      readEndpoint !== directEndpoint && !readEndpoint.includes('router.magicblock.app');
+    return isRouter && hasResolvedValidator ? gameplayReadConnection : gameplayConnection;
+  }, [gameplayConnection, gameplayReadConnection]);
 
-  // Pre-warm ER blockhash cache + move account caches on screen focus
-  // to avoid first-move latency penalty (~450ms for 3 sequential RPC calls).
-  // Also starts a periodic blockhash refresh so idle doesn't cause cold cache.
+  // Pre-warm the actual gameplay write connection, not just the read connection.
+  // On native, writes may use a resolved validator endpoint instead of the router;
+  // warming the wrong connection leaves blockhash fetches cold on the hot path.
   useEffect(() => {
-    if (isFocused && gameplayReadConnection) {
-      warmErBlockhashCache(gameplayReadConnection);
-      startErBlockhashRefresh(gameplayReadConnection);
+    if (isFocused && gameplayWriteConnection) {
+      warmErBlockhashCache(gameplayWriteConnection);
+      startErBlockhashRefresh(gameplayWriteConnection);
       if (sessionPda) {
-        const program = createGameplayStateProgram(gameplayReadConnection);
+        const program = createGameplayStateProgram(gameplayWriteConnection);
         const signerKp = getSessionSignerKeypair();
         // Warm caches then eagerly build template once caches are populated.
-        const warmPromise = warmMovePlayerCaches(gameplayReadConnection, program, sessionPda);
+        const warmPromise = warmMovePlayerCaches(gameplayWriteConnection, program, sessionPda);
         if (signerKp) {
           warmPromise.then(() => {
             const [gsPda] = deriveGameStatePda(sessionPda);
             return eagerBuildMoveTemplate(
-              gameplayReadConnection,
+              gameplayWriteConnection,
               gsPda,
               sessionPda,
               signerKp,
@@ -574,7 +584,7 @@ export function GameScreen({ navigation }: GameScreenProps) {
       return () => { stopErBlockhashRefresh(); };
     }
     return undefined;
-  }, [isFocused, gameplayReadConnection, sessionPda]);
+  }, [isFocused, gameplayWriteConnection, sessionPda, getSessionSignerKeypair]);
   const onChainStateRef = useRef(onChainState);
   onChainStateRef.current = onChainState;
   const canTriggerCurrentPoiByPhase = poiInteraction.canInteract;
@@ -1550,28 +1560,6 @@ export function GameScreen({ navigation }: GameScreenProps) {
     );
   }, [isFastTravelActive, fastTravelCameraTarget, fastTravelSelectedIndex, fastTravelDestinations]);
 
-  const fastTravelOverlayWaypoints = useMemo<MapPOI[]>(() => {
-    if (!state?.player?.position) return discoveredWaypoints;
-    if (!isFastTravelActive) return discoveredWaypoints;
-
-    const points: MapPOI[] = [
-      {
-        id: `fast-travel-current-${state.player.position.x}-${state.player.position.y}`,
-        definitionId: 'L8',
-        position: { ...state.player.position },
-        visited: true,
-        discovered: true,
-      },
-      ...fastTravelDestinations.map((pos, index) => ({
-        id: `fast-travel-destination-${index}-${pos.x}-${pos.y}`,
-        definitionId: 'L8' as const,
-        position: pos,
-        visited: true,
-        discovered: true,
-      })),
-    ];
-    return points;
-  }, [state?.player?.position, discoveredWaypoints, isFastTravelActive, fastTravelDestinations]);
 
   useLandscapeLock();
   useKeepAwake();
@@ -1992,6 +1980,19 @@ export function GameScreen({ navigation }: GameScreenProps) {
               const enemies = convertDiscoveredEnemies(discovery.discoveredEnemies, discovery.discoveredEnemyCount);
               const pois = convertDiscoveredPois(discovery.discoveredPois, discovery.discoveredPoiCount);
               dispatch({ type: 'SYNC_DISCOVERY', tiles, enemies, pois });
+            }
+
+            // When WS missed discovery delivery (common on mobile), a background
+            // fetch is in-flight. Consume it to patch fog-of-war without blocking.
+            if (result.lazyDiscovery) {
+              void result.lazyDiscovery.then((lazy) => {
+                if (lazy) {
+                  const tiles = unpackDiscoveryTiles(lazy, lazy.mapWidth, lazy.mapHeight);
+                  const enemies = convertDiscoveredEnemies(lazy.discoveredEnemies, lazy.discoveredEnemyCount);
+                  const pois = convertDiscoveredPois(lazy.discoveredPois, lazy.discoveredPoiCount);
+                  dispatch({ type: 'SYNC_DISCOVERY', tiles, enemies, pois });
+                }
+              });
             }
 
             // Build preCombatPlayerStats from a mix of on-chain and local state:
@@ -2610,14 +2611,17 @@ export function GameScreen({ navigation }: GameScreenProps) {
       clearTimeout(skipMismatchTimeoutRef.current);
     }
 
+    // Optimistically move the player to the destination so the UI updates immediately.
+    // executeFastTravel also dispatches SYNC_MOVE internally after the chain fetch,
+    // but that fetch can return stale data if the ER hasn't committed the write yet.
+    // FAST_TRAVEL_TO guarantees the local position matches the destination right away.
+    lastAutoTriggeredPosRef.current = { x: dest.x, y: dest.y };
+    dispatch({ type: 'FAST_TRAVEL_TO', destination: dest });
+    setIsFastTravelMode(false);
+    setFastTravelDestinations([]);
+
     poiInteraction.executeFastTravel(currentPos, dest).then(async (result) => {
-      if (result.success && result.newState) {
-        dispatch({
-          type: 'SYNC_MOVE',
-          confirmedState: result.newState,
-        });
-        // Prevent auto-trigger from reopening the waypoint modal at the destination
-        lastAutoTriggeredPosRef.current = { x: dest.x, y: dest.y };
+      if (result.success) {
         // Fetch SessionDiscovery to sync discovery state after fast travel
         if (sessionPda && gameplayReadConnection) {
           try {
@@ -2638,8 +2642,6 @@ export function GameScreen({ navigation }: GameScreenProps) {
       } else if (result.error) {
         showWallBreakFeedback(result.error);
       }
-      setIsFastTravelMode(false);
-      setFastTravelDestinations([]);
       // Reset skip flag after a delay to allow on-chain state to propagate
       skipMismatchTimeoutRef.current = setTimeout(() => {
         skipMismatchDetectionRef.current = false;
@@ -3959,10 +3961,9 @@ export function GameScreen({ navigation }: GameScreenProps) {
 
                 {isFastTravelActive && (
                   <FastTravelOverlay
-                    waypoints={fastTravelOverlayWaypoints}
+                    waypoints={discoveredWaypoints}
                     selectedIndex={fastTravelSelectedIndex}
                     currentPosition={state.player.position}
-                    overviewMode={overviewMode}
                     onCycle={handleFastTravelCycle}
                     onConfirm={handleFastTravelConfirm}
                     onCancel={handleFastTravelCancel}
