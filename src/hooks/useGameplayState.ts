@@ -10,6 +10,12 @@ import { PublicKey, Keypair, Connection, Transaction } from '@solana/web3.js';
 import { AnchorProvider, Program } from '@anchor-lang/core';
 import * as Sentry from '@sentry/react-native';
 import { Platform } from 'react-native';
+import {
+  subscribe as nativeWsSubscribe,
+  unsubscribe as nativeWsUnsubscribe,
+  addAccountChangeListener as addNativeAccountChangeListener,
+} from '../../modules/fast-account-watcher';
+import { deriveErWsEndpoint } from '@/services/solana/config';
 import { useSolanaConnection } from '@/contexts/SolanaConnectionContext';
 import { useWallet } from '@/contexts/WalletContext';
 import {
@@ -1081,40 +1087,134 @@ export function useGameplayState(): UseGameplayStateReturn {
   );
 
   // WebSocket subscription for real-time GameState updates.
-  // Replaces polling-based refresh — the ER pushes state changes via WS,
-  // eliminating an RPC roundtrip per move (~150ms from high-latency locations).
+  // On mobile: uses native OkHttp WebSocket (bypasses RN bridge, ~150ms faster).
+  // On web: uses @solana/web3.js onAccountChange (browser WS is already fast).
   // Also does an immediate fetch for initial state (WS only fires on changes).
+  const nativeWatcherIdRef = useRef<number | null>(null);
+
   useEffect(() => {
     if (!gameStatePda || !program) return;
     let cancelled = false;
 
-    // Set up WS subscription on the read connection (resolved ER validator)
+    const handleDecodedState = (decoded: GameState) => {
+      if (cancelled) return;
+      const hasListeners = wsListenersRef.current.size > 0;
+      if (hasListeners) {
+        wsListenersRef.current.forEach((fn) => fn(decoded));
+        wsListenersRef.current.clear();
+      }
+      if (isMountedRef.current) {
+        queueMicrotask(() => {
+          if (isMountedRef.current) {
+            setGameState(decoded);
+            setSyncStatus('synced');
+            setLastSyncAt(Date.now());
+          }
+        });
+      }
+    };
+
+    if (Platform.OS !== 'web') {
+      // Native path: OkHttp WebSocket → Expo Module event → JS
+      const wsEndpoint = deriveErWsEndpoint(gameplayReadConnection.rpcEndpoint);
+      const pubkey = gameStatePda.toBase58();
+      const prog = program;
+      let localWatcherId: number | null = null;
+
+      const subscription = addNativeAccountChangeListener((event) => {
+        if (cancelled) return;
+        // Filter: only handle events for THIS watcher (gameState, not discovery)
+        if (localWatcherId === null || event.watcherId !== localWatcherId) return;
+        if (event.error) {
+          console.warn('[useGameplayState] Native WS error:', event.error);
+          return;
+        }
+        if (!event.data) return;
+        try {
+          const buffer = Buffer.from(event.data, 'base64');
+          const decoded = decodeGameStateFromAccountInfo(prog, buffer);
+          if (decoded) handleDecodedState(decoded);
+        } catch (err) {
+          console.warn('[useGameplayState] Native WS decode error:', err);
+        }
+      });
+
+      nativeWsSubscribe(wsEndpoint, pubkey, 'processed')
+        .then((id) => {
+          if (cancelled) {
+            nativeWsUnsubscribe(id).catch(() => {});
+          } else {
+            localWatcherId = id;
+            nativeWatcherIdRef.current = id;
+          }
+        })
+        .catch((err) => {
+          console.warn('[useGameplayState] Native WS subscribe failed, falling back:', err);
+          if (!cancelled) {
+            try {
+              wsSubIdRef.current = gameplayReadConnection.onAccountChange(
+                gameStatePda,
+                (accountInfo) => {
+                  const decoded = decodeGameStateFromAccountInfo(prog, accountInfo.data);
+                  if (decoded) handleDecodedState(decoded);
+                },
+                'processed'
+              );
+            } catch (fallbackErr) {
+              console.warn('[useGameplayState] Fallback WS also failed:', fallbackErr);
+            }
+          }
+        });
+
+      // Cleanup
+      const cleanup = () => {
+        cancelled = true;
+        wsListenersRef.current.clear();
+        subscription.remove();
+        const watcherId = nativeWatcherIdRef.current;
+        if (watcherId !== null) {
+          nativeWsUnsubscribe(watcherId).catch(() => {});
+          nativeWatcherIdRef.current = null;
+        }
+        if (wsSubIdRef.current !== null) {
+          void gameplayReadConnection.removeAccountChangeListener(wsSubIdRef.current).catch(() => {});
+          wsSubIdRef.current = null;
+        }
+      };
+
+      // Immediate fetch for initial state
+      (async () => {
+        const state = await fetchGameState(program, gameStatePda);
+        if (state && isMountedRef.current && !cancelled) {
+          setGameState(state);
+          setSyncStatus('synced');
+          setLastSyncAt(Date.now());
+          return;
+        }
+        if (cancelled) return;
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          await new Promise((r) => setTimeout(r, 800));
+          if (cancelled) return;
+          const retryState = await fetchGameState(program, gameStatePda);
+          if (retryState && isMountedRef.current && !cancelled) {
+            setGameState(retryState);
+            setSyncStatus('synced');
+            setLastSyncAt(Date.now());
+            return;
+          }
+        }
+      })();
+
+      return cleanup;
+    }
+
+    // Web path: standard @solana/web3.js onAccountChange
     try {
       wsSubIdRef.current = gameplayReadConnection.onAccountChange(
         gameStatePda,
         (accountInfo) => {
           const decoded = decodeGameStateFromAccountInfo(program, accountInfo.data);
-          if (!decoded || cancelled) return;
-
-          // Notify one-shot listeners FIRST, then defer the React state
-          // update. This lets the promise .then() chain in GameScreen fire
-          // before React processes the re-render (~500-900ms on web).
-          const hasListeners = wsListenersRef.current.size > 0;
-          if (hasListeners) {
-            wsListenersRef.current.forEach((fn) => fn(decoded));
-            wsListenersRef.current.clear();
-          }
-          // Defer setGameState so the promise resolution above can propagate
-          // through the microtask queue before React batches a re-render.
-          if (isMountedRef.current) {
-            queueMicrotask(() => {
-              if (isMountedRef.current) {
-                setGameState(decoded);
-                setSyncStatus('synced');
-                setLastSyncAt(Date.now());
-              }
-            });
-          }
+          if (decoded) handleDecodedState(decoded);
         },
         'processed'
       );
@@ -1132,7 +1232,6 @@ export function useGameplayState(): UseGameplayStateReturn {
         return;
       }
       if (cancelled) return;
-      // ER propagation delay — retry up to 3 times with 800ms gaps
       for (let attempt = 1; attempt <= 3; attempt++) {
         await new Promise((r) => setTimeout(r, 800));
         if (cancelled) return;
@@ -1158,7 +1257,10 @@ export function useGameplayState(): UseGameplayStateReturn {
 
   // WebSocket subscription for SessionDiscovery updates.
   // Set up once we know the session PDA (from gameState.session).
+  // On mobile: uses native OkHttp WebSocket (same as gameState above).
   const sessionPdaForDiscovery = gameState?.session;
+  const nativeDiscoveryWatcherIdRef = useRef<number | null>(null);
+
   useEffect(() => {
     if (!sessionPdaForDiscovery || !gameplayReadConnection) return;
     let cancelled = false;
@@ -1166,17 +1268,82 @@ export function useGameplayState(): UseGameplayStateReturn {
     const [sdPda] = deriveSessionDiscoveryPda(sessionPdaForDiscovery);
     const mapProgram = createMapGeneratorProgram(gameplayReadConnection);
 
+    const handleDecodedDiscovery = (decoded: SessionDiscoveryData) => {
+      if (cancelled) return;
+      latestDiscoveryRef.current = decoded;
+      wsDiscoveryListenersRef.current.forEach((fn) => fn(decoded));
+      wsDiscoveryListenersRef.current.clear();
+    };
+
+    if (Platform.OS !== 'web') {
+      const wsEndpoint = deriveErWsEndpoint(gameplayReadConnection.rpcEndpoint);
+      const pubkey = sdPda.toBase58();
+      let localWatcherId: number | null = null;
+
+      const subscription = addNativeAccountChangeListener((event) => {
+        if (cancelled) return;
+        if (localWatcherId === null || event.watcherId !== localWatcherId) return;
+        if (!event.data) return;
+        try {
+          const buffer = Buffer.from(event.data, 'base64');
+          const decoded = decodeSessionDiscoveryFromAccountInfo(mapProgram, buffer);
+          if (decoded) handleDecodedDiscovery(decoded);
+        } catch {
+          // ignore decode errors
+        }
+      });
+
+      nativeWsSubscribe(wsEndpoint, pubkey, 'processed')
+        .then((id) => {
+          if (cancelled) {
+            nativeWsUnsubscribe(id).catch(() => {});
+          } else {
+            localWatcherId = id;
+            nativeDiscoveryWatcherIdRef.current = id;
+          }
+        })
+        .catch(() => {
+          // Fallback to standard WS
+          if (!cancelled) {
+            try {
+              wsDiscoverySubIdRef.current = gameplayReadConnection.onAccountChange(
+                sdPda,
+                (accountInfo) => {
+                  const decoded = decodeSessionDiscoveryFromAccountInfo(mapProgram, accountInfo.data);
+                  if (decoded) handleDecodedDiscovery(decoded);
+                },
+                'processed'
+              );
+            } catch { /* ignore */ }
+          }
+        });
+
+      return () => {
+        cancelled = true;
+        wsDiscoveryListenersRef.current.clear();
+        subscription.remove();
+        const watcherId = nativeDiscoveryWatcherIdRef.current;
+        if (watcherId !== null) {
+          nativeWsUnsubscribe(watcherId).catch(() => {});
+          nativeDiscoveryWatcherIdRef.current = null;
+        }
+        if (wsDiscoverySubIdRef.current !== null) {
+          void gameplayReadConnection
+            .removeAccountChangeListener(wsDiscoverySubIdRef.current)
+            .catch(() => {});
+          wsDiscoverySubIdRef.current = null;
+        }
+      };
+    }
+
+    // Web path
     try {
       wsDiscoverySubIdRef.current = gameplayReadConnection.onAccountChange(
         sdPda,
         (accountInfo) => {
           if (cancelled) return;
           const decoded = decodeSessionDiscoveryFromAccountInfo(mapProgram, accountInfo.data);
-          if (!decoded) return;
-
-          latestDiscoveryRef.current = decoded;
-          wsDiscoveryListenersRef.current.forEach((fn) => fn(decoded));
-          wsDiscoveryListenersRef.current.clear();
+          if (decoded) handleDecodedDiscovery(decoded);
         },
         'processed'
       );
