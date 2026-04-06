@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -493,7 +493,7 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
   const inputMode = useInputMode();
   const isController = inputMode === 'controller';
   const isScreenFocused = useIsFocused();
-  const [cursorIdx, setCursorIdx] = useState(0);
+  const [cursorIdx, setCursorIdx] = useState(Math.max(0, highestLevelUnlocked - 1));
   const flatListRef = useRef<FlatList>(null);
   const didRunCleanupThisFocusRef = useRef(false);
 
@@ -527,6 +527,25 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
     };
   }, [hasPendingCleanups, isScreenFocused, processPendingCleanups]);
 
+  const rowHeight = isCompact ? 88 + 16 : 56 + 12;
+
+  const getItemLayout = useCallback(
+    (_data: unknown, index: number) => ({
+      length: rowHeight,
+      offset: rowHeight * Math.floor(index / NUM_COLUMNS),
+      index,
+    }),
+    [rowHeight]
+  );
+
+  // Scroll to the highest unlocked level on first load
+  const initialScrollIndex = useMemo(() => {
+    if (levels.length === 0) return undefined;
+    const targetLevel = Math.min(Math.max(0, highestLevelUnlocked - 1), levels.length - 1);
+    // Snap to the first item in the row so FlatList doesn't complain
+    return Math.floor(targetLevel / NUM_COLUMNS) * NUM_COLUMNS;
+  }, [levels.length, highestLevelUnlocked]);
+
   // Auto-scroll FlatList to keep cursor visible
   const onScrollToIndexFailed = useCallback(
     (info: { index: number; averageItemLength: number }) => {
@@ -548,7 +567,6 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
         });
       } catch {
         // Fallback: estimate offset from row height
-        const rowHeight = isCompact ? 88 + 16 : 56 + 12;
         const row = Math.floor(cursorIdx / NUM_COLUMNS);
         flatListRef.current.scrollToOffset({ offset: row * rowHeight, animated: true });
       }
@@ -950,6 +968,8 @@ export function CampaignSelectScreen({ navigation }: CampaignSelectScreenProps) 
             keyExtractor={keyExtractor}
             numColumns={NUM_COLUMNS}
             contentContainerStyle={styles.gridContent}
+            getItemLayout={getItemLayout}
+            initialScrollIndex={initialScrollIndex}
             onScrollToIndexFailed={onScrollToIndexFailed}
             showsVerticalScrollIndicator={false}
             refreshControl={

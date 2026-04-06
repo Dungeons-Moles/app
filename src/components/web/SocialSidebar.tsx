@@ -162,7 +162,7 @@ export function SocialSidebar() {
           <SocialButton icon={<XIcon />} href="https://x.com/DungeonsMoles" label="Follow on X" />
           <SocialButton
             icon={<DiscordIcon />}
-            href="https://discord.gg/YqHTHA4B"
+            href="https://discord.gg/rxUeYfc33D"
             label="Join Discord"
           />
         </div>
