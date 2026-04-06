@@ -292,7 +292,6 @@ export function useGameplayState(): UseGameplayStateReturn {
     (
       wsPromise: Promise<GameState>,
       timeoutMs: number,
-      options?: { earlyFetchMs?: number }
     ): Promise<GameState | null> => {
       if (!program || !gameStatePda) return Promise.resolve(null);
 
@@ -301,30 +300,14 @@ export function useGameplayState(): UseGameplayStateReturn {
 
       return new Promise<GameState | null>((resolve) => {
         let resolved = false;
-        let earlyFetchTimer: ReturnType<typeof setTimeout> | null = null;
         const done = (state: GameState | null) => {
           if (resolved) return;
           resolved = true;
           clearTimeout(timeoutId);
-          if (earlyFetchTimer) clearTimeout(earlyFetchTimer);
           resolve(state);
         };
 
         wsPromise.then(done);
-
-        if (options?.earlyFetchMs != null) {
-          earlyFetchTimer = setTimeout(async () => {
-            if (resolved) return;
-            try {
-              const fetched = await fetchGameState(prog, pda);
-              if (fetched) {
-                done(fetched);
-              }
-            } catch {
-              // keep waiting for WS / timeout fallback
-            }
-          }, options.earlyFetchMs);
-        }
 
         const timeoutId = setTimeout(async () => {
           if (resolved) return;
