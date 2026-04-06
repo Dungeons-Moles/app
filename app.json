@@ -6,7 +6,6 @@
     "orientation": "landscape",
     "icon": "./assets/branding/icon.png",
     "userInterfaceStyle": "dark",
-    "newArchEnabled": true,
     "splash": {
       "image": "./assets/branding/splash-icon.png",
       "resizeMode": "contain",
@@ -22,7 +21,6 @@
         "backgroundColor": "#0f0f1a"
       },
       "package": "io.dungeonsandmoles.app",
-      "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },
     "web": {
@@ -32,10 +30,14 @@
       "expo-secure-store",
       "expo-screen-orientation",
       "expo-font",
-      ["@sentry/react-native", {
-        "organization": "dungeons-moles",
-        "project": "app"
-      }]
+      [
+        "@sentry/react-native",
+        {
+          "organization": "dungeons-moles",
+          "project": "app"
+        }
+      ],
+      "expo-image"
     ],
     "extra": {
       "solanaCluster": "devnet",

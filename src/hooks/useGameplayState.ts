@@ -403,6 +403,7 @@ export function useGameplayState(): UseGameplayStateReturn {
       inlineBossId?: string;
       gauntletCombatVisual?: GauntletCombatVisualEvent | null;
       discovery?: SessionDiscoveryData | null;
+      lazyDiscovery?: Promise<SessionDiscoveryData | null>;
     }> => {
       if (!program) {
         const msg = 'Program not available';

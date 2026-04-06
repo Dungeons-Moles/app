@@ -8,7 +8,7 @@ import React, {
   useMemo,
   ReactNode,
 } from 'react';
-import { Alert, View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
+import { Alert, View, Text, TouchableOpacity, TouchableWithoutFeedback, StyleSheet, Image } from 'react-native';
 import { Typography } from '@/theme/typography';
 import { useScreenVariant } from '@/contexts/ScreenVariantContext';
 import { useInputMode } from '@/hooks/useInputMode';
@@ -112,6 +112,7 @@ import {
   parseDuelEvents,
 } from '@/services/solana/duels';
 import { clearFogState, clearBrokenWalls } from '@/services/solana/sessionRestore';
+import { getUserErrorMessage } from '@/services/solana/errors';
 import { getLocalVrfPayerKeypair } from '@/services/solana/localVrfPayer';
 import type { OnChainGameSession } from '@/services/solana/types/session_manager';
 import {
@@ -300,6 +301,7 @@ interface SessionContextType extends SessionState {
     inlineBossId?: string;
     gauntletCombatVisual?: GauntletCombatVisualEvent | null;
     discovery?: import('@/services/solana/mapGeneratorClient').SessionDiscoveryData | null;
+    lazyDiscovery?: Promise<import('@/services/solana/mapGeneratorClient').SessionDiscoveryData | null>;
   }>;
   /** Trigger boss fight on-chain (via session key signer) */
   triggerBoss: () => Promise<{
@@ -1896,8 +1898,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           console.error('[SessionContext] retryErVrfForSession: map+sync failed', regenErr);
           return {
             success: false,
-            error:
-              regenErr instanceof Error ? regenErr.message : 'Failed to generate map after VRF',
+            error: getUserErrorMessage(regenErr),
           };
         }
         return { success: true };
@@ -1978,7 +1979,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         console.error('[SessionContext] retryErVrfForSession:map+sync failed', regenErr);
         return {
           success: false,
-          error: regenErr instanceof Error ? regenErr.message : 'Failed to generate map after VRF',
+          error: getUserErrorMessage(regenErr),
         };
       }
 
@@ -2929,12 +2930,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         sessionSigner.resetState();
         return {
           success: false,
-          error:
-            txError instanceof Error
-              ? txError.message
-              : isCounterUninitialized
-                ? 'Session counter not initialized'
-                : 'Transaction failed',
+          error: isCounterUninitialized
+            ? 'Session counter not initialized'
+            : getUserErrorMessage(txError, 'session_manager'),
         };
       }
 
@@ -3193,7 +3191,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           return {
             success: false,
             error:
-              poiVrfErr instanceof Error ? poiVrfErr.message : 'Failed to request campaign VRF on ER',
+              getUserErrorMessage(poiVrfErr),
           };
         }
       }
@@ -3467,7 +3465,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         }
         return {
           success: false,
-          error: txError instanceof Error ? txError.message : 'Duel session transaction failed',
+          error: getUserErrorMessage(txError, 'session_manager'),
         };
       }
 
@@ -3632,10 +3630,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           logTxDebugError('startDuelGame:er_vrf', vrfError);
           return {
             success: false,
-            error:
-              vrfError instanceof Error
-                ? vrfError.message
-                : 'Failed to initialize duel randomness on ER',
+            error: getUserErrorMessage(vrfError),
           };
         }
       } // end else (ER VRF)
@@ -3924,7 +3919,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         }
         return {
           success: false,
-          error: txError instanceof Error ? txError.message : 'Gauntlet session transaction failed',
+          error: getUserErrorMessage(txError, 'session_manager'),
         };
       }
 
@@ -4068,10 +4063,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           logTxDebugError('startGauntletGame:er_vrf', vrfError);
           return {
             success: false,
-            error:
-              vrfError instanceof Error
-                ? vrfError.message
-                : 'Failed to initialize gauntlet randomness on ER',
+            error: getUserErrorMessage(vrfError),
           };
         }
       } // end else (ER VRF)
@@ -4231,7 +4223,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         return {
           success: false,
           error:
-            vrfError instanceof Error ? vrfError.message : 'Failed to generate gauntlet map on ER',
+            getUserErrorMessage(vrfError),
         };
       }
 
@@ -5480,7 +5472,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           return {
             success: false,
             error:
-              poiVrfErr instanceof Error ? poiVrfErr.message : 'Failed to request campaign VRF on ER',
+              getUserErrorMessage(poiVrfErr),
           };
         }
       }
@@ -5696,7 +5688,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       } catch (txError: unknown) {
         return {
           success: false,
-          error: txError instanceof Error ? txError.message : 'Duel session transaction failed',
+          error: getUserErrorMessage(txError, 'session_manager'),
         };
       }
 
@@ -5833,10 +5825,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         } catch (vrfError) {
           return {
             success: false,
-            error:
-              vrfError instanceof Error
-                ? vrfError.message
-                : 'Failed to initialize duel randomness on ER',
+            error: getUserErrorMessage(vrfError),
           };
         }
       } // end else (ER VRF)
@@ -6060,7 +6049,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       } catch (txError: unknown) {
         return {
           success: false,
-          error: txError instanceof Error ? txError.message : 'Gauntlet session transaction failed',
+          error: getUserErrorMessage(txError, 'session_manager'),
         };
       }
 
@@ -6175,10 +6164,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         } catch (vrfError) {
           return {
             success: false,
-            error:
-              vrfError instanceof Error
-                ? vrfError.message
-                : 'Failed to initialize gauntlet randomness on ER',
+            error: getUserErrorMessage(vrfError),
           };
         }
       } // end else (ER VRF)
@@ -7908,14 +7894,16 @@ function ActiveSessionGateContent({
 
   return (
     <InlineModal visible transparent animationType="fade" onRequestClose={onCancel}>
-      <View style={sgStyles.overlay}>
-        <CachedImageBackground
-          source={PAPER_PANEL_SOURCE}
-          resizeMode="stretch"
-          style={[sgStyles.content, isCompact && sgCompact.content]}
-        >
-          <Text style={[sgStyles.title, isCompact && sgCompact.title]}>
-            Session Already in Progress
+      <TouchableWithoutFeedback onPress={onCancel}>
+        <View style={sgStyles.overlay}>
+          <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
+            <CachedImageBackground
+              source={PAPER_PANEL_SOURCE}
+              resizeMode="stretch"
+              style={[sgStyles.content, isCompact && sgCompact.content]}
+            >
+              <Text style={[sgStyles.title, isCompact && sgCompact.title]}>
+                Session Already in Progress
           </Text>
           <Text style={[sgStyles.subtitle, isCompact && sgCompact.subtitle]}>
             You can only have one active session at a time. Resume your run or abandon it to start fresh.
@@ -8002,8 +7990,10 @@ function ActiveSessionGateContent({
           <Text style={[sgStyles.footnote, isCompact && sgCompact.footnote]}>
             Abandoning will close all session accounts and return your deposit to your game wallet.
           </Text>
-        </CachedImageBackground>
-      </View>
+            </CachedImageBackground>
+          </TouchableWithoutFeedback>
+        </View>
+      </TouchableWithoutFeedback>
     </InlineModal>
   );
 }
@@ -8035,14 +8025,16 @@ function InsufficientBalanceGateContent({
 
   return (
     <InlineModal visible transparent animationType="fade" onRequestClose={onCancel}>
-      <View style={sgStyles.overlay}>
-        <CachedImageBackground
-          source={PAPER_PANEL_SOURCE}
-          resizeMode="stretch"
-          style={[sgStyles.content, sgStyles.contentTall, isCompact && sgCompact.content, isCompact && sgCompact.contentTall]}
-        >
-          <Text style={[sgStyles.title, isCompact && sgCompact.title]}>
-            Not Enough Supplies
+      <TouchableWithoutFeedback onPress={onCancel}>
+        <View style={sgStyles.overlay}>
+          <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
+            <CachedImageBackground
+              source={PAPER_PANEL_SOURCE}
+              resizeMode="stretch"
+              style={[sgStyles.content, sgStyles.contentTall, isCompact && sgCompact.content, isCompact && sgCompact.contentTall]}
+            >
+              <Text style={[sgStyles.title, isCompact && sgCompact.title]}>
+                Not Enough Supplies
           </Text>
           <Text style={[sgStyles.subtitle, isCompact && sgCompact.subtitle]}>
             Your Season Pass needs a refundable deposit of{' '}
@@ -8099,8 +8091,10 @@ function InsufficientBalanceGateContent({
               </TouchableOpacity>
             </View>
           )}
-        </CachedImageBackground>
-      </View>
+            </CachedImageBackground>
+          </TouchableWithoutFeedback>
+        </View>
+      </TouchableWithoutFeedback>
     </InlineModal>
   );
 }
@@ -8113,28 +8107,31 @@ const sgStyles = StyleSheet.create({
     alignItems: 'center',
   },
   content: {
-    width: 480,
-    padding: 40,
+    width: 420,
+    maxWidth: '95%',
+    maxHeight: '92%',
+    padding: 28,
+    paddingVertical: 22,
     alignItems: 'center',
     justifyContent: 'flex-start',
   },
   contentTall: {
-    paddingVertical: 28,
+    paddingVertical: 18,
   },
   title: {
     fontFamily: Typography.header,
-    fontSize: 20,
+    fontSize: 18,
     color: '#3d2b1f',
-    marginBottom: 8,
+    marginBottom: 4,
     textAlign: 'center',
   },
   subtitle: {
     fontFamily: Typography.body,
-    fontSize: 11,
+    fontSize: 10,
     color: '#5c4033',
     textAlign: 'center',
-    lineHeight: 16,
-    marginBottom: 12,
+    lineHeight: 14,
+    marginBottom: 8,
   },
   badge: {
     backgroundColor: 'rgba(46, 125, 50, 0.12)',
@@ -8156,8 +8153,8 @@ const sgStyles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(93, 64, 51, 0.2)',
     borderRadius: 6,
-    padding: 10,
-    marginBottom: 10,
+    padding: 8,
+    marginBottom: 6,
     backgroundColor: 'rgba(255, 255, 255, 0.15)',
   },
   statRow: {
@@ -8219,13 +8216,13 @@ const sgStyles = StyleSheet.create({
     width: '80%',
     height: 1,
     backgroundColor: 'rgba(93, 64, 51, 0.2)',
-    marginVertical: 8,
+    marginVertical: 6,
   },
   targetText: {
     fontFamily: Typography.body,
-    fontSize: 11,
+    fontSize: 10,
     color: '#5c4033',
-    marginBottom: 10,
+    marginBottom: 6,
     textAlign: 'center',
   },
   bold: {
@@ -8242,8 +8239,8 @@ const sgStyles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(46, 125, 50, 0.2)',
     borderRadius: 6,
-    padding: 10,
-    marginBottom: 12,
+    padding: 8,
+    marginBottom: 8,
   },
   infoText: {
     fontFamily: Typography.body,
@@ -8254,7 +8251,7 @@ const sgStyles = StyleSheet.create({
   },
   actions: {
     alignItems: 'center',
-    gap: 8,
+    gap: 4,
   },
   buttonBg: {
     paddingVertical: 10,
@@ -8266,7 +8263,7 @@ const sgStyles = StyleSheet.create({
   buttonBgWide: {
     paddingVertical: 10,
     paddingHorizontal: 24,
-    minWidth: 220,
+    minWidth: 160,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -8295,7 +8292,7 @@ const sgStyles = StyleSheet.create({
     color: '#8d7b6b',
     fontStyle: 'italic',
     textAlign: 'center',
-    marginTop: 8,
+    marginTop: 4,
   },
 });
 
